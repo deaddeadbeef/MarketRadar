@@ -146,6 +146,77 @@ decision_cards = Table(
     Column("created_at", DateTime(timezone=True), nullable=False),
 )
 
+validation_runs = Table(
+    "validation_runs",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("run_type", String, nullable=False),
+    Column("as_of_start", DateTime(timezone=True), nullable=False),
+    Column("as_of_end", DateTime(timezone=True), nullable=False),
+    Column("decision_available_at", DateTime(timezone=True), nullable=False),
+    Column("status", String, nullable=False),
+    Column("config", json_type, nullable=False),
+    Column("metrics", json_type, nullable=False),
+    Column("started_at", DateTime(timezone=True), nullable=False),
+    Column("finished_at", DateTime(timezone=True)),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+
+validation_results = Table(
+    "validation_results",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("run_id", String, nullable=False),
+    Column("ticker", String, nullable=False),
+    Column("as_of", DateTime(timezone=True), nullable=False),
+    Column("available_at", DateTime(timezone=True), nullable=False),
+    Column("state", String, nullable=False),
+    Column("final_score", Float, nullable=False),
+    Column("candidate_state_id", String),
+    Column("candidate_packet_id", String),
+    Column("decision_card_id", String),
+    Column("baseline", String),
+    Column("labels", json_type, nullable=False),
+    Column("leakage_flags", json_type, nullable=False),
+    Column("payload", json_type, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+
+paper_trades = Table(
+    "paper_trades",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("decision_card_id", String, nullable=False),
+    Column("ticker", String, nullable=False),
+    Column("as_of", DateTime(timezone=True), nullable=False),
+    Column("decision", String, nullable=False),
+    Column("state", String, nullable=False),
+    Column("entry_price", Float),
+    Column("entry_at", DateTime(timezone=True)),
+    Column("invalidation_price", Float),
+    Column("shares", Float, nullable=False),
+    Column("notional", Float, nullable=False),
+    Column("max_loss", Float, nullable=False),
+    Column("outcome_labels", json_type, nullable=False),
+    Column("source_ts", DateTime(timezone=True), nullable=False),
+    Column("available_at", DateTime(timezone=True), nullable=False),
+    Column("payload", json_type, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+)
+
+useful_alert_labels = Table(
+    "useful_alert_labels",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("artifact_type", String, nullable=False),
+    Column("artifact_id", String, nullable=False),
+    Column("ticker", String, nullable=False),
+    Column("label", String, nullable=False),
+    Column("notes", Text),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+
 holdings_snapshots = Table(
     "holdings_snapshots",
     metadata,
@@ -449,4 +520,21 @@ Index(
     "ix_decision_cards_action_state_available_at",
     decision_cards.c.action_state,
     decision_cards.c.available_at,
+)
+Index(
+    "ix_validation_results_run_ticker_as_of",
+    validation_results.c.run_id,
+    validation_results.c.ticker,
+    validation_results.c.as_of,
+)
+Index(
+    "ix_validation_results_available_at",
+    validation_results.c.available_at,
+)
+Index("ix_paper_trades_ticker_state", paper_trades.c.ticker, paper_trades.c.state)
+Index("ix_paper_trades_decision_card", paper_trades.c.decision_card_id)
+Index(
+    "ix_useful_alert_labels_artifact",
+    useful_alert_labels.c.artifact_type,
+    useful_alert_labels.c.artifact_id,
 )

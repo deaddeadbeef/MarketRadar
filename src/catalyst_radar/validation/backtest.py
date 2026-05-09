@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from catalyst_radar.validation.outcomes import label_forward_return as _label_forward_return
+
 
 def assert_available_at_or_before_decision(
     available_at: datetime,
@@ -21,12 +23,10 @@ def label_forward_return(
     max_60d_price: float,
     sector_return: float,
 ) -> dict[str, bool]:
-    forward_10d_return = (max_10d_price / entry_price) - 1
-    forward_20d_return = (max_20d_price / entry_price) - 1
-    forward_60d_return = (max_60d_price / entry_price) - 1
-    return {
-        "target_10d_15": forward_10d_return >= 0.15,
-        "target_20d_25": forward_20d_return >= 0.25,
-        "target_60d_40": forward_60d_return >= 0.40,
-        "sector_outperformance": (forward_60d_return - sector_return) >= 0.20,
-    }
+    return _label_forward_return(
+        entry_price,
+        max_10d_price,
+        max_20d_price,
+        max_60d_price,
+        sector_return,
+    )

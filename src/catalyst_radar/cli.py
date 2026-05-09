@@ -4,11 +4,14 @@ import argparse
 import json
 import sys
 from collections.abc import Mapping
-from datetime import UTC, date, datetime, time
+from dataclasses import replace
+from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 from urllib.parse import urlencode
 
 from dotenv import load_dotenv
+from sqlalchemy import select
+from sqlalchemy.engine import Engine
 
 from catalyst_radar.connectors.base import ConnectorRequest
 from catalyst_radar.connectors.earnings import EarningsCalendarConnector
@@ -41,10 +44,32 @@ from catalyst_radar.storage.event_repositories import EventRepository
 from catalyst_radar.storage.feature_repositories import FeatureRepository
 from catalyst_radar.storage.provider_repositories import ProviderRepository
 from catalyst_radar.storage.repositories import MarketRepository
+from catalyst_radar.storage.schema import daily_bars
 from catalyst_radar.storage.text_repositories import TextRepository
+from catalyst_radar.storage.validation_repositories import ValidationRepository
 from catalyst_radar.textint.pipeline import run_text_pipeline
 from catalyst_radar.universe.builder import UniverseBuilder
 from catalyst_radar.universe.filters import UniverseFilterConfig
+from catalyst_radar.validation.baselines import (
+    event_only_watchlist,
+    random_eligible_universe,
+    sector_relative_momentum,
+    spy_relative_momentum,
+    user_watchlist,
+)
+from catalyst_radar.validation.models import (
+    PaperDecision,
+    UsefulAlertLabel,
+    ValidationResult,
+    ValidationRun,
+    ValidationRunStatus,
+    useful_alert_label_id,
+    validation_result_id,
+)
+from catalyst_radar.validation.outcomes import compute_forward_outcomes, outcome_labels_as_dict
+from catalyst_radar.validation.paper import create_paper_trade_from_card, update_trade_outcome
+from catalyst_radar.validation.replay import build_replay_results, deterministic_replay_run_id
+from catalyst_radar.validation.reports import build_validation_report, validation_report_payload
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -132,6 +157,51 @@ def build_parser() -> argparse.ArgumentParser:
     card.add_argument("--as-of", type=date.fromisoformat, required=True)
     card.add_argument("--available-at", type=_parse_aware_datetime)
     card.add_argument("--json", action="store_true")
+
+    validation_replay = subparsers.add_parser("validation-replay")
+    validation_replay.add_argument("--as-of-start", type=date.fromisoformat, required=True)
+    validation_replay.add_argument("--as-of-end", type=date.fromisoformat, required=True)
+    validation_replay.add_argument("--available-at", type=_parse_aware_datetime, required=True)
+    validation_replay.add_argument("--outcome-available-at", type=_parse_aware_datetime)
+    validation_replay.add_argument("--ticker", action="append")
+    validation_replay.add_argument(
+        "--state",
+        action="append",
+        choices=[state.value for state in ActionState],
+    )
+
+    validation_report = subparsers.add_parser("validation-report")
+    validation_report.add_argument("--run-id", required=True)
+    validation_report.add_argument("--available-at", type=_parse_aware_datetime)
+    validation_report.add_argument("--json", action="store_true")
+
+    paper_decision = subparsers.add_parser("paper-decision")
+    paper_decision.add_argument("--decision-card-id", required=True)
+    paper_decision.add_argument(
+        "--decision",
+        choices=[decision.value for decision in PaperDecision],
+        required=True,
+    )
+    paper_decision.add_argument("--available-at", type=_parse_aware_datetime, required=True)
+    paper_decision.add_argument("--entry-price", type=float)
+    paper_decision.add_argument("--entry-at", type=_parse_aware_datetime)
+
+    paper_update = subparsers.add_parser("paper-update-outcomes")
+    paper_update.add_argument("--decision-card-id", required=True)
+    paper_update.add_argument("--available-at", type=_parse_aware_datetime, required=True)
+    paper_update.add_argument("--labels-json", type=Path)
+
+    useful_label = subparsers.add_parser("useful-label")
+    useful_label.add_argument(
+        "--artifact-type",
+        choices=["candidate_packet", "decision_card", "paper_trade", "alert"],
+        required=True,
+    )
+    useful_label.add_argument("--artifact-id", required=True)
+    useful_label.add_argument("--ticker", required=True)
+    useful_label.add_argument("--label", required=True)
+    useful_label.add_argument("--notes")
+    useful_label.add_argument("--created-at", type=_parse_aware_datetime)
 
     build_universe = subparsers.add_parser("build-universe")
     build_universe.add_argument("--name")
@@ -450,6 +520,229 @@ def main(argv: list[str] | None = None) -> int:
             )
         return 0
 
+    if args.command == "validation-replay":
+        create_schema(engine)
+        packet_repo = CandidatePacketRepository(engine)
+        validation_repo = ValidationRepository(engine)
+        as_of_start = _scan_timestamp(args.as_of_start)
+        as_of_end = _scan_timestamp(args.as_of_end)
+        available_at = args.available_at
+        outcome_available_at = args.outcome_available_at or available_at
+        if outcome_available_at < available_at:
+            print(
+                "--outcome-available-at must be greater than or equal to --available-at",
+                file=sys.stderr,
+            )
+            return 1
+        states = tuple(ActionState(state) for state in args.state or ())
+        tickers = tuple(ticker.upper() for ticker in args.ticker or ())
+        run_id = deterministic_replay_run_id(
+            as_of_start=as_of_start,
+            as_of_end=as_of_end,
+            decision_available_at=available_at,
+            states=states,
+            tickers=tickers,
+        )
+        run = ValidationRun(
+            id=run_id,
+            run_type="point_in_time_replay",
+            as_of_start=as_of_start,
+            as_of_end=as_of_end,
+            decision_available_at=available_at,
+            status=ValidationRunStatus.RUNNING,
+            config={
+                "states": [state.value for state in states],
+                "tickers": list(tickers),
+                "outcome_available_at": outcome_available_at.isoformat(),
+                "no_external_calls": True,
+            },
+        )
+        validation_repo.upsert_validation_run(run)
+        try:
+            results = build_replay_results(
+                packet_repo,
+                validation_repo,
+                as_of_start=as_of_start,
+                as_of_end=as_of_end,
+                decision_available_at=available_at,
+                states=states or None,
+                tickers=tickers or None,
+                run_id=run_id,
+            )
+            labeled_results = _with_outcome_labels(
+                engine,
+                results,
+                available_at=outcome_available_at,
+            )
+            baseline_results = _baseline_validation_results(
+                engine,
+                run_id=run_id,
+                rows=labeled_results,
+                as_of_start=as_of_start,
+                as_of_end=as_of_end,
+                available_at=available_at,
+            )
+            all_results = [*labeled_results, *baseline_results]
+            count = validation_repo.upsert_validation_results(all_results)
+            report = build_validation_report(
+                run_id,
+                all_results,
+                useful_alert_labels=validation_repo.list_useful_alert_labels(
+                    available_at=outcome_available_at,
+                ),
+            )
+            metrics = validation_report_payload(report)
+            validation_repo.finish_validation_run(
+                run_id,
+                ValidationRunStatus.SUCCESS,
+                metrics,
+            )
+        except Exception as exc:
+            validation_repo.finish_validation_run(
+                run_id,
+                ValidationRunStatus.FAILED,
+                {"error": str(exc)},
+            )
+            print(f"validation replay failed: {exc}", file=sys.stderr)
+            return 1
+        print(
+            f"validation_replay run_id={run_id} candidate_results={len(labeled_results)} "
+            f"baseline_results={len(baseline_results)} results={count} "
+            f"decision_available_at={available_at.isoformat()} "
+            f"outcome_available_at={outcome_available_at.isoformat()} "
+            f"leakage_failures={metrics['leakage_failure_count']} "
+            f"precision_target_20d_25={metrics['precision'].get('target_20d_25', 0.0):.2f}"
+        )
+        return 0
+
+    if args.command == "validation-report":
+        create_schema(engine)
+        validation_repo = ValidationRepository(engine)
+        results = validation_repo.list_validation_results(
+            args.run_id,
+            available_at=args.available_at,
+        )
+        if not results:
+            print(f"validation results not found: {args.run_id}", file=sys.stderr)
+            return 1
+        report = build_validation_report(
+            args.run_id,
+            results,
+            useful_alert_labels=validation_repo.list_useful_alert_labels(
+                available_at=args.available_at,
+            ),
+        )
+        payload = validation_report_payload(report)
+        if args.json:
+            print(json.dumps(payload, sort_keys=True))
+        else:
+            print(
+                f"validation_report run_id={args.run_id} "
+                f"candidates={payload['candidate_count']} "
+                f"useful_alert_rate={payload['useful_alert_rate']:.2f} "
+                f"precision_target_20d_25={payload['precision'].get('target_20d_25', 0.0):.2f} "
+                f"false_positives={payload['false_positive_count']} "
+                f"missed_opportunities={payload['missed_opportunity_count']} "
+                f"leakage_failures={payload['leakage_failure_count']}"
+            )
+        return 0
+
+    if args.command == "paper-decision":
+        create_schema(engine)
+        validation_repo = ValidationRepository(engine)
+        card = validation_repo.decision_card_payload(
+            args.decision_card_id,
+            available_at=args.available_at,
+        )
+        if card is None:
+            print(f"decision card not found: {args.decision_card_id}", file=sys.stderr)
+            return 1
+        entry_at = args.entry_at or (args.available_at if args.entry_price is not None else None)
+        trade = create_paper_trade_from_card(
+            card,
+            PaperDecision(args.decision),
+            available_at=args.available_at,
+            entry_price=args.entry_price,
+            entry_at=entry_at,
+        )
+        validation_repo.upsert_paper_trade(trade)
+        print(
+            f"paper_trade id={trade.id} decision_card_id={trade.decision_card_id} "
+            f"ticker={trade.ticker} decision={trade.decision.value} "
+            f"state={trade.state.value} no_execution=true"
+        )
+        return 0
+
+    if args.command == "paper-update-outcomes":
+        create_schema(engine)
+        validation_repo = ValidationRepository(engine)
+        trade = validation_repo.latest_paper_trade_for_card(
+            args.decision_card_id,
+            args.available_at,
+        )
+        if trade is None:
+            print(f"paper trade not found: {args.decision_card_id}", file=sys.stderr)
+            return 1
+        if args.labels_json is not None:
+            labels = _read_json_object(args.labels_json)
+        else:
+            if trade.entry_price is None:
+                print(
+                    f"paper trade has no entry price: {args.decision_card_id}",
+                    file=sys.stderr,
+                )
+                return 1
+            future_prices = _future_price_rows(
+                engine,
+                ticker=trade.ticker,
+                after=(trade.entry_at or trade.as_of).date(),
+                available_at=args.available_at,
+            )
+            if not future_prices:
+                print(
+                    f"future prices not found for paper trade: {args.decision_card_id}",
+                    file=sys.stderr,
+                )
+                return 1
+            labels = outcome_labels_as_dict(
+                compute_forward_outcomes(
+                    trade.entry_price,
+                    future_prices,
+                    invalidation_price=trade.invalidation_price,
+                )
+            )
+        updated = update_trade_outcome(trade, labels, args.available_at)
+        validation_repo.upsert_paper_trade(updated)
+        print(
+            f"paper_trade id={updated.id} decision_card_id={updated.decision_card_id} "
+            f"ticker={updated.ticker} state={updated.state.value} "
+            f"labels={json.dumps(thaw_json_value(updated.outcome_labels), sort_keys=True)}"
+        )
+        return 0
+
+    if args.command == "useful-label":
+        create_schema(engine)
+        validation_repo = ValidationRepository(engine)
+        label = UsefulAlertLabel(
+            id=useful_alert_label_id(
+                artifact_type=args.artifact_type,
+                artifact_id=args.artifact_id,
+                label=args.label,
+            ),
+            artifact_type=args.artifact_type,
+            artifact_id=args.artifact_id,
+            ticker=args.ticker,
+            label=args.label,
+            notes=args.notes,
+            created_at=args.created_at or datetime.now(UTC),
+        )
+        validation_repo.insert_useful_alert_label(label)
+        print(
+            f"useful_label artifact_type={label.artifact_type} "
+            f"artifact_id={label.artifact_id} ticker={label.ticker} label={label.label}"
+        )
+        return 0
+
     if args.command == "build-universe":
         create_schema(engine)
         market_repo = MarketRepository(engine)
@@ -738,6 +1031,456 @@ def _ingest_options_provider(
 
     _print_options_provider_result(result)
     return 0
+
+
+def _read_json_object(path: Path) -> dict[str, object]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        msg = f"expected JSON object: {path}"
+        raise ValueError(msg)
+    return payload
+
+
+def _future_price_rows(
+    engine: Engine,
+    *,
+    ticker: str,
+    after: date,
+    available_at: datetime,
+) -> list[dict[str, float]]:
+    stmt = (
+        select(daily_bars)
+        .where(
+            daily_bars.c.ticker == ticker.upper(),
+            daily_bars.c.date > after,
+            daily_bars.c.available_at <= available_at,
+        )
+        .order_by(daily_bars.c.date)
+        .limit(60)
+    )
+    with engine.connect() as conn:
+        return [
+            {
+                "close": row.close,
+                "high": row.high,
+                "low": row.low,
+            }
+            for row in conn.execute(stmt)
+        ]
+
+
+def _future_price_rows_for_validation(
+    engine: Engine,
+    *,
+    ticker: str,
+    after: date,
+    available_at: datetime,
+) -> list[dict[str, float]]:
+    stmt = (
+        select(daily_bars)
+        .where(
+            daily_bars.c.ticker == ticker.upper(),
+            daily_bars.c.date > after,
+            daily_bars.c.available_at <= available_at,
+        )
+        .order_by(daily_bars.c.date)
+        .limit(60)
+    )
+    with engine.connect() as conn:
+        return [
+            {
+                "close": row.close,
+                "high": row.high,
+                "low": row.low,
+            }
+            for row in conn.execute(stmt)
+        ]
+
+
+def _historical_close_on_or_before(
+    engine: Engine,
+    *,
+    ticker: str,
+    as_of: date,
+    available_at: datetime,
+) -> float | None:
+    stmt = (
+        select(daily_bars.c.close)
+        .where(
+            daily_bars.c.ticker == ticker.upper(),
+            daily_bars.c.date <= as_of,
+            daily_bars.c.available_at <= available_at,
+        )
+        .order_by(daily_bars.c.date.desc())
+        .limit(1)
+    )
+    with engine.connect() as conn:
+        value = conn.execute(stmt).scalar_one_or_none()
+    return _float_or_none(value)
+
+
+def _with_outcome_labels(
+    engine: Engine,
+    rows: list[ValidationResult],
+    *,
+    available_at: datetime,
+) -> list[ValidationResult]:
+    labeled = []
+    for row in rows:
+        entry_price = _entry_price_for_validation_result(
+            engine,
+            row,
+            available_at=available_at,
+        )
+        if entry_price is None:
+            labeled.append(row)
+            continue
+        future_prices = _future_price_rows_for_validation(
+            engine,
+            ticker=row.ticker,
+            after=row.as_of.date(),
+            available_at=available_at,
+        )
+        if not future_prices:
+            labeled.append(row)
+            continue
+        sector_prices = _future_price_rows_for_validation(
+            engine,
+            ticker="SPY",
+            after=row.as_of.date(),
+            available_at=available_at,
+        )
+        labels = outcome_labels_as_dict(
+            compute_forward_outcomes(
+                entry_price,
+                future_prices,
+                sector_future_prices=sector_prices,
+                invalidation_price=_invalidation_price_for_validation_result(row),
+            )
+        )
+        payload = thaw_json_value(row.payload)
+        if not isinstance(payload, dict):
+            payload = {}
+        payload["outcome_audit"] = {
+            "entry_price": entry_price,
+            "future_price_count": len(future_prices),
+            "outcome_available_at": available_at.isoformat(),
+            "sector_proxy": "SPY" if sector_prices else None,
+            "label_only_not_candidate_input": True,
+        }
+        labeled.append(replace(row, available_at=available_at, labels=labels, payload=payload))
+    return labeled
+
+
+def _entry_price_for_validation_result(
+    engine: Engine,
+    row: ValidationResult,
+    *,
+    available_at: datetime,
+) -> float | None:
+    payload = thaw_json_value(row.payload)
+    if isinstance(payload, Mapping):
+        replay_payload = _mapping_value(payload.get("payload"))
+        for path in (
+            ("decision_card", "trade_plan", "entry_zone"),
+            ("packet", "trade_plan", "entry_zone"),
+            ("signal_payload", "candidate", "entry_zone"),
+        ):
+            value = _nested_mapping_value(replay_payload, *path)
+            price = _entry_zone_price(value)
+            if price is not None:
+                return price
+    return _historical_close_on_or_before(
+        engine,
+        ticker=row.ticker,
+        as_of=row.as_of.date(),
+        available_at=available_at,
+    )
+
+
+def _invalidation_price_for_validation_result(row: ValidationResult) -> float | None:
+    payload = thaw_json_value(row.payload)
+    if not isinstance(payload, Mapping):
+        return None
+    replay_payload = _mapping_value(payload.get("payload"))
+    for path in (
+        ("decision_card", "trade_plan", "invalidation_price"),
+        ("packet", "trade_plan", "invalidation_price"),
+        ("signal_payload", "candidate", "invalidation_price"),
+    ):
+        value = _nested_mapping_value(replay_payload, *path)
+        price = _float_or_none(value)
+        if price is not None:
+            return price
+    return None
+
+
+def _baseline_validation_results(
+    engine: Engine,
+    *,
+    run_id: str,
+    rows: list[ValidationResult],
+    as_of_start: datetime,
+    as_of_end: datetime,
+    available_at: datetime,
+) -> list[ValidationResult]:
+    result_rows = []
+    for as_of in _daily_replay_datetimes(as_of_start, as_of_end):
+        rows_for_day = [row for row in rows if row.as_of.date() == as_of.date()]
+        baseline_rows = _daily_bar_baseline_rows(
+            engine,
+            rows_for_day,
+            as_of=as_of,
+            available_at=available_at,
+        )
+        candidates = [
+            *spy_relative_momentum(baseline_rows, limit=10),
+            *sector_relative_momentum(baseline_rows, limit=10),
+            *event_only_watchlist(baseline_rows, limit=10),
+            *random_eligible_universe(
+                baseline_rows,
+                seed=f"{run_id}:{as_of.isoformat()}",
+                limit=10,
+            ),
+            *user_watchlist(baseline_rows, limit=10),
+        ]
+        for candidate in candidates:
+            candidate_as_of = candidate.as_of if isinstance(candidate.as_of, datetime) else as_of
+            state = ActionState.RESEARCH_ONLY
+            result_rows.append(
+                ValidationResult(
+                    id=validation_result_id(
+                        run_id=run_id,
+                        ticker=candidate.ticker,
+                        as_of=candidate_as_of,
+                        state=state,
+                        baseline=candidate.baseline,
+                    ),
+                    run_id=run_id,
+                    ticker=candidate.ticker,
+                    as_of=candidate_as_of,
+                    available_at=available_at,
+                    state=state,
+                    final_score=candidate.score,
+                    baseline=candidate.baseline,
+                    labels={},
+                    leakage_flags=(),
+                    payload=candidate.as_dict(),
+                )
+            )
+    return result_rows
+
+
+def _daily_replay_datetimes(start: datetime, end: datetime) -> list[datetime]:
+    values = []
+    current = start
+    while current <= end:
+        values.append(current)
+        current += timedelta(days=1)
+    return values
+
+
+def _daily_bar_baseline_rows(
+    engine: Engine,
+    rows: list[ValidationResult],
+    *,
+    as_of: datetime,
+    available_at: datetime,
+) -> list[dict[str, object]]:
+    replay_rows = [_baseline_row_from_result(row) for row in rows if row.baseline is None]
+    replay_by_ticker = {str(row["ticker"]): row for row in replay_rows}
+    bar_rows = _historical_bar_baseline_rows(
+        engine,
+        as_of=as_of.date(),
+        available_at=available_at,
+    )
+    bar_by_ticker = {str(row["ticker"]): row for row in bar_rows}
+    tickers = set(bar_by_ticker)
+    tickers.update(replay_by_ticker)
+    if not tickers:
+        return []
+    result = []
+    for ticker in sorted(tickers):
+        row = dict(bar_by_ticker.get(ticker, {"ticker": ticker, "as_of": as_of}))
+        if ticker in replay_by_ticker:
+            overlay = replay_by_ticker[ticker]
+            payload = {
+                **_mapping_value(row.get("payload")),
+                **_mapping_value(overlay.get("payload")),
+            }
+            row.update(overlay)
+            row["payload"] = payload
+        row.setdefault("eligible", True)
+        result.append(row)
+    return result
+
+
+def _historical_bar_baseline_rows(
+    engine: Engine,
+    *,
+    as_of: date,
+    available_at: datetime,
+) -> list[dict[str, object]]:
+    stmt = (
+        select(
+            daily_bars.c.ticker,
+            daily_bars.c.date,
+            daily_bars.c.close,
+        )
+        .where(
+            daily_bars.c.date <= as_of,
+            daily_bars.c.available_at <= available_at,
+        )
+        .order_by(daily_bars.c.ticker, daily_bars.c.date.desc())
+    )
+    by_ticker: dict[str, list[tuple[date, float]]] = {}
+    with engine.connect() as conn:
+        for row in conn.execute(stmt):
+            close = _float_or_none(row.close)
+            if close is None or close <= 0:
+                continue
+            ticker = str(row.ticker).upper()
+            by_ticker.setdefault(ticker, []).append((row.date, close))
+
+    spy_bars = by_ticker.get("SPY", [])
+    spy_return_20d = _window_return(spy_bars, lookback=20)
+    spy_return_60d = _window_return(spy_bars, lookback=60)
+    result = []
+    for ticker, bars in sorted(by_ticker.items()):
+        if ticker == "SPY":
+            continue
+        ret_20d = _window_return(bars, lookback=20)
+        ret_60d = _window_return(bars, lookback=60)
+        if ret_20d is None and ret_60d is None:
+            continue
+        result.append(
+            {
+                "ticker": ticker,
+                "as_of": datetime.combine(as_of, time(21), tzinfo=UTC),
+                "eligible": True,
+                "ret_20d": ret_20d,
+                "ret_60d": ret_60d,
+                "spy_return_20d": spy_return_20d,
+                "spy_return_60d": spy_return_60d,
+                "sector_relative_score": ret_20d,
+                "payload": {
+                    "baseline_source": "daily_bars",
+                    "bar_count": len(bars),
+                },
+            }
+        )
+    return result
+
+
+def _window_return(
+    bars_desc: list[tuple[date, float]],
+    *,
+    lookback: int,
+) -> float | None:
+    if len(bars_desc) < 2:
+        return None
+    window = bars_desc[:lookback]
+    latest = window[0][1]
+    earliest = window[-1][1]
+    if earliest <= 0:
+        return None
+    return (latest / earliest) - 1
+
+
+def _baseline_row_from_result(row: ValidationResult) -> dict[str, object]:
+    payload = thaw_json_value(row.payload)
+    replay_payload = _mapping_value(payload.get("payload")) if isinstance(payload, Mapping) else {}
+    signal_payload = _mapping_value(replay_payload.get("signal_payload"))
+    candidate = _mapping_value(signal_payload.get("candidate"))
+    metadata = _mapping_value(candidate.get("metadata"))
+    features = _mapping_value(candidate.get("features"))
+    packet = _mapping_value(replay_payload.get("packet"))
+    packet_metadata = _mapping_value(packet.get("metadata"))
+    merged = {
+        **features,
+        **metadata,
+        **packet_metadata,
+    }
+    event_support = _float_or_none(
+        merged.get("event_support_score") or merged.get("material_event_score")
+    )
+    material_event_count = _float_or_none(
+        merged.get("material_event_count") or len(_sequence_value(merged.get("events")))
+    )
+    baseline_row: dict[str, object] = {
+        "ticker": row.ticker,
+        "as_of": row.as_of,
+        "eligible": not row.leakage_flags,
+        "hard_blocks": (),
+        "leakage_flags": row.leakage_flags,
+        "final_score": row.final_score,
+        "payload": {
+            "candidate": {
+                "features": features,
+                "metadata": metadata,
+            },
+            "metadata": merged,
+            "events": _sequence_value(merged.get("events")),
+        },
+    }
+    for name in (
+        "spy_relative_return_20d",
+        "spy_relative_return_60d",
+        "relative_return_20d_spy",
+        "relative_return_60d_spy",
+        "ret_20d",
+        "ret_60d",
+        "spy_return_20d",
+        "spy_return_60d",
+        "sector_relative_score",
+        "sector_momentum_score",
+        "rs_20_sector",
+    ):
+        value = _float_or_none(merged.get(name))
+        if value is not None:
+            baseline_row[name] = value
+    if event_support is not None:
+        baseline_row["event_support_score"] = event_support
+    if material_event_count is not None:
+        baseline_row["material_event_count"] = material_event_count
+    return baseline_row
+
+
+def _mapping_value(value: object) -> Mapping[str, object]:
+    return value if isinstance(value, Mapping) else {}
+
+
+def _nested_mapping_value(source: Mapping[str, object], *keys: str) -> object | None:
+    value: object = source
+    for key in keys:
+        if not isinstance(value, Mapping):
+            return None
+        value = value.get(key)
+    return value
+
+
+def _sequence_value(value: object) -> list[object]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, list | tuple):
+        return list(value)
+    return [value]
+
+
+def _entry_zone_price(value: object) -> float | None:
+    if isinstance(value, list | tuple) and value:
+        return _float_or_none(value[0])
+    return _float_or_none(value)
+
+
+def _float_or_none(value: object) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number
 
 
 def _build_polygon_ingest(

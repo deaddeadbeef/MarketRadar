@@ -202,7 +202,7 @@ Baselines are deterministic reference comparisons. They do not alter candidate s
 - Create: `sql/migrations/009_validation.sql`
 - Test: `tests/integration/test_paper_trading.py`
 
-- [ ] **Step 1: Write repository tests**
+- [x] **Step 1: Write repository tests**
 
 Cover:
 
@@ -212,7 +212,7 @@ Cover:
 - Useful-alert label insert and latest lookup.
 - Future-available paper/validation rows are excluded when queried point-in-time.
 
-- [ ] **Step 2: Add validation dataclasses**
+- [x] **Step 2: Add validation dataclasses**
 
 Include:
 
@@ -287,7 +287,7 @@ Validation:
 - Validate enum values.
 - Freeze JSON payloads.
 
-- [ ] **Step 3: Add schema and migration**
+- [x] **Step 3: Add schema and migration**
 
 Tables:
 
@@ -304,7 +304,7 @@ Indexes:
 - `ix_paper_trades_decision_card`
 - `ix_useful_alert_labels_artifact`
 
-- [ ] **Step 4: Add repository methods**
+- [x] **Step 4: Add repository methods**
 
 Methods:
 
@@ -327,7 +327,7 @@ list_validation_results(run_id: str) -> list[ValidationResult]
 - Test: `tests/unit/test_backtest_replay.py`
 - Test: `tests/golden/test_no_leakage_replay.py`
 
-- [ ] **Step 1: Write replay tests**
+- [x] **Step 1: Write replay tests**
 
 Cover:
 
@@ -337,7 +337,7 @@ Cover:
 - Missing availability records are counted as leakage/missing flags.
 - Replaying the same persisted inputs is deterministic.
 
-- [ ] **Step 2: Implement replay row model and builder**
+- [x] **Step 2: Implement replay row model and builder**
 
 Replay row payload:
 
@@ -357,7 +357,7 @@ leakage_flags
 payload
 ```
 
-- [ ] **Step 3: Implement validation run builder**
+- [x] **Step 3: Implement validation run builder**
 
 Function:
 
@@ -374,7 +374,7 @@ Use existing persisted candidate inputs and latest packet/card lookups.
 - Create: `src/catalyst_radar/validation/baselines.py`
 - Test: `tests/unit/test_validation_baselines.py`
 
-- [ ] **Step 1: Write baseline tests**
+- [x] **Step 1: Write baseline tests**
 
 Cover:
 
@@ -384,7 +384,7 @@ Cover:
 - Random eligible universe sample is deterministic with a seed.
 - User watchlist returns configured tickers when present and empty otherwise.
 
-- [ ] **Step 2: Implement baseline selectors**
+- [x] **Step 2: Implement baseline selectors**
 
 Return `BaselineCandidate` rows with:
 
@@ -407,7 +407,7 @@ Baselines should consume replay rows or scan payloads, not mutate product state.
 - Test: `tests/unit/test_validation_outcomes.py`
 - Test: `tests/integration/test_paper_trading.py`
 
-- [ ] **Step 1: Expand outcome labels**
+- [x] **Step 1: Expand outcome labels**
 
 Keep compatibility with existing `label_forward_return()`, then add:
 
@@ -425,7 +425,7 @@ Labels:
 - `max_favorable_excursion`
 - `invalidated`
 
-- [ ] **Step 2: Implement paper decision workflow**
+- [x] **Step 2: Implement paper decision workflow**
 
 Functions:
 
@@ -452,7 +452,7 @@ Rules:
 - Test: `tests/unit/test_validation_reports.py`
 - Test: `tests/integration/test_validation_cli.py`
 
-- [ ] **Step 1: Add report tests**
+- [x] **Step 1: Add report tests**
 
 Cover:
 
@@ -463,7 +463,7 @@ Cover:
 - Missed opportunities from baseline winners absent from candidate results.
 - Leakage failures count.
 
-- [ ] **Step 2: Implement report builder**
+- [x] **Step 2: Implement report builder**
 
 Output:
 
@@ -480,12 +480,12 @@ state_mix
 baseline_comparison
 ```
 
-- [ ] **Step 3: Add CLI commands**
+- [x] **Step 3: Add CLI commands**
 
 Commands:
 
 ```text
-validation-replay --as-of-start YYYY-MM-DD --as-of-end YYYY-MM-DD --available-at ISO
+validation-replay --as-of-start YYYY-MM-DD --as-of-end YYYY-MM-DD --available-at ISO [--outcome-available-at ISO]
 validation-report --run-id RUN_ID
 paper-decision --decision-card-id ID --decision approved|rejected|deferred --available-at ISO
 paper-update-outcomes --decision-card-id ID --available-at ISO
@@ -507,7 +507,7 @@ validation_report run_id=validation-replay-v1:2026-05-10:2026-05-10:2026-05-10T1
 - Create: `docs/phase-9-review.md`
 - Modify this phase plan checklist while executing.
 
-- [ ] **Step 1: Run focused tests**
+- [x] **Step 1: Run focused tests**
 
 Commands:
 
@@ -517,7 +517,7 @@ python -m pytest tests/integration/test_paper_trading.py tests/integration/test_
 python -m pytest tests/golden/test_no_leakage_replay.py
 ```
 
-- [ ] **Step 2: Run full verification**
+- [x] **Step 2: Run full verification**
 
 Commands:
 
@@ -526,7 +526,7 @@ python -m pytest
 python -m ruff check src tests apps
 ```
 
-- [ ] **Step 3: Run fixture smoke**
+- [x] **Step 3: Run fixture smoke**
 
 Use an isolated SQLite database:
 
@@ -547,7 +547,7 @@ python -m catalyst_radar.cli validation-replay --as-of-start 2026-05-10 --as-of-
 python -m catalyst_radar.cli validation-report --run-id <printed-run-id>
 ```
 
-- [ ] **Step 4: Review pass**
+- [x] **Step 4: Review pass**
 
 Ask subagents to review:
 
@@ -555,7 +555,7 @@ Ask subagents to review:
 Review Phase 9 validation and paper trading implementation. Focus on point-in-time replay, no future leakage, baseline correctness, paper-trading no-execution boundary, report metrics, CLI workflow, and schema/repository persistence. Do not edit files.
 ```
 
-- [ ] **Step 5: Document phase outcome**
+- [x] **Step 5: Document phase outcome**
 
 `docs/phase-9-review.md` must include:
 

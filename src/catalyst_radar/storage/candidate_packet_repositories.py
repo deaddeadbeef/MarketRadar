@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime
 from typing import Any
 
@@ -60,6 +60,29 @@ class CandidatePacketRepository:
             row = conn.execute(stmt).first()
         return _candidate_packet_from_row(row._mapping) if row is not None else None
 
+    def candidate_packets_for_replay(
+        self,
+        ticker: str,
+        as_of: datetime,
+        available_at: datetime,
+    ) -> Sequence[CandidatePacket]:
+        del available_at
+        stmt = (
+            select(candidate_packets)
+            .where(
+                candidate_packets.c.ticker == ticker.upper(),
+                candidate_packets.c.as_of <= _to_utc_datetime(as_of, "as_of"),
+            )
+            .order_by(
+                candidate_packets.c.as_of.desc(),
+                candidate_packets.c.available_at.desc(),
+                candidate_packets.c.created_at.desc(),
+                candidate_packets.c.id.desc(),
+            )
+        )
+        with self.engine.connect() as conn:
+            return [_candidate_packet_from_row(row._mapping) for row in conn.execute(stmt)]
+
     def latest_decision_card(
         self,
         ticker: str,
@@ -85,6 +108,29 @@ class CandidatePacketRepository:
         with self.engine.connect() as conn:
             row = conn.execute(stmt).first()
         return _decision_card_from_row(row._mapping) if row is not None else None
+
+    def decision_cards_for_replay(
+        self,
+        ticker: str,
+        as_of: datetime,
+        available_at: datetime,
+    ) -> Sequence[DecisionCard]:
+        del available_at
+        stmt = (
+            select(decision_cards)
+            .where(
+                decision_cards.c.ticker == ticker.upper(),
+                decision_cards.c.as_of <= _to_utc_datetime(as_of, "as_of"),
+            )
+            .order_by(
+                decision_cards.c.as_of.desc(),
+                decision_cards.c.available_at.desc(),
+                decision_cards.c.created_at.desc(),
+                decision_cards.c.id.desc(),
+            )
+        )
+        with self.engine.connect() as conn:
+            return [_decision_card_from_row(row._mapping) for row in conn.execute(stmt)]
 
     def list_latest_cards(
         self,
