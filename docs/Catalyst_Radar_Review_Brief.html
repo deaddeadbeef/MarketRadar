@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Catalyst Radar Review Brief</title>
+  <style>
+    :root {
+      --bg: #f6f7f2;
+      --ink: #17201c;
+      --muted: #5c6760;
+      --line: #d9ded6;
+      --panel: #ffffff;
+      --accent: #126b5b;
+      --accent-2: #a0422d;
+      --accent-3: #345c8c;
+      --soft: #eef4f1;
+      --warn: #fff4df;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.55;
+    }
+
+    main {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 40px 22px 64px;
+    }
+
+    .eyebrow {
+      color: var(--accent);
+      font-size: 0.8rem;
+      font-weight: 750;
+      letter-spacing: 0;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    h1 {
+      font-size: clamp(2.2rem, 5vw, 4.8rem);
+      line-height: 0.98;
+      letter-spacing: 0;
+      margin: 0;
+      max-width: 920px;
+    }
+
+    .subtitle {
+      max-width: 760px;
+      margin: 24px 0 0;
+      color: var(--muted);
+      font-size: 1.08rem;
+    }
+
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 26px;
+    }
+
+    .tag {
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.7);
+      color: var(--muted);
+      padding: 7px 10px;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      white-space: nowrap;
+    }
+
+    section {
+      margin-top: 44px;
+    }
+
+    h2 {
+      font-size: 1.55rem;
+      line-height: 1.16;
+      margin: 0 0 16px;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin: 0 0 8px;
+      font-size: 1rem;
+      letter-spacing: 0;
+    }
+
+    p {
+      margin: 0;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .two {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      min-height: 100%;
+    }
+
+    .card p,
+    li {
+      color: var(--muted);
+    }
+
+    ul,
+    ol {
+      margin: 0;
+      padding-left: 20px;
+    }
+
+    li + li {
+      margin-top: 7px;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(112px, 1fr));
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+    }
+
+    .step {
+      background: var(--soft);
+      border: 1px solid #c8d8d2;
+      border-radius: 8px;
+      padding: 12px;
+      min-height: 112px;
+    }
+
+    .step strong {
+      display: block;
+      color: var(--accent);
+      margin-bottom: 8px;
+    }
+
+    .step span {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .state-table,
+    .decision-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      display: table;
+    }
+
+    th,
+    td {
+      text-align: left;
+      border-bottom: 1px solid var(--line);
+      padding: 12px;
+      vertical-align: top;
+      font-size: 0.94rem;
+    }
+
+    th {
+      background: #edf1ea;
+      color: var(--ink);
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .callout {
+      border-left: 5px solid var(--accent-2);
+      background: var(--warn);
+      padding: 18px;
+      border-radius: 8px;
+    }
+
+    .callout strong {
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    .priority {
+      border-top: 4px solid var(--accent-3);
+    }
+
+    .small {
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+
+    .links a {
+      color: var(--accent);
+      font-weight: 700;
+      text-decoration: none;
+      border-bottom: 1px solid rgba(18, 107, 91, 0.35);
+    }
+
+    .links a:hover {
+      border-bottom-color: var(--accent);
+    }
+
+    @media (max-width: 860px) {
+      main {
+        padding: 28px 16px 48px;
+      }
+
+      .grid,
+      .two {
+        grid-template-columns: 1fr;
+      }
+
+      .state-table,
+      .decision-table {
+        display: block;
+        overflow-x: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div class="eyebrow">Catalyst Radar v1.1.1 review brief</div>
+      <h1>Market radar, not autopilot.</h1>
+      <p class="subtitle">The sharpened specs define a deterministic-first tool for finding public-equity candidates, forcing evidence discipline, and escalating only the strongest candidates into manual buy review.</p>
+      <div class="meta">
+        <span class="tag">Date: May 9, 2026</span>
+        <span class="tag">Scope: U.S.-listed equities and ADRs</span>
+        <span class="tag">Highest automated state: Manual Buy Review</span>
+        <span class="tag">Premium LLM calls: gated and budgeted</span>
+      </div>
+    </header>
+
+    <section>
+      <h2>What, Why, How</h2>
+      <div class="grid">
+        <article class="card">
+          <h3>What</h3>
+          <p>A research radar that scans liquid equities, ranks candidates, applies hard risk blocks, and produces auditable Decision Cards when evidence is strong enough.</p>
+        </article>
+        <article class="card">
+          <h3>Why</h3>
+          <p>Early market setups are usually scattered across price strength, volume, options, filings, news, earnings language, and sector read-throughs. The tool should reduce noise and improve timing discipline.</p>
+        </article>
+        <article class="card">
+          <h3>How</h3>
+          <p>Use deterministic market math first, local text intelligence second, policy gates third, and sparse LLM synthesis only for candidates that already look action-relevant.</p>
+        </article>
+      </div>
+    </section>
+
+    <section>
+      <h2>Core Cascade</h2>
+      <div class="flow" aria-label="Catalyst Radar processing cascade">
+        <div class="step"><strong>S0</strong><span>Universe builder filters liquid, covered equities.</span></div>
+        <div class="step"><strong>S1</strong><span>Deterministic market scan ranks price, volume, liquidity, volatility.</span></div>
+        <div class="step"><strong>S2</strong><span>Event detector normalizes filings, news, earnings, revisions.</span></div>
+        <div class="step"><strong>S3</strong><span>Local NLP scores source quality, theme match, sentiment, novelty.</span></div>
+        <div class="step"><strong>S4</strong><span>Scoring and policy gates assign states and hard blocks.</span></div>
+        <div class="step"><strong>S5</strong><span>Small or mid model reviews evidence and produces bear case.</span></div>
+        <div class="step"><strong>S6</strong><span>GPT-5.5 creates Decision Card only after all gates pass.</span></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Action States</h2>
+      <table class="state-table">
+        <thead>
+          <tr>
+            <th>State</th>
+            <th>Meaning</th>
+            <th>Allowed use</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>No Action</td><td>Below threshold or irrelevant.</td><td>No action.</td></tr>
+          <tr><td>Research Only</td><td>Interesting but insufficient evidence.</td><td>Read only.</td></tr>
+          <tr><td>Add to Watchlist</td><td>Worth monitoring, not trade-ready.</td><td>No trade review.</td></tr>
+          <tr><td>Warning</td><td>Multiple pillars improving.</td><td>Run skeptic/research.</td></tr>
+          <tr><td>Eligible for Manual Buy Review</td><td>All gates pass and Decision Card is complete.</td><td>Manual review only.</td></tr>
+          <tr><td>Blocked</td><td>Hard risk, data, liquidity, event, or portfolio rule blocks action.</td><td>No unless explicit override.</td></tr>
+          <tr><td>Thesis Weakening</td><td>Held idea is deteriorating.</td><td>Review position.</td></tr>
+          <tr><td>Exit/Invalidate Review</td><td>Price, thesis, or risk invalidation triggered.</td><td>Review exit or de-risk.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>What Changed in v1.1.1</h2>
+      <div class="grid two">
+        <article class="card priority">
+          <h3>Spec fixes</h3>
+          <ul>
+            <li>Corrected model-risk reference from SR 26-02 to SR 11-7.</li>
+            <li>Made action states consistent across architecture and policy pseudocode.</li>
+            <li>Added Add to Watchlist as an explicit policy outcome.</li>
+            <li>Added current pricing source note and made pricing config-driven.</li>
+          </ul>
+        </article>
+        <article class="card priority">
+          <h3>Spec sharpening</h3>
+          <ul>
+            <li>Added Portfolio Risk Service and portfolio-impact gating.</li>
+            <li>Expanded MVP database schemas for events, candidate states, evidence packets, and Decision Cards.</li>
+            <li>Added first API contracts, useful-alert feedback, baselines, and real-capital release gates.</li>
+            <li>Added explicit local config and secrets conventions.</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section>
+      <h2>Decision Card Must Include</h2>
+      <table class="decision-table">
+        <thead>
+          <tr>
+            <th>Area</th>
+            <th>Required content</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>Identity</td><td>Ticker, company, version, timestamp, action state, setup type.</td></tr>
+          <tr><td>Scores</td><td>Final score, pillar scores, risk penalty, portfolio penalty, score delta.</td></tr>
+          <tr><td>Trade plan</td><td>Entry zone, invalidation, max loss if wrong, sizing, reward/risk.</td></tr>
+          <tr><td>Portfolio impact</td><td>Single-name, sector, theme, and correlated-basket exposure before and after.</td></tr>
+          <tr><td>Evidence</td><td>Top support, disconfirming evidence, source quality, unresolved conflicts.</td></tr>
+          <tr><td>Controls</td><td>Hard blocks, upcoming events, next review time, user decision.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Recommended First Build</h2>
+      <div class="grid two">
+        <article class="card">
+          <h3>Build first</h3>
+          <ol>
+            <li>Securities master.</li>
+            <li>Daily bar ingest.</li>
+            <li>Market feature engine.</li>
+            <li>Scoring and policy states.</li>
+            <li>Minimal dashboard.</li>
+            <li>Golden tests and point-in-time backtest skeleton.</li>
+          </ol>
+        </article>
+        <article class="card">
+          <h3>Delay until proven</h3>
+          <ul>
+            <li>Premium LLM Decision Cards.</li>
+            <li>Broker integration.</li>
+            <li>Options trade recommendations.</li>
+            <li>Complex transcript deep dives.</li>
+            <li>Full team workflow and role management.</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section>
+      <h2>Decisions Needed From You</h2>
+      <div class="grid">
+        <article class="card">
+          <h3>Dashboard</h3>
+          <p>Choose Streamlit for speed or Next.js for a more polished long-term product surface.</p>
+        </article>
+        <article class="card">
+          <h3>Data providers</h3>
+          <p>Choose free/cheap bootstrap providers first or paid feeds earlier for quality and completeness.</p>
+        </article>
+        <article class="card">
+          <h3>Universe</h3>
+          <p>Start with a curated liquid universe for fast validation or the full liquid U.S. universe from the beginning.</p>
+        </article>
+        <article class="card">
+          <h3>Alerts</h3>
+          <p>Dashboard only, email, Telegram, Slack, or webhooks.</p>
+        </article>
+        <article class="card">
+          <h3>Risk defaults</h3>
+          <p>Confirm per-trade risk, max single-name exposure, sector/theme caps, and liquidity floor.</p>
+        </article>
+        <article class="card">
+          <h3>Hosting</h3>
+          <p>Local Windows dev, Docker Compose, or cloud VM for always-on operation.</p>
+        </article>
+      </div>
+    </section>
+
+    <section>
+      <div class="callout">
+        <strong>Capital-use gate</strong>
+        The specs require shadow mode, paper trading, point-in-time backtests, leakage checks, baseline comparisons, useful-alert tracking, and cost review before any real-capital workflow.
+      </div>
+    </section>
+
+    <section>
+      <h2>Full Specs</h2>
+      <p class="links">
+        Review the complete sharpened documents:
+        <a href="Catalyst_Radar_v1.1.1_Architecture_Spec.md">Architecture Spec</a>
+        and
+        <a href="Catalyst_Radar_v1.1.1_Engineering_Spec.md">Engineering Spec</a>.
+      </p>
+      <p class="small" style="margin-top: 12px;">Original v1.1.0 PDFs are preserved in this folder.</p>
+    </section>
+  </main>
+</body>
+</html>
