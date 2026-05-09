@@ -20,7 +20,7 @@ def evaluate_policy(candidate: CandidateSnapshot) -> PolicyResult:
         hard_blocks.append("data_stale")
         reasons.append("candidate data is stale")
 
-    if candidate.portfolio_penalty >= 25:
+    if candidate.portfolio_penalty >= 20:
         hard_blocks.append("portfolio_hard_block")
         reasons.append("portfolio impact exceeds hard policy limits")
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 from catalyst_radar.core.models import CandidateSnapshot, MarketFeatures
@@ -24,7 +25,7 @@ def score_market_features(features: MarketFeatures, portfolio_penalty: float) ->
     }
     raw_score = sum(pillar_scores.values()) / len(pillar_scores)
     risk_penalty = _risk_penalty(features)
-    final_score = _clamp(raw_score - risk_penalty - max(0.0, portfolio_penalty), 0, 100)
+    final_score = _clamp(raw_score - risk_penalty - _non_negative(portfolio_penalty), 0, 100)
     strong_pillars = sum(score >= 70 for score in pillar_scores.values())
     return ScoreResult(
         final_score=round(final_score, 2),
@@ -50,7 +51,7 @@ def candidate_from_features(
         final_score=score.final_score,
         strong_pillars=score.strong_pillars,
         risk_penalty=score.risk_penalty,
-        portfolio_penalty=max(0.0, float(portfolio_penalty)),
+        portfolio_penalty=_non_negative(portfolio_penalty),
         data_stale=data_stale,
         entry_zone=entry_zone,
         invalidation_price=invalidation_price,
@@ -63,31 +64,50 @@ def candidate_from_features(
 
 
 def _price_strength(features: MarketFeatures) -> float:
-    return _clamp((features.ret_20d * 250) + (features.ret_5d * 150) + 25, 0, 100)
+    return _clamp(
+        (_finite(features.ret_20d) * 250) + (_finite(features.ret_5d) * 150) + 25,
+        0,
+        100,
+    )
 
 
 def _relative_strength(features: MarketFeatures) -> float:
-    return _clamp((features.rs_20_sector * 0.55) + (features.rs_60_spy * 0.45), 0, 100)
+    return _clamp(
+        (_finite(features.rs_20_sector) * 0.55) + (_finite(features.rs_60_spy) * 0.45),
+        0,
+        100,
+    )
 
 
 def _volume_liquidity(features: MarketFeatures) -> float:
-    volume_score = min(features.rel_volume_5d / 2.0, 1.0) * 55
-    z_score = _clamp((features.dollar_volume_z + 1.0) * 12.5, 0, 25)
-    liquidity_score = _clamp(features.liquidity_score, 0, 100) * 0.20
+    volume_score = min(_non_negative(features.rel_volume_5d) / 2.0, 1.0) * 55
+    z_score = _clamp((_finite(features.dollar_volume_z) + 1.0) * 12.5, 0, 25)
+    liquidity_score = _clamp(_finite(features.liquidity_score), 0, 100) * 0.20
     return _clamp(volume_score + z_score + liquidity_score, 0, 100)
 
 
 def _trend_quality(features: MarketFeatures) -> float:
-    near_high_score = features.near_52w_high * 100
-    return _clamp((features.ma_regime * 0.55) + (near_high_score * 0.45), 0, 100)
+    near_high_score = _finite(features.near_52w_high) * 100
+    return _clamp((_finite(features.ma_regime) * 0.55) + (near_high_score * 0.45), 0, 100)
 
 
 def _risk_penalty(features: MarketFeatures) -> float:
-    volatility_penalty = max(0.0, features.atr_pct - 0.04) * 250
-    extension_penalty = max(0.0, features.extension_20d - 0.10) * 120
-    liquidity_penalty = max(0.0, 40 - features.liquidity_score) * 0.15
+    volatility_penalty = max(0.0, _finite(features.atr_pct) - 0.04) * 250
+    extension_penalty = max(0.0, _finite(features.extension_20d) - 0.10) * 120
+    liquidity_penalty = max(0.0, 40 - _finite(features.liquidity_score)) * 0.15
     return _clamp(volatility_penalty + extension_penalty + liquidity_penalty, 0, 30)
 
 
 def _clamp(value: float, minimum: float, maximum: float) -> float:
-    return float(max(minimum, min(maximum, value)))
+    return float(max(minimum, min(maximum, _finite(value))))
+
+
+def _finite(value: float) -> float:
+    result = float(value)
+    if not math.isfinite(result):
+        return 0.0
+    return result
+
+
+def _non_negative(value: float) -> float:
+    return max(0.0, _finite(value))

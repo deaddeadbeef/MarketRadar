@@ -1,3 +1,5 @@
+import math
+
 from catalyst_radar.portfolio.risk import (
     PortfolioPolicy,
     compute_position_size,
@@ -33,6 +35,23 @@ def test_compute_position_size_caps_by_max_position_pct() -> None:
     assert size.is_capped is True
 
 
+def test_compute_position_size_returns_safe_output_for_non_finite_entry() -> None:
+    for entry_price in (float("nan"), float("inf")):
+        size = compute_position_size(
+            account_equity=100_000,
+            entry_price=entry_price,
+            invalidation_price=94,
+        )
+
+        assert size.shares == 0
+        assert size.notional == 0.0
+        assert size.position_pct == 0.0
+        assert size.risk_amount == 0.0
+        assert math.isfinite(size.notional)
+        assert math.isfinite(size.position_pct)
+        assert math.isfinite(size.risk_amount)
+
+
 def test_evaluate_portfolio_impact_blocks_sector_overexposure() -> None:
     impact = evaluate_portfolio_impact(
         ticker="AAA",
@@ -50,3 +69,23 @@ def test_evaluate_portfolio_impact_blocks_sector_overexposure() -> None:
     assert impact.sector_after_pct == 0.34
     assert "sector_overexposure" in impact.hard_blocks
     assert impact.portfolio_penalty > 0
+
+
+def test_evaluate_portfolio_impact_blocks_non_finite_existing_exposure() -> None:
+    impact = evaluate_portfolio_impact(
+        ticker="AAA",
+        sector="Technology",
+        theme="AI",
+        account_equity=100_000,
+        current_positions={
+            "AAA": {"notional": float("inf"), "sector": "Technology", "theme": "AI"},
+            "BBB": {"notional": float("nan"), "sector": "Technology", "theme": "AI"},
+        },
+        proposed_notional=5_000,
+    )
+
+    assert "invalid_portfolio_input" in impact.hard_blocks
+    assert impact.portfolio_penalty > 0
+    assert math.isfinite(impact.single_name_after_pct)
+    assert math.isfinite(impact.sector_after_pct)
+    assert math.isfinite(impact.theme_after_pct)

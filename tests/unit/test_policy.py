@@ -74,6 +74,22 @@ def test_policy_blocks_high_risk_penalty_even_with_high_score() -> None:
     assert "risk_penalty_hard_block" in result.hard_blocks
 
 
+def test_policy_blocks_portfolio_penalty_at_plan_threshold() -> None:
+    candidate = candidate_from_features(
+        _features(),
+        portfolio_penalty=20.0,
+        data_stale=False,
+        entry_zone=(100.0, 103.0),
+        invalidation_price=94.0,
+        reward_risk=2.5,
+    )
+
+    result = evaluate_policy(candidate)
+
+    assert result.state == ActionState.BLOCKED
+    assert "portfolio_hard_block" in result.hard_blocks
+
+
 def test_policy_requires_trade_plan_for_buy_review() -> None:
     candidate = candidate_from_features(
         _features(),

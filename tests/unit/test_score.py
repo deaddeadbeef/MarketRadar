@@ -1,3 +1,5 @@
+import math
+from dataclasses import replace
 from datetime import UTC, datetime
 
 from catalyst_radar.core.models import CandidateSnapshot, MarketFeatures
@@ -33,6 +35,30 @@ def test_candidate_from_features_preserves_score_and_trade_plan() -> None:
     assert candidate.invalidation_price == 94.0
     assert candidate.reward_risk == 2.4
     assert candidate.metadata["policy_version_input"] == "score-v1"
+
+
+def test_score_market_features_sanitizes_non_finite_inputs() -> None:
+    features = replace(
+        _strong_features(),
+        ret_5d=float("nan"),
+        ret_20d=float("inf"),
+        rs_20_sector=float("-inf"),
+        rs_60_spy=float("nan"),
+        near_52w_high=float("inf"),
+        ma_regime=float("nan"),
+        rel_volume_5d=float("inf"),
+        dollar_volume_z=float("-inf"),
+        atr_pct=float("nan"),
+        extension_20d=float("inf"),
+        liquidity_score=float("nan"),
+    )
+
+    result = score_market_features(features, portfolio_penalty=float("nan"))
+
+    assert math.isfinite(result.final_score)
+    assert math.isfinite(result.risk_penalty)
+    assert all(math.isfinite(score) for score in result.pillar_scores.values())
+    assert result.final_score < 72
 
 
 def _strong_features() -> MarketFeatures:
