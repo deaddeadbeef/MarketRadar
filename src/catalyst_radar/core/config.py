@@ -67,6 +67,9 @@ class AppConfig:
     market_provider: str = "csv"
     polygon_api_key: str | None = None
     polygon_base_url: str = "https://api.polygon.io"
+    sec_enable_live: bool = False
+    sec_user_agent: str | None = None
+    sec_base_url: str = "https://data.sec.gov"
     http_timeout_seconds: float = 10.0
     provider_availability_policy: str = "live_fetch"
     universe_name: str = "liquid-us"
@@ -103,6 +106,9 @@ class AppConfig:
             polygon_base_url=source.get(
                 "CATALYST_POLYGON_BASE_URL", "https://api.polygon.io"
             ),
+            sec_enable_live=_bool(source.get("CATALYST_SEC_ENABLE_LIVE"), False),
+            sec_user_agent=_optional_str(source, "CATALYST_SEC_USER_AGENT"),
+            sec_base_url=source.get("CATALYST_SEC_BASE_URL", "https://data.sec.gov"),
             http_timeout_seconds=_positive_float(
                 source, "CATALYST_HTTP_TIMEOUT_SECONDS", 10.0
             ),

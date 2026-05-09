@@ -1,6 +1,7 @@
 from datetime import UTC, date, datetime
 
 from catalyst_radar.core.models import DailyBar, MarketFeatures
+from catalyst_radar.events.models import CanonicalEvent, EventType, SourceCategory
 from catalyst_radar.scoring.setup_policies import (
     breakout_plan,
     filings_catalyst_plan,
@@ -53,6 +54,44 @@ def test_event_dependent_placeholders_do_not_promote_without_events() -> None:
     assert filings.metadata["placeholder"] is True
     assert filings.metadata["event_confirmed"] is False
     assert "filings_catalyst_requires_event_ingest" in filings.reasons
+
+
+def test_guidance_event_selects_confirmed_filings_catalyst_plan() -> None:
+    event = _event(EventType.GUIDANCE)
+
+    plan = select_setup_plan(_bars(), _features(), material_events=[event])
+
+    assert plan.setup_type == SetupType.FILINGS_CATALYST
+    assert plan.metadata["event_confirmed"] is True
+    assert plan.metadata["source_event_id"] == "event-guidance"
+    assert plan.metadata["source_quality"] == 0.9
+    assert "event_confirmed" in plan.reasons
+
+
+def test_upcoming_earnings_event_does_not_select_post_earnings_plan() -> None:
+    event = _event(
+        EventType.EARNINGS,
+        event_id="event-upcoming",
+        payload={"event_risk": "upcoming_earnings"},
+    )
+
+    plan = select_setup_plan(_bars(), _features(), material_events=[event])
+
+    assert plan.setup_type == SetupType.BREAKOUT
+
+
+def test_completed_earnings_event_selects_post_earnings_plan() -> None:
+    event = _event(
+        EventType.EARNINGS,
+        event_id="event-earnings",
+        payload={"event_risk": "reported_earnings"},
+    )
+
+    plan = select_setup_plan(_bars(), _features(), material_events=[event])
+
+    assert plan.setup_type == SetupType.POST_EARNINGS
+    assert plan.metadata["event_confirmed"] is True
+    assert plan.metadata["source_event_id"] == "event-earnings"
 
 
 def _bars() -> list[DailyBar]:
@@ -147,4 +186,29 @@ def _features(*, extension_20d: float = 0.07, atr_pct: float = 0.035) -> MarketF
         extension_20d=extension_20d,
         liquidity_score=95,
         feature_version="market-v1",
+    )
+
+
+def _event(
+    event_type: EventType,
+    *,
+    event_id: str = "event-guidance",
+    payload: dict[str, object] | None = None,
+) -> CanonicalEvent:
+    return CanonicalEvent(
+        id=event_id,
+        ticker="AAA",
+        event_type=event_type,
+        provider="news_fixture",
+        source="Reuters",
+        source_category=SourceCategory.REPUTABLE_NEWS,
+        source_url="https://reuters.example.com/aaa",
+        title="AAA raises guidance",
+        body_hash="hash",
+        dedupe_key=f"AAA:{event_id}",
+        source_quality=0.9,
+        materiality=0.9,
+        source_ts=datetime(2026, 5, 8, 20, tzinfo=UTC),
+        available_at=datetime(2026, 5, 8, 20, 30, tzinfo=UTC),
+        payload=payload or {"body": "AAA raises guidance."},
     )

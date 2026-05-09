@@ -5,7 +5,7 @@ from typing import Any
 
 from catalyst_radar.core.models import ActionState, CandidateSnapshot, PolicyResult
 
-POLICY_VERSION = "policy-v1"
+POLICY_VERSION = "policy-v2-events"
 
 MIN_BUY_REVIEW_SCORE = 72
 MIN_ELIGIBLE_BUY_REVIEW_SCORE = 85
@@ -49,6 +49,12 @@ def evaluate_policy(candidate: CandidateSnapshot) -> PolicyResult:
             state=ActionState.BLOCKED,
             hard_blocks=tuple(hard_blocks),
             reasons=tuple(reasons),
+        )
+
+    if candidate.metadata.get("has_event_conflict") is True:
+        return PolicyResult(
+            state=ActionState.RESEARCH_ONLY,
+            reasons=("event_conflict_requires_manual_resolution",),
         )
 
     missing_trade_plan = _manual_review_blockers(candidate)

@@ -85,7 +85,7 @@ def test_polygon_fixture_ingest_persists_raw_normalized_and_daily_bars(
     assert (
         result.stdout
         == "ingested provider=polygon raw=6 normalized=6 securities=0 daily_bars=6 "
-        "rejected=1\n"
+        "holdings=0 events=0 rejected=1\n"
     )
     assert result.stderr == ""
 

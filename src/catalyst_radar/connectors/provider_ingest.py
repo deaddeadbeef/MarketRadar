@@ -22,6 +22,8 @@ from catalyst_radar.core.models import (
     JobStatus,
     Security,
 )
+from catalyst_radar.events.models import CanonicalEvent, EventType, SourceCategory
+from catalyst_radar.storage.event_repositories import EventRepository
 from catalyst_radar.storage.provider_repositories import ProviderRepository
 from catalyst_radar.storage.repositories import MarketRepository
 
@@ -36,6 +38,7 @@ class ProviderIngestResult:
     security_count: int
     daily_bar_count: int
     holding_count: int
+    event_count: int
     rejected_count: int
 
 
@@ -51,6 +54,7 @@ def ingest_provider_records(
     provider_repo: ProviderRepository,
     job_type: str,
     metadata: Mapping[str, Any],
+    event_repo: EventRepository | None = None,
 ) -> ProviderIngestResult:
     health = connector.healthcheck()
     provider_repo.save_health(health)
@@ -121,11 +125,15 @@ def ingest_provider_records(
         securities = _securities_from_normalized(normalized_records)
         daily_bars = _daily_bars_from_normalized(normalized_records)
         holdings = _holdings_from_normalized(normalized_records)
+        events = _events_from_normalized(normalized_records)
+        if events and event_repo is None:
+            raise ValueError("event repository required for event records")
         market_repo.upsert_market_snapshot(
             securities_rows=securities,
             daily_bar_rows=daily_bars,
             holding_rows=holdings,
         )
+        event_count = event_repo.upsert_events(events) if event_repo is not None else 0
 
         provider_repo.finish_job(
             job_id,
@@ -144,6 +152,7 @@ def ingest_provider_records(
             security_count=len(securities),
             daily_bar_count=len(daily_bars),
             holding_count=len(holdings),
+            event_count=event_count,
             rejected_count=len(rejections),
         )
     except ProviderIngestError:
@@ -268,6 +277,14 @@ def _holdings_from_normalized(records: Sequence[NormalizedRecord]) -> list[Holdi
     ]
 
 
+def _events_from_normalized(records: Sequence[NormalizedRecord]) -> list[CanonicalEvent]:
+    return [
+        _event_from_payload(record.payload)
+        for record in records
+        if record.kind == ConnectorRecordKind.EVENT
+    ]
+
+
 def _security_from_payload(payload: Mapping[str, Any]) -> Security:
     return Security(
         ticker=str(payload["ticker"]).upper(),
@@ -313,6 +330,40 @@ def _holding_from_payload(payload: Mapping[str, Any]) -> HoldingSnapshot:
         portfolio_value=float(payload.get("portfolio_value", 0.0) or 0.0),
         cash=float(payload.get("cash", 0.0) or 0.0),
     )
+
+
+def _event_from_payload(payload: Mapping[str, Any]) -> CanonicalEvent:
+    return CanonicalEvent(
+        id=str(payload["id"]),
+        ticker=str(payload["ticker"]).upper(),
+        event_type=EventType(str(payload["event_type"])),
+        provider=str(payload["provider"]),
+        source=str(payload["source"]),
+        source_category=SourceCategory(str(payload["source_category"])),
+        source_url=_optional_text(payload.get("source_url")),
+        title=str(payload["title"]),
+        body_hash=str(payload["body_hash"]),
+        dedupe_key=str(payload["dedupe_key"]),
+        source_quality=float(payload["source_quality"]),
+        materiality=float(payload["materiality"]),
+        source_ts=_parse_datetime(payload["source_ts"]),
+        available_at=_parse_datetime(payload["available_at"]),
+        payload=_mapping_payload(payload.get("payload", {})),
+    )
+
+
+def _optional_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _mapping_payload(value: Any) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        msg = "event payload must be a mapping"
+        raise ValueError(msg)
+    return value
 
 
 def _parse_datetime(value: Any) -> datetime:

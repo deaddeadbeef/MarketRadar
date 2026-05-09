@@ -43,4 +43,13 @@ def _candidate_row(row: Any) -> dict[str, object]:
     values["portfolio_hard_blocks"] = portfolio_impact.get("hard_blocks", [])
     values["entry_zone"] = candidate_payload.get("entry_zone")
     values["invalidation_price"] = candidate_payload.get("invalidation_price")
+    values["material_event_count"] = candidate_metadata.get("material_event_count", 0)
+    values["top_event_type"] = candidate_metadata.get("top_event_type")
+    values["top_event_title"] = candidate_metadata.get("top_event_title")
+    values["top_event_source"] = candidate_metadata.get("top_event_source")
+    values["top_event_source_url"] = candidate_metadata.get("top_event_source_url")
+    values["top_event_source_quality"] = candidate_metadata.get("top_event_source_quality")
+    values["top_event_materiality"] = candidate_metadata.get("top_event_materiality")
+    values["has_event_conflict"] = candidate_metadata.get("has_event_conflict", False)
+    values["event_conflicts"] = candidate_metadata.get("event_conflicts", [])
     return values

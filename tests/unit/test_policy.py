@@ -219,10 +219,38 @@ def test_eligible_manual_buy_review_when_all_gates_pass() -> None:
 
     result = evaluate_policy(candidate)
 
-    assert POLICY_VERSION == "policy-v1"
+    assert POLICY_VERSION == "policy-v2-events"
     assert result.state == ActionState.ELIGIBLE_FOR_MANUAL_BUY_REVIEW
     assert result.hard_blocks == ()
     assert result.missing_trade_plan == ()
+
+
+def test_event_conflict_downgrades_buy_review_candidate_to_research_only() -> None:
+    candidate = candidate_from_features(
+        _features(),
+        portfolio_penalty=0.0,
+        data_stale=False,
+        entry_zone=(100.0, 103.0),
+        invalidation_price=94.0,
+        reward_risk=2.5,
+        metadata={
+            "portfolio_impact": {"hard_blocks": []},
+            "has_event_conflict": True,
+            "event_conflicts": [
+                {
+                    "ticker": "AAA",
+                    "conflict_type": "guidance_direction_conflict",
+                    "source_event_ids": ["raise", "cut"],
+                }
+            ],
+        },
+    )
+
+    result = evaluate_policy(candidate)
+
+    assert candidate.final_score >= 85
+    assert result.state == ActionState.RESEARCH_ONLY
+    assert result.reasons == ("event_conflict_requires_manual_resolution",)
 
 
 def _features(

@@ -1,0 +1,13 @@
+{
+  "ticker": "MSFT",
+  "events": [
+    {
+      "event_date": "2026-05-15",
+      "time": "amc",
+      "title": "Microsoft earnings date",
+      "source": "earnings_fixture",
+      "source_category": "aggregator",
+      "available_at": "2026-05-10T12:00:00Z"
+    }
+  ]
+}

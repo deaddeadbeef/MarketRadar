@@ -37,7 +37,7 @@ def test_candidate_from_features_preserves_score_and_trade_plan() -> None:
     assert candidate.entry_zone == (100.0, 104.0)
     assert candidate.invalidation_price == 94.0
     assert candidate.reward_risk == 2.4
-    assert candidate.metadata["policy_version_input"] == "score-v1"
+    assert candidate.metadata["policy_version_input"] == "score-v2-events"
 
 
 def test_candidate_from_features_merges_extra_metadata() -> None:
@@ -53,7 +53,7 @@ def test_candidate_from_features_merges_extra_metadata() -> None:
 
     assert candidate.metadata["setup_type"] == "breakout"
     assert candidate.metadata["chase_block"] is False
-    assert candidate.metadata["policy_version_input"] == "score-v1"
+    assert candidate.metadata["policy_version_input"] == "score-v2-events"
     assert "pillar_scores" in candidate.metadata
 
 
@@ -68,7 +68,7 @@ def test_candidate_from_features_keeps_score_owned_metadata_authoritative() -> N
         metadata={"policy_version_input": "external", "pillar_scores": {"bad": 0}},
     )
 
-    assert candidate.metadata["policy_version_input"] == "score-v1"
+    assert candidate.metadata["policy_version_input"] == "score-v2-events"
     assert "price_strength" in candidate.metadata["pillar_scores"]
     assert "bad" not in candidate.metadata["pillar_scores"]
 
@@ -139,6 +139,26 @@ def test_candidate_from_non_finite_features_is_blocked_by_policy() -> None:
     assert candidate.risk_penalty >= 20
     assert result.state == ActionState.BLOCKED
     assert "risk_penalty_hard_block" in result.hard_blocks
+
+
+def test_event_support_is_bounded_and_cannot_override_stale_data_policy() -> None:
+    candidate = candidate_from_features(
+        _strong_features(),
+        portfolio_penalty=0.0,
+        data_stale=True,
+        entry_zone=(100.0, 104.0),
+        invalidation_price=94.0,
+        reward_risk=2.4,
+        event_support_score=100.0,
+    )
+
+    result = evaluate_policy(candidate)
+
+    assert candidate.final_score <= 100.0
+    assert candidate.metadata["event_support_score"] == 100.0
+    assert candidate.metadata["event_bonus"] == 8.0
+    assert result.state == ActionState.BLOCKED
+    assert "data_stale" in result.hard_blocks
 
 
 def _strong_features() -> MarketFeatures:

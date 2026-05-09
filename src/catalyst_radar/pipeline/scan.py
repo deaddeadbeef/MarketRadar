@@ -9,6 +9,8 @@ import pandas as pd
 
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.core.models import CandidateSnapshot, DailyBar, PolicyResult, PortfolioImpact
+from catalyst_radar.events.conflicts import detect_event_conflicts
+from catalyst_radar.events.models import CanonicalEvent
 from catalyst_radar.features.market import compute_market_features
 from catalyst_radar.portfolio.holdings import (
     PortfolioState,
@@ -25,6 +27,7 @@ from catalyst_radar.scoring.policy import evaluate_policy
 from catalyst_radar.scoring.score import candidate_from_features
 from catalyst_radar.scoring.setup_policies import select_setup_plan
 from catalyst_radar.scoring.setups import SetupPlan
+from catalyst_radar.storage.event_repositories import EventRepository
 from catalyst_radar.storage.repositories import MarketRepository
 
 SECTOR_ETF = {"Technology": "XLK", "Industrials": "XLI"}
@@ -47,6 +50,7 @@ def run_scan(
     provider: str | None = None,
     universe_tickers: set[str] | None = None,
     config: AppConfig | None = None,
+    event_repo: EventRepository | None = None,
 ) -> list[ScanResult]:
     active_config = config or AppConfig.from_env()
     as_of_dt = datetime.combine(as_of, time(21), tzinfo=UTC)
@@ -73,6 +77,12 @@ def run_scan(
         for security in candidate_securities
         if security.ticker not in EXCLUDED_SCAN_TICKERS
     ]
+    events_by_ticker = _events_by_ticker(
+        event_repo=event_repo,
+        tickers=[security.ticker for security in securities],
+        as_of=as_of_dt,
+        available_at=available_at_dt,
+    )
     spy_bars = repo.daily_bars(
         "SPY",
         end=as_of,
@@ -113,7 +123,13 @@ def run_scan(
             benchmark_cache["SPY"],
             benchmark_cache[sector_ticker],
         )
-        setup_plan = select_setup_plan(ticker_bars, features)
+        material_events = events_by_ticker.get(security.ticker, [])
+        event_conflicts = detect_event_conflicts(material_events)
+        setup_plan = select_setup_plan(
+            ticker_bars,
+            features,
+            material_events=material_events,
+        )
         entry_price = _position_entry_price(setup_plan)
         invalidation_price = setup_plan.invalidation_price or 0.0
         position_size = compute_position_size(
@@ -136,6 +152,7 @@ def run_scan(
         )
         candidate_metadata = {
             **_setup_metadata(setup_plan),
+            **_event_metadata(material_events, event_conflicts),
             "position_size": _position_size_payload(position_size),
             "portfolio_impact": _portfolio_impact_payload(portfolio_impact),
             "portfolio_state": {
@@ -160,6 +177,7 @@ def run_scan(
             invalidation_price=setup_plan.invalidation_price,
             reward_risk=setup_plan.reward_risk,
             metadata=candidate_metadata,
+            event_support_score=_event_support_score(material_events),
         )
         results.append(
             ScanResult(
@@ -170,6 +188,24 @@ def run_scan(
         )
 
     return sorted(results, key=lambda result: result.candidate.final_score, reverse=True)
+
+
+def _events_by_ticker(
+    *,
+    event_repo: EventRepository | None,
+    tickers: list[str],
+    as_of: datetime,
+    available_at: datetime,
+) -> dict[str, list[CanonicalEvent]]:
+    if event_repo is None or not tickers:
+        return {}
+    return event_repo.latest_material_events_by_ticker(
+        tickers,
+        as_of=as_of,
+        available_at=available_at,
+        min_materiality=0.50,
+        limit_per_ticker=5,
+    )
 
 
 def _bars_frame(bars: list[DailyBar]) -> pd.DataFrame:
@@ -230,6 +266,51 @@ def _setup_metadata(setup_plan: SetupPlan) -> dict[str, Any]:
     if setup_plan.target_price is not None:
         metadata["target_price"] = setup_plan.target_price
     return metadata
+
+
+def _event_metadata(
+    material_events: list[CanonicalEvent],
+    event_conflicts: tuple[dict[str, Any], ...],
+) -> dict[str, Any]:
+    top_event = material_events[0] if material_events else None
+    return {
+        "events": [_event_payload(event) for event in material_events],
+        "material_event_count": len(material_events),
+        "top_event_type": top_event.event_type.value if top_event is not None else None,
+        "top_event_title": top_event.title if top_event is not None else None,
+        "top_event_source": top_event.source if top_event is not None else None,
+        "top_event_source_url": top_event.source_url if top_event is not None else None,
+        "top_event_source_quality": (
+            top_event.source_quality if top_event is not None else None
+        ),
+        "top_event_materiality": top_event.materiality if top_event is not None else None,
+        "event_support_score": _event_support_score(material_events),
+        "event_source_ids": [event.id for event in material_events],
+        "event_conflicts": event_conflicts,
+        "has_event_conflict": bool(event_conflicts),
+    }
+
+
+def _event_payload(event: CanonicalEvent) -> dict[str, Any]:
+    return {
+        "id": event.id,
+        "source_id": event.id,
+        "event_type": event.event_type.value,
+        "title": event.title,
+        "source": event.source,
+        "source_category": event.source_category.value,
+        "source_quality": event.source_quality,
+        "materiality": event.materiality,
+        "source_ts": event.source_ts.isoformat(),
+        "available_at": event.available_at.isoformat(),
+        "source_url": event.source_url,
+    }
+
+
+def _event_support_score(material_events: list[CanonicalEvent]) -> float:
+    if not material_events:
+        return 0.0
+    return max(event.materiality * event.source_quality * 100 for event in material_events)
 
 
 def _position_size_payload(position_size: PositionSize) -> dict[str, Any]:

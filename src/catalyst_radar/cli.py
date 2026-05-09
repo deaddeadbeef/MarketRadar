@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Mapping
 from datetime import UTC, date, datetime, time
 from pathlib import Path
 from urllib.parse import urlencode
@@ -10,22 +11,27 @@ from urllib.parse import urlencode
 from dotenv import load_dotenv
 
 from catalyst_radar.connectors.base import ConnectorRequest
+from catalyst_radar.connectors.earnings import EarningsCalendarConnector
 from catalyst_radar.connectors.http import (
     FakeHttpTransport,
     HttpResponse,
+    HttpTransport,
     JsonHttpClient,
     UrlLibHttpTransport,
 )
 from catalyst_radar.connectors.market_data import CsvMarketDataConnector
+from catalyst_radar.connectors.news import NewsJsonConnector
 from catalyst_radar.connectors.polygon import PolygonEndpoint, PolygonMarketDataConnector
 from catalyst_radar.connectors.provider_ingest import (
     ProviderIngestError,
     ProviderIngestResult,
     ingest_provider_records,
 )
+from catalyst_radar.connectors.sec import SecSubmissionsConnector
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.pipeline.scan import run_scan
 from catalyst_radar.storage.db import create_schema, engine_from_url
+from catalyst_radar.storage.event_repositories import EventRepository
 from catalyst_radar.storage.provider_repositories import ProviderRepository
 from catalyst_radar.storage.repositories import MarketRepository
 from catalyst_radar.universe.builder import UniverseBuilder
@@ -51,6 +57,25 @@ def build_parser() -> argparse.ArgumentParser:
     tickers = polygon_sub.add_parser("tickers")
     tickers.add_argument("--fixture", type=Path)
     tickers.add_argument("--date", type=date.fromisoformat)
+
+    sec = subparsers.add_parser("ingest-sec")
+    sec_sub = sec.add_subparsers(dest="sec_command", required=True)
+    submissions = sec_sub.add_parser("submissions")
+    submissions.add_argument("--ticker", required=True)
+    submissions.add_argument("--cik", required=True)
+    submissions.add_argument("--fixture", type=Path)
+
+    news = subparsers.add_parser("ingest-news")
+    news.add_argument("--fixture", type=Path, required=True)
+
+    earnings = subparsers.add_parser("ingest-earnings")
+    earnings.add_argument("--fixture", type=Path, required=True)
+
+    events = subparsers.add_parser("events")
+    events.add_argument("--ticker", required=True)
+    events.add_argument("--as-of", type=date.fromisoformat, required=True)
+    events.add_argument("--available-at", type=_parse_aware_datetime)
+    events.add_argument("--limit", type=int, default=20)
 
     scan = subparsers.add_parser("scan")
     scan.add_argument("--as-of", type=date.fromisoformat, required=True)
@@ -112,6 +137,65 @@ def main(argv: list[str] | None = None) -> int:
             fixture_path=args.fixture,
         )
 
+    if args.command == "ingest-sec":
+        create_schema(engine)
+        market_repo = MarketRepository(engine)
+        provider_repo = ProviderRepository(engine)
+        event_repo = EventRepository(engine)
+        return _ingest_sec_provider(
+            config=config,
+            market_repo=market_repo,
+            provider_repo=provider_repo,
+            event_repo=event_repo,
+            sec_command=args.sec_command,
+            ticker=args.ticker,
+            cik=args.cik,
+            fixture_path=args.fixture,
+        )
+
+    if args.command == "ingest-news":
+        create_schema(engine)
+        market_repo = MarketRepository(engine)
+        provider_repo = ProviderRepository(engine)
+        event_repo = EventRepository(engine)
+        return _ingest_news_provider(
+            market_repo=market_repo,
+            provider_repo=provider_repo,
+            event_repo=event_repo,
+            fixture_path=args.fixture,
+        )
+
+    if args.command == "ingest-earnings":
+        create_schema(engine)
+        market_repo = MarketRepository(engine)
+        provider_repo = ProviderRepository(engine)
+        event_repo = EventRepository(engine)
+        return _ingest_earnings_provider(
+            market_repo=market_repo,
+            provider_repo=provider_repo,
+            event_repo=event_repo,
+            fixture_path=args.fixture,
+        )
+
+    if args.command == "events":
+        create_schema(engine)
+        event_repo = EventRepository(engine)
+        as_of = datetime.combine(args.as_of, time.max, tzinfo=UTC)
+        available_at = args.available_at or datetime.now(UTC)
+        for event in event_repo.list_events_for_ticker(
+            args.ticker,
+            as_of=as_of,
+            available_at=available_at,
+            limit=args.limit,
+        ):
+            print(
+                f"{event.ticker} {event.available_at.isoformat()} "
+                f"{event.event_type.value} materiality={event.materiality:.2f} "
+                f"quality={event.source_quality:.2f} source={event.source} "
+                f"title={event.title}"
+            )
+        return 0
+
     if args.command == "provider-health":
         create_schema(engine)
         provider_repo = ProviderRepository(engine)
@@ -126,6 +210,7 @@ def main(argv: list[str] | None = None) -> int:
         create_schema(engine)
         repo = MarketRepository(engine)
         provider_repo = ProviderRepository(engine)
+        event_repo = EventRepository(engine)
         available_at = args.available_at or datetime.now(UTC)
         universe_tickers = _universe_tickers_for_scan(
             provider_repo=provider_repo,
@@ -152,6 +237,7 @@ def main(argv: list[str] | None = None) -> int:
             provider=scan_provider,
             universe_tickers=universe_tickers,
             config=config,
+            event_repo=event_repo,
         )
         for result in results:
             repo.save_scan_result(result.candidate, result.policy)
@@ -254,6 +340,157 @@ def _ingest_polygon_provider(
         )
     except (ProviderIngestError, ValueError) as exc:
         print(f"polygon ingest failed: {exc}", file=sys.stderr)
+        return 1
+
+    _print_provider_result(result)
+    return 0
+
+
+def _ingest_sec_provider(
+    *,
+    config: AppConfig,
+    market_repo: MarketRepository,
+    provider_repo: ProviderRepository,
+    event_repo: EventRepository,
+    sec_command: str,
+    ticker: str,
+    cik: str,
+    fixture_path: Path | None,
+) -> int:
+    if sec_command != "submissions":
+        print(f"sec ingest failed: unsupported sec command: {sec_command}", file=sys.stderr)
+        return 1
+    if fixture_path is None and not config.sec_enable_live:
+        print(
+            "sec ingest failed: live SEC ingest requires CATALYST_SEC_ENABLE_LIVE=1",
+            file=sys.stderr,
+        )
+        return 1
+    if fixture_path is None and not config.sec_user_agent:
+        print(
+            "sec ingest failed: CATALYST_SEC_USER_AGENT is required for live SEC ingest",
+            file=sys.stderr,
+        )
+        return 1
+
+    transport: HttpTransport | None = None
+    if fixture_path is None:
+        transport = _HeaderInjectingTransport(
+            UrlLibHttpTransport(),
+            {"User-Agent": config.sec_user_agent or ""},
+        )
+    connector = SecSubmissionsConnector(
+        fixture_path=fixture_path,
+        client=(
+            JsonHttpClient(
+                transport=transport,
+                timeout_seconds=config.http_timeout_seconds,
+            )
+            if transport is not None
+            else None
+        ),
+        base_url=config.sec_base_url,
+    )
+    metadata = {
+        "provider": "sec",
+        "endpoint": "submissions",
+        "ticker": ticker.upper(),
+        "cik": cik,
+        "fixture": str(fixture_path) if fixture_path is not None else None,
+        "live": fixture_path is None,
+    }
+    request = ConnectorRequest(
+        provider="sec",
+        endpoint="submissions",
+        params={"ticker": ticker.upper(), "cik": cik},
+        requested_at=datetime.now(UTC),
+    )
+    try:
+        result = ingest_provider_records(
+            connector=connector,
+            request=request,
+            market_repo=market_repo,
+            provider_repo=provider_repo,
+            job_type="sec_submissions",
+            metadata=metadata,
+            event_repo=event_repo,
+        )
+    except ProviderIngestError as exc:
+        print(f"sec ingest failed: {exc}", file=sys.stderr)
+        return 1
+
+    _print_provider_result(result)
+    return 0
+
+
+def _ingest_news_provider(
+    *,
+    market_repo: MarketRepository,
+    provider_repo: ProviderRepository,
+    event_repo: EventRepository,
+    fixture_path: Path,
+) -> int:
+    connector = NewsJsonConnector(fixture_path=fixture_path)
+    metadata = {
+        "provider": "news_fixture",
+        "endpoint": "fixture",
+        "fixture": str(fixture_path),
+    }
+    request = ConnectorRequest(
+        provider="news_fixture",
+        endpoint="fixture",
+        params={"fixture": str(fixture_path)},
+        requested_at=datetime.now(UTC),
+    )
+    try:
+        result = ingest_provider_records(
+            connector=connector,
+            request=request,
+            market_repo=market_repo,
+            provider_repo=provider_repo,
+            job_type="news_fixture",
+            metadata=metadata,
+            event_repo=event_repo,
+        )
+    except ProviderIngestError as exc:
+        print(f"news ingest failed: {exc}", file=sys.stderr)
+        return 1
+
+    _print_provider_result(result)
+    return 0
+
+
+def _ingest_earnings_provider(
+    *,
+    market_repo: MarketRepository,
+    provider_repo: ProviderRepository,
+    event_repo: EventRepository,
+    fixture_path: Path,
+) -> int:
+    connector = EarningsCalendarConnector(fixture_path=fixture_path)
+    metadata = {
+        "provider": "earnings_fixture",
+        "endpoint": "fixture",
+        "fixture": str(fixture_path),
+    }
+    request = ConnectorRequest(
+        provider="earnings_fixture",
+        endpoint="fixture",
+        params={"fixture": str(fixture_path)},
+        requested_at=datetime.now(UTC),
+    )
+    try:
+        result = ingest_provider_records(
+            connector=connector,
+            request=request,
+            market_repo=market_repo,
+            provider_repo=provider_repo,
+            job_type="earnings_fixture",
+            metadata=metadata,
+            event_repo=event_repo,
+        )
+    except ProviderIngestError as exc:
+        print(f"earnings ingest failed: {exc}", file=sys.stderr)
         return 1
 
     _print_provider_result(result)
@@ -421,11 +658,36 @@ def _fixture_next_url(url: str) -> str:
     return f"{url}{separator}apiKey=fixture-key"
 
 
+class _HeaderInjectingTransport:
+    def __init__(
+        self,
+        transport: HttpTransport,
+        headers: Mapping[str, str],
+    ) -> None:
+        self.transport = transport
+        self.headers = dict(headers)
+
+    def get(
+        self,
+        url: str,
+        *,
+        headers: Mapping[str, str],
+        timeout_seconds: float,
+    ) -> HttpResponse:
+        merged_headers: dict[str, str] = {**self.headers, **dict(headers)}
+        return self.transport.get(
+            url,
+            headers=merged_headers,
+            timeout_seconds=timeout_seconds,
+        )
+
+
 def _print_provider_result(result: ProviderIngestResult) -> None:
     print(
         f"ingested provider={result.provider} raw={result.raw_count} "
         f"normalized={result.normalized_count} securities={result.security_count} "
-        f"daily_bars={result.daily_bar_count} rejected={result.rejected_count}"
+        f"daily_bars={result.daily_bar_count} holdings={result.holding_count} "
+        f"events={result.event_count} rejected={result.rejected_count}"
     )
 
 
