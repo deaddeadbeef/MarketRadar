@@ -8,7 +8,8 @@ CREATE TABLE IF NOT EXISTS securities (
   avg_dollar_volume_20d DOUBLE PRECISION NOT NULL,
   has_options BOOLEAN NOT NULL DEFAULT FALSE,
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
-  updated_at TIMESTAMPTZ NOT NULL
+  updated_at TIMESTAMPTZ NOT NULL,
+  metadata JSONB NOT NULL DEFAULT '{}'
 );
 
 CREATE TABLE IF NOT EXISTS daily_bars (

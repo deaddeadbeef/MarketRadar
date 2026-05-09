@@ -34,6 +34,7 @@ securities = Table(
     Column("has_options", Boolean, nullable=False, default=False),
     Column("is_active", Boolean, nullable=False, default=True),
     Column("updated_at", DateTime(timezone=True), nullable=False),
+    Column("metadata", json_type, nullable=False),
 )
 
 daily_bars = Table(

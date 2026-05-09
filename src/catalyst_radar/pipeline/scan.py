@@ -28,6 +28,7 @@ def run_scan(
     as_of: date,
     *,
     available_at: datetime | None = None,
+    provider: str | None = None,
     universe_tickers: set[str] | None = None,
 ) -> list[ScanResult]:
     as_of_dt = datetime.combine(as_of, time(21), tzinfo=UTC)
@@ -42,7 +43,11 @@ def run_scan(
         if security.ticker not in EXCLUDED_SCAN_TICKERS
     ]
     spy_bars = repo.daily_bars(
-        "SPY", end=as_of, lookback=LOOKBACK_SESSIONS, available_at=available_at_dt
+        "SPY",
+        end=as_of,
+        lookback=LOOKBACK_SESSIONS,
+        available_at=available_at_dt,
+        provider=provider,
     )
     benchmark_cache: dict[str, pd.DataFrame] = {"SPY": _bars_frame(spy_bars)}
 
@@ -53,6 +58,7 @@ def run_scan(
             end=as_of,
             lookback=LOOKBACK_SESSIONS,
             available_at=available_at_dt,
+            provider=provider,
         )
         if not ticker_bars:
             continue
@@ -65,6 +71,7 @@ def run_scan(
                     end=as_of,
                     lookback=LOOKBACK_SESSIONS,
                     available_at=available_at_dt,
+                    provider=provider,
                 )
             )
 

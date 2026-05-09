@@ -13,6 +13,7 @@ from catalyst_radar.connectors.polygon import (
     PolygonEndpoint,
     PolygonMarketDataConnector,
 )
+from catalyst_radar.core.models import DataQualitySeverity
 
 
 def test_healthcheck_fails_closed_without_key() -> None:
@@ -76,7 +77,8 @@ def test_ticker_pages_follow_next_url_without_leaking_key() -> None:
         "https://api.polygon.io/v3/reference/tickers?"
         "market=stocks&active=true&limit=1000&apiKey=fixture-key"
     )
-    second_url = "https://api.polygon.io/v3/reference/tickers?cursor=page-2&apiKey=fixture-key"
+    fixture_next_url = "https://api.polygon.io/v3/reference/tickers?cursor=page-2"
+    second_url = f"{fixture_next_url}&apiKey=fixture-key"
     transport = FakeHttpTransport(
         {
             first_url: _response(first_url, _fixture("tickers_page_1.json")),
@@ -102,9 +104,34 @@ def test_ticker_pages_follow_next_url_without_leaking_key() -> None:
     assert "apiKey=" not in raw_records[0].request_hash
     assert "fixture-key" not in raw_records[0].request_hash
     assert {record.identity for record in normalized} == {"AAPL", "SPY", "MSFT", "OLD"}
-    assert next(record for record in normalized if record.identity == "AAPL").payload[
-        "sector"
-    ] == "Technology"
+    aapl = next(record for record in normalized if record.identity == "AAPL")
+    assert aapl.payload["sector"] == "Unknown"
+    assert aapl.payload["industry"] == "Technology"
+    assert aapl.payload["metadata"]["type"] == "CS"
+
+
+def test_grouped_daily_contract_failure_is_abort_rejection() -> None:
+    url = _grouped_daily_url()
+    transport = FakeHttpTransport(
+        {
+            url: HttpResponse(
+                status_code=200,
+                url=url,
+                headers={"content-type": "application/json"},
+                body=b'{"status":"OK","adjusted":false,"results":[]}',
+            )
+        }
+    )
+    connector = PolygonMarketDataConnector(
+        api_key="fixture-key",
+        client=JsonHttpClient(transport=transport, timeout_seconds=3),
+    )
+
+    raw = connector.fetch(_grouped_daily_request())
+
+    assert raw == []
+    assert connector.rejected_payloads[0].severity == DataQualitySeverity.CRITICAL
+    assert connector.rejected_payloads[0].fail_closed_action == "abort-ingest"
 
 
 def test_cost_estimate_counts_one_grouped_daily_request() -> None:

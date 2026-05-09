@@ -57,6 +57,8 @@ def evaluate_universe_member(
         exclusion_reasons.append("low_avg_dollar_volume")
     if config.require_sector and _missing_sector(security.sector):
         exclusion_reasons.append("missing_sector")
+    if _unsupported_security_type(security):
+        exclusion_reasons.append("unsupported_security_type")
     if not config.include_etfs and _is_etf(security):
         exclusion_reasons.append("etf_excluded")
     if not config.include_adrs and _is_adr(security):
@@ -85,9 +87,24 @@ def _missing_sector(sector: str) -> bool:
 
 
 def _is_etf(security: Security) -> bool:
-    return security.ticker.upper() in _BENCHMARK_OR_SECTOR_ETFS or "etf" in security.name.lower()
+    security_type = str(security.metadata.get("type", "")).upper()
+    return (
+        security_type == "ETF"
+        or security.ticker.upper() in _BENCHMARK_OR_SECTOR_ETFS
+        or "etf" in security.name.lower()
+    )
 
 
 def _is_adr(security: Security) -> bool:
+    security_type = str(security.metadata.get("type", "")).upper()
+    if security_type == "ADRC":
+        return True
     haystack = f"{security.name} {security.industry}".lower()
     return " adr" in haystack or "american deposit" in haystack
+
+
+def _unsupported_security_type(security: Security) -> bool:
+    security_type = str(security.metadata.get("type", "")).upper()
+    if not security_type:
+        return False
+    return security_type not in {"CS", "ADRC", "ETF"}

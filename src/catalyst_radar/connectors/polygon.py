@@ -6,7 +6,7 @@ from datetime import UTC, datetime, time, timedelta
 from enum import StrEnum
 from hashlib import sha256
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from catalyst_radar.connectors.base import (
     ConnectorHealth,
@@ -81,6 +81,7 @@ class PolygonMarketDataConnector:
                 kind = ConnectorRecordKind.DAILY_BAR
             elif endpoint == PolygonEndpoint.TICKERS.value:
                 payload = _normalize_security_payload(provider_record)
+                payload["updated_at"] = record.source_ts.isoformat()
                 identity = str(payload["ticker"])
                 kind = ConnectorRecordKind.SECURITY
             else:
@@ -137,6 +138,18 @@ class PolygonMarketDataConnector:
             },
         )
         payload = self.client.get_json(url)
+        if payload.get("status") not in {"OK", "DELAYED"}:
+            self._reject(
+                ConnectorRecordKind.DAILY_BAR,
+                _raw_payload(
+                    PolygonEndpoint.GROUPED_DAILY,
+                    {"ticker": date_value, "payload": payload},
+                ),
+                f"unexpected polygon status: {payload.get('status')}",
+                severity=DataQualitySeverity.CRITICAL,
+                fail_closed_action="abort-ingest",
+            )
+            return []
         request_hash = _hash_payload(
             {
                 "provider": self.provider,
@@ -153,15 +166,34 @@ class PolygonMarketDataConnector:
                     {"ticker": date_value, "payload": payload},
                 ),
                 "grouped daily payload is not adjusted",
+                severity=DataQualitySeverity.CRITICAL,
+                fail_closed_action="abort-ingest",
+            )
+            return []
+        results = payload.get("results", [])
+        if not isinstance(results, list) or not results:
+            self._reject(
+                ConnectorRecordKind.DAILY_BAR,
+                _raw_payload(
+                    PolygonEndpoint.GROUPED_DAILY,
+                    {"ticker": date_value, "payload": payload},
+                ),
+                "grouped daily payload has no results",
+                severity=DataQualitySeverity.CRITICAL,
+                fail_closed_action="abort-ingest",
             )
             return []
         records = []
-        for item in payload.get("results", []):
+        for item in results:
             record = _clean_mapping(item)
             ticker = str(record.get("T", "")).upper()
             raw_payload = _raw_payload(
                 PolygonEndpoint.GROUPED_DAILY,
-                {"ticker": ticker, "provider_payload": record},
+                {
+                    "ticker": ticker,
+                    "provider_payload": record,
+                    "availability_policy": self.availability_policy,
+                },
             )
             try:
                 _require_fields(record, ("T", "t", "o", "h", "l", "c", "v", "vw"))
@@ -191,10 +223,25 @@ class PolygonMarketDataConnector:
             "active": _url_bool(_bool_param(request.params.get("active", True))),
             "limit": str(request.params.get("limit", 1000)),
         }
+        date_value = request.params.get("date")
+        if date_value:
+            params["date"] = str(date_value)
         url = self._url("/v3/reference/tickers", params)
         records = []
         while url:
             page_payload = self.client.get_json(url)
+            if page_payload.get("status") not in {"OK", "DELAYED"}:
+                self._reject(
+                    ConnectorRecordKind.SECURITY,
+                    _raw_payload(
+                        PolygonEndpoint.TICKERS,
+                        {"ticker": "PAGE", "payload": page_payload},
+                    ),
+                    f"unexpected polygon status: {page_payload.get('status')}",
+                    severity=DataQualitySeverity.CRITICAL,
+                    fail_closed_action="abort-ingest",
+                )
+                return records
             request_hash = _hash_payload(
                 {
                     "provider": self.provider,
@@ -208,10 +255,15 @@ class PolygonMarketDataConnector:
                 ticker = str(record.get("ticker", "")).upper()
                 raw_payload = _raw_payload(
                     PolygonEndpoint.TICKERS,
-                    {"ticker": ticker, "provider_payload": record},
+                    {
+                        "ticker": ticker,
+                        "provider_payload": record,
+                        "requested_date": str(date_value) if date_value else None,
+                    },
                 )
                 try:
                     _require_fields(record, ("ticker", "name", "primary_exchange", "active"))
+                    source_ts = _ticker_source_ts(date_value, fetched_at)
                     records.append(
                         RawRecord(
                             provider=self.provider,
@@ -219,7 +271,7 @@ class PolygonMarketDataConnector:
                             request_hash=request_hash,
                             payload_hash=_hash_payload(raw_payload),
                             payload=raw_payload,
-                            source_ts=fetched_at,
+                            source_ts=source_ts,
                             fetched_at=fetched_at,
                             available_at=fetched_at,
                             license_tag=self.license_tag,
@@ -229,12 +281,20 @@ class PolygonMarketDataConnector:
                 except (TypeError, ValueError) as exc:
                     self._reject(ConnectorRecordKind.SECURITY, raw_payload, str(exc))
             next_url = page_payload.get("next_url")
-            url = str(next_url) if next_url else ""
+            url = self._next_url(str(next_url)) if next_url else ""
         return records
 
     def _url(self, path: str, params: Mapping[str, Any]) -> str:
         all_params = {**params, "apiKey": self.api_key}
         return f"{self.base_url}{path}?{urlencode(all_params)}"
+
+    def _next_url(self, url: str) -> str:
+        parts = urlsplit(url)
+        query = dict(parse_qsl(parts.query, keep_blank_values=True))
+        query["apiKey"] = self.api_key or ""
+        return urlunsplit(
+            (parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment)
+        )
 
     def _available_at(self, source_ts: datetime, fetched_at: datetime) -> datetime:
         if self.availability_policy == "live_fetch":
@@ -244,15 +304,23 @@ class PolygonMarketDataConnector:
         msg = f"unsupported provider availability policy: {self.availability_policy}"
         raise ValueError(msg)
 
-    def _reject(self, kind: ConnectorRecordKind, payload: Mapping[str, Any], reason: str) -> None:
+    def _reject(
+        self,
+        kind: ConnectorRecordKind,
+        payload: Mapping[str, Any],
+        reason: str,
+        *,
+        severity: DataQualitySeverity = DataQualitySeverity.ERROR,
+        fail_closed_action: str = "reject-payload",
+    ) -> None:
         self._rejected_payloads.append(
             RejectedPayload(
                 provider=self.provider,
                 kind=kind,
                 payload=payload,
                 reason=reason,
-                severity=DataQualitySeverity.ERROR,
-                fail_closed_action="reject-payload",
+                severity=severity,
+                fail_closed_action=fail_closed_action,
             )
         )
 
@@ -281,14 +349,18 @@ def _normalize_grouped_daily_payload(record: Mapping[str, Any]) -> dict[str, Any
         "provider": POLYGON_PROVIDER_NAME,
         "source_ts": source_ts.isoformat(),
         "available_at": source_ts.isoformat(),
-        "metadata": {"provider_record": "grouped_daily"},
+        "metadata": {
+            "provider_record": "grouped_daily",
+            "availability_policy": record.get("availability_policy"),
+        },
     }
 
 
 def _normalize_security_payload(record: Mapping[str, Any]) -> dict[str, Any]:
     source = _provider_payload(record)
-    sector = str(source.get("sic_description") or source.get("sector") or "Unknown")
+    sector = str(source.get("sector") or "Unknown")
     industry = str(source.get("industry") or source.get("sic_description") or "Unknown")
+    security_type = str(source.get("type") or "").upper()
     return {
         "ticker": str(record["ticker"]).upper(),
         "name": str(source["name"]),
@@ -302,7 +374,7 @@ def _normalize_security_payload(record: Mapping[str, Any]) -> dict[str, Any]:
         "updated_at": datetime.now(UTC).isoformat(),
         "metadata_source": "polygon_reference",
         "metadata": {
-            "type": source.get("type"),
+            "type": security_type,
             "market": source.get("market"),
             "locale": source.get("locale"),
             "currency_name": source.get("currency_name"),
@@ -324,6 +396,7 @@ def _raw_payload(endpoint: PolygonEndpoint, record: Mapping[str, Any]) -> dict[s
     return {
         "source": POLYGON_PROVIDER_NAME,
         "endpoint": endpoint.value,
+        "availability_policy": record.get("availability_policy"),
         "record": dict(record),
     }
 
@@ -346,6 +419,13 @@ def _timestamp_ms(value: Any, field: str) -> datetime:
         msg = f"{field} must be a millisecond timestamp"
         raise ValueError(msg) from exc
     return datetime.fromtimestamp(timestamp / 1000, UTC)
+
+
+def _ticker_source_ts(date_value: Any, fetched_at: datetime) -> datetime:
+    if not date_value:
+        return fetched_at
+    parsed = datetime.fromisoformat(str(date_value)).date()
+    return datetime.combine(parsed, time(0), tzinfo=UTC)
 
 
 def _bool_param(value: Any) -> bool:

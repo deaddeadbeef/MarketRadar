@@ -57,6 +57,7 @@ class MarketRepository:
                     has_options=row.has_options,
                     is_active=row.is_active,
                     updated_at=_as_datetime(row.updated_at),
+                    metadata=row._mapping["metadata"],
                 )
                 for row in conn.execute(stmt)
             ]
@@ -83,6 +84,7 @@ class MarketRepository:
                     has_options=row.has_options,
                     is_active=row.is_active,
                     updated_at=_as_datetime(row.updated_at),
+                    metadata=row._mapping["metadata"],
                 )
                 for row in conn.execute(stmt)
             ]
@@ -127,10 +129,13 @@ class MarketRepository:
         lookback: int,
         *,
         available_at: datetime | None = None,
+        provider: str | None = None,
     ) -> list[DailyBar]:
         filters = [daily_bars.c.ticker == ticker, daily_bars.c.date <= end]
         if available_at is not None:
             filters.append(daily_bars.c.available_at <= _as_datetime(available_at))
+        if provider is not None:
+            filters.append(daily_bars.c.provider == provider)
         stmt = (
             select(daily_bars)
             .where(*filters)
@@ -220,6 +225,7 @@ def _upsert_securities(conn: Connection, rows: Iterable[Security]) -> None:
                 has_options=row.has_options,
                 is_active=row.is_active,
                 updated_at=row.updated_at,
+                metadata=thaw_json_value(row.metadata),
             )
         )
 

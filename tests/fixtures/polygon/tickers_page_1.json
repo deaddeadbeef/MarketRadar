@@ -1,7 +1,7 @@
 {
   "status": "OK",
   "count": 2,
-  "next_url": "https://api.polygon.io/v3/reference/tickers?cursor=page-2&apiKey=fixture-key",
+  "next_url": "https://api.polygon.io/v3/reference/tickers?cursor=page-2",
   "results": [
     {
       "ticker": "AAPL",

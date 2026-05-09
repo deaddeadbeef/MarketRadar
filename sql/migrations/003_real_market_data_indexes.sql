@@ -1,3 +1,5 @@
+ALTER TABLE securities ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}';
+
 CREATE INDEX IF NOT EXISTS ix_daily_bars_ticker_date_available_at
   ON daily_bars (ticker, date, available_at);
 

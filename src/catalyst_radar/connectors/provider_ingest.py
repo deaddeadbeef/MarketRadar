@@ -280,6 +280,7 @@ def _security_from_payload(payload: Mapping[str, Any]) -> Security:
         has_options=bool(payload["has_options"]),
         is_active=bool(payload["is_active"]),
         updated_at=_parse_datetime(payload["updated_at"]),
+        metadata=payload.get("metadata", {}),
     )
 
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
@@ -8,6 +8,8 @@ from sqlalchemy import create_engine
 
 from catalyst_radar.cli import main
 from catalyst_radar.connectors.csv_market import load_daily_bars_csv, load_securities_csv
+from catalyst_radar.core.models import DailyBar
+from catalyst_radar.pipeline.scan import run_scan
 from catalyst_radar.storage.db import create_schema
 from catalyst_radar.storage.provider_repositories import ProviderRepository
 from catalyst_radar.storage.repositories import MarketRepository
@@ -27,7 +29,7 @@ def test_scan_with_universe_uses_snapshot_members_only(
     provider_repo.save_universe_snapshot(
         name="liquid-us",
         as_of=as_of_dt,
-        provider="fixture",
+        provider="sample",
         source_ts=as_of_dt,
         available_at=as_of_dt,
         members=[{"ticker": "AAA", "reason": "eligible", "rank": 1}],
@@ -73,7 +75,7 @@ def test_build_universe_command_persists_snapshot(
             "--name",
             "liquid-us",
             "--provider",
-            "fixture",
+            "sample",
             "--as-of",
             "2026-05-08",
         ]
@@ -81,6 +83,39 @@ def test_build_universe_command_persists_snapshot(
 
     assert exit_code == 0
     assert capsys.readouterr().out == "built universe=liquid-us members=2 excluded=4\n"
+
+
+def test_scan_uses_selected_provider_when_duplicate_bars_exist(tmp_path: Path) -> None:
+    database_url = _database_url(tmp_path)
+    _seed_fixture_market(database_url)
+    engine = create_engine(database_url, future=True)
+    repo = MarketRepository(engine)
+    repo.upsert_daily_bars(
+        [
+            DailyBar(
+                ticker="AAA",
+                date=date(2026, 5, 8),
+                open=900,
+                high=1000,
+                low=880,
+                close=999,
+                volume=9_999_999,
+                vwap=990,
+                adjusted=True,
+                provider="polygon",
+                source_ts=datetime(2026, 5, 8, 20, tzinfo=UTC),
+                available_at=datetime(2026, 5, 8, 21, tzinfo=UTC),
+            )
+        ]
+    )
+
+    sample_results = run_scan(repo, as_of=date(2026, 5, 8), provider="sample")
+    polygon_results = run_scan(repo, as_of=date(2026, 5, 8), provider="polygon")
+    sample_aaa = next(result for result in sample_results if result.ticker == "AAA")
+    polygon_aaa = next(result for result in polygon_results if result.ticker == "AAA")
+
+    assert sample_aaa.candidate.entry_zone == (106.82, 111.18)
+    assert polygon_aaa.candidate.entry_zone == (979.02, 1018.98)
 
 
 def _seed_fixture_market(database_url: str) -> None:

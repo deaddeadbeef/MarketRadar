@@ -42,7 +42,12 @@ def test_universe_filter_excludes_low_liquidity_and_missing_sector() -> None:
 
 
 def test_universe_filter_excludes_etfs_by_default() -> None:
-    security = make_security("SPY", market_cap=500_000_000_000, sector="Unknown")
+    security = make_security(
+        "SPY",
+        market_cap=500_000_000_000,
+        sector="Unknown",
+        metadata={"type": "ETF"},
+    )
     bars = make_daily_bars("SPY", close=580, volume=80_000_000, sessions=20)
 
     decision = evaluate_universe_member(
@@ -55,6 +60,25 @@ def test_universe_filter_excludes_etfs_by_default() -> None:
     assert "etf_excluded" in decision.exclusion_reasons
 
 
+def test_universe_filter_excludes_unsupported_security_type() -> None:
+    security = make_security(
+        "PREF",
+        market_cap=2_000_000_000,
+        sector="Financials",
+        metadata={"type": "PFD"},
+    )
+    bars = make_daily_bars("PREF", close=25, volume=2_000_000, sessions=20)
+
+    decision = evaluate_universe_member(
+        security,
+        bars,
+        UniverseFilterConfig(min_price=5, min_avg_dollar_volume=10_000_000),
+    )
+
+    assert decision.included is False
+    assert "unsupported_security_type" in decision.exclusion_reasons
+
+
 def make_security(
     ticker: str,
     *,
@@ -62,6 +86,7 @@ def make_security(
     sector: str,
     is_active: bool = True,
     name: str | None = None,
+    metadata: dict[str, object] | None = None,
 ) -> Security:
     return Security(
         ticker=ticker,
@@ -74,6 +99,7 @@ def make_security(
         has_options=False,
         is_active=is_active,
         updated_at=datetime(2026, 5, 8, 20, tzinfo=UTC),
+        metadata=metadata or {},
     )
 
 

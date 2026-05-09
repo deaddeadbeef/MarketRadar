@@ -50,10 +50,12 @@ def build_parser() -> argparse.ArgumentParser:
     grouped.add_argument("--fixture", type=Path)
     tickers = polygon_sub.add_parser("tickers")
     tickers.add_argument("--fixture", type=Path)
+    tickers.add_argument("--date", type=date.fromisoformat)
 
     scan = subparsers.add_parser("scan")
     scan.add_argument("--as-of", type=date.fromisoformat, required=True)
     scan.add_argument("--available-at", type=_parse_aware_datetime)
+    scan.add_argument("--provider")
     scan.add_argument("--universe")
 
     build_universe = subparsers.add_parser("build-universe")
@@ -124,7 +126,7 @@ def main(argv: list[str] | None = None) -> int:
         create_schema(engine)
         repo = MarketRepository(engine)
         provider_repo = ProviderRepository(engine)
-        available_at = args.available_at or _scan_timestamp(args.as_of)
+        available_at = args.available_at or datetime.now(UTC)
         universe_tickers = _universe_tickers_for_scan(
             provider_repo=provider_repo,
             universe_name=args.universe,
@@ -134,10 +136,20 @@ def main(argv: list[str] | None = None) -> int:
         if args.universe is not None and universe_tickers is None:
             print(f"universe not found: {args.universe}", file=sys.stderr)
             return 1
+        scan_provider = args.provider
+        if args.universe is not None:
+            snapshot = _universe_snapshot_for_scan(
+                provider_repo=provider_repo,
+                universe_name=args.universe,
+                as_of=args.as_of,
+                available_at=available_at,
+            )
+            scan_provider = snapshot.provider if snapshot is not None else scan_provider
         results = run_scan(
             repo,
             as_of=args.as_of,
             available_at=available_at,
+            provider=scan_provider,
             universe_tickers=universe_tickers,
         )
         for result in results:
@@ -149,8 +161,7 @@ def main(argv: list[str] | None = None) -> int:
         create_schema(engine)
         market_repo = MarketRepository(engine)
         provider_repo = ProviderRepository(engine)
-        as_of_dt = _scan_timestamp(args.as_of)
-        available_at = args.available_at or as_of_dt
+        available_at = args.available_at or datetime.now(UTC)
         builder = UniverseBuilder(
             market_repo=market_repo,
             provider_repo=provider_repo,
@@ -268,22 +279,31 @@ def _build_polygon_ingest(
         first_url = _polygon_grouped_daily_url(
             config=config,
             date_value=date_value,
-            api_key=config.polygon_api_key,
+            api_key=_polygon_api_key(config=config, fixture_path=fixture_path),
         )
         metadata: dict[str, object] = {
             "provider": "polygon",
             "endpoint": endpoint.value,
             "date": date_value.isoformat(),
             "fixture": str(fixture_path) if fixture_path is not None else None,
+            "availability_policy": config.provider_availability_policy,
         }
     elif polygon_command == "tickers":
         endpoint = PolygonEndpoint.TICKERS
         params = {"market": "stocks", "active": True, "limit": 1000}
-        first_url = _polygon_tickers_url(config=config, api_key=config.polygon_api_key)
+        if date_value is not None:
+            params["date"] = date_value.isoformat()
+        first_url = _polygon_tickers_url(
+            config=config,
+            api_key=_polygon_api_key(config=config, fixture_path=fixture_path),
+            date_value=date_value,
+        )
         metadata = {
             "provider": "polygon",
             "endpoint": endpoint.value,
+            "date": date_value.isoformat() if date_value is not None else None,
             "fixture": str(fixture_path) if fixture_path is not None else None,
+            "availability_policy": config.provider_availability_policy,
         }
     else:
         msg = f"unsupported polygon command: {polygon_command}"
@@ -295,7 +315,7 @@ def _build_polygon_ingest(
         else UrlLibHttpTransport()
     )
     connector = PolygonMarketDataConnector(
-        api_key=config.polygon_api_key,
+        api_key=_polygon_api_key(config=config, fixture_path=fixture_path),
         client=JsonHttpClient(
             transport=transport,
             timeout_seconds=config.http_timeout_seconds,
@@ -325,7 +345,8 @@ def _fixture_transport(*, first_url: str, fixture_path: Path) -> FakeHttpTranspo
         if not current_path.exists():
             msg = f"missing polygon fixture page for {next_url}: {current_path}"
             raise ValueError(msg)
-        responses[next_url] = _fixture_response(next_url, current_path)
+        response_url = _fixture_next_url(str(next_url))
+        responses[response_url] = _fixture_response(response_url, current_path)
         payload = _read_fixture_payload(current_path)
         next_url = payload.get("next_url")
     return FakeHttpTransport(responses)
@@ -374,16 +395,29 @@ def _polygon_grouped_daily_url(
     return f"{base_url}/v2/aggs/grouped/locale/us/market/stocks/{date_value.isoformat()}?{query}"
 
 
-def _polygon_tickers_url(*, config: AppConfig, api_key: str | None) -> str:
-    query = urlencode(
-        {
-            "market": "stocks",
-            "active": "true",
-            "limit": "1000",
-            "apiKey": api_key or "",
-        }
-    )
+def _polygon_tickers_url(
+    *,
+    config: AppConfig,
+    api_key: str | None,
+    date_value: date | None = None,
+) -> str:
+    params: dict[str, str] = {
+        "market": "stocks",
+        "active": "true",
+        "limit": "1000",
+    }
+    if date_value is not None:
+        params["date"] = date_value.isoformat()
+    params["apiKey"] = api_key or ""
+    query = urlencode(params)
     return f"{config.polygon_base_url.rstrip('/')}/v3/reference/tickers?{query}"
+
+
+def _fixture_next_url(url: str) -> str:
+    separator = "&" if "?" in url else "?"
+    if "apiKey=" in url:
+        return url
+    return f"{url}{separator}apiKey=fixture-key"
 
 
 def _print_provider_result(result: ProviderIngestResult) -> None:
@@ -403,15 +437,36 @@ def _universe_tickers_for_scan(
 ) -> set[str] | None:
     if universe_name is None:
         return None
-    as_of_dt = _scan_timestamp(as_of)
-    snapshot = provider_repo.latest_universe_snapshot(
-        name=universe_name,
-        as_of=as_of_dt,
+    snapshot = _universe_snapshot_for_scan(
+        provider_repo=provider_repo,
+        universe_name=universe_name,
+        as_of=as_of,
         available_at=available_at,
     )
     if snapshot is None:
         return None
     return {row.ticker for row in provider_repo.list_universe_member_rows(snapshot.id)}
+
+
+def _universe_snapshot_for_scan(
+    *,
+    provider_repo: ProviderRepository,
+    universe_name: str,
+    as_of: date,
+    available_at: datetime,
+):
+    as_of_dt = _scan_timestamp(as_of)
+    return provider_repo.latest_universe_snapshot(
+        name=universe_name,
+        as_of=as_of_dt,
+        available_at=available_at,
+    )
+
+
+def _polygon_api_key(*, config: AppConfig, fixture_path: Path | None) -> str | None:
+    if fixture_path is not None:
+        return "fixture-key"
+    return config.polygon_api_key
 
 
 def _scan_timestamp(value: date) -> datetime:

@@ -52,6 +52,7 @@ class UniverseBuilder:
                 end=as_of,
                 lookback=20,
                 available_at=available_at,
+                provider=self.provider,
             )
             decision = evaluate_universe_member(security, bars, self.config, as_of=as_of)
             decisions.append(decision)

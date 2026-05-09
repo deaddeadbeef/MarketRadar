@@ -119,6 +119,70 @@ def test_polygon_fixture_ingest_persists_raw_normalized_and_daily_bars(
     assert len(market_repo.daily_bars("AAPL", end=date(2026, 5, 8), lookback=10)) == 1
 
 
+def test_polygon_fixture_ingest_does_not_require_real_api_key(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    result = run_cli(
+        [
+            "ingest-polygon",
+            "tickers",
+            "--date",
+            "2026-05-08",
+            "--fixture",
+            "tests/fixtures/polygon/tickers_page_1.json",
+        ],
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        capsys=capsys,
+        env={"CATALYST_POLYGON_API_KEY": ""},
+    )
+
+    assert result.exit_code == 0
+    assert "securities=4" in result.stdout
+
+
+def test_polygon_unadjusted_grouped_daily_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    fixture = tmp_path / "grouped_daily_unadjusted.json"
+    fixture.write_text(
+        '{"status":"OK","adjusted":false,"results":[{"T":"AAPL","t":1778198400000}]}',
+        encoding="utf-8",
+    )
+
+    result = run_cli(
+        [
+            "ingest-polygon",
+            "grouped-daily",
+            "--date",
+            "2026-05-08",
+            "--fixture",
+            str(fixture),
+        ],
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        capsys=capsys,
+        env={"CATALYST_POLYGON_API_KEY": ""},
+    )
+
+    assert result.exit_code == 1
+    assert "not adjusted" in result.stderr
+
+    engine = create_engine(result.database_url, future=True)
+    with engine.connect() as conn:
+        job = conn.execute(
+            select(job_runs).where(job_runs.c.job_type == "polygon_grouped_daily")
+        ).one()
+        incident = conn.execute(select(data_quality_incidents)).one()
+
+    assert job.status == JobStatus.FAILED.value
+    assert incident.fail_closed_action == "abort-ingest"
+
+
 def run_cli(
     argv: list[str],
     *,

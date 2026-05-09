@@ -29,6 +29,8 @@ def test_polygon_fixture_universe_scan_is_deterministic(
             [
                 "ingest-polygon",
                 "tickers",
+                "--date",
+                "2026-05-08",
                 "--fixture",
                 "tests/fixtures/polygon/tickers_page_1.json",
             ]
@@ -78,10 +80,28 @@ def test_polygon_fixture_universe_scan_is_deterministic(
     assert snapshot is not None
     universe_tickers = set(provider_repo.list_universe_members(snapshot.id))
 
+    assert (
+        main(
+            [
+                "scan",
+                "--as-of",
+                "2026-05-08",
+                "--available-at",
+                available_at.isoformat(),
+                "--universe",
+                "liquid-us",
+            ]
+        )
+        == 0
+    )
+    captured = capsys.readouterr()
+    assert "scanned candidates=2" in captured.out
+
     results = run_scan(
         market_repo,
         as_of=date(2026, 5, 8),
         available_at=available_at,
+        provider=snapshot.provider,
         universe_tickers=universe_tickers,
     )
 
