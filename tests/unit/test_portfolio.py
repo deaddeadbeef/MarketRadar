@@ -67,7 +67,7 @@ def test_evaluate_portfolio_impact_blocks_sector_overexposure() -> None:
     )
 
     assert impact.sector_after_pct == 0.34
-    assert "sector_overexposure" in impact.hard_blocks
+    assert "sector_exposure_hard_block" in impact.hard_blocks
     assert impact.portfolio_penalty > 0
 
 
@@ -89,3 +89,90 @@ def test_evaluate_portfolio_impact_blocks_non_finite_existing_exposure() -> None
     assert math.isfinite(impact.single_name_after_pct)
     assert math.isfinite(impact.sector_after_pct)
     assert math.isfinite(impact.theme_after_pct)
+
+
+def test_evaluate_portfolio_impact_computes_before_after_fields() -> None:
+    impact = evaluate_portfolio_impact(
+        ticker="AAA",
+        sector="Technology",
+        theme="AI",
+        account_equity=100_000,
+        current_positions={
+            "AAA": {"notional": 3_000, "sector": "Technology", "theme": "AI"},
+            "BBB": {"notional": 7_000, "sector": "Technology", "theme": "Cloud"},
+            "CCC": {"notional": 5_000, "sector": "Healthcare", "theme": "AI"},
+        },
+        proposed_notional=4_000,
+        max_loss=500,
+        policy=PortfolioPolicy(max_position_pct=0.10, max_sector_pct=0.30, max_theme_pct=0.35),
+    )
+
+    assert impact.single_name_before_pct == 0.03
+    assert impact.single_name_after_pct == 0.07
+    assert impact.sector_before_pct == 0.10
+    assert impact.sector_after_pct == 0.14
+    assert impact.theme_before_pct == 0.08
+    assert impact.theme_after_pct == 0.12
+    assert impact.correlated_before_pct == 0.09
+    assert impact.correlated_after_pct == 0.13
+    assert impact.proposed_notional == 4_000
+    assert impact.max_loss == 500
+    assert impact.hard_blocks == ()
+
+
+def test_evaluate_portfolio_impact_blocks_single_name_overexposure() -> None:
+    impact = evaluate_portfolio_impact(
+        ticker="AAA",
+        sector="Technology",
+        theme="AI",
+        account_equity=100_000,
+        current_positions={"AAA": {"notional": 7_000, "sector": "Technology", "theme": "AI"}},
+        proposed_notional=2_000,
+        policy=PortfolioPolicy(max_position_pct=0.08),
+    )
+
+    assert impact.single_name_after_pct == 0.09
+    assert "single_name_exposure_hard_block" in impact.hard_blocks
+
+
+def test_evaluate_portfolio_impact_blocks_theme_overexposure() -> None:
+    impact = evaluate_portfolio_impact(
+        ticker="AAA",
+        sector="Technology",
+        theme="AI",
+        account_equity=100_000,
+        current_positions={"BBB": {"notional": 33_000, "sector": "Healthcare", "theme": "AI"}},
+        proposed_notional=3_000,
+        policy=PortfolioPolicy(max_position_pct=0.20, max_theme_pct=0.35),
+    )
+
+    assert impact.theme_after_pct == 0.36
+    assert "theme_exposure_hard_block" in impact.hard_blocks
+
+
+def test_evaluate_portfolio_impact_blocks_invalid_account_equity() -> None:
+    impact = evaluate_portfolio_impact(
+        ticker="AAA",
+        sector="Technology",
+        theme="AI",
+        account_equity=0,
+        current_positions={},
+        proposed_notional=5_000,
+    )
+
+    assert impact.portfolio_penalty > 0
+    assert impact.hard_blocks == ("invalid_portfolio_input",)
+
+
+def test_evaluate_portfolio_impact_blocks_zero_proposed_notional() -> None:
+    impact = evaluate_portfolio_impact(
+        ticker="AAA",
+        sector="Technology",
+        theme="AI",
+        account_equity=100_000,
+        current_positions={},
+        proposed_notional=0,
+    )
+
+    assert impact.proposed_notional == 0.0
+    assert "invalid_portfolio_input" in impact.hard_blocks

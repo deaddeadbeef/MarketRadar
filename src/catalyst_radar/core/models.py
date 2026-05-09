@@ -101,10 +101,17 @@ class MarketFeatures:
 @dataclass(frozen=True)
 class PortfolioImpact:
     ticker: str
-    single_name_after_pct: float
-    sector_after_pct: float
-    theme_after_pct: float
-    portfolio_penalty: float
+    single_name_before_pct: float = 0.0
+    single_name_after_pct: float = 0.0
+    sector_before_pct: float = 0.0
+    sector_after_pct: float = 0.0
+    theme_before_pct: float = 0.0
+    theme_after_pct: float = 0.0
+    correlated_before_pct: float = 0.0
+    correlated_after_pct: float = 0.0
+    proposed_notional: float = 0.0
+    max_loss: float = 0.0
+    portfolio_penalty: float = 0.0
     hard_blocks: tuple[str, ...] = ()
 
 

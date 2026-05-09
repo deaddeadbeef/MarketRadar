@@ -8,6 +8,7 @@ from catalyst_radar.connectors.csv_market import load_holdings_csv
 from catalyst_radar.connectors.market_data import CsvMarketDataConnector
 from catalyst_radar.connectors.provider_ingest import _holding_from_payload
 from catalyst_radar.core.models import HoldingSnapshot
+from catalyst_radar.portfolio.holdings import latest_portfolio_state, positions_by_ticker
 from catalyst_radar.storage.db import create_schema
 from catalyst_radar.storage.repositories import MarketRepository
 
@@ -143,6 +144,91 @@ def test_create_schema_upgrades_existing_sqlite_holdings_table() -> None:
 
     assert rows[0].portfolio_value == 100000.0
     assert rows[0].cash == 25000.0
+
+
+def test_latest_portfolio_state_selects_latest_snapshot_as_of_scan_time() -> None:
+    older = datetime(2026, 5, 8, 20, tzinfo=UTC)
+    latest = datetime(2026, 5, 9, 20, tzinfo=UTC)
+    future = datetime(2026, 5, 10, 20, tzinfo=UTC)
+    state = latest_portfolio_state(
+        [
+            HoldingSnapshot("OLD", 1, 100, "Technology", "AI", older, 50_000, 5_000),
+            HoldingSnapshot("AAA", 10, 1_000, "Technology", "AI", latest, 100_000, 25_000),
+            HoldingSnapshot("BBB", 20, 2_000, "Healthcare", "Defensive", latest, 100_000, 25_000),
+            HoldingSnapshot("FUT", 30, 3_000, "Energy", "Power", future, 200_000, 50_000),
+        ],
+        as_of=datetime(2026, 5, 10, 1, tzinfo=UTC),
+        fallback_value=75_000,
+        fallback_cash=10_000,
+    )
+
+    assert state.as_of == latest
+    assert state.portfolio_value == 100_000
+    assert state.cash == 25_000
+    assert state.source == "holdings_snapshot"
+    assert [holding.ticker for holding in state.holdings] == ["AAA", "BBB"]
+
+
+def test_latest_portfolio_state_uses_config_fallback_when_no_rows_exist_as_of() -> None:
+    state = latest_portfolio_state(
+        [
+            HoldingSnapshot(
+                "FUT",
+                30,
+                3_000,
+                "Energy",
+                "Power",
+                datetime(2026, 5, 10, 20, tzinfo=UTC),
+                200_000,
+                50_000,
+            )
+        ],
+        as_of=datetime(2026, 5, 10, 1, tzinfo=UTC),
+        fallback_value=75_000,
+        fallback_cash=10_000,
+    )
+
+    assert state.portfolio_value == 75_000
+    assert state.cash == 10_000
+    assert state.holdings == ()
+    assert state.source == "config_fallback"
+
+
+def test_latest_portfolio_state_preserves_zero_when_snapshot_and_fallback_are_zero() -> None:
+    as_of = datetime(2026, 5, 9, 20, tzinfo=UTC)
+    state = latest_portfolio_state(
+        [HoldingSnapshot("AAA", 10, 1_000, "Technology", "AI", as_of)],
+        as_of=datetime(2026, 5, 10, 1, tzinfo=UTC),
+        fallback_value=0,
+        fallback_cash=0,
+    )
+
+    assert state.portfolio_value == 0.0
+    assert state.cash == 0.0
+    assert state.source == "holdings_snapshot"
+
+
+def test_positions_by_ticker_maps_holdings_to_risk_positions() -> None:
+    as_of = datetime(2026, 5, 9, 20, tzinfo=UTC)
+    state = latest_portfolio_state(
+        [
+            HoldingSnapshot("AAA", 10, 1_000, "Technology", "AI", as_of, 100_000, 25_000),
+            HoldingSnapshot("BBB", 20, 2_000, "Healthcare", "Defensive", as_of, 100_000, 25_000),
+        ],
+        as_of=datetime(2026, 5, 10, 1, tzinfo=UTC),
+        fallback_value=0,
+        fallback_cash=0,
+    )
+
+    assert positions_by_ticker(state) == {
+        "AAA": {"notional": 1_000, "sector": "Technology", "theme": "AI", "shares": 10},
+        "BBB": {
+            "notional": 2_000,
+            "sector": "Healthcare",
+            "theme": "Defensive",
+            "shares": 20,
+        },
+    }
 
 
 def _request():
