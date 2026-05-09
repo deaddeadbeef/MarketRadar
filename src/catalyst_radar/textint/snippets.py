@@ -91,12 +91,13 @@ def rank_snippets(snippets: Iterable[TextSnippet]) -> tuple[TextSnippet, ...]:
     )
 
 
-def stable_snippet_hash(*, event_id: str, ticker: str, text: str) -> str:
-    payload = {
-        "event_id": str(event_id),
-        "ticker": str(ticker).upper(),
-        "text": _normalize_text(text),
-    }
+def stable_snippet_hash(
+    *,
+    text: str,
+    event_id: str | None = None,
+    ticker: str | None = None,
+) -> str:
+    payload = {"text": _normalize_text(text)}
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 
@@ -109,7 +110,12 @@ def _snippet_from_event(
     text = _event_text(event)
     ontology_hits = match_ontology(text, ontology)
     ontology_score = sum(hit.score for hit in ontology_hits)
-    snippet_id = stable_snippet_hash(event_id=event.id, ticker=event.ticker, text=text)
+    snippet_hash = stable_snippet_hash(text=text)
+    snippet_id = _stable_snippet_id(
+        event_id=event.id,
+        ticker=event.ticker,
+        snippet_hash=snippet_hash,
+    )
     rank_score = (
         float(event.source_quality),
         float(event.materiality),
@@ -118,7 +124,7 @@ def _snippet_from_event(
     )
     return TextSnippet(
         id=snippet_id,
-        snippet_hash=snippet_id,
+        snippet_hash=snippet_hash,
         section="event",
         event_id=event.id,
         ticker=event.ticker,
@@ -194,6 +200,16 @@ def _event_type_priority(event_type: EventType | str) -> int:
         EventType.INSIDER.value: 35,
         EventType.NEWS.value: 10,
     }.get(value, 0)
+
+
+def _stable_snippet_id(*, event_id: str, ticker: str, snippet_hash: str) -> str:
+    payload = {
+        "event_id": str(event_id),
+        "ticker": str(ticker).upper(),
+        "snippet_hash": str(snippet_hash),
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def _ontology_hit_payload(hit: OntologyHit) -> dict[str, object]:
