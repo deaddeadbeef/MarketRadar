@@ -23,8 +23,9 @@ Provider sources checked on 2026-05-10:
 - Polygon grouped daily and ticker/reference connector.
 - Shared provider ingest orchestration for CSV and Polygon.
 - Point-in-time universe filters and snapshot builder.
-- `build-universe`, `scan --universe`, and `--available-at` replay controls.
+- `ingest-polygon tickers --date`, `build-universe`, `scan --universe`, and `--available-at` replay controls.
 - Deterministic no-network Polygon fixture golden scan.
+- Provider-specific scan filtering so CSV and Polygon bars cannot mix inside a named-universe scan.
 - Full-universe read-path indexes.
 
 ## Known Provider Limitations
@@ -37,7 +38,7 @@ Provider sources checked on 2026-05-10:
 
 ```text
 python -m pytest
-119 passed in 11.13s
+124 passed in 12.35s
 ```
 
 ```text
