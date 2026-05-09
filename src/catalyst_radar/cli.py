@@ -261,6 +261,7 @@ def main(argv: list[str] | None = None) -> int:
         repo = MarketRepository(engine)
         provider_repo = ProviderRepository(engine)
         event_repo = EventRepository(engine)
+        text_repo = TextRepository(engine)
         available_at = args.available_at or datetime.now(UTC)
         universe_tickers = _universe_tickers_for_scan(
             provider_repo=provider_repo,
@@ -288,6 +289,7 @@ def main(argv: list[str] | None = None) -> int:
             universe_tickers=universe_tickers,
             config=config,
             event_repo=event_repo,
+            text_repo=text_repo,
         )
         for result in results:
             repo.save_scan_result(result.candidate, result.policy)
