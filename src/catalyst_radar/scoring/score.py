@@ -7,7 +7,7 @@ from typing import Any
 
 from catalyst_radar.core.models import CandidateSnapshot, MarketFeatures
 
-SCORE_VERSION = "score-v3-textint"
+SCORE_VERSION = "score-v4-options-theme"
 _PILLAR_NAMES = (
     "price_strength",
     "relative_strength",
@@ -36,6 +36,9 @@ class ScoreResult:
     risk_penalty: float
     event_bonus: float
     local_narrative_bonus: float
+    options_bonus: float
+    sector_theme_bonus: float
+    options_risk_penalty: float
     pillar_scores: dict[str, float]
 
 
@@ -44,6 +47,11 @@ def score_market_features(
     portfolio_penalty: float,
     event_support_score: float = 0.0,
     local_narrative_score: float = 0.0,
+    options_flow_score: float = 0.0,
+    options_risk_score: float = 0.0,
+    sector_rotation_score: float = 0.0,
+    theme_velocity_score: float = 0.0,
+    peer_readthrough_score: float = 0.0,
 ) -> ScoreResult:
     if _has_non_finite_feature_input(features):
         return _fail_closed_score()
@@ -58,11 +66,21 @@ def score_market_features(
     risk_penalty = _risk_penalty(features)
     event_bonus = _event_bonus(event_support_score)
     local_narrative_bonus = _local_narrative_bonus(local_narrative_score)
+    options_bonus = _options_bonus(options_flow_score)
+    sector_theme_bonus = _sector_theme_bonus(
+        sector_rotation_score=sector_rotation_score,
+        theme_velocity_score=theme_velocity_score,
+        peer_readthrough_score=peer_readthrough_score,
+    )
+    options_risk_penalty = _options_risk_penalty(options_risk_score)
     final_score = _clamp(
         raw_score
         + event_bonus
         + local_narrative_bonus
+        + options_bonus
+        + sector_theme_bonus
         - risk_penalty
+        - options_risk_penalty
         - _non_negative(portfolio_penalty),
         0,
         100,
@@ -74,6 +92,9 @@ def score_market_features(
         risk_penalty=round(risk_penalty, 2),
         event_bonus=round(event_bonus, 2),
         local_narrative_bonus=round(local_narrative_bonus, 2),
+        options_bonus=round(options_bonus, 2),
+        sector_theme_bonus=round(sector_theme_bonus, 2),
+        options_risk_penalty=round(options_risk_penalty, 2),
         pillar_scores={key: round(value, 2) for key, value in pillar_scores.items()},
     )
 
@@ -88,12 +109,22 @@ def candidate_from_features(
     metadata: Mapping[str, Any] | None = None,
     event_support_score: float = 0.0,
     local_narrative_score: float = 0.0,
+    options_flow_score: float = 0.0,
+    options_risk_score: float = 0.0,
+    sector_rotation_score: float = 0.0,
+    theme_velocity_score: float = 0.0,
+    peer_readthrough_score: float = 0.0,
 ) -> CandidateSnapshot:
     score = score_market_features(
-        features,
-        portfolio_penalty,
-        event_support_score,
-        local_narrative_score,
+        features=features,
+        portfolio_penalty=portfolio_penalty,
+        event_support_score=event_support_score,
+        local_narrative_score=local_narrative_score,
+        options_flow_score=options_flow_score,
+        options_risk_score=options_risk_score,
+        sector_rotation_score=sector_rotation_score,
+        theme_velocity_score=theme_velocity_score,
+        peer_readthrough_score=peer_readthrough_score,
     )
     candidate_metadata = dict(metadata or {})
     candidate_metadata.update(
@@ -104,6 +135,14 @@ def candidate_from_features(
             "event_bonus": score.event_bonus,
             "local_narrative_score": _non_negative(local_narrative_score),
             "local_narrative_bonus": score.local_narrative_bonus,
+            "options_flow_score": _non_negative(options_flow_score),
+            "options_bonus": score.options_bonus,
+            "options_risk_score": _non_negative(options_risk_score),
+            "options_risk_penalty": score.options_risk_penalty,
+            "sector_rotation_score": _non_negative(sector_rotation_score),
+            "theme_velocity_score": _non_negative(theme_velocity_score),
+            "peer_readthrough_score": _non_negative(peer_readthrough_score),
+            "sector_theme_bonus": score.sector_theme_bonus,
         }
     )
     return CandidateSnapshot(
@@ -180,6 +219,28 @@ def _local_narrative_bonus(local_narrative_score: float) -> float:
     return min(6.0, _non_negative(local_narrative_score) * 0.06)
 
 
+def _options_bonus(options_flow_score: float) -> float:
+    return min(4.0, _non_negative(options_flow_score) * 0.04)
+
+
+def _sector_theme_bonus(
+    *,
+    sector_rotation_score: float,
+    theme_velocity_score: float,
+    peer_readthrough_score: float,
+) -> float:
+    return min(
+        6.0,
+        (_non_negative(sector_rotation_score) * 0.02)
+        + (_non_negative(theme_velocity_score) * 0.02)
+        + (_non_negative(peer_readthrough_score) * 0.02),
+    )
+
+
+def _options_risk_penalty(options_risk_score: float) -> float:
+    return min(4.0, _non_negative(options_risk_score) * 0.04)
+
+
 def _has_non_finite_feature_input(features: MarketFeatures) -> bool:
     return any(
         not math.isfinite(float(getattr(features, field)))
@@ -194,5 +255,8 @@ def _fail_closed_score() -> ScoreResult:
         risk_penalty=100.0,
         event_bonus=0.0,
         local_narrative_bonus=0.0,
+        options_bonus=0.0,
+        sector_theme_bonus=0.0,
+        options_risk_penalty=0.0,
         pillar_scores={name: 0.0 for name in _PILLAR_NAMES},
     )

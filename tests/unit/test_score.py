@@ -37,7 +37,7 @@ def test_candidate_from_features_preserves_score_and_trade_plan() -> None:
     assert candidate.entry_zone == (100.0, 104.0)
     assert candidate.invalidation_price == 94.0
     assert candidate.reward_risk == 2.4
-    assert candidate.metadata["policy_version_input"] == "score-v3-textint"
+    assert candidate.metadata["policy_version_input"] == "score-v4-options-theme"
 
 
 def test_candidate_from_features_merges_extra_metadata() -> None:
@@ -53,7 +53,7 @@ def test_candidate_from_features_merges_extra_metadata() -> None:
 
     assert candidate.metadata["setup_type"] == "breakout"
     assert candidate.metadata["chase_block"] is False
-    assert candidate.metadata["policy_version_input"] == "score-v3-textint"
+    assert candidate.metadata["policy_version_input"] == "score-v4-options-theme"
     assert "pillar_scores" in candidate.metadata
 
 
@@ -68,7 +68,7 @@ def test_candidate_from_features_keeps_score_owned_metadata_authoritative() -> N
         metadata={"policy_version_input": "external", "pillar_scores": {"bad": 0}},
     )
 
-    assert candidate.metadata["policy_version_input"] == "score-v3-textint"
+    assert candidate.metadata["policy_version_input"] == "score-v4-options-theme"
     assert "price_strength" in candidate.metadata["pillar_scores"]
     assert "bad" not in candidate.metadata["pillar_scores"]
 
@@ -177,6 +177,32 @@ def test_local_narrative_support_is_bounded_and_cannot_override_stale_data_polic
     assert candidate.final_score <= 100.0
     assert candidate.metadata["local_narrative_score"] == 100.0
     assert candidate.metadata["local_narrative_bonus"] == 6.0
+    assert result.state == ActionState.BLOCKED
+    assert "data_stale" in result.hard_blocks
+
+
+def test_options_theme_support_is_bounded_and_cannot_override_stale_data_policy() -> None:
+    candidate = candidate_from_features(
+        _strong_features(),
+        portfolio_penalty=0.0,
+        data_stale=True,
+        entry_zone=(100.0, 104.0),
+        invalidation_price=94.0,
+        reward_risk=2.4,
+        options_flow_score=100.0,
+        options_risk_score=100.0,
+        sector_rotation_score=100.0,
+        theme_velocity_score=100.0,
+        peer_readthrough_score=100.0,
+    )
+
+    result = evaluate_policy(candidate)
+
+    assert candidate.final_score <= 100.0
+    assert candidate.metadata["options_bonus"] == 4.0
+    assert candidate.metadata["sector_theme_bonus"] == 6.0
+    assert candidate.metadata["options_risk_penalty"] == 4.0
+    assert candidate.risk_penalty < 20.0
     assert result.state == ActionState.BLOCKED
     assert "data_stale" in result.hard_blocks
 

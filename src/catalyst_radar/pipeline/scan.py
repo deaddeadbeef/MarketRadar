@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time
 from typing import Any
@@ -12,6 +11,28 @@ from catalyst_radar.core.models import CandidateSnapshot, DailyBar, PolicyResult
 from catalyst_radar.events.conflicts import detect_event_conflicts
 from catalyst_radar.events.models import CanonicalEvent
 from catalyst_radar.features.market import compute_market_features
+from catalyst_radar.features.options import (
+    OPTION_FEATURE_VERSION,
+    OptionFeatureInput,
+    OptionFeatureScore,
+    compute_option_feature_score,
+)
+from catalyst_radar.features.peers import (
+    PEER_FEATURE_VERSION,
+    PeerReadthroughScore,
+    peer_readthrough_score,
+)
+from catalyst_radar.features.sector import (
+    SECTOR_FEATURE_VERSION,
+    SectorRotationScore,
+    sector_rotation_score,
+)
+from catalyst_radar.features.theme import (
+    THEME_FEATURE_VERSION,
+    load_theme_peer_config,
+    theme_for_security,
+    theme_velocity_score,
+)
 from catalyst_radar.portfolio.holdings import (
     PortfolioState,
     latest_portfolio_state,
@@ -28,6 +49,7 @@ from catalyst_radar.scoring.score import candidate_from_features
 from catalyst_radar.scoring.setup_policies import select_setup_plan
 from catalyst_radar.scoring.setups import SetupPlan
 from catalyst_radar.storage.event_repositories import EventRepository
+from catalyst_radar.storage.feature_repositories import FeatureRepository
 from catalyst_radar.storage.repositories import MarketRepository
 from catalyst_radar.storage.text_repositories import TextRepository
 from catalyst_radar.textint.models import TextFeature
@@ -54,6 +76,7 @@ def run_scan(
     config: AppConfig | None = None,
     event_repo: EventRepository | None = None,
     text_repo: TextRepository | None = None,
+    feature_repo: FeatureRepository | None = None,
 ) -> list[ScanResult]:
     active_config = config or AppConfig.from_env()
     as_of_dt = datetime.combine(as_of, time(21), tzinfo=UTC)
@@ -92,6 +115,13 @@ def run_scan(
         as_of=as_of_dt,
         available_at=available_at_dt,
     )
+    option_features_by_ticker = _option_features_by_ticker(
+        feature_repo=feature_repo,
+        tickers=[security.ticker for security in securities],
+        as_of=as_of_dt,
+        available_at=available_at_dt,
+    )
+    theme_config = load_theme_peer_config()
     spy_bars = repo.daily_bars(
         "SPY",
         end=as_of,
@@ -125,15 +155,37 @@ def run_scan(
                 )
             )
 
+        ticker_frame = _bars_frame(ticker_bars)
+        sector_frame = benchmark_cache[sector_ticker]
         features = compute_market_features(
             security.ticker,
             as_of_dt,
-            _bars_frame(ticker_bars),
+            ticker_frame,
             benchmark_cache["SPY"],
-            benchmark_cache[sector_ticker],
+            sector_frame,
         )
         material_events = events_by_ticker.get(security.ticker, [])
         text_feature = text_features_by_ticker.get(security.ticker)
+        option_feature = option_features_by_ticker.get(security.ticker)
+        option_score = (
+            compute_option_feature_score(option_feature)
+            if option_feature is not None
+            else None
+        )
+        candidate_theme = theme_for_security(
+            ticker=security.ticker,
+            sector=security.sector,
+            industry=security.industry,
+            metadata=security.metadata,
+            config=theme_config,
+        )
+        theme_velocity = theme_velocity_score(text_feature, candidate_theme)
+        peer_score = peer_readthrough_score(
+            security.ticker,
+            text_feature.theme_hits if text_feature is not None else (),
+            theme_config,
+        )
+        sector_score = sector_rotation_score(ticker_frame, benchmark_cache["SPY"], sector_frame)
         event_conflicts = detect_event_conflicts(material_events)
         setup_plan = select_setup_plan(
             ticker_bars,
@@ -148,7 +200,6 @@ def run_scan(
             invalidation_price,
             policy=portfolio_policy,
         )
-        candidate_theme = _candidate_theme(security.industry, security.metadata)
         portfolio_impact = evaluate_portfolio_impact(
             ticker=security.ticker,
             sector=security.sector,
@@ -164,6 +215,13 @@ def run_scan(
             **_setup_metadata(setup_plan),
             **_event_metadata(material_events, event_conflicts),
             **_text_metadata(text_feature),
+            **_options_metadata(option_score),
+            **_theme_sector_peer_metadata(
+                candidate_theme=candidate_theme,
+                theme_velocity=theme_velocity,
+                peer_score=peer_score,
+                sector_score=sector_score,
+            ),
             "position_size": _position_size_payload(position_size),
             "portfolio_impact": _portfolio_impact_payload(portfolio_impact),
             "portfolio_state": {
@@ -173,7 +231,6 @@ def run_scan(
                 "cash": portfolio_state.cash,
                 "input_warnings": list(portfolio_state.input_warnings),
             },
-            "candidate_theme": candidate_theme,
             "source_ts": _impact_source_ts(ticker_bars, portfolio_state).isoformat(),
             "available_at": _impact_available_at(
                 ticker_bars,
@@ -192,6 +249,11 @@ def run_scan(
             local_narrative_score=(
                 text_feature.local_narrative_score if text_feature is not None else 0.0
             ),
+            options_flow_score=option_score.options_flow_score if option_score else 0.0,
+            options_risk_score=option_score.options_risk_score if option_score else 0.0,
+            sector_rotation_score=sector_score.score,
+            theme_velocity_score=theme_velocity,
+            peer_readthrough_score=peer_score.score,
         )
         results.append(
             ScanResult(
@@ -238,6 +300,22 @@ def _text_features_by_ticker(
     )
 
 
+def _option_features_by_ticker(
+    *,
+    feature_repo: FeatureRepository | None,
+    tickers: list[str],
+    as_of: datetime,
+    available_at: datetime,
+) -> dict[str, OptionFeatureInput]:
+    if feature_repo is None or not tickers:
+        return {}
+    return feature_repo.latest_option_features_by_ticker(
+        tickers,
+        as_of=as_of,
+        available_at=available_at,
+    )
+
+
 def _bars_frame(bars: list[DailyBar]) -> pd.DataFrame:
     return pd.DataFrame(
         [
@@ -276,14 +354,6 @@ def _position_entry_price(setup_plan: SetupPlan) -> float:
     if setup_plan.entry_zone is None:
         return 0.0
     return max(setup_plan.entry_zone)
-
-
-def _candidate_theme(industry: str, metadata: object) -> str:
-    if isinstance(metadata, Mapping):
-        theme = metadata.get("theme")
-        if theme:
-            return str(theme)
-    return industry or "unknown"
 
 
 def _setup_metadata(setup_plan: SetupPlan) -> dict[str, Any]:
@@ -360,6 +430,51 @@ def _text_metadata(text_feature: TextFeature | None) -> dict[str, Any]:
         "selected_snippet_ids": list(text_feature.selected_snippet_ids),
         "selected_snippet_count": len(text_feature.selected_snippet_ids),
         "text_feature_version": text_feature.feature_version,
+    }
+
+
+def _options_metadata(option_score: OptionFeatureScore | None) -> dict[str, Any]:
+    if option_score is None:
+        return {
+            "options_flow_score": 0.0,
+            "options_risk_score": 0.0,
+            "call_put_ratio": 0.0,
+            "iv_percentile": 0.0,
+            "options_feature_version": None,
+        }
+    return {
+        "options_flow_score": option_score.options_flow_score,
+        "options_risk_score": option_score.options_risk_score,
+        "call_put_ratio": option_score.call_put_ratio,
+        "iv_percentile": option_score.iv_percentile,
+        "options_feature_version": OPTION_FEATURE_VERSION,
+    }
+
+
+def _theme_sector_peer_metadata(
+    *,
+    candidate_theme: str,
+    theme_velocity: float,
+    peer_score: PeerReadthroughScore,
+    sector_score: SectorRotationScore,
+) -> dict[str, Any]:
+    return {
+        "candidate_theme": candidate_theme,
+        "sector_rotation_score": sector_score.score,
+        "sector_rotation": {
+            "ticker_return_20d": sector_score.ticker_return_20d,
+            "sector_return_20d": sector_score.sector_return_20d,
+            "spy_return_20d": sector_score.spy_return_20d,
+            "ticker_vs_sector": sector_score.ticker_vs_sector,
+            "sector_vs_spy": sector_score.sector_vs_spy,
+        },
+        "theme_velocity_score": theme_velocity,
+        "peer_readthrough_score": peer_score.score,
+        "peer_readthrough_theme": peer_score.theme_id,
+        "peer_readthrough_peers": list(peer_score.peers),
+        "theme_feature_version": THEME_FEATURE_VERSION,
+        "peer_feature_version": PEER_FEATURE_VERSION,
+        "sector_feature_version": SECTOR_FEATURE_VERSION,
     }
 
 
