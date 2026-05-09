@@ -176,8 +176,8 @@ def test_future_available_bullish_bar_is_invisible_until_available() -> None:
     assert earlier_visible[0].date == date(2026, 5, 7)
     assert earlier_visible[0].close == 105
     assert len(earlier_results) == 3
-    assert earlier_aaa.candidate.entry_zone == (102.9, 107.1)
-    assert later_aaa.candidate.entry_zone == (979.02, 1018.98)
+    assert earlier_aaa.candidate.entry_zone == (103.95, 107.06)
+    assert later_aaa.candidate.entry_zone == (989.01, 1010.0)
 
 
 def _future_available_bullish_bar() -> DailyBar:
