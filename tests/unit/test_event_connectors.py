@@ -11,7 +11,9 @@ from catalyst_radar.connectors.base import (
 )
 from catalyst_radar.connectors.earnings import EarningsCalendarConnector
 from catalyst_radar.connectors.news import NewsJsonConnector
+from catalyst_radar.connectors.provider_ingest import _event_from_payload
 from catalyst_radar.connectors.sec import SecSubmissionsConnector
+from catalyst_radar.events.conflicts import detect_event_conflicts
 
 
 def test_sec_submissions_fixture_normalizes_recent_filings() -> None:
@@ -141,6 +143,59 @@ def test_news_mailchimp_tracking_params_share_dedupe_key(tmp_path: Path) -> None
     assert normalized[0].payload["dedupe_key"] == normalized[1].payload["dedupe_key"]
     assert normalized[0].payload["source_url"] == normalized[1].payload["source_url"]
     assert normalized[0].payload["source_url"].endswith("?id=123")
+
+
+def test_news_body_is_preserved_for_guidance_conflict_detection(tmp_path: Path) -> None:
+    fixture_path = tmp_path / "conflicting_news.json"
+    fixture_path.write_text(
+        json.dumps(
+            {
+                "ticker": "MSFT",
+                "articles": [
+                    {
+                        "source": "Reuters",
+                        "source_category": "reputable_news",
+                        "title": "Microsoft updates annual outlook",
+                        "body": "Microsoft raises guidance for fiscal 2026.",
+                        "url": "https://reuters.example.com/a",
+                        "published_at": "2026-05-10T12:30:00Z",
+                        "available_at": "2026-05-10T12:31:00Z",
+                    },
+                    {
+                        "source": "Reuters",
+                        "source_category": "reputable_news",
+                        "title": "Microsoft updates annual outlook again",
+                        "body": "Microsoft cuts guidance for fiscal 2026.",
+                        "url": "https://reuters.example.com/b",
+                        "published_at": "2026-05-10T12:32:00Z",
+                        "available_at": "2026-05-10T12:33:00Z",
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    connector = NewsJsonConnector(fixture_path=fixture_path)
+    request = ConnectorRequest(
+        provider="news_fixture",
+        endpoint="ticker-news",
+        params={"ticker": "MSFT"},
+        requested_at=datetime(2026, 5, 10, 14, tzinfo=UTC),
+    )
+
+    events = [
+        _event_from_payload(record.payload)
+        for record in connector.normalize(connector.fetch(request))
+    ]
+
+    assert [event.event_type.value for event in events] == ["guidance", "guidance"]
+    assert detect_event_conflicts(events) == (
+        {
+            "ticker": "MSFT",
+            "conflict_type": "guidance_direction_conflict",
+            "source_event_ids": [events[0].id, events[1].id],
+        },
+    )
 
 
 def test_earnings_fixture_marks_upcoming_event_risk() -> None:

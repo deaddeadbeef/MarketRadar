@@ -79,7 +79,11 @@ class SecSubmissionsConnector:
                     payload=raw_payload,
                     source_ts=source_ts,
                     fetched_at=max(fetched_at, source_ts),
-                    available_at=max(fetched_at, source_ts),
+                    available_at=(
+                        source_ts
+                        if self.fixture_path is not None
+                        else max(fetched_at, source_ts)
+                    ),
                     license_tag=SEC_LICENSE_TAG,
                     retention_policy=FIXTURE_RETENTION_POLICY,
                 )

@@ -136,6 +136,7 @@ class NewsJsonConnector:
                 payload={
                     "classification_reasons": classification.reasons,
                     "requires_confirmation": classification.requires_confirmation,
+                    "body": body,
                     "published_at": article.get("published_at"),
                 },
             )

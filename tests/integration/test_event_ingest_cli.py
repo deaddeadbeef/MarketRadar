@@ -58,6 +58,45 @@ def test_ingest_sec_submissions_persists_events(
     assert [row.event_type.value for row in rows] == ["guidance", "sec_filing"]
 
 
+def test_sec_fixture_availability_is_deterministic_for_historical_replay(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    database_url = _database_url(tmp_path)
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setattr(
+        "catalyst_radar.cli.datetime",
+        _FixedDateTime,
+    )
+
+    assert (
+        main(
+            [
+                "ingest-sec",
+                "submissions",
+                "--ticker",
+                "MSFT",
+                "--cik",
+                "0000789019",
+                "--fixture",
+                "tests/fixtures/sec/submissions_msft.json",
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+
+    engine = create_engine(database_url, future=True)
+    rows = EventRepository(engine).list_events_for_ticker(
+        "MSFT",
+        as_of=datetime(2026, 5, 10, 23, tzinfo=UTC),
+        available_at=datetime(2026, 5, 10, 14, tzinfo=UTC),
+    )
+
+    assert [row.event_type.value for row in rows] == ["guidance", "sec_filing"]
+
+
 def test_ingest_news_and_events_command_filter_future_available_events(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -169,3 +208,12 @@ def test_ingest_sec_live_mode_fails_closed_without_user_agent(
 
 def _database_url(tmp_path: Path) -> str:
     return f"sqlite:///{(tmp_path / 'events.db').as_posix()}"
+
+
+class _FixedDateTime(datetime):
+    @classmethod
+    def now(cls, tz=None):  # type: ignore[override]
+        value = datetime(2026, 5, 11, 0, tzinfo=UTC)
+        if tz is None:
+            return value.replace(tzinfo=None)
+        return value.astimezone(tz)
