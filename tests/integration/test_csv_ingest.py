@@ -1,9 +1,11 @@
 from datetime import UTC, datetime
+from pathlib import Path
 
 from sqlalchemy import create_engine
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.schema import CreateTable
 
+from catalyst_radar.connectors.csv_market import load_daily_bars_csv, load_securities_csv
 from catalyst_radar.core.models import DailyBar, Security
 from catalyst_radar.storage.db import create_schema
 from catalyst_radar.storage.repositories import MarketRepository
@@ -74,3 +76,14 @@ def test_schema_compiles_postgres_volume_and_json_types() -> None:
     assert "payload JSONB NOT NULL" in signal_features_ddl
     assert "hard_blocks JSONB NOT NULL" in candidate_states_ddl
     assert "transition_reasons JSONB NOT NULL" in candidate_states_ddl
+
+
+def test_csv_connector_loads_fixture_rows() -> None:
+    fixture_dir = Path("tests/fixtures")
+
+    securities_rows = load_securities_csv(fixture_dir / "securities.csv")
+    daily_bar_rows = load_daily_bars_csv(fixture_dir / "daily_bars.csv")
+
+    assert securities_rows[0].ticker == "AAA"
+    assert daily_bar_rows[0].provider == "sample"
+    assert daily_bar_rows[0].available_at.isoformat().startswith("2026-05-01T21:00:00")

@@ -1,0 +1,65 @@
+from __future__ import annotations
+
+from datetime import UTC, datetime
+from pathlib import Path
+
+import pandas as pd
+
+from catalyst_radar.core.models import DailyBar, Security
+
+
+def load_securities_csv(path: str | Path) -> list[Security]:
+    frame = pd.read_csv(path)
+    rows: list[Security] = []
+    for record in frame.to_dict(orient="records"):
+        rows.append(
+            Security(
+                ticker=str(record["ticker"]).upper(),
+                name=str(record["name"]),
+                exchange=str(record["exchange"]),
+                sector=str(record["sector"]),
+                industry=str(record["industry"]),
+                market_cap=float(record["market_cap"]),
+                avg_dollar_volume_20d=float(record["avg_dollar_volume_20d"]),
+                has_options=_to_bool(record["has_options"]),
+                is_active=_to_bool(record["is_active"]),
+                updated_at=_to_utc_datetime(record["updated_at"]),
+            )
+        )
+    return rows
+
+
+def load_daily_bars_csv(path: str | Path) -> list[DailyBar]:
+    frame = pd.read_csv(path)
+    rows: list[DailyBar] = []
+    for record in frame.to_dict(orient="records"):
+        rows.append(
+            DailyBar(
+                ticker=str(record["ticker"]).upper(),
+                date=pd.Timestamp(record["date"]).date(),
+                open=float(record["open"]),
+                high=float(record["high"]),
+                low=float(record["low"]),
+                close=float(record["close"]),
+                volume=int(record["volume"]),
+                vwap=float(record["vwap"]),
+                adjusted=_to_bool(record["adjusted"]),
+                provider=str(record["provider"]),
+                source_ts=_to_utc_datetime(record["source_ts"]),
+                available_at=_to_utc_datetime(record["available_at"]),
+            )
+        )
+    return rows
+
+
+def _to_bool(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _to_utc_datetime(value: object) -> datetime:
+    parsed = pd.Timestamp(value).to_pydatetime()
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
