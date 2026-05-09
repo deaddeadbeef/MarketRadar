@@ -207,6 +207,16 @@ def test_options_theme_support_is_bounded_and_cannot_override_stale_data_policy(
     assert "data_stale" in result.hard_blocks
 
 
+def test_neutral_sector_rotation_does_not_add_optional_support() -> None:
+    result = score_market_features(
+        _strong_features(),
+        portfolio_penalty=0.0,
+        sector_rotation_score=50.0,
+    )
+
+    assert result.sector_theme_bonus == 0.0
+
+
 def _strong_features() -> MarketFeatures:
     as_of = datetime(2026, 5, 8, 21, tzinfo=UTC)
     return MarketFeatures(

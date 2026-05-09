@@ -7,6 +7,7 @@ from sqlalchemy import create_engine
 
 from catalyst_radar.connectors.csv_market import load_daily_bars_csv, load_securities_csv
 from catalyst_radar.core.config import AppConfig
+from catalyst_radar.core.models import DailyBar, Security
 from catalyst_radar.dashboard.data import load_candidate_rows
 from catalyst_radar.features.options import OptionFeatureInput
 from catalyst_radar.pipeline.scan import run_scan
@@ -49,9 +50,35 @@ def test_scan_attaches_point_in_time_options_theme_sector_and_peer_metadata() ->
     assert metadata["candidate_theme"] == "ai_infrastructure_storage"
     assert metadata["sector_rotation_score"] > 50.0
     assert metadata["theme_velocity_score"] > 60.0
-    assert metadata["peer_readthrough_score"] > 0.0
+    assert metadata["peer_readthrough_score"] == 0.0
     assert metadata["options_feature_version"] == "options-v1"
     assert metadata["theme_feature_version"] == "theme-v1"
+
+
+def test_scan_uses_cross_ticker_theme_evidence_for_configured_peer() -> None:
+    engine = _engine()
+    market_repo = MarketRepository(engine)
+    text_repo = TextRepository(engine)
+    _load_market_fixtures(market_repo)
+    _add_msft_peer_security_from_aaa_bars(market_repo)
+    text_repo.upsert_text_features([text_feature(ticker="AAA")])
+
+    result = next(
+        row
+        for row in run_scan(
+            market_repo,
+            as_of=date(2026, 5, 8),
+            available_at=datetime(2026, 5, 8, 21, tzinfo=UTC),
+            text_repo=text_repo,
+            config=AppConfig(portfolio_value=100_000, portfolio_cash=25_000),
+        )
+        if row.ticker == "MSFT"
+    )
+
+    assert result.candidate.metadata["candidate_theme"] == "ai_infrastructure_storage"
+    assert result.candidate.metadata["theme_velocity_score"] == 0.0
+    assert result.candidate.metadata["peer_readthrough_score"] > 0.0
+    assert result.candidate.metadata["peer_readthrough_theme"] == "ai_infrastructure_storage"
 
 
 def test_future_available_option_feature_is_ignored_by_scan() -> None:
@@ -96,7 +123,7 @@ def test_options_theme_fields_are_persisted_for_dashboard_rows() -> None:
     assert row["options_risk_score"] >= 0.0
     assert row["sector_rotation_score"] > 50.0
     assert row["theme_velocity_score"] > 60.0
-    assert row["peer_readthrough_score"] > 0.0
+    assert row["peer_readthrough_score"] == 0.0
     assert row["candidate_theme"] == "ai_infrastructure_storage"
     assert row["options_feature_version"] == "options-v1"
 
@@ -149,7 +176,7 @@ def test_max_optional_support_cannot_override_stale_data_policy() -> None:
     )
 
     assert result.candidate.metadata["options_bonus"] == 4.0
-    assert result.candidate.metadata["sector_theme_bonus"] >= 4.0
+    assert result.candidate.metadata["sector_theme_bonus"] > 2.0
     assert result.candidate.data_stale is True
     assert "data_stale" in result.policy.hard_blocks
 
@@ -164,6 +191,49 @@ def _load_market_fixtures(market_repo: MarketRepository) -> None:
     fixture_dir = Path("tests/fixtures")
     market_repo.upsert_securities(load_securities_csv(fixture_dir / "securities.csv"))
     market_repo.upsert_daily_bars(load_daily_bars_csv(fixture_dir / "daily_bars.csv"))
+
+
+def _add_msft_peer_security_from_aaa_bars(market_repo: MarketRepository) -> None:
+    market_repo.upsert_securities(
+        [
+            Security(
+                ticker="MSFT",
+                name="Microsoft Corporation",
+                exchange="NASDAQ",
+                sector="Technology",
+                industry="Software",
+                market_cap=3_000_000_000_000,
+                avg_dollar_volume_20d=2_000_000_000,
+                has_options=True,
+                is_active=True,
+                updated_at=datetime(2026, 5, 8, 20, tzinfo=UTC),
+            )
+        ]
+    )
+    market_repo.upsert_daily_bars(
+        [
+            DailyBar(
+                ticker="MSFT",
+                date=bar.date,
+                open=bar.open,
+                high=bar.high,
+                low=bar.low,
+                close=bar.close,
+                volume=bar.volume,
+                vwap=bar.vwap,
+                adjusted=bar.adjusted,
+                provider=bar.provider,
+                source_ts=bar.source_ts,
+                available_at=bar.available_at,
+            )
+            for bar in market_repo.daily_bars(
+                "AAA",
+                end=date(2026, 5, 8),
+                lookback=252,
+                available_at=datetime(2026, 5, 8, 21, tzinfo=UTC),
+            )
+        ]
+    )
 
 
 def _scan_result(

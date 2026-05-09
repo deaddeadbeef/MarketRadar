@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time
 from typing import Any
@@ -143,11 +144,12 @@ def run_scan(
         if not ticker_bars:
             continue
 
-        sector_ticker = SECTOR_ETF.get(security.sector, "SPY")
-        if sector_ticker not in benchmark_cache:
-            benchmark_cache[sector_ticker] = _bars_frame(
+        sector_ticker = SECTOR_ETF.get(security.sector)
+        benchmark_ticker = sector_ticker or "SPY"
+        if benchmark_ticker not in benchmark_cache:
+            benchmark_cache[benchmark_ticker] = _bars_frame(
                 repo.daily_bars(
-                    sector_ticker,
+                    benchmark_ticker,
                     end=as_of,
                     lookback=LOOKBACK_SESSIONS,
                     available_at=available_at_dt,
@@ -156,13 +158,12 @@ def run_scan(
             )
 
         ticker_frame = _bars_frame(ticker_bars)
-        sector_frame = benchmark_cache[sector_ticker]
         features = compute_market_features(
             security.ticker,
             as_of_dt,
             ticker_frame,
             benchmark_cache["SPY"],
-            sector_frame,
+            benchmark_cache[benchmark_ticker],
         )
         material_events = events_by_ticker.get(security.ticker, [])
         text_feature = text_features_by_ticker.get(security.ticker)
@@ -182,10 +183,18 @@ def run_scan(
         theme_velocity = theme_velocity_score(text_feature, candidate_theme)
         peer_score = peer_readthrough_score(
             security.ticker,
-            text_feature.theme_hits if text_feature is not None else (),
+            _peer_source_theme_hits(
+                text_features_by_ticker=text_features_by_ticker,
+                current_ticker=security.ticker,
+            ),
             theme_config,
         )
-        sector_score = sector_rotation_score(ticker_frame, benchmark_cache["SPY"], sector_frame)
+        sector_score = _sector_rotation_for_security(
+            sector_ticker=sector_ticker,
+            ticker_frame=ticker_frame,
+            spy_frame=benchmark_cache["SPY"],
+            sector_frame=benchmark_cache[benchmark_ticker],
+        )
         event_conflicts = detect_event_conflicts(material_events)
         setup_plan = select_setup_plan(
             ticker_bars,
@@ -331,6 +340,84 @@ def _bars_frame(bars: list[DailyBar]) -> pd.DataFrame:
             }
             for bar in bars
         ]
+    )
+
+
+def _peer_source_theme_hits(
+    *,
+    text_features_by_ticker: dict[str, TextFeature],
+    current_ticker: str,
+) -> tuple[dict[str, Any], ...]:
+    source_hits: dict[str, dict[str, Any]] = {}
+    for ticker, text_feature in text_features_by_ticker.items():
+        if ticker == current_ticker:
+            continue
+        for hit in _theme_hit_mappings(text_feature.theme_hits):
+            theme_id = str(hit.get("theme_id", ""))
+            if not theme_id:
+                continue
+            entry = source_hits.setdefault(
+                theme_id,
+                {"theme_id": theme_id, "count": 0.0, "terms": set(), "source_tickers": set()},
+            )
+            entry["count"] += _finite_float(hit.get("count", 0.0))
+            entry["terms"].update(str(term) for term in _terms(hit.get("terms", ())))
+            entry["source_tickers"].add(ticker)
+    return tuple(
+        {
+            "theme_id": value["theme_id"],
+            "count": value["count"],
+            "terms": sorted(value["terms"]),
+            "source_tickers": sorted(value["source_tickers"]),
+        }
+        for value in sorted(source_hits.values(), key=lambda item: str(item["theme_id"]))
+    )
+
+
+def _theme_hit_mappings(value: object) -> tuple[dict[str, Any], ...]:
+    if not isinstance(value, tuple | list):
+        return ()
+    return tuple(dict(item) for item in value if isinstance(item, Mapping))
+
+
+def _terms(value: object) -> tuple[str, ...]:
+    if isinstance(value, str):
+        return (value,)
+    if not isinstance(value, tuple | list):
+        return ()
+    return tuple(str(item) for item in value)
+
+
+def _finite_float(value: object) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    if number != number or number in (float("inf"), float("-inf")):
+        return 0.0
+    return number
+
+
+def _sector_rotation_for_security(
+    *,
+    sector_ticker: str | None,
+    ticker_frame: pd.DataFrame,
+    spy_frame: pd.DataFrame,
+    sector_frame: pd.DataFrame,
+) -> SectorRotationScore:
+    if sector_ticker is None:
+        return _neutral_sector_rotation_score()
+    return sector_rotation_score(ticker_frame, spy_frame, sector_frame)
+
+
+def _neutral_sector_rotation_score() -> SectorRotationScore:
+    return SectorRotationScore(
+        score=50.0,
+        ticker_return_20d=0.0,
+        sector_return_20d=0.0,
+        spy_return_20d=0.0,
+        ticker_vs_sector=0.0,
+        sector_vs_spy=0.0,
     )
 
 

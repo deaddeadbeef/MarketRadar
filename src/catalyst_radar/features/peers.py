@@ -33,7 +33,7 @@ def peer_readthrough_score(
         theme = config.themes.get(theme_id)
         if theme is None:
             continue
-        if normalized_ticker not in theme.tickers and normalized_ticker not in theme.peers:
+        if normalized_ticker not in theme.peers:
             continue
         evidence_count = _finite_float(hit.get("count", 0.0))
         term_count = len(hit.get("terms", ())) if isinstance(hit.get("terms"), Sequence) else 0

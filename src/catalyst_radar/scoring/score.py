@@ -231,7 +231,7 @@ def _sector_theme_bonus(
 ) -> float:
     return min(
         6.0,
-        (_non_negative(sector_rotation_score) * 0.02)
+        (_positive_support_above_neutral(sector_rotation_score) * 0.04)
         + (_non_negative(theme_velocity_score) * 0.02)
         + (_non_negative(peer_readthrough_score) * 0.02),
     )
@@ -239,6 +239,10 @@ def _sector_theme_bonus(
 
 def _options_risk_penalty(options_risk_score: float) -> float:
     return min(4.0, _non_negative(options_risk_score) * 0.04)
+
+
+def _positive_support_above_neutral(score: float, neutral: float = 50.0) -> float:
+    return max(0.0, _finite(score) - neutral)
 
 
 def _has_non_finite_feature_input(features: MarketFeatures) -> bool:
