@@ -1,0 +1,31 @@
+{
+  "status": "OK",
+  "count": 2,
+  "results": [
+    {
+      "ticker": "MSFT",
+      "name": "Microsoft Corporation",
+      "market": "stocks",
+      "locale": "us",
+      "primary_exchange": "XNAS",
+      "type": "CS",
+      "active": true,
+      "currency_name": "usd",
+      "cik": "0000789019",
+      "composite_figi": "BBG000BPH459",
+      "sic_description": "Technology"
+    },
+    {
+      "ticker": "OLD",
+      "name": "Old Delisted Corp.",
+      "market": "stocks",
+      "locale": "us",
+      "primary_exchange": "XNYS",
+      "type": "CS",
+      "active": false,
+      "currency_name": "usd",
+      "cik": "0000000000",
+      "composite_figi": "BBG000OLD"
+    }
+  ]
+}

@@ -1,39 +1,35 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
-from collections.abc import Mapping, Sequence
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time
 from pathlib import Path
-from typing import Any
+from urllib.parse import urlencode
 
-import pandas as pd
 from dotenv import load_dotenv
 
-from catalyst_radar.connectors.base import (
-    ConnectorHealth,
-    ConnectorHealthStatus,
-    ConnectorRecordKind,
-    ConnectorRequest,
-    NormalizedRecord,
+from catalyst_radar.connectors.base import ConnectorRequest
+from catalyst_radar.connectors.http import (
+    FakeHttpTransport,
+    HttpResponse,
+    JsonHttpClient,
+    UrlLibHttpTransport,
 )
 from catalyst_radar.connectors.market_data import CsvMarketDataConnector
-from catalyst_radar.core.config import AppConfig
-from catalyst_radar.core.models import (
-    DailyBar,
-    DataQualitySeverity,
-    HoldingSnapshot,
-    JobStatus,
-    Security,
+from catalyst_radar.connectors.polygon import PolygonEndpoint, PolygonMarketDataConnector
+from catalyst_radar.connectors.provider_ingest import (
+    ProviderIngestError,
+    ProviderIngestResult,
+    ingest_provider_records,
 )
+from catalyst_radar.core.config import AppConfig
 from catalyst_radar.pipeline.scan import run_scan
 from catalyst_radar.storage.db import create_schema, engine_from_url
 from catalyst_radar.storage.provider_repositories import ProviderRepository
 from catalyst_radar.storage.repositories import MarketRepository
-
-
-class CsvIngestAbort(RuntimeError):
-    pass
+from catalyst_radar.universe.builder import UniverseBuilder
+from catalyst_radar.universe.filters import UniverseFilterConfig
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -47,8 +43,26 @@ def build_parser() -> argparse.ArgumentParser:
     ingest.add_argument("--daily-bars", type=Path, required=True)
     ingest.add_argument("--holdings", type=Path)
 
+    polygon = subparsers.add_parser("ingest-polygon")
+    polygon_sub = polygon.add_subparsers(dest="polygon_command", required=True)
+    grouped = polygon_sub.add_parser("grouped-daily")
+    grouped.add_argument("--date", type=date.fromisoformat, required=True)
+    grouped.add_argument("--fixture", type=Path)
+    tickers = polygon_sub.add_parser("tickers")
+    tickers.add_argument("--fixture", type=Path)
+    tickers.add_argument("--date", type=date.fromisoformat)
+
     scan = subparsers.add_parser("scan")
     scan.add_argument("--as-of", type=date.fromisoformat, required=True)
+    scan.add_argument("--available-at", type=_parse_aware_datetime)
+    scan.add_argument("--provider")
+    scan.add_argument("--universe")
+
+    build_universe = subparsers.add_parser("build-universe")
+    build_universe.add_argument("--name")
+    build_universe.add_argument("--provider")
+    build_universe.add_argument("--as-of", type=date.fromisoformat, required=True)
+    build_universe.add_argument("--available-at", type=_parse_aware_datetime)
 
     provider_health = subparsers.add_parser("provider-health")
     provider_health.add_argument("--provider", required=True)
@@ -85,6 +99,19 @@ def main(argv: list[str] | None = None) -> int:
             holdings_path=args.holdings,
         )
 
+    if args.command == "ingest-polygon":
+        create_schema(engine)
+        market_repo = MarketRepository(engine)
+        provider_repo = ProviderRepository(engine)
+        return _ingest_polygon_provider(
+            config=config,
+            market_repo=market_repo,
+            provider_repo=provider_repo,
+            polygon_command=args.polygon_command,
+            date_value=args.date if hasattr(args, "date") else None,
+            fixture_path=args.fixture,
+        )
+
     if args.command == "provider-health":
         create_schema(engine)
         provider_repo = ProviderRepository(engine)
@@ -98,10 +125,61 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "scan":
         create_schema(engine)
         repo = MarketRepository(engine)
-        results = run_scan(repo, as_of=args.as_of)
+        provider_repo = ProviderRepository(engine)
+        available_at = args.available_at or datetime.now(UTC)
+        universe_tickers = _universe_tickers_for_scan(
+            provider_repo=provider_repo,
+            universe_name=args.universe,
+            as_of=args.as_of,
+            available_at=available_at,
+        )
+        if args.universe is not None and universe_tickers is None:
+            print(f"universe not found: {args.universe}", file=sys.stderr)
+            return 1
+        scan_provider = args.provider
+        if args.universe is not None:
+            snapshot = _universe_snapshot_for_scan(
+                provider_repo=provider_repo,
+                universe_name=args.universe,
+                as_of=args.as_of,
+                available_at=available_at,
+            )
+            scan_provider = snapshot.provider if snapshot is not None else scan_provider
+        results = run_scan(
+            repo,
+            as_of=args.as_of,
+            available_at=available_at,
+            provider=scan_provider,
+            universe_tickers=universe_tickers,
+        )
         for result in results:
             repo.save_scan_result(result.candidate, result.policy)
         print(f"scanned candidates={len(results)}")
+        return 0
+
+    if args.command == "build-universe":
+        create_schema(engine)
+        market_repo = MarketRepository(engine)
+        provider_repo = ProviderRepository(engine)
+        available_at = args.available_at or datetime.now(UTC)
+        builder = UniverseBuilder(
+            market_repo=market_repo,
+            provider_repo=provider_repo,
+            config=UniverseFilterConfig(
+                min_price=config.universe_min_price,
+                min_avg_dollar_volume=config.universe_min_avg_dollar_volume,
+                require_sector=config.universe_require_sector,
+                include_etfs=config.universe_include_etfs,
+                include_adrs=config.universe_include_adrs,
+            ),
+            name=args.name or config.universe_name,
+            provider=args.provider or config.market_provider,
+        )
+        snapshot = builder.build(as_of=args.as_of, available_at=available_at)
+        print(
+            f"built universe={snapshot.name} members={snapshot.member_count} "
+            f"excluded={snapshot.excluded_count}"
+        )
         return 0
 
     raise ValueError(f"Unsupported command: {args.command}")
@@ -116,259 +194,290 @@ def _ingest_csv_provider(
     daily_bars_path: Path,
     holdings_path: Path | None,
 ) -> int:
-    health = connector.healthcheck()
-    provider_repo.save_health(health)
-    job_id = provider_repo.start_job(
-        "csv_ingest",
-        connector.provider,
-        metadata={
-            "securities": str(securities_path),
-            "daily_bars": str(daily_bars_path),
-            "holdings": str(holdings_path) if holdings_path is not None else None,
-        },
+    metadata = {
+        "securities": str(securities_path),
+        "daily_bars": str(daily_bars_path),
+        "holdings": str(holdings_path) if holdings_path is not None else None,
+    }
+    request = ConnectorRequest(
+        provider=connector.provider,
+        endpoint="csv_ingest",
+        params=metadata,
+        requested_at=datetime.now(UTC),
     )
-    if health.status == ConnectorHealthStatus.DOWN:
-        provider_repo.finish_job(
-            job_id,
-            JobStatus.FAILED.value,
-            requested_count=0,
-            raw_count=0,
-            normalized_count=0,
-            error_summary=health.reason,
-        )
-        provider_repo.record_incident(
-            provider=connector.provider,
-            severity=DataQualitySeverity.CRITICAL,
-            kind="csv_ingest",
-            affected_tickers=(),
-            reason=health.reason,
-            fail_closed_action="abort-ingest",
-            payload={
-                "securities": str(securities_path),
-                "daily_bars": str(daily_bars_path),
-                "holdings": str(holdings_path) if holdings_path is not None else None,
-            },
-        )
-        print(f"csv ingest failed: {health.reason}", file=sys.stderr)
-        return 1
-
-    raw_count = 0
-    normalized_count = 0
-    requested_count = 0
     try:
-        request = ConnectorRequest(
-            provider=connector.provider,
-            endpoint="csv_ingest",
-            params={
-                "securities": str(securities_path),
-                "daily_bars": str(daily_bars_path),
-                "holdings": str(holdings_path) if holdings_path is not None else None,
-            },
-            requested_at=datetime.now(UTC),
+        result = ingest_provider_records(
+            connector=connector,
+            request=request,
+            market_repo=market_repo,
+            provider_repo=provider_repo,
+            job_type="csv_ingest",
+            metadata=metadata,
         )
-        raw_records = connector.fetch(request)
-        requested_count = len(raw_records) + len(connector.rejected_payloads)
-        raw_count = provider_repo.save_raw_records(raw_records)
-        _record_rejected_payloads(provider_repo, connector)
-        abort_rejections = _abort_rejections(connector)
-        if abort_rejections:
-            reason = "; ".join(rejected.reason for rejected in abort_rejections)
-            raise CsvIngestAbort(reason)
-        normalized_records = connector.normalize(raw_records)
-        normalized_count = provider_repo.save_normalized_records(normalized_records)
-
-        if connector.rejected_payloads:
-            degraded_health = ConnectorHealth(
-                provider=connector.provider,
-                status=ConnectorHealthStatus.DEGRADED,
-                checked_at=datetime.now(UTC),
-                reason=f"rejected payloads={len(connector.rejected_payloads)}",
-            )
-            provider_repo.save_health(degraded_health)
-
-        securities = _securities_from_normalized(normalized_records)
-        daily_bars = _daily_bars_from_normalized(normalized_records)
-        holdings = _holdings_from_normalized(normalized_records)
-        market_repo.upsert_market_snapshot(
-            securities_rows=securities,
-            daily_bar_rows=daily_bars,
-            holding_rows=holdings if holdings_path is not None else (),
-        )
-
-        provider_repo.finish_job(
-            job_id,
-            (
-                JobStatus.PARTIAL_SUCCESS.value
-                if connector.rejected_payloads
-                else JobStatus.SUCCESS.value
-            ),
-            requested_count=requested_count,
-            raw_count=raw_count,
-            normalized_count=normalized_count,
-            error_summary=(
-                f"rejected payloads={len(connector.rejected_payloads)}"
-                if connector.rejected_payloads
-                else None
-            ),
-        )
-        message = f"ingested securities={len(securities)} daily_bars={len(daily_bars)}"
-        if holdings_path is not None:
-            message = f"{message} holdings={len(holdings)}"
-        print(message)
-        return 0
-    except CsvIngestAbort as exc:
-        reason = str(exc)
-        provider_repo.save_health(
-            ConnectorHealth(
-                provider=connector.provider,
-                status=ConnectorHealthStatus.DOWN,
-                checked_at=datetime.now(UTC),
-                reason=reason,
-            )
-        )
-        provider_repo.finish_job(
-            job_id,
-            JobStatus.FAILED.value,
-            requested_count=requested_count,
-            raw_count=raw_count,
-            normalized_count=normalized_count,
-            error_summary=reason,
-        )
-        print(f"csv ingest failed: {reason}", file=sys.stderr)
-        return 1
-    except Exception as exc:
-        reason = str(exc)
-        provider_repo.save_health(
-            ConnectorHealth(
-                provider=connector.provider,
-                status=ConnectorHealthStatus.DOWN,
-                checked_at=datetime.now(UTC),
-                reason=reason,
-            )
-        )
-        provider_repo.finish_job(
-            job_id,
-            JobStatus.FAILED.value,
-            requested_count=requested_count,
-            raw_count=raw_count,
-            normalized_count=normalized_count,
-            error_summary=reason,
-        )
-        provider_repo.record_incident(
-            provider=connector.provider,
-            severity=DataQualitySeverity.CRITICAL,
-            kind="csv_ingest",
-            affected_tickers=(),
-            reason=reason,
-            fail_closed_action="abort-ingest",
-            payload={
-                "securities": str(securities_path),
-                "daily_bars": str(daily_bars_path),
-                "holdings": str(holdings_path) if holdings_path is not None else None,
-            },
-        )
-        print(f"csv ingest failed: {reason}", file=sys.stderr)
+    except ProviderIngestError as exc:
+        print(f"csv ingest failed: {exc}", file=sys.stderr)
         return 1
 
+    message = (
+        f"ingested securities={result.security_count} daily_bars={result.daily_bar_count}"
+    )
+    if holdings_path is not None:
+        message = f"{message} holdings={result.holding_count}"
+    print(message)
+    return 0
 
-def _record_rejected_payloads(
+
+def _ingest_polygon_provider(
+    *,
+    config: AppConfig,
+    market_repo: MarketRepository,
     provider_repo: ProviderRepository,
-    connector: CsvMarketDataConnector,
-) -> None:
-    for rejected in connector.rejected_payloads:
-        provider_repo.record_incident(
-            provider=rejected.provider,
-            severity=rejected.severity,
-            kind=rejected.kind.value,
-            affected_tickers=rejected.affected_tickers,
-            reason=rejected.reason,
-            fail_closed_action=rejected.fail_closed_action,
-            payload=rejected.payload,
+    polygon_command: str,
+    date_value: date | None,
+    fixture_path: Path | None,
+) -> int:
+    try:
+        connector, request, metadata, job_type = _build_polygon_ingest(
+            config=config,
+            polygon_command=polygon_command,
+            date_value=date_value,
+            fixture_path=fixture_path,
         )
+        result = ingest_provider_records(
+            connector=connector,
+            request=request,
+            market_repo=market_repo,
+            provider_repo=provider_repo,
+            job_type=job_type,
+            metadata=metadata,
+        )
+    except (ProviderIngestError, ValueError) as exc:
+        print(f"polygon ingest failed: {exc}", file=sys.stderr)
+        return 1
+
+    _print_provider_result(result)
+    return 0
 
 
-def _abort_rejections(
-    connector: CsvMarketDataConnector,
-) -> list[Any]:
-    return [
-        rejected
-        for rejected in connector.rejected_payloads
-        if rejected.severity in {DataQualitySeverity.CRITICAL}
-        or rejected.fail_closed_action == "abort-ingest"
-    ]
+def _build_polygon_ingest(
+    *,
+    config: AppConfig,
+    polygon_command: str,
+    date_value: date | None,
+    fixture_path: Path | None,
+) -> tuple[PolygonMarketDataConnector, ConnectorRequest, dict[str, object], str]:
+    if polygon_command == "grouped-daily":
+        if date_value is None:
+            msg = "grouped-daily requires --date"
+            raise ValueError(msg)
+        endpoint = PolygonEndpoint.GROUPED_DAILY
+        params = {
+            "date": date_value.isoformat(),
+            "adjusted": True,
+            "include_otc": False,
+        }
+        first_url = _polygon_grouped_daily_url(
+            config=config,
+            date_value=date_value,
+            api_key=_polygon_api_key(config=config, fixture_path=fixture_path),
+        )
+        metadata: dict[str, object] = {
+            "provider": "polygon",
+            "endpoint": endpoint.value,
+            "date": date_value.isoformat(),
+            "fixture": str(fixture_path) if fixture_path is not None else None,
+            "availability_policy": config.provider_availability_policy,
+        }
+    elif polygon_command == "tickers":
+        endpoint = PolygonEndpoint.TICKERS
+        params = {"market": "stocks", "active": True, "limit": 1000}
+        if date_value is not None:
+            params["date"] = date_value.isoformat()
+        first_url = _polygon_tickers_url(
+            config=config,
+            api_key=_polygon_api_key(config=config, fixture_path=fixture_path),
+            date_value=date_value,
+        )
+        metadata = {
+            "provider": "polygon",
+            "endpoint": endpoint.value,
+            "date": date_value.isoformat() if date_value is not None else None,
+            "fixture": str(fixture_path) if fixture_path is not None else None,
+            "availability_policy": config.provider_availability_policy,
+        }
+    else:
+        msg = f"unsupported polygon command: {polygon_command}"
+        raise ValueError(msg)
+
+    transport = (
+        _fixture_transport(first_url=first_url, fixture_path=fixture_path)
+        if fixture_path is not None
+        else UrlLibHttpTransport()
+    )
+    connector = PolygonMarketDataConnector(
+        api_key=_polygon_api_key(config=config, fixture_path=fixture_path),
+        client=JsonHttpClient(
+            transport=transport,
+            timeout_seconds=config.http_timeout_seconds,
+        ),
+        base_url=config.polygon_base_url,
+        availability_policy=config.provider_availability_policy,
+    )
+    request = ConnectorRequest(
+        provider="polygon",
+        endpoint=endpoint.value,
+        params=params,
+        requested_at=datetime.now(UTC),
+    )
+    return connector, request, metadata, endpoint.value
 
 
-def _securities_from_normalized(records: Sequence[NormalizedRecord]) -> list[Security]:
-    return [
-        _security_from_payload(record.payload)
-        for record in records
-        if record.kind == ConnectorRecordKind.SECURITY
-    ]
+def _fixture_transport(*, first_url: str, fixture_path: Path) -> FakeHttpTransport:
+    responses = {first_url: _fixture_response(first_url, fixture_path)}
+    payload = _read_fixture_payload(fixture_path)
+    next_url = payload.get("next_url")
+    current_path = fixture_path
+    while next_url:
+        if not isinstance(next_url, str):
+            msg = "polygon fixture next_url must be a string"
+            raise ValueError(msg)
+        current_path = _next_fixture_path(current_path)
+        if not current_path.exists():
+            msg = f"missing polygon fixture page for {next_url}: {current_path}"
+            raise ValueError(msg)
+        response_url = _fixture_next_url(str(next_url))
+        responses[response_url] = _fixture_response(response_url, current_path)
+        payload = _read_fixture_payload(current_path)
+        next_url = payload.get("next_url")
+    return FakeHttpTransport(responses)
 
 
-def _daily_bars_from_normalized(records: Sequence[NormalizedRecord]) -> list[DailyBar]:
-    return [
-        _daily_bar_from_payload(record.payload)
-        for record in records
-        if record.kind == ConnectorRecordKind.DAILY_BAR
-    ]
-
-
-def _holdings_from_normalized(records: Sequence[NormalizedRecord]) -> list[HoldingSnapshot]:
-    return [
-        _holding_from_payload(record.payload)
-        for record in records
-        if record.kind == ConnectorRecordKind.HOLDING
-    ]
-
-
-def _security_from_payload(payload: Mapping[str, Any]) -> Security:
-    return Security(
-        ticker=str(payload["ticker"]).upper(),
-        name=str(payload["name"]),
-        exchange=str(payload["exchange"]),
-        sector=str(payload["sector"]),
-        industry=str(payload["industry"]),
-        market_cap=float(payload["market_cap"]),
-        avg_dollar_volume_20d=float(payload["avg_dollar_volume_20d"]),
-        has_options=bool(payload["has_options"]),
-        is_active=bool(payload["is_active"]),
-        updated_at=_parse_datetime(payload["updated_at"]),
+def _fixture_response(url: str, fixture_path: Path) -> HttpResponse:
+    return HttpResponse(
+        status_code=200,
+        url=url,
+        headers={"content-type": "application/json"},
+        body=fixture_path.read_bytes(),
     )
 
 
-def _daily_bar_from_payload(payload: Mapping[str, Any]) -> DailyBar:
-    return DailyBar(
-        ticker=str(payload["ticker"]).upper(),
-        date=pd.Timestamp(payload["date"]).date(),
-        open=float(payload["open"]),
-        high=float(payload["high"]),
-        low=float(payload["low"]),
-        close=float(payload["close"]),
-        volume=int(payload["volume"]),
-        vwap=float(payload["vwap"]),
-        adjusted=bool(payload["adjusted"]),
-        provider=str(payload["provider"]),
-        source_ts=_parse_datetime(payload["source_ts"]),
-        available_at=_parse_datetime(payload["available_at"]),
+def _read_fixture_payload(fixture_path: Path) -> dict[str, object]:
+    payload = json.loads(fixture_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        msg = f"polygon fixture must contain a JSON object: {fixture_path}"
+        raise ValueError(msg)
+    return payload
+
+
+def _next_fixture_path(fixture_path: Path) -> Path:
+    prefix, separator, suffix = fixture_path.stem.rpartition("_")
+    if suffix.isdigit():
+        return fixture_path.with_name(
+            f"{prefix}{separator}{int(suffix) + 1}{fixture_path.suffix}"
+        )
+    return fixture_path.with_name(f"{fixture_path.stem}_2{fixture_path.suffix}")
+
+
+def _polygon_grouped_daily_url(
+    *,
+    config: AppConfig,
+    date_value: date,
+    api_key: str | None,
+) -> str:
+    query = urlencode(
+        {
+            "adjusted": "true",
+            "include_otc": "false",
+            "apiKey": api_key or "",
+        }
+    )
+    base_url = config.polygon_base_url.rstrip("/")
+    return f"{base_url}/v2/aggs/grouped/locale/us/market/stocks/{date_value.isoformat()}?{query}"
+
+
+def _polygon_tickers_url(
+    *,
+    config: AppConfig,
+    api_key: str | None,
+    date_value: date | None = None,
+) -> str:
+    params: dict[str, str] = {
+        "market": "stocks",
+        "active": "true",
+        "limit": "1000",
+    }
+    if date_value is not None:
+        params["date"] = date_value.isoformat()
+    params["apiKey"] = api_key or ""
+    query = urlencode(params)
+    return f"{config.polygon_base_url.rstrip('/')}/v3/reference/tickers?{query}"
+
+
+def _fixture_next_url(url: str) -> str:
+    separator = "&" if "?" in url else "?"
+    if "apiKey=" in url:
+        return url
+    return f"{url}{separator}apiKey=fixture-key"
+
+
+def _print_provider_result(result: ProviderIngestResult) -> None:
+    print(
+        f"ingested provider={result.provider} raw={result.raw_count} "
+        f"normalized={result.normalized_count} securities={result.security_count} "
+        f"daily_bars={result.daily_bar_count} rejected={result.rejected_count}"
     )
 
 
-def _holding_from_payload(payload: Mapping[str, Any]) -> HoldingSnapshot:
-    return HoldingSnapshot(
-        ticker=str(payload["ticker"]).upper(),
-        shares=float(payload["shares"]),
-        market_value=float(payload["market_value"]),
-        sector=str(payload["sector"]),
-        theme=str(payload["theme"]),
-        as_of=_parse_datetime(payload["as_of"]),
+def _universe_tickers_for_scan(
+    *,
+    provider_repo: ProviderRepository,
+    universe_name: str | None,
+    as_of: date,
+    available_at: datetime,
+) -> set[str] | None:
+    if universe_name is None:
+        return None
+    snapshot = _universe_snapshot_for_scan(
+        provider_repo=provider_repo,
+        universe_name=universe_name,
+        as_of=as_of,
+        available_at=available_at,
+    )
+    if snapshot is None:
+        return None
+    return {row.ticker for row in provider_repo.list_universe_member_rows(snapshot.id)}
+
+
+def _universe_snapshot_for_scan(
+    *,
+    provider_repo: ProviderRepository,
+    universe_name: str,
+    as_of: date,
+    available_at: datetime,
+):
+    as_of_dt = _scan_timestamp(as_of)
+    return provider_repo.latest_universe_snapshot(
+        name=universe_name,
+        as_of=as_of_dt,
+        available_at=available_at,
     )
 
 
-def _parse_datetime(value: Any) -> datetime:
-    parsed = pd.Timestamp(value).to_pydatetime()
+def _polygon_api_key(*, config: AppConfig, fixture_path: Path | None) -> str | None:
+    if fixture_path is not None:
+        return "fixture-key"
+    return config.polygon_api_key
+
+
+def _scan_timestamp(value: date) -> datetime:
+    return datetime.combine(value, time(21), tzinfo=UTC)
+
+
+def _parse_aware_datetime(value: str) -> datetime:
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     if parsed.tzinfo is None or parsed.utcoffset() is None:
-        return parsed.replace(tzinfo=UTC)
+        msg = "--available-at must include timezone information"
+        raise argparse.ArgumentTypeError(msg)
     return parsed.astimezone(UTC)
 
 

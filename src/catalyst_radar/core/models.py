@@ -46,6 +46,10 @@ class Security:
     has_options: bool
     is_active: bool
     updated_at: datetime
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "metadata", freeze_mapping(self.metadata, "metadata"))
 
 
 @dataclass(frozen=True)

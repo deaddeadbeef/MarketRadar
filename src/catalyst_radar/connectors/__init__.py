@@ -9,6 +9,13 @@ from catalyst_radar.connectors.base import (
     RawRecord,
 )
 from catalyst_radar.connectors.market_data import CsvMarketDataConnector, RejectedPayload
+from catalyst_radar.connectors.polygon import (
+    POLYGON_LICENSE_TAG,
+    POLYGON_PROVIDER_NAME,
+    POLYGON_RETENTION_POLICY,
+    PolygonEndpoint,
+    PolygonMarketDataConnector,
+)
 from catalyst_radar.connectors.provider_registry import (
     ConnectorRegistry,
     default_csv_connector,
@@ -27,6 +34,11 @@ __all__ = [
     "MarketDataConnector",
     "NormalizedRecord",
     "ProviderCostEstimate",
+    "POLYGON_LICENSE_TAG",
+    "POLYGON_PROVIDER_NAME",
+    "POLYGON_RETENTION_POLICY",
+    "PolygonEndpoint",
+    "PolygonMarketDataConnector",
     "RawRecord",
     "RejectedPayload",
     "default_csv_connector",

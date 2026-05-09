@@ -23,15 +23,31 @@ class ScanResult:
     policy: PolicyResult
 
 
-def run_scan(repo: MarketRepository, as_of: date) -> list[ScanResult]:
+def run_scan(
+    repo: MarketRepository,
+    as_of: date,
+    *,
+    available_at: datetime | None = None,
+    provider: str | None = None,
+    universe_tickers: set[str] | None = None,
+) -> list[ScanResult]:
     as_of_dt = datetime.combine(as_of, time(21), tzinfo=UTC)
+    available_at_dt = as_of_dt if available_at is None else available_at
+    if universe_tickers is None:
+        candidate_securities = repo.list_active_securities()
+    else:
+        candidate_securities = repo.list_active_securities_by_tickers(universe_tickers)
     securities = [
         security
-        for security in repo.list_active_securities()
+        for security in candidate_securities
         if security.ticker not in EXCLUDED_SCAN_TICKERS
     ]
     spy_bars = repo.daily_bars(
-        "SPY", end=as_of, lookback=LOOKBACK_SESSIONS, available_at=as_of_dt
+        "SPY",
+        end=as_of,
+        lookback=LOOKBACK_SESSIONS,
+        available_at=available_at_dt,
+        provider=provider,
     )
     benchmark_cache: dict[str, pd.DataFrame] = {"SPY": _bars_frame(spy_bars)}
 
@@ -41,7 +57,8 @@ def run_scan(repo: MarketRepository, as_of: date) -> list[ScanResult]:
             security.ticker,
             end=as_of,
             lookback=LOOKBACK_SESSIONS,
-            available_at=as_of_dt,
+            available_at=available_at_dt,
+            provider=provider,
         )
         if not ticker_bars:
             continue
@@ -53,7 +70,8 @@ def run_scan(repo: MarketRepository, as_of: date) -> list[ScanResult]:
                     sector_ticker,
                     end=as_of,
                     lookback=LOOKBACK_SESSIONS,
-                    available_at=as_of_dt,
+                    available_at=available_at_dt,
+                    provider=provider,
                 )
             )
 

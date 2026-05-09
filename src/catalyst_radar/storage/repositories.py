@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable
 from dataclasses import fields
 from datetime import UTC, date, datetime
 from typing import Any
@@ -57,6 +57,34 @@ class MarketRepository:
                     has_options=row.has_options,
                     is_active=row.is_active,
                     updated_at=_as_datetime(row.updated_at),
+                    metadata=row._mapping["metadata"],
+                )
+                for row in conn.execute(stmt)
+            ]
+
+    def list_active_securities_by_tickers(self, tickers: Collection[str]) -> list[Security]:
+        normalized = {ticker.upper() for ticker in tickers}
+        if not normalized:
+            return []
+        stmt = (
+            select(securities)
+            .where(securities.c.is_active.is_(True), securities.c.ticker.in_(normalized))
+            .order_by(securities.c.ticker)
+        )
+        with self.engine.connect() as conn:
+            return [
+                Security(
+                    ticker=row.ticker,
+                    name=row.name,
+                    exchange=row.exchange,
+                    sector=row.sector,
+                    industry=row.industry,
+                    market_cap=row.market_cap,
+                    avg_dollar_volume_20d=row.avg_dollar_volume_20d,
+                    has_options=row.has_options,
+                    is_active=row.is_active,
+                    updated_at=_as_datetime(row.updated_at),
+                    metadata=row._mapping["metadata"],
                 )
                 for row in conn.execute(stmt)
             ]
@@ -101,10 +129,13 @@ class MarketRepository:
         lookback: int,
         *,
         available_at: datetime | None = None,
+        provider: str | None = None,
     ) -> list[DailyBar]:
         filters = [daily_bars.c.ticker == ticker, daily_bars.c.date <= end]
         if available_at is not None:
             filters.append(daily_bars.c.available_at <= _as_datetime(available_at))
+        if provider is not None:
+            filters.append(daily_bars.c.provider == provider)
         stmt = (
             select(daily_bars)
             .where(*filters)
@@ -194,6 +225,7 @@ def _upsert_securities(conn: Connection, rows: Iterable[Security]) -> None:
                 has_options=row.has_options,
                 is_active=row.is_active,
                 updated_at=row.updated_at,
+                metadata=thaw_json_value(row.metadata),
             )
         )
 
