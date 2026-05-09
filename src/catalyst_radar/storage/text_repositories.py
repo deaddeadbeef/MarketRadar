@@ -4,7 +4,7 @@ from collections.abc import Iterable
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import Engine, delete, insert, select
+from sqlalchemy import Engine, delete, insert, or_, select
 
 from catalyst_radar.core.immutability import thaw_json_value
 from catalyst_radar.storage.schema import text_features, text_snippets
@@ -22,7 +22,10 @@ class TextRepository:
                 conn.execute(
                     delete(text_snippets).where(
                         text_snippets.c.event_id == row.event_id,
-                        text_snippets.c.snippet_hash == row.snippet_hash,
+                        or_(
+                            text_snippets.c.snippet_hash == row.snippet_hash,
+                            text_snippets.c.section == row.section,
+                        ),
                     )
                 )
                 conn.execute(insert(text_snippets).values(**_snippet_row(row)))

@@ -127,6 +127,65 @@ def test_run_text_pipeline_dedupes_duplicate_snippet_hashes() -> None:
     assert len(result.features[0].selected_snippet_ids) == 1
 
 
+def test_run_text_pipeline_is_idempotent_for_same_window() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    create_schema(engine)
+    event_repo = EventRepository(engine)
+    text_repo = TextRepository(engine)
+    event_repo.upsert_events([canonical_event(event_id="repeatable")])
+
+    first = run_text_pipeline(
+        event_repo,
+        text_repo,
+        as_of=datetime(2026, 5, 10, 21, tzinfo=UTC),
+        available_at=datetime(2026, 5, 10, 14, tzinfo=UTC),
+        ontology_path=Path("config/themes.yaml"),
+    )
+    second = run_text_pipeline(
+        event_repo,
+        text_repo,
+        as_of=datetime(2026, 5, 10, 21, tzinfo=UTC),
+        available_at=datetime(2026, 5, 10, 14, tzinfo=UTC),
+        ontology_path=Path("config/themes.yaml"),
+    )
+
+    assert first.features[0].novelty_score == second.features[0].novelty_score
+    assert first.features[0].local_narrative_score == second.features[0].local_narrative_score
+    with engine.connect() as conn:
+        assert conn.scalar(select(func.count()).select_from(text_snippets)) == 1
+
+
+def test_pipeline_replaces_old_same_event_snippet_hashes() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    create_schema(engine)
+    event_repo = EventRepository(engine)
+    text_repo = TextRepository(engine)
+    event_repo.upsert_events([canonical_event(event_id="legacy")])
+    text_repo.upsert_snippets(
+        [
+            snippet(
+                id="legacy-old-id",
+                event_id="legacy",
+                snippet_hash="old-event-ticker-text-hash",
+                section="event",
+            )
+        ]
+    )
+
+    result = run_text_pipeline(
+        event_repo,
+        text_repo,
+        as_of=datetime(2026, 5, 10, 21, tzinfo=UTC),
+        available_at=datetime(2026, 5, 10, 14, tzinfo=UTC),
+        ontology_path=Path("config/themes.yaml"),
+    )
+
+    with engine.connect() as conn:
+        rows = list(conn.execute(select(text_snippets.c.snippet_hash)))
+    assert len(rows) == 1
+    assert rows[0].snippet_hash == result.snippets[0].snippet_hash
+
+
 def test_textint_cli_processes_events_and_prints_features(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

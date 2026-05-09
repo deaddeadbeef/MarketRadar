@@ -72,11 +72,14 @@ def run_text_pipeline(
                 as_of=as_of_dt,
                 selected=selected,
                 stored_snippets=stored_snippets,
-                prior_snippets=text_repo.list_snippets_for_ticker(
-                    ticker,
-                    as_of=as_of_dt,
-                    available_at=available_at_dt,
-                    limit=50,
+                prior_snippets=_prior_snippets_for_novelty(
+                    text_repo.list_snippets_for_ticker(
+                        ticker,
+                        as_of=as_of_dt,
+                        available_at=available_at_dt,
+                        limit=50,
+                    ),
+                    selected,
                 ),
             )
         )
@@ -161,6 +164,19 @@ def _stored_snippet(snippet: ExtractedSnippet) -> TextSnippet:
             "title": snippet.title,
         },
     )
+
+
+def _prior_snippets_for_novelty(
+    prior_snippets: Iterable[TextSnippet],
+    selected: Iterable[ExtractedSnippet],
+) -> list[TextSnippet]:
+    current_hashes = {snippet.snippet_hash for snippet in selected}
+    current_event_ids = {snippet.event_id for snippet in selected}
+    return [
+        prior
+        for prior in prior_snippets
+        if prior.snippet_hash not in current_hashes and prior.event_id not in current_event_ids
+    ]
 
 
 def _text_feature(
