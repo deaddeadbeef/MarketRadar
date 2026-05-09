@@ -2,7 +2,10 @@ import math
 from dataclasses import replace
 from datetime import UTC, datetime
 
-from catalyst_radar.core.models import CandidateSnapshot, MarketFeatures
+import pytest
+
+from catalyst_radar.core.models import ActionState, CandidateSnapshot, MarketFeatures
+from catalyst_radar.scoring.policy import evaluate_policy
 from catalyst_radar.scoring.score import candidate_from_features, score_market_features
 
 
@@ -59,6 +62,50 @@ def test_score_market_features_sanitizes_non_finite_inputs() -> None:
     assert math.isfinite(result.risk_penalty)
     assert all(math.isfinite(score) for score in result.pillar_scores.values())
     assert result.final_score < 72
+
+
+@pytest.mark.parametrize(
+    ("field_name", "value"),
+    [
+        ("ret_5d", float("nan")),
+        ("dollar_volume_z", float("inf")),
+        ("atr_pct", float("-inf")),
+        ("extension_20d", float("nan")),
+        ("liquidity_score", float("inf")),
+    ],
+)
+def test_score_market_features_fails_closed_for_any_non_finite_input(
+    field_name: str,
+    value: float,
+) -> None:
+    features = replace(_strong_features(), **{field_name: value})
+
+    result = score_market_features(features, portfolio_penalty=0.0)
+
+    assert math.isfinite(result.final_score)
+    assert math.isfinite(result.risk_penalty)
+    assert all(math.isfinite(score) for score in result.pillar_scores.values())
+    assert result.final_score < 72
+    assert result.strong_pillars == 0
+    assert result.risk_penalty >= 20
+
+
+def test_candidate_from_non_finite_features_is_blocked_by_policy() -> None:
+    candidate = candidate_from_features(
+        replace(_strong_features(), atr_pct=float("nan")),
+        portfolio_penalty=0.0,
+        data_stale=False,
+        entry_zone=(100.0, 104.0),
+        invalidation_price=94.0,
+        reward_risk=2.4,
+    )
+
+    result = evaluate_policy(candidate)
+
+    assert candidate.final_score < 72
+    assert candidate.risk_penalty >= 20
+    assert result.state == ActionState.BLOCKED
+    assert "risk_penalty_hard_block" in result.hard_blocks
 
 
 def _strong_features() -> MarketFeatures:

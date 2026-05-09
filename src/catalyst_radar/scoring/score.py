@@ -6,6 +6,25 @@ from dataclasses import dataclass
 from catalyst_radar.core.models import CandidateSnapshot, MarketFeatures
 
 SCORE_VERSION = "score-v1"
+_PILLAR_NAMES = (
+    "price_strength",
+    "relative_strength",
+    "volume_liquidity",
+    "trend_quality",
+)
+_NUMERIC_FEATURE_FIELDS = (
+    "ret_5d",
+    "ret_20d",
+    "rs_20_sector",
+    "rs_60_spy",
+    "near_52w_high",
+    "ma_regime",
+    "rel_volume_5d",
+    "dollar_volume_z",
+    "atr_pct",
+    "extension_20d",
+    "liquidity_score",
+)
 
 
 @dataclass(frozen=True)
@@ -17,6 +36,9 @@ class ScoreResult:
 
 
 def score_market_features(features: MarketFeatures, portfolio_penalty: float) -> ScoreResult:
+    if _has_non_finite_feature_input(features):
+        return _fail_closed_score()
+
     pillar_scores = {
         "price_strength": _price_strength(features),
         "relative_strength": _relative_strength(features),
@@ -111,3 +133,19 @@ def _finite(value: float) -> float:
 
 def _non_negative(value: float) -> float:
     return max(0.0, _finite(value))
+
+
+def _has_non_finite_feature_input(features: MarketFeatures) -> bool:
+    return any(
+        not math.isfinite(float(getattr(features, field)))
+        for field in _NUMERIC_FEATURE_FIELDS
+    )
+
+
+def _fail_closed_score() -> ScoreResult:
+    return ScoreResult(
+        final_score=0.0,
+        strong_pillars=0,
+        risk_penalty=100.0,
+        pillar_scores={name: 0.0 for name in _PILLAR_NAMES},
+    )
