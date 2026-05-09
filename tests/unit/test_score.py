@@ -40,6 +40,23 @@ def test_candidate_from_features_preserves_score_and_trade_plan() -> None:
     assert candidate.metadata["policy_version_input"] == "score-v1"
 
 
+def test_candidate_from_features_merges_extra_metadata() -> None:
+    candidate = candidate_from_features(
+        _strong_features(),
+        portfolio_penalty=2.0,
+        data_stale=False,
+        entry_zone=(100.0, 104.0),
+        invalidation_price=94.0,
+        reward_risk=2.4,
+        metadata={"setup_type": "breakout", "chase_block": False},
+    )
+
+    assert candidate.metadata["setup_type"] == "breakout"
+    assert candidate.metadata["chase_block"] is False
+    assert candidate.metadata["policy_version_input"] == "score-v1"
+    assert "pillar_scores" in candidate.metadata
+
+
 def test_score_market_features_sanitizes_non_finite_inputs() -> None:
     features = replace(
         _strong_features(),

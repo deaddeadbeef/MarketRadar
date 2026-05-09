@@ -4,6 +4,7 @@ from pathlib import Path
 from sqlalchemy import create_engine
 
 from catalyst_radar.connectors.csv_market import load_daily_bars_csv, load_securities_csv
+from catalyst_radar.core.config import AppConfig
 from catalyst_radar.core.models import DailyBar
 from catalyst_radar.dashboard.data import load_candidate_rows
 from catalyst_radar.pipeline.scan import run_scan
@@ -19,7 +20,11 @@ def test_scan_pipeline_produces_candidate_states() -> None:
     repo.upsert_securities(load_securities_csv(fixture_dir / "securities.csv"))
     repo.upsert_daily_bars(load_daily_bars_csv(fixture_dir / "daily_bars.csv"))
 
-    results = run_scan(repo, as_of=date(2026, 5, 8))
+    results = run_scan(
+        repo,
+        as_of=date(2026, 5, 8),
+        config=AppConfig(portfolio_value=100_000, portfolio_cash=25_000),
+    )
 
     states = {result.ticker: result.policy.state.value for result in results}
     assert states["AAA"] in {"AddToWatchlist", "Warning", "EligibleForManualBuyReview"}
@@ -58,7 +63,11 @@ def test_scan_pipeline_excludes_future_available_same_date_bar() -> None:
         lookback=10,
         available_at=datetime(2026, 5, 8, 21, tzinfo=UTC),
     )
-    results = run_scan(repo, as_of=date(2026, 5, 8))
+    results = run_scan(
+        repo,
+        as_of=date(2026, 5, 8),
+        config=AppConfig(portfolio_value=100_000, portfolio_cash=25_000),
+    )
     aaa = next(result for result in results if result.ticker == "AAA")
 
     assert gated_bars[-1].date == date(2026, 5, 7)
@@ -78,7 +87,11 @@ def test_dashboard_loads_candidate_rows() -> None:
     fixture_dir = Path("tests/fixtures")
     repo.upsert_securities(load_securities_csv(fixture_dir / "securities.csv"))
     repo.upsert_daily_bars(load_daily_bars_csv(fixture_dir / "daily_bars.csv"))
-    for result in run_scan(repo, as_of=date(2026, 5, 8)):
+    for result in run_scan(
+        repo,
+        as_of=date(2026, 5, 8),
+        config=AppConfig(portfolio_value=100_000, portfolio_cash=25_000),
+    ):
         repo.save_scan_result(result.candidate, result.policy)
 
     rows = load_candidate_rows(engine)

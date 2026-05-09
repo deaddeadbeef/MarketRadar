@@ -74,7 +74,6 @@ def positions_by_ticker(state: PortfolioState) -> dict[str, dict[str, Any]]:
             "shares": holding.shares,
         }
         for holding in state.holdings
-        for holding in state.holdings
         if holding.market_value > 0 or holding.shares > 0
     }
 

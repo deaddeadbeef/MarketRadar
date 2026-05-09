@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Any
 
 from catalyst_radar.core.models import CandidateSnapshot, MarketFeatures
 
@@ -64,8 +66,15 @@ def candidate_from_features(
     entry_zone: tuple[float, float] | None,
     invalidation_price: float | None,
     reward_risk: float,
+    metadata: Mapping[str, Any] | None = None,
 ) -> CandidateSnapshot:
     score = score_market_features(features, portfolio_penalty)
+    candidate_metadata = {
+        "policy_version_input": SCORE_VERSION,
+        "pillar_scores": score.pillar_scores,
+    }
+    if metadata is not None:
+        candidate_metadata.update(metadata)
     return CandidateSnapshot(
         ticker=features.ticker,
         as_of=features.as_of,
@@ -78,10 +87,7 @@ def candidate_from_features(
         entry_zone=entry_zone,
         invalidation_price=invalidation_price,
         reward_risk=reward_risk,
-        metadata={
-            "policy_version_input": SCORE_VERSION,
-            "pillar_scores": score.pillar_scores,
-        },
+        metadata=candidate_metadata,
     )
 
 
