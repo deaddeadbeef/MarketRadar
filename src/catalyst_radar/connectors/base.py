@@ -14,6 +14,10 @@ class ConnectorRecordKind(StrEnum):
     DAILY_BAR = "daily_bar"
     HOLDING = "holding"
     UNIVERSE_MEMBER = "universe_member"
+    EVENT = "event"
+    SEC_FILING = "sec_filing"
+    NEWS_ARTICLE = "news_article"
+    EARNINGS_EVENT = "earnings_event"
 
 
 class ConnectorHealthStatus(StrEnum):

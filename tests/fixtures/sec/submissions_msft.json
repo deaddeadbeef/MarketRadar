@@ -1,0 +1,15 @@
+{
+  "cik": "0000789019",
+  "ticker": "MSFT",
+  "name": "MICROSOFT CORP",
+  "filings": {
+    "recent": {
+      "accessionNumber": ["0000789019-26-000100", "0000789019-26-000101"],
+      "filingDate": ["2026-05-10", "2026-05-09"],
+      "acceptanceDateTime": ["2026-05-10T12:01:00Z", "2026-05-09T12:01:00Z"],
+      "form": ["8-K", "10-Q"],
+      "primaryDocument": ["msft-20260510x8k.htm", "msft-20260509x10q.htm"],
+      "items": ["Item 2.02 Results of Operations and Financial Condition", ""]
+    }
+  }
+}

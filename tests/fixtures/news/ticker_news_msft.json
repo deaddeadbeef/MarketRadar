@@ -1,0 +1,23 @@
+{
+  "ticker": "MSFT",
+  "articles": [
+    {
+      "source": "Reuters",
+      "source_category": "reputable_news",
+      "title": "Microsoft raises cloud guidance after earnings",
+      "body": "Microsoft raises guidance after stronger cloud demand.",
+      "url": "https://reuters.example.com/markets/msft-cloud?utm_source=feed",
+      "published_at": "2026-05-10T12:30:00Z",
+      "available_at": "2026-05-10T12:35:00Z"
+    },
+    {
+      "source": "Sponsored Stocks Daily",
+      "source_category": "promotional",
+      "title": "MSFT could double soon",
+      "body": "Sponsored promotional recap.",
+      "url": "https://promo.example.com/msft",
+      "published_at": "2026-05-10T12:31:00Z",
+      "available_at": "2026-05-10T12:31:00Z"
+    }
+  ]
+}

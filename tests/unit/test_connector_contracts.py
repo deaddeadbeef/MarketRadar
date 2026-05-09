@@ -29,6 +29,13 @@ def test_core_provider_enums_are_available() -> None:
     assert JobStatus.PARTIAL_SUCCESS.value == "partial_success"
 
 
+def test_event_connector_record_kinds_are_available() -> None:
+    assert ConnectorRecordKind.EVENT.value == "event"
+    assert ConnectorRecordKind.SEC_FILING.value == "sec_filing"
+    assert ConnectorRecordKind.NEWS_ARTICLE.value == "news_article"
+    assert ConnectorRecordKind.EARNINGS_EVENT.value == "earnings_event"
+
+
 def test_connector_request_rejects_blank_provider_and_missing_or_naive_timestamp() -> None:
     with pytest.raises(ValueError, match="provider"):
         ConnectorRequest(
