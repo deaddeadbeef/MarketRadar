@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from dataclasses import fields
 from datetime import UTC, date, datetime
+from typing import Any
+from uuid import uuid4
 
 from sqlalchemy import Engine, delete, insert, select
 
-from catalyst_radar.core.models import DailyBar, Security
-from catalyst_radar.storage.schema import daily_bars, securities
+from catalyst_radar.core.models import CandidateSnapshot, DailyBar, PolicyResult, Security
+from catalyst_radar.scoring.policy import POLICY_VERSION
+from catalyst_radar.storage.schema import candidate_states, daily_bars, securities, signal_features
 
 
 class MarketRepository:
@@ -109,8 +113,86 @@ class MarketRepository:
             for row in reversed(rows)
         ]
 
+    def save_scan_result(self, candidate: CandidateSnapshot, policy: PolicyResult) -> None:
+        pillar_scores = dict(candidate.metadata.get("pillar_scores", {}))
+        with self.engine.begin() as conn:
+            conn.execute(
+                delete(signal_features).where(
+                    signal_features.c.ticker == candidate.ticker,
+                    signal_features.c.as_of == candidate.as_of,
+                    signal_features.c.feature_version == candidate.features.feature_version,
+                )
+            )
+            conn.execute(
+                insert(signal_features).values(
+                    ticker=candidate.ticker,
+                    as_of=candidate.as_of,
+                    feature_version=candidate.features.feature_version,
+                    price_strength=pillar_scores.get("price_strength", 0.0),
+                    volume_score=pillar_scores.get("volume_liquidity", 0.0),
+                    liquidity_score=candidate.features.liquidity_score,
+                    risk_penalty=candidate.risk_penalty,
+                    portfolio_penalty=candidate.portfolio_penalty,
+                    final_score=candidate.final_score,
+                    payload=_candidate_payload(candidate, policy),
+                )
+            )
+            conn.execute(
+                insert(candidate_states).values(
+                    id=str(uuid4()),
+                    ticker=candidate.ticker,
+                    as_of=candidate.as_of,
+                    state=policy.state.value,
+                    previous_state=None,
+                    final_score=candidate.final_score,
+                    score_delta_5d=0.0,
+                    hard_blocks=list(policy.hard_blocks),
+                    transition_reasons=list(policy.reasons),
+                    feature_version=candidate.features.feature_version,
+                    policy_version=POLICY_VERSION,
+                    created_at=datetime.now(UTC),
+                )
+            )
+
 
 def _as_datetime(value: datetime) -> datetime:
     if value.tzinfo is None or value.utcoffset() is None:
         return value.replace(tzinfo=UTC)
     return value.astimezone(UTC)
+
+
+def _candidate_payload(candidate: CandidateSnapshot, policy: PolicyResult) -> dict[str, Any]:
+    return {
+        "candidate": {
+            "ticker": candidate.ticker,
+            "as_of": candidate.as_of.isoformat(),
+            "features": _features_payload(candidate),
+            "final_score": candidate.final_score,
+            "strong_pillars": candidate.strong_pillars,
+            "risk_penalty": candidate.risk_penalty,
+            "portfolio_penalty": candidate.portfolio_penalty,
+            "data_stale": candidate.data_stale,
+            "entry_zone": list(candidate.entry_zone) if candidate.entry_zone else None,
+            "invalidation_price": candidate.invalidation_price,
+            "reward_risk": candidate.reward_risk,
+            "metadata": dict(candidate.metadata),
+        },
+        "policy": {
+            "state": policy.state.value,
+            "hard_blocks": list(policy.hard_blocks),
+            "reasons": list(policy.reasons),
+            "missing_trade_plan": list(policy.missing_trade_plan),
+            "policy_version": POLICY_VERSION,
+        },
+    }
+
+
+def _features_payload(candidate: CandidateSnapshot) -> dict[str, Any]:
+    payload = {}
+    for field in fields(candidate.features):
+        value = getattr(candidate.features, field.name)
+        if isinstance(value, (date, datetime)):
+            payload[field.name] = value.isoformat()
+        else:
+            payload[field.name] = value
+    return payload
