@@ -2,6 +2,10 @@
 
 Date: 2026-05-09
 
+Integrated to `main`: `23916c5 merge: integrate phase 1 deterministic mvp`
+
+Post-merge verification date: 2026-05-10
+
 ## What works
 
 - Local CSV securities ingest.
@@ -46,4 +50,5 @@ scanned candidates=3
 
 ## Recommended next phase
 
-Phase 2 should add event and local text intelligence after the deterministic scanner has been reviewed on real daily-bar data.
+Follow the full product plan in `docs/superpowers/plans/2026-05-09-full-product-implementation.md`.
+The next implementation phase should be production data foundation: provider-ready connector contracts, raw and normalized provider storage, provider health, job runs, data-quality incidents, and universe snapshots.
