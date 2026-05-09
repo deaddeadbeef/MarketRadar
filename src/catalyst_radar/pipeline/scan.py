@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, time
 
 import pandas as pd
@@ -9,6 +9,7 @@ from catalyst_radar.core.models import CandidateSnapshot, DailyBar, PolicyResult
 from catalyst_radar.features.market import compute_market_features
 from catalyst_radar.scoring.policy import evaluate_policy
 from catalyst_radar.scoring.score import candidate_from_features
+from catalyst_radar.scoring.setup_policies import select_setup_plan
 from catalyst_radar.storage.repositories import MarketRepository
 
 SECTOR_ETF = {"Technology": "XLK", "Industrials": "XLI"}
@@ -82,14 +83,29 @@ def run_scan(
             benchmark_cache["SPY"],
             benchmark_cache[sector_ticker],
         )
-        entry_zone, invalidation_price, reward_risk = _basic_trade_plan(ticker_bars)
+        setup_plan = select_setup_plan(ticker_bars, features)
         candidate = candidate_from_features(
             features,
             portfolio_penalty=0.0,
             data_stale=_is_data_stale(ticker_bars, as_of),
-            entry_zone=entry_zone,
-            invalidation_price=invalidation_price,
-            reward_risk=reward_risk,
+            entry_zone=setup_plan.entry_zone,
+            invalidation_price=setup_plan.invalidation_price,
+            reward_risk=setup_plan.reward_risk,
+        )
+        setup_metadata = {
+            "setup_type": setup_plan.setup_type.value,
+            "setup_reasons": setup_plan.reasons,
+            "chase_block": setup_plan.chase_block,
+            "setup_metadata": setup_plan.metadata,
+        }
+        if setup_plan.target_price is not None:
+            setup_metadata["target_price"] = setup_plan.target_price
+        candidate = replace(
+            candidate,
+            metadata={
+                **candidate.metadata,
+                **setup_metadata,
+            },
         )
         results.append(
             ScanResult(
@@ -118,21 +134,6 @@ def _bars_frame(bars: list[DailyBar]) -> pd.DataFrame:
             for bar in bars
         ]
     )
-
-
-def _basic_trade_plan(
-    bars: list[DailyBar],
-) -> tuple[tuple[float, float] | None, float | None, float]:
-    latest = bars[-1]
-    if latest.close <= 0:
-        return None, None, 0.0
-
-    entry_zone = (round(latest.close * 0.98, 2), round(latest.close * 1.02, 2))
-    invalidation_price = round(latest.close * 0.92, 2)
-    target_price = latest.close * 1.20
-    downside = latest.close - invalidation_price
-    reward_risk = 0.0 if downside <= 0 else round((target_price - latest.close) / downside, 2)
-    return entry_zone, invalidation_price, reward_risk
 
 
 def _is_data_stale(bars: list[DailyBar], as_of: date) -> bool:
