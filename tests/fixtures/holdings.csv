@@ -1,2 +1,2 @@
-ticker,shares,market_value,sector,theme,as_of
-AAA,20,2000,Technology,ai_infrastructure,2026-05-08T20:00:00Z
+ticker,shares,market_value,sector,theme,as_of,portfolio_value,cash
+AAA,20,2000,Technology,ai_infrastructure,2026-05-08T20:00:00Z,100000,25000

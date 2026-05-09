@@ -310,6 +310,8 @@ def _holding_from_payload(payload: Mapping[str, Any]) -> HoldingSnapshot:
         sector=str(payload["sector"]),
         theme=str(payload["theme"]),
         as_of=_parse_datetime(payload["as_of"]),
+        portfolio_value=float(payload.get("portfolio_value", 0.0) or 0.0),
+        cash=float(payload.get("cash", 0.0) or 0.0),
     )
 
 

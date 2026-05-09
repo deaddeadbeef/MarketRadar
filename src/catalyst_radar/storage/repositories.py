@@ -118,6 +118,8 @@ class MarketRepository:
                     sector=row.sector,
                     theme=row.theme,
                     as_of=_as_datetime(row.as_of),
+                    portfolio_value=row.portfolio_value or 0.0,
+                    cash=row.cash or 0.0,
                 )
                 for row in conn.execute(stmt)
             ]
@@ -273,6 +275,8 @@ def _upsert_holdings(conn: Connection, rows: Iterable[HoldingSnapshot]) -> None:
                 market_value=row.market_value,
                 sector=row.sector,
                 theme=row.theme,
+                portfolio_value=row.portfolio_value,
+                cash=row.cash,
             )
         )
 

@@ -61,6 +61,8 @@ class AppConfig:
     max_single_name_pct: float = 0.08
     max_sector_pct: float = 0.30
     max_theme_pct: float = 0.35
+    portfolio_value: float = 0.0
+    portfolio_cash: float = 0.0
     enable_premium_llm: bool = False
     market_provider: str = "csv"
     polygon_api_key: str | None = None
@@ -93,6 +95,8 @@ class AppConfig:
             max_single_name_pct=_float(source, "CATALYST_MAX_SINGLE_NAME_PCT", 0.08),
             max_sector_pct=_float(source, "CATALYST_MAX_SECTOR_PCT", 0.30),
             max_theme_pct=_float(source, "CATALYST_MAX_THEME_PCT", 0.35),
+            portfolio_value=_float(source, "CATALYST_PORTFOLIO_VALUE", 0.0),
+            portfolio_cash=_float(source, "CATALYST_PORTFOLIO_CASH", 0.0),
             enable_premium_llm=_bool(source.get("CATALYST_ENABLE_PREMIUM_LLM"), False),
             market_provider=source.get("CATALYST_MARKET_PROVIDER", "csv"),
             polygon_api_key=_optional_str(source, "CATALYST_POLYGON_API_KEY"),

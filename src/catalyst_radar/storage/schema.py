@@ -95,6 +95,8 @@ holdings_snapshots = Table(
     Column("market_value", Float, nullable=False),
     Column("sector", String, nullable=False),
     Column("theme", String, nullable=False),
+    Column("portfolio_value", Float, server_default=text("0")),
+    Column("cash", Float, server_default=text("0")),
 )
 
 raw_provider_records = Table(

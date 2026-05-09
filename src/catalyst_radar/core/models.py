@@ -76,6 +76,8 @@ class HoldingSnapshot:
     sector: str
     theme: str
     as_of: datetime
+    portfolio_value: float = 0.0
+    cash: float = 0.0
 
 
 @dataclass(frozen=True)

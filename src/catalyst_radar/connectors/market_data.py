@@ -325,6 +325,8 @@ def _normalize_holding_payload(record: Mapping[str, Any]) -> dict[str, Any]:
         "sector": str(record["sector"]),
         "theme": str(record["theme"]),
         "as_of": _to_strict_utc_datetime(record["as_of"], "as_of").isoformat(),
+        "portfolio_value": _optional_float(record, "portfolio_value"),
+        "cash": _optional_float(record, "cash"),
     }
 
 
@@ -378,6 +380,8 @@ def _validate_required_values(kind: ConnectorRecordKind, record: Mapping[str, An
         _require_fields(record, ("ticker", "shares", "market_value", "sector", "theme"))
         float(record["shares"])
         float(record["market_value"])
+        _optional_float(record, "portfolio_value")
+        _optional_float(record, "cash")
         return
     msg = f"unsupported csv record kind: {kind}"
     raise ValueError(msg)
@@ -424,6 +428,13 @@ def _is_missing(value: Any) -> bool:
         return bool(pd.isna(value))
     except (TypeError, ValueError):
         return False
+
+
+def _optional_float(record: Mapping[str, Any], field: str) -> float:
+    value = record.get(field)
+    if _is_missing(value):
+        return 0.0
+    return float(value)
 
 
 def _to_strict_utc_datetime(value: object, field: str) -> datetime:
