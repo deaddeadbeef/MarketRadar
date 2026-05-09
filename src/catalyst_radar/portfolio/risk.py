@@ -82,6 +82,7 @@ def evaluate_portfolio_impact(
     proposed_notional: float,
     policy: PortfolioPolicy | None = None,
     max_loss: float | None = None,
+    available_cash: float | None = None,
 ) -> PortfolioImpact:
     active_policy = policy or PortfolioPolicy()
     account_equity = _finite_positive(account_equity)
@@ -104,6 +105,11 @@ def evaluate_portfolio_impact(
     if proposed_notional <= 0:
         hard_blocks.append("invalid_portfolio_input")
         penalty += 25.0
+    if available_cash is not None:
+        cash_value = _finite_non_negative(available_cash)
+        if proposed_notional > 0 and cash_value < proposed_notional:
+            hard_blocks.append("insufficient_cash_hard_block")
+            penalty += 25.0
 
     existing_name = 0.0
     sector_notional = 0.0

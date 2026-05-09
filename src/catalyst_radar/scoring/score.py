@@ -69,12 +69,13 @@ def candidate_from_features(
     metadata: Mapping[str, Any] | None = None,
 ) -> CandidateSnapshot:
     score = score_market_features(features, portfolio_penalty)
-    candidate_metadata = {
+    candidate_metadata = dict(metadata or {})
+    candidate_metadata.update(
+        {
         "policy_version_input": SCORE_VERSION,
         "pillar_scores": score.pillar_scores,
-    }
-    if metadata is not None:
-        candidate_metadata.update(metadata)
+        }
+    )
     return CandidateSnapshot(
         ticker=features.ticker,
         as_of=features.as_of,

@@ -176,3 +176,18 @@ def test_evaluate_portfolio_impact_blocks_zero_proposed_notional() -> None:
 
     assert impact.proposed_notional == 0.0
     assert "invalid_portfolio_input" in impact.hard_blocks
+
+
+def test_evaluate_portfolio_impact_blocks_insufficient_cash() -> None:
+    impact = evaluate_portfolio_impact(
+        ticker="AAA",
+        sector="Technology",
+        theme="AI",
+        account_equity=100_000,
+        current_positions={},
+        proposed_notional=8_000,
+        available_cash=5_000,
+    )
+
+    assert "insufficient_cash_hard_block" in impact.hard_blocks
+    assert impact.portfolio_penalty > 0

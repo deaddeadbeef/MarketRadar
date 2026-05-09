@@ -191,6 +191,13 @@ class MarketRepository:
             )
             _save_portfolio_impact(conn, candidate)
             conn.execute(
+                delete(candidate_states).where(
+                    candidate_states.c.ticker == candidate.ticker,
+                    candidate_states.c.as_of == candidate.as_of,
+                    candidate_states.c.feature_version == candidate.features.feature_version,
+                )
+            )
+            conn.execute(
                 insert(candidate_states).values(
                     id=str(uuid4()),
                     ticker=candidate.ticker,

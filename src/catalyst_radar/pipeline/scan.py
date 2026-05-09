@@ -10,7 +10,11 @@ import pandas as pd
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.core.models import CandidateSnapshot, DailyBar, PolicyResult, PortfolioImpact
 from catalyst_radar.features.market import compute_market_features
-from catalyst_radar.portfolio.holdings import latest_portfolio_state, positions_by_ticker
+from catalyst_radar.portfolio.holdings import (
+    PortfolioState,
+    latest_portfolio_state,
+    positions_by_ticker,
+)
 from catalyst_radar.portfolio.risk import (
     PortfolioPolicy,
     PositionSize,
@@ -128,6 +132,7 @@ def run_scan(
             proposed_notional=position_size.notional,
             policy=portfolio_policy,
             max_loss=position_size.risk_amount,
+            available_cash=portfolio_state.cash,
         )
         candidate_metadata = {
             **_setup_metadata(setup_plan),
@@ -141,6 +146,11 @@ def run_scan(
                 "input_warnings": list(portfolio_state.input_warnings),
             },
             "candidate_theme": candidate_theme,
+            "source_ts": _impact_source_ts(ticker_bars, portfolio_state).isoformat(),
+            "available_at": _impact_available_at(
+                ticker_bars,
+                portfolio_state,
+            ).isoformat(),
         }
         candidate = candidate_from_features(
             features,
@@ -182,6 +192,18 @@ def _bars_frame(bars: list[DailyBar]) -> pd.DataFrame:
 
 def _is_data_stale(bars: list[DailyBar], as_of: date) -> bool:
     return bars[-1].date < as_of
+
+
+def _impact_source_ts(bars: list[DailyBar], portfolio_state: PortfolioState) -> datetime:
+    if portfolio_state.source == "config_fallback":
+        return bars[-1].source_ts
+    return max(bars[-1].source_ts, portfolio_state.as_of)
+
+
+def _impact_available_at(bars: list[DailyBar], portfolio_state: PortfolioState) -> datetime:
+    if portfolio_state.source == "config_fallback":
+        return bars[-1].available_at
+    return max(bars[-1].available_at, portfolio_state.as_of)
 
 
 def _position_entry_price(setup_plan: SetupPlan) -> float:

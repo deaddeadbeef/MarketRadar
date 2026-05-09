@@ -1,15 +1,16 @@
 from datetime import UTC, date, datetime
 from pathlib import Path
 
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, func, select
 
 from catalyst_radar.connectors.csv_market import load_daily_bars_csv, load_securities_csv
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.core.models import ActionState, HoldingSnapshot
+from catalyst_radar.dashboard.data import load_candidate_rows
 from catalyst_radar.pipeline.scan import run_scan
 from catalyst_radar.storage.db import create_schema
 from catalyst_radar.storage.repositories import MarketRepository
-from catalyst_radar.storage.schema import portfolio_impacts
+from catalyst_radar.storage.schema import candidate_states, portfolio_impacts
 
 
 def test_scan_blocks_excessive_existing_single_name_exposure() -> None:
@@ -91,8 +92,8 @@ def test_save_scan_result_persists_portfolio_impact_evidence() -> None:
     assert row.ticker == "AAA"
     assert row.as_of == result.candidate.as_of.replace(tzinfo=None)
     assert row.setup_type == result.candidate.metadata["setup_type"]
-    assert row.source_ts == result.candidate.as_of.replace(tzinfo=None)
-    assert row.available_at == result.candidate.as_of.replace(tzinfo=None)
+    assert row.source_ts == datetime(2026, 5, 8, 20, tzinfo=UTC).replace(tzinfo=None)
+    assert row.available_at == datetime(2026, 5, 8, 21, tzinfo=UTC).replace(tzinfo=None)
     assert row.proposed_notional == impact["proposed_notional"]
     assert row.max_loss == impact["max_loss"]
     assert row.single_name_before_pct == impact["single_name_before_pct"]
@@ -103,6 +104,42 @@ def test_save_scan_result_persists_portfolio_impact_evidence() -> None:
     assert row.payload["portfolio_impact"]["hard_blocks"] == list(impact["hard_blocks"])
     assert row.payload["candidate"]["setup_type"] == result.candidate.metadata["setup_type"]
     assert row.payload["candidate"]["entry_zone"] == list(result.candidate.entry_zone)
+
+
+def test_save_scan_result_is_idempotent_for_dashboard_rows() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    create_schema(engine)
+    repo = MarketRepository(engine)
+    fixture_dir = Path("tests/fixtures")
+    repo.upsert_securities(load_securities_csv(fixture_dir / "securities.csv"))
+    repo.upsert_daily_bars(load_daily_bars_csv(fixture_dir / "daily_bars.csv"))
+    result = _scan_result(repo, "AAA")
+
+    repo.save_scan_result(result.candidate, result.policy)
+    repo.save_scan_result(result.candidate, result.policy)
+
+    with engine.connect() as conn:
+        state_count = conn.scalar(select(func.count()).select_from(candidate_states))
+        impact_count = conn.scalar(select(func.count()).select_from(portfolio_impacts))
+    rows = load_candidate_rows(engine)
+
+    assert state_count == 1
+    assert impact_count == 1
+    assert len([row for row in rows if row["ticker"] == "AAA"]) == 1
+
+
+def test_scan_blocks_when_cash_cannot_fund_proposed_notional() -> None:
+    repo = _repo_with_fixtures()
+
+    result = _scan_result(
+        repo,
+        "AAA",
+        config=AppConfig(portfolio_value=100_000, portfolio_cash=1_000),
+    )
+
+    assert result.policy.state == ActionState.BLOCKED
+    assert "insufficient_cash_hard_block" in result.policy.hard_blocks
+    assert result.candidate.metadata["portfolio_impact"]["proposed_notional"] > 1_000
 
 
 def test_missing_account_value_blocks_buy_review_fail_closed() -> None:
