@@ -65,6 +65,71 @@ def test_raw_daily_bar_missing_available_at_is_rejected_before_normalization(
     assert "available_at" in rejected.reason
 
 
+def test_naive_daily_bar_source_ts_is_rejected_before_normalization(
+    tmp_path: Path,
+) -> None:
+    daily_bars_csv = tmp_path / "daily_bars_naive_source_ts.csv"
+    daily_bars_csv.write_text(
+        "\n".join(
+            [
+                "ticker,date,open,high,low,close,volume,vwap,adjusted,provider,"
+                "source_ts,available_at",
+                "BAD,2026-05-08,1,2,1,2,1000,2,true,sample,2026-05-08T20:00:00,"
+                "2026-05-08T21:00:00Z",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    connector = CsvMarketDataConnector(
+        securities_path="tests/fixtures/securities.csv",
+        daily_bars_path=daily_bars_csv,
+    )
+
+    raw_records = connector.fetch(_request())
+
+    assert not [
+        record
+        for record in raw_records
+        if record.kind == ConnectorRecordKind.DAILY_BAR
+    ]
+    rejected = connector.rejected_payloads[0]
+    assert rejected.severity == DataQualitySeverity.ERROR
+    assert "source_ts must include timezone information" in rejected.reason
+
+
+def test_naive_daily_bar_available_at_fails_closed(
+    tmp_path: Path,
+) -> None:
+    daily_bars_csv = tmp_path / "daily_bars_naive_available_at.csv"
+    daily_bars_csv.write_text(
+        "\n".join(
+            [
+                "ticker,date,open,high,low,close,volume,vwap,adjusted,provider,"
+                "source_ts,available_at",
+                "BAD,2026-05-08,1,2,1,2,1000,2,true,sample,2026-05-08T20:00:00Z,"
+                "2026-05-08T21:00:00",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    connector = CsvMarketDataConnector(
+        securities_path="tests/fixtures/securities.csv",
+        daily_bars_path=daily_bars_csv,
+    )
+
+    raw_records = connector.fetch(_request())
+
+    assert not [
+        record
+        for record in raw_records
+        if record.kind == ConnectorRecordKind.DAILY_BAR
+    ]
+    rejected = connector.rejected_payloads[0]
+    assert rejected.severity == DataQualitySeverity.CRITICAL
+    assert rejected.fail_closed_action == "abort-ingest"
+    assert "available_at must include timezone information" in rejected.reason
+
+
 def test_normalized_daily_bar_missing_available_at_is_rejected_before_persistence() -> None:
     engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
     create_schema(engine)
@@ -129,4 +194,13 @@ def _future_available_bullish_bar() -> DailyBar:
         provider="sample",
         source_ts=datetime(2026, 5, 8, 22, tzinfo=UTC),
         available_at=datetime(2026, 5, 8, 22, tzinfo=UTC),
+    )
+
+
+def _request() -> ConnectorRequest:
+    return ConnectorRequest(
+        provider="csv",
+        endpoint="csv_ingest",
+        params={},
+        requested_at=datetime(2026, 5, 8, 21, tzinfo=UTC),
     )

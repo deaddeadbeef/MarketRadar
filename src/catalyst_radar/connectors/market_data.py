@@ -19,7 +19,7 @@ from catalyst_radar.connectors.base import (
     ProviderCostEstimate,
     RawRecord,
 )
-from catalyst_radar.connectors.csv_market import _to_bool, _to_utc_datetime
+from catalyst_radar.connectors.csv_market import _to_bool
 from catalyst_radar.core.immutability import freeze_mapping, thaw_json_value
 from catalyst_radar.core.models import DataQualitySeverity
 
@@ -261,12 +261,15 @@ def _timestamps_for_kind(
     record: Mapping[str, Any],
 ) -> tuple[datetime, datetime]:
     if kind == ConnectorRecordKind.SECURITY:
-        updated_at = _to_utc_datetime(record["updated_at"])
+        updated_at = _to_strict_utc_datetime(record["updated_at"], "updated_at")
         return updated_at, updated_at
     if kind == ConnectorRecordKind.DAILY_BAR:
-        return _to_utc_datetime(record["source_ts"]), _to_utc_datetime(record["available_at"])
+        return (
+            _to_strict_utc_datetime(record["source_ts"], "source_ts"),
+            _to_strict_utc_datetime(record["available_at"], "available_at"),
+        )
     if kind == ConnectorRecordKind.HOLDING:
-        as_of = _to_utc_datetime(record["as_of"])
+        as_of = _to_strict_utc_datetime(record["as_of"], "as_of")
         return as_of, as_of
     msg = f"unsupported csv record kind: {kind}"
     raise ValueError(msg)
@@ -291,7 +294,7 @@ def _normalize_security_payload(record: Mapping[str, Any]) -> dict[str, Any]:
         "avg_dollar_volume_20d": float(record["avg_dollar_volume_20d"]),
         "has_options": _to_bool(record["has_options"], "has_options"),
         "is_active": _to_bool(record["is_active"], "is_active"),
-        "updated_at": _to_utc_datetime(record["updated_at"]).isoformat(),
+        "updated_at": _to_strict_utc_datetime(record["updated_at"], "updated_at").isoformat(),
     }
 
 
@@ -307,8 +310,10 @@ def _normalize_daily_bar_payload(record: Mapping[str, Any]) -> dict[str, Any]:
         "vwap": float(record["vwap"]),
         "adjusted": _to_bool(record["adjusted"], "adjusted"),
         "provider": str(record["provider"]),
-        "source_ts": _to_utc_datetime(record["source_ts"]).isoformat(),
-        "available_at": _to_utc_datetime(record["available_at"]).isoformat(),
+        "source_ts": _to_strict_utc_datetime(record["source_ts"], "source_ts").isoformat(),
+        "available_at": _to_strict_utc_datetime(
+            record["available_at"], "available_at"
+        ).isoformat(),
     }
 
 
@@ -319,7 +324,7 @@ def _normalize_holding_payload(record: Mapping[str, Any]) -> dict[str, Any]:
         "market_value": float(record["market_value"]),
         "sector": str(record["sector"]),
         "theme": str(record["theme"]),
-        "as_of": _to_utc_datetime(record["as_of"]).isoformat(),
+        "as_of": _to_strict_utc_datetime(record["as_of"], "as_of").isoformat(),
     }
 
 
@@ -419,6 +424,14 @@ def _is_missing(value: Any) -> bool:
         return bool(pd.isna(value))
     except (TypeError, ValueError):
         return False
+
+
+def _to_strict_utc_datetime(value: object, field: str) -> datetime:
+    parsed = pd.Timestamp(value).to_pydatetime()
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        msg = f"{field} must include timezone information"
+        raise ValueError(msg)
+    return parsed.astimezone(UTC)
 
 
 def _hash_payload(payload: Mapping[str, Any]) -> str:
