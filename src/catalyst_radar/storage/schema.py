@@ -242,6 +242,50 @@ events = Table(
     Column("created_at", DateTime(timezone=True), nullable=False),
 )
 
+text_snippets = Table(
+    "text_snippets",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("ticker", String, nullable=False),
+    Column("event_id", String, nullable=False),
+    Column("snippet_hash", String, nullable=False),
+    Column("section", String, nullable=False),
+    Column("text", Text, nullable=False),
+    Column("source", Text, nullable=False),
+    Column("source_url", Text),
+    Column("source_quality", Float, nullable=False),
+    Column("event_type", String, nullable=False),
+    Column("materiality", Float, nullable=False),
+    Column("ontology_hits", json_type, nullable=False),
+    Column("sentiment", Float, nullable=False),
+    Column("embedding", json_type, nullable=False),
+    Column("source_ts", DateTime(timezone=True), nullable=False),
+    Column("available_at", DateTime(timezone=True), nullable=False),
+    Column("payload", json_type, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+
+text_features = Table(
+    "text_features",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("ticker", String, nullable=False),
+    Column("as_of", DateTime(timezone=True), nullable=False),
+    Column("feature_version", String, nullable=False),
+    Column("local_narrative_score", Float, nullable=False),
+    Column("novelty_score", Float, nullable=False),
+    Column("sentiment_score", Float, nullable=False),
+    Column("source_quality_score", Float, nullable=False),
+    Column("theme_match_score", Float, nullable=False),
+    Column("conflict_penalty", Float, nullable=False),
+    Column("selected_snippet_ids", json_type, nullable=False),
+    Column("theme_hits", json_type, nullable=False),
+    Column("source_ts", DateTime(timezone=True), nullable=False),
+    Column("available_at", DateTime(timezone=True), nullable=False),
+    Column("payload", json_type, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+
 Index(
     "ix_daily_bars_ticker_date_available_at",
     daily_bars.c.ticker,
@@ -294,3 +338,27 @@ Index(
 Index("ux_events_dedupe_key", events.c.dedupe_key, unique=True)
 Index("ix_events_ticker_available_at", events.c.ticker, events.c.available_at)
 Index("ix_events_type_materiality", events.c.event_type, events.c.materiality)
+Index(
+    "ux_text_snippets_event_hash",
+    text_snippets.c.event_id,
+    text_snippets.c.snippet_hash,
+    unique=True,
+)
+Index(
+    "ix_text_snippets_ticker_available_at",
+    text_snippets.c.ticker,
+    text_snippets.c.available_at,
+)
+Index("ix_text_snippets_snippet_hash", text_snippets.c.snippet_hash)
+Index(
+    "ux_text_features_ticker_as_of_version",
+    text_features.c.ticker,
+    text_features.c.as_of,
+    text_features.c.feature_version,
+    unique=True,
+)
+Index(
+    "ix_text_features_ticker_available_at",
+    text_features.c.ticker,
+    text_features.c.available_at,
+)
