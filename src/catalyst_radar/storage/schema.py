@@ -286,6 +286,26 @@ text_features = Table(
     Column("created_at", DateTime(timezone=True), nullable=False),
 )
 
+option_features = Table(
+    "option_features",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("ticker", String, nullable=False),
+    Column("as_of", DateTime(timezone=True), nullable=False),
+    Column("provider", String, nullable=False),
+    Column("call_volume", Float, nullable=False),
+    Column("put_volume", Float, nullable=False),
+    Column("call_open_interest", Float, nullable=False),
+    Column("put_open_interest", Float, nullable=False),
+    Column("iv_percentile", Float, nullable=False),
+    Column("skew", Float, nullable=False),
+    Column("abnormality_score", Float, nullable=False),
+    Column("source_ts", DateTime(timezone=True), nullable=False),
+    Column("available_at", DateTime(timezone=True), nullable=False),
+    Column("payload", json_type, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+
 Index(
     "ix_daily_bars_ticker_date_available_at",
     daily_bars.c.ticker,
@@ -361,4 +381,15 @@ Index(
     "ix_text_features_ticker_available_at",
     text_features.c.ticker,
     text_features.c.available_at,
+)
+Index(
+    "ix_option_features_ticker_as_of_provider",
+    option_features.c.ticker,
+    option_features.c.as_of,
+    option_features.c.provider,
+)
+Index(
+    "ix_option_features_ticker_available_at",
+    option_features.c.ticker,
+    option_features.c.available_at,
 )
