@@ -221,6 +221,27 @@ universe_members = Table(
     Column("metadata", json_type, nullable=False),
 )
 
+events = Table(
+    "events",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("ticker", String, nullable=False),
+    Column("event_type", String, nullable=False),
+    Column("provider", String, nullable=False),
+    Column("source", Text, nullable=False),
+    Column("source_category", String, nullable=False),
+    Column("source_url", Text),
+    Column("title", Text, nullable=False),
+    Column("body_hash", String, nullable=False),
+    Column("dedupe_key", String, nullable=False),
+    Column("source_quality", Float, nullable=False),
+    Column("materiality", Float, nullable=False),
+    Column("source_ts", DateTime(timezone=True), nullable=False),
+    Column("available_at", DateTime(timezone=True), nullable=False),
+    Column("payload", json_type, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+
 Index(
     "ix_daily_bars_ticker_date_available_at",
     daily_bars.c.ticker,
@@ -270,3 +291,6 @@ Index(
     universe_members.c.rank,
     universe_members.c.ticker,
 )
+Index("ux_events_dedupe_key", events.c.dedupe_key, unique=True)
+Index("ix_events_ticker_available_at", events.c.ticker, events.c.available_at)
+Index("ix_events_type_materiality", events.c.event_type, events.c.materiality)
