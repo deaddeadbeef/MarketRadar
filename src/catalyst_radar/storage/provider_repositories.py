@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
@@ -324,6 +325,60 @@ class ProviderRepository:
         with self.engine.connect() as conn:
             return [row.ticker for row in conn.execute(stmt)]
 
+    def latest_universe_snapshot(
+        self,
+        *,
+        name: str,
+        as_of: datetime,
+        available_at: datetime,
+    ) -> UniverseSnapshotRecord | None:
+        stmt = (
+            select(universe_snapshots)
+            .where(
+                universe_snapshots.c.name == name,
+                universe_snapshots.c.as_of <= _to_utc_datetime(as_of),
+                universe_snapshots.c.available_at <= _to_utc_datetime(available_at),
+            )
+            .order_by(
+                universe_snapshots.c.as_of.desc(),
+                universe_snapshots.c.available_at.desc(),
+                universe_snapshots.c.id.desc(),
+            )
+            .limit(1)
+        )
+        with self.engine.connect() as conn:
+            row = conn.execute(stmt).first()
+        if row is None:
+            return None
+        return UniverseSnapshotRecord(
+            id=row.id,
+            name=row.name,
+            as_of=_as_datetime(row.as_of),
+            provider=row.provider,
+            source_ts=_as_datetime(row.source_ts),
+            available_at=_as_datetime(row.available_at),
+            member_count=row.member_count,
+            metadata=row._mapping["metadata"],
+        )
+
+    def list_universe_member_rows(self, snapshot_id: str) -> list[UniverseMemberRecord]:
+        stmt = (
+            select(universe_members)
+            .where(universe_members.c.snapshot_id == snapshot_id)
+            .order_by(universe_members.c.rank, universe_members.c.ticker)
+        )
+        with self.engine.connect() as conn:
+            return [
+                UniverseMemberRecord(
+                    snapshot_id=row.snapshot_id,
+                    ticker=row.ticker,
+                    reason=row.reason,
+                    rank=row.rank,
+                    metadata=row._mapping["metadata"],
+                )
+                for row in conn.execute(stmt)
+            ]
+
 
 def replay_normalized_records(
     raw_records: Sequence[RawRecord],
@@ -342,6 +397,27 @@ def replay_normalized_records(
             msg = "normalized records must include available_at"
             raise ValueError(msg)
     return normalized_records
+
+
+@dataclass(frozen=True)
+class UniverseSnapshotRecord:
+    id: str
+    name: str
+    as_of: datetime
+    provider: str
+    source_ts: datetime
+    available_at: datetime
+    member_count: int
+    metadata: Mapping[str, Any]
+
+
+@dataclass(frozen=True)
+class UniverseMemberRecord:
+    snapshot_id: str
+    ticker: str
+    reason: str
+    rank: int | None
+    metadata: Mapping[str, Any]
 
 
 def _as_datetime(value: datetime) -> datetime:
@@ -380,5 +456,7 @@ def _universe_member_row(snapshot_id: str, member: str | Mapping[str, Any]) -> d
 
 __all__ = [
     "ProviderRepository",
+    "UniverseMemberRecord",
+    "UniverseSnapshotRecord",
     "replay_normalized_records",
 ]
