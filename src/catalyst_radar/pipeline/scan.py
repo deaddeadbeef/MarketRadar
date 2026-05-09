@@ -23,11 +23,20 @@ class ScanResult:
     policy: PolicyResult
 
 
-def run_scan(repo: MarketRepository, as_of: date) -> list[ScanResult]:
+def run_scan(
+    repo: MarketRepository,
+    as_of: date,
+    *,
+    universe_tickers: set[str] | None = None,
+) -> list[ScanResult]:
     as_of_dt = datetime.combine(as_of, time(21), tzinfo=UTC)
+    if universe_tickers is None:
+        candidate_securities = repo.list_active_securities()
+    else:
+        candidate_securities = repo.list_active_securities_by_tickers(universe_tickers)
     securities = [
         security
-        for security in repo.list_active_securities()
+        for security in candidate_securities
         if security.ticker not in EXCLUDED_SCAN_TICKERS
     ]
     spy_bars = repo.daily_bars(

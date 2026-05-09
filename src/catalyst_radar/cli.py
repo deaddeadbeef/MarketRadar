@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -28,6 +28,8 @@ from catalyst_radar.pipeline.scan import run_scan
 from catalyst_radar.storage.db import create_schema, engine_from_url
 from catalyst_radar.storage.provider_repositories import ProviderRepository
 from catalyst_radar.storage.repositories import MarketRepository
+from catalyst_radar.universe.builder import UniverseBuilder
+from catalyst_radar.universe.filters import UniverseFilterConfig
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -51,6 +53,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     scan = subparsers.add_parser("scan")
     scan.add_argument("--as-of", type=date.fromisoformat, required=True)
+    scan.add_argument("--universe")
+
+    build_universe = subparsers.add_parser("build-universe")
+    build_universe.add_argument("--name")
+    build_universe.add_argument("--provider")
+    build_universe.add_argument("--as-of", type=date.fromisoformat, required=True)
 
     provider_health = subparsers.add_parser("provider-health")
     provider_health.add_argument("--provider", required=True)
@@ -113,10 +121,44 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "scan":
         create_schema(engine)
         repo = MarketRepository(engine)
-        results = run_scan(repo, as_of=args.as_of)
+        provider_repo = ProviderRepository(engine)
+        universe_tickers = _universe_tickers_for_scan(
+            provider_repo=provider_repo,
+            universe_name=args.universe,
+            as_of=args.as_of,
+        )
+        if args.universe is not None and universe_tickers is None:
+            print(f"universe not found: {args.universe}", file=sys.stderr)
+            return 1
+        results = run_scan(repo, as_of=args.as_of, universe_tickers=universe_tickers)
         for result in results:
             repo.save_scan_result(result.candidate, result.policy)
         print(f"scanned candidates={len(results)}")
+        return 0
+
+    if args.command == "build-universe":
+        create_schema(engine)
+        market_repo = MarketRepository(engine)
+        provider_repo = ProviderRepository(engine)
+        as_of_dt = _scan_timestamp(args.as_of)
+        builder = UniverseBuilder(
+            market_repo=market_repo,
+            provider_repo=provider_repo,
+            config=UniverseFilterConfig(
+                min_price=config.universe_min_price,
+                min_avg_dollar_volume=config.universe_min_avg_dollar_volume,
+                require_sector=config.universe_require_sector,
+                include_etfs=config.universe_include_etfs,
+                include_adrs=config.universe_include_adrs,
+            ),
+            name=args.name or config.universe_name,
+            provider=args.provider or config.market_provider,
+        )
+        snapshot = builder.build(as_of=args.as_of, available_at=as_of_dt)
+        print(
+            f"built universe={snapshot.name} members={snapshot.member_count} "
+            f"excluded={snapshot.excluded_count}"
+        )
         return 0
 
     raise ValueError(f"Unsupported command: {args.command}")
@@ -340,6 +382,29 @@ def _print_provider_result(result: ProviderIngestResult) -> None:
         f"normalized={result.normalized_count} securities={result.security_count} "
         f"daily_bars={result.daily_bar_count} rejected={result.rejected_count}"
     )
+
+
+def _universe_tickers_for_scan(
+    *,
+    provider_repo: ProviderRepository,
+    universe_name: str | None,
+    as_of: date,
+) -> set[str] | None:
+    if universe_name is None:
+        return None
+    as_of_dt = _scan_timestamp(as_of)
+    snapshot = provider_repo.latest_universe_snapshot(
+        name=universe_name,
+        as_of=as_of_dt,
+        available_at=as_of_dt,
+    )
+    if snapshot is None:
+        return None
+    return {row.ticker for row in provider_repo.list_universe_member_rows(snapshot.id)}
+
+
+def _scan_timestamp(value: date) -> datetime:
+    return datetime.combine(value, time(21), tzinfo=UTC)
 
 
 if __name__ == "__main__":
