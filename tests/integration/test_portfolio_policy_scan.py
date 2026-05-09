@@ -1,7 +1,7 @@
 from datetime import UTC, date, datetime
 from pathlib import Path
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 
 from catalyst_radar.connectors.csv_market import load_daily_bars_csv, load_securities_csv
 from catalyst_radar.core.config import AppConfig
@@ -9,6 +9,7 @@ from catalyst_radar.core.models import ActionState, HoldingSnapshot
 from catalyst_radar.pipeline.scan import run_scan
 from catalyst_radar.storage.db import create_schema
 from catalyst_radar.storage.repositories import MarketRepository
+from catalyst_radar.storage.schema import portfolio_impacts
 
 
 def test_scan_blocks_excessive_existing_single_name_exposure() -> None:
@@ -70,6 +71,38 @@ def test_no_holdings_uses_config_fallback_and_records_impact() -> None:
     assert result.candidate.metadata["position_size"]["notional"] > 0
     assert result.candidate.metadata["portfolio_impact"]["proposed_notional"] > 0
     assert "portfolio_impact_missing" not in result.policy.missing_trade_plan
+
+
+def test_save_scan_result_persists_portfolio_impact_evidence() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    create_schema(engine)
+    repo = MarketRepository(engine)
+    fixture_dir = Path("tests/fixtures")
+    repo.upsert_securities(load_securities_csv(fixture_dir / "securities.csv"))
+    repo.upsert_daily_bars(load_daily_bars_csv(fixture_dir / "daily_bars.csv"))
+
+    result = _scan_result(repo, "AAA")
+    repo.save_scan_result(result.candidate, result.policy)
+
+    with engine.connect() as conn:
+        row = conn.execute(select(portfolio_impacts)).one()
+
+    impact = result.candidate.metadata["portfolio_impact"]
+    assert row.ticker == "AAA"
+    assert row.as_of == result.candidate.as_of.replace(tzinfo=None)
+    assert row.setup_type == result.candidate.metadata["setup_type"]
+    assert row.source_ts == result.candidate.as_of.replace(tzinfo=None)
+    assert row.available_at == result.candidate.as_of.replace(tzinfo=None)
+    assert row.proposed_notional == impact["proposed_notional"]
+    assert row.max_loss == impact["max_loss"]
+    assert row.single_name_before_pct == impact["single_name_before_pct"]
+    assert row.sector_after_pct == impact["sector_after_pct"]
+    assert row.portfolio_penalty == impact["portfolio_penalty"]
+    assert row.hard_blocks == list(impact["hard_blocks"])
+    assert row.payload["portfolio_impact"]["ticker"] == impact["ticker"]
+    assert row.payload["portfolio_impact"]["hard_blocks"] == list(impact["hard_blocks"])
+    assert row.payload["candidate"]["setup_type"] == result.candidate.metadata["setup_type"]
+    assert row.payload["candidate"]["entry_zone"] == list(result.candidate.entry_zone)
 
 
 def test_missing_account_value_blocks_buy_review_fail_closed() -> None:

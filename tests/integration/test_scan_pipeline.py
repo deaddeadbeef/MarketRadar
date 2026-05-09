@@ -87,14 +87,30 @@ def test_dashboard_loads_candidate_rows() -> None:
     fixture_dir = Path("tests/fixtures")
     repo.upsert_securities(load_securities_csv(fixture_dir / "securities.csv"))
     repo.upsert_daily_bars(load_daily_bars_csv(fixture_dir / "daily_bars.csv"))
-    for result in run_scan(
+    scan_results = run_scan(
         repo,
         as_of=date(2026, 5, 8),
         config=AppConfig(portfolio_value=100_000, portfolio_cash=25_000),
-    ):
+    )
+    for result in scan_results:
         repo.save_scan_result(result.candidate, result.policy)
 
     rows = load_candidate_rows(engine)
 
     assert rows
-    assert {"ticker", "state", "final_score", "hard_blocks"}.issubset(rows[0])
+    assert {
+        "ticker",
+        "state",
+        "final_score",
+        "hard_blocks",
+        "setup_type",
+        "portfolio_hard_blocks",
+        "entry_zone",
+        "invalidation_price",
+    }.issubset(rows[0])
+    aaa_result = next(result for result in scan_results if result.ticker == "AAA")
+    aaa = next(row for row in rows if row["ticker"] == "AAA")
+    assert aaa["setup_type"] == "breakout"
+    assert aaa["portfolio_hard_blocks"] == []
+    assert aaa["entry_zone"] == list(aaa_result.candidate.entry_zone)
+    assert aaa["invalidation_price"] == aaa_result.candidate.invalidation_price

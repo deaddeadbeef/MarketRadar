@@ -21,6 +21,7 @@ from catalyst_radar.storage.schema import (
     candidate_states,
     daily_bars,
     holdings_snapshots,
+    portfolio_impacts,
     securities,
     signal_features,
 )
@@ -188,6 +189,7 @@ class MarketRepository:
                     payload=_candidate_payload(candidate, policy),
                 )
             )
+            _save_portfolio_impact(conn, candidate)
             conn.execute(
                 insert(candidate_states).values(
                     id=str(uuid4()),
@@ -210,6 +212,82 @@ def _as_datetime(value: datetime) -> datetime:
     if value.tzinfo is None or value.utcoffset() is None:
         return value.replace(tzinfo=UTC)
     return value.astimezone(UTC)
+
+
+def _coerce_datetime(value: object, fallback: datetime) -> datetime:
+    if isinstance(value, datetime):
+        return _as_datetime(value)
+    if isinstance(value, str):
+        try:
+            return _as_datetime(datetime.fromisoformat(value))
+        except ValueError:
+            return _as_datetime(fallback)
+    return _as_datetime(fallback)
+
+
+def _float_from_mapping(payload: dict[str, Any], key: str) -> float:
+    value = payload.get(key, 0.0)
+    if value is None:
+        return 0.0
+    return float(value)
+
+
+def _save_portfolio_impact(conn: Connection, candidate: CandidateSnapshot) -> None:
+    raw_impact = candidate.metadata.get("portfolio_impact")
+    if raw_impact is None:
+        return
+
+    impact = thaw_json_value(raw_impact)
+    if not isinstance(impact, dict):
+        return
+
+    setup_type = str(candidate.metadata.get("setup_type") or "unknown")
+    source_ts = _coerce_datetime(candidate.metadata.get("source_ts"), candidate.as_of)
+    available_at = _coerce_datetime(candidate.metadata.get("available_at"), candidate.as_of)
+
+    conn.execute(
+        delete(portfolio_impacts).where(
+            portfolio_impacts.c.ticker == candidate.ticker,
+            portfolio_impacts.c.as_of == candidate.as_of,
+            portfolio_impacts.c.setup_type == setup_type,
+        )
+    )
+    conn.execute(
+        insert(portfolio_impacts).values(
+            id=str(uuid4()),
+            ticker=candidate.ticker,
+            as_of=candidate.as_of,
+            setup_type=setup_type,
+            proposed_notional=_float_from_mapping(impact, "proposed_notional"),
+            max_loss=_float_from_mapping(impact, "max_loss"),
+            single_name_before_pct=_float_from_mapping(impact, "single_name_before_pct"),
+            single_name_after_pct=_float_from_mapping(impact, "single_name_after_pct"),
+            sector_before_pct=_float_from_mapping(impact, "sector_before_pct"),
+            sector_after_pct=_float_from_mapping(impact, "sector_after_pct"),
+            theme_before_pct=_float_from_mapping(impact, "theme_before_pct"),
+            theme_after_pct=_float_from_mapping(impact, "theme_after_pct"),
+            correlated_before_pct=_float_from_mapping(impact, "correlated_before_pct"),
+            correlated_after_pct=_float_from_mapping(impact, "correlated_after_pct"),
+            portfolio_penalty=_float_from_mapping(impact, "portfolio_penalty"),
+            hard_blocks=thaw_json_value(impact.get("hard_blocks", [])),
+            source_ts=source_ts,
+            available_at=available_at,
+            payload={
+                "portfolio_impact": impact,
+                "candidate": {
+                    "ticker": candidate.ticker,
+                    "as_of": candidate.as_of.isoformat(),
+                    "feature_version": candidate.features.feature_version,
+                    "setup_type": setup_type,
+                    "final_score": candidate.final_score,
+                    "entry_zone": list(candidate.entry_zone) if candidate.entry_zone else None,
+                    "invalidation_price": candidate.invalidation_price,
+                    "reward_risk": candidate.reward_risk,
+                },
+            },
+            created_at=datetime.now(UTC),
+        )
+    )
 
 
 def _upsert_securities(conn: Connection, rows: Iterable[Security]) -> None:
