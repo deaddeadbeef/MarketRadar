@@ -8,6 +8,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     Float,
+    Index,
     Integer,
     MetaData,
     String,
@@ -190,4 +191,48 @@ universe_members = Table(
     Column("reason", Text, nullable=False),
     Column("rank", Integer),
     Column("metadata", json_type, nullable=False),
+)
+
+Index(
+    "ix_daily_bars_ticker_date_available_at",
+    daily_bars.c.ticker,
+    daily_bars.c.date,
+    daily_bars.c.available_at,
+)
+Index("ix_securities_active_ticker", securities.c.is_active, securities.c.ticker)
+Index(
+    "ix_raw_provider_provider_kind_source",
+    raw_provider_records.c.provider,
+    raw_provider_records.c.kind,
+    raw_provider_records.c.source_ts,
+)
+Index(
+    "ix_normalized_provider_identity_available",
+    normalized_provider_records.c.provider,
+    normalized_provider_records.c.kind,
+    normalized_provider_records.c.identity,
+    normalized_provider_records.c.available_at,
+)
+Index(
+    "ix_provider_health_provider_checked",
+    provider_health.c.provider,
+    provider_health.c.checked_at,
+)
+Index("ix_job_runs_provider_started", job_runs.c.provider, job_runs.c.started_at)
+Index(
+    "ix_incidents_provider_detected",
+    data_quality_incidents.c.provider,
+    data_quality_incidents.c.detected_at,
+)
+Index(
+    "ix_universe_snapshots_name_asof_available_at",
+    universe_snapshots.c.name,
+    universe_snapshots.c.as_of,
+    universe_snapshots.c.available_at,
+)
+Index(
+    "ix_universe_members_snapshot_rank_ticker",
+    universe_members.c.snapshot_id,
+    universe_members.c.rank,
+    universe_members.c.ticker,
 )
