@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: catalyst-radar-postgres
+    environment:
+      POSTGRES_DB: catalyst_radar
+      POSTGRES_USER: catalyst
+      POSTGRES_PASSWORD: catalyst
+    ports:
+      - "54321:5432"
+    volumes:
+      - catalyst_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U catalyst -d catalyst_radar"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  catalyst_postgres_data:
