@@ -8,6 +8,8 @@ import pandas as pd
 from catalyst_radar.core.models import MarketFeatures
 
 FEATURE_VERSION = "market-v1"
+_NUMERIC_COLUMNS = ("open", "high", "low", "close", "volume", "vwap")
+_REQUIRED_COLUMNS = ("date", "open", "high", "low", "close", "volume")
 
 
 def compute_market_features(
@@ -34,7 +36,7 @@ def compute_market_features(
         ret_20d=ret_20d,
         rs_20_sector=_relative_strength_score(ret_20d, sector_ret_20d),
         rs_60_spy=_relative_strength_score(ticker_ret_60d, spy_ret_60d),
-        near_52w_high=_near_high_score(bars, 252),
+        near_52w_high=_near_high_ratio(bars, 252),
         ma_regime=_ma_regime_score(bars),
         rel_volume_5d=_relative_volume(bars, 5, 20),
         dollar_volume_z=_dollar_volume_z(bars),
@@ -48,9 +50,17 @@ def compute_market_features(
 def _prepare_bars(bars: pd.DataFrame) -> pd.DataFrame:
     if bars.empty:
         return bars.copy()
+    if any(column not in bars.columns for column in _REQUIRED_COLUMNS):
+        return pd.DataFrame(columns=bars.columns)
 
     prepared = bars.copy()
-    prepared["date"] = pd.to_datetime(prepared["date"])
+    prepared["date"] = pd.to_datetime(prepared["date"], errors="coerce")
+    for column in _NUMERIC_COLUMNS:
+        if column in prepared.columns:
+            prepared[column] = pd.to_numeric(prepared[column], errors="coerce").replace(
+                [np.inf, -np.inf], np.nan
+            )
+    prepared = prepared.dropna(subset=_REQUIRED_COLUMNS)
     return prepared.sort_values("date").reset_index(drop=True)
 
 
@@ -65,27 +75,26 @@ def _period_return(bars: pd.DataFrame, sessions: int) -> float:
     start_index = max(0, len(closes) - sessions - 1)
     start = closes[start_index]
     end = closes[-1]
-    if start <= 0:
+    if not np.isfinite(start) or not np.isfinite(end) or start <= 0:
         return 0.0
 
-    return float((end / start) - 1)
+    return _finite_float((end / start) - 1)
 
 
 def _relative_strength_score(ticker_return: float, benchmark_return: float) -> float:
     return _clamp(50 + ((ticker_return - benchmark_return) * 250), 0, 100)
 
 
-def _near_high_score(bars: pd.DataFrame, sessions: int) -> float:
-    if bars.empty or "close" not in bars:
+def _near_high_ratio(bars: pd.DataFrame, sessions: int) -> float:
+    if bars.empty or not {"close", "high"}.issubset(bars.columns):
         return 0.0
 
-    closes = bars["close"].astype(float)
-    close = float(closes.iloc[-1])
-    high = float(closes.tail(sessions).max())
-    if high <= 0:
+    close = float(bars["close"].astype(float).iloc[-1])
+    high = float(bars["high"].astype(float).tail(sessions).max())
+    if not np.isfinite(close) or not np.isfinite(high) or high <= 0:
         return 0.0
 
-    return _clamp((close / high) * 100, 0, 100)
+    return _clamp(close / high, 0, 1)
 
 
 def _ma_regime_score(bars: pd.DataFrame) -> float:
@@ -193,4 +202,12 @@ def _dollar_volume(bars: pd.DataFrame) -> pd.Series:
 
 
 def _clamp(value: float, minimum: float, maximum: float) -> float:
-    return float(max(minimum, min(maximum, value)))
+    finite_value = _finite_float(value, default=minimum)
+    return float(max(minimum, min(maximum, finite_value)))
+
+
+def _finite_float(value: float, default: float = 0.0) -> float:
+    result = float(value)
+    if not np.isfinite(result):
+        return default
+    return result
