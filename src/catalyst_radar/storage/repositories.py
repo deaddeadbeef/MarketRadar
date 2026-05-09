@@ -8,6 +8,7 @@ from uuid import uuid4
 
 from sqlalchemy import Engine, delete, insert, select
 
+from catalyst_radar.core.immutability import thaw_json_value
 from catalyst_radar.core.models import (
     CandidateSnapshot,
     DailyBar,
@@ -234,7 +235,7 @@ def _candidate_payload(candidate: CandidateSnapshot, policy: PolicyResult) -> di
             "entry_zone": list(candidate.entry_zone) if candidate.entry_zone else None,
             "invalidation_price": candidate.invalidation_price,
             "reward_risk": candidate.reward_risk,
-            "metadata": dict(candidate.metadata),
+            "metadata": thaw_json_value(candidate.metadata),
         },
         "policy": {
             "state": policy.state.value,

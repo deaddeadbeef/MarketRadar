@@ -4,8 +4,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from enum import StrEnum
-from types import MappingProxyType
 from typing import Any
+
+from catalyst_radar.core.immutability import freeze_mapping
 
 
 class ActionState(StrEnum):
@@ -17,6 +18,20 @@ class ActionState(StrEnum):
     BLOCKED = "Blocked"
     THESIS_WEAKENING = "ThesisWeakening"
     EXIT_INVALIDATE_REVIEW = "ExitInvalidateReview"
+
+
+class DataQualitySeverity(StrEnum):
+    INFO = "info"
+    WARNING = "warning"
+    ERROR = "error"
+    CRITICAL = "critical"
+
+
+class JobStatus(StrEnum):
+    RUNNING = "running"
+    SUCCESS = "success"
+    PARTIAL_SUCCESS = "partial_success"
+    FAILED = "failed"
 
 
 @dataclass(frozen=True)
@@ -103,7 +118,7 @@ class CandidateSnapshot:
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "metadata", MappingProxyType(dict(self.metadata)))
+        object.__setattr__(self, "metadata", freeze_mapping(self.metadata, "metadata"))
 
 
 @dataclass(frozen=True)
