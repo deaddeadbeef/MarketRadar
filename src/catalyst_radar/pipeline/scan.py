@@ -30,7 +30,9 @@ def run_scan(repo: MarketRepository, as_of: date) -> list[ScanResult]:
         for security in repo.list_active_securities()
         if security.ticker not in EXCLUDED_SCAN_TICKERS
     ]
-    spy_bars = repo.daily_bars("SPY", end=as_of, lookback=LOOKBACK_SESSIONS)
+    spy_bars = repo.daily_bars(
+        "SPY", end=as_of, lookback=LOOKBACK_SESSIONS, available_at=as_of_dt
+    )
     benchmark_cache: dict[str, pd.DataFrame] = {"SPY": _bars_frame(spy_bars)}
 
     results = []
@@ -39,6 +41,7 @@ def run_scan(repo: MarketRepository, as_of: date) -> list[ScanResult]:
             security.ticker,
             end=as_of,
             lookback=LOOKBACK_SESSIONS,
+            available_at=as_of_dt,
         )
         if not ticker_bars:
             continue
@@ -46,7 +49,12 @@ def run_scan(repo: MarketRepository, as_of: date) -> list[ScanResult]:
         sector_ticker = SECTOR_ETF.get(security.sector, "SPY")
         if sector_ticker not in benchmark_cache:
             benchmark_cache[sector_ticker] = _bars_frame(
-                repo.daily_bars(sector_ticker, end=as_of, lookback=LOOKBACK_SESSIONS)
+                repo.daily_bars(
+                    sector_ticker,
+                    end=as_of,
+                    lookback=LOOKBACK_SESSIONS,
+                    available_at=as_of_dt,
+                )
             )
 
         features = compute_market_features(

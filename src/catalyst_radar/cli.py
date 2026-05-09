@@ -6,7 +6,11 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from catalyst_radar.connectors.csv_market import load_daily_bars_csv, load_securities_csv
+from catalyst_radar.connectors.csv_market import (
+    load_daily_bars_csv,
+    load_holdings_csv,
+    load_securities_csv,
+)
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.pipeline.scan import run_scan
 from catalyst_radar.storage.db import create_schema, engine_from_url
@@ -48,7 +52,12 @@ def main(argv: list[str] | None = None) -> int:
         daily_bars = load_daily_bars_csv(args.daily_bars)
         repo.upsert_securities(securities)
         repo.upsert_daily_bars(daily_bars)
-        print(f"ingested securities={len(securities)} daily_bars={len(daily_bars)}")
+        message = f"ingested securities={len(securities)} daily_bars={len(daily_bars)}"
+        if args.holdings is not None:
+            holdings = load_holdings_csv(args.holdings)
+            repo.upsert_holdings(holdings)
+            message = f"{message} holdings={len(holdings)}"
+        print(message)
         return 0
 
     if args.command == "scan":

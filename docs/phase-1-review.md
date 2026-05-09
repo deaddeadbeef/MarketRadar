@@ -31,7 +31,7 @@ Observed smoke output:
 
 ```text
 initialized database
-ingested securities=6 daily_bars=36
+ingested securities=6 daily_bars=36 holdings=1
 scanned candidates=3
 ```
 
@@ -42,7 +42,7 @@ scanned candidates=3
 - No local NLP.
 - No LLM Decision Cards.
 - No broker integration.
-- Portfolio holdings ingestion is scaffolded for policy use but not yet wired into scanner state persistence.
+- Portfolio holdings ingestion is wired for local CSV snapshots, but portfolio-aware scoring remains a later phase.
 
 ## Recommended next phase
 

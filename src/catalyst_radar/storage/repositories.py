@@ -8,9 +8,21 @@ from uuid import uuid4
 
 from sqlalchemy import Engine, delete, insert, select
 
-from catalyst_radar.core.models import CandidateSnapshot, DailyBar, PolicyResult, Security
+from catalyst_radar.core.models import (
+    CandidateSnapshot,
+    DailyBar,
+    HoldingSnapshot,
+    PolicyResult,
+    Security,
+)
 from catalyst_radar.scoring.policy import POLICY_VERSION
-from catalyst_radar.storage.schema import candidate_states, daily_bars, securities, signal_features
+from catalyst_radar.storage.schema import (
+    candidate_states,
+    daily_bars,
+    holdings_snapshots,
+    securities,
+    signal_features,
+)
 
 
 class MarketRepository:
@@ -86,10 +98,57 @@ class MarketRepository:
                 for row in conn.execute(stmt)
             ]
 
-    def daily_bars(self, ticker: str, end: date, lookback: int) -> list[DailyBar]:
+    def upsert_holdings(self, rows: Iterable[HoldingSnapshot]) -> None:
+        with self.engine.begin() as conn:
+            for row in rows:
+                conn.execute(
+                    delete(holdings_snapshots).where(
+                        holdings_snapshots.c.ticker == row.ticker,
+                        holdings_snapshots.c.as_of == row.as_of,
+                    )
+                )
+                conn.execute(
+                    insert(holdings_snapshots).values(
+                        ticker=row.ticker,
+                        as_of=row.as_of,
+                        shares=row.shares,
+                        market_value=row.market_value,
+                        sector=row.sector,
+                        theme=row.theme,
+                    )
+                )
+
+    def list_holdings(self) -> list[HoldingSnapshot]:
+        stmt = select(holdings_snapshots).order_by(
+            holdings_snapshots.c.as_of, holdings_snapshots.c.ticker
+        )
+        with self.engine.connect() as conn:
+            return [
+                HoldingSnapshot(
+                    ticker=row.ticker,
+                    shares=row.shares,
+                    market_value=row.market_value,
+                    sector=row.sector,
+                    theme=row.theme,
+                    as_of=_as_datetime(row.as_of),
+                )
+                for row in conn.execute(stmt)
+            ]
+
+    def daily_bars(
+        self,
+        ticker: str,
+        end: date,
+        lookback: int,
+        *,
+        available_at: datetime | None = None,
+    ) -> list[DailyBar]:
+        filters = [daily_bars.c.ticker == ticker, daily_bars.c.date <= end]
+        if available_at is not None:
+            filters.append(daily_bars.c.available_at <= _as_datetime(available_at))
         stmt = (
             select(daily_bars)
-            .where(daily_bars.c.ticker == ticker, daily_bars.c.date <= end)
+            .where(*filters)
             .order_by(daily_bars.c.date.desc())
             .limit(lookback)
         )

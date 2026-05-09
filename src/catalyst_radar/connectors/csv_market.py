@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from catalyst_radar.core.models import DailyBar, Security
+from catalyst_radar.core.models import DailyBar, HoldingSnapshot, Security
 
 
 def load_securities_csv(path: str | Path) -> list[Security]:
@@ -47,6 +47,23 @@ def load_daily_bars_csv(path: str | Path) -> list[DailyBar]:
                 provider=str(record["provider"]),
                 source_ts=_to_utc_datetime(record["source_ts"]),
                 available_at=_to_utc_datetime(record["available_at"]),
+            )
+        )
+    return rows
+
+
+def load_holdings_csv(path: str | Path) -> list[HoldingSnapshot]:
+    frame = pd.read_csv(path)
+    rows: list[HoldingSnapshot] = []
+    for record in frame.to_dict(orient="records"):
+        rows.append(
+            HoldingSnapshot(
+                ticker=str(record["ticker"]).upper(),
+                shares=float(record["shares"]),
+                market_value=float(record["market_value"]),
+                sector=str(record["sector"]),
+                theme=str(record["theme"]),
+                as_of=_to_utc_datetime(record["as_of"]),
             )
         )
     return rows

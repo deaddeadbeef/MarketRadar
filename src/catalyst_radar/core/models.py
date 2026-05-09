@@ -50,6 +50,16 @@ class DailyBar:
 
 
 @dataclass(frozen=True)
+class HoldingSnapshot:
+    ticker: str
+    shares: float
+    market_value: float
+    sector: str
+    theme: str
+    as_of: datetime
+
+
+@dataclass(frozen=True)
 class MarketFeatures:
     ticker: str
     as_of: datetime
