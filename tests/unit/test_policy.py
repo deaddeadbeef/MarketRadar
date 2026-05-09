@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import UTC, datetime
 
 from catalyst_radar.core.models import ActionState, MarketFeatures
@@ -24,7 +25,7 @@ def test_stale_data_is_blocked() -> None:
 
 def test_mid_scores_are_added_to_watchlist() -> None:
     candidate = candidate_from_features(
-        _features(ret_20d=0.07, rs_20_sector=64, rs_60_spy=62, ma_regime=70),
+        _features(ret_5d=0.03, ret_20d=0.04, rs_20_sector=58, rs_60_spy=57, ma_regime=60),
         portfolio_penalty=0.0,
         data_stale=False,
         entry_zone=(100.0, 103.0),
@@ -36,6 +37,41 @@ def test_mid_scores_are_added_to_watchlist() -> None:
 
     assert result.state == ActionState.ADD_TO_WATCHLIST
     assert result.hard_blocks == ()
+
+
+def test_policy_blocks_low_liquidity_even_with_high_score() -> None:
+    candidate = candidate_from_features(
+        _features(liquidity_score=49),
+        portfolio_penalty=0.0,
+        data_stale=False,
+        entry_zone=(100.0, 103.0),
+        invalidation_price=94.0,
+        reward_risk=2.5,
+    )
+
+    result = evaluate_policy(candidate)
+
+    assert candidate.final_score >= 85
+    assert result.state == ActionState.BLOCKED
+    assert "liquidity_hard_block" in result.hard_blocks
+
+
+def test_policy_blocks_high_risk_penalty_even_with_high_score() -> None:
+    candidate = candidate_from_features(
+        _features(),
+        portfolio_penalty=0.0,
+        data_stale=False,
+        entry_zone=(100.0, 103.0),
+        invalidation_price=94.0,
+        reward_risk=2.5,
+    )
+    candidate = replace(candidate, risk_penalty=20.0)
+
+    result = evaluate_policy(candidate)
+
+    assert candidate.final_score >= 85
+    assert result.state == ActionState.BLOCKED
+    assert "risk_penalty_hard_block" in result.hard_blocks
 
 
 def test_policy_requires_trade_plan_for_buy_review() -> None:
@@ -52,6 +88,23 @@ def test_policy_requires_trade_plan_for_buy_review() -> None:
 
     assert result.state == ActionState.WARNING
     assert result.missing_trade_plan == ("entry_zone", "invalidation_price")
+
+
+def test_policy_keeps_low_reward_risk_candidate_in_warning() -> None:
+    candidate = candidate_from_features(
+        _features(),
+        portfolio_penalty=0.0,
+        data_stale=False,
+        entry_zone=(100.0, 103.0),
+        invalidation_price=94.0,
+        reward_risk=1.5,
+    )
+
+    result = evaluate_policy(candidate)
+
+    assert candidate.final_score >= 85
+    assert result.state == ActionState.WARNING
+    assert result.missing_trade_plan == ("reward_risk_too_low",)
 
 
 def test_eligible_manual_buy_review_when_all_gates_pass() -> None:
@@ -74,16 +127,18 @@ def test_eligible_manual_buy_review_when_all_gates_pass() -> None:
 
 def _features(
     *,
+    ret_5d: float = 0.11,
     ret_20d: float = 0.22,
     rs_20_sector: float = 86,
     rs_60_spy: float = 82,
     ma_regime: float = 92,
+    liquidity_score: float = 95,
 ) -> MarketFeatures:
     as_of = datetime(2026, 5, 8, 21, tzinfo=UTC)
     return MarketFeatures(
         ticker="AAA",
         as_of=as_of,
-        ret_5d=0.11,
+        ret_5d=ret_5d,
         ret_20d=ret_20d,
         rs_20_sector=rs_20_sector,
         rs_60_spy=rs_60_spy,
@@ -93,6 +148,6 @@ def _features(
         dollar_volume_z=2.0,
         atr_pct=0.035,
         extension_20d=0.07,
-        liquidity_score=95,
+        liquidity_score=liquidity_score,
         feature_version="market-v1",
     )
