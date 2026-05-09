@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from enum import StrEnum
+from types import MappingProxyType
 from typing import Any
 
 
@@ -88,7 +90,10 @@ class CandidateSnapshot:
     entry_zone: tuple[float, float] | None = None
     invalidation_price: float | None = None
     reward_risk: float = 0.0
-    metadata: dict[str, Any] = field(default_factory=dict)
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "metadata", MappingProxyType(dict(self.metadata)))
 
 
 @dataclass(frozen=True)

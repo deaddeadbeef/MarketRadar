@@ -1,3 +1,5 @@
+import pytest
+
 from catalyst_radar.core.config import AppConfig
 
 
@@ -22,3 +24,16 @@ def test_config_reads_risk_settings_from_env() -> None:
     assert config.risk_per_trade_pct == 0.01
     assert config.max_single_name_pct == 0.05
     assert config.max_sector_pct == 0.25
+
+
+def test_config_rejects_invalid_boolean_env_value() -> None:
+    with pytest.raises(ValueError, match="Invalid boolean value"):
+        AppConfig.from_env({"CATALYST_ENABLE_PREMIUM_LLM": "treu"})
+
+
+def test_config_reads_explicit_boolean_env_values() -> None:
+    false_config = AppConfig.from_env({"CATALYST_ENABLE_PREMIUM_LLM": "false"})
+    true_config = AppConfig.from_env({"CATALYST_ENABLE_PREMIUM_LLM": "true"})
+
+    assert false_config.enable_premium_llm is False
+    assert true_config.enable_premium_llm is True
