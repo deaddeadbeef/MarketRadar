@@ -1,13 +1,97 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
+import pytest
 from sqlalchemy import create_engine, func, select
 
+from catalyst_radar.cli import main
+from catalyst_radar.connectors.base import ConnectorRecordKind, ConnectorRequest
+from catalyst_radar.connectors.options import OptionsAggregateConnector
+from catalyst_radar.connectors.provider_ingest import ProviderIngestError, ingest_provider_records
 from catalyst_radar.features.options import OptionFeatureInput
 from catalyst_radar.storage.db import create_schema
 from catalyst_radar.storage.feature_repositories import FeatureRepository
+from catalyst_radar.storage.provider_repositories import ProviderRepository
+from catalyst_radar.storage.repositories import MarketRepository
 from catalyst_radar.storage.schema import option_features
+
+
+def test_options_connector_emits_raw_and_normalized_option_feature_records() -> None:
+    connector = OptionsAggregateConnector(
+        fixture_path="tests/fixtures/options/options_summary_2026-05-08.json"
+    )
+    request = ConnectorRequest(
+        provider="options_fixture",
+        endpoint="fixture",
+        params={"fixture": "tests/fixtures/options/options_summary_2026-05-08.json"},
+        requested_at=datetime(2026, 5, 8, 21, 5, tzinfo=UTC),
+    )
+
+    raw_records = connector.fetch(request)
+    normalized = connector.normalize(raw_records)
+
+    assert [record.kind for record in raw_records] == [ConnectorRecordKind.OPTION_FEATURE]
+    assert [record.kind for record in normalized] == [ConnectorRecordKind.OPTION_FEATURE]
+    assert normalized[0].identity == "AAA:2026-05-08T21:00:00+00:00"
+    assert normalized[0].payload["ticker"] == "AAA"
+    assert normalized[0].payload["call_volume"] == 12_000.0
+
+
+def test_ingest_provider_records_fails_closed_without_feature_repository() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    create_schema(engine)
+    connector = OptionsAggregateConnector(
+        fixture_path="tests/fixtures/options/options_summary_2026-05-08.json"
+    )
+    request = ConnectorRequest(
+        provider="options_fixture",
+        endpoint="fixture",
+        params={"fixture": "tests/fixtures/options/options_summary_2026-05-08.json"},
+        requested_at=datetime(2026, 5, 8, 21, 5, tzinfo=UTC),
+    )
+
+    with pytest.raises(ProviderIngestError, match="feature repository required"):
+        ingest_provider_records(
+            connector=connector,
+            request=request,
+            market_repo=MarketRepository(engine),
+            provider_repo=ProviderRepository(engine),
+            job_type="options_fixture",
+            metadata={"fixture": "tests/fixtures/options/options_summary_2026-05-08.json"},
+        )
+
+
+def test_ingest_options_cli_persists_option_feature(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'options.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    exit_code = main(
+        [
+            "ingest-options",
+            "--fixture",
+            "tests/fixtures/options/options_summary_2026-05-08.json",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert captured.out == (
+        "ingested provider=options_fixture raw=1 normalized=1 "
+        "option_features=1 rejected=0\n"
+    )
+    assert captured.err == ""
+
+    engine = create_engine(database_url, future=True)
+    with engine.connect() as conn:
+        row = conn.execute(select(option_features)).one()
+    assert row.ticker == "AAA"
+    assert row.call_volume == 12_000
 
 
 def test_upsert_option_features_replaces_by_deterministic_id() -> None:

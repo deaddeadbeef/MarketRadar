@@ -18,6 +18,7 @@ class ConnectorRecordKind(StrEnum):
     SEC_FILING = "sec_filing"
     NEWS_ARTICLE = "news_article"
     EARNINGS_EVENT = "earnings_event"
+    OPTION_FEATURE = "option_feature"
 
 
 class ConnectorHealthStatus(StrEnum):

@@ -1,0 +1,17 @@
+{
+  "as_of": "2026-05-08T21:00:00Z",
+  "source_ts": "2026-05-08T20:45:00Z",
+  "available_at": "2026-05-08T21:00:00Z",
+  "provider": "options_fixture",
+  "results": [
+    {
+      "ticker": "AAA",
+      "call_volume": 12000,
+      "put_volume": 4000,
+      "call_open_interest": 50000,
+      "put_open_interest": 30000,
+      "iv_percentile": 0.72,
+      "skew": 0.18
+    }
+  ]
+}

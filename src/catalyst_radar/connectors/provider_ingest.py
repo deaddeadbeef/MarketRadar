@@ -23,7 +23,9 @@ from catalyst_radar.core.models import (
     Security,
 )
 from catalyst_radar.events.models import CanonicalEvent, EventType, SourceCategory
+from catalyst_radar.features.options import OptionFeatureInput
 from catalyst_radar.storage.event_repositories import EventRepository
+from catalyst_radar.storage.feature_repositories import FeatureRepository
 from catalyst_radar.storage.provider_repositories import ProviderRepository
 from catalyst_radar.storage.repositories import MarketRepository
 
@@ -39,6 +41,7 @@ class ProviderIngestResult:
     daily_bar_count: int
     holding_count: int
     event_count: int
+    option_feature_count: int
     rejected_count: int
 
 
@@ -55,6 +58,7 @@ def ingest_provider_records(
     job_type: str,
     metadata: Mapping[str, Any],
     event_repo: EventRepository | None = None,
+    feature_repo: FeatureRepository | None = None,
 ) -> ProviderIngestResult:
     health = connector.healthcheck()
     provider_repo.save_health(health)
@@ -126,14 +130,22 @@ def ingest_provider_records(
         daily_bars = _daily_bars_from_normalized(normalized_records)
         holdings = _holdings_from_normalized(normalized_records)
         events = _events_from_normalized(normalized_records)
+        option_features = _option_features_from_normalized(normalized_records)
         if events and event_repo is None:
             raise ValueError("event repository required for event records")
+        if option_features and feature_repo is None:
+            raise ValueError("feature repository required for option feature records")
         market_repo.upsert_market_snapshot(
             securities_rows=securities,
             daily_bar_rows=daily_bars,
             holding_rows=holdings,
         )
         event_count = event_repo.upsert_events(events) if event_repo is not None else 0
+        option_feature_count = (
+            feature_repo.upsert_option_features(option_features)
+            if feature_repo is not None
+            else 0
+        )
 
         provider_repo.finish_job(
             job_id,
@@ -153,6 +165,7 @@ def ingest_provider_records(
             daily_bar_count=len(daily_bars),
             holding_count=len(holdings),
             event_count=event_count,
+            option_feature_count=option_feature_count,
             rejected_count=len(rejections),
         )
     except ProviderIngestError:
@@ -285,6 +298,16 @@ def _events_from_normalized(records: Sequence[NormalizedRecord]) -> list[Canonic
     ]
 
 
+def _option_features_from_normalized(
+    records: Sequence[NormalizedRecord],
+) -> list[OptionFeatureInput]:
+    return [
+        _option_feature_from_payload(record.payload)
+        for record in records
+        if record.kind == ConnectorRecordKind.OPTION_FEATURE
+    ]
+
+
 def _security_from_payload(payload: Mapping[str, Any]) -> Security:
     return Security(
         ticker=str(payload["ticker"]).upper(),
@@ -346,6 +369,23 @@ def _event_from_payload(payload: Mapping[str, Any]) -> CanonicalEvent:
         dedupe_key=str(payload["dedupe_key"]),
         source_quality=float(payload["source_quality"]),
         materiality=float(payload["materiality"]),
+        source_ts=_parse_datetime(payload["source_ts"]),
+        available_at=_parse_datetime(payload["available_at"]),
+        payload=_mapping_payload(payload.get("payload", {})),
+    )
+
+
+def _option_feature_from_payload(payload: Mapping[str, Any]) -> OptionFeatureInput:
+    return OptionFeatureInput(
+        ticker=str(payload["ticker"]).upper(),
+        as_of=_parse_datetime(payload["as_of"]),
+        provider=str(payload["provider"]),
+        call_volume=float(payload["call_volume"]),
+        put_volume=float(payload["put_volume"]),
+        call_open_interest=float(payload["call_open_interest"]),
+        put_open_interest=float(payload["put_open_interest"]),
+        iv_percentile=float(payload["iv_percentile"]),
+        skew=float(payload["skew"]),
         source_ts=_parse_datetime(payload["source_ts"]),
         available_at=_parse_datetime(payload["available_at"]),
         payload=_mapping_payload(payload.get("payload", {})),

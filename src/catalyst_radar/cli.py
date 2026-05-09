@@ -21,6 +21,7 @@ from catalyst_radar.connectors.http import (
 )
 from catalyst_radar.connectors.market_data import CsvMarketDataConnector
 from catalyst_radar.connectors.news import NewsJsonConnector
+from catalyst_radar.connectors.options import OptionsAggregateConnector
 from catalyst_radar.connectors.polygon import PolygonEndpoint, PolygonMarketDataConnector
 from catalyst_radar.connectors.provider_ingest import (
     ProviderIngestError,
@@ -32,6 +33,7 @@ from catalyst_radar.core.config import AppConfig
 from catalyst_radar.pipeline.scan import run_scan
 from catalyst_radar.storage.db import create_schema, engine_from_url
 from catalyst_radar.storage.event_repositories import EventRepository
+from catalyst_radar.storage.feature_repositories import FeatureRepository
 from catalyst_radar.storage.provider_repositories import ProviderRepository
 from catalyst_radar.storage.repositories import MarketRepository
 from catalyst_radar.storage.text_repositories import TextRepository
@@ -72,6 +74,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     earnings = subparsers.add_parser("ingest-earnings")
     earnings.add_argument("--fixture", type=Path, required=True)
+
+    options = subparsers.add_parser("ingest-options")
+    options.add_argument("--fixture", type=Path, required=True)
 
     events = subparsers.add_parser("events")
     events.add_argument("--ticker", required=True)
@@ -187,6 +192,18 @@ def main(argv: list[str] | None = None) -> int:
             market_repo=market_repo,
             provider_repo=provider_repo,
             event_repo=event_repo,
+            fixture_path=args.fixture,
+        )
+
+    if args.command == "ingest-options":
+        create_schema(engine)
+        market_repo = MarketRepository(engine)
+        provider_repo = ProviderRepository(engine)
+        feature_repo = FeatureRepository(engine)
+        return _ingest_options_provider(
+            market_repo=market_repo,
+            provider_repo=provider_repo,
+            feature_repo=feature_repo,
             fixture_path=args.fixture,
         )
 
@@ -549,6 +566,43 @@ def _ingest_earnings_provider(
     return 0
 
 
+def _ingest_options_provider(
+    *,
+    market_repo: MarketRepository,
+    provider_repo: ProviderRepository,
+    feature_repo: FeatureRepository,
+    fixture_path: Path,
+) -> int:
+    connector = OptionsAggregateConnector(fixture_path=fixture_path)
+    metadata = {
+        "provider": "options_fixture",
+        "endpoint": "fixture",
+        "fixture": str(fixture_path),
+    }
+    request = ConnectorRequest(
+        provider="options_fixture",
+        endpoint="fixture",
+        params={"fixture": str(fixture_path)},
+        requested_at=datetime.now(UTC),
+    )
+    try:
+        result = ingest_provider_records(
+            connector=connector,
+            request=request,
+            market_repo=market_repo,
+            provider_repo=provider_repo,
+            job_type="options_fixture",
+            metadata=metadata,
+            feature_repo=feature_repo,
+        )
+    except ProviderIngestError as exc:
+        print(f"options ingest failed: {exc}", file=sys.stderr)
+        return 1
+
+    _print_options_provider_result(result)
+    return 0
+
+
 def _build_polygon_ingest(
     *,
     config: AppConfig,
@@ -740,6 +794,14 @@ def _print_provider_result(result: ProviderIngestResult) -> None:
         f"normalized={result.normalized_count} securities={result.security_count} "
         f"daily_bars={result.daily_bar_count} holdings={result.holding_count} "
         f"events={result.event_count} rejected={result.rejected_count}"
+    )
+
+
+def _print_options_provider_result(result: ProviderIngestResult) -> None:
+    print(
+        f"ingested provider={result.provider} raw={result.raw_count} "
+        f"normalized={result.normalized_count} "
+        f"option_features={result.option_feature_count} rejected={result.rejected_count}"
     )
 
 
