@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.schema import CreateTable
@@ -85,5 +86,24 @@ def test_csv_connector_loads_fixture_rows() -> None:
     daily_bar_rows = load_daily_bars_csv(fixture_dir / "daily_bars.csv")
 
     assert securities_rows[0].ticker == "AAA"
+    assert securities_rows[2].has_options is False
     assert daily_bar_rows[0].provider == "sample"
     assert daily_bar_rows[0].available_at.isoformat().startswith("2026-05-01T21:00:00")
+
+
+def test_csv_connector_rejects_invalid_boolean(tmp_path: Path) -> None:
+    securities_csv = tmp_path / "securities.csv"
+    securities_csv.write_text(
+        "\n".join(
+            [
+                "ticker,name,exchange,sector,industry,market_cap,avg_dollar_volume_20d,"
+                "has_options,is_active,updated_at",
+                "BAD,Bad Boolean,NASDAQ,Technology,Software,1,1,maybe,true,"
+                "2026-05-08T20:00:00Z",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="Invalid boolean value for has_options: 'maybe'"):
+        load_securities_csv(securities_csv)

@@ -21,8 +21,8 @@ def load_securities_csv(path: str | Path) -> list[Security]:
                 industry=str(record["industry"]),
                 market_cap=float(record["market_cap"]),
                 avg_dollar_volume_20d=float(record["avg_dollar_volume_20d"]),
-                has_options=_to_bool(record["has_options"]),
-                is_active=_to_bool(record["is_active"]),
+                has_options=_to_bool(record["has_options"], "has_options"),
+                is_active=_to_bool(record["is_active"], "is_active"),
                 updated_at=_to_utc_datetime(record["updated_at"]),
             )
         )
@@ -43,7 +43,7 @@ def load_daily_bars_csv(path: str | Path) -> list[DailyBar]:
                 close=float(record["close"]),
                 volume=int(record["volume"]),
                 vwap=float(record["vwap"]),
-                adjusted=_to_bool(record["adjusted"]),
+                adjusted=_to_bool(record["adjusted"], "adjusted"),
                 provider=str(record["provider"]),
                 source_ts=_to_utc_datetime(record["source_ts"]),
                 available_at=_to_utc_datetime(record["available_at"]),
@@ -52,10 +52,16 @@ def load_daily_bars_csv(path: str | Path) -> list[DailyBar]:
     return rows
 
 
-def _to_bool(value: object) -> bool:
+def _to_bool(value: object, field: str | None = None) -> bool:
     if isinstance(value, bool):
         return value
-    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+    normalized = str(value).strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    field_context = f" for {field}" if field is not None else ""
+    raise ValueError(f"Invalid boolean value{field_context}: {value!r}")
 
 
 def _to_utc_datetime(value: object) -> datetime:
