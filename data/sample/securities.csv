@@ -1,0 +1,7 @@
+ticker,name,exchange,sector,industry,market_cap,avg_dollar_volume_20d,has_options,is_active,updated_at
+AAA,Alpha Analytics,NASDAQ,Technology,Software,5000000000,50000000,true,true,2026-05-08T20:00:00Z
+BBB,Beta Builders,NYSE,Industrials,Construction,2200000000,18000000,true,true,2026-05-08T20:00:00Z
+CCC,Coda Components,NASDAQ,Technology,Semiconductors,900000000,7000000,false,true,2026-05-08T20:00:00Z
+SPY,SPDR S&P 500 ETF,NYSE Arca,ETF,Index ETF,0,9000000000,true,true,2026-05-08T20:00:00Z
+XLK,Technology Select Sector SPDR,NYSE Arca,ETF,Sector ETF,0,1000000000,true,true,2026-05-08T20:00:00Z
+XLI,Industrial Select Sector SPDR,NYSE Arca,ETF,Sector ETF,0,800000000,true,true,2026-05-08T20:00:00Z
