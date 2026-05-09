@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 import json
-import re
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from catalyst_radar.connectors.base import (
     ConnectorHealth,
@@ -20,6 +18,7 @@ from catalyst_radar.connectors.base import (
 )
 from catalyst_radar.connectors.http import JsonHttpClient
 from catalyst_radar.core.immutability import thaw_json_value
+from catalyst_radar.events.dedupe import body_hash, canonicalize_url, dedupe_key
 
 SEC_PROVIDER_NAME = "sec"
 SEC_LICENSE_TAG = "sec-public"
@@ -271,42 +270,6 @@ def _canonical_event_payload(
         "available_at": available_at.isoformat(),
         "payload": dict(payload),
     }
-
-
-def canonicalize_url(url: str | None) -> str | None:
-    if not url:
-        return None
-    parts = urlsplit(url.strip())
-    query = [
-        (key, value)
-        for key, value in parse_qsl(parts.query, keep_blank_values=True)
-        if not key.lower().startswith("utm_") and key.lower() not in {"fbclid", "gclid"}
-    ]
-    return urlunsplit(
-        (
-            parts.scheme.lower(),
-            parts.netloc.lower(),
-            parts.path,
-            urlencode(query),
-            "",
-        )
-    )
-
-
-def body_hash(value: str) -> str:
-    normalized = re.sub(r"\s+", " ", value.strip()).lower()
-    return sha256(normalized.encode("utf-8")).hexdigest()
-
-
-def dedupe_key(
-    *,
-    ticker: str,
-    provider: str,
-    canonical_url: str | None,
-    content_hash: str,
-) -> str:
-    suffix = canonical_url or content_hash
-    return f"{ticker.upper()}:{provider}:{suffix}"
 
 
 def _event_id(dedupe: str) -> str:

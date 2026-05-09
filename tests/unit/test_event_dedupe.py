@@ -8,6 +8,12 @@ def test_canonicalize_url_removes_tracking_params() -> None:
     )
 
 
+def test_canonicalize_url_removes_mailchimp_tracking_params() -> None:
+    assert canonicalize_url("https://Example.com/path?mc_cid=x&id=123&mc_eid=y") == (
+        "https://example.com/path?id=123"
+    )
+
+
 def test_body_hash_is_stable_across_whitespace() -> None:
     assert body_hash("Guidance raised\n\nfor FY 2026") == body_hash(
         "Guidance raised for FY 2026"

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -58,8 +59,88 @@ def test_news_fixture_dedupes_tracking_url_payloads() -> None:
     assert all(record.kind == ConnectorRecordKind.NEWS_ARTICLE for record in raw)
     assert all(record.kind == ConnectorRecordKind.EVENT for record in normalized)
     assert all("utm_source" not in str(record.payload["source_url"]) for record in normalized)
-    assert normalized[0].payload["event_type"] == "guidance"
+    assert normalized[0].payload["event_type"] == "earnings"
     assert normalized[1].payload["payload"]["requires_confirmation"] is True
+
+
+def test_news_promotional_source_name_overrides_reputable_category(tmp_path: Path) -> None:
+    fixture_path = tmp_path / "promo_news.json"
+    fixture_path.write_text(
+        json.dumps(
+            {
+                "ticker": "MSFT",
+                "articles": [
+                    {
+                        "source": "Sponsored Stocks Daily",
+                        "source_category": "reputable_news",
+                        "title": "MSFT could double soon",
+                        "body": "Sponsored promotional recap.",
+                        "url": "https://promo.example.com/msft",
+                        "published_at": "2026-05-10T12:31:00Z",
+                        "available_at": "2026-05-10T12:31:00Z",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    connector = NewsJsonConnector(fixture_path=fixture_path)
+    request = ConnectorRequest(
+        provider="news_fixture",
+        endpoint="ticker-news",
+        params={"ticker": "MSFT"},
+        requested_at=datetime(2026, 5, 10, 14, tzinfo=UTC),
+    )
+
+    normalized = connector.normalize(connector.fetch(request))
+
+    payload = normalized[0].payload
+    assert payload["source_quality"] <= 0.2
+    assert payload["materiality"] <= 0.35
+    assert payload["payload"]["requires_confirmation"] is True
+
+
+def test_news_mailchimp_tracking_params_share_dedupe_key(tmp_path: Path) -> None:
+    fixture_path = tmp_path / "mailchimp_news.json"
+    article = {
+        "source": "Reuters",
+        "source_category": "reputable_news",
+        "title": "Microsoft raises cloud guidance",
+        "body": "Microsoft raises cloud guidance after stronger demand.",
+        "published_at": "2026-05-10T12:30:00Z",
+        "available_at": "2026-05-10T12:35:00Z",
+    }
+    fixture_path.write_text(
+        json.dumps(
+            {
+                "ticker": "MSFT",
+                "articles": [
+                    {
+                        **article,
+                        "url": "https://reuters.example.com/markets/msft-cloud?mc_cid=aaa&id=123",
+                    },
+                    {
+                        **article,
+                        "url": "https://reuters.example.com/markets/msft-cloud?id=123&mc_eid=bbb",
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    connector = NewsJsonConnector(fixture_path=fixture_path)
+    request = ConnectorRequest(
+        provider="news_fixture",
+        endpoint="ticker-news",
+        params={"ticker": "MSFT"},
+        requested_at=datetime(2026, 5, 10, 14, tzinfo=UTC),
+    )
+
+    normalized = connector.normalize(connector.fetch(request))
+
+    assert normalized[0].payload["dedupe_key"] == normalized[1].payload["dedupe_key"]
+    assert normalized[0].payload["source_url"] == normalized[1].payload["source_url"]
+    assert normalized[0].payload["source_url"].endswith("?id=123")
 
 
 def test_earnings_fixture_marks_upcoming_event_risk() -> None:

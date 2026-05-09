@@ -15,7 +15,6 @@ from catalyst_radar.connectors.base import (
     ProviderCostEstimate,
     RawRecord,
 )
-from catalyst_radar.connectors.news import _source_quality
 from catalyst_radar.connectors.sec import (
     FIXTURE_RETENTION_POLICY,
     _canonical_event_payload,
@@ -24,10 +23,10 @@ from catalyst_radar.connectors.sec import (
     _mapping,
     _parse_datetime,
     _raw_payload,
-    body_hash,
-    dedupe_key,
 )
 from catalyst_radar.core.immutability import thaw_json_value
+from catalyst_radar.events.dedupe import body_hash, dedupe_key
+from catalyst_radar.events.source_quality import score_source_quality
 
 EARNINGS_PROVIDER_NAME = "earnings_fixture"
 EARNINGS_LICENSE_TAG = "earnings-fixture"
@@ -114,7 +113,11 @@ class EarningsCalendarConnector:
                 title=title,
                 body_hash_value=content_hash,
                 dedupe=dedupe,
-                source_quality=_source_quality(category),
+                source_quality=score_source_quality(
+                    source=source,
+                    category=category,
+                    url=None,
+                ).score,
                 materiality=0.55,
                 source_ts=record.source_ts,
                 available_at=record.available_at,

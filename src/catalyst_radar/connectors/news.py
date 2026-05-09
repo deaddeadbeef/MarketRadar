@@ -23,11 +23,11 @@ from catalyst_radar.connectors.sec import (
     _mapping,
     _parse_datetime,
     _raw_payload,
-    body_hash,
-    canonicalize_url,
-    dedupe_key,
 )
 from catalyst_radar.core.immutability import thaw_json_value
+from catalyst_radar.events.classifier import classify_event
+from catalyst_radar.events.dedupe import body_hash, canonicalize_url, dedupe_key
+from catalyst_radar.events.models import RawEvent, SourceCategory
 
 NEWS_PROVIDER_NAME = "news_fixture"
 NEWS_LICENSE_TAG = "news-fixture"
@@ -104,16 +104,24 @@ class NewsJsonConnector:
                 canonical_url=canonical_url,
                 content_hash=content_hash,
             )
-            event_type, materiality, reasons, requires_confirmation = _classify_news(
-                title=title,
-                body=body,
-                source_category=category,
+            classification = classify_event(
+                RawEvent(
+                    ticker=ticker,
+                    provider=record.provider,
+                    source=source,
+                    source_category=_source_category(category),
+                    title=title,
+                    body=body,
+                    url=canonical_url,
+                    source_ts=record.source_ts,
+                    available_at=record.available_at,
+                    payload=article,
+                )
             )
-            quality = _source_quality(category)
             event_payload = _canonical_event_payload(
                 event_id=_event_id(dedupe),
                 ticker=ticker,
-                event_type=event_type,
+                event_type=classification.event_type,
                 provider=record.provider,
                 source=source,
                 source_category=category,
@@ -121,13 +129,13 @@ class NewsJsonConnector:
                 title=title,
                 body_hash_value=content_hash,
                 dedupe=dedupe,
-                source_quality=quality,
-                materiality=materiality,
+                source_quality=classification.source_quality,
+                materiality=classification.materiality,
                 source_ts=record.source_ts,
                 available_at=record.available_at,
                 payload={
-                    "classification_reasons": reasons,
-                    "requires_confirmation": requires_confirmation,
+                    "classification_reasons": classification.reasons,
+                    "requires_confirmation": classification.requires_confirmation,
                     "published_at": article.get("published_at"),
                 },
             )
@@ -172,34 +180,11 @@ class NewsJsonConnector:
         return _mapping(payload, "fixture")
 
 
-def _classify_news(
-    *,
-    title: str,
-    body: str,
-    source_category: str,
-) -> tuple[str, float, list[str], bool]:
-    combined = f"{title} {body}".lower()
-    if source_category == "promotional":
-        return "news", 0.25, ["promotional_source"], True
-    if "guidance" in combined or "raises" in combined or "cuts" in combined:
-        return "guidance", 0.82, ["guidance_language"], False
-    if "earnings" in combined:
-        return "earnings", 0.7, ["earnings_language"], False
-    return "news", 0.45, ["news_article"], False
-
-
-def _source_quality(source_category: str) -> float:
-    return {
-        "primary_source": 1.0,
-        "regulatory": 0.95,
-        "reputable_news": 0.85,
-        "company_press_release": 0.8,
-        "analyst_provider": 0.7,
-        "aggregator": 0.55,
-        "social": 0.25,
-        "promotional": 0.15,
-        "unknown": 0.35,
-    }.get(source_category, 0.35)
+def _source_category(category: str) -> SourceCategory:
+    try:
+        return SourceCategory(category)
+    except ValueError:
+        return SourceCategory.UNKNOWN
 
 
 __all__ = [
