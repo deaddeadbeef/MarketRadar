@@ -32,6 +32,16 @@ $env:CATALYST_DATABASE_URL="postgresql+psycopg://catalyst:catalyst@localhost:543
 catalyst-radar init-db
 ```
 
+## Provider configuration
+
+Real market-data provider settings are configured through environment variables.
+Use `CATALYST_MARKET_PROVIDER=polygon` for Polygon workflows, and keep
+`CATALYST_POLYGON_API_KEY` unset or blank unless running a live provider call.
+Fixture-backed tests and local CSV flows do not require provider credentials.
+
+Universe defaults are documented in `.env.example`; adjust the threshold values
+there before building point-in-time universe snapshots.
+
 ## Dashboard
 
 ```powershell
