@@ -1,3 +1,5 @@
+import pytest
+
 from catalyst_radar.textint.embeddings import cosine_similarity, embed_text
 
 
@@ -12,3 +14,11 @@ def test_identical_nonempty_text_cosine_is_one() -> None:
     vector = embed_text("NAND SSD storage bottleneck")
 
     assert cosine_similarity(vector, vector) == 1.0
+
+
+def test_cosine_similarity_rejects_non_finite_vectors() -> None:
+    with pytest.raises(ValueError, match="finite"):
+        cosine_similarity([float("nan")], [1.0])
+
+    with pytest.raises(ValueError, match="finite"):
+        cosine_similarity([float("inf")], [1.0])

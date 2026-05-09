@@ -13,6 +13,8 @@ from catalyst_radar.textint.embeddings import embed_text
 from catalyst_radar.textint.ontology import OntologyHit, ThemeDefinition, match_ontology
 from catalyst_radar.textint.sentiment import score_sentiment
 
+TEXT_PAYLOAD_KEYS = frozenset({"body", "summary", "description", "items"})
+
 
 @dataclass(frozen=True)
 class TextSnippet:
@@ -41,6 +43,10 @@ class TextSnippet:
     @property
     def ontology_theme_ids(self) -> tuple[str, ...]:
         return tuple(hit.theme_id for hit in self.ontology_hits)
+
+    @property
+    def ontology_hit_payloads(self) -> tuple[dict[str, object], ...]:
+        return tuple(_ontology_hit_payload(hit) for hit in self.ontology_hits)
 
 
 def extract_snippets(
@@ -133,14 +139,7 @@ def _snippet_from_event(
         payload={
             "body_hash": event.body_hash,
             "dedupe_key": event.dedupe_key,
-            "ontology_hits": [
-                {
-                    "theme_id": hit.theme_id,
-                    "terms": list(hit.matched_terms),
-                    "score": hit.score,
-                }
-                for hit in ontology_hits
-            ],
+            "ontology_hits": [_ontology_hit_payload(hit) for hit in ontology_hits],
         },
         rank_score=rank_score,
     )
@@ -152,14 +151,11 @@ def _event_text(event: CanonicalEvent) -> str:
 
 
 def _payload_text_parts(payload: Mapping[str, Any]) -> tuple[str, ...]:
-    body_parts: list[str] = []
-    other_parts: list[str] = []
+    text_parts: list[str] = []
     for key, value in sorted(payload.items(), key=lambda item: str(item[0])):
-        if key in {"body", "summary", "description", "items"}:
-            body_parts.extend(_flatten_text(value))
-        else:
-            other_parts.extend(_flatten_text(value))
-    return tuple((*body_parts, *other_parts))
+        if str(key) in TEXT_PAYLOAD_KEYS:
+            text_parts.extend(_flatten_text(value))
+    return tuple(text_parts)
 
 
 def _flatten_text(value: Any) -> tuple[str, ...]:
@@ -198,3 +194,13 @@ def _event_type_priority(event_type: EventType | str) -> int:
         EventType.INSIDER.value: 35,
         EventType.NEWS.value: 10,
     }.get(value, 0)
+
+
+def _ontology_hit_payload(hit: OntologyHit) -> dict[str, object]:
+    return {
+        "theme_id": hit.theme_id,
+        "terms": list(hit.matched_terms),
+        "score": hit.score,
+        "sectors": list(hit.sectors),
+        "read_through": list(hit.read_through),
+    }
