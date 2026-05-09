@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.dialects import postgresql
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.schema import CreateTable
 
 from catalyst_radar.cli import main
@@ -155,3 +156,46 @@ def test_csv_connector_rejects_invalid_boolean(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="Invalid boolean value for has_options: 'maybe'"):
         load_securities_csv(securities_csv)
+
+
+def test_market_snapshot_upsert_is_transactional() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    create_schema(engine)
+    repo = MarketRepository(engine)
+    updated_at = datetime(2026, 5, 8, 20, tzinfo=UTC)
+
+    with pytest.raises(IntegrityError):
+        repo.upsert_market_snapshot(
+            securities_rows=[
+                Security(
+                    ticker="AAA",
+                    name="Alpha Analytics",
+                    exchange="NASDAQ",
+                    sector="Technology",
+                    industry="Software",
+                    market_cap=5_000_000_000,
+                    avg_dollar_volume_20d=50_000_000,
+                    has_options=True,
+                    is_active=True,
+                    updated_at=updated_at,
+                )
+            ],
+            daily_bar_rows=[
+                DailyBar(
+                    ticker="AAA",
+                    date=updated_at.date(),
+                    open=100,
+                    high=110,
+                    low=99,
+                    close=None,  # type: ignore[arg-type]
+                    volume=1_500_000,
+                    vwap=108,
+                    adjusted=True,
+                    provider="sample",
+                    source_ts=updated_at,
+                    available_at=datetime(2026, 5, 8, 21, tzinfo=UTC),
+                )
+            ],
+        )
+
+    assert repo.list_active_securities() == []
