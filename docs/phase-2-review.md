@@ -35,7 +35,7 @@ python -m catalyst_radar.cli provider-health --provider csv
 python -m catalyst_radar.cli scan --as-of 2026-05-08
 ```
 
-Expected smoke output:
+Observed smoke output:
 
 ```text
 initialized database
