@@ -30,7 +30,12 @@ from catalyst_radar.connectors.provider_ingest import (
 )
 from catalyst_radar.connectors.sec import SecSubmissionsConnector
 from catalyst_radar.core.config import AppConfig
+from catalyst_radar.core.immutability import thaw_json_value
+from catalyst_radar.core.models import ActionState
+from catalyst_radar.decision_cards.builder import build_decision_card
+from catalyst_radar.pipeline.candidate_packet import build_candidate_packet
 from catalyst_radar.pipeline.scan import run_scan
+from catalyst_radar.storage.candidate_packet_repositories import CandidatePacketRepository
 from catalyst_radar.storage.db import create_schema, engine_from_url
 from catalyst_radar.storage.event_repositories import EventRepository
 from catalyst_radar.storage.feature_repositories import FeatureRepository
@@ -100,6 +105,33 @@ def build_parser() -> argparse.ArgumentParser:
     scan.add_argument("--available-at", type=_parse_aware_datetime)
     scan.add_argument("--provider")
     scan.add_argument("--universe")
+
+    build_packets = subparsers.add_parser("build-packets")
+    build_packets.add_argument("--as-of", type=date.fromisoformat, required=True)
+    build_packets.add_argument("--available-at", type=_parse_aware_datetime)
+    build_packets.add_argument("--ticker")
+    build_packets.add_argument(
+        "--min-state",
+        choices=[state.value for state in ActionState],
+        default=ActionState.WARNING.value,
+    )
+
+    build_cards = subparsers.add_parser("build-decision-cards")
+    build_cards.add_argument("--as-of", type=date.fromisoformat, required=True)
+    build_cards.add_argument("--available-at", type=_parse_aware_datetime)
+    build_cards.add_argument("--ticker")
+
+    packet = subparsers.add_parser("candidate-packet")
+    packet.add_argument("--ticker", required=True)
+    packet.add_argument("--as-of", type=date.fromisoformat, required=True)
+    packet.add_argument("--available-at", type=_parse_aware_datetime)
+    packet.add_argument("--json", action="store_true")
+
+    card = subparsers.add_parser("decision-card")
+    card.add_argument("--ticker", required=True)
+    card.add_argument("--as-of", type=date.fromisoformat, required=True)
+    card.add_argument("--available-at", type=_parse_aware_datetime)
+    card.add_argument("--json", action="store_true")
 
     build_universe = subparsers.add_parser("build-universe")
     build_universe.add_argument("--name")
@@ -313,6 +345,109 @@ def main(argv: list[str] | None = None) -> int:
         for result in results:
             repo.save_scan_result(result.candidate, result.policy)
         print(f"scanned candidates={len(results)}")
+        return 0
+
+    if args.command == "build-packets":
+        create_schema(engine)
+        packet_repo = CandidatePacketRepository(engine)
+        event_repo = EventRepository(engine)
+        text_repo = TextRepository(engine)
+        feature_repo = FeatureRepository(engine)
+        available_at = args.available_at or datetime.now(UTC)
+        try:
+            packets = _build_candidate_packets(
+                packet_repo=packet_repo,
+                event_repo=event_repo,
+                text_repo=text_repo,
+                feature_repo=feature_repo,
+                as_of=_scan_timestamp(args.as_of),
+                available_at=available_at,
+                ticker=args.ticker,
+                states=_states_at_or_above(ActionState(args.min_state)),
+            )
+        except ValueError as exc:
+            print(f"build packets failed: {exc}", file=sys.stderr)
+            return 1
+        print(f"built candidate_packets={len(packets)}")
+        return 0
+
+    if args.command == "build-decision-cards":
+        create_schema(engine)
+        packet_repo = CandidatePacketRepository(engine)
+        event_repo = EventRepository(engine)
+        text_repo = TextRepository(engine)
+        feature_repo = FeatureRepository(engine)
+        available_at = args.available_at or datetime.now(UTC)
+        try:
+            packets = _build_candidate_packets(
+                packet_repo=packet_repo,
+                event_repo=event_repo,
+                text_repo=text_repo,
+                feature_repo=feature_repo,
+                as_of=_scan_timestamp(args.as_of),
+                available_at=available_at,
+                ticker=args.ticker,
+                states=_states_at_or_above(ActionState.WARNING),
+            )
+            cards = []
+            for packet in packets:
+                card = build_decision_card(packet, available_at=available_at)
+                packet_repo.upsert_decision_card(card)
+                cards.append(card)
+        except ValueError as exc:
+            print(f"build decision cards failed: {exc}", file=sys.stderr)
+            return 1
+        print(f"built decision_cards={len(cards)}")
+        return 0
+
+    if args.command == "candidate-packet":
+        create_schema(engine)
+        packet_repo = CandidatePacketRepository(engine)
+        available_at = args.available_at or datetime.now(UTC)
+        packet = packet_repo.latest_candidate_packet(
+            args.ticker,
+            as_of=_scan_timestamp(args.as_of),
+            available_at=available_at,
+        )
+        if packet is None:
+            print(f"candidate packet not found: {args.ticker.upper()}", file=sys.stderr)
+            return 1
+        if args.json:
+            print(json.dumps(thaw_json_value(packet.payload), sort_keys=True))
+        else:
+            print(
+                f"{packet.ticker} packet state={packet.state.value} "
+                f"supporting={len(packet.supporting_evidence)} "
+                f"disconfirming={len(packet.disconfirming_evidence)} "
+                f"conflicts={len(packet.conflicts)} "
+                f"supporting_top={_evidence_summary(packet.supporting_evidence)} "
+                f"disconfirming_top={_evidence_summary(packet.disconfirming_evidence)}"
+            )
+        return 0
+
+    if args.command == "decision-card":
+        create_schema(engine)
+        packet_repo = CandidatePacketRepository(engine)
+        available_at = args.available_at or datetime.now(UTC)
+        card = packet_repo.latest_decision_card(
+            args.ticker,
+            as_of=_scan_timestamp(args.as_of),
+            available_at=available_at,
+        )
+        if card is None:
+            print(f"decision card not found: {args.ticker.upper()}", file=sys.stderr)
+            return 1
+        if args.json:
+            print(json.dumps(thaw_json_value(card.payload), sort_keys=True))
+        else:
+            evidence = card.payload.get("evidence", [])
+            disconfirming = card.payload.get("disconfirming_evidence", [])
+            print(
+                f"{card.ticker} decision_card state={card.action_state.value} "
+                f"next_review_at={card.next_review_at.isoformat()} "
+                f"supporting_top={_mapping_evidence_summary(evidence)} "
+                f"disconfirming_top={_mapping_evidence_summary(disconfirming)}"
+            )
         return 0
 
     if args.command == "build-universe":
@@ -805,6 +940,106 @@ def _print_options_provider_result(result: ProviderIngestResult) -> None:
         f"normalized={result.normalized_count} "
         f"option_features={result.option_feature_count} rejected={result.rejected_count}"
     )
+
+
+def _build_candidate_packets(
+    *,
+    packet_repo: CandidatePacketRepository,
+    event_repo: EventRepository,
+    text_repo: TextRepository,
+    feature_repo: FeatureRepository,
+    as_of: datetime,
+    available_at: datetime,
+    ticker: str | None,
+    states: tuple[ActionState, ...],
+):
+    tickers = [ticker.upper()] if ticker else None
+    inputs = packet_repo.list_candidate_inputs(
+        as_of=as_of,
+        available_at=available_at,
+        tickers=tickers,
+        states=states,
+    )
+    packets = []
+    for item in inputs:
+        candidate_state = item["candidate_state"]
+        candidate_ticker = str(candidate_state["ticker"]).upper()
+        text_features = text_repo.latest_text_features_by_ticker(
+            [candidate_ticker],
+            as_of=as_of,
+            available_at=available_at,
+        )
+        option_features = feature_repo.latest_option_features_by_ticker(
+            [candidate_ticker],
+            as_of=as_of,
+            available_at=available_at,
+        )
+        packet = build_candidate_packet(
+            candidate_state=candidate_state,
+            signal_features_payload=item["signal_payload"],
+            events=event_repo.list_events_for_ticker(
+                candidate_ticker,
+                as_of=as_of,
+                available_at=available_at,
+            ),
+            snippets=text_repo.list_snippets_for_ticker(
+                candidate_ticker,
+                as_of=as_of,
+                available_at=available_at,
+            ),
+            text_features=text_features.get(candidate_ticker),
+            option_features=option_features.get(candidate_ticker),
+            requested_available_at=available_at,
+        )
+        packet_repo.upsert_candidate_packet(packet)
+        packets.append(packet)
+    return packets
+
+
+def _states_at_or_above(min_state: ActionState) -> tuple[ActionState, ...]:
+    floor = _state_rank(min_state)
+    return tuple(state for state in ActionState if _state_rank(state) >= floor)
+
+
+def _state_rank(state: ActionState) -> int:
+    return {
+        ActionState.NO_ACTION: 0,
+        ActionState.RESEARCH_ONLY: 1,
+        ActionState.ADD_TO_WATCHLIST: 2,
+        ActionState.WARNING: 3,
+        ActionState.BLOCKED: 3,
+        ActionState.THESIS_WEAKENING: 3,
+        ActionState.EXIT_INVALIDATE_REVIEW: 3,
+        ActionState.ELIGIBLE_FOR_MANUAL_BUY_REVIEW: 4,
+    }[state]
+
+
+def _evidence_summary(items: object) -> str:
+    if not isinstance(items, (list, tuple)) or not items:
+        return "none"
+    item = items[0]
+    title = getattr(item, "title", "evidence")
+    link = (
+        getattr(item, "source_url", None)
+        or getattr(item, "source_id", None)
+        or getattr(item, "computed_feature_id", None)
+        or "unlinked"
+    )
+    return f"{title} [{link}]"
+
+
+def _mapping_evidence_summary(items: object) -> str:
+    if not isinstance(items, (list, tuple)) or not items or not isinstance(items[0], Mapping):
+        return "none"
+    item = items[0]
+    title = str(item.get("title") or "evidence")
+    link = (
+        item.get("source_url")
+        or item.get("source_id")
+        or item.get("computed_feature_id")
+        or "unlinked"
+    )
+    return f"{title} [{link}]"
 
 
 def _universe_tickers_for_scan(

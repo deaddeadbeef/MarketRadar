@@ -1,21 +1,93 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import Engine, and_, select
+from sqlalchemy import Engine, and_, func, select
 
-from catalyst_radar.storage.schema import candidate_states, signal_features
+from catalyst_radar.storage.schema import (
+    candidate_packets,
+    candidate_states,
+    decision_cards,
+    signal_features,
+)
 
 
 def load_candidate_rows(engine: Engine) -> list[dict[str, object]]:
+    ranked_packets = (
+        select(
+            candidate_packets.c.id,
+            candidate_packets.c.candidate_state_id,
+            candidate_packets.c.available_at,
+            candidate_packets.c.payload,
+            func.row_number()
+            .over(
+                partition_by=candidate_packets.c.candidate_state_id,
+                order_by=(
+                    candidate_packets.c.available_at.desc(),
+                    candidate_packets.c.created_at.desc(),
+                    candidate_packets.c.id.desc(),
+                ),
+            )
+            .label("packet_rank"),
+        )
+        .where(candidate_packets.c.candidate_state_id.is_not(None))
+        .subquery()
+    )
+    ranked_cards = (
+        select(
+            decision_cards.c.id,
+            decision_cards.c.candidate_packet_id,
+            decision_cards.c.available_at,
+            decision_cards.c.next_review_at,
+            decision_cards.c.payload,
+            func.row_number()
+            .over(
+                partition_by=decision_cards.c.candidate_packet_id,
+                order_by=(
+                    decision_cards.c.available_at.desc(),
+                    decision_cards.c.created_at.desc(),
+                    decision_cards.c.id.desc(),
+                ),
+            )
+            .label("card_rank"),
+        )
+        .subquery()
+    )
     stmt = (
-        select(candidate_states, signal_features.c.payload.label("signal_payload"))
+        select(
+            candidate_states,
+            signal_features.c.payload.label("signal_payload"),
+            ranked_packets.c.id.label("candidate_packet_id"),
+            ranked_packets.c.available_at.label("candidate_packet_available_at"),
+            ranked_packets.c.payload.label("candidate_packet_payload"),
+            ranked_cards.c.id.label("decision_card_id"),
+            ranked_cards.c.available_at.label("decision_card_available_at"),
+            ranked_cards.c.next_review_at.label("next_review_at"),
+            ranked_cards.c.payload.label("decision_card_payload"),
+        )
         .join(
             signal_features,
             and_(
                 signal_features.c.ticker == candidate_states.c.ticker,
                 signal_features.c.as_of == candidate_states.c.as_of,
                 signal_features.c.feature_version == candidate_states.c.feature_version,
+            ),
+            isouter=True,
+        )
+        .join(
+            ranked_packets,
+            and_(
+                ranked_packets.c.candidate_state_id == candidate_states.c.id,
+                ranked_packets.c.packet_rank == 1,
+            ),
+            isouter=True,
+        )
+        .join(
+            ranked_cards,
+            and_(
+                ranked_cards.c.candidate_packet_id == ranked_packets.c.id,
+                ranked_cards.c.card_rank == 1,
             ),
             isouter=True,
         )
@@ -28,7 +100,18 @@ def load_candidate_rows(engine: Engine) -> list[dict[str, object]]:
 
 def _candidate_row(row: Any) -> dict[str, object]:
     values = dict(row)
+    for key in (
+        "as_of",
+        "created_at",
+        "candidate_packet_available_at",
+        "decision_card_available_at",
+        "next_review_at",
+    ):
+        if key in values and values[key] is not None:
+            values[key] = _as_utc_datetime(values[key])
     signal_payload = values.pop("signal_payload", None)
+    candidate_packet_payload = values.pop("candidate_packet_payload", None)
+    decision_card_payload = values.pop("decision_card_payload", None)
     candidate_payload = (
         signal_payload.get("candidate", {}) if isinstance(signal_payload, dict) else {}
     )
@@ -72,4 +155,43 @@ def _candidate_row(row: Any) -> dict[str, object]:
     values["candidate_theme"] = candidate_metadata.get("candidate_theme")
     values["theme_feature_version"] = candidate_metadata.get("theme_feature_version")
     values["options_feature_version"] = candidate_metadata.get("options_feature_version")
+    packet_payload = (
+        candidate_packet_payload if isinstance(candidate_packet_payload, dict) else {}
+    )
+    card_payload = decision_card_payload if isinstance(decision_card_payload, dict) else {}
+    values["supporting_evidence_count"] = len(
+        packet_payload.get("supporting_evidence", [])
+    )
+    values["disconfirming_evidence_count"] = len(
+        packet_payload.get("disconfirming_evidence", [])
+    )
+    values["top_supporting_evidence"] = _top_evidence_summary(
+        packet_payload.get("supporting_evidence", [])
+    )
+    values["top_disconfirming_evidence"] = _top_evidence_summary(
+        packet_payload.get("disconfirming_evidence", [])
+    )
+    values["manual_review_disclaimer"] = card_payload.get("disclaimer")
     return values
+
+
+def _top_evidence_summary(value: object) -> dict[str, object] | None:
+    if not isinstance(value, list) or not value or not isinstance(value[0], dict):
+        return None
+    item = value[0]
+    return {
+        "kind": item.get("kind"),
+        "title": item.get("title"),
+        "source_id": item.get("source_id"),
+        "source_url": item.get("source_url"),
+        "computed_feature_id": item.get("computed_feature_id"),
+        "strength": item.get("strength"),
+    }
+
+
+def _as_utc_datetime(value: object) -> object:
+    if not isinstance(value, datetime):
+        return value
+    if value.tzinfo is None or value.utcoffset() is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)

@@ -107,6 +107,13 @@ def test_dashboard_loads_candidate_rows() -> None:
         "portfolio_hard_blocks",
         "entry_zone",
         "invalidation_price",
+        "candidate_packet_id",
+        "supporting_evidence_count",
+        "disconfirming_evidence_count",
+        "top_supporting_evidence",
+        "top_disconfirming_evidence",
+        "decision_card_id",
+        "next_review_at",
     }.issubset(rows[0])
     aaa_result = next(result for result in scan_results if result.ticker == "AAA")
     aaa = next(row for row in rows if row["ticker"] == "AAA")

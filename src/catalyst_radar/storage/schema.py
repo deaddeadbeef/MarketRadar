@@ -111,6 +111,41 @@ candidate_states = Table(
     Column("created_at", DateTime(timezone=True), nullable=False),
 )
 
+candidate_packets = Table(
+    "candidate_packets",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("ticker", String, nullable=False),
+    Column("as_of", DateTime(timezone=True), nullable=False),
+    Column("candidate_state_id", String),
+    Column("state", String, nullable=False),
+    Column("final_score", Float, nullable=False),
+    Column("schema_version", String, nullable=False),
+    Column("source_ts", DateTime(timezone=True), nullable=False),
+    Column("available_at", DateTime(timezone=True), nullable=False),
+    Column("payload", json_type, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+
+decision_cards = Table(
+    "decision_cards",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("ticker", String, nullable=False),
+    Column("as_of", DateTime(timezone=True), nullable=False),
+    Column("candidate_packet_id", String, nullable=False),
+    Column("action_state", String, nullable=False),
+    Column("setup_type", String),
+    Column("final_score", Float, nullable=False),
+    Column("schema_version", String, nullable=False),
+    Column("source_ts", DateTime(timezone=True), nullable=False),
+    Column("available_at", DateTime(timezone=True), nullable=False),
+    Column("next_review_at", DateTime(timezone=True), nullable=False),
+    Column("user_decision", String),
+    Column("payload", json_type, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+
 holdings_snapshots = Table(
     "holdings_snapshots",
     metadata,
@@ -392,4 +427,26 @@ Index(
     "ix_option_features_ticker_available_at",
     option_features.c.ticker,
     option_features.c.available_at,
+)
+Index(
+    "ix_candidate_packets_ticker_as_of_available_at",
+    candidate_packets.c.ticker,
+    candidate_packets.c.as_of,
+    candidate_packets.c.available_at,
+)
+Index(
+    "ix_candidate_packets_state_available_at",
+    candidate_packets.c.state,
+    candidate_packets.c.available_at,
+)
+Index(
+    "ix_decision_cards_ticker_as_of_available_at",
+    decision_cards.c.ticker,
+    decision_cards.c.as_of,
+    decision_cards.c.available_at,
+)
+Index(
+    "ix_decision_cards_action_state_available_at",
+    decision_cards.c.action_state,
+    decision_cards.c.available_at,
 )

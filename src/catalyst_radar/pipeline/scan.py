@@ -231,7 +231,11 @@ def run_scan(
                 peer_score=peer_score,
                 sector_score=sector_score,
             ),
-            "position_size": _position_size_payload(position_size),
+            "position_size": _position_size_payload(
+                position_size,
+                risk_per_trade_pct=portfolio_policy.risk_per_trade_pct,
+                available_cash=portfolio_state.cash,
+            ),
             "portfolio_impact": _portfolio_impact_payload(portfolio_impact),
             "portfolio_state": {
                 "as_of": portfolio_state.as_of.isoformat(),
@@ -571,13 +575,20 @@ def _event_support_score(material_events: list[CanonicalEvent]) -> float:
     return max(event.materiality * event.source_quality * 100 for event in material_events)
 
 
-def _position_size_payload(position_size: PositionSize) -> dict[str, Any]:
+def _position_size_payload(
+    position_size: PositionSize,
+    *,
+    risk_per_trade_pct: float,
+    available_cash: float,
+) -> dict[str, Any]:
     return {
+        "risk_per_trade_pct": risk_per_trade_pct,
         "shares": position_size.shares,
         "notional": position_size.notional,
         "position_pct": position_size.position_pct,
         "risk_amount": position_size.risk_amount,
         "is_capped": position_size.is_capped,
+        "cash_check": "pass" if available_cash >= position_size.notional else "insufficient",
     }
 
 

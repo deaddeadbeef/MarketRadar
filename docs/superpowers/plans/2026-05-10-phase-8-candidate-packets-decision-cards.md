@@ -200,7 +200,7 @@ Warning-or-higher candidates must have at least one supporting evidence item and
 - Create: `sql/migrations/008_candidate_packets_decision_cards.sql`
 - Test: `tests/integration/test_candidate_packet_repository.py`
 
-- [ ] **Step 1: Write repository tests first**
+- [x] **Step 1: Write repository tests first**
 
 Cover:
 
@@ -210,7 +210,7 @@ Cover:
 - Decision card lookup can return the latest card for a ticker/as_of.
 - Packet/card JSON round trips without losing evidence arrays.
 
-- [ ] **Step 2: Add SQLAlchemy schema and migration**
+- [x] **Step 2: Add SQLAlchemy schema and migration**
 
 Add tables:
 
@@ -226,7 +226,7 @@ Indexes:
 
 Use JSON-compatible columns for SQLite and JSONB variants for PostgreSQL.
 
-- [ ] **Step 3: Add packet model dataclasses**
+- [x] **Step 3: Add packet model dataclasses**
 
 Include:
 
@@ -272,7 +272,7 @@ Validation:
 - Reject evidence without source/computed-feature linkage.
 - Reject Warning-or-higher packets missing supporting or disconfirming evidence.
 
-- [ ] **Step 4: Add repository methods**
+- [x] **Step 4: Add repository methods**
 
 Methods:
 
@@ -295,7 +295,7 @@ Use deterministic IDs so rebuilding is idempotent.
 - Test: `tests/unit/test_candidate_packet_builder.py`
 - Test: `tests/golden/test_candidate_packets_replay.py`
 
-- [ ] **Step 1: Write builder unit tests**
+- [x] **Step 1: Write builder unit tests**
 
 Cover:
 
@@ -306,7 +306,7 @@ Cover:
 - Evidence item validation rejects unsupported claims.
 - Rebuilding the same inputs yields the same packet ID and payload.
 
-- [ ] **Step 2: Load packet inputs from persisted scan payloads**
+- [x] **Step 2: Load packet inputs from persisted scan payloads**
 
 Source:
 
@@ -320,7 +320,7 @@ Source:
 
 Do not recompute scores in the builder. It must explain the stored state.
 
-- [ ] **Step 3: Build supporting evidence deterministically**
+- [x] **Step 3: Build supporting evidence deterministically**
 
 Evidence sources:
 
@@ -343,7 +343,7 @@ signal_features:<ticker>:<as_of>:<feature_version>:sector_theme_bonus
 portfolio_impacts:<ticker>:<as_of>:<setup_type>
 ```
 
-- [ ] **Step 4: Build disconfirming evidence deterministically**
+- [x] **Step 4: Build disconfirming evidence deterministically**
 
 Evidence sources:
 
@@ -369,7 +369,7 @@ signal_features:<ticker>:<as_of>:<feature_version>:portfolio_penalty
 signal_features:<ticker>:<as_of>:<feature_version>:missing_trade_plan
 ```
 
-- [ ] **Step 5: Build escalation metadata**
+- [x] **Step 5: Build escalation metadata**
 
 Include:
 
@@ -386,7 +386,7 @@ Include:
 - Create: `src/catalyst_radar/decision_cards/builder.py`
 - Test: `tests/unit/test_decision_card_builder.py`
 
-- [ ] **Step 1: Write card builder tests**
+- [x] **Step 1: Write card builder tests**
 
 Cover:
 
@@ -397,7 +397,7 @@ Cover:
 - Position sizing is copied from deterministic scan metadata.
 - Card language contains manual review wording and no execution wording.
 
-- [ ] **Step 2: Add decision card dataclasses**
+- [x] **Step 2: Add decision card dataclasses**
 
 Include:
 
@@ -428,7 +428,7 @@ Validation:
 - Require manual-review disclaimer.
 - Reject phrases such as `buy now`, `sell now`, `execute`, `place order`, or `automatic trade`.
 
-- [ ] **Step 3: Build deterministic card payload**
+- [x] **Step 3: Build deterministic card payload**
 
 Rules:
 
@@ -457,7 +457,7 @@ Next review time:
 - Test: `tests/integration/test_candidate_packets_cli.py`
 - Test: existing dashboard data tests or add focused coverage if none exist.
 
-- [ ] **Step 1: Add CLI parser commands**
+- [x] **Step 1: Add CLI parser commands**
 
 Commands:
 
@@ -477,7 +477,7 @@ MSFT packet state=Warning supporting=4 disconfirming=2 conflicts=0
 MSFT decision_card state=EligibleForManualBuyReview next_review_at=2026-05-11T13:30:00+00:00
 ```
 
-- [ ] **Step 2: Add build command behavior**
+- [x] **Step 2: Add build command behavior**
 
 Rules:
 
@@ -486,7 +486,7 @@ Rules:
 - `build-decision-cards` builds cards only when a packet exists or builds the packet first within the same command.
 - Commands return nonzero only for structural failures, not for zero eligible candidates.
 
-- [ ] **Step 3: Add inspect command behavior**
+- [x] **Step 3: Add inspect command behavior**
 
 Rules:
 
@@ -494,7 +494,7 @@ Rules:
 - `--json` prints full JSON payload.
 - Missing packet/card returns exit code 1 with a clear message.
 
-- [ ] **Step 4: Dashboard data additions**
+- [x] **Step 4: Dashboard data additions**
 
 Add fields:
 
@@ -516,7 +516,7 @@ Keep dashboard data read-only.
 - Create: `docs/phase-8-review.md`
 - Modify: phase plan checklist while executing.
 
-- [ ] **Step 1: Run focused tests as tasks land**
+- [x] **Step 1: Run focused tests as tasks land**
 
 Commands:
 
@@ -528,7 +528,7 @@ python -m pytest tests/integration/test_candidate_packets_cli.py
 python -m pytest tests/golden/test_candidate_packets_replay.py
 ```
 
-- [ ] **Step 2: Run full verification**
+- [x] **Step 2: Run full verification**
 
 Commands:
 
@@ -537,7 +537,7 @@ python -m pytest
 python -m ruff check src tests apps
 ```
 
-- [ ] **Step 3: Run fixture smoke**
+- [x] **Step 3: Run fixture smoke**
 
 Use an isolated SQLite database:
 
@@ -559,7 +559,7 @@ python -m catalyst_radar.cli decision-card --ticker MSFT --as-of 2026-05-10 --av
 
 If no fixture candidate reaches buy-review state, inspect the top available Warning candidate instead and record that in the review doc.
 
-- [ ] **Step 4: Review pass**
+- [x] **Step 4: Review pass**
 
 Ask subagents to review:
 
@@ -567,7 +567,7 @@ Ask subagents to review:
 Review Phase 8 candidate packet and decision card implementation. Focus on point-in-time correctness, source-link enforcement, deterministic replay, unsupported claim prevention, manual-review wording, and whether Warning-or-higher candidates always receive supporting and disconfirming evidence. Do not edit files.
 ```
 
-- [ ] **Step 5: Document phase outcome**
+- [x] **Step 5: Document phase outcome**
 
 `docs/phase-8-review.md` must include:
 
