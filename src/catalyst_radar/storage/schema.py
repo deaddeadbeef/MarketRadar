@@ -2,19 +2,21 @@ from __future__ import annotations
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
     Column,
     Date,
     DateTime,
     Float,
-    Integer,
     MetaData,
     String,
     Table,
     Text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 
 metadata = MetaData()
+json_type = JSON().with_variant(JSONB, "postgresql")
 
 securities = Table(
     "securities",
@@ -41,7 +43,7 @@ daily_bars = Table(
     Column("high", Float, nullable=False),
     Column("low", Float, nullable=False),
     Column("close", Float, nullable=False),
-    Column("volume", Integer, nullable=False),
+    Column("volume", BigInteger, nullable=False),
     Column("vwap", Float, nullable=False),
     Column("adjusted", Boolean, nullable=False, default=True),
     Column("source_ts", DateTime(timezone=True), nullable=False),
@@ -60,7 +62,7 @@ signal_features = Table(
     Column("risk_penalty", Float, nullable=False),
     Column("portfolio_penalty", Float, nullable=False),
     Column("final_score", Float, nullable=False),
-    Column("payload", JSON, nullable=False),
+    Column("payload", json_type, nullable=False),
 )
 
 candidate_states = Table(
@@ -73,8 +75,8 @@ candidate_states = Table(
     Column("previous_state", String),
     Column("final_score", Float, nullable=False),
     Column("score_delta_5d", Float, nullable=False, default=0),
-    Column("hard_blocks", JSON, nullable=False),
-    Column("transition_reasons", JSON, nullable=False),
+    Column("hard_blocks", json_type, nullable=False),
+    Column("transition_reasons", json_type, nullable=False),
     Column("feature_version", String, nullable=False),
     Column("policy_version", String, nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False),

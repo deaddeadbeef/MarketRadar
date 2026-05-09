@@ -1,10 +1,13 @@
 from datetime import UTC, datetime
 
 from sqlalchemy import create_engine
+from sqlalchemy.dialects import postgresql
+from sqlalchemy.schema import CreateTable
 
 from catalyst_radar.core.models import DailyBar, Security
 from catalyst_radar.storage.db import create_schema
 from catalyst_radar.storage.repositories import MarketRepository
+from catalyst_radar.storage.schema import candidate_states, daily_bars, signal_features
 
 
 def test_repository_round_trips_security_and_bars() -> None:
@@ -53,5 +56,21 @@ def test_repository_round_trips_security_and_bars() -> None:
     bars = repo.daily_bars("AAA", end=updated_at.date(), lookback=10)
 
     assert [security.ticker for security in securities] == ["AAA"]
+    assert securities[0].updated_at.tzinfo is not None
     assert len(bars) == 1
     assert bars[0].close == 109
+    assert bars[0].source_ts.tzinfo is not None
+    assert bars[0].available_at.tzinfo is not None
+
+
+def test_schema_compiles_postgres_volume_and_json_types() -> None:
+    dialect = postgresql.dialect()
+
+    daily_bars_ddl = str(CreateTable(daily_bars).compile(dialect=dialect))
+    signal_features_ddl = str(CreateTable(signal_features).compile(dialect=dialect))
+    candidate_states_ddl = str(CreateTable(candidate_states).compile(dialect=dialect))
+
+    assert "volume BIGINT NOT NULL" in daily_bars_ddl
+    assert "payload JSONB NOT NULL" in signal_features_ddl
+    assert "hard_blocks JSONB NOT NULL" in candidate_states_ddl
+    assert "transition_reasons JSONB NOT NULL" in candidate_states_ddl

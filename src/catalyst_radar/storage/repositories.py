@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 
 from sqlalchemy import Engine, delete, insert, select
 
@@ -111,4 +111,6 @@ class MarketRepository:
 
 
 def _as_datetime(value: datetime) -> datetime:
-    return value
+    if value.tzinfo is None or value.utcoffset() is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
