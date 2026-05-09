@@ -49,3 +49,17 @@ def test_config_reads_explicit_boolean_env_values() -> None:
 
     assert false_config.enable_premium_llm is False
     assert true_config.enable_premium_llm is True
+
+
+def test_config_reads_sec_live_settings_from_env() -> None:
+    config = AppConfig.from_env(
+        {
+            "CATALYST_SEC_ENABLE_LIVE": "true",
+            "CATALYST_SEC_USER_AGENT": "CatalystRadar/0.1 contact@example.com",
+            "CATALYST_SEC_BASE_URL": "https://sec.example.com",
+        }
+    )
+
+    assert config.sec_enable_live is True
+    assert config.sec_user_agent == "CatalystRadar/0.1 contact@example.com"
+    assert config.sec_base_url == "https://sec.example.com"

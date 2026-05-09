@@ -78,7 +78,7 @@ class SecSubmissionsConnector:
                     payload_hash=_hash_payload(raw_payload),
                     payload=raw_payload,
                     source_ts=source_ts,
-                    fetched_at=fetched_at,
+                    fetched_at=max(fetched_at, source_ts),
                     available_at=max(fetched_at, source_ts),
                     license_tag=SEC_LICENSE_TAG,
                     retention_policy=FIXTURE_RETENTION_POLICY,
