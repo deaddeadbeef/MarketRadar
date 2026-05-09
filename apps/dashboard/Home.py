@@ -28,7 +28,10 @@ load_dotenv(".env.local")
 
 st.set_page_config(page_title="Catalyst Radar", layout="wide")
 st.title("Catalyst Radar")
-st.caption("Deterministic Phase 1 radar. No LLM calls are required for this view.")
+st.caption(
+    "Deterministic decision-support review for current candidates, evidence, "
+    "packets, cards, setup context, and scheduled next review."
+)
 
 config = AppConfig.from_env()
 engine = engine_from_url(config.database_url)
@@ -48,26 +51,48 @@ else:
     frame["disconfirming_evidence"] = frame["top_disconfirming_evidence"].map(
         _evidence_label
     )
+    display_columns = [
+        "ticker",
+        "state",
+        "final_score",
+        "hard_blocks",
+        "supporting_evidence",
+        "disconfirming_evidence",
+        "candidate_packet_id",
+        "decision_card_id",
+        "setup_type",
+        "next_review_at",
+        "as_of",
+    ]
+    for column in display_columns:
+        if column not in frame.columns:
+            frame[column] = None
+
+    display_frame = frame[display_columns].rename(
+        columns={
+            "ticker": "Ticker",
+            "state": "State",
+            "final_score": "Score",
+            "hard_blocks": "Hard Blocks",
+            "supporting_evidence": "Supporting Evidence",
+            "disconfirming_evidence": "Disconfirming Evidence",
+            "candidate_packet_id": "Packet ID",
+            "decision_card_id": "Card ID",
+            "setup_type": "Setup Type",
+            "next_review_at": "Next Review",
+            "as_of": "As Of",
+        }
+    )
     left, right = st.columns([2, 1])
     with left:
-        st.subheader("Candidates")
+        st.subheader("Candidate Review Queue")
         st.dataframe(
-            frame[
-                [
-                    "ticker",
-                    "state",
-                    "final_score",
-                    "hard_blocks",
-                    "supporting_evidence",
-                    "disconfirming_evidence",
-                    "candidate_packet_id",
-                    "decision_card_id",
-                    "as_of",
-                ]
-            ],
+            display_frame,
             use_container_width=True,
             hide_index=True,
         )
     with right:
         st.subheader("State Mix")
         st.bar_chart(frame["state"].value_counts())
+        st.metric("Candidates", len(frame))
+        st.metric("Average Score", f"{frame['final_score'].mean():.2f}")

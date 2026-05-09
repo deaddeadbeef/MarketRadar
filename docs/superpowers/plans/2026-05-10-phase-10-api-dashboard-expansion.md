@@ -198,7 +198,7 @@ Feedback is a user label and audit input only. It must not alter candidate state
 - Create: `src/catalyst_radar/api/routes/__init__.py`
 - Test: `tests/integration/test_api_routes.py`
 
-- [ ] **Step 1: Add FastAPI dependencies**
+- [x] **Step 1: Add FastAPI dependencies**
 
 Add these dependencies to `pyproject.toml`:
 
@@ -227,7 +227,7 @@ Expected:
 Successfully installed catalyst-radar-0.1.0
 ```
 
-- [ ] **Step 2: Write API health test**
+- [x] **Step 2: Write API health test**
 
 Create `tests/integration/test_api_routes.py` with:
 
@@ -260,7 +260,7 @@ Expected before implementation:
 ModuleNotFoundError
 ```
 
-- [ ] **Step 3: Implement API app skeleton**
+- [x] **Step 3: Implement API app skeleton**
 
 Create `apps/api/main.py`:
 
@@ -322,7 +322,7 @@ All checks passed!
 - Modify: `src/catalyst_radar/dashboard/data.py`
 - Test: `tests/integration/test_dashboard_data.py`
 
-- [ ] **Step 1: Write dashboard data tests**
+- [x] **Step 1: Write dashboard data tests**
 
 Create `tests/integration/test_dashboard_data.py` with fixture data inserted into an isolated SQLite DB. Tests must cover:
 
@@ -346,7 +346,7 @@ Use existing schema tables directly:
 - `paper_trades`
 - `provider_health`
 
-- [ ] **Step 2: Implement detail helpers**
+- [x] **Step 2: Implement detail helpers**
 
 Add these functions to `src/catalyst_radar/dashboard/data.py`:
 
@@ -388,7 +388,7 @@ All checks passed!
 - Modify: `apps/api/main.py`
 - Test: `tests/integration/test_api_routes.py`
 
-- [ ] **Step 1: Extend API tests for radar endpoints**
+- [x] **Step 1: Extend API tests for radar endpoints**
 
 Append tests:
 
@@ -405,7 +405,7 @@ client.get("/api/radar/candidates")
 client.get("/api/radar/candidates/MSFT")
 ```
 
-- [ ] **Step 2: Implement radar router**
+- [x] **Step 2: Implement radar router**
 
 Create `src/catalyst_radar/api/routes/radar.py`:
 
@@ -470,7 +470,7 @@ All checks passed!
 - Modify: `apps/api/main.py`
 - Test: `tests/integration/test_api_routes.py`
 
-- [ ] **Step 1: Add route tests**
+- [x] **Step 1: Add route tests**
 
 Append tests:
 
@@ -493,7 +493,7 @@ Feedback POST body:
 }
 ```
 
-- [ ] **Step 2: Implement ops and costs routers**
+- [x] **Step 2: Implement ops and costs routers**
 
 `ops.py`:
 
@@ -519,7 +519,7 @@ Route:
 GET /api/costs/summary
 ```
 
-- [ ] **Step 3: Implement feedback router**
+- [x] **Step 3: Implement feedback router**
 
 Use `pydantic.BaseModel`, `ValidationRepository`, `UsefulAlertLabel`, and `useful_alert_label_id`.
 
@@ -556,7 +556,7 @@ All checks passed!
 - Create: `apps/dashboard/pages/4_Costs.py`
 - Create: `apps/dashboard/pages/5_Ops.py`
 
-- [ ] **Step 1: Update Home page copy and columns**
+- [x] **Step 1: Update Home page copy and columns**
 
 Requirements:
 
@@ -564,7 +564,7 @@ Requirements:
 - Candidate table must include state, score, evidence, packet/card IDs, setup type, and next review.
 - No text may say buy now, sell now, execute, place order, or automatic trade.
 
-- [ ] **Step 2: Add Ticker Detail page**
+- [x] **Step 2: Add Ticker Detail page**
 
 Page behavior:
 
@@ -573,28 +573,28 @@ Page behavior:
 - Show setup plan, hard blocks, top evidence, event/snippet sections, portfolio impact, validation rows, paper trades.
 - If missing, show `Ticker not found in current radar data.`
 
-- [ ] **Step 3: Add Themes page**
+- [x] **Step 3: Add Themes page**
 
 Page behavior:
 
 - Show theme summary rows from `load_theme_rows`.
 - Include candidate count, average score, top tickers, state mix, latest as-of.
 
-- [ ] **Step 4: Add Validation page**
+- [x] **Step 4: Add Validation page**
 
 Page behavior:
 
 - Show latest validation run, precision, useful-alert rate, false positives, missed opportunities, leakage failures.
 - Show paper trades table and useful label table if available.
 
-- [ ] **Step 5: Add Costs page**
+- [x] **Step 5: Add Costs page**
 
 Page behavior:
 
 - Show placeholder-safe deterministic cost summary: total cost defaults to 0, useful alerts count, cost per useful alert.
 - Do not invent paid model spend.
 
-- [ ] **Step 6: Add Ops page**
+- [x] **Step 6: Add Ops page**
 
 Page behavior:
 
@@ -619,21 +619,21 @@ All checks passed!
 
 - Create: `docs/phase-10-review.md`
 
-- [ ] **Step 1: Run focused tests**
+- [x] **Step 1: Run focused tests**
 
 ```powershell
 python -m pytest tests/integration/test_api_routes.py tests/integration/test_dashboard_data.py
 python -m ruff check apps src tests
 ```
 
-- [ ] **Step 2: Run full verification**
+- [x] **Step 2: Run full verification**
 
 ```powershell
 python -m pytest
 python -m ruff check src tests apps
 ```
 
-- [ ] **Step 3: Run API smoke**
+- [x] **Step 3: Run API smoke**
 
 ```powershell
 $env:PYTHONPATH="src"
@@ -649,7 +649,7 @@ http://127.0.0.1:8010/docs
 http://127.0.0.1:8010/api/health
 ```
 
-- [ ] **Step 4: Run dashboard smoke**
+- [x] **Step 4: Run dashboard smoke**
 
 ```powershell
 $env:PYTHONPATH="src"
@@ -663,7 +663,7 @@ Open:
 http://localhost:8509
 ```
 
-- [ ] **Step 5: Document phase outcome**
+- [x] **Step 5: Document phase outcome**
 
 `docs/phase-10-review.md` must include:
 
