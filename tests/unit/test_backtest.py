@@ -26,10 +26,28 @@ def test_availability_check_rejects_future_record() -> None:
 def test_forward_return_labels() -> None:
     labels = label_forward_return(
         entry_price=100,
-        max_forward_price=126,
+        max_10d_price=116,
+        max_20d_price=126,
+        max_60d_price=141,
         sector_return=0.02,
     )
 
     assert labels["target_10d_15"] is True
     assert labels["target_20d_25"] is True
+    assert labels["target_60d_40"] is True
     assert labels["sector_outperformance"] is True
+
+
+def test_forward_return_labels_are_horizon_specific() -> None:
+    labels = label_forward_return(
+        entry_price=100,
+        max_10d_price=116,
+        max_20d_price=124,
+        max_60d_price=141,
+        sector_return=0.22,
+    )
+
+    assert labels["target_10d_15"] is True
+    assert labels["target_20d_25"] is False
+    assert labels["target_60d_40"] is True
+    assert labels["sector_outperformance"] is False

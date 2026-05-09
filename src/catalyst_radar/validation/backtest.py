@@ -16,13 +16,17 @@ def assert_available_at_or_before_decision(
 
 def label_forward_return(
     entry_price: float,
-    max_forward_price: float,
+    max_10d_price: float,
+    max_20d_price: float,
+    max_60d_price: float,
     sector_return: float,
 ) -> dict[str, bool]:
-    forward_return = (max_forward_price / entry_price) - 1
+    forward_10d_return = (max_10d_price / entry_price) - 1
+    forward_20d_return = (max_20d_price / entry_price) - 1
+    forward_60d_return = (max_60d_price / entry_price) - 1
     return {
-        "target_10d_15": forward_return >= 0.15,
-        "target_20d_25": forward_return >= 0.25,
-        "target_60d_40": forward_return >= 0.40,
-        "sector_outperformance": (forward_return - sector_return) >= 0.20,
+        "target_10d_15": forward_10d_return >= 0.15,
+        "target_20d_25": forward_20d_return >= 0.25,
+        "target_60d_40": forward_60d_return >= 0.40,
+        "sector_outperformance": (forward_60d_return - sector_return) >= 0.20,
     }
