@@ -26,6 +26,18 @@ def test_config_reads_risk_settings_from_env() -> None:
     assert config.max_sector_pct == 0.25
 
 
+def test_config_reads_portfolio_value_and_cash_from_env() -> None:
+    config = AppConfig.from_env(
+        {
+            "CATALYST_PORTFOLIO_VALUE": "100000",
+            "CATALYST_PORTFOLIO_CASH": "25000",
+        }
+    )
+
+    assert config.portfolio_value == 100000
+    assert config.portfolio_cash == 25000
+
+
 def test_config_rejects_invalid_boolean_env_value() -> None:
     with pytest.raises(ValueError, match="Invalid boolean value"):
         AppConfig.from_env({"CATALYST_ENABLE_PREMIUM_LLM": "treu"})

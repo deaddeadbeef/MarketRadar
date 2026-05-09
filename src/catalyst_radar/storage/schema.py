@@ -69,6 +69,31 @@ signal_features = Table(
     Column("payload", json_type, nullable=False),
 )
 
+portfolio_impacts = Table(
+    "portfolio_impacts",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("ticker", String, nullable=False),
+    Column("as_of", DateTime(timezone=True), nullable=False),
+    Column("setup_type", String, nullable=False),
+    Column("proposed_notional", Float, nullable=False),
+    Column("max_loss", Float, nullable=False),
+    Column("single_name_before_pct", Float, nullable=False),
+    Column("single_name_after_pct", Float, nullable=False),
+    Column("sector_before_pct", Float, nullable=False),
+    Column("sector_after_pct", Float, nullable=False),
+    Column("theme_before_pct", Float, nullable=False),
+    Column("theme_after_pct", Float, nullable=False),
+    Column("correlated_before_pct", Float, nullable=False),
+    Column("correlated_after_pct", Float, nullable=False),
+    Column("portfolio_penalty", Float, nullable=False),
+    Column("hard_blocks", json_type, nullable=False),
+    Column("source_ts", DateTime(timezone=True), nullable=False),
+    Column("available_at", DateTime(timezone=True), nullable=False),
+    Column("payload", json_type, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+
 candidate_states = Table(
     "candidate_states",
     metadata,
@@ -95,6 +120,8 @@ holdings_snapshots = Table(
     Column("market_value", Float, nullable=False),
     Column("sector", String, nullable=False),
     Column("theme", String, nullable=False),
+    Column("portfolio_value", Float, server_default=text("0")),
+    Column("cash", Float, server_default=text("0")),
 )
 
 raw_provider_records = Table(
@@ -201,6 +228,12 @@ Index(
     daily_bars.c.available_at,
 )
 Index("ix_securities_active_ticker", securities.c.is_active, securities.c.ticker)
+Index("ix_portfolio_impacts_ticker_as_of", portfolio_impacts.c.ticker, portfolio_impacts.c.as_of)
+Index(
+    "ix_portfolio_impacts_setup_type_as_of",
+    portfolio_impacts.c.setup_type,
+    portfolio_impacts.c.as_of,
+)
 Index(
     "ix_raw_provider_provider_kind_source",
     raw_provider_records.c.provider,

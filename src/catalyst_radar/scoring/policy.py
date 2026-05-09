@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+from typing import Any
+
 from catalyst_radar.core.models import ActionState, CandidateSnapshot, PolicyResult
 
 POLICY_VERSION = "policy-v1"
@@ -10,6 +13,7 @@ MIN_BUY_REVIEW_PILLARS = 3
 MIN_REWARD_RISK = 2.0
 MIN_WATCHLIST_SCORE = 60
 MIN_RESEARCH_ONLY_SCORE = 50
+CHASE_HARD_BLOCK_EXTENSION = 0.20
 
 
 def evaluate_policy(candidate: CandidateSnapshot) -> PolicyResult:
@@ -20,7 +24,11 @@ def evaluate_policy(candidate: CandidateSnapshot) -> PolicyResult:
         hard_blocks.append("data_stale")
         reasons.append("candidate data is stale")
 
-    if candidate.portfolio_penalty >= 20:
+    portfolio_blocks = _portfolio_hard_blocks(candidate)
+    if portfolio_blocks:
+        hard_blocks.extend(portfolio_blocks)
+        reasons.append("portfolio impact exceeds hard policy limits")
+    elif candidate.portfolio_penalty >= 20:
         hard_blocks.append("portfolio_hard_block")
         reasons.append("portfolio impact exceeds hard policy limits")
 
@@ -32,6 +40,10 @@ def evaluate_policy(candidate: CandidateSnapshot) -> PolicyResult:
         hard_blocks.append("risk_penalty_hard_block")
         reasons.append("risk penalty exceeds policy ceiling")
 
+    if _chase_block(candidate) and candidate.features.extension_20d >= CHASE_HARD_BLOCK_EXTENSION:
+        hard_blocks.append("chase_overextension_hard_block")
+        reasons.append("setup is extended beyond chase risk ceiling")
+
     if hard_blocks:
         return PolicyResult(
             state=ActionState.BLOCKED,
@@ -39,7 +51,7 @@ def evaluate_policy(candidate: CandidateSnapshot) -> PolicyResult:
             reasons=tuple(reasons),
         )
 
-    missing_trade_plan = _missing_trade_plan(candidate)
+    missing_trade_plan = _manual_review_blockers(candidate)
     eligible_for_buy_review = (
         candidate.final_score >= MIN_ELIGIBLE_BUY_REVIEW_SCORE
         and candidate.strong_pillars >= MIN_BUY_REVIEW_PILLARS
@@ -87,7 +99,41 @@ def _missing_trade_plan(candidate: CandidateSnapshot) -> tuple[str, ...]:
     return tuple(missing)
 
 
+def _manual_review_blockers(candidate: CandidateSnapshot) -> tuple[str, ...]:
+    missing = list(_missing_trade_plan(candidate))
+    if (
+        candidate.final_score >= MIN_ELIGIBLE_BUY_REVIEW_SCORE
+        and candidate.strong_pillars >= MIN_BUY_REVIEW_PILLARS
+    ):
+        if _portfolio_impact(candidate) is None:
+            missing.append("portfolio_impact_missing")
+        if _chase_block(candidate):
+            missing.append("chase_block")
+    return tuple(missing)
+
+
 def _warning_reasons(missing_trade_plan: tuple[str, ...]) -> tuple[str, ...]:
     if missing_trade_plan:
         return ("trade_plan_required",)
     return ("score_requires_manual_review",)
+
+
+def _portfolio_impact(candidate: CandidateSnapshot) -> Mapping[str, Any] | None:
+    impact = candidate.metadata.get("portfolio_impact")
+    if isinstance(impact, Mapping):
+        return impact
+    return None
+
+
+def _portfolio_hard_blocks(candidate: CandidateSnapshot) -> list[str]:
+    impact = _portfolio_impact(candidate)
+    if impact is None:
+        return []
+    hard_blocks = impact.get("hard_blocks", ())
+    if not isinstance(hard_blocks, (list, tuple)):
+        return []
+    return [str(block) for block in hard_blocks if str(block)]
+
+
+def _chase_block(candidate: CandidateSnapshot) -> bool:
+    return candidate.metadata.get("chase_block") is True

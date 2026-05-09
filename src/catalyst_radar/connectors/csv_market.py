@@ -64,6 +64,8 @@ def load_holdings_csv(path: str | Path) -> list[HoldingSnapshot]:
                 sector=str(record["sector"]),
                 theme=str(record["theme"]),
                 as_of=_to_utc_datetime(record["as_of"]),
+                portfolio_value=_optional_float(record, "portfolio_value"),
+                cash=_optional_float(record, "cash"),
             )
         )
     return rows
@@ -86,3 +88,17 @@ def _to_utc_datetime(value: object) -> datetime:
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         return parsed.replace(tzinfo=UTC)
     return parsed.astimezone(UTC)
+
+
+def _optional_float(record: dict[str, object], field: str) -> float:
+    value = record.get(field)
+    if value is None:
+        return 0.0
+    try:
+        if bool(pd.isna(value)):
+            return 0.0
+    except (TypeError, ValueError):
+        pass
+    if isinstance(value, str) and not value.strip():
+        return 0.0
+    return float(value)

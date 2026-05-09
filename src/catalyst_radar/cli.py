@@ -151,6 +151,7 @@ def main(argv: list[str] | None = None) -> int:
             available_at=available_at,
             provider=scan_provider,
             universe_tickers=universe_tickers,
+            config=config,
         )
         for result in results:
             repo.save_scan_result(result.candidate, result.policy)

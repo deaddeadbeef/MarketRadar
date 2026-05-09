@@ -21,9 +21,14 @@ def test_real_market_indexes_exist(tmp_path) -> None:
     raw_provider_indexes = {
         index["name"] for index in inspector.get_indexes("raw_provider_records")
     }
+    portfolio_impact_indexes = {
+        index["name"] for index in inspector.get_indexes("portfolio_impacts")
+    }
 
     assert "ix_daily_bars_ticker_date_available_at" in daily_bar_indexes
     assert "ix_securities_active_ticker" in security_indexes
     assert "ix_universe_snapshots_name_asof_available_at" in universe_snapshot_indexes
     assert "ix_universe_members_snapshot_rank_ticker" in universe_member_indexes
     assert "ix_raw_provider_provider_kind_source" in raw_provider_indexes
+    assert "ix_portfolio_impacts_ticker_as_of" in portfolio_impact_indexes
+    assert "ix_portfolio_impacts_setup_type_as_of" in portfolio_impact_indexes

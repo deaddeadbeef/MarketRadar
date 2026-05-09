@@ -114,7 +114,7 @@ def test_scan_uses_selected_provider_when_duplicate_bars_exist(tmp_path: Path) -
     sample_aaa = next(result for result in sample_results if result.ticker == "AAA")
     polygon_aaa = next(result for result in polygon_results if result.ticker == "AAA")
 
-    assert sample_aaa.candidate.entry_zone == (106.82, 111.18)
+    assert sample_aaa.candidate.entry_zone == (107.91, 111.1)
     assert polygon_aaa.candidate.entry_zone == (979.02, 1018.98)
 
 

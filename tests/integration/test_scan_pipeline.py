@@ -4,6 +4,7 @@ from pathlib import Path
 from sqlalchemy import create_engine
 
 from catalyst_radar.connectors.csv_market import load_daily_bars_csv, load_securities_csv
+from catalyst_radar.core.config import AppConfig
 from catalyst_radar.core.models import DailyBar
 from catalyst_radar.dashboard.data import load_candidate_rows
 from catalyst_radar.pipeline.scan import run_scan
@@ -19,7 +20,11 @@ def test_scan_pipeline_produces_candidate_states() -> None:
     repo.upsert_securities(load_securities_csv(fixture_dir / "securities.csv"))
     repo.upsert_daily_bars(load_daily_bars_csv(fixture_dir / "daily_bars.csv"))
 
-    results = run_scan(repo, as_of=date(2026, 5, 8))
+    results = run_scan(
+        repo,
+        as_of=date(2026, 5, 8),
+        config=AppConfig(portfolio_value=100_000, portfolio_cash=25_000),
+    )
 
     states = {result.ticker: result.policy.state.value for result in results}
     assert states["AAA"] in {"AddToWatchlist", "Warning", "EligibleForManualBuyReview"}
@@ -58,14 +63,21 @@ def test_scan_pipeline_excludes_future_available_same_date_bar() -> None:
         lookback=10,
         available_at=datetime(2026, 5, 8, 21, tzinfo=UTC),
     )
-    results = run_scan(repo, as_of=date(2026, 5, 8))
+    results = run_scan(
+        repo,
+        as_of=date(2026, 5, 8),
+        config=AppConfig(portfolio_value=100_000, portfolio_cash=25_000),
+    )
     aaa = next(result for result in results if result.ticker == "AAA")
 
     assert gated_bars[-1].date == date(2026, 5, 7)
     assert gated_bars[-1].close == 105
     assert len(results) == 3
     assert aaa.candidate.data_stale is True
-    assert aaa.candidate.entry_zone == (102.9, 107.1)
+    assert aaa.candidate.entry_zone == (103.95, 107.06)
+    assert aaa.candidate.metadata["setup_type"] == "breakout"
+    assert aaa.candidate.metadata["target_price"] == 119.7
+    assert "near_52w_high_breakout" in aaa.candidate.metadata["setup_reasons"]
 
 
 def test_dashboard_loads_candidate_rows() -> None:
@@ -75,10 +87,30 @@ def test_dashboard_loads_candidate_rows() -> None:
     fixture_dir = Path("tests/fixtures")
     repo.upsert_securities(load_securities_csv(fixture_dir / "securities.csv"))
     repo.upsert_daily_bars(load_daily_bars_csv(fixture_dir / "daily_bars.csv"))
-    for result in run_scan(repo, as_of=date(2026, 5, 8)):
+    scan_results = run_scan(
+        repo,
+        as_of=date(2026, 5, 8),
+        config=AppConfig(portfolio_value=100_000, portfolio_cash=25_000),
+    )
+    for result in scan_results:
         repo.save_scan_result(result.candidate, result.policy)
 
     rows = load_candidate_rows(engine)
 
     assert rows
-    assert {"ticker", "state", "final_score", "hard_blocks"}.issubset(rows[0])
+    assert {
+        "ticker",
+        "state",
+        "final_score",
+        "hard_blocks",
+        "setup_type",
+        "portfolio_hard_blocks",
+        "entry_zone",
+        "invalidation_price",
+    }.issubset(rows[0])
+    aaa_result = next(result for result in scan_results if result.ticker == "AAA")
+    aaa = next(row for row in rows if row["ticker"] == "AAA")
+    assert aaa["setup_type"] == "breakout"
+    assert aaa["portfolio_hard_blocks"] == []
+    assert aaa["entry_zone"] == list(aaa_result.candidate.entry_zone)
+    assert aaa["invalidation_price"] == aaa_result.candidate.invalidation_price

@@ -90,6 +90,33 @@ def test_policy_blocks_portfolio_penalty_at_plan_threshold() -> None:
     assert "portfolio_hard_block" in result.hard_blocks
 
 
+def test_policy_uses_exact_portfolio_hard_blocks_from_impact_metadata() -> None:
+    candidate = candidate_from_features(
+        _features(),
+        portfolio_penalty=25.0,
+        data_stale=False,
+        entry_zone=(100.0, 103.0),
+        invalidation_price=94.0,
+        reward_risk=2.5,
+        metadata={
+            "portfolio_impact": {
+                "hard_blocks": [
+                    "single_name_exposure_hard_block",
+                    "sector_exposure_hard_block",
+                ]
+            }
+        },
+    )
+
+    result = evaluate_policy(candidate)
+
+    assert result.state == ActionState.BLOCKED
+    assert result.hard_blocks == (
+        "single_name_exposure_hard_block",
+        "sector_exposure_hard_block",
+    )
+
+
 def test_policy_requires_trade_plan_for_buy_review() -> None:
     candidate = candidate_from_features(
         _features(),
@@ -103,7 +130,11 @@ def test_policy_requires_trade_plan_for_buy_review() -> None:
     result = evaluate_policy(candidate)
 
     assert result.state == ActionState.WARNING
-    assert result.missing_trade_plan == ("entry_zone", "invalidation_price")
+    assert result.missing_trade_plan == (
+        "entry_zone",
+        "invalidation_price",
+        "portfolio_impact_missing",
+    )
 
 
 def test_policy_keeps_low_reward_risk_candidate_in_warning() -> None:
@@ -120,7 +151,59 @@ def test_policy_keeps_low_reward_risk_candidate_in_warning() -> None:
 
     assert candidate.final_score >= 85
     assert result.state == ActionState.WARNING
-    assert result.missing_trade_plan == ("reward_risk_too_low",)
+    assert result.missing_trade_plan == ("reward_risk_too_low", "portfolio_impact_missing")
+
+
+def test_policy_requires_portfolio_impact_for_buy_review() -> None:
+    candidate = candidate_from_features(
+        _features(),
+        portfolio_penalty=0.0,
+        data_stale=False,
+        entry_zone=(100.0, 103.0),
+        invalidation_price=94.0,
+        reward_risk=2.5,
+    )
+
+    result = evaluate_policy(candidate)
+
+    assert candidate.final_score >= 85
+    assert result.state == ActionState.WARNING
+    assert result.missing_trade_plan == ("portfolio_impact_missing",)
+
+
+def test_policy_treats_chase_block_as_buy_review_blocker() -> None:
+    candidate = candidate_from_features(
+        _features(),
+        portfolio_penalty=0.0,
+        data_stale=False,
+        entry_zone=(100.0, 103.0),
+        invalidation_price=94.0,
+        reward_risk=2.5,
+        metadata={"portfolio_impact": {"hard_blocks": []}, "chase_block": True},
+    )
+
+    result = evaluate_policy(candidate)
+
+    assert result.state == ActionState.WARNING
+    assert result.hard_blocks == ()
+    assert result.missing_trade_plan == ("chase_block",)
+
+
+def test_policy_hard_blocks_chase_when_extension_is_extreme() -> None:
+    candidate = candidate_from_features(
+        _features(extension_20d=0.25),
+        portfolio_penalty=0.0,
+        data_stale=False,
+        entry_zone=(100.0, 103.0),
+        invalidation_price=94.0,
+        reward_risk=2.5,
+        metadata={"portfolio_impact": {"hard_blocks": []}, "chase_block": True},
+    )
+
+    result = evaluate_policy(candidate)
+
+    assert result.state == ActionState.BLOCKED
+    assert "chase_overextension_hard_block" in result.hard_blocks
 
 
 def test_eligible_manual_buy_review_when_all_gates_pass() -> None:
@@ -131,6 +214,7 @@ def test_eligible_manual_buy_review_when_all_gates_pass() -> None:
         entry_zone=(100.0, 103.0),
         invalidation_price=94.0,
         reward_risk=2.5,
+        metadata={"portfolio_impact": {"hard_blocks": []}},
     )
 
     result = evaluate_policy(candidate)
@@ -149,6 +233,7 @@ def _features(
     rs_60_spy: float = 82,
     ma_regime: float = 92,
     liquidity_score: float = 95,
+    extension_20d: float = 0.07,
 ) -> MarketFeatures:
     as_of = datetime(2026, 5, 8, 21, tzinfo=UTC)
     return MarketFeatures(
@@ -163,7 +248,7 @@ def _features(
         rel_volume_5d=2.1,
         dollar_volume_z=2.0,
         atr_pct=0.035,
-        extension_20d=0.07,
+        extension_20d=extension_20d,
         liquidity_score=liquidity_score,
         feature_version="market-v1",
     )

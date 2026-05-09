@@ -5,14 +5,15 @@ from dataclasses import dataclass
 from typing import Any
 
 from catalyst_radar.core.models import PortfolioImpact
+from catalyst_radar.portfolio.correlation import correlated_exposure_notional
 
 
 @dataclass(frozen=True)
 class PortfolioPolicy:
-    max_position_pct: float = 0.10
-    risk_per_trade_pct: float = 0.01
+    max_position_pct: float = 0.08
+    risk_per_trade_pct: float = 0.005
     max_sector_pct: float = 0.30
-    max_theme_pct: float = 0.40
+    max_theme_pct: float = 0.35
 
 
 @dataclass(frozen=True)
@@ -80,6 +81,8 @@ def evaluate_portfolio_impact(
     current_positions: dict[str, dict[str, Any]],
     proposed_notional: float,
     policy: PortfolioPolicy | None = None,
+    max_loss: float | None = None,
+    available_cash: float | None = None,
 ) -> PortfolioImpact:
     active_policy = policy or PortfolioPolicy()
     account_equity = _finite_positive(account_equity)
@@ -91,11 +94,10 @@ def evaluate_portfolio_impact(
     if account_equity <= 0:
         return PortfolioImpact(
             ticker=ticker,
-            single_name_after_pct=0.0,
-            sector_after_pct=0.0,
-            theme_after_pct=0.0,
+            proposed_notional=0.0,
+            max_loss=_finite_non_negative(max_loss),
             portfolio_penalty=25.0,
-            hard_blocks=("invalid_account_equity",),
+            hard_blocks=("invalid_portfolio_input",),
         )
 
     hard_blocks = []
@@ -103,41 +105,61 @@ def evaluate_portfolio_impact(
     if proposed_notional <= 0:
         hard_blocks.append("invalid_portfolio_input")
         penalty += 25.0
+    if available_cash is not None:
+        cash_value = _finite_non_negative(available_cash)
+        if proposed_notional > 0 and cash_value < proposed_notional:
+            hard_blocks.append("insufficient_cash_hard_block")
+            penalty += 25.0
 
-    existing_name, _ = _position_notional(current_positions.get(ticker, {}))
-
+    existing_name = 0.0
     sector_notional = 0.0
     theme_notional = 0.0
-    for position in current_positions.values():
+    for position_ticker, position in current_positions.items():
         notional, invalid = _position_notional(position)
         if invalid:
             hard_blocks.append("invalid_portfolio_input")
             penalty += 25.0
             continue
+        if position_ticker == ticker:
+            existing_name += notional
         if position.get("sector") == sector:
             sector_notional += notional
         if position.get("theme") == theme:
             theme_notional += notional
 
+    correlated_notional = correlated_exposure_notional(current_positions, sector, theme)
+
+    single_name_before_pct = existing_name / account_equity
     single_name_after_pct = (existing_name + proposed_notional) / account_equity
+    sector_before_pct = sector_notional / account_equity
     sector_after_pct = (sector_notional + proposed_notional) / account_equity
+    theme_before_pct = theme_notional / account_equity
     theme_after_pct = (theme_notional + proposed_notional) / account_equity
+    correlated_before_pct = correlated_notional / account_equity
+    correlated_after_pct = (correlated_notional + proposed_notional) / account_equity
 
     if single_name_after_pct > max_position_pct:
-        hard_blocks.append("single_name_overexposure")
+        hard_blocks.append("single_name_exposure_hard_block")
         penalty += 25.0
     if sector_after_pct > max_sector_pct:
-        hard_blocks.append("sector_overexposure")
+        hard_blocks.append("sector_exposure_hard_block")
         penalty += 25.0
     if theme_after_pct > max_theme_pct:
-        hard_blocks.append("theme_overexposure")
+        hard_blocks.append("theme_exposure_hard_block")
         penalty += 25.0
 
     return PortfolioImpact(
         ticker=ticker,
+        single_name_before_pct=round(single_name_before_pct, 4),
         single_name_after_pct=round(single_name_after_pct, 4),
+        sector_before_pct=round(sector_before_pct, 4),
         sector_after_pct=round(sector_after_pct, 4),
+        theme_before_pct=round(theme_before_pct, 4),
         theme_after_pct=round(theme_after_pct, 4),
+        correlated_before_pct=round(correlated_before_pct, 4),
+        correlated_after_pct=round(correlated_after_pct, 4),
+        proposed_notional=round(proposed_notional, 2),
+        max_loss=_finite_non_negative(max_loss),
         portfolio_penalty=penalty,
         hard_blocks=tuple(dict.fromkeys(hard_blocks)),
     )
@@ -159,5 +181,17 @@ def _finite_positive(value: float) -> float:
     except (TypeError, ValueError):
         return 0.0
     if not math.isfinite(result) or result <= 0:
+        return 0.0
+    return result
+
+
+def _finite_non_negative(value: float | None) -> float:
+    if value is None:
+        return 0.0
+    try:
+        result = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    if not math.isfinite(result) or result < 0:
         return 0.0
     return result
