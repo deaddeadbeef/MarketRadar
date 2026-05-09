@@ -257,7 +257,8 @@ scanned candidates=3
 
 - `create_schema(engine)` creates all new tables in SQLite.
 - Migration SQL contains all new table names and required timestamp columns.
-- `available_at` columns are non-null in raw, normalized, incidents, and universe snapshots.
+- `available_at` columns are non-null in raw, normalized, and universe snapshots.
+- Incident `source_ts` and `available_at` columns are nullable so missing timestamp payloads can still be audited.
 - JSON columns use the existing SQLAlchemy `json_type`.
 
 ## Task 3: Provider Repositories and Replay

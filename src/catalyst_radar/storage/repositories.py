@@ -6,8 +6,9 @@ from datetime import UTC, date, datetime
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import Engine, delete, insert, select
+from sqlalchemy import Connection, Engine, delete, insert, select
 
+from catalyst_radar.core.immutability import thaw_json_value
 from catalyst_radar.core.models import (
     CandidateSnapshot,
     DailyBar,
@@ -31,49 +32,11 @@ class MarketRepository:
 
     def upsert_securities(self, rows: Iterable[Security]) -> None:
         with self.engine.begin() as conn:
-            for row in rows:
-                conn.execute(delete(securities).where(securities.c.ticker == row.ticker))
-                conn.execute(
-                    insert(securities).values(
-                        ticker=row.ticker,
-                        name=row.name,
-                        exchange=row.exchange,
-                        sector=row.sector,
-                        industry=row.industry,
-                        market_cap=row.market_cap,
-                        avg_dollar_volume_20d=row.avg_dollar_volume_20d,
-                        has_options=row.has_options,
-                        is_active=row.is_active,
-                        updated_at=row.updated_at,
-                    )
-                )
+            _upsert_securities(conn, rows)
 
     def upsert_daily_bars(self, rows: Iterable[DailyBar]) -> None:
         with self.engine.begin() as conn:
-            for row in rows:
-                conn.execute(
-                    delete(daily_bars).where(
-                        daily_bars.c.ticker == row.ticker,
-                        daily_bars.c.date == row.date,
-                        daily_bars.c.provider == row.provider,
-                    )
-                )
-                conn.execute(
-                    insert(daily_bars).values(
-                        ticker=row.ticker,
-                        date=row.date,
-                        provider=row.provider,
-                        open=row.open,
-                        high=row.high,
-                        low=row.low,
-                        close=row.close,
-                        volume=row.volume,
-                        vwap=row.vwap,
-                        adjusted=row.adjusted,
-                        source_ts=row.source_ts,
-                        available_at=row.available_at,
-                    )
-                )
+            _upsert_daily_bars(conn, rows)
 
     def list_active_securities(self) -> list[Security]:
         stmt = (
@@ -100,23 +63,19 @@ class MarketRepository:
 
     def upsert_holdings(self, rows: Iterable[HoldingSnapshot]) -> None:
         with self.engine.begin() as conn:
-            for row in rows:
-                conn.execute(
-                    delete(holdings_snapshots).where(
-                        holdings_snapshots.c.ticker == row.ticker,
-                        holdings_snapshots.c.as_of == row.as_of,
-                    )
-                )
-                conn.execute(
-                    insert(holdings_snapshots).values(
-                        ticker=row.ticker,
-                        as_of=row.as_of,
-                        shares=row.shares,
-                        market_value=row.market_value,
-                        sector=row.sector,
-                        theme=row.theme,
-                    )
-                )
+            _upsert_holdings(conn, rows)
+
+    def upsert_market_snapshot(
+        self,
+        *,
+        securities_rows: Iterable[Security],
+        daily_bar_rows: Iterable[DailyBar],
+        holding_rows: Iterable[HoldingSnapshot] = (),
+    ) -> None:
+        with self.engine.begin() as conn:
+            _upsert_securities(conn, securities_rows)
+            _upsert_daily_bars(conn, daily_bar_rows)
+            _upsert_holdings(conn, holding_rows)
 
     def list_holdings(self) -> list[HoldingSnapshot]:
         stmt = select(holdings_snapshots).order_by(
@@ -220,6 +179,72 @@ def _as_datetime(value: datetime) -> datetime:
     return value.astimezone(UTC)
 
 
+def _upsert_securities(conn: Connection, rows: Iterable[Security]) -> None:
+    for row in rows:
+        conn.execute(delete(securities).where(securities.c.ticker == row.ticker))
+        conn.execute(
+            insert(securities).values(
+                ticker=row.ticker,
+                name=row.name,
+                exchange=row.exchange,
+                sector=row.sector,
+                industry=row.industry,
+                market_cap=row.market_cap,
+                avg_dollar_volume_20d=row.avg_dollar_volume_20d,
+                has_options=row.has_options,
+                is_active=row.is_active,
+                updated_at=row.updated_at,
+            )
+        )
+
+
+def _upsert_daily_bars(conn: Connection, rows: Iterable[DailyBar]) -> None:
+    for row in rows:
+        conn.execute(
+            delete(daily_bars).where(
+                daily_bars.c.ticker == row.ticker,
+                daily_bars.c.date == row.date,
+                daily_bars.c.provider == row.provider,
+            )
+        )
+        conn.execute(
+            insert(daily_bars).values(
+                ticker=row.ticker,
+                date=row.date,
+                provider=row.provider,
+                open=row.open,
+                high=row.high,
+                low=row.low,
+                close=row.close,
+                volume=row.volume,
+                vwap=row.vwap,
+                adjusted=row.adjusted,
+                source_ts=row.source_ts,
+                available_at=row.available_at,
+            )
+        )
+
+
+def _upsert_holdings(conn: Connection, rows: Iterable[HoldingSnapshot]) -> None:
+    for row in rows:
+        conn.execute(
+            delete(holdings_snapshots).where(
+                holdings_snapshots.c.ticker == row.ticker,
+                holdings_snapshots.c.as_of == row.as_of,
+            )
+        )
+        conn.execute(
+            insert(holdings_snapshots).values(
+                ticker=row.ticker,
+                as_of=row.as_of,
+                shares=row.shares,
+                market_value=row.market_value,
+                sector=row.sector,
+                theme=row.theme,
+            )
+        )
+
+
 def _candidate_payload(candidate: CandidateSnapshot, policy: PolicyResult) -> dict[str, Any]:
     return {
         "candidate": {
@@ -234,7 +259,7 @@ def _candidate_payload(candidate: CandidateSnapshot, policy: PolicyResult) -> di
             "entry_zone": list(candidate.entry_zone) if candidate.entry_zone else None,
             "invalidation_price": candidate.invalidation_price,
             "reward_risk": candidate.reward_risk,
-            "metadata": dict(candidate.metadata),
+            "metadata": thaw_json_value(candidate.metadata),
         },
         "policy": {
             "state": policy.state.value,

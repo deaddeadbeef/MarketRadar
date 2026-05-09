@@ -63,6 +63,7 @@ def test_scan_pipeline_excludes_future_available_same_date_bar() -> None:
 
     assert gated_bars[-1].date == date(2026, 5, 7)
     assert gated_bars[-1].close == 105
+    assert len(results) == 3
     assert aaa.candidate.data_stale is True
     assert aaa.candidate.entry_zone == (102.9, 107.1)
 

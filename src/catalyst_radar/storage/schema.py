@@ -8,10 +8,12 @@ from sqlalchemy import (
     Date,
     DateTime,
     Float,
+    Integer,
     MetaData,
     String,
     Table,
     Text,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
@@ -91,4 +93,101 @@ holdings_snapshots = Table(
     Column("market_value", Float, nullable=False),
     Column("sector", String, nullable=False),
     Column("theme", String, nullable=False),
+)
+
+raw_provider_records = Table(
+    "raw_provider_records",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("provider", String, nullable=False),
+    Column("kind", String, nullable=False),
+    Column("request_hash", String, nullable=False),
+    Column("payload_hash", String, nullable=False),
+    Column("payload", json_type, nullable=False),
+    Column("source_ts", DateTime(timezone=True), nullable=False),
+    Column("fetched_at", DateTime(timezone=True), nullable=False),
+    Column("available_at", DateTime(timezone=True), nullable=False),
+    Column("license_tag", String, nullable=False),
+    Column("retention_policy", String, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+
+normalized_provider_records = Table(
+    "normalized_provider_records",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("provider", String, nullable=False),
+    Column("kind", String, nullable=False),
+    Column("identity", String, nullable=False),
+    Column("payload", json_type, nullable=False),
+    Column("source_ts", DateTime(timezone=True), nullable=False),
+    Column("available_at", DateTime(timezone=True), nullable=False),
+    Column("raw_payload_hash", String, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+
+provider_health = Table(
+    "provider_health",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("provider", String, nullable=False),
+    Column("status", String, nullable=False),
+    Column("checked_at", DateTime(timezone=True), nullable=False),
+    Column("reason", Text, nullable=False),
+    Column("latency_ms", Float),
+)
+
+job_runs = Table(
+    "job_runs",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("job_type", String, nullable=False),
+    Column("provider", String),
+    Column("status", String, nullable=False),
+    Column("started_at", DateTime(timezone=True), nullable=False),
+    Column("finished_at", DateTime(timezone=True)),
+    Column("requested_count", Integer, nullable=False, server_default=text("0")),
+    Column("raw_count", Integer, nullable=False, server_default=text("0")),
+    Column("normalized_count", Integer, nullable=False, server_default=text("0")),
+    Column("error_summary", Text),
+    Column("metadata", json_type, nullable=False),
+)
+
+data_quality_incidents = Table(
+    "data_quality_incidents",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("provider", String, nullable=False),
+    Column("severity", String, nullable=False),
+    Column("kind", String, nullable=False),
+    Column("affected_tickers", json_type, nullable=False),
+    Column("reason", Text, nullable=False),
+    Column("fail_closed_action", Text, nullable=False),
+    Column("payload", json_type, nullable=False),
+    Column("detected_at", DateTime(timezone=True), nullable=False),
+    Column("source_ts", DateTime(timezone=True)),
+    Column("available_at", DateTime(timezone=True)),
+)
+
+universe_snapshots = Table(
+    "universe_snapshots",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("name", String, nullable=False),
+    Column("as_of", DateTime(timezone=True), nullable=False),
+    Column("provider", String, nullable=False),
+    Column("source_ts", DateTime(timezone=True), nullable=False),
+    Column("available_at", DateTime(timezone=True), nullable=False),
+    Column("member_count", Integer, nullable=False),
+    Column("metadata", json_type, nullable=False),
+)
+
+universe_members = Table(
+    "universe_members",
+    metadata,
+    Column("snapshot_id", String, primary_key=True),
+    Column("ticker", String, primary_key=True),
+    Column("reason", Text, nullable=False),
+    Column("rank", Integer),
+    Column("metadata", json_type, nullable=False),
 )
