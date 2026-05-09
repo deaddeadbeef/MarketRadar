@@ -1,0 +1,25 @@
+themes:
+  ai_infrastructure_storage:
+    sectors:
+      - Technology
+    industries:
+      - Software
+      - Semiconductors
+    tickers:
+      - AAA
+      - CCC
+    peers:
+      - MSFT
+      - NVDA
+      - MU
+  datacenter_power:
+    sectors:
+      - Industrials
+    industries:
+      - Construction
+    tickers:
+      - BBB
+    peers:
+      - ETN
+      - PWR
+      - VRT
