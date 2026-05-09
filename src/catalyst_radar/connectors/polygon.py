@@ -76,6 +76,7 @@ class PolygonMarketDataConnector:
             provider_record = _record_payload(record)
             if endpoint == PolygonEndpoint.GROUPED_DAILY.value:
                 payload = _normalize_grouped_daily_payload(provider_record)
+                payload["available_at"] = record.available_at.isoformat()
                 identity = f"{payload['ticker']}:{payload['date']}"
                 kind = ConnectorRecordKind.DAILY_BAR
             elif endpoint == PolygonEndpoint.TICKERS.value:

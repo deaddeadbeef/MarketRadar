@@ -53,12 +53,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     scan = subparsers.add_parser("scan")
     scan.add_argument("--as-of", type=date.fromisoformat, required=True)
+    scan.add_argument("--available-at", type=_parse_aware_datetime)
     scan.add_argument("--universe")
 
     build_universe = subparsers.add_parser("build-universe")
     build_universe.add_argument("--name")
     build_universe.add_argument("--provider")
     build_universe.add_argument("--as-of", type=date.fromisoformat, required=True)
+    build_universe.add_argument("--available-at", type=_parse_aware_datetime)
 
     provider_health = subparsers.add_parser("provider-health")
     provider_health.add_argument("--provider", required=True)
@@ -122,15 +124,22 @@ def main(argv: list[str] | None = None) -> int:
         create_schema(engine)
         repo = MarketRepository(engine)
         provider_repo = ProviderRepository(engine)
+        available_at = args.available_at or _scan_timestamp(args.as_of)
         universe_tickers = _universe_tickers_for_scan(
             provider_repo=provider_repo,
             universe_name=args.universe,
             as_of=args.as_of,
+            available_at=available_at,
         )
         if args.universe is not None and universe_tickers is None:
             print(f"universe not found: {args.universe}", file=sys.stderr)
             return 1
-        results = run_scan(repo, as_of=args.as_of, universe_tickers=universe_tickers)
+        results = run_scan(
+            repo,
+            as_of=args.as_of,
+            available_at=available_at,
+            universe_tickers=universe_tickers,
+        )
         for result in results:
             repo.save_scan_result(result.candidate, result.policy)
         print(f"scanned candidates={len(results)}")
@@ -141,6 +150,7 @@ def main(argv: list[str] | None = None) -> int:
         market_repo = MarketRepository(engine)
         provider_repo = ProviderRepository(engine)
         as_of_dt = _scan_timestamp(args.as_of)
+        available_at = args.available_at or as_of_dt
         builder = UniverseBuilder(
             market_repo=market_repo,
             provider_repo=provider_repo,
@@ -154,7 +164,7 @@ def main(argv: list[str] | None = None) -> int:
             name=args.name or config.universe_name,
             provider=args.provider or config.market_provider,
         )
-        snapshot = builder.build(as_of=args.as_of, available_at=as_of_dt)
+        snapshot = builder.build(as_of=args.as_of, available_at=available_at)
         print(
             f"built universe={snapshot.name} members={snapshot.member_count} "
             f"excluded={snapshot.excluded_count}"
@@ -389,6 +399,7 @@ def _universe_tickers_for_scan(
     provider_repo: ProviderRepository,
     universe_name: str | None,
     as_of: date,
+    available_at: datetime,
 ) -> set[str] | None:
     if universe_name is None:
         return None
@@ -396,7 +407,7 @@ def _universe_tickers_for_scan(
     snapshot = provider_repo.latest_universe_snapshot(
         name=universe_name,
         as_of=as_of_dt,
-        available_at=as_of_dt,
+        available_at=available_at,
     )
     if snapshot is None:
         return None
@@ -405,6 +416,14 @@ def _universe_tickers_for_scan(
 
 def _scan_timestamp(value: date) -> datetime:
     return datetime.combine(value, time(21), tzinfo=UTC)
+
+
+def _parse_aware_datetime(value: str) -> datetime:
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        msg = "--available-at must include timezone information"
+        raise argparse.ArgumentTypeError(msg)
+    return parsed.astimezone(UTC)
 
 
 if __name__ == "__main__":
