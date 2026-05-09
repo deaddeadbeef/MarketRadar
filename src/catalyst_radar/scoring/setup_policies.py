@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from catalyst_radar.core.models import DailyBar, MarketFeatures
+from catalyst_radar.events.models import CanonicalEvent, EventType
 from catalyst_radar.scoring.setups import SetupPlan, SetupType
 
 MIN_REWARD_RISK = 2.0
@@ -81,7 +82,20 @@ def pullback_plan(bars: Sequence[DailyBar], features: MarketFeatures) -> SetupPl
     )
 
 
-def post_earnings_plan(bars: Sequence[DailyBar], features: MarketFeatures) -> SetupPlan:
+def post_earnings_plan(
+    bars: Sequence[DailyBar],
+    features: MarketFeatures,
+    *,
+    source_event: CanonicalEvent | None = None,
+) -> SetupPlan:
+    if source_event is not None:
+        return _event_confirmed_plan(
+            bars,
+            features,
+            setup_type=SetupType.POST_EARNINGS,
+            source_event=source_event,
+            reason="post_earnings_event_confirmed",
+        )
     return _event_placeholder_plan(
         bars,
         features,
@@ -114,7 +128,20 @@ def sector_rotation_plan(bars: Sequence[DailyBar], features: MarketFeatures) -> 
     )
 
 
-def filings_catalyst_plan(bars: Sequence[DailyBar], features: MarketFeatures) -> SetupPlan:
+def filings_catalyst_plan(
+    bars: Sequence[DailyBar],
+    features: MarketFeatures,
+    *,
+    source_event: CanonicalEvent | None = None,
+) -> SetupPlan:
+    if source_event is not None:
+        return _event_confirmed_plan(
+            bars,
+            features,
+            setup_type=SetupType.FILINGS_CATALYST,
+            source_event=source_event,
+            reason="filings_catalyst_event_confirmed",
+        )
     return _event_placeholder_plan(
         bars,
         features,
@@ -123,7 +150,19 @@ def filings_catalyst_plan(bars: Sequence[DailyBar], features: MarketFeatures) ->
     )
 
 
-def select_setup_plan(bars: Sequence[DailyBar], features: MarketFeatures) -> SetupPlan:
+def select_setup_plan(
+    bars: Sequence[DailyBar],
+    features: MarketFeatures,
+    *,
+    material_events: Sequence[CanonicalEvent] = (),
+) -> SetupPlan:
+    source_event = _event_setup_source(material_events)
+    if source_event is not None:
+        if source_event.event_type == EventType.EARNINGS:
+            return post_earnings_plan(bars, features, source_event=source_event)
+        if source_event.event_type in {EventType.GUIDANCE, EventType.SEC_FILING}:
+            return filings_catalyst_plan(bars, features, source_event=source_event)
+
     if features.near_52w_high >= 0.90 and features.rs_60_spy >= 70:
         return breakout_plan(bars, features)
     if features.rs_20_sector >= 75 and features.ret_20d > 0:
@@ -131,6 +170,17 @@ def select_setup_plan(bars: Sequence[DailyBar], features: MarketFeatures) -> Set
     if features.ma_regime >= 60 and features.ret_20d > 0:
         return pullback_plan(bars, features)
     return _market_momentum_plan(bars, features)
+
+
+def _event_setup_source(events: Sequence[CanonicalEvent]) -> CanonicalEvent | None:
+    for event in sorted(events, key=lambda item: (item.source_ts, item.available_at), reverse=True):
+        if event.event_type == EventType.EARNINGS:
+            if event.payload.get("event_risk") == "upcoming_earnings":
+                continue
+            return event
+        if event.event_type in {EventType.GUIDANCE, EventType.SEC_FILING}:
+            return event
+    return None
 
 
 def _market_momentum_plan(bars: Sequence[DailyBar], features: MarketFeatures) -> SetupPlan:
@@ -173,6 +223,34 @@ def _event_placeholder_plan(
         chase_block=base.chase_block,
         reasons=(reason, "not_selected_without_event_evidence"),
         metadata={"placeholder": True, "event_confirmed": False},
+    )
+
+
+def _event_confirmed_plan(
+    bars: Sequence[DailyBar],
+    features: MarketFeatures,
+    *,
+    setup_type: SetupType,
+    source_event: CanonicalEvent,
+    reason: str,
+) -> SetupPlan:
+    base = _market_momentum_plan(bars, features)
+    return SetupPlan(
+        setup_type=setup_type,
+        entry_zone=base.entry_zone,
+        invalidation_price=base.invalidation_price,
+        target_price=base.target_price,
+        reward_risk=base.reward_risk,
+        chase_block=base.chase_block,
+        reasons=(reason, "event_confirmed", *base.reasons),
+        metadata={
+            **dict(base.metadata),
+            "event_confirmed": True,
+            "source_event_id": source_event.id,
+            "source_quality": source_event.source_quality,
+            "materiality": source_event.materiality,
+            "event_type": source_event.event_type.value,
+        },
     )
 
 

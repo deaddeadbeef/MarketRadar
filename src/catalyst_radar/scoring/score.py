@@ -7,7 +7,7 @@ from typing import Any
 
 from catalyst_radar.core.models import CandidateSnapshot, MarketFeatures
 
-SCORE_VERSION = "score-v1"
+SCORE_VERSION = "score-v2-events"
 _PILLAR_NAMES = (
     "price_strength",
     "relative_strength",
@@ -34,10 +34,15 @@ class ScoreResult:
     final_score: float
     strong_pillars: int
     risk_penalty: float
+    event_bonus: float
     pillar_scores: dict[str, float]
 
 
-def score_market_features(features: MarketFeatures, portfolio_penalty: float) -> ScoreResult:
+def score_market_features(
+    features: MarketFeatures,
+    portfolio_penalty: float,
+    event_support_score: float = 0.0,
+) -> ScoreResult:
     if _has_non_finite_feature_input(features):
         return _fail_closed_score()
 
@@ -49,12 +54,18 @@ def score_market_features(features: MarketFeatures, portfolio_penalty: float) ->
     }
     raw_score = sum(pillar_scores.values()) / len(pillar_scores)
     risk_penalty = _risk_penalty(features)
-    final_score = _clamp(raw_score - risk_penalty - _non_negative(portfolio_penalty), 0, 100)
+    event_bonus = _event_bonus(event_support_score)
+    final_score = _clamp(
+        raw_score + event_bonus - risk_penalty - _non_negative(portfolio_penalty),
+        0,
+        100,
+    )
     strong_pillars = sum(score >= 70 for score in pillar_scores.values())
     return ScoreResult(
         final_score=round(final_score, 2),
         strong_pillars=strong_pillars,
         risk_penalty=round(risk_penalty, 2),
+        event_bonus=round(event_bonus, 2),
         pillar_scores={key: round(value, 2) for key, value in pillar_scores.items()},
     )
 
@@ -67,13 +78,16 @@ def candidate_from_features(
     invalidation_price: float | None,
     reward_risk: float,
     metadata: Mapping[str, Any] | None = None,
+    event_support_score: float = 0.0,
 ) -> CandidateSnapshot:
-    score = score_market_features(features, portfolio_penalty)
+    score = score_market_features(features, portfolio_penalty, event_support_score)
     candidate_metadata = dict(metadata or {})
     candidate_metadata.update(
         {
-        "policy_version_input": SCORE_VERSION,
-        "pillar_scores": score.pillar_scores,
+            "policy_version_input": SCORE_VERSION,
+            "pillar_scores": score.pillar_scores,
+            "event_support_score": _non_negative(event_support_score),
+            "event_bonus": score.event_bonus,
         }
     )
     return CandidateSnapshot(
@@ -142,6 +156,10 @@ def _non_negative(value: float) -> float:
     return max(0.0, _finite(value))
 
 
+def _event_bonus(event_support_score: float) -> float:
+    return min(8.0, _non_negative(event_support_score) * 0.08)
+
+
 def _has_non_finite_feature_input(features: MarketFeatures) -> bool:
     return any(
         not math.isfinite(float(getattr(features, field)))
@@ -154,5 +172,6 @@ def _fail_closed_score() -> ScoreResult:
         final_score=0.0,
         strong_pillars=0,
         risk_penalty=100.0,
+        event_bonus=0.0,
         pillar_scores={name: 0.0 for name in _PILLAR_NAMES},
     )
