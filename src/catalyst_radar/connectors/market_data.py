@@ -233,12 +233,19 @@ class CsvMarketDataConnector:
         return rows
 
     def _reject(self, kind: ConnectorRecordKind, payload: Mapping[str, Any], reason: str) -> None:
+        severity = DataQualitySeverity.ERROR
+        fail_closed_action = "reject-payload"
+        if kind == ConnectorRecordKind.DAILY_BAR and "available_at" in reason:
+            severity = DataQualitySeverity.CRITICAL
+            fail_closed_action = "abort-ingest"
         self._rejected_payloads.append(
             RejectedPayload(
                 provider=self.provider,
                 kind=kind,
                 payload=payload,
                 reason=reason,
+                severity=severity,
+                fail_closed_action=fail_closed_action,
             )
         )
 

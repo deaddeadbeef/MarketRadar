@@ -32,6 +32,10 @@ from catalyst_radar.storage.provider_repositories import ProviderRepository
 from catalyst_radar.storage.repositories import MarketRepository
 
 
+class CsvIngestAbort(RuntimeError):
+    pass
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="catalyst-radar")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -165,10 +169,14 @@ def _ingest_csv_provider(
         raw_records = connector.fetch(request)
         requested_count = len(raw_records) + len(connector.rejected_payloads)
         raw_count = provider_repo.save_raw_records(raw_records)
+        _record_rejected_payloads(provider_repo, connector)
+        abort_rejections = _abort_rejections(connector)
+        if abort_rejections:
+            reason = "; ".join(rejected.reason for rejected in abort_rejections)
+            raise CsvIngestAbort(reason)
         normalized_records = connector.normalize(raw_records)
         normalized_count = provider_repo.save_normalized_records(normalized_records)
 
-        _record_rejected_payloads(provider_repo, connector)
         if connector.rejected_payloads:
             degraded_health = ConnectorHealth(
                 provider=connector.provider,
@@ -208,6 +216,26 @@ def _ingest_csv_provider(
             message = f"{message} holdings={len(holdings)}"
         print(message)
         return 0
+    except CsvIngestAbort as exc:
+        reason = str(exc)
+        provider_repo.save_health(
+            ConnectorHealth(
+                provider=connector.provider,
+                status=ConnectorHealthStatus.DOWN,
+                checked_at=datetime.now(UTC),
+                reason=reason,
+            )
+        )
+        provider_repo.finish_job(
+            job_id,
+            JobStatus.FAILED.value,
+            requested_count=requested_count,
+            raw_count=raw_count,
+            normalized_count=normalized_count,
+            error_summary=reason,
+        )
+        print(f"csv ingest failed: {reason}", file=sys.stderr)
+        return 1
     except Exception as exc:
         reason = str(exc)
         provider_repo.save_health(
@@ -257,6 +285,17 @@ def _record_rejected_payloads(
             fail_closed_action=rejected.fail_closed_action,
             payload=rejected.payload,
         )
+
+
+def _abort_rejections(
+    connector: CsvMarketDataConnector,
+) -> list[Any]:
+    return [
+        rejected
+        for rejected in connector.rejected_payloads
+        if rejected.severity in {DataQualitySeverity.CRITICAL}
+        or rejected.fail_closed_action == "abort-ingest"
+    ]
 
 
 def _securities_from_normalized(records: Sequence[NormalizedRecord]) -> list[Security]:

@@ -351,6 +351,9 @@ def _as_datetime(value: datetime) -> datetime:
 
 
 def _to_utc_datetime(value: datetime) -> datetime:
+    if not isinstance(value, datetime):
+        msg = "datetime values must be timezone-aware before persistence"
+        raise ValueError(msg)
     if value.tzinfo is None or value.utcoffset() is None:
         msg = "datetime values must be timezone-aware before persistence"
         raise ValueError(msg)
