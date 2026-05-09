@@ -146,7 +146,7 @@ def test_create_schema_upgrades_existing_sqlite_holdings_table() -> None:
     assert rows[0].cash == 25000.0
 
 
-def test_latest_portfolio_state_selects_latest_snapshot_as_of_scan_time() -> None:
+def test_latest_portfolio_state_selects_latest_position_rows_as_of_scan_time() -> None:
     older = datetime(2026, 5, 8, 20, tzinfo=UTC)
     latest = datetime(2026, 5, 9, 20, tzinfo=UTC)
     future = datetime(2026, 5, 10, 20, tzinfo=UTC)
@@ -165,8 +165,31 @@ def test_latest_portfolio_state_selects_latest_snapshot_as_of_scan_time() -> Non
     assert state.as_of == latest
     assert state.portfolio_value == 100_000
     assert state.cash == 25_000
-    assert state.source == "holdings_snapshot"
-    assert [holding.ticker for holding in state.holdings] == ["AAA", "BBB"]
+    assert state.source == "holdings_latest_by_ticker"
+    assert [holding.ticker for holding in state.holdings] == ["AAA", "BBB", "OLD"]
+
+
+def test_latest_portfolio_state_keeps_older_positions_during_partial_refresh() -> None:
+    older = datetime(2026, 5, 8, 20, tzinfo=UTC)
+    partial = datetime(2026, 5, 9, 20, tzinfo=UTC)
+
+    state = latest_portfolio_state(
+        [
+            HoldingSnapshot("AAA", 10, 1_000, "Technology", "AI", older, 100_000, 25_000),
+            HoldingSnapshot("BBB", 200, 20_000, "Technology", "Cloud", older, 100_000, 25_000),
+            HoldingSnapshot("AAA", 12, 1_200, "Technology", "AI", partial, 100_000, 25_000),
+        ],
+        as_of=datetime(2026, 5, 10, 1, tzinfo=UTC),
+        fallback_value=0,
+        fallback_cash=0,
+    )
+
+    positions = positions_by_ticker(state)
+
+    assert state.as_of == partial
+    assert positions["AAA"]["notional"] == 1_200
+    assert positions["BBB"]["notional"] == 20_000
+    assert set(positions) == {"AAA", "BBB"}
 
 
 def test_latest_portfolio_state_uses_config_fallback_when_no_rows_exist_as_of() -> None:
@@ -205,7 +228,25 @@ def test_latest_portfolio_state_preserves_zero_when_snapshot_and_fallback_are_ze
 
     assert state.portfolio_value == 0.0
     assert state.cash == 0.0
-    assert state.source == "holdings_snapshot"
+    assert state.source == "holdings_latest_by_ticker"
+
+
+def test_latest_portfolio_state_uses_conservative_value_for_inconsistent_account_rows() -> None:
+    as_of = datetime(2026, 5, 9, 20, tzinfo=UTC)
+
+    state = latest_portfolio_state(
+        [
+            HoldingSnapshot("AAA", 10, 1_000, "Technology", "AI", as_of, 120_000, 30_000),
+            HoldingSnapshot("BBB", 20, 2_000, "Healthcare", "Defensive", as_of, 100_000, 25_000),
+        ],
+        as_of=datetime(2026, 5, 10, 1, tzinfo=UTC),
+        fallback_value=150_000,
+        fallback_cash=50_000,
+    )
+
+    assert state.portfolio_value == 100_000
+    assert state.cash == 25_000
+    assert state.input_warnings == ("inconsistent_portfolio_value", "inconsistent_cash")
 
 
 def test_positions_by_ticker_maps_holdings_to_risk_positions() -> None:
