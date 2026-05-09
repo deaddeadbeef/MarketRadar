@@ -1,0 +1,9 @@
+themes:
+  ai_infrastructure_storage:
+    terms: NAND, SSD, datacenter storage, inference storage, storage bottleneck
+    sectors: Semiconductors, Technology Hardware
+    read_through: memory, storage controllers, equipment
+  datacenter_power:
+    terms: power density, grid constraint, UPS, switchgear, cooling load
+    sectors: Electrical Equipment, Industrials
+    read_through: cooling, grid equipment, data center infrastructure

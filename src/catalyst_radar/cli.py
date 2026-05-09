@@ -34,6 +34,8 @@ from catalyst_radar.storage.db import create_schema, engine_from_url
 from catalyst_radar.storage.event_repositories import EventRepository
 from catalyst_radar.storage.provider_repositories import ProviderRepository
 from catalyst_radar.storage.repositories import MarketRepository
+from catalyst_radar.storage.text_repositories import TextRepository
+from catalyst_radar.textint.pipeline import run_text_pipeline
 from catalyst_radar.universe.builder import UniverseBuilder
 from catalyst_radar.universe.filters import UniverseFilterConfig
 
@@ -76,6 +78,17 @@ def build_parser() -> argparse.ArgumentParser:
     events.add_argument("--as-of", type=date.fromisoformat, required=True)
     events.add_argument("--available-at", type=_parse_aware_datetime)
     events.add_argument("--limit", type=int, default=20)
+
+    run_textint = subparsers.add_parser("run-textint")
+    run_textint.add_argument("--as-of", type=date.fromisoformat, required=True)
+    run_textint.add_argument("--available-at", type=_parse_aware_datetime)
+    run_textint.add_argument("--ontology", type=Path, default=Path("config/themes.yaml"))
+    run_textint.add_argument("--ticker")
+
+    text_features = subparsers.add_parser("text-features")
+    text_features.add_argument("--ticker", required=True)
+    text_features.add_argument("--as-of", type=date.fromisoformat, required=True)
+    text_features.add_argument("--available-at", type=_parse_aware_datetime)
 
     scan = subparsers.add_parser("scan")
     scan.add_argument("--as-of", type=date.fromisoformat, required=True)
@@ -206,11 +219,49 @@ def main(argv: list[str] | None = None) -> int:
         print(f"provider={health.provider} status={health.status.value}")
         return 0
 
+    if args.command == "run-textint":
+        create_schema(engine)
+        event_repo = EventRepository(engine)
+        text_repo = TextRepository(engine)
+        available_at = args.available_at or datetime.now(UTC)
+        tickers = [args.ticker] if args.ticker else None
+        result = run_text_pipeline(
+            event_repo,
+            text_repo,
+            as_of=_scan_timestamp(args.as_of),
+            available_at=available_at,
+            ontology_path=args.ontology,
+            tickers=tickers,
+        )
+        print(f"processed text_features={result.feature_count} snippets={result.snippet_count}")
+        return 0
+
+    if args.command == "text-features":
+        create_schema(engine)
+        text_repo = TextRepository(engine)
+        available_at = args.available_at or datetime.now(UTC)
+        features = text_repo.latest_text_features_by_ticker(
+            [args.ticker],
+            as_of=_scan_timestamp(args.as_of),
+            available_at=available_at,
+        )
+        feature = features.get(args.ticker.upper())
+        if feature is None:
+            print(f"text feature not found: {args.ticker.upper()}", file=sys.stderr)
+            return 1
+        print(
+            f"{feature.ticker} local_narrative={feature.local_narrative_score:.2f} "
+            f"novelty={feature.novelty_score:.2f} "
+            f"snippets={len(feature.selected_snippet_ids)}"
+        )
+        return 0
+
     if args.command == "scan":
         create_schema(engine)
         repo = MarketRepository(engine)
         provider_repo = ProviderRepository(engine)
         event_repo = EventRepository(engine)
+        text_repo = TextRepository(engine)
         available_at = args.available_at or datetime.now(UTC)
         universe_tickers = _universe_tickers_for_scan(
             provider_repo=provider_repo,
@@ -238,6 +289,7 @@ def main(argv: list[str] | None = None) -> int:
             universe_tickers=universe_tickers,
             config=config,
             event_repo=event_repo,
+            text_repo=text_repo,
         )
         for result in results:
             repo.save_scan_result(result.candidate, result.policy)

@@ -29,6 +29,8 @@ from catalyst_radar.scoring.setup_policies import select_setup_plan
 from catalyst_radar.scoring.setups import SetupPlan
 from catalyst_radar.storage.event_repositories import EventRepository
 from catalyst_radar.storage.repositories import MarketRepository
+from catalyst_radar.storage.text_repositories import TextRepository
+from catalyst_radar.textint.models import TextFeature
 
 SECTOR_ETF = {"Technology": "XLK", "Industrials": "XLI"}
 EXCLUDED_SCAN_TICKERS = frozenset({"SPY", "XLK", "XLI"})
@@ -51,6 +53,7 @@ def run_scan(
     universe_tickers: set[str] | None = None,
     config: AppConfig | None = None,
     event_repo: EventRepository | None = None,
+    text_repo: TextRepository | None = None,
 ) -> list[ScanResult]:
     active_config = config or AppConfig.from_env()
     as_of_dt = datetime.combine(as_of, time(21), tzinfo=UTC)
@@ -79,6 +82,12 @@ def run_scan(
     ]
     events_by_ticker = _events_by_ticker(
         event_repo=event_repo,
+        tickers=[security.ticker for security in securities],
+        as_of=as_of_dt,
+        available_at=available_at_dt,
+    )
+    text_features_by_ticker = _text_features_by_ticker(
+        text_repo=text_repo,
         tickers=[security.ticker for security in securities],
         as_of=as_of_dt,
         available_at=available_at_dt,
@@ -124,6 +133,7 @@ def run_scan(
             benchmark_cache[sector_ticker],
         )
         material_events = events_by_ticker.get(security.ticker, [])
+        text_feature = text_features_by_ticker.get(security.ticker)
         event_conflicts = detect_event_conflicts(material_events)
         setup_plan = select_setup_plan(
             ticker_bars,
@@ -153,6 +163,7 @@ def run_scan(
         candidate_metadata = {
             **_setup_metadata(setup_plan),
             **_event_metadata(material_events, event_conflicts),
+            **_text_metadata(text_feature),
             "position_size": _position_size_payload(position_size),
             "portfolio_impact": _portfolio_impact_payload(portfolio_impact),
             "portfolio_state": {
@@ -178,6 +189,9 @@ def run_scan(
             reward_risk=setup_plan.reward_risk,
             metadata=candidate_metadata,
             event_support_score=_event_support_score(material_events),
+            local_narrative_score=(
+                text_feature.local_narrative_score if text_feature is not None else 0.0
+            ),
         )
         results.append(
             ScanResult(
@@ -205,6 +219,22 @@ def _events_by_ticker(
         available_at=available_at,
         min_materiality=0.50,
         limit_per_ticker=5,
+    )
+
+
+def _text_features_by_ticker(
+    *,
+    text_repo: TextRepository | None,
+    tickers: list[str],
+    as_of: datetime,
+    available_at: datetime,
+) -> dict[str, TextFeature]:
+    if text_repo is None or not tickers:
+        return {}
+    return text_repo.latest_text_features_by_ticker(
+        tickers,
+        as_of=as_of,
+        available_at=available_at,
     )
 
 
@@ -304,6 +334,32 @@ def _event_payload(event: CanonicalEvent) -> dict[str, Any]:
         "source_ts": event.source_ts.isoformat(),
         "available_at": event.available_at.isoformat(),
         "source_url": event.source_url,
+    }
+
+
+def _text_metadata(text_feature: TextFeature | None) -> dict[str, Any]:
+    if text_feature is None:
+        return {
+            "local_narrative_score": 0.0,
+            "novelty_score": 0.0,
+            "sentiment_score": 0.0,
+            "source_quality_score": 0.0,
+            "theme_match_score": 0.0,
+            "theme_hits": [],
+            "selected_snippet_ids": [],
+            "selected_snippet_count": 0,
+            "text_feature_version": None,
+        }
+    return {
+        "local_narrative_score": text_feature.local_narrative_score,
+        "novelty_score": text_feature.novelty_score,
+        "sentiment_score": text_feature.sentiment_score,
+        "source_quality_score": text_feature.source_quality_score,
+        "theme_match_score": text_feature.theme_match_score,
+        "theme_hits": text_feature.theme_hits,
+        "selected_snippet_ids": list(text_feature.selected_snippet_ids),
+        "selected_snippet_count": len(text_feature.selected_snippet_ids),
+        "text_feature_version": text_feature.feature_version,
     }
 
 
