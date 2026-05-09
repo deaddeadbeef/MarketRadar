@@ -1,49 +1,62 @@
 # Catalyst Radar Full Product Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement each phase task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build the complete Catalyst Radar product described by the v1.1.1 architecture and engineering specs: production-grade market data ingestion, deterministic full-universe scanning, event/text intelligence, validation, sparse LLM evidence review, Decision Cards, alerts, dashboards, and operational controls.
 
-**Architecture:** Continue the deterministic-first spine proven in Phase 1. Add one independently testable subsystem at a time: provider-grade data, universe-scale scanning, event/text intelligence, validation, then sparse LLM synthesis. The system must preserve point-in-time correctness, fail-closed policy gates, source-linked evidence, budget controls, and the human approval boundary.
+**Architecture:** Continue the deterministic-first spine now merged on `main`. Add one independently testable subsystem at a time: local text intelligence, options/theme features, candidate packets, validation, user workflows, alerts, then sparse LLM synthesis. The system must preserve point-in-time correctness, fail-closed policy gates, source-linked evidence, budget controls, and the human approval boundary.
 
-**Tech Stack:** Python 3.11, pandas initially with polars introduced for large scans, SQLAlchemy Core, Postgres/TimescaleDB, pgvector, FastAPI, Streamlit first-dashboard track, Redis Queue/Celery or Prefect for jobs, OpenAI API only behind a budgeted router, pytest, ruff, Docker Compose.
+**Tech Stack:** Python 3.11, pandas/numpy, SQLAlchemy Core, SQLite-compatible local development, Postgres/TimescaleDB production target, pgvector later, FastAPI later, Streamlit dashboard, Redis Queue/Celery or equivalent scheduler later, OpenAI API only behind a budgeted router, pytest, ruff, Docker Compose.
 
 ---
 
-## Current Starting Point
+## Current Baseline
 
-Implementation branch:
+Build from:
 
 ```text
-feature/phase-1-deterministic-mvp
+main @ 65f4fb7 merge: integrate phase 5 event connectors
 ```
 
-Current verified capabilities:
+Verified capabilities now on `main`:
 
 - Local SQLite database initialization.
-- Local CSV securities, daily bars, and holdings ingestion.
-- Point-in-time daily-bar filtering through `available_at`.
-- Deterministic market features.
-- Deterministic scoring and policy gates.
-- Liquidity, risk, stale-data, and portfolio-penalty hard blocks.
-- Candidate state persistence.
-- Minimal Streamlit dashboard.
+- CSV market and holdings ingest through provider-ready ingest orchestration.
+- Provider-neutral connector contracts.
+- Raw and normalized provider storage.
+- Provider health, job runs, data-quality incidents, universe snapshots, and universe members.
+- Polygon fixture connector for ticker/reference and grouped daily bars.
+- Point-in-time liquid-universe construction and named-universe scans.
+- Deterministic market feature computation.
+- Deterministic setup policies, entry zone, invalidation, reward/risk, and proposed sizing.
+- Portfolio exposure, cash, and concentration hard gates before buy-review eligibility.
+- Candidate state persistence and idempotent scan-result writes.
+- Canonical event storage.
+- SEC submissions, news fixture, and earnings fixture connectors.
+- Deterministic event taxonomy, materiality, source quality, dedupe, and guidance conflict detection.
+- Event-aware scan metadata, bounded event score support, event-driven setup selection, and dashboard event fields.
 - Point-in-time validation helpers.
-- 46 passing tests.
-- No runtime LLM integration.
+- Minimal Streamlit dashboard data layer.
+- No runtime LLM integration and no broker/order execution.
 
-Current explicit limits:
+Most recent verification:
 
-- Data comes from local CSV.
-- No production market data provider.
-- No SEC/news/earnings/text pipeline.
-- No local embeddings or novelty scoring.
-- No options aggregate features.
-- No real backtesting engine or paper-trading ledger.
-- No alerting.
-- No LLM evidence packets or Decision Cards.
-- Holdings are persisted but not yet applied to scanner scoring.
-- No scheduled jobs, deployment, observability, or production ops.
+```text
+python -m pytest
+200 passed
+
+python -m ruff check src tests apps
+All checks passed!
+```
+
+Important current limits:
+
+- Polygon live mode still needs a configured API key and live contract drift testing.
+- SEC live mode is gated behind `CATALYST_SEC_ENABLE_LIVE=1` and a compliant `CATALYST_SEC_USER_AGENT`.
+- News and earnings connectors are fixture/provider skeletons until a licensed provider is selected.
+- There is no local text intelligence yet: no snippet store, ontology hits, sentiment, embeddings, novelty, or text-derived candidate evidence.
+- There are no options aggregate features, theme velocity, or peer read-through features.
+- There is no candidate packet, evidence packet, Decision Card, alerting, API, expanded dashboard workflow, scheduler, observability, or pilot release gate.
 
 ## Product Completion Definition
 
@@ -63,402 +76,294 @@ The product is complete enough for a limited real-capital pilot only when all of
 
 ## Execution Rule
 
-Do not execute this master plan as one long coding batch. Execute it as a sequence of phase plans. Before each phase begins, create a phase-specific plan under:
+Do not execute this master plan as one long coding batch. Execute it as a sequence of phase plans. Before each phase begins, create or update a phase-specific implementation plan under:
 
 ```text
 docs/superpowers/plans/YYYY-MM-DD-phase-N-<name>.md
 ```
 
-Each phase plan must include exact file edits, tests, fixtures, commands, and review gates. The phase order below is intentional; do not start sparse LLM work before validation and event/text evidence packets exist.
+Each phase plan must include exact file edits, tests, fixtures, commands, and review gates. Each phase must finish with:
 
-## Phase 0: Integrate Phase 1 Baseline
+- `python -m pytest`
+- `python -m ruff check src tests apps`
+- fixture smoke flow for all affected CLI commands
+- a phase review file under `docs/phase-N-review.md`
+- a review pass focused on point-in-time correctness, fail-closed behavior, score bounds, and regressions
 
-**Objective:** Put the verified Phase 1 MVP on the primary branch so future phases build from one source of truth.
+## Completed Phases
 
-**Primary files and commands:**
+### Phase 1: Deterministic MVP
 
-- Branch/worktree: `feature/phase-1-deterministic-mvp`
-- Base branch: `main`
-- Verification:
+Status: complete and merged.
 
-```powershell
-python -m pytest
-python -m ruff check src tests apps
-Remove-Item data/local/catalyst_radar.db -ErrorAction SilentlyContinue
-$env:CATALYST_DATABASE_URL="sqlite:///data/local/catalyst_radar.db"
-.\.venv\Scripts\catalyst-radar.exe init-db
-.\.venv\Scripts\catalyst-radar.exe ingest-csv --securities data/sample/securities.csv --daily-bars data/sample/daily_bars.csv --holdings data/sample/holdings.csv
-.\.venv\Scripts\catalyst-radar.exe scan --as-of 2026-05-08
+Review file:
+
+```text
+docs/phase-1-review.md
 ```
 
-**Tasks:**
+Delivered:
 
-- [ ] Choose branch handling: local merge, PR, keep worktree, or discard.
-- [ ] If merging locally, merge `feature/phase-1-deterministic-mvp` into `main`.
-- [ ] Re-run tests and smoke flow on the merged result.
-- [ ] Record the merged commit in `docs/phase-1-review.md`.
+- CSV securities, daily bars, and holdings ingest.
+- SQLite schema creation.
+- Deterministic market features.
+- Score and policy state assignment.
+- Liquidity hard block.
+- Minimal dashboard.
+- Point-in-time validation helpers.
 
-**Exit criteria:**
+### Phase 2: Production Data Foundation
 
-- Primary branch contains Phase 1.
-- `python -m pytest` passes.
-- `python -m ruff check src tests apps` passes.
-- Sample smoke flow still reports `ingested securities=6 daily_bars=36 holdings=1` and `scanned candidates=3`.
+Status: complete and merged.
 
-## Phase 1: Production Data Foundation
+Review file:
 
-**Objective:** Replace sample-only ingestion with provider-ready raw/normalized storage, connector contracts, provider health, job runs, and data quality incidents.
+```text
+docs/phase-2-review.md
+```
 
-**Primary files:**
+Delivered:
 
-- Modify: `src/catalyst_radar/core/models.py`
-- Modify: `src/catalyst_radar/storage/schema.py`
-- Modify: `src/catalyst_radar/storage/repositories.py`
-- Modify: `src/catalyst_radar/cli.py`
-- Create: `src/catalyst_radar/connectors/base.py`
-- Create: `src/catalyst_radar/connectors/market_data.py`
-- Create: `src/catalyst_radar/connectors/provider_registry.py`
-- Create: `src/catalyst_radar/storage/provider_repositories.py`
-- Create: `sql/migrations/002_provider_foundation.sql`
-- Create: `tests/unit/test_connector_contracts.py`
-- Create: `tests/integration/test_provider_storage.py`
+- Provider-neutral connector contracts.
+- Raw provider records and normalized provider records.
+- Provider health.
+- Job runs.
+- Data-quality incidents.
+- Universe snapshots and members.
+- CSV dry-run provider path.
+- Fail-closed missing availability behavior.
 
-**Data model additions:**
+### Phase 3: Full Universe and Real Market Data
 
-- `raw_provider_records`
-- `provider_health`
-- `job_runs`
-- `data_quality_incidents`
-- `universe_snapshots`
-- `universe_members`
+Status: complete and merged.
 
-**Implementation tasks:**
+Review file:
 
-- [ ] Define `ConnectorRequest`, `RawRecord`, `NormalizedRecord`, `ConnectorHealth`, and `ProviderCostEstimate` dataclasses.
-- [ ] Add connector protocol methods: `fetch`, `normalize`, `healthcheck`, `estimate_cost`.
-- [ ] Add raw-provider persistence with provider, request hash, payload hash, source timestamp, fetch timestamp, availability timestamp, license tag, and retention policy.
-- [ ] Add provider-health persistence with degraded/healthy states and reason strings.
-- [ ] Add job-run persistence for ingest/scan/validation jobs.
-- [ ] Add data-quality incident persistence with severity, affected tickers, and fail-closed action.
-- [ ] Add a dry-run provider adapter that reads the current CSV fixtures through the new connector interface.
-- [ ] Keep the current CSV connector working for local use.
+```text
+docs/phase-3-review.md
+```
 
-**Tests:**
+Delivered:
 
-- [ ] Unit tests verify connector protocol dataclasses reject missing timestamps.
-- [ ] Integration tests persist raw records and normalized records.
-- [ ] Integration tests prove raw payload replay can rebuild normalized records.
-- [ ] Integration tests prove provider outage writes `provider_health=degraded`.
-- [ ] Regression tests prove missing `available_at` prevents action-state promotion.
+- Provider comparison and Polygon first-adapter decision.
+- Polygon ticker/reference and grouped-daily fixture connector.
+- Provider ingest orchestration shared by CSV and Polygon.
+- Universe filters and named universe construction.
+- Provider-specific scan filtering.
+- Golden no-network fixture scan.
+- Provider health degradation on rejected records.
 
-**Exit criteria:**
+### Phase 4: Portfolio-Aware Policy and Setup Plugins
 
-- Local CSV path works through the new connector interface.
-- Raw and normalized records are persisted separately.
-- Provider health and job-run tables are populated during ingest.
-- No scan can promote a candidate using records without availability timestamps.
+Status: complete and merged.
 
-## Phase 2: Full Universe and Real Market Data
+Review file:
 
-**Objective:** Scan a real liquid U.S. universe nightly using production-grade securities and daily-bar data.
+```text
+docs/phase-4-review.md
+```
 
-**Provider selection gate:**
+Delivered:
 
-Before implementation, choose the first real market data provider. The phase plan must compare provider coverage, cost, adjusted bars, corporate actions, rate limits, and license restrictions. Do not commit to paid provider integration without explicit approval.
+- Holdings normalization and latest-per-ticker resolution.
+- Portfolio impact computation and persistence.
+- Setup policies for breakout, pullback, sector rotation, post-earnings, and filings catalyst.
+- Entry zone, invalidation, reward/risk, chase block, and proposed sizing.
+- Cash, concentration, sector/theme, and portfolio hard gates.
+- Idempotent scan result persistence.
 
-**Primary files:**
+### Phase 5: Event Connectors
 
-- Modify: `src/catalyst_radar/connectors/market_data.py`
-- Modify: `src/catalyst_radar/features/market.py`
-- Modify: `src/catalyst_radar/pipeline/scan.py`
-- Modify: `src/catalyst_radar/scoring/score.py`
-- Create: `src/catalyst_radar/universe/builder.py`
-- Create: `src/catalyst_radar/universe/filters.py`
-- Create: `src/catalyst_radar/features/sector.py`
-- Create: `src/catalyst_radar/storage/universe_repositories.py`
-- Create: `tests/integration/test_universe_builder.py`
-- Create: `tests/integration/test_market_provider_scan.py`
-- Create: `tests/golden/test_market_scan_golden.py`
+Status: complete and merged.
 
-**Implementation tasks:**
+Review file:
 
-- [ ] Add universe filters for active common stocks and ADRs.
-- [ ] Add configurable thresholds: price, market cap, average dollar volume, exchange, ADR inclusion, options requirement.
-- [ ] Store point-in-time universe membership snapshots.
-- [ ] Add corporate action checks before adjusted bars are accepted.
-- [ ] Add sector ETF mapping and fallback behavior.
-- [ ] Expand market features to include 20d/60d/120d relative strength, volatility compression, accumulation days, and stale-data flags.
-- [ ] Add scan batching so 1,000-2,000 tickers complete under the configured SLA.
-- [ ] Add golden fixtures for strong, weak, stale, corporate-action-mismatch, and illiquid tickers.
+```text
+docs/phase-5-review.md
+```
 
-**Tests:**
+Delivered:
 
-- [ ] Universe builder excludes inactive, sub-threshold, stale, and low-liquidity tickers.
-- [ ] Point-in-time universe snapshots replay correctly.
-- [ ] Scanner completes fixture-scale batch deterministically.
-- [ ] Corporate-action mismatch blocks scoring.
-- [ ] Full scan requires zero LLM configuration.
+- Canonical event models and `events` storage.
+- SEC, news, and earnings fixture connectors.
+- Provider promotion from normalized event records into canonical events.
+- Event source quality, materiality, URL/body dedupe, and guidance conflict detection.
+- Event CLI commands.
+- Event-aware scan metadata.
+- Bounded event score support.
+- Event-driven setup selection.
+- Conflict downgrade to `ResearchOnly`.
 
-**Exit criteria:**
+## Phase 6: Local Text Intelligence
 
-- A full liquid universe scan runs without premium LLM calls.
-- At least 90 percent of scanned tickers exit before event/text processing.
-- Each candidate state can explain its source features and fail-closed blocks.
+Detailed executable plan:
 
-## Phase 3: Portfolio-Aware Policy and Setup Plugins
+```text
+docs/superpowers/plans/2026-05-10-phase-6-local-text-intelligence.md
+```
 
-**Objective:** Enforce real portfolio exposure, sizing, and setup-specific entry/invalidation logic before buy-review eligibility.
+Objective:
 
-**Primary files:**
+- Add deterministic, provider-free local text intelligence on top of Phase 5 events: source-linked snippets, ontology/theme matching, sentiment direction, hashing-vector embeddings, novelty, and text-feature metadata.
 
-- Modify: `src/catalyst_radar/portfolio/risk.py`
-- Modify: `src/catalyst_radar/scoring/policy.py`
-- Modify: `src/catalyst_radar/pipeline/scan.py`
-- Modify: `src/catalyst_radar/storage/schema.py`
-- Create: `src/catalyst_radar/portfolio/holdings.py`
-- Create: `src/catalyst_radar/portfolio/correlation.py`
-- Create: `src/catalyst_radar/scoring/setups.py`
-- Create: `src/catalyst_radar/scoring/setup_policies.py`
-- Create: `sql/migrations/003_portfolio_policy.sql`
-- Create: `tests/unit/test_setup_policies.py`
-- Create: `tests/integration/test_portfolio_policy_scan.py`
+Primary files:
 
-**Implementation tasks:**
-
-- [ ] Add portfolio-value and cash fields to holdings snapshots.
-- [ ] Compute single-name, sector, theme, and correlated-basket exposure before and after proposed position.
-- [ ] Add `portfolio_impact` persistence.
-- [ ] Wire holdings into scanner scoring and policy, not only ingestion.
-- [ ] Add `BreakoutPolicy`, `PullbackPolicy`, `PostEarningsPolicy`, `SectorRotationPolicy`, and `FilingsCatalystPolicy`.
-- [ ] Generate entry zone, invalidation, chase block, reward/risk, and setup type deterministically.
-- [ ] Enforce missing trade plan as Warning, not buy-review.
-- [ ] Add override/audit fields for any hard-block bypass.
-
-**Tests:**
-
-- [ ] Candidate with excessive single-name exposure is Blocked.
-- [ ] Candidate with excessive sector/theme exposure is Blocked or Warning according to configured rule.
-- [ ] Missing invalidation prevents `EligibleForManualBuyReview`.
-- [ ] Reward/risk below 2.0 prevents buy-review eligibility.
-- [ ] Setup plugins generate deterministic entry/invalidation for golden fixtures.
-
-**Exit criteria:**
-
-- `EligibleForManualBuyReview` requires a complete trade plan and portfolio impact.
-- Dashboard can show block reasons and setup type for every candidate.
-- Portfolio rules are config-driven and covered by tests.
-
-## Phase 4: Event Connectors
-
-**Objective:** Add SEC filings, earnings calendar, and news/event ingestion with source quality and availability timestamps.
-
-**Primary files:**
-
-- Modify: `src/catalyst_radar/storage/schema.py`
-- Modify: `src/catalyst_radar/storage/repositories.py`
-- Create: `src/catalyst_radar/connectors/sec.py`
-- Create: `src/catalyst_radar/connectors/news.py`
-- Create: `src/catalyst_radar/connectors/earnings.py`
-- Create: `src/catalyst_radar/events/models.py`
-- Create: `src/catalyst_radar/events/classifier.py`
-- Create: `src/catalyst_radar/events/source_quality.py`
-- Create: `src/catalyst_radar/events/dedupe.py`
-- Create: `sql/migrations/004_events.sql`
-- Create: `tests/unit/test_event_classifier.py`
-- Create: `tests/integration/test_event_ingest.py`
-
-**Implementation tasks:**
-
-- [ ] Add canonical `events` table with event type, ticker, source, source URL, title, body hash, materiality, source quality, source timestamp, availability timestamp, and payload.
-- [ ] Add SEC submissions and company-facts connector through official SEC endpoints.
-- [ ] Add earnings calendar connector through selected provider.
-- [ ] Add news connector through selected provider or RSS source.
-- [ ] Add canonical URL/hash dedupe.
-- [ ] Add source-quality scoring for primary sources, reputable news, transcripts, press releases, social/promotional sources.
-- [ ] Add event taxonomy: earnings, guidance, 8-K, 10-Q/10-K, insider, analyst revision, sector read-through, product/customer announcement, legal/regulatory, financing, corporate action.
-- [ ] Add event materiality rules.
-- [ ] Store unresolved source conflicts and downgrade candidates when conflicts exist.
-
-**Tests:**
-
-- [ ] SEC fixture normalizes into event records with source and availability timestamps.
-- [ ] Duplicate news URLs collapse into one canonical event.
-- [ ] Promotional low-quality source cannot promote candidate above Research Only without confirmation.
-- [ ] Future-available event cannot affect scan state.
-- [ ] Provider outage creates degraded health state and does not crash deterministic scan.
-
-**Exit criteria:**
-
-- Event ingestion updates candidate state without LLM calls.
-- Warning-or-higher candidates can show at least one event/evidence reason when event-driven.
-- Unresolved conflicts downgrade action state.
-
-## Phase 5: Local Text Intelligence
-
-**Objective:** Add local text triage: snippets, ontology matching, sentiment/theme classification, embeddings, and novelty scoring.
-
-**Primary files:**
-
-- Modify: `pyproject.toml`
-- Modify: `src/catalyst_radar/storage/schema.py`
 - Create: `config/themes.yaml`
-- Create: `src/catalyst_radar/textint/snippets.py`
+- Create: `src/catalyst_radar/textint/__init__.py`
+- Create: `src/catalyst_radar/textint/models.py`
 - Create: `src/catalyst_radar/textint/ontology.py`
+- Create: `src/catalyst_radar/textint/snippets.py`
 - Create: `src/catalyst_radar/textint/sentiment.py`
 - Create: `src/catalyst_radar/textint/embeddings.py`
 - Create: `src/catalyst_radar/textint/novelty.py`
 - Create: `src/catalyst_radar/textint/pipeline.py`
-- Create: `sql/migrations/005_textint.sql`
-- Create: `tests/unit/test_ontology.py`
-- Create: `tests/unit/test_snippet_selection.py`
-- Create: `tests/integration/test_text_pipeline.py`
-
-**Implementation tasks:**
-
-- [ ] Add `text_snippets` table with snippet text, section, source ID, hash, source quality, ontology hits, embedding vector ID, source timestamp, and availability timestamp.
-- [ ] Add `text_features` table with local narrative, novelty, source quality, theme match, sentiment direction, and conflict flags.
-- [ ] Add ontology YAML with initial themes from the spec: AI infrastructure storage and datacenter power.
-- [ ] Implement deterministic snippet extraction by section and event type.
-- [ ] Implement source-quality-aware snippet ranking.
-- [ ] Add local embeddings using a configurable local model or provider-free embedding path.
-- [ ] Add novelty against prior ticker/theme memory.
-- [ ] Ensure snippets sent to any future LLM are capped and source-linked.
-
-**Tests:**
-
-- [ ] Ontology terms match expected themes.
-- [ ] Duplicate snippets collapse by hash.
-- [ ] Top snippets prefer primary/high-quality sources.
-- [ ] Novelty decreases when text repeats prior known claims.
-- [ ] Future-available snippet cannot affect scan state.
-
-**Exit criteria:**
-
-- Event/text MVP can improve candidate state using local methods only.
-- Candidate packet can include selected snippets with source IDs.
-- No premium LLM calls are required.
-
-## Phase 6: Options, Sector, and Theme Features
-
-**Objective:** Add non-LLM options aggregate features, sector rotation, theme velocity, and peer read-through scoring.
-
-**Primary files:**
-
-- Modify: `src/catalyst_radar/features/market.py`
+- Create: `src/catalyst_radar/storage/text_repositories.py`
+- Create: `sql/migrations/006_textint.sql`
+- Modify: `src/catalyst_radar/storage/schema.py`
+- Modify: `src/catalyst_radar/cli.py`
+- Modify: `src/catalyst_radar/pipeline/scan.py`
 - Modify: `src/catalyst_radar/scoring/score.py`
+- Modify: `src/catalyst_radar/dashboard/data.py`
+
+Implementation tasks:
+
+- [ ] Add `text_snippets` and `text_features` tables with `source_ts` and `available_at`.
+- [ ] Add `TextRepository` with upsert, point-in-time snippet reads, and latest feature reads by ticker.
+- [ ] Add initial ontology for `ai_infrastructure_storage` and `datacenter_power`.
+- [ ] Extract snippets from event titles, bodies, summaries, and payload text.
+- [ ] Rank snippets by source quality, materiality, ontology hits, and event type.
+- [ ] Score deterministic sentiment with conservative finance phrase lists.
+- [ ] Compute deterministic 64-dimension hashing-vector embeddings.
+- [ ] Compute novelty against prior ticker/theme snippets only when prior snippets were available in time.
+- [ ] Add `run-textint` and `text-features` CLI commands.
+- [ ] Attach text feature metadata to scans.
+- [ ] Add bounded local narrative score support that cannot bypass hard policy gates.
+- [ ] Add dashboard fields for narrative, novelty, sentiment, theme hits, and selected snippets.
+
+Exit criteria:
+
+- Text snippets and features are persisted separately from events.
+- Every snippet and text feature is point-in-time safe.
+- Scan integration honors `available_at`.
+- Local narrative support is bounded and cannot overpower stale-data, liquidity, risk, cash, portfolio, or unresolved-conflict gates.
+- Existing event, CSV, and Polygon smokes still pass.
+
+## Phase 7: Options, Sector, Theme, and Peer Features
+
+Objective:
+
+- Add non-LLM options aggregate features, sector rotation, theme velocity, and peer read-through scoring.
+
+Primary files:
+
 - Create: `src/catalyst_radar/features/options.py`
 - Create: `src/catalyst_radar/features/theme.py`
 - Create: `src/catalyst_radar/features/peers.py`
 - Create: `src/catalyst_radar/connectors/options.py`
-- Create: `sql/migrations/006_options_theme.sql`
-- Create: `tests/unit/test_options_features.py`
-- Create: `tests/unit/test_theme_features.py`
-- Create: `tests/integration/test_options_ingest.py`
-
-**Implementation tasks:**
-
-- [ ] Add `option_features` table for aggregate call/put, OI, IV percentile, skew, and abnormal activity.
-- [ ] Add options connector for aggregate chain data or provider-provided summary data.
-- [ ] Add sector ETF trend and relative acceleration features.
-- [ ] Add theme membership and theme velocity scores.
-- [ ] Add peer read-through mapping and peer confirmation score.
-- [ ] Update scoring to include options flow, sector rotation, local narrative, fundamental event, and novelty.
-
-**Tests:**
-
-- [ ] Options abnormality is finite-safe and point-in-time.
-- [ ] Missing options data does not block non-options candidates by default.
-- [ ] Sector rotation score is deterministic for fixture ETFs.
-- [ ] Peer confirmation raises local narrative or sector score only when source events are available.
-
-**Exit criteria:**
-
-- Scoring covers all specified pillars.
-- Missing optional options data degrades gracefully.
-- Theme view has enough data for dashboard rendering.
-
-## Phase 7: Candidate Packets and Unified Scoring
-
-**Objective:** Build the complete candidate packet and scoring/policy flow across market, event, text, options, portfolio, and setup data.
-
-**Primary files:**
-
-- Modify: `src/catalyst_radar/core/models.py`
+- Create: `src/catalyst_radar/storage/feature_repositories.py`
+- Create: `sql/migrations/007_options_theme.sql`
+- Modify: `src/catalyst_radar/features/market.py`
 - Modify: `src/catalyst_radar/scoring/score.py`
-- Modify: `src/catalyst_radar/scoring/policy.py`
 - Modify: `src/catalyst_radar/pipeline/scan.py`
+- Modify: `src/catalyst_radar/dashboard/data.py`
+- Test: `tests/unit/test_options_features.py`
+- Test: `tests/unit/test_theme_features.py`
+- Test: `tests/unit/test_peer_readthrough.py`
+- Test: `tests/integration/test_options_ingest.py`
+
+Implementation tasks:
+
+- [ ] Add `option_features` table for aggregate call/put volume, open interest, IV percentile, skew, abnormality, provider, `source_ts`, and `available_at`.
+- [ ] Add fixture-first options connector using aggregate chain summary data, not per-contract trading logic.
+- [ ] Add sector ETF trend and relative acceleration features.
+- [ ] Add theme membership config and theme velocity score.
+- [ ] Add peer read-through mapping from event/text themes to related tickers.
+- [ ] Update scoring with finite-safe options, sector, theme, and peer support components.
+- [ ] Keep missing optional options data neutral unless a setup explicitly requires options confirmation.
+
+Exit criteria:
+
+- Optional options data improves evidence but does not block ordinary equity candidates.
+- Sector/theme/peer features are deterministic and point-in-time testable.
+- Scoring covers the major spec pillars without LLM calls.
+
+## Phase 8: Candidate Packets and Unified Scoring
+
+Objective:
+
+- Build the complete candidate packet and final deterministic scoring/policy flow across market, event, text, options, portfolio, and setup data.
+
+Primary files:
+
 - Create: `src/catalyst_radar/pipeline/candidate_packet.py`
 - Create: `src/catalyst_radar/pipeline/escalation.py`
-- Create: `tests/golden/test_candidate_packets.py`
-- Create: `tests/integration/test_full_deterministic_pipeline.py`
+- Create: `src/catalyst_radar/storage/candidate_packet_repositories.py`
+- Create: `sql/migrations/008_candidate_packets.sql`
+- Modify: `src/catalyst_radar/core/models.py`
+- Modify: `src/catalyst_radar/pipeline/scan.py`
+- Modify: `src/catalyst_radar/scoring/score.py`
+- Modify: `src/catalyst_radar/scoring/policy.py`
+- Test: `tests/golden/test_candidate_packets.py`
+- Test: `tests/integration/test_full_deterministic_pipeline.py`
 
-**Implementation tasks:**
+Implementation tasks:
 
-- [ ] Define `CandidatePacket` containing features, events, snippets, risk blocks, portfolio impact, setup plan, source IDs, and state history.
-- [ ] Add deterministic escalation reasons for local NLP, LLM review, and Decision Card eligibility.
-- [ ] Persist candidate packet snapshots or reconstructable packet inputs.
-- [ ] Add score delta over 5 days.
+- [ ] Define `CandidatePacket` containing features, events, snippets, risk blocks, setup plan, portfolio impact, source IDs, and state history.
+- [ ] Persist packet snapshots or enough packet inputs to reconstruct each state.
+- [ ] Add deterministic escalation reasons for local review, future LLM review, and Decision Card eligibility.
+- [ ] Add score delta and state delta over configurable lookback windows.
 - [ ] Add `ThesisWeakening` and `ExitInvalidateReview` transitions for held/watch candidates.
+- [ ] Require supporting evidence and explicit disconfirming-evidence sections for Warning and above.
 - [ ] Ensure every transition stores reasons and source/computed feature IDs.
 
-**Tests:**
+Exit criteria:
 
-- [ ] Candidate packet includes all required inputs for Warning and above.
-- [ ] Escalation reasons match configured rules.
-- [ ] Blocked candidates explain hard blocks.
-- [ ] Score/state replay is deterministic from persisted point-in-time data.
+- Every candidate state can explain why it exists.
+- Every Warning-or-higher candidate has a candidate packet ready for validation and optional LLM review.
+- Replay from persisted point-in-time inputs yields the same packet and state.
 
-**Exit criteria:**
+## Phase 9: Backtesting, Shadow Mode, and Paper Trading
 
-- System can show exactly why a candidate was escalated or blocked.
-- Every Warning candidate has supporting and disconfirming evidence placeholders ready for LLM/text evidence.
-- Candidate packet is sufficient input for validation and Decision Cards.
+Objective:
 
-## Phase 8: Backtesting, Shadow Mode, and Paper Trading
+- Prove the radar beats simple baselines and can measure usefulness before any real-capital workflow.
 
-**Objective:** Prove the radar beats simple baselines and can measure usefulness before any real-capital workflow.
+Primary files:
 
-**Primary files:**
-
-- Modify: `src/catalyst_radar/validation/backtest.py`
 - Create: `src/catalyst_radar/validation/replay.py`
 - Create: `src/catalyst_radar/validation/baselines.py`
 - Create: `src/catalyst_radar/validation/paper.py`
 - Create: `src/catalyst_radar/validation/outcomes.py`
 - Create: `src/catalyst_radar/validation/reports.py`
-- Create: `sql/migrations/007_validation.sql`
-- Create: `tests/unit/test_backtest_replay.py`
-- Create: `tests/integration/test_paper_trading.py`
-- Create: `tests/golden/test_no_leakage_replay.py`
+- Create: `sql/migrations/009_validation.sql`
+- Modify: `src/catalyst_radar/validation/backtest.py`
+- Test: `tests/unit/test_backtest_replay.py`
+- Test: `tests/integration/test_paper_trading.py`
+- Test: `tests/golden/test_no_leakage_replay.py`
 
-**Implementation tasks:**
+Implementation tasks:
 
 - [ ] Add `paper_trades`, `validation_runs`, `validation_results`, and `useful_alert_labels` tables.
 - [ ] Implement point-in-time replay over historical dates.
-- [ ] Implement baselines: SPY momentum, sector momentum, event-only watchlist, random eligible universe, user watchlist if available.
-- [ ] Compute labels: 10d/15, 20d/25, 60d/40, sector outperformance, max adverse excursion, max favorable excursion.
-- [ ] Implement paper-trade workflow: approve/reject/defer, simulated entry, invalidation monitoring, outcome capture.
-- [ ] Add validation reports for precision, false positives, cost per useful alert, and missed opportunities.
+- [ ] Implement baselines: SPY momentum, sector momentum, event-only watchlist, random eligible universe, and user watchlist when available.
+- [ ] Compute outcome labels: 10d/15, 20d/25, 60d/40, sector outperformance, max adverse excursion, and max favorable excursion.
+- [ ] Implement paper workflow: approve, reject, defer, simulated entry, invalidation monitoring, and outcome capture.
+- [ ] Add validation reports for precision, false positives, cost per useful alert, missed opportunities, and no-leakage failures.
 
-**Tests:**
+Exit criteria:
 
-- [ ] Future-available bars/events/snippets are excluded from replay.
-- [ ] Baseline comparisons use same universe and availability rules.
-- [ ] Paper trade exits when invalidation is triggered.
-- [ ] Useful-alert labels are stored and aggregated.
-
-**Exit criteria:**
-
-- Backtests can replay candidate states using availability timestamps.
+- Backtests replay candidate states using availability timestamps.
 - Shadow mode can run live without real-capital actions.
-- Paper trading can compute outcome and cost metrics.
-- No real-capital pilot is permitted until this phase produces reviewed results.
+- Paper trading computes outcome and cost metrics.
+- No pilot can proceed until validation output is reviewed.
 
-## Phase 9: API and Dashboard Expansion
+## Phase 10: API and Dashboard Expansion
 
-**Objective:** Provide usable review workflows: radar home, ticker detail, theme view, cost view, validation view, ops view, and feedback capture.
+Objective:
 
-**Primary files:**
+- Provide usable review workflows: radar home, ticker detail, theme view, validation view, cost view, ops view, and feedback capture.
+
+Primary files:
 
 - Create: `apps/api/main.py`
 - Create: `src/catalyst_radar/api/routes/radar.py`
@@ -471,36 +376,32 @@ Before implementation, choose the first real market data provider. The phase pla
 - Create: `apps/dashboard/pages/3_Validation.py`
 - Create: `apps/dashboard/pages/4_Costs.py`
 - Create: `apps/dashboard/pages/5_Ops.py`
-- Create: `tests/integration/test_api_routes.py`
-- Create: `tests/integration/test_dashboard_data.py`
+- Test: `tests/integration/test_api_routes.py`
+- Test: `tests/integration/test_dashboard_data.py`
 
-**Implementation tasks:**
+Implementation tasks:
 
 - [ ] Add FastAPI app with read-only radar endpoints.
 - [ ] Add `GET /api/radar/candidates`.
 - [ ] Add `GET /api/radar/candidates/{ticker}`.
-- [ ] Add `GET /api/radar/decision-cards/{id}` after Decision Cards exist.
-- [ ] Add `POST /api/radar/decision-cards/{id}/feedback` after feedback table exists.
-- [ ] Add ops health endpoint with provider/job status.
+- [ ] Add ticker detail data with features, events, snippets, candidate packet, state history, setup plan, and portfolio impact.
+- [ ] Add ops health endpoint with provider and job status.
 - [ ] Expand Streamlit dashboard pages.
-- [ ] Add user feedback capture: useful, noisy, too late, too early, ignored, acted.
+- [ ] Add feedback capture: useful, noisy, too late, too early, ignored, acted.
+- [ ] Keep all displayed recommendation language as decision support, not trade instruction.
 
-**Tests:**
-
-- [ ] API route tests return expected schema.
-- [ ] Dashboard data functions handle empty and populated states.
-- [ ] Feedback is persisted and visible in validation summaries.
-
-**Exit criteria:**
+Exit criteria:
 
 - User can review candidates, evidence, state history, blocks, validation, provider health, and costs from the UI.
-- Feedback can be recorded for every alert and Decision Card.
+- Feedback can be recorded for every alert and future Decision Card.
 
-## Phase 10: Alerts and Feedback Loop
+## Phase 11: Alerts and Feedback Loop
 
-**Objective:** Send deduped actionable notifications and measure whether they are useful.
+Objective:
 
-**Primary files:**
+- Send deduped actionable notifications and measure whether they are useful.
+
+Primary files:
 
 - Create: `src/catalyst_radar/alerts/models.py`
 - Create: `src/catalyst_radar/alerts/router.py`
@@ -508,11 +409,11 @@ Before implementation, choose the first real market data provider. The phase pla
 - Create: `src/catalyst_radar/alerts/channels/email.py`
 - Create: `src/catalyst_radar/alerts/channels/webhook.py`
 - Create: `src/catalyst_radar/alerts/digest.py`
-- Create: `sql/migrations/008_alerts.sql`
-- Create: `tests/unit/test_alert_dedupe.py`
-- Create: `tests/integration/test_alert_routing.py`
+- Create: `sql/migrations/010_alerts.sql`
+- Test: `tests/unit/test_alert_dedupe.py`
+- Test: `tests/integration/test_alert_routing.py`
 
-**Implementation tasks:**
+Implementation tasks:
 
 - [ ] Add `alerts`, `alert_suppressions`, and `user_feedback` tables.
 - [ ] Route `EligibleForManualBuyReview` to immediate alert.
@@ -522,67 +423,54 @@ Before implementation, choose the first real market data provider. The phase pla
 - [ ] Suppress duplicate articles and unchanged states.
 - [ ] Add feedback links or dashboard actions for each alert.
 
-**Tests:**
-
-- [ ] Alert dedupe suppresses repeated state/no-new-event alerts.
-- [ ] New high-quality event reopens alert route.
-- [ ] Invalidation state sends position-watch alert.
-- [ ] Weekly summary includes suppressed count.
-
-**Exit criteria:**
+Exit criteria:
 
 - Alerts are actionable, deduped, and measurable.
 - Useful-alert rate is part of validation output.
 
-## Phase 11: Budget Ledger and Sparse LLM Router
+## Phase 12: Budget Ledger and Sparse LLM Router
 
-**Objective:** Add controlled, auditable LLM review without allowing LLMs into deterministic scanning or scoring.
+Objective:
 
-**Primary files:**
+- Add controlled, auditable LLM review without allowing LLMs into deterministic scanning or scoring.
 
-- Modify: `pyproject.toml`
-- Modify: `src/catalyst_radar/core/config.py`
+Primary files:
+
 - Create: `src/catalyst_radar/agents/models.py`
 - Create: `src/catalyst_radar/agents/budget.py`
 - Create: `src/catalyst_radar/agents/router.py`
 - Create: `src/catalyst_radar/agents/tasks.py`
 - Create: `src/catalyst_radar/agents/schemas.py`
 - Create: `src/catalyst_radar/agents/prompts/evidence_review_v1.md`
-- Create: `sql/migrations/009_budget_llm.sql`
-- Create: `tests/unit/test_budget_controller.py`
-- Create: `tests/unit/test_llm_router.py`
+- Create: `sql/migrations/011_budget_llm.sql`
+- Modify: `src/catalyst_radar/core/config.py`
+- Test: `tests/unit/test_budget_controller.py`
+- Test: `tests/unit/test_llm_router.py`
 
-**Implementation tasks:**
+Implementation tasks:
 
 - [ ] Add `budget_ledger` table.
 - [ ] Add model-pricing config with input, cached input, and output token rates.
-- [ ] Add `BudgetController` daily/monthly/task caps.
-- [ ] Add `LLMRouter` that returns skip decisions when budget or state gates fail.
-- [ ] Add task definitions: mini extraction, mid review, skeptic review, decision card, transcript deep dive.
-- [ ] Add dry-run/fake LLM client for tests.
+- [ ] Add `BudgetController` with daily, monthly, and per-task caps.
+- [ ] Add `LLMRouter` that returns skip decisions when budget, config, or state gates fail.
+- [ ] Add fake LLM client for deterministic tests.
 - [ ] Log estimated and actual cost, prompt version, schema version, model, token counts, ticker, candidate state, and outcome.
 - [ ] Enforce default local/dev behavior: premium LLM disabled unless explicitly configured.
 
-**Tests:**
-
-- [ ] Full universe scan still runs with no LLM configuration.
-- [ ] LLM route skips when budget exceeded.
-- [ ] LLM route skips when candidate state is below configured threshold.
-- [ ] Budget ledger records calls and skips.
-- [ ] Pricing config missing prevents premium calls.
-
-**Exit criteria:**
+Exit criteria:
 
 - LLM calls are sparse, gated, budgeted, and auditable.
+- Full universe scan still runs with no LLM configuration.
 - Monthly spend can be capped and enforced automatically.
 
-## Phase 12: Evidence Packets, Skeptic Review, and Decision Cards
+## Phase 13: Evidence Packets, Skeptic Review, and Decision Cards
 
-**Objective:** Produce source-linked evidence packets, human-readable bear cases, and complete Decision Cards for manual buy review.
+Objective:
 
-**Primary files:**
+- Produce source-linked evidence packets, human-readable bear cases, and complete Decision Cards for manual buy review.
 
-- Modify: `src/catalyst_radar/agents/router.py`
+Primary files:
+
 - Create: `src/catalyst_radar/agents/evidence.py`
 - Create: `src/catalyst_radar/agents/skeptic.py`
 - Create: `src/catalyst_radar/decision_cards/models.py`
@@ -591,42 +479,36 @@ Before implementation, choose the first real market data provider. The phase pla
 - Create: `src/catalyst_radar/decision_cards/repository.py`
 - Create: `src/catalyst_radar/agents/prompts/skeptic_v1.md`
 - Create: `src/catalyst_radar/agents/prompts/decision_card_v1.md`
-- Create: `sql/migrations/010_evidence_decision_cards.sql`
-- Create: `tests/unit/test_evidence_packet_schema.py`
-- Create: `tests/unit/test_decision_card_schema.py`
-- Create: `tests/evals/test_llm_source_faithfulness.py`
+- Create: `sql/migrations/012_evidence_decision_cards.sql`
+- Modify: `src/catalyst_radar/agents/router.py`
+- Test: `tests/unit/test_evidence_packet_schema.py`
+- Test: `tests/unit/test_decision_card_schema.py`
+- Test: `tests/evals/test_llm_source_faithfulness.py`
 
-**Implementation tasks:**
+Implementation tasks:
 
-- [ ] Add `evidence_packets` table.
-- [ ] Add `decision_cards` table.
-- [ ] Build evidence packet from selected snippets, computed features, disconfirming evidence, conflicts, and policy context.
+- [ ] Add `evidence_packets` and `decision_cards` tables.
+- [ ] Build evidence packets from selected snippets, computed features, disconfirming evidence, conflicts, and policy context.
 - [ ] Validate every claim has `source_id` or `computed_feature_id`.
 - [ ] Add Skeptic Agent for Warning and buy-review candidates only.
-- [ ] Add Decision Card builder for candidates passing all deterministic gates.
+- [ ] Add Decision Card builder for candidates passing deterministic gates.
 - [ ] Downgrade if JSON schema validation fails twice.
 - [ ] Reject unsupported claims.
-- [ ] Ensure Decision Card never says the system is making a buy decision.
+- [ ] Ensure Decision Cards never say the system is making a buy decision.
 
-**Tests and evals:**
-
-- [ ] Evidence packet schema rejects claims without source IDs.
-- [ ] Decision Card schema rejects missing entry, invalidation, sizing, reward/risk, portfolio impact, or next review time.
-- [ ] Fake LLM unsupported claim is rejected.
-- [ ] Conflicting evidence causes downgrade recommendation.
-- [ ] GPT-5.5 route only occurs after configured gates pass.
-
-**Exit criteria:**
+Exit criteria:
 
 - Every buy-review candidate has a complete Decision Card.
 - Every Warning-or-higher candidate has supporting and disconfirming evidence.
 - LLM outputs are schema-validated and source-linked.
 
-## Phase 13: Operations, Scheduling, and Observability
+## Phase 14: Operations, Scheduling, and Observability
 
-**Objective:** Make the system run reliably as a daily research assistant.
+Objective:
 
-**Primary files:**
+- Make the system run reliably as a daily research assistant.
+
+Primary files:
 
 - Create: `apps/worker/main.py`
 - Create: `src/catalyst_radar/jobs/scheduler.py`
@@ -634,89 +516,79 @@ Before implementation, choose the first real market data provider. The phase pla
 - Create: `src/catalyst_radar/ops/health.py`
 - Create: `src/catalyst_radar/ops/metrics.py`
 - Create: `src/catalyst_radar/ops/runbooks.py`
-- Modify: `docker-compose.yml`
 - Create: `infra/docker/Dockerfile`
 - Create: `infra/docker/docker-compose.prod.yml`
 - Create: `docs/runbooks/provider-failure.md`
 - Create: `docs/runbooks/llm-failure.md`
 - Create: `docs/runbooks/score-drift.md`
-- Create: `tests/integration/test_jobs.py`
-- Create: `tests/integration/test_ops_health.py`
+- Modify: `docker-compose.yml`
+- Test: `tests/integration/test_jobs.py`
+- Test: `tests/integration/test_ops_health.py`
 
-**Implementation tasks:**
+Implementation tasks:
 
-- [ ] Add scheduled jobs: daily bar ingest, feature scan, event ingest, text triage, scoring policy, LLM review, digest, validation update.
+- [ ] Add scheduled jobs: daily bar ingest, feature scan, event ingest, text triage, scoring policy, LLM review, digest, and validation update.
 - [ ] Add job locks to avoid overlapping runs.
 - [ ] Add provider-health banners to dashboard data.
-- [ ] Add degraded mode: disable states above AddToWatchlist when core data is stale.
+- [ ] Add degraded mode that disables states above AddToWatchlist when core data is stale.
 - [ ] Add score-distribution drift detection.
 - [ ] Add metrics for stage counts, cost, useful alerts, stale incidents, unsupported-claim rate, and false-positive rate.
 - [ ] Add local Docker Compose for Postgres, worker, API, dashboard, and Redis if chosen.
 
-**Tests:**
-
-- [ ] Job runner records success/failure and duration.
-- [ ] Provider failure degrades health and disables action states above AddToWatchlist.
-- [ ] LLM failure keeps deterministic scanner running.
-- [ ] Score drift freezes new buy-review states.
-
-**Exit criteria:**
+Exit criteria:
 
 - System can run scheduled locally or on a VM.
 - Ops dashboard shows provider health, job status, stale data, and schema failures.
 - Runbooks exist for major failure modes.
 
-## Phase 14: Security, Secrets, and Compliance Controls
+## Phase 15: Security, Secrets, and Compliance Controls
 
-**Objective:** Protect credentials, account data, provider licenses, audit logs, and human approval boundaries.
+Objective:
 
-**Primary files:**
+- Protect credentials, account data, provider licenses, audit logs, and human approval boundaries.
 
-- Modify: `src/catalyst_radar/core/config.py`
+Primary files:
+
 - Create: `src/catalyst_radar/security/secrets.py`
 - Create: `src/catalyst_radar/security/redaction.py`
 - Create: `src/catalyst_radar/security/audit.py`
 - Create: `src/catalyst_radar/security/access.py`
-- Create: `sql/migrations/011_security_audit.sql`
+- Create: `sql/migrations/013_security_audit.sql`
 - Create: `docs/runbooks/secrets.md`
-- Create: `tests/unit/test_redaction.py`
-- Create: `tests/integration/test_audit_logs.py`
+- Modify: `src/catalyst_radar/core/config.py`
+- Test: `tests/unit/test_redaction.py`
+- Test: `tests/integration/test_audit_logs.py`
 
-**Implementation tasks:**
+Implementation tasks:
 
-- [ ] Load secrets from `.env.local` in dev and an encrypted/managed secret source in production.
-- [ ] Redact API keys and account notes from logs and prompts.
+- [ ] Load secrets from `.env.local` in dev and a managed/encrypted secret source in production.
+- [ ] Redact API keys, account notes, and personal account data from logs and prompts.
 - [ ] Add audit logs for user decisions, overrides, hard-block bypasses, and model calls.
 - [ ] Add dashboard roles: admin, analyst, viewer.
 - [ ] Enforce no broker order placement.
 - [ ] Add provider license tags and retention policies.
 
-**Tests:**
-
-- [ ] Secrets are not logged.
-- [ ] Prompt payload redaction removes configured sensitive fields.
-- [ ] Hard-block override writes an audit record.
-- [ ] Viewer role cannot perform feedback/override actions if roles are enabled.
-
-**Exit criteria:**
+Exit criteria:
 
 - No secrets are committed or logged.
 - User decisions and overrides are auditable.
 - System language remains decision-support only.
 
-## Phase 15: Shadow Mode, Paper Trading, and Pilot Readiness
+## Phase 16: Shadow Mode, Paper Trading, and Pilot Readiness
 
-**Objective:** Validate the complete system in live conditions before any real-capital use.
+Objective:
 
-**Primary files:**
+- Validate the complete system in live conditions before any real-capital use.
 
-- Modify: `src/catalyst_radar/validation/reports.py`
-- Modify: `apps/dashboard/pages/3_Validation.py`
+Primary files:
+
 - Create: `docs/release-gates/pilot-readiness.md`
 - Create: `docs/release-gates/monthly-review-template.md`
 - Create: `tests/integration/test_release_gates.py`
+- Modify: `src/catalyst_radar/validation/reports.py`
+- Modify: `apps/dashboard/pages/3_Validation.py`
 
-**Implementation tasks:**
+Implementation tasks:
 
 - [ ] Run shadow production live for at least one earnings/event cycle.
 - [ ] Record all alerts, paper decisions, invalidations, missed opportunities, false positives, and useful-alert labels.
@@ -725,15 +597,7 @@ Before implementation, choose the first real market data provider. The phase pla
 - [ ] Review LLM unsupported-claim rate and schema failure rate.
 - [ ] Produce pilot-readiness report.
 
-**Tests and checks:**
-
-- [ ] Release gate fails if no shadow-mode run exists.
-- [ ] Release gate fails if point-in-time leakage test fails.
-- [ ] Release gate fails if Decision Card schema failures exceed threshold.
-- [ ] Release gate fails if cost budget is exceeded.
-- [ ] Release gate fails if no user feedback labels exist.
-
-**Exit criteria:**
+Exit criteria:
 
 - System has completed shadow mode.
 - Paper-trading outcomes are visible.
@@ -761,28 +625,51 @@ python -m pytest
 python -m ruff check src tests apps
 Remove-Item data/local/catalyst_radar.db -ErrorAction SilentlyContinue
 $env:CATALYST_DATABASE_URL="sqlite:///data/local/catalyst_radar.db"
-.\.venv\Scripts\catalyst-radar.exe init-db
-.\.venv\Scripts\catalyst-radar.exe ingest-csv --securities data/sample/securities.csv --daily-bars data/sample/daily_bars.csv --holdings data/sample/holdings.csv
-.\.venv\Scripts\catalyst-radar.exe scan --as-of 2026-05-08
+python -m catalyst_radar.cli init-db
+python -m catalyst_radar.cli ingest-csv --securities tests/fixtures/securities.csv --daily-bars tests/fixtures/daily_bars.csv --holdings tests/fixtures/holdings.csv
+python -m catalyst_radar.cli scan --as-of 2026-05-08
 ```
 
-As phases add jobs, API, dashboard pages, and validation, extend this suite with:
+Event regression smoke:
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest tests/golden tests/evals
-.\.venv\Scripts\uvicorn.exe apps.api.main:app --host 127.0.0.1 --port 8010
-.\.venv\Scripts\streamlit.exe run apps/dashboard/Home.py --server.port 8509
+python -m catalyst_radar.cli ingest-sec submissions --ticker MSFT --cik 0000789019 --fixture tests/fixtures/sec/submissions_msft.json
+python -m catalyst_radar.cli ingest-news --fixture tests/fixtures/news/ticker_news_msft.json
+python -m catalyst_radar.cli ingest-earnings --fixture tests/fixtures/earnings/calendar_msft.json
+python -m catalyst_radar.cli events --ticker MSFT --as-of 2026-05-10 --available-at 2026-05-10T14:00:00Z
+python -m catalyst_radar.cli scan --as-of 2026-05-08
+```
+
+Polygon fixture smoke:
+
+```powershell
+Remove-Item data/local/catalyst_radar.db -ErrorAction SilentlyContinue
+$env:CATALYST_DATABASE_URL="sqlite:///data/local/catalyst_radar.db"
+python -m catalyst_radar.cli init-db
+python -m catalyst_radar.cli ingest-polygon tickers --fixture tests/fixtures/polygon/tickers_page_1.json --date 2026-05-08
+python -m catalyst_radar.cli ingest-polygon grouped-daily --fixture tests/fixtures/polygon/grouped_daily_2026-05-07.json --date 2026-05-07
+python -m catalyst_radar.cli ingest-polygon grouped-daily --fixture tests/fixtures/polygon/grouped_daily_2026-05-08.json --date 2026-05-08
+python -m catalyst_radar.cli provider-health --provider polygon
+python -m catalyst_radar.cli build-universe --name liquid-us --provider polygon --as-of 2026-05-08
+python -m catalyst_radar.cli scan --as-of 2026-05-08 --universe liquid-us
+```
+
+As phases add API, dashboard pages, jobs, evals, and validation, extend the suite with:
+
+```powershell
+python -m pytest tests/golden tests/evals
+python -m uvicorn apps.api.main:app --host 127.0.0.1 --port 8010
+streamlit run apps/dashboard/Home.py --server.port 8509
 ```
 
 Use browser verification for dashboard and API docs after visible UI changes.
 
 ## Recommended Next Phase
 
-Build Phase 2 next only after Phase 1 is integrated. The next coding plan should be:
+Build Phase 6 next:
 
 ```text
-docs/superpowers/plans/2026-05-09-phase-2-production-data-foundation.md
+docs/superpowers/plans/2026-05-10-phase-6-local-text-intelligence.md
 ```
 
-That phase should implement provider abstraction, raw/normalized provider storage, provider health, job runs, and data-quality incidents before choosing or paying for a real data provider.
-
+This phase is the right next step because event connectors now exist, and local text intelligence is needed before candidate packets, sparse LLM review, or Decision Cards can be useful.
