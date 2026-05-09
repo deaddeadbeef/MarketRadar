@@ -41,3 +41,21 @@ streamlit run apps/dashboard/Home.py
 ## Phase 1 rule
 
 No premium LLM calls are used or required in Phase 1.
+
+## Verification commands
+
+```powershell
+python -m pytest
+python -m ruff check src tests apps
+```
+
+## Phase 1 acceptance
+
+Phase 1 is accepted when:
+
+- sample ingest works from CSV
+- scan produces candidate states
+- CCC is blocked for liquidity
+- dashboard renders current candidates
+- all tests pass
+- no LLM configuration is required
