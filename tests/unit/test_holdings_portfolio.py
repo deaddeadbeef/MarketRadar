@@ -103,6 +103,48 @@ def test_repository_round_trips_portfolio_fields() -> None:
     assert rows[0].cash == 25000.0
 
 
+def test_create_schema_upgrades_existing_sqlite_holdings_table() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    with engine.begin() as conn:
+        conn.exec_driver_sql(
+            """
+            CREATE TABLE holdings_snapshots (
+              ticker TEXT NOT NULL,
+              as_of TIMESTAMP NOT NULL,
+              shares FLOAT NOT NULL,
+              market_value FLOAT NOT NULL,
+              sector VARCHAR NOT NULL,
+              theme VARCHAR NOT NULL,
+              PRIMARY KEY (ticker, as_of)
+            )
+            """
+        )
+    create_schema(engine)
+    create_schema(engine)
+    repo = MarketRepository(engine)
+    as_of = datetime(2026, 5, 8, 20, tzinfo=UTC)
+
+    repo.upsert_holdings(
+        [
+            HoldingSnapshot(
+                ticker="AAA",
+                shares=20,
+                market_value=2000,
+                sector="Technology",
+                theme="ai_infrastructure",
+                as_of=as_of,
+                portfolio_value=100000,
+                cash=25000,
+            )
+        ]
+    )
+
+    rows = repo.list_holdings()
+
+    assert rows[0].portfolio_value == 100000.0
+    assert rows[0].cash == 25000.0
+
+
 def _request():
     from catalyst_radar.connectors.base import ConnectorRequest
 

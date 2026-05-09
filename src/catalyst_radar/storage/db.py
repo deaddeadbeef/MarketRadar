@@ -17,3 +17,21 @@ def engine_from_url(database_url: str) -> Engine:
 
 def create_schema(engine: Engine) -> None:
     metadata.create_all(engine)
+    if engine.dialect.name == "sqlite":
+        _upgrade_sqlite_holdings_snapshots(engine)
+
+
+def _upgrade_sqlite_holdings_snapshots(engine: Engine) -> None:
+    with engine.begin() as conn:
+        existing_columns = {
+            str(row[1]) for row in conn.exec_driver_sql("PRAGMA table_info(holdings_snapshots)")
+        }
+        if "portfolio_value" not in existing_columns:
+            conn.exec_driver_sql(
+                "ALTER TABLE holdings_snapshots "
+                "ADD COLUMN portfolio_value FLOAT DEFAULT 0"
+            )
+        if "cash" not in existing_columns:
+            conn.exec_driver_sql(
+                "ALTER TABLE holdings_snapshots ADD COLUMN cash FLOAT DEFAULT 0"
+            )
