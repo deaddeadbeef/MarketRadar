@@ -43,7 +43,7 @@ def evaluate_policy(candidate: CandidateSnapshot) -> PolicyResult:
 
     if score_ready and missing_trade_plan:
         return PolicyResult(
-            state=ActionState.ADD_TO_WATCHLIST,
+            state=ActionState.WARNING,
             reasons=("trade_plan_required",),
             missing_trade_plan=missing_trade_plan,
         )

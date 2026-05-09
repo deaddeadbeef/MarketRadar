@@ -38,7 +38,7 @@ def test_mid_scores_are_added_to_watchlist() -> None:
     assert result.hard_blocks == ()
 
 
-def test_buy_review_requires_trade_plan() -> None:
+def test_policy_requires_trade_plan_for_buy_review() -> None:
     candidate = candidate_from_features(
         _features(),
         portfolio_penalty=0.0,
@@ -50,7 +50,7 @@ def test_buy_review_requires_trade_plan() -> None:
 
     result = evaluate_policy(candidate)
 
-    assert result.state == ActionState.ADD_TO_WATCHLIST
+    assert result.state == ActionState.WARNING
     assert result.missing_trade_plan == ("entry_zone", "invalidation_price")
 
 
