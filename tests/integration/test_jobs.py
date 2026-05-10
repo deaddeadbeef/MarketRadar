@@ -8,7 +8,7 @@ from sqlalchemy import create_engine, inspect, select
 from catalyst_radar.jobs.tasks import DAILY_STEP_ORDER, DailyRunSpec, run_daily
 from catalyst_radar.storage.db import create_schema
 from catalyst_radar.storage.job_repositories import JobLockRepository
-from catalyst_radar.storage.schema import job_locks, job_runs
+from catalyst_radar.storage.schema import job_locks, job_runs, validation_runs
 
 
 def _engine():
@@ -69,6 +69,31 @@ def test_daily_run_records_skipped_steps_without_llm_or_inputs():
         persisted["daily_bar_ingest"].metadata["decision_available_at"]
         == "2026-05-10T01:00:00+00:00"
     )
+
+
+def test_daily_run_runs_validation_update_when_outcome_cutoff_is_supplied():
+    engine = _engine()
+    outcome_available_at = datetime(2026, 6, 10, 1, 0, tzinfo=UTC)
+    spec = DailyRunSpec(
+        as_of=date(2026, 5, 9),
+        decision_available_at=datetime(2026, 5, 10, 1, 0, tzinfo=UTC),
+        outcome_available_at=outcome_available_at,
+        run_llm=False,
+        dry_run_alerts=True,
+    )
+
+    result = run_daily(spec, engine=engine)
+
+    validation_step = result.step("validation_update")
+    assert validation_step.status == "success"
+    assert validation_step.reason is None
+    assert validation_step.payload["candidate_count"] == 0
+    with engine.connect() as conn:
+        run = conn.execute(select(validation_runs)).one()
+
+    assert run.status == "success"
+    assert run.config["outcome_available_at"] == outcome_available_at.isoformat()
+    assert run.metrics["candidate_count"] == 0
 
 
 def test_job_lock_rejects_unexpired_owner_and_allows_expired_takeover():

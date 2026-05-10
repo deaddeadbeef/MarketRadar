@@ -19,7 +19,11 @@ from catalyst_radar.storage.feature_repositories import FeatureRepository
 from catalyst_radar.storage.provider_repositories import ProviderRepository
 from catalyst_radar.storage.repositories import MarketRepository
 from catalyst_radar.storage.text_repositories import TextRepository
+from catalyst_radar.storage.validation_repositories import ValidationRepository
 from catalyst_radar.textint.pipeline import run_text_pipeline
+from catalyst_radar.validation.models import ValidationRun, ValidationRunStatus
+from catalyst_radar.validation.replay import build_replay_results, deterministic_replay_run_id
+from catalyst_radar.validation.reports import build_validation_report, validation_report_payload
 
 DAILY_STEP_ORDER = (
     "daily_bar_ingest",
@@ -106,6 +110,7 @@ class _DailyRunContext:
     feature_repo: FeatureRepository
     packet_repo: CandidatePacketRepository
     alert_repo: AlertRepository
+    validation_repo: ValidationRepository
     scan_results: tuple[ScanResult, ...] = ()
     candidate_packets: tuple[Any, ...] = ()
     decision_cards: tuple[Any, ...] = ()
@@ -128,6 +133,7 @@ def run_daily(spec: DailyRunSpec, *, engine: Engine) -> DailyRunResult:
         feature_repo=FeatureRepository(engine),
         packet_repo=CandidatePacketRepository(engine),
         alert_repo=AlertRepository(engine),
+        validation_repo=ValidationRepository(engine),
     )
 
     steps = tuple(
@@ -422,9 +428,76 @@ def _digest(context: _DailyRunContext) -> _StepOutcome:
 def _validation_update(context: _DailyRunContext) -> _StepOutcome:
     if context.spec.outcome_available_at is None:
         return _skipped("outcome_available_at_not_supplied")
-    return _skipped(
-        "validation_update_deferred",
-        payload={"outcome_available_at": context.spec.outcome_available_at.isoformat()},
+    if context.spec.outcome_available_at < context.spec.decision_available_at:
+        return _StepOutcome(
+            status=JobStatus.FAILED.value,
+            reason="outcome_available_at_before_decision_available_at",
+            payload={
+                "decision_available_at": context.spec.decision_available_at.isoformat(),
+                "outcome_available_at": context.spec.outcome_available_at.isoformat(),
+            },
+        )
+
+    states = _states_at_or_above(ActionState.WARNING)
+    run_id = deterministic_replay_run_id(
+        as_of_start=context.as_of_datetime,
+        as_of_end=context.as_of_datetime,
+        decision_available_at=context.spec.decision_available_at,
+        states=states,
+        tickers=context.spec.tickers,
+    )
+    run = ValidationRun(
+        id=run_id,
+        run_type="point_in_time_replay",
+        as_of_start=context.as_of_datetime,
+        as_of_end=context.as_of_datetime,
+        decision_available_at=context.spec.decision_available_at,
+        status=ValidationRunStatus.RUNNING,
+        config={
+            "states": [state.value for state in states],
+            "tickers": list(context.spec.tickers),
+            "outcome_available_at": context.spec.outcome_available_at.isoformat(),
+            "no_external_calls": True,
+            "source": "daily_validation_update",
+        },
+    )
+    context.validation_repo.upsert_validation_run(run)
+    results = build_replay_results(
+        context.packet_repo,
+        context.validation_repo,
+        as_of_start=context.as_of_datetime,
+        as_of_end=context.as_of_datetime,
+        decision_available_at=context.spec.decision_available_at,
+        states=states,
+        tickers=context.spec.tickers or None,
+        run_id=run_id,
+    )
+    count = context.validation_repo.upsert_validation_results(results)
+    report = build_validation_report(
+        run_id,
+        results,
+        useful_alert_labels=context.validation_repo.list_useful_alert_labels(
+            available_at=context.spec.outcome_available_at,
+        ),
+    )
+    metrics = validation_report_payload(report)
+    context.validation_repo.finish_validation_run(
+        run_id,
+        ValidationRunStatus.SUCCESS,
+        metrics,
+        finished_at=context.spec.outcome_available_at,
+    )
+    return _StepOutcome(
+        status=JobStatus.SUCCESS.value,
+        requested_count=len(results),
+        raw_count=len(results),
+        normalized_count=count,
+        payload={
+            "run_id": run_id,
+            "result_count": count,
+            "candidate_count": metrics["candidate_count"],
+            "outcome_available_at": context.spec.outcome_available_at.isoformat(),
+        },
     )
 
 
