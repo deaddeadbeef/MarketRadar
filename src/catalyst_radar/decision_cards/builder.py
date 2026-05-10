@@ -193,6 +193,42 @@ def build_decision_card(
     )
 
 
+def attach_llm_review_to_decision_card(
+    card: DecisionCard,
+    draft: Mapping[str, Any],
+) -> DecisionCard:
+    if not isinstance(draft, Mapping):
+        msg = "llm_review draft must be a mapping"
+        raise TypeError(msg)
+
+    llm_review = _json_ready(draft)
+    if not isinstance(llm_review, Mapping):
+        msg = "llm_review draft must be a mapping"
+        raise TypeError(msg)
+    if llm_review.get("manual_review_only") is not True:
+        msg = "llm_review manual_review_only must be true"
+        raise ValueError(msg)
+    serialize_decision_card_payload(llm_review)
+
+    payload = dict(_json_ready(card.payload))
+    payload["llm_review"] = dict(llm_review)
+    return DecisionCard(
+        id=card.id,
+        ticker=card.ticker,
+        as_of=card.as_of,
+        candidate_packet_id=card.candidate_packet_id,
+        action_state=card.action_state,
+        setup_type=card.setup_type,
+        final_score=card.final_score,
+        next_review_at=card.next_review_at,
+        payload=payload,
+        schema_version=card.schema_version,
+        source_ts=card.source_ts,
+        available_at=card.available_at,
+        user_decision=card.user_decision,
+    )
+
+
 def deterministic_decision_card_id(
     *,
     ticker: str,

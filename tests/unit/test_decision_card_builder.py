@@ -9,6 +9,7 @@ from catalyst_radar.core.models import ActionState
 from catalyst_radar.decision_cards import (
     DECISION_CARD_SCHEMA_VERSION,
     FORBIDDEN_EXECUTION_PHRASES,
+    attach_llm_review_to_decision_card,
     build_decision_card,
     serialize_decision_card_payload,
 )
@@ -183,6 +184,63 @@ def test_forbidden_execution_wording_is_rejected() -> None:
         build_decision_card(packet)
 
 
+def test_attach_llm_review_adds_narrative_without_changing_deterministic_fields() -> None:
+    card = build_decision_card(_packet())
+    original_payload = thaw_json_value(card.payload)
+    deterministic_keys = {
+        "identity",
+        "scores",
+        "trade_plan",
+        "position_sizing",
+        "portfolio_impact",
+        "evidence",
+        "disconfirming_evidence",
+        "controls",
+        "disclaimer",
+        "audit",
+    }
+    draft = _llm_review_draft()
+
+    updated = attach_llm_review_to_decision_card(card, draft)
+    updated_payload = thaw_json_value(updated.payload)
+
+    assert updated is not card
+    assert updated.id == card.id
+    assert updated.ticker == card.ticker
+    assert updated.as_of == card.as_of
+    assert updated.candidate_packet_id == card.candidate_packet_id
+    assert updated.action_state == card.action_state
+    assert updated.setup_type == card.setup_type
+    assert updated.final_score == card.final_score
+    assert updated.next_review_at == card.next_review_at
+    assert updated.schema_version == card.schema_version
+    assert updated.source_ts == card.source_ts
+    assert updated.available_at == card.available_at
+    assert updated.user_decision == card.user_decision
+    assert set(updated_payload) == deterministic_keys | {"llm_review"}
+    for key in deterministic_keys:
+        assert updated_payload[key] == original_payload[key]
+    assert updated_payload["llm_review"] == draft
+    assert "llm_review" not in original_payload
+
+
+def test_attach_llm_review_rejects_execution_language() -> None:
+    card = build_decision_card(_packet())
+    draft = _llm_review_draft(summary="The system should execute the setup.")
+
+    with pytest.raises(ValueError, match="forbidden execution wording"):
+        attach_llm_review_to_decision_card(card, draft)
+
+
+def test_attach_llm_review_requires_manual_review_only() -> None:
+    card = build_decision_card(_packet())
+    draft = _llm_review_draft()
+    draft["manual_review_only"] = False
+
+    with pytest.raises(ValueError, match="manual_review_only"):
+        attach_llm_review_to_decision_card(card, draft)
+
+
 def _packet(
     *,
     state: ActionState = ActionState.ELIGIBLE_FOR_MANUAL_BUY_REVIEW,
@@ -297,4 +355,30 @@ def _disconfirming_evidence() -> dict[str, object]:
         "strength": 0.42,
         "computed_feature_id": "signal_features:AAA:2026-05-10:market-v1:risk_penalty",
         "source_quality": 0.7,
+    }
+
+
+def _llm_review_draft(
+    *,
+    summary: str = "Manual-review setup with source-linked evidence notes.",
+) -> dict[str, object]:
+    return {
+        "ticker": "AAA",
+        "as_of": AS_OF.isoformat(),
+        "schema_version": DECISION_CARD_SCHEMA_VERSION,
+        "summary": summary,
+        "supporting_points": [
+            {
+                "text": "Relative strength is above the deterministic threshold.",
+                "computed_feature_id": "signal_features:AAA:2026-05-10:market-v1:pillar_scores",
+            }
+        ],
+        "risks": [
+            {
+                "text": "Volatility and extension create a non-zero deterministic risk penalty.",
+                "computed_feature_id": "signal_features:AAA:2026-05-10:market-v1:risk_penalty",
+            }
+        ],
+        "questions_for_human": ["Is source-linked setup durability confirmed?"],
+        "manual_review_only": True,
     }

@@ -1,4 +1,5 @@
 from catalyst_radar.decision_cards.builder import (
+    attach_llm_review_to_decision_card,
     build_decision_card,
     deterministic_decision_card_id,
     serialize_decision_card_payload,
@@ -15,6 +16,7 @@ __all__ = [
     "FORBIDDEN_EXECUTION_PHRASES",
     "MANUAL_REVIEW_DISCLAIMER",
     "DecisionCard",
+    "attach_llm_review_to_decision_card",
     "build_decision_card",
     "deterministic_decision_card_id",
     "serialize_decision_card_payload",
