@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import ast
+import re
+import tomllib
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from fastapi.routing import APIRoute
 from sqlalchemy import create_engine, select
 
 from apps.api.main import create_app
@@ -30,6 +34,65 @@ FORBIDDEN_BROKER_IMPORTS = {
     "interactive_brokers",
     "robin_stocks",
     "tda",
+}
+FORBIDDEN_BROKER_PACKAGES = {
+    "alpaca",
+    "alpaca-py",
+    "alpaca-trade-api",
+    "ib-insync",
+    "ibapi",
+    "interactive-brokers",
+    "robin-stocks",
+    "tda",
+    "tda-api",
+}
+FORBIDDEN_ROUTE_TERMS = {
+    "broker",
+    "brokers",
+    "execute",
+    "execution",
+    "executions",
+    "order",
+    "orders",
+}
+PRODUCT_PYTHON_ROOTS = (Path("src"), Path("apps"))
+DEPENDENCY_DECLARATION_PATTERNS = (
+    "pyproject.toml",
+    "requirements*.txt",
+    "poetry.lock",
+    "uv.lock",
+    "pylock.toml",
+    "Pipfile",
+    "Pipfile.lock",
+    "package-lock.json",
+    "pnpm-lock.yaml",
+    "yarn.lock",
+)
+EXPECTED_API_ROUTES = {
+    ("GET", "/api/alerts"): ("catalyst_radar.api.routes.alerts", "alerts", ("alerts",)),
+    (
+        "GET",
+        "/api/alerts/{alert_id}",
+    ): ("catalyst_radar.api.routes.alerts", "alert_detail", ("alerts",)),
+    (
+        "POST",
+        "/api/alerts/{alert_id}/feedback",
+    ): ("catalyst_radar.api.routes.alerts", "alert_feedback", ("alerts",)),
+    ("GET", "/api/costs/summary"): ("catalyst_radar.api.routes.costs", "summary", ("costs",)),
+    (
+        "POST",
+        "/api/feedback",
+    ): ("catalyst_radar.api.routes.feedback", "record_feedback", ("feedback",)),
+    ("GET", "/api/health"): ("apps.api.main", "health", ()),
+    ("GET", "/api/ops/health"): ("catalyst_radar.api.routes.ops", "health", ("ops",)),
+    (
+        "GET",
+        "/api/radar/candidates",
+    ): ("catalyst_radar.api.routes.radar", "candidates", ("radar",)),
+    (
+        "GET",
+        "/api/radar/candidates/{ticker}",
+    ): ("catalyst_radar.api.routes.radar", "candidate_detail", ("radar",)),
 }
 
 
@@ -77,24 +140,191 @@ def test_provider_ingest_redacts_secret_from_health_job_and_incident(
 
 
 def test_source_imports_do_not_include_broker_sdks() -> None:
-    source_text = "\n".join(
-        path.read_text(encoding="utf-8") for path in Path("src").rglob("*.py")
-    )
-
-    assert not [
-        name
-        for name in FORBIDDEN_BROKER_IMPORTS
-        if f"import {name}" in source_text or f"from {name}" in source_text
+    violations = [
+        violation
+        for root in PRODUCT_PYTHON_ROOTS
+        if root.exists()
+        for path in root.rglob("*.py")
+        for violation in _broker_import_violations(path)
     ]
+
+    assert not violations
+
+
+def test_dependency_declarations_do_not_include_broker_sdks() -> None:
+    violations = [
+        (path.as_posix(), package)
+        for path in _dependency_declaration_files()
+        for package in _declared_dependency_names(path)
+        if _normalize_package_name(package) in FORBIDDEN_BROKER_PACKAGES
+    ]
+
+    assert not violations
 
 
 def test_openapi_has_no_order_or_broker_routes() -> None:
-    paths = create_app().openapi()["paths"]
-    forbidden = ("broker", "order", "execute")
+    app = create_app()
+    actual_routes = {
+        (method, route.path): _route_metadata(route)
+        for route in app.routes
+        if isinstance(route, APIRoute)
+        for method in route.methods
+        if method not in {"HEAD", "OPTIONS"}
+    }
+    schema = app.openapi()
+    openapi_routes = {
+        (method.upper(), path): (
+            str(operation.get("operationId", "")),
+            tuple(str(tag) for tag in operation.get("tags", ())),
+        )
+        for path, methods in schema["paths"].items()
+        for method, operation in methods.items()
+    }
 
+    assert actual_routes == EXPECTED_API_ROUTES
+    assert set(openapi_routes) == set(EXPECTED_API_ROUTES)
     assert not [
-        path for path in paths if any(word in path.lower() for word in forbidden)
+        (method, path, metadata)
+        for (method, path), metadata in actual_routes.items()
+        if _route_metadata_has_forbidden_semantics(method, path, metadata)
     ]
+    assert not [
+        (method, path, metadata)
+        for (method, path), metadata in openapi_routes.items()
+        if _route_metadata_has_forbidden_semantics(method, path, metadata)
+    ]
+
+
+def _broker_import_violations(path: Path) -> list[tuple[str, int, str]]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    violations: list[tuple[str, int, str]] = []
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                violations.extend(_static_import_violations(path, node.lineno, alias.name))
+        elif isinstance(node, ast.ImportFrom) and node.module is not None:
+            violations.extend(_static_import_violations(path, node.lineno, node.module))
+        elif isinstance(node, ast.Call):
+            module_name = _dynamic_import_module_name(node)
+            if module_name is not None:
+                violations.extend(_static_import_violations(path, node.lineno, module_name))
+
+    return violations
+
+
+def _static_import_violations(
+    path: Path,
+    line_number: int,
+    module_name: str,
+) -> list[tuple[str, int, str]]:
+    root = module_name.split(".", maxsplit=1)[0]
+    if root in FORBIDDEN_BROKER_IMPORTS:
+        return [(path.as_posix(), line_number, module_name)]
+    return []
+
+
+def _dynamic_import_module_name(node: ast.Call) -> str | None:
+    if not node.args:
+        return None
+    if isinstance(node.func, ast.Name) and node.func.id in {"__import__", "import_module"}:
+        return _string_literal(node.args[0])
+    if (
+        isinstance(node.func, ast.Attribute)
+        and node.func.attr == "import_module"
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "importlib"
+    ):
+        return _string_literal(node.args[0])
+    return None
+
+
+def _string_literal(node: ast.AST) -> str | None:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    return None
+
+
+def _dependency_declaration_files() -> list[Path]:
+    paths: set[Path] = set()
+    for pattern in DEPENDENCY_DECLARATION_PATTERNS:
+        paths.update(Path(".").glob(pattern))
+    return sorted(path for path in paths if path.is_file())
+
+
+def _declared_dependency_names(path: Path) -> set[str]:
+    if path.name == "pyproject.toml":
+        return _pyproject_dependency_names(path)
+    if path.name.startswith("requirements") and path.suffix == ".txt":
+        return _requirements_dependency_names(path)
+    return _lockfile_dependency_names(path)
+
+
+def _pyproject_dependency_names(path: Path) -> set[str]:
+    pyproject = tomllib.loads(path.read_text(encoding="utf-8"))
+    dependencies: set[str] = set()
+    project = pyproject.get("project", {})
+
+    for requirement in project.get("dependencies", ()):
+        dependencies.add(_dependency_name_from_requirement(str(requirement)))
+    for group in project.get("optional-dependencies", {}).values():
+        for requirement in group:
+            dependencies.add(_dependency_name_from_requirement(str(requirement)))
+
+    return dependencies
+
+
+def _requirements_dependency_names(path: Path) -> set[str]:
+    dependencies: set[str] = set()
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.partition("#")[0].strip()
+        if line and not line.startswith(("-", "http://", "https://")):
+            dependencies.add(_dependency_name_from_requirement(line))
+    return dependencies
+
+
+def _lockfile_dependency_names(path: Path) -> set[str]:
+    text = path.read_text(encoding="utf-8")
+    candidates = set(re.findall(r'(?im)^\s*name\s*=\s*["\']?([A-Za-z0-9_.-]+)', text))
+    candidates.update(re.findall(r'(?im)^\s*"?([A-Za-z0-9_.-]+)"?\s*:', text))
+    return {_dependency_name_from_requirement(candidate) for candidate in candidates}
+
+
+def _dependency_name_from_requirement(requirement: str) -> str:
+    match = re.match(r"\s*([A-Za-z0-9_.-]+)", requirement)
+    return match.group(1) if match else requirement
+
+
+def _normalize_package_name(package_name: str) -> str:
+    return re.sub(r"[-_.]+", "-", package_name).lower()
+
+
+def _route_metadata(route: APIRoute) -> tuple[str, str, tuple[str, ...]]:
+    return (
+        route.endpoint.__module__,
+        route.endpoint.__name__,
+        tuple(str(tag) for tag in route.tags),
+    )
+
+
+def _route_metadata_has_forbidden_semantics(
+    method: str,
+    path: str,
+    metadata: tuple[str, ...],
+) -> bool:
+    tokens = {method.lower()}
+    tokens.update(_semantic_tokens(path))
+    for value in metadata:
+        if isinstance(value, tuple):
+            for item in value:
+                tokens.update(_semantic_tokens(item))
+        else:
+            tokens.update(_semantic_tokens(value))
+    return bool(tokens & FORBIDDEN_ROUTE_TERMS)
+
+
+def _semantic_tokens(value: str) -> set[str]:
+    return {token for token in re.split(r"[^A-Za-z0-9]+|_", value.lower()) if token}
 
 
 class _LeakyConnector:
