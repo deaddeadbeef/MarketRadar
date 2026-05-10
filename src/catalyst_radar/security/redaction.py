@@ -10,15 +10,49 @@ SECRET_EXACT_KEYS = {
     "apikey",
     "api_token",
     "api-token",
+    "token",
     "access_token",
     "refresh_token",
     "auth_token",
     "bearer_token",
+    "id_token",
+    "session_token",
+    "client_secret",
+    "secret_key",
+    "secret_access_key",
     "password",
+    "passwd",
     "secret",
     "authorization",
 }
-SECRET_SUFFIXES = ("_api_key", "_apikey", "_password", "_secret")
+SECRET_SUFFIXES = (
+    "_api_key",
+    "_apikey",
+    "_api_token",
+    "_token",
+    "_password",
+    "_passwd",
+    "_secret",
+    "_client_secret",
+    "_secret_key",
+    "_secret_access_key",
+)
+NON_SECRET_EXACT_KEYS = {
+    "cached_input_tokens",
+    "cached_prompt_tokens",
+    "completion_tokens",
+    "estimated_tokens",
+    "input_tokens",
+    "max_input_tokens",
+    "max_output_tokens",
+    "max_tokens",
+    "output_tokens",
+    "prompt_tokens",
+    "token_count",
+    "token_estimate",
+    "token_usage",
+    "total_tokens",
+}
 REDACTED = "<redacted>"
 
 _DATABASE_URL_USERINFO_PATTERN = re.compile(
@@ -29,21 +63,40 @@ _AUTHORIZATION_VALUE_PATTERN = re.compile(
 )
 _SECRET_ASSIGNMENT_PATTERN = re.compile(
     r"""(?ix)
-    (?P<prefix>\b(?:
-        api[_-]?key
-        | api[_-]?token
-        | access[_-]?token
-        | refresh[_-]?token
-        | auth[_-]?token
-        | bearer[_-]?token
-        | token
-        | password
-        | secret
-        | [a-z0-9_]*_(?:api[_-]?key|api[_-]?token|token|password|secret)
-    )\b\s*[:=]\s*)
-    (?P<quote>["']?)
-    (?P<value>[^\s"',;&}\]]+)
-    (?P=quote)
+    (?P<prefix>
+        (?P<key_quote>["']?)
+        \b(?:
+            api[_-]?key
+            | api[_-]?token
+            | access[_-]?token
+            | refresh[_-]?token
+            | auth[_-]?token
+            | bearer[_-]?token
+            | id[_-]?token
+            | session[_-]?token
+            | token
+            | password
+            | passwd
+            | secret(?:[_-]?access[_-]?key|[_-]?key)?
+            | client[_-]?secret
+            | authorization
+            | [a-z0-9_]*_(?:
+                api[_-]?key
+                | api[_-]?token
+                | token
+                | password
+                | passwd
+                | secret(?:[_-]?access[_-]?key|[_-]?key)?
+            )
+        )\b
+        (?P=key_quote)
+        \s*[:=]\s*
+    )
+    (?:
+        (?P<quote>["'])(?P<quoted_value>.*?)(?P=quote)
+        |
+        (?P<value>[^\s"',;&}\]]+)
+    )
     """
 )
 _URL_PATTERN = re.compile(r"""https?://[^\s"'<>]+""")
@@ -81,6 +134,8 @@ def redact_url(url: str, *, known_secrets: Sequence[str] = ()) -> str:
 
 def _is_secret_key(key: str) -> bool:
     normalized = key.strip().lower().replace("-", "_")
+    if normalized in NON_SECRET_EXACT_KEYS:
+        return False
     return normalized in SECRET_EXACT_KEYS or any(
         normalized.endswith(suffix) for suffix in SECRET_SUFFIXES
     )

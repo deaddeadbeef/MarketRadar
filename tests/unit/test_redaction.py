@@ -52,6 +52,20 @@ def test_redacts_env_style_secret_assignments() -> None:
     assert "CATALYST_POLYGON_API_KEY='<redacted>'" in redacted
 
 
+def test_redacts_serialized_secret_assignments() -> None:
+    redacted = redact_text(
+        """{"api_key": "abc123", 'Authorization': 'Bearer sk-test', """
+        """password="abc,def"}"""
+    )
+
+    assert "abc123" not in redacted
+    assert "Bearer sk-test" not in redacted
+    assert "abc,def" not in redacted
+    assert '"api_key": "<redacted>"' in redacted
+    assert "'Authorization': '<redacted>'" in redacted
+    assert 'password="<redacted>"' in redacted
+
+
 def test_redacts_secret_assignments_and_embedded_urls() -> None:
     text = (
         'bad apikey=secret-token token:"abc123" password = "pw" '
@@ -75,6 +89,9 @@ def test_redaction_preserves_token_usage_metrics() -> None:
         "output_tokens": 25,
         "token_usage": {"input_tokens": 100},
         "access_token": "secret-token",
+        "github_token": "github-secret",
+        "session_token": "session-secret",
+        "aws_secret_access_key": "aws-secret",
     }
 
     redacted = redact_value(payload)
@@ -84,3 +101,22 @@ def test_redaction_preserves_token_usage_metrics() -> None:
     assert redacted["output_tokens"] == 25
     assert redacted["token_usage"] == {"input_tokens": 100}
     assert redacted["access_token"] == "<redacted>"
+    assert redacted["github_token"] == "<redacted>"
+    assert redacted["session_token"] == "<redacted>"
+    assert redacted["aws_secret_access_key"] == "<redacted>"
+
+
+def test_redacts_exact_structured_token_key_without_redacting_metrics() -> None:
+    payload = {
+        "token": "tok-secret",
+        "total_tokens": 125,
+        "token_count": 3,
+    }
+
+    redacted = redact_value(payload)
+
+    assert redacted == {
+        "token": "<redacted>",
+        "total_tokens": 125,
+        "token_count": 3,
+    }
