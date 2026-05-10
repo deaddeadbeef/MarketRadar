@@ -131,6 +131,7 @@ def test_get_ops_health(tmp_path, monkeypatch) -> None:
 def test_get_cost_summary(tmp_path, monkeypatch) -> None:
     database_url = _database_url(tmp_path, "costs.db")
     monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _isolate_llm_config_env(monkeypatch)
     _create_database(database_url)
     client = TestClient(create_app())
 
@@ -141,6 +142,16 @@ def test_get_cost_summary(tmp_path, monkeypatch) -> None:
     assert payload["source"] == "budget_ledger"
     assert payload["total_actual_cost_usd"] == 0.0
     assert payload["status_counts"] == {}
+
+
+def _isolate_llm_config_env(monkeypatch) -> None:
+    for key in (
+        "CATALYST_ENABLE_PREMIUM_LLM",
+        "CATALYST_LLM_DAILY_BUDGET_USD",
+        "CATALYST_LLM_MONTHLY_BUDGET_USD",
+        "CATALYST_LLM_TASK_DAILY_CAPS",
+    ):
+        monkeypatch.delenv(key, raising=False)
 
 
 def test_post_feedback_records_useful_alert_label(tmp_path, monkeypatch) -> None:
