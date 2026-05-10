@@ -622,9 +622,17 @@ def _step_metadata(spec: DailyRunSpec, step_name: str) -> dict[str, Any]:
 def _failed_dependency(step_name: str, context: _DailyRunContext) -> str | None:
     for dependency in _STEP_DEPENDENCIES.get(step_name, ()):
         result = context.step_results.get(dependency)
-        if result is not None and result.status == JobStatus.FAILED.value:
+        if result is None:
+            continue
+        if result.status == JobStatus.FAILED.value or _is_blocked_step(result):
             return dependency
     return None
+
+
+def _is_blocked_step(result: JobStepResult) -> bool:
+    return result.status == "skipped" and str(result.reason or "").startswith(
+        "blocked_by_failed_dependency:"
+    )
 
 
 def _degraded_policy_cap(

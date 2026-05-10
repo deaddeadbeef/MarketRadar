@@ -27,7 +27,7 @@ from provider_health
 order by checked_at desc, id desc
 limit 20;
 
-select kind, severity, detected_at, provider, ticker, reason, fail_closed_action
+select kind, severity, detected_at, provider, affected_tickers, reason, fail_closed_action
 from data_quality_incidents
 order by detected_at desc, id desc
 limit 20;

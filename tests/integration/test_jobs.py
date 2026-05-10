@@ -287,6 +287,7 @@ def test_daily_run_blocks_downstream_steps_after_failed_feature_scan(monkeypatch
     spec = DailyRunSpec(
         as_of=date(2026, 5, 9),
         decision_available_at=decision_available_at,
+        outcome_available_at=datetime(2026, 6, 10, 1, 0, tzinfo=UTC),
     )
 
     result = run_daily(spec, engine=engine)
@@ -295,7 +296,14 @@ def test_daily_run_blocks_downstream_steps_after_failed_feature_scan(monkeypatch
     assert result.step("candidate_packets").status == "skipped"
     assert result.step("candidate_packets").reason == "blocked_by_failed_dependency:feature_scan"
     assert result.step("decision_cards").status == "skipped"
+    assert result.step("decision_cards").reason == "blocked_by_failed_dependency:candidate_packets"
+    assert result.step("digest").status == "skipped"
+    assert result.step("digest").reason == "blocked_by_failed_dependency:candidate_packets"
     assert result.step("validation_update").status == "skipped"
+    assert (
+        result.step("validation_update").reason
+        == "blocked_by_failed_dependency:candidate_packets"
+    )
 
 
 def test_job_lock_rejects_unexpired_owner_and_allows_expired_takeover():
