@@ -2,13 +2,17 @@ from __future__ import annotations
 
 import copy
 import json
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 
+import pytest
 from sqlalchemy import create_engine
 
 from catalyst_radar.agents.budget import BudgetController
-from catalyst_radar.agents.models import LLMCallStatus, LLMSkipReason
+from catalyst_radar.agents.evidence import build_agent_evidence_packet
+from catalyst_radar.agents.models import LLMCallStatus, LLMSkipReason, TokenUsage
+from catalyst_radar.agents.openai_client import OpenAIResponsesClient
 from catalyst_radar.agents.router import (
     FakeLLMClient,
     LLMClientRequest,
@@ -260,6 +264,85 @@ def test_router_does_not_mutate_packet_or_decision_card_payloads() -> None:
     assert candidate.payload["decision_card"]["scores"]["final_score"] == 95.0
 
 
+def test_openai_client_builds_responses_request_with_strict_json_schema() -> None:
+    task = DEFAULT_TASKS["skeptic_review"]
+    request = _openai_request(task=task)
+    sdk_client = FakeOpenAISdk(
+        payload={
+            "ticker": "MSFT",
+            "as_of": AS_OF.isoformat(),
+            "schema_version": "skeptic-review-v1",
+            "bear_case": [],
+            "missing_evidence": [],
+            "contradictions": [],
+            "recommended_policy_downgrade": False,
+            "manual_review_notes": "Review the linked evidence.",
+        },
+    )
+
+    result = OpenAIResponsesClient(sdk_client=sdk_client).complete(request)
+
+    assert result.provider == "openai"
+    assert result.payload["ticker"] == "MSFT"
+    call = sdk_client.responses.calls[0]
+    assert call["model"] == "model-skeptic"
+    assert call["store"] is False
+    assert call["max_output_tokens"] == task.max_output_tokens
+    assert "schema skeptic-review-v1" in call["instructions"]
+    request_payload = json.loads(call["input"])
+    assert request_payload["task"] == "skeptic_review"
+    assert request_payload["candidate_packet"] == json.loads(request.candidate_json)
+    assert request_payload["agent_evidence_packet"] == request.evidence_packet
+    assert call["text"]["format"]["type"] == "json_schema"
+    assert call["text"]["format"]["name"] == "skeptic_review_v1"
+    assert call["text"]["format"]["schema"]["required"] == [
+        "ticker",
+        "as_of",
+        "schema_version",
+        "bear_case",
+        "missing_evidence",
+        "contradictions",
+        "recommended_policy_downgrade",
+        "manual_review_notes",
+    ]
+    assert call["text"]["format"]["strict"] is True
+
+
+def test_openai_client_converts_usage_to_token_usage() -> None:
+    sdk_client = FakeOpenAISdk(
+        payload={
+            "ticker": "MSFT",
+            "as_of": AS_OF.isoformat(),
+            "claims": [],
+            "bear_case": [],
+            "unresolved_conflicts": [],
+            "recommended_policy_downgrade": False,
+        },
+        usage={
+            "input_tokens": 321,
+            "output_tokens": 45,
+            "input_tokens_details": {"cached_tokens": 67},
+        },
+    )
+
+    result = OpenAIResponsesClient(sdk_client=sdk_client).complete(_openai_request())
+
+    assert result.token_usage == TokenUsage(
+        input_tokens=321,
+        cached_input_tokens=67,
+        output_tokens=45,
+    )
+
+
+def test_openai_client_requires_api_key_for_real_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    with pytest.raises(RuntimeError, match="^openai_api_key_missing$"):
+        OpenAIResponsesClient().complete(_openai_request())
+
+
 class CountingClient:
     calls = 0
 
@@ -313,6 +396,38 @@ class FailingClient:
         raise RuntimeError("provider unavailable")
 
 
+class FakeOpenAISdk:
+    def __init__(
+        self,
+        *,
+        payload: Mapping[str, Any],
+        usage: Mapping[str, Any] | None = None,
+    ) -> None:
+        self.responses = FakeResponsesResource(payload=payload, usage=usage or {})
+
+
+class FakeResponsesResource:
+    def __init__(self, *, payload: Mapping[str, Any], usage: Mapping[str, Any]) -> None:
+        self.payload = payload
+        self.usage = usage
+        self.calls: list[dict[str, Any]] = []
+
+    def create(self, **kwargs: Any) -> object:
+        self.calls.append(kwargs)
+        return FakeOpenAIResponse(
+            output_text=json.dumps(self.payload),
+            usage=self.usage,
+            model=kwargs["model"],
+        )
+
+
+class FakeOpenAIResponse:
+    def __init__(self, *, output_text: str, usage: Mapping[str, Any], model: str) -> None:
+        self.output_text = output_text
+        self.usage = usage
+        self.model = model
+
+
 def _router(
     *,
     repo: BudgetLedgerRepository,
@@ -325,6 +440,29 @@ def _router(
         now=lambda: NOW,
     )
     return LLMRouter(budget=budget, client=client or FakeLLMClient(), now=lambda: NOW)
+
+
+def _openai_request(
+    *,
+    task: Any = DEFAULT_TASKS["mid_review"],
+    candidate: CandidatePacket | None = None,
+) -> LLMClientRequest:
+    candidate = candidate or _candidate()
+    return LLMClientRequest(
+        task=task,
+        candidate=candidate,
+        candidate_json=canonical_packet_json(candidate),
+        evidence_packet=build_agent_evidence_packet(candidate),
+        prompt_version=task.prompt_version,
+        schema_version=task.schema_version,
+        model={
+            "mid_review": "model-review",
+            "skeptic_review": "model-skeptic",
+            "gpt55_decision_card": "model-decision",
+        }.get(task.name.value, "model-review"),
+        max_output_tokens=task.max_output_tokens,
+        estimated_usage=TokenUsage(input_tokens=100, output_tokens=task.max_output_tokens),
+    )
 
 
 def _config() -> AppConfig:

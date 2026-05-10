@@ -7,6 +7,8 @@ from pathlib import Path
 import pytest
 from sqlalchemy import create_engine, insert, select
 
+from catalyst_radar.agents.models import TokenUsage
+from catalyst_radar.agents.router import LLMClientRequest, LLMClientResult
 from catalyst_radar.cli import main
 from catalyst_radar.storage.schema import budget_ledger, candidate_packets
 
@@ -253,6 +255,7 @@ def test_run_llm_review_enabled_without_fake_fails_closed(
 ) -> None:
     database_url = _init_db(tmp_path, monkeypatch, capsys)
     _configure_enabled_openai_llm(monkeypatch)
+    monkeypatch.setenv("OPENAI_API_KEY", "")
     _seed_candidate_packet(database_url)
 
     exit_code = main(
@@ -274,15 +277,82 @@ def test_run_llm_review_enabled_without_fake_fails_closed(
     assert payload["result"]["status"] == "failed"
     assert payload["ledger"]["skip_reason"] == "client_error"
     assert payload["ledger"]["provider"] == "openai"
-    assert payload["ledger"]["payload"]["error"] == "real_llm_provider_disabled"
+    assert payload["ledger"]["payload"]["error"] == "openai_api_key_missing"
     rows = _ledger_rows(database_url)
     assert [(row.status, row.skip_reason, row.provider, row.payload) for row in rows] == [
         (
             "failed",
             "client_error",
             "openai",
-            {"error": "real_llm_provider_disabled"},
+            {"error": "openai_api_key_missing"},
         )
+    ]
+
+
+def test_run_llm_review_openai_provider_can_be_monkeypatched_without_fake(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    database_url = _init_db(tmp_path, monkeypatch, capsys)
+    _configure_enabled_openai_llm(monkeypatch)
+    monkeypatch.setenv("OPENAI_API_KEY", "")
+    _seed_candidate_packet(database_url)
+    calls = []
+
+    class FakeOpenAIResponsesClient:
+        def complete(self, request: LLMClientRequest) -> LLMClientResult:
+            calls.append(request)
+            return LLMClientResult(
+                payload={
+                    "ticker": request.candidate.ticker,
+                    "as_of": request.candidate.as_of.isoformat(),
+                    "claims": [
+                        {
+                            "claim": "MSFT reported a material product catalyst.",
+                            "source_id": "event-msft",
+                            "source_quality": 0.9,
+                            "evidence_type": "news",
+                            "sentiment": 0.81,
+                            "confidence": 0.81,
+                            "uncertainty_notes": "Source-linked fake OpenAI response.",
+                        }
+                    ],
+                    "bear_case": [],
+                    "unresolved_conflicts": [],
+                    "recommended_policy_downgrade": False,
+                },
+                token_usage=TokenUsage(input_tokens=10, output_tokens=20),
+                model=request.model,
+                provider="openai",
+            )
+
+    monkeypatch.setattr(
+        "catalyst_radar.cli.OpenAIResponsesClient",
+        FakeOpenAIResponsesClient,
+    )
+
+    exit_code = main(
+        [
+            "run-llm-review",
+            "--ticker",
+            "MSFT",
+            "--as-of",
+            AS_OF_TEXT,
+            "--available-at",
+            AVAILABLE_AT_TEXT,
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert len(calls) == 1
+    assert payload["result"]["status"] == "completed"
+    assert payload["ledger"]["provider"] == "openai"
+    rows = _ledger_rows(database_url)
+    assert [(row.status, row.skip_reason, row.provider) for row in rows] == [
+        ("completed", None, "openai")
     ]
 
 

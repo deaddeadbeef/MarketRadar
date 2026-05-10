@@ -21,6 +21,7 @@ from catalyst_radar.agents.models import (
     TokenUsage,
     budget_ledger_id,
 )
+from catalyst_radar.agents.openai_client import OpenAIResponsesClient
 from catalyst_radar.agents.router import (
     FakeLLMClient,
     LLMClientRequest,
@@ -717,7 +718,7 @@ def main(argv: list[str] | None = None) -> int:
             ledger_repo=ledger_repo,
             now=lambda: attempted_at,
         )
-        client = FakeLLMClient() if args.fake else _SafeDisabledLLMClient()
+        client = _llm_client_for_provider(config=config, fake=args.fake)
         router = LLMRouter(budget=budget, client=client, now=lambda: attempted_at)
         result = router.review_candidate(
             task=task,
@@ -1910,6 +1911,15 @@ class _SafeDisabledLLMClient:
     def complete(self, request: LLMClientRequest) -> LLMClientResult:
         del request
         raise RuntimeError("real_llm_provider_disabled")
+
+
+def _llm_client_for_provider(*, config: AppConfig, fake: bool):
+    provider = config.llm_provider.strip().lower()
+    if fake or provider == "fake":
+        return FakeLLMClient()
+    if provider == "openai":
+        return OpenAIResponsesClient()
+    return _SafeDisabledLLMClient()
 
 
 def _build_polygon_ingest(
