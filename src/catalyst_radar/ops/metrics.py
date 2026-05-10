@@ -6,17 +6,17 @@ from datetime import UTC, datetime
 from math import isfinite
 from typing import Any
 
-from sqlalchemy import Engine, func, select
+from sqlalchemy import Engine, String, cast, func, or_, select
 
-from catalyst_radar.storage.budget_repositories import BudgetLedgerRepository
 from catalyst_radar.storage.schema import (
     budget_ledger,
     candidate_states,
     data_quality_incidents,
     job_runs,
+    useful_alert_labels,
     validation_runs,
 )
-from catalyst_radar.storage.validation_repositories import ValidationRepository
+from catalyst_radar.validation.reports import USEFUL_ALERT_LABELS
 
 _SCHEMA_FAILURE_MARKERS = ("schema", "validation")
 _UNSUPPORTED_CLAIM_MARKERS = ("source_faithfulness", "source faithfulness", "unsupported")
@@ -24,11 +24,31 @@ _UNSUPPORTED_CLAIM_MARKERS = ("source_faithfulness", "source faithfulness", "uns
 
 def load_ops_metrics(engine: Engine, now: datetime | None = None) -> dict[str, object]:
     resolved_now = _as_utc(now or datetime.now(UTC))
-    ledger_summary = BudgetLedgerRepository(engine).summary(available_at=resolved_now)
-    useful_alert_count = len(
-        ValidationRepository(engine).list_useful_alert_labels(available_at=resolved_now)
-    )
-    total_actual_cost = _finite_float(ledger_summary.get("total_actual_cost_usd"))
+    with engine.connect() as conn:
+        cost_summary = _cost_summary(conn, available_at=resolved_now)
+        useful_alert_count = _useful_alert_count(conn, available_at=resolved_now)
+        stale_incident_count = _incident_count(
+            conn,
+            available_at=resolved_now,
+            markers=("stale", "freshness", "late", "delayed"),
+        )
+        schema_failure_count = _incident_count(
+            conn,
+            available_at=resolved_now,
+            markers=_SCHEMA_FAILURE_MARKERS,
+        )
+        unsupported_claim_count = _unsupported_claim_count(
+            conn,
+            available_at=resolved_now,
+        )
+        total_llm_attempts = _llm_attempt_count(conn, available_at=resolved_now)
+        latest_validation = _latest_validation_run(conn, available_at=resolved_now)
+        stage_counts, candidate_state_counts, job_status_counts = _stage_counts(
+            conn,
+            available_at=resolved_now,
+        )
+
+    total_actual_cost = _finite_float(cost_summary.get("total_actual_cost_usd"))
     cost_per_useful_alert = (
         0.0
         if total_actual_cost <= 0
@@ -36,70 +56,15 @@ def load_ops_metrics(engine: Engine, now: datetime | None = None) -> dict[str, o
         if useful_alert_count > 0
         else None
     )
-
-    with engine.connect() as conn:
-        incidents = [
-            dict(row._mapping)
-            for row in conn.execute(
-                select(data_quality_incidents).where(
-                    data_quality_incidents.c.detected_at <= resolved_now
-                )
-            )
-        ]
-        ledger_rows = [
-            dict(row._mapping)
-            for row in conn.execute(
-                select(budget_ledger).where(budget_ledger.c.available_at <= resolved_now)
-            )
-        ]
-        latest_validation = conn.execute(
-            select(validation_runs)
-            .where(
-                validation_runs.c.status == "success",
-                validation_runs.c.finished_at.is_not(None),
-                validation_runs.c.finished_at <= resolved_now,
-            )
-            .order_by(
-                validation_runs.c.finished_at.desc(),
-                validation_runs.c.started_at.desc(),
-                validation_runs.c.created_at.desc(),
-                validation_runs.c.id.desc(),
-            )
-            .limit(1)
-        ).first()
-
-    cost_summary = {
-        "currency": ledger_summary.get("currency", "USD"),
-        "total_actual_cost_usd": total_actual_cost,
-        "total_estimated_cost_usd": _finite_float(
-            ledger_summary.get("total_estimated_cost_usd")
-        ),
-        "attempt_count": int(_finite_float(ledger_summary.get("attempt_count"))),
-        "status_counts": _string_int_mapping(ledger_summary.get("status_counts")),
-        "cost_per_useful_alert": cost_per_useful_alert,
-    }
-    stale_incident_count = sum(
-        1
-        for row in incidents
-        if _contains_marker(row, ("stale", "freshness", "late", "delayed"))
-    )
-    schema_failure_count = sum(
-        1 for row in incidents if _contains_marker(row, _SCHEMA_FAILURE_MARKERS)
-    )
-    unsupported_claim_count = sum(
-        1 for row in ledger_rows if _is_unsupported_claim_rejection(row)
-    )
-    total_llm_attempts = sum(
-        1
-        for row in ledger_rows
-        if str(row.get("status") or "") not in {"planned", "skipped"}
-    )
+    cost_summary["cost_per_useful_alert"] = cost_per_useful_alert
     false_positive_rate = _false_positive_rate(
         latest_validation._mapping["metrics"] if latest_validation is not None else {}
     )
 
     return {
-        "stage_counts": _stage_counts(engine, available_at=resolved_now),
+        "stage_counts": stage_counts,
+        "candidate_state_counts": candidate_state_counts,
+        "job_status_counts": job_status_counts,
         "cost": cost_summary,
         "useful_alert_count": useful_alert_count,
         "stale_incident_count": stale_incident_count,
@@ -117,23 +82,44 @@ def detect_score_drift(
     engine: Engine,
     *,
     now: datetime | None = None,
-    mean_shift_threshold: float = 15.0,
-    count_shift_ratio_threshold: float = 0.5,
+    mean_delta_threshold: float | None = None,
+    count_delta_ratio: float | None = None,
+    mean_shift_threshold: float | None = None,
+    count_shift_ratio_threshold: float | None = None,
     min_count: int = 1,
 ) -> dict[str, object]:
-    _ = _as_utc(now or datetime.now(UTC))
+    resolved_now = _as_utc(now or datetime.now(UTC))
+    resolved_mean_threshold = (
+        mean_delta_threshold
+        if mean_delta_threshold is not None
+        else mean_shift_threshold
+        if mean_shift_threshold is not None
+        else 15.0
+    )
+    resolved_count_threshold = (
+        count_delta_ratio
+        if count_delta_ratio is not None
+        else count_shift_ratio_threshold
+        if count_shift_ratio_threshold is not None
+        else 0.5
+    )
     with engine.connect() as conn:
         as_of_rows = [
             row[0]
             for row in conn.execute(
                 select(candidate_states.c.as_of)
+                .where(candidate_states.c.created_at <= resolved_now)
                 .group_by(candidate_states.c.as_of)
                 .order_by(candidate_states.c.as_of.desc())
                 .limit(2)
             )
         ]
         if len(as_of_rows) < 2:
-            latest = _distribution(conn, as_of_rows[0]) if as_of_rows else _empty_distribution()
+            latest = (
+                _distribution(conn, as_of_rows[0], available_at=resolved_now)
+                if as_of_rows
+                else _empty_distribution()
+            )
             return {
                 "detected": False,
                 "reason": "insufficient_history",
@@ -142,13 +128,13 @@ def detect_score_drift(
                 "mean_shift": 0.0,
                 "count_shift_ratio": 0.0,
                 "thresholds": _drift_thresholds(
-                    mean_shift_threshold,
-                    count_shift_ratio_threshold,
+                    resolved_mean_threshold,
+                    resolved_count_threshold,
                     min_count,
                 ),
             }
-        latest = _distribution(conn, as_of_rows[0])
-        previous = _distribution(conn, as_of_rows[1])
+        latest = _distribution(conn, as_of_rows[0], available_at=resolved_now)
+        previous = _distribution(conn, as_of_rows[1], available_at=resolved_now)
 
     mean_shift = latest["mean_score"] - previous["mean_score"]
     count_shift_ratio = (
@@ -156,9 +142,9 @@ def detect_score_drift(
     )
     reasons = []
     if min(int(latest["count"]), int(previous["count"])) >= min_count:
-        if abs(mean_shift) >= mean_shift_threshold:
+        if abs(mean_shift) >= resolved_mean_threshold:
             reasons.append("mean_shift")
-        if count_shift_ratio >= count_shift_ratio_threshold:
+        if count_shift_ratio >= resolved_count_threshold:
             reasons.append("count_shift")
 
     return {
@@ -169,50 +155,177 @@ def detect_score_drift(
         "mean_shift": round(mean_shift, 6),
         "count_shift_ratio": round(count_shift_ratio, 6),
         "thresholds": _drift_thresholds(
-            mean_shift_threshold,
-            count_shift_ratio_threshold,
+            resolved_mean_threshold,
+            resolved_count_threshold,
             min_count,
         ),
     }
 
 
-def _stage_counts(engine: Engine, *, available_at: datetime) -> dict[str, object]:
-    jobs_by_type: dict[str, dict[str, int]] = defaultdict(dict)
-    job_statuses: Counter[str] = Counter()
-    candidate_state_counts: Counter[str] = Counter()
-    with engine.connect() as conn:
+def _cost_summary(conn: Any, *, available_at: datetime) -> dict[str, object]:
+    total = conn.execute(
+        select(
+            func.coalesce(func.sum(budget_ledger.c.actual_cost), 0.0),
+            func.coalesce(func.sum(budget_ledger.c.estimated_cost), 0.0),
+            func.count(),
+            func.min(budget_ledger.c.currency),
+        ).where(budget_ledger.c.available_at <= available_at)
+    ).one()
+    status_counts = {
+        str(row[0]): int(row[1])
         for row in conn.execute(
-            select(job_runs.c.job_type, job_runs.c.status, func.count())
-            .where(job_runs.c.started_at <= available_at)
-            .group_by(job_runs.c.job_type, job_runs.c.status)
-        ):
-            job_type = str(row[0])
-            status = str(row[1])
-            count = int(row[2])
-            jobs_by_type[job_type][status] = count
-            job_statuses[status] += count
-        latest_as_of = conn.scalar(select(func.max(candidate_states.c.as_of)))
-        if latest_as_of is not None:
-            for row in conn.execute(
-                select(candidate_states.c.state, func.count())
-                .where(candidate_states.c.as_of == latest_as_of)
-                .group_by(candidate_states.c.state)
-            ):
-                candidate_state_counts[str(row[0])] = int(row[1])
+            select(budget_ledger.c.status, func.count())
+            .where(budget_ledger.c.available_at <= available_at)
+            .group_by(budget_ledger.c.status)
+        )
+    }
     return {
-        "jobs_by_type": {
-            key: dict(sorted(value.items())) for key, value in sorted(jobs_by_type.items())
-        },
-        "job_statuses": dict(sorted(job_statuses.items())),
-        "candidate_states": dict(sorted(candidate_state_counts.items())),
+        "currency": total[3] or "USD",
+        "total_actual_cost_usd": _finite_float(total[0]),
+        "total_estimated_cost_usd": _finite_float(total[1]),
+        "attempt_count": int(total[2]),
+        "status_counts": dict(sorted(status_counts.items())),
     }
 
 
-def _distribution(conn: Any, as_of: datetime) -> dict[str, object]:
+def _useful_alert_count(conn: Any, *, available_at: datetime) -> int:
+    return int(
+        conn.scalar(
+            select(func.count())
+            .select_from(useful_alert_labels)
+            .where(
+                useful_alert_labels.c.created_at <= available_at,
+                useful_alert_labels.c.label.in_(tuple(sorted(USEFUL_ALERT_LABELS))),
+            )
+        )
+        or 0
+    )
+
+
+def _incident_count(
+    conn: Any,
+    *,
+    available_at: datetime,
+    markers: tuple[str, ...],
+) -> int:
+    return int(
+        conn.scalar(
+            select(func.count())
+            .select_from(data_quality_incidents)
+            .where(
+                data_quality_incidents.c.detected_at <= available_at,
+                _marker_filter(
+                    markers,
+                    data_quality_incidents.c.kind,
+                    data_quality_incidents.c.reason,
+                    data_quality_incidents.c.fail_closed_action,
+                    cast(data_quality_incidents.c.payload, String),
+                ),
+            )
+        )
+        or 0
+    )
+
+
+def _unsupported_claim_count(conn: Any, *, available_at: datetime) -> int:
+    return int(
+        conn.scalar(
+            select(func.count())
+            .select_from(budget_ledger)
+            .where(
+                budget_ledger.c.available_at <= available_at,
+                budget_ledger.c.status == "schema_rejected",
+                _marker_filter(
+                    _UNSUPPORTED_CLAIM_MARKERS,
+                    budget_ledger.c.skip_reason,
+                    cast(budget_ledger.c.payload, String),
+                ),
+            )
+        )
+        or 0
+    )
+
+
+def _llm_attempt_count(conn: Any, *, available_at: datetime) -> int:
+    return int(
+        conn.scalar(
+            select(func.count())
+            .select_from(budget_ledger)
+            .where(
+                budget_ledger.c.available_at <= available_at,
+                budget_ledger.c.status.not_in(("planned", "skipped")),
+            )
+        )
+        or 0
+    )
+
+
+def _latest_validation_run(conn: Any, *, available_at: datetime) -> Any:
+    return conn.execute(
+        select(validation_runs)
+        .where(
+            validation_runs.c.status == "success",
+            validation_runs.c.finished_at.is_not(None),
+            validation_runs.c.finished_at <= available_at,
+        )
+        .order_by(
+            validation_runs.c.finished_at.desc(),
+            validation_runs.c.started_at.desc(),
+            validation_runs.c.created_at.desc(),
+            validation_runs.c.id.desc(),
+        )
+        .limit(1)
+    ).first()
+
+
+def _stage_counts(
+    conn: Any,
+    *,
+    available_at: datetime,
+) -> tuple[dict[str, dict[str, int]], dict[str, int], dict[str, int]]:
+    jobs_by_type: dict[str, dict[str, int]] = defaultdict(dict)
+    job_statuses: Counter[str] = Counter()
+    candidate_state_counts: Counter[str] = Counter()
+    for row in conn.execute(
+        select(job_runs.c.job_type, job_runs.c.status, func.count())
+        .where(job_runs.c.started_at <= available_at)
+        .group_by(job_runs.c.job_type, job_runs.c.status)
+    ):
+        job_type = str(row[0])
+        status = str(row[1])
+        count = int(row[2])
+        jobs_by_type[job_type][status] = count
+        job_statuses[status] += count
+    latest_as_of = conn.scalar(
+        select(func.max(candidate_states.c.as_of)).where(
+            candidate_states.c.created_at <= available_at
+        )
+    )
+    if latest_as_of is not None:
+        for row in conn.execute(
+            select(candidate_states.c.state, func.count())
+            .where(
+                candidate_states.c.as_of == latest_as_of,
+                candidate_states.c.created_at <= available_at,
+            )
+            .group_by(candidate_states.c.state)
+        ):
+            candidate_state_counts[str(row[0])] = int(row[1])
+    return (
+        {key: dict(sorted(value.items())) for key, value in sorted(jobs_by_type.items())},
+        dict(sorted(candidate_state_counts.items())),
+        dict(sorted(job_statuses.items())),
+    )
+
+
+def _distribution(conn: Any, as_of: datetime, *, available_at: datetime) -> dict[str, object]:
     rows = [
         float(row[0])
         for row in conn.execute(
-            select(candidate_states.c.final_score).where(candidate_states.c.as_of == as_of)
+            select(candidate_states.c.final_score).where(
+                candidate_states.c.as_of == as_of,
+                candidate_states.c.created_at <= available_at,
+            )
         )
         if row[0] is not None
     ]
@@ -241,28 +354,22 @@ def _drift_thresholds(
     min_count: int,
 ) -> dict[str, object]:
     return {
+        "mean_delta": mean_shift_threshold,
         "mean_shift": mean_shift_threshold,
+        "count_delta_ratio": count_shift_ratio_threshold,
         "count_shift_ratio": count_shift_ratio_threshold,
         "min_count": min_count,
     }
 
 
-def _is_unsupported_claim_rejection(row: Mapping[str, object]) -> bool:
-    status = str(row.get("status") or "").lower()
-    if status != "schema_rejected":
-        return False
-    return _contains_marker(row, (*_UNSUPPORTED_CLAIM_MARKERS, *_SCHEMA_FAILURE_MARKERS))
-
-
-def _contains_marker(row: Mapping[str, object], markers: tuple[str, ...]) -> bool:
-    haystack = " ".join(
-        str(row.get(key) or "")
-        for key in ("kind", "reason", "fail_closed_action", "skip_reason", "status")
-    ).lower()
-    payload = row.get("payload")
-    if isinstance(payload, Mapping):
-        haystack = f"{haystack} {payload!s}".lower()
-    return any(marker in haystack for marker in markers)
+def _marker_filter(markers: tuple[str, ...], *columns: Any) -> Any:
+    return or_(
+        *[
+            func.lower(column).like(f"%{marker}%")
+            for column in columns
+            for marker in markers
+        ]
+    )
 
 
 def _false_positive_rate(metrics: object) -> float | None:
@@ -293,12 +400,6 @@ def _finite_float(value: object) -> float:
     except (TypeError, ValueError):
         return 0.0
     return number if isfinite(number) else 0.0
-
-
-def _string_int_mapping(value: object) -> dict[str, int]:
-    if not isinstance(value, Mapping):
-        return {}
-    return {str(key): int(_finite_float(item)) for key, item in value.items()}
 
 
 def _as_utc(value: datetime) -> datetime:

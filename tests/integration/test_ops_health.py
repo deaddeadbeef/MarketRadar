@@ -6,6 +6,7 @@ from sqlalchemy import Engine, create_engine, insert
 
 from catalyst_radar.core.models import ActionState
 from catalyst_radar.ops.health import load_ops_health
+from catalyst_radar.ops.metrics import detect_score_drift
 from catalyst_radar.storage.db import create_schema
 from catalyst_radar.storage.schema import (
     budget_ledger,
@@ -185,7 +186,15 @@ def test_ops_health_reports_metrics_banners_incidents_drift_and_runbooks() -> No
                     payload={"result": "ok"},
                 ),
                 _budget_row(
-                    id="budget-rejected",
+                    id="budget-schema-rejected",
+                    status="schema_rejected",
+                    skip_reason="schema_validation_failed",
+                    actual_cost=0.05,
+                    available_at=now - timedelta(minutes=12),
+                    payload={"error": "schema_validation_failed"},
+                ),
+                _budget_row(
+                    id="budget-unsupported-claim",
                     status="schema_rejected",
                     skip_reason="schema_validation_failed",
                     actual_cost=0.05,
@@ -195,15 +204,27 @@ def test_ops_health_reports_metrics_banners_incidents_drift_and_runbooks() -> No
             ],
         )
         conn.execute(
-            insert(useful_alert_labels).values(
-                id="label-useful",
-                artifact_type="decision_card",
-                artifact_id="card-aaa",
-                ticker="AAA",
-                label="useful",
-                notes="acted",
-                created_at=now - timedelta(minutes=5),
-            )
+            insert(useful_alert_labels),
+            [
+                {
+                    "id": "label-useful",
+                    "artifact_type": "decision_card",
+                    "artifact_id": "card-aaa",
+                    "ticker": "AAA",
+                    "label": "useful",
+                    "notes": "acted",
+                    "created_at": now - timedelta(minutes=5),
+                },
+                {
+                    "id": "label-noisy",
+                    "artifact_type": "decision_card",
+                    "artifact_id": "card-bbb",
+                    "ticker": "BBB",
+                    "label": "noisy",
+                    "notes": "not useful",
+                    "created_at": now - timedelta(minutes=4),
+                },
+            ],
         )
         conn.execute(
             insert(validation_runs).values(
@@ -240,16 +261,72 @@ def test_ops_health_reports_metrics_banners_incidents_drift_and_runbooks() -> No
     assert health["score_drift"]["reason"] == "mean_shift"
 
     metrics = health["metrics"]
-    assert metrics["stage_counts"]["jobs_by_type"]["llm_review"]["failed"] == 1
-    assert metrics["stage_counts"]["candidate_states"] == {ActionState.WARNING.value: 2}
-    assert metrics["cost"]["total_actual_cost_usd"] == 0.3
-    assert metrics["cost"]["cost_per_useful_alert"] == 0.3
+    assert metrics["stage_counts"]["llm_review"]["failed"] == 1
+    assert metrics["stage_counts"]["feature_scan"]["success"] == 1
+    assert metrics["job_status_counts"] == {"failed": 1, "success": 1}
+    assert metrics["candidate_state_counts"] == {ActionState.WARNING.value: 2}
+    assert metrics["cost"]["total_actual_cost_usd"] == 0.35
+    assert metrics["cost"]["cost_per_useful_alert"] == 0.35
     assert metrics["useful_alert_count"] == 1
     assert metrics["stale_incident_count"] == 1
     assert metrics["schema_failure_count"] == 1
     assert metrics["unsupported_claim_count"] == 1
-    assert metrics["unsupported_claim_rate"] == 0.5
+    assert metrics["unsupported_claim_rate"] == 0.333333
     assert metrics["false_positive_rate"] == 0.25
+
+
+def test_ops_metrics_and_drift_ignore_future_created_candidate_states() -> None:
+    engine = _engine()
+    now = datetime(2026, 5, 10, 12, 0, tzinfo=UTC)
+    prev = datetime(2026, 5, 8, 21, 0, tzinfo=UTC)
+    latest = datetime(2026, 5, 9, 21, 0, tzinfo=UTC)
+    future = datetime(2026, 5, 10, 21, 0, tzinfo=UTC)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(candidate_states),
+            [
+                _candidate_state_row(
+                    id="prev-visible",
+                    ticker="AAA",
+                    as_of=prev,
+                    state=ActionState.ADD_TO_WATCHLIST.value,
+                    final_score=50.0,
+                    created_at=prev,
+                ),
+                _candidate_state_row(
+                    id="latest-visible",
+                    ticker="AAA",
+                    as_of=latest,
+                    state=ActionState.WARNING.value,
+                    final_score=90.0,
+                    created_at=latest,
+                ),
+                _candidate_state_row(
+                    id="future-created",
+                    ticker="AAA",
+                    as_of=future,
+                    state=ActionState.ELIGIBLE_FOR_MANUAL_BUY_REVIEW.value,
+                    final_score=10.0,
+                    created_at=now + timedelta(hours=1),
+                ),
+            ],
+        )
+
+    health = load_ops_health(engine, now=now)
+    drift = detect_score_drift(
+        engine,
+        now=now,
+        mean_delta_threshold=20.0,
+        count_delta_ratio=0.5,
+    )
+
+    assert health["database"]["latest_candidate_as_of"] == latest
+    assert health["metrics"]["candidate_state_counts"] == {ActionState.WARNING.value: 1}
+    assert health["metrics"]["stage_counts"] == {}
+    assert drift["detected"] is True
+    assert drift["latest"]["as_of"] == latest
+    assert drift["latest"]["count"] == 1
+    assert drift["latest"]["mean_score"] == 90.0
 
 
 def _engine() -> Engine:

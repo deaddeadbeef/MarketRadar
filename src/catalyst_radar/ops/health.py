@@ -46,7 +46,11 @@ def load_ops_health(
             )
         ]
         latest_candidate_as_of = _as_utc_datetime_or_none(
-            conn.scalar(select(func.max(candidate_states.c.as_of)))
+            conn.scalar(
+                select(func.max(candidate_states.c.as_of)).where(
+                    candidate_states.c.created_at <= resolved_now
+                )
+            )
         )
         database = {
             "status": "ok",
