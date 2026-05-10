@@ -11,6 +11,7 @@ from sqlalchemy import (
     Index,
     Integer,
     MetaData,
+    Numeric,
     String,
     Table,
     Text,
@@ -171,6 +172,36 @@ alerts = Table(
     Column("payload", json_type, nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False),
     Column("sent_at", DateTime(timezone=True)),
+)
+
+budget_ledger = Table(
+    "budget_ledger",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("ts", DateTime(timezone=True), nullable=False),
+    Column("available_at", DateTime(timezone=True), nullable=False),
+    Column("ticker", String),
+    Column("candidate_state_id", String),
+    Column("candidate_packet_id", String),
+    Column("decision_card_id", String),
+    Column("task", String, nullable=False),
+    Column("model", String),
+    Column("provider", String, nullable=False),
+    Column("status", String, nullable=False),
+    Column("skip_reason", String),
+    Column("input_tokens", BigInteger, nullable=False),
+    Column("cached_input_tokens", BigInteger, nullable=False),
+    Column("output_tokens", BigInteger, nullable=False),
+    Column("tool_calls", json_type, nullable=False),
+    Column("estimated_cost", Numeric, nullable=False),
+    Column("actual_cost", Numeric, nullable=False),
+    Column("currency", String, nullable=False),
+    Column("candidate_state", String),
+    Column("prompt_version", String),
+    Column("schema_version", String),
+    Column("outcome_label", String),
+    Column("payload", json_type, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
 )
 
 alert_suppressions = Table(
@@ -583,6 +614,14 @@ Index(
 Index("ix_alerts_ticker_available_at", alerts.c.ticker, alerts.c.available_at)
 Index("ix_alerts_route_status", alerts.c.route, alerts.c.status)
 Index("ix_alerts_dedupe_key", alerts.c.dedupe_key)
+Index("ix_budget_ledger_available_at", budget_ledger.c.available_at)
+Index(
+    "ix_budget_ledger_task_status_ts",
+    budget_ledger.c.task,
+    budget_ledger.c.status,
+    budget_ledger.c.ts,
+)
+Index("ix_budget_ledger_ticker_ts", budget_ledger.c.ticker, budget_ledger.c.ts)
 Index("ix_alert_suppressions_dedupe_key", alert_suppressions.c.dedupe_key)
 Index(
     "ix_user_feedback_artifact",
