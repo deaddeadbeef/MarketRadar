@@ -1,6 +1,3 @@
--- SQLite-compatible audit event migration.
--- PostgreSQL trigger/function variant: 013_security_audit.postgres.sql.
-
 CREATE TABLE IF NOT EXISTS audit_events (
   id TEXT PRIMARY KEY,
   event_type TEXT NOT NULL,
@@ -18,11 +15,11 @@ CREATE TABLE IF NOT EXISTS audit_events (
   alert_id TEXT,
   decision TEXT,
   reason TEXT,
-  hard_blocks JSON NOT NULL DEFAULT '[]',
+  hard_blocks JSONB NOT NULL DEFAULT '[]'::jsonb,
   status TEXT NOT NULL,
-  metadata JSON NOT NULL DEFAULT '{}',
-  before_payload JSON NOT NULL DEFAULT '{}',
-  after_payload JSON NOT NULL DEFAULT '{}',
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  before_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  after_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
   occurred_at TIMESTAMPTZ NOT NULL,
   available_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL
@@ -43,14 +40,21 @@ CREATE INDEX IF NOT EXISTS ix_audit_events_ticker_occurred
 CREATE INDEX IF NOT EXISTS ix_audit_events_candidate_packet
   ON audit_events (candidate_packet_id, occurred_at);
 
-CREATE TRIGGER IF NOT EXISTS trg_audit_events_no_update
-BEFORE UPDATE ON audit_events
+CREATE OR REPLACE FUNCTION reject_audit_events_mutation()
+RETURNS trigger AS $$
 BEGIN
-  SELECT RAISE(ABORT, 'audit_events is append-only');
+  RAISE EXCEPTION 'audit_events is append-only';
 END;
+$$ LANGUAGE plpgsql;
 
-CREATE TRIGGER IF NOT EXISTS trg_audit_events_no_delete
+DROP TRIGGER IF EXISTS trg_audit_events_no_update ON audit_events;
+CREATE TRIGGER trg_audit_events_no_update
+BEFORE UPDATE ON audit_events
+FOR EACH ROW
+EXECUTE FUNCTION reject_audit_events_mutation();
+
+DROP TRIGGER IF EXISTS trg_audit_events_no_delete ON audit_events;
+CREATE TRIGGER trg_audit_events_no_delete
 BEFORE DELETE ON audit_events
-BEGIN
-  SELECT RAISE(ABORT, 'audit_events is append-only');
-END;
+FOR EACH ROW
+EXECUTE FUNCTION reject_audit_events_mutation();

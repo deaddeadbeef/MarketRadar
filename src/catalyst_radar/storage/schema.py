@@ -219,6 +219,11 @@ audit_events = Table(
     Column("candidate_packet_id", String),
     Column("decision_card_id", String),
     Column("budget_ledger_id", String),
+    Column("paper_trade_id", String),
+    Column("alert_id", String),
+    Column("decision", String),
+    Column("reason", Text),
+    Column("hard_blocks", json_type, nullable=False, default=list),
     Column("status", String, nullable=False),
     Column("metadata", json_type, nullable=False),
     Column("before_payload", json_type, nullable=False),
@@ -669,6 +674,11 @@ Index(
     audit_events.c.artifact_type,
     audit_events.c.artifact_id,
     audit_events.c.occurred_at,
+)
+Index(
+    "ix_audit_events_artifact",
+    audit_events.c.artifact_type,
+    audit_events.c.artifact_id,
 )
 Index(
     "ix_audit_events_ticker_occurred",

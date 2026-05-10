@@ -28,8 +28,51 @@ def _upgrade_sqlite_audit_events(engine: Engine) -> None:
         return
     inspector = inspect(engine)
     if "audit_events" in inspector.get_table_names():
+        _ensure_sqlite_audit_events_contract(engine)
         return
     audit_events.create(engine)
+    _ensure_sqlite_audit_events_contract(engine)
+
+
+def _ensure_sqlite_audit_events_contract(engine: Engine) -> None:
+    with engine.begin() as conn:
+        existing_columns = {
+            str(row[1]) for row in conn.exec_driver_sql("PRAGMA table_info(audit_events)")
+        }
+        if "paper_trade_id" not in existing_columns:
+            conn.exec_driver_sql("ALTER TABLE audit_events ADD COLUMN paper_trade_id VARCHAR")
+        if "alert_id" not in existing_columns:
+            conn.exec_driver_sql("ALTER TABLE audit_events ADD COLUMN alert_id VARCHAR")
+        if "decision" not in existing_columns:
+            conn.exec_driver_sql("ALTER TABLE audit_events ADD COLUMN decision VARCHAR")
+        if "reason" not in existing_columns:
+            conn.exec_driver_sql("ALTER TABLE audit_events ADD COLUMN reason TEXT")
+        if "hard_blocks" not in existing_columns:
+            conn.exec_driver_sql(
+                "ALTER TABLE audit_events ADD COLUMN hard_blocks JSON NOT NULL DEFAULT '[]'"
+            )
+        conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_audit_events_artifact "
+            "ON audit_events (artifact_type, artifact_id)"
+        )
+        conn.exec_driver_sql(
+            """
+            CREATE TRIGGER IF NOT EXISTS trg_audit_events_no_update
+            BEFORE UPDATE ON audit_events
+            BEGIN
+              SELECT RAISE(ABORT, 'audit_events is append-only');
+            END
+            """
+        )
+        conn.exec_driver_sql(
+            """
+            CREATE TRIGGER IF NOT EXISTS trg_audit_events_no_delete
+            BEFORE DELETE ON audit_events
+            BEGIN
+              SELECT RAISE(ABORT, 'audit_events is append-only');
+            END
+            """
+        )
 
 
 def _upgrade_sqlite_job_locks(engine: Engine) -> None:

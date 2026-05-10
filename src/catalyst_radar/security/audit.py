@@ -30,6 +30,11 @@ class AuditEvent:
     candidate_packet_id: str | None = None
     decision_card_id: str | None = None
     budget_ledger_id: str | None = None
+    paper_trade_id: str | None = None
+    alert_id: str | None = None
+    decision: str | None = None
+    reason: str | None = None
+    hard_blocks: tuple[Any, ...] | list[Any] = field(default_factory=list)
     metadata: Mapping[str, Any] = field(default_factory=dict)
     before_payload: Mapping[str, Any] = field(default_factory=dict)
     after_payload: Mapping[str, Any] = field(default_factory=dict)
@@ -80,6 +85,19 @@ class AuditEvent:
         )
         object.__setattr__(
             self,
+            "paper_trade_id",
+            _optional_text(self.paper_trade_id, "paper_trade_id"),
+        )
+        object.__setattr__(self, "alert_id", _optional_text(self.alert_id, "alert_id"))
+        object.__setattr__(self, "decision", _optional_text(self.decision, "decision"))
+        object.__setattr__(self, "reason", _optional_text(self.reason, "reason"))
+        object.__setattr__(
+            self,
+            "hard_blocks",
+            freeze_json_value(_json_ready_sequence(self.hard_blocks, "hard_blocks")),
+        )
+        object.__setattr__(
+            self,
             "metadata",
             freeze_json_value(_json_ready_mapping(self.metadata, "metadata")),
         )
@@ -115,54 +133,34 @@ class AuditLogRepository:
     def __init__(self, engine: Engine) -> None:
         self.engine = engine
 
-    def append_event(self, event: AuditEvent) -> AuditEvent:
+    def _insert_event(self, event: AuditEvent) -> AuditEvent:
         with self.engine.begin() as conn:
             conn.execute(insert(audit_events).values(**_event_row(event)))
         return event
 
-    def append(
+    def append_event(
         self,
         *,
         event_type: str,
         actor_source: str,
-        status: str,
-        occurred_at: datetime,
-        actor_id: str | None = None,
-        actor_role: str | None = None,
-        artifact_type: str | None = None,
-        artifact_id: str | None = None,
-        ticker: str | None = None,
-        candidate_state_id: str | None = None,
-        candidate_packet_id: str | None = None,
-        decision_card_id: str | None = None,
-        budget_ledger_id: str | None = None,
-        metadata: Mapping[str, Any] | None = None,
-        before_payload: Mapping[str, Any] | None = None,
-        after_payload: Mapping[str, Any] | None = None,
-        available_at: datetime | None = None,
-        created_at: datetime | None = None,
+        status: str = "success",
+        **kwargs: Any,
     ) -> AuditEvent:
+        now = datetime.now(UTC)
+        occurred_at = kwargs.pop("occurred_at", now)
+        created_at = kwargs.pop("created_at", now)
         event = AuditEvent(
             event_type=event_type,
             actor_source=actor_source,
             status=status,
             occurred_at=occurred_at,
-            actor_id=actor_id,
-            actor_role=actor_role,
-            artifact_type=artifact_type,
-            artifact_id=artifact_id,
-            ticker=ticker,
-            candidate_state_id=candidate_state_id,
-            candidate_packet_id=candidate_packet_id,
-            decision_card_id=decision_card_id,
-            budget_ledger_id=budget_ledger_id,
-            metadata=metadata or {},
-            before_payload=before_payload or {},
-            after_payload=after_payload or {},
-            available_at=available_at,
-            created_at=created_at or datetime.now(UTC),
+            created_at=created_at,
+            **kwargs,
         )
-        return self.append_event(event)
+        return self._insert_event(event)
+
+    def append(self, **kwargs: Any) -> AuditEvent:
+        return self.append_event(**kwargs)
 
     def list_events(
         self,
@@ -208,6 +206,11 @@ def _event_row(event: AuditEvent) -> dict[str, Any]:
         "candidate_packet_id": event.candidate_packet_id,
         "decision_card_id": event.decision_card_id,
         "budget_ledger_id": event.budget_ledger_id,
+        "paper_trade_id": event.paper_trade_id,
+        "alert_id": event.alert_id,
+        "decision": event.decision,
+        "reason": event.reason,
+        "hard_blocks": thaw_json_value(event.hard_blocks),
         "status": event.status,
         "metadata": thaw_json_value(event.metadata),
         "before_payload": thaw_json_value(event.before_payload),
@@ -232,6 +235,11 @@ def _event_from_row(row: Any) -> AuditEvent:
         candidate_packet_id=row["candidate_packet_id"],
         decision_card_id=row["decision_card_id"],
         budget_ledger_id=row["budget_ledger_id"],
+        paper_trade_id=row["paper_trade_id"],
+        alert_id=row["alert_id"],
+        decision=row["decision"],
+        reason=row["reason"],
+        hard_blocks=row["hard_blocks"],
         status=row["status"],
         metadata=row["metadata"],
         before_payload=row["before_payload"],
@@ -262,7 +270,15 @@ def _event_filters(
 
 
 def _required_text(value: object, field_name: str) -> str:
-    text = str(value).strip()
+    if value is None:
+        msg = f"{field_name} must not be blank"
+        raise ValueError(msg)
+    if isinstance(value, Enum):
+        value = value.value
+    if not isinstance(value, str):
+        msg = f"{field_name} must be a string"
+        raise TypeError(msg)
+    text = value.strip()
     if not text:
         msg = f"{field_name} must not be blank"
         raise ValueError(msg)
@@ -288,6 +304,15 @@ def _json_ready_mapping(value: Mapping[str, Any], field_name: str) -> dict[str, 
     normalized = {
         str(key): _json_ready(item, f"{field_name}.{key}") for key, item in value.items()
     }
+    json.dumps(normalized, allow_nan=False, separators=(",", ":"), sort_keys=True)
+    return normalized
+
+
+def _json_ready_sequence(value: Any, field_name: str) -> list[Any]:
+    if isinstance(value, str | bytes) or not isinstance(value, list | tuple):
+        msg = f"{field_name} must be a JSON array"
+        raise TypeError(msg)
+    normalized = [_json_ready(item, field_name) for item in value]
     json.dumps(normalized, allow_nan=False, separators=(",", ":"), sort_keys=True)
     return normalized
 
@@ -342,7 +367,11 @@ def _as_optional_datetime(value: datetime | str | None) -> datetime | None:
 
 
 def _positive_limit(value: int) -> int:
-    return max(1, int(value))
+    normalized = int(value)
+    if normalized < 1:
+        msg = "limit must be positive"
+        raise ValueError(msg)
+    return normalized
 
 
 __all__ = ["AuditEvent", "AuditLogRepository"]
