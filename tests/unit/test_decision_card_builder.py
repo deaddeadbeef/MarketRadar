@@ -241,6 +241,33 @@ def test_attach_llm_review_requires_manual_review_only() -> None:
         attach_llm_review_to_decision_card(card, draft)
 
 
+def test_attach_llm_review_rejects_unlinked_claims() -> None:
+    card = build_decision_card(_packet())
+    draft = _llm_review_draft()
+    del draft["supporting_points"][0]["computed_feature_id"]
+
+    with pytest.raises(ValueError, match="supporting_points\\[0\\].*source_id"):
+        attach_llm_review_to_decision_card(card, draft)
+
+
+def test_attach_llm_review_rejects_unknown_evidence_reference() -> None:
+    card = build_decision_card(_packet())
+    draft = _llm_review_draft()
+    draft["risks"][0]["computed_feature_id"] = "feature-unknown"
+
+    with pytest.raises(ValueError, match="computed_feature_id.*decision card evidence"):
+        attach_llm_review_to_decision_card(card, draft)
+
+
+def test_attach_llm_review_rejects_deterministic_fields() -> None:
+    card = build_decision_card(_packet())
+    draft = _llm_review_draft()
+    draft["scores"] = {"final_score": 100.0}
+
+    with pytest.raises(ValueError, match="deterministic fields"):
+        attach_llm_review_to_decision_card(card, draft)
+
+
 def _packet(
     *,
     state: ActionState = ActionState.ELIGIBLE_FOR_MANUAL_BUY_REVIEW,

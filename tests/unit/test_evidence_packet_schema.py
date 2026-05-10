@@ -26,13 +26,14 @@ def test_build_agent_evidence_packet_collects_allowed_references() -> None:
     assert view["final_score"] == 82.5
     assert "event-msft" in view["allowed_reference_ids"]
     assert "https://example.test/msft-guidance" in view["allowed_reference_ids"]
+    assert "conflict-msft" in view["allowed_reference_ids"]
     assert "feature-risk-msft" in view["allowed_computed_feature_ids"]
     assert view["supporting_evidence"][0]["ref"] == "supporting_evidence[0]"
     assert view["disconfirming_evidence"][0]["ref"] == "disconfirming_evidence[0]"
     assert view["supporting_evidence"][0]["source_id"] == "event-msft"
     assert view["supporting_evidence"][0]["source_url"] == "https://example.test/msft-guidance"
     assert view["disconfirming_evidence"][0]["computed_feature_id"] == "feature-risk-msft"
-    assert view["conflicts"] == [{"kind": "source_conflict", "source_id": "event-msft"}]
+    assert view["conflicts"] == [{"kind": "source_conflict", "source_id": "conflict-msft"}]
     assert view["hard_blocks"] == ["risk_hard_block"]
     assert view["no_trade_execution"] is True
 
@@ -76,6 +77,12 @@ def test_source_faithfulness_rejects_unknown_references() -> None:
                     "computed_feature_id": "feature-unknown",
                 }
             ],
+            "unresolved_conflicts": [
+                {
+                    "claim": "Unsupported conflict source.",
+                    "source_id": "conflict-unknown",
+                }
+            ],
         },
         view,
     )
@@ -85,6 +92,10 @@ def test_source_faithfulness_rejects_unknown_references() -> None:
         (
             "risks[0].computed_feature_id is not in allowed_computed_feature_ids: "
             "feature-unknown"
+        ),
+        (
+            "unresolved_conflicts[0].source_id is not in allowed_reference_ids: "
+            "conflict-unknown"
         ),
     ]
 
@@ -152,6 +163,7 @@ def test_source_faithfulness_rejects_non_list_source_link_fields() -> None:
             "supporting_points": "Not a list.",
             "risks": {"claim": "Not a list."},
             "bear_case": {"claim": "Not a list."},
+            "unresolved_conflicts": {"claim": "Not a list."},
         },
         view,
     )
@@ -161,6 +173,7 @@ def test_source_faithfulness_rejects_non_list_source_link_fields() -> None:
         "supporting_points must be a list",
         "risks must be a list",
         "bear_case must be a list",
+        "unresolved_conflicts must be a list",
     ]
 
 
@@ -198,7 +211,7 @@ def _candidate() -> CandidatePacket:
                 available_at=AVAILABLE_AT,
             ),
         ),
-        conflicts=({"kind": "source_conflict", "source_id": "event-msft"},),
+        conflicts=({"kind": "source_conflict", "source_id": "conflict-msft"},),
         hard_blocks=("risk_hard_block",),
         payload={},
         source_ts=SOURCE_TS,

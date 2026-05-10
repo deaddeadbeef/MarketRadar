@@ -121,9 +121,10 @@ def _fake_evidence_review_payload(request: LLMClientRequest) -> Mapping[str, Any
         "as_of": request.candidate.as_of.isoformat(),
         "claims": [claim],
         "bear_case": [
-            item.summary for item in request.candidate.disconfirming_evidence[:3]
+            _fake_evidence_review_note(item)
+            for item in request.candidate.disconfirming_evidence[:3]
         ],
-        "unresolved_conflicts": list(request.candidate.conflicts),
+        "unresolved_conflicts": _fake_unresolved_conflicts(request),
         "recommended_policy_downgrade": bool(request.candidate.hard_blocks),
     }
 
@@ -180,6 +181,41 @@ def _first_linked_evidence(items: Sequence[EvidenceItem]) -> EvidenceItem:
             return item
     msg = "fake client requires at least one source-linked evidence item"
     raise ValueError(msg)
+
+
+def _fake_evidence_review_note(evidence: EvidenceItem) -> Mapping[str, Any]:
+    item: dict[str, Any] = {
+        "claim": evidence.summary,
+        "confidence": min(max(evidence.strength, 0.0), 1.0),
+    }
+    _add_source_link(item, evidence)
+    return item
+
+
+def _fake_unresolved_conflicts(request: LLMClientRequest) -> list[Mapping[str, Any]]:
+    items: list[Mapping[str, Any]] = []
+    allowed_reference_ids = set(request.evidence_packet.get("allowed_reference_ids", ()))
+    allowed_computed_feature_ids = set(
+        request.evidence_packet.get("allowed_computed_feature_ids", ())
+    )
+    for conflict in request.candidate.conflicts[:3]:
+        item: dict[str, Any] = {
+            "claim": str(conflict.get("kind") or "Unresolved evidence conflict."),
+            "confidence": 0.5,
+        }
+        source_id = conflict.get("source_id") or conflict.get("source_url")
+        computed_feature_id = conflict.get("computed_feature_id")
+        if isinstance(source_id, str) and source_id in allowed_reference_ids:
+            item["source_id"] = source_id
+        elif (
+            isinstance(computed_feature_id, str)
+            and computed_feature_id in allowed_computed_feature_ids
+        ):
+            item["computed_feature_id"] = computed_feature_id
+        else:
+            continue
+        items.append(item)
+    return items
 
 
 def _add_source_link(target: dict[str, Any], evidence: EvidenceItem) -> None:
@@ -496,6 +532,7 @@ def _validate_output(
             payload,
             ticker=candidate.ticker,
             as_of=candidate.as_of,
+            evidence_packet=evidence_packet,
         )
     if task.schema_version == "skeptic-review-v1":
         return validate_skeptic_review_output(

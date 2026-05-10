@@ -208,6 +208,7 @@ def attach_llm_review_to_decision_card(
     if llm_review.get("manual_review_only") is not True:
         msg = "llm_review manual_review_only must be true"
         raise ValueError(msg)
+    _validate_llm_review_draft(card, llm_review)
     serialize_decision_card_payload(llm_review)
 
     payload = dict(_json_ready(card.payload))
@@ -227,6 +228,91 @@ def attach_llm_review_to_decision_card(
         available_at=card.available_at,
         user_decision=card.user_decision,
     )
+
+
+def _validate_llm_review_draft(
+    card: DecisionCard,
+    llm_review: Mapping[str, Any],
+) -> None:
+    protected = {
+        "identity",
+        "scores",
+        "trade_plan",
+        "position_sizing",
+        "portfolio_impact",
+        "controls",
+    }.intersection(llm_review)
+    if protected:
+        msg = (
+            "llm_review must not include deterministic fields: "
+            f"{', '.join(sorted(protected))}"
+        )
+        raise ValueError(msg)
+
+    ticker = _optional_string(llm_review.get("ticker"))
+    if ticker is None or ticker.upper() != card.ticker:
+        msg = f"llm_review ticker must match {card.ticker}"
+        raise ValueError(msg)
+    as_of = _aware_datetime(llm_review.get("as_of", _MISSING), "llm_review.as_of")
+    if as_of.astimezone(UTC) != card.as_of.astimezone(UTC):
+        msg = f"llm_review as_of must match {card.as_of.isoformat()}"
+        raise ValueError(msg)
+    if llm_review.get("schema_version") != DECISION_CARD_SCHEMA_VERSION:
+        msg = f"llm_review schema_version must be {DECISION_CARD_SCHEMA_VERSION}"
+        raise ValueError(msg)
+
+    allowed_reference_ids, allowed_computed_feature_ids = _card_allowed_llm_sources(card)
+    for field_name in ("supporting_points", "risks"):
+        items = llm_review.get(field_name)
+        if not isinstance(items, Sequence) or isinstance(items, str):
+            msg = f"llm_review {field_name} must be a list"
+            raise ValueError(msg)
+        for index, item in enumerate(items):
+            if not isinstance(item, Mapping):
+                msg = f"llm_review {field_name}[{index}] must be a mapping"
+                raise ValueError(msg)
+            source_id = _optional_string(item.get("source_id"))
+            computed_feature_id = _optional_string(item.get("computed_feature_id"))
+            if not (source_id or computed_feature_id):
+                msg = (
+                    f"llm_review {field_name}[{index}] must include source_id "
+                    "or computed_feature_id"
+                )
+                raise ValueError(msg)
+            if source_id and source_id not in allowed_reference_ids:
+                msg = (
+                    f"llm_review {field_name}[{index}].source_id is not in "
+                    f"decision card evidence: {source_id}"
+                )
+                raise ValueError(msg)
+            if (
+                computed_feature_id
+                and computed_feature_id not in allowed_computed_feature_ids
+            ):
+                msg = (
+                    f"llm_review {field_name}[{index}].computed_feature_id is not in "
+                    f"decision card evidence: {computed_feature_id}"
+                )
+                raise ValueError(msg)
+
+
+def _card_allowed_llm_sources(card: DecisionCard) -> tuple[set[str], set[str]]:
+    payload = _as_mapping(card.payload)
+    reference_ids: set[str] = set()
+    computed_feature_ids: set[str] = set()
+    for field_name in ("evidence", "disconfirming_evidence"):
+        for item in _as_sequence(payload.get(field_name)):
+            mapping = _as_mapping(item)
+            source_id = _optional_string(mapping.get("source_id"))
+            if source_id:
+                reference_ids.add(source_id)
+            source_url = _optional_string(mapping.get("source_url"))
+            if source_url:
+                reference_ids.add(source_url)
+            computed_feature_id = _optional_string(mapping.get("computed_feature_id"))
+            if computed_feature_id:
+                computed_feature_ids.add(computed_feature_id)
+    return reference_ids, computed_feature_ids
 
 
 def deterministic_decision_card_id(

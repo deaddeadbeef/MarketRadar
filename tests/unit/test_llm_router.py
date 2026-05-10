@@ -169,6 +169,37 @@ def test_router_rejects_schema_failure_and_logs_schema_rejected() -> None:
     assert entries[0].skip_reason == LLMSkipReason.SCHEMA_VALIDATION_FAILED
 
 
+@pytest.mark.parametrize(
+    ("task_key", "state"),
+    [
+        ("mini_extraction", ActionState.RESEARCH_ONLY),
+        ("mid_review", ActionState.WARNING),
+    ],
+)
+def test_router_rejects_evidence_review_with_unknown_source(
+    task_key: str,
+    state: ActionState,
+) -> None:
+    repo = _repo()
+    router = _router(repo=repo, client=UnknownSourceEvidenceClient())
+
+    result = router.review_candidate(
+        task=DEFAULT_TASKS[task_key],
+        candidate=_candidate(state=state),
+        available_at=NOW,
+    )
+
+    entries = repo.list_entries(available_at=NOW)
+    assert result.status == LLMCallStatus.SCHEMA_REJECTED
+    assert result.error is not None
+    assert "allowed_reference_ids" in result.error
+    assert len(entries) == 1
+    assert entries[0].status == LLMCallStatus.SCHEMA_REJECTED
+    assert entries[0].skip_reason == LLMSkipReason.SCHEMA_VALIDATION_FAILED
+    assert entries[0].schema_version == "evidence-review-v1"
+    assert "allowed_reference_ids" in entries[0].payload["error"]
+
+
 def test_router_rejects_skeptic_review_with_unknown_source() -> None:
     repo = _repo()
     router = _router(repo=repo, client=UnknownSourceSkepticClient())
@@ -322,6 +353,37 @@ def test_openai_client_builds_responses_request_with_strict_json_schema() -> Non
     assert call["text"]["format"]["strict"] is True
 
 
+def test_openai_evidence_schema_requires_source_linked_notes() -> None:
+    sdk_client = FakeOpenAISdk(
+        payload={
+            "ticker": "MSFT",
+            "as_of": AS_OF.isoformat(),
+            "claims": [],
+            "bear_case": [],
+            "unresolved_conflicts": [],
+            "recommended_policy_downgrade": False,
+        },
+    )
+
+    OpenAIResponsesClient(sdk_client=sdk_client).complete(_openai_request())
+
+    call = sdk_client.responses.calls[0]
+    schema = call["text"]["format"]["schema"]
+    for field_name in ("bear_case", "unresolved_conflicts"):
+        note_schema = schema["properties"][field_name]["items"]
+        assert sorted(note_schema["required"]) == [
+            "claim",
+            "computed_feature_id",
+            "confidence",
+            "source_id",
+        ]
+        assert note_schema["properties"]["source_id"]["type"] == ["string", "null"]
+        assert note_schema["properties"]["computed_feature_id"]["type"] == [
+            "string",
+            "null",
+        ]
+
+
 def test_openai_decision_card_schema_requires_nullable_optional_fields() -> None:
     task = DEFAULT_TASKS["gpt55_decision_card"]
     request = _openai_request(task=task)
@@ -407,6 +469,33 @@ class InvalidSchemaClient:
             payload={
                 "ticker": request.candidate.ticker,
                 "as_of": request.candidate.as_of.isoformat(),
+            },
+            token_usage=request.estimated_usage,
+            model=request.model,
+            provider="fake",
+        )
+
+
+class UnknownSourceEvidenceClient:
+    def complete(self, request: LLMClientRequest) -> LLMClientResult:
+        return LLMClientResult(
+            payload={
+                "ticker": request.candidate.ticker,
+                "as_of": request.candidate.as_of.isoformat(),
+                "claims": [
+                    {
+                        "claim": "A hallucinated filing supports the setup.",
+                        "source_id": "event-unknown",
+                        "source_quality": 0.8,
+                        "evidence_type": "filing",
+                        "sentiment": 0.6,
+                        "confidence": 0.7,
+                        "uncertainty_notes": "Source should be rejected.",
+                    }
+                ],
+                "bear_case": [],
+                "unresolved_conflicts": [],
+                "recommended_policy_downgrade": False,
             },
             token_usage=request.estimated_usage,
             model=request.model,

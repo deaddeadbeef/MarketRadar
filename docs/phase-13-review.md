@@ -6,6 +6,7 @@
 - Source-faithfulness validation for accepted LLM claims, including source IDs, source URLs, computed feature IDs, and stable evidence refs.
 - Skeptic-review and Decision Card draft schemas with forbidden execution-language checks.
 - Prompt files and router dispatch for `evidence-review-v1`, `skeptic-review-v1`, and `decision-card-v1`.
+- Source-linked `bear_case` and `unresolved_conflicts` for evidence-review outputs.
 - Fake-client outputs for all Phase 13 task schemas.
 - A thin skeptic review service that delegates state, budget, and schema gates to `LLMRouter`.
 - Decision Card LLM narrative attachment under `payload["llm_review"]` without mutating deterministic fields.
@@ -14,7 +15,7 @@
 
 ## Verification
 
-- `python -m pytest` -> `480 passed in 134.38s (0:02:14)`.
+- `python -m pytest` -> `488 passed in 126.51s (0:02:06)`.
 - `python -m ruff check src tests apps` -> `All checks passed!`.
 - Fake Phase 13 CLI smoke:
   - `skeptic_review` for sample `AAA` completed with `schema_version=skeptic-review-v1`.
@@ -28,6 +29,7 @@
 
 - LLM output never changes deterministic scores, action state, trade plan, position sizing, portfolio exposure, alerts, or orders.
 - Every accepted skeptic or Decision Card claim must link to the agent evidence packet by `source_id`, `source_url`, or `computed_feature_id`.
+- Every accepted evidence-review claim, bear-case note, or unresolved conflict must link to the agent evidence packet by `source_id`, `source_url`, or `computed_feature_id`.
 - Unsupported, unknown, or unlinked claims are schema-rejected and ledgered.
 - Forbidden autonomous execution language is rejected in LLM narrative paths.
 - Premium LLM remains disabled by default.

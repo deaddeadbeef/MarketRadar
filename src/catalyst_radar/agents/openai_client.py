@@ -171,13 +171,22 @@ def _evidence_review_schema() -> Mapping[str, Any]:
             "uncertainty_notes",
         ],
     )
+    linked_note = _base_schema(
+        {
+            "claim": {"type": "string"},
+            "source_id": _nullable_string_schema(),
+            "computed_feature_id": _nullable_string_schema(),
+            "confidence": _nullable_number_schema(minimum=0, maximum=1),
+        },
+        ["claim", "source_id", "computed_feature_id", "confidence"],
+    )
     return _base_schema(
         {
             "ticker": {"type": "string"},
             "as_of": {"type": "string"},
             "claims": {"type": "array", "items": claim},
-            "bear_case": {"type": "array", "items": {"type": "string"}},
-            "unresolved_conflicts": {"type": "array"},
+            "bear_case": {"type": "array", "items": linked_note},
+            "unresolved_conflicts": {"type": "array", "items": linked_note},
             "recommended_policy_downgrade": {"type": "boolean"},
         },
         [

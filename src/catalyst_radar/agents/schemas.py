@@ -36,6 +36,7 @@ def validate_evidence_review_output(
     *,
     ticker: str,
     as_of: datetime,
+    evidence_packet: Mapping[str, Any],
 ) -> Mapping[str, Any]:
     if not isinstance(payload, Mapping):
         msg = "evidence review payload must be a mapping"
@@ -65,16 +66,27 @@ def validate_evidence_review_output(
         for index, claim in enumerate(claims)
     ]
 
-    if not isinstance(normalized.get("bear_case"), list):
-        msg = "bear_case must be a list"
-        raise AgentSchemaError(msg)
-    if not isinstance(normalized.get("unresolved_conflicts"), list):
-        msg = "unresolved_conflicts must be a list"
-        raise AgentSchemaError(msg)
+    normalized["bear_case"] = [
+        _validated_evidence_review_note(item, f"bear_case[{index}]")
+        for index, item in enumerate(
+            _required_list(normalized.get("bear_case"), "bear_case")
+        )
+    ]
+    normalized["unresolved_conflicts"] = [
+        _validated_evidence_review_note(item, f"unresolved_conflicts[{index}]")
+        for index, item in enumerate(
+            _required_list(
+                normalized.get("unresolved_conflicts"),
+                "unresolved_conflicts",
+            )
+        )
+    ]
     if not isinstance(normalized.get("recommended_policy_downgrade"), bool):
         msg = "recommended_policy_downgrade must be a boolean"
         raise AgentSchemaError(msg)
 
+    _reject_forbidden_execution_language(normalized)
+    _raise_source_faithfulness_violations(normalized, evidence_packet)
     return normalized
 
 
@@ -213,6 +225,26 @@ def _validated_claim(value: Any, field_name: str) -> Mapping[str, Any]:
         maximum=1.0,
     )
     return claim
+
+
+def _validated_evidence_review_note(
+    value: Any,
+    field_name: str,
+) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        msg = f"{field_name} must be a mapping"
+        raise AgentSchemaError(msg)
+    item = _json_safe_mapping(value, field_name)
+    _normalize_source_link_fields(item, field_name)
+    item["claim"] = _required_text(item.get("claim"), f"{field_name}.claim")
+    if "confidence" in item and item["confidence"] is not None:
+        item["confidence"] = _bounded_number(
+            item.get("confidence"),
+            f"{field_name}.confidence",
+            minimum=0.0,
+            maximum=1.0,
+        )
+    return item
 
 
 def _validated_skeptic_bear_case_item(

@@ -15,6 +15,7 @@ _SOURCE_LINK_FIELDS = frozenset(
     {
         "claims",
         "bear_case",
+        "unresolved_conflicts",
         "supporting_points",
         "risks",
     }
@@ -44,7 +45,10 @@ def build_agent_evidence_packet(packet: CandidatePacket) -> Mapping[str, Any]:
         "disconfirming_evidence": list(disconfirming),
         "conflicts": [dict(conflict) for conflict in packet.conflicts],
         "hard_blocks": list(packet.hard_blocks),
-        "allowed_reference_ids": _allowed_reference_ids(evidence_items),
+        "allowed_reference_ids": _allowed_reference_ids(
+            evidence_items,
+            packet.conflicts,
+        ),
         "allowed_computed_feature_ids": _allowed_computed_feature_ids(evidence_items),
         "no_trade_execution": True,
     }
@@ -144,13 +148,23 @@ def _strict_optional_string(
     return text or None
 
 
-def _allowed_reference_ids(items: Sequence[EvidenceItem]) -> list[str]:
+def _allowed_reference_ids(
+    items: Sequence[EvidenceItem],
+    conflicts: Sequence[Mapping[str, Any]],
+) -> list[str]:
     values: set[str] = set()
     for item in items:
         if item.source_id:
             values.add(item.source_id)
         if item.source_url:
             values.add(item.source_url)
+    for conflict in conflicts:
+        source_id = conflict.get("source_id")
+        if isinstance(source_id, str) and source_id.strip():
+            values.add(source_id.strip())
+        source_url = conflict.get("source_url")
+        if isinstance(source_url, str) and source_url.strip():
+            values.add(source_url.strip())
     return sorted(values)
 
 

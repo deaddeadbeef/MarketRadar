@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.11, dataclasses, SQLAlchemy Core, SQLite/PostgreSQL-compatible schema, pytest, ruff, OpenAI Responses API behind a fail-closed optional client.
 
-**Implementation Status:** Complete through local verification. Real OpenAI provider smoke is pending a user-provided `OPENAI_API_KEY`; the no-key provider path was verified fail-closed and ledgered.
+**Implementation Status:** Complete through local verification. Real OpenAI provider smoke is pending a user-provided `OPENAI_API_KEY`; the no-key provider path was verified fail-closed and ledgered. Post-review fixes tightened `evidence-review-v1` source-faithfulness and direct Decision Card LLM review attachment.
 
 ---
 

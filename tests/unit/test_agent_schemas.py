@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
 
 import pytest
@@ -26,6 +27,7 @@ def test_validates_source_linked_evidence_review_output() -> None:
         payload,
         ticker="MSFT",
         as_of=AS_OF,
+        evidence_packet=_evidence_packet(),
     )
 
     assert validated["ticker"] == "MSFT"
@@ -38,19 +40,35 @@ def test_rejects_claim_without_source_or_computed_feature() -> None:
     del payload["claims"][0]["source_id"]
 
     with pytest.raises(AgentSchemaError, match="source_id or computed_feature_id"):
-        validate_evidence_review_output(payload, ticker="MSFT", as_of=AS_OF)
+        _validate_evidence_review(payload)
+
+
+def test_rejects_evidence_review_unknown_source_reference() -> None:
+    payload = _valid_payload()
+    payload["claims"][0]["source_id"] = "event-unknown"
+
+    with pytest.raises(AgentSchemaError, match="allowed_reference_ids"):
+        _validate_evidence_review(payload)
+
+
+def test_rejects_evidence_review_plain_bear_case_string() -> None:
+    payload = _valid_payload()
+    payload["bear_case"] = ["Plain bear-case text is not source-linked."]
+
+    with pytest.raises(AgentSchemaError, match="bear_case\\[0\\] must be a mapping"):
+        _validate_evidence_review(payload)
 
 
 def test_rejects_wrong_ticker() -> None:
     payload = _valid_payload(ticker="AAPL")
 
     with pytest.raises(AgentSchemaError, match="ticker"):
-        validate_evidence_review_output(payload, ticker="MSFT", as_of=AS_OF)
+        _validate_evidence_review(payload)
 
 
 def test_rejects_non_json_object() -> None:
     with pytest.raises(AgentSchemaError, match="mapping"):
-        validate_evidence_review_output(["not", "an", "object"], ticker="MSFT", as_of=AS_OF)  # type: ignore[arg-type]
+        _validate_evidence_review(["not", "an", "object"])  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize("field", ["claim", "evidence_type", "uncertainty_notes"])
@@ -59,7 +77,7 @@ def test_rejects_blank_required_claim_text(field: str) -> None:
     payload["claims"][0][field] = " "
 
     with pytest.raises(AgentSchemaError, match=field):
-        validate_evidence_review_output(payload, ticker="MSFT", as_of=AS_OF)
+        _validate_evidence_review(payload)
 
 
 @pytest.mark.parametrize(
@@ -75,7 +93,7 @@ def test_rejects_non_string_required_claim_text(field: str, value: object) -> No
     payload["claims"][0][field] = value
 
     with pytest.raises(AgentSchemaError, match=f"{field}.*string"):
-        validate_evidence_review_output(payload, ticker="MSFT", as_of=AS_OF)
+        _validate_evidence_review(payload)
 
 
 def test_rejects_non_string_claim_source_reference() -> None:
@@ -83,7 +101,7 @@ def test_rejects_non_string_claim_source_reference() -> None:
     payload["claims"][0]["source_id"] = 123
 
     with pytest.raises(AgentSchemaError, match="source_id.*string"):
-        validate_evidence_review_output(payload, ticker="MSFT", as_of=AS_OF)
+        _validate_evidence_review(payload)
 
 
 @pytest.mark.parametrize(
@@ -102,7 +120,7 @@ def test_rejects_out_of_range_claim_numbers(field: str, value: float) -> None:
     payload["claims"][0][field] = value
 
     with pytest.raises(AgentSchemaError, match=field):
-        validate_evidence_review_output(payload, ticker="MSFT", as_of=AS_OF)
+        _validate_evidence_review(payload)
 
 
 def test_validates_source_linked_skeptic_review_output() -> None:
@@ -308,8 +326,20 @@ def _valid_payload(*, ticker: str = "MSFT") -> dict[str, object]:
                 "uncertainty_notes": "Needs follow-up on margin pressure.",
             }
         ],
-        "bear_case": ["Valuation is extended."],
-        "unresolved_conflicts": [],
+        "bear_case": [
+            {
+                "claim": "Risk penalty remains elevated.",
+                "computed_feature_id": "feature-risk-msft",
+                "confidence": 0.6,
+            }
+        ],
+        "unresolved_conflicts": [
+            {
+                "claim": "Source conflict remains unresolved.",
+                "source_id": "event-msft",
+                "confidence": 0.4,
+            }
+        ],
         "recommended_policy_downgrade": False,
     }
 
@@ -360,6 +390,15 @@ def _valid_decision_card_draft_payload(*, ticker: str = "MSFT") -> dict[str, obj
 
 def _evidence_packet() -> dict[str, object]:
     return dict(build_agent_evidence_packet(_candidate()))
+
+
+def _validate_evidence_review(payload: object) -> Mapping[str, object]:
+    return validate_evidence_review_output(
+        payload,  # type: ignore[arg-type]
+        ticker="MSFT",
+        as_of=AS_OF,
+        evidence_packet=_evidence_packet(),
+    )
 
 
 def _candidate() -> CandidatePacket:
