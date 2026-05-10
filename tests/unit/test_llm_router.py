@@ -111,6 +111,23 @@ def test_router_rejects_schema_failure_and_logs_schema_rejected() -> None:
     assert entries[0].skip_reason == LLMSkipReason.SCHEMA_VALIDATION_FAILED
 
 
+def test_router_logs_failed_entry_when_client_raises() -> None:
+    repo = _repo()
+    router = _router(repo=repo, client=FailingClient())
+
+    result = router.review_candidate(
+        task=DEFAULT_TASKS["mid_review"],
+        candidate=_candidate(),
+        available_at=NOW,
+    )
+
+    entries = repo.list_entries(available_at=NOW)
+    assert result.status == LLMCallStatus.FAILED
+    assert len(entries) == 1
+    assert entries[0].status == LLMCallStatus.FAILED
+    assert entries[0].skip_reason == LLMSkipReason.CLIENT_ERROR
+
+
 def test_router_does_not_mutate_candidate_packet_payload() -> None:
     repo = _repo()
     candidate = _candidate()
@@ -145,6 +162,11 @@ class InvalidSchemaClient:
             model=request.model,
             provider="fake",
         )
+
+
+class FailingClient:
+    def complete(self, request: LLMClientRequest) -> LLMClientResult:
+        raise RuntimeError("provider unavailable")
 
 
 def _router(
