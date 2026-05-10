@@ -204,6 +204,30 @@ budget_ledger = Table(
     Column("created_at", DateTime(timezone=True), nullable=False),
 )
 
+audit_events = Table(
+    "audit_events",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("event_type", String, nullable=False),
+    Column("actor_source", String, nullable=False),
+    Column("actor_id", String),
+    Column("actor_role", String),
+    Column("artifact_type", String),
+    Column("artifact_id", String),
+    Column("ticker", String),
+    Column("candidate_state_id", String),
+    Column("candidate_packet_id", String),
+    Column("decision_card_id", String),
+    Column("budget_ledger_id", String),
+    Column("status", String, nullable=False),
+    Column("metadata", json_type, nullable=False),
+    Column("before_payload", json_type, nullable=False),
+    Column("after_payload", json_type, nullable=False),
+    Column("occurred_at", DateTime(timezone=True), nullable=False),
+    Column("available_at", DateTime(timezone=True)),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+
 alert_suppressions = Table(
     "alert_suppressions",
     metadata,
@@ -635,6 +659,27 @@ Index(
     budget_ledger.c.ts,
 )
 Index("ix_budget_ledger_ticker_ts", budget_ledger.c.ticker, budget_ledger.c.ts)
+Index(
+    "ix_audit_events_event_type_occurred",
+    audit_events.c.event_type,
+    audit_events.c.occurred_at,
+)
+Index(
+    "ix_audit_events_artifact_occurred",
+    audit_events.c.artifact_type,
+    audit_events.c.artifact_id,
+    audit_events.c.occurred_at,
+)
+Index(
+    "ix_audit_events_ticker_occurred",
+    audit_events.c.ticker,
+    audit_events.c.occurred_at,
+)
+Index(
+    "ix_audit_events_candidate_packet",
+    audit_events.c.candidate_packet_id,
+    audit_events.c.occurred_at,
+)
 Index("ix_alert_suppressions_dedupe_key", alert_suppressions.c.dedupe_key)
 Index(
     "ix_user_feedback_artifact",
