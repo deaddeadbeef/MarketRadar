@@ -1161,14 +1161,16 @@ docker compose config
 
 ## Phase 15 Acceptance Checklist
 
-- [ ] `.env.local` is never loaded in production mode.
-- [ ] Secret values do not appear in `str()`, `repr()`, CLI JSON, provider job errors, provider incidents, LLM ledger error payloads, or OpenAI prompt input.
-- [ ] Prompt payloads preserve source-linked evidence IDs while removing account-sensitive fields.
-- [ ] `audit_events` is append-only and records user feedback, alert feedback, useful labels, paper decisions, hard-block bypasses, paper outcome updates, and model-call attempts.
-- [ ] Hard-blocked paper approvals require explicit override reason and create a bypass audit event.
-- [ ] FastAPI role controls protect reads and writes when `CATALYST_API_AUTH_MODE=header`.
-- [ ] Dashboard role guard blocks insufficient roles when enabled.
-- [ ] Provider raw records fail closed on unknown license tags or mismatched retention policies.
-- [ ] No broker/order/execute route or broker SDK import exists.
-- [ ] Phase 15 docs and runbooks are updated.
+- [x] `.env.local` is never loaded in production mode.
+- [x] Secret values do not appear in `str()`, `repr()`, CLI JSON, provider job errors, provider incidents, LLM ledger error payloads, or OpenAI prompt input.
+- [x] Prompt payloads preserve source-linked evidence IDs while removing account-sensitive fields.
+- [x] Provider license policy gates block non-promptable payloads before OpenAI calls and block or redact non-exportable payloads at API/CLI export surfaces.
+- [x] `audit_events` is append-only and records user feedback, alert feedback, useful labels, paper decisions, hard-block bypasses, paper outcome updates, and model-call attempts.
+- [x] Hard-blocked paper approvals require explicit override reason and create a bypass audit event.
+- [x] FastAPI role controls protect reads and writes when `CATALYST_API_AUTH_MODE=header`.
+- [x] Dashboard role guard blocks insufficient roles when enabled.
+- [x] Provider raw records fail closed on unknown license tags or mismatched retention policies.
+- [x] Production Compose defaults to loopback-only published ports and header auth for exposed app services.
+- [x] No broker/order/execute route or broker SDK import exists.
+- [x] Phase 15 docs and runbooks are updated.
 - [ ] Full test/lint/Compose verification passes on the feature branch and after merge to `main`.

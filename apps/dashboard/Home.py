@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import pandas as pd
 import streamlit as st
-from dotenv import load_dotenv
 
 from apps.dashboard.access import require_viewer
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.dashboard.data import load_alert_rows, load_candidate_rows
+from catalyst_radar.security.secrets import load_app_dotenv
 from catalyst_radar.storage.db import engine_from_url
 
 
@@ -25,7 +25,7 @@ def _evidence_label(value: object) -> str:
     return f"{title} [{link}]"
 
 
-load_dotenv(".env.local")
+load_app_dotenv()
 require_viewer()
 
 st.set_page_config(page_title="Catalyst Radar", layout="wide")

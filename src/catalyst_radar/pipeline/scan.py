@@ -249,6 +249,8 @@ def run_scan(
                 ticker_bars,
                 portfolio_state,
             ).isoformat(),
+            "market_provider": provider,
+            "market_data_providers": sorted({bar.provider for bar in ticker_bars}),
         }
         candidate = candidate_from_features(
             features,

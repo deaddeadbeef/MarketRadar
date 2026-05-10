@@ -464,7 +464,8 @@ def test_scheduler_run_once_heartbeats_lock_during_active_run(monkeypatch, tmp_p
     release_worker = threading.Event()
 
     def slow_run_daily(spec, *, engine, abort_event=None):
-        time.sleep(1.25)
+        time.sleep(0.75)
+        assert _wait_for_lock_heartbeat(engine, "daily-run", "worker-a")
         competitor = JobLockRepository(engine).acquire(
             "daily-run",
             owner="worker-b",
@@ -490,6 +491,25 @@ def test_scheduler_run_once_heartbeats_lock_during_active_run(monkeypatch, tmp_p
     assert release_worker.is_set()
     assert result.acquired_lock is True
     assert competitor_attempt["acquired"] is False
+
+
+def _wait_for_lock_heartbeat(engine, lock_name: str, owner: str) -> bool:
+    deadline = time.monotonic() + 5.0
+    while time.monotonic() < deadline:
+        with engine.connect() as conn:
+            row = conn.execute(
+                select(
+                    job_locks.c.acquired_at,
+                    job_locks.c.heartbeat_at,
+                ).where(
+                    job_locks.c.lock_name == lock_name,
+                    job_locks.c.owner == owner,
+                )
+            ).first()
+        if row is not None and row.heartbeat_at > row.acquired_at:
+            return True
+        time.sleep(0.02)
+    return False
 
 
 def test_scheduler_run_once_reports_lost_heartbeat(monkeypatch, tmp_path):

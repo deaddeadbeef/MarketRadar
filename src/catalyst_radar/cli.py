@@ -9,7 +9,6 @@ from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 from urllib.parse import urlencode
 
-from dotenv import load_dotenv
 from sqlalchemy import select
 from sqlalchemy.engine import Engine
 
@@ -70,7 +69,12 @@ from catalyst_radar.jobs.scheduler import (
 from catalyst_radar.pipeline.candidate_packet import build_candidate_packet
 from catalyst_radar.pipeline.scan import run_scan
 from catalyst_radar.security.audit import AuditLogRepository
+from catalyst_radar.security.licenses import (
+    ProviderLicenseError,
+    require_external_export_allowed,
+)
 from catalyst_radar.security.redaction import redact_text, redact_value
+from catalyst_radar.security.secrets import load_app_dotenv
 from catalyst_radar.storage.alert_repositories import AlertRepository
 from catalyst_radar.storage.budget_repositories import BudgetLedgerRepository
 from catalyst_radar.storage.candidate_packet_repositories import CandidatePacketRepository
@@ -301,7 +305,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    load_dotenv(".env.local")
+    load_app_dotenv()
     args = build_parser().parse_args(argv)
     config = AppConfig.from_env()
     database_url = getattr(args, "database_url", None) or config.database_url
@@ -826,7 +830,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"candidate packet not found: {args.ticker.upper()}", file=sys.stderr)
             return 1
         if args.json:
-            print(json.dumps(thaw_json_value(packet.payload), sort_keys=True))
+            return _print_external_json(thaw_json_value(packet.payload))
         else:
             print(
                 f"{packet.ticker} packet state={packet.state.value} "
@@ -851,7 +855,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"decision card not found: {args.ticker.upper()}", file=sys.stderr)
             return 1
         if args.json:
-            print(json.dumps(thaw_json_value(card.payload), sort_keys=True))
+            return _print_external_json(thaw_json_value(card.payload))
         else:
             evidence = card.payload.get("evidence", [])
             disconfirming = card.payload.get("disconfirming_evidence", [])
@@ -2121,6 +2125,16 @@ def _llm_ledger_payload(entry) -> dict[str, object]:
         "outcome_label": entry.outcome_label,
         "payload": redact_value(thaw_json_value(entry.payload)),
     }
+
+
+def _print_external_json(payload: Mapping[str, object]) -> int:
+    try:
+        require_external_export_allowed(payload)
+    except ProviderLicenseError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    print(json.dumps(payload, sort_keys=True))
+    return 0
 
 
 class _SafeDisabledLLMClient:

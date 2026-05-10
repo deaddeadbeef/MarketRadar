@@ -2,19 +2,14 @@ from __future__ import annotations
 
 import sys
 
-try:
-    from dotenv import load_dotenv
-except ImportError:  # pragma: no cover - dotenv is optional for worker startup.
-    load_dotenv = None
-
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.jobs.scheduler import SchedulerConfig, SchedulerRunResult, run_forever, run_once
+from catalyst_radar.security.secrets import load_app_dotenv
 from catalyst_radar.storage.db import create_schema, engine_from_url
 
 
 def main() -> int:
-    if load_dotenv is not None:
-        load_dotenv(".env.local")
+    load_app_dotenv()
 
     app_config = AppConfig.from_env()
     engine = engine_from_url(app_config.database_url)

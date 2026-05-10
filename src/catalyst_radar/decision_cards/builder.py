@@ -177,6 +177,19 @@ def build_decision_card(
             "schema_version": DECISION_CARD_SCHEMA_VERSION,
             "source_ts": source_ts.isoformat(),
             "available_at": card_available_at.isoformat(),
+            "provider_license_policy": _nested(
+                packet_payload,
+                "audit",
+                "provider_license_policy",
+                default={
+                    "license_tags": [],
+                    "metadata_complete": False,
+                    "prompt_allowed": False,
+                    "external_export_allowed": False,
+                    "attribution_required": False,
+                    "policies": [],
+                },
+            ),
         },
     }
 

@@ -3,7 +3,13 @@ from __future__ import annotations
 import pytest
 from fastapi import HTTPException
 
-from catalyst_radar.security.access import Role, parse_role, require_role, role_allows
+from catalyst_radar.security.access import (
+    Role,
+    parse_role,
+    require_dashboard_role,
+    require_role,
+    role_allows,
+)
 
 
 def test_role_ordering_allows_analyst_to_read_and_write() -> None:
@@ -42,3 +48,24 @@ def test_header_auth_dependency_rejects_missing_and_insufficient_roles(
     assert forbidden.value.status_code == 403
 
     assert require_role(Role.ANALYST)("analyst") == Role.ANALYST
+
+
+def test_header_dashboard_auth_rejects_insufficient_role(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import streamlit as st
+
+    errors: list[str] = []
+
+    def stop() -> None:
+        raise RuntimeError("streamlit stopped")
+
+    monkeypatch.setenv("CATALYST_DASHBOARD_AUTH_MODE", "header")
+    monkeypatch.setenv("CATALYST_DASHBOARD_ROLE", "viewer")
+    monkeypatch.setattr(st, "error", lambda message: errors.append(str(message)))
+    monkeypatch.setattr(st, "stop", stop)
+
+    with pytest.raises(RuntimeError, match="streamlit stopped"):
+        require_dashboard_role(Role.ANALYST)
+
+    assert errors == ["Insufficient role"]

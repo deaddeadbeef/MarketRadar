@@ -21,6 +21,7 @@ from catalyst_radar.agents.router import (
 )
 from catalyst_radar.agents.tasks import DEFAULT_TASKS
 from catalyst_radar.core.config import AppConfig
+from catalyst_radar.core.immutability import thaw_json_value
 from catalyst_radar.core.models import ActionState
 from catalyst_radar.pipeline.candidate_packet import (
     CandidatePacket,
@@ -355,7 +356,9 @@ def test_openai_client_builds_responses_request_with_strict_json_schema() -> Non
     request_payload = json.loads(call["input"])
     assert request_payload["task"] == "skeptic_review"
     assert request_payload["candidate_packet"] == json.loads(request.candidate_json)
-    assert request_payload["agent_evidence_packet"] == request.evidence_packet
+    assert request_payload["agent_evidence_packet"] == thaw_json_value(
+        request.evidence_packet
+    )
     assert call["text"]["format"]["type"] == "json_schema"
     assert call["text"]["format"]["name"] == "skeptic_review_v1"
     assert call["text"]["format"]["schema"]["required"] == [
@@ -419,6 +422,40 @@ def test_openai_client_minimizes_prompt_payload() -> None:
     assert "cash" not in prompt_text
     assert "secret" not in prompt_text
     assert "event-msft" in prompt_text
+
+
+def test_openai_client_blocks_provider_payload_that_disallows_prompts() -> None:
+    request = _openai_request(
+        candidate=_candidate(
+            payload={
+                "audit": {
+                    "provider_license_policy": {
+                        "license_tags": ["polygon-market-data"],
+                        "metadata_complete": True,
+                        "prompt_allowed": False,
+                        "external_export_allowed": False,
+                        "attribution_required": True,
+                        "policies": [],
+                    }
+                }
+            }
+        )
+    )
+    sdk_client = FakeOpenAISdk(
+        payload={
+            "ticker": "MSFT",
+            "as_of": AS_OF.isoformat(),
+            "claims": [],
+            "bear_case": [],
+            "unresolved_conflicts": [],
+            "recommended_policy_downgrade": False,
+        },
+    )
+
+    with pytest.raises(ValueError, match="blocks prompt use"):
+        OpenAIResponsesClient(sdk_client=sdk_client).complete(request)
+
+    assert sdk_client.responses.calls == []
 
 
 def test_openai_evidence_schema_requires_source_linked_notes() -> None:
@@ -706,6 +743,32 @@ def _candidate(
     final_score: float = 82.5,
     payload: dict[str, object] | None = None,
 ) -> CandidatePacket:
+    resolved_payload = dict(
+        payload
+        or {
+            "ticker": "MSFT",
+            "as_of": AS_OF.isoformat(),
+            "supporting_evidence": [
+                {
+                    "source_id": "event-msft",
+                    "summary": "Company raised cloud revenue guidance.",
+                }
+            ],
+        }
+    )
+    resolved_payload.setdefault(
+        "audit",
+        {
+            "provider_license_policy": {
+                "license_tags": ["sec-public"],
+                "metadata_complete": True,
+                "prompt_allowed": True,
+                "external_export_allowed": True,
+                "attribution_required": True,
+                "policies": [],
+            }
+        },
+    )
     return CandidatePacket(
         id="packet-msft",
         ticker="MSFT",
@@ -740,17 +803,7 @@ def _candidate(
         ),
         conflicts=({"kind": "event_conflict", "source_id": "conflict-msft"},),
         hard_blocks=(),
-        payload=payload
-        or {
-            "ticker": "MSFT",
-            "as_of": AS_OF.isoformat(),
-            "supporting_evidence": [
-                {
-                    "source_id": "event-msft",
-                    "summary": "Company raised cloud revenue guidance.",
-                }
-            ],
-        },
+        payload=resolved_payload,
         source_ts=SOURCE_TS,
         available_at=AVAILABLE_AT,
     )

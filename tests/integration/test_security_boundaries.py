@@ -229,6 +229,19 @@ def test_openapi_has_no_order_or_broker_routes() -> None:
     ]
 
 
+def test_production_compose_defaults_to_loopback_and_header_auth() -> None:
+    compose = Path("infra/docker/docker-compose.prod.yml").read_text(encoding="utf-8")
+
+    assert "CATALYST_ENV: production" in compose
+    assert "CATALYST_API_AUTH_MODE: ${CATALYST_API_AUTH_MODE:-header}" in compose
+    assert (
+        "CATALYST_DASHBOARD_AUTH_MODE: ${CATALYST_DASHBOARD_AUTH_MODE:-header}"
+        in compose
+    )
+    assert '"${CATALYST_API_BIND:-127.0.0.1}:8000:8000"' in compose
+    assert '"${CATALYST_DASHBOARD_BIND:-127.0.0.1}:8501:8501"' in compose
+
+
 def _broker_import_violations(path: Path) -> list[tuple[str, int, str]]:
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     violations: list[tuple[str, int, str]] = []

@@ -8,6 +8,7 @@ from typing import Any
 from catalyst_radar.agents.models import TokenUsage
 from catalyst_radar.agents.router import LLMClientRequest, LLMClientResult
 from catalyst_radar.agents.tasks import LLMTask
+from catalyst_radar.security.licenses import require_prompt_allowed
 from catalyst_radar.security.redaction import minimize_prompt_payload
 from catalyst_radar.security.secrets import SecretValue, required_secret
 
@@ -73,12 +74,15 @@ def schema_for_task(task: LLMTask) -> Mapping[str, Any]:
 
 
 def _request_input_json(request: LLMClientRequest) -> str:
+    candidate_packet = json.loads(request.candidate_json)
+    require_prompt_allowed(candidate_packet)
+    require_prompt_allowed(request.evidence_packet)
     payload = minimize_prompt_payload(
         {
             "task": request.task.name.value,
             "prompt_version": request.prompt_version,
             "schema_version": request.schema_version,
-            "candidate_packet": json.loads(request.candidate_json),
+            "candidate_packet": candidate_packet,
             "agent_evidence_packet": request.evidence_packet,
         },
     )

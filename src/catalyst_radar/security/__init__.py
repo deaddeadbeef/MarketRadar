@@ -9,6 +9,7 @@ from catalyst_radar.security.redaction import (
 )
 from catalyst_radar.security.secrets import (
     SecretValue,
+    load_app_dotenv,
     load_local_dotenv,
     optional_secret,
     required_secret,
@@ -17,6 +18,7 @@ from catalyst_radar.security.secrets import (
 __all__ = [
     "REDACTED",
     "SecretValue",
+    "load_app_dotenv",
     "load_local_dotenv",
     "minimize_prompt_payload",
     "optional_secret",

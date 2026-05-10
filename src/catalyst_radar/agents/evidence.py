@@ -51,6 +51,25 @@ def build_agent_evidence_packet(packet: CandidatePacket) -> Mapping[str, Any]:
         ),
         "allowed_computed_feature_ids": _allowed_computed_feature_ids(evidence_items),
         "no_trade_execution": True,
+        "audit": {
+            "provider_license_policy": _provider_license_policy(packet.payload),
+        },
+    }
+
+
+def _provider_license_policy(payload: Mapping[str, Any]) -> Mapping[str, Any]:
+    audit = payload.get("audit")
+    if isinstance(audit, Mapping):
+        report = audit.get("provider_license_policy")
+        if isinstance(report, Mapping):
+            return report
+    return {
+        "license_tags": [],
+        "metadata_complete": False,
+        "prompt_allowed": False,
+        "external_export_allowed": False,
+        "attribution_required": False,
+        "policies": [],
     }
 
 

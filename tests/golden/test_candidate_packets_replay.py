@@ -27,7 +27,7 @@ def test_candidate_packet_replay_is_deterministic_and_matches_golden_digest() ->
     )
     assert canonical == canonical_packet_json(second)
     assert hashlib.sha256(canonical.encode()).hexdigest() == (
-        "0b24a3a8731422c101395fff67ef860f51fa9f3cd8b75d6f7f06d0ad6258b6eb"
+        "7b3621a6086085cc228e289db6c9dacbe3c88d57ae0c32d3b2241282fa58945f"
     )
 
     payload = packet_payload(first)

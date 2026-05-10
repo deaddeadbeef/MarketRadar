@@ -14,6 +14,11 @@ CREATE TABLE IF NOT EXISTS audit_events (
   candidate_packet_id TEXT,
   decision_card_id TEXT,
   budget_ledger_id TEXT,
+  paper_trade_id TEXT,
+  alert_id TEXT,
+  decision TEXT,
+  reason TEXT,
+  hard_blocks JSON NOT NULL DEFAULT '[]',
   status TEXT NOT NULL,
   metadata JSON NOT NULL DEFAULT '{}',
   before_payload JSON NOT NULL DEFAULT '{}',
@@ -22,12 +27,6 @@ CREATE TABLE IF NOT EXISTS audit_events (
   available_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL
 );
-
-ALTER TABLE audit_events ADD COLUMN paper_trade_id TEXT;
-ALTER TABLE audit_events ADD COLUMN alert_id TEXT;
-ALTER TABLE audit_events ADD COLUMN decision TEXT;
-ALTER TABLE audit_events ADD COLUMN reason TEXT;
-ALTER TABLE audit_events ADD COLUMN hard_blocks JSON NOT NULL DEFAULT '[]';
 
 CREATE INDEX IF NOT EXISTS ix_audit_events_event_type_occurred
   ON audit_events (event_type, occurred_at);

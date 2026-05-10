@@ -126,9 +126,27 @@ def test_sqlite_audit_migration_executes_locally(tmp_path) -> None:
     } <= triggers
 
 
-def test_sqlite_audit_migration_upgrades_old_table_shape(tmp_path) -> None:
+def test_sqlite_audit_migration_is_rerunnable(tmp_path) -> None:
     migration = Path("sql/migrations/013_security_audit.sql").read_text(encoding="utf-8")
+    db_path = tmp_path / "migration-rerun.db"
+
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript(migration)
+        conn.executescript(migration)
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(audit_events)")}
+
+    assert {
+        "paper_trade_id",
+        "alert_id",
+        "decision",
+        "reason",
+        "hard_blocks",
+    } <= columns
+
+
+def test_create_schema_upgrades_old_sqlite_audit_table_shape(tmp_path) -> None:
     db_path = tmp_path / "old-migration.db"
+    engine = create_engine(f"sqlite:///{db_path.as_posix()}", future=True)
 
     with sqlite3.connect(db_path) as conn:
         conn.executescript(
@@ -156,7 +174,9 @@ def test_sqlite_audit_migration_upgrades_old_table_shape(tmp_path) -> None:
             );
             """
         )
-        conn.executescript(migration)
+    create_schema(engine)
+
+    with sqlite3.connect(db_path) as conn:
         columns = {row[1] for row in conn.execute("PRAGMA table_info(audit_events)")}
 
     assert {

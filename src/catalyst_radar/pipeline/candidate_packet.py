@@ -11,6 +11,11 @@ from typing import Any, Literal
 
 from catalyst_radar.core.immutability import freeze_mapping, thaw_json_value
 from catalyst_radar.core.models import ActionState
+from catalyst_radar.security.licenses import (
+    ProviderLicenseError,
+    license_tag_for_provider,
+    provider_license_report,
+)
 
 CANDIDATE_PACKET_SCHEMA_VERSION = "candidate-packet-v1"
 
@@ -213,6 +218,7 @@ class _PacketContext:
     missing_trade_plan: tuple[str, ...]
     source_ts: datetime
     available_at: datetime
+    provider_license_tags: tuple[str, ...]
 
 
 def build_candidate_packet(
@@ -498,6 +504,18 @@ def _build_context(
         missing_trade_plan=missing_trade_plan,
         source_ts=source_ts,
         available_at=available_at,
+        provider_license_tags=_provider_license_tags(
+            metadata=metadata,
+            records=(
+                state_row,
+                signal_row,
+                candidate_payload,
+                *selected_events,
+                *selected_snippets,
+                *selected_text_features,
+                *selected_option_features,
+            ),
+        ),
     )
 
 
@@ -845,6 +863,9 @@ def _packet_payload(
             "builder": "deterministic_candidate_packet_builder",
             "score_recomputed": False,
             "llm_calls": False,
+            "provider_license_policy": provider_license_report(
+                ctx.provider_license_tags
+            ),
         },
     }
 
@@ -1236,6 +1257,50 @@ def _record_timestamps(
         or fallback_available_at
     )
     return source_ts, available_at
+
+
+def _provider_license_tags(
+    *,
+    metadata: Mapping[str, Any],
+    records: Iterable[Mapping[str, Any]],
+) -> tuple[str, ...]:
+    providers = set(_provider_values(metadata))
+    for record in records:
+        providers.update(_provider_values(record))
+    tags = []
+    for provider in sorted(providers):
+        try:
+            tags.append(license_tag_for_provider(provider))
+        except ProviderLicenseError:
+            return ()
+    return tuple(sorted(dict.fromkeys(tags)))
+
+
+def _provider_values(value: Any) -> set[str]:
+    providers: set[str] = set()
+    if isinstance(value, Mapping):
+        raw_provider = value.get("provider")
+        if isinstance(raw_provider, str) and raw_provider.strip():
+            providers.add(raw_provider.strip())
+        for key in ("market_provider", "scan_provider"):
+            raw_value = value.get(key)
+            if isinstance(raw_value, str) and raw_value.strip():
+                providers.add(raw_value.strip())
+        raw_providers = value.get("market_data_providers")
+        if isinstance(raw_providers, Iterable) and not isinstance(
+            raw_providers, (str, bytes)
+        ):
+            providers.update(
+                str(provider).strip()
+                for provider in raw_providers
+                if str(provider).strip()
+            )
+        for child in value.values():
+            providers.update(_provider_values(child))
+    elif isinstance(value, Iterable) and not isinstance(value, (str, bytes)):
+        for child in value:
+            providers.update(_provider_values(child))
+    return providers
 
 
 def _reject_future_required_input(

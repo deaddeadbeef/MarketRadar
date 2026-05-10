@@ -27,12 +27,16 @@ Required keys:
 - `CATALYST_POLYGON_API_KEY` when Polygon ingestion is enabled
 - `OPENAI_API_KEY` only when real LLM review is explicitly enabled
 
-Optional security controls:
+Required production access controls:
 
 - `CATALYST_API_AUTH_MODE=header` for API role checks behind a trusted proxy or
-  private network.
+  private network that strips user-supplied `X-Catalyst-Role` headers and sets
+  the trusted role header itself.
 - `CATALYST_DASHBOARD_AUTH_MODE=header` plus `CATALYST_DASHBOARD_ROLE` for
   Streamlit pilot access checks.
+- The production Compose file binds API and dashboard ports to `127.0.0.1` by
+  default. Set `CATALYST_API_BIND` or `CATALYST_DASHBOARD_BIND` only when a
+  trusted proxy is in front of the service.
 
 ## Rotation
 

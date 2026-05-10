@@ -25,9 +25,11 @@ services:
       dockerfile: infra/docker/Dockerfile
     command: python -m uvicorn apps.api.main:app --host 0.0.0.0 --port 8000
     environment:
+      CATALYST_ENV: production
       CATALYST_DATABASE_URL: ${CATALYST_DATABASE_URL:?CATALYST_DATABASE_URL is required}
+      CATALYST_API_AUTH_MODE: ${CATALYST_API_AUTH_MODE:-header}
     ports:
-      - "8000:8000"
+      - "${CATALYST_API_BIND:-127.0.0.1}:8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -38,9 +40,12 @@ services:
       dockerfile: infra/docker/Dockerfile
     command: streamlit run apps/dashboard/Home.py --server.address 0.0.0.0 --server.port 8501
     environment:
+      CATALYST_ENV: production
       CATALYST_DATABASE_URL: ${CATALYST_DATABASE_URL:?CATALYST_DATABASE_URL is required}
+      CATALYST_DASHBOARD_AUTH_MODE: ${CATALYST_DASHBOARD_AUTH_MODE:-header}
+      CATALYST_DASHBOARD_ROLE: ${CATALYST_DASHBOARD_ROLE:-viewer}
     ports:
-      - "8501:8501"
+      - "${CATALYST_DASHBOARD_BIND:-127.0.0.1}:8501:8501"
     depends_on:
       postgres:
         condition: service_healthy
@@ -51,6 +56,7 @@ services:
       dockerfile: infra/docker/Dockerfile
     command: python -m apps.worker.main
     environment:
+      CATALYST_ENV: production
       CATALYST_DATABASE_URL: ${CATALYST_DATABASE_URL:?CATALYST_DATABASE_URL is required}
       CATALYST_WORKER_INTERVAL_SECONDS: ${CATALYST_WORKER_INTERVAL_SECONDS:-86400}
     depends_on:

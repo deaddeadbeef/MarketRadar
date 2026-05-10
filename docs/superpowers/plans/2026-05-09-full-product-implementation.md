@@ -689,7 +689,7 @@ Implementation tasks:
 - [x] Add audit logs for user decisions, overrides, hard-block bypasses, and model calls.
 - [x] Add dashboard roles: admin, analyst, viewer.
 - [x] Enforce no broker order placement.
-- [x] Add provider license tags and retention policies.
+- [x] Add provider license tags, retention policies, prompt gates, and export gates.
 
 Exit criteria:
 

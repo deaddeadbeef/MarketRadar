@@ -16,6 +16,7 @@ from catalyst_radar.feedback.service import (
     record_feedback,
 )
 from catalyst_radar.security.access import Role, require_role
+from catalyst_radar.security.licenses import redact_restricted_external_payload
 from catalyst_radar.storage.alert_repositories import AlertRepository
 from catalyst_radar.storage.db import engine_from_url
 
@@ -130,7 +131,7 @@ def _alert_payload(alert: Alert) -> dict[str, Any]:
         "title": alert.title,
         "summary": alert.summary,
         "feedback_url": alert.feedback_url,
-        "payload": thaw_json_value(alert.payload),
+        "payload": redact_restricted_external_payload(thaw_json_value(alert.payload)),
         "created_at": alert.created_at,
         "sent_at": alert.sent_at,
     }

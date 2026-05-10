@@ -1,7 +1,12 @@
 import pytest
 
 from catalyst_radar.core.config import AppConfig
-from catalyst_radar.security.secrets import SecretValue, load_local_dotenv, required_secret
+from catalyst_radar.security.secrets import (
+    SecretValue,
+    load_app_dotenv,
+    load_local_dotenv,
+    required_secret,
+)
 
 
 def test_secret_value_never_renders_plaintext() -> None:
@@ -27,6 +32,12 @@ def test_required_secret_fails_closed_for_missing_value() -> None:
 def test_local_dotenv_loader_refuses_production() -> None:
     with pytest.raises(ValueError, match="must not load .env.local in production"):
         load_local_dotenv(environment="production", dotenv_path=".env.local")
+
+
+def test_app_dotenv_loader_skips_production_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CATALYST_ENV", "production")
+
+    assert load_app_dotenv(dotenv_path=".env.local") is False
 
 
 def test_app_config_sanitized_payload_masks_secrets() -> None:

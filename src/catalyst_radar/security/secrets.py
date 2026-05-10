@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from os import environ
 
 
 @dataclass(frozen=True)
@@ -46,3 +47,10 @@ def load_local_dotenv(*, environment: str, dotenv_path: str = ".env.local") -> b
     from dotenv import load_dotenv
 
     return bool(load_dotenv(dotenv_path, override=False))
+
+
+def load_app_dotenv(*, dotenv_path: str = ".env.local") -> bool:
+    environment = environ.get("CATALYST_ENV", "local")
+    if environment.strip().lower() in {"production", "prod"}:
+        return False
+    return load_local_dotenv(environment=environment, dotenv_path=dotenv_path)

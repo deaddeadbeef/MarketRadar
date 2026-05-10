@@ -238,6 +238,22 @@ def test_future_optional_records_are_excluded_from_point_in_time_packet() -> Non
     assert "Future event" not in canonical_packet_json(packet)
 
 
+def test_candidate_packet_stamps_provider_license_policy() -> None:
+    packet = build_candidate_packet(
+        candidate_state=_candidate_state(state=ActionState.WARNING),
+        signal_features_payload=_signal_payload(
+            metadata_overrides={"market_provider": "csv"}
+        ),
+        requested_available_at=AVAILABLE_AT,
+    )
+
+    policy = packet.payload["audit"]["provider_license_policy"]
+    assert list(policy["license_tags"]) == ["local-csv-fixture"]
+    assert policy["metadata_complete"] is True
+    assert policy["prompt_allowed"] is True
+    assert policy["external_export_allowed"] is False
+
+
 def _candidate_state(
     *,
     state: ActionState,

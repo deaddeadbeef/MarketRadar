@@ -58,6 +58,24 @@ def test_candidate_packet_and_decision_card_cli_build_and_inspect(
     assert (
         main(
             [
+                "candidate-packet",
+                "--ticker",
+                "MSFT",
+                "--as-of",
+                "2026-05-10",
+                "--available-at",
+                AVAILABLE_AT_TEXT,
+                "--json",
+            ]
+        )
+        == 1
+    )
+    captured = capsys.readouterr()
+    assert "provider license blocks external export: local-csv-fixture" in captured.err
+
+    assert (
+        main(
+            [
                 "build-decision-cards",
                 "--as-of",
                 "2026-05-10",
@@ -211,6 +229,7 @@ def _insert_warning_candidate(database_url: str) -> None:
                             "source_ts": SOURCE_TS.isoformat(),
                             "available_at": AVAILABLE_AT.isoformat(),
                             "setup_type": "breakout",
+                            "market_provider": "csv",
                             "target_price": 125.0,
                             "pillar_scores": {
                                 "price_strength": 86.0,
