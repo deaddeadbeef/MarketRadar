@@ -48,13 +48,14 @@ DEFAULT_TASKS: Mapping[str, LLMTask] = {
         name=LLMTaskName.SKEPTIC_REVIEW,
         eligible_states=(
             ActionState.WARNING,
+            ActionState.THESIS_WEAKENING,
             ActionState.ELIGIBLE_FOR_MANUAL_BUY_REVIEW,
         ),
         default_daily_cap=20,
         max_input_tokens=9000,
         max_output_tokens=1400,
         prompt_version="skeptic_review_v1",
-        schema_version="evidence-review-v1",
+        schema_version="skeptic-review-v1",
         model_config_key="llm_skeptic_model",
     ),
     "gpt55_decision_card": LLMTask(
