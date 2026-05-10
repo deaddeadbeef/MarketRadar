@@ -5,7 +5,9 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import Engine, delete, insert, select, update
+from sqlalchemy import Engine, delete, select, update
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from catalyst_radar.core.immutability import thaw_json_value
 from catalyst_radar.storage.schema import job_locks
@@ -37,24 +39,9 @@ class JobLockRepository:
         expires_at = resolved_now + ttl
         payload = thaw_json_value(metadata or {})
         with self.engine.begin() as conn:
-            row = conn.execute(
-                select(job_locks).where(job_locks.c.lock_name == lock_name).limit(1)
-            ).first()
-            if row is not None:
-                current = row._mapping
-                current_expires_at = _as_utc(current["expires_at"])
-                current_owner = str(current["owner"])
-                if current_expires_at > resolved_now:
-                    return JobLockAcquireResult(
-                        lock_name=lock_name,
-                        owner=owner,
-                        acquired=False,
-                        current_owner=current_owner,
-                        expires_at=current_expires_at,
-                    )
-                conn.execute(delete(job_locks).where(job_locks.c.lock_name == lock_name))
-            conn.execute(
-                insert(job_locks).values(
+            result = conn.execute(
+                _acquire_statement(
+                    dialect_name=conn.dialect.name,
                     lock_name=lock_name,
                     owner=owner,
                     acquired_at=resolved_now,
@@ -63,12 +50,24 @@ class JobLockRepository:
                     metadata=payload,
                 )
             )
+            if result.rowcount == 1:
+                return JobLockAcquireResult(
+                    lock_name=lock_name,
+                    owner=owner,
+                    acquired=True,
+                    current_owner=owner,
+                    expires_at=expires_at,
+                )
+            row = conn.execute(
+                select(job_locks).where(job_locks.c.lock_name == lock_name).limit(1)
+            ).one()
+        current = row._mapping
         return JobLockAcquireResult(
             lock_name=lock_name,
             owner=owner,
-            acquired=True,
-            current_owner=owner,
-            expires_at=expires_at,
+            acquired=False,
+            current_owner=str(current["owner"]),
+            expires_at=_as_utc(current["expires_at"]),
         )
 
     def heartbeat(
@@ -97,6 +96,38 @@ class JobLockRepository:
                 )
             )
         return result.rowcount == 1
+
+
+def _acquire_statement(
+    *,
+    dialect_name: str,
+    lock_name: str,
+    owner: str,
+    acquired_at: datetime,
+    heartbeat_at: datetime,
+    expires_at: datetime,
+    metadata: Any,
+):
+    insert_factory = postgresql_insert if dialect_name == "postgresql" else sqlite_insert
+    stmt = insert_factory(job_locks).values(
+        lock_name=lock_name,
+        owner=owner,
+        acquired_at=acquired_at,
+        heartbeat_at=heartbeat_at,
+        expires_at=expires_at,
+        metadata=metadata,
+    )
+    return stmt.on_conflict_do_update(
+        index_elements=[job_locks.c.lock_name],
+        set_={
+            "owner": owner,
+            "acquired_at": acquired_at,
+            "heartbeat_at": heartbeat_at,
+            "expires_at": expires_at,
+            "metadata": metadata,
+        },
+        where=job_locks.c.expires_at <= acquired_at,
+    )
 
 
 def _to_utc(value: datetime, field_name: str) -> datetime:

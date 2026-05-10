@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import create_engine, inspect, select
 
 from catalyst_radar.storage.db import create_schema
 from catalyst_radar.storage.job_repositories import JobLockRepository
+from catalyst_radar.storage.schema import job_locks
 
 
 def _engine():
@@ -50,6 +51,24 @@ def test_job_lock_rejects_unexpired_owner_and_allows_expired_takeover():
     assert blocked.current_owner == "worker-a"
     assert stolen.acquired is True
     assert stolen.current_owner == "worker-b"
+
+    blocked_after_takeover = repo.acquire(
+        "daily-run",
+        owner="worker-c",
+        ttl=timedelta(minutes=10),
+        now=now + timedelta(minutes=12),
+    )
+
+    assert blocked_after_takeover.acquired is False
+    assert blocked_after_takeover.current_owner == "worker-b"
+    with engine.connect() as conn:
+        row = conn.execute(
+            select(job_locks.c.owner, job_locks.c.expires_at).where(
+                job_locks.c.lock_name == "daily-run"
+            )
+        ).one()
+    assert row.owner == "worker-b"
+    assert row.expires_at == stolen.expires_at.replace(tzinfo=None)
 
 
 def test_job_lock_heartbeat_and_release_require_matching_owner():
