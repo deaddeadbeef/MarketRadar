@@ -403,6 +403,101 @@ def test_ops_health_excludes_future_provider_job_and_incident_rows() -> None:
     assert [row["id"] for row in health["incidents"]] == ["incident-visible"]
 
 
+def test_ops_health_default_cutoff_excludes_future_provider_job_and_incident_rows() -> None:
+    engine = _engine()
+    now = datetime.now(UTC)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(provider_health),
+            [
+                {
+                    "id": "provider-visible",
+                    "provider": "sec",
+                    "status": "degraded",
+                    "checked_at": now - timedelta(minutes=5),
+                    "reason": "visible row",
+                    "latency_ms": None,
+                },
+                {
+                    "id": "provider-future",
+                    "provider": "sec",
+                    "status": "healthy",
+                    "checked_at": now + timedelta(days=1),
+                    "reason": "future row",
+                    "latency_ms": 20.0,
+                },
+            ],
+        )
+        conn.execute(
+            insert(job_runs),
+            [
+                {
+                    "id": "job-visible",
+                    "job_type": "feature_scan",
+                    "provider": None,
+                    "status": "success",
+                    "started_at": now - timedelta(minutes=30),
+                    "finished_at": now - timedelta(minutes=25),
+                    "requested_count": 1,
+                    "raw_count": 1,
+                    "normalized_count": 1,
+                    "error_summary": None,
+                    "metadata": {},
+                },
+                {
+                    "id": "job-future",
+                    "job_type": "feature_scan",
+                    "provider": None,
+                    "status": "failed",
+                    "started_at": now + timedelta(days=1),
+                    "finished_at": now + timedelta(days=1, minutes=5),
+                    "requested_count": 1,
+                    "raw_count": 0,
+                    "normalized_count": 0,
+                    "error_summary": "future",
+                    "metadata": {},
+                },
+            ],
+        )
+        conn.execute(
+            insert(data_quality_incidents),
+            [
+                {
+                    "id": "incident-visible",
+                    "provider": "sec",
+                    "severity": "warning",
+                    "kind": "stale_data",
+                    "affected_tickers": ["AAA"],
+                    "reason": "visible",
+                    "fail_closed_action": "watchlist only",
+                    "payload": {},
+                    "detected_at": now - timedelta(minutes=10),
+                    "source_ts": now - timedelta(hours=1),
+                    "available_at": now - timedelta(minutes=10),
+                },
+                {
+                    "id": "incident-future",
+                    "provider": "sec",
+                    "severity": "error",
+                    "kind": "schema_validation",
+                    "affected_tickers": ["AAA"],
+                    "reason": "future",
+                    "fail_closed_action": "future",
+                    "payload": {},
+                    "detected_at": now + timedelta(days=1),
+                    "source_ts": now + timedelta(days=1),
+                    "available_at": now + timedelta(days=1),
+                },
+            ],
+        )
+
+    health = load_ops_health(engine)
+
+    assert [row["id"] for row in health["providers"]] == ["provider-visible"]
+    assert [row["id"] for row in health["jobs"]] == ["job-visible"]
+    assert [row["id"] for row in health["incidents"]] == ["incident-visible"]
+
+
 def test_useful_alert_count_uses_latest_label_per_artifact() -> None:
     engine = _engine()
     now = datetime(2026, 5, 10, 12, 0, tzinfo=UTC)

@@ -34,7 +34,7 @@ def load_ops_health(
     now: datetime | None = None,
     stale_after: timedelta = timedelta(hours=36),
 ) -> dict[str, object]:
-    resolved_now = _resolve_now(engine, now)
+    resolved_now = _resolve_now(now)
     with engine.connect() as conn:
         providers = _latest_provider_rows(conn, available_at=resolved_now)
         jobs = [
@@ -148,24 +148,10 @@ def _latest_provider_rows(conn: Any, *, available_at: datetime) -> list[dict[str
     return [rows[key] for key in sorted(rows)]
 
 
-def _resolve_now(engine: Engine, now: datetime | None) -> datetime:
+def _resolve_now(now: datetime | None) -> datetime:
     if now is not None:
         return _as_utc_datetime(now)
-    candidates = [datetime.now(UTC)]
-    with engine.connect() as conn:
-        for value in (
-            conn.scalar(select(func.max(provider_health.c.checked_at))),
-            conn.scalar(select(func.max(job_runs.c.started_at))),
-            conn.scalar(select(func.max(data_quality_incidents.c.detected_at))),
-            conn.scalar(select(func.max(candidate_states.c.created_at))),
-            conn.scalar(select(func.max(candidate_packets.c.available_at))),
-            conn.scalar(select(func.max(decision_cards.c.available_at))),
-            conn.scalar(select(func.max(validation_runs.c.created_at))),
-        ):
-            resolved = _as_utc_datetime_or_none(value)
-            if resolved is not None:
-                candidates.append(resolved)
-    return max(candidates)
+    return datetime.now(UTC)
 
 
 def _provider_banners(providers: list[dict[str, object]]) -> list[dict[str, object]]:

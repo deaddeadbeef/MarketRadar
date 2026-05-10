@@ -367,7 +367,7 @@ def test_load_ops_health_reports_provider_status_and_database(
     engine = _engine(tmp_path)
     _insert_dashboard_fixture(engine)
 
-    health = load_ops_health(engine)
+    health = load_ops_health(engine, now=AVAILABLE_AT)
 
     assert health["database"]["status"] == "ok"
     assert health["database"]["candidate_state_count"] == 3
