@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from collections.abc import Mapping
 from dataclasses import fields, is_dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 from math import isfinite
 from typing import Any
@@ -18,9 +18,7 @@ from catalyst_radar.storage.schema import (
     candidate_states,
     decision_cards,
     events,
-    job_runs,
     paper_trades,
-    provider_health,
     signal_features,
     text_snippets,
     user_feedback,
@@ -616,61 +614,15 @@ def load_cost_summary(
     }
 
 
-def load_ops_health(engine: Engine) -> dict[str, object]:
-    with engine.connect() as conn:
-        provider_rows: dict[str, dict[str, object]] = {}
-        for row in conn.execute(
-            select(provider_health).order_by(
-                provider_health.c.provider,
-                provider_health.c.checked_at.desc(),
-                provider_health.c.id.desc(),
-            )
-        ):
-            values = _row_dict(row._mapping)
-            provider_rows.setdefault(str(values["provider"]), values)
-        jobs = [
-            _row_dict(row._mapping)
-            for row in conn.execute(
-                select(job_runs)
-                .order_by(job_runs.c.started_at.desc(), job_runs.c.id.desc())
-                .limit(25)
-            )
-        ]
-        database = {
-            "status": "ok",
-            "candidate_state_count": conn.scalar(
-                select(func.count()).select_from(candidate_states)
-            ),
-            "candidate_packet_count": conn.scalar(
-                select(func.count()).select_from(candidate_packets)
-            ),
-            "decision_card_count": conn.scalar(
-                select(func.count()).select_from(decision_cards)
-            ),
-            "validation_run_count": conn.scalar(
-                select(func.count()).select_from(validation_runs)
-            ),
-            "latest_candidate_as_of": _as_utc_datetime(
-                conn.scalar(select(func.max(candidate_states.c.as_of)))
-            ),
-        }
+def load_ops_health(
+    engine: Engine,
+    *,
+    now: datetime | None = None,
+    stale_after: timedelta = timedelta(hours=36),
+) -> dict[str, object]:
+    from catalyst_radar.ops.health import load_ops_health as _load_ops_health
 
-    providers = [provider_rows[key] for key in sorted(provider_rows)]
-    stale_providers = [
-        str(row["provider"])
-        for row in providers
-        if str(row.get("status") or "").lower()
-        in {"stale", "unhealthy", "degraded", "down", "failed", "error"}
-    ]
-    return {
-        "providers": providers,
-        "jobs": jobs,
-        "database": database,
-        "stale_data": {
-            "detected": bool(stale_providers),
-            "providers": stale_providers,
-        },
-    }
+    return _load_ops_health(engine, now=now, stale_after=stale_after)
 
 
 def _candidate_row(row: Any) -> dict[str, object]:
