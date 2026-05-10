@@ -7,6 +7,7 @@ import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
 
+from apps.dashboard.access import require_viewer
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.dashboard import data as dashboard_data
 from catalyst_radar.storage.db import engine_from_url
@@ -36,6 +37,7 @@ def _load_rows() -> tuple[list[dict[str, object]], str | None]:
 
 
 load_dotenv(".env.local")
+require_viewer()
 
 st.set_page_config(page_title="Themes", layout="wide")
 st.title("Themes")

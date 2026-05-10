@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, ConfigDict
 
 from catalyst_radar.alerts.models import Alert, AlertRoute, AlertStatus
@@ -15,6 +15,7 @@ from catalyst_radar.feedback.service import (
     TickerMismatchError,
     record_feedback,
 )
+from catalyst_radar.security.access import Role, require_role
 from catalyst_radar.storage.alert_repositories import AlertRepository
 from catalyst_radar.storage.db import engine_from_url
 
@@ -33,7 +34,7 @@ def _engine():
     return engine_from_url(AppConfig.from_env().database_url)
 
 
-@router.get("")
+@router.get("", dependencies=[Depends(require_role(Role.VIEWER))])
 def alerts(
     ticker: str | None = None,
     status: str | None = None,
@@ -53,7 +54,7 @@ def alerts(
     return {"items": [_alert_payload(row) for row in rows]}
 
 
-@router.get("/{alert_id}")
+@router.get("/{alert_id}", dependencies=[Depends(require_role(Role.VIEWER))])
 def alert_detail(alert_id: str) -> dict[str, Any]:
     alert = AlertRepository(_engine()).alert_by_id(
         alert_id,
@@ -64,7 +65,7 @@ def alert_detail(alert_id: str) -> dict[str, Any]:
     return _alert_payload(alert)
 
 
-@router.post("/{alert_id}/feedback")
+@router.post("/{alert_id}/feedback", dependencies=[Depends(require_role(Role.ANALYST))])
 def alert_feedback(
     alert_id: str,
     request: AlertFeedbackRequest,

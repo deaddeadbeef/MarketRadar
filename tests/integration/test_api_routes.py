@@ -57,6 +57,60 @@ def test_get_candidates_returns_rows(tmp_path, monkeypatch) -> None:
     assert item["setup_type"] == "breakout"
 
 
+def test_auth_required_when_enabled(tmp_path, monkeypatch) -> None:
+    database_url = _database_url(tmp_path, "auth-required.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("CATALYST_API_AUTH_MODE", "header")
+    _create_database(database_url)
+
+    client = TestClient(create_app())
+
+    response = client.get("/api/radar/candidates")
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "role is required"}
+
+
+def test_viewer_can_read_but_cannot_post_feedback(tmp_path, monkeypatch) -> None:
+    database_url = _database_url(tmp_path, "auth-viewer.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("CATALYST_API_AUTH_MODE", "header")
+    engine = _create_database(database_url)
+    _insert_candidate(engine)
+
+    client = TestClient(create_app())
+
+    read_response = client.get(
+        "/api/radar/candidates",
+        headers={"X-Catalyst-Role": "viewer"},
+    )
+    write_response = client.post(
+        "/api/feedback",
+        headers={"X-Catalyst-Role": "viewer"},
+        json={
+            "artifact_type": "decision_card",
+            "artifact_id": "card-MSFT",
+            "ticker": "MSFT",
+            "label": "useful",
+        },
+    )
+    analyst_write_response = client.post(
+        "/api/feedback",
+        headers={"X-Catalyst-Role": "analyst"},
+        json={
+            "artifact_type": "decision_card",
+            "artifact_id": "card-MSFT",
+            "ticker": "MSFT",
+            "label": "useful",
+        },
+    )
+
+    assert read_response.status_code == 200
+    assert write_response.status_code == 403
+    assert write_response.json() == {"detail": "insufficient role"}
+    assert analyst_write_response.status_code == 200
+
+
 def test_get_candidate_detail_returns_404_for_missing_ticker(tmp_path, monkeypatch) -> None:
     database_url = _database_url(tmp_path, "missing-detail.db")
     monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)

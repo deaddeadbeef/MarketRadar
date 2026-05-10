@@ -8,6 +8,7 @@ import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
 
+from apps.dashboard.access import require_viewer
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.dashboard import data as dashboard_data
 from catalyst_radar.storage.db import engine_from_url
@@ -83,6 +84,7 @@ def _display_value(value: object) -> str:
 
 
 load_dotenv(".env.local")
+require_viewer()
 
 st.set_page_config(page_title="Alerts", layout="wide")
 st.title("Alerts")

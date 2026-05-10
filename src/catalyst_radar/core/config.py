@@ -107,6 +107,9 @@ class AppConfig:
     environment: str = "local"
     database_url: str = "sqlite:///data/local/catalyst_radar.db"
     log_level: str = "INFO"
+    api_auth_mode: str = "disabled"
+    dashboard_auth_mode: str = "disabled"
+    dashboard_role: str = "admin"
     price_min: float = 5
     market_cap_min: float = 300_000_000
     avg_dollar_volume_min: float = 10_000_000
@@ -158,6 +161,13 @@ class AppConfig:
                 "CATALYST_DATABASE_URL", "sqlite:///data/local/catalyst_radar.db"
             ),
             log_level=source.get("CATALYST_LOG_LEVEL", "INFO"),
+            api_auth_mode=source.get("CATALYST_API_AUTH_MODE", "disabled")
+            .strip()
+            .lower(),
+            dashboard_auth_mode=source.get("CATALYST_DASHBOARD_AUTH_MODE", "disabled")
+            .strip()
+            .lower(),
+            dashboard_role=source.get("CATALYST_DASHBOARD_ROLE", "admin").strip().lower(),
             price_min=_float(source, "CATALYST_PRICE_MIN", 5),
             market_cap_min=_float(source, "CATALYST_MARKET_CAP_MIN", 300_000_000),
             avg_dollar_volume_min=_float(

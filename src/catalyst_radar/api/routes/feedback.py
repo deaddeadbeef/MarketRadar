@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, ConfigDict
 
 from catalyst_radar.core.config import AppConfig
@@ -12,6 +12,7 @@ from catalyst_radar.feedback.service import (
 from catalyst_radar.feedback.service import (
     record_feedback as record_feedback_service,
 )
+from catalyst_radar.security.access import Role, require_role
 from catalyst_radar.storage.db import engine_from_url
 
 router = APIRouter(prefix="/api/feedback", tags=["feedback"])
@@ -31,7 +32,7 @@ def _engine():
     return engine_from_url(AppConfig.from_env().database_url)
 
 
-@router.post("")
+@router.post("", dependencies=[Depends(require_role(Role.ANALYST))])
 def record_feedback(
     request: FeedbackRequest,
     x_catalyst_actor: str | None = Header(default=None),

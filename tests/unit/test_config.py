@@ -26,6 +26,20 @@ def test_config_reads_risk_settings_from_env() -> None:
     assert config.max_sector_pct == 0.25
 
 
+def test_config_reads_auth_modes_from_env() -> None:
+    config = AppConfig.from_env(
+        {
+            "CATALYST_API_AUTH_MODE": "HEADER",
+            "CATALYST_DASHBOARD_AUTH_MODE": "HEADER",
+            "CATALYST_DASHBOARD_ROLE": "Analyst",
+        }
+    )
+
+    assert config.api_auth_mode == "header"
+    assert config.dashboard_auth_mode == "header"
+    assert config.dashboard_role == "analyst"
+
+
 def test_config_reads_portfolio_value_and_cash_from_env() -> None:
     config = AppConfig.from_env(
         {
