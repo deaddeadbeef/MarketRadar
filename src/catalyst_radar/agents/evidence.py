@@ -22,8 +22,14 @@ _SOURCE_LINK_FIELDS = frozenset(
 
 
 def build_agent_evidence_packet(packet: CandidatePacket) -> Mapping[str, Any]:
-    supporting = tuple(evidence_item_payload(item) for item in packet.supporting_evidence)
-    disconfirming = tuple(evidence_item_payload(item) for item in packet.disconfirming_evidence)
+    supporting = tuple(
+        _evidence_payload_with_ref(item, f"supporting_evidence[{index}]")
+        for index, item in enumerate(packet.supporting_evidence)
+    )
+    disconfirming = tuple(
+        _evidence_payload_with_ref(item, f"disconfirming_evidence[{index}]")
+        for index, item in enumerate(packet.disconfirming_evidence)
+    )
     evidence_items = (*packet.supporting_evidence, *packet.disconfirming_evidence)
 
     return {
@@ -54,34 +60,86 @@ def source_faithfulness_violations(
     )
     violations: list[str] = []
 
-    for path, item in _iter_source_link_items(payload):
-        if not isinstance(item, Mapping):
-            violations.append(
-                f"{path} must be an object with source_id or computed_feature_id"
-            )
+    for path, field_name, field_value in _iter_source_link_fields(payload):
+        if not isinstance(field_value, Sequence) or isinstance(field_value, str):
+            violations.append(f"{path} must be a list")
             continue
 
-        source_id = _optional_text(item.get("source_id"))
-        computed_feature_id = _optional_text(item.get("computed_feature_id"))
-        has_allowed_source = source_id in allowed_reference_ids if source_id else False
-        has_allowed_feature = (
-            computed_feature_id in allowed_computed_feature_ids
-            if computed_feature_id
-            else False
-        )
-
-        if not source_id and not computed_feature_id:
-            violations.append(f"{path} must include source_id or computed_feature_id")
-            continue
-        if source_id and not has_allowed_source:
-            violations.append(f"{path}.source_id is not in allowed_reference_ids: {source_id}")
-        if computed_feature_id and not has_allowed_feature:
-            violations.append(
-                f"{path}.computed_feature_id is not in allowed_computed_feature_ids: "
-                f"{computed_feature_id}"
+        for index, item in enumerate(field_value):
+            item_path = f"{path}[{index}]"
+            if field_name == "bear_case" and isinstance(item, str):
+                continue
+            if not isinstance(item, Mapping):
+                violations.append(
+                    f"{item_path} must be an object with source_id or computed_feature_id"
+                )
+                continue
+            _append_item_violations(
+                item,
+                path=item_path,
+                allowed_reference_ids=allowed_reference_ids,
+                allowed_computed_feature_ids=allowed_computed_feature_ids,
+                violations=violations,
             )
 
     return violations
+
+
+def _evidence_payload_with_ref(item: EvidenceItem, ref: str) -> dict[str, Any]:
+    payload = evidence_item_payload(item)
+    payload["ref"] = ref
+    return payload
+
+
+def _append_item_violations(
+    item: Mapping[str, Any],
+    *,
+    path: str,
+    allowed_reference_ids: set[str],
+    allowed_computed_feature_ids: set[str],
+    violations: list[str],
+) -> None:
+    source_id = _strict_optional_string(item, "source_id", path, violations)
+    computed_feature_id = _strict_optional_string(
+        item,
+        "computed_feature_id",
+        path,
+        violations,
+    )
+    has_invalid_source_field = any(
+        violation.startswith(f"{path}.source_id must be a string")
+        or violation.startswith(f"{path}.computed_feature_id must be a string")
+        for violation in violations
+    )
+    if has_invalid_source_field:
+        return
+
+    if not source_id and not computed_feature_id:
+        violations.append(f"{path} must include source_id or computed_feature_id")
+        return
+    if source_id and source_id not in allowed_reference_ids:
+        violations.append(f"{path}.source_id is not in allowed_reference_ids: {source_id}")
+    if computed_feature_id and computed_feature_id not in allowed_computed_feature_ids:
+        violations.append(
+            f"{path}.computed_feature_id is not in allowed_computed_feature_ids: "
+            f"{computed_feature_id}"
+        )
+
+
+def _strict_optional_string(
+    item: Mapping[str, Any],
+    field_name: str,
+    path: str,
+    violations: list[str],
+) -> str | None:
+    if field_name not in item:
+        return None
+    value = item[field_name]
+    if not isinstance(value, str):
+        violations.append(f"{path}.{field_name} must be a string")
+        return None
+    text = value.strip()
+    return text or None
 
 
 def _allowed_reference_ids(items: Sequence[EvidenceItem]) -> list[str]:
@@ -105,37 +163,24 @@ def _allowed_computed_feature_ids(items: Sequence[EvidenceItem]) -> list[str]:
 def _allowed_values(value: Any) -> set[str]:
     if not isinstance(value, Sequence) or isinstance(value, str):
         return set()
-    return {item for item in (_optional_text(item) for item in value) if item}
+    return {item for item in value if isinstance(item, str) and item.strip()}
 
 
-def _iter_source_link_items(value: Any, path: str = "") -> list[tuple[str, Any]]:
-    items: list[tuple[str, Any]] = []
+def _iter_source_link_fields(value: Any, path: str = "") -> list[tuple[str, str, Any]]:
+    fields: list[tuple[str, str, Any]] = []
     if isinstance(value, Mapping):
         for key, child in value.items():
             key_text = str(key)
             child_path = key_text if not path else f"{path}.{key_text}"
             if key_text in _SOURCE_LINK_FIELDS:
-                if isinstance(child, Sequence) and not isinstance(child, str):
-                    items.extend(
-                        (f"{child_path}[{index}]", item)
-                        for index, item in enumerate(child)
-                    )
-                else:
-                    items.append((child_path, child))
+                fields.append((child_path, key_text, child))
                 continue
-            items.extend(_iter_source_link_items(child, child_path))
+            fields.extend(_iter_source_link_fields(child, child_path))
     elif isinstance(value, Sequence) and not isinstance(value, str):
         for index, child in enumerate(value):
             child_path = f"{path}[{index}]" if path else f"[{index}]"
-            items.extend(_iter_source_link_items(child, child_path))
-    return items
-
-
-def _optional_text(value: Any) -> str | None:
-    if value is None:
-        return None
-    text = str(value).strip()
-    return text or None
+            fields.extend(_iter_source_link_fields(child, child_path))
+    return fields
 
 
 __all__ = [

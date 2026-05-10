@@ -27,6 +27,8 @@ def test_build_agent_evidence_packet_collects_allowed_references() -> None:
     assert "event-msft" in view["allowed_reference_ids"]
     assert "https://example.test/msft-guidance" in view["allowed_reference_ids"]
     assert "feature-risk-msft" in view["allowed_computed_feature_ids"]
+    assert view["supporting_evidence"][0]["ref"] == "supporting_evidence[0]"
+    assert view["disconfirming_evidence"][0]["ref"] == "disconfirming_evidence[0]"
     assert view["supporting_evidence"][0]["source_id"] == "event-msft"
     assert view["supporting_evidence"][0]["source_url"] == "https://example.test/msft-guidance"
     assert view["disconfirming_evidence"][0]["computed_feature_id"] == "feature-risk-msft"
@@ -96,6 +98,65 @@ def test_source_faithfulness_rejects_unlinked_claims() -> None:
     )
 
     assert violations == ["claims[0] must include source_id or computed_feature_id"]
+
+
+def test_source_faithfulness_rejects_non_string_references() -> None:
+    view = build_agent_evidence_packet(_candidate())
+
+    violations = source_faithfulness_violations(
+        {
+            "claims": [{"claim": "Numeric source.", "source_id": 123}],
+            "supporting_points": [{"claim": "Null source.", "source_id": None}],
+            "risks": [{"claim": "Numeric feature.", "computed_feature_id": 456}],
+        },
+        view,
+    )
+
+    assert violations == [
+        "claims[0].source_id must be a string",
+        "supporting_points[0].source_id must be a string",
+        "risks[0].computed_feature_id must be a string",
+    ]
+
+
+def test_source_faithfulness_ignores_plain_string_bear_case_items() -> None:
+    view = build_agent_evidence_packet(_candidate())
+
+    violations = source_faithfulness_violations(
+        {
+            "bear_case": [
+                "Phase 12 evidence-review payloads may contain plain bear-case strings.",
+                {
+                    "claim": "Risk penalty is elevated.",
+                    "computed_feature_id": "feature-risk-msft",
+                },
+            ],
+        },
+        view,
+    )
+
+    assert violations == []
+
+
+def test_source_faithfulness_rejects_non_list_source_link_fields() -> None:
+    view = build_agent_evidence_packet(_candidate())
+
+    violations = source_faithfulness_violations(
+        {
+            "claims": {"claim": "Not a list."},
+            "supporting_points": "Not a list.",
+            "risks": {"claim": "Not a list."},
+            "bear_case": {"claim": "Not a list."},
+        },
+        view,
+    )
+
+    assert violations == [
+        "claims must be a list",
+        "supporting_points must be a list",
+        "risks must be a list",
+        "bear_case must be a list",
+    ]
 
 
 def _candidate() -> CandidatePacket:

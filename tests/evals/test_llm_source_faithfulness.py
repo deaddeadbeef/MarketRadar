@@ -53,6 +53,20 @@ def test_eval_rejects_hallucinated_source_id() -> None:
     ]
 
 
+def test_eval_accepts_phase12_plain_string_bear_case() -> None:
+    view = build_agent_evidence_packet(_candidate())
+
+    evidence_review = {
+        "claims": [{"claim": "Cloud guidance improved.", "source_id": "event-msft"}],
+        "bear_case": [
+            "Phase 12 evidence-review payloads use plain strings for bear_case.",
+            "Those strings are legacy review text, not source-linked claim objects.",
+        ],
+    }
+
+    assert source_faithfulness_violations(evidence_review, view) == []
+
+
 def test_eval_rejects_decision_card_draft_without_references() -> None:
     view = build_agent_evidence_packet(_candidate())
 
