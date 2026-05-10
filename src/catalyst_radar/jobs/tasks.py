@@ -462,31 +462,49 @@ def _validation_update(context: _DailyRunContext) -> _StepOutcome:
         },
     )
     context.validation_repo.upsert_validation_run(run)
-    results = build_replay_results(
-        context.packet_repo,
-        context.validation_repo,
-        as_of_start=context.as_of_datetime,
-        as_of_end=context.as_of_datetime,
-        decision_available_at=context.spec.decision_available_at,
-        states=states,
-        tickers=context.spec.tickers or None,
-        run_id=run_id,
-    )
-    count = context.validation_repo.upsert_validation_results(results)
-    report = build_validation_report(
-        run_id,
-        results,
-        useful_alert_labels=context.validation_repo.list_useful_alert_labels(
-            available_at=context.spec.outcome_available_at,
-        ),
-    )
-    metrics = validation_report_payload(report)
-    context.validation_repo.finish_validation_run(
-        run_id,
-        ValidationRunStatus.SUCCESS,
-        metrics,
-        finished_at=context.spec.outcome_available_at,
-    )
+    try:
+        results = build_replay_results(
+            context.packet_repo,
+            context.validation_repo,
+            as_of_start=context.as_of_datetime,
+            as_of_end=context.as_of_datetime,
+            decision_available_at=context.spec.decision_available_at,
+            states=states,
+            tickers=context.spec.tickers or None,
+            run_id=run_id,
+        )
+        count = context.validation_repo.upsert_validation_results(results)
+        report = build_validation_report(
+            run_id,
+            results,
+            useful_alert_labels=context.validation_repo.list_useful_alert_labels(
+                available_at=context.spec.outcome_available_at,
+            ),
+        )
+        metrics = validation_report_payload(report)
+        context.validation_repo.finish_validation_run(
+            run_id,
+            ValidationRunStatus.SUCCESS,
+            metrics,
+            finished_at=context.spec.outcome_available_at,
+        )
+    except Exception as exc:
+        reason = _truncate_reason(str(exc) or exc.__class__.__name__)
+        context.validation_repo.finish_validation_run(
+            run_id,
+            ValidationRunStatus.FAILED,
+            {"error": reason, "error_type": exc.__class__.__name__},
+            finished_at=context.spec.outcome_available_at,
+        )
+        return _StepOutcome(
+            status=JobStatus.FAILED.value,
+            reason=reason,
+            payload={
+                "run_id": run_id,
+                "error_type": exc.__class__.__name__,
+                "outcome_available_at": context.spec.outcome_available_at.isoformat(),
+            },
+        )
     return _StepOutcome(
         status=JobStatus.SUCCESS.value,
         requested_count=len(results),

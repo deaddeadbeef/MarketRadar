@@ -96,6 +96,38 @@ def test_daily_run_runs_validation_update_when_outcome_cutoff_is_supplied():
     assert run.metrics["candidate_count"] == 0
 
 
+def test_daily_run_marks_validation_run_failed_when_validation_update_fails(monkeypatch):
+    engine = _engine()
+    outcome_available_at = datetime(2026, 6, 10, 1, 0, tzinfo=UTC)
+    spec = DailyRunSpec(
+        as_of=date(2026, 5, 9),
+        decision_available_at=datetime(2026, 5, 10, 1, 0, tzinfo=UTC),
+        outcome_available_at=outcome_available_at,
+        run_llm=False,
+        dry_run_alerts=True,
+    )
+
+    def fail_replay(*args, **kwargs):
+        del args, kwargs
+        raise RuntimeError("forced replay failure")
+
+    monkeypatch.setattr("catalyst_radar.jobs.tasks.build_replay_results", fail_replay)
+
+    result = run_daily(spec, engine=engine)
+
+    validation_step = result.step("validation_update")
+    assert validation_step.status == "failed"
+    assert validation_step.reason == "forced replay failure"
+    with engine.connect() as conn:
+        run = conn.execute(select(validation_runs)).one()
+
+    assert run.status == "failed"
+    assert run.metrics == {
+        "error": "forced replay failure",
+        "error_type": "RuntimeError",
+    }
+
+
 def test_job_lock_rejects_unexpired_owner_and_allows_expired_takeover():
     engine = _engine()
     repo = JobLockRepository(engine)
