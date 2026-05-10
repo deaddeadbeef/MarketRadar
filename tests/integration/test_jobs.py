@@ -7,20 +7,35 @@ from datetime import UTC, date, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
-from sqlalchemy import create_engine, inspect, select
+from sqlalchemy import create_engine, insert, inspect, select
 
 from apps.worker import main as worker_main
 from catalyst_radar.cli import main as cli_main
+from catalyst_radar.core.models import (
+    ActionState,
+    CandidateSnapshot,
+    MarketFeatures,
+    PolicyResult,
+)
 from catalyst_radar.jobs.scheduler import (
     SchedulerConfig,
     SchedulerRunResult,
+    _next_sleep_seconds,
     build_daily_spec,
     run_once,
 )
 from catalyst_radar.jobs.tasks import DAILY_STEP_ORDER, DailyRunSpec, run_daily
+from catalyst_radar.pipeline.scan import ScanResult
 from catalyst_radar.storage.db import create_schema
 from catalyst_radar.storage.job_repositories import JobLockRepository
-from catalyst_radar.storage.schema import job_locks, job_runs, validation_runs
+from catalyst_radar.storage.schema import (
+    candidate_states,
+    job_locks,
+    job_runs,
+    provider_health,
+    securities,
+    validation_runs,
+)
 
 
 def _engine():
@@ -33,6 +48,67 @@ def _file_engine(tmp_path):
     engine = create_engine(f"sqlite:///{(tmp_path / 'jobs.db').as_posix()}", future=True)
     create_schema(engine)
     return engine
+
+
+def _insert_active_security(engine, now: datetime) -> None:
+    with engine.begin() as conn:
+        conn.execute(
+            insert(securities).values(
+                ticker="MSFT",
+                name="Microsoft",
+                exchange="NASDAQ",
+                sector="Technology",
+                industry="Software",
+                market_cap=3_000_000_000_000.0,
+                avg_dollar_volume_20d=5_000_000_000.0,
+                has_options=True,
+                is_active=True,
+                updated_at=now,
+                metadata={},
+            )
+        )
+
+
+def _high_score_scan_result(as_of: date) -> ScanResult:
+    as_of_dt = datetime.combine(as_of, datetime.min.time(), tzinfo=UTC)
+    features = MarketFeatures(
+        ticker="MSFT",
+        as_of=as_of_dt,
+        ret_5d=0.05,
+        ret_20d=0.12,
+        rs_20_sector=0.2,
+        rs_60_spy=0.3,
+        near_52w_high=1.0,
+        ma_regime=1.0,
+        rel_volume_5d=2.0,
+        dollar_volume_z=1.0,
+        atr_pct=0.03,
+        extension_20d=0.05,
+        liquidity_score=95.0,
+        feature_version="test-features-v1",
+    )
+    candidate = CandidateSnapshot(
+        ticker="MSFT",
+        as_of=as_of_dt,
+        features=features,
+        final_score=91.0,
+        strong_pillars=4,
+        risk_penalty=0.0,
+        portfolio_penalty=0.0,
+        data_stale=False,
+        entry_zone=(100.0, 105.0),
+        invalidation_price=95.0,
+        reward_risk=3.0,
+        metadata={"pillar_scores": {"price_strength": 90.0, "volume_liquidity": 88.0}},
+    )
+    return ScanResult(
+        ticker="MSFT",
+        candidate=candidate,
+        policy=PolicyResult(
+            state=ActionState.ELIGIBLE_FOR_MANUAL_BUY_REVIEW,
+            reasons=("all_buy_review_gates_passed",),
+        ),
+    )
 
 
 def test_create_schema_adds_job_locks_table():
@@ -116,6 +192,56 @@ def test_daily_run_runs_validation_update_when_outcome_cutoff_is_supplied():
     assert run.metrics["candidate_count"] == 0
 
 
+def test_daily_run_caps_high_states_and_blocks_decision_work_when_degraded(monkeypatch):
+    engine = _engine()
+    decision_available_at = datetime(2026, 5, 10, 1, 0, tzinfo=UTC)
+    _insert_active_security(engine, decision_available_at)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(provider_health).values(
+                id="provider-health-down",
+                provider="polygon",
+                status="down",
+                checked_at=decision_available_at,
+                reason="provider outage",
+                latency_ms=None,
+            )
+        )
+
+    def fake_run_scan(*args, **kwargs):
+        del args, kwargs
+        return [_high_score_scan_result(date(2026, 5, 9))]
+
+    monkeypatch.setattr("catalyst_radar.jobs.tasks.run_scan", fake_run_scan)
+    spec = DailyRunSpec(
+        as_of=date(2026, 5, 9),
+        decision_available_at=decision_available_at,
+        run_llm=True,
+        llm_dry_run=True,
+        dry_run_alerts=True,
+    )
+
+    result = run_daily(spec, engine=engine)
+
+    assert result.step("scoring_policy").status == "success"
+    assert result.step("scoring_policy").payload["degraded_state_cap_count"] == 1
+    assert result.step("candidate_packets").status == "skipped"
+    assert result.step("candidate_packets").reason == "degraded_mode_blocks_high_state_work"
+    assert result.step("decision_cards").reason == "degraded_mode_blocks_decision_cards"
+    assert result.step("llm_review").reason == "degraded_mode_blocks_llm_review"
+
+    with engine.connect() as conn:
+        state = conn.execute(
+            select(
+                candidate_states.c.state,
+                candidate_states.c.transition_reasons,
+            )
+        ).one()
+
+    assert state.state == ActionState.ADD_TO_WATCHLIST.value
+    assert "degraded_mode_state_cap" in state.transition_reasons
+
+
 def test_daily_run_marks_validation_run_failed_when_validation_update_fails(monkeypatch):
     engine = _engine()
     outcome_available_at = datetime(2026, 6, 10, 1, 0, tzinfo=UTC)
@@ -146,6 +272,30 @@ def test_daily_run_marks_validation_run_failed_when_validation_update_fails(monk
         "error": "forced replay failure",
         "error_type": "RuntimeError",
     }
+
+
+def test_daily_run_blocks_downstream_steps_after_failed_feature_scan(monkeypatch):
+    engine = _engine()
+    decision_available_at = datetime(2026, 5, 10, 1, 0, tzinfo=UTC)
+    _insert_active_security(engine, decision_available_at)
+
+    def fail_scan(*args, **kwargs):
+        del args, kwargs
+        raise RuntimeError("scan unavailable")
+
+    monkeypatch.setattr("catalyst_radar.jobs.tasks.run_scan", fail_scan)
+    spec = DailyRunSpec(
+        as_of=date(2026, 5, 9),
+        decision_available_at=decision_available_at,
+    )
+
+    result = run_daily(spec, engine=engine)
+
+    assert result.step("feature_scan").status == "failed"
+    assert result.step("candidate_packets").status == "skipped"
+    assert result.step("candidate_packets").reason == "blocked_by_failed_dependency:feature_scan"
+    assert result.step("decision_cards").status == "skipped"
+    assert result.step("validation_update").status == "skipped"
 
 
 def test_job_lock_rejects_unexpired_owner_and_allows_expired_takeover():
@@ -235,6 +385,19 @@ def test_job_lock_heartbeat_and_release_require_matching_owner():
     )
 
 
+def test_job_lock_rejects_nonpositive_ttl():
+    engine = _engine()
+    repo = JobLockRepository(engine)
+
+    with pytest.raises(ValueError, match="ttl must be greater than 0"):
+        repo.acquire(
+            "daily-run",
+            owner="worker-a",
+            ttl=timedelta(seconds=0),
+            now=datetime(2026, 5, 10, 1, 0, tzinfo=UTC),
+        )
+
+
 def test_scheduler_run_once_uses_lock_and_releases_it():
     engine = _engine()
     config = SchedulerConfig(
@@ -292,7 +455,7 @@ def test_scheduler_run_once_heartbeats_lock_during_active_run(monkeypatch, tmp_p
     competitor_attempt: dict[str, bool] = {}
     release_worker = threading.Event()
 
-    def slow_run_daily(spec, *, engine):
+    def slow_run_daily(spec, *, engine, abort_event=None):
         time.sleep(1.25)
         competitor = JobLockRepository(engine).acquire(
             "daily-run",
@@ -302,7 +465,7 @@ def test_scheduler_run_once_heartbeats_lock_during_active_run(monkeypatch, tmp_p
         )
         competitor_attempt["acquired"] = competitor.acquired
         release_worker.set()
-        return run_daily(spec, engine=engine)
+        return run_daily(spec, engine=engine, abort_event=abort_event)
 
     monkeypatch.setattr("catalyst_radar.jobs.scheduler.run_daily", slow_run_daily)
     config = SchedulerConfig(
@@ -319,6 +482,55 @@ def test_scheduler_run_once_heartbeats_lock_during_active_run(monkeypatch, tmp_p
     assert release_worker.is_set()
     assert result.acquired_lock is True
     assert competitor_attempt["acquired"] is False
+
+
+def test_scheduler_run_once_reports_lost_heartbeat(monkeypatch, tmp_path):
+    engine = _file_engine(tmp_path)
+
+    def slow_run_daily(spec, *, engine, abort_event=None):
+        time.sleep(0.25)
+        return run_daily(spec, engine=engine, abort_event=abort_event)
+
+    def lose_heartbeat(self, *args, **kwargs):
+        del self, args, kwargs
+        return False
+
+    monkeypatch.setattr("catalyst_radar.jobs.scheduler.run_daily", slow_run_daily)
+    monkeypatch.setattr(JobLockRepository, "heartbeat", lose_heartbeat)
+    config = SchedulerConfig(
+        owner="worker-a",
+        lock_name="daily-run",
+        lock_ttl=timedelta(milliseconds=150),
+        run_interval=timedelta(minutes=30),
+        as_of=date(2026, 5, 9),
+        decision_available_at=datetime(2026, 5, 10, 1, 0, tzinfo=UTC),
+    )
+
+    result = run_once(engine=engine, config=config)
+
+    assert result.acquired_lock is True
+    assert result.reason == "lock_heartbeat_lost"
+    assert result.daily_result is not None
+    assert result.daily_result.step("daily_bar_ingest").status == "failed"
+
+
+def test_scheduler_retries_near_lock_expiry_instead_of_full_interval():
+    now = datetime(2026, 5, 10, 1, 0, tzinfo=UTC)
+    result = SchedulerRunResult(
+        acquired_lock=False,
+        reason="lock_held",
+        daily_result=None,
+        lock_expires_at=now + timedelta(minutes=5),
+    )
+
+    sleep_seconds = _next_sleep_seconds(timedelta(hours=24), result, now=now)
+
+    assert sleep_seconds == pytest.approx(301.0)
+
+
+def test_scheduler_config_rejects_nonpositive_lock_ttl_from_env():
+    with pytest.raises(ValueError, match="lock_ttl must be greater than 0"):
+        SchedulerConfig.from_env({"CATALYST_WORKER_LOCK_TTL_SECONDS": "0"})
 
 
 def test_build_daily_spec_from_environment_values():
@@ -342,6 +554,13 @@ def test_build_daily_spec_from_environment_values():
     assert spec.run_llm is False
     assert spec.llm_dry_run is True
     assert spec.dry_run_alerts is True
+
+
+def test_scheduler_config_rejects_unsupported_real_llm_and_alert_delivery():
+    with pytest.raises(ValueError, match="real daily LLM review is not supported"):
+        SchedulerConfig(run_llm=True, llm_dry_run=False, owner="worker-test")
+    with pytest.raises(ValueError, match="daily alert delivery is not supported"):
+        SchedulerConfig(dry_run_alerts=False, owner="worker-test")
 
 
 def test_worker_one_shot_returns_failure_for_partial_daily_result(monkeypatch, tmp_path):
@@ -385,3 +604,36 @@ def test_cli_run_daily_json_smoke(monkeypatch, tmp_path, capsys):
     assert payload["reason"] is None
     assert payload["daily_result"]["status"] == "success"
     assert payload["daily_result"]["steps"]["llm_review"]["status"] == "skipped"
+
+
+def test_cli_run_daily_rejects_unsupported_real_llm_and_delivery(monkeypatch, tmp_path, capsys):
+    database_url = f"sqlite:///{(tmp_path / 'scheduler-cli.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    real_llm_exit = cli_main(
+        [
+            "run-daily",
+            "--as-of",
+            "2026-05-09",
+            "--available-at",
+            "2026-05-10T01:00:00+00:00",
+            "--run-llm",
+            "--real-llm",
+        ]
+    )
+    delivery_exit = cli_main(
+        [
+            "run-daily",
+            "--as-of",
+            "2026-05-09",
+            "--available-at",
+            "2026-05-10T01:00:00+00:00",
+            "--deliver-alerts",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert real_llm_exit == 2
+    assert delivery_exit == 2
+    assert "run-daily --real-llm is not supported" in captured.err
+    assert "run-daily --deliver-alerts is not supported" in captured.err

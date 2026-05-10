@@ -1,9 +1,8 @@
+# Supply production values through exported environment variables or:
+# docker compose --env-file .env.prod -f infra/docker/docker-compose.prod.yml up -d
 services:
   postgres:
     image: postgres:16
-    env_file:
-      - path: ../../.env.prod
-        required: false
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-catalyst}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
@@ -25,9 +24,6 @@ services:
       context: ../..
       dockerfile: infra/docker/Dockerfile
     command: python -m uvicorn apps.api.main:app --host 0.0.0.0 --port 8000
-    env_file:
-      - path: ../../.env.prod
-        required: false
     environment:
       CATALYST_DATABASE_URL: ${CATALYST_DATABASE_URL:?CATALYST_DATABASE_URL is required}
     ports:
@@ -41,9 +37,6 @@ services:
       context: ../..
       dockerfile: infra/docker/Dockerfile
     command: streamlit run apps/dashboard/Home.py --server.address 0.0.0.0 --server.port 8501
-    env_file:
-      - path: ../../.env.prod
-        required: false
     environment:
       CATALYST_DATABASE_URL: ${CATALYST_DATABASE_URL:?CATALYST_DATABASE_URL is required}
     ports:
@@ -57,9 +50,6 @@ services:
       context: ../..
       dockerfile: infra/docker/Dockerfile
     command: python -m apps.worker.main
-    env_file:
-      - path: ../../.env.prod
-        required: false
     environment:
       CATALYST_DATABASE_URL: ${CATALYST_DATABASE_URL:?CATALYST_DATABASE_URL is required}
       CATALYST_WORKER_INTERVAL_SECONDS: ${CATALYST_WORKER_INTERVAL_SECONDS:-86400}

@@ -309,6 +309,18 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "run-daily":
+        if args.real_llm:
+            print(
+                "run-daily --real-llm is not supported; use run-llm-review per candidate",
+                file=sys.stderr,
+            )
+            return 2
+        if args.deliver_alerts:
+            print(
+                "run-daily --deliver-alerts is not supported; use send-alerts --dry-run",
+                file=sys.stderr,
+            )
+            return 2
         create_schema(engine)
         scheduler_config = SchedulerConfig(
             owner="cli",
@@ -1429,8 +1441,10 @@ def _alert_cli_payload(alert: object) -> dict[str, object]:
 def _scheduler_exit_code(result: SchedulerRunResult) -> int:
     if result.reason == "lock_held":
         return 0
+    if result.reason is not None:
+        return 1
     if result.daily_result is None:
-        return 1 if result.reason is not None else 0
+        return 0
     return 0 if result.daily_result.status == "success" else 1
 
 

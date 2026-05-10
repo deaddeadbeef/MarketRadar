@@ -35,6 +35,7 @@ class JobLockRepository:
         now: datetime | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> JobLockAcquireResult:
+        _validate_positive_ttl(ttl)
         resolved_now = _to_utc(now or datetime.now(UTC), "now")
         expires_at = resolved_now + ttl
         payload = thaw_json_value(metadata or {})
@@ -78,6 +79,7 @@ class JobLockRepository:
         ttl: timedelta,
         now: datetime | None = None,
     ) -> bool:
+        _validate_positive_ttl(ttl)
         resolved_now = _to_utc(now or datetime.now(UTC), "now")
         with self.engine.begin() as conn:
             result = conn.execute(
@@ -143,6 +145,12 @@ def _as_utc(value: datetime | str) -> datetime:
     if value.tzinfo is None or value.utcoffset() is None:
         return value.replace(tzinfo=UTC)
     return value.astimezone(UTC)
+
+
+def _validate_positive_ttl(ttl: timedelta) -> None:
+    if ttl.total_seconds() <= 0:
+        msg = "ttl must be greater than 0"
+        raise ValueError(msg)
 
 
 __all__ = ["JobLockAcquireResult", "JobLockRepository"]

@@ -29,6 +29,17 @@ class SchedulerConfig:
     llm_dry_run: bool = True
     dry_run_alerts: bool = True
 
+    def __post_init__(self) -> None:
+        if self.lock_ttl.total_seconds() <= 0:
+            msg = "lock_ttl must be greater than 0"
+            raise ValueError(msg)
+        if self.run_llm and not self.llm_dry_run:
+            msg = "real daily LLM review is not supported; use run-llm-review per candidate"
+            raise ValueError(msg)
+        if not self.dry_run_alerts:
+            msg = "daily alert delivery is not supported; use send-alerts dry-run"
+            raise ValueError(msg)
+
     @classmethod
     def from_env(cls, environ: Mapping[str, str] | None = None) -> SchedulerConfig:
         source = os.environ if environ is None else environ
@@ -65,6 +76,19 @@ class SchedulerRunResult:
     acquired_lock: bool
     reason: str | None
     daily_result: DailyRunResult | None
+    lock_expires_at: datetime | None = None
+
+
+@dataclass
+class _HeartbeatState:
+    failed: threading.Event
+    reason: str | None = None
+    error_type: str | None = None
+
+    def mark_failed(self, reason: str, exc: Exception | None = None) -> None:
+        self.reason = reason
+        self.error_type = exc.__class__.__name__ if exc is not None else None
+        self.failed.set()
 
 
 def build_daily_spec(
@@ -104,15 +128,17 @@ def run_once(
             acquired_lock=False,
             reason="lock_held",
             daily_result=None,
+            lock_expires_at=lock.expires_at,
         )
 
     heartbeat_stop = threading.Event()
-    heartbeat_thread = _start_heartbeat(repo, config, heartbeat_stop)
+    heartbeat_state = _HeartbeatState(failed=threading.Event())
+    heartbeat_thread = _start_heartbeat(repo, config, heartbeat_stop, heartbeat_state)
     try:
-        daily_result = run_daily(spec, engine=engine)
+        daily_result = run_daily(spec, engine=engine, abort_event=heartbeat_state.failed)
         return SchedulerRunResult(
             acquired_lock=True,
-            reason=None,
+            reason=heartbeat_state.reason,
             daily_result=daily_result,
         )
     finally:
@@ -127,14 +153,25 @@ def run_forever(*, engine: Engine, config: SchedulerConfig) -> None:
         run_once(engine=engine, config=config)
         return
     while True:
-        run_once(engine=engine, config=config)
-        time_module.sleep(interval_seconds)
+        result = run_once(engine=engine, config=config)
+        time_module.sleep(
+            _next_sleep_seconds(
+                config.run_interval,
+                result,
+                now=datetime.now(UTC),
+            )
+        )
 
 
 def scheduler_run_payload(result: SchedulerRunResult) -> dict[str, Any]:
     return {
         "acquired_lock": result.acquired_lock,
         "reason": result.reason,
+        "lock_expires_at": (
+            result.lock_expires_at.isoformat()
+            if result.lock_expires_at is not None
+            else None
+        ),
         "daily_result": (
             daily_run_payload(result.daily_result)
             if result.daily_result is not None
@@ -202,10 +239,11 @@ def _start_heartbeat(
     repo: JobLockRepository,
     config: SchedulerConfig,
     stop: threading.Event,
+    state: _HeartbeatState,
 ) -> threading.Thread:
     thread = threading.Thread(
         target=_heartbeat_loop,
-        args=(repo, config, stop),
+        args=(repo, config, stop, state),
         name=f"catalyst-radar-lock-heartbeat:{config.lock_name}",
         daemon=True,
     )
@@ -217,6 +255,7 @@ def _heartbeat_loop(
     repo: JobLockRepository,
     config: SchedulerConfig,
     stop: threading.Event,
+    state: _HeartbeatState,
 ) -> None:
     interval = _heartbeat_interval(config.lock_ttl)
     while not stop.wait(interval):
@@ -226,8 +265,10 @@ def _heartbeat_loop(
                 owner=config.owner,
                 ttl=config.lock_ttl,
             ):
+                state.mark_failed("lock_heartbeat_lost")
                 return
-        except Exception:
+        except Exception as exc:
+            state.mark_failed("lock_heartbeat_error", exc)
             return
 
 
@@ -260,6 +301,23 @@ def _duration_seconds(
     except ValueError as exc:
         msg = f"{key} must be a number of seconds"
         raise ValueError(msg) from exc
+
+
+def _next_sleep_seconds(
+    run_interval: timedelta,
+    result: SchedulerRunResult,
+    *,
+    now: datetime,
+) -> float:
+    interval_seconds = run_interval.total_seconds()
+    if interval_seconds <= 0:
+        return 0.0
+    if result.reason == "lock_held" and result.lock_expires_at is not None:
+        seconds_until_expiry = (result.lock_expires_at - _to_utc(now, "now")).total_seconds()
+        return max(1.0, min(interval_seconds, seconds_until_expiry + 1.0))
+    if result.reason in {"lock_heartbeat_error", "lock_heartbeat_lost"}:
+        return max(1.0, min(interval_seconds, 60.0))
+    return interval_seconds
 
 
 def _optional_date(source: Mapping[str, str], key: str) -> date | None:

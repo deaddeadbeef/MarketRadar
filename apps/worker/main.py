@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sys
+
 try:
     from dotenv import load_dotenv
 except ImportError:  # pragma: no cover - dotenv is optional for worker startup.
@@ -18,7 +20,11 @@ def main() -> int:
     engine = engine_from_url(app_config.database_url)
     create_schema(engine)
 
-    scheduler_config = SchedulerConfig.from_env()
+    try:
+        scheduler_config = SchedulerConfig.from_env()
+    except ValueError as exc:
+        print(f"worker config error: {exc}", file=sys.stderr)
+        return 2
     if scheduler_config.run_interval.total_seconds() <= 0:
         result = run_once(engine=engine, config=scheduler_config)
         return _exit_code(result)
@@ -30,8 +36,10 @@ def main() -> int:
 def _exit_code(result: SchedulerRunResult) -> int:
     if result.reason == "lock_held":
         return 0
+    if result.reason is not None:
+        return 1
     if result.daily_result is None:
-        return 1 if result.reason is not None else 0
+        return 0
     return 0 if result.daily_result.status == "success" else 1
 
 

@@ -8,8 +8,9 @@ from typing import Any
 from sqlalchemy import Engine, func, select
 
 from catalyst_radar.alerts.digest import build_alert_digest, digest_payload
-from catalyst_radar.core.models import ActionState, JobStatus
+from catalyst_radar.core.models import ActionState, JobStatus, PolicyResult
 from catalyst_radar.decision_cards.builder import build_decision_card
+from catalyst_radar.ops.health import DISABLED_DEGRADED_STATES, load_ops_health
 from catalyst_radar.pipeline.candidate_packet import build_candidate_packet
 from catalyst_radar.pipeline.scan import ScanResult, run_scan
 from catalyst_radar.storage.alert_repositories import AlertRepository
@@ -65,6 +66,12 @@ class DailyRunSpec:
                 _aware_utc(self.outcome_available_at, "outcome_available_at"),
             )
         object.__setattr__(self, "tickers", _normalize_tickers(self.tickers))
+        if self.run_llm and not self.llm_dry_run:
+            msg = "real daily LLM review is not supported; use run-llm-review per candidate"
+            raise ValueError(msg)
+        if not self.dry_run_alerts:
+            msg = "daily alert delivery is not supported; use send-alerts dry-run"
+            raise ValueError(msg)
 
 
 @dataclass(frozen=True)
@@ -115,6 +122,8 @@ class _DailyRunContext:
     scan_results: tuple[ScanResult, ...] = ()
     candidate_packets: tuple[Any, ...] = ()
     decision_cards: tuple[Any, ...] = ()
+    step_results: dict[str, JobStepResult] = field(default_factory=dict)
+    degraded_mode: Mapping[str, Any] | None = None
 
     @property
     def as_of_datetime(self) -> datetime:
@@ -124,7 +133,12 @@ class _DailyRunContext:
 _StepHandler = Callable[[_DailyRunContext], _StepOutcome]
 
 
-def run_daily(spec: DailyRunSpec, *, engine: Engine) -> DailyRunResult:
+def run_daily(
+    spec: DailyRunSpec,
+    *,
+    engine: Engine,
+    abort_event: Any | None = None,
+) -> DailyRunResult:
     provider_repo = ProviderRepository(engine)
     context = _DailyRunContext(
         spec=spec,
@@ -137,15 +151,18 @@ def run_daily(spec: DailyRunSpec, *, engine: Engine) -> DailyRunResult:
         validation_repo=ValidationRepository(engine),
     )
 
-    steps = tuple(
-        _run_step(
+    steps = []
+    for step_name in DAILY_STEP_ORDER:
+        step = _run_step(
             step_name,
             provider_repo=provider_repo,
             context=context,
+            abort_event=abort_event,
         )
-        for step_name in DAILY_STEP_ORDER
-    )
-    return DailyRunResult(status=_daily_status(steps), spec=spec, steps=steps)
+        context.step_results[step_name] = step
+        steps.append(step)
+    step_tuple = tuple(steps)
+    return DailyRunResult(status=_daily_status(step_tuple), spec=spec, steps=step_tuple)
 
 
 def _run_step(
@@ -153,6 +170,7 @@ def _run_step(
     *,
     provider_repo: ProviderRepository,
     context: _DailyRunContext,
+    abort_event: Any | None = None,
 ) -> JobStepResult:
     job_id = provider_repo.start_job(
         step_name,
@@ -160,7 +178,33 @@ def _run_step(
         metadata=_step_metadata(context.spec, step_name),
     )
     try:
-        outcome = _STEP_HANDLERS[step_name](context)
+        if abort_event is not None and abort_event.is_set():
+            outcome = _StepOutcome(
+                status=JobStatus.FAILED.value,
+                reason="lock_heartbeat_lost",
+            )
+        else:
+            failed_dependency = _failed_dependency(step_name, context)
+            if failed_dependency is not None:
+                outcome = _skipped(f"blocked_by_failed_dependency:{failed_dependency}")
+            else:
+                outcome = _STEP_HANDLERS[step_name](context)
+                if (
+                    abort_event is not None
+                    and abort_event.is_set()
+                    and outcome.status != JobStatus.FAILED.value
+                ):
+                    outcome = _StepOutcome(
+                        status=JobStatus.FAILED.value,
+                        requested_count=outcome.requested_count,
+                        raw_count=outcome.raw_count,
+                        normalized_count=outcome.normalized_count,
+                        reason="lock_heartbeat_lost",
+                        payload={
+                            "completed_status_before_abort": outcome.status,
+                            **dict(outcome.payload),
+                        },
+                    )
     except Exception as exc:
         reason = _truncate_reason(str(exc) or exc.__class__.__name__)
         provider_repo.finish_job(
@@ -275,18 +319,40 @@ def _feature_scan(context: _DailyRunContext) -> _StepOutcome:
 def _scoring_policy(context: _DailyRunContext) -> _StepOutcome:
     if not context.scan_results:
         return _skipped("no_candidate_inputs")
+    capped_count = 0
     for result in context.scan_results:
-        context.market_repo.save_scan_result(result.candidate, result.policy)
+        policy = _degraded_policy_cap(context, result.policy)
+        if policy.state != result.policy.state:
+            capped_count += 1
+        context.market_repo.save_scan_result(result.candidate, policy)
     return _StepOutcome(
         status=JobStatus.SUCCESS.value,
         requested_count=len(context.scan_results),
         raw_count=len(context.scan_results),
         normalized_count=len(context.scan_results),
-        payload={"candidate_state_count": len(context.scan_results)},
+        payload={
+            "candidate_state_count": len(context.scan_results),
+            "degraded_state_cap_count": capped_count,
+            "degraded_mode": _degraded_payload(context) if capped_count else None,
+        },
     )
 
 
 def _candidate_packets(context: _DailyRunContext) -> _StepOutcome:
+    if _degraded_mode_enabled(context):
+        disabled_inputs = context.packet_repo.list_candidate_inputs(
+            as_of=context.as_of_datetime,
+            available_at=context.spec.decision_available_at,
+            tickers=context.spec.tickers or None,
+            states=DISABLED_DEGRADED_STATES,
+        )
+        return _skipped(
+            "degraded_mode_blocks_high_state_work",
+            requested_count=len(disabled_inputs),
+            payload={"degraded_mode": _degraded_payload(context)},
+        )
+    if not context.scan_results:
+        return _skipped("no_current_scan_results")
     inputs = context.packet_repo.list_candidate_inputs(
         as_of=context.as_of_datetime,
         available_at=context.spec.decision_available_at,
@@ -341,6 +407,11 @@ def _candidate_packets(context: _DailyRunContext) -> _StepOutcome:
 
 
 def _decision_cards(context: _DailyRunContext) -> _StepOutcome:
+    if _degraded_mode_enabled(context):
+        return _skipped(
+            "degraded_mode_blocks_decision_cards",
+            payload={"degraded_mode": _degraded_payload(context)},
+        )
     eligible_packets = tuple(
         packet
         for packet in context.candidate_packets
@@ -369,6 +440,11 @@ def _decision_cards(context: _DailyRunContext) -> _StepOutcome:
 
 
 def _llm_review(context: _DailyRunContext) -> _StepOutcome:
+    if _degraded_mode_enabled(context):
+        return _skipped(
+            "degraded_mode_blocks_llm_review",
+            payload={"degraded_mode": _degraded_payload(context)},
+        )
     if not context.spec.run_llm:
         return _skipped("llm_disabled")
     if not context.decision_cards:
@@ -543,6 +619,44 @@ def _step_metadata(spec: DailyRunSpec, step_name: str) -> dict[str, Any]:
     }
 
 
+def _failed_dependency(step_name: str, context: _DailyRunContext) -> str | None:
+    for dependency in _STEP_DEPENDENCIES.get(step_name, ()):
+        result = context.step_results.get(dependency)
+        if result is not None and result.status == JobStatus.FAILED.value:
+            return dependency
+    return None
+
+
+def _degraded_policy_cap(
+    context: _DailyRunContext,
+    policy: PolicyResult,
+) -> PolicyResult:
+    if not _degraded_mode_enabled(context) or policy.state not in DISABLED_DEGRADED_STATES:
+        return policy
+    reasons = tuple(
+        dict.fromkeys((*policy.reasons, "degraded_mode_state_cap")).keys()
+    )
+    return PolicyResult(
+        state=ActionState.ADD_TO_WATCHLIST,
+        hard_blocks=policy.hard_blocks,
+        reasons=reasons,
+        missing_trade_plan=policy.missing_trade_plan,
+    )
+
+
+def _degraded_mode_enabled(context: _DailyRunContext) -> bool:
+    payload = _degraded_payload(context)
+    return bool(payload.get("enabled"))
+
+
+def _degraded_payload(context: _DailyRunContext) -> dict[str, Any]:
+    if context.degraded_mode is None:
+        health = load_ops_health(context.market_repo.engine, now=context.spec.decision_available_at)
+        degraded_mode = health.get("degraded_mode")
+        context.degraded_mode = degraded_mode if isinstance(degraded_mode, Mapping) else {}
+    return dict(context.degraded_mode)
+
+
 def _skipped(
     reason: str,
     *,
@@ -639,6 +753,15 @@ _STEP_HANDLERS: Mapping[str, _StepHandler] = {
     "llm_review": _llm_review,
     "digest": _digest,
     "validation_update": _validation_update,
+}
+
+_STEP_DEPENDENCIES: Mapping[str, tuple[str, ...]] = {
+    "scoring_policy": ("feature_scan",),
+    "candidate_packets": ("feature_scan", "scoring_policy"),
+    "decision_cards": ("candidate_packets",),
+    "llm_review": ("decision_cards",),
+    "digest": ("candidate_packets",),
+    "validation_update": ("candidate_packets",),
 }
 
 
