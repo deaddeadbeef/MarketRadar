@@ -146,6 +146,65 @@ decision_cards = Table(
     Column("created_at", DateTime(timezone=True), nullable=False),
 )
 
+alerts = Table(
+    "alerts",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("ticker", String, nullable=False),
+    Column("as_of", DateTime(timezone=True), nullable=False),
+    Column("source_ts", DateTime(timezone=True), nullable=False),
+    Column("available_at", DateTime(timezone=True), nullable=False),
+    Column("candidate_state_id", String),
+    Column("candidate_packet_id", String),
+    Column("decision_card_id", String),
+    Column("action_state", String, nullable=False),
+    Column("route", String, nullable=False),
+    Column("channel", String, nullable=False),
+    Column("priority", String, nullable=False),
+    Column("status", String, nullable=False),
+    Column("dedupe_key", String, nullable=False),
+    Column("trigger_kind", String, nullable=False),
+    Column("trigger_fingerprint", String, nullable=False),
+    Column("title", Text, nullable=False),
+    Column("summary", Text, nullable=False),
+    Column("feedback_url", Text),
+    Column("payload", json_type, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("sent_at", DateTime(timezone=True)),
+)
+
+alert_suppressions = Table(
+    "alert_suppressions",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("ticker", String, nullable=False),
+    Column("as_of", DateTime(timezone=True), nullable=False),
+    Column("available_at", DateTime(timezone=True), nullable=False),
+    Column("candidate_state_id", String),
+    Column("decision_card_id", String),
+    Column("route", String, nullable=False),
+    Column("dedupe_key", String, nullable=False),
+    Column("trigger_kind", String, nullable=False),
+    Column("trigger_fingerprint", String, nullable=False),
+    Column("reason", String, nullable=False),
+    Column("payload", json_type, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+
+user_feedback = Table(
+    "user_feedback",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("artifact_type", String, nullable=False),
+    Column("artifact_id", String, nullable=False),
+    Column("ticker", String, nullable=False),
+    Column("label", String, nullable=False),
+    Column("notes", Text),
+    Column("source", String, nullable=False),
+    Column("payload", json_type, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+
 validation_runs = Table(
     "validation_runs",
     metadata,
@@ -520,6 +579,15 @@ Index(
     "ix_decision_cards_action_state_available_at",
     decision_cards.c.action_state,
     decision_cards.c.available_at,
+)
+Index("ix_alerts_ticker_available_at", alerts.c.ticker, alerts.c.available_at)
+Index("ix_alerts_route_status", alerts.c.route, alerts.c.status)
+Index("ix_alerts_dedupe_key", alerts.c.dedupe_key)
+Index("ix_alert_suppressions_dedupe_key", alert_suppressions.c.dedupe_key)
+Index(
+    "ix_user_feedback_artifact",
+    user_feedback.c.artifact_type,
+    user_feedback.c.artifact_id,
 )
 Index(
     "ix_validation_results_run_ticker_as_of",
