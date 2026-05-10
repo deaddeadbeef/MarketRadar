@@ -268,6 +268,26 @@ def test_attach_llm_review_rejects_deterministic_fields() -> None:
         attach_llm_review_to_decision_card(card, draft)
 
 
+def test_attach_llm_review_rejects_extra_claim_fields() -> None:
+    card = build_decision_card(_packet())
+    draft = _llm_review_draft()
+    draft["claims"] = [{"source_id": "unknown-source", "claim": "Unvalidated claim."}]
+
+    with pytest.raises(ValueError, match="unexpected fields"):
+        attach_llm_review_to_decision_card(card, draft)
+
+
+def test_attach_llm_review_rejects_extra_unresolved_conflicts() -> None:
+    card = build_decision_card(_packet())
+    draft = _llm_review_draft()
+    draft["unresolved_conflicts"] = [
+        {"source_id": "unknown-source", "claim": "Unvalidated conflict."}
+    ]
+
+    with pytest.raises(ValueError, match="unexpected fields"):
+        attach_llm_review_to_decision_card(card, draft)
+
+
 def _packet(
     *,
     state: ActionState = ActionState.ELIGIBLE_FOR_MANUAL_BUY_REVIEW,

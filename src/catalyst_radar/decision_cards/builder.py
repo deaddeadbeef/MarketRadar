@@ -17,6 +17,18 @@ from catalyst_radar.decision_cards.models import (
 
 _MISSING = object()
 _MAX_EVIDENCE_ITEMS = 5
+_LLM_REVIEW_ALLOWED_FIELDS = frozenset(
+    {
+        "ticker",
+        "as_of",
+        "schema_version",
+        "summary",
+        "supporting_points",
+        "risks",
+        "questions_for_human",
+        "manual_review_only",
+    }
+)
 
 
 def build_decision_card(
@@ -247,6 +259,11 @@ def _validate_llm_review_draft(
             "llm_review must not include deterministic fields: "
             f"{', '.join(sorted(protected))}"
         )
+        raise ValueError(msg)
+
+    extra_fields = sorted(set(llm_review) - _LLM_REVIEW_ALLOWED_FIELDS)
+    if extra_fields:
+        msg = f"llm_review has unexpected fields: {', '.join(extra_fields)}"
         raise ValueError(msg)
 
     ticker = _optional_string(llm_review.get("ticker"))
