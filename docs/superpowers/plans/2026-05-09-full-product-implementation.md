@@ -684,12 +684,12 @@ Primary files:
 
 Implementation tasks:
 
-- [ ] Load secrets from `.env.local` in dev and a managed/encrypted secret source in production.
-- [ ] Redact API keys, account notes, and personal account data from logs and prompts.
-- [ ] Add audit logs for user decisions, overrides, hard-block bypasses, and model calls.
-- [ ] Add dashboard roles: admin, analyst, viewer.
-- [ ] Enforce no broker order placement.
-- [ ] Add provider license tags and retention policies.
+- [x] Load secrets from `.env.local` in dev and a managed/encrypted secret source in production.
+- [x] Redact API keys, account notes, and personal account data from logs and prompts.
+- [x] Add audit logs for user decisions, overrides, hard-block bypasses, and model calls.
+- [x] Add dashboard roles: admin, analyst, viewer.
+- [x] Enforce no broker order placement.
+- [x] Add provider license tags and retention policies.
 
 Exit criteria:
 
