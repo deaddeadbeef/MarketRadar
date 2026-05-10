@@ -13,6 +13,10 @@ from dotenv import load_dotenv
 from sqlalchemy import select
 from sqlalchemy.engine import Engine
 
+from catalyst_radar.alerts.channels.base import DryRunAlertChannel
+from catalyst_radar.alerts.digest import build_alert_digest, digest_payload
+from catalyst_radar.alerts.models import AlertStatus
+from catalyst_radar.alerts.planner import plan_alerts
 from catalyst_radar.connectors.base import ConnectorRequest
 from catalyst_radar.connectors.earnings import EarningsCalendarConnector
 from catalyst_radar.connectors.http import (
@@ -38,6 +42,7 @@ from catalyst_radar.core.models import ActionState
 from catalyst_radar.decision_cards.builder import build_decision_card
 from catalyst_radar.pipeline.candidate_packet import build_candidate_packet
 from catalyst_radar.pipeline.scan import run_scan
+from catalyst_radar.storage.alert_repositories import AlertRepository
 from catalyst_radar.storage.candidate_packet_repositories import CandidatePacketRepository
 from catalyst_radar.storage.db import create_schema, engine_from_url
 from catalyst_radar.storage.event_repositories import EventRepository
@@ -145,6 +150,28 @@ def build_parser() -> argparse.ArgumentParser:
     build_cards.add_argument("--as-of", type=date.fromisoformat, required=True)
     build_cards.add_argument("--available-at", type=_parse_aware_datetime)
     build_cards.add_argument("--ticker")
+
+    build_alerts = subparsers.add_parser("build-alerts")
+    build_alerts.add_argument("--as-of", type=date.fromisoformat, required=True)
+    build_alerts.add_argument("--available-at", type=_parse_aware_datetime)
+    build_alerts.add_argument("--ticker")
+    build_alerts.add_argument("--json", action="store_true")
+
+    alerts_list = subparsers.add_parser("alerts-list")
+    alerts_list.add_argument("--ticker")
+    alerts_list.add_argument("--status")
+    alerts_list.add_argument("--route")
+    alerts_list.add_argument("--available-at", type=_parse_aware_datetime)
+    alerts_list.add_argument("--json", action="store_true")
+
+    alert_digest = subparsers.add_parser("alert-digest")
+    alert_digest.add_argument("--available-at", type=_parse_aware_datetime)
+    alert_digest.add_argument("--json", action="store_true")
+
+    send_alerts = subparsers.add_parser("send-alerts")
+    send_alerts.add_argument("--available-at", type=_parse_aware_datetime)
+    send_alerts.add_argument("--dry-run", action="store_true", default=True)
+    send_alerts.add_argument("--json", action="store_true")
 
     packet = subparsers.add_parser("candidate-packet")
     packet.add_argument("--ticker", required=True)
@@ -468,6 +495,116 @@ def main(argv: list[str] | None = None) -> int:
             print(f"build decision cards failed: {exc}", file=sys.stderr)
             return 1
         print(f"built decision_cards={len(cards)}")
+        return 0
+
+    if args.command == "build-alerts":
+        create_schema(engine)
+        alert_repo = AlertRepository(engine)
+        available_at = args.available_at or datetime.now(UTC)
+        result = plan_alerts(
+            alert_repo,
+            as_of=_scan_timestamp(args.as_of),
+            available_at=available_at,
+            ticker=args.ticker,
+        )
+        if args.json:
+            print(json.dumps(_alert_plan_payload(result, available_at), sort_keys=True))
+        else:
+            print(
+                f"built_alerts alerts={len(result.alerts)} "
+                f"suppressions={len(result.suppressions)} "
+                f"available_at={available_at.isoformat()}"
+            )
+        return 0
+
+    if args.command == "alerts-list":
+        create_schema(engine)
+        alert_repo = AlertRepository(engine)
+        alerts = _stable_alerts(
+            alert_repo.list_alerts(
+                available_at=args.available_at,
+                ticker=args.ticker,
+                status=args.status,
+                route=args.route,
+            )
+        )
+        if args.json:
+            print(
+                json.dumps(
+                    {"alerts": [_alert_cli_payload(alert) for alert in alerts]},
+                    sort_keys=True,
+                )
+            )
+        else:
+            for alert in alerts:
+                print(
+                    f"{alert.ticker} alert route={alert.route.value} "
+                    f"status={alert.status.value} dedupe_key={alert.dedupe_key}"
+                )
+        return 0
+
+    if args.command == "alert-digest":
+        create_schema(engine)
+        alert_repo = AlertRepository(engine)
+        available_at = args.available_at or datetime.now(UTC)
+        alerts = _stable_alerts(alert_repo.list_alerts(available_at=available_at))
+        digest_alerts = [
+            alert for alert in alerts if getattr(alert.channel, "value", alert.channel) == "digest"
+        ]
+        suppressions = alert_repo.list_suppressions(available_at=available_at)
+        digest = build_alert_digest(digest_alerts, suppressions, available_at)
+        payload = digest_payload(digest)
+        if args.json:
+            print(json.dumps(payload, sort_keys=True))
+        else:
+            print(
+                f"alert_digest groups={payload['group_count']} "
+                f"alerts={len(alerts)} suppressed={digest.suppressed_count}"
+            )
+        return 0
+
+    if args.command == "send-alerts":
+        create_schema(engine)
+        if getattr(args, "dry_run", True) is not True:
+            print("external delivery is not enabled in Phase 11", file=sys.stderr)
+            return 1
+        alert_repo = AlertRepository(engine)
+        available_at = args.available_at or datetime.now(UTC)
+        channel = DryRunAlertChannel()
+        alerts = _stable_alerts(
+            alert_repo.list_alerts(
+                available_at=available_at,
+                status=AlertStatus.PLANNED.value,
+            )
+        )
+        deliveries = []
+        for alert in alerts:
+            delivery = channel.deliver(alert, dry_run=True)
+            deliveries.append(delivery)
+            alert_repo.upsert_alert(
+                replace(alert, status=AlertStatus.DRY_RUN, sent_at=available_at)
+            )
+        if args.json:
+            print(
+                json.dumps(
+                    {
+                        "alerts": len(alerts),
+                        "dry_run": True,
+                        "deliveries": [
+                            {
+                                "alert_id": delivery.alert_id,
+                                "channel": delivery.channel,
+                                "dry_run": delivery.dry_run,
+                                "status": delivery.status,
+                            }
+                            for delivery in deliveries
+                        ],
+                    },
+                    sort_keys=True,
+                )
+            )
+        else:
+            print(f"send_alerts dry_run=true alerts={len(alerts)}")
         return 0
 
     if args.command == "candidate-packet":
@@ -1039,6 +1176,68 @@ def _read_json_object(path: Path) -> dict[str, object]:
         msg = f"expected JSON object: {path}"
         raise ValueError(msg)
     return payload
+
+
+def _stable_alerts(alerts: list[object]) -> list[object]:
+    return sorted(
+        alerts,
+        key=lambda alert: (
+            alert.ticker,
+            getattr(alert.route, "value", alert.route),
+            alert.available_at.isoformat(),
+            alert.id,
+        ),
+    )
+
+
+def _alert_plan_payload(result: object, available_at: datetime) -> dict[str, object]:
+    alerts = _stable_alerts(list(result.alerts))
+    suppressions = sorted(
+        result.suppressions,
+        key=lambda suppression: (
+            suppression.ticker,
+            suppression.route.value,
+            suppression.dedupe_key,
+            suppression.id,
+        ),
+    )
+    return {
+        "alert_count": len(alerts),
+        "alerts": [_alert_cli_payload(alert) for alert in alerts],
+        "available_at": available_at.isoformat(),
+        "suppression_count": len(suppressions),
+        "suppressions": [
+            {
+                "dedupe_key": suppression.dedupe_key,
+                "id": suppression.id,
+                "reason": suppression.reason,
+                "route": suppression.route.value,
+                "ticker": suppression.ticker,
+            }
+            for suppression in suppressions
+        ],
+    }
+
+
+def _alert_cli_payload(alert: object) -> dict[str, object]:
+    return {
+        "action_state": alert.action_state,
+        "as_of": alert.as_of.isoformat(),
+        "available_at": alert.available_at.isoformat(),
+        "candidate_packet_id": alert.candidate_packet_id,
+        "candidate_state_id": alert.candidate_state_id,
+        "channel": alert.channel.value,
+        "decision_card_id": alert.decision_card_id,
+        "dedupe_key": alert.dedupe_key,
+        "id": alert.id,
+        "priority": alert.priority.value,
+        "route": alert.route.value,
+        "status": alert.status.value,
+        "ticker": alert.ticker,
+        "title": alert.title,
+        "trigger_fingerprint": alert.trigger_fingerprint,
+        "trigger_kind": alert.trigger_kind,
+    }
 
 
 def _future_price_rows(

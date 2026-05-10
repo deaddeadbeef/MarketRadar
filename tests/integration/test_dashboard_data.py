@@ -7,6 +7,8 @@ from sqlalchemy import Engine, create_engine, insert
 
 from catalyst_radar.core.models import ActionState
 from catalyst_radar.dashboard.data import (
+    load_alert_detail,
+    load_alert_rows,
     load_candidate_rows,
     load_cost_summary,
     load_ops_health,
@@ -16,6 +18,7 @@ from catalyst_radar.dashboard.data import (
 )
 from catalyst_radar.storage.db import create_schema
 from catalyst_radar.storage.schema import (
+    alerts,
     candidate_packets,
     candidate_states,
     decision_cards,
@@ -26,6 +29,7 @@ from catalyst_radar.storage.schema import (
     signal_features,
     text_snippets,
     useful_alert_labels,
+    user_feedback,
     validation_results,
     validation_runs,
 )
@@ -104,6 +108,18 @@ def test_load_validation_summary_returns_latest_run_report_and_paper_trades(
 ) -> None:
     engine = _engine(tmp_path)
     _insert_dashboard_fixture(engine)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(useful_alert_labels).values(
+                id="label-useful-old-same-ticker-validation",
+                artifact_type="decision_card",
+                artifact_id="old-card-msft-not-in-latest-run",
+                ticker="MSFT",
+                label="useful",
+                notes="same ticker but unrelated to latest validation run",
+                created_at=AVAILABLE_AT - timedelta(hours=1),
+            )
+        )
 
     summary = load_validation_summary(engine)
 
@@ -113,7 +129,56 @@ def test_load_validation_summary_returns_latest_run_report_and_paper_trades(
     assert summary["report"]["useful_alert_rate"] == 1.0
     assert summary["report"]["leakage_failure_count"] == 0
     assert [row["id"] for row in summary["paper_trades"]] == ["paper-msft"]
-    assert [row["label"] for row in summary["useful_labels"]] == ["useful"]
+    assert [row["id"] for row in summary["useful_labels"]] == ["label-useful-msft"]
+
+
+def test_load_alert_rows_returns_latest_alerts_with_feedback(tmp_path: Path) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    _insert_alert_fixture(engine)
+
+    rows = load_alert_rows(engine)
+
+    assert [row["id"] for row in rows] == ["alert-msft-dry-run", "alert-msft-planned"]
+    assert rows[0]["ticker"] == "MSFT"
+    assert rows[0]["route"] == "warning_digest"
+    assert rows[0]["status"] == "dry_run"
+    assert rows[0]["feedback_label"] == "acted"
+    assert rows[0]["feedback_notes"] == "latest feedback"
+    assert rows[0]["score_trigger"] == 88.0
+
+
+def test_load_alert_detail_returns_payload_and_feedback(tmp_path: Path) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    _insert_alert_fixture(engine)
+
+    detail = load_alert_detail(engine, "alert-msft-planned")
+
+    assert detail is not None
+    assert detail["id"] == "alert-msft-planned"
+    assert detail["payload"]["evidence"][0]["artifact_id"] == "event-msft"
+    assert detail["feedback_label"] == "useful"
+    assert detail["feedback_notes"] == "worth review"
+    assert detail["feedback_id"] == "feedback-alert-msft-planned"
+
+
+def test_load_alert_rows_respects_available_at_cutoff(tmp_path: Path) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    _insert_alert_fixture(engine)
+
+    rows = load_alert_rows(
+        engine,
+        available_at=AVAILABLE_AT + timedelta(minutes=10),
+        ticker="msft",
+        status="planned",
+        route="immediate_manual_review",
+    )
+
+    assert [row["id"] for row in rows] == ["alert-msft-planned"]
+    assert rows[0]["feedback_label"] == "useful"
+    assert load_alert_detail(engine, "alert-msft-dry-run", available_at=AVAILABLE_AT) is None
 
 
 def test_load_cost_summary_defaults_to_zero_and_counts_useful_alerts(
@@ -140,6 +205,44 @@ def test_load_cost_summary_defaults_to_zero_and_counts_useful_alerts(
     assert summary["useful_alert_count"] == 1
     assert summary["cost_per_useful_alert"] == 0.0
     assert summary["rows"] == []
+
+
+def test_load_cost_summary_counts_useful_alert_feedback(tmp_path: Path) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    _insert_alert_fixture(engine)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(useful_alert_labels),
+            [
+                {
+                    "id": "label-alert-msft-useful",
+                    "artifact_type": "alert",
+                    "artifact_id": "alert-msft-planned",
+                    "ticker": "MSFT",
+                    "label": "useful",
+                    "notes": "alert mapped to validation result by candidate ids",
+                    "created_at": AVAILABLE_AT,
+                },
+                {
+                    "id": "label-alert-aapl-useful",
+                    "artifact_type": "alert",
+                    "artifact_id": "alert-aapl-unmatched",
+                    "ticker": "AAPL",
+                    "label": "useful",
+                    "notes": "not part of latest validation result rows",
+                    "created_at": AVAILABLE_AT,
+                },
+            ],
+        )
+
+    summary = load_cost_summary(engine)
+
+    assert summary["useful_alert_count"] == 2
+    assert {row["id"] for row in summary["useful_labels"]} == {
+        "label-useful-msft",
+        "label-alert-msft-useful",
+    }
 
 
 def test_load_ops_health_reports_provider_status_and_database(
@@ -488,6 +591,112 @@ def _insert_dashboard_fixture(engine: Engine) -> None:
                 metadata={"dry_run": True},
             )
         )
+
+
+def _insert_alert_fixture(engine: Engine) -> None:
+    with engine.begin() as conn:
+        conn.execute(
+            insert(alerts),
+            [
+                _alert_row(
+                    id="alert-msft-planned",
+                    route="immediate_manual_review",
+                    status="planned",
+                    priority="high",
+                    available_at=AVAILABLE_AT,
+                    created_at=AVAILABLE_AT,
+                ),
+                _alert_row(
+                    id="alert-msft-dry-run",
+                    route="warning_digest",
+                    status="dry_run",
+                    priority="critical",
+                    available_at=AVAILABLE_AT + timedelta(minutes=20),
+                    created_at=AVAILABLE_AT + timedelta(minutes=20),
+                    dedupe_key="alert-dedupe-v1:MSFT:warning_digest:Warning:score:88",
+                ),
+            ],
+        )
+        conn.execute(
+            insert(user_feedback),
+            [
+                {
+                    "id": "feedback-alert-msft-planned",
+                    "artifact_type": "alert",
+                    "artifact_id": "alert-msft-planned",
+                    "ticker": "MSFT",
+                    "label": "useful",
+                    "notes": "worth review",
+                    "source": "dashboard",
+                    "payload": {"alert_id": "alert-msft-planned"},
+                    "created_at": AVAILABLE_AT,
+                },
+                {
+                    "id": "feedback-alert-msft-dry-run-old",
+                    "artifact_type": "alert",
+                    "artifact_id": "alert-msft-dry-run",
+                    "ticker": "MSFT",
+                    "label": "useful",
+                    "notes": "old feedback",
+                    "source": "dashboard",
+                    "payload": {"alert_id": "alert-msft-dry-run"},
+                    "created_at": AVAILABLE_AT + timedelta(minutes=21),
+                },
+                {
+                    "id": "feedback-alert-msft-dry-run-latest",
+                    "artifact_type": "alert",
+                    "artifact_id": "alert-msft-dry-run",
+                    "ticker": "MSFT",
+                    "label": "acted",
+                    "notes": "latest feedback",
+                    "source": "dashboard",
+                    "payload": {"alert_id": "alert-msft-dry-run"},
+                    "created_at": AVAILABLE_AT + timedelta(minutes=22),
+                },
+            ],
+        )
+
+
+def _alert_row(
+    *,
+    id: str,
+    route: str,
+    status: str,
+    priority: str,
+    available_at: datetime,
+    created_at: datetime,
+    dedupe_key: str = (
+        "alert-dedupe-v1:MSFT:immediate_manual_review:Warning:"
+        "state_transition:AddToWatchlist->Warning"
+    ),
+) -> dict[str, object]:
+    return {
+        "id": id,
+        "ticker": "MSFT",
+        "as_of": AS_OF,
+        "source_ts": SOURCE_TS,
+        "available_at": available_at,
+        "candidate_state_id": "state-msft-latest",
+        "candidate_packet_id": "packet-msft-latest",
+        "decision_card_id": "card-msft-latest",
+        "action_state": ActionState.WARNING.value,
+        "route": route,
+        "channel": "dashboard",
+        "priority": priority,
+        "status": status,
+        "dedupe_key": dedupe_key,
+        "trigger_kind": "state_transition",
+        "trigger_fingerprint": "AddToWatchlist->Warning",
+        "title": "MSFT alert review",
+        "summary": "MSFT candidate has new review evidence.",
+        "feedback_url": "/api/alerts/feedback/alert-msft-planned",
+        "payload": {
+            "score": 88.0,
+            "evidence": [{"kind": "event", "artifact_id": "event-msft"}],
+        },
+        "created_at": created_at,
+        "sent_at": None,
+    }
 
 
 def _candidate_state_row(

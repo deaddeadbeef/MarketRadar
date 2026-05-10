@@ -5,7 +5,7 @@ import streamlit as st
 from dotenv import load_dotenv
 
 from catalyst_radar.core.config import AppConfig
-from catalyst_radar.dashboard.data import load_candidate_rows
+from catalyst_radar.dashboard.data import load_alert_rows, load_candidate_rows
 from catalyst_radar.storage.db import engine_from_url
 
 
@@ -96,3 +96,45 @@ else:
         st.bar_chart(frame["state"].value_counts())
         st.metric("Candidates", len(frame))
         st.metric("Average Score", f"{frame['final_score'].mean():.2f}")
+
+    alert_rows = load_alert_rows(engine, limit=10)
+    st.subheader("Recent Alerts")
+    if alert_rows:
+        alert_frame = pd.DataFrame(alert_rows)
+        alert_columns = [
+            "ticker",
+            "route",
+            "channel",
+            "priority",
+            "status",
+            "state",
+            "score_trigger",
+            "dedupe_key",
+            "title",
+            "available_at",
+            "feedback",
+        ]
+        for column in alert_columns:
+            if column not in alert_frame.columns:
+                alert_frame[column] = None
+        st.dataframe(
+            alert_frame[alert_columns].rename(
+                columns={
+                    "ticker": "Ticker",
+                    "route": "Route",
+                    "channel": "Channel",
+                    "priority": "Priority",
+                    "status": "Status",
+                    "state": "State",
+                    "score_trigger": "Score Trigger",
+                    "dedupe_key": "Dedupe Key",
+                    "title": "Title",
+                    "available_at": "Available",
+                    "feedback": "Feedback",
+                }
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+    else:
+        st.caption("No recent alert rows available.")

@@ -11,6 +11,7 @@ from typing import Any
 from sqlalchemy import Engine, and_, func, select
 
 from catalyst_radar.storage.schema import (
+    alerts,
     candidate_packets,
     candidate_states,
     decision_cards,
@@ -20,6 +21,7 @@ from catalyst_radar.storage.schema import (
     provider_health,
     signal_features,
     text_snippets,
+    user_feedback,
     validation_results,
     validation_runs,
 )
@@ -402,6 +404,96 @@ def load_theme_rows(engine: Engine) -> list[dict[str, object]]:
     )
 
 
+def load_alert_rows(
+    engine: Engine,
+    *,
+    available_at: datetime | None = None,
+    ticker: str | None = None,
+    status: str | None = None,
+    route: str | None = None,
+    limit: int = 200,
+) -> list[dict[str, object]]:
+    cutoff = _as_utc_datetime_or_none(available_at)
+    filters = []
+    if cutoff is not None:
+        filters.append(alerts.c.available_at <= cutoff)
+    if ticker is not None and ticker.strip():
+        filters.append(alerts.c.ticker == ticker.strip().upper())
+    if status is not None and status.strip():
+        filters.append(alerts.c.status == status.strip())
+    if route is not None and route.strip():
+        filters.append(alerts.c.route == route.strip())
+
+    ranked_feedback = _ranked_alert_feedback(cutoff)
+    stmt = (
+        select(
+            alerts,
+            ranked_feedback.c.feedback_id,
+            ranked_feedback.c.feedback_label,
+            ranked_feedback.c.feedback_notes,
+            ranked_feedback.c.feedback_source,
+            ranked_feedback.c.feedback_created_at,
+        )
+        .join(
+            ranked_feedback,
+            and_(
+                ranked_feedback.c.artifact_id == alerts.c.id,
+                ranked_feedback.c.feedback_rank == 1,
+            ),
+            isouter=True,
+        )
+        .where(*filters)
+        .order_by(
+            alerts.c.available_at.desc(),
+            alerts.c.created_at.desc(),
+            alerts.c.id.desc(),
+        )
+        .limit(_positive_limit(limit))
+    )
+    with engine.connect() as conn:
+        return [_alert_row(row._mapping) for row in conn.execute(stmt)]
+
+
+def load_alert_detail(
+    engine: Engine,
+    alert_id: str,
+    *,
+    available_at: datetime | None = None,
+) -> dict[str, object] | None:
+    resolved_id = str(alert_id).strip()
+    if not resolved_id:
+        return None
+    cutoff = _as_utc_datetime_or_none(available_at)
+    filters = [alerts.c.id == resolved_id]
+    if cutoff is not None:
+        filters.append(alerts.c.available_at <= cutoff)
+
+    ranked_feedback = _ranked_alert_feedback(cutoff)
+    stmt = (
+        select(
+            alerts,
+            ranked_feedback.c.feedback_id,
+            ranked_feedback.c.feedback_label,
+            ranked_feedback.c.feedback_notes,
+            ranked_feedback.c.feedback_source,
+            ranked_feedback.c.feedback_created_at,
+        )
+        .join(
+            ranked_feedback,
+            and_(
+                ranked_feedback.c.artifact_id == alerts.c.id,
+                ranked_feedback.c.feedback_rank == 1,
+            ),
+            isouter=True,
+        )
+        .where(*filters)
+        .limit(1)
+    )
+    with engine.connect() as conn:
+        row = conn.execute(stmt).first()
+    return _alert_row(row._mapping) if row is not None else None
+
+
 def load_validation_summary(engine: Engine) -> dict[str, object]:
     repo = ValidationRepository(engine)
     latest_run_id = _latest_validation_run_id(engine)
@@ -428,7 +520,13 @@ def load_validation_summary(engine: Engine) -> dict[str, object]:
 
     summary_cutoff = latest_run.finished_at or latest_run.started_at
     result_rows = repo.list_validation_results(latest_run.id, available_at=summary_cutoff)
-    useful_labels = repo.list_useful_alert_labels(available_at=summary_cutoff)
+    raw_labels = repo.list_useful_alert_labels(available_at=summary_cutoff)
+    with engine.connect() as conn:
+        useful_labels = [
+            label
+            for label in raw_labels
+            if _label_matches_validation_results(conn, label, result_rows)
+        ]
     report = build_validation_report(
         latest_run.id,
         result_rows,
@@ -459,12 +557,17 @@ def load_cost_summary(engine: Engine) -> dict[str, object]:
         else []
     )
     label_cutoff = (latest_run.finished_at or latest_run.started_at) if latest_run else None
-    useful_labels = [
-        label
-        for label in repo.list_useful_alert_labels(available_at=label_cutoff)
-        if str(label.label).lower() in USEFUL_ALERT_LABELS
-        and (latest_run is None or _label_matches_validation_results(label, latest_result_rows))
-    ]
+    raw_labels = repo.list_useful_alert_labels(available_at=label_cutoff)
+    with engine.connect() as conn:
+        useful_labels = [
+            label
+            for label in raw_labels
+            if str(label.label).lower() in USEFUL_ALERT_LABELS
+            and (
+                latest_run is None
+                or _label_matches_validation_results(conn, label, latest_result_rows)
+            )
+        ]
     total_cost = _total_cost_from_metrics(latest_run.metrics) if latest_run is not None else 0.0
     useful_count = len(useful_labels)
     cost_per_useful_alert = (
@@ -617,6 +720,49 @@ def _candidate_row(row: Any) -> dict[str, object]:
     )
     values["manual_review_disclaimer"] = card_payload.get("disclaimer")
     return values
+
+
+def _alert_row(row: Any) -> dict[str, object]:
+    values = _row_dict(dict(row))
+    payload = values.get("payload")
+    if not isinstance(payload, Mapping):
+        payload = {}
+
+    values["score_trigger"] = _first_present(
+        payload.get("score_trigger"),
+        payload.get("score"),
+        payload.get("final_score"),
+        payload.get("trigger_score"),
+    )
+    values["feedback"] = values.get("feedback_label")
+    return values
+
+
+def _ranked_alert_feedback(cutoff: datetime | None) -> Any:
+    filters = [user_feedback.c.artifact_type == "alert"]
+    if cutoff is not None:
+        filters.append(user_feedback.c.created_at <= cutoff)
+    return (
+        select(
+            user_feedback.c.id.label("feedback_id"),
+            user_feedback.c.artifact_id.label("artifact_id"),
+            user_feedback.c.label.label("feedback_label"),
+            user_feedback.c.notes.label("feedback_notes"),
+            user_feedback.c.source.label("feedback_source"),
+            user_feedback.c.created_at.label("feedback_created_at"),
+            func.row_number()
+            .over(
+                partition_by=(
+                    user_feedback.c.artifact_type,
+                    user_feedback.c.artifact_id,
+                ),
+                order_by=(user_feedback.c.created_at.desc(), user_feedback.c.id.desc()),
+            )
+            .label("feedback_rank"),
+        )
+        .where(*filters)
+        .subquery()
+    )
 
 
 def _latest_state_row(
@@ -823,6 +969,13 @@ def _first_mapping(*values: object) -> dict[str, object]:
     return {}
 
 
+def _first_present(*values: object) -> object:
+    for value in values:
+        if value is not None and value != "" and value != [] and value != {}:
+            return value
+    return None
+
+
 def _theme_name(metadata: Mapping[str, object]) -> str | None:
     value = metadata.get("candidate_theme")
     if value is not None and str(value).strip():
@@ -846,6 +999,10 @@ def _finite_float(value: object) -> float:
     except (TypeError, ValueError):
         return 0.0
     return number if isfinite(number) else 0.0
+
+
+def _positive_limit(value: int) -> int:
+    return max(1, int(value))
 
 
 def _latest_validation_run_id(engine: Engine) -> str | None:
@@ -880,10 +1037,28 @@ def _total_cost_from_metrics(metrics: Mapping[str, object]) -> float:
     return 0.0
 
 
-def _label_matches_validation_results(label: object, rows: list[object]) -> bool:
+def _label_matches_validation_results(conn: Any, label: object, rows: list[object]) -> bool:
     keys = _validation_result_artifact_keys(rows)
     artifact_id = str(getattr(label, "artifact_id", "") or "")
-    return artifact_id in keys
+    artifact_type = str(getattr(label, "artifact_type", "") or "")
+    if artifact_id in keys:
+        return True
+    if artifact_type != "alert":
+        return False
+    row = conn.execute(
+        select(
+            alerts.c.candidate_state_id,
+            alerts.c.candidate_packet_id,
+            alerts.c.decision_card_id,
+        )
+        .where(alerts.c.id == artifact_id)
+        .limit(1)
+    ).first()
+    if row is None:
+        return False
+    return any(
+        value is not None and str(value).strip() in keys for value in row._mapping.values()
+    )
 
 
 def _validation_result_artifact_keys(rows: list[object]) -> set[str]:

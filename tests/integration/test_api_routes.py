@@ -6,20 +6,24 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, insert, select
 
 from apps.api.main import create_app
+from catalyst_radar.alerts.models import Alert, alert_id
 from catalyst_radar.core.models import ActionState
 from catalyst_radar.dashboard import data as dashboard_data
+from catalyst_radar.storage.alert_repositories import AlertRepository
 from catalyst_radar.storage.db import create_schema, engine_from_url
 from catalyst_radar.storage.schema import (
+    alerts,
     candidate_packets,
     candidate_states,
     decision_cards,
     signal_features,
     useful_alert_labels,
+    user_feedback,
 )
 
-AS_OF = datetime(2026, 5, 10, 21, tzinfo=UTC)
-SOURCE_TS = datetime(2026, 5, 10, 20, 30, tzinfo=UTC)
-AVAILABLE_AT = datetime(2026, 5, 10, 21, 5, tzinfo=UTC)
+AS_OF = datetime(2026, 5, 1, 21, tzinfo=UTC)
+SOURCE_TS = datetime(2026, 5, 1, 20, 30, tzinfo=UTC)
+AVAILABLE_AT = datetime(2026, 5, 1, 21, 5, tzinfo=UTC)
 
 
 def test_api_health() -> None:
@@ -285,6 +289,63 @@ def test_post_feedback_rejects_unknown_artifact_type(tmp_path, monkeypatch) -> N
         assert conn.execute(select(func.count()).select_from(useful_alert_labels)).scalar_one() == 0
 
 
+def test_post_feedback_records_alert_feedback_for_real_alert_id(tmp_path, monkeypatch) -> None:
+    database_url = _database_url(tmp_path, "generic-feedback-alert.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = _create_database(database_url)
+    alert = _insert_alert(engine)
+
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/feedback",
+        json={
+            "artifact_type": "alert",
+            "artifact_id": alert.id,
+            "ticker": "msft",
+            "label": "acted",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "id": f"useful-alert-label-v1:alert:{alert.id}:acted",
+        "artifact_type": "alert",
+        "artifact_id": alert.id,
+        "ticker": "MSFT",
+        "label": "acted",
+    }
+    with engine.connect() as conn:
+        assert conn.execute(select(func.count()).select_from(user_feedback)).scalar_one() == 1
+        assert conn.execute(select(func.count()).select_from(useful_alert_labels)).scalar_one() == 1
+
+
+def test_post_feedback_rejects_missing_alert_id(tmp_path, monkeypatch) -> None:
+    database_url = _database_url(tmp_path, "generic-feedback-missing-alert.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = _create_database(database_url)
+    _insert_candidate(engine)
+
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/feedback",
+        json={
+            "artifact_type": "alert",
+            "artifact_id": "state-msft",
+            "ticker": "MSFT",
+            "label": "useful",
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "referenced artifact not found"}
+    with engine.connect() as conn:
+        assert conn.execute(select(func.count()).select_from(alerts)).scalar_one() == 0
+        assert conn.execute(select(func.count()).select_from(user_feedback)).scalar_one() == 0
+        assert conn.execute(select(func.count()).select_from(useful_alert_labels)).scalar_one() == 0
+
+
 def _database_url(tmp_path, name: str) -> str:
     return f"sqlite:///{(tmp_path / name).as_posix()}"
 
@@ -385,3 +446,45 @@ def _insert_candidate(engine) -> None:
                 created_at=AVAILABLE_AT,
             )
         )
+
+
+def _insert_alert(engine) -> Alert:
+    alert = Alert(
+        id=alert_id(
+            ticker="MSFT",
+            route="immediate_manual_review",
+            dedupe_key=_alert_dedupe_key(),
+            available_at=AVAILABLE_AT,
+        ),
+        ticker="MSFT",
+        as_of=AS_OF,
+        source_ts=SOURCE_TS,
+        available_at=AVAILABLE_AT,
+        candidate_state_id="state-msft",
+        candidate_packet_id="packet-MSFT",
+        decision_card_id="card-MSFT",
+        action_state="EligibleForManualBuyReview",
+        route="immediate_manual_review",
+        channel="dashboard",
+        priority="high",
+        status="planned",
+        dedupe_key=_alert_dedupe_key(),
+        trigger_kind="state_transition",
+        trigger_fingerprint="ResearchOnly->EligibleForManualBuyReview",
+        title="MSFT manual review alert",
+        summary="MSFT candidate is ready for manual review.",
+        feedback_url="/api/alerts/alert-msft/feedback",
+        payload={"score": 92.5},
+        created_at=AVAILABLE_AT,
+        sent_at=None,
+    )
+    AlertRepository(engine).upsert_alert(alert)
+    return alert
+
+
+def _alert_dedupe_key() -> str:
+    return (
+        "alert-dedupe-v1:MSFT:immediate_manual_review:"
+        "EligibleForManualBuyReview:state_transition:"
+        "ResearchOnly->EligibleForManualBuyReview"
+    )

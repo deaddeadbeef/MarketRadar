@@ -80,6 +80,7 @@ metrics[2].metric(
 )
 
 st.caption("Missing spend rows remain zero; no paid model spend is inferred.")
+st.caption(f"Useful alert feedback counted in the current validation context: {useful_count}.")
 
 detail_rows = _records(
     summary.get("rows")
