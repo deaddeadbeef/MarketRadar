@@ -1988,7 +1988,7 @@ def _append_paper_decision_audit_events(
         decision_card_id=trade.decision_card_id,
         paper_trade_id=trade.id,
         decision=decision.value,
-        reason=override_reason,
+        reason=redact_text(override_reason) if override_reason is not None else None,
         hard_blocks=tuple(hard_blocks),
         status="success",
         metadata={
@@ -2011,7 +2011,7 @@ def _append_paper_decision_audit_events(
             decision_card_id=trade.decision_card_id,
             paper_trade_id=trade.id,
             decision=decision.value,
-            reason=override_reason,
+            reason=redact_text(override_reason) if override_reason is not None else None,
             hard_blocks=tuple(hard_blocks),
             status="success",
             metadata={"state": trade.state.value},

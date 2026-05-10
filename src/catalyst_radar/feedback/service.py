@@ -8,6 +8,7 @@ from sqlalchemy import Engine, delete, insert, select
 from catalyst_radar.alerts.models import UserFeedback, user_feedback_id
 from catalyst_radar.core.immutability import thaw_json_value
 from catalyst_radar.security.audit import AuditLogRepository
+from catalyst_radar.security.redaction import redact_text
 from catalyst_radar.storage.schema import (
     alerts,
     candidate_packets,
@@ -145,7 +146,9 @@ def record_feedback(
         alert_id=resolved_artifact_id if resolved_artifact_type == "alert" else None,
         status="success",
         metadata={"label": resolved_label},
-        after_payload={"notes": resolved_notes},
+        after_payload={
+            "notes": redact_text(resolved_notes) if resolved_notes is not None else None
+        },
         occurred_at=resolved_created_at,
         available_at=resolved_created_at,
     )

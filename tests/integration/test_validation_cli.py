@@ -402,7 +402,10 @@ def test_blocked_paper_decision_requires_override_and_audits_bypass(
     assert "--override-reason is required" in captured.err
     assert _scalar_or_none(database_url, select(audit_events.c.id).limit(1)) is None
 
-    assert main([*blocked_command, "--override-reason", "human override test"]) == 0
+    assert (
+        main([*blocked_command, "--override-reason", "human override apikey=override-secret"])
+        == 0
+    )
     capsys.readouterr()
 
     events = _audit_events(database_url, artifact_type="decision_card", artifact_id="card-blocked")
@@ -412,7 +415,9 @@ def test_blocked_paper_decision_requires_override_and_audits_bypass(
     ]
     assert events[0].decision == "approved"
     assert events[0].hard_blocks == ("liquidity_hard_block",)
-    assert events[1].reason == "human override test"
+    assert "override-secret" not in str(events[0].reason)
+    assert "override-secret" not in str(events[1].reason)
+    assert events[1].reason == "human override apikey=<redacted>"
 
 
 def test_validation_replay_rerun_clears_stale_deterministic_results(

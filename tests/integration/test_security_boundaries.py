@@ -30,6 +30,8 @@ from catalyst_radar.storage.schema import data_quality_incidents, job_runs
 
 FORBIDDEN_BROKER_IMPORTS = {
     "alpaca",
+    "alpaca_trade_api",
+    "ibapi",
     "ib_insync",
     "interactive_brokers",
     "robin_stocks",
@@ -149,6 +151,38 @@ def test_source_imports_do_not_include_broker_sdks() -> None:
     ]
 
     assert not violations
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "import alpaca_trade_api\n",
+        "import ibapi.client\n",
+        "from ib_insync import IB\n",
+        "import importlib\nimportlib.import_module('alpaca')\n",
+        "__import__('ib_insync')\n",
+        "from importlib import import_module\nimport_module('tda')\n",
+    ],
+)
+def test_broker_import_guard_catches_static_and_dynamic_import_roots(
+    tmp_path: Path,
+    source: str,
+) -> None:
+    path = tmp_path / "forbidden.py"
+    path.write_text(source, encoding="utf-8")
+
+    assert _broker_import_violations(path)
+
+
+def test_broker_import_guard_ignores_comments_and_strings(tmp_path: Path) -> None:
+    path = tmp_path / "benign.py"
+    path.write_text(
+        "# import alpaca_trade_api\n"
+        "text = 'from ib_insync import IB and __import__(\"tda\")'\n",
+        encoding="utf-8",
+    )
+
+    assert _broker_import_violations(path) == []
 
 
 def test_dependency_declarations_do_not_include_broker_sdks() -> None:

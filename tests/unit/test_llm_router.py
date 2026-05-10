@@ -54,6 +54,11 @@ def test_router_returns_skip_when_budget_blocks() -> None:
     assert len(entries) == 1
     assert entries[0].status == LLMCallStatus.SKIPPED
     assert entries[0].skip_reason == LLMSkipReason.PREMIUM_LLM_DISABLED
+    events = _model_call_events(repo)
+    assert len(events) == 1
+    assert events[0].budget_ledger_id == entries[0].id
+    assert events[0].status == "skipped"
+    assert events[0].metadata["skip_reason"] == "premium_llm_disabled"
 
 
 def test_router_dry_run_logs_estimate_without_client_call() -> None:
@@ -74,6 +79,10 @@ def test_router_dry_run_logs_estimate_without_client_call() -> None:
     assert entries[0].status == LLMCallStatus.DRY_RUN
     assert entries[0].estimated_cost > 0
     assert entries[0].actual_cost == 0.0
+    events = _model_call_events(repo)
+    assert len(events) == 1
+    assert events[0].budget_ledger_id == entries[0].id
+    assert events[0].status == "dry_run"
 
 
 def test_router_fake_client_logs_completed_entry() -> None:
@@ -100,7 +109,7 @@ def test_router_fake_client_logs_completed_entry() -> None:
     assert entries[0].candidate_state_id == "state-msft"
     assert entries[0].candidate_state == ActionState.WARNING.value
     assert entries[0].outcome_label == "evidence_review"
-    events = AuditLogRepository(repo.engine).list_events(event_type="model_call_recorded")
+    events = _model_call_events(repo)
     assert len(events) == 1
     assert events[0].actor_source == "llm_router"
     assert events[0].artifact_type == "candidate_packet"
@@ -176,6 +185,11 @@ def test_router_rejects_schema_failure_and_logs_schema_rejected() -> None:
     assert result.status == LLMCallStatus.SCHEMA_REJECTED
     assert entries[0].status == LLMCallStatus.SCHEMA_REJECTED
     assert entries[0].skip_reason == LLMSkipReason.SCHEMA_VALIDATION_FAILED
+    events = _model_call_events(repo)
+    assert len(events) == 1
+    assert events[0].budget_ledger_id == entries[0].id
+    assert events[0].status == "schema_rejected"
+    assert events[0].metadata["skip_reason"] == "schema_validation_failed"
 
 
 @pytest.mark.parametrize(
@@ -250,6 +264,12 @@ def test_router_logs_failed_entry_when_client_raises() -> None:
     assert "secret-token" not in result.error
     assert "secret-token" not in entries[0].payload["error"]
     assert "<redacted>" in entries[0].payload["error"]
+    events = _model_call_events(repo)
+    assert len(events) == 1
+    assert events[0].budget_ledger_id == entries[0].id
+    assert events[0].status == "failed"
+    assert events[0].metadata["skip_reason"] == "client_error"
+    assert "secret-token" not in json.dumps(dict(events[0].metadata))
 
 
 def test_router_does_not_mutate_candidate_packet_payload() -> None:
@@ -674,6 +694,10 @@ def _repo() -> BudgetLedgerRepository:
     engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
     create_schema(engine)
     return BudgetLedgerRepository(engine)
+
+
+def _model_call_events(repo: BudgetLedgerRepository):
+    return AuditLogRepository(repo.engine).list_events(event_type="model_call_recorded")
 
 
 def _candidate(

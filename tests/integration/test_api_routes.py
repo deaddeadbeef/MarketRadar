@@ -249,7 +249,7 @@ def test_post_feedback_records_useful_alert_label(tmp_path, monkeypatch) -> None
             "artifact_id": "card-MSFT",
             "ticker": "msft",
             "label": "useful",
-            "notes": "worth review",
+            "notes": "worth review apikey=note-secret",
         },
     )
 
@@ -269,7 +269,7 @@ def test_post_feedback_records_useful_alert_label(tmp_path, monkeypatch) -> None
     stored_label = labels[0]._mapping
     assert stored_label["ticker"] == "MSFT"
     assert stored_label["label"] == "useful"
-    assert stored_label["notes"] == "worth review"
+    assert stored_label["notes"] == "worth review apikey=note-secret"
     assert candidate_after is not None
     assert dict(candidate_after._mapping) == dict(candidate_before._mapping)
     events = AuditLogRepository(engine).list_events(
@@ -281,7 +281,8 @@ def test_post_feedback_records_useful_alert_label(tmp_path, monkeypatch) -> None
     assert events[0].actor_id == "analyst-1"
     assert events[0].actor_role == "analyst"
     assert events[0].metadata["label"] == "useful"
-    assert events[0].after_payload["notes"] == "worth review"
+    assert "note-secret" not in events[0].after_payload["notes"]
+    assert events[0].after_payload["notes"] == "worth review apikey=<redacted>"
 
     assert response.status_code == 200
     assert (
