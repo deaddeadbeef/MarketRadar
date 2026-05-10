@@ -25,6 +25,12 @@ CREATE TABLE IF NOT EXISTS audit_events (
   created_at TIMESTAMPTZ NOT NULL
 );
 
+ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS paper_trade_id TEXT;
+ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS alert_id TEXT;
+ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS decision TEXT;
+ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS reason TEXT;
+ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS hard_blocks JSONB NOT NULL DEFAULT '[]'::jsonb;
+
 CREATE INDEX IF NOT EXISTS ix_audit_events_event_type_occurred
   ON audit_events (event_type, occurred_at);
 

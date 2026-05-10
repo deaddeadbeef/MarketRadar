@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import AbstractContextManager
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from sqlalchemy import create_engine, inspect
-from sqlalchemy.exc import DBAPIError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from catalyst_radar.security.audit import AuditEvent, AuditLogRepository
+from catalyst_radar.storage import db as storage_db
 from catalyst_radar.storage.db import create_schema
 from catalyst_radar.storage.schema import audit_events
 
@@ -122,6 +126,64 @@ def test_sqlite_audit_migration_executes_locally(tmp_path) -> None:
     } <= triggers
 
 
+def test_sqlite_audit_migration_upgrades_old_table_shape(tmp_path) -> None:
+    migration = Path("sql/migrations/013_security_audit.sql").read_text(encoding="utf-8")
+    db_path = tmp_path / "old-migration.db"
+
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript(
+            """
+            CREATE TABLE audit_events (
+              id TEXT PRIMARY KEY,
+              event_type TEXT NOT NULL,
+              actor_source TEXT NOT NULL,
+              actor_id TEXT,
+              actor_role TEXT,
+              artifact_type TEXT,
+              artifact_id TEXT,
+              ticker TEXT,
+              candidate_state_id TEXT,
+              candidate_packet_id TEXT,
+              decision_card_id TEXT,
+              budget_ledger_id TEXT,
+              status TEXT NOT NULL,
+              metadata JSON NOT NULL DEFAULT '{}',
+              before_payload JSON NOT NULL DEFAULT '{}',
+              after_payload JSON NOT NULL DEFAULT '{}',
+              occurred_at TIMESTAMPTZ NOT NULL,
+              available_at TIMESTAMPTZ,
+              created_at TIMESTAMPTZ NOT NULL
+            );
+            """
+        )
+        conn.executescript(migration)
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(audit_events)")}
+
+    assert {
+        "paper_trade_id",
+        "alert_id",
+        "decision",
+        "reason",
+        "hard_blocks",
+    } <= columns
+
+
+def test_postgres_create_schema_installs_audit_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = _FakePostgresEngine()
+    monkeypatch.setattr(storage_db.metadata, "create_all", lambda received: None)
+
+    storage_db.create_schema(engine)  # type: ignore[arg-type]
+
+    executed = "\n".join(engine.statements)
+    assert "ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS paper_trade_id" in executed
+    assert "ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS hard_blocks" in executed
+    assert "CREATE INDEX IF NOT EXISTS ix_audit_events_artifact" in executed
+    assert "CREATE TRIGGER trg_audit_events_no_update" in executed
+    assert "CREATE TRIGGER trg_audit_events_no_delete" in executed
+
+
 def test_audit_repository_appends_repeated_events_for_same_artifact(tmp_path) -> None:
     engine = create_engine(f"sqlite:///{tmp_path / 'audit-events.db'}", future=True)
     create_schema(engine)
@@ -216,6 +278,33 @@ def test_audit_repository_append_event_keyword_api_defaults_timestamps(tmp_path)
 
     events = repo.list_events(artifact_type="alert", artifact_id="alert-1")
     assert events == [event]
+
+
+def test_audit_repository_rejects_duplicate_caller_supplied_ids(tmp_path) -> None:
+    engine = create_engine(f"sqlite:///{tmp_path / 'audit-duplicate-id.db'}", future=True)
+    create_schema(engine)
+    repo = AuditLogRepository(engine)
+
+    first = repo.append_event(
+        id="audit-event-v1:fixed",
+        event_type="alert.sent",
+        actor_source="pipeline",
+        artifact_type="alert",
+        artifact_id="alert-1",
+        occurred_at=OCCURRED_AT,
+    )
+
+    with pytest.raises(IntegrityError):
+        repo.append_event(
+            id=first.id,
+            event_type="alert.sent",
+            actor_source="pipeline",
+            artifact_type="alert",
+            artifact_id="alert-1",
+            occurred_at=OCCURRED_AT + timedelta(seconds=1),
+        )
+
+    assert repo.list_events(artifact_type="alert", artifact_id="alert-1") == [first]
 
 
 def test_audit_events_reject_direct_update_and_delete(tmp_path) -> None:
@@ -325,3 +414,27 @@ def test_audit_event_validates_required_fields_json_and_datetimes() -> None:
             hard_blocks="risk_hard_block",
             occurred_at=OCCURRED_AT,
         )
+
+
+class _FakePostgresEngine:
+    dialect = SimpleNamespace(name="postgresql")
+
+    def __init__(self) -> None:
+        self.statements: list[str] = []
+
+    def begin(self) -> AbstractContextManager[Any]:
+        return _FakeConnection(self.statements)
+
+
+class _FakeConnection:
+    def __init__(self, statements: list[str]) -> None:
+        self.statements = statements
+
+    def __enter__(self) -> _FakeConnection:
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        return None
+
+    def exec_driver_sql(self, statement: str) -> None:
+        self.statements.append(statement)

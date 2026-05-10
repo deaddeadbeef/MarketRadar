@@ -21,6 +21,8 @@ def create_schema(engine: Engine) -> None:
         _upgrade_sqlite_audit_events(engine)
         _upgrade_sqlite_job_locks(engine)
         _upgrade_sqlite_holdings_snapshots(engine)
+    elif engine.dialect.name == "postgresql":
+        _ensure_postgres_audit_events_contract(engine)
 
 
 def _upgrade_sqlite_audit_events(engine: Engine) -> None:
@@ -73,6 +75,51 @@ def _ensure_sqlite_audit_events_contract(engine: Engine) -> None:
             END
             """
         )
+
+
+def _ensure_postgres_audit_events_contract(engine: Engine) -> None:
+    with engine.begin() as conn:
+        for statement in _postgres_audit_events_contract_statements():
+            conn.exec_driver_sql(statement)
+
+
+def _postgres_audit_events_contract_statements() -> tuple[str, ...]:
+    return (
+        "ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS paper_trade_id VARCHAR",
+        "ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS alert_id VARCHAR",
+        "ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS decision VARCHAR",
+        "ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS reason TEXT",
+        (
+            "ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS "
+            "hard_blocks JSONB NOT NULL DEFAULT '[]'::jsonb"
+        ),
+        (
+            "CREATE INDEX IF NOT EXISTS ix_audit_events_artifact "
+            "ON audit_events (artifact_type, artifact_id)"
+        ),
+        """
+        CREATE OR REPLACE FUNCTION reject_audit_events_mutation()
+        RETURNS trigger AS $$
+        BEGIN
+          RAISE EXCEPTION 'audit_events is append-only';
+        END;
+        $$ LANGUAGE plpgsql
+        """,
+        "DROP TRIGGER IF EXISTS trg_audit_events_no_update ON audit_events",
+        """
+        CREATE TRIGGER trg_audit_events_no_update
+        BEFORE UPDATE ON audit_events
+        FOR EACH ROW
+        EXECUTE FUNCTION reject_audit_events_mutation()
+        """,
+        "DROP TRIGGER IF EXISTS trg_audit_events_no_delete ON audit_events",
+        """
+        CREATE TRIGGER trg_audit_events_no_delete
+        BEFORE DELETE ON audit_events
+        FOR EACH ROW
+        EXECUTE FUNCTION reject_audit_events_mutation()
+        """,
+    )
 
 
 def _upgrade_sqlite_job_locks(engine: Engine) -> None:
