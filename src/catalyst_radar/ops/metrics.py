@@ -19,7 +19,20 @@ from catalyst_radar.storage.schema import (
 from catalyst_radar.validation.reports import USEFUL_ALERT_LABELS
 
 _SCHEMA_FAILURE_MARKERS = ("schema", "validation")
-_UNSUPPORTED_CLAIM_MARKERS = ("source_faithfulness", "source faithfulness", "unsupported")
+_UNSUPPORTED_CLAIM_SKIP_REASONS = (
+    "schema_validation_failed",
+    "source_faithfulness_failed",
+    "unsupported_claim",
+)
+_UNSUPPORTED_CLAIM_MARKERS = (
+    "source_faithfulness",
+    "source faithfulness",
+    "unsupported",
+    "source_id",
+    "computed_feature_id",
+    "allowed_reference_ids",
+    "source reference",
+)
 
 
 def load_ops_metrics(engine: Engine, now: datetime | None = None) -> dict[str, object]:
@@ -41,7 +54,7 @@ def load_ops_metrics(engine: Engine, now: datetime | None = None) -> dict[str, o
             conn,
             available_at=resolved_now,
         )
-        total_llm_attempts = _llm_attempt_count(conn, available_at=resolved_now)
+        total_budget_rows = _visible_budget_row_count(conn, available_at=resolved_now)
         latest_validation = _latest_validation_run(conn, available_at=resolved_now)
         stage_counts, candidate_state_counts, job_status_counts = _stage_counts(
             conn,
@@ -70,7 +83,7 @@ def load_ops_metrics(engine: Engine, now: datetime | None = None) -> dict[str, o
         "stale_incident_count": stale_incident_count,
         "schema_failure_count": schema_failure_count,
         "unsupported_claim_count": unsupported_claim_count,
-        "unsupported_claim_rate": _safe_rate(unsupported_claim_count, total_llm_attempts),
+        "unsupported_claim_rate": _safe_rate(unsupported_claim_count, total_budget_rows),
         "false_positive_rate": false_positive_rate,
         "latest_validation_run_id": (
             str(latest_validation._mapping["id"]) if latest_validation is not None else None
@@ -235,10 +248,12 @@ def _unsupported_claim_count(conn: Any, *, available_at: datetime) -> int:
             .where(
                 budget_ledger.c.available_at <= available_at,
                 budget_ledger.c.status == "schema_rejected",
-                _marker_filter(
-                    _UNSUPPORTED_CLAIM_MARKERS,
-                    budget_ledger.c.skip_reason,
-                    cast(budget_ledger.c.payload, String),
+                or_(
+                    budget_ledger.c.skip_reason.in_(_UNSUPPORTED_CLAIM_SKIP_REASONS),
+                    _marker_filter(
+                        _UNSUPPORTED_CLAIM_MARKERS,
+                        cast(budget_ledger.c.payload, String),
+                    ),
                 ),
             )
         )
@@ -246,15 +261,12 @@ def _unsupported_claim_count(conn: Any, *, available_at: datetime) -> int:
     )
 
 
-def _llm_attempt_count(conn: Any, *, available_at: datetime) -> int:
+def _visible_budget_row_count(conn: Any, *, available_at: datetime) -> int:
     return int(
         conn.scalar(
             select(func.count())
             .select_from(budget_ledger)
-            .where(
-                budget_ledger.c.available_at <= available_at,
-                budget_ledger.c.status.not_in(("planned", "skipped")),
-            )
+            .where(budget_ledger.c.available_at <= available_at)
         )
         or 0
     )

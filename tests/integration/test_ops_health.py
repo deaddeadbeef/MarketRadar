@@ -194,12 +194,20 @@ def test_ops_health_reports_metrics_banners_incidents_drift_and_runbooks() -> No
                     payload={"error": "schema_validation_failed"},
                 ),
                 _budget_row(
-                    id="budget-unsupported-claim",
+                    id="budget-source-link-error",
                     status="schema_rejected",
-                    skip_reason="schema_validation_failed",
+                    skip_reason=None,
                     actual_cost=0.05,
                     available_at=now - timedelta(minutes=10),
-                    payload={"error": "source_faithfulness violation"},
+                    payload={"error": "source_id is not in allowed_reference_ids"},
+                ),
+                _budget_row(
+                    id="budget-skipped",
+                    status="skipped",
+                    skip_reason="premium_llm_disabled",
+                    actual_cost=0.0,
+                    available_at=now - timedelta(minutes=8),
+                    payload={"reason": "planned denominator row"},
                 ),
             ],
         )
@@ -266,12 +274,13 @@ def test_ops_health_reports_metrics_banners_incidents_drift_and_runbooks() -> No
     assert metrics["job_status_counts"] == {"failed": 1, "success": 1}
     assert metrics["candidate_state_counts"] == {ActionState.WARNING.value: 2}
     assert metrics["cost"]["total_actual_cost_usd"] == 0.35
+    assert metrics["cost"]["attempt_count"] == 4
     assert metrics["cost"]["cost_per_useful_alert"] == 0.35
     assert metrics["useful_alert_count"] == 1
     assert metrics["stale_incident_count"] == 1
     assert metrics["schema_failure_count"] == 1
-    assert metrics["unsupported_claim_count"] == 1
-    assert metrics["unsupported_claim_rate"] == 0.333333
+    assert metrics["unsupported_claim_count"] == 2
+    assert metrics["unsupported_claim_rate"] == 0.5
     assert metrics["false_positive_rate"] == 0.25
 
 
