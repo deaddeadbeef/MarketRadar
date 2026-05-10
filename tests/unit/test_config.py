@@ -104,6 +104,24 @@ def test_llm_config_reads_pricing_and_caps() -> None:
     assert config.llm_task_daily_caps["gpt55_decision_card"] == 1
 
 
+def test_llm_config_trims_optional_model_values() -> None:
+    config = AppConfig.from_env(
+        {
+            "CATALYST_LLM_EVIDENCE_MODEL": "   ",
+            "CATALYST_LLM_SKEPTIC_MODEL": "  model-skeptic  ",
+        }
+    )
+
+    assert config.llm_evidence_model is None
+    assert config.llm_skeptic_model == "model-skeptic"
+
+
+@pytest.mark.parametrize("raw", ["-0.01", "1.01"])
+def test_llm_config_rejects_monthly_soft_cap_pct_outside_ratio(raw: str) -> None:
+    with pytest.raises(ValueError):
+        AppConfig.from_env({"CATALYST_LLM_MONTHLY_SOFT_CAP_PCT": raw})
+
+
 @pytest.mark.parametrize(
     "raw",
     ["mid_review", "=3", "mid_review=-1", "mid_review=two"],

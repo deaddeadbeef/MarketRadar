@@ -26,10 +26,10 @@ def test_estimates_cost_with_cached_tokens() -> None:
     controller = _controller()
 
     cost = controller.estimate_cost(
-        TokenUsage(input_tokens=1_000, cached_input_tokens=500, output_tokens=200)
+        TokenUsage(input_tokens=1_000, cached_input_tokens=400, output_tokens=100)
     )
 
-    assert cost == 0.01125
+    assert cost == 0.0062
 
 
 def test_blocks_when_premium_llm_disabled() -> None:
@@ -62,6 +62,17 @@ def test_blocks_missing_model_or_pricing() -> None:
     assert _allow_mid_review(missing_pricing).reason == LLMSkipReason.PRICING_MISSING
 
 
+def test_blocks_blank_whitespace_model() -> None:
+    controller = _controller(
+        config=_config({"CATALYST_LLM_EVIDENCE_MODEL": "   "}),
+    )
+
+    decision = _allow_mid_review(controller)
+
+    assert decision.allowed is False
+    assert decision.reason == LLMSkipReason.MODEL_NOT_CONFIGURED
+
+
 def test_blocks_stale_pricing() -> None:
     controller = _controller(
         config=_config(
@@ -77,6 +88,17 @@ def test_blocks_stale_pricing() -> None:
     assert decision.allowed is False
     assert decision.reason == LLMSkipReason.PRICING_STALE
     assert decision.estimated_cost > 0
+
+
+def test_blocks_future_pricing_date() -> None:
+    controller = _controller(
+        config=_config({"CATALYST_LLM_PRICING_UPDATED_AT": "2026-05-11"}),
+    )
+
+    decision = _allow_mid_review(controller)
+
+    assert decision.allowed is False
+    assert decision.reason == LLMSkipReason.PRICING_STALE
 
 
 def test_blocks_per_task_daily_cap() -> None:
@@ -166,7 +188,7 @@ def test_allows_when_all_gates_pass() -> None:
 
     assert decision.allowed is True
     assert decision.reason is None
-    assert decision.estimated_cost == 0.01125
+    assert decision.estimated_cost == 0.00875
     assert decision.daily_spend == 0.10
     assert decision.monthly_spend == 0.10
     assert decision.task_daily_count == 1

@@ -42,6 +42,13 @@ def _nonnegative_float(env: Mapping[str, str], key: str, default: float) -> floa
     return value
 
 
+def _ratio_float(env: Mapping[str, str], key: str, default: float) -> float:
+    value = _nonnegative_float(env, key, default)
+    if value > 1:
+        raise ValueError(f"{key} must be between 0.0 and 1.0")
+    return value
+
+
 def _positive_float(env: Mapping[str, str], key: str, default: float) -> float:
     value = _float(env, key, default)
     if value <= 0:
@@ -63,9 +70,12 @@ def _positive_int(env: Mapping[str, str], key: str, default: int) -> int:
 
 def _optional_str(env: Mapping[str, str], key: str) -> str | None:
     raw = env.get(key)
-    if raw is None or raw == "":
+    if raw is None:
         return None
-    return raw
+    value = raw.strip()
+    if value == "":
+        return None
+    return value
 
 
 def _task_caps(env: Mapping[str, str], key: str) -> Mapping[str, int]:
@@ -182,7 +192,7 @@ class AppConfig:
             llm_monthly_budget_usd=_nonnegative_float(
                 source, "CATALYST_LLM_MONTHLY_BUDGET_USD", 0.0
             ),
-            llm_monthly_soft_cap_pct=_nonnegative_float(
+            llm_monthly_soft_cap_pct=_ratio_float(
                 source, "CATALYST_LLM_MONTHLY_SOFT_CAP_PCT", 0.80
             ),
             llm_task_daily_caps=_task_caps(source, "CATALYST_LLM_TASK_DAILY_CAPS"),

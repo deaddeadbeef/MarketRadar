@@ -39,9 +39,13 @@ class BudgetController:
         input_cost = self.config.llm_input_cost_per_1m or 0.0
         cached_cost = self.config.llm_cached_input_cost_per_1m or 0.0
         output_cost = self.config.llm_output_cost_per_1m or 0.0
+        non_cached_input_tokens = max(
+            usage.input_tokens - usage.cached_input_tokens,
+            0,
+        )
         return round(
             (
-                (usage.input_tokens * input_cost)
+                (non_cached_input_tokens * input_cost)
                 + (usage.cached_input_tokens * cached_cost)
                 + (usage.output_tokens * output_cost)
             )
@@ -186,7 +190,7 @@ class BudgetController:
         except ValueError:
             return True
         age = self._current_date() - updated_at
-        return age.days > self.config.llm_pricing_stale_after_days
+        return age.days < 0 or age.days > self.config.llm_pricing_stale_after_days
 
     def _model_for_task(self, task: LLMTask) -> str | None:
         value = getattr(self.config, task.model_config_key)
