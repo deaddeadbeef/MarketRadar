@@ -34,6 +34,7 @@ class BudgetLedgerRepository:
         self.engine = engine
 
     def upsert_entry(self, entry: BudgetLedgerEntry) -> None:
+        """Append one immutable audit row; duplicate IDs intentionally fail."""
         with self.engine.begin() as conn:
             conn.execute(insert(budget_ledger).values(**_entry_row(entry)))
 

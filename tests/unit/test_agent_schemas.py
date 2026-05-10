@@ -46,6 +46,34 @@ def test_rejects_non_json_object() -> None:
         validate_evidence_review_output(["not", "an", "object"], ticker="MSFT", as_of=AS_OF)  # type: ignore[arg-type]
 
 
+@pytest.mark.parametrize("field", ["claim", "evidence_type", "uncertainty_notes"])
+def test_rejects_blank_required_claim_text(field: str) -> None:
+    payload = _valid_payload()
+    payload["claims"][0][field] = " "
+
+    with pytest.raises(AgentSchemaError, match=field):
+        validate_evidence_review_output(payload, ticker="MSFT", as_of=AS_OF)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("source_quality", -0.1),
+        ("source_quality", 1.1),
+        ("confidence", -0.1),
+        ("confidence", 1.1),
+        ("sentiment", -1.1),
+        ("sentiment", 1.1),
+    ],
+)
+def test_rejects_out_of_range_claim_numbers(field: str, value: float) -> None:
+    payload = _valid_payload()
+    payload["claims"][0][field] = value
+
+    with pytest.raises(AgentSchemaError, match=field):
+        validate_evidence_review_output(payload, ticker="MSFT", as_of=AS_OF)
+
+
 def _valid_payload(*, ticker: str = "MSFT") -> dict[str, object]:
     return {
         "ticker": ticker,

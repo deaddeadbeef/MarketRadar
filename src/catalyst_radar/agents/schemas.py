@@ -73,8 +73,26 @@ def _validated_claim(value: Any, field_name: str) -> Mapping[str, Any]:
     if computed_feature_id is not None:
         claim["computed_feature_id"] = computed_feature_id
 
-    for key in ("source_quality", "sentiment", "confidence"):
-        claim[key] = _finite_number(claim.get(key), f"{field_name}.{key}")
+    for key in ("claim", "evidence_type", "uncertainty_notes"):
+        claim[key] = _required_text(claim.get(key), f"{field_name}.{key}")
+    claim["source_quality"] = _bounded_number(
+        claim.get("source_quality"),
+        f"{field_name}.source_quality",
+        minimum=0.0,
+        maximum=1.0,
+    )
+    claim["sentiment"] = _bounded_number(
+        claim.get("sentiment"),
+        f"{field_name}.sentiment",
+        minimum=-1.0,
+        maximum=1.0,
+    )
+    claim["confidence"] = _bounded_number(
+        claim.get("confidence"),
+        f"{field_name}.confidence",
+        minimum=0.0,
+        maximum=1.0,
+    )
     return claim
 
 
@@ -150,6 +168,20 @@ def _finite_number(value: Any, field_name: str) -> float:
     number = float(value)
     if not math.isfinite(number):
         msg = f"{field_name} must be finite"
+        raise AgentSchemaError(msg)
+    return number
+
+
+def _bounded_number(
+    value: Any,
+    field_name: str,
+    *,
+    minimum: float,
+    maximum: float,
+) -> float:
+    number = _finite_number(value, field_name)
+    if number < minimum or number > maximum:
+        msg = f"{field_name} must be between {minimum} and {maximum}"
         raise AgentSchemaError(msg)
     return number
 

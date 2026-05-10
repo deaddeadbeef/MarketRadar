@@ -15,6 +15,9 @@ AS_OF_TEXT = "2026-05-08"
 SOURCE_TS = datetime(2026, 5, 8, 20, 30, tzinfo=UTC)
 AVAILABLE_AT = datetime(2026, 5, 10, 14, tzinfo=UTC)
 AVAILABLE_AT_TEXT = "2026-05-10T14:00:00Z"
+HISTORICAL_AVAILABLE_AT = datetime(2026, 5, 9, 0, tzinfo=UTC)
+HISTORICAL_AVAILABLE_AT_TEXT = "2026-05-09T00:00:00Z"
+ATTEMPTED_AT = datetime(2026, 5, 10, 20, tzinfo=UTC)
 
 
 def test_llm_budget_status_reports_zero_without_ledger_rows(
@@ -115,6 +118,37 @@ def test_run_llm_review_dry_run_logs_dry_run_entry(
     assert [(row.status, row.skip_reason, row.model) for row in rows] == [
         ("dry_run", None, "fake")
     ]
+
+
+def test_run_llm_review_uses_attempt_time_for_ledger_ts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    database_url = _init_db(tmp_path, monkeypatch, capsys)
+    _configure_fake_safe_llm(monkeypatch)
+    _seed_candidate_packet(database_url, available_at=HISTORICAL_AVAILABLE_AT)
+
+    assert (
+        main(
+            [
+                "run-llm-review",
+                "--ticker",
+                "MSFT",
+                "--as-of",
+                AS_OF_TEXT,
+                "--available-at",
+                HISTORICAL_AVAILABLE_AT_TEXT,
+                "--dry-run",
+            ]
+        )
+        == 0
+    )
+
+    rows = _ledger_rows(database_url)
+    assert len(rows) == 1
+    assert _as_utc(rows[0].available_at) == HISTORICAL_AVAILABLE_AT
+    assert _as_utc(rows[0].ts) == ATTEMPTED_AT
 
 
 def test_run_llm_review_fake_client_logs_completed_entry(
@@ -301,6 +335,7 @@ def _init_db(
     capsys: pytest.CaptureFixture[str],
 ) -> str:
     database_url = f"sqlite:///{(tmp_path / 'llm-cli.db').as_posix()}"
+    monkeypatch.setattr("catalyst_radar.cli._now_utc", lambda: ATTEMPTED_AT)
     monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
     assert main(["init-db"]) == 0
     capsys.readouterr()
@@ -330,10 +365,14 @@ def _configure_enabled_llm_budget(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CATALYST_LLM_MONTHLY_BUDGET_USD", "10")
 
 
-def _seed_candidate_packet(database_url: str) -> None:
+def _seed_candidate_packet(
+    database_url: str,
+    *,
+    available_at: datetime = AVAILABLE_AT,
+) -> None:
     engine = create_engine(database_url, future=True)
     with engine.begin() as conn:
-        conn.execute(insert(candidate_packets).values(**_packet()))
+        conn.execute(insert(candidate_packets).values(**_packet(available_at=available_at)))
 
 
 def _ledger_rows(database_url: str):
@@ -344,7 +383,15 @@ def _ledger_rows(database_url: str):
         )
 
 
-def _packet() -> dict[str, object]:
+def _as_utc(value: datetime | str) -> datetime:
+    if isinstance(value, str):
+        value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if value.tzinfo is None or value.utcoffset() is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def _packet(*, available_at: datetime = AVAILABLE_AT) -> dict[str, object]:
     return {
         "id": "packet-msft",
         "ticker": "MSFT",
@@ -354,7 +401,7 @@ def _packet() -> dict[str, object]:
         "final_score": 82.0,
         "schema_version": "candidate-packet-v1",
         "source_ts": SOURCE_TS,
-        "available_at": AVAILABLE_AT,
+        "available_at": available_at,
         "payload": {
             "supporting_evidence": [
                 {
@@ -366,7 +413,7 @@ def _packet() -> dict[str, object]:
                     "source_id": "event-msft",
                     "source_quality": 0.9,
                     "source_ts": SOURCE_TS.isoformat(),
-                    "available_at": AVAILABLE_AT.isoformat(),
+                    "available_at": available_at.isoformat(),
                 }
             ],
             "disconfirming_evidence": [
@@ -379,7 +426,7 @@ def _packet() -> dict[str, object]:
                     "computed_feature_id": "risk-msft",
                     "source_quality": 0.7,
                     "source_ts": SOURCE_TS.isoformat(),
-                    "available_at": AVAILABLE_AT.isoformat(),
+                    "available_at": available_at.isoformat(),
                 }
             ],
             "conflicts": [],
@@ -389,5 +436,5 @@ def _packet() -> dict[str, object]:
                 "invalidation_price": 94.0,
             },
         },
-        "created_at": AVAILABLE_AT,
+        "created_at": available_at,
     }

@@ -647,7 +647,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "llm-budget-status":
         create_schema(engine)
         ledger_repo = BudgetLedgerRepository(engine)
-        available_at = args.available_at or datetime.now(UTC)
+        available_at = args.available_at or _now_utc()
         payload = _llm_budget_status_payload(
             summary=ledger_repo.summary(available_at=available_at),
             config=config,
@@ -673,8 +673,8 @@ def main(argv: list[str] | None = None) -> int:
         create_schema(engine)
         packet_repo = CandidatePacketRepository(engine)
         ledger_repo = BudgetLedgerRepository(engine)
-        available_at = args.available_at or datetime.now(UTC)
-        attempted_at = datetime.now(UTC)
+        available_at = args.available_at or _now_utc()
+        attempted_at = _now_utc()
         task = DEFAULT_TASKS[args.task]
         packet = packet_repo.latest_candidate_packet(
             args.ticker,
@@ -693,7 +693,7 @@ def main(argv: list[str] | None = None) -> int:
                     prompt_version=task.prompt_version,
                     attempted_at=attempted_at,
                 ),
-                ts=available_at,
+                ts=attempted_at,
                 available_at=available_at,
                 task=task.name,
                 status=LLMCallStatus.SKIPPED,
@@ -715,10 +715,10 @@ def main(argv: list[str] | None = None) -> int:
         budget = BudgetController(
             config=config,
             ledger_repo=ledger_repo,
-            now=lambda: available_at,
+            now=lambda: attempted_at,
         )
         client = FakeLLMClient() if args.fake else _SafeDisabledLLMClient()
-        router = LLMRouter(budget=budget, client=client, now=lambda: available_at)
+        router = LLMRouter(budget=budget, client=client, now=lambda: attempted_at)
         result = router.review_candidate(
             task=task,
             candidate=packet,
@@ -1826,6 +1826,10 @@ def _float_or_none(value: object) -> float | None:
     except (TypeError, ValueError):
         return None
     return number
+
+
+def _now_utc() -> datetime:
+    return datetime.now(UTC)
 
 
 def _llm_budget_status_payload(
