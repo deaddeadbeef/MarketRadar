@@ -650,13 +650,13 @@ Primary files:
 
 Implementation tasks:
 
-- [ ] Add scheduled jobs: daily bar ingest, feature scan, event ingest, text triage, scoring policy, LLM review, digest, and validation update.
-- [ ] Add job locks to avoid overlapping runs.
-- [ ] Add provider-health banners to dashboard data.
-- [ ] Add degraded mode that disables states above AddToWatchlist when core data is stale.
-- [ ] Add score-distribution drift detection.
-- [ ] Add metrics for stage counts, cost, useful alerts, stale incidents, unsupported-claim rate, and false-positive rate.
-- [ ] Add local Docker Compose for Postgres, worker, API, dashboard, and Redis if chosen.
+- [x] Add scheduled jobs: daily bar ingest, feature scan, event ingest, text triage, scoring policy, LLM review, digest, and validation update.
+- [x] Add job locks to avoid overlapping runs.
+- [x] Add provider-health banners to dashboard data.
+- [x] Add degraded mode that disables states above AddToWatchlist when core data is stale.
+- [x] Add score-distribution drift detection.
+- [x] Add metrics for stage counts, cost, useful alerts, stale incidents, unsupported-claim rate, and false-positive rate.
+- [x] Add local Docker Compose for Postgres, worker, API, dashboard, and Redis if chosen.
 
 Exit criteria:
 
