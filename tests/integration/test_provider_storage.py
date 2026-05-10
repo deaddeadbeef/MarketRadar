@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, func, select
 
 from catalyst_radar.connectors.base import (
     ConnectorHealth,
@@ -21,7 +21,7 @@ from catalyst_radar.storage.provider_repositories import (
     ProviderRepository,
     replay_normalized_records,
 )
-from catalyst_radar.storage.schema import data_quality_incidents, job_runs
+from catalyst_radar.storage.schema import data_quality_incidents, job_runs, raw_provider_records
 
 
 def test_raw_records_round_trip_payload_hash_and_timestamps() -> None:
@@ -39,7 +39,7 @@ def test_raw_records_round_trip_payload_hash_and_timestamps() -> None:
         fetched_at=fetched_at,
         available_at=available_at,
         license_tag="local-csv-fixture",
-        retention_policy="retain-local-fixture",
+        retention_policy="local-fixture-retain",
     )
 
     assert repo.save_raw_records([record]) == 1
@@ -64,7 +64,7 @@ def test_raw_records_list_in_source_and_fetch_order() -> None:
         fetched_at=later.fetched_at - timedelta(minutes=1),
         available_at=later.available_at - timedelta(minutes=1),
         license_tag="local-csv-fixture",
-        retention_policy="retain-local-fixture",
+        retention_policy="local-fixture-retain",
     )
 
     repo.save_raw_records([later, earlier])
@@ -93,7 +93,7 @@ def test_repository_normalizes_non_utc_datetimes_before_sqlite_round_trip() -> N
         fetched_at=fetched_at,
         available_at=available_at,
         license_tag="local-csv-fixture",
-        retention_policy="retain-local-fixture",
+        retention_policy="local-fixture-retain",
     )
 
     repo.save_raw_records([raw])
@@ -153,6 +153,32 @@ def test_normalized_records_round_trip_identity_and_raw_payload_hash() -> None:
     assert rows == [record]
     assert rows[0].source_ts.tzinfo is UTC
     assert rows[0].available_at.tzinfo is UTC
+
+
+def test_raw_record_policy_failure_persists_no_rows() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    create_schema(engine)
+    repo = ProviderRepository(engine)
+    record = RawRecord(
+        provider="dry-run",
+        kind=ConnectorRecordKind.DAILY_BAR,
+        request_hash="request-1",
+        payload_hash="payload-1",
+        payload={"ticker": "MSFT"},
+        source_ts=datetime(2026, 5, 10, 1, 0, tzinfo=UTC),
+        fetched_at=datetime(2026, 5, 10, 1, 0, 1, tzinfo=UTC),
+        available_at=datetime(2026, 5, 10, 1, 0, 2, tzinfo=UTC),
+        license_tag="unknown-license",
+        retention_policy="retain",
+    )
+
+    with pytest.raises(ValueError, match="unknown provider license tag"):
+        repo.save_raw_records([record])
+
+    with engine.connect() as conn:
+        count = conn.scalar(select(func.count()).select_from(raw_provider_records))
+
+    assert count == 0
 
 
 def test_normalized_records_list_in_source_and_identity_order() -> None:
@@ -424,7 +450,7 @@ def _raw_record(payload_hash: str) -> RawRecord:
         fetched_at=source_ts + timedelta(seconds=1),
         available_at=source_ts + timedelta(seconds=2),
         license_tag="local-csv-fixture",
-        retention_policy="retain-local-fixture",
+        retention_policy="local-fixture-retain",
     )
 
 

@@ -42,6 +42,7 @@ def test_paper_trade_repository_records_manual_workflow_without_execution(tmp_pa
     assert stored is not None
     assert stored.id.endswith(":approved")
     assert stored.state == PaperTradeState.OPEN
+    assert stored.payload["manual_review_only"] is True
     assert stored.payload["no_execution"] is True
     assert stored.payload["next_review_at"] == "2026-05-12T21:00:00+00:00"
     assert stored.shares == 20.0

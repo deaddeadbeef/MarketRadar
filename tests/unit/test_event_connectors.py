@@ -34,7 +34,7 @@ def test_sec_submissions_fixture_normalizes_recent_filings() -> None:
     assert len(normalized) == 2
     assert raw[0].kind == ConnectorRecordKind.SEC_FILING
     assert raw[0].license_tag == "sec-public"
-    assert raw[0].retention_policy == "retain-fixture"
+    assert raw[0].retention_policy == "public-sec-retain"
     assert normalized[0].kind == ConnectorRecordKind.EVENT
     assert normalized[0].identity == normalized[0].payload["dedupe_key"]
     assert normalized[0].payload["ticker"] == "MSFT"
@@ -214,7 +214,7 @@ def test_earnings_fixture_marks_upcoming_event_risk() -> None:
 
     assert raw[0].kind == ConnectorRecordKind.EARNINGS_EVENT
     assert raw[0].license_tag == "earnings-fixture"
-    assert raw[0].retention_policy == "retain-fixture"
+    assert raw[0].retention_policy == "fixture-retain"
     assert normalized[0].kind == ConnectorRecordKind.EVENT
     assert normalized[0].payload["event_type"] == "earnings"
     assert normalized[0].payload["payload"]["event_risk"] == "upcoming_earnings"

@@ -23,7 +23,7 @@ def test_fixture_license_policy_allows_prompt_but_blocks_external_export() -> No
 
     assert policy.prompt_allowed is True
     assert policy.external_export_allowed is False
-    assert policy.retention_policy == "retain-local-fixture"
+    assert policy.retention_policy == "local-fixture-retain"
 
 
 def test_unknown_license_tag_fails_closed() -> None:
@@ -33,4 +33,4 @@ def test_unknown_license_tag_fails_closed() -> None:
 
 def test_mismatched_retention_policy_fails_closed() -> None:
     with pytest.raises(ValueError, match="does not match license"):
-        validate_raw_record_policy("polygon-market-data", "retain-local-fixture")
+        validate_raw_record_policy("polygon-market-data", "local-fixture-retain")

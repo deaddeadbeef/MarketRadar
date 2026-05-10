@@ -25,7 +25,7 @@ from catalyst_radar.core.models import DataQualitySeverity
 
 CSV_PROVIDER_NAME = "csv"
 CSV_LICENSE_TAG = "local-csv-fixture"
-CSV_RETENTION_POLICY = "retain-local-fixture"
+CSV_RETENTION_POLICY = "local-fixture-retain"
 
 
 @dataclass(frozen=True)

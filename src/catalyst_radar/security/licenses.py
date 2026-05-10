@@ -17,7 +17,7 @@ class ProviderLicensePolicy:
 POLICIES = {
     "sec-public": ProviderLicensePolicy(
         license_tag="sec-public",
-        retention_policy="retain-fixture",
+        retention_policy="public-sec-retain",
         raw_retention_days=None,
         normalized_retention_days=None,
         prompt_allowed=True,
@@ -26,7 +26,7 @@ POLICIES = {
     ),
     "local-csv-fixture": ProviderLicensePolicy(
         license_tag="local-csv-fixture",
-        retention_policy="retain-local-fixture",
+        retention_policy="local-fixture-retain",
         raw_retention_days=None,
         normalized_retention_days=None,
         prompt_allowed=True,
@@ -35,7 +35,7 @@ POLICIES = {
     ),
     "news-fixture": ProviderLicensePolicy(
         license_tag="news-fixture",
-        retention_policy="retain-fixture",
+        retention_policy="fixture-retain",
         raw_retention_days=None,
         normalized_retention_days=None,
         prompt_allowed=True,
@@ -44,7 +44,7 @@ POLICIES = {
     ),
     "earnings-fixture": ProviderLicensePolicy(
         license_tag="earnings-fixture",
-        retention_policy="retain-fixture",
+        retention_policy="fixture-retain",
         raw_retention_days=None,
         normalized_retention_days=None,
         prompt_allowed=True,
@@ -53,7 +53,7 @@ POLICIES = {
     ),
     "options-fixture": ProviderLicensePolicy(
         license_tag="options-fixture",
-        retention_policy="retain-local-fixture",
+        retention_policy="local-fixture-retain",
         raw_retention_days=None,
         normalized_retention_days=None,
         prompt_allowed=True,

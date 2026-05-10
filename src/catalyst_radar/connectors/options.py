@@ -20,7 +20,7 @@ from catalyst_radar.core.immutability import thaw_json_value
 
 OPTIONS_PROVIDER_NAME = "options_fixture"
 OPTIONS_LICENSE_TAG = "options-fixture"
-OPTIONS_RETENTION_POLICY = "retain-local-fixture"
+OPTIONS_RETENTION_POLICY = "local-fixture-retain"
 
 
 class OptionsAggregateConnector:

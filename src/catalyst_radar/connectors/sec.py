@@ -22,7 +22,8 @@ from catalyst_radar.events.dedupe import body_hash, canonicalize_url, dedupe_key
 
 SEC_PROVIDER_NAME = "sec"
 SEC_LICENSE_TAG = "sec-public"
-FIXTURE_RETENTION_POLICY = "retain-fixture"
+SEC_RETENTION_POLICY = "public-sec-retain"
+FIXTURE_RETENTION_POLICY = "fixture-retain"
 
 
 class SecSubmissionsConnector:
@@ -85,7 +86,7 @@ class SecSubmissionsConnector:
                         else max(fetched_at, source_ts)
                     ),
                     license_tag=SEC_LICENSE_TAG,
-                    retention_policy=FIXTURE_RETENTION_POLICY,
+                    retention_policy=SEC_RETENTION_POLICY,
                 )
             )
         return records
