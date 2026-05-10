@@ -9,10 +9,12 @@ from apps.api.main import create_app
 from catalyst_radar.alerts.models import Alert, alert_id
 from catalyst_radar.core.models import ActionState
 from catalyst_radar.dashboard import data as dashboard_data
+from catalyst_radar.security.audit import AuditLogRepository
 from catalyst_radar.storage.alert_repositories import AlertRepository
 from catalyst_radar.storage.db import create_schema, engine_from_url
 from catalyst_radar.storage.schema import (
     alerts,
+    audit_events,
     candidate_packets,
     candidate_states,
     decision_cards,
@@ -187,6 +189,7 @@ def test_post_feedback_records_useful_alert_label(tmp_path, monkeypatch) -> None
 
     response = client.post(
         "/api/feedback",
+        headers={"X-Catalyst-Actor": "analyst-1", "X-Catalyst-Role": "analyst"},
         json={
             "artifact_type": "decision_card",
             "artifact_id": "card-MSFT",
@@ -215,6 +218,37 @@ def test_post_feedback_records_useful_alert_label(tmp_path, monkeypatch) -> None
     assert stored_label["notes"] == "worth review"
     assert candidate_after is not None
     assert dict(candidate_after._mapping) == dict(candidate_before._mapping)
+    events = AuditLogRepository(engine).list_events(
+        artifact_type="decision_card",
+        artifact_id="card-MSFT",
+    )
+    assert [event.event_type for event in events] == ["feedback_recorded"]
+    assert events[0].actor_source == "api"
+    assert events[0].actor_id == "analyst-1"
+    assert events[0].actor_role == "analyst"
+    assert events[0].metadata["label"] == "useful"
+    assert events[0].after_payload["notes"] == "worth review"
+
+    assert response.status_code == 200
+    assert (
+        client.post(
+            "/api/feedback",
+            json={
+                "artifact_type": "decision_card",
+                "artifact_id": "card-MSFT",
+                "ticker": "MSFT",
+                "label": "useful",
+            },
+        ).status_code
+        == 200
+    )
+    repeated_events = AuditLogRepository(engine).list_events(
+        artifact_type="decision_card",
+        artifact_id="card-MSFT",
+        event_type="feedback_recorded",
+    )
+    assert len(repeated_events) == 2
+    assert repeated_events[0].id != repeated_events[1].id
 
 
 def test_post_feedback_rejects_unknown_label(tmp_path, monkeypatch) -> None:
@@ -238,6 +272,8 @@ def test_post_feedback_rejects_unknown_label(tmp_path, monkeypatch) -> None:
     assert response.status_code == 422
     with engine.connect() as conn:
         assert conn.execute(select(func.count()).select_from(useful_alert_labels)).scalar_one() == 0
+        assert conn.execute(select(func.count()).select_from(user_feedback)).scalar_one() == 0
+        assert conn.execute(select(func.count()).select_from(audit_events)).scalar_one() == 0
 
 
 def test_post_feedback_rejects_missing_artifact(tmp_path, monkeypatch) -> None:

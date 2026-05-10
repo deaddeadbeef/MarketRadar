@@ -9,7 +9,9 @@ from sqlalchemy import create_engine, delete, insert, select
 
 from catalyst_radar.cli import main
 from catalyst_radar.core.models import ActionState
+from catalyst_radar.security.audit import AuditLogRepository
 from catalyst_radar.storage.schema import (
+    audit_events,
     candidate_packets,
     candidate_states,
     daily_bars,
@@ -131,6 +133,16 @@ def test_validation_report_label_and_paper_cli_workflow(
         ),
     )
     assert feedback_row == "cli"
+    feedback_events = _audit_events(
+        database_url,
+        artifact_type="decision_card",
+        artifact_id=card_id,
+        event_type="feedback_recorded",
+    )
+    assert len(feedback_events) == 1
+    assert feedback_events[0].actor_source == "cli"
+    assert feedback_events[0].decision_card_id == card_id
+    assert feedback_events[0].metadata["label"] == "useful"
     assert main(["validation-report", "--run-id", run_id, "--json"]) == 0
     captured = capsys.readouterr()
     report = json.loads(captured.out)
@@ -163,6 +175,14 @@ def test_validation_report_label_and_paper_cli_workflow(
         == 0
     )
     capsys.readouterr()
+    repeated_feedback_events = _audit_events(
+        database_url,
+        artifact_type="decision_card",
+        artifact_id=card_id,
+        event_type="feedback_recorded",
+    )
+    assert len(repeated_feedback_events) == 2
+    assert repeated_feedback_events[0].id != repeated_feedback_events[1].id
     assert main(["validation-report", "--run-id", run_id, "--json"]) == 0
     captured = capsys.readouterr()
     relabeled_report = json.loads(captured.out)
@@ -208,6 +228,43 @@ def test_validation_report_label_and_paper_cli_workflow(
     captured = capsys.readouterr()
     assert "state=open" in captured.out
     assert "no_execution=true" in captured.out
+    decision_events = _audit_events(
+        database_url,
+        artifact_type="decision_card",
+        artifact_id=card_id,
+        event_type="paper_decision_recorded",
+    )
+    assert len(decision_events) == 1
+    assert decision_events[0].actor_source == "cli"
+    assert decision_events[0].decision == "approved"
+    assert decision_events[0].paper_trade_id is not None
+    assert decision_events[0].metadata["no_execution"] is True
+
+    assert (
+        main(
+            [
+                "paper-decision",
+                "--decision-card-id",
+                card_id,
+                "--decision",
+                "approved",
+                "--available-at",
+                AVAILABLE_AT_TEXT,
+                "--entry-price",
+                "100",
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+    repeated_decision_events = _audit_events(
+        database_url,
+        artifact_type="decision_card",
+        artifact_id=card_id,
+        event_type="paper_decision_recorded",
+    )
+    assert len(repeated_decision_events) == 2
+    assert repeated_decision_events[0].id != repeated_decision_events[1].id
 
     assert (
         main(
@@ -232,6 +289,41 @@ def test_validation_report_label_and_paper_cli_workflow(
     )
     assert trade_row["target_20d_25"] is True
     assert trade_row["invalidated"] is False
+
+    labels_path = tmp_path / "labels.json"
+    labels_path.write_text(
+        json.dumps({"target_20d_25": False, "invalidated": False}),
+        encoding="utf-8",
+    )
+    assert (
+        main(
+            [
+                "paper-update-outcomes",
+                "--decision-card-id",
+                card_id,
+                "--available-at",
+                "2026-07-16T21:05:00+00:00",
+                "--labels-json",
+                str(labels_path),
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+    outcome_events = _audit_events(
+        database_url,
+        event_type="paper_outcome_updated",
+    )
+    assert [event.metadata["label_source"] for event in outcome_events] == [
+        "computed",
+        "labels_json",
+    ]
+    assert outcome_events[-1].actor_source == "cli"
+    assert outcome_events[-1].decision_card_id == card_id
+    assert outcome_events[-1].after_payload["outcome_labels"] == {
+        "invalidated": False,
+        "target_20d_25": False,
+    }
 
 
 def test_validation_replay_counts_future_packet_and_card_leakage(
@@ -283,6 +375,44 @@ def test_validation_replay_counts_future_packet_and_card_leakage(
     )
     assert "candidate_packet_future_available_at" in leakage_flags
     assert "decision_card_future_available_at" in leakage_flags
+
+
+def test_blocked_paper_decision_requires_override_and_audits_bypass(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'blocked-paper.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    assert main(["init-db"]) == 0
+    capsys.readouterr()
+    _insert_blocked_decision_card(database_url)
+
+    blocked_command = [
+        "paper-decision",
+        "--decision-card-id",
+        "card-blocked",
+        "--decision",
+        "approved",
+        "--available-at",
+        AVAILABLE_AT_TEXT,
+    ]
+    assert main(blocked_command) == 1
+    captured = capsys.readouterr()
+    assert "--override-reason is required" in captured.err
+    assert _scalar_or_none(database_url, select(audit_events.c.id).limit(1)) is None
+
+    assert main([*blocked_command, "--override-reason", "human override test"]) == 0
+    capsys.readouterr()
+
+    events = _audit_events(database_url, artifact_type="decision_card", artifact_id="card-blocked")
+    assert [event.event_type for event in events] == [
+        "paper_decision_recorded",
+        "hard_block_bypass_recorded",
+    ]
+    assert events[0].decision == "approved"
+    assert events[0].hard_blocks == ("liquidity_hard_block",)
+    assert events[1].reason == "human override test"
 
 
 def test_validation_replay_rerun_clears_stale_deterministic_results(
@@ -531,6 +661,44 @@ def _insert_future_packet_and_card(database_url: str) -> None:
         conn.execute(insert(decision_cards).values(**card_row))
 
 
+def _insert_blocked_decision_card(database_url: str) -> None:
+    engine = create_engine(database_url, future=True)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(decision_cards).values(
+                id="card-blocked",
+                ticker="MSFT",
+                as_of=AS_OF,
+                candidate_packet_id="packet-blocked",
+                action_state=ActionState.BLOCKED.value,
+                setup_type="breakout",
+                final_score=78.0,
+                schema_version="decision-card-v1",
+                source_ts=SOURCE_TS,
+                available_at=AVAILABLE_AT,
+                next_review_at=AVAILABLE_AT,
+                user_decision=None,
+                payload={
+                    "manual_review_only": True,
+                    "trade_plan": {
+                        "entry_zone": [100.0, 104.0],
+                        "invalidation_price": 94.0,
+                    },
+                    "position_sizing": {
+                        "shares": 20.0,
+                        "notional": 2080.0,
+                    },
+                    "portfolio_impact": {
+                        "max_loss": 200.0,
+                        "hard_blocks": ["liquidity_hard_block"],
+                    },
+                    "controls": {"hard_blocks": ["liquidity_hard_block"]},
+                },
+                created_at=AVAILABLE_AT,
+            )
+        )
+
+
 def _insert_late_baseline_only_bar(database_url: str) -> None:
     engine = create_engine(database_url, future=True)
     with engine.begin() as conn:
@@ -558,3 +726,24 @@ def _scalar(database_url: str, stmt):
     engine = create_engine(database_url, future=True)
     with engine.connect() as conn:
         return conn.execute(stmt).scalar_one()
+
+
+def _scalar_or_none(database_url: str, stmt):
+    engine = create_engine(database_url, future=True)
+    with engine.connect() as conn:
+        return conn.execute(stmt).scalar_one_or_none()
+
+
+def _audit_events(
+    database_url: str,
+    *,
+    artifact_type: str | None = None,
+    artifact_id: str | None = None,
+    event_type: str | None = None,
+):
+    engine = create_engine(database_url, future=True)
+    return AuditLogRepository(engine).list_events(
+        artifact_type=artifact_type,
+        artifact_id=artifact_id,
+        event_type=event_type,
+    )

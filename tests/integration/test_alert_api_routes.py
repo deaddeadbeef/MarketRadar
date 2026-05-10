@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 
 from apps.api.main import create_app
 from catalyst_radar.alerts.models import Alert, alert_id
+from catalyst_radar.security.audit import AuditLogRepository
 from catalyst_radar.storage.alert_repositories import AlertRepository
 from catalyst_radar.storage.db import create_schema, engine_from_url
 from catalyst_radar.storage.schema import user_feedback
@@ -98,6 +99,7 @@ def test_post_alert_feedback_records_user_feedback_and_useful_label(
 
     response = client.post(
         f"/api/alerts/{alert.id}/feedback",
+        headers={"X-Catalyst-Actor": "pm-1", "X-Catalyst-Role": "portfolio_manager"},
         json={"label": "useful", "notes": "Good review prompt"},
     )
 
@@ -127,6 +129,16 @@ def test_post_alert_feedback_records_user_feedback_and_useful_label(
     assert useful_label.ticker == "MSFT"
     assert useful_label.label == "useful"
     assert useful_label.notes == "Good review prompt"
+    events = AuditLogRepository(engine).list_events(
+        artifact_type="alert",
+        artifact_id=alert.id,
+    )
+    assert [event.event_type for event in events] == ["feedback_recorded"]
+    assert events[0].actor_source == "api"
+    assert events[0].actor_id == "pm-1"
+    assert events[0].actor_role == "portfolio_manager"
+    assert events[0].alert_id == alert.id
+    assert events[0].metadata["label"] == "useful"
 
 
 def test_generic_feedback_validates_alert_table(tmp_path, monkeypatch) -> None:

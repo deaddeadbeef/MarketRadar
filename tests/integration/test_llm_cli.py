@@ -10,6 +10,7 @@ from sqlalchemy import create_engine, insert, select
 from catalyst_radar.agents.models import TokenUsage
 from catalyst_radar.agents.router import LLMClientRequest, LLMClientResult
 from catalyst_radar.cli import main
+from catalyst_radar.security.audit import AuditLogRepository
 from catalyst_radar.storage.schema import budget_ledger, candidate_packets
 
 AS_OF = datetime(2026, 5, 8, 21, tzinfo=UTC)
@@ -87,6 +88,15 @@ def test_run_llm_review_requires_candidate_packet(
             "evidence-review-v1",
         )
     ]
+    events = AuditLogRepository(create_engine(database_url, future=True)).list_events(
+        event_type="model_call_recorded",
+    )
+    assert len(events) == 1
+    assert events[0].actor_source == "cli"
+    assert events[0].ticker == "MSFT"
+    assert events[0].budget_ledger_id == rows[0].id
+    assert events[0].status == "skipped"
+    assert events[0].metadata["skip_reason"] == "candidate_packet_missing"
 
 
 def test_run_llm_review_dry_run_logs_dry_run_entry(

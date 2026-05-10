@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Header, HTTPException, Query
 from pydantic import BaseModel, ConfigDict
 
 from catalyst_radar.alerts.models import Alert, AlertRoute, AlertStatus
@@ -65,7 +65,12 @@ def alert_detail(alert_id: str) -> dict[str, Any]:
 
 
 @router.post("/{alert_id}/feedback")
-def alert_feedback(alert_id: str, request: AlertFeedbackRequest) -> dict[str, str]:
+def alert_feedback(
+    alert_id: str,
+    request: AlertFeedbackRequest,
+    x_catalyst_actor: str | None = Header(default=None),
+    x_catalyst_role: str | None = Header(default=None),
+) -> dict[str, str]:
     engine = _engine()
     alert = AlertRepository(engine).alert_by_id(alert_id, available_at=datetime.now(UTC))
     if alert is None:
@@ -85,6 +90,8 @@ def alert_feedback(alert_id: str, request: AlertFeedbackRequest) -> dict[str, st
             label=request.label,
             notes=request.notes,
             source="api",
+            actor_id=x_catalyst_actor,
+            actor_role=x_catalyst_role,
         )
     except MissingArtifactError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

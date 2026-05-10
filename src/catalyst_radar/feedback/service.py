@@ -7,6 +7,7 @@ from sqlalchemy import Engine, delete, insert, select
 
 from catalyst_radar.alerts.models import UserFeedback, user_feedback_id
 from catalyst_radar.core.immutability import thaw_json_value
+from catalyst_radar.security.audit import AuditLogRepository
 from catalyst_radar.storage.schema import (
     alerts,
     candidate_packets,
@@ -59,6 +60,8 @@ def record_feedback(
     notes: str | None = None,
     source: str = "api",
     created_at: datetime | None = None,
+    actor_id: str | None = None,
+    actor_role: str | None = None,
 ) -> FeedbackRecordResult:
     resolved_artifact_type = _allowed_value(
         artifact_type,
@@ -122,6 +125,30 @@ def record_feedback(
             delete(useful_alert_labels).where(useful_alert_labels.c.id == useful_label.id)
         )
         conn.execute(insert(useful_alert_labels).values(**_useful_alert_label_row(useful_label)))
+    AuditLogRepository(engine).append_event(
+        event_type="feedback_recorded",
+        actor_source=resolved_source,
+        actor_id=_optional_text(actor_id),
+        actor_role=_optional_text(actor_role),
+        artifact_type=resolved_artifact_type,
+        artifact_id=resolved_artifact_id,
+        ticker=resolved_ticker,
+        candidate_packet_id=(
+            resolved_artifact_id if resolved_artifact_type == "candidate_packet" else None
+        ),
+        decision_card_id=(
+            resolved_artifact_id if resolved_artifact_type == "decision_card" else None
+        ),
+        paper_trade_id=(
+            resolved_artifact_id if resolved_artifact_type == "paper_trade" else None
+        ),
+        alert_id=resolved_artifact_id if resolved_artifact_type == "alert" else None,
+        status="success",
+        metadata={"label": resolved_label},
+        after_payload={"notes": resolved_notes},
+        occurred_at=resolved_created_at,
+        available_at=resolved_created_at,
+    )
     return FeedbackRecordResult(user_feedback=feedback, useful_label=useful_label)
 
 

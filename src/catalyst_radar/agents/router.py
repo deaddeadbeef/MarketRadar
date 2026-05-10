@@ -26,6 +26,7 @@ from catalyst_radar.pipeline.candidate_packet import (
     EvidenceItem,
     canonical_packet_json,
 )
+from catalyst_radar.security.audit import AuditLogRepository
 from catalyst_radar.security.redaction import redact_text
 
 
@@ -314,6 +315,12 @@ class LLMRouter:
             if decision.ledger_entry is None:
                 msg = "skipped route must include a ledger entry"
                 raise RuntimeError(msg)
+            self._record_model_call_audit(
+                task=task,
+                candidate=candidate,
+                available_at=available_at,
+                entry=decision.ledger_entry,
+            )
             return LLMReviewResult(
                 decision=decision,
                 status=LLMCallStatus.SKIPPED,
@@ -336,6 +343,12 @@ class LLMRouter:
                 attempted_at=attempted_at,
             )
             self.budget.ledger_repo.upsert_entry(entry)
+            self._record_model_call_audit(
+                task=task,
+                candidate=candidate,
+                available_at=available_at,
+                entry=entry,
+            )
             return LLMReviewResult(
                 decision=decision,
                 status=LLMCallStatus.DRY_RUN,
@@ -391,6 +404,12 @@ class LLMRouter:
                 attempted_at=attempted_at,
             )
             self.budget.ledger_repo.upsert_entry(entry)
+            self._record_model_call_audit(
+                task=task,
+                candidate=candidate,
+                available_at=available_at,
+                entry=entry,
+            )
             return LLMReviewResult(
                 decision=decision,
                 status=LLMCallStatus.SCHEMA_REJECTED,
@@ -414,6 +433,12 @@ class LLMRouter:
             attempted_at=attempted_at,
         )
         self.budget.ledger_repo.upsert_entry(entry)
+        self._record_model_call_audit(
+            task=task,
+            candidate=candidate,
+            available_at=available_at,
+            entry=entry,
+        )
         return LLMReviewResult(
             decision=decision,
             status=LLMCallStatus.COMPLETED,
@@ -447,6 +472,12 @@ class LLMRouter:
             attempted_at=datetime.now(UTC),
         )
         self.budget.ledger_repo.upsert_entry(entry)
+        self._record_model_call_audit(
+            task=task,
+            candidate=candidate,
+            available_at=available_at,
+            entry=entry,
+        )
         return LLMReviewResult(
             decision=decision,
             status=LLMCallStatus.FAILED,
@@ -503,6 +534,36 @@ class LLMRouter:
             outcome_label=outcome_label,
             payload=payload or {},
             created_at=created_at,
+        )
+
+    def _record_model_call_audit(
+        self,
+        *,
+        task: LLMTask,
+        candidate: CandidatePacket,
+        available_at: datetime,
+        entry: BudgetLedgerEntry,
+    ) -> None:
+        AuditLogRepository(self.budget.ledger_repo.engine).append_event(
+            event_type="model_call_recorded",
+            actor_source="llm_router",
+            artifact_type="candidate_packet",
+            artifact_id=candidate.id,
+            ticker=candidate.ticker,
+            candidate_state_id=candidate.candidate_state_id,
+            candidate_packet_id=candidate.id,
+            budget_ledger_id=entry.id,
+            status=entry.status.value,
+            metadata={
+                "task": task.name.value,
+                "provider": entry.provider,
+                "model": entry.model,
+                "skip_reason": entry.skip_reason.value if entry.skip_reason else None,
+                "prompt_version": entry.prompt_version,
+                "schema_version": entry.schema_version,
+            },
+            available_at=available_at,
+            occurred_at=entry.created_at,
         )
 
     def _model_for_task(self, task: LLMTask) -> str | None:

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, ConfigDict
 
 from catalyst_radar.core.config import AppConfig
@@ -32,7 +32,11 @@ def _engine():
 
 
 @router.post("")
-def record_feedback(request: FeedbackRequest) -> dict[str, str]:
+def record_feedback(
+    request: FeedbackRequest,
+    x_catalyst_actor: str | None = Header(default=None),
+    x_catalyst_role: str | None = Header(default=None),
+) -> dict[str, str]:
     try:
         result = record_feedback_service(
             _engine(),
@@ -42,6 +46,8 @@ def record_feedback(request: FeedbackRequest) -> dict[str, str]:
             label=request.label,
             notes=request.notes,
             source="api",
+            actor_id=x_catalyst_actor,
+            actor_role=x_catalyst_role,
         )
     except MissingArtifactError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

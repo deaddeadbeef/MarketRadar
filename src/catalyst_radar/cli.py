@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
@@ -69,6 +69,7 @@ from catalyst_radar.jobs.scheduler import (
 )
 from catalyst_radar.pipeline.candidate_packet import build_candidate_packet
 from catalyst_radar.pipeline.scan import run_scan
+from catalyst_radar.security.audit import AuditLogRepository
 from catalyst_radar.security.redaction import redact_text, redact_value
 from catalyst_radar.storage.alert_repositories import AlertRepository
 from catalyst_radar.storage.budget_repositories import BudgetLedgerRepository
@@ -93,6 +94,7 @@ from catalyst_radar.validation.baselines import (
 )
 from catalyst_radar.validation.models import (
     PaperDecision,
+    PaperTrade,
     ValidationResult,
     ValidationRun,
     ValidationRunStatus,
@@ -267,6 +269,7 @@ def build_parser() -> argparse.ArgumentParser:
     paper_decision.add_argument("--available-at", type=_parse_aware_datetime, required=True)
     paper_decision.add_argument("--entry-price", type=float)
     paper_decision.add_argument("--entry-at", type=_parse_aware_datetime)
+    paper_decision.add_argument("--override-reason")
 
     paper_update = subparsers.add_parser("paper-update-outcomes")
     paper_update.add_argument("--decision-card-id", required=True)
@@ -763,6 +766,13 @@ def main(argv: list[str] | None = None) -> int:
                 created_at=attempted_at,
             )
             ledger_repo.upsert_entry(entry)
+            _append_model_call_audit_event(
+                engine,
+                entry=entry,
+                actor_source="cli",
+                artifact_type="candidate_packet",
+                artifact_id=None,
+            )
             print(f"candidate packet not found: {args.ticker.upper()}", file=sys.stderr)
             return 1
         budget = BudgetController(
@@ -990,6 +1000,11 @@ def main(argv: list[str] | None = None) -> int:
         if card is None:
             print(f"decision card not found: {args.decision_card_id}", file=sys.stderr)
             return 1
+        hard_blocks = _card_hard_blocks(card)
+        override_reason = _optional_cli_text(args.override_reason)
+        if args.decision == PaperDecision.APPROVED.value and hard_blocks and not override_reason:
+            print("--override-reason is required to approve a blocked card", file=sys.stderr)
+            return 1
         entry_at = args.entry_at or (args.available_at if args.entry_price is not None else None)
         trade = create_paper_trade_from_card(
             card,
@@ -999,6 +1014,15 @@ def main(argv: list[str] | None = None) -> int:
             entry_at=entry_at,
         )
         validation_repo.upsert_paper_trade(trade)
+        _append_paper_decision_audit_events(
+            engine,
+            card=card,
+            trade=trade,
+            decision=PaperDecision(args.decision),
+            hard_blocks=hard_blocks,
+            override_reason=override_reason,
+            occurred_at=args.available_at,
+        )
         print(
             f"paper_trade id={trade.id} decision_card_id={trade.decision_card_id} "
             f"ticker={trade.ticker} decision={trade.decision.value} "
@@ -1046,6 +1070,24 @@ def main(argv: list[str] | None = None) -> int:
             )
         updated = update_trade_outcome(trade, labels, args.available_at)
         validation_repo.upsert_paper_trade(updated)
+        AuditLogRepository(engine).append_event(
+            event_type="paper_outcome_updated",
+            actor_source="cli",
+            artifact_type="paper_trade",
+            artifact_id=updated.id,
+            ticker=updated.ticker,
+            decision_card_id=updated.decision_card_id,
+            paper_trade_id=updated.id,
+            decision=updated.decision.value,
+            status="success",
+            metadata={
+                "label_source": "labels_json" if args.labels_json else "computed",
+                "state": updated.state.value,
+            },
+            after_payload={"outcome_labels": thaw_json_value(updated.outcome_labels)},
+            available_at=updated.available_at,
+            occurred_at=args.available_at,
+        )
         print(
             f"paper_trade id={updated.id} decision_card_id={updated.decision_card_id} "
             f"ticker={updated.ticker} state={updated.state.value} "
@@ -1893,6 +1935,114 @@ def _float_or_none(value: object) -> float | None:
 
 def _now_utc() -> datetime:
     return datetime.now(UTC)
+
+
+def _append_model_call_audit_event(
+    engine: Engine,
+    *,
+    entry: BudgetLedgerEntry,
+    actor_source: str,
+    artifact_type: str,
+    artifact_id: str | None,
+) -> None:
+    AuditLogRepository(engine).append_event(
+        event_type="model_call_recorded",
+        actor_source=actor_source,
+        artifact_type=artifact_type,
+        artifact_id=artifact_id,
+        ticker=entry.ticker,
+        candidate_state_id=entry.candidate_state_id,
+        candidate_packet_id=entry.candidate_packet_id,
+        budget_ledger_id=entry.id,
+        status=entry.status.value,
+        metadata={
+            "task": entry.task.value,
+            "provider": entry.provider,
+            "model": entry.model,
+            "skip_reason": entry.skip_reason.value if entry.skip_reason else None,
+            "prompt_version": entry.prompt_version,
+            "schema_version": entry.schema_version,
+        },
+        available_at=entry.available_at,
+        occurred_at=entry.created_at,
+    )
+
+
+def _append_paper_decision_audit_events(
+    engine: Engine,
+    *,
+    card: Mapping[str, object],
+    trade: PaperTrade,
+    decision: PaperDecision,
+    hard_blocks: Sequence[str],
+    override_reason: str | None,
+    occurred_at: datetime,
+) -> None:
+    repo = AuditLogRepository(engine)
+    repo.append_event(
+        event_type="paper_decision_recorded",
+        actor_source="cli",
+        artifact_type="decision_card",
+        artifact_id=trade.decision_card_id,
+        ticker=trade.ticker,
+        decision_card_id=trade.decision_card_id,
+        paper_trade_id=trade.id,
+        decision=decision.value,
+        reason=override_reason,
+        hard_blocks=tuple(hard_blocks),
+        status="success",
+        metadata={
+            "state": trade.state.value,
+            "action_state": str(card.get("action_state") or ""),
+            "manual_review_only": bool(trade.payload.get("manual_review_only")),
+            "no_execution": bool(trade.payload.get("no_execution")),
+        },
+        after_payload={"paper_trade_id": trade.id, "state": trade.state.value},
+        available_at=trade.available_at,
+        occurred_at=occurred_at,
+    )
+    if decision == PaperDecision.APPROVED and hard_blocks:
+        repo.append_event(
+            event_type="hard_block_bypass_recorded",
+            actor_source="cli",
+            artifact_type="decision_card",
+            artifact_id=trade.decision_card_id,
+            ticker=trade.ticker,
+            decision_card_id=trade.decision_card_id,
+            paper_trade_id=trade.id,
+            decision=decision.value,
+            reason=override_reason,
+            hard_blocks=tuple(hard_blocks),
+            status="success",
+            metadata={"state": trade.state.value},
+            after_payload={"paper_trade_id": trade.id},
+            available_at=trade.available_at,
+            occurred_at=occurred_at,
+        )
+
+
+def _card_hard_blocks(card: Mapping[str, object]) -> tuple[str, ...]:
+    payload = _mapping_value(card.get("payload"))
+    controls = _mapping_value(payload.get("controls"))
+    portfolio = _mapping_value(payload.get("portfolio_impact"))
+    values = [
+        *_sequence_value(payload.get("hard_blocks")),
+        *_sequence_value(controls.get("hard_blocks")),
+        *_sequence_value(portfolio.get("hard_blocks")),
+    ]
+    hard_blocks = tuple(dict.fromkeys(str(value) for value in values if str(value).strip()))
+    if hard_blocks:
+        return hard_blocks
+    if str(card.get("action_state") or "") == ActionState.BLOCKED.value:
+        return ("blocked_action_state",)
+    return ()
+
+
+def _optional_cli_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    text = value.strip()
+    return text or None
 
 
 def _llm_budget_status_payload(

@@ -27,6 +27,7 @@ from catalyst_radar.pipeline.candidate_packet import (
     EvidenceItem,
     canonical_packet_json,
 )
+from catalyst_radar.security.audit import AuditLogRepository
 from catalyst_radar.storage.budget_repositories import BudgetLedgerRepository
 from catalyst_radar.storage.db import create_schema
 
@@ -99,6 +100,14 @@ def test_router_fake_client_logs_completed_entry() -> None:
     assert entries[0].candidate_state_id == "state-msft"
     assert entries[0].candidate_state == ActionState.WARNING.value
     assert entries[0].outcome_label == "evidence_review"
+    events = AuditLogRepository(repo.engine).list_events(event_type="model_call_recorded")
+    assert len(events) == 1
+    assert events[0].actor_source == "llm_router"
+    assert events[0].artifact_type == "candidate_packet"
+    assert events[0].artifact_id == "packet-msft"
+    assert events[0].budget_ledger_id == entries[0].id
+    assert events[0].status == "completed"
+    assert events[0].metadata["task"] == "mid_review"
 
 
 def test_router_fake_client_logs_skeptic_review_entry() -> None:
