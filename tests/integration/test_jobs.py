@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from sqlalchemy import create_engine, inspect, select
 
+from catalyst_radar.cli import main as cli_main
+from catalyst_radar.jobs.scheduler import SchedulerConfig, build_daily_spec, run_once
 from catalyst_radar.jobs.tasks import DAILY_STEP_ORDER, DailyRunSpec, run_daily
 from catalyst_radar.storage.db import create_schema
 from catalyst_radar.storage.job_repositories import JobLockRepository
@@ -215,3 +218,101 @@ def test_job_lock_heartbeat_and_release_require_matching_owner():
         ).acquired
         is True
     )
+
+
+def test_scheduler_run_once_uses_lock_and_releases_it():
+    engine = _engine()
+    config = SchedulerConfig(
+        owner="worker-test",
+        lock_name="daily-run",
+        lock_ttl=timedelta(minutes=10),
+        run_interval=timedelta(minutes=30),
+        as_of=date(2026, 5, 9),
+        decision_available_at=datetime(2026, 5, 10, 1, 0, tzinfo=UTC),
+        run_llm=False,
+        llm_dry_run=True,
+        dry_run_alerts=True,
+    )
+
+    result = run_once(engine=engine, config=config)
+
+    assert result.acquired_lock is True
+    assert result.reason is None
+    assert result.daily_result is not None
+    assert result.daily_result.step("llm_review").status == "skipped"
+
+    repo = JobLockRepository(engine)
+    reacquired = repo.acquire(
+        "daily-run",
+        owner="another-worker",
+        ttl=timedelta(minutes=10),
+        now=datetime(2026, 5, 10, 1, 1, tzinfo=UTC),
+    )
+    assert reacquired.acquired is True
+
+
+def test_scheduler_run_once_skips_when_lock_is_held():
+    engine = _engine()
+    repo = JobLockRepository(engine)
+    now = datetime(2026, 5, 10, 1, 0, tzinfo=UTC)
+    repo.acquire("daily-run", owner="other-worker", ttl=timedelta(minutes=10), now=now)
+    config = SchedulerConfig(
+        owner="worker-test",
+        lock_name="daily-run",
+        lock_ttl=timedelta(minutes=10),
+        run_interval=timedelta(minutes=30),
+        as_of=date(2026, 5, 9),
+        decision_available_at=now,
+    )
+
+    result = run_once(engine=engine, config=config, now=now)
+
+    assert result.acquired_lock is False
+    assert result.daily_result is None
+    assert result.reason == "lock_held"
+
+
+def test_build_daily_spec_from_environment_values():
+    outcome_available_at = datetime(2026, 6, 10, 1, 0, tzinfo=UTC)
+    config = SchedulerConfig.from_env(
+        {
+            "CATALYST_DAILY_AS_OF": "2026-05-09",
+            "CATALYST_DECISION_AVAILABLE_AT": "2026-05-10T01:00:00+00:00",
+            "CATALYST_OUTCOME_AVAILABLE_AT": outcome_available_at.isoformat(),
+            "CATALYST_RUN_LLM": "0",
+            "CATALYST_LLM_DRY_RUN": "1",
+            "CATALYST_DRY_RUN_ALERTS": "1",
+        }
+    )
+
+    spec = build_daily_spec(config)
+
+    assert spec.as_of == date(2026, 5, 9)
+    assert spec.decision_available_at == datetime(2026, 5, 10, 1, 0, tzinfo=UTC)
+    assert spec.outcome_available_at == outcome_available_at
+    assert spec.run_llm is False
+    assert spec.llm_dry_run is True
+    assert spec.dry_run_alerts is True
+
+
+def test_cli_run_daily_json_smoke(monkeypatch, tmp_path, capsys):
+    database_url = f"sqlite:///{(tmp_path / 'scheduler-cli.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    exit_code = cli_main(
+        [
+            "run-daily",
+            "--as-of",
+            "2026-05-09",
+            "--available-at",
+            "2026-05-10T01:00:00+00:00",
+            "--json",
+        ]
+    )
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["acquired_lock"] is True
+    assert payload["reason"] is None
+    assert payload["daily_result"]["status"] == "success"
+    assert payload["daily_result"]["steps"]["llm_review"]["status"] == "skipped"

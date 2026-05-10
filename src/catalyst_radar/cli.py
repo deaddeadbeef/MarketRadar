@@ -61,6 +61,12 @@ from catalyst_radar.feedback.service import (
     MissingArtifactError,
     record_feedback,
 )
+from catalyst_radar.jobs.scheduler import (
+    SchedulerConfig,
+    SchedulerRunResult,
+    run_once,
+    scheduler_run_payload,
+)
 from catalyst_radar.pipeline.candidate_packet import build_candidate_packet
 from catalyst_radar.pipeline.scan import run_scan
 from catalyst_radar.storage.alert_repositories import AlertRepository
@@ -101,7 +107,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="catalyst-radar")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    subparsers.add_parser("init-db")
+    init_db = subparsers.add_parser("init-db")
+    init_db.add_argument("--database-url")
+
+    run_daily = subparsers.add_parser("run-daily")
+    run_daily.add_argument("--database-url")
+    run_daily.add_argument("--as-of", type=date.fromisoformat, required=True)
+    run_daily.add_argument("--available-at", type=_parse_aware_datetime, required=True)
+    run_daily.add_argument("--outcome-available-at", type=_parse_aware_datetime)
+    run_daily.add_argument("--run-llm", action="store_true")
+    run_daily.add_argument("--real-llm", action="store_true")
+    run_daily.add_argument("--deliver-alerts", action="store_true")
+    run_daily.add_argument("--json", action="store_true")
 
     ingest = subparsers.add_parser("ingest-csv")
     ingest.add_argument("--securities", type=Path, required=True)
@@ -283,12 +300,34 @@ def main(argv: list[str] | None = None) -> int:
     load_dotenv(".env.local")
     args = build_parser().parse_args(argv)
     config = AppConfig.from_env()
-    engine = engine_from_url(config.database_url)
+    database_url = getattr(args, "database_url", None) or config.database_url
+    engine = engine_from_url(database_url)
 
     if args.command == "init-db":
         create_schema(engine)
         print("initialized database")
         return 0
+
+    if args.command == "run-daily":
+        create_schema(engine)
+        scheduler_config = SchedulerConfig(
+            owner="cli",
+            lock_name="daily-run",
+            as_of=args.as_of,
+            decision_available_at=args.available_at,
+            outcome_available_at=args.outcome_available_at,
+            run_llm=args.run_llm,
+            llm_dry_run=not args.real_llm,
+            dry_run_alerts=not args.deliver_alerts,
+        )
+        result = run_once(engine=engine, config=scheduler_config)
+        if args.json:
+            print(json.dumps(scheduler_run_payload(result), sort_keys=True))
+        elif result.reason == "lock_held":
+            print("daily run skipped: lock held")
+        elif result.daily_result is not None:
+            print(f"daily run status={result.daily_result.status}")
+        return _scheduler_exit_code(result)
 
     if args.command == "ingest-csv":
         create_schema(engine)
@@ -1385,6 +1424,14 @@ def _alert_cli_payload(alert: object) -> dict[str, object]:
         "trigger_fingerprint": alert.trigger_fingerprint,
         "trigger_kind": alert.trigger_kind,
     }
+
+
+def _scheduler_exit_code(result: SchedulerRunResult) -> int:
+    if result.reason == "lock_held":
+        return 0
+    if result.daily_result is None:
+        return 1 if result.reason is not None else 0
+    return 0 if result.daily_result.status == "success" else 1
 
 
 def _future_price_rows(
