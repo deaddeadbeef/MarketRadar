@@ -38,8 +38,8 @@ def test_raw_records_round_trip_payload_hash_and_timestamps() -> None:
         source_ts=source_ts,
         fetched_at=fetched_at,
         available_at=available_at,
-        license_tag="fixture",
-        retention_policy="retain",
+        license_tag="local-csv-fixture",
+        retention_policy="retain-local-fixture",
     )
 
     assert repo.save_raw_records([record]) == 1
@@ -63,8 +63,8 @@ def test_raw_records_list_in_source_and_fetch_order() -> None:
         source_ts=later.source_ts - timedelta(minutes=1),
         fetched_at=later.fetched_at - timedelta(minutes=1),
         available_at=later.available_at - timedelta(minutes=1),
-        license_tag="fixture",
-        retention_policy="retain",
+        license_tag="local-csv-fixture",
+        retention_policy="retain-local-fixture",
     )
 
     repo.save_raw_records([later, earlier])
@@ -92,8 +92,8 @@ def test_repository_normalizes_non_utc_datetimes_before_sqlite_round_trip() -> N
         source_ts=source_ts,
         fetched_at=fetched_at,
         available_at=available_at,
-        license_tag="fixture",
-        retention_policy="retain",
+        license_tag="local-csv-fixture",
+        retention_policy="retain-local-fixture",
     )
 
     repo.save_raw_records([raw])
@@ -423,8 +423,8 @@ def _raw_record(payload_hash: str) -> RawRecord:
         source_ts=source_ts,
         fetched_at=source_ts + timedelta(seconds=1),
         available_at=source_ts + timedelta(seconds=2),
-        license_tag="fixture",
-        retention_policy="retain",
+        license_tag="local-csv-fixture",
+        retention_policy="retain-local-fixture",
     )
 
 

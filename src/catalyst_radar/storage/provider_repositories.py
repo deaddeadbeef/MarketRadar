@@ -18,6 +18,7 @@ from catalyst_radar.connectors.base import (
 )
 from catalyst_radar.core.immutability import thaw_json_value
 from catalyst_radar.core.models import DataQualitySeverity, JobStatus
+from catalyst_radar.security.licenses import validate_raw_record_policy
 from catalyst_radar.storage.schema import (
     data_quality_incidents,
     job_runs,
@@ -37,6 +38,7 @@ class ProviderRepository:
         count = 0
         with self.engine.begin() as conn:
             for record in records:
+                validate_raw_record_policy(record.license_tag, record.retention_policy)
                 conn.execute(
                     insert(raw_provider_records).values(
                         id=str(uuid4()),

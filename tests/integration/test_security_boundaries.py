@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import create_engine, select
 
+from apps.api.main import create_app
 from catalyst_radar.connectors.base import (
     ConnectorHealth,
     ConnectorHealthStatus,
@@ -22,6 +23,14 @@ from catalyst_radar.storage.db import create_schema
 from catalyst_radar.storage.provider_repositories import ProviderRepository
 from catalyst_radar.storage.repositories import MarketRepository
 from catalyst_radar.storage.schema import data_quality_incidents, job_runs
+
+FORBIDDEN_BROKER_IMPORTS = {
+    "alpaca",
+    "ib_insync",
+    "interactive_brokers",
+    "robin_stocks",
+    "tda",
+}
 
 
 def test_provider_ingest_redacts_secret_from_health_job_and_incident(
@@ -65,6 +74,27 @@ def test_provider_ingest_redacts_secret_from_health_job_and_incident(
     assert "secret-token" not in persisted
     assert "metadata-secret" not in persisted
     assert "<redacted>" in persisted
+
+
+def test_source_imports_do_not_include_broker_sdks() -> None:
+    source_text = "\n".join(
+        path.read_text(encoding="utf-8") for path in Path("src").rglob("*.py")
+    )
+
+    assert not [
+        name
+        for name in FORBIDDEN_BROKER_IMPORTS
+        if f"import {name}" in source_text or f"from {name}" in source_text
+    ]
+
+
+def test_openapi_has_no_order_or_broker_routes() -> None:
+    paths = create_app().openapi()["paths"]
+    forbidden = ("broker", "order", "execute")
+
+    assert not [
+        path for path in paths if any(word in path.lower() for word in forbidden)
+    ]
 
 
 class _LeakyConnector:
