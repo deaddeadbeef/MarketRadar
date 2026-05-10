@@ -13,7 +13,7 @@
 
 ## Verification
 
-- `python -m pytest` -> `415 passed in 241.16s (0:04:01)`.
+- `python -m pytest` -> `434 passed in 140.85s (0:02:20)`.
 - `python -m ruff check src tests apps` -> `All checks passed!`.
 - Deterministic no-LLM CLI smoke:
   - `init-db` -> initialized database.
@@ -34,6 +34,9 @@
 - Non-fake provider CLI paths are blocked by `_SafeDisabledLLMClient`, ledgered as `failed/client_error`, and return nonzero.
 - Router does not mutate candidate scores, policy states, packets, cards, alerts, or portfolio data.
 - Budget skip, dry-run, completed fake call, schema rejection, and client failure paths each write auditable ledger rows.
+- Missing candidate packets are ledgered as `skipped/candidate_packet_missing`.
+- Repeated review attempts append distinct ledger rows instead of replacing prior attempts.
+- Ledger `ts` and budget windows use the attempt time; `available_at` remains the point-in-time data cutoff.
 - Ledger and cost-summary reads hide future rows by default.
 - Validation-derived cost is surfaced separately from ledger spend to avoid double counting.
 
@@ -49,6 +52,11 @@
 - Fixed cost aggregates so totals are not limited to display rows.
 - Made cost summary validation metrics and useful labels point-in-time safe.
 - Isolated LLM environment variables in dashboard/API tests.
+- Made budget ledger writes append-only for repeated attempts.
+- Counted paid-looking `schema_rejected` and `failed` attempts against spend and task caps.
+- Rejected unsupported LLM output schemas instead of validating them as evidence reviews.
+- Separated LLM attempt time from packet `available_at` for budget windows and ledger `ts`.
+- Hardened evidence-review validation so claim text/source references must be strings and confidence/source-quality/sentiment stay in range.
 
 ## Known Limits
 

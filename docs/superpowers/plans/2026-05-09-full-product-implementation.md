@@ -544,14 +544,14 @@ Implementation tasks:
 Delivered:
 
 - Budget ledger schema, migration, SQLAlchemy table, repository, and summaries.
-- Strict LLM task/status/skip-reason models and deterministic ledger IDs.
+- Strict LLM task/status/skip-reason models and append-only attempt ledger IDs.
 - Config-driven pricing and caps with fail-closed validation.
 - Budget controller gates for disabled premium, manual-only tasks, ineligible states, missing model/pricing, stale/future pricing, per-task caps, daily cap, monthly cap, and GPT-5.5 soft cap.
 - Router/fake-client foundation with budget skips, dry runs, completed fake calls, schema rejection, and client-failure ledgering.
 - Source-linked evidence review schema validation and versioned prompt.
 - `llm-budget-status` and `run-llm-review` CLI commands.
 - Ledger-backed `/api/costs/summary` and Streamlit Costs page.
-- Review fixes for future ledger leakage, cost aggregate truncation, point-in-time validation cost leakage, cached-token math, non-fake provider exit codes, and test env isolation.
+- Review fixes for future ledger leakage, append-only repeated attempts, missing-packet audit rows, paid failed/rejected attempt caps, unsupported schema rejection, attempt-time budget windows, cost aggregate truncation, point-in-time validation cost leakage, cached-token math, non-fake provider exit codes, schema hardening, and test env isolation.
 
 Exit criteria:
 
