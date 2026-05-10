@@ -129,6 +129,39 @@ def test_budget_repository_summarizes_by_task_model_and_status(seeded_repo) -> N
     )
 
 
+def test_budget_repository_summary_aggregates_all_visible_rows_with_limited_display(
+    tmp_path,
+) -> None:
+    engine = create_engine(f"sqlite:///{tmp_path / 'budget-summary-limit.db'}", future=True)
+    create_schema(engine)
+    repo = BudgetLedgerRepository(engine)
+    for index in range(205):
+        available_at = VISIBLE_AT + timedelta(seconds=index)
+        repo.upsert_entry(
+            BudgetLedgerEntry(
+                **_entry_kwargs(
+                    ticker=f"t{index:03d}",
+                    task=LLMTaskName.MID_REVIEW,
+                    status=LLMCallStatus.COMPLETED,
+                    available_at=available_at,
+                    estimated_cost=0.02,
+                    actual_cost=0.01,
+                    model="model-review",
+                )
+            )
+        )
+
+    summary = repo.summary(available_at=VISIBLE_AT + timedelta(minutes=10))
+
+    assert summary["attempt_count"] == 205
+    assert summary["total_actual_cost_usd"] == 2.05
+    assert summary["total_estimated_cost_usd"] == 4.1
+    assert summary["status_counts"] == {"completed": 205}
+    assert summary["by_task"][0]["attempt_count"] == 205
+    assert summary["by_model"][0]["attempt_count"] == 205
+    assert len(summary["rows"]) == 200
+
+
 def test_budget_repository_default_summary_hides_future_entries(tmp_path) -> None:
     engine = create_engine(f"sqlite:///{tmp_path / 'budget-default-summary.db'}", future=True)
     create_schema(engine)

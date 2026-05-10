@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pytest
 from sqlalchemy import Engine, create_engine, insert, update
 
 from catalyst_radar.agents.models import (
@@ -49,6 +50,17 @@ SOURCE_TS = datetime(2026, 5, 10, 20, 30, tzinfo=UTC)
 AVAILABLE_AT = datetime(2026, 5, 10, 21, 5, tzinfo=UTC)
 NEXT_REVIEW_AT = datetime(2026, 5, 12, 21, tzinfo=UTC)
 FUTURE_AT = AVAILABLE_AT + timedelta(days=30)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_llm_config_env(monkeypatch) -> None:
+    for key in (
+        "CATALYST_ENABLE_PREMIUM_LLM",
+        "CATALYST_LLM_DAILY_BUDGET_USD",
+        "CATALYST_LLM_MONTHLY_BUDGET_USD",
+        "CATALYST_LLM_TASK_DAILY_CAPS",
+    ):
+        monkeypatch.delenv(key, raising=False)
 
 
 def test_load_candidate_rows_returns_latest_state_per_ticker(tmp_path: Path) -> None:
@@ -304,6 +316,25 @@ def test_load_cost_summary_keeps_validation_cost_separate(tmp_path: Path) -> Non
     assert summary["total_estimated_cost_usd"] == 0.0
     assert summary["validation_total_cost_usd"] == 7.25
     assert summary["cost_per_useful_alert"] == 0.0
+
+
+def test_load_cost_summary_validation_context_respects_requested_cutoff(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    with engine.begin() as conn:
+        conn.execute(
+            update(validation_runs)
+            .where(validation_runs.c.id == "validation-run-latest")
+            .values(metrics={"total_cost_usd": 7.25})
+        )
+
+    summary = load_cost_summary(engine, available_at=AVAILABLE_AT - timedelta(minutes=1))
+
+    assert summary["validation_total_cost_usd"] == 0.0
+    assert summary["useful_alert_count"] == 0
+    assert summary["useful_labels"] == []
 
 
 def test_load_cost_summary_hides_future_ledger_rows_by_default(tmp_path: Path) -> None:

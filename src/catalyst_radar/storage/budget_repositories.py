@@ -96,12 +96,14 @@ class BudgetLedgerRepository:
         available_at: datetime | None = None,
         limit: int = 200,
     ) -> dict[str, object]:
-        entries = self.list_entries(available_at=available_at, limit=limit)
+        cutoff = available_at if available_at is not None else datetime.now(UTC)
+        display_entries = self.list_entries(available_at=cutoff, limit=limit)
+        aggregate_entries = self._list_summary_entries(available_at=cutoff)
         status_counts: dict[str, int] = {}
         by_task: dict[str, dict[str, object]] = {}
         by_model: dict[str, dict[str, object]] = {}
 
-        for entry in entries:
+        for entry in aggregate_entries:
             status_counts[entry.status.value] = status_counts.get(entry.status.value, 0) + 1
             _add_group_totals(by_task, entry.task.value, "task", entry)
             _add_group_totals(by_model, entry.model or "none", "model", entry)
@@ -109,14 +111,14 @@ class BudgetLedgerRepository:
         return {
             "currency": "USD",
             "total_estimated_cost_usd": round(
-                sum(entry.estimated_cost for entry in entries),
+                sum(entry.estimated_cost for entry in aggregate_entries),
                 10,
             ),
             "total_actual_cost_usd": round(
-                sum(entry.actual_cost for entry in entries),
+                sum(entry.actual_cost for entry in aggregate_entries),
                 10,
             ),
-            "attempt_count": len(entries),
+            "attempt_count": len(aggregate_entries),
             "status_counts": status_counts,
             "by_task": sorted(
                 by_task.values(),
@@ -126,8 +128,24 @@ class BudgetLedgerRepository:
                 by_model.values(),
                 key=lambda row: (-float(row["actual_cost_usd"]), str(row["model"])),
             ),
-            "rows": [_entry_summary_row(entry) for entry in entries],
+            "rows": [_entry_summary_row(entry) for entry in display_entries],
         }
+
+    def _list_summary_entries(
+        self,
+        *,
+        available_at: datetime,
+    ) -> list[BudgetLedgerEntry]:
+        stmt = select(budget_ledger).where(
+            *_entry_filters(
+                available_at=available_at,
+                ticker=None,
+                task=None,
+                status=None,
+            )
+        )
+        with self.engine.connect() as conn:
+            return [_entry_from_row(row._mapping) for row in conn.execute(stmt)]
 
 
 def _entry_row(entry: BudgetLedgerEntry) -> dict[str, Any]:

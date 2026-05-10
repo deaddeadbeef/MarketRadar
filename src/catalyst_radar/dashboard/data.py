@@ -547,8 +547,9 @@ def load_cost_summary(
     *,
     available_at: datetime | None = None,
 ) -> dict[str, object]:
+    requested_cutoff = _as_utc_datetime_or_none(available_at)
     repo = ValidationRepository(engine)
-    latest_run_id = _latest_validation_run_id(engine)
+    latest_run_id = _latest_validation_run_id(engine, available_at=requested_cutoff)
     latest_run = repo.latest_validation_run(latest_run_id) if latest_run_id is not None else None
     latest_result_rows = (
         repo.list_validation_results(
@@ -558,7 +559,11 @@ def load_cost_summary(
         if latest_run is not None
         else []
     )
-    label_cutoff = (latest_run.finished_at or latest_run.started_at) if latest_run else None
+    label_cutoff = (
+        (latest_run.finished_at or latest_run.started_at)
+        if latest_run
+        else requested_cutoff
+    )
     raw_labels = repo.list_useful_alert_labels(available_at=label_cutoff)
     with engine.connect() as conn:
         useful_labels = [
@@ -574,7 +579,7 @@ def load_cost_summary(
         _total_cost_from_metrics(latest_run.metrics) if latest_run is not None else 0.0
     )
     ledger_summary = BudgetLedgerRepository(engine).summary(
-        available_at=_as_utc_datetime_or_none(available_at) or datetime.now(UTC)
+        available_at=requested_cutoff or datetime.now(UTC)
     )
     total_actual_cost = _finite_float(ledger_summary.get("total_actual_cost_usd"))
     useful_count = len(useful_labels)
@@ -1034,14 +1039,21 @@ def _positive_limit(value: int) -> int:
     return max(1, int(value))
 
 
-def _latest_validation_run_id(engine: Engine) -> str | None:
+def _latest_validation_run_id(
+    engine: Engine,
+    *,
+    available_at: datetime | None = None,
+) -> str | None:
+    filters = [
+        validation_runs.c.status == "success",
+        validation_runs.c.finished_at.is_not(None),
+    ]
+    if available_at is not None:
+        filters.append(validation_runs.c.finished_at <= available_at)
     with engine.connect() as conn:
         row = conn.execute(
             select(validation_runs.c.id)
-            .where(
-                validation_runs.c.status == "success",
-                validation_runs.c.finished_at.is_not(None),
-            )
+            .where(*filters)
             .order_by(
                 validation_runs.c.finished_at.desc(),
                 validation_runs.c.started_at.desc(),
