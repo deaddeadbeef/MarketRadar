@@ -3,8 +3,16 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from sqlalchemy import Engine, create_engine, insert
+from sqlalchemy import Engine, create_engine, insert, update
 
+from catalyst_radar.agents.models import (
+    BudgetLedgerEntry,
+    LLMCallStatus,
+    LLMSkipReason,
+    LLMTaskName,
+    TokenUsage,
+    budget_ledger_id,
+)
 from catalyst_radar.core.models import ActionState
 from catalyst_radar.dashboard.data import (
     load_alert_detail,
@@ -16,6 +24,7 @@ from catalyst_radar.dashboard.data import (
     load_ticker_detail,
     load_validation_summary,
 )
+from catalyst_radar.storage.budget_repositories import BudgetLedgerRepository
 from catalyst_radar.storage.db import create_schema
 from catalyst_radar.storage.schema import (
     alerts,
@@ -203,9 +212,14 @@ def test_load_cost_summary_defaults_to_zero_and_counts_useful_alerts(
 
     summary = load_cost_summary(engine)
 
-    assert summary["total_cost_usd"] == 0.0
+    assert summary["source"] == "budget_ledger"
+    assert summary["total_actual_cost_usd"] == 0.0
+    assert summary["total_estimated_cost_usd"] == 0.0
+    assert summary["validation_total_cost_usd"] == 0.0
     assert summary["useful_alert_count"] == 1
     assert summary["cost_per_useful_alert"] == 0.0
+    assert summary["attempt_count"] == 0
+    assert summary["status_counts"] == {}
     assert summary["rows"] == []
 
 
@@ -245,6 +259,75 @@ def test_load_cost_summary_counts_useful_alert_feedback(tmp_path: Path) -> None:
         "label-useful-msft",
         "label-alert-msft-useful",
     }
+
+
+def test_load_cost_summary_uses_budget_ledger_rows(tmp_path: Path) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    _insert_budget_ledger_fixture(engine, available_at=AVAILABLE_AT)
+
+    summary = load_cost_summary(engine, available_at=AVAILABLE_AT + timedelta(minutes=1))
+
+    assert summary["source"] == "budget_ledger"
+    assert summary["currency"] == "USD"
+    assert summary["total_actual_cost_usd"] == 0.19
+    assert summary["total_estimated_cost_usd"] == 0.22
+    assert summary["validation_total_cost_usd"] == 0.0
+    assert summary["attempt_count"] == 2
+    assert summary["status_counts"] == {"completed": 1, "skipped": 1}
+    assert summary["useful_alert_count"] == 1
+    assert summary["cost_per_useful_alert"] == 0.19
+    assert summary["by_task"][0]["task"] == "mid_review"
+    assert summary["by_model"][0]["model"] == "model-review"
+    assert [row["status"] for row in summary["rows"]] == ["skipped", "completed"]
+    assert summary["caps"] == {
+        "premium_llm_enabled": False,
+        "daily_budget_usd": 0.0,
+        "monthly_budget_usd": 0.0,
+        "task_daily_caps": {},
+    }
+
+
+def test_load_cost_summary_keeps_validation_cost_separate(tmp_path: Path) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    with engine.begin() as conn:
+        conn.execute(
+            update(validation_runs)
+            .where(validation_runs.c.id == "validation-run-latest")
+            .values(metrics={"total_cost_usd": 7.25})
+        )
+
+    summary = load_cost_summary(engine, available_at=AVAILABLE_AT)
+
+    assert summary["total_actual_cost_usd"] == 0.0
+    assert summary["total_estimated_cost_usd"] == 0.0
+    assert summary["validation_total_cost_usd"] == 7.25
+    assert summary["cost_per_useful_alert"] == 0.0
+
+
+def test_load_cost_summary_hides_future_ledger_rows_by_default(tmp_path: Path) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    visible_at = datetime.now(UTC) - timedelta(hours=1)
+    future_at = datetime.now(UTC) + timedelta(days=1)
+    _insert_budget_ledger_fixture(engine, available_at=visible_at, future_at=future_at)
+
+    summary = load_cost_summary(engine)
+
+    assert summary["attempt_count"] == 1
+    assert summary["total_actual_cost_usd"] == 0.19
+    assert summary["status_counts"] == {"completed": 1}
+    assert [row["id"] for row in summary["rows"]] == [
+        budget_ledger_id(
+            task=LLMTaskName.MID_REVIEW.value,
+            ticker="msft",
+            candidate_packet_id="candidate-packet-MSFT",
+            status=LLMCallStatus.COMPLETED.value,
+            available_at=visible_at,
+            prompt_version="evidence_review_v1",
+        )
+    ]
 
 
 def test_load_ops_health_reports_provider_status_and_database(
@@ -657,6 +740,85 @@ def _insert_alert_fixture(engine: Engine) -> None:
                 },
             ],
         )
+
+
+def _insert_budget_ledger_fixture(
+    engine: Engine,
+    *,
+    available_at: datetime,
+    future_at: datetime | None = None,
+) -> None:
+    repo = BudgetLedgerRepository(engine)
+    repo.upsert_entry(
+        BudgetLedgerEntry(
+            **_budget_ledger_entry_kwargs(
+                ticker="msft",
+                status=LLMCallStatus.COMPLETED,
+                available_at=available_at,
+                estimated_cost=0.22,
+                actual_cost=0.19,
+            )
+        )
+    )
+    repo.upsert_entry(
+        BudgetLedgerEntry(
+            **_budget_ledger_entry_kwargs(
+                ticker="aapl",
+                status=LLMCallStatus.SKIPPED,
+                available_at=future_at or available_at + timedelta(seconds=30),
+                estimated_cost=0.0,
+                actual_cost=0.0,
+                skip_reason=LLMSkipReason.PREMIUM_LLM_DISABLED,
+            )
+        )
+    )
+
+
+def _budget_ledger_entry_kwargs(
+    *,
+    ticker: str,
+    status: LLMCallStatus,
+    available_at: datetime,
+    estimated_cost: float,
+    actual_cost: float,
+    skip_reason: LLMSkipReason | None = None,
+) -> dict[str, object]:
+    return {
+        "id": budget_ledger_id(
+            task=LLMTaskName.MID_REVIEW.value,
+            ticker=ticker,
+            candidate_packet_id=f"candidate-packet-{ticker.upper()}",
+            status=status.value,
+            available_at=available_at,
+            prompt_version="evidence_review_v1",
+        ),
+        "ts": available_at - timedelta(minutes=5),
+        "available_at": available_at,
+        "ticker": ticker,
+        "candidate_state_id": f"candidate-state-{ticker.upper()}",
+        "candidate_packet_id": f"candidate-packet-{ticker.upper()}",
+        "decision_card_id": f"decision-card-{ticker.upper()}",
+        "task": LLMTaskName.MID_REVIEW,
+        "model": "model-review",
+        "provider": "openai",
+        "status": status,
+        "skip_reason": skip_reason,
+        "token_usage": TokenUsage(
+            input_tokens=1_000,
+            cached_input_tokens=100,
+            output_tokens=250,
+        ),
+        "tool_calls": [{"name": "evidence_review", "arguments": {"ticker": ticker}}],
+        "estimated_cost": estimated_cost,
+        "actual_cost": actual_cost,
+        "currency": "USD",
+        "candidate_state": "Warning",
+        "prompt_version": "evidence_review_v1",
+        "schema_version": "evidence-review-v1",
+        "outcome_label": "reviewed",
+        "payload": {"ticker": ticker, "status": status.value},
+        "created_at": available_at,
+    }
 
 
 def _alert_row(

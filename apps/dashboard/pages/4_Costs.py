@@ -56,25 +56,36 @@ load_dotenv(".env.local")
 
 st.set_page_config(page_title="Costs", layout="wide")
 st.title("Costs")
-st.caption("Deterministic review-cost summary from persisted rows only.")
+st.caption("LLM budget-ledger summary from persisted rows only.")
 
 summary, error = _load_summary()
 if error is not None:
     st.warning(error)
 
-total_cost = _number(summary.get("total_cost_usd", summary.get("total_cost", 0.0)))
+actual_cost = _number(summary.get("total_actual_cost_usd"))
+estimated_cost = _number(summary.get("total_estimated_cost_usd"))
+attempt_count = int(_number(summary.get("attempt_count")))
+status_counts = _mapping(summary.get("status_counts"))
+skipped_count = int(_number(status_counts.get("skipped")))
+completed_count = int(_number(status_counts.get("completed")))
 useful_count = int(_number(summary.get("useful_alert_count", summary.get("useful_count", 0))))
 cost_per_useful = summary.get("cost_per_useful_alert")
 if cost_per_useful is None:
-    if total_cost <= 0:
+    if actual_cost <= 0:
         cost_per_useful = 0.0
     elif useful_count:
-        cost_per_useful = total_cost / useful_count
+        cost_per_useful = actual_cost / useful_count
 
-metrics = st.columns(3)
-metrics[0].metric("Total Cost", f"${total_cost:.2f}")
-metrics[1].metric("Useful Alerts", useful_count)
-metrics[2].metric(
+metrics = st.columns(4)
+metrics[0].metric("Actual LLM Cost", f"${actual_cost:.2f}")
+metrics[1].metric("Estimated LLM Cost", f"${estimated_cost:.2f}")
+metrics[2].metric("Attempts", attempt_count)
+metrics[3].metric("Skipped", skipped_count)
+
+secondary_metrics = st.columns(3)
+secondary_metrics[0].metric("Completed", completed_count)
+secondary_metrics[1].metric("Useful Alerts", useful_count)
+secondary_metrics[2].metric(
     "Cost Per Useful Alert",
     "n/a" if cost_per_useful is None else f"${_number(cost_per_useful):.2f}",
 )
@@ -82,12 +93,17 @@ metrics[2].metric(
 st.caption("Missing spend rows remain zero; no paid model spend is inferred.")
 st.caption(f"Useful alert feedback counted in the current validation context: {useful_count}.")
 
-detail_rows = _records(
-    summary.get("rows")
-    or summary.get("provider_costs")
-    or summary.get("cost_rows")
-    or summary.get("items")
-)
+detail_rows = _records(summary.get("rows"))
 if detail_rows:
-    st.subheader("Cost Rows")
+    st.subheader("Ledger Rows")
     st.dataframe(pd.DataFrame(detail_rows), width="stretch", hide_index=True)
+
+by_task_rows = _records(summary.get("by_task"))
+if by_task_rows:
+    st.subheader("Spend By Task")
+    st.dataframe(pd.DataFrame(by_task_rows), width="stretch", hide_index=True)
+
+by_model_rows = _records(summary.get("by_model"))
+if by_model_rows:
+    st.subheader("Spend By Model")
+    st.dataframe(pd.DataFrame(by_model_rows), width="stretch", hide_index=True)

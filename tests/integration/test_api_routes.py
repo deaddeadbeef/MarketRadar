@@ -132,26 +132,15 @@ def test_get_cost_summary(tmp_path, monkeypatch) -> None:
     database_url = _database_url(tmp_path, "costs.db")
     monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
     _create_database(database_url)
-    monkeypatch.setattr(
-        dashboard_data,
-        "load_cost_summary",
-        lambda _engine: {
-            "total_cost": 0.0,
-            "useful_alerts": 1,
-            "cost_per_useful_alert": 0.0,
-        },
-        raising=False,
-    )
     client = TestClient(create_app())
 
     response = client.get("/api/costs/summary")
 
     assert response.status_code == 200
-    assert response.json() == {
-        "total_cost": 0.0,
-        "useful_alerts": 1,
-        "cost_per_useful_alert": 0.0,
-    }
+    payload = response.json()
+    assert payload["source"] == "budget_ledger"
+    assert payload["total_actual_cost_usd"] == 0.0
+    assert payload["status_counts"] == {}
 
 
 def test_post_feedback_records_useful_alert_label(tmp_path, monkeypatch) -> None:

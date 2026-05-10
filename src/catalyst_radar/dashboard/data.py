@@ -10,6 +10,8 @@ from typing import Any
 
 from sqlalchemy import Engine, and_, func, select
 
+from catalyst_radar.core.config import AppConfig
+from catalyst_radar.storage.budget_repositories import BudgetLedgerRepository
 from catalyst_radar.storage.schema import (
     alerts,
     candidate_packets,
@@ -540,7 +542,11 @@ def load_validation_summary(engine: Engine) -> dict[str, object]:
     }
 
 
-def load_cost_summary(engine: Engine) -> dict[str, object]:
+def load_cost_summary(
+    engine: Engine,
+    *,
+    available_at: datetime | None = None,
+) -> dict[str, object]:
     repo = ValidationRepository(engine)
     latest_run_id = _latest_validation_run_id(engine)
     latest_run = repo.latest_validation_run(latest_run_id) if latest_run_id is not None else None
@@ -564,23 +570,44 @@ def load_cost_summary(engine: Engine) -> dict[str, object]:
                 or _label_matches_validation_results(conn, label, latest_result_rows)
             )
         ]
-    total_cost = _total_cost_from_metrics(latest_run.metrics) if latest_run is not None else 0.0
+    validation_total_cost = (
+        _total_cost_from_metrics(latest_run.metrics) if latest_run is not None else 0.0
+    )
+    ledger_summary = BudgetLedgerRepository(engine).summary(
+        available_at=_as_utc_datetime_or_none(available_at) or datetime.now(UTC)
+    )
+    total_actual_cost = _finite_float(ledger_summary.get("total_actual_cost_usd"))
     useful_count = len(useful_labels)
     cost_per_useful_alert = (
         0.0
-        if total_cost <= 0
-        else total_cost / useful_count
+        if total_actual_cost <= 0
+        else total_actual_cost / useful_count
         if useful_count > 0
         else None
     )
+    config = AppConfig.from_env()
     return {
-        "currency": "USD",
-        "total_cost_usd": total_cost,
+        "currency": ledger_summary.get("currency", "USD"),
+        "total_actual_cost_usd": total_actual_cost,
+        "total_estimated_cost_usd": _finite_float(
+            ledger_summary.get("total_estimated_cost_usd")
+        ),
+        "validation_total_cost_usd": validation_total_cost,
         "useful_alert_count": useful_count,
         "cost_per_useful_alert": cost_per_useful_alert,
-        "rows": [],
+        "attempt_count": int(_finite_float(ledger_summary.get("attempt_count"))),
+        "status_counts": _string_int_mapping(ledger_summary.get("status_counts")),
+        "by_task": ledger_summary.get("by_task", []),
+        "by_model": ledger_summary.get("by_model", []),
+        "rows": ledger_summary.get("rows", []),
+        "caps": {
+            "premium_llm_enabled": config.enable_premium_llm,
+            "daily_budget_usd": config.llm_daily_budget_usd,
+            "monthly_budget_usd": config.llm_monthly_budget_usd,
+            "task_daily_caps": dict(sorted(config.llm_task_daily_caps.items())),
+        },
         "useful_labels": [_dataclass_dict(label) for label in useful_labels],
-        "source": "validation_run_metrics" if total_cost > 0 else "default_zero_no_cost_ledger",
+        "source": "budget_ledger",
     }
 
 
@@ -995,6 +1022,12 @@ def _finite_float(value: object) -> float:
     except (TypeError, ValueError):
         return 0.0
     return number if isfinite(number) else 0.0
+
+
+def _string_int_mapping(value: object) -> dict[str, int]:
+    if not isinstance(value, Mapping):
+        return {}
+    return {str(key): int(_finite_float(item)) for key, item in value.items()}
 
 
 def _positive_limit(value: int) -> int:
