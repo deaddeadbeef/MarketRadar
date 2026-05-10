@@ -15,7 +15,7 @@
 
 ## Verification
 
-- `python -m pytest` -> `488 passed in 126.51s (0:02:06)`.
+- `python -m pytest` -> `490 passed in 138.32s (0:02:18)`.
 - `python -m ruff check src tests apps` -> `All checks passed!`.
 - Fake Phase 13 CLI smoke:
   - `skeptic_review` for sample `AAA` completed with `schema_version=skeptic-review-v1`.
@@ -30,6 +30,7 @@
 - LLM output never changes deterministic scores, action state, trade plan, position sizing, portfolio exposure, alerts, or orders.
 - Every accepted skeptic or Decision Card claim must link to the agent evidence packet by `source_id`, `source_url`, or `computed_feature_id`.
 - Every accepted evidence-review claim, bear-case note, or unresolved conflict must link to the agent evidence packet by `source_id`, `source_url`, or `computed_feature_id`.
+- Direct Decision Card LLM review attachment rejects unexpected top-level fields before persistence.
 - Unsupported, unknown, or unlinked claims are schema-rejected and ledgered.
 - Forbidden autonomous execution language is rejected in LLM narrative paths.
 - Premium LLM remains disabled by default.

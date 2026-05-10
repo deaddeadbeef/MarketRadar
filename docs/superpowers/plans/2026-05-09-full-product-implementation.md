@@ -614,7 +614,7 @@ Implementation tasks:
 
 Verification:
 
-- `python -m pytest` -> `488 passed in 126.51s (0:02:06)`.
+- `python -m pytest` -> `490 passed in 138.32s (0:02:18)`.
 - `python -m ruff check src tests apps` -> `All checks passed!`.
 - Fake LLM smoke completed `skeptic_review` and seeded eligible `gpt55_decision_card` paths.
 - No-key OpenAI provider smoke failed closed and ledgered `failed/client_error`.
