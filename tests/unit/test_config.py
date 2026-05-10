@@ -51,6 +51,68 @@ def test_config_reads_explicit_boolean_env_values() -> None:
     assert true_config.enable_premium_llm is True
 
 
+def test_llm_config_defaults_fail_closed() -> None:
+    config = AppConfig.from_env({})
+
+    assert config.enable_premium_llm is False
+    assert config.llm_provider == "none"
+    assert config.llm_evidence_model is None
+    assert config.llm_skeptic_model is None
+    assert config.llm_decision_card_model is None
+    assert config.llm_input_cost_per_1m is None
+    assert config.llm_cached_input_cost_per_1m is None
+    assert config.llm_output_cost_per_1m is None
+    assert config.llm_daily_budget_usd == 0.0
+    assert config.llm_monthly_budget_usd == 0.0
+    assert config.llm_task_daily_caps == {}
+
+
+def test_llm_config_reads_pricing_and_caps() -> None:
+    config = AppConfig.from_env(
+        {
+            "CATALYST_ENABLE_PREMIUM_LLM": "true",
+            "CATALYST_LLM_PROVIDER": "openai",
+            "CATALYST_LLM_EVIDENCE_MODEL": "model-review",
+            "CATALYST_LLM_SKEPTIC_MODEL": "model-skeptic",
+            "CATALYST_LLM_DECISION_CARD_MODEL": "model-decision",
+            "CATALYST_LLM_INPUT_COST_PER_1M": "5.00",
+            "CATALYST_LLM_CACHED_INPUT_COST_PER_1M": "0.50",
+            "CATALYST_LLM_OUTPUT_COST_PER_1M": "30.00",
+            "CATALYST_LLM_PRICING_UPDATED_AT": "2026-05-10",
+            "CATALYST_LLM_PRICING_STALE_AFTER_DAYS": "14",
+            "CATALYST_LLM_DAILY_BUDGET_USD": "2.50",
+            "CATALYST_LLM_MONTHLY_BUDGET_USD": "50.00",
+            "CATALYST_LLM_MONTHLY_SOFT_CAP_PCT": "0.75",
+            "CATALYST_LLM_TASK_DAILY_CAPS": "mid_review=3,gpt55_decision_card=1",
+        }
+    )
+
+    assert config.enable_premium_llm is True
+    assert config.llm_provider == "openai"
+    assert config.llm_evidence_model == "model-review"
+    assert config.llm_skeptic_model == "model-skeptic"
+    assert config.llm_decision_card_model == "model-decision"
+    assert config.llm_input_cost_per_1m == 5.0
+    assert config.llm_cached_input_cost_per_1m == 0.5
+    assert config.llm_output_cost_per_1m == 30.0
+    assert config.llm_pricing_updated_at == "2026-05-10"
+    assert config.llm_pricing_stale_after_days == 14
+    assert config.llm_daily_budget_usd == 2.5
+    assert config.llm_monthly_budget_usd == 50.0
+    assert config.llm_monthly_soft_cap_pct == 0.75
+    assert config.llm_task_daily_caps["mid_review"] == 3
+    assert config.llm_task_daily_caps["gpt55_decision_card"] == 1
+
+
+@pytest.mark.parametrize(
+    "raw",
+    ["mid_review", "=3", "mid_review=-1", "mid_review=two"],
+)
+def test_llm_config_rejects_malformed_task_daily_caps(raw: str) -> None:
+    with pytest.raises(ValueError):
+        AppConfig.from_env({"CATALYST_LLM_TASK_DAILY_CAPS": raw})
+
+
 def test_config_reads_sec_live_settings_from_env() -> None:
     config = AppConfig.from_env(
         {

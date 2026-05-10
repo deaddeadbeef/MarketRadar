@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from os import environ
 
 
@@ -21,6 +21,25 @@ def _bool(value: str | bool | None, default: bool) -> bool:
 def _float(env: Mapping[str, str], key: str, default: float) -> float:
     raw = env.get(key)
     return default if raw is None or raw == "" else float(raw)
+
+
+def _optional_float(env: Mapping[str, str], key: str) -> float | None:
+    raw = env.get(key)
+    return None if raw is None or raw == "" else float(raw)
+
+
+def _optional_nonnegative_float(env: Mapping[str, str], key: str) -> float | None:
+    value = _optional_float(env, key)
+    if value is not None and value < 0:
+        raise ValueError(f"{key} must be greater than or equal to zero")
+    return value
+
+
+def _nonnegative_float(env: Mapping[str, str], key: str, default: float) -> float:
+    value = _float(env, key, default)
+    if value < 0:
+        raise ValueError(f"{key} must be greater than or equal to zero")
+    return value
 
 
 def _positive_float(env: Mapping[str, str], key: str, default: float) -> float:
@@ -49,6 +68,28 @@ def _optional_str(env: Mapping[str, str], key: str) -> str | None:
     return raw
 
 
+def _task_caps(env: Mapping[str, str], key: str) -> Mapping[str, int]:
+    raw = env.get(key)
+    if raw is None or raw.strip() == "":
+        return {}
+    caps: dict[str, int] = {}
+    for item in raw.split(","):
+        if "=" not in item:
+            raise ValueError(f"{key} entries must use name=value")
+        name, value = item.split("=", maxsplit=1)
+        name = name.strip()
+        if not name:
+            raise ValueError(f"{key} task name must not be blank")
+        try:
+            cap = int(value.strip())
+        except ValueError as exc:
+            raise ValueError(f"{key} cap must be an integer") from exc
+        if cap < 0:
+            raise ValueError(f"{key} cap must be greater than or equal to zero")
+        caps[name] = cap
+    return caps
+
+
 @dataclass(frozen=True)
 class AppConfig:
     environment: str = "local"
@@ -64,6 +105,19 @@ class AppConfig:
     portfolio_value: float = 0.0
     portfolio_cash: float = 0.0
     enable_premium_llm: bool = False
+    llm_provider: str = "none"
+    llm_evidence_model: str | None = None
+    llm_skeptic_model: str | None = None
+    llm_decision_card_model: str | None = None
+    llm_input_cost_per_1m: float | None = None
+    llm_cached_input_cost_per_1m: float | None = None
+    llm_output_cost_per_1m: float | None = None
+    llm_pricing_updated_at: str | None = None
+    llm_pricing_stale_after_days: int = 30
+    llm_daily_budget_usd: float = 0.0
+    llm_monthly_budget_usd: float = 0.0
+    llm_monthly_soft_cap_pct: float = 0.80
+    llm_task_daily_caps: Mapping[str, int] = field(default_factory=dict)
     market_provider: str = "csv"
     polygon_api_key: str | None = None
     polygon_base_url: str = "https://api.polygon.io"
@@ -101,6 +155,37 @@ class AppConfig:
             portfolio_value=_float(source, "CATALYST_PORTFOLIO_VALUE", 0.0),
             portfolio_cash=_float(source, "CATALYST_PORTFOLIO_CASH", 0.0),
             enable_premium_llm=_bool(source.get("CATALYST_ENABLE_PREMIUM_LLM"), False),
+            llm_provider=source.get("CATALYST_LLM_PROVIDER", "none"),
+            llm_evidence_model=_optional_str(source, "CATALYST_LLM_EVIDENCE_MODEL"),
+            llm_skeptic_model=_optional_str(source, "CATALYST_LLM_SKEPTIC_MODEL"),
+            llm_decision_card_model=_optional_str(
+                source, "CATALYST_LLM_DECISION_CARD_MODEL"
+            ),
+            llm_input_cost_per_1m=_optional_nonnegative_float(
+                source, "CATALYST_LLM_INPUT_COST_PER_1M"
+            ),
+            llm_cached_input_cost_per_1m=_optional_nonnegative_float(
+                source, "CATALYST_LLM_CACHED_INPUT_COST_PER_1M"
+            ),
+            llm_output_cost_per_1m=_optional_nonnegative_float(
+                source, "CATALYST_LLM_OUTPUT_COST_PER_1M"
+            ),
+            llm_pricing_updated_at=_optional_str(
+                source, "CATALYST_LLM_PRICING_UPDATED_AT"
+            ),
+            llm_pricing_stale_after_days=_positive_int(
+                source, "CATALYST_LLM_PRICING_STALE_AFTER_DAYS", 30
+            ),
+            llm_daily_budget_usd=_nonnegative_float(
+                source, "CATALYST_LLM_DAILY_BUDGET_USD", 0.0
+            ),
+            llm_monthly_budget_usd=_nonnegative_float(
+                source, "CATALYST_LLM_MONTHLY_BUDGET_USD", 0.0
+            ),
+            llm_monthly_soft_cap_pct=_nonnegative_float(
+                source, "CATALYST_LLM_MONTHLY_SOFT_CAP_PCT", 0.80
+            ),
+            llm_task_daily_caps=_task_caps(source, "CATALYST_LLM_TASK_DAILY_CAPS"),
             market_provider=source.get("CATALYST_MARKET_PROVIDER", "csv"),
             polygon_api_key=_optional_str(source, "CATALYST_POLYGON_API_KEY"),
             polygon_base_url=source.get(
