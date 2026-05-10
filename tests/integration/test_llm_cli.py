@@ -161,6 +161,46 @@ def test_run_llm_review_default_premium_disabled_logs_skip(
     ]
 
 
+def test_run_llm_review_enabled_without_fake_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    database_url = _init_db(tmp_path, monkeypatch, capsys)
+    _configure_enabled_openai_llm(monkeypatch)
+    _seed_candidate_packet(database_url)
+
+    exit_code = main(
+        [
+            "run-llm-review",
+            "--ticker",
+            "MSFT",
+            "--as-of",
+            AS_OF_TEXT,
+            "--available-at",
+            AVAILABLE_AT_TEXT,
+            "--json",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    payload = json.loads(captured.out)
+    assert payload["result"]["status"] == "failed"
+    assert payload["ledger"]["skip_reason"] == "client_error"
+    assert payload["ledger"]["provider"] == "openai"
+    assert payload["ledger"]["payload"]["error"] == "real_llm_provider_disabled"
+    rows = _ledger_rows(database_url)
+    assert [(row.status, row.skip_reason, row.provider, row.payload) for row in rows] == [
+        (
+            "failed",
+            "client_error",
+            "openai",
+            {"error": "real_llm_provider_disabled"},
+        )
+    ]
+
+
 def test_llm_budget_status_json_includes_caps_and_rows(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -220,6 +260,17 @@ def _configure_fake_safe_llm(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CATALYST_ENABLE_PREMIUM_LLM", "true")
     monkeypatch.setenv("CATALYST_LLM_PROVIDER", "fake")
     monkeypatch.setenv("CATALYST_LLM_EVIDENCE_MODEL", "fake")
+    _configure_enabled_llm_budget(monkeypatch)
+
+
+def _configure_enabled_openai_llm(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CATALYST_ENABLE_PREMIUM_LLM", "true")
+    monkeypatch.setenv("CATALYST_LLM_PROVIDER", "openai")
+    monkeypatch.setenv("CATALYST_LLM_EVIDENCE_MODEL", "dummy-model")
+    _configure_enabled_llm_budget(monkeypatch)
+
+
+def _configure_enabled_llm_budget(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CATALYST_LLM_INPUT_COST_PER_1M", "0")
     monkeypatch.setenv("CATALYST_LLM_CACHED_INPUT_COST_PER_1M", "0")
     monkeypatch.setenv("CATALYST_LLM_OUTPUT_COST_PER_1M", "0")

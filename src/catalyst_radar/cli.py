@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.engine import Engine
 
 from catalyst_radar.agents.budget import BudgetController
+from catalyst_radar.agents.models import LLMCallStatus
 from catalyst_radar.agents.router import (
     FakeLLMClient,
     LLMClientRequest,
@@ -710,6 +711,8 @@ def main(argv: list[str] | None = None) -> int:
                 ]
             )
             print(" ".join(fields))
+        if result.status in {LLMCallStatus.FAILED, LLMCallStatus.SCHEMA_REJECTED}:
+            return 1
         return 0
 
     if args.command == "candidate-packet":
