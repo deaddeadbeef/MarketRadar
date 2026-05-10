@@ -15,7 +15,7 @@
 Build from:
 
 ```text
-main @ 95aa81e feat: add api and dashboard review surfaces
+main @ 6740d41 fix: close alert feedback review gaps
 ```
 
 Verified capabilities now on `main`:
@@ -40,13 +40,14 @@ Verified capabilities now on `main`:
 - Candidate packets and Decision Cards with supporting and disconfirming evidence.
 - Point-in-time validation replay, baselines, useful-alert labels, shadow/paper trade workflow, and validation reports.
 - FastAPI review API, expanded Streamlit dashboard pages, cost/ops views, and feedback capture.
-- No runtime LLM integration, no alert delivery, no scheduler/worker automation, and no broker/order execution.
+- Shadow-mode alert artifacts, deterministic alert routing, dedupe/suppression ledger, dry-run delivery, alert feedback, alert API routes, alert CLI commands, and dashboard alert review page.
+- No runtime LLM integration, no real external alert delivery, no scheduler/worker automation, and no broker/order execution.
 
 Most recent verification:
 
 ```text
 python -m pytest
-325 passed in 85.15s (0:01:25)
+368 passed in 130.96s (0:02:10)
 
 python -m ruff check src tests apps
 All checks passed!
@@ -57,7 +58,7 @@ Important current limits:
 - Polygon live mode still needs a configured API key and live contract drift testing.
 - SEC live mode is gated behind `CATALYST_SEC_ENABLE_LIVE=1` and a compliant `CATALYST_SEC_USER_AGENT`.
 - News and earnings connectors are fixture/provider skeletons until a licensed provider is selected.
-- There is no alerting subsystem yet: no alert artifacts, dedupe/suppression ledger, digest generation, or delivery dry-run workflow.
+- Alerting is still shadow/dry-run only; real external delivery remains disabled.
 - There is no sparse LLM budget/router integration yet.
 - There is no scheduler, worker, production Docker deployment, auth/roles, observability runbooks, or pilot release gate.
 
@@ -440,6 +441,14 @@ Exit criteria:
 
 ## Phase 11: Alerts and Feedback Loop
 
+Status: complete and merged.
+
+Review file:
+
+```text
+docs/phase-11-review.md
+```
+
 Detailed executable plan:
 
 ```text
@@ -448,29 +457,40 @@ docs/superpowers/plans/2026-05-10-phase-11-alerts-feedback-loop.md
 
 Objective:
 
-- Send deduped actionable notifications and measure whether they are useful.
+- Send deduped review notifications and measure whether they are useful.
 
 Primary files:
 
 - Create: `src/catalyst_radar/alerts/models.py`
-- Create: `src/catalyst_radar/alerts/router.py`
+- Create: `src/catalyst_radar/alerts/routing.py`
 - Create: `src/catalyst_radar/alerts/dedupe.py`
+- Create: `src/catalyst_radar/alerts/planner.py`
 - Create: `src/catalyst_radar/alerts/channels/email.py`
 - Create: `src/catalyst_radar/alerts/channels/webhook.py`
 - Create: `src/catalyst_radar/alerts/digest.py`
+- Create: `src/catalyst_radar/storage/alert_repositories.py`
+- Create: `src/catalyst_radar/feedback/service.py`
+- Create: `src/catalyst_radar/api/routes/alerts.py`
+- Create: `apps/dashboard/pages/6_Alerts.py`
 - Create: `sql/migrations/010_alerts.sql`
 - Test: `tests/unit/test_alert_dedupe.py`
-- Test: `tests/integration/test_alert_routing.py`
+- Test: `tests/unit/test_alert_routing.py`
+- Test: `tests/integration/test_alert_repository.py`
+- Test: `tests/integration/test_alerts_cli.py`
+- Test: `tests/integration/test_alert_api_routes.py`
 
-Implementation tasks:
+Delivered:
 
-- [ ] Add `alerts`, `alert_suppressions`, and `user_feedback` tables.
-- [ ] Route `EligibleForManualBuyReview` to immediate alert.
-- [ ] Route high-delta Warning candidates to digest or optional push.
-- [ ] Route ResearchOnly/AddToWatchlist to daily digest.
-- [ ] Route ThesisWeakening/ExitInvalidateReview to position-watch alert.
-- [ ] Suppress duplicate articles and unchanged states.
-- [ ] Add feedback links or dashboard actions for each alert.
+- `alerts`, `alert_suppressions`, and `user_feedback` tables plus PostgreSQL migration.
+- Deterministic alert models, routes, trigger fingerprints, and URL-safe stable IDs.
+- Point-in-time alert planner over latest visible candidate states, packets, and Decision Cards.
+- Dedupe/suppression records for unchanged repeat triggers and non-alertable states.
+- Digest grouping and dry-run channel adapters with no network I/O.
+- CLI commands: `build-alerts`, `alerts-list`, `alert-digest`, and `send-alerts`.
+- Shared feedback service that validates artifacts, enforces ticker match, writes `user_feedback`, and projects to `useful_alert_labels`.
+- FastAPI alert list/detail/feedback routes.
+- Streamlit Alerts page plus Home/Costs/Validation summary integration.
+- Review fixes for future-alert leakage, feedback audit bypasses, payload serialization, URL-safe IDs, and default cutoff behavior.
 
 Exit criteria:
 
