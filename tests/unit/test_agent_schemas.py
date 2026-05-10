@@ -58,6 +58,30 @@ def test_rejects_blank_required_claim_text(field: str) -> None:
 @pytest.mark.parametrize(
     ("field", "value"),
     [
+        ("claim", 123),
+        ("evidence_type", ["filing"]),
+        ("uncertainty_notes", {"note": "weak"}),
+    ],
+)
+def test_rejects_non_string_required_claim_text(field: str, value: object) -> None:
+    payload = _valid_payload()
+    payload["claims"][0][field] = value
+
+    with pytest.raises(AgentSchemaError, match=f"{field}.*string"):
+        validate_evidence_review_output(payload, ticker="MSFT", as_of=AS_OF)
+
+
+def test_rejects_non_string_claim_source_reference() -> None:
+    payload = _valid_payload()
+    payload["claims"][0]["source_id"] = 123
+
+    with pytest.raises(AgentSchemaError, match="source_id.*string"):
+        validate_evidence_review_output(payload, ticker="MSFT", as_of=AS_OF)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
         ("source_quality", -0.1),
         ("source_quality", 1.1),
         ("confidence", -0.1),

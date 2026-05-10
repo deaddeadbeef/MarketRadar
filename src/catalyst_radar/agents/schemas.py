@@ -63,8 +63,11 @@ def _validated_claim(value: Any, field_name: str) -> Mapping[str, Any]:
         msg = f"{field_name} must be a mapping"
         raise AgentSchemaError(msg)
     claim = _json_safe_mapping(value, field_name)
-    source_id = _optional_text(claim.get("source_id"))
-    computed_feature_id = _optional_text(claim.get("computed_feature_id"))
+    source_id = _optional_text(claim.get("source_id"), f"{field_name}.source_id")
+    computed_feature_id = _optional_text(
+        claim.get("computed_feature_id"),
+        f"{field_name}.computed_feature_id",
+    )
     if not (source_id or computed_feature_id):
         msg = f"{field_name} must include source_id or computed_feature_id"
         raise AgentSchemaError(msg)
@@ -131,17 +134,20 @@ def _json_safe(value: Any, field_name: str) -> Any:
 
 
 def _required_text(value: Any, field_name: str) -> str:
-    text = _optional_text(value)
+    text = _optional_text(value, field_name)
     if text is None:
         msg = f"{field_name} must not be blank"
         raise AgentSchemaError(msg)
     return text
 
 
-def _optional_text(value: Any) -> str | None:
+def _optional_text(value: Any, field_name: str) -> str | None:
     if value is None:
         return None
-    text = str(value).strip()
+    if not isinstance(value, str):
+        msg = f"{field_name} must be a string"
+        raise AgentSchemaError(msg)
+    text = value.strip()
     return text or None
 
 
