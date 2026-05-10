@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from os import environ
+
+from catalyst_radar.security.redaction import redact_value
 
 
 def _bool(value: str | bool | None, default: bool) -> bool:
@@ -143,6 +145,9 @@ class AppConfig:
     universe_include_etfs: bool = False
     universe_include_adrs: bool = True
     scan_batch_size: int = 500
+
+    def sanitized(self) -> dict[str, object]:
+        return redact_value(asdict(self))
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> AppConfig:
