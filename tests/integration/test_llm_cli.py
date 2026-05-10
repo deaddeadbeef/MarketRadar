@@ -1,0 +1,291 @@
+from __future__ import annotations
+
+import json
+from datetime import UTC, datetime
+from pathlib import Path
+
+import pytest
+from sqlalchemy import create_engine, insert, select
+
+from catalyst_radar.cli import main
+from catalyst_radar.storage.schema import budget_ledger, candidate_packets
+
+AS_OF = datetime(2026, 5, 8, 21, tzinfo=UTC)
+AS_OF_TEXT = "2026-05-08"
+SOURCE_TS = datetime(2026, 5, 8, 20, 30, tzinfo=UTC)
+AVAILABLE_AT = datetime(2026, 5, 10, 14, tzinfo=UTC)
+AVAILABLE_AT_TEXT = "2026-05-10T14:00:00Z"
+
+
+def test_llm_budget_status_reports_zero_without_ledger_rows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    database_url = _init_db(tmp_path, monkeypatch, capsys)
+
+    assert (
+        main(["llm-budget-status", "--available-at", AVAILABLE_AT_TEXT])
+        == 0
+    )
+
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert captured.out == (
+        "llm_budget_status actual_cost=0.000000 estimated_cost=0.000000 "
+        "attempts=0 skipped=0 completed=0 source=budget_ledger\n"
+    )
+    assert _ledger_rows(database_url) == []
+
+
+def test_run_llm_review_requires_candidate_packet(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _init_db(tmp_path, monkeypatch, capsys)
+
+    exit_code = main(
+        [
+            "run-llm-review",
+            "--ticker",
+            "MSFT",
+            "--as-of",
+            AS_OF_TEXT,
+            "--available-at",
+            AVAILABLE_AT_TEXT,
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert captured.out == ""
+    assert captured.err == "candidate packet not found: MSFT\n"
+
+
+def test_run_llm_review_dry_run_logs_dry_run_entry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    database_url = _init_db(tmp_path, monkeypatch, capsys)
+    _configure_fake_safe_llm(monkeypatch)
+    _seed_candidate_packet(database_url)
+
+    assert (
+        main(
+            [
+                "run-llm-review",
+                "--ticker",
+                "MSFT",
+                "--as-of",
+                AS_OF_TEXT,
+                "--available-at",
+                AVAILABLE_AT_TEXT,
+                "--dry-run",
+            ]
+        )
+        == 0
+    )
+
+    captured = capsys.readouterr()
+    assert "llm_review ticker=MSFT task=mid_review status=dry_run" in captured.out
+    rows = _ledger_rows(database_url)
+    assert [(row.status, row.skip_reason, row.model) for row in rows] == [
+        ("dry_run", None, "fake")
+    ]
+
+
+def test_run_llm_review_fake_client_logs_completed_entry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    database_url = _init_db(tmp_path, monkeypatch, capsys)
+    _configure_fake_safe_llm(monkeypatch)
+    _seed_candidate_packet(database_url)
+
+    assert (
+        main(
+            [
+                "run-llm-review",
+                "--ticker",
+                "MSFT",
+                "--as-of",
+                AS_OF_TEXT,
+                "--available-at",
+                AVAILABLE_AT_TEXT,
+                "--fake",
+            ]
+        )
+        == 0
+    )
+
+    captured = capsys.readouterr()
+    assert "llm_review ticker=MSFT task=mid_review status=completed" in captured.out
+    rows = _ledger_rows(database_url)
+    assert [(row.status, row.skip_reason, row.model, row.provider) for row in rows] == [
+        ("completed", None, "fake", "fake")
+    ]
+
+
+def test_run_llm_review_default_premium_disabled_logs_skip(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    database_url = _init_db(tmp_path, monkeypatch, capsys)
+    monkeypatch.setenv("CATALYST_ENABLE_PREMIUM_LLM", "false")
+    _seed_candidate_packet(database_url)
+
+    assert (
+        main(
+            [
+                "run-llm-review",
+                "--ticker",
+                "MSFT",
+                "--as-of",
+                AS_OF_TEXT,
+                "--available-at",
+                AVAILABLE_AT_TEXT,
+            ]
+        )
+        == 0
+    )
+
+    captured = capsys.readouterr()
+    assert "status=skipped reason=premium_llm_disabled" in captured.out
+    rows = _ledger_rows(database_url)
+    assert [(row.status, row.skip_reason) for row in rows] == [
+        ("skipped", "premium_llm_disabled")
+    ]
+
+
+def test_llm_budget_status_json_includes_caps_and_rows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    database_url = _init_db(tmp_path, monkeypatch, capsys)
+    monkeypatch.setenv("CATALYST_ENABLE_PREMIUM_LLM", "false")
+    monkeypatch.setenv("CATALYST_LLM_DAILY_BUDGET_USD", "7.5")
+    monkeypatch.setenv("CATALYST_LLM_MONTHLY_BUDGET_USD", "55")
+    monkeypatch.setenv("CATALYST_LLM_TASK_DAILY_CAPS", "mid_review=3")
+    _seed_candidate_packet(database_url)
+
+    assert (
+        main(
+            [
+                "run-llm-review",
+                "--ticker",
+                "MSFT",
+                "--as-of",
+                AS_OF_TEXT,
+                "--available-at",
+                AVAILABLE_AT_TEXT,
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+
+    assert (
+        main(["llm-budget-status", "--available-at", AVAILABLE_AT_TEXT, "--json"])
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["source"] == "budget_ledger"
+    assert payload["caps"]["daily_budget_usd"] == 7.5
+    assert payload["caps"]["monthly_budget_usd"] == 55.0
+    assert payload["caps"]["task_daily_caps"] == {"mid_review": 3}
+    assert payload["summary"]["attempt_count"] == 1
+    assert payload["summary"]["status_counts"] == {"skipped": 1}
+    assert payload["summary"]["rows"][0]["skip_reason"] == "premium_llm_disabled"
+
+
+def _init_db(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> str:
+    database_url = f"sqlite:///{(tmp_path / 'llm-cli.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    assert main(["init-db"]) == 0
+    capsys.readouterr()
+    return database_url
+
+
+def _configure_fake_safe_llm(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CATALYST_ENABLE_PREMIUM_LLM", "true")
+    monkeypatch.setenv("CATALYST_LLM_PROVIDER", "fake")
+    monkeypatch.setenv("CATALYST_LLM_EVIDENCE_MODEL", "fake")
+    monkeypatch.setenv("CATALYST_LLM_INPUT_COST_PER_1M", "0")
+    monkeypatch.setenv("CATALYST_LLM_CACHED_INPUT_COST_PER_1M", "0")
+    monkeypatch.setenv("CATALYST_LLM_OUTPUT_COST_PER_1M", "0")
+    monkeypatch.setenv("CATALYST_LLM_PRICING_UPDATED_AT", "2026-05-10")
+    monkeypatch.setenv("CATALYST_LLM_DAILY_BUDGET_USD", "1")
+    monkeypatch.setenv("CATALYST_LLM_MONTHLY_BUDGET_USD", "10")
+
+
+def _seed_candidate_packet(database_url: str) -> None:
+    engine = create_engine(database_url, future=True)
+    with engine.begin() as conn:
+        conn.execute(insert(candidate_packets).values(**_packet()))
+
+
+def _ledger_rows(database_url: str):
+    engine = create_engine(database_url, future=True)
+    with engine.connect() as conn:
+        return list(
+            conn.execute(select(budget_ledger).order_by(budget_ledger.c.created_at))
+        )
+
+
+def _packet() -> dict[str, object]:
+    return {
+        "id": "packet-msft",
+        "ticker": "MSFT",
+        "as_of": AS_OF,
+        "candidate_state_id": "state-msft",
+        "state": "Warning",
+        "final_score": 82.0,
+        "schema_version": "candidate-packet-v1",
+        "source_ts": SOURCE_TS,
+        "available_at": AVAILABLE_AT,
+        "payload": {
+            "supporting_evidence": [
+                {
+                    "kind": "news",
+                    "title": "MSFT evidence update",
+                    "summary": "MSFT reported a material product catalyst.",
+                    "polarity": "supporting",
+                    "strength": 0.81,
+                    "source_id": "event-msft",
+                    "source_quality": 0.9,
+                    "source_ts": SOURCE_TS.isoformat(),
+                    "available_at": AVAILABLE_AT.isoformat(),
+                }
+            ],
+            "disconfirming_evidence": [
+                {
+                    "kind": "risk",
+                    "title": "MSFT valuation risk",
+                    "summary": "Valuation remains extended versus recent growth.",
+                    "polarity": "disconfirming",
+                    "strength": 0.42,
+                    "computed_feature_id": "risk-msft",
+                    "source_quality": 0.7,
+                    "source_ts": SOURCE_TS.isoformat(),
+                    "available_at": AVAILABLE_AT.isoformat(),
+                }
+            ],
+            "conflicts": [],
+            "hard_blocks": [],
+            "trade_plan": {
+                "entry_zone": [100.0, 104.0],
+                "invalidation_price": 94.0,
+            },
+        },
+        "created_at": AVAILABLE_AT,
+    }

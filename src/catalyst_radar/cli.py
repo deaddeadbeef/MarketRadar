@@ -13,6 +13,14 @@ from dotenv import load_dotenv
 from sqlalchemy import select
 from sqlalchemy.engine import Engine
 
+from catalyst_radar.agents.budget import BudgetController
+from catalyst_radar.agents.router import (
+    FakeLLMClient,
+    LLMClientRequest,
+    LLMClientResult,
+    LLMRouter,
+)
+from catalyst_radar.agents.tasks import DEFAULT_TASKS
 from catalyst_radar.alerts.channels.base import DryRunAlertChannel
 from catalyst_radar.alerts.digest import build_alert_digest, digest_payload
 from catalyst_radar.alerts.models import AlertStatus
@@ -48,6 +56,7 @@ from catalyst_radar.feedback.service import (
 from catalyst_radar.pipeline.candidate_packet import build_candidate_packet
 from catalyst_radar.pipeline.scan import run_scan
 from catalyst_radar.storage.alert_repositories import AlertRepository
+from catalyst_radar.storage.budget_repositories import BudgetLedgerRepository
 from catalyst_radar.storage.candidate_packet_repositories import CandidatePacketRepository
 from catalyst_radar.storage.db import create_schema, engine_from_url
 from catalyst_radar.storage.event_repositories import EventRepository
@@ -175,6 +184,23 @@ def build_parser() -> argparse.ArgumentParser:
     send_alerts.add_argument("--available-at", type=_parse_aware_datetime)
     send_alerts.add_argument("--dry-run", action="store_true", default=True)
     send_alerts.add_argument("--json", action="store_true")
+
+    budget_status = subparsers.add_parser("llm-budget-status")
+    budget_status.add_argument("--available-at", type=_parse_aware_datetime)
+    budget_status.add_argument("--json", action="store_true")
+
+    llm_review = subparsers.add_parser("run-llm-review")
+    llm_review.add_argument("--ticker", required=True)
+    llm_review.add_argument("--as-of", type=date.fromisoformat, required=True)
+    llm_review.add_argument("--available-at", type=_parse_aware_datetime)
+    llm_review.add_argument(
+        "--task",
+        choices=["mini_extraction", "mid_review", "skeptic_review", "gpt55_decision_card"],
+        default="mid_review",
+    )
+    llm_review.add_argument("--fake", action="store_true")
+    llm_review.add_argument("--dry-run", action="store_true")
+    llm_review.add_argument("--json", action="store_true")
 
     packet = subparsers.add_parser("candidate-packet")
     packet.add_argument("--ticker", required=True)
@@ -609,6 +635,81 @@ def main(argv: list[str] | None = None) -> int:
             )
         else:
             print(f"send_alerts dry_run=true alerts={len(alerts)}")
+        return 0
+
+    if args.command == "llm-budget-status":
+        create_schema(engine)
+        ledger_repo = BudgetLedgerRepository(engine)
+        available_at = args.available_at or datetime.now(UTC)
+        payload = _llm_budget_status_payload(
+            summary=ledger_repo.summary(available_at=available_at),
+            config=config,
+            available_at=available_at,
+        )
+        if args.json:
+            print(json.dumps(payload, sort_keys=True))
+        else:
+            summary = payload["summary"]
+            status_counts = summary["status_counts"]
+            print(
+                "llm_budget_status "
+                f"actual_cost={float(summary['total_actual_cost_usd']):.6f} "
+                f"estimated_cost={float(summary['total_estimated_cost_usd']):.6f} "
+                f"attempts={summary['attempt_count']} "
+                f"skipped={status_counts.get('skipped', 0)} "
+                f"completed={status_counts.get('completed', 0)} "
+                "source=budget_ledger"
+            )
+        return 0
+
+    if args.command == "run-llm-review":
+        create_schema(engine)
+        packet_repo = CandidatePacketRepository(engine)
+        ledger_repo = BudgetLedgerRepository(engine)
+        available_at = args.available_at or datetime.now(UTC)
+        packet = packet_repo.latest_candidate_packet(
+            args.ticker,
+            as_of=_scan_timestamp(args.as_of),
+            available_at=available_at,
+        )
+        if packet is None:
+            print(f"candidate packet not found: {args.ticker.upper()}", file=sys.stderr)
+            return 1
+        task = DEFAULT_TASKS[args.task]
+        budget = BudgetController(
+            config=config,
+            ledger_repo=ledger_repo,
+            now=lambda: available_at,
+        )
+        client = FakeLLMClient() if args.fake else _SafeDisabledLLMClient()
+        router = LLMRouter(budget=budget, client=client, now=lambda: available_at)
+        result = router.review_candidate(
+            task=task,
+            candidate=packet,
+            available_at=available_at,
+            dry_run=args.dry_run,
+        )
+        payload = _llm_review_payload(result)
+        if args.json:
+            print(json.dumps(payload, sort_keys=True))
+        else:
+            fields = [
+                f"llm_review ticker={packet.ticker}",
+                f"task={task.name.value}",
+                f"status={result.status.value}",
+            ]
+            if result.ledger_entry.skip_reason is not None:
+                fields.append(f"reason={result.ledger_entry.skip_reason.value}")
+            if result.ledger_entry.model is not None:
+                fields.append(f"model={result.ledger_entry.model}")
+            fields.extend(
+                [
+                    f"estimated_cost={result.ledger_entry.estimated_cost:.6f}",
+                    f"actual_cost={result.ledger_entry.actual_cost:.6f}",
+                    f"ledger_id={result.ledger_entry.id}",
+                ]
+            )
+            print(" ".join(fields))
         return 0
 
     if args.command == "candidate-packet":
@@ -1687,6 +1788,86 @@ def _float_or_none(value: object) -> float | None:
     except (TypeError, ValueError):
         return None
     return number
+
+
+def _llm_budget_status_payload(
+    *,
+    summary: dict[str, object],
+    config: AppConfig,
+    available_at: datetime,
+) -> dict[str, object]:
+    return {
+        "available_at": available_at.isoformat(),
+        "caps": {
+            "enable_premium_llm": config.enable_premium_llm,
+            "daily_budget_usd": config.llm_daily_budget_usd,
+            "monthly_budget_usd": config.llm_monthly_budget_usd,
+            "monthly_soft_cap_pct": config.llm_monthly_soft_cap_pct,
+            "task_daily_caps": dict(sorted(config.llm_task_daily_caps.items())),
+            "pricing_updated_at": config.llm_pricing_updated_at,
+            "pricing_stale_after_days": config.llm_pricing_stale_after_days,
+        },
+        "source": "budget_ledger",
+        "summary": summary,
+    }
+
+
+def _llm_review_payload(result) -> dict[str, object]:
+    entry = result.ledger_entry
+    return {
+        "result": {
+            "status": result.status.value,
+            "error": result.error,
+            "payload": thaw_json_value(result.payload) if result.payload is not None else None,
+        },
+        "route": {
+            "skip": result.decision.skip,
+            "reason": result.decision.reason.value if result.decision.reason else None,
+            "task": result.decision.task.name.value,
+            "model": result.decision.model,
+            "estimated_cost_usd": result.decision.estimated_cost,
+            "max_tokens": result.decision.max_tokens,
+            "estimated_usage": {
+                "input_tokens": result.decision.estimated_usage.input_tokens,
+                "cached_input_tokens": result.decision.estimated_usage.cached_input_tokens,
+                "output_tokens": result.decision.estimated_usage.output_tokens,
+            },
+        },
+        "ledger": _llm_ledger_payload(entry),
+    }
+
+
+def _llm_ledger_payload(entry) -> dict[str, object]:
+    return {
+        "id": entry.id,
+        "ts": entry.ts.isoformat(),
+        "available_at": entry.available_at.isoformat(),
+        "ticker": entry.ticker,
+        "task": entry.task.value,
+        "model": entry.model,
+        "provider": entry.provider,
+        "status": entry.status.value,
+        "skip_reason": entry.skip_reason.value if entry.skip_reason else None,
+        "input_tokens": entry.token_usage.input_tokens,
+        "cached_input_tokens": entry.token_usage.cached_input_tokens,
+        "output_tokens": entry.token_usage.output_tokens,
+        "estimated_cost_usd": entry.estimated_cost,
+        "actual_cost_usd": entry.actual_cost,
+        "currency": entry.currency,
+        "candidate_state": entry.candidate_state,
+        "candidate_state_id": entry.candidate_state_id,
+        "candidate_packet_id": entry.candidate_packet_id,
+        "prompt_version": entry.prompt_version,
+        "schema_version": entry.schema_version,
+        "outcome_label": entry.outcome_label,
+        "payload": thaw_json_value(entry.payload),
+    }
+
+
+class _SafeDisabledLLMClient:
+    def complete(self, request: LLMClientRequest) -> LLMClientResult:
+        del request
+        raise RuntimeError("real_llm_provider_disabled")
 
 
 def _build_polygon_ingest(
