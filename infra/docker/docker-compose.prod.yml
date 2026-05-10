@@ -1,27 +1,35 @@
 services:
   postgres:
     image: postgres:16
+    env_file:
+      - path: ../../.env.prod
+        required: false
     environment:
-      POSTGRES_USER: catalyst
-      POSTGRES_PASSWORD: catalyst
-      POSTGRES_DB: catalyst_radar
-    ports:
-      - "54321:5432"
+      POSTGRES_USER: ${POSTGRES_USER:-catalyst}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-catalyst_radar}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U catalyst -d catalyst_radar"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-catalyst} -d ${POSTGRES_DB:-catalyst_radar}",
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
 
   api:
     build:
-      context: .
+      context: ../..
       dockerfile: infra/docker/Dockerfile
     command: python -m uvicorn apps.api.main:app --host 0.0.0.0 --port 8000
+    env_file:
+      - path: ../../.env.prod
+        required: false
     environment:
-      CATALYST_DATABASE_URL: postgresql+psycopg://catalyst:catalyst@postgres:5432/catalyst_radar
+      CATALYST_DATABASE_URL: ${CATALYST_DATABASE_URL}
     ports:
       - "8000:8000"
     depends_on:
@@ -30,11 +38,14 @@ services:
 
   dashboard:
     build:
-      context: .
+      context: ../..
       dockerfile: infra/docker/Dockerfile
     command: streamlit run apps/dashboard/Home.py --server.address 0.0.0.0 --server.port 8501
+    env_file:
+      - path: ../../.env.prod
+        required: false
     environment:
-      CATALYST_DATABASE_URL: postgresql+psycopg://catalyst:catalyst@postgres:5432/catalyst_radar
+      CATALYST_DATABASE_URL: ${CATALYST_DATABASE_URL}
     ports:
       - "8501:8501"
     depends_on:
@@ -43,15 +54,15 @@ services:
 
   worker:
     build:
-      context: .
+      context: ../..
       dockerfile: infra/docker/Dockerfile
     command: python -m apps.worker.main
+    env_file:
+      - path: ../../.env.prod
+        required: false
     environment:
-      CATALYST_DATABASE_URL: postgresql+psycopg://catalyst:catalyst@postgres:5432/catalyst_radar
-      CATALYST_WORKER_INTERVAL_SECONDS: "86400"
-      CATALYST_RUN_LLM: "0"
-      CATALYST_LLM_DRY_RUN: "1"
-      CATALYST_DRY_RUN_ALERTS: "1"
+      CATALYST_DATABASE_URL: ${CATALYST_DATABASE_URL}
+      CATALYST_WORKER_INTERVAL_SECONDS: ${CATALYST_WORKER_INTERVAL_SECONDS:-86400}
     depends_on:
       postgres:
         condition: service_healthy
