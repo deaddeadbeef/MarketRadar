@@ -106,7 +106,13 @@ def test_source_faithfulness_rejects_non_string_references() -> None:
     violations = source_faithfulness_violations(
         {
             "claims": [{"claim": "Numeric source.", "source_id": 123}],
-            "supporting_points": [{"claim": "Null source.", "source_id": None}],
+            "supporting_points": [
+                {
+                    "claim": "Nullable source uses a feature.",
+                    "source_id": None,
+                    "computed_feature_id": "feature-risk-msft",
+                }
+            ],
             "risks": [{"claim": "Numeric feature.", "computed_feature_id": 456}],
         },
         view,
@@ -114,7 +120,6 @@ def test_source_faithfulness_rejects_non_string_references() -> None:
 
     assert violations == [
         "claims[0].source_id must be a string",
-        "supporting_points[0].source_id must be a string",
         "risks[0].computed_feature_id must be a string",
     ]
 

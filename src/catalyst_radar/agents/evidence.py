@@ -135,6 +135,8 @@ def _strict_optional_string(
     if field_name not in item:
         return None
     value = item[field_name]
+    if value is None:
+        return None
     if not isinstance(value, str):
         violations.append(f"{path}.{field_name} must be a string")
         return None

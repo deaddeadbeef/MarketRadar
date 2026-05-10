@@ -148,21 +148,12 @@ def _base_schema(properties: Mapping[str, Any], required: list[str]) -> dict[str
     }
 
 
-def _source_link_schema() -> dict[str, Any]:
-    return {
-        "anyOf": [
-            {"required": ["source_id"]},
-            {"required": ["computed_feature_id"]},
-        ]
-    }
-
-
 def _evidence_review_schema() -> Mapping[str, Any]:
     claim = _base_schema(
         {
             "claim": {"type": "string"},
-            "source_id": {"type": "string"},
-            "computed_feature_id": {"type": "string"},
+            "source_id": _nullable_string_schema(),
+            "computed_feature_id": _nullable_string_schema(),
             "source_quality": {"type": "number", "minimum": 0, "maximum": 1},
             "evidence_type": {"type": "string"},
             "sentiment": {"type": "number", "minimum": -1, "maximum": 1},
@@ -171,6 +162,8 @@ def _evidence_review_schema() -> Mapping[str, Any]:
         },
         [
             "claim",
+            "source_id",
+            "computed_feature_id",
             "source_quality",
             "evidence_type",
             "sentiment",
@@ -178,7 +171,6 @@ def _evidence_review_schema() -> Mapping[str, Any]:
             "uncertainty_notes",
         ],
     )
-    claim.update(_source_link_schema())
     return _base_schema(
         {
             "ticker": {"type": "string"},
@@ -203,15 +195,21 @@ def _skeptic_review_schema() -> Mapping[str, Any]:
     bear_case_item = _base_schema(
         {
             "claim": {"type": "string"},
-            "source_id": {"type": "string"},
-            "computed_feature_id": {"type": "string"},
+            "source_id": _nullable_string_schema(),
+            "computed_feature_id": _nullable_string_schema(),
             "severity": {"type": "string", "enum": ["low", "medium", "high"]},
             "confidence": {"type": "number", "minimum": 0, "maximum": 1},
             "why_it_matters": {"type": "string"},
         },
-        ["claim", "severity", "confidence", "why_it_matters"],
+        [
+            "claim",
+            "source_id",
+            "computed_feature_id",
+            "severity",
+            "confidence",
+            "why_it_matters",
+        ],
     )
-    bear_case_item.update(_source_link_schema())
     return _base_schema(
         {
             "ticker": {"type": "string"},
@@ -240,13 +238,12 @@ def _decision_card_schema() -> Mapping[str, Any]:
     point = _base_schema(
         {
             "text": {"type": "string"},
-            "source_id": {"type": "string"},
-            "computed_feature_id": {"type": "string"},
-            "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+            "source_id": _nullable_string_schema(),
+            "computed_feature_id": _nullable_string_schema(),
+            "confidence": _nullable_number_schema(minimum=0, maximum=1),
         },
-        ["text"],
+        ["text", "source_id", "computed_feature_id", "confidence"],
     )
-    point.update(_source_link_schema())
     return _base_schema(
         {
             "ticker": {"type": "string"},
@@ -269,6 +266,14 @@ def _decision_card_schema() -> Mapping[str, Any]:
             "manual_review_only",
         ],
     )
+
+
+def _nullable_string_schema() -> dict[str, Any]:
+    return {"type": ["string", "null"]}
+
+
+def _nullable_number_schema(*, minimum: float, maximum: float) -> dict[str, Any]:
+    return {"type": ["number", "null"], "minimum": minimum, "maximum": maximum}
 
 
 _EVIDENCE_REVIEW_PROMPT = """You are reviewing a source-linked equity candidate packet

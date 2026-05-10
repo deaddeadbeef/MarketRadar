@@ -305,7 +305,57 @@ def test_openai_client_builds_responses_request_with_strict_json_schema() -> Non
         "recommended_policy_downgrade",
         "manual_review_notes",
     ]
+    bear_case_schema = call["text"]["format"]["schema"]["properties"]["bear_case"]["items"]
+    assert sorted(bear_case_schema["required"]) == [
+        "claim",
+        "computed_feature_id",
+        "confidence",
+        "severity",
+        "source_id",
+        "why_it_matters",
+    ]
+    assert bear_case_schema["properties"]["source_id"]["type"] == ["string", "null"]
+    assert bear_case_schema["properties"]["computed_feature_id"]["type"] == [
+        "string",
+        "null",
+    ]
     assert call["text"]["format"]["strict"] is True
+
+
+def test_openai_decision_card_schema_requires_nullable_optional_fields() -> None:
+    task = DEFAULT_TASKS["gpt55_decision_card"]
+    request = _openai_request(task=task)
+    sdk_client = FakeOpenAISdk(
+        payload={
+            "ticker": "MSFT",
+            "as_of": AS_OF.isoformat(),
+            "schema_version": "decision-card-v1",
+            "summary": "Manual-review-only draft.",
+            "supporting_points": [],
+            "risks": [],
+            "questions_for_human": [],
+            "manual_review_only": True,
+        },
+    )
+
+    OpenAIResponsesClient(sdk_client=sdk_client).complete(request)
+
+    call = sdk_client.responses.calls[0]
+    point_schema = call["text"]["format"]["schema"]["properties"]["supporting_points"][
+        "items"
+    ]
+    assert sorted(point_schema["required"]) == [
+        "computed_feature_id",
+        "confidence",
+        "source_id",
+        "text",
+    ]
+    assert point_schema["properties"]["source_id"]["type"] == ["string", "null"]
+    assert point_schema["properties"]["computed_feature_id"]["type"] == [
+        "string",
+        "null",
+    ]
+    assert point_schema["properties"]["confidence"]["type"] == ["number", "null"]
 
 
 def test_openai_client_converts_usage_to_token_usage() -> None:
