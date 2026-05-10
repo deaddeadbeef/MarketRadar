@@ -5,10 +5,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
 from urllib.error import HTTPError
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
-_SECRET_QUERY_KEYS = {"apikey", "api_key", "api-token", "api_token", "token"}
+from catalyst_radar.security.redaction import redact_url
 
 
 @dataclass(frozen=True)
@@ -93,15 +92,6 @@ class JsonHttpClient:
             return json.loads(response.body.decode("utf-8"))
         except json.JSONDecodeError as exc:
             raise RuntimeError(f"invalid JSON from {redact_url(response.url)}") from exc
-
-
-def redact_url(url: str) -> str:
-    parts = urlsplit(url)
-    query = []
-    for key, value in parse_qsl(parts.query, keep_blank_values=True):
-        redacted = "REDACTED" if key.lower() in _SECRET_QUERY_KEYS else value
-        query.append((key, redacted))
-    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
 
 
 __all__ = [

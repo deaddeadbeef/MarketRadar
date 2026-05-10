@@ -12,7 +12,7 @@ def test_redact_url_hides_provider_tokens() -> None:
     url = "https://api.polygon.io/v2/aggs?apiKey=secret&token=abc&symbol=AAPL"
 
     assert redact_url(url) == (
-        "https://api.polygon.io/v2/aggs?apiKey=REDACTED&token=REDACTED&symbol=AAPL"
+        "https://api.polygon.io/v2/aggs?apiKey=<redacted>&token=<redacted>&symbol=AAPL"
     )
 
 
@@ -51,7 +51,7 @@ def test_json_client_raises_redacted_error() -> None:
     try:
         client.get_json("https://example.test/data?apiKey=secret")
     except RuntimeError as exc:
-        assert "apiKey=REDACTED" in str(exc)
+        assert "apiKey=<redacted>" in str(exc)
         assert "secret" not in str(exc)
     else:
         raise AssertionError("expected HTTP error")

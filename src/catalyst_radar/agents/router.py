@@ -26,6 +26,7 @@ from catalyst_radar.pipeline.candidate_packet import (
     EvidenceItem,
     canonical_packet_json,
 )
+from catalyst_radar.security.redaction import redact_text
 
 
 @dataclass(frozen=True)
@@ -361,7 +362,7 @@ class LLMRouter:
                 candidate=candidate,
                 available_at=available_at,
                 model=model,
-                error=str(exc),
+                error=redact_text(str(exc)),
             )
 
         actual_cost = self.budget.estimate_cost(client_result.token_usage)
@@ -373,6 +374,7 @@ class LLMRouter:
                 evidence_packet=request.evidence_packet,
             )
         except AgentSchemaError as exc:
+            error = redact_text(str(exc))
             entry = self._ledger_entry(
                 task=task,
                 candidate=candidate,
@@ -385,7 +387,7 @@ class LLMRouter:
                 skip_reason=LLMSkipReason.SCHEMA_VALIDATION_FAILED,
                 token_usage=client_result.token_usage,
                 tool_calls=client_result.tool_calls,
-                payload={"error": str(exc)},
+                payload={"error": error},
                 attempted_at=attempted_at,
             )
             self.budget.ledger_repo.upsert_entry(entry)
@@ -393,7 +395,7 @@ class LLMRouter:
                 decision=decision,
                 status=LLMCallStatus.SCHEMA_REJECTED,
                 ledger_entry=entry,
-                error=str(exc),
+                error=error,
             )
 
         entry = self._ledger_entry(
@@ -429,6 +431,7 @@ class LLMRouter:
         model: str,
         error: str,
     ) -> LLMReviewResult:
+        error = redact_text(error)
         entry = self._ledger_entry(
             task=task,
             candidate=candidate,

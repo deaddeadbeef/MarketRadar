@@ -69,6 +69,7 @@ from catalyst_radar.jobs.scheduler import (
 )
 from catalyst_radar.pipeline.candidate_packet import build_candidate_packet
 from catalyst_radar.pipeline.scan import run_scan
+from catalyst_radar.security.redaction import redact_text, redact_value
 from catalyst_radar.storage.alert_repositories import AlertRepository
 from catalyst_radar.storage.budget_repositories import BudgetLedgerRepository
 from catalyst_radar.storage.candidate_packet_repositories import CandidatePacketRepository
@@ -1921,8 +1922,12 @@ def _llm_review_payload(result) -> dict[str, object]:
     return {
         "result": {
             "status": result.status.value,
-            "error": result.error,
-            "payload": thaw_json_value(result.payload) if result.payload is not None else None,
+            "error": redact_text(result.error) if result.error is not None else None,
+            "payload": (
+                redact_value(thaw_json_value(result.payload))
+                if result.payload is not None
+                else None
+            ),
         },
         "route": {
             "skip": result.decision.skip,
@@ -1964,7 +1969,7 @@ def _llm_ledger_payload(entry) -> dict[str, object]:
         "prompt_version": entry.prompt_version,
         "schema_version": entry.schema_version,
         "outcome_label": entry.outcome_label,
-        "payload": thaw_json_value(entry.payload),
+        "payload": redact_value(thaw_json_value(entry.payload)),
     }
 
 

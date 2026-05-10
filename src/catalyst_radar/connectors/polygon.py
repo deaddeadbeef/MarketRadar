@@ -21,6 +21,7 @@ from catalyst_radar.connectors.http import JsonHttpClient, redact_url
 from catalyst_radar.connectors.market_data import RejectedPayload
 from catalyst_radar.core.immutability import thaw_json_value
 from catalyst_radar.core.models import DataQualitySeverity
+from catalyst_radar.security.secrets import SecretValue
 
 POLYGON_PROVIDER_NAME = "polygon"
 POLYGON_LICENSE_TAG = "polygon-market-data"
@@ -36,7 +37,7 @@ class PolygonMarketDataConnector:
     def __init__(
         self,
         *,
-        api_key: str | None,
+        api_key: str | SecretValue | None,
         client: JsonHttpClient,
         base_url: str = "https://api.polygon.io",
         provider: str = POLYGON_PROVIDER_NAME,
@@ -44,7 +45,7 @@ class PolygonMarketDataConnector:
         license_tag: str = POLYGON_LICENSE_TAG,
         retention_policy: str = POLYGON_RETENTION_POLICY,
     ) -> None:
-        self.api_key = api_key.strip() if api_key is not None else None
+        self.api_key = _secret_value(api_key)
         self.client = client
         self.base_url = base_url.rstrip("/")
         self.provider = provider
@@ -285,13 +286,13 @@ class PolygonMarketDataConnector:
         return records
 
     def _url(self, path: str, params: Mapping[str, Any]) -> str:
-        all_params = {**params, "apiKey": self.api_key}
+        all_params = {**params, "apiKey": self.api_key.reveal() if self.api_key else ""}
         return f"{self.base_url}{path}?{urlencode(all_params)}"
 
     def _next_url(self, url: str) -> str:
         parts = urlsplit(url)
         query = dict(parse_qsl(parts.query, keep_blank_values=True))
-        query["apiKey"] = self.api_key or ""
+        query["apiKey"] = self.api_key.reveal() if self.api_key else ""
         return urlunsplit(
             (parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment)
         )
@@ -331,6 +332,15 @@ def _record_payload(record: RawRecord) -> Mapping[str, Any]:
         msg = "raw polygon payload must contain a record mapping"
         raise ValueError(msg)
     return payload
+
+
+def _secret_value(value: str | SecretValue | None) -> SecretValue | None:
+    if value is None:
+        return None
+    if isinstance(value, SecretValue):
+        return value
+    text = value.strip()
+    return SecretValue(text) if text else None
 
 
 def _normalize_grouped_daily_payload(record: Mapping[str, Any]) -> dict[str, Any]:

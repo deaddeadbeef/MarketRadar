@@ -24,6 +24,7 @@ from catalyst_radar.core.models import (
 )
 from catalyst_radar.events.models import CanonicalEvent, EventType, SourceCategory
 from catalyst_radar.features.options import OptionFeatureInput
+from catalyst_radar.security.redaction import redact_text, redact_value
 from catalyst_radar.storage.event_repositories import EventRepository
 from catalyst_radar.storage.feature_repositories import FeatureRepository
 from catalyst_radar.storage.provider_repositories import ProviderRepository
@@ -60,7 +61,8 @@ def ingest_provider_records(
     event_repo: EventRepository | None = None,
     feature_repo: FeatureRepository | None = None,
 ) -> ProviderIngestResult:
-    health = connector.healthcheck()
+    health = _redacted_health(connector.healthcheck())
+    metadata = _redacted_mapping(metadata)
     provider_repo.save_health(health)
     job_id = provider_repo.start_job(job_type, health.provider, metadata=metadata)
 
@@ -94,7 +96,9 @@ def ingest_provider_records(
 
         abort_rejections = _abort_rejections(rejections)
         if abort_rejections:
-            reason = "; ".join(str(rejected.reason) for rejected in abort_rejections)
+            reason = redact_text(
+                "; ".join(str(rejected.reason) for rejected in abort_rejections)
+            )
             provider_repo.save_health(
                 ConnectorHealth(
                     provider=health.provider,
@@ -171,7 +175,7 @@ def ingest_provider_records(
     except ProviderIngestError:
         raise
     except Exception as exc:
-        reason = str(exc)
+        reason = redact_text(str(exc))
         provider_repo.save_health(
             ConnectorHealth(
                 provider=health.provider,
@@ -230,9 +234,9 @@ def _record_critical_incident(
         severity=DataQualitySeverity.CRITICAL,
         kind=kind,
         affected_tickers=(),
-        reason=reason,
+        reason=redact_text(reason),
         fail_closed_action="abort-ingest",
-        payload=dict(metadata),
+        payload=_redacted_mapping(metadata),
     )
 
 
@@ -251,9 +255,9 @@ def _record_rejected_payloads(
             severity=rejected.severity,
             kind=rejected.kind.value,
             affected_tickers=rejected.affected_tickers,
-            reason=str(rejected.reason),
+            reason=redact_text(str(rejected.reason)),
             fail_closed_action=str(rejected.fail_closed_action),
-            payload=rejected.payload,
+            payload=_redacted_mapping(rejected.payload),
         )
 
 
@@ -264,6 +268,24 @@ def _abort_rejections(rejected_payloads: Sequence[Any]) -> list[Any]:
         if rejected.severity == DataQualitySeverity.CRITICAL
         or rejected.fail_closed_action == "abort-ingest"
     ]
+
+
+def _redacted_health(health: ConnectorHealth) -> ConnectorHealth:
+    return ConnectorHealth(
+        provider=health.provider,
+        status=health.status,
+        checked_at=health.checked_at,
+        reason=redact_text(health.reason),
+        latency_ms=health.latency_ms,
+    )
+
+
+def _redacted_mapping(value: Mapping[str, Any]) -> Mapping[str, Any]:
+    redacted = redact_value(value)
+    if not isinstance(redacted, Mapping):
+        msg = "redacted metadata must be a mapping"
+        raise TypeError(msg)
+    return redacted
 
 
 def _securities_from_normalized(records: Sequence[NormalizedRecord]) -> list[Security]:

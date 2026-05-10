@@ -53,6 +53,16 @@ NON_SECRET_EXACT_KEYS = {
     "token_usage",
     "total_tokens",
 }
+ACCOUNT_SENSITIVE_KEYS = {
+    "account_equity",
+    "cash",
+    "market_value",
+    "notes",
+    "portfolio_cash",
+    "portfolio_value",
+    "shares",
+    "user_notes",
+}
 REDACTED = "<redacted>"
 
 _DATABASE_URL_USERINFO_PATTERN = re.compile(
@@ -132,6 +142,18 @@ def redact_url(url: str, *, known_secrets: Sequence[str] = ()) -> str:
     return redact_text(url, known_secrets=known_secrets)
 
 
+def minimize_prompt_payload(value: Mapping[str, Any]) -> Mapping[str, Any]:
+    redacted = redact_value(value)
+    if not isinstance(redacted, Mapping):
+        msg = "prompt payload must be a mapping"
+        raise TypeError(msg)
+    minimized = _drop_keys(redacted, ACCOUNT_SENSITIVE_KEYS)
+    if not isinstance(minimized, Mapping):
+        msg = "prompt payload must remain a mapping"
+        raise TypeError(msg)
+    return minimized
+
+
 def _is_secret_key(key: str) -> bool:
     normalized = key.strip().lower().replace("-", "_")
     if normalized in NON_SECRET_EXACT_KEYS:
@@ -182,3 +204,19 @@ def _redact_secret_assignments(text: str) -> str:
         return f"{prefix}{REDACTED}"
 
     return _SECRET_ASSIGNMENT_PATTERN.sub(replace, text)
+
+
+def _drop_keys(value: Any, keys: set[str]) -> Any:
+    if isinstance(value, Mapping):
+        return {
+            str(key): _drop_keys(item, keys)
+            for key, item in value.items()
+            if _normalized_key(str(key)) not in keys
+        }
+    if isinstance(value, list | tuple):
+        return [_drop_keys(item, keys) for item in value]
+    return value
+
+
+def _normalized_key(key: str) -> str:
+    return key.strip().lower().replace("-", "_")

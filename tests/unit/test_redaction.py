@@ -1,4 +1,10 @@
-from catalyst_radar.security.redaction import redact_text, redact_value
+import json
+
+from catalyst_radar.security.redaction import (
+    minimize_prompt_payload,
+    redact_text,
+    redact_value,
+)
 
 
 def test_redacts_secret_keys_recursively_without_mutating_input() -> None:
@@ -120,3 +126,29 @@ def test_redacts_exact_structured_token_key_without_redacting_metrics() -> None:
         "total_tokens": 125,
         "token_count": 3,
     }
+
+
+def test_minimize_prompt_payload_removes_account_sensitive_fields() -> None:
+    payload = minimize_prompt_payload(
+        {
+            "candidate_packet": {
+                "ticker": "MSFT",
+                "payload": {
+                    "portfolio_impact": {"portfolio_value": 100000, "cash": 5000},
+                    "evidence": [
+                        {
+                            "source_id": "event-1",
+                            "source_url": "https://x?apikey=secret",
+                        }
+                    ],
+                },
+            }
+        }
+    )
+
+    text = json.dumps(payload)
+    assert "portfolio_value" not in text
+    assert "cash" not in text
+    assert "secret" not in text
+    assert "event-1" in text
+    assert "source_url" in text

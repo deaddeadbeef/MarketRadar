@@ -8,6 +8,8 @@ from typing import Any
 from catalyst_radar.agents.models import TokenUsage
 from catalyst_radar.agents.router import LLMClientRequest, LLMClientResult
 from catalyst_radar.agents.tasks import LLMTask
+from catalyst_radar.security.redaction import minimize_prompt_payload
+from catalyst_radar.security.secrets import SecretValue, required_secret
 
 
 class OpenAIResponsesClient:
@@ -17,7 +19,7 @@ class OpenAIResponsesClient:
         api_key: str | None = None,
         sdk_client: Any | None = None,
     ) -> None:
-        self._api_key = api_key
+        self._api_key = SecretValue(api_key) if api_key and api_key.strip() else None
         self._sdk_client = sdk_client
 
     def complete(self, request: LLMClientRequest) -> LLMClientResult:
@@ -51,13 +53,14 @@ class OpenAIResponsesClient:
         if self._sdk_client is not None:
             return self._sdk_client
 
-        api_key = (self._api_key or os.environ.get("OPENAI_API_KEY") or "").strip()
-        if not api_key:
-            raise RuntimeError("openai_api_key_missing")
+        try:
+            api_key = self._api_key or required_secret(os.environ, "OPENAI_API_KEY")
+        except ValueError as exc:
+            raise RuntimeError("openai_api_key_missing") from exc
 
         from openai import OpenAI
 
-        self._sdk_client = OpenAI(api_key=api_key)
+        self._sdk_client = OpenAI(api_key=api_key.reveal())
         return self._sdk_client
 
 
@@ -70,7 +73,7 @@ def schema_for_task(task: LLMTask) -> Mapping[str, Any]:
 
 
 def _request_input_json(request: LLMClientRequest) -> str:
-    return json.dumps(
+    payload = minimize_prompt_payload(
         {
             "task": request.task.name.value,
             "prompt_version": request.prompt_version,
@@ -78,6 +81,9 @@ def _request_input_json(request: LLMClientRequest) -> str:
             "candidate_packet": json.loads(request.candidate_json),
             "agent_evidence_packet": request.evidence_packet,
         },
+    )
+    return json.dumps(
+        payload,
         sort_keys=True,
         separators=(",", ":"),
     )

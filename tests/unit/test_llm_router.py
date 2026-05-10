@@ -238,6 +238,9 @@ def test_router_logs_failed_entry_when_client_raises() -> None:
     assert len(entries) == 1
     assert entries[0].status == LLMCallStatus.FAILED
     assert entries[0].skip_reason == LLMSkipReason.CLIENT_ERROR
+    assert "secret-token" not in result.error
+    assert "secret-token" not in entries[0].payload["error"]
+    assert "<redacted>" in entries[0].payload["error"]
 
 
 def test_router_does_not_mutate_candidate_packet_payload() -> None:
@@ -351,6 +354,42 @@ def test_openai_client_builds_responses_request_with_strict_json_schema() -> Non
         "null",
     ]
     assert call["text"]["format"]["strict"] is True
+
+
+def test_openai_client_minimizes_prompt_payload() -> None:
+    request = _openai_request(
+        candidate=_candidate(
+            payload={
+                "portfolio_impact": {"portfolio_value": 100000, "cash": 5000},
+                "evidence": [
+                    {
+                        "source_id": "event-msft",
+                        "source_url": "https://api.example.test?apikey=secret",
+                    }
+                ],
+            }
+        )
+    )
+    sdk_client = FakeOpenAISdk(
+        payload={
+            "ticker": "MSFT",
+            "as_of": AS_OF.isoformat(),
+            "claims": [],
+            "bear_case": [],
+            "unresolved_conflicts": [],
+            "recommended_policy_downgrade": False,
+        },
+    )
+
+    OpenAIResponsesClient(sdk_client=sdk_client).complete(request)
+
+    call = sdk_client.responses.calls[0]
+    prompt_payload = json.loads(call["input"])
+    prompt_text = json.dumps(prompt_payload)
+    assert "portfolio_value" not in prompt_text
+    assert "cash" not in prompt_text
+    assert "secret" not in prompt_text
+    assert "event-msft" in prompt_text
 
 
 def test_openai_evidence_schema_requires_source_linked_notes() -> None:
@@ -532,7 +571,7 @@ class UnknownSourceSkepticClient:
 
 class FailingClient:
     def complete(self, request: LLMClientRequest) -> LLMClientResult:
-        raise RuntimeError("provider unavailable")
+        raise RuntimeError("provider unavailable apikey=secret-token")
 
 
 class FakeOpenAISdk:
