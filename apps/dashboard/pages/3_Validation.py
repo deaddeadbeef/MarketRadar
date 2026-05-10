@@ -41,7 +41,7 @@ def _show_records(title: str, value: object, *, empty: str) -> None:
     st.subheader(title)
     records = _records(value)
     if records:
-        st.dataframe(pd.DataFrame(records), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(records), width="stretch", hide_index=True)
     else:
         st.caption(empty)
 

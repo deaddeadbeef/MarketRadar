@@ -85,6 +85,6 @@ else:
                 "latest_as_of": "Latest As Of",
             }
         ),
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )

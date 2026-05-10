@@ -49,7 +49,7 @@ def _show_records(title: str, value: object, *, empty: str) -> None:
     st.subheader(title)
     records = _records(value)
     if records:
-        st.dataframe(pd.DataFrame(records), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(records), width="stretch", hide_index=True)
     else:
         st.caption(empty)
 
@@ -59,7 +59,7 @@ def _show_mapping(title: str, value: object, *, empty: str) -> None:
     mapping = _mapping(value)
     if mapping:
         rows = [{"Field": str(key), "Value": _json_ready(item)} for key, item in mapping.items()]
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
     else:
         st.caption(empty)
 

@@ -90,4 +90,4 @@ detail_rows = _records(
 )
 if detail_rows:
     st.subheader("Cost Rows")
-    st.dataframe(pd.DataFrame(detail_rows), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(detail_rows), width="stretch", hide_index=True)

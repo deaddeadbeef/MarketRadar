@@ -88,7 +88,7 @@ else:
         st.subheader("Candidate Review Queue")
         st.dataframe(
             display_frame,
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
     with right:
@@ -133,7 +133,7 @@ else:
                     "feedback": "Feedback",
                 }
             ),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
     else:

@@ -8,6 +8,8 @@
 
 **Tech Stack:** Python 3.11, SQLAlchemy Core, SQLite/PostgreSQL-compatible schema, FastAPI, Streamlit, pytest, ruff.
 
+**Implementation status:** Complete in `feature/phase-11-alerts-feedback-loop` through commits `67bc396` and `99a32a7`, with review evidence in `docs/phase-11-review.md`.
+
 ---
 
 ## Current Baseline
