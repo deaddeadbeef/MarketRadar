@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time
 from typing import Any
 
-from sqlalchemy import Engine
+from sqlalchemy import Engine, func, select
 
 from catalyst_radar.alerts.digest import build_alert_digest, digest_payload
 from catalyst_radar.core.models import ActionState, JobStatus
@@ -18,6 +18,7 @@ from catalyst_radar.storage.event_repositories import EventRepository
 from catalyst_radar.storage.feature_repositories import FeatureRepository
 from catalyst_radar.storage.provider_repositories import ProviderRepository
 from catalyst_radar.storage.repositories import MarketRepository
+from catalyst_radar.storage.schema import events
 from catalyst_radar.storage.text_repositories import TextRepository
 from catalyst_radar.storage.validation_repositories import ValidationRepository
 from catalyst_radar.textint.pipeline import run_text_pipeline
@@ -207,6 +208,9 @@ def _event_ingest(_: _DailyRunContext) -> _StepOutcome:
 
 
 def _local_text_triage(context: _DailyRunContext) -> _StepOutcome:
+    event_count = _visible_event_count(context)
+    if event_count == 0:
+        return _skipped("no_text_inputs")
     result = run_text_pipeline(
         context.event_repo,
         context.text_repo,
@@ -215,9 +219,10 @@ def _local_text_triage(context: _DailyRunContext) -> _StepOutcome:
         tickers=context.spec.tickers or None,
     )
     if result.feature_count == 0 and result.snippet_count == 0:
-        return _skipped("no_text_inputs")
+        return _skipped("no_text_inputs", requested_count=event_count)
     return _StepOutcome(
         status=JobStatus.SUCCESS.value,
+        requested_count=event_count,
         raw_count=result.snippet_count,
         normalized_count=result.feature_count,
         payload={
@@ -579,6 +584,19 @@ def _filter_alerts_by_tickers(alerts: list[Any], tickers: tuple[str, ...]) -> tu
         return tuple(alerts)
     allowed = set(tickers)
     return tuple(alert for alert in alerts if alert.ticker in allowed)
+
+
+def _visible_event_count(context: _DailyRunContext) -> int:
+    filters = [
+        events.c.source_ts <= context.as_of_datetime,
+        events.c.available_at <= context.spec.decision_available_at,
+    ]
+    if context.spec.tickers:
+        filters.append(events.c.ticker.in_(context.spec.tickers))
+    with context.event_repo.engine.connect() as conn:
+        return int(
+            conn.scalar(select(func.count()).select_from(events).where(*filters)) or 0
+        )
 
 
 def _daily_status(steps: tuple[JobStepResult, ...]) -> str:

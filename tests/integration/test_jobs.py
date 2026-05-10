@@ -45,10 +45,12 @@ def test_daily_run_records_skipped_steps_without_llm_or_inputs():
 
     result = run_daily(spec, engine=engine)
 
-    assert result.status in {"success", "partial_success"}
+    assert result.status == "success"
+    assert {step.status for step in result.steps} == {"skipped"}
     assert result.step("daily_bar_ingest").status == "skipped"
+    assert result.step("local_text_triage").status == "skipped"
     assert result.step("llm_review").status == "skipped"
-    assert result.step("digest").status in {"success", "skipped"}
+    assert result.step("digest").status == "skipped"
 
     with engine.connect() as conn:
         rows = conn.execute(
