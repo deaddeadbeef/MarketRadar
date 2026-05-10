@@ -378,6 +378,17 @@ job_runs = Table(
     Column("metadata", json_type, nullable=False),
 )
 
+job_locks = Table(
+    "job_locks",
+    metadata,
+    Column("lock_name", String, primary_key=True),
+    Column("owner", String, nullable=False),
+    Column("acquired_at", DateTime(timezone=True), nullable=False),
+    Column("heartbeat_at", DateTime(timezone=True), nullable=False),
+    Column("expires_at", DateTime(timezone=True), nullable=False),
+    Column("metadata", json_type, nullable=False),
+)
+
 data_quality_incidents = Table(
     "data_quality_incidents",
     metadata,
@@ -534,6 +545,8 @@ Index(
     provider_health.c.checked_at,
 )
 Index("ix_job_runs_provider_started", job_runs.c.provider, job_runs.c.started_at)
+Index("ix_job_locks_expires_at", job_locks.c.expires_at)
+Index("ix_job_locks_owner", job_locks.c.owner)
 Index(
     "ix_incidents_provider_detected",
     data_quality_incidents.c.provider,

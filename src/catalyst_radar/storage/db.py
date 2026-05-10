@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from sqlalchemy import Engine, create_engine
+from sqlalchemy import Engine, create_engine, inspect
 
-from catalyst_radar.storage.schema import metadata
+from catalyst_radar.storage.schema import job_locks, metadata
 
 
 def engine_from_url(database_url: str) -> Engine:
@@ -18,7 +18,17 @@ def engine_from_url(database_url: str) -> Engine:
 def create_schema(engine: Engine) -> None:
     metadata.create_all(engine)
     if engine.dialect.name == "sqlite":
+        _upgrade_sqlite_job_locks(engine)
         _upgrade_sqlite_holdings_snapshots(engine)
+
+
+def _upgrade_sqlite_job_locks(engine: Engine) -> None:
+    if engine.dialect.name != "sqlite":
+        return
+    inspector = inspect(engine)
+    if "job_locks" in inspector.get_table_names():
+        return
+    job_locks.create(engine)
 
 
 def _upgrade_sqlite_holdings_snapshots(engine: Engine) -> None:
