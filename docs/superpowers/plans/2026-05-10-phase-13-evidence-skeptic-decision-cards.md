@@ -8,6 +8,8 @@
 
 **Tech Stack:** Python 3.11, dataclasses, SQLAlchemy Core, SQLite/PostgreSQL-compatible schema, pytest, ruff, OpenAI Responses API behind a fail-closed optional client.
 
+**Implementation Status:** Complete through local verification. Real OpenAI provider smoke is pending a user-provided `OPENAI_API_KEY`; the no-key provider path was verified fail-closed and ledgered.
+
 ---
 
 ## Baseline
@@ -795,8 +797,9 @@ Expected:
 
 ```text
 skeptic_review status=completed
-gpt55_decision_card status=completed
-budget summary includes two completed ledger rows
+gpt55_decision_card for sample AAA status=skipped reason=candidate_state_not_eligible
+gpt55_decision_card for seeded eligible smoke packet ZZZ status=completed
+budget summary includes completed skeptic and Decision Card rows
 ```
 
 - [ ] **Step 2: Stop and ask for API key before real-provider smoke**

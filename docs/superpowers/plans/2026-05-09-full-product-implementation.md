@@ -561,6 +561,20 @@ Exit criteria:
 
 ## Phase 13: Evidence Packets, Skeptic Review, and Decision Cards
 
+Status: complete in `feature/phase-13-evidence-skeptic-decision-cards`.
+
+Review file:
+
+```text
+docs/phase-13-review.md
+```
+
+Detailed executable plan:
+
+```text
+docs/superpowers/plans/2026-05-10-phase-13-evidence-skeptic-decision-cards.md
+```
+
 Objective:
 
 - Produce source-linked evidence packets, human-readable bear cases, and complete Decision Cards for manual buy review.
@@ -569,28 +583,41 @@ Primary files:
 
 - Create: `src/catalyst_radar/agents/evidence.py`
 - Create: `src/catalyst_radar/agents/skeptic.py`
-- Create: `src/catalyst_radar/decision_cards/models.py`
-- Create: `src/catalyst_radar/decision_cards/builder.py`
-- Create: `src/catalyst_radar/decision_cards/schemas.py`
-- Create: `src/catalyst_radar/decision_cards/repository.py`
+- Create: `src/catalyst_radar/agents/openai_client.py`
 - Create: `src/catalyst_radar/agents/prompts/skeptic_v1.md`
 - Create: `src/catalyst_radar/agents/prompts/decision_card_v1.md`
-- Create: `sql/migrations/012_evidence_decision_cards.sql`
+- Modify: `src/catalyst_radar/agents/schemas.py`
 - Modify: `src/catalyst_radar/agents/router.py`
+- Modify: `src/catalyst_radar/agents/tasks.py`
+- Modify: `src/catalyst_radar/cli.py`
+- Modify: `src/catalyst_radar/decision_cards/builder.py`
 - Test: `tests/unit/test_evidence_packet_schema.py`
-- Test: `tests/unit/test_decision_card_schema.py`
+- Test: `tests/unit/test_agent_schemas.py`
+- Test: `tests/unit/test_decision_card_builder.py`
+- Test: `tests/unit/test_llm_router.py`
+- Test: `tests/unit/test_skeptic_review.py`
+- Test: `tests/integration/test_llm_cli.py`
 - Test: `tests/evals/test_llm_source_faithfulness.py`
 
 Implementation tasks:
 
-- [ ] Add `evidence_packets` and `decision_cards` tables.
-- [ ] Build evidence packets from selected snippets, computed features, disconfirming evidence, conflicts, and policy context.
-- [ ] Validate every claim has `source_id` or `computed_feature_id`.
-- [ ] Add Skeptic Agent for Warning and buy-review candidates only.
-- [ ] Add Decision Card builder for candidates passing deterministic gates.
-- [ ] Downgrade if JSON schema validation fails twice.
-- [ ] Reject unsupported claims.
-- [ ] Ensure Decision Cards never say the system is making a buy decision.
+- [x] Reuse existing `candidate_packets` and `decision_cards` storage instead of adding duplicate evidence tables.
+- [x] Build agent-facing evidence packet views from selected snippets, computed features, disconfirming evidence, conflicts, and policy context.
+- [x] Validate every accepted LLM claim has a known `source_id`, `source_url`, or `computed_feature_id`.
+- [x] Add Skeptic review for Warning, ThesisWeakening, and buy-review candidates only.
+- [x] Add Decision Card draft review for deterministic `EligibleForManualBuyReview` candidates only.
+- [x] Reject schema-invalid or unsupported LLM output and ledger it.
+- [x] Reject unsupported claims.
+- [x] Ensure Decision Cards never say the system is making a buy decision.
+- [x] Add an optional OpenAI Responses API client with `store=False`, strict JSON schema output, and no-key fail-closed behavior.
+- [x] Verify fake skeptic and Decision Card review paths; real OpenAI provider smoke remains pending until an API key is supplied.
+
+Verification:
+
+- `python -m pytest` -> `480 passed in 134.38s (0:02:14)`.
+- `python -m ruff check src tests apps` -> `All checks passed!`.
+- Fake LLM smoke completed `skeptic_review` and seeded eligible `gpt55_decision_card` paths.
+- No-key OpenAI provider smoke failed closed and ledgered `failed/client_error`.
 
 Exit criteria:
 
