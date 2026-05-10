@@ -376,6 +376,10 @@ def test_load_ops_health_reports_provider_status_and_database(
     assert health["stale_data"]["detected"] is True
     assert health["stale_data"]["providers"] == ["news"]
     assert health["jobs"][0]["id"] == "job-ingest"
+    assert "provider_banners" in health
+    assert "degraded_mode" in health
+    assert "metrics" in health
+    assert "score_drift" in health
 
 
 def _engine(tmp_path: Path) -> Engine:

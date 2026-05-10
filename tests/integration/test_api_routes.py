@@ -116,6 +116,21 @@ def test_get_ops_health(tmp_path, monkeypatch) -> None:
             "jobs": [],
             "database": {"status": "ok"},
             "stale_data": [],
+            "provider_banners": [],
+            "degraded_mode": {
+                "enabled": False,
+                "max_action_state": ActionState.ADD_TO_WATCHLIST.value,
+                "disabled_states": [],
+                "reasons": [],
+            },
+            "metrics": {
+                "cost": {"total_actual_cost_usd": 0.0, "cost_per_useful_alert": 0.0},
+                "stale_incident_count": 0,
+                "unsupported_claim_rate": 0.0,
+                "false_positive_rate": None,
+            },
+            "score_drift": {"detected": False, "latest": None, "previous": None},
+            "runbooks": {},
         },
         raising=False,
     )
@@ -124,8 +139,13 @@ def test_get_ops_health(tmp_path, monkeypatch) -> None:
     response = client.get("/api/ops/health")
 
     assert response.status_code == 200
-    assert response.json()["database"] == {"status": "ok"}
-    assert response.json()["providers"] == [{"provider": "csv", "status": "ok"}]
+    payload = response.json()
+    assert payload["database"] == {"status": "ok"}
+    assert payload["providers"] == [{"provider": "csv", "status": "ok"}]
+    assert "degraded_mode" in payload
+    assert "metrics" in payload
+    assert "score_drift" in payload
+    assert "runbooks" in payload
 
 
 def test_get_cost_summary(tmp_path, monkeypatch) -> None:
