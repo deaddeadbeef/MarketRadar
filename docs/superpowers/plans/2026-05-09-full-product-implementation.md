@@ -15,7 +15,7 @@
 Build from:
 
 ```text
-main @ 65f4fb7 merge: integrate phase 5 event connectors
+main @ 95aa81e feat: add api and dashboard review surfaces
 ```
 
 Verified capabilities now on `main`:
@@ -35,15 +35,18 @@ Verified capabilities now on `main`:
 - SEC submissions, news fixture, and earnings fixture connectors.
 - Deterministic event taxonomy, materiality, source quality, dedupe, and guidance conflict detection.
 - Event-aware scan metadata, bounded event score support, event-driven setup selection, and dashboard event fields.
-- Point-in-time validation helpers.
-- Minimal Streamlit dashboard data layer.
-- No runtime LLM integration and no broker/order execution.
+- Local text snippets, ontology/theme matching, sentiment, hashing-vector embeddings, novelty, and text-feature metadata.
+- Options aggregate features, sector/theme/peer features, and optional-evidence-neutral scoring integration.
+- Candidate packets and Decision Cards with supporting and disconfirming evidence.
+- Point-in-time validation replay, baselines, useful-alert labels, shadow/paper trade workflow, and validation reports.
+- FastAPI review API, expanded Streamlit dashboard pages, cost/ops views, and feedback capture.
+- No runtime LLM integration, no alert delivery, no scheduler/worker automation, and no broker/order execution.
 
 Most recent verification:
 
 ```text
 python -m pytest
-200 passed
+325 passed in 85.15s (0:01:25)
 
 python -m ruff check src tests apps
 All checks passed!
@@ -54,9 +57,9 @@ Important current limits:
 - Polygon live mode still needs a configured API key and live contract drift testing.
 - SEC live mode is gated behind `CATALYST_SEC_ENABLE_LIVE=1` and a compliant `CATALYST_SEC_USER_AGENT`.
 - News and earnings connectors are fixture/provider skeletons until a licensed provider is selected.
-- There is no local text intelligence yet: no snippet store, ontology hits, sentiment, embeddings, novelty, or text-derived candidate evidence.
-- There are no options aggregate features, theme velocity, or peer read-through features.
-- There is no candidate packet, evidence packet, Decision Card, alerting, API, expanded dashboard workflow, scheduler, observability, or pilot release gate.
+- There is no alerting subsystem yet: no alert artifacts, dedupe/suppression ledger, digest generation, or delivery dry-run workflow.
+- There is no sparse LLM budget/router integration yet.
+- There is no scheduler, worker, production Docker deployment, auth/roles, observability runbooks, or pilot release gate.
 
 ## Product Completion Definition
 
@@ -196,6 +199,14 @@ Delivered:
 
 ## Phase 6: Local Text Intelligence
 
+Status: complete and merged.
+
+Review file:
+
+```text
+docs/phase-6-review.md
+```
+
 Detailed executable plan:
 
 ```text
@@ -250,6 +261,14 @@ Exit criteria:
 
 ## Phase 7: Options, Sector, Theme, and Peer Features
 
+Status: complete and merged.
+
+Review file:
+
+```text
+docs/phase-7-review.md
+```
+
 Objective:
 
 - Add non-LLM options aggregate features, sector rotation, theme velocity, and peer read-through scoring.
@@ -289,6 +308,14 @@ Exit criteria:
 
 ## Phase 8: Candidate Packets and Unified Scoring
 
+Status: complete and merged.
+
+Review file:
+
+```text
+docs/phase-8-review.md
+```
+
 Objective:
 
 - Build the complete candidate packet and final deterministic scoring/policy flow across market, event, text, options, portfolio, and setup data.
@@ -324,6 +351,14 @@ Exit criteria:
 
 ## Phase 9: Backtesting, Shadow Mode, and Paper Trading
 
+Status: complete and merged.
+
+Review file:
+
+```text
+docs/phase-9-review.md
+```
+
 Objective:
 
 - Prove the radar beats simple baselines and can measure usefulness before any real-capital workflow.
@@ -358,6 +393,14 @@ Exit criteria:
 - No pilot can proceed until validation output is reviewed.
 
 ## Phase 10: API and Dashboard Expansion
+
+Status: complete and merged.
+
+Review file:
+
+```text
+docs/phase-10-review.md
+```
 
 Objective:
 
@@ -396,6 +439,12 @@ Exit criteria:
 - Feedback can be recorded for every alert and future Decision Card.
 
 ## Phase 11: Alerts and Feedback Loop
+
+Detailed executable plan:
+
+```text
+docs/superpowers/plans/2026-05-10-phase-11-alerts-feedback-loop.md
+```
 
 Objective:
 
