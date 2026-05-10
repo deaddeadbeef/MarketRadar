@@ -34,13 +34,14 @@ def load_ops_health(
     now: datetime | None = None,
     stale_after: timedelta = timedelta(hours=36),
 ) -> dict[str, object]:
-    resolved_now = _as_utc_datetime(now or datetime.now(UTC))
+    resolved_now = _resolve_now(engine, now)
     with engine.connect() as conn:
-        providers = _latest_provider_rows(conn)
+        providers = _latest_provider_rows(conn, available_at=resolved_now)
         jobs = [
             _row_dict(row._mapping)
             for row in conn.execute(
                 select(job_runs)
+                .where(job_runs.c.started_at <= resolved_now)
                 .order_by(job_runs.c.started_at.desc(), job_runs.c.id.desc())
                 .limit(25)
             )
@@ -55,16 +56,24 @@ def load_ops_health(
         database = {
             "status": "ok",
             "candidate_state_count": conn.scalar(
-                select(func.count()).select_from(candidate_states)
+                select(func.count())
+                .select_from(candidate_states)
+                .where(candidate_states.c.created_at <= resolved_now)
             ),
             "candidate_packet_count": conn.scalar(
-                select(func.count()).select_from(candidate_packets)
+                select(func.count())
+                .select_from(candidate_packets)
+                .where(candidate_packets.c.available_at <= resolved_now)
             ),
             "decision_card_count": conn.scalar(
-                select(func.count()).select_from(decision_cards)
+                select(func.count())
+                .select_from(decision_cards)
+                .where(decision_cards.c.available_at <= resolved_now)
             ),
             "validation_run_count": conn.scalar(
-                select(func.count()).select_from(validation_runs)
+                select(func.count())
+                .select_from(validation_runs)
+                .where(validation_runs.c.created_at <= resolved_now)
             ),
             "latest_candidate_as_of": latest_candidate_as_of,
         }
@@ -72,6 +81,7 @@ def load_ops_health(
             _row_dict(row._mapping)
             for row in conn.execute(
                 select(data_quality_incidents)
+                .where(data_quality_incidents.c.detected_at <= resolved_now)
                 .order_by(
                     data_quality_incidents.c.detected_at.desc(),
                     data_quality_incidents.c.id.desc(),
@@ -122,10 +132,12 @@ def load_ops_health(
     return serialized if isinstance(serialized, dict) else {}
 
 
-def _latest_provider_rows(conn: Any) -> list[dict[str, object]]:
+def _latest_provider_rows(conn: Any, *, available_at: datetime) -> list[dict[str, object]]:
     rows: dict[str, dict[str, object]] = {}
     for row in conn.execute(
-        select(provider_health).order_by(
+        select(provider_health)
+        .where(provider_health.c.checked_at <= available_at)
+        .order_by(
             provider_health.c.provider,
             provider_health.c.checked_at.desc(),
             provider_health.c.id.desc(),
@@ -134,6 +146,26 @@ def _latest_provider_rows(conn: Any) -> list[dict[str, object]]:
         values = _row_dict(row._mapping)
         rows.setdefault(str(values["provider"]), values)
     return [rows[key] for key in sorted(rows)]
+
+
+def _resolve_now(engine: Engine, now: datetime | None) -> datetime:
+    if now is not None:
+        return _as_utc_datetime(now)
+    candidates = [datetime.now(UTC)]
+    with engine.connect() as conn:
+        for value in (
+            conn.scalar(select(func.max(provider_health.c.checked_at))),
+            conn.scalar(select(func.max(job_runs.c.started_at))),
+            conn.scalar(select(func.max(data_quality_incidents.c.detected_at))),
+            conn.scalar(select(func.max(candidate_states.c.created_at))),
+            conn.scalar(select(func.max(candidate_packets.c.available_at))),
+            conn.scalar(select(func.max(decision_cards.c.available_at))),
+            conn.scalar(select(func.max(validation_runs.c.created_at))),
+        ):
+            resolved = _as_utc_datetime_or_none(value)
+            if resolved is not None:
+                candidates.append(resolved)
+    return max(candidates)
 
 
 def _provider_banners(providers: list[dict[str, object]]) -> list[dict[str, object]]:

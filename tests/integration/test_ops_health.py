@@ -7,7 +7,7 @@ from sqlalchemy import Engine, create_engine, insert
 
 from catalyst_radar.core.models import ActionState
 from catalyst_radar.ops.health import load_ops_health
-from catalyst_radar.ops.metrics import detect_score_drift
+from catalyst_radar.ops.metrics import detect_score_drift, load_ops_metrics
 from catalyst_radar.storage.db import create_schema
 from catalyst_radar.storage.schema import (
     budget_ledger,
@@ -285,9 +285,168 @@ def test_ops_health_reports_metrics_banners_incidents_drift_and_runbooks() -> No
     assert metrics["useful_alert_count"] == 1
     assert metrics["stale_incident_count"] == 1
     assert metrics["schema_failure_count"] == 1
-    assert metrics["unsupported_claim_count"] == 2
-    assert metrics["unsupported_claim_rate"] == 0.5
+    assert metrics["unsupported_claim_count"] == 1
+    assert metrics["unsupported_claim_rate"] == 0.25
     assert metrics["false_positive_rate"] == 0.25
+
+
+def test_score_drift_uses_plan_default_thresholds() -> None:
+    drift = detect_score_drift(_engine(), now=datetime(2026, 5, 10, 12, 0, tzinfo=UTC))
+
+    assert drift["thresholds"]["mean_delta"] == 25.0
+    assert drift["thresholds"]["mean_shift"] == 25.0
+    assert drift["thresholds"]["count_delta_ratio"] == 0.75
+    assert drift["thresholds"]["count_shift_ratio"] == 0.75
+
+
+def test_ops_health_excludes_future_provider_job_and_incident_rows() -> None:
+    engine = _engine()
+    now = datetime(2026, 5, 10, 12, 0, tzinfo=UTC)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(provider_health),
+            [
+                {
+                    "id": "provider-visible",
+                    "provider": "sec",
+                    "status": "degraded",
+                    "checked_at": now - timedelta(minutes=5),
+                    "reason": "visible row",
+                    "latency_ms": None,
+                },
+                {
+                    "id": "provider-future",
+                    "provider": "sec",
+                    "status": "healthy",
+                    "checked_at": now + timedelta(minutes=5),
+                    "reason": "future row",
+                    "latency_ms": 20.0,
+                },
+            ],
+        )
+        conn.execute(
+            insert(job_runs),
+            [
+                {
+                    "id": "job-visible",
+                    "job_type": "feature_scan",
+                    "provider": None,
+                    "status": "success",
+                    "started_at": now - timedelta(minutes=30),
+                    "finished_at": now - timedelta(minutes=25),
+                    "requested_count": 1,
+                    "raw_count": 1,
+                    "normalized_count": 1,
+                    "error_summary": None,
+                    "metadata": {},
+                },
+                {
+                    "id": "job-future",
+                    "job_type": "feature_scan",
+                    "provider": None,
+                    "status": "failed",
+                    "started_at": now + timedelta(minutes=30),
+                    "finished_at": now + timedelta(minutes=35),
+                    "requested_count": 1,
+                    "raw_count": 0,
+                    "normalized_count": 0,
+                    "error_summary": "future",
+                    "metadata": {},
+                },
+            ],
+        )
+        conn.execute(
+            insert(data_quality_incidents),
+            [
+                {
+                    "id": "incident-visible",
+                    "provider": "sec",
+                    "severity": "warning",
+                    "kind": "stale_data",
+                    "affected_tickers": ["AAA"],
+                    "reason": "visible",
+                    "fail_closed_action": "watchlist only",
+                    "payload": {},
+                    "detected_at": now - timedelta(minutes=10),
+                    "source_ts": now - timedelta(hours=1),
+                    "available_at": now - timedelta(minutes=10),
+                },
+                {
+                    "id": "incident-future",
+                    "provider": "sec",
+                    "severity": "error",
+                    "kind": "schema_validation",
+                    "affected_tickers": ["AAA"],
+                    "reason": "future",
+                    "fail_closed_action": "future",
+                    "payload": {},
+                    "detected_at": now + timedelta(minutes=10),
+                    "source_ts": now + timedelta(minutes=5),
+                    "available_at": now + timedelta(minutes=10),
+                },
+            ],
+        )
+
+    health = load_ops_health(engine, now=now)
+
+    assert health["providers"] == [
+        {
+            "id": "provider-visible",
+            "provider": "sec",
+            "status": "degraded",
+            "checked_at": (now - timedelta(minutes=5)).isoformat(),
+            "reason": "visible row",
+            "latency_ms": None,
+        }
+    ]
+    assert [row["id"] for row in health["jobs"]] == ["job-visible"]
+    assert [row["id"] for row in health["incidents"]] == ["incident-visible"]
+
+
+def test_useful_alert_count_uses_latest_label_per_artifact() -> None:
+    engine = _engine()
+    now = datetime(2026, 5, 10, 12, 0, tzinfo=UTC)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(budget_ledger).values(
+                _budget_row(
+                    id="budget-visible",
+                    status="completed",
+                    skip_reason=None,
+                    actual_cost=0.25,
+                    available_at=now - timedelta(minutes=5),
+                    payload={"result": "ok"},
+                )
+            )
+        )
+        conn.execute(
+            insert(useful_alert_labels),
+            [
+                {
+                    "id": "label-older-useful",
+                    "artifact_type": "decision_card",
+                    "artifact_id": "card-aaa",
+                    "ticker": "AAA",
+                    "label": "useful",
+                    "notes": "older useful label",
+                    "created_at": now - timedelta(minutes=10),
+                },
+                {
+                    "id": "label-newer-noisy",
+                    "artifact_type": "decision_card",
+                    "artifact_id": "card-aaa",
+                    "ticker": "AAA",
+                    "label": "noisy",
+                    "notes": "latest label supersedes useful label",
+                    "created_at": now - timedelta(minutes=5),
+                },
+            ],
+        )
+
+    metrics = load_ops_metrics(engine, now=now)
+
+    assert metrics["useful_alert_count"] == 0
+    assert metrics["cost"]["cost_per_useful_alert"] is None
 
 
 def test_ops_metrics_and_drift_ignore_future_created_candidate_states() -> None:
@@ -336,6 +495,7 @@ def test_ops_metrics_and_drift_ignore_future_created_candidate_states() -> None:
     )
 
     json.dumps(health)
+    assert health["database"]["candidate_state_count"] == 2
     assert health["database"]["latest_candidate_as_of"] == latest.isoformat()
     assert health["stale_data"]["latest_candidate_as_of"] == latest.isoformat()
     assert health["metrics"]["candidate_state_counts"] == {ActionState.WARNING.value: 1}

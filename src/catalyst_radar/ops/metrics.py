@@ -24,15 +24,6 @@ _UNSUPPORTED_CLAIM_SKIP_REASONS = (
     "source_faithfulness_failed",
     "unsupported_claim",
 )
-_UNSUPPORTED_CLAIM_MARKERS = (
-    "source_faithfulness",
-    "source faithfulness",
-    "unsupported",
-    "source_id",
-    "computed_feature_id",
-    "allowed_reference_ids",
-    "source reference",
-)
 
 
 def load_ops_metrics(engine: Engine, now: datetime | None = None) -> dict[str, object]:
@@ -107,14 +98,14 @@ def detect_score_drift(
         if mean_delta_threshold is not None
         else mean_shift_threshold
         if mean_shift_threshold is not None
-        else 15.0
+        else 25.0
     )
     resolved_count_threshold = (
         count_delta_ratio
         if count_delta_ratio is not None
         else count_shift_ratio_threshold
         if count_shift_ratio_threshold is not None
-        else 0.5
+        else 0.75
     )
     with engine.connect() as conn:
         as_of_rows = [
@@ -202,13 +193,32 @@ def _cost_summary(conn: Any, *, available_at: datetime) -> dict[str, object]:
 
 
 def _useful_alert_count(conn: Any, *, available_at: datetime) -> int:
+    ranked_labels = (
+        select(
+            useful_alert_labels.c.label,
+            func.row_number()
+            .over(
+                partition_by=(
+                    useful_alert_labels.c.artifact_type,
+                    useful_alert_labels.c.artifact_id,
+                ),
+                order_by=(
+                    useful_alert_labels.c.created_at.desc(),
+                    useful_alert_labels.c.id.desc(),
+                ),
+            )
+            .label("label_rank"),
+        )
+        .where(useful_alert_labels.c.created_at <= available_at)
+        .subquery()
+    )
     return int(
         conn.scalar(
             select(func.count())
-            .select_from(useful_alert_labels)
+            .select_from(ranked_labels)
             .where(
-                useful_alert_labels.c.created_at <= available_at,
-                useful_alert_labels.c.label.in_(tuple(sorted(USEFUL_ALERT_LABELS))),
+                ranked_labels.c.label_rank == 1,
+                ranked_labels.c.label.in_(tuple(sorted(USEFUL_ALERT_LABELS))),
             )
         )
         or 0
@@ -248,13 +258,7 @@ def _unsupported_claim_count(conn: Any, *, available_at: datetime) -> int:
             .where(
                 budget_ledger.c.available_at <= available_at,
                 budget_ledger.c.status == "schema_rejected",
-                or_(
-                    budget_ledger.c.skip_reason.in_(_UNSUPPORTED_CLAIM_SKIP_REASONS),
-                    _marker_filter(
-                        _UNSUPPORTED_CLAIM_MARKERS,
-                        cast(budget_ledger.c.payload, String),
-                    ),
-                ),
+                budget_ledger.c.skip_reason.in_(_UNSUPPORTED_CLAIM_SKIP_REASONS),
             )
         )
         or 0
