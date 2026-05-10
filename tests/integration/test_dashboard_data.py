@@ -137,7 +137,7 @@ def test_load_alert_rows_returns_latest_alerts_with_feedback(tmp_path: Path) -> 
     _insert_dashboard_fixture(engine)
     _insert_alert_fixture(engine)
 
-    rows = load_alert_rows(engine)
+    rows = load_alert_rows(engine, available_at=AVAILABLE_AT + timedelta(minutes=30))
 
     assert [row["id"] for row in rows] == ["alert-msft-dry-run", "alert-msft-planned"]
     assert rows[0]["ticker"] == "MSFT"
@@ -153,7 +153,7 @@ def test_load_alert_detail_returns_payload_and_feedback(tmp_path: Path) -> None:
     _insert_dashboard_fixture(engine)
     _insert_alert_fixture(engine)
 
-    detail = load_alert_detail(engine, "alert-msft-planned")
+    detail = load_alert_detail(engine, "alert-msft-planned", available_at=AVAILABLE_AT)
 
     assert detail is not None
     assert detail["id"] == "alert-msft-planned"
@@ -168,6 +168,7 @@ def test_load_alert_rows_respects_available_at_cutoff(tmp_path: Path) -> None:
     _insert_dashboard_fixture(engine)
     _insert_alert_fixture(engine)
 
+    default_rows = load_alert_rows(engine)
     rows = load_alert_rows(
         engine,
         available_at=AVAILABLE_AT + timedelta(minutes=10),
@@ -176,6 +177,7 @@ def test_load_alert_rows_respects_available_at_cutoff(tmp_path: Path) -> None:
         route="immediate_manual_review",
     )
 
+    assert default_rows == []
     assert [row["id"] for row in rows] == ["alert-msft-planned"]
     assert rows[0]["feedback_label"] == "useful"
     assert load_alert_detail(engine, "alert-msft-dry-run", available_at=AVAILABLE_AT) is None

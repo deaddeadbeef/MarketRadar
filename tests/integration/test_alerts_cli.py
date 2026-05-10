@@ -113,6 +113,15 @@ def test_alert_digest_groups_digest_routes(seeded_alert_cli, capsys) -> None:
     ]
 
 
+def test_alerts_list_default_hides_future_alerts(seeded_alert_cli, capsys) -> None:
+    assert main(["build-alerts", "--as-of", AS_OF_TEXT, "--available-at", AVAILABLE_AT_TEXT]) == 0
+    capsys.readouterr()
+
+    assert main(["alerts-list"]) == 0
+
+    assert capsys.readouterr().out == ""
+
+
 def test_send_alerts_dry_run_marks_alerts_without_external_delivery(
     seeded_alert_cli,
     capsys,

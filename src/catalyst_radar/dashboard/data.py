@@ -413,10 +413,8 @@ def load_alert_rows(
     route: str | None = None,
     limit: int = 200,
 ) -> list[dict[str, object]]:
-    cutoff = _as_utc_datetime_or_none(available_at)
-    filters = []
-    if cutoff is not None:
-        filters.append(alerts.c.available_at <= cutoff)
+    cutoff = _as_utc_datetime_or_none(available_at) or datetime.now(UTC)
+    filters = [alerts.c.available_at <= cutoff]
     if ticker is not None and ticker.strip():
         filters.append(alerts.c.ticker == ticker.strip().upper())
     if status is not None and status.strip():
@@ -463,10 +461,8 @@ def load_alert_detail(
     resolved_id = str(alert_id).strip()
     if not resolved_id:
         return None
-    cutoff = _as_utc_datetime_or_none(available_at)
-    filters = [alerts.c.id == resolved_id]
-    if cutoff is not None:
-        filters.append(alerts.c.available_at <= cutoff)
+    cutoff = _as_utc_datetime_or_none(available_at) or datetime.now(UTC)
+    filters = [alerts.c.id == resolved_id, alerts.c.available_at <= cutoff]
 
     ranked_feedback = _ranked_alert_feedback(cutoff)
     stmt = (

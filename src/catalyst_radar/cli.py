@@ -40,6 +40,11 @@ from catalyst_radar.core.config import AppConfig
 from catalyst_radar.core.immutability import thaw_json_value
 from catalyst_radar.core.models import ActionState
 from catalyst_radar.decision_cards.builder import build_decision_card
+from catalyst_radar.feedback.service import (
+    FeedbackError,
+    MissingArtifactError,
+    record_feedback,
+)
 from catalyst_radar.pipeline.candidate_packet import build_candidate_packet
 from catalyst_radar.pipeline.scan import run_scan
 from catalyst_radar.storage.alert_repositories import AlertRepository
@@ -64,11 +69,9 @@ from catalyst_radar.validation.baselines import (
 )
 from catalyst_radar.validation.models import (
     PaperDecision,
-    UsefulAlertLabel,
     ValidationResult,
     ValidationRun,
     ValidationRunStatus,
-    useful_alert_label_id,
     validation_result_id,
 )
 from catalyst_radar.validation.outcomes import compute_forward_outcomes, outcome_labels_as_dict
@@ -520,9 +523,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "alerts-list":
         create_schema(engine)
         alert_repo = AlertRepository(engine)
+        available_at = args.available_at or datetime.now(UTC)
         alerts = _stable_alerts(
             alert_repo.list_alerts(
-                available_at=args.available_at,
+                available_at=available_at,
                 ticker=args.ticker,
                 status=args.status,
                 route=args.route,
@@ -859,21 +863,24 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "useful-label":
         create_schema(engine)
-        validation_repo = ValidationRepository(engine)
-        label = UsefulAlertLabel(
-            id=useful_alert_label_id(
+        try:
+            result = record_feedback(
+                engine,
                 artifact_type=args.artifact_type,
                 artifact_id=args.artifact_id,
+                ticker=args.ticker,
                 label=args.label,
-            ),
-            artifact_type=args.artifact_type,
-            artifact_id=args.artifact_id,
-            ticker=args.ticker,
-            label=args.label,
-            notes=args.notes,
-            created_at=args.created_at or datetime.now(UTC),
-        )
-        validation_repo.insert_useful_alert_label(label)
+                notes=args.notes,
+                source="cli",
+                created_at=args.created_at or datetime.now(UTC),
+            )
+        except MissingArtifactError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        except FeedbackError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        label = result.useful_label
         print(
             f"useful_label artifact_type={label.artifact_type} "
             f"artifact_id={label.artifact_id} ticker={label.ticker} label={label.label}"

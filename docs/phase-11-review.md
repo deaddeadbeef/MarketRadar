@@ -87,6 +87,8 @@ Results:
 - Returned 422 for invalid alert route/status filters.
 - Made feedback audit and useful-label writes atomic.
 - Rejected unknown JSON fields in feedback request models.
+- Applied current-time cutoffs to default dashboard and CLI alert views so future alerts stay hidden.
+- Routed the legacy `useful-label` CLI through the validated feedback service so it writes `user_feedback` and rejects missing, mismatched, future, or invalid artifacts.
 
 ## Residual Risks
 

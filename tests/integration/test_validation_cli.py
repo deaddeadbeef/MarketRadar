@@ -16,6 +16,7 @@ from catalyst_radar.storage.schema import (
     decision_cards,
     paper_trades,
     signal_features,
+    user_feedback,
     validation_results,
 )
 
@@ -122,6 +123,14 @@ def test_validation_report_label_and_paper_cli_workflow(
         == 0
     )
     capsys.readouterr()
+    feedback_row = _scalar(
+        database_url,
+        select(user_feedback.c.source).where(
+            user_feedback.c.artifact_type == "decision_card",
+            user_feedback.c.artifact_id == card_id,
+        ),
+    )
+    assert feedback_row == "cli"
     assert main(["validation-report", "--run-id", run_id, "--json"]) == 0
     captured = capsys.readouterr()
     report = json.loads(captured.out)
@@ -158,6 +167,27 @@ def test_validation_report_label_and_paper_cli_workflow(
     captured = capsys.readouterr()
     relabeled_report = json.loads(captured.out)
     assert relabeled_report["useful_alert_rate"] == 0.0
+
+    assert (
+        main(
+            [
+                "useful-label",
+                "--artifact-type",
+                "decision_card",
+                "--artifact-id",
+                "missing-card",
+                "--ticker",
+                "MSFT",
+                "--label",
+                "useful",
+                "--created-at",
+                AVAILABLE_AT_TEXT,
+            ]
+        )
+        == 1
+    )
+    captured = capsys.readouterr()
+    assert "referenced artifact not found" in captured.err
 
     assert (
         main(
