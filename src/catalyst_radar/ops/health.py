@@ -92,7 +92,7 @@ def load_ops_health(
     )
     degraded_enabled = core_data_stale or bool(stale_providers)
 
-    return {
+    payload = {
         "providers": providers,
         "jobs": jobs,
         "database": database,
@@ -118,6 +118,8 @@ def load_ops_health(
         "incidents": incidents,
         "runbooks": all_runbooks(),
     }
+    serialized = _json_safe(payload)
+    return serialized if isinstance(serialized, dict) else {}
 
 
 def _latest_provider_rows(conn: Any) -> list[dict[str, object]]:
@@ -178,7 +180,7 @@ def _row_dict(row: Mapping[str, object] | None) -> dict[str, object]:
 
 def _json_safe(value: object) -> object:
     if isinstance(value, datetime):
-        return _as_utc_datetime(value)
+        return _as_utc_datetime(value).isoformat()
     if isinstance(value, Enum):
         return value.value
     if isinstance(value, Mapping):

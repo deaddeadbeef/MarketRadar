@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import Engine, create_engine, insert
@@ -252,6 +253,7 @@ def test_ops_health_reports_metrics_banners_incidents_drift_and_runbooks() -> No
 
     health = load_ops_health(engine, now=now)
 
+    json.dumps(health)
     assert health["provider_banners"] == [
         {
             "provider": "sec",
@@ -267,6 +269,10 @@ def test_ops_health_reports_metrics_banners_incidents_drift_and_runbooks() -> No
     assert [row["id"] for row in health["incidents"]] == ["incident-stale", "incident-schema"]
     assert health["score_drift"]["detected"] is True
     assert health["score_drift"]["reason"] == "mean_shift"
+    assert health["providers"][0]["checked_at"] == (now - timedelta(minutes=10)).isoformat()
+    assert health["jobs"][0]["started_at"] == (now - timedelta(hours=1)).isoformat()
+    assert health["incidents"][0]["detected_at"] == (now - timedelta(minutes=20)).isoformat()
+    assert health["score_drift"]["latest"]["as_of"] == latest.isoformat()
 
     metrics = health["metrics"]
     assert metrics["stage_counts"]["llm_review"]["failed"] == 1
@@ -329,7 +335,9 @@ def test_ops_metrics_and_drift_ignore_future_created_candidate_states() -> None:
         count_delta_ratio=0.5,
     )
 
-    assert health["database"]["latest_candidate_as_of"] == latest
+    json.dumps(health)
+    assert health["database"]["latest_candidate_as_of"] == latest.isoformat()
+    assert health["stale_data"]["latest_candidate_as_of"] == latest.isoformat()
     assert health["metrics"]["candidate_state_counts"] == {ActionState.WARNING.value: 1}
     assert health["metrics"]["stage_counts"] == {}
     assert drift["detected"] is True
