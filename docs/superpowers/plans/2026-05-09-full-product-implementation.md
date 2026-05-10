@@ -15,7 +15,7 @@
 Build from:
 
 ```text
-main @ 6740d41 fix: close alert feedback review gaps
+main @ d8af7f6 docs: mark phase 11 complete
 ```
 
 Verified capabilities now on `main`:
@@ -41,13 +41,14 @@ Verified capabilities now on `main`:
 - Point-in-time validation replay, baselines, useful-alert labels, shadow/paper trade workflow, and validation reports.
 - FastAPI review API, expanded Streamlit dashboard pages, cost/ops views, and feedback capture.
 - Shadow-mode alert artifacts, deterministic alert routing, dedupe/suppression ledger, dry-run delivery, alert feedback, alert API routes, alert CLI commands, and dashboard alert review page.
-- No runtime LLM integration, no real external alert delivery, no scheduler/worker automation, and no broker/order execution.
+- Budget ledger, fail-closed LLM config, sparse router, fake-client review path, LLM budget CLI commands, and ledger-backed cost surfaces.
+- No real LLM provider integration, no real external alert delivery, no scheduler/worker automation, and no broker/order execution.
 
 Most recent verification:
 
 ```text
 python -m pytest
-368 passed in 130.96s (0:02:10)
+415 passed in 241.16s (0:04:01)
 
 python -m ruff check src tests apps
 All checks passed!
@@ -59,7 +60,7 @@ Important current limits:
 - SEC live mode is gated behind `CATALYST_SEC_ENABLE_LIVE=1` and a compliant `CATALYST_SEC_USER_AGENT`.
 - News and earnings connectors are fixture/provider skeletons until a licensed provider is selected.
 - Alerting is still shadow/dry-run only; real external delivery remains disabled.
-- There is no sparse LLM budget/router integration yet.
+- Sparse LLM infrastructure is fake-client only; real provider integration remains disabled.
 - There is no scheduler, worker, production Docker deployment, auth/roles, observability runbooks, or pilot release gate.
 
 ## Product Completion Definition
@@ -499,6 +500,20 @@ Exit criteria:
 
 ## Phase 12: Budget Ledger and Sparse LLM Router
 
+Status: complete in `feature/phase-12-budget-ledger-sparse-llm-router`.
+
+Review file:
+
+```text
+docs/phase-12-review.md
+```
+
+Detailed executable plan:
+
+```text
+docs/superpowers/plans/2026-05-10-phase-12-budget-ledger-sparse-llm-router.md
+```
+
 Objective:
 
 - Add controlled, auditable LLM review without allowing LLMs into deterministic scanning or scoring.
@@ -518,13 +533,25 @@ Primary files:
 
 Implementation tasks:
 
-- [ ] Add `budget_ledger` table.
-- [ ] Add model-pricing config with input, cached input, and output token rates.
-- [ ] Add `BudgetController` with daily, monthly, and per-task caps.
-- [ ] Add `LLMRouter` that returns skip decisions when budget, config, or state gates fail.
-- [ ] Add fake LLM client for deterministic tests.
-- [ ] Log estimated and actual cost, prompt version, schema version, model, token counts, ticker, candidate state, and outcome.
-- [ ] Enforce default local/dev behavior: premium LLM disabled unless explicitly configured.
+- [x] Add `budget_ledger` table.
+- [x] Add model-pricing config with input, cached input, and output token rates.
+- [x] Add `BudgetController` with daily, monthly, and per-task caps.
+- [x] Add `LLMRouter` that returns skip decisions when budget, config, or state gates fail.
+- [x] Add fake LLM client for deterministic tests.
+- [x] Log estimated and actual cost, prompt version, schema version, model, token counts, ticker, candidate state, and outcome.
+- [x] Enforce default local/dev behavior: premium LLM disabled unless explicitly configured.
+
+Delivered:
+
+- Budget ledger schema, migration, SQLAlchemy table, repository, and summaries.
+- Strict LLM task/status/skip-reason models and deterministic ledger IDs.
+- Config-driven pricing and caps with fail-closed validation.
+- Budget controller gates for disabled premium, manual-only tasks, ineligible states, missing model/pricing, stale/future pricing, per-task caps, daily cap, monthly cap, and GPT-5.5 soft cap.
+- Router/fake-client foundation with budget skips, dry runs, completed fake calls, schema rejection, and client-failure ledgering.
+- Source-linked evidence review schema validation and versioned prompt.
+- `llm-budget-status` and `run-llm-review` CLI commands.
+- Ledger-backed `/api/costs/summary` and Streamlit Costs page.
+- Review fixes for future ledger leakage, cost aggregate truncation, point-in-time validation cost leakage, cached-token math, non-fake provider exit codes, and test env isolation.
 
 Exit criteria:
 
