@@ -1,13 +1,22 @@
 from __future__ import annotations
 
 import json
+import threading
+import time
 from datetime import UTC, date, datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import create_engine, inspect, select
 
+from apps.worker import main as worker_main
 from catalyst_radar.cli import main as cli_main
-from catalyst_radar.jobs.scheduler import SchedulerConfig, build_daily_spec, run_once
+from catalyst_radar.jobs.scheduler import (
+    SchedulerConfig,
+    SchedulerRunResult,
+    build_daily_spec,
+    run_once,
+)
 from catalyst_radar.jobs.tasks import DAILY_STEP_ORDER, DailyRunSpec, run_daily
 from catalyst_radar.storage.db import create_schema
 from catalyst_radar.storage.job_repositories import JobLockRepository
@@ -16,6 +25,12 @@ from catalyst_radar.storage.schema import job_locks, job_runs, validation_runs
 
 def _engine():
     engine = create_engine("sqlite:///:memory:", future=True)
+    create_schema(engine)
+    return engine
+
+
+def _file_engine(tmp_path):
+    engine = create_engine(f"sqlite:///{(tmp_path / 'jobs.db').as_posix()}", future=True)
     create_schema(engine)
     return engine
 
@@ -272,12 +287,46 @@ def test_scheduler_run_once_skips_when_lock_is_held():
     assert result.reason == "lock_held"
 
 
+def test_scheduler_run_once_heartbeats_lock_during_active_run(monkeypatch, tmp_path):
+    engine = _file_engine(tmp_path)
+    competitor_attempt: dict[str, bool] = {}
+    release_worker = threading.Event()
+
+    def slow_run_daily(spec, *, engine):
+        time.sleep(1.25)
+        competitor = JobLockRepository(engine).acquire(
+            "daily-run",
+            owner="worker-b",
+            ttl=timedelta(seconds=5),
+            now=datetime.now(UTC),
+        )
+        competitor_attempt["acquired"] = competitor.acquired
+        release_worker.set()
+        return run_daily(spec, engine=engine)
+
+    monkeypatch.setattr("catalyst_radar.jobs.scheduler.run_daily", slow_run_daily)
+    config = SchedulerConfig(
+        owner="worker-a",
+        lock_name="daily-run",
+        lock_ttl=timedelta(milliseconds=500),
+        run_interval=timedelta(minutes=30),
+        as_of=date(2026, 5, 9),
+        decision_available_at=datetime(2026, 5, 10, 1, 0, tzinfo=UTC),
+    )
+
+    result = run_once(engine=engine, config=config)
+
+    assert release_worker.is_set()
+    assert result.acquired_lock is True
+    assert competitor_attempt["acquired"] is False
+
+
 def test_build_daily_spec_from_environment_values():
     outcome_available_at = datetime(2026, 6, 10, 1, 0, tzinfo=UTC)
     config = SchedulerConfig.from_env(
         {
             "CATALYST_DAILY_AS_OF": "2026-05-09",
-            "CATALYST_DECISION_AVAILABLE_AT": "2026-05-10T01:00:00+00:00",
+            "CATALYST_DECISION_AVAILABLE_AT": " 2026-05-10T01:00:00+00:00 ",
             "CATALYST_OUTCOME_AVAILABLE_AT": outcome_available_at.isoformat(),
             "CATALYST_RUN_LLM": "0",
             "CATALYST_LLM_DRY_RUN": "1",
@@ -293,6 +342,26 @@ def test_build_daily_spec_from_environment_values():
     assert spec.run_llm is False
     assert spec.llm_dry_run is True
     assert spec.dry_run_alerts is True
+
+
+def test_worker_one_shot_returns_failure_for_partial_daily_result(monkeypatch, tmp_path):
+    monkeypatch.setenv(
+        "CATALYST_DATABASE_URL",
+        f"sqlite:///{(tmp_path / 'worker.db').as_posix()}",
+    )
+    monkeypatch.setenv("CATALYST_WORKER_INTERVAL_SECONDS", "0")
+
+    def partial_run_once(*, engine, config):
+        del engine, config
+        return SchedulerRunResult(
+            acquired_lock=True,
+            reason=None,
+            daily_result=SimpleNamespace(status="partial_success"),
+        )
+
+    monkeypatch.setattr(worker_main, "run_once", partial_run_once)
+
+    assert worker_main.main() == 1
 
 
 def test_cli_run_daily_json_smoke(monkeypatch, tmp_path, capsys):

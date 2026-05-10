@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import socket
+import threading
 import time as time_module
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -105,6 +106,8 @@ def run_once(
             daily_result=None,
         )
 
+    heartbeat_stop = threading.Event()
+    heartbeat_thread = _start_heartbeat(repo, config, heartbeat_stop)
     try:
         daily_result = run_daily(spec, engine=engine)
         return SchedulerRunResult(
@@ -113,6 +116,8 @@ def run_once(
             daily_result=daily_result,
         )
     finally:
+        heartbeat_stop.set()
+        heartbeat_thread.join(timeout=5)
         repo.release(config.lock_name, owner=config.owner)
 
 
@@ -193,6 +198,46 @@ def _lock_metadata(config: SchedulerConfig, spec: DailyRunSpec) -> dict[str, Any
     }
 
 
+def _start_heartbeat(
+    repo: JobLockRepository,
+    config: SchedulerConfig,
+    stop: threading.Event,
+) -> threading.Thread:
+    thread = threading.Thread(
+        target=_heartbeat_loop,
+        args=(repo, config, stop),
+        name=f"catalyst-radar-lock-heartbeat:{config.lock_name}",
+        daemon=True,
+    )
+    thread.start()
+    return thread
+
+
+def _heartbeat_loop(
+    repo: JobLockRepository,
+    config: SchedulerConfig,
+    stop: threading.Event,
+) -> None:
+    interval = _heartbeat_interval(config.lock_ttl)
+    while not stop.wait(interval):
+        try:
+            if not repo.heartbeat(
+                config.lock_name,
+                owner=config.owner,
+                ttl=config.lock_ttl,
+            ):
+                return
+        except Exception:
+            return
+
+
+def _heartbeat_interval(ttl: timedelta) -> float:
+    ttl_seconds = ttl.total_seconds()
+    if ttl_seconds <= 0:
+        return 1.0
+    return max(0.1, min(30.0, ttl_seconds / 3.0))
+
+
 def _optional_text(source: Mapping[str, str], key: str) -> str | None:
     raw = source.get(key)
     if raw is None:
@@ -209,8 +254,9 @@ def _duration_seconds(
     raw = source.get(key)
     if raw is None or raw.strip() == "":
         return default
+    value = raw.strip()
     try:
-        return timedelta(seconds=float(raw))
+        return timedelta(seconds=float(value))
     except ValueError as exc:
         msg = f"{key} must be a number of seconds"
         raise ValueError(msg) from exc
@@ -220,8 +266,9 @@ def _optional_date(source: Mapping[str, str], key: str) -> date | None:
     raw = source.get(key)
     if raw is None or raw.strip() == "":
         return None
+    value = raw.strip()
     try:
-        return date.fromisoformat(raw)
+        return date.fromisoformat(value)
     except ValueError as exc:
         msg = f"{key} must be an ISO date"
         raise ValueError(msg) from exc
@@ -231,8 +278,9 @@ def _optional_datetime(source: Mapping[str, str], key: str) -> datetime | None:
     raw = source.get(key)
     if raw is None or raw.strip() == "":
         return None
+    value = raw.strip()
     try:
-        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError as exc:
         msg = f"{key} must be an ISO datetime"
         raise ValueError(msg) from exc
