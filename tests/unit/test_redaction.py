@@ -39,3 +39,37 @@ def test_redacts_known_secret_values_inside_error_text() -> None:
     )
 
     assert "sk-live-secret" not in redacted
+
+
+def test_redacts_secret_assignments_and_embedded_urls() -> None:
+    text = (
+        'bad apikey=secret-token token:"abc123" password = "pw" '
+        'url="https://api.example.test/v1?apikey=url-secret&x=1"'
+    )
+
+    redacted = redact_text(text)
+
+    assert "secret-token" not in redacted
+    assert "abc123" not in redacted
+    assert '"pw"' not in redacted
+    assert "url-secret" not in redacted
+    assert "apikey=<redacted>" in redacted
+    assert 'token:"<redacted>"' in redacted
+
+
+def test_redaction_preserves_token_usage_metrics() -> None:
+    payload = {
+        "input_tokens": 100,
+        "cached_input_tokens": 10,
+        "output_tokens": 25,
+        "token_usage": {"input_tokens": 100},
+        "access_token": "secret-token",
+    }
+
+    redacted = redact_value(payload)
+
+    assert redacted["input_tokens"] == 100
+    assert redacted["cached_input_tokens"] == 10
+    assert redacted["output_tokens"] == 25
+    assert redacted["token_usage"] == {"input_tokens": 100}
+    assert redacted["access_token"] == "<redacted>"
