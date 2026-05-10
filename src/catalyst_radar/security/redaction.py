@@ -29,7 +29,18 @@ _AUTHORIZATION_VALUE_PATTERN = re.compile(
 )
 _SECRET_ASSIGNMENT_PATTERN = re.compile(
     r"""(?ix)
-    (?P<prefix>\b(?:api[_-]?key|api[_-]?token|access[_-]?token|refresh[_-]?token|auth[_-]?token|bearer[_-]?token|token|password|secret)\b\s*[:=]\s*)
+    (?P<prefix>\b(?:
+        api[_-]?key
+        | api[_-]?token
+        | access[_-]?token
+        | refresh[_-]?token
+        | auth[_-]?token
+        | bearer[_-]?token
+        | token
+        | password
+        | secret
+        | [a-z0-9_]*_(?:api[_-]?key|api[_-]?token|token|password|secret)
+    )\b\s*[:=]\s*)
     (?P<quote>["']?)
     (?P<value>[^\s"',;&}\]]+)
     (?P=quote)

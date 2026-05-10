@@ -41,6 +41,17 @@ def test_redacts_known_secret_values_inside_error_text() -> None:
     assert "sk-live-secret" not in redacted
 
 
+def test_redacts_env_style_secret_assignments() -> None:
+    redacted = redact_text(
+        "OPENAI_API_KEY=sk-live-secret CATALYST_POLYGON_API_KEY='poly-secret'"
+    )
+
+    assert "sk-live-secret" not in redacted
+    assert "poly-secret" not in redacted
+    assert "OPENAI_API_KEY=<redacted>" in redacted
+    assert "CATALYST_POLYGON_API_KEY='<redacted>'" in redacted
+
+
 def test_redacts_secret_assignments_and_embedded_urls() -> None:
     text = (
         'bad apikey=secret-token token:"abc123" password = "pw" '
