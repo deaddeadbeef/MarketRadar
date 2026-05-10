@@ -34,8 +34,9 @@ class BudgetLedgerRepository:
         status: str | None = None,
         limit: int = 200,
     ) -> list[BudgetLedgerEntry]:
+        cutoff = available_at if available_at is not None else datetime.now(UTC)
         filters = _entry_filters(
-            available_at=available_at,
+            available_at=cutoff,
             ticker=ticker,
             task=task,
             status=status,

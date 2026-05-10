@@ -60,6 +60,39 @@ def test_budget_repository_filters_future_entries(seeded_repo) -> None:
     assert repo.list_entries(available_at=VISIBLE_AT - timedelta(minutes=1)) == []
 
 
+def test_budget_repository_default_list_hides_future_entries(tmp_path) -> None:
+    engine = create_engine(f"sqlite:///{tmp_path / 'budget-default-list.db'}", future=True)
+    create_schema(engine)
+    repo = BudgetLedgerRepository(engine)
+    visible_entry = BudgetLedgerEntry(
+        **_entry_kwargs(
+            ticker="msft",
+            task=LLMTaskName.MID_REVIEW,
+            status=LLMCallStatus.COMPLETED,
+            available_at=datetime.now(UTC) - timedelta(hours=1),
+            estimated_cost=0.22,
+            actual_cost=0.19,
+            model="model-review",
+        )
+    )
+    future_entry = BudgetLedgerEntry(
+        **_entry_kwargs(
+            ticker="aapl",
+            task=LLMTaskName.MID_REVIEW,
+            status=LLMCallStatus.SKIPPED,
+            available_at=datetime.now(UTC) + timedelta(days=1),
+            estimated_cost=0.0,
+            actual_cost=0.0,
+            model="model-review",
+            skip_reason=LLMSkipReason.PREMIUM_LLM_DISABLED,
+        )
+    )
+    repo.upsert_entry(visible_entry)
+    repo.upsert_entry(future_entry)
+
+    assert repo.list_entries() == [visible_entry]
+
+
 def test_budget_repository_summarizes_by_task_model_and_status(seeded_repo) -> None:
     repo, _, _ = seeded_repo
 
@@ -94,6 +127,43 @@ def test_budget_repository_summarizes_by_task_model_and_status(seeded_repo) -> N
         )
         == 1
     )
+
+
+def test_budget_repository_default_summary_hides_future_entries(tmp_path) -> None:
+    engine = create_engine(f"sqlite:///{tmp_path / 'budget-default-summary.db'}", future=True)
+    create_schema(engine)
+    repo = BudgetLedgerRepository(engine)
+    visible_entry = BudgetLedgerEntry(
+        **_entry_kwargs(
+            ticker="msft",
+            task=LLMTaskName.MID_REVIEW,
+            status=LLMCallStatus.COMPLETED,
+            available_at=datetime.now(UTC) - timedelta(hours=1),
+            estimated_cost=0.22,
+            actual_cost=0.19,
+            model="model-review",
+        )
+    )
+    future_entry = BudgetLedgerEntry(
+        **_entry_kwargs(
+            ticker="aapl",
+            task=LLMTaskName.MID_REVIEW,
+            status=LLMCallStatus.SKIPPED,
+            available_at=datetime.now(UTC) + timedelta(days=1),
+            estimated_cost=0.0,
+            actual_cost=0.0,
+            model="model-review",
+            skip_reason=LLMSkipReason.PREMIUM_LLM_DISABLED,
+        )
+    )
+    repo.upsert_entry(visible_entry)
+    repo.upsert_entry(future_entry)
+
+    summary = repo.summary()
+
+    assert summary["attempt_count"] == 1
+    assert summary["total_actual_cost_usd"] == 0.19
+    assert [row["id"] for row in summary["rows"]] == [visible_entry.id]
 
 
 @pytest.fixture
