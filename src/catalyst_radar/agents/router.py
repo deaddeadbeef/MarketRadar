@@ -135,6 +135,7 @@ class LLMRouter:
     ) -> LLMRouteDecision:
         estimated_usage = _estimate_usage(candidate, task)
         model = self._model_for_task(task)
+        attempted_at = datetime.now(UTC)
         budget_decision = self.budget.allow_llm_call(
             task=task,
             ticker=candidate.ticker,
@@ -155,6 +156,7 @@ class LLMRouter:
                 provider=self.budget.config.llm_provider,
                 skip_reason=budget_decision.reason,
                 token_usage=estimated_usage,
+                attempted_at=attempted_at,
             )
             self.budget.ledger_repo.upsert_entry(entry)
             return LLMRouteDecision(
@@ -197,6 +199,7 @@ class LLMRouter:
             )
 
         model = decision.model or "none"
+        attempted_at = datetime.now(UTC)
         if dry_run:
             entry = self._ledger_entry(
                 task=task,
@@ -208,6 +211,7 @@ class LLMRouter:
                 model=model,
                 provider=self.budget.config.llm_provider,
                 token_usage=decision.estimated_usage,
+                attempted_at=attempted_at,
             )
             self.budget.ledger_repo.upsert_entry(entry)
             return LLMReviewResult(
@@ -240,10 +244,10 @@ class LLMRouter:
 
         actual_cost = self.budget.estimate_cost(client_result.token_usage)
         try:
-            payload = validate_evidence_review_output(
-                client_result.payload,
-                ticker=candidate.ticker,
-                as_of=candidate.as_of,
+            payload = _validate_output(
+                task=task,
+                payload=client_result.payload,
+                candidate=candidate,
             )
         except AgentSchemaError as exc:
             entry = self._ledger_entry(
@@ -259,6 +263,7 @@ class LLMRouter:
                 token_usage=client_result.token_usage,
                 tool_calls=client_result.tool_calls,
                 payload={"error": str(exc)},
+                attempted_at=attempted_at,
             )
             self.budget.ledger_repo.upsert_entry(entry)
             return LLMReviewResult(
@@ -281,6 +286,7 @@ class LLMRouter:
             tool_calls=client_result.tool_calls,
             outcome_label="evidence_review",
             payload=payload,
+            attempted_at=attempted_at,
         )
         self.budget.ledger_repo.upsert_entry(entry)
         return LLMReviewResult(
@@ -312,6 +318,7 @@ class LLMRouter:
             skip_reason=LLMSkipReason.CLIENT_ERROR,
             token_usage=decision.estimated_usage,
             payload={"error": error},
+            attempted_at=datetime.now(UTC),
         )
         self.budget.ledger_repo.upsert_entry(entry)
         return LLMReviewResult(
@@ -337,7 +344,9 @@ class LLMRouter:
         tool_calls: tuple[Mapping[str, Any], ...] = (),
         outcome_label: str | None = None,
         payload: Mapping[str, Any] | None = None,
+        attempted_at: datetime | None = None,
     ) -> BudgetLedgerEntry:
+        created_at = _aware_utc(attempted_at or datetime.now(UTC), "attempted_at")
         return BudgetLedgerEntry(
             id=budget_ledger_id(
                 task=task.name.value,
@@ -346,6 +355,7 @@ class LLMRouter:
                 status=status.value,
                 available_at=available_at,
                 prompt_version=task.prompt_version,
+                attempted_at=created_at,
             ),
             ts=_aware_utc(self.now(), "now"),
             available_at=_aware_utc(available_at, "available_at"),
@@ -366,6 +376,7 @@ class LLMRouter:
             schema_version=task.schema_version,
             outcome_label=outcome_label,
             payload=payload or {},
+            created_at=created_at,
         )
 
     def _model_for_task(self, task: LLMTask) -> str | None:
@@ -384,6 +395,22 @@ def _estimate_usage(candidate: CandidatePacket, task: LLMTask) -> TokenUsage:
 
 def _token_estimate(value: str) -> int:
     return max(1, (len(value.encode("utf-8")) + 3) // 4)
+
+
+def _validate_output(
+    *,
+    task: LLMTask,
+    payload: Mapping[str, Any],
+    candidate: CandidatePacket,
+) -> Mapping[str, Any]:
+    if task.schema_version == "evidence-review-v1":
+        return validate_evidence_review_output(
+            payload,
+            ticker=candidate.ticker,
+            as_of=candidate.as_of,
+        )
+    msg = f"unsupported schema version: {task.schema_version}"
+    raise AgentSchemaError(msg)
 
 
 def _sentiment_from_polarity(polarity: str, strength: float) -> float:

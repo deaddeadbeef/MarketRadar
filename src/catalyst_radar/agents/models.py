@@ -188,6 +188,7 @@ def budget_ledger_id(
     status: str,
     available_at: datetime,
     prompt_version: str | None = None,
+    attempted_at: datetime | None = None,
 ) -> str:
     normalized = [
         "budget-ledger-v1",
@@ -197,6 +198,11 @@ def budget_ledger_id(
         LLMCallStatus(status).value,
         _require_aware_utc(available_at, "available_at").isoformat(),
         prompt_version,
+        (
+            _require_aware_utc(attempted_at, "attempted_at").isoformat()
+            if attempted_at is not None
+            else None
+        ),
     ]
     canonical = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
     digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:32]

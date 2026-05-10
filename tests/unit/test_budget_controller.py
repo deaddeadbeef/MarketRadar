@@ -116,6 +116,26 @@ def test_blocks_per_task_daily_cap() -> None:
     assert decision.task_daily_count == 1
 
 
+def test_blocks_per_task_daily_cap_after_schema_rejected_attempt() -> None:
+    repo = _repo()
+    _insert_entry(
+        repo,
+        task=LLMTaskName.MID_REVIEW,
+        status=LLMCallStatus.SCHEMA_REJECTED,
+        actual_cost=0.10,
+    )
+    controller = _controller(
+        config=_config({"CATALYST_LLM_TASK_DAILY_CAPS": "mid_review=1"}),
+        repo=repo,
+    )
+
+    decision = _allow_mid_review(controller)
+
+    assert decision.allowed is False
+    assert decision.reason == LLMSkipReason.TASK_DAILY_CAP_EXCEEDED
+    assert decision.task_daily_count == 1
+
+
 def test_blocks_daily_and_monthly_budget_caps() -> None:
     repo = _repo()
     _insert_entry(repo, task=LLMTaskName.MID_REVIEW, actual_cost=0.10)
@@ -150,6 +170,37 @@ def test_blocks_daily_and_monthly_budget_caps() -> None:
     assert monthly_decision.allowed is False
     assert monthly_decision.reason == LLMSkipReason.MONTHLY_BUDGET_EXCEEDED
     assert monthly_decision.monthly_spend == 0.10
+
+
+def test_blocks_daily_budget_after_failed_and_rejected_paid_attempts() -> None:
+    repo = _repo()
+    _insert_entry(
+        repo,
+        task=LLMTaskName.MID_REVIEW,
+        status=LLMCallStatus.SCHEMA_REJECTED,
+        actual_cost=0.06,
+    )
+    _insert_entry(
+        repo,
+        task=LLMTaskName.MID_REVIEW,
+        status=LLMCallStatus.FAILED,
+        actual_cost=0.05,
+    )
+    controller = _controller(
+        config=_config(
+            {
+                "CATALYST_LLM_DAILY_BUDGET_USD": "0.10",
+                "CATALYST_LLM_MONTHLY_BUDGET_USD": "5.00",
+            }
+        ),
+        repo=repo,
+    )
+
+    decision = _allow_mid_review(controller)
+
+    assert decision.allowed is False
+    assert decision.reason == LLMSkipReason.DAILY_BUDGET_EXCEEDED
+    assert decision.daily_spend == 0.11
 
 
 def test_blocks_gpt55_below_score_after_soft_monthly_cap() -> None:
@@ -254,26 +305,27 @@ def _insert_entry(
     *,
     task: LLMTaskName,
     actual_cost: float,
+    status: LLMCallStatus = LLMCallStatus.COMPLETED,
 ) -> None:
     repo.upsert_entry(
         BudgetLedgerEntry(
             id=budget_ledger_id(
                 task=task.value,
                 ticker="MSFT",
-                candidate_packet_id=f"packet-{task.value}",
-                status=LLMCallStatus.COMPLETED.value,
+                candidate_packet_id=f"packet-{task.value}-{status.value}",
+                status=status.value,
                 available_at=NOW,
                 prompt_version="test_v1",
             ),
             ts=NOW - timedelta(minutes=5),
             available_at=NOW,
             task=task,
-            status=LLMCallStatus.COMPLETED,
+            status=status,
             estimated_cost=actual_cost,
             actual_cost=actual_cost,
             ticker="MSFT",
             candidate_state_id="state-MSFT",
-            candidate_packet_id=f"packet-{task.value}",
+            candidate_packet_id=f"packet-{task.value}-{status.value}",
             decision_card_id="card-MSFT",
             model="model-review",
             provider="openai",

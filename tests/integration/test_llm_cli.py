@@ -43,7 +43,7 @@ def test_run_llm_review_requires_candidate_packet(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    _init_db(tmp_path, monkeypatch, capsys)
+    database_url = _init_db(tmp_path, monkeypatch, capsys)
 
     exit_code = main(
         [
@@ -61,6 +61,27 @@ def test_run_llm_review_requires_candidate_packet(
     assert exit_code == 1
     assert captured.out == ""
     assert captured.err == "candidate packet not found: MSFT\n"
+    rows = _ledger_rows(database_url)
+    assert [
+        (
+            row.status,
+            row.skip_reason,
+            row.ticker,
+            row.candidate_packet_id,
+            row.task,
+            row.schema_version,
+        )
+        for row in rows
+    ] == [
+        (
+            "skipped",
+            "candidate_packet_missing",
+            "MSFT",
+            None,
+            "mid_review",
+            "evidence-review-v1",
+        )
+    ]
 
 
 def test_run_llm_review_dry_run_logs_dry_run_entry(
@@ -127,6 +148,36 @@ def test_run_llm_review_fake_client_logs_completed_entry(
     assert [(row.status, row.skip_reason, row.model, row.provider) for row in rows] == [
         ("completed", None, "fake", "fake")
     ]
+
+
+def test_run_llm_review_repeated_attempts_append_distinct_ledger_rows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    database_url = _init_db(tmp_path, monkeypatch, capsys)
+    _configure_fake_safe_llm(monkeypatch)
+    _seed_candidate_packet(database_url)
+
+    command = [
+        "run-llm-review",
+        "--ticker",
+        "MSFT",
+        "--as-of",
+        AS_OF_TEXT,
+        "--available-at",
+        AVAILABLE_AT_TEXT,
+        "--fake",
+    ]
+    assert main(command) == 0
+    capsys.readouterr()
+    assert main(command) == 0
+
+    captured = capsys.readouterr()
+    assert "llm_review ticker=MSFT task=mid_review status=completed" in captured.out
+    rows = _ledger_rows(database_url)
+    assert [row.status for row in rows] == ["completed", "completed"]
+    assert len({row.id for row in rows}) == 2
 
 
 def test_run_llm_review_default_premium_disabled_logs_skip(

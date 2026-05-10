@@ -111,6 +111,31 @@ def test_router_rejects_schema_failure_and_logs_schema_rejected() -> None:
     assert entries[0].skip_reason == LLMSkipReason.SCHEMA_VALIDATION_FAILED
 
 
+def test_router_rejects_unsupported_decision_card_schema_without_completion() -> None:
+    repo = _repo()
+    router = _router(repo=repo, client=FakeLLMClient())
+
+    result = router.review_candidate(
+        task=DEFAULT_TASKS["gpt55_decision_card"],
+        candidate=_candidate(
+            state=ActionState.ELIGIBLE_FOR_MANUAL_BUY_REVIEW,
+            final_score=95.0,
+        ),
+        available_at=NOW,
+    )
+
+    entries = repo.list_entries(available_at=NOW)
+    assert result.status == LLMCallStatus.SCHEMA_REJECTED
+    assert result.error == "unsupported schema version: decision-card-v1"
+    assert len(entries) == 1
+    assert entries[0].status == LLMCallStatus.SCHEMA_REJECTED
+    assert entries[0].skip_reason == LLMSkipReason.SCHEMA_VALIDATION_FAILED
+    assert entries[0].task.value == "gpt55_decision_card"
+    assert entries[0].schema_version == "decision-card-v1"
+    assert entries[0].actual_cost > 0
+    assert entries[0].payload == {"error": "unsupported schema version: decision-card-v1"}
+
+
 def test_router_logs_failed_entry_when_client_raises() -> None:
     repo = _repo()
     router = _router(repo=repo, client=FailingClient())
@@ -207,14 +232,18 @@ def _repo() -> BudgetLedgerRepository:
     return BudgetLedgerRepository(engine)
 
 
-def _candidate() -> CandidatePacket:
+def _candidate(
+    *,
+    state: ActionState = ActionState.WARNING,
+    final_score: float = 82.5,
+) -> CandidatePacket:
     return CandidatePacket(
         id="packet-msft",
         ticker="MSFT",
         as_of=AS_OF,
         candidate_state_id="state-msft",
-        state=ActionState.WARNING,
-        final_score=82.5,
+        state=state,
+        final_score=final_score,
         supporting_evidence=(
             EvidenceItem(
                 kind="event",

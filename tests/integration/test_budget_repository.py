@@ -20,7 +20,7 @@ VISIBLE_AT = datetime(2026, 5, 10, 14, tzinfo=UTC)
 FUTURE_AT = VISIBLE_AT + timedelta(hours=2)
 
 
-def test_budget_repository_upserts_and_lists_visible_entries(seeded_repo) -> None:
+def test_budget_repository_inserts_and_lists_visible_entries(seeded_repo) -> None:
     repo, visible_entry, _ = seeded_repo
 
     assert repo.list_entries(available_at=VISIBLE_AT) == [visible_entry]
@@ -33,7 +33,7 @@ def test_budget_repository_upserts_and_lists_visible_entries(seeded_repo) -> Non
         visible_entry
     ]
 
-    replacement = BudgetLedgerEntry(
+    second_attempt = BudgetLedgerEntry(
         **{
             **_entry_kwargs(
                 ticker="msft",
@@ -43,13 +43,15 @@ def test_budget_repository_upserts_and_lists_visible_entries(seeded_repo) -> Non
                 estimated_cost=0.13,
                 actual_cost=0.11,
                 model="model-review",
+                attempted_at=VISIBLE_AT + timedelta(seconds=1),
             ),
-            "payload": {"phase": "replacement"},
+            "payload": {"phase": "second_attempt"},
         }
     )
-    repo.upsert_entry(replacement)
+    repo.upsert_entry(second_attempt)
 
-    assert repo.list_entries(available_at=VISIBLE_AT) == [replacement]
+    assert repo.list_entries(available_at=VISIBLE_AT) == [second_attempt, visible_entry]
+    assert second_attempt.id != visible_entry.id
 
 
 def test_budget_repository_filters_future_entries(seeded_repo) -> None:
@@ -126,6 +128,74 @@ def test_budget_repository_summarizes_by_task_model_and_status(seeded_repo) -> N
             end=FUTURE_AT,
         )
         == 1
+    )
+
+
+def test_budget_repository_default_caps_count_paid_failed_and_rejected_attempts(
+    tmp_path,
+) -> None:
+    engine = create_engine(f"sqlite:///{tmp_path / 'budget-paid-attempts.db'}", future=True)
+    create_schema(engine)
+    repo = BudgetLedgerRepository(engine)
+    completed = BudgetLedgerEntry(
+        **_entry_kwargs(
+            ticker="msft",
+            task=LLMTaskName.MID_REVIEW,
+            status=LLMCallStatus.COMPLETED,
+            available_at=VISIBLE_AT,
+            estimated_cost=0.10,
+            actual_cost=0.10,
+            model="model-review",
+        )
+    )
+    rejected = BudgetLedgerEntry(
+        **_entry_kwargs(
+            ticker="msft",
+            task=LLMTaskName.MID_REVIEW,
+            status=LLMCallStatus.SCHEMA_REJECTED,
+            available_at=VISIBLE_AT,
+            estimated_cost=0.05,
+            actual_cost=0.04,
+            model="model-review",
+            attempted_at=VISIBLE_AT + timedelta(seconds=1),
+        )
+    )
+    failed = BudgetLedgerEntry(
+        **_entry_kwargs(
+            ticker="msft",
+            task=LLMTaskName.MID_REVIEW,
+            status=LLMCallStatus.FAILED,
+            available_at=VISIBLE_AT,
+            estimated_cost=0.03,
+            actual_cost=0.02,
+            model="model-review",
+            attempted_at=VISIBLE_AT + timedelta(seconds=2),
+        )
+    )
+    skipped = BudgetLedgerEntry(
+        **_entry_kwargs(
+            ticker="msft",
+            task=LLMTaskName.MID_REVIEW,
+            status=LLMCallStatus.SKIPPED,
+            available_at=VISIBLE_AT,
+            estimated_cost=0.01,
+            actual_cost=0.01,
+            model="model-review",
+            skip_reason=LLMSkipReason.PREMIUM_LLM_DISABLED,
+            attempted_at=VISIBLE_AT + timedelta(seconds=3),
+        )
+    )
+    for entry in (completed, rejected, failed, skipped):
+        repo.upsert_entry(entry)
+
+    assert repo.spend_between(start=VISIBLE_AT - timedelta(days=1), end=FUTURE_AT) == 0.16
+    assert (
+        repo.task_count_between(
+            task="mid_review",
+            start=VISIBLE_AT - timedelta(days=1),
+            end=FUTURE_AT,
+        )
+        == 3
     )
 
 
@@ -242,7 +312,9 @@ def _entry_kwargs(
     actual_cost: float,
     model: str,
     skip_reason: LLMSkipReason | None = None,
+    attempted_at: datetime | None = None,
 ) -> dict[str, object]:
+    created_at = attempted_at or available_at
     return {
         "id": budget_ledger_id(
             task=task.value,
@@ -251,6 +323,7 @@ def _entry_kwargs(
             status=status.value,
             available_at=available_at,
             prompt_version="evidence_review_v1",
+            attempted_at=attempted_at,
         ),
         "ts": available_at - timedelta(minutes=5),
         "available_at": available_at,
@@ -277,5 +350,5 @@ def _entry_kwargs(
         "schema_version": "evidence-review-v1",
         "outcome_label": "reviewed",
         "payload": {"ticker": ticker, "status": status.value},
-        "created_at": available_at,
+        "created_at": created_at,
     }

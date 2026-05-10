@@ -14,7 +14,13 @@ from sqlalchemy import select
 from sqlalchemy.engine import Engine
 
 from catalyst_radar.agents.budget import BudgetController
-from catalyst_radar.agents.models import LLMCallStatus
+from catalyst_radar.agents.models import (
+    BudgetLedgerEntry,
+    LLMCallStatus,
+    LLMSkipReason,
+    TokenUsage,
+    budget_ledger_id,
+)
 from catalyst_radar.agents.router import (
     FakeLLMClient,
     LLMClientRequest,
@@ -668,15 +674,44 @@ def main(argv: list[str] | None = None) -> int:
         packet_repo = CandidatePacketRepository(engine)
         ledger_repo = BudgetLedgerRepository(engine)
         available_at = args.available_at or datetime.now(UTC)
+        attempted_at = datetime.now(UTC)
+        task = DEFAULT_TASKS[args.task]
         packet = packet_repo.latest_candidate_packet(
             args.ticker,
             as_of=_scan_timestamp(args.as_of),
             available_at=available_at,
         )
         if packet is None:
+            model = getattr(config, task.model_config_key)
+            entry = BudgetLedgerEntry(
+                id=budget_ledger_id(
+                    task=task.name.value,
+                    ticker=args.ticker,
+                    candidate_packet_id=None,
+                    status=LLMCallStatus.SKIPPED.value,
+                    available_at=available_at,
+                    prompt_version=task.prompt_version,
+                    attempted_at=attempted_at,
+                ),
+                ts=available_at,
+                available_at=available_at,
+                task=task.name,
+                status=LLMCallStatus.SKIPPED,
+                estimated_cost=0.0,
+                actual_cost=0.0,
+                ticker=args.ticker,
+                model=str(model).strip() if model else None,
+                provider=config.llm_provider,
+                skip_reason=LLMSkipReason.CANDIDATE_PACKET_MISSING,
+                token_usage=TokenUsage(),
+                prompt_version=task.prompt_version,
+                schema_version=task.schema_version,
+                payload={"error": "candidate packet not found"},
+                created_at=attempted_at,
+            )
+            ledger_repo.upsert_entry(entry)
             print(f"candidate packet not found: {args.ticker.upper()}", file=sys.stderr)
             return 1
-        task = DEFAULT_TASKS[args.task]
         budget = BudgetController(
             config=config,
             ledger_repo=ledger_repo,

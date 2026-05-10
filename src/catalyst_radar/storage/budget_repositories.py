@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import Engine, delete, func, insert, select
+from sqlalchemy import Engine, func, insert, select
 
 from catalyst_radar.agents.models import (
     BudgetLedgerEntry,
@@ -15,6 +15,19 @@ from catalyst_radar.agents.models import (
 from catalyst_radar.core.immutability import thaw_json_value
 from catalyst_radar.storage.schema import budget_ledger
 
+DEFAULT_SPEND_STATUSES = (
+    LLMCallStatus.COMPLETED,
+    LLMCallStatus.SCHEMA_REJECTED,
+    LLMCallStatus.FAILED,
+)
+DEFAULT_TASK_COUNT_STATUSES = (
+    LLMCallStatus.COMPLETED,
+    LLMCallStatus.DRY_RUN,
+    LLMCallStatus.PLANNED,
+    LLMCallStatus.SCHEMA_REJECTED,
+    LLMCallStatus.FAILED,
+)
+
 
 class BudgetLedgerRepository:
     def __init__(self, engine: Engine) -> None:
@@ -22,7 +35,6 @@ class BudgetLedgerRepository:
 
     def upsert_entry(self, entry: BudgetLedgerEntry) -> None:
         with self.engine.begin() as conn:
-            conn.execute(delete(budget_ledger).where(budget_ledger.c.id == entry.id))
             conn.execute(insert(budget_ledger).values(**_entry_row(entry)))
 
     def list_entries(
@@ -59,7 +71,7 @@ class BudgetLedgerRepository:
         *,
         start: datetime,
         end: datetime,
-        statuses: Sequence[LLMCallStatus] = (LLMCallStatus.COMPLETED,),
+        statuses: Sequence[LLMCallStatus] = DEFAULT_SPEND_STATUSES,
     ) -> float:
         stmt = select(func.coalesce(func.sum(budget_ledger.c.actual_cost), 0.0)).where(
             budget_ledger.c.ts >= _to_utc_datetime(start, "start"),
@@ -75,11 +87,7 @@ class BudgetLedgerRepository:
         task: str,
         start: datetime,
         end: datetime,
-        statuses: Sequence[LLMCallStatus] = (
-            LLMCallStatus.COMPLETED,
-            LLMCallStatus.DRY_RUN,
-            LLMCallStatus.PLANNED,
-        ),
+        statuses: Sequence[LLMCallStatus] = DEFAULT_TASK_COUNT_STATUSES,
     ) -> int:
         stmt = select(func.count()).select_from(budget_ledger).where(
             budget_ledger.c.task == LLMTaskName(task).value,
