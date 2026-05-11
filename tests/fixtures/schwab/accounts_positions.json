@@ -1,0 +1,27 @@
+[
+  {
+    "securitiesAccount": {
+      "type": "MARGIN",
+      "accountHash": "account-hash-123",
+      "currentBalances": {
+        "cashBalance": 50000.25,
+        "buyingPower": 100000.5,
+        "liquidationValue": 250000.75
+      },
+      "positions": [
+        {
+          "longQuantity": 100,
+          "averagePrice": 80.5,
+          "marketValue": 9500,
+          "longOpenProfitLoss": 1450,
+          "instrument": {
+            "symbol": "GLW",
+            "assetType": "EQUITY",
+            "sector": "technology",
+            "theme": "automation"
+          }
+        }
+      ]
+    }
+  }
+]

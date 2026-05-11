@@ -139,6 +139,14 @@ class AppConfig:
     sec_enable_live: bool = False
     sec_user_agent: str | None = None
     sec_base_url: str = "https://data.sec.gov"
+    schwab_client_id: str | None = None
+    schwab_client_secret: str | None = None
+    schwab_redirect_uri: str | None = None
+    schwab_env: str = "production"
+    schwab_base_url: str = "https://api.schwabapi.com"
+    schwab_auth_base_url: str = "https://api.schwabapi.com/v1/oauth"
+    schwab_order_submission_enabled: bool = False
+    broker_token_encryption_key: str | None = None
     http_timeout_seconds: float = 10.0
     provider_availability_policy: str = "live_fetch"
     universe_name: str = "liquid-us"
@@ -219,6 +227,22 @@ class AppConfig:
             sec_enable_live=_bool(source.get("CATALYST_SEC_ENABLE_LIVE"), False),
             sec_user_agent=_optional_str(source, "CATALYST_SEC_USER_AGENT"),
             sec_base_url=source.get("CATALYST_SEC_BASE_URL", "https://data.sec.gov"),
+            schwab_client_id=_optional_str(source, "SCHWAB_CLIENT_ID"),
+            schwab_client_secret=_optional_str(source, "SCHWAB_CLIENT_SECRET"),
+            schwab_redirect_uri=_optional_str(source, "SCHWAB_REDIRECT_URI"),
+            schwab_env=source.get("SCHWAB_ENV", "production").strip().lower(),
+            schwab_base_url=source.get(
+                "SCHWAB_BASE_URL", "https://api.schwabapi.com"
+            ).rstrip("/"),
+            schwab_auth_base_url=source.get(
+                "SCHWAB_AUTH_BASE_URL", "https://api.schwabapi.com/v1/oauth"
+            ).rstrip("/"),
+            schwab_order_submission_enabled=_bool(
+                source.get("SCHWAB_ORDER_SUBMISSION_ENABLED"), False
+            ),
+            broker_token_encryption_key=_optional_str(
+                source, "BROKER_TOKEN_ENCRYPTION_KEY"
+            ),
             http_timeout_seconds=_positive_float(
                 source, "CATALYST_HTTP_TIMEOUT_SECONDS", 10.0
             ),

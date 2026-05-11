@@ -14,10 +14,22 @@ from catalyst_radar.agents.models import (
     TokenUsage,
     budget_ledger_id,
 )
+from catalyst_radar.brokers.models import (
+    BrokerAccount,
+    BrokerBalanceSnapshot,
+    BrokerConnection,
+    BrokerConnectionStatus,
+    BrokerPosition,
+    broker_account_id,
+    broker_balance_snapshot_id,
+    broker_connection_id,
+    broker_position_id,
+)
 from catalyst_radar.core.models import ActionState
 from catalyst_radar.dashboard.data import (
     load_alert_detail,
     load_alert_rows,
+    load_broker_summary,
     load_candidate_rows,
     load_cost_summary,
     load_ipo_s1_rows,
@@ -26,6 +38,7 @@ from catalyst_radar.dashboard.data import (
     load_ticker_detail,
     load_validation_summary,
 )
+from catalyst_radar.storage.broker_repositories import BrokerRepository
 from catalyst_radar.storage.budget_repositories import BudgetLedgerRepository
 from catalyst_radar.storage.db import create_schema
 from catalyst_radar.storage.schema import (
@@ -425,6 +438,78 @@ def test_load_ops_health_reports_provider_status_and_database(
     assert "degraded_mode" in health
     assert "metrics" in health
     assert "score_drift" in health
+
+
+def test_load_broker_summary_returns_portfolio_context(tmp_path: Path) -> None:
+    engine = _engine(tmp_path)
+    repo = BrokerRepository(engine)
+    now = datetime.now(UTC).replace(microsecond=0)
+    connection_id = broker_connection_id()
+    account_id = broker_account_id("schwab", "account-hash-123")
+    repo.upsert_connection(
+        BrokerConnection(
+            id=connection_id,
+            broker="schwab",
+            user_id="local",
+            status=BrokerConnectionStatus.CONNECTED,
+            created_at=now,
+            updated_at=now,
+            last_successful_sync_at=now,
+            metadata={"mode": "read_only"},
+        )
+    )
+    repo.upsert_accounts(
+        [
+            BrokerAccount(
+                id=account_id,
+                connection_id=connection_id,
+                broker="schwab",
+                broker_account_id="12345678",
+                account_hash="account-hash-123",
+                created_at=now,
+                updated_at=now,
+                display_name="MARGIN ending 5678",
+            )
+        ]
+    )
+    repo.upsert_balance_snapshots(
+        [
+            BrokerBalanceSnapshot(
+                id=broker_balance_snapshot_id(account_id, now),
+                account_id=account_id,
+                as_of=now,
+                cash=50000.0,
+                buying_power=100000.0,
+                liquidation_value=250000.0,
+                equity=250000.0,
+                raw_payload={},
+                created_at=now,
+            )
+        ]
+    )
+    repo.upsert_positions(
+        [
+            BrokerPosition(
+                id=broker_position_id(account_id, "GLW", now),
+                account_id=account_id,
+                as_of=now,
+                ticker="GLW",
+                quantity=100,
+                market_value=9500.0,
+                raw_payload={},
+                created_at=now,
+            )
+        ]
+    )
+
+    summary = load_broker_summary(engine)
+
+    assert summary["snapshot"]["connection_status"] == "connected"
+    assert summary["snapshot"]["account_count"] == 1
+    assert summary["positions"][0]["ticker"] == "GLW"
+    assert summary["balances"][0]["cash"] == 50000.0
+    assert summary["exposure"]["broker_data_stale"] is False
+    assert summary["exposure"]["exposure_before"]["single_name"] == {"GLW": 0.038}
 
 
 def _engine(tmp_path: Path) -> Engine:

@@ -8,6 +8,7 @@ from typing import Any
 from sqlalchemy import Engine, func, select
 
 from catalyst_radar.alerts.digest import build_alert_digest, digest_payload
+from catalyst_radar.brokers.portfolio_context import latest_broker_portfolio_context
 from catalyst_radar.core.models import ActionState, JobStatus, PolicyResult
 from catalyst_radar.decision_cards.builder import build_decision_card
 from catalyst_radar.ops.health import DISABLED_DEGRADED_STATES, load_ops_health
@@ -111,6 +112,7 @@ class _StepOutcome:
 
 @dataclass
 class _DailyRunContext:
+    engine: Engine
     spec: DailyRunSpec
     market_repo: MarketRepository
     event_repo: EventRepository
@@ -141,6 +143,7 @@ def run_daily(
 ) -> DailyRunResult:
     provider_repo = ProviderRepository(engine)
     context = _DailyRunContext(
+        engine=engine,
         spec=spec,
         market_repo=MarketRepository(engine),
         event_repo=EventRepository(engine),
@@ -425,6 +428,11 @@ def _decision_cards(context: _DailyRunContext) -> _StepOutcome:
         card = build_decision_card(
             packet,
             available_at=context.spec.decision_available_at,
+            broker_portfolio_context=latest_broker_portfolio_context(
+                context.engine,
+                ticker=packet.ticker,
+                available_at=context.spec.decision_available_at,
+            ),
         )
         context.packet_repo.upsert_decision_card(card)
         cards.append(card)

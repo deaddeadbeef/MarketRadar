@@ -37,6 +37,7 @@ def build_decision_card(
     available_at: datetime | str | None = None,
     user_decision: str | None = None,
     max_evidence_items: int = _MAX_EVIDENCE_ITEMS,
+    broker_portfolio_context: Mapping[str, Any] | None = None,
 ) -> DecisionCard:
     packet_payload = _as_mapping(_read(packet, "payload", {}))
     candidate_packet_id_value = _first_existing(
@@ -168,6 +169,7 @@ def build_decision_card(
         "trade_plan": trade_plan,
         "position_sizing": position_sizing,
         "portfolio_impact": portfolio_impact,
+        "broker_portfolio_context": _as_json_mapping(broker_portfolio_context),
         "evidence": evidence,
         "disconfirming_evidence": disconfirming_evidence,
         "controls": controls,
@@ -871,6 +873,10 @@ def _as_sequence(value: Any) -> list[Any]:
 
 def _as_json_list(value: Any) -> list[Any]:
     return [_json_ready(item) for item in _as_sequence(value)]
+
+
+def _as_json_mapping(value: Any) -> Mapping[str, Any]:
+    return _json_ready(_as_mapping(value))
 
 
 def _as_string_list(value: Any) -> list[str]:

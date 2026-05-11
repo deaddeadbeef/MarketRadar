@@ -32,6 +32,7 @@ from catalyst_radar.alerts.channels.base import DryRunAlertChannel
 from catalyst_radar.alerts.digest import build_alert_digest, digest_payload
 from catalyst_radar.alerts.models import AlertStatus
 from catalyst_radar.alerts.planner import plan_alerts
+from catalyst_radar.brokers.portfolio_context import latest_broker_portfolio_context
 from catalyst_radar.connectors.base import ConnectorRequest
 from catalyst_radar.connectors.earnings import EarningsCalendarConnector
 from catalyst_radar.connectors.http import (
@@ -681,7 +682,16 @@ def main(argv: list[str] | None = None) -> int:
             )
             cards = []
             for packet in packets:
-                card = build_decision_card(packet, available_at=available_at)
+                card = build_decision_card(
+                    packet,
+                    available_at=available_at,
+                    broker_portfolio_context=latest_broker_portfolio_context(
+                        engine,
+                        ticker=packet.ticker,
+                        available_at=available_at,
+                        config=config,
+                    ),
+                )
                 packet_repo.upsert_decision_card(card)
                 cards.append(card)
         except ValueError as exc:
@@ -2440,6 +2450,22 @@ class _HeaderInjectingTransport:
         return self.transport.get(
             url,
             headers=merged_headers,
+            timeout_seconds=timeout_seconds,
+        )
+
+    def post(
+        self,
+        url: str,
+        *,
+        headers: Mapping[str, str],
+        body: bytes,
+        timeout_seconds: float,
+    ) -> HttpResponse:
+        merged_headers: dict[str, str] = {**self.headers, **dict(headers)}
+        return self.transport.post(
+            url,
+            headers=merged_headers,
+            body=body,
             timeout_seconds=timeout_seconds,
         )
 

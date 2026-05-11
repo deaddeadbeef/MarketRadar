@@ -95,6 +95,63 @@ EXPECTED_API_ROUTES = {
         "GET",
         "/api/radar/candidates/{ticker}",
     ): ("catalyst_radar.api.routes.radar", "candidate_detail", ("radar",)),
+    (
+        "GET",
+        "/api/brokers/schwab/connect",
+    ): ("catalyst_radar.api.routes.brokers", "schwab_connect", ("brokers",)),
+    (
+        "GET",
+        "/api/brokers/schwab/callback",
+    ): ("catalyst_radar.api.routes.brokers", "schwab_callback", ("brokers",)),
+    (
+        "GET",
+        "/api/brokers/schwab/status",
+    ): ("catalyst_radar.api.routes.brokers", "schwab_status", ("brokers",)),
+    (
+        "POST",
+        "/api/brokers/schwab/disconnect",
+    ): ("catalyst_radar.api.routes.brokers", "schwab_disconnect", ("brokers",)),
+    (
+        "POST",
+        "/api/brokers/schwab/sync",
+    ): ("catalyst_radar.api.routes.brokers", "schwab_sync", ("brokers",)),
+    (
+        "GET",
+        "/api/portfolio/snapshot",
+    ): ("catalyst_radar.api.routes.brokers", "portfolio_snapshot", ("brokers",)),
+    (
+        "GET",
+        "/api/portfolio/positions",
+    ): ("catalyst_radar.api.routes.brokers", "portfolio_positions", ("brokers",)),
+    (
+        "GET",
+        "/api/portfolio/balances",
+    ): ("catalyst_radar.api.routes.brokers", "portfolio_balances", ("brokers",)),
+    (
+        "GET",
+        "/api/portfolio/open-orders",
+    ): ("catalyst_radar.api.routes.brokers", "portfolio_open_orders", ("brokers",)),
+    (
+        "GET",
+        "/api/portfolio/exposure",
+    ): ("catalyst_radar.api.routes.brokers", "portfolio_exposure", ("brokers",)),
+    (
+        "POST",
+        "/api/orders/preview",
+    ): ("catalyst_radar.api.routes.brokers", "order_preview", ("brokers",)),
+}
+ALLOWED_BROKER_ROUTE_TERMS = {
+    ("GET", "/api/brokers/schwab/connect"),
+    ("GET", "/api/brokers/schwab/callback"),
+    ("GET", "/api/brokers/schwab/status"),
+    ("POST", "/api/brokers/schwab/disconnect"),
+    ("POST", "/api/brokers/schwab/sync"),
+    ("GET", "/api/portfolio/snapshot"),
+    ("GET", "/api/portfolio/positions"),
+    ("GET", "/api/portfolio/balances"),
+    ("GET", "/api/portfolio/open-orders"),
+    ("GET", "/api/portfolio/exposure"),
+    ("POST", "/api/orders/preview"),
 }
 
 
@@ -196,7 +253,7 @@ def test_dependency_declarations_do_not_include_broker_sdks() -> None:
     assert not violations
 
 
-def test_openapi_has_no_order_or_broker_routes() -> None:
+def test_openapi_routes_are_allowlisted_and_broker_routes_are_explicit() -> None:
     app = create_app()
     actual_routes = {
         (method, route.path): _route_metadata(route)
@@ -220,12 +277,14 @@ def test_openapi_has_no_order_or_broker_routes() -> None:
     assert not [
         (method, path, metadata)
         for (method, path), metadata in actual_routes.items()
-        if _route_metadata_has_forbidden_semantics(method, path, metadata)
+        if (method, path) not in ALLOWED_BROKER_ROUTE_TERMS
+        and _route_metadata_has_forbidden_semantics(method, path, metadata)
     ]
     assert not [
         (method, path, metadata)
         for (method, path), metadata in openapi_routes.items()
-        if _route_metadata_has_forbidden_semantics(method, path, metadata)
+        if (method, path) not in ALLOWED_BROKER_ROUTE_TERMS
+        and _route_metadata_has_forbidden_semantics(method, path, metadata)
     ]
 
 

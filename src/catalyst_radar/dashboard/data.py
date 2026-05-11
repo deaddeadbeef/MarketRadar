@@ -10,6 +10,13 @@ from typing import Any
 
 from sqlalchemy import Engine, and_, func, select
 
+from catalyst_radar.brokers.portfolio_context import (
+    balances_payload,
+    exposure_payload,
+    open_orders_payload,
+    portfolio_snapshot_payload,
+    positions_payload,
+)
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.storage.budget_repositories import BudgetLedgerRepository
 from catalyst_radar.storage.schema import (
@@ -656,6 +663,16 @@ def load_ops_health(
     from catalyst_radar.ops.health import load_ops_health as _load_ops_health
 
     return _load_ops_health(engine, now=now, stale_after=stale_after)
+
+
+def load_broker_summary(engine: Engine) -> dict[str, object]:
+    return {
+        "snapshot": portfolio_snapshot_payload(engine),
+        "positions": positions_payload(engine),
+        "balances": balances_payload(engine),
+        "open_orders": open_orders_payload(engine),
+        "exposure": exposure_payload(engine),
+    }
 
 
 def _candidate_row(row: Any) -> dict[str, object]:

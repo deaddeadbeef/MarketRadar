@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "Deterministic-first market radar for public-equity opportunity review"
 requires-python = ">=3.11"
 dependencies = [
+  "cryptography>=42",
   "fastapi>=0.115",
   "numpy>=1.26",
   "openai>=2.0",
