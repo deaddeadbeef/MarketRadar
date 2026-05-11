@@ -68,7 +68,7 @@ def _metric_text(value: object) -> str:
     if value is None or value == "":
         return "n/a"
     if isinstance(value, float):
-        return f"{value:.2f}"
+        return f"{value:.2f}" if isfinite(value) else "n/a"
     if isinstance(value, datetime | date):
         return value.isoformat()
     return str(value)
@@ -144,20 +144,37 @@ def _table(
             frame[column] = None
     display_frame = frame[columns].rename(columns=dict(labels))
     if selectable:
-        event = st.dataframe(
-            display_frame,
-            width="stretch",
-            hide_index=True,
-            key=key,
-            on_select="rerun",
-            selection_mode="single-row",
-        )
-        selected_index = _selected_dataframe_index(event)
-        if selected_index is not None and 0 <= selected_index < len(rows):
-            return rows[selected_index]
-        return None
-    st.dataframe(display_frame, width="stretch", hide_index=True)
+        selected_index = _select_table_row(rows, key=key)
+        _show_html_table(display_frame, selected_index=selected_index)
+        return rows[selected_index]
+    _show_html_table(display_frame)
     return None
+
+
+def _select_table_row(rows: list[dict[str, object]], *, key: str | None) -> int:
+    if len(rows) == 1:
+        st.caption(f"Selected: {_row_option_label(rows[0], 0)}")
+        return 0
+    options = list(range(len(rows)))
+    return int(
+        st.selectbox(
+            "Selected row",
+            options,
+            format_func=lambda index: _row_option_label(rows[int(index)], int(index)),
+            key=f"{key}_selected_row" if key else None,
+        )
+    )
+
+
+def _row_option_label(row: Mapping[str, object], index: int) -> str:
+    ticker = str(row.get("ticker") or "").strip().upper()
+    title = str(row.get("title") or row.get("setup_type") or row.get("route") or "").strip()
+    status = str(row.get("state") or row.get("status") or row.get("priority") or "").strip()
+    score = row.get("final_score") or row.get("score_trigger")
+    parts = [part for part in (ticker, title, status) if part]
+    if score not in (None, ""):
+        parts.append(f"score {_metric_text(score)}")
+    return " - ".join(parts) if parts else f"Row {index + 1}"
 
 
 def _selected_dataframe_index(event: object) -> int | None:
@@ -172,6 +189,62 @@ def _selected_dataframe_index(event: object) -> int | None:
         return int(rows[0])
     except (TypeError, ValueError, IndexError):
         return None
+
+
+def _show_html_table(frame: pd.DataFrame, *, selected_index: int | None = None) -> None:
+    if frame.empty:
+        return
+    headers = "".join(f"<th>{_html(column)}</th>" for column in frame.columns)
+    body_rows: list[str] = []
+    for index, row in enumerate(frame.to_dict("records")):
+        row_class = ' class="mr-table-selected"' if index == selected_index else ""
+        cells = "".join(_table_cell_html(value) for value in row.values())
+        body_rows.append(f"<tr{row_class}>{cells}</tr>")
+    table = (
+        '<div class="mr-table-wrap">'
+        '<table class="mr-table">'
+        f"<thead><tr>{headers}</tr></thead>"
+        f"<tbody>{''.join(body_rows)}</tbody>"
+        "</table>"
+        "</div>"
+    )
+    st.markdown(table, unsafe_allow_html=True)
+
+
+def _table_cell_html(value: object) -> str:
+    return f"<td>{_value_html(value)}</td>"
+
+
+def _value_html(value: object) -> str:
+    if isinstance(value, list | tuple):
+        chips = "".join(
+            f'<span class="mr-inline-chip">{_html(item)}</span>'
+            for item in value
+            if _metric_text(item) != "n/a"
+        )
+        return chips or "n/a"
+    if isinstance(value, Mapping):
+        items = [
+            f"<strong>{_html(key)}</strong>: {_value_html(item)}"
+            for key, item in value.items()
+            if item not in (None, "", [], {})
+        ]
+        return "<br>".join(items) if items else "n/a"
+    text = _metric_text(value)
+    if text.startswith(("https://", "http://")):
+        return f'<a class="mr-table-link" href="{_html(text)}" target="_blank">Open source</a>'
+    return _html(text)
+
+
+def _integer(value: object) -> str:
+    number = _metric_number(value)
+    return f"{int(number):,}" if number else "n/a"
+
+
+def _price_range(low: object, high: object) -> str:
+    if low in (None, "") and high in (None, ""):
+        return "n/a"
+    return f"{_currency(low)} - {_currency(high)}"
 
 
 def _tone(value: object) -> str:
@@ -256,8 +329,11 @@ def _show_mapping(title: str, value: object, *, empty: str) -> None:
     if not mapping:
         st.caption(empty)
         return
-    rows = [{"Field": str(key), "Value": _json_ready(item)} for key, item in mapping.items()]
-    st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
+    rows = [
+        {"Field": str(key).replace("_", " "), "Value": _json_ready(item)}
+        for key, item in mapping.items()
+    ]
+    _show_html_table(pd.DataFrame(rows))
 
 
 def _show_records(title: str, value: object, *, empty: str) -> None:
@@ -266,7 +342,16 @@ def _show_records(title: str, value: object, *, empty: str) -> None:
     if not records:
         st.caption(empty)
         return
-    st.dataframe(pd.DataFrame(records), width="stretch", hide_index=True)
+    columns = list(records[0].keys())
+    for record in records[1:]:
+        for column in record:
+            if column not in columns:
+                columns.append(column)
+    display_rows = [
+        {column.replace("_", " ").title(): record.get(column) for column in columns}
+        for record in records
+    ]
+    _show_html_table(pd.DataFrame(display_rows))
 
 
 def _nested(mapping: Mapping[str, Any], *keys: str) -> object:
@@ -529,7 +614,7 @@ def _show_ipo_layer(ipo_rows: list[dict[str, object]]) -> None:
     )
 
     _table(
-        ipo_rows,
+        [_ipo_summary_row(row) for row in ipo_rows],
         columns=[
             "ticker",
             "form_type",
@@ -541,7 +626,6 @@ def _show_ipo_layer(ipo_rows: list[dict[str, object]]) -> None:
             "price_range_high",
             "estimated_gross_proceeds",
             "risk_flags",
-            "document_url",
         ],
         labels={
             "ticker": "Ticker",
@@ -554,33 +638,131 @@ def _show_ipo_layer(ipo_rows: list[dict[str, object]]) -> None:
             "price_range_high": "High",
             "estimated_gross_proceeds": "Gross Proceeds",
             "risk_flags": "Risk Flags",
-            "document_url": "Document",
         },
         empty="No IPO S-1 analysis rows.",
     )
 
     if ipo_rows:
-        selected = st.selectbox(
-            "S-1 detail",
-            [
-                str(row.get("id") or row.get("ticker") or index)
-                for index, row in enumerate(ipo_rows)
-            ],
+        selected_index = int(
+            st.selectbox(
+                "Selected S-1 filing",
+                list(range(len(ipo_rows))),
+                format_func=lambda index: _ipo_detail_label(ipo_rows[int(index)], int(index)),
+                key="ipo_s1_selected_filing",
+            )
         )
-        row = next(
-            item
-            for index, item in enumerate(ipo_rows)
-            if str(item.get("id") or item.get("ticker") or index) == selected
-        )
+        row = ipo_rows[selected_index]
         left, right = st.columns([1, 1])
         with left:
-            _show_mapping("Offering Terms", row.get("analysis"), empty="No analysis payload.")
+            _show_ipo_terms(row)
         with right:
-            st.subheader("Offering Notes")
-            st.write(str(row.get("summary") or ""))
-            st.write(f"Underwriters: {_list_text(row.get('underwriters'))}")
-            st.write(f"Sections: {_list_text(row.get('sections_found'))}")
-            st.write(f"Use of proceeds: {_metric_text(row.get('use_of_proceeds_summary'))}")
+            _show_ipo_notes(row)
+
+
+def _ipo_summary_row(row: Mapping[str, object]) -> dict[str, object]:
+    values = dict(row)
+    gross_proceeds = row.get("estimated_gross_proceeds")
+    if gross_proceeds not in (None, ""):
+        values["estimated_gross_proceeds"] = _currency(gross_proceeds)
+    if row.get("shares_offered") not in (None, ""):
+        values["shares_offered"] = _integer(row.get("shares_offered"))
+    for key in ("price_range_low", "price_range_high"):
+        value = row.get(key)
+        if value not in (None, ""):
+            values[key] = _currency(value)
+    return values
+
+
+def _ipo_detail_label(row: Mapping[str, object], index: int) -> str:
+    ticker = str(_first_present(row.get("ticker"), row.get("proposed_ticker"), "") or "").upper()
+    form_type = _metric_text(row.get("form_type"))
+    filing_date = _metric_text(row.get("filing_date"))
+    gross = (
+        _currency(row.get("estimated_gross_proceeds"))
+        if row.get("estimated_gross_proceeds") not in (None, "")
+        else "gross n/a"
+    )
+    prefix = f"{ticker} {form_type}".strip() or f"Filing {index + 1}"
+    return f"{prefix} filed {filing_date} - {gross}"
+
+
+def _show_ipo_notes(row: Mapping[str, object]) -> None:
+    notes = [
+        ("Summary", row.get("summary")),
+        ("Underwriters", _list_text(row.get("underwriters"))),
+        ("Sections", _list_text(row.get("sections_found"))),
+        ("Use of proceeds", row.get("use_of_proceeds_summary")),
+    ]
+    body = "".join(
+        '<div class="mr-note-row">'
+        f'<span class="mr-note-label">{_html(label)}</span>'
+        f'<p>{_value_html(value)}</p>'
+        "</div>"
+        for label, value in notes
+        if _metric_text(value) != "n/a"
+    )
+    st.subheader("Offering Notes")
+    st.markdown(f'<div class="mr-note-card">{body or "No notes."}</div>', unsafe_allow_html=True)
+
+
+def _show_ipo_terms(row: Mapping[str, object]) -> None:
+    analysis = _mapping(row.get("analysis"))
+    term_rows = [
+        ("Company", _first_present(analysis.get("company_name"), row.get("company_name"))),
+        ("Form", _first_present(row.get("form_type"), analysis.get("form_type"))),
+        (
+            "Proposed symbol",
+            _first_present(row.get("proposed_ticker"), analysis.get("proposed_ticker")),
+        ),
+        ("Exchange", _first_present(row.get("exchange"), analysis.get("exchange"))),
+        (
+            "Shares offered",
+            _integer(_first_present(row.get("shares_offered"), analysis.get("shares_offered"))),
+        ),
+        (
+            "Price range",
+            _price_range(
+                _first_present(row.get("price_range_low"), analysis.get("price_range_low")),
+                _first_present(row.get("price_range_high"), analysis.get("price_range_high")),
+            ),
+        ),
+        (
+            "Estimated gross proceeds",
+            _currency(
+                _first_present(
+                    row.get("estimated_gross_proceeds"),
+                    analysis.get("estimated_gross_proceeds"),
+                )
+            ),
+        ),
+        (
+            "Source",
+            _first_present(
+                row.get("document_url"),
+                row.get("source_url"),
+                analysis.get("source_url"),
+            ),
+        ),
+        (
+            "Underwriters",
+            _sequence(_first_present(row.get("underwriters"), analysis.get("underwriters"))),
+        ),
+        (
+            "Risk flags",
+            _sequence(_first_present(row.get("risk_flags"), analysis.get("risk_flags"))),
+        ),
+        (
+            "Sections found",
+            _sequence(_first_present(row.get("sections_found"), analysis.get("sections_found"))),
+        ),
+    ]
+    rows = [
+        {"Field": label, "Value": value}
+        for label, value in term_rows
+        if _metric_text(value) != "n/a" and value != ()
+    ]
+    st.subheader("Offering Terms")
+    _show_html_table(pd.DataFrame(rows))
 
 
 def _show_alerts_layer(

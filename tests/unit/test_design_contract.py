@@ -31,8 +31,32 @@ def test_dashboard_style_uses_design_contract_tokens() -> None:
         "#F7F8FA",
         "#FFFFFF",
         "#D9DEE5",
+        "#F1F4F7",
+        "#F7FBF9",
         "#0B7A53",
         "#A16207",
         "#B42318",
+        "1680px",
     ):
         assert token_value in DASHBOARD_STYLE
+
+
+def test_dashboard_style_owns_table_and_select_surfaces() -> None:
+    text = Path("DESIGN.md").read_text(encoding="utf-8")
+    for component in (
+        "table-container:",
+        "table-header:",
+        "table-row-selected:",
+        "inline-chip:",
+        "note-card:",
+        "select-field:",
+    ):
+        assert component in text
+
+    for selector in (
+        ".mr-table-wrap",
+        ".mr-table-selected",
+        ".mr-note-card",
+        'div[data-baseweb="select"] > div',
+    ):
+        assert selector in DASHBOARD_STYLE

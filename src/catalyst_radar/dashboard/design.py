@@ -26,14 +26,29 @@ DASHBOARD_STYLE = """
 }
 
 .block-container {
-  max-width: 1440px;
-  padding-top: 1.35rem;
+  max-width: 1680px;
+  margin-left: 0;
+  margin-right: auto;
+  padding-left: 1.35rem;
+  padding-right: 1.35rem;
+  padding-top: 0.8rem;
   padding-bottom: 2rem;
+}
+
+header[data-testid="stHeader"] {
+  background: transparent;
+  height: 0;
+}
+
+[data-testid="stToolbar"],
+[data-testid="stDecoration"],
+#MainMenu {
+  display: none;
 }
 
 h1 {
   color: var(--mr-primary);
-  font-size: 2rem !important;
+  font-size: 1.85rem !important;
   font-weight: 650 !important;
   line-height: 1.12 !important;
   letter-spacing: 0 !important;
@@ -83,7 +98,7 @@ p, label, [data-testid="stMarkdownContainer"] {
 }
 
 [data-testid="stHorizontalBlock"] {
-  gap: 0.75rem;
+  gap: 0.65rem;
 }
 
 [data-testid="stMetric"] {
@@ -91,7 +106,7 @@ p, label, [data-testid="stMarkdownContainer"] {
   border: 1px solid var(--mr-border);
   border-radius: 8px;
   box-shadow: 0 1px 2px rgba(25, 28, 31, 0.04);
-  padding: 0.7rem 0.8rem;
+  padding: 0.62rem 0.72rem;
 }
 
 [data-testid="stMetric"] label,
@@ -140,6 +155,97 @@ div[data-baseweb="tab-border"] {
   overflow: hidden;
 }
 
+[data-testid="stSelectbox"] label {
+  color: var(--mr-secondary) !important;
+  font-size: 0.78rem !important;
+  font-weight: 660 !important;
+  letter-spacing: 0.03em !important;
+}
+
+div[data-baseweb="select"] > div {
+  background: var(--mr-surface) !important;
+  border-color: var(--mr-border) !important;
+  border-radius: 6px !important;
+  color: var(--mr-primary) !important;
+}
+
+div[data-baseweb="select"] span,
+div[data-baseweb="select"] svg {
+  color: var(--mr-primary) !important;
+}
+
+.mr-table-wrap {
+  background: var(--mr-surface);
+  border: 1px solid var(--mr-border);
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(25, 28, 31, 0.035);
+  margin: 0.25rem 0 1rem;
+  overflow-x: auto;
+}
+
+.mr-table {
+  border-collapse: collapse;
+  color: var(--mr-primary);
+  font-size: 0.86rem;
+  min-width: 100%;
+  width: max-content;
+}
+
+.mr-table th {
+  background: #F1F4F7;
+  border-bottom: 1px solid var(--mr-border);
+  color: var(--mr-secondary);
+  font-size: 0.72rem;
+  font-weight: 680;
+  letter-spacing: 0.03em;
+  padding: 0.58rem 0.7rem;
+  text-align: left;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.mr-table td {
+  border-bottom: 1px solid #E7EBF0;
+  color: var(--mr-primary);
+  line-height: 1.35;
+  max-width: 26rem;
+  padding: 0.58rem 0.7rem;
+  vertical-align: top;
+}
+
+.mr-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.mr-table-selected td {
+  background: #F7FBF9;
+  box-shadow: inset 3px 0 0 var(--mr-tertiary);
+}
+
+.mr-table-link {
+  color: var(--mr-data-blue);
+  font-weight: 620;
+  text-decoration: none;
+}
+
+.mr-table-link:hover {
+  text-decoration: underline;
+}
+
+.mr-inline-chip {
+  background: var(--mr-surface-muted);
+  border: 1px solid var(--mr-border);
+  border-radius: 9999px;
+  color: var(--mr-primary);
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 560;
+  line-height: 1.15;
+  margin: 0.08rem 0.16rem 0.08rem 0;
+  padding: 0.18rem 0.45rem;
+  white-space: nowrap;
+}
+
 .mr-command-strip {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -151,7 +257,7 @@ div[data-baseweb="tab-border"] {
   background: var(--mr-surface);
   border: 1px solid var(--mr-border);
   border-radius: 8px;
-  padding: 0.65rem 0.75rem;
+  padding: 0.58rem 0.7rem;
 }
 
 .mr-command-label {
@@ -216,6 +322,38 @@ div[data-baseweb="tab-border"] {
   background: #FCEBE8;
   border-color: #E9AAA2;
   color: var(--mr-danger);
+}
+
+.mr-note-card {
+  background: var(--mr-surface);
+  border: 1px solid var(--mr-border);
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(25, 28, 31, 0.035);
+  margin-top: 0.25rem;
+  padding: 0.75rem 0.85rem;
+}
+
+.mr-note-row + .mr-note-row {
+  border-top: 1px solid #E7EBF0;
+  margin-top: 0.65rem;
+  padding-top: 0.65rem;
+}
+
+.mr-note-label {
+  color: var(--mr-secondary);
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 680;
+  letter-spacing: 0.03em;
+  margin-bottom: 0.25rem;
+  text-transform: uppercase;
+}
+
+.mr-note-card p {
+  color: var(--mr-primary);
+  font-size: 0.94rem;
+  line-height: 1.5;
+  margin: 0 !important;
 }
 
 @media (max-width: 900px) {

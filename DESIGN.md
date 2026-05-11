@@ -68,7 +68,7 @@ spacing:
   lg: 16px
   xl: 24px
   xxl: 32px
-  content-max: 1440px
+  content-max: 1680px
 components:
   dashboard-shell:
     backgroundColor: "{colors.background}"
@@ -83,6 +83,32 @@ components:
     backgroundColor: "{colors.surface}"
     textColor: "{colors.primary}"
     typography: "{typography.data-md}"
+    rounded: "{rounded.md}"
+    padding: "{spacing.md}"
+  table-container:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.primary}"
+    rounded: "{rounded.md}"
+    padding: 0px
+  table-header:
+    backgroundColor: "#F1F4F7"
+    textColor: "{colors.secondary}"
+    typography: "{typography.label-md}"
+    padding: "{spacing.sm}"
+  table-row-selected:
+    backgroundColor: "#F7FBF9"
+    textColor: "{colors.primary}"
+    padding: "{spacing.sm}"
+  inline-chip:
+    backgroundColor: "{colors.surface-muted}"
+    textColor: "{colors.primary}"
+    typography: "{typography.label-md}"
+    rounded: "{rounded.full}"
+    padding: "{spacing.xs}"
+  note-card:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.primary}"
+    typography: "{typography.body-md}"
     rounded: "{rounded.md}"
     padding: "{spacing.md}"
   badge-positive:
@@ -104,6 +130,12 @@ components:
     rounded: "{rounded.full}"
     padding: "{spacing.sm}"
   input-field:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.primary}"
+    typography: "{typography.body-sm}"
+    rounded: "{rounded.sm}"
+    padding: "{spacing.md}"
+  select-field:
     backgroundColor: "{colors.surface}"
     textColor: "{colors.primary}"
     typography: "{typography.body-sm}"
@@ -157,8 +189,8 @@ must be explicitly styled. Do not rely on browser-default control typography.
 ## Layout
 
 The app uses a command-center layout: a restrained sidebar for filters and a
-wide main review surface capped at 1440px. Spacing follows an 8px-derived scale
-with 12px and 24px as the main working rhythm.
+left-aligned wide main review surface capped at 1680px. Spacing follows an
+8px-derived scale with 12px and 24px as the main working rhythm.
 
 Avoid nested cards and marketing-style panels. Use tables, metric strips,
 compact status rows, and full-width review bands. The Overview tab should lead
@@ -185,10 +217,19 @@ Tables and panels should feel precise, not soft or bubbly.
 - **Status Badges:** semantic green, amber, red, or neutral; labels are strong
   and short.
 - **Tables:** remain the primary visual surface for review queues and evidence.
-  Do not convert queues into card grids.
+  They use `table-container`, `table-header`, and `table-row-selected` tokens.
+  Do not convert queues into card grids or allow uncontrolled dark dataframe
+  styling inside a light dashboard.
 - **Sidebar Controls:** quiet gray shell with clear labels and compact inputs.
+- **Select Fields:** labels must be human-readable and never expose internal
+  hashes or opaque IDs as the first visible option.
 - **Tabs:** active tab is high-contrast graphite; inactive tabs remain minimal.
+- **Offering Terms:** show investor-relevant rows first: company, form, proposed
+  symbol, exchange, shares, price range, gross proceeds, source, underwriters,
+  risk flags, and sections found.
 - **Evidence Sections:** use tabular key/value rows before any raw payload.
+- **Offering Notes:** use a `note-card` surface with labeled rows, not raw
+  paragraph dumps.
 
 ## Do's and Don'ts
 
@@ -200,4 +241,5 @@ Tables and panels should feel precise, not soft or bubbly.
 - Don't add hero sections, decorative orbs, bento grids, or marketing copy.
 - Don't hide critical risk, degraded mode, failed jobs, or stale provider state.
 - Don't use raw JSON as the first presentation of an artifact.
+- Don't show internal IDs, event hashes, or storage keys as primary labels.
 - Don't use more than one strong accent in a single local control group.
