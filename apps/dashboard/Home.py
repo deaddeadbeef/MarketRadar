@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from datetime import UTC, date, datetime
+from html import escape
 from math import isfinite
 from typing import Any
 
@@ -11,6 +12,7 @@ import streamlit as st
 from apps.dashboard.access import require_viewer
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.dashboard import data as dashboard_data
+from catalyst_radar.dashboard.design import dashboard_style
 from catalyst_radar.security.secrets import load_app_dotenv
 from catalyst_radar.storage.db import create_schema, engine_from_url
 
@@ -70,6 +72,10 @@ def _metric_text(value: object) -> str:
     if isinstance(value, datetime | date):
         return value.isoformat()
     return str(value)
+
+
+def _html(value: object) -> str:
+    return escape(_metric_text(value), quote=True)
 
 
 def _currency(value: object) -> str:
@@ -180,12 +186,10 @@ def _tone(value: object) -> str:
 
 
 def _badge_html(label: str, value: object) -> str:
-    safe_label = str(label).replace("<", "&lt;").replace(">", "&gt;")
-    safe_value = _metric_text(value).replace("<", "&lt;").replace(">", "&gt;")
     tone = _tone(value)
     return (
         f'<span class="mr-badge mr-badge-{tone}">'
-        f"<strong>{safe_label}</strong>{safe_value}</span>"
+        f"<strong>{_html(label)}</strong>{_html(value)}</span>"
     )
 
 
@@ -193,6 +197,38 @@ def _show_status_badges(items: Sequence[tuple[str, object]]) -> None:
     markup = "".join(_badge_html(label, value) for label, value in items)
     if markup:
         st.markdown(f'<div class="mr-badge-row">{markup}</div>', unsafe_allow_html=True)
+
+
+def _command_cell(label: str, value: object) -> str:
+    return (
+        '<div class="mr-command-cell">'
+        f'<span class="mr-command-label">{_html(label)}</span>'
+        f'<span class="mr-command-value">{_html(value)}</span>'
+        "</div>"
+    )
+
+
+def _show_command_header(
+    *,
+    candidate_rows: list[dict[str, object]],
+    alert_rows: list[dict[str, object]],
+    ipo_rows: list[dict[str, object]],
+    ops_health: Mapping[str, Any],
+) -> None:
+    database = _mapping(ops_health.get("database"))
+    degraded_mode = _mapping(ops_health.get("degraded_mode"))
+    degraded = "enabled" if bool(degraded_mode.get("enabled")) else "off"
+    cells = [
+        _command_cell("Database", database.get("status") or "unknown"),
+        _command_cell("Candidates", len(candidate_rows)),
+        _command_cell("Alerts", len(alert_rows)),
+        _command_cell("IPO/S-1", len(ipo_rows)),
+        _command_cell("Degraded", degraded),
+    ]
+    st.markdown(
+        f'<div class="mr-command-strip">{"".join(cells)}</div>',
+        unsafe_allow_html=True,
+    )
 
 
 def _evidence_label(value: object) -> str:
@@ -810,60 +846,7 @@ load_app_dotenv()
 require_viewer()
 
 st.set_page_config(page_title="Market Radar Command Center", layout="wide")
-st.markdown(
-    """
-    <style>
-    .block-container {padding-top: 1.25rem; padding-bottom: 2rem;}
-    div[data-testid="stMetric"] {
-      border: 1px solid rgba(49, 51, 63, 0.15);
-      border-radius: 8px;
-      padding: 0.75rem 0.85rem;
-      background: rgba(250, 250, 250, 0.72);
-    }
-    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p {
-      font-size: 0.84rem;
-    }
-    .mr-badge-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.45rem;
-      margin: 0.35rem 0 0.75rem;
-    }
-    .mr-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.35rem;
-      border-radius: 999px;
-      border: 1px solid rgba(49, 51, 63, 0.16);
-      padding: 0.24rem 0.55rem;
-      font-size: 0.78rem;
-      line-height: 1.15rem;
-      background: #f7f7f4;
-      color: #292b2f;
-    }
-    .mr-badge strong {
-      color: rgba(41, 43, 47, 0.72);
-      font-weight: 600;
-    }
-    .mr-badge-good {
-      background: #edf8f0;
-      border-color: #a8d9b6;
-      color: #174b2a;
-    }
-    .mr-badge-warn {
-      background: #fff6de;
-      border-color: #efc66f;
-      color: #634512;
-    }
-    .mr-badge-danger {
-      background: #fff0ee;
-      border-color: #eeaaa1;
-      color: #7d2319;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+st.markdown(dashboard_style(), unsafe_allow_html=True)
 
 st.title("Market Radar Command Center")
 
@@ -910,6 +893,13 @@ ipo_rows = dashboard_data.load_ipo_s1_rows(
 validation_summary = _mapping(dashboard_data.load_validation_summary(engine))
 cost_summary = _mapping(dashboard_data.load_cost_summary(engine, available_at=available_at))
 ops_health = _mapping(dashboard_data.load_ops_health(engine))
+
+_show_command_header(
+    candidate_rows=candidate_rows,
+    alert_rows=alert_rows,
+    ipo_rows=ipo_rows,
+    ops_health=ops_health,
+)
 
 tabs = st.tabs(
     [
