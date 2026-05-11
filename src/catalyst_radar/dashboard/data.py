@@ -490,6 +490,39 @@ def load_alert_detail(
     return _alert_row(row._mapping) if row is not None else None
 
 
+def load_ipo_s1_rows(
+    engine: Engine,
+    *,
+    ticker: str | None = None,
+    available_at: datetime | None = None,
+    limit: int = 50,
+) -> list[dict[str, object]]:
+    cutoff = _as_utc_datetime_or_none(available_at) or datetime.now(UTC)
+    filters = [events.c.available_at <= cutoff]
+    if ticker is not None and ticker.strip():
+        filters.append(events.c.ticker == ticker.strip().upper())
+    stmt = (
+        select(events)
+        .where(*filters)
+        .order_by(
+            events.c.source_ts.desc(),
+            events.c.available_at.desc(),
+            events.c.materiality.desc(),
+            events.c.id.desc(),
+        )
+        .limit(_positive_limit(limit) * 4)
+    )
+    rows: list[dict[str, object]] = []
+    with engine.connect() as conn:
+        for row in conn.execute(stmt):
+            candidate = _ipo_s1_row(row._mapping)
+            if candidate is not None:
+                rows.append(candidate)
+            if len(rows) >= _positive_limit(limit):
+                break
+    return rows
+
+
 def load_validation_summary(engine: Engine) -> dict[str, object]:
     repo = ValidationRepository(engine)
     latest_run_id = _latest_validation_run_id(engine)
@@ -716,6 +749,45 @@ def _alert_row(row: Any) -> dict[str, object]:
     )
     values["feedback"] = values.get("feedback_label")
     return values
+
+
+def _ipo_s1_row(row: Any) -> dict[str, object] | None:
+    values = _row_dict(dict(row))
+    payload = values.get("payload")
+    if not isinstance(payload, Mapping):
+        return None
+    analysis = payload.get("ipo_analysis")
+    if not isinstance(analysis, Mapping):
+        return None
+    return {
+        "id": values.get("id"),
+        "ticker": values.get("ticker"),
+        "event_type": values.get("event_type"),
+        "title": values.get("title"),
+        "source": values.get("source"),
+        "source_url": values.get("source_url"),
+        "source_ts": values.get("source_ts"),
+        "available_at": values.get("available_at"),
+        "materiality": values.get("materiality"),
+        "form_type": payload.get("form_type"),
+        "filing_date": payload.get("filing_date"),
+        "accession_number": payload.get("accession_number"),
+        "document_url": payload.get("document_url") or values.get("source_url"),
+        "document_text_hash": payload.get("document_text_hash"),
+        "summary": payload.get("summary"),
+        "proposed_ticker": analysis.get("proposed_ticker"),
+        "exchange": analysis.get("exchange"),
+        "shares_offered": analysis.get("shares_offered"),
+        "price_range_low": analysis.get("price_range_low"),
+        "price_range_high": analysis.get("price_range_high"),
+        "price_range_midpoint": analysis.get("price_range_midpoint"),
+        "estimated_gross_proceeds": analysis.get("estimated_gross_proceeds"),
+        "underwriters": _json_safe(analysis.get("underwriters", [])),
+        "use_of_proceeds_summary": analysis.get("use_of_proceeds_summary"),
+        "risk_flags": _json_safe(analysis.get("risk_flags", [])),
+        "sections_found": _json_safe(analysis.get("sections_found", [])),
+        "analysis": _json_safe(analysis),
+    }
 
 
 def _ranked_alert_feedback(cutoff: datetime | None) -> Any:

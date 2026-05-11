@@ -16,9 +16,15 @@ from catalyst_radar.connectors.base import (
     ProviderCostEstimate,
     RawRecord,
 )
-from catalyst_radar.connectors.http import JsonHttpClient
+from catalyst_radar.connectors.http import HttpTransport, JsonHttpClient, redact_url
 from catalyst_radar.core.immutability import thaw_json_value
 from catalyst_radar.events.dedupe import body_hash, canonicalize_url, dedupe_key
+from catalyst_radar.ipo.s1 import (
+    analyze_s1_offering,
+    is_ipo_registration_form,
+    strip_sec_html,
+    summarize_s1_analysis,
+)
 
 SEC_PROVIDER_NAME = "sec"
 SEC_LICENSE_TAG = "sec-public"
@@ -31,24 +37,37 @@ class SecSubmissionsConnector:
         self,
         *,
         fixture_path: str | Path | None = None,
+        document_fixture_path: str | Path | None = None,
         client: JsonHttpClient | None = None,
+        document_transport: HttpTransport | None = None,
+        document_headers: Mapping[str, str] | None = None,
+        document_timeout_seconds: float = 10.0,
         base_url: str = "https://data.sec.gov",
         provider: str = SEC_PROVIDER_NAME,
     ) -> None:
         self.fixture_path = Path(fixture_path) if fixture_path is not None else None
+        self.document_fixture_path = (
+            Path(document_fixture_path) if document_fixture_path is not None else None
+        )
         self.client = client
+        self.document_transport = document_transport
+        self.document_headers = dict(document_headers or {})
+        self.document_timeout_seconds = document_timeout_seconds
         self.base_url = base_url.rstrip("/")
         self.provider = provider
 
     def fetch(self, request: ConnectorRequest) -> list[RawRecord]:
         payload = self._load_payload(request)
-        fetched_at = request.requested_at
+        requested_at = request.requested_at
         request_hash = _hash_payload(
             {
                 "provider": request.provider,
                 "endpoint": request.endpoint,
                 "params": thaw_json_value(request.params),
                 "fixture_path": str(self.fixture_path) if self.fixture_path else None,
+                "document_fixture_path": (
+                    str(self.document_fixture_path) if self.document_fixture_path else None
+                ),
             }
         )
         records: list[RawRecord] = []
@@ -58,18 +77,31 @@ class SecSubmissionsConnector:
         count = max((len(value) for value in recent.values() if isinstance(value, list)), default=0)
         for index in range(count):
             filing = _recent_filing(recent, index)
+            form_type = str(filing.get("form") or "").upper()
+            if request.endpoint == "ipo-s1" and not is_ipo_registration_form(form_type):
+                continue
             source_ts = _parse_datetime(
                 filing.get("acceptanceDateTime") or filing.get("filingDate"),
                 "acceptanceDateTime",
             )
+            record_fetched_at = max(requested_at, source_ts)
+            base_record: dict[str, Any] = {
+                "ticker": ticker,
+                "cik": cik,
+                "company_name": payload.get("name"),
+                "record": filing,
+            }
+            if request.endpoint == "ipo-s1":
+                base_record.update(
+                    self._document_record_payload(
+                        cik=cik,
+                        filing=filing,
+                        fetched_at=record_fetched_at,
+                    )
+                )
             raw_payload = _raw_payload(
                 ConnectorRecordKind.SEC_FILING,
-                {
-                    "ticker": ticker,
-                    "cik": cik,
-                    "company_name": payload.get("name"),
-                    "record": filing,
-                },
+                base_record,
             )
             records.append(
                 RawRecord(
@@ -79,11 +111,11 @@ class SecSubmissionsConnector:
                     payload_hash=_hash_payload(raw_payload),
                     payload=raw_payload,
                     source_ts=source_ts,
-                    fetched_at=max(fetched_at, source_ts),
+                    fetched_at=record_fetched_at,
                     available_at=(
                         source_ts
                         if self.fixture_path is not None
-                        else max(fetched_at, source_ts)
+                        else record_fetched_at
                     ),
                     license_tag=SEC_LICENSE_TAG,
                     retention_policy=SEC_RETENTION_POLICY,
@@ -105,10 +137,28 @@ class SecSubmissionsConnector:
             document = str(filing.get("primaryDocument") or "")
             items = str(filing.get("items") or "")
             source_url = _sec_filing_url(cik, accession, document)
-            title = f"{ticker} {form_type}".strip()
-            body = " ".join(part for part in (title, items) if part)
+            document_url = str(payload.get("document_url") or source_url)
+            document_text = str(payload.get("document_text") or "")
+            is_ipo_s1 = is_ipo_registration_form(form_type)
+            analysis: Mapping[str, object] | None = None
+            summary = ""
+            if is_ipo_s1:
+                analysis = analyze_s1_offering(
+                    document_text,
+                    company_name=_optional_text(payload.get("company_name")),
+                    ticker=ticker,
+                    form_type=form_type,
+                    source_url=canonicalize_url(document_url),
+                )
+                summary = summarize_s1_analysis(analysis)
+            title = (
+                f"{ticker} {form_type} IPO registration statement"
+                if is_ipo_s1
+                else f"{ticker} {form_type}".strip()
+            )
+            body = " ".join(part for part in (title, items, summary) if part)
             content_hash = body_hash(body)
-            canonical_url = canonicalize_url(source_url)
+            canonical_url = canonicalize_url(document_url)
             dedupe = dedupe_key(
                 ticker=ticker,
                 provider=record.provider,
@@ -142,8 +192,17 @@ class SecSubmissionsConnector:
                     "filing_date": filing.get("filingDate"),
                     "primary_document": document,
                     "items": items,
+                    "document_url": canonical_url,
+                    "document_text_hash": _optional_text(payload.get("document_text_hash")),
                     "classification_reasons": reasons,
                     "requires_text_triage": requires_text_triage,
+                    "summary": summary,
+                    "body": _event_body(
+                        document_text=document_text,
+                        summary=summary,
+                        fallback=body,
+                    ),
+                    **({"ipo_analysis": dict(analysis)} if analysis is not None else {}),
                 },
             )
             normalized.append(
@@ -161,12 +220,21 @@ class SecSubmissionsConnector:
 
     def healthcheck(self) -> ConnectorHealth:
         if self.fixture_path is not None:
-            if self.fixture_path.exists():
+            if self.fixture_path.exists() and (
+                self.document_fixture_path is None or self.document_fixture_path.exists()
+            ):
                 return ConnectorHealth(
                     provider=self.provider,
                     status=ConnectorHealthStatus.HEALTHY,
                     checked_at=datetime.now(UTC),
                     reason="sec fixture path is readable",
+                )
+            if self.document_fixture_path is not None and not self.document_fixture_path.exists():
+                return ConnectorHealth(
+                    provider=self.provider,
+                    status=ConnectorHealthStatus.DOWN,
+                    checked_at=datetime.now(UTC),
+                    reason=f"missing sec document fixture path: {self.document_fixture_path}",
                 )
             return ConnectorHealth(
                 provider=self.provider,
@@ -206,6 +274,41 @@ class SecSubmissionsConnector:
         cik = str(request.params["cik"]).zfill(10)
         return self.client.get_json(f"{self.base_url}/submissions/CIK{cik}.json")
 
+    def _document_record_payload(
+        self,
+        *,
+        cik: str,
+        filing: Mapping[str, Any],
+        fetched_at: datetime,
+    ) -> dict[str, Any]:
+        accession = str(filing.get("accessionNumber") or "")
+        document = str(filing.get("primaryDocument") or "")
+        document_url = _sec_filing_url(cik, accession, document)
+        document_text, document_source = self._load_document_text(document_url)
+        return {
+            "document_url": document_url,
+            "document_text": document_text,
+            "document_text_hash": _hash_text(document_text) if document_text else None,
+            "document_downloaded": bool(document_text),
+            "document_source": document_source,
+            "downloaded_at": fetched_at.isoformat(),
+        }
+
+    def _load_document_text(self, document_url: str) -> tuple[str, str]:
+        if self.document_fixture_path is not None:
+            return self.document_fixture_path.read_text(encoding="utf-8"), "fixture"
+        if self.document_transport is None:
+            return "", "unavailable"
+        response = self.document_transport.get(
+            document_url,
+            headers=self.document_headers,
+            timeout_seconds=self.document_timeout_seconds,
+        )
+        if response.status_code < 200 or response.status_code >= 300:
+            msg = f"HTTP {response.status_code} from {redact_url(response.url)}"
+            raise RuntimeError(msg)
+        return response.body.decode("utf-8", errors="replace"), "sec_archive"
+
 
 def _classify_sec(
     *,
@@ -214,6 +317,13 @@ def _classify_sec(
     body: str,
 ) -> tuple[str, float, list[str], bool]:
     combined = f"{title} {body}".lower()
+    if is_ipo_registration_form(form_type):
+        return (
+            "financing",
+            0.9,
+            [f"sec_form_{form_type.lower()}", "ipo_registration_statement"],
+            True,
+        )
     if form_type == "8-K" and ("guidance" in combined or "item 2.02" in combined):
         return "guidance", 0.85, ["sec_form_8k", "guidance_language"], True
     if form_type == "8-K":
@@ -286,6 +396,10 @@ def _hash_payload(payload: Mapping[str, Any]) -> str:
     return sha256(encoded).hexdigest()
 
 
+def _hash_text(value: str) -> str:
+    return sha256(value.encode("utf-8")).hexdigest()
+
+
 def _parse_datetime(value: Any, field: str) -> datetime:
     if value is None:
         msg = f"{field} is required"
@@ -307,6 +421,23 @@ def _mapping(value: Any, field: str) -> Mapping[str, Any]:
         msg = f"{field} must be a mapping"
         raise ValueError(msg)
     return value
+
+
+def _optional_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _event_body(*, document_text: str, summary: str, fallback: str) -> str:
+    if not document_text:
+        return fallback
+    stripped = strip_sec_html(document_text)
+    if not stripped:
+        return fallback
+    excerpt = stripped[:1_500].rsplit(" ", maxsplit=1)[0].strip()
+    return " ".join(part for part in (summary, excerpt) if part)
 
 
 __all__ = [

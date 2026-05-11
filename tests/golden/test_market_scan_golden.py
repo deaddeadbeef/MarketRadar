@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -18,7 +18,7 @@ def test_polygon_fixture_universe_scan_is_deterministic(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     database_url = f"sqlite:///{(tmp_path / 'catalyst_radar.db').as_posix()}"
-    available_at = datetime(2026, 5, 11, tzinfo=UTC)
+    available_at = datetime.now(UTC).replace(microsecond=0) + timedelta(minutes=1)
     monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
     monkeypatch.setenv("CATALYST_POLYGON_API_KEY", "fixture-key")
     monkeypatch.setenv("CATALYST_MARKET_PROVIDER", "polygon")

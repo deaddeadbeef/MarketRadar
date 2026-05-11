@@ -233,13 +233,33 @@ def test_production_compose_defaults_to_loopback_and_header_auth() -> None:
     compose = Path("infra/docker/docker-compose.prod.yml").read_text(encoding="utf-8")
 
     assert "CATALYST_ENV: production" in compose
+    assert "PYTHONPATH: /app/src:/app" in compose
     assert "CATALYST_API_AUTH_MODE: ${CATALYST_API_AUTH_MODE:-header}" in compose
     assert (
         "CATALYST_DASHBOARD_AUTH_MODE: ${CATALYST_DASHBOARD_AUTH_MODE:-header}"
         in compose
     )
+    assert "CATALYST_SEC_ENABLE_LIVE: ${CATALYST_SEC_ENABLE_LIVE:-false}" in compose
+    assert "CATALYST_SEC_USER_AGENT: ${CATALYST_SEC_USER_AGENT:-}" in compose
+    assert "CATALYST_SEC_BASE_URL: ${CATALYST_SEC_BASE_URL:-https://data.sec.gov}" in compose
+    assert "--server.headless true" in compose
     assert '"${CATALYST_API_BIND:-127.0.0.1}:8000:8000"' in compose
     assert '"${CATALYST_DASHBOARD_BIND:-127.0.0.1}:8501:8501"' in compose
+
+
+def test_local_compose_passes_dashboard_runtime_env() -> None:
+    compose = Path("docker-compose.yml").read_text(encoding="utf-8")
+
+    assert "PYTHONPATH: /app/src:/app" in compose
+    assert (
+        "CATALYST_DATABASE_URL: "
+        "postgresql+psycopg://catalyst:catalyst@postgres:5432/catalyst_radar"
+        in compose
+    )
+    assert "CATALYST_SEC_ENABLE_LIVE: ${CATALYST_SEC_ENABLE_LIVE:-false}" in compose
+    assert "CATALYST_SEC_USER_AGENT: ${CATALYST_SEC_USER_AGENT:-}" in compose
+    assert "CATALYST_SEC_BASE_URL: ${CATALYST_SEC_BASE_URL:-https://data.sec.gov}" in compose
+    assert "--server.headless true" in compose
 
 
 def _broker_import_violations(path: Path) -> list[tuple[str, int, str]]:

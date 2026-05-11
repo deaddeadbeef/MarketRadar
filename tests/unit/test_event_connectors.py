@@ -10,6 +10,7 @@ from catalyst_radar.connectors.base import (
     ConnectorRequest,
 )
 from catalyst_radar.connectors.earnings import EarningsCalendarConnector
+from catalyst_radar.connectors.http import FakeHttpTransport, HttpResponse
 from catalyst_radar.connectors.news import NewsJsonConnector
 from catalyst_radar.connectors.provider_ingest import _event_from_payload
 from catalyst_radar.connectors.sec import SecSubmissionsConnector
@@ -41,6 +42,92 @@ def test_sec_submissions_fixture_normalizes_recent_filings() -> None:
     assert normalized[0].payload["event_type"] in {"guidance", "sec_filing"}
     assert normalized[0].payload["source_category"] == "primary_source"
     assert normalized[0].payload["payload"]["form_type"] == "8-K"
+
+
+def test_sec_ipo_s1_downloads_document_and_normalizes_offer_analysis() -> None:
+    connector = SecSubmissionsConnector(
+        fixture_path=Path("tests/fixtures/sec/submissions_acme_s1.json"),
+        document_fixture_path=Path("tests/fixtures/sec/acme_s1.htm"),
+    )
+    request = ConnectorRequest(
+        provider="sec",
+        endpoint="ipo-s1",
+        params={"ticker": "ACME", "cik": "0002000001"},
+        requested_at=datetime(2026, 5, 10, 14, tzinfo=UTC),
+    )
+
+    raw = connector.fetch(request)
+    normalized = connector.normalize(raw)
+
+    assert len(raw) == 1
+    assert raw[0].kind == ConnectorRecordKind.SEC_FILING
+    assert raw[0].payload["record"]["document_downloaded"] is True
+    assert "We are offering 12,500,000 shares" in raw[0].payload["record"]["document_text"]
+    assert raw[0].payload["record"]["document_text_hash"]
+    assert len(normalized) == 1
+    payload = normalized[0].payload
+    event_payload = payload["payload"]
+    analysis = event_payload["ipo_analysis"]
+    assert payload["event_type"] == "financing"
+    assert payload["source_category"] == "primary_source"
+    assert payload["source_url"].endswith("/acme-20260510xs1.htm")
+    assert event_payload["form_type"] == "S-1"
+    assert list(event_payload["classification_reasons"]) == [
+        "sec_form_s-1",
+        "ipo_registration_statement",
+    ]
+    assert event_payload["requires_text_triage"] is True
+    assert event_payload["document_text_hash"] == raw[0].payload["record"]["document_text_hash"]
+    assert "estimated gross proceeds" in event_payload["summary"]
+    assert "Acme Robotics" in event_payload["body"]
+    assert analysis["proposed_ticker"] == "ACME"
+    assert analysis["exchange"] == "Nasdaq Global Select Market"
+    assert analysis["shares_offered"] == 12_500_000
+    assert analysis["price_range_low"] == 17.0
+    assert analysis["price_range_high"] == 19.0
+    assert analysis["estimated_gross_proceeds"] == 225_000_000.0
+    assert list(analysis["underwriters"]) == [
+        "Morgan Stanley & Co. LLC",
+        "Goldman Sachs & Co. LLC",
+    ]
+    assert "history_of_losses" in analysis["risk_flags"]
+
+
+def test_sec_ipo_s1_downloads_public_document_with_http_transport() -> None:
+    document_url = (
+        "https://www.sec.gov/Archives/edgar/data/"
+        "2000001/000200000126000001/acme-20260510xs1.htm"
+    )
+    document_text = Path("tests/fixtures/sec/acme_s1.htm").read_bytes()
+    transport = FakeHttpTransport(
+        {
+            document_url: HttpResponse(
+                status_code=200,
+                url=document_url,
+                headers={"content-type": "text/html"},
+                body=document_text,
+            )
+        }
+    )
+    connector = SecSubmissionsConnector(
+        fixture_path=Path("tests/fixtures/sec/submissions_acme_s1.json"),
+        document_transport=transport,
+        document_headers={"User-Agent": "MarketRadar test contact@example.com"},
+    )
+    request = ConnectorRequest(
+        provider="sec",
+        endpoint="ipo-s1",
+        params={"ticker": "ACME", "cik": "0002000001"},
+        requested_at=datetime(2026, 5, 10, 14, tzinfo=UTC),
+    )
+
+    raw = connector.fetch(request)
+    normalized = connector.normalize(raw)
+
+    assert transport.requests == [document_url]
+    assert raw[0].payload["record"]["document_source"] == "sec_archive"
+    assert raw[0].payload["record"]["document_downloaded"] is True
+    assert normalized[0].payload["payload"]["ipo_analysis"]["proposed_ticker"] == "ACME"
 
 
 def test_news_fixture_dedupes_tracking_url_payloads() -> None:

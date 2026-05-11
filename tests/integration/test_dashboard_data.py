@@ -20,6 +20,7 @@ from catalyst_radar.dashboard.data import (
     load_alert_rows,
     load_candidate_rows,
     load_cost_summary,
+    load_ipo_s1_rows,
     load_ops_health,
     load_theme_rows,
     load_ticker_detail,
@@ -187,12 +188,13 @@ def test_load_alert_detail_returns_payload_and_feedback(tmp_path: Path) -> None:
 def test_load_alert_rows_respects_available_at_cutoff(tmp_path: Path) -> None:
     engine = _engine(tmp_path)
     _insert_dashboard_fixture(engine)
-    _insert_alert_fixture(engine)
+    future_available_at = datetime.now(UTC).replace(microsecond=0) + timedelta(days=1)
+    _insert_alert_fixture(engine, available_at=future_available_at)
 
     default_rows = load_alert_rows(engine)
     rows = load_alert_rows(
         engine,
-        available_at=AVAILABLE_AT + timedelta(minutes=10),
+        available_at=future_available_at + timedelta(minutes=10),
         ticker="msft",
         status="planned",
         route="immediate_manual_review",
@@ -201,7 +203,50 @@ def test_load_alert_rows_respects_available_at_cutoff(tmp_path: Path) -> None:
     assert default_rows == []
     assert [row["id"] for row in rows] == ["alert-msft-planned"]
     assert rows[0]["feedback_label"] == "useful"
-    assert load_alert_detail(engine, "alert-msft-dry-run", available_at=AVAILABLE_AT) is None
+    assert (
+        load_alert_detail(engine, "alert-msft-dry-run", available_at=future_available_at)
+        is None
+    )
+
+
+def test_load_ipo_s1_rows_returns_visible_analysis_and_filters_future_rows(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    visible_at = datetime.now(UTC).replace(microsecond=0) - timedelta(hours=1)
+    future_at = datetime.now(UTC).replace(microsecond=0) + timedelta(days=1)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(events),
+            [
+                _ipo_event_row(
+                    id="event-acme-s1",
+                    ticker="ACME",
+                    available_at=visible_at,
+                    source_ts=visible_at,
+                ),
+                _ipo_event_row(
+                    id="event-futr-s1",
+                    ticker="FUTR",
+                    available_at=future_at,
+                    source_ts=future_at,
+                ),
+            ],
+        )
+
+    rows = load_ipo_s1_rows(engine)
+    filtered = load_ipo_s1_rows(engine, ticker="acme")
+    future_visible = load_ipo_s1_rows(engine, available_at=future_at + timedelta(minutes=1))
+
+    assert [row["id"] for row in rows] == ["event-acme-s1"]
+    assert [row["ticker"] for row in filtered] == ["ACME"]
+    assert rows[0]["form_type"] == "S-1"
+    assert rows[0]["proposed_ticker"] == "ACME"
+    assert rows[0]["shares_offered"] == 12_500_000
+    assert rows[0]["price_range_low"] == 17.0
+    assert rows[0]["estimated_gross_proceeds"] == 225_000_000.0
+    assert rows[0]["risk_flags"] == ["history_of_losses", "emerging_growth_company"]
+    assert [row["id"] for row in future_visible] == ["event-futr-s1", "event-acme-s1"]
 
 
 def test_load_cost_summary_defaults_to_zero_and_counts_useful_alerts(
@@ -713,7 +758,7 @@ def _insert_dashboard_fixture(engine: Engine) -> None:
         )
 
 
-def _insert_alert_fixture(engine: Engine) -> None:
+def _insert_alert_fixture(engine: Engine, *, available_at: datetime = AVAILABLE_AT) -> None:
     with engine.begin() as conn:
         conn.execute(
             insert(alerts),
@@ -723,16 +768,16 @@ def _insert_alert_fixture(engine: Engine) -> None:
                     route="immediate_manual_review",
                     status="planned",
                     priority="high",
-                    available_at=AVAILABLE_AT,
-                    created_at=AVAILABLE_AT,
+                    available_at=available_at,
+                    created_at=available_at,
                 ),
                 _alert_row(
                     id="alert-msft-dry-run",
                     route="warning_digest",
                     status="dry_run",
                     priority="critical",
-                    available_at=AVAILABLE_AT + timedelta(minutes=20),
-                    created_at=AVAILABLE_AT + timedelta(minutes=20),
+                    available_at=available_at + timedelta(minutes=20),
+                    created_at=available_at + timedelta(minutes=20),
                     dedupe_key="alert-dedupe-v1:MSFT:warning_digest:Warning:score:88",
                 ),
             ],
@@ -749,7 +794,7 @@ def _insert_alert_fixture(engine: Engine) -> None:
                     "notes": "worth review",
                     "source": "dashboard",
                     "payload": {"alert_id": "alert-msft-planned"},
-                    "created_at": AVAILABLE_AT,
+                    "created_at": available_at,
                 },
                 {
                     "id": "feedback-alert-msft-dry-run-old",
@@ -760,7 +805,7 @@ def _insert_alert_fixture(engine: Engine) -> None:
                     "notes": "old feedback",
                     "source": "dashboard",
                     "payload": {"alert_id": "alert-msft-dry-run"},
-                    "created_at": AVAILABLE_AT + timedelta(minutes=21),
+                    "created_at": available_at + timedelta(minutes=21),
                 },
                 {
                     "id": "feedback-alert-msft-dry-run-latest",
@@ -771,7 +816,7 @@ def _insert_alert_fixture(engine: Engine) -> None:
                     "notes": "latest feedback",
                     "source": "dashboard",
                     "payload": {"alert_id": "alert-msft-dry-run"},
-                    "created_at": AVAILABLE_AT + timedelta(minutes=22),
+                    "created_at": available_at + timedelta(minutes=22),
                 },
             ],
         )
@@ -895,6 +940,57 @@ def _alert_row(
         },
         "created_at": created_at,
         "sent_at": None,
+    }
+
+
+def _ipo_event_row(
+    *,
+    id: str,
+    ticker: str,
+    available_at: datetime,
+    source_ts: datetime,
+) -> dict[str, object]:
+    return {
+        "id": id,
+        "ticker": ticker,
+        "event_type": "financing",
+        "provider": "sec",
+        "source": "SEC EDGAR",
+        "source_category": "primary_source",
+        "source_url": f"https://www.sec.gov/Archives/{ticker.lower()}-s1.htm",
+        "title": f"{ticker} S-1 IPO registration statement",
+        "body_hash": f"body-{id}",
+        "dedupe_key": f"{ticker}:{id}",
+        "source_quality": 1.0,
+        "materiality": 0.9,
+        "source_ts": source_ts,
+        "available_at": available_at,
+        "payload": {
+            "form_type": "S-1",
+            "filing_date": source_ts.date().isoformat(),
+            "accession_number": f"000-{id}",
+            "document_url": f"https://www.sec.gov/Archives/{ticker.lower()}-s1.htm",
+            "document_text_hash": f"hash-{id}",
+            "summary": f"{ticker} proposed IPO terms.",
+            "ipo_analysis": {
+                "analysis_version": "ipo-s1-analysis-v1",
+                "company_name": f"{ticker} Robotics, Inc.",
+                "form_type": "S-1",
+                "source_url": f"https://www.sec.gov/Archives/{ticker.lower()}-s1.htm",
+                "proposed_ticker": ticker,
+                "exchange": "Nasdaq Global Select Market",
+                "shares_offered": 12_500_000,
+                "price_range_low": 17.0,
+                "price_range_high": 19.0,
+                "price_range_midpoint": 18.0,
+                "estimated_gross_proceeds": 225_000_000.0,
+                "underwriters": ["Morgan Stanley & Co. LLC"],
+                "use_of_proceeds_summary": "working capital and research and development",
+                "risk_flags": ["history_of_losses", "emerging_growth_company"],
+                "sections_found": ["prospectus summary", "risk factors"],
+            },
+        },
+        "created_at": available_at,
     }
 
 

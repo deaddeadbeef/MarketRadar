@@ -24,6 +24,20 @@ catalyst-radar ingest-csv --securities data/sample/securities.csv --daily-bars d
 catalyst-radar scan --as-of 2026-05-08
 ```
 
+To populate the integrated dashboard with a deterministic review fixture:
+
+```powershell
+catalyst-radar seed-dashboard-demo
+catalyst-radar ipo-s1-analysis --ticker ACME --as-of 2026-05-10 --available-at 2026-05-10T21:05:00Z --json
+streamlit run apps/dashboard/Home.py
+```
+
+The seed command creates one candidate, one alert, validation/cost rows, ops
+health, and one SEC S-1 analysis row from public-style EDGAR fixture data. For
+live SEC ingestion, set `CATALYST_SEC_ENABLE_LIVE=1` and a compliant
+`CATALYST_SEC_USER_AGENT`, then run `catalyst-radar ingest-sec ipo-s1 --ticker
+<SYMBOL> --cik <CIK>`.
+
 Postgres integration is available through Docker Compose:
 
 ```powershell
@@ -45,8 +59,12 @@ there before building point-in-time universe snapshots.
 ## Dashboard
 
 ```powershell
+$env:PYTHONPATH="src;."
 streamlit run apps/dashboard/Home.py
 ```
+
+Docker Compose runs the same command-center entry point at
+`http://localhost:8501`.
 
 ## Phase 1 rule
 

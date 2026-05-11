@@ -1,0 +1,15 @@
+{
+  "cik": "0002000001",
+  "ticker": "ACME",
+  "name": "Acme Robotics, Inc.",
+  "filings": {
+    "recent": {
+      "accessionNumber": ["0002000001-26-000001", "0002000001-26-000002"],
+      "filingDate": ["2026-05-10", "2026-05-09"],
+      "acceptanceDateTime": ["2026-05-10T13:00:00Z", "2026-05-09T12:00:00Z"],
+      "form": ["S-1", "10-Q"],
+      "primaryDocument": ["acme-20260510xs1.htm", "acme-20260509x10q.htm"],
+      "items": ["", ""]
+    }
+  }
+}

@@ -21,7 +21,11 @@ services:
       dockerfile: infra/docker/Dockerfile
     command: python -m uvicorn apps.api.main:app --host 0.0.0.0 --port 8000
     environment:
+      PYTHONPATH: /app/src:/app
       CATALYST_DATABASE_URL: postgresql+psycopg://catalyst:catalyst@postgres:5432/catalyst_radar
+      CATALYST_SEC_ENABLE_LIVE: ${CATALYST_SEC_ENABLE_LIVE:-false}
+      CATALYST_SEC_USER_AGENT: ${CATALYST_SEC_USER_AGENT:-}
+      CATALYST_SEC_BASE_URL: ${CATALYST_SEC_BASE_URL:-https://data.sec.gov}
     ports:
       - "8000:8000"
     depends_on:
@@ -32,9 +36,13 @@ services:
     build:
       context: .
       dockerfile: infra/docker/Dockerfile
-    command: streamlit run apps/dashboard/Home.py --server.address 0.0.0.0 --server.port 8501
+    command: streamlit run apps/dashboard/Home.py --server.address 0.0.0.0 --server.port 8501 --server.headless true
     environment:
+      PYTHONPATH: /app/src:/app
       CATALYST_DATABASE_URL: postgresql+psycopg://catalyst:catalyst@postgres:5432/catalyst_radar
+      CATALYST_SEC_ENABLE_LIVE: ${CATALYST_SEC_ENABLE_LIVE:-false}
+      CATALYST_SEC_USER_AGENT: ${CATALYST_SEC_USER_AGENT:-}
+      CATALYST_SEC_BASE_URL: ${CATALYST_SEC_BASE_URL:-https://data.sec.gov}
     ports:
       - "8501:8501"
     depends_on:
@@ -47,11 +55,15 @@ services:
       dockerfile: infra/docker/Dockerfile
     command: python -m apps.worker.main
     environment:
+      PYTHONPATH: /app/src:/app
       CATALYST_DATABASE_URL: postgresql+psycopg://catalyst:catalyst@postgres:5432/catalyst_radar
       CATALYST_WORKER_INTERVAL_SECONDS: "86400"
       CATALYST_RUN_LLM: "0"
       CATALYST_LLM_DRY_RUN: "1"
       CATALYST_DRY_RUN_ALERTS: "1"
+      CATALYST_SEC_ENABLE_LIVE: ${CATALYST_SEC_ENABLE_LIVE:-false}
+      CATALYST_SEC_USER_AGENT: ${CATALYST_SEC_USER_AGENT:-}
+      CATALYST_SEC_BASE_URL: ${CATALYST_SEC_BASE_URL:-https://data.sec.gov}
     depends_on:
       postgres:
         condition: service_healthy

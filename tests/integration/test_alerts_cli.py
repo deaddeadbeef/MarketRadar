@@ -114,7 +114,12 @@ def test_alert_digest_groups_digest_routes(seeded_alert_cli, capsys) -> None:
 
 
 def test_alerts_list_default_hides_future_alerts(seeded_alert_cli, capsys) -> None:
-    assert main(["build-alerts", "--as-of", AS_OF_TEXT, "--available-at", AVAILABLE_AT_TEXT]) == 0
+    future_available_at = datetime.now(UTC).replace(microsecond=0) + timedelta(days=1)
+    future_available_at_text = future_available_at.isoformat().replace("+00:00", "Z")
+    assert (
+        main(["build-alerts", "--as-of", AS_OF_TEXT, "--available-at", future_available_at_text])
+        == 0
+    )
     capsys.readouterr()
 
     assert main(["alerts-list"]) == 0

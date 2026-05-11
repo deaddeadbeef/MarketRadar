@@ -1,109 +1,594 @@
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
+from datetime import UTC, date, datetime
+from math import isfinite
+from typing import Any
+
 import pandas as pd
 import streamlit as st
 
 from apps.dashboard.access import require_viewer
 from catalyst_radar.core.config import AppConfig
-from catalyst_radar.dashboard.data import load_alert_rows, load_candidate_rows
+from catalyst_radar.dashboard import data as dashboard_data
 from catalyst_radar.security.secrets import load_app_dotenv
-from catalyst_radar.storage.db import engine_from_url
+from catalyst_radar.storage.db import create_schema, engine_from_url
+
+USEFUL_FEEDBACK_LABELS = frozenset({"useful", "acted"})
+ALERT_STATUSES = ["planned", "dry_run", "sent", "failed"]
+ALERT_ROUTES = [
+    "immediate_manual_review",
+    "warning_digest",
+    "daily_digest",
+    "position_watch",
+]
 
 
-def _evidence_label(value: object) -> str:
-    if not isinstance(value, dict):
-        return ""
-    title = str(value.get("title") or value.get("kind") or "")
-    link = (
-        value.get("source_url")
-        or value.get("source_id")
-        or value.get("computed_feature_id")
-        or ""
-    )
-    if not link:
-        return title
-    return f"{title} [{link}]"
+def _mapping(value: object) -> Mapping[str, Any]:
+    return value if isinstance(value, Mapping) else {}
 
 
-load_app_dotenv()
-require_viewer()
+def _sequence(value: object) -> Sequence[object]:
+    if isinstance(value, Mapping):
+        return (value,)
+    if isinstance(value, list | tuple):
+        return value
+    return ()
 
-st.set_page_config(page_title="Catalyst Radar", layout="wide")
-st.title("Catalyst Radar")
-st.caption(
-    "Deterministic decision-support review for current candidates, evidence, "
-    "packets, cards, setup context, and scheduled next review."
-)
 
-config = AppConfig.from_env()
-engine = engine_from_url(config.database_url)
-rows = load_candidate_rows(engine)
+def _json_ready(value: object) -> object:
+    if isinstance(value, datetime | date):
+        return value.isoformat()
+    if isinstance(value, Mapping):
+        return {str(key): _json_ready(item) for key, item in value.items()}
+    if isinstance(value, list | tuple):
+        return [_json_ready(item) for item in value]
+    return value
 
-if not rows:
-    st.info("No candidate states found. Run ingest and scan first.")
-    st.code(
-        "catalyst-radar ingest-csv --securities data/sample/securities.csv "
-        "--daily-bars data/sample/daily_bars.csv --holdings data/sample/holdings.csv\n"
-        "catalyst-radar scan --as-of 2026-05-08",
-        language="powershell",
-    )
-else:
-    frame = pd.DataFrame(rows)
-    frame["supporting_evidence"] = frame["top_supporting_evidence"].map(_evidence_label)
-    frame["disconfirming_evidence"] = frame["top_disconfirming_evidence"].map(
-        _evidence_label
-    )
-    display_columns = [
-        "ticker",
-        "state",
-        "final_score",
-        "hard_blocks",
-        "supporting_evidence",
-        "disconfirming_evidence",
-        "candidate_packet_id",
-        "decision_card_id",
-        "setup_type",
-        "next_review_at",
-        "as_of",
+
+def _records(value: object) -> list[dict[str, object]]:
+    return [
+        {str(key): _json_ready(item) for key, item in row.items()}
+        for row in _sequence(value)
+        if isinstance(row, Mapping)
     ]
-    for column in display_columns:
+
+
+def _metric_number(value: object) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    return number if isfinite(number) else 0.0
+
+
+def _metric_text(value: object) -> str:
+    if value is None or value == "":
+        return "n/a"
+    if isinstance(value, float):
+        return f"{value:.2f}"
+    if isinstance(value, datetime | date):
+        return value.isoformat()
+    return str(value)
+
+
+def _currency(value: object) -> str:
+    number = _metric_number(value)
+    return f"${number:,.2f}"
+
+
+def _rate(value: object) -> str:
+    number = _metric_number(value)
+    return f"{number:.1%}"
+
+
+def _list_text(value: object) -> str:
+    items = [str(item) for item in _sequence(value) if str(item).strip()]
+    return ", ".join(items) if items else "none"
+
+
+def _first_present(*values: object) -> object:
+    for value in values:
+        if value is not None and value != "" and value != [] and value != {}:
+            return value
+    return None
+
+
+def _parse_cutoff(value: str) -> datetime | None:
+    text = value.strip()
+    if not text:
+        return None
+    parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError("review cutoff must include timezone information")
+    return parsed.astimezone(UTC)
+
+
+def _select_value(label: str, options: list[str]) -> str | None:
+    value = st.sidebar.selectbox(label, ["All", *options])
+    return None if value == "All" else value
+
+
+def _default_ticker(
+    candidate_rows: list[dict[str, object]],
+    ipo_rows: list[dict[str, object]],
+) -> str:
+    for row in (*candidate_rows, *ipo_rows):
+        ticker = str(row.get("ticker") or "").strip().upper()
+        if ticker:
+            return ticker
+    return ""
+
+
+def _table(
+    rows: list[dict[str, object]],
+    *,
+    columns: list[str],
+    labels: Mapping[str, str],
+    empty: str,
+    key: str | None = None,
+    selectable: bool = False,
+) -> dict[str, object] | None:
+    if not rows:
+        st.caption(empty)
+        return None
+    frame = pd.DataFrame(rows)
+    for column in columns:
         if column not in frame.columns:
             frame[column] = None
-
-    display_frame = frame[display_columns].rename(
-        columns={
-            "ticker": "Ticker",
-            "state": "State",
-            "final_score": "Score",
-            "hard_blocks": "Hard Blocks",
-            "supporting_evidence": "Supporting Evidence",
-            "disconfirming_evidence": "Disconfirming Evidence",
-            "candidate_packet_id": "Packet ID",
-            "decision_card_id": "Card ID",
-            "setup_type": "Setup Type",
-            "next_review_at": "Next Review",
-            "as_of": "As Of",
-        }
-    )
-    left, right = st.columns([2, 1])
-    with left:
-        st.subheader("Candidate Review Queue")
-        st.dataframe(
+    display_frame = frame[columns].rename(columns=dict(labels))
+    if selectable:
+        event = st.dataframe(
             display_frame,
             width="stretch",
             hide_index=True,
+            key=key,
+            on_select="rerun",
+            selection_mode="single-row",
+        )
+        selected_index = _selected_dataframe_index(event)
+        if selected_index is not None and 0 <= selected_index < len(rows):
+            return rows[selected_index]
+        return None
+    st.dataframe(display_frame, width="stretch", hide_index=True)
+    return None
+
+
+def _selected_dataframe_index(event: object) -> int | None:
+    selection = getattr(event, "selection", None)
+    if isinstance(selection, Mapping):
+        rows = selection.get("rows")
+    else:
+        rows = getattr(selection, "rows", None)
+    if not rows:
+        return None
+    try:
+        return int(rows[0])
+    except (TypeError, ValueError, IndexError):
+        return None
+
+
+def _tone(value: object) -> str:
+    text = str(value or "").lower()
+    if text in {"critical", "failed", "blocked", "degraded", "stale", "yes"}:
+        return "danger"
+    if text in {"high", "warning", "planned", "dry_run", "enabled"}:
+        return "warn"
+    if text in {"healthy", "success", "sent", "ok", "useful", "acted", "off", "no"}:
+        return "good"
+    return "neutral"
+
+
+def _badge_html(label: str, value: object) -> str:
+    safe_label = str(label).replace("<", "&lt;").replace(">", "&gt;")
+    safe_value = _metric_text(value).replace("<", "&lt;").replace(">", "&gt;")
+    tone = _tone(value)
+    return (
+        f'<span class="mr-badge mr-badge-{tone}">'
+        f"<strong>{safe_label}</strong>{safe_value}</span>"
+    )
+
+
+def _show_status_badges(items: Sequence[tuple[str, object]]) -> None:
+    markup = "".join(_badge_html(label, value) for label, value in items)
+    if markup:
+        st.markdown(f'<div class="mr-badge-row">{markup}</div>', unsafe_allow_html=True)
+
+
+def _evidence_label(value: object) -> str:
+    item = _mapping(value)
+    title = str(item.get("title") or item.get("kind") or "")
+    link = item.get("source_url") or item.get("source_id") or item.get("computed_feature_id")
+    return title if not link else f"{title} [{link}]"
+
+
+def _candidate_rows_with_labels(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    labeled: list[dict[str, object]] = []
+    for row in rows:
+        values = dict(row)
+        values["supporting_evidence"] = _evidence_label(values.get("top_supporting_evidence"))
+        values["disconfirming_evidence"] = _evidence_label(
+            values.get("top_disconfirming_evidence")
+        )
+        labeled.append(values)
+    return labeled
+
+
+def _show_mapping(title: str, value: object, *, empty: str) -> None:
+    st.subheader(title)
+    mapping = _mapping(value)
+    if not mapping:
+        st.caption(empty)
+        return
+    rows = [{"Field": str(key), "Value": _json_ready(item)} for key, item in mapping.items()]
+    st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
+
+
+def _show_records(title: str, value: object, *, empty: str) -> None:
+    st.subheader(title)
+    records = _records(value)
+    if not records:
+        st.caption(empty)
+        return
+    st.dataframe(pd.DataFrame(records), width="stretch", hide_index=True)
+
+
+def _nested(mapping: Mapping[str, Any], *keys: str) -> object:
+    current: object = mapping
+    for key in keys:
+        current_mapping = _mapping(current)
+        if key not in current_mapping:
+            return None
+        current = current_mapping[key]
+    return current
+
+
+def _show_overview(
+    *,
+    candidate_rows: list[dict[str, object]],
+    alert_rows: list[dict[str, object]],
+    ipo_rows: list[dict[str, object]],
+    theme_rows: list[dict[str, object]],
+    validation_summary: Mapping[str, Any],
+    cost_summary: Mapping[str, Any],
+    ops_health: Mapping[str, Any],
+) -> None:
+    candidate_frame = pd.DataFrame(candidate_rows)
+    alert_frame = pd.DataFrame(alert_rows)
+    validation_report = _mapping(validation_summary.get("report"))
+    database = _mapping(ops_health.get("database"))
+
+    metric_cols = st.columns(6)
+    metric_cols[0].metric("Candidates", len(candidate_rows))
+    metric_cols[1].metric(
+        "Avg Score",
+        (
+            f"{pd.to_numeric(candidate_frame['final_score']).fillna(0).mean():.2f}"
+            if "final_score" in candidate_frame
+            else "0.00"
+        ),
+    )
+    metric_cols[2].metric("Alerts", len(alert_rows))
+    metric_cols[3].metric("IPO S-1", len(ipo_rows))
+    metric_cols[4].metric("Themes", len(theme_rows))
+    metric_cols[5].metric("LLM Cost", _currency(cost_summary.get("total_actual_cost_usd")))
+
+    secondary_cols = st.columns(5)
+    secondary_cols[0].metric("Useful Alert Rate", _rate(validation_report.get("useful_alert_rate")))
+    secondary_cols[1].metric(
+        "False Positives",
+        int(_metric_number(validation_report.get("false_positive_count"))),
+    )
+    secondary_cols[2].metric(
+        "High/Critical Alerts",
+        (
+            int(
+                alert_frame.get("priority", pd.Series(dtype=object))
+                .isin(["high", "critical"])
+                .sum()
+            )
+            if not alert_frame.empty
+            else 0
+        ),
+    )
+    secondary_cols[3].metric(
+        "Database",
+        str(database.get("status") or "unknown"),
+    )
+    secondary_cols[4].metric(
+        "Degraded",
+        "yes" if bool(_mapping(ops_health.get("degraded_mode")).get("enabled")) else "no",
+    )
+
+    left, right = st.columns([2, 1])
+    with left:
+        st.subheader("Candidate Queue")
+        selected_candidate = _table(
+            _candidate_rows_with_labels(candidate_rows),
+            columns=[
+                "ticker",
+                "state",
+                "final_score",
+                "setup_type",
+                "top_event_type",
+                "supporting_evidence",
+                "decision_card_id",
+                "next_review_at",
+            ],
+            labels={
+                "ticker": "Ticker",
+                "state": "State",
+                "final_score": "Score",
+                "setup_type": "Setup",
+                "top_event_type": "Top Event",
+                "supporting_evidence": "Evidence",
+                "decision_card_id": "Card",
+                "next_review_at": "Next Review",
+            },
+            empty="No candidate rows.",
+            key="overview_candidate_queue",
+            selectable=True,
         )
     with right:
         st.subheader("State Mix")
-        st.bar_chart(frame["state"].value_counts())
-        st.metric("Candidates", len(frame))
-        st.metric("Average Score", f"{frame['final_score'].mean():.2f}")
+        if candidate_rows and "state" in candidate_frame:
+            st.bar_chart(candidate_frame["state"].value_counts())
+        else:
+            st.caption("No state mix.")
 
-    alert_rows = load_alert_rows(engine, limit=10)
+    if selected_candidate:
+        _show_status_badges(
+            [
+                ("Ticker", selected_candidate.get("ticker")),
+                ("State", selected_candidate.get("state")),
+                ("Priority Score", selected_candidate.get("final_score")),
+                ("Setup", selected_candidate.get("setup_type")),
+            ]
+        )
+        _show_mapping(
+            "Selected Candidate",
+            {
+                "ticker": selected_candidate.get("ticker"),
+                "state": selected_candidate.get("state"),
+                "score": selected_candidate.get("final_score"),
+                "top_event": selected_candidate.get("top_event_title"),
+                "supporting_evidence": selected_candidate.get("supporting_evidence"),
+                "disconfirming_evidence": selected_candidate.get("disconfirming_evidence"),
+                "decision_card_id": selected_candidate.get("decision_card_id"),
+                "next_review_at": selected_candidate.get("next_review_at"),
+            },
+            empty="No selected candidate.",
+        )
+
     st.subheader("Recent Alerts")
-    if alert_rows:
-        alert_frame = pd.DataFrame(alert_rows)
-        alert_columns = [
+    _table(
+        alert_rows[:10],
+        columns=["ticker", "priority", "status", "route", "title", "available_at", "feedback"],
+        labels={
+            "ticker": "Ticker",
+            "priority": "Priority",
+            "status": "Status",
+            "route": "Route",
+            "title": "Title",
+            "available_at": "Available",
+            "feedback": "Feedback",
+        },
+        empty="No alert rows.",
+    )
+
+
+def _show_ticker_layer(engine, ticker: str, cutoff: datetime | None) -> None:
+    if not ticker:
+        st.info("Select a ticker in the sidebar.")
+        return
+    detail = dashboard_data.load_ticker_detail(engine, ticker, available_at=cutoff)
+    if detail is None:
+        st.warning("Ticker not found in current radar data.")
+        return
+
+    latest_candidate = _mapping(detail.get("latest_candidate"))
+    candidate_packet = _mapping(detail.get("candidate_packet"))
+    decision_card = _mapping(detail.get("decision_card"))
+    packet_payload = _mapping(candidate_packet.get("payload")) or candidate_packet
+    card_payload = _mapping(decision_card.get("payload")) or decision_card
+
+    metric_cols = st.columns(6)
+    metric_cols[0].metric("Ticker", _metric_text(detail.get("ticker") or ticker))
+    metric_cols[1].metric("State", _metric_text(latest_candidate.get("state")))
+    metric_cols[2].metric("Score", _metric_text(latest_candidate.get("final_score")))
+    metric_cols[3].metric("Setup", _metric_text(latest_candidate.get("setup_type")))
+    metric_cols[4].metric("As Of", _metric_text(latest_candidate.get("as_of")))
+    metric_cols[5].metric(
+        "Review Only",
+        _metric_text(
+            _first_present(
+                detail.get("manual_review_only"),
+                card_payload.get("manual_review_only"),
+            )
+        ),
+    )
+    _show_status_badges(
+        [
+            ("State", latest_candidate.get("state")),
+            ("Setup", latest_candidate.get("setup_type")),
+            ("Review Only", detail.get("manual_review_only")),
+        ]
+    )
+
+    setup_plan = _first_present(
+        detail.get("setup_plan"),
+        card_payload.get("trade_plan"),
+        packet_payload.get("trade_plan"),
+    )
+    portfolio_impact = _first_present(
+        detail.get("portfolio_impact"),
+        card_payload.get("portfolio_impact"),
+        packet_payload.get("portfolio_impact"),
+    )
+
+    left, right = st.columns([1, 1])
+    with left:
+        _show_mapping("Setup Plan", setup_plan, empty="No setup plan fields.")
+    with right:
+        hard_blocks = _first_present(
+            latest_candidate.get("hard_blocks"),
+            latest_candidate.get("portfolio_hard_blocks"),
+            _nested(card_payload, "controls", "hard_blocks"),
+        )
+        _show_records("Hard Blocks", hard_blocks, empty="No hard blocks.")
+
+    evidence_left, evidence_right = st.columns([1, 1])
+    with evidence_left:
+        _show_records(
+            "Supporting Evidence",
+            _first_present(
+                packet_payload.get("supporting_evidence"),
+                card_payload.get("supporting_evidence"),
+                latest_candidate.get("top_supporting_evidence"),
+            ),
+            empty="No supporting evidence.",
+        )
+    with evidence_right:
+        _show_records(
+            "Disconfirming Evidence",
+            _first_present(
+                packet_payload.get("disconfirming_evidence"),
+                card_payload.get("disconfirming_evidence"),
+                latest_candidate.get("top_disconfirming_evidence"),
+            ),
+            empty="No disconfirming evidence.",
+        )
+
+    _show_records("Events", detail.get("events"), empty="No event rows.")
+    _show_records("Snippets", detail.get("snippets"), empty="No snippet rows.")
+    _show_mapping("Portfolio Impact", portfolio_impact, empty="No portfolio impact fields.")
+    _show_records("Validation Rows", detail.get("validation_results"), empty="No validation rows.")
+    _show_records("Paper Trades", detail.get("paper_trades"), empty="No paper rows.")
+
+
+def _show_ipo_layer(ipo_rows: list[dict[str, object]]) -> None:
+    metric_cols = st.columns(4)
+    metric_cols[0].metric("Filings", len(ipo_rows))
+    metric_cols[1].metric(
+        "With Price Range",
+        sum(1 for row in ipo_rows if row.get("price_range_low") is not None),
+    )
+    metric_cols[2].metric(
+        "With Risk Flags",
+        sum(1 for row in ipo_rows if _sequence(row.get("risk_flags"))),
+    )
+    metric_cols[3].metric(
+        "Median Gross Proceeds",
+        _currency(
+            pd.Series(
+                [
+                    _metric_number(row.get("estimated_gross_proceeds"))
+                    for row in ipo_rows
+                    if row.get("estimated_gross_proceeds") is not None
+                ]
+            ).median()
+            if ipo_rows
+            else 0.0
+        ),
+    )
+
+    _table(
+        ipo_rows,
+        columns=[
+            "ticker",
+            "form_type",
+            "filing_date",
+            "proposed_ticker",
+            "exchange",
+            "shares_offered",
+            "price_range_low",
+            "price_range_high",
+            "estimated_gross_proceeds",
+            "risk_flags",
+            "document_url",
+        ],
+        labels={
+            "ticker": "Ticker",
+            "form_type": "Form",
+            "filing_date": "Filing Date",
+            "proposed_ticker": "Proposed Symbol",
+            "exchange": "Exchange",
+            "shares_offered": "Shares",
+            "price_range_low": "Low",
+            "price_range_high": "High",
+            "estimated_gross_proceeds": "Gross Proceeds",
+            "risk_flags": "Risk Flags",
+            "document_url": "Document",
+        },
+        empty="No IPO S-1 analysis rows.",
+    )
+
+    if ipo_rows:
+        selected = st.selectbox(
+            "S-1 detail",
+            [
+                str(row.get("id") or row.get("ticker") or index)
+                for index, row in enumerate(ipo_rows)
+            ],
+        )
+        row = next(
+            item
+            for index, item in enumerate(ipo_rows)
+            if str(item.get("id") or item.get("ticker") or index) == selected
+        )
+        left, right = st.columns([1, 1])
+        with left:
+            _show_mapping("Offering Terms", row.get("analysis"), empty="No analysis payload.")
+        with right:
+            st.subheader("Offering Notes")
+            st.write(str(row.get("summary") or ""))
+            st.write(f"Underwriters: {_list_text(row.get('underwriters'))}")
+            st.write(f"Sections: {_list_text(row.get('sections_found'))}")
+            st.write(f"Use of proceeds: {_metric_text(row.get('use_of_proceeds_summary'))}")
+
+
+def _show_alerts_layer(
+    alert_rows: list[dict[str, object]],
+    *,
+    engine,
+    cutoff: datetime | None,
+) -> None:
+    frame = pd.DataFrame(alert_rows)
+    metric_cols = st.columns(5)
+    metric_cols[0].metric("Total", len(alert_rows))
+    metric_cols[1].metric(
+        "Planned",
+        int((frame.get("status") == "planned").sum()) if not frame.empty else 0,
+    )
+    metric_cols[2].metric(
+        "Dry Run",
+        int((frame.get("status") == "dry_run").sum()) if not frame.empty else 0,
+    )
+    metric_cols[3].metric(
+        "High/Critical",
+        (
+            int(frame.get("priority", pd.Series(dtype=object)).isin(["high", "critical"]).sum())
+            if not frame.empty
+            else 0
+        ),
+    )
+    metric_cols[4].metric(
+        "Useful Feedback",
+        (
+            int(
+                frame.get("feedback_label", pd.Series(dtype=object))
+                .isin(USEFUL_FEEDBACK_LABELS)
+                .sum()
+            )
+            if not frame.empty
+            else 0
+        ),
+    )
+
+    selected_alert = _table(
+        alert_rows,
+        columns=[
+            "id",
             "ticker",
             "route",
             "channel",
@@ -111,32 +596,362 @@ else:
             "status",
             "state",
             "score_trigger",
-            "dedupe_key",
             "title",
             "available_at",
             "feedback",
-        ]
-        for column in alert_columns:
-            if column not in alert_frame.columns:
-                alert_frame[column] = None
-        st.dataframe(
-            alert_frame[alert_columns].rename(
-                columns={
-                    "ticker": "Ticker",
-                    "route": "Route",
-                    "channel": "Channel",
-                    "priority": "Priority",
-                    "status": "Status",
-                    "state": "State",
-                    "score_trigger": "Score Trigger",
-                    "dedupe_key": "Dedupe Key",
-                    "title": "Title",
-                    "available_at": "Available",
-                    "feedback": "Feedback",
-                }
-            ),
-            width="stretch",
-            hide_index=True,
-        )
+        ],
+        labels={
+            "id": "ID",
+            "ticker": "Ticker",
+            "route": "Route",
+            "channel": "Channel",
+            "priority": "Priority",
+            "status": "Status",
+            "state": "State",
+            "score_trigger": "Score",
+            "title": "Title",
+            "available_at": "Available",
+            "feedback": "Feedback",
+        },
+        empty="No alert rows.",
+        key="alerts_table",
+        selectable=True,
+    )
+
+    st.subheader("Alert Detail")
+    alert_ids = [str(row.get("id")) for row in alert_rows if row.get("id")]
+    if selected_alert:
+        selected_alert_id = str(selected_alert.get("id") or "").strip()
+    elif alert_ids:
+        selected_alert_id = st.selectbox("Alert", alert_ids)
     else:
-        st.caption("No recent alert rows available.")
+        selected_alert_id = ""
+    if not selected_alert_id:
+        return
+    detail = dashboard_data.load_alert_detail(engine, selected_alert_id, available_at=cutoff)
+    if detail is None:
+        st.warning("Alert ID was not found.")
+        return
+    metric_cols = st.columns(5)
+    metric_cols[0].metric("Ticker", _metric_text(detail.get("ticker")))
+    metric_cols[1].metric("Route", _metric_text(detail.get("route")))
+    metric_cols[2].metric("Priority", _metric_text(detail.get("priority")))
+    metric_cols[3].metric("Status", _metric_text(detail.get("status")))
+    metric_cols[4].metric("Feedback", _metric_text(detail.get("feedback_label")))
+    _show_status_badges(
+        [
+            ("Priority", detail.get("priority")),
+            ("Status", detail.get("status")),
+            ("Feedback", detail.get("feedback_label")),
+        ]
+    )
+    left, right = st.columns([1, 1])
+    with left:
+        _show_mapping(
+            "Review Context",
+            {
+                "id": detail.get("id"),
+                "candidate_state_id": detail.get("candidate_state_id"),
+                "candidate_packet_id": detail.get("candidate_packet_id"),
+                "decision_card_id": detail.get("decision_card_id"),
+                "trigger_kind": detail.get("trigger_kind"),
+                "trigger_fingerprint": detail.get("trigger_fingerprint"),
+                "summary": detail.get("summary"),
+            },
+            empty="No review context.",
+        )
+    with right:
+        _show_mapping(
+            "Feedback Reference",
+            {
+                "feedback_url": detail.get("feedback_url"),
+                "feedback_id": detail.get("feedback_id"),
+                "feedback_label": detail.get("feedback_label"),
+                "feedback_notes": detail.get("feedback_notes"),
+                "feedback_created_at": detail.get("feedback_created_at"),
+            },
+            empty="No feedback reference.",
+        )
+    _show_mapping("Evidence Payload", detail.get("payload"), empty="No evidence payload.")
+
+
+def _show_themes_layer(theme_rows: list[dict[str, object]]) -> None:
+    frame = pd.DataFrame(theme_rows)
+    metric_cols = st.columns(4)
+    metric_cols[0].metric("Themes", len(theme_rows))
+    metric_cols[1].metric(
+        "Candidates",
+        int(pd.to_numeric(frame.get("candidate_count", pd.Series(dtype=float))).fillna(0).sum()),
+    )
+    metric_cols[2].metric(
+        "Average Score",
+        f"{pd.to_numeric(frame.get('avg_score', pd.Series(dtype=float))).fillna(0).mean():.2f}"
+        if not frame.empty
+        else "0.00",
+    )
+    metric_cols[3].metric(
+        "Latest As Of",
+        str(frame["latest_as_of"].dropna().max() if "latest_as_of" in frame else "n/a"),
+    )
+    _table(
+        theme_rows,
+        columns=["theme", "candidate_count", "avg_score", "top_tickers", "states", "latest_as_of"],
+        labels={
+            "theme": "Theme",
+            "candidate_count": "Candidates",
+            "avg_score": "Average Score",
+            "top_tickers": "Top Tickers",
+            "states": "State Mix",
+            "latest_as_of": "Latest As Of",
+        },
+        empty="No theme rows.",
+    )
+
+
+def _show_validation_layer(summary: Mapping[str, Any]) -> None:
+    if not summary:
+        st.info("No validation summary.")
+        return
+    latest_run = _mapping(summary.get("latest_run"))
+    report = _mapping(summary.get("report"))
+    precision = _mapping(report.get("precision"))
+    primary_precision = precision.get("target_20d_25")
+    if primary_precision is None and precision:
+        primary_precision = next(iter(precision.values()))
+
+    metric_cols = st.columns(6)
+    metric_cols[0].metric("Run", str(latest_run.get("id") or report.get("run_id") or "n/a"))
+    metric_cols[1].metric("Precision", _rate(primary_precision))
+    metric_cols[2].metric("Useful Rate", _rate(report.get("useful_alert_rate")))
+    metric_cols[3].metric(
+        "False Positives",
+        int(_metric_number(report.get("false_positive_count"))),
+    )
+    metric_cols[4].metric("Missed", int(_metric_number(report.get("missed_opportunity_count"))))
+    metric_cols[5].metric("Leakage Flags", int(_metric_number(report.get("leakage_failure_count"))))
+
+    left, right = st.columns([1, 1])
+    with left:
+        _show_mapping("Latest Run", latest_run, empty="No latest run.")
+    with right:
+        _show_mapping("Report", report, empty="No validation report.")
+    _show_records("Paper Trades", summary.get("paper_trades"), empty="No paper rows.")
+    _show_records("Useful Labels", summary.get("useful_labels"), empty="No useful labels.")
+
+
+def _show_costs_layer(summary: Mapping[str, Any]) -> None:
+    actual_cost = _metric_number(summary.get("total_actual_cost_usd"))
+    estimated_cost = _metric_number(summary.get("total_estimated_cost_usd"))
+    status_counts = _mapping(summary.get("status_counts"))
+    useful_count = int(_metric_number(summary.get("useful_alert_count")))
+    cost_per_useful = summary.get("cost_per_useful_alert")
+
+    metric_cols = st.columns(4)
+    metric_cols[0].metric("Actual LLM Cost", _currency(actual_cost))
+    metric_cols[1].metric("Estimated LLM Cost", _currency(estimated_cost))
+    metric_cols[2].metric("Attempts", int(_metric_number(summary.get("attempt_count"))))
+    metric_cols[3].metric("Skipped", int(_metric_number(status_counts.get("skipped"))))
+    secondary_cols = st.columns(3)
+    secondary_cols[0].metric("Completed", int(_metric_number(status_counts.get("completed"))))
+    secondary_cols[1].metric("Useful Alerts", useful_count)
+    secondary_cols[2].metric(
+        "Cost / Useful",
+        "n/a" if cost_per_useful is None else _currency(cost_per_useful),
+    )
+    _show_records("Ledger Rows", summary.get("rows"), empty="No budget ledger rows.")
+    _show_records("Spend By Task", summary.get("by_task"), empty="No task rows.")
+    _show_records("Spend By Model", summary.get("by_model"), empty="No model rows.")
+
+
+def _show_ops_layer(health: Mapping[str, Any]) -> None:
+    if not health:
+        st.info("No ops health rows.")
+        return
+    provider_banners = _records(health.get("provider_banners"))
+    for banner in provider_banners:
+        provider = banner.get("provider") or "unknown provider"
+        status = banner.get("status") or "unknown"
+        reason = banner.get("reason") or "no reason reported"
+        st.warning(f"{provider}: {status} - {reason}")
+
+    stale_data = health.get("stale_data")
+    stale_detected = (
+        bool(stale_data.get("detected")) if isinstance(stale_data, Mapping) else bool(stale_data)
+    )
+    degraded_mode = _mapping(health.get("degraded_mode"))
+    ops_metrics = _mapping(health.get("metrics"))
+    cost_metrics = _mapping(ops_metrics.get("cost"))
+
+    metric_cols = st.columns(5)
+    metric_cols[0].metric(
+        "Degraded Mode",
+        "enabled" if bool(degraded_mode.get("enabled")) else "off",
+    )
+    metric_cols[1].metric("Stale Data", "yes" if stale_detected else "no")
+    metric_cols[2].metric("LLM Actual Cost", _currency(cost_metrics.get("total_actual_cost_usd")))
+    metric_cols[3].metric(
+        "Unsupported Claims",
+        _rate(ops_metrics.get("unsupported_claim_rate")),
+    )
+    metric_cols[4].metric("False Positives", _rate(ops_metrics.get("false_positive_rate")))
+
+    database = _mapping(health.get("database"))
+    left, right = st.columns([1, 1])
+    with left:
+        _show_mapping("Database", database, empty="No database status.")
+    with right:
+        _show_mapping("Degraded Mode", degraded_mode, empty="No degraded-mode status.")
+    _show_records("Provider Health", health.get("providers"), empty="No provider health rows.")
+    _show_records("Recent Incidents", health.get("incidents"), empty="No incidents.")
+    _show_records("Job Rows", health.get("jobs"), empty="No job rows.")
+
+
+load_app_dotenv()
+require_viewer()
+
+st.set_page_config(page_title="Market Radar Command Center", layout="wide")
+st.markdown(
+    """
+    <style>
+    .block-container {padding-top: 1.25rem; padding-bottom: 2rem;}
+    div[data-testid="stMetric"] {
+      border: 1px solid rgba(49, 51, 63, 0.15);
+      border-radius: 8px;
+      padding: 0.75rem 0.85rem;
+      background: rgba(250, 250, 250, 0.72);
+    }
+    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p {
+      font-size: 0.84rem;
+    }
+    .mr-badge-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+      margin: 0.35rem 0 0.75rem;
+    }
+    .mr-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      border-radius: 999px;
+      border: 1px solid rgba(49, 51, 63, 0.16);
+      padding: 0.24rem 0.55rem;
+      font-size: 0.78rem;
+      line-height: 1.15rem;
+      background: #f7f7f4;
+      color: #292b2f;
+    }
+    .mr-badge strong {
+      color: rgba(41, 43, 47, 0.72);
+      font-weight: 600;
+    }
+    .mr-badge-good {
+      background: #edf8f0;
+      border-color: #a8d9b6;
+      color: #174b2a;
+    }
+    .mr-badge-warn {
+      background: #fff6de;
+      border-color: #efc66f;
+      color: #634512;
+    }
+    .mr-badge-danger {
+      background: #fff0ee;
+      border-color: #eeaaa1;
+      color: #7d2319;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+st.title("Market Radar Command Center")
+
+config = AppConfig.from_env()
+engine = engine_from_url(config.database_url)
+create_schema(engine)
+
+candidate_rows = dashboard_data.load_candidate_rows(engine)
+default_ticker = _default_ticker(
+    candidate_rows,
+    dashboard_data.load_ipo_s1_rows(engine),
+)
+if default_ticker and "ticker_filter" not in st.session_state:
+    st.session_state["ticker_filter"] = default_ticker
+
+st.sidebar.header("Review Controls")
+ticker_filter = (
+    st.sidebar.text_input("Ticker", key="ticker_filter", placeholder=default_ticker or "MSFT")
+    .strip()
+    .upper()
+)
+cutoff_text = st.sidebar.text_input("Available at", value="", placeholder="2026-05-10T21:05:00Z")
+try:
+    available_at = _parse_cutoff(cutoff_text)
+except ValueError as exc:
+    st.sidebar.warning(str(exc))
+    available_at = None
+alert_status = _select_value("Alert status", ALERT_STATUSES)
+alert_route = _select_value("Alert route", ALERT_ROUTES)
+
+theme_rows = dashboard_data.load_theme_rows(engine)
+alert_rows = dashboard_data.load_alert_rows(
+    engine,
+    ticker=ticker_filter or None,
+    status=alert_status,
+    route=alert_route,
+    available_at=available_at,
+)
+ipo_rows = dashboard_data.load_ipo_s1_rows(
+    engine,
+    ticker=ticker_filter or None,
+    available_at=available_at,
+)
+validation_summary = _mapping(dashboard_data.load_validation_summary(engine))
+cost_summary = _mapping(dashboard_data.load_cost_summary(engine, available_at=available_at))
+ops_health = _mapping(dashboard_data.load_ops_health(engine))
+
+tabs = st.tabs(
+    [
+        "Overview",
+        "Ticker",
+        "IPO/S-1",
+        "Alerts",
+        "Themes",
+        "Validation",
+        "Costs",
+        "Ops",
+    ]
+)
+
+with tabs[0]:
+    _show_overview(
+        candidate_rows=candidate_rows,
+        alert_rows=alert_rows,
+        ipo_rows=ipo_rows,
+        theme_rows=theme_rows,
+        validation_summary=validation_summary,
+        cost_summary=cost_summary,
+        ops_health=ops_health,
+    )
+
+with tabs[1]:
+    _show_ticker_layer(engine, ticker_filter, available_at)
+
+with tabs[2]:
+    _show_ipo_layer(ipo_rows)
+
+with tabs[3]:
+    _show_alerts_layer(alert_rows, engine=engine, cutoff=available_at)
+
+with tabs[4]:
+    _show_themes_layer(theme_rows)
+
+with tabs[5]:
+    _show_validation_layer(validation_summary)
+
+with tabs[6]:
+    _show_costs_layer(cost_summary)
+
+with tabs[7]:
+    _show_ops_layer(ops_health)

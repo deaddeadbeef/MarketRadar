@@ -54,6 +54,11 @@ from catalyst_radar.connectors.sec import SecSubmissionsConnector
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.core.immutability import thaw_json_value
 from catalyst_radar.core.models import ActionState
+from catalyst_radar.dashboard.demo_seed import (
+    default_sec_document_fixture_path,
+    default_sec_fixture_path,
+    seed_dashboard_demo,
+)
 from catalyst_radar.decision_cards.builder import build_decision_card
 from catalyst_radar.feedback.service import (
     FeedbackError,
@@ -117,6 +122,13 @@ def build_parser() -> argparse.ArgumentParser:
     init_db = subparsers.add_parser("init-db")
     init_db.add_argument("--database-url")
 
+    seed_dashboard = subparsers.add_parser("seed-dashboard-demo")
+    seed_dashboard.add_argument("--database-url")
+    seed_dashboard.add_argument("--ticker", default="ACME")
+    seed_dashboard.add_argument("--cik", default="0002000001")
+    seed_dashboard.add_argument("--sec-fixture", type=Path)
+    seed_dashboard.add_argument("--document-fixture", type=Path)
+
     run_daily = subparsers.add_parser("run-daily")
     run_daily.add_argument("--database-url")
     run_daily.add_argument("--as-of", type=date.fromisoformat, required=True)
@@ -147,6 +159,11 @@ def build_parser() -> argparse.ArgumentParser:
     submissions.add_argument("--ticker", required=True)
     submissions.add_argument("--cik", required=True)
     submissions.add_argument("--fixture", type=Path)
+    ipo_s1 = sec_sub.add_parser("ipo-s1")
+    ipo_s1.add_argument("--ticker", required=True)
+    ipo_s1.add_argument("--cik", required=True)
+    ipo_s1.add_argument("--fixture", type=Path)
+    ipo_s1.add_argument("--document-fixture", type=Path)
 
     news = subparsers.add_parser("ingest-news")
     news.add_argument("--fixture", type=Path, required=True)
@@ -162,6 +179,12 @@ def build_parser() -> argparse.ArgumentParser:
     events.add_argument("--as-of", type=date.fromisoformat, required=True)
     events.add_argument("--available-at", type=_parse_aware_datetime)
     events.add_argument("--limit", type=int, default=20)
+
+    ipo_s1_analysis = subparsers.add_parser("ipo-s1-analysis")
+    ipo_s1_analysis.add_argument("--ticker", required=True)
+    ipo_s1_analysis.add_argument("--as-of", type=date.fromisoformat)
+    ipo_s1_analysis.add_argument("--available-at", type=_parse_aware_datetime)
+    ipo_s1_analysis.add_argument("--json", action="store_true")
 
     run_textint = subparsers.add_parser("run-textint")
     run_textint.add_argument("--as-of", type=date.fromisoformat, required=True)
@@ -316,6 +339,31 @@ def main(argv: list[str] | None = None) -> int:
         print("initialized database")
         return 0
 
+    if args.command == "seed-dashboard-demo":
+        create_schema(engine)
+        try:
+            result = seed_dashboard_demo(
+                engine,
+                ticker=args.ticker,
+                cik=args.cik,
+                sec_fixture_path=args.sec_fixture or default_sec_fixture_path(),
+                document_fixture_path=(
+                    args.document_fixture or default_sec_document_fixture_path()
+                ),
+            )
+        except (FileNotFoundError, ValueError) as exc:
+            print(f"seed dashboard demo failed: {exc}", file=sys.stderr)
+            return 1
+        print(
+            f"seeded dashboard demo ticker={result.ticker} "
+            f"sec_events={result.sec_result.event_count} "
+            f"candidate_state={result.candidate_state_id} "
+            f"alert={result.alert_id} "
+            f"validation_run={result.validation_run_id} "
+            f"budget_ledger={result.budget_ledger_id}"
+        )
+        return 0
+
     if args.command == "run-daily":
         if args.real_llm:
             print(
@@ -394,6 +442,7 @@ def main(argv: list[str] | None = None) -> int:
             ticker=args.ticker,
             cik=args.cik,
             fixture_path=args.fixture,
+            document_fixture_path=getattr(args, "document_fixture", None),
         )
 
     if args.command == "ingest-news":
@@ -449,6 +498,54 @@ def main(argv: list[str] | None = None) -> int:
                 f"quality={event.source_quality:.2f} source={event.source} "
                 f"title={event.title}"
             )
+        return 0
+
+    if args.command == "ipo-s1-analysis":
+        create_schema(engine)
+        event_repo = EventRepository(engine)
+        as_of = (
+            datetime.combine(args.as_of, time.max, tzinfo=UTC)
+            if args.as_of is not None
+            else datetime.now(UTC)
+        )
+        available_at = args.available_at or datetime.now(UTC)
+        events_with_analysis = [
+            event
+            for event in event_repo.list_events_for_ticker(
+                args.ticker,
+                as_of=as_of,
+                available_at=available_at,
+                limit=50,
+            )
+            if isinstance(event.payload, Mapping) and "ipo_analysis" in event.payload
+        ]
+        if not events_with_analysis:
+            print(f"ipo_s1_analysis ticker={args.ticker.upper()} status=not_found")
+            return 1
+        payload = _ipo_s1_analysis_payload(events_with_analysis[0])
+        if args.json:
+            print(json.dumps(payload, sort_keys=True))
+        else:
+            analysis = payload["analysis"]
+            print(
+                f"ipo_s1_analysis ticker={payload['ticker']} "
+                f"form={payload['form_type']} filed={payload['filing_date']} "
+                f"source={payload['source_url']}"
+            )
+            print(f"summary={payload['summary']}")
+            print(
+                "terms="
+                f"symbol={analysis.get('proposed_ticker')} "
+                f"exchange={analysis.get('exchange')} "
+                f"shares={analysis.get('shares_offered')} "
+                f"price_low={analysis.get('price_range_low')} "
+                f"price_high={analysis.get('price_range_high')} "
+                f"gross_proceeds={analysis.get('estimated_gross_proceeds')}"
+            )
+            underwriters = analysis.get("underwriters") or []
+            risk_flags = analysis.get("risk_flags") or []
+            print(f"underwriters={', '.join(str(item) for item in underwriters) or 'none'}")
+            print(f"risk_flags={', '.join(str(item) for item in risk_flags) or 'none'}")
         return 0
 
     if args.command == "provider-health":
@@ -1237,8 +1334,9 @@ def _ingest_sec_provider(
     ticker: str,
     cik: str,
     fixture_path: Path | None,
+    document_fixture_path: Path | None,
 ) -> int:
-    if sec_command != "submissions":
+    if sec_command not in {"submissions", "ipo-s1"}:
         print(f"sec ingest failed: unsupported sec command: {sec_command}", file=sys.stderr)
         return 1
     if fixture_path is None and not config.sec_enable_live:
@@ -1262,6 +1360,7 @@ def _ingest_sec_provider(
         )
     connector = SecSubmissionsConnector(
         fixture_path=fixture_path,
+        document_fixture_path=document_fixture_path,
         client=(
             JsonHttpClient(
                 transport=transport,
@@ -1270,19 +1369,27 @@ def _ingest_sec_provider(
             if transport is not None
             else None
         ),
+        document_transport=transport if sec_command == "ipo-s1" else None,
+        document_headers={"User-Agent": config.sec_user_agent or ""}
+        if transport is not None and sec_command == "ipo-s1"
+        else None,
+        document_timeout_seconds=config.http_timeout_seconds,
         base_url=config.sec_base_url,
     )
     metadata = {
         "provider": "sec",
-        "endpoint": "submissions",
+        "endpoint": sec_command,
         "ticker": ticker.upper(),
         "cik": cik,
         "fixture": str(fixture_path) if fixture_path is not None else None,
+        "document_fixture": (
+            str(document_fixture_path) if document_fixture_path is not None else None
+        ),
         "live": fixture_path is None,
     }
     request = ConnectorRequest(
         provider="sec",
-        endpoint="submissions",
+        endpoint=sec_command,
         params={"ticker": ticker.upper(), "cik": cik},
         requested_at=datetime.now(UTC),
     )
@@ -1292,7 +1399,7 @@ def _ingest_sec_provider(
             request=request,
             market_repo=market_repo,
             provider_repo=provider_repo,
-            job_type="sec_submissions",
+            job_type="sec_ipo_s1" if sec_command == "ipo-s1" else "sec_submissions",
             metadata=metadata,
             event_repo=event_repo,
         )
@@ -2352,6 +2459,29 @@ def _print_options_provider_result(result: ProviderIngestResult) -> None:
         f"normalized={result.normalized_count} "
         f"option_features={result.option_feature_count} rejected={result.rejected_count}"
     )
+
+
+def _ipo_s1_analysis_payload(event) -> dict[str, object]:
+    event_payload = thaw_json_value(event.payload)
+    analysis = event_payload.get("ipo_analysis")
+    if not isinstance(analysis, Mapping):
+        analysis = {}
+    return {
+        "ticker": event.ticker,
+        "event_id": event.id,
+        "event_type": event.event_type.value,
+        "source_url": event.source_url,
+        "title": event.title,
+        "source_ts": event.source_ts.isoformat(),
+        "available_at": event.available_at.isoformat(),
+        "form_type": event_payload.get("form_type"),
+        "filing_date": event_payload.get("filing_date"),
+        "accession_number": event_payload.get("accession_number"),
+        "document_url": event_payload.get("document_url"),
+        "document_text_hash": event_payload.get("document_text_hash"),
+        "summary": event_payload.get("summary"),
+        "analysis": dict(analysis),
+    }
 
 
 def _build_candidate_packets(
