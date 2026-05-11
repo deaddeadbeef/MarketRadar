@@ -1021,6 +1021,47 @@ def _show_costs_layer(summary: Mapping[str, Any]) -> None:
     _show_records("Spend By Model", summary.get("by_model"), empty="No model rows.")
 
 
+def _show_broker_layer(summary: Mapping[str, Any]) -> None:
+    snapshot = _mapping(summary.get("snapshot"))
+    exposure = _mapping(summary.get("exposure"))
+    metric_cols = st.columns(5)
+    metric_cols[0].metric("Connection", _metric_text(snapshot.get("connection_status")))
+    metric_cols[1].metric("Accounts", _metric_text(snapshot.get("account_count")))
+    metric_cols[2].metric("Positions", _metric_text(snapshot.get("position_count")))
+    metric_cols[3].metric("Open Orders", _metric_text(snapshot.get("open_order_count")))
+    metric_cols[4].metric(
+        "Stale",
+        "yes" if bool(exposure.get("broker_data_stale")) else "no",
+    )
+    _show_status_badges(
+        [
+            ("Broker", snapshot.get("broker")),
+            ("Connection", snapshot.get("connection_status")),
+            ("Read Only", exposure.get("read_only")),
+            ("Action Routing", "disabled"),
+        ]
+    )
+    left, right = st.columns([1, 1])
+    with left:
+        _show_mapping(
+            "Portfolio Snapshot",
+            {
+                "last_successful_sync_at": snapshot.get("last_successful_sync_at"),
+                "portfolio_equity": exposure.get("portfolio_equity"),
+                "cash": exposure.get("cash"),
+                "buying_power": exposure.get("buying_power"),
+                "snapshot_as_of": exposure.get("snapshot_as_of"),
+                "hard_blocks": exposure.get("hard_blocks"),
+            },
+            empty="No broker snapshot.",
+        )
+    with right:
+        _show_mapping("Exposure", exposure.get("exposure_before"), empty="No exposure rows.")
+    _show_records("Positions", summary.get("positions"), empty="No broker positions.")
+    _show_records("Balances", summary.get("balances"), empty="No broker balances.")
+    _show_records("Open Orders", summary.get("open_orders"), empty="No broker open orders.")
+
+
 def _show_ops_layer(health: Mapping[str, Any]) -> None:
     if not health:
         st.info("No ops health rows.")
@@ -1115,6 +1156,7 @@ ipo_rows = dashboard_data.load_ipo_s1_rows(
 validation_summary = _mapping(dashboard_data.load_validation_summary(engine))
 cost_summary = _mapping(dashboard_data.load_cost_summary(engine, available_at=available_at))
 ops_health = _mapping(dashboard_data.load_ops_health(engine))
+broker_summary = _mapping(dashboard_data.load_broker_summary(engine))
 
 _show_command_header(
     candidate_rows=candidate_rows,
@@ -1132,6 +1174,7 @@ tabs = st.tabs(
         "Themes",
         "Validation",
         "Costs",
+        "Broker",
         "Ops",
     ]
 )
@@ -1166,4 +1209,7 @@ with tabs[6]:
     _show_costs_layer(cost_summary)
 
 with tabs[7]:
+    _show_broker_layer(broker_summary)
+
+with tabs[8]:
     _show_ops_layer(ops_health)

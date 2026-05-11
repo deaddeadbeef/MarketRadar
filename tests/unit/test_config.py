@@ -157,3 +157,27 @@ def test_config_reads_sec_live_settings_from_env() -> None:
     assert config.sec_enable_live is True
     assert config.sec_user_agent == "CatalystRadar/0.1 contact@example.com"
     assert config.sec_base_url == "https://sec.example.com"
+
+
+def test_config_reads_schwab_settings_from_env() -> None:
+    config = AppConfig.from_env(
+        {
+            "SCHWAB_CLIENT_ID": "client-id",
+            "SCHWAB_CLIENT_SECRET": "client-secret",
+            "SCHWAB_REDIRECT_URI": "https://127.0.0.1/callback",
+            "SCHWAB_ENV": "PRODUCTION",
+            "SCHWAB_BASE_URL": "https://schwab.example.com/",
+            "SCHWAB_AUTH_BASE_URL": "https://auth.schwab.example.com/",
+            "SCHWAB_ORDER_SUBMISSION_ENABLED": "true",
+            "BROKER_TOKEN_ENCRYPTION_KEY": "local-dev-key",
+        }
+    )
+
+    assert config.schwab_client_id == "client-id"
+    assert config.schwab_client_secret == "client-secret"
+    assert config.schwab_redirect_uri == "https://127.0.0.1/callback"
+    assert config.schwab_env == "production"
+    assert config.schwab_base_url == "https://schwab.example.com"
+    assert config.schwab_auth_base_url == "https://auth.schwab.example.com"
+    assert config.schwab_order_submission_enabled is True
+    assert config.broker_token_encryption_key == "local-dev-key"

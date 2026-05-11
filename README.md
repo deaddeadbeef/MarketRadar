@@ -51,6 +51,11 @@ catalyst-radar init-db
 Real market-data provider settings are configured through environment variables.
 Use `CATALYST_MARKET_PROVIDER=polygon` for Polygon workflows, and keep
 `CATALYST_POLYGON_API_KEY` unset or blank unless running a live provider call.
+
+Schwab broker integration is read-only. Configure the Schwab app credentials,
+callback URL, and `BROKER_TOKEN_ENCRYPTION_KEY` in `.env.local`, then use the
+API routes under `/api/brokers/schwab/*` and `/api/portfolio/*`. See
+`docs/runbooks/schwab.md`.
 Fixture-backed tests and local CSV flows do not require provider credentials.
 
 Universe defaults are documented in `.env.example`; adjust the threshold values

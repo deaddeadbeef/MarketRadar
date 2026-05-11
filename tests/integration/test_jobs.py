@@ -10,6 +10,17 @@ import pytest
 from sqlalchemy import create_engine, insert, inspect, select
 
 from apps.worker import main as worker_main
+from catalyst_radar.brokers.models import (
+    BrokerAccount,
+    BrokerBalanceSnapshot,
+    BrokerConnection,
+    BrokerConnectionStatus,
+    BrokerPosition,
+    broker_account_id,
+    broker_balance_snapshot_id,
+    broker_connection_id,
+    broker_position_id,
+)
 from catalyst_radar.cli import main as cli_main
 from catalyst_radar.core.models import (
     ActionState,
@@ -26,10 +37,12 @@ from catalyst_radar.jobs.scheduler import (
 )
 from catalyst_radar.jobs.tasks import DAILY_STEP_ORDER, DailyRunSpec, run_daily
 from catalyst_radar.pipeline.scan import ScanResult
+from catalyst_radar.storage.broker_repositories import BrokerRepository
 from catalyst_radar.storage.db import create_schema
 from catalyst_radar.storage.job_repositories import JobLockRepository
 from catalyst_radar.storage.schema import (
     candidate_states,
+    decision_cards,
     job_locks,
     job_runs,
     provider_health,
@@ -69,8 +82,75 @@ def _insert_active_security(engine, now: datetime) -> None:
         )
 
 
-def _high_score_scan_result(as_of: date) -> ScanResult:
-    as_of_dt = datetime.combine(as_of, datetime.min.time(), tzinfo=UTC)
+def _insert_broker_position(engine, *, ticker: str, now: datetime) -> None:
+    repo = BrokerRepository(engine)
+    connection_id = broker_connection_id()
+    account_id = broker_account_id("schwab", "jobs-account-hash")
+    repo.upsert_connection(
+        BrokerConnection(
+            id=connection_id,
+            broker="schwab",
+            user_id="local",
+            status=BrokerConnectionStatus.CONNECTED,
+            created_at=now,
+            updated_at=now,
+            last_successful_sync_at=now,
+            metadata={"mode": "read_only"},
+        )
+    )
+    repo.upsert_accounts(
+        [
+            BrokerAccount(
+                id=account_id,
+                connection_id=connection_id,
+                broker="schwab",
+                broker_account_id="12345678",
+                account_hash="jobs-account-hash",
+                created_at=now,
+                updated_at=now,
+                display_name="MARGIN ending 5678",
+            )
+        ]
+    )
+    repo.upsert_balance_snapshots(
+        [
+            BrokerBalanceSnapshot(
+                id=broker_balance_snapshot_id(account_id, now),
+                account_id=account_id,
+                as_of=now,
+                cash=50_000.0,
+                buying_power=100_000.0,
+                liquidation_value=250_000.0,
+                equity=250_000.0,
+                raw_payload={},
+                created_at=now,
+            )
+        ]
+    )
+    repo.replace_positions(
+        account_id,
+        now,
+        [
+            BrokerPosition(
+                id=broker_position_id(account_id, ticker, now),
+                account_id=account_id,
+                as_of=now,
+                ticker=ticker,
+                quantity=100,
+                market_value=9500.0,
+                raw_payload={},
+                created_at=now,
+            )
+        ],
+    )
+
+
+def _high_score_scan_result(
+    as_of: date,
+    *,
+    available_at: datetime | None = None,
+) -> ScanResult:
+    as_of_dt = datetime(as_of.year, as_of.month, as_of.day, 21, tzinfo=UTC)
     features = MarketFeatures(
         ticker="MSFT",
         as_of=as_of_dt,
@@ -99,7 +179,31 @@ def _high_score_scan_result(as_of: date) -> ScanResult:
         entry_zone=(100.0, 105.0),
         invalidation_price=95.0,
         reward_risk=3.0,
-        metadata={"pillar_scores": {"price_strength": 90.0, "volume_liquidity": 88.0}},
+        metadata={
+            "available_at": (available_at or as_of_dt).isoformat(),
+            "pillar_scores": {"price_strength": 90.0, "volume_liquidity": 88.0},
+            "position_size": {
+                "risk_per_trade_pct": 0.004,
+                "shares": 40,
+                "notional": 4160.0,
+                "cash_check": "pass",
+            },
+            "portfolio_impact": {
+                "ticker": "MSFT",
+                "proposed_notional": 4160.0,
+                "max_loss": 400.0,
+                "single_name_before_pct": 0.05,
+                "single_name_after_pct": 0.09,
+                "sector_before_pct": 0.22,
+                "sector_after_pct": 0.26,
+                "theme_before_pct": 0.12,
+                "theme_after_pct": 0.16,
+                "correlated_before_pct": 0.18,
+                "correlated_after_pct": 0.22,
+                "portfolio_penalty": 1.0,
+                "hard_blocks": [],
+            },
+        },
     )
     return ScanResult(
         ticker="MSFT",
@@ -240,6 +344,40 @@ def test_daily_run_caps_high_states_and_blocks_decision_work_when_degraded(monke
 
     assert state.state == ActionState.ADD_TO_WATCHLIST.value
     assert "degraded_mode_state_cap" in state.transition_reasons
+
+
+def test_daily_run_decision_cards_include_broker_context(monkeypatch):
+    engine = _engine()
+    decision_available_at = datetime.now(UTC).replace(microsecond=0) + timedelta(minutes=1)
+    _insert_active_security(engine, decision_available_at)
+    _insert_broker_position(engine, ticker="MSFT", now=decision_available_at)
+
+    def fake_run_scan(*args, **kwargs):
+        del args, kwargs
+        return [
+            _high_score_scan_result(
+                date(2026, 5, 9),
+                available_at=decision_available_at,
+            )
+        ]
+
+    monkeypatch.setattr("catalyst_radar.jobs.tasks.run_scan", fake_run_scan)
+    spec = DailyRunSpec(
+        as_of=date(2026, 5, 9),
+        decision_available_at=decision_available_at,
+        run_llm=False,
+        dry_run_alerts=True,
+    )
+
+    result = run_daily(spec, engine=engine)
+
+    assert result.step("decision_cards").status == "success"
+    with engine.connect() as conn:
+        payload = conn.execute(select(decision_cards.c.payload)).scalar_one()
+    context = payload["broker_portfolio_context"]
+    assert context["broker_connected"] is True
+    assert context["existing_position"]["ticker"] == "MSFT"
+    assert context["existing_position"]["market_value"] == 9500.0
 
 
 def test_daily_run_marks_validation_run_failed_when_validation_update_fails(monkeypatch):

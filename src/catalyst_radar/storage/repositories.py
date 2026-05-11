@@ -94,6 +94,34 @@ class MarketRepository:
         with self.engine.begin() as conn:
             _upsert_holdings(conn, rows)
 
+    def replace_holdings_snapshot(
+        self,
+        *,
+        as_of: datetime,
+        rows: Iterable[HoldingSnapshot],
+        previous_tickers: Iterable[str] = (),
+        portfolio_value: float = 0.0,
+        cash: float = 0.0,
+    ) -> None:
+        normalized_as_of = _as_datetime(as_of)
+        snapshot_rows = list(rows)
+        current_tickers = {row.ticker.upper() for row in snapshot_rows}
+        tombstones = [
+            HoldingSnapshot(
+                ticker=ticker,
+                shares=0.0,
+                market_value=0.0,
+                sector="unclassified",
+                theme="broker_synced",
+                as_of=normalized_as_of,
+                portfolio_value=portfolio_value,
+                cash=cash,
+            )
+            for ticker in sorted({ticker.upper() for ticker in previous_tickers} - current_tickers)
+        ]
+        with self.engine.begin() as conn:
+            _upsert_holdings(conn, [*snapshot_rows, *tombstones])
+
     def upsert_market_snapshot(
         self,
         *,

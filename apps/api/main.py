@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 
 from catalyst_radar.api.routes.alerts import router as alerts_router
+from catalyst_radar.api.routes.brokers import router as brokers_router
 from catalyst_radar.api.routes.costs import router as costs_router
 from catalyst_radar.api.routes.feedback import router as feedback_router
 from catalyst_radar.api.routes.ops import router as ops_router
@@ -25,6 +26,7 @@ def create_app() -> FastAPI:
     app.include_router(costs_router)
     app.include_router(feedback_router)
     app.include_router(alerts_router)
+    app.include_router(brokers_router)
 
     return app
 

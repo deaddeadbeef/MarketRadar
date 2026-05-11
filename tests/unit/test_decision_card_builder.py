@@ -34,6 +34,7 @@ def test_eligible_manual_buy_review_card_includes_required_contract_fields() -> 
         "trade_plan",
         "position_sizing",
         "portfolio_impact",
+        "broker_portfolio_context",
         "evidence",
         "disconfirming_evidence",
         "controls",
@@ -47,6 +48,7 @@ def test_eligible_manual_buy_review_card_includes_required_contract_fields() -> 
     assert payload["trade_plan"]["reward_risk"] == 2.6
     assert payload["position_sizing"]["shares"] == 25.0
     assert payload["portfolio_impact"]["single_name"]["after_pct"] == 4.3
+    assert payload["broker_portfolio_context"] == {}
     assert payload["evidence"][0]["computed_feature_id"].endswith(":pillar_scores")
     assert payload["disconfirming_evidence"][0]["computed_feature_id"].endswith(":risk_penalty")
     assert payload["controls"]["hard_blocks"] == []
@@ -132,6 +134,25 @@ def test_position_sizing_is_copied_from_scan_metadata_without_recalculation() ->
     assert payload["position_sizing"] == sizing
 
 
+def test_decision_card_can_include_read_only_broker_portfolio_context() -> None:
+    card = build_decision_card(
+        _packet(),
+        broker_portfolio_context={
+            "broker": "schwab",
+            "broker_connected": True,
+            "read_only": True,
+            "portfolio_equity": 250000.0,
+            "cash": 50000.0,
+            "existing_position": {"ticker": "AAA", "quantity": 10, "market_value": 1000},
+        },
+    )
+    payload = thaw_json_value(card.payload)
+
+    assert payload["broker_portfolio_context"]["broker"] == "schwab"
+    assert payload["broker_portfolio_context"]["read_only"] is True
+    assert payload["broker_portfolio_context"]["portfolio_equity"] == 250000.0
+
+
 def test_real_packet_score_field_names_are_preserved() -> None:
     packet = _packet()
     packet["payload"]["scores"] = {
@@ -193,6 +214,7 @@ def test_attach_llm_review_adds_narrative_without_changing_deterministic_fields(
         "trade_plan",
         "position_sizing",
         "portfolio_impact",
+        "broker_portfolio_context",
         "evidence",
         "disconfirming_evidence",
         "controls",

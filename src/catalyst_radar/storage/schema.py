@@ -349,6 +349,106 @@ holdings_snapshots = Table(
     Column("cash", Float, server_default=text("0")),
 )
 
+broker_connections = Table(
+    "broker_connections",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("broker", String, nullable=False),
+    Column("user_id", String, nullable=False),
+    Column("status", String, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    Column("last_successful_sync_at", DateTime(timezone=True)),
+    Column("metadata", json_type, nullable=False),
+)
+
+broker_tokens = Table(
+    "broker_tokens",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("connection_id", String, nullable=False),
+    Column("access_token_encrypted", Text, nullable=False),
+    Column("refresh_token_encrypted", Text),
+    Column("access_token_expires_at", DateTime(timezone=True), nullable=False),
+    Column("refresh_token_expires_at", DateTime(timezone=True)),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+)
+
+broker_accounts = Table(
+    "broker_accounts",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("connection_id", String, nullable=False),
+    Column("broker", String, nullable=False),
+    Column("broker_account_id", Text, nullable=False),
+    Column("account_hash", Text, nullable=False),
+    Column("account_type", String),
+    Column("display_name", Text),
+    Column("is_active", Boolean, nullable=False, default=True),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+)
+
+broker_balance_snapshots = Table(
+    "broker_balance_snapshots",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("account_id", String, nullable=False),
+    Column("as_of", DateTime(timezone=True), nullable=False),
+    Column("cash", Float, nullable=False),
+    Column("buying_power", Float, nullable=False),
+    Column("liquidation_value", Float, nullable=False),
+    Column("equity", Float, nullable=False),
+    Column("raw_payload", json_type, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+
+broker_positions = Table(
+    "broker_positions",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("account_id", String, nullable=False),
+    Column("as_of", DateTime(timezone=True), nullable=False),
+    Column("ticker", String, nullable=False),
+    Column("quantity", Float, nullable=False),
+    Column("average_price", Float),
+    Column("market_value", Float, nullable=False),
+    Column("unrealized_pnl", Float),
+    Column("sector", String, nullable=False),
+    Column("theme", String, nullable=False),
+    Column("raw_payload", json_type, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+
+broker_position_snapshots = Table(
+    "broker_position_snapshots",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("account_id", String, nullable=False),
+    Column("as_of", DateTime(timezone=True), nullable=False),
+    Column("position_count", Integer, nullable=False),
+    Column("raw_payload", json_type, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+
+broker_orders = Table(
+    "broker_orders",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("account_id", String, nullable=False),
+    Column("broker_order_id", Text),
+    Column("ticker", String),
+    Column("side", String),
+    Column("order_type", String),
+    Column("quantity", Float),
+    Column("limit_price", Float),
+    Column("status", String, nullable=False),
+    Column("submitted_at", DateTime(timezone=True)),
+    Column("raw_payload", json_type, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+
 raw_provider_records = Table(
     "raw_provider_records",
     metadata,
@@ -713,3 +813,28 @@ Index(
     useful_alert_labels.c.artifact_type,
     useful_alert_labels.c.artifact_id,
 )
+Index(
+    "ix_broker_connections_broker_user",
+    broker_connections.c.broker,
+    broker_connections.c.user_id,
+)
+Index("ix_broker_tokens_connection", broker_tokens.c.connection_id)
+Index("ix_broker_accounts_connection", broker_accounts.c.connection_id)
+Index("ix_broker_accounts_broker_hash", broker_accounts.c.broker, broker_accounts.c.account_hash)
+Index(
+    "ix_broker_balance_account_as_of",
+    broker_balance_snapshots.c.account_id,
+    broker_balance_snapshots.c.as_of,
+)
+Index(
+    "ix_broker_positions_account_as_of",
+    broker_positions.c.account_id,
+    broker_positions.c.as_of,
+)
+Index("ix_broker_positions_ticker_as_of", broker_positions.c.ticker, broker_positions.c.as_of)
+Index(
+    "ix_broker_position_snapshots_account_as_of",
+    broker_position_snapshots.c.account_id,
+    broker_position_snapshots.c.as_of,
+)
+Index("ix_broker_orders_account_status", broker_orders.c.account_id, broker_orders.c.status)
