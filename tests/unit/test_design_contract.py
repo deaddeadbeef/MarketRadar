@@ -47,6 +47,9 @@ def test_dashboard_style_owns_table_and_select_surfaces() -> None:
         "table-container:",
         "table-header:",
         "table-row-selected:",
+        "source-link:",
+        "chart-panel:",
+        "chart-bar:",
         "inline-chip:",
         "note-card:",
         "select-field:",
@@ -56,6 +59,8 @@ def test_dashboard_style_owns_table_and_select_surfaces() -> None:
     for selector in (
         ".mr-table-wrap",
         ".mr-table-selected",
+        ".mr-chart-card",
+        ".mr-chart-bar",
         ".mr-note-card",
         'div[data-baseweb="select"] > div',
     ):

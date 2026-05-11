@@ -99,6 +99,22 @@ components:
     backgroundColor: "#F7FBF9"
     textColor: "{colors.primary}"
     padding: "{spacing.sm}"
+  source-link:
+    backgroundColor: transparent
+    textColor: "{colors.data-blue}"
+    typography: "{typography.body-sm}"
+    rounded: "{rounded.none}"
+    padding: 0px
+  chart-panel:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.primary}"
+    rounded: "{rounded.md}"
+    padding: "{spacing.md}"
+  chart-bar:
+    backgroundColor: "{colors.data-blue}"
+    textColor: "{colors.on-primary}"
+    rounded: "{rounded.xs}"
+    padding: 0px
   inline-chip:
     backgroundColor: "{colors.surface-muted}"
     textColor: "{colors.primary}"
@@ -220,6 +236,10 @@ Tables and panels should feel precise, not soft or bubbly.
   They use `table-container`, `table-header`, and `table-row-selected` tokens.
   Do not convert queues into card grids or allow uncontrolled dark dataframe
   styling inside a light dashboard.
+- **Source Links:** use the `source-link` component. Evidence tables must show
+  human-readable source labels, not raw URLs in brackets.
+- **Charts:** use `chart-panel` and `chart-bar` tokens. Charts must share the
+  light application theme and must not render dark terminal-style panels.
 - **Sidebar Controls:** quiet gray shell with clear labels and compact inputs.
 - **Select Fields:** labels must be human-readable and never expose internal
   hashes or opaque IDs as the first visible option.
@@ -242,4 +262,6 @@ Tables and panels should feel precise, not soft or bubbly.
 - Don't hide critical risk, degraded mode, failed jobs, or stale provider state.
 - Don't use raw JSON as the first presentation of an artifact.
 - Don't show internal IDs, event hashes, or storage keys as primary labels.
+- Don't display raw source URLs inline when the label can be linked.
+- Don't use dark chart surfaces inside the light command-center layout.
 - Don't use more than one strong accent in a single local control group.

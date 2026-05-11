@@ -224,6 +224,13 @@ def _value_html(value: object) -> str:
         )
         return chips or "n/a"
     if isinstance(value, Mapping):
+        label = value.get("label")
+        url = value.get("url")
+        if label and isinstance(url, str) and url.startswith(("https://", "http://")):
+            return (
+                f'<a class="mr-table-link" href="{_html(url)}" target="_blank">'
+                f"{_html(label)}</a>"
+            )
         items = [
             f"<strong>{_html(key)}</strong>: {_value_html(item)}"
             for key, item in value.items()
@@ -245,6 +252,14 @@ def _price_range(low: object, high: object) -> str:
     if low in (None, "") and high in (None, ""):
         return "n/a"
     return f"{_currency(low)} - {_currency(high)}"
+
+
+def _url_link(label: object, url: object) -> Mapping[str, object] | str:
+    text = _metric_text(label)
+    link = str(url or "").strip()
+    if link.startswith(("https://", "http://")):
+        return {"label": text, "url": link}
+    return text if not link else f"{text} ({link})"
 
 
 def _tone(value: object) -> str:
@@ -304,11 +319,39 @@ def _show_command_header(
     )
 
 
-def _evidence_label(value: object) -> str:
+def _evidence_label(value: object) -> object:
     item = _mapping(value)
     title = str(item.get("title") or item.get("kind") or "")
     link = item.get("source_url") or item.get("source_id") or item.get("computed_feature_id")
-    return title if not link else f"{title} [{link}]"
+    return title if not link else _url_link(title, link)
+
+
+def _show_state_mix(rows: list[dict[str, object]]) -> None:
+    counts: dict[str, int] = {}
+    for row in rows:
+        state = _metric_text(row.get("state"))
+        if state != "n/a":
+            counts[state] = counts.get(state, 0) + 1
+    if not counts:
+        st.caption("No state mix.")
+        return
+    total = sum(counts.values())
+    bars = []
+    for state, count in sorted(counts.items(), key=lambda item: (-item[1], item[0])):
+        pct = count / total if total else 0.0
+        bars.append(
+            '<div class="mr-chart-row">'
+            '<div class="mr-chart-row-head">'
+            f'<span>{_html(state)}</span>'
+            f'<strong>{count}</strong>'
+            "</div>"
+            '<div class="mr-chart-track">'
+            f'<span class="mr-chart-bar" style="width: {pct * 100:.1f}%"></span>'
+            "</div>"
+            f'<span class="mr-chart-caption">{pct:.0%} of candidates</span>'
+            "</div>"
+        )
+    st.markdown(f'<div class="mr-chart-card">{"".join(bars)}</div>', unsafe_allow_html=True)
 
 
 def _candidate_rows_with_labels(rows: list[dict[str, object]]) -> list[dict[str, object]]:
@@ -452,10 +495,7 @@ def _show_overview(
         )
     with right:
         st.subheader("State Mix")
-        if candidate_rows and "state" in candidate_frame:
-            st.bar_chart(candidate_frame["state"].value_counts())
-        else:
-            st.caption("No state mix.")
+        _show_state_mix(candidate_rows)
 
     if selected_candidate:
         _show_status_badges(
