@@ -232,6 +232,57 @@ div[data-baseweb="select"] svg {
   text-decoration: underline;
 }
 
+.mr-chart-card {
+  background: var(--mr-surface);
+  border: 1px solid var(--mr-border);
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(25, 28, 31, 0.035);
+  margin-top: 0.25rem;
+  padding: 0.8rem;
+}
+
+.mr-chart-row + .mr-chart-row {
+  border-top: 1px solid #E7EBF0;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+}
+
+.mr-chart-row-head {
+  align-items: center;
+  color: var(--mr-primary);
+  display: flex;
+  font-size: 0.86rem;
+  justify-content: space-between;
+  margin-bottom: 0.45rem;
+}
+
+.mr-chart-row-head strong {
+  font-family: var(--mr-font-data);
+  font-weight: 560;
+}
+
+.mr-chart-track {
+  background: var(--mr-surface-muted);
+  border-radius: 9999px;
+  height: 0.65rem;
+  overflow: hidden;
+}
+
+.mr-chart-bar {
+  background: var(--mr-data-blue);
+  border-radius: 9999px;
+  display: block;
+  height: 100%;
+  min-width: 0.65rem;
+}
+
+.mr-chart-caption {
+  color: var(--mr-secondary);
+  display: block;
+  font-size: 0.74rem;
+  margin-top: 0.35rem;
+}
+
 .mr-inline-chip {
   background: var(--mr-surface-muted);
   border: 1px solid var(--mr-border);
