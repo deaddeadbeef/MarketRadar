@@ -17,6 +17,9 @@ SCHWAB_ENV=production
 SCHWAB_BASE_URL=https://api.schwabapi.com
 SCHWAB_AUTH_BASE_URL=https://api.schwabapi.com/v1/oauth
 SCHWAB_ORDER_SUBMISSION_ENABLED=false
+SCHWAB_SYNC_MIN_INTERVAL_SECONDS=900
+SCHWAB_MARKET_SYNC_MIN_INTERVAL_SECONDS=300
+SCHWAB_MARKET_SYNC_MAX_TICKERS=5
 BROKER_TOKEN_ENCRYPTION_KEY=
 ```
 
@@ -47,6 +50,10 @@ The sync pulls account metadata, balances, positions, and open orders. It stores
 broker-specific rows and also writes holdings snapshots so existing portfolio
 risk logic can consume synced positions.
 
+Repeated portfolio sync requests are guarded by
+`SCHWAB_SYNC_MIN_INTERVAL_SECONDS`. A `429` response means Market Radar
+intentionally suppressed a repeated Schwab call. The default is 900 seconds.
+
 ## Market Context Sync
 
 To refresh Schwab quote, price-history, and option-chain context for one or more
@@ -63,6 +70,11 @@ Stored market snapshots are available at:
 ```powershell
 Invoke-RestMethod http://127.0.0.1:8000/api/market/context
 ```
+
+Market-context refresh is guarded by `SCHWAB_MARKET_SYNC_MIN_INTERVAL_SECONDS`
+and `SCHWAB_MARKET_SYNC_MAX_TICKERS`. Use it for selected candidates or
+watchlist names, not market-wide scans. The defaults are 300 seconds and 5
+tickers.
 
 ## Dashboard
 

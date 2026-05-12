@@ -38,6 +38,14 @@ from catalyst_radar.brokers.portfolio_context import (
     portfolio_snapshot_payload,
     positions_payload,
 )
+from catalyst_radar.brokers.rate_limit import (
+    SCHWAB_MARKET_SYNC_OPERATION,
+    SCHWAB_PORTFOLIO_SYNC_OPERATION,
+    SchwabRateLimitExceeded,
+    acquire_schwab_api_slot,
+    schwab_rate_limit_config_payload,
+    schwab_rate_limit_status,
+)
 from catalyst_radar.brokers.schwab import (
     SchwabClient,
     SchwabConfigurationError,
@@ -154,7 +162,8 @@ def schwab_callback(
 @router.get("/api/brokers/schwab/status", dependencies=[Depends(require_role(Role.VIEWER))])
 def schwab_status() -> dict[str, object]:
     config = AppConfig.from_env()
-    repo = BrokerRepository(_engine())
+    engine = _engine()
+    repo = BrokerRepository(engine)
     connection = repo.latest_connection()
     token = repo.latest_token(connection.id) if connection is not None else None
     connected = bool(
@@ -181,6 +190,8 @@ def schwab_status() -> dict[str, object]:
         ),
         "order_submission_enabled": bool(config.schwab_order_submission_enabled),
         "order_submission_available": False,
+        "rate_limits": schwab_rate_limit_status(engine, config=config),
+        "rate_limit_config": schwab_rate_limit_config_payload(config),
     }
 
 
@@ -200,7 +211,8 @@ def schwab_disconnect() -> dict[str, object]:
 @router.post("/api/brokers/schwab/sync", dependencies=[Depends(require_role(Role.ANALYST))])
 def schwab_sync() -> dict[str, object]:
     config = AppConfig.from_env()
-    repo = BrokerRepository(_engine())
+    engine = _engine()
+    repo = BrokerRepository(engine)
     connection = repo.latest_connection()
     token = repo.latest_token(connection.id) if connection is not None else None
     if connection is None or token is None:
@@ -210,11 +222,16 @@ def schwab_sync() -> dict[str, object]:
             status_code=409,
             detail=f"Schwab connection is {connection.status.value}",
         )
+    _acquire_schwab_rate_limit_slot(
+        engine,
+        operation=SCHWAB_PORTFOLIO_SYNC_OPERATION,
+        min_interval_seconds=config.schwab_sync_min_interval_seconds,
+        metadata={"endpoint": "/api/brokers/schwab/sync"},
+    )
     try:
         access_token = _active_access_token(config, repo, connection, token)
     except ValueError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
-    engine = _engine()
     client = SchwabClient(
         client=JsonHttpClient(UrlLibHttpTransport(), config.http_timeout_seconds),
         access_token=access_token,
@@ -245,6 +262,14 @@ def schwab_market_sync(payload: dict[str, Any] | None = None) -> dict[str, objec
     if not tickers:
         raise HTTPException(status_code=400, detail="At least one ticker is required")
     config = AppConfig.from_env()
+    if len(tickers) > config.schwab_market_sync_max_tickers:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Too many Schwab market-sync tickers; maximum is "
+                f"{config.schwab_market_sync_max_tickers}"
+            ),
+        )
     engine = _engine()
     repo = BrokerRepository(engine)
     connection = repo.latest_connection()
@@ -256,6 +281,12 @@ def schwab_market_sync(payload: dict[str, Any] | None = None) -> dict[str, objec
             status_code=409,
             detail=f"Schwab connection is {connection.status.value}",
         )
+    _acquire_schwab_rate_limit_slot(
+        engine,
+        operation=SCHWAB_MARKET_SYNC_OPERATION,
+        min_interval_seconds=config.schwab_market_sync_min_interval_seconds,
+        metadata={"endpoint": "/api/brokers/schwab/market-sync", "tickers": tickers},
+    )
     access_token = _active_access_token(config, repo, connection, token)
     client = SchwabClient(
         client=JsonHttpClient(UrlLibHttpTransport(), config.http_timeout_seconds),
@@ -423,6 +454,28 @@ def _token_cipher(config: AppConfig) -> TokenCipher:
         msg = "BROKER_TOKEN_ENCRYPTION_KEY is required"
         raise ValueError(msg)
     return TokenCipher(config.broker_token_encryption_key)
+
+
+def _acquire_schwab_rate_limit_slot(
+    engine,
+    *,
+    operation: str,
+    min_interval_seconds: int,
+    metadata: dict[str, Any],
+) -> None:
+    try:
+        acquire_schwab_api_slot(
+            engine,
+            operation=operation,
+            min_interval_seconds=min_interval_seconds,
+            metadata=metadata,
+        )
+    except SchwabRateLimitExceeded as exc:
+        raise HTTPException(
+            status_code=429,
+            detail=exc.state.as_payload(),
+            headers={"Retry-After": str(exc.state.retry_after_seconds)},
+        ) from exc
 
 
 def _active_access_token(

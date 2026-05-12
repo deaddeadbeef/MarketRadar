@@ -169,6 +169,9 @@ def test_config_reads_schwab_settings_from_env() -> None:
             "SCHWAB_BASE_URL": "https://schwab.example.com/",
             "SCHWAB_AUTH_BASE_URL": "https://auth.schwab.example.com/",
             "SCHWAB_ORDER_SUBMISSION_ENABLED": "true",
+            "SCHWAB_SYNC_MIN_INTERVAL_SECONDS": "120",
+            "SCHWAB_MARKET_SYNC_MIN_INTERVAL_SECONDS": "45",
+            "SCHWAB_MARKET_SYNC_MAX_TICKERS": "3",
             "BROKER_TOKEN_ENCRYPTION_KEY": "local-dev-key",
         }
     )
@@ -180,4 +183,23 @@ def test_config_reads_schwab_settings_from_env() -> None:
     assert config.schwab_base_url == "https://schwab.example.com"
     assert config.schwab_auth_base_url == "https://auth.schwab.example.com"
     assert config.schwab_order_submission_enabled is True
+    assert config.schwab_sync_min_interval_seconds == 120
+    assert config.schwab_market_sync_min_interval_seconds == 45
+    assert config.schwab_market_sync_max_tickers == 3
     assert config.broker_token_encryption_key == "local-dev-key"
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("SCHWAB_SYNC_MIN_INTERVAL_SECONDS", "0"),
+        ("SCHWAB_MARKET_SYNC_MIN_INTERVAL_SECONDS", "-1"),
+        ("SCHWAB_MARKET_SYNC_MAX_TICKERS", "0"),
+    ],
+)
+def test_config_rejects_invalid_schwab_rate_limit_settings(
+    key: str,
+    value: str,
+) -> None:
+    with pytest.raises(ValueError):
+        AppConfig.from_env({key: value})

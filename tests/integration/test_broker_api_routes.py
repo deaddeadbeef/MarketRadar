@@ -14,6 +14,7 @@ from catalyst_radar.brokers.models import (
     BrokerConnectionStatus,
     BrokerMarketSnapshot,
     BrokerPosition,
+    BrokerSyncResult,
     BrokerToken,
     broker_account_id,
     broker_balance_snapshot_id,
@@ -203,6 +204,106 @@ def test_schwab_sync_marks_needs_auth_when_refresh_fails(
     assert connection.metadata["reason"] == "refresh_failed"
 
 
+def test_schwab_sync_returns_429_on_repeated_attempt_without_second_schwab_call(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'sync-rate-limit.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("BROKER_TOKEN_ENCRYPTION_KEY", "local-dev-key")
+    monkeypatch.setenv("SCHWAB_SYNC_MIN_INTERVAL_SECONDS", "120")
+    engine = engine_from_url(database_url)
+    create_schema(engine)
+    _seed_broker_rows(engine)
+    _seed_valid_token(engine)
+    calls: list[str] = []
+
+    def fake_sync(**kwargs):
+        calls.append("sync")
+        return BrokerSyncResult(
+            connection_id=broker_connection_id(),
+            account_count=1,
+            balance_count=1,
+            position_count=0,
+            open_order_count=0,
+            synced_at=datetime.now(UTC),
+        )
+
+    monkeypatch.setattr("catalyst_radar.api.routes.brokers.sync_schwab_read_only", fake_sync)
+    client = TestClient(create_app())
+
+    first = client.post("/api/brokers/schwab/sync")
+    second = client.post("/api/brokers/schwab/sync")
+
+    assert first.status_code == 200
+    assert second.status_code == 429
+    assert second.headers["retry-after"]
+    assert second.json()["detail"]["operation"] == "portfolio_sync"
+    assert calls == ["sync"]
+
+
+def test_schwab_market_sync_limits_ticker_batch_size(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'market-max-tickers.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("SCHWAB_MARKET_SYNC_MAX_TICKERS", "1")
+    engine = engine_from_url(database_url)
+    create_schema(engine)
+    _seed_broker_rows(engine)
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/brokers/schwab/market-sync",
+        json={"tickers": ["GLW", "MSFT"]},
+    )
+
+    assert response.status_code == 400
+    assert "maximum is 1" in response.json()["detail"]
+
+
+def test_schwab_market_sync_returns_429_on_repeated_attempt_without_second_schwab_call(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'market-rate-limit.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("BROKER_TOKEN_ENCRYPTION_KEY", "local-dev-key")
+    monkeypatch.setenv("SCHWAB_MARKET_SYNC_MIN_INTERVAL_SECONDS", "120")
+    engine = engine_from_url(database_url)
+    create_schema(engine)
+    _seed_broker_rows(engine)
+    _seed_valid_token(engine)
+    calls: list[str] = []
+
+    def fake_market_sync(**kwargs):
+        calls.append("market")
+        now = datetime.now(UTC)
+        return [
+            BrokerMarketSnapshot(
+                id=broker_market_snapshot_id("GLW", now),
+                ticker="GLW",
+                as_of=now,
+                last_price=95.0,
+                raw_payload={},
+                created_at=now,
+            )
+        ]
+
+    monkeypatch.setattr("catalyst_radar.api.routes.brokers.sync_market_context", fake_market_sync)
+    client = TestClient(create_app())
+
+    first = client.post("/api/brokers/schwab/market-sync", json={"tickers": ["GLW"]})
+    second = client.post("/api/brokers/schwab/market-sync", json={"tickers": ["GLW"]})
+
+    assert first.status_code == 200
+    assert second.status_code == 429
+    assert second.headers["retry-after"]
+    assert second.json()["detail"]["operation"] == "market_context_sync"
+    assert calls == ["market"]
+
+
 def test_order_preview_is_never_submittable_even_when_flag_enabled(
     tmp_path: Path,
     monkeypatch,
@@ -373,4 +474,23 @@ def _seed_broker_rows(engine) -> None:
                 created_at=now,
             )
         ]
+    )
+
+
+def _seed_valid_token(engine) -> None:
+    repo = BrokerRepository(engine)
+    connection = repo.latest_connection()
+    assert connection is not None
+    now = datetime.now(UTC)
+    repo.upsert_token(
+        BrokerToken(
+            id=broker_token_id(connection.id),
+            connection_id=connection.id,
+            access_token_encrypted=TokenCipher("local-dev-key").encrypt("access-token"),
+            refresh_token_encrypted=TokenCipher("local-dev-key").encrypt("refresh-token"),
+            access_token_expires_at=now + timedelta(hours=1),
+            refresh_token_expires_at=now + timedelta(days=1),
+            created_at=now,
+            updated_at=now,
+        )
     )

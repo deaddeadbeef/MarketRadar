@@ -146,6 +146,9 @@ class AppConfig:
     schwab_base_url: str = "https://api.schwabapi.com"
     schwab_auth_base_url: str = "https://api.schwabapi.com/v1/oauth"
     schwab_order_submission_enabled: bool = False
+    schwab_sync_min_interval_seconds: int = 900
+    schwab_market_sync_min_interval_seconds: int = 300
+    schwab_market_sync_max_tickers: int = 5
     broker_token_encryption_key: str | None = None
     http_timeout_seconds: float = 10.0
     provider_availability_policy: str = "live_fetch"
@@ -239,6 +242,21 @@ class AppConfig:
             ).rstrip("/"),
             schwab_order_submission_enabled=_bool(
                 source.get("SCHWAB_ORDER_SUBMISSION_ENABLED"), False
+            ),
+            schwab_sync_min_interval_seconds=_positive_int(
+                source,
+                "SCHWAB_SYNC_MIN_INTERVAL_SECONDS",
+                900,
+            ),
+            schwab_market_sync_min_interval_seconds=_positive_int(
+                source,
+                "SCHWAB_MARKET_SYNC_MIN_INTERVAL_SECONDS",
+                300,
+            ),
+            schwab_market_sync_max_tickers=_positive_int(
+                source,
+                "SCHWAB_MARKET_SYNC_MAX_TICKERS",
+                5,
             ),
             broker_token_encryption_key=_optional_str(
                 source, "BROKER_TOKEN_ENCRYPTION_KEY"
