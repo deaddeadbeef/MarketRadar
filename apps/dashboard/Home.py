@@ -299,8 +299,9 @@ def _show_status_badges(items: Sequence[tuple[str, object]]) -> None:
 
 
 def _command_cell(label: str, value: object) -> str:
+    tone = _tone(value)
     return (
-        '<div class="mr-command-cell">'
+        f'<div class="mr-command-cell mr-command-cell-{tone}">'
         f'<span class="mr-command-label">{_html(label)}</span>'
         f'<span class="mr-command-value">{_html(value)}</span>'
         "</div>"
@@ -325,7 +326,15 @@ def _show_command_header(
         _command_cell("Degraded", degraded),
     ]
     st.markdown(
-        f'<div class="mr-command-strip">{"".join(cells)}</div>',
+        '<section class="mr-app-header">'
+        '<div class="mr-title-block">'
+        "<h1>Market Radar Command Center</h1>"
+        "</div>"
+        '<div class="mr-status-panel" aria-label="System status">'
+        '<span class="mr-status-title">System Status</span>'
+        f'<div class="mr-command-strip">{"".join(cells)}</div>'
+        "</div>"
+        "</section>",
         unsafe_allow_html=True,
     )
 
@@ -1370,8 +1379,6 @@ require_viewer()
 
 st.set_page_config(page_title="Market Radar Command Center", layout="wide")
 st.markdown(dashboard_style(), unsafe_allow_html=True)
-
-st.title("Market Radar Command Center")
 
 config = AppConfig.from_env()
 engine = engine_from_url(config.database_url)

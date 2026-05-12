@@ -57,6 +57,9 @@ def test_dashboard_style_owns_table_and_select_surfaces() -> None:
         assert component in text
 
     for selector in (
+        ".mr-app-header",
+        ".mr-status-panel",
+        ".mr-command-strip",
         ".mr-table-wrap",
         ".mr-table-selected",
         ".mr-chart-card",
