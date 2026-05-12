@@ -12,11 +12,13 @@ from catalyst_radar.brokers.models import (
     BrokerBalanceSnapshot,
     BrokerConnection,
     BrokerConnectionStatus,
+    BrokerMarketSnapshot,
     BrokerPosition,
     BrokerToken,
     broker_account_id,
     broker_balance_snapshot_id,
     broker_connection_id,
+    broker_market_snapshot_id,
     broker_position_id,
     broker_token_id,
 )
@@ -62,9 +64,7 @@ def test_schwab_connect_records_state_and_callback_rejects_mismatch(
     redirect = connect_response.headers["location"]
     query = parse_qs(urlparse(redirect).query)
     connection = BrokerRepository(engine).latest_connection()
-    mismatch_response = client.get(
-        "/api/brokers/schwab/callback?code=fake-code&state=wrong-state"
-    )
+    mismatch_response = client.get("/api/brokers/schwab/callback?code=fake-code&state=wrong-state")
 
     assert connect_response.status_code == 307
     assert query["state"]
@@ -232,6 +232,80 @@ def test_order_preview_is_never_submittable_even_when_flag_enabled(
     assert payload["submission_enabled"] is True
     assert payload["submission_allowed"] is False
     assert "broker_read_only_integration" in payload["hard_blocks"]
+
+
+def test_interactive_routes_record_actions_triggers_and_blocked_tickets(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'interactive-api.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("SCHWAB_ORDER_SUBMISSION_ENABLED", "true")
+    engine = engine_from_url(database_url)
+    create_schema(engine)
+    _seed_broker_rows(engine)
+    repo = BrokerRepository(engine)
+    now = datetime(2026, 5, 12, 14, tzinfo=UTC)
+    repo.upsert_market_snapshots(
+        [
+            BrokerMarketSnapshot(
+                id=broker_market_snapshot_id("GLW", now),
+                ticker="GLW",
+                as_of=now,
+                last_price=95.0,
+                total_volume=2_000_000,
+                raw_payload={},
+                created_at=now,
+            )
+        ]
+    )
+    client = TestClient(create_app())
+
+    action = client.post(
+        "/api/opportunities/actions",
+        json={"ticker": "GLW", "action": "watch", "thesis": "early signal"},
+    )
+    trigger = client.post(
+        "/api/market/triggers",
+        json={
+            "ticker": "GLW",
+            "trigger_type": "price_above",
+            "operator": "gte",
+            "threshold": 90.0,
+        },
+    )
+    evaluated = client.post("/api/market/triggers/evaluate", json={"tickers": ["GLW"]})
+    ticket = client.post(
+        "/api/orders/tickets",
+        json={
+            "ticker": "GLW",
+            "side": "buy",
+            "entry_price": 95.0,
+            "invalidation_price": 90.0,
+        },
+    )
+    actions = client.get("/api/opportunities/actions?ticker=GLW")
+    triggers = client.get("/api/market/triggers?ticker=GLW")
+    tickets = client.get("/api/orders/tickets?ticker=GLW")
+
+    assert action.status_code == 200
+    assert action.json()["status"] == "active"
+    assert trigger.status_code == 200
+    assert trigger.json()["status"] == "active"
+    assert evaluated.status_code == 200
+    assert evaluated.json()["items"][0]["status"] == "fired"
+    assert ticket.status_code == 200
+    assert ticket.json()["submission_allowed"] is False
+    assert ticket.json()["status"] == "blocked"
+    assert "broker_read_only_integration" in ticket.json()["preview"]["hard_blocks"]
+    assert actions.json()["items"][0]["thesis"] == "early signal"
+    assert triggers.json()["items"][0]["status"] == "fired"
+    assert tickets.json()["items"][0]["submission_allowed"] is False
+    assert not [
+        route.path
+        for route in create_app().routes
+        if "submit" in getattr(route, "path", "") or "place" in getattr(route, "path", "")
+    ]
 
 
 def _seed_broker_rows(engine) -> None:

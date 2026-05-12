@@ -158,6 +158,59 @@ class SchwabClient:
         )
         return _records(payload)
 
+    def get_quotes(self, symbols: Sequence[str]) -> Mapping[str, Any]:
+        normalized = sorted({str(symbol).strip().upper() for symbol in symbols if symbol})
+        if not normalized:
+            return {}
+        query = urlencode({"symbols": ",".join(normalized), "indicative": "false"})
+        payload = self.client.get_json(
+            f"{self.base_url}/marketdata/v1/quotes?{query}",
+            headers=self._headers(),
+        )
+        return _mapping(payload, "quotes response")
+
+    def get_price_history(
+        self,
+        symbol: str,
+        *,
+        period_type: str = "day",
+        period: int = 10,
+        frequency_type: str = "minute",
+        frequency: int = 5,
+    ) -> Mapping[str, Any]:
+        ticker = str(symbol or "").strip().upper()
+        if not ticker:
+            msg = "Schwab price history symbol is required"
+            raise SchwabConfigurationError(msg)
+        query = urlencode(
+            {
+                "symbol": ticker,
+                "periodType": period_type,
+                "period": period,
+                "frequencyType": frequency_type,
+                "frequency": frequency,
+                "needExtendedHoursData": "true",
+                "needPreviousClose": "true",
+            }
+        )
+        payload = self.client.get_json(
+            f"{self.base_url}/marketdata/v1/pricehistory?{query}",
+            headers=self._headers(),
+        )
+        return _mapping(payload, "price history response")
+
+    def get_option_chain(self, symbol: str) -> Mapping[str, Any]:
+        ticker = str(symbol or "").strip().upper()
+        if not ticker:
+            msg = "Schwab option chain symbol is required"
+            raise SchwabConfigurationError(msg)
+        query = urlencode({"symbol": ticker, "contractType": "ALL", "strategy": "SINGLE"})
+        payload = self.client.get_json(
+            f"{self.base_url}/marketdata/v1/chains?{query}",
+            headers=self._headers(),
+        )
+        return _mapping(payload, "option chain response")
+
     def _headers(self) -> Mapping[str, str]:
         return {"authorization": f"Bearer {self.access_token}"}
 

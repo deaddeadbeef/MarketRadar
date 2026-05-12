@@ -116,6 +116,34 @@ EXPECTED_API_ROUTES = {
         "/api/brokers/schwab/sync",
     ): ("catalyst_radar.api.routes.brokers", "schwab_sync", ("brokers",)),
     (
+        "POST",
+        "/api/brokers/schwab/market-sync",
+    ): ("catalyst_radar.api.routes.brokers", "schwab_market_sync", ("brokers",)),
+    (
+        "GET",
+        "/api/market/context",
+    ): ("catalyst_radar.api.routes.brokers", "market_context", ("brokers",)),
+    (
+        "POST",
+        "/api/opportunities/actions",
+    ): ("catalyst_radar.api.routes.brokers", "opportunity_action", ("brokers",)),
+    (
+        "GET",
+        "/api/opportunities/actions",
+    ): ("catalyst_radar.api.routes.brokers", "opportunity_actions", ("brokers",)),
+    (
+        "POST",
+        "/api/market/triggers",
+    ): ("catalyst_radar.api.routes.brokers", "market_trigger", ("brokers",)),
+    (
+        "POST",
+        "/api/market/triggers/evaluate",
+    ): ("catalyst_radar.api.routes.brokers", "market_triggers_evaluate", ("brokers",)),
+    (
+        "GET",
+        "/api/market/triggers",
+    ): ("catalyst_radar.api.routes.brokers", "market_triggers", ("brokers",)),
+    (
         "GET",
         "/api/portfolio/snapshot",
     ): ("catalyst_radar.api.routes.brokers", "portfolio_snapshot", ("brokers",)),
@@ -139,6 +167,14 @@ EXPECTED_API_ROUTES = {
         "POST",
         "/api/orders/preview",
     ): ("catalyst_radar.api.routes.brokers", "order_preview", ("brokers",)),
+    (
+        "POST",
+        "/api/orders/tickets",
+    ): ("catalyst_radar.api.routes.brokers", "order_ticket", ("brokers",)),
+    (
+        "GET",
+        "/api/orders/tickets",
+    ): ("catalyst_radar.api.routes.brokers", "order_tickets", ("brokers",)),
 }
 ALLOWED_BROKER_ROUTE_TERMS = {
     ("GET", "/api/brokers/schwab/connect"),
@@ -146,12 +182,21 @@ ALLOWED_BROKER_ROUTE_TERMS = {
     ("GET", "/api/brokers/schwab/status"),
     ("POST", "/api/brokers/schwab/disconnect"),
     ("POST", "/api/brokers/schwab/sync"),
+    ("POST", "/api/brokers/schwab/market-sync"),
+    ("GET", "/api/market/context"),
+    ("POST", "/api/opportunities/actions"),
+    ("GET", "/api/opportunities/actions"),
+    ("POST", "/api/market/triggers"),
+    ("POST", "/api/market/triggers/evaluate"),
+    ("GET", "/api/market/triggers"),
     ("GET", "/api/portfolio/snapshot"),
     ("GET", "/api/portfolio/positions"),
     ("GET", "/api/portfolio/balances"),
     ("GET", "/api/portfolio/open-orders"),
     ("GET", "/api/portfolio/exposure"),
     ("POST", "/api/orders/preview"),
+    ("POST", "/api/orders/tickets"),
+    ("GET", "/api/orders/tickets"),
 }
 
 
@@ -234,8 +279,7 @@ def test_broker_import_guard_catches_static_and_dynamic_import_roots(
 def test_broker_import_guard_ignores_comments_and_strings(tmp_path: Path) -> None:
     path = tmp_path / "benign.py"
     path.write_text(
-        "# import alpaca_trade_api\n"
-        "text = 'from ib_insync import IB and __import__(\"tda\")'\n",
+        "# import alpaca_trade_api\ntext = 'from ib_insync import IB and __import__(\"tda\")'\n",
         encoding="utf-8",
     )
 
@@ -294,10 +338,7 @@ def test_production_compose_defaults_to_loopback_and_header_auth() -> None:
     assert "CATALYST_ENV: production" in compose
     assert "PYTHONPATH: /app/src:/app" in compose
     assert "CATALYST_API_AUTH_MODE: ${CATALYST_API_AUTH_MODE:-header}" in compose
-    assert (
-        "CATALYST_DASHBOARD_AUTH_MODE: ${CATALYST_DASHBOARD_AUTH_MODE:-header}"
-        in compose
-    )
+    assert "CATALYST_DASHBOARD_AUTH_MODE: ${CATALYST_DASHBOARD_AUTH_MODE:-header}" in compose
     assert "CATALYST_SEC_ENABLE_LIVE: ${CATALYST_SEC_ENABLE_LIVE:-false}" in compose
     assert "CATALYST_SEC_USER_AGENT: ${CATALYST_SEC_USER_AGENT:-}" in compose
     assert "CATALYST_SEC_BASE_URL: ${CATALYST_SEC_BASE_URL:-https://data.sec.gov}" in compose
@@ -312,8 +353,7 @@ def test_local_compose_passes_dashboard_runtime_env() -> None:
     assert "PYTHONPATH: /app/src:/app" in compose
     assert (
         "CATALYST_DATABASE_URL: "
-        "postgresql+psycopg://catalyst:catalyst@postgres:5432/catalyst_radar"
-        in compose
+        "postgresql+psycopg://catalyst:catalyst@postgres:5432/catalyst_radar" in compose
     )
     assert "CATALYST_SEC_ENABLE_LIVE: ${CATALYST_SEC_ENABLE_LIVE:-false}" in compose
     assert "CATALYST_SEC_USER_AGENT: ${CATALYST_SEC_USER_AGENT:-}" in compose

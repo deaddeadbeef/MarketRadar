@@ -449,6 +449,78 @@ broker_orders = Table(
     Column("created_at", DateTime(timezone=True), nullable=False),
 )
 
+broker_opportunity_actions = Table(
+    "broker_opportunity_actions",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("ticker", String, nullable=False),
+    Column("action", String, nullable=False),
+    Column("status", String, nullable=False),
+    Column("thesis", Text),
+    Column("notes", Text),
+    Column("payload", json_type, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+)
+
+broker_market_snapshots = Table(
+    "broker_market_snapshots",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("ticker", String, nullable=False),
+    Column("as_of", DateTime(timezone=True), nullable=False),
+    Column("last_price", Float),
+    Column("bid_price", Float),
+    Column("ask_price", Float),
+    Column("mark_price", Float),
+    Column("day_change_percent", Float),
+    Column("total_volume", Float),
+    Column("relative_volume", Float),
+    Column("high_52_week", Float),
+    Column("low_52_week", Float),
+    Column("price_trend_5d_percent", Float),
+    Column("option_call_put_ratio", Float),
+    Column("option_iv_percentile", Float),
+    Column("raw_payload", json_type, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+
+broker_triggers = Table(
+    "broker_triggers",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("ticker", String, nullable=False),
+    Column("trigger_type", String, nullable=False),
+    Column("operator", String, nullable=False),
+    Column("threshold", Float, nullable=False),
+    Column("latest_value", Float),
+    Column("status", String, nullable=False),
+    Column("notes", Text),
+    Column("payload", json_type, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    Column("fired_at", DateTime(timezone=True)),
+)
+
+broker_order_tickets = Table(
+    "broker_order_tickets",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("ticker", String, nullable=False),
+    Column("side", String, nullable=False),
+    Column("quantity", Float, nullable=False),
+    Column("limit_price", Float),
+    Column("stop_price", Float),
+    Column("invalidation_price", Float),
+    Column("risk_budget", Float),
+    Column("status", String, nullable=False),
+    Column("submission_allowed", Boolean, nullable=False, default=False),
+    Column("notes", Text),
+    Column("preview_payload", json_type, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+)
+
 raw_provider_records = Table(
     "raw_provider_records",
     metadata,
@@ -838,3 +910,23 @@ Index(
     broker_position_snapshots.c.as_of,
 )
 Index("ix_broker_orders_account_status", broker_orders.c.account_id, broker_orders.c.status)
+Index(
+    "ix_broker_opportunity_actions_ticker_created",
+    broker_opportunity_actions.c.ticker,
+    broker_opportunity_actions.c.created_at,
+)
+Index(
+    "ix_broker_market_snapshots_ticker_as_of",
+    broker_market_snapshots.c.ticker,
+    broker_market_snapshots.c.as_of,
+)
+Index(
+    "ix_broker_triggers_ticker_status",
+    broker_triggers.c.ticker,
+    broker_triggers.c.status,
+)
+Index(
+    "ix_broker_order_tickets_ticker_created",
+    broker_order_tickets.c.ticker,
+    broker_order_tickets.c.created_at,
+)

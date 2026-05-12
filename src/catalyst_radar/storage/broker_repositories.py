@@ -11,10 +11,15 @@ from catalyst_radar.brokers.models import (
     BrokerBalanceSnapshot,
     BrokerConnection,
     BrokerConnectionStatus,
+    BrokerMarketSnapshot,
+    BrokerOpportunityAction,
     BrokerOrder,
+    BrokerOrderTicket,
     BrokerPosition,
     BrokerPositionSnapshot,
     BrokerToken,
+    BrokerTrigger,
+    BrokerTriggerStatus,
     broker_position_snapshot_id,
 )
 from catalyst_radar.core.immutability import thaw_json_value
@@ -22,10 +27,14 @@ from catalyst_radar.storage.schema import (
     broker_accounts,
     broker_balance_snapshots,
     broker_connections,
+    broker_market_snapshots,
+    broker_opportunity_actions,
+    broker_order_tickets,
     broker_orders,
     broker_position_snapshots,
     broker_positions,
     broker_tokens,
+    broker_triggers,
 )
 
 OPEN_ORDER_STATUSES = ("AWAITING_PARENT_ORDER", "QUEUED", "WORKING")
@@ -197,7 +206,9 @@ class BrokerRepository:
                     broker_position_snapshots.c.id == snapshot.id
                 )
             )
-            conn.execute(insert(broker_position_snapshots).values(**_position_snapshot_row(snapshot)))
+            conn.execute(
+                insert(broker_position_snapshots).values(**_position_snapshot_row(snapshot))
+            )
             for row in position_rows:
                 conn.execute(insert(broker_positions).values(**_position_row(row)))
         return len(position_rows)
@@ -262,6 +273,139 @@ class BrokerRepository:
         )
         with self.engine.connect() as conn:
             return [_order_from_row(row._mapping) for row in conn.execute(stmt)]
+
+    def upsert_opportunity_action(
+        self,
+        action: BrokerOpportunityAction,
+    ) -> BrokerOpportunityAction:
+        with self.engine.begin() as conn:
+            conn.execute(
+                delete(broker_opportunity_actions).where(
+                    broker_opportunity_actions.c.id == action.id
+                )
+            )
+            conn.execute(
+                insert(broker_opportunity_actions).values(**_opportunity_action_row(action))
+            )
+        return action
+
+    def list_opportunity_actions(
+        self,
+        *,
+        ticker: str | None = None,
+        limit: int = 100,
+    ) -> list[BrokerOpportunityAction]:
+        filters = []
+        if ticker is not None:
+            filters.append(broker_opportunity_actions.c.ticker == ticker.upper())
+        stmt = (
+            select(broker_opportunity_actions)
+            .where(*filters)
+            .order_by(
+                broker_opportunity_actions.c.created_at.desc(),
+                broker_opportunity_actions.c.id.desc(),
+            )
+            .limit(limit)
+        )
+        with self.engine.connect() as conn:
+            return [_opportunity_action_from_row(row._mapping) for row in conn.execute(stmt)]
+
+    def upsert_market_snapshots(self, rows: Iterable[BrokerMarketSnapshot]) -> int:
+        count = 0
+        with self.engine.begin() as conn:
+            for row in rows:
+                conn.execute(
+                    delete(broker_market_snapshots).where(broker_market_snapshots.c.id == row.id)
+                )
+                conn.execute(insert(broker_market_snapshots).values(**_market_snapshot_row(row)))
+                count += 1
+        return count
+
+    def latest_market_snapshots(
+        self,
+        *,
+        tickers: Iterable[str] | None = None,
+        limit: int = 100,
+    ) -> list[BrokerMarketSnapshot]:
+        requested = [ticker.upper() for ticker in tickers or [] if ticker]
+        filters = []
+        if requested:
+            filters.append(broker_market_snapshots.c.ticker.in_(requested))
+        stmt = (
+            select(broker_market_snapshots)
+            .where(*filters)
+            .order_by(
+                broker_market_snapshots.c.ticker.asc(),
+                broker_market_snapshots.c.as_of.desc(),
+                broker_market_snapshots.c.id.desc(),
+            )
+        )
+        latest: dict[str, BrokerMarketSnapshot] = {}
+        with self.engine.connect() as conn:
+            for row in conn.execute(stmt):
+                snapshot = _market_snapshot_from_row(row._mapping)
+                latest.setdefault(snapshot.ticker, snapshot)
+                if len(latest) >= limit and not requested:
+                    break
+        return list(latest.values())
+
+    def latest_market_snapshot(self, ticker: str) -> BrokerMarketSnapshot | None:
+        snapshots = self.latest_market_snapshots(tickers=[ticker], limit=1)
+        return snapshots[0] if snapshots else None
+
+    def upsert_trigger(self, trigger: BrokerTrigger) -> BrokerTrigger:
+        with self.engine.begin() as conn:
+            conn.execute(delete(broker_triggers).where(broker_triggers.c.id == trigger.id))
+            conn.execute(insert(broker_triggers).values(**_trigger_row(trigger)))
+        return trigger
+
+    def list_triggers(
+        self,
+        *,
+        ticker: str | None = None,
+        active_only: bool = False,
+        limit: int = 100,
+    ) -> list[BrokerTrigger]:
+        filters = []
+        if ticker is not None:
+            filters.append(broker_triggers.c.ticker == ticker.upper())
+        if active_only:
+            filters.append(broker_triggers.c.status == BrokerTriggerStatus.ACTIVE.value)
+        stmt = (
+            select(broker_triggers)
+            .where(*filters)
+            .order_by(broker_triggers.c.created_at.desc(), broker_triggers.c.id.desc())
+            .limit(limit)
+        )
+        with self.engine.connect() as conn:
+            return [_trigger_from_row(row._mapping) for row in conn.execute(stmt)]
+
+    def upsert_order_ticket(self, ticket: BrokerOrderTicket) -> BrokerOrderTicket:
+        with self.engine.begin() as conn:
+            conn.execute(delete(broker_order_tickets).where(broker_order_tickets.c.id == ticket.id))
+            conn.execute(insert(broker_order_tickets).values(**_order_ticket_row(ticket)))
+        return ticket
+
+    def list_order_tickets(
+        self,
+        *,
+        ticker: str | None = None,
+        limit: int = 100,
+    ) -> list[BrokerOrderTicket]:
+        filters = []
+        if ticker is not None:
+            filters.append(broker_order_tickets.c.ticker == ticker.upper())
+        stmt = (
+            select(broker_order_tickets)
+            .where(*filters)
+            .order_by(
+                broker_order_tickets.c.created_at.desc(),
+                broker_order_tickets.c.id.desc(),
+            )
+            .limit(limit)
+        )
+        with self.engine.connect() as conn:
+            return [_order_ticket_from_row(row._mapping) for row in conn.execute(stmt)]
 
 
 def _connection_row(connection: BrokerConnection) -> dict[str, Any]:
@@ -364,6 +508,78 @@ def _order_row(row: BrokerOrder) -> dict[str, Any]:
     }
 
 
+def _opportunity_action_row(row: BrokerOpportunityAction) -> dict[str, Any]:
+    return {
+        "id": row.id,
+        "ticker": row.ticker,
+        "action": row.action.value,
+        "status": row.status,
+        "thesis": row.thesis,
+        "notes": row.notes,
+        "payload": thaw_json_value(row.payload),
+        "created_at": row.created_at,
+        "updated_at": row.updated_at,
+    }
+
+
+def _market_snapshot_row(row: BrokerMarketSnapshot) -> dict[str, Any]:
+    return {
+        "id": row.id,
+        "ticker": row.ticker,
+        "as_of": row.as_of,
+        "last_price": row.last_price,
+        "bid_price": row.bid_price,
+        "ask_price": row.ask_price,
+        "mark_price": row.mark_price,
+        "day_change_percent": row.day_change_percent,
+        "total_volume": row.total_volume,
+        "relative_volume": row.relative_volume,
+        "high_52_week": row.high_52_week,
+        "low_52_week": row.low_52_week,
+        "price_trend_5d_percent": row.price_trend_5d_percent,
+        "option_call_put_ratio": row.option_call_put_ratio,
+        "option_iv_percentile": row.option_iv_percentile,
+        "raw_payload": thaw_json_value(row.raw_payload),
+        "created_at": row.created_at,
+    }
+
+
+def _trigger_row(row: BrokerTrigger) -> dict[str, Any]:
+    return {
+        "id": row.id,
+        "ticker": row.ticker,
+        "trigger_type": row.trigger_type,
+        "operator": row.operator,
+        "threshold": row.threshold,
+        "latest_value": row.latest_value,
+        "status": row.status.value,
+        "notes": row.notes,
+        "payload": thaw_json_value(row.payload),
+        "created_at": row.created_at,
+        "updated_at": row.updated_at,
+        "fired_at": row.fired_at,
+    }
+
+
+def _order_ticket_row(row: BrokerOrderTicket) -> dict[str, Any]:
+    return {
+        "id": row.id,
+        "ticker": row.ticker,
+        "side": row.side,
+        "quantity": row.quantity,
+        "limit_price": row.limit_price,
+        "stop_price": row.stop_price,
+        "invalidation_price": row.invalidation_price,
+        "risk_budget": row.risk_budget,
+        "status": row.status.value,
+        "submission_allowed": row.submission_allowed,
+        "notes": row.notes,
+        "preview_payload": thaw_json_value(row.preview_payload),
+        "created_at": row.created_at,
+        "updated_at": row.updated_at,
+    }
+
+
 def _connection_from_row(row: Mapping[str, Any]) -> BrokerConnection:
     return BrokerConnection(
         id=row["id"],
@@ -458,6 +674,78 @@ def _order_from_row(row: Mapping[str, Any]) -> BrokerOrder:
         submitted_at=_as_utc(row["submitted_at"]) if row["submitted_at"] is not None else None,
         raw_payload=row["raw_payload"],
         created_at=_as_utc(row["created_at"]),
+    )
+
+
+def _opportunity_action_from_row(row: Mapping[str, Any]) -> BrokerOpportunityAction:
+    return BrokerOpportunityAction(
+        id=row["id"],
+        ticker=row["ticker"],
+        action=row["action"],
+        status=row["status"],
+        thesis=row["thesis"],
+        notes=row["notes"],
+        payload=row["payload"],
+        created_at=_as_utc(row["created_at"]),
+        updated_at=_as_utc(row["updated_at"]),
+    )
+
+
+def _market_snapshot_from_row(row: Mapping[str, Any]) -> BrokerMarketSnapshot:
+    return BrokerMarketSnapshot(
+        id=row["id"],
+        ticker=row["ticker"],
+        as_of=_as_utc(row["as_of"]),
+        last_price=row["last_price"],
+        bid_price=row["bid_price"],
+        ask_price=row["ask_price"],
+        mark_price=row["mark_price"],
+        day_change_percent=row["day_change_percent"],
+        total_volume=row["total_volume"],
+        relative_volume=row["relative_volume"],
+        high_52_week=row["high_52_week"],
+        low_52_week=row["low_52_week"],
+        price_trend_5d_percent=row["price_trend_5d_percent"],
+        option_call_put_ratio=row["option_call_put_ratio"],
+        option_iv_percentile=row["option_iv_percentile"],
+        raw_payload=row["raw_payload"],
+        created_at=_as_utc(row["created_at"]),
+    )
+
+
+def _trigger_from_row(row: Mapping[str, Any]) -> BrokerTrigger:
+    return BrokerTrigger(
+        id=row["id"],
+        ticker=row["ticker"],
+        trigger_type=row["trigger_type"],
+        operator=row["operator"],
+        threshold=row["threshold"],
+        latest_value=row["latest_value"],
+        status=row["status"],
+        notes=row["notes"],
+        payload=row["payload"],
+        created_at=_as_utc(row["created_at"]),
+        updated_at=_as_utc(row["updated_at"]),
+        fired_at=_as_utc(row["fired_at"]) if row["fired_at"] is not None else None,
+    )
+
+
+def _order_ticket_from_row(row: Mapping[str, Any]) -> BrokerOrderTicket:
+    return BrokerOrderTicket(
+        id=row["id"],
+        ticker=row["ticker"],
+        side=row["side"],
+        quantity=row["quantity"],
+        limit_price=row["limit_price"],
+        stop_price=row["stop_price"],
+        invalidation_price=row["invalidation_price"],
+        risk_budget=row["risk_budget"],
+        status=row["status"],
+        submission_allowed=bool(row["submission_allowed"]),
+        notes=row["notes"],
+        preview_payload=row["preview_payload"],
+        created_at=_as_utc(row["created_at"]),
+        updated_at=_as_utc(row["updated_at"]),
     )
 
 

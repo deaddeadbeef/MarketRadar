@@ -7,6 +7,18 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import RedirectResponse
 
+from catalyst_radar.brokers.interactive import (
+    create_blocked_order_ticket,
+    create_trigger,
+    evaluate_triggers,
+    market_snapshot_payload,
+    normalize_tickers,
+    opportunity_action_payload,
+    order_ticket_payload,
+    record_opportunity_action,
+    sync_market_context,
+    trigger_payload,
+)
 from catalyst_radar.brokers.models import (
     BrokerConnection,
     BrokerConnectionStatus,
@@ -99,9 +111,7 @@ def schwab_callback(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     repo = BrokerRepository(_engine())
     existing = repo.latest_connection()
-    expected_state = (
-        existing.metadata.get("oauth_state") if existing is not None else None
-    )
+    expected_state = existing.metadata.get("oauth_state") if existing is not None else None
     if not state or not expected_state or state != expected_state:
         raise HTTPException(status_code=400, detail="Schwab OAuth state is invalid or expired")
     token_payload = SchwabOAuthService(
@@ -130,9 +140,7 @@ def schwab_callback(
             id=broker_token_id(connection_id),
             connection_id=connection_id,
             access_token_encrypted=cipher.encrypt(access_token),
-            refresh_token_encrypted=(
-                cipher.encrypt(str(refresh_token)) if refresh_token else None
-            ),
+            refresh_token_encrypted=(cipher.encrypt(str(refresh_token)) if refresh_token else None),
             access_token_expires_at=now
             + timedelta(seconds=int(token_payload.get("expires_in") or 1800)),
             refresh_token_expires_at=now + timedelta(days=7) if refresh_token else None,
@@ -227,6 +235,119 @@ def schwab_sync() -> dict[str, object]:
     }
 
 
+@router.post(
+    "/api/brokers/schwab/market-sync",
+    dependencies=[Depends(require_role(Role.ANALYST))],
+)
+def schwab_market_sync(payload: dict[str, Any] | None = None) -> dict[str, object]:
+    body = payload or {}
+    tickers = normalize_tickers(body.get("tickers") or body.get("ticker") or [])
+    if not tickers:
+        raise HTTPException(status_code=400, detail="At least one ticker is required")
+    config = AppConfig.from_env()
+    engine = _engine()
+    repo = BrokerRepository(engine)
+    connection = repo.latest_connection()
+    token = repo.latest_token(connection.id) if connection is not None else None
+    if connection is None or token is None:
+        raise HTTPException(status_code=409, detail="Schwab connection token is missing")
+    if connection.status != BrokerConnectionStatus.CONNECTED:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Schwab connection is {connection.status.value}",
+        )
+    access_token = _active_access_token(config, repo, connection, token)
+    client = SchwabClient(
+        client=JsonHttpClient(UrlLibHttpTransport(), config.http_timeout_seconds),
+        access_token=access_token,
+        base_url=config.schwab_base_url,
+    )
+    snapshots = sync_market_context(
+        client=client,
+        repo=repo,
+        tickers=tickers,
+        include_history=bool(body.get("include_history", True)),
+        include_options=bool(body.get("include_options", True)),
+    )
+    return {"items": [market_snapshot_payload(row) for row in snapshots]}
+
+
+@router.get("/api/market/context", dependencies=[Depends(require_role(Role.VIEWER))])
+def market_context(ticker: str | None = None) -> dict[str, object]:
+    repo = BrokerRepository(_engine())
+    tickers = normalize_tickers(ticker or [])
+    return {
+        "items": [
+            market_snapshot_payload(row)
+            for row in repo.latest_market_snapshots(tickers=tickers or None)
+        ]
+    }
+
+
+@router.post("/api/opportunities/actions", dependencies=[Depends(require_role(Role.ANALYST))])
+def opportunity_action(payload: dict[str, Any]) -> dict[str, object]:
+    ticker = str(payload.get("ticker") or "").strip().upper()
+    action = str(payload.get("action") or "").strip()
+    if not ticker or not action:
+        raise HTTPException(status_code=400, detail="ticker and action are required")
+    row = record_opportunity_action(
+        repo=BrokerRepository(_engine()),
+        ticker=ticker,
+        action=action,
+        thesis=payload.get("thesis"),
+        notes=payload.get("notes"),
+        payload={key: value for key, value in payload.items() if key not in {"thesis", "notes"}},
+    )
+    return opportunity_action_payload(row)
+
+
+@router.get("/api/opportunities/actions", dependencies=[Depends(require_role(Role.VIEWER))])
+def opportunity_actions(ticker: str | None = None) -> dict[str, object]:
+    repo = BrokerRepository(_engine())
+    return {
+        "items": [
+            opportunity_action_payload(row) for row in repo.list_opportunity_actions(ticker=ticker)
+        ]
+    }
+
+
+@router.post("/api/market/triggers", dependencies=[Depends(require_role(Role.ANALYST))])
+def market_trigger(payload: dict[str, Any]) -> dict[str, object]:
+    required = ("ticker", "trigger_type", "operator", "threshold")
+    missing = [name for name in required if payload.get(name) in (None, "")]
+    if missing:
+        raise HTTPException(status_code=400, detail=f"missing fields: {', '.join(missing)}")
+    row = create_trigger(
+        repo=BrokerRepository(_engine()),
+        ticker=str(payload["ticker"]),
+        trigger_type=str(payload["trigger_type"]),
+        operator=str(payload["operator"]),
+        threshold=float(payload["threshold"]),
+        notes=payload.get("notes"),
+        payload={key: value for key, value in payload.items() if key != "notes"},
+    )
+    return trigger_payload(row)
+
+
+@router.post(
+    "/api/market/triggers/evaluate",
+    dependencies=[Depends(require_role(Role.ANALYST))],
+)
+def market_triggers_evaluate(payload: dict[str, Any] | None = None) -> dict[str, object]:
+    body = payload or {}
+    rows = evaluate_triggers(
+        repo=BrokerRepository(_engine()),
+        tickers=body.get("tickers") or body.get("ticker") or [],
+    )
+    return {"items": [trigger_payload(row) for row in rows]}
+
+
+@router.get("/api/market/triggers", dependencies=[Depends(require_role(Role.VIEWER))])
+def market_triggers(ticker: str | None = None) -> dict[str, object]:
+    repo = BrokerRepository(_engine())
+    return {"items": [trigger_payload(row) for row in repo.list_triggers(ticker=ticker)]}
+
+
 @router.get("/api/portfolio/snapshot", dependencies=[Depends(require_role(Role.VIEWER))])
 def portfolio_snapshot() -> dict[str, object]:
     return portfolio_snapshot_payload(_engine())
@@ -260,13 +381,41 @@ def order_preview(payload: dict[str, Any]) -> dict[str, object]:
         side=str(payload.get("side") or "buy"),
         entry_price=float(payload.get("entry_price") or 0.0),
         invalidation_price=float(payload.get("invalidation_price") or 0.0),
-        risk_per_trade_pct=float(
-            payload.get("risk_per_trade_pct") or config.risk_per_trade_pct
-        ),
+        risk_per_trade_pct=float(payload.get("risk_per_trade_pct") or config.risk_per_trade_pct),
         account_id=payload.get("account_id"),
     )
     context = latest_broker_portfolio_context(_engine(), ticker=request.ticker, config=config)
     return build_disabled_order_preview(request, portfolio_context=context, config=config)
+
+
+@router.post("/api/orders/tickets", dependencies=[Depends(require_role(Role.ANALYST))])
+def order_ticket(payload: dict[str, Any]) -> dict[str, object]:
+    required = ("ticker", "side", "entry_price", "invalidation_price")
+    missing = [name for name in required if payload.get(name) in (None, "")]
+    if missing:
+        raise HTTPException(status_code=400, detail=f"missing fields: {', '.join(missing)}")
+    row = create_blocked_order_ticket(
+        repo=BrokerRepository(_engine()),
+        ticker=str(payload["ticker"]),
+        side=str(payload["side"]),
+        entry_price=float(payload["entry_price"]),
+        invalidation_price=float(payload["invalidation_price"]),
+        risk_per_trade_pct=(
+            float(payload["risk_per_trade_pct"])
+            if payload.get("risk_per_trade_pct") not in (None, "")
+            else None
+        ),
+        account_id=payload.get("account_id"),
+        notes=payload.get("notes"),
+        config=AppConfig.from_env(),
+    )
+    return order_ticket_payload(row)
+
+
+@router.get("/api/orders/tickets", dependencies=[Depends(require_role(Role.VIEWER))])
+def order_tickets(ticker: str | None = None) -> dict[str, object]:
+    repo = BrokerRepository(_engine())
+    return {"items": [order_ticket_payload(row) for row in repo.list_order_tickets(ticker=ticker)]}
 
 
 def _token_cipher(config: AppConfig) -> TokenCipher:
