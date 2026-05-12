@@ -239,6 +239,24 @@ def test_post_radar_run_reports_lock_contention(tmp_path, monkeypatch) -> None:
     }
 
 
+def test_get_latest_radar_run_returns_summary(tmp_path, monkeypatch) -> None:
+    database_url = _database_url(tmp_path, "radar-run-latest.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+    monkeypatch.setattr(
+        dashboard_data,
+        "load_radar_run_summary",
+        lambda _engine: {"status": "success", "step_count": 10},
+        raising=False,
+    )
+    client = TestClient(create_app())
+
+    response = client.get("/api/radar/runs/latest")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "success", "step_count": 10}
+
+
 def test_get_candidate_detail_returns_404_for_missing_ticker(tmp_path, monkeypatch) -> None:
     database_url = _database_url(tmp_path, "missing-detail.db")
     monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)

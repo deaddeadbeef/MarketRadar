@@ -89,3 +89,9 @@ def run_radar(request: RadarRunRequest) -> dict[str, object]:
     if not result.acquired_lock:
         raise HTTPException(status_code=409, detail=payload)
     return payload
+
+
+@router.get("/runs/latest", dependencies=[Depends(require_role(Role.VIEWER))])
+def latest_radar_run() -> dict[str, object]:
+    load_radar_run_summary = _dashboard_helper("load_radar_run_summary")
+    return load_radar_run_summary(_engine())

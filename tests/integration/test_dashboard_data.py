@@ -34,6 +34,7 @@ from catalyst_radar.dashboard.data import (
     load_cost_summary,
     load_ipo_s1_rows,
     load_ops_health,
+    load_radar_run_summary,
     load_theme_rows,
     load_ticker_detail,
     load_validation_summary,
@@ -440,6 +441,80 @@ def test_load_ops_health_reports_provider_status_and_database(
     assert "score_drift" in health
 
 
+def test_load_radar_run_summary_returns_latest_daily_step_group(tmp_path: Path) -> None:
+    engine = _engine(tmp_path)
+    old_decision_at = AVAILABLE_AT - timedelta(days=1)
+    latest_decision_at = AVAILABLE_AT
+    old_metadata = {
+        "as_of": "2026-05-09",
+        "decision_available_at": old_decision_at.isoformat(),
+        "outcome_available_at": None,
+        "provider": "csv",
+        "universe": "old-universe",
+        "tickers": ["AAPL"],
+    }
+    latest_metadata = {
+        "as_of": "2026-05-10",
+        "decision_available_at": latest_decision_at.isoformat(),
+        "outcome_available_at": None,
+        "provider": "csv",
+        "universe": "liquid-us",
+        "tickers": ["MSFT", "NVDA"],
+    }
+    with engine.begin() as conn:
+        conn.execute(
+            insert(job_runs),
+            [
+                _job_run_row(
+                    "old-feature-scan",
+                    job_type="feature_scan",
+                    status="success",
+                    started_at=old_decision_at,
+                    metadata=old_metadata,
+                ),
+                _job_run_row(
+                    "latest-scoring",
+                    job_type="scoring_policy",
+                    status="failed",
+                    started_at=latest_decision_at + timedelta(seconds=2),
+                    metadata=latest_metadata,
+                    error_summary="policy input missing",
+                ),
+                _job_run_row(
+                    "latest-feature-scan",
+                    job_type="feature_scan",
+                    status="success",
+                    started_at=latest_decision_at + timedelta(seconds=1),
+                    metadata=latest_metadata,
+                    requested_count=4,
+                    raw_count=3,
+                    normalized_count=3,
+                ),
+                _job_run_row(
+                    "provider-job",
+                    job_type="provider_ingest",
+                    status="success",
+                    started_at=latest_decision_at + timedelta(seconds=3),
+                    metadata={"ignored": True},
+                ),
+            ],
+        )
+
+    summary = load_radar_run_summary(engine)
+
+    assert summary["status"] == "partial_success"
+    assert summary["as_of"] == "2026-05-10"
+    assert summary["decision_available_at"] == latest_decision_at.isoformat()
+    assert summary["provider"] == "csv"
+    assert summary["universe"] == "liquid-us"
+    assert summary["tickers"] == ["MSFT", "NVDA"]
+    assert summary["step_count"] == 2
+    assert summary["status_counts"] == {"failed": 1, "success": 1}
+    assert summary["requested_count"] == 4
+    assert [row["step"] for row in summary["steps"]] == ["feature_scan", "scoring_policy"]
+    assert summary["steps"][1]["error_summary"] == "policy input missing"
+
+
 def test_load_broker_summary_returns_portfolio_context(tmp_path: Path) -> None:
     engine = _engine(tmp_path)
     repo = BrokerRepository(engine)
@@ -843,6 +918,33 @@ def _insert_dashboard_fixture(engine: Engine) -> None:
                 metadata={"dry_run": True},
             )
         )
+
+
+def _job_run_row(
+    job_id: str,
+    *,
+    job_type: str,
+    status: str,
+    started_at: datetime,
+    metadata: dict[str, object],
+    requested_count: int = 0,
+    raw_count: int = 0,
+    normalized_count: int = 0,
+    error_summary: str | None = None,
+) -> dict[str, object]:
+    return {
+        "id": job_id,
+        "job_type": job_type,
+        "provider": metadata.get("provider"),
+        "status": status,
+        "started_at": started_at,
+        "finished_at": started_at + timedelta(seconds=1),
+        "requested_count": requested_count,
+        "raw_count": raw_count,
+        "normalized_count": normalized_count,
+        "error_summary": error_summary,
+        "metadata": metadata,
+    }
 
 
 def _insert_alert_fixture(engine: Engine, *, available_at: datetime = AVAILABLE_AT) -> None:

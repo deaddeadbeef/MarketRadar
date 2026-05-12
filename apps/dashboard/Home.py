@@ -374,14 +374,17 @@ def _show_state_mix(rows: list[dict[str, object]]) -> None:
     st.markdown(f'<div class="mr-chart-card">{"".join(bars)}</div>', unsafe_allow_html=True)
 
 
-def _show_radar_run_controls(config: AppConfig) -> None:
+def _show_radar_run_controls(
+    config: AppConfig,
+    radar_run_summary: Mapping[str, Any],
+) -> None:
     st.subheader("Radar Run")
     control_col, status_col = st.columns([1, 3])
     with control_col:
         run_requested = st.button("Run Radar", key="run_radar_now", type="primary")
     with status_col:
         if not run_requested:
-            st.caption("Idle")
+            _show_radar_run_summary(radar_run_summary)
             return
         try:
             result = _mapping(
@@ -402,6 +405,30 @@ def _show_radar_run_controls(config: AppConfig) -> None:
         status = _metric_text(daily_result.get("status") or result.get("reason") or "unknown")
         st.success(f"Radar run status: {status}")
         _show_records("Radar Run Steps", _radar_run_step_rows(daily_result), empty="No step rows.")
+
+
+def _show_radar_run_summary(summary: Mapping[str, Any]) -> None:
+    if not summary:
+        st.caption("No prior radar run.")
+        return
+    _show_status_badges(
+        [
+            ("Last Run", summary.get("status")),
+            ("As Of", summary.get("as_of")),
+            ("Provider", summary.get("provider") or "default"),
+            ("Universe", summary.get("universe") or "default"),
+        ]
+    )
+    metric_cols = st.columns(4)
+    metric_cols[0].metric("Steps", int(_metric_number(summary.get("step_count"))))
+    metric_cols[1].metric("Requested", int(_metric_number(summary.get("requested_count"))))
+    metric_cols[2].metric("Raw", int(_metric_number(summary.get("raw_count"))))
+    metric_cols[3].metric("Normalized", int(_metric_number(summary.get("normalized_count"))))
+    _show_records(
+        "Last Radar Run Steps",
+        summary.get("steps"),
+        empty="No radar run step rows.",
+    )
 
 
 def _radar_run_step_rows(daily_result: Mapping[str, Any]) -> list[dict[str, object]]:
@@ -475,6 +502,7 @@ def _nested(mapping: Mapping[str, Any], *keys: str) -> object:
 def _show_overview(
     *,
     config: AppConfig,
+    radar_run_summary: Mapping[str, Any],
     candidate_rows: list[dict[str, object]],
     alert_rows: list[dict[str, object]],
     ipo_rows: list[dict[str, object]],
@@ -503,7 +531,7 @@ def _show_overview(
     metric_cols[4].metric("Themes", len(theme_rows))
     metric_cols[5].metric("LLM Cost", _currency(cost_summary.get("total_actual_cost_usd")))
 
-    _show_radar_run_controls(config)
+    _show_radar_run_controls(config, radar_run_summary)
 
     secondary_cols = st.columns(5)
     secondary_cols[0].metric("Useful Alert Rate", _rate(validation_report.get("useful_alert_rate")))
@@ -1491,6 +1519,7 @@ validation_summary = _mapping(dashboard_data.load_validation_summary(engine))
 cost_summary = _mapping(dashboard_data.load_cost_summary(engine, available_at=available_at))
 ops_health = _mapping(dashboard_data.load_ops_health(engine))
 broker_summary = _mapping(dashboard_data.load_broker_summary(engine))
+radar_run_summary = _mapping(dashboard_data.load_radar_run_summary(engine))
 
 _show_command_header(
     candidate_rows=candidate_rows,
@@ -1516,6 +1545,7 @@ tabs = st.tabs(
 with tabs[0]:
     _show_overview(
         config=config,
+        radar_run_summary=radar_run_summary,
         candidate_rows=candidate_rows,
         alert_rows=alert_rows,
         ipo_rows=ipo_rows,
