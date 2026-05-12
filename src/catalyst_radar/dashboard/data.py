@@ -28,6 +28,7 @@ from catalyst_radar.brokers.rate_limit import (
     schwab_rate_limit_status,
 )
 from catalyst_radar.core.config import AppConfig
+from catalyst_radar.jobs.tasks import DAILY_STEP_ORDER
 from catalyst_radar.storage.broker_repositories import BrokerRepository
 from catalyst_radar.storage.budget_repositories import BudgetLedgerRepository
 from catalyst_radar.storage.schema import (
@@ -36,6 +37,7 @@ from catalyst_radar.storage.schema import (
     candidate_states,
     decision_cards,
     events,
+    job_runs,
     paper_trades,
     signal_features,
     text_snippets,
@@ -676,6 +678,87 @@ def load_ops_health(
     return _load_ops_health(engine, now=now, stale_after=stale_after)
 
 
+def load_radar_run_summary(engine: Engine, *, limit: int = 250) -> dict[str, object]:
+    step_names = set(DAILY_STEP_ORDER)
+    with engine.connect() as conn:
+        rows = [
+            _row_dict(row._mapping)
+            for row in conn.execute(
+                select(job_runs)
+                .where(job_runs.c.job_type.in_(step_names))
+                .order_by(job_runs.c.started_at.desc(), job_runs.c.id.desc())
+                .limit(_positive_limit(limit))
+            )
+        ]
+    if not rows:
+        return {}
+
+    run_key = _radar_run_key(rows[0])
+    run_rows_by_step: dict[str, dict[str, object]] = {}
+    for row in rows:
+        step_name = str(row.get("job_type") or "")
+        if step_name in run_rows_by_step or _radar_run_key(row) != run_key:
+            continue
+        run_rows_by_step[step_name] = row
+
+    ordered_steps = [
+        run_rows_by_step[step]
+        for step in DAILY_STEP_ORDER
+        if step in run_rows_by_step
+    ]
+    started_values = [
+        value
+        for value in (_as_utc_datetime_or_none(row.get("started_at")) for row in ordered_steps)
+        if value is not None
+    ]
+    finished_values = [
+        value
+        for value in (_as_utc_datetime_or_none(row.get("finished_at")) for row in ordered_steps)
+        if value is not None
+    ]
+    status_counts = Counter(str(row.get("status") or "unknown") for row in ordered_steps)
+    first_metadata = rows[0].get("metadata")
+    metadata = _row_dict(first_metadata) if isinstance(first_metadata, Mapping) else {}
+    return {
+        "status": _radar_run_status(tuple(status_counts.elements())),
+        "as_of": metadata.get("as_of"),
+        "decision_available_at": metadata.get("decision_available_at"),
+        "outcome_available_at": metadata.get("outcome_available_at"),
+        "provider": metadata.get("provider"),
+        "universe": metadata.get("universe"),
+        "tickers": metadata.get("tickers") or [],
+        "started_at": min(started_values).isoformat() if started_values else None,
+        "finished_at": (
+            max(finished_values).isoformat()
+            if len(finished_values) == len(ordered_steps) and finished_values
+            else None
+        ),
+        "step_count": len(ordered_steps),
+        "status_counts": dict(sorted(status_counts.items())),
+        "requested_count": sum(
+            int(_finite_float(row.get("requested_count"))) for row in ordered_steps
+        ),
+        "raw_count": sum(int(_finite_float(row.get("raw_count"))) for row in ordered_steps),
+        "normalized_count": sum(
+            int(_finite_float(row.get("normalized_count"))) for row in ordered_steps
+        ),
+        "steps": [
+            {
+                "id": row.get("id"),
+                "step": row.get("job_type"),
+                "status": row.get("status"),
+                "started_at": row.get("started_at"),
+                "finished_at": row.get("finished_at"),
+                "requested_count": row.get("requested_count"),
+                "raw_count": row.get("raw_count"),
+                "normalized_count": row.get("normalized_count"),
+                "error_summary": row.get("error_summary"),
+            }
+            for row in ordered_steps
+        ],
+    }
+
+
 def load_broker_summary(engine: Engine) -> dict[str, object]:
     broker_repo = BrokerRepository(engine)
     config = AppConfig.from_env()
@@ -1103,6 +1186,34 @@ def _string_int_mapping(value: object) -> dict[str, int]:
 
 def _positive_limit(value: int) -> int:
     return max(1, int(value))
+
+
+def _radar_run_key(row: Mapping[str, object]) -> tuple[object, ...]:
+    metadata = row.get("metadata")
+    if not isinstance(metadata, Mapping):
+        metadata = {}
+    tickers = metadata.get("tickers")
+    normalized_tickers = tuple(tickers) if isinstance(tickers, list | tuple) else ()
+    return (
+        metadata.get("as_of"),
+        metadata.get("decision_available_at"),
+        metadata.get("outcome_available_at"),
+        metadata.get("provider"),
+        metadata.get("universe"),
+        normalized_tickers,
+    )
+
+
+def _radar_run_status(statuses: tuple[str, ...]) -> str:
+    if not statuses:
+        return "unknown"
+    if any(status == "running" for status in statuses):
+        return "running"
+    if any(status == "failed" for status in statuses):
+        if any(status != "failed" for status in statuses):
+            return "partial_success"
+        return "failed"
+    return "success"
 
 
 def _latest_validation_run_id(

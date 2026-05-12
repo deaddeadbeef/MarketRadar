@@ -15,6 +15,14 @@ The run uses the existing `daily-run` job lock, so another dashboard/API/worker 
 
 The radar run does not call Schwab. It can read the latest synced broker context already in the database when building decision cards, but Schwab portfolio and market refreshes stay behind the separate broker controls and their server-side rate guards.
 
+To inspect the last persisted daily radar pass without starting a new one:
+
+```powershell
+Invoke-RestMethod `
+  -Uri https://127.0.0.1:8443/api/radar/runs/latest `
+  -SkipCertificateCheck
+```
+
 Optional JSON fields:
 
 ```json
