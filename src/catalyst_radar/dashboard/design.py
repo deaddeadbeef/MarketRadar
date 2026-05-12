@@ -48,11 +48,11 @@ header[data-testid="stHeader"] {
 
 h1 {
   color: var(--mr-primary);
-  font-size: 1.85rem !important;
+  font-size: 1.55rem !important;
   font-weight: 650 !important;
   line-height: 1.12 !important;
   letter-spacing: 0 !important;
-  margin-bottom: 0.45rem !important;
+  margin: 0 !important;
 }
 
 h2, h3 {
@@ -125,12 +125,26 @@ p, label, [data-testid="stMarkdownContainer"] {
   font-weight: 560 !important;
 }
 
+[data-testid="stTabs"] > div[role="tablist"] {
+  align-items: center;
+  background: var(--mr-surface);
+  border: 1px solid var(--mr-border);
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(25, 28, 31, 0.035);
+  display: flex;
+  gap: 0.2rem;
+  margin: 0.9rem 0 1rem;
+  overflow-x: auto;
+  padding: 0.24rem;
+}
+
 button[data-baseweb="tab"] {
-  border-radius: 9999px !important;
+  border-radius: 6px !important;
   color: var(--mr-secondary) !important;
   font-size: 0.83rem !important;
   font-weight: 650 !important;
-  padding: 0.2rem 0.7rem !important;
+  min-height: 2rem !important;
+  padding: 0.28rem 0.72rem !important;
 }
 
 button[data-baseweb="tab"][aria-selected="true"] {
@@ -145,7 +159,8 @@ div[data-baseweb="tab-highlight"] {
 }
 
 div[data-baseweb="tab-border"] {
-  background: var(--mr-border) !important;
+  background: transparent !important;
+  height: 0 !important;
 }
 
 [data-testid="stDataFrame"] {
@@ -297,38 +312,91 @@ div[data-baseweb="select"] svg {
   white-space: nowrap;
 }
 
-.mr-command-strip {
+.mr-app-header {
+  align-items: center;
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 0.55rem;
-  margin: 0.35rem 0 1rem;
+  gap: 1rem;
+  grid-template-columns: minmax(16rem, 0.92fr) minmax(28rem, 1.7fr);
+  margin: 0.15rem 0 0.3rem;
 }
 
-.mr-command-cell {
+.mr-title-block {
+  min-width: 0;
+}
+
+.mr-status-panel {
+  align-items: center;
   background: var(--mr-surface);
   border: 1px solid var(--mr-border);
   border-radius: 8px;
-  padding: 0.58rem 0.7rem;
+  box-shadow: 0 1px 2px rgba(25, 28, 31, 0.035);
+  display: grid;
+  gap: 0.6rem;
+  grid-template-columns: max-content 1fr;
+  min-width: 0;
+  padding: 0.42rem 0.5rem 0.42rem 0.65rem;
+}
+
+.mr-status-title {
+  color: var(--mr-secondary);
+  font-size: 0.68rem;
+  font-weight: 720;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.mr-command-strip {
+  display: grid;
+  gap: 0.28rem;
+  grid-template-columns: repeat(5, minmax(5.6rem, 1fr));
+  min-width: 0;
+}
+
+.mr-command-cell {
+  background: #F8FAFC;
+  border: 1px solid #E4E9EF;
+  border-radius: 6px;
+  min-width: 0;
+  padding: 0.34rem 0.45rem;
+}
+
+.mr-command-cell-good {
+  background: #F2FAF6;
+  border-color: #CFECDD;
+}
+
+.mr-command-cell-warn {
+  background: #FFF8E8;
+  border-color: #F0D99A;
+}
+
+.mr-command-cell-danger {
+  background: #FDF1EF;
+  border-color: #F0C4BD;
 }
 
 .mr-command-label {
   color: var(--mr-secondary);
   display: block;
-  font-size: 0.7rem;
+  font-size: 0.62rem;
   font-weight: 680;
   letter-spacing: 0.04em;
   line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .mr-command-value {
   color: var(--mr-primary);
   display: block;
   font-family: var(--mr-font-data);
-  font-size: 1rem;
+  font-size: 0.82rem;
   font-weight: 560;
-  line-height: 1.35;
-  margin-top: 0.25rem;
+  line-height: 1.2;
+  margin-top: 0.1rem;
   overflow-wrap: anywhere;
 }
 
@@ -411,6 +479,15 @@ div[data-baseweb="select"] svg {
   .block-container {
     padding-left: 1rem;
     padding-right: 1rem;
+  }
+
+  .mr-app-header {
+    grid-template-columns: 1fr;
+  }
+
+  .mr-status-panel {
+    align-items: stretch;
+    grid-template-columns: 1fr;
   }
 
   .mr-command-strip {
