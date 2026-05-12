@@ -1,14 +1,16 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from fastapi.testclient import TestClient
 from sqlalchemy import func, insert, select
 
 from apps.api.main import create_app
 from catalyst_radar.alerts.models import Alert, alert_id
+from catalyst_radar.api.routes import radar as radar_routes
 from catalyst_radar.core.models import ActionState
 from catalyst_radar.dashboard import data as dashboard_data
+from catalyst_radar.jobs.scheduler import SchedulerRunResult
 from catalyst_radar.security.audit import AuditLogRepository
 from catalyst_radar.storage.alert_repositories import AlertRepository
 from catalyst_radar.storage.db import create_schema, engine_from_url
@@ -109,6 +111,132 @@ def test_viewer_can_read_but_cannot_post_feedback(tmp_path, monkeypatch) -> None
     assert write_response.status_code == 403
     assert write_response.json() == {"detail": "insufficient role"}
     assert analyst_write_response.status_code == 200
+
+
+def test_post_radar_run_builds_scheduler_config(tmp_path, monkeypatch) -> None:
+    database_url = _database_url(tmp_path, "radar-run.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+    captured: dict[str, object] = {}
+
+    def fake_run_once(*, engine, config):
+        captured["engine_url"] = str(engine.url)
+        captured["config"] = config
+        return SchedulerRunResult(
+            acquired_lock=True,
+            reason=None,
+            daily_result=None,
+        )
+
+    monkeypatch.setattr(radar_routes, "run_once", fake_run_once)
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/radar/runs",
+        json={
+            "as_of": "2026-05-09",
+            "decision_available_at": "2026-05-10T01:00:00Z",
+            "outcome_available_at": "2026-05-15T01:00:00Z",
+            "provider": "csv",
+            "universe": "liquid-us",
+            "tickers": ["msft", "NVDA", "MSFT"],
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "acquired_lock": True,
+        "reason": None,
+        "lock_expires_at": None,
+        "daily_result": None,
+    }
+    config = captured["config"]
+    assert captured["engine_url"] == database_url
+    assert config.owner == "api-radar-run"
+    assert config.as_of == date(2026, 5, 9)
+    assert config.decision_available_at == datetime(2026, 5, 10, 1, 0, tzinfo=UTC)
+    assert config.outcome_available_at == datetime(2026, 5, 15, 1, 0, tzinfo=UTC)
+    assert config.provider == "csv"
+    assert config.universe == "liquid-us"
+    assert config.tickers == ("MSFT", "NVDA")
+    assert config.run_llm is False
+    assert config.llm_dry_run is True
+    assert config.dry_run_alerts is True
+
+
+def test_post_radar_run_requires_analyst_when_auth_enabled(tmp_path, monkeypatch) -> None:
+    database_url = _database_url(tmp_path, "radar-run-auth.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("CATALYST_API_AUTH_MODE", "header")
+    _create_database(database_url)
+    monkeypatch.setattr(
+        radar_routes,
+        "run_once",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("run_once called")),
+    )
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/radar/runs",
+        headers={"X-Catalyst-Role": "viewer"},
+        json={},
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "insufficient role"}
+
+
+def test_post_radar_run_rejects_unsupported_real_llm(tmp_path, monkeypatch) -> None:
+    database_url = _database_url(tmp_path, "radar-run-real-llm.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+    monkeypatch.setattr(
+        radar_routes,
+        "run_once",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("run_once called")),
+    )
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/radar/runs",
+        json={"run_llm": True, "llm_dry_run": False},
+    )
+
+    assert response.status_code == 422
+    assert response.json() == {
+        "detail": "real daily LLM review is not supported; use run-llm-review per candidate"
+    }
+
+
+def test_post_radar_run_reports_lock_contention(tmp_path, monkeypatch) -> None:
+    database_url = _database_url(tmp_path, "radar-run-lock.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+    expires_at = datetime(2026, 5, 10, 1, 5, tzinfo=UTC)
+
+    def fake_run_once(*, engine, config):
+        del engine, config
+        return SchedulerRunResult(
+            acquired_lock=False,
+            reason="lock_held",
+            daily_result=None,
+            lock_expires_at=expires_at,
+        )
+
+    monkeypatch.setattr(radar_routes, "run_once", fake_run_once)
+    client = TestClient(create_app())
+
+    response = client.post("/api/radar/runs", json={})
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "detail": {
+            "acquired_lock": False,
+            "reason": "lock_held",
+            "lock_expires_at": expires_at.isoformat(),
+            "daily_result": None,
+        }
+    }
 
 
 def test_get_candidate_detail_returns_404_for_missing_ticker(tmp_path, monkeypatch) -> None:

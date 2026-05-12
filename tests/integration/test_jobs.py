@@ -706,6 +706,9 @@ def test_build_daily_spec_from_environment_values():
             "CATALYST_DAILY_AS_OF": "2026-05-09",
             "CATALYST_DECISION_AVAILABLE_AT": " 2026-05-10T01:00:00+00:00 ",
             "CATALYST_OUTCOME_AVAILABLE_AT": outcome_available_at.isoformat(),
+            "CATALYST_DAILY_PROVIDER": " csv ",
+            "CATALYST_DAILY_UNIVERSE": "liquid-us",
+            "CATALYST_DAILY_TICKERS": "msft, NVDA,msft",
             "CATALYST_RUN_LLM": "0",
             "CATALYST_LLM_DRY_RUN": "1",
             "CATALYST_DRY_RUN_ALERTS": "1",
@@ -717,9 +720,30 @@ def test_build_daily_spec_from_environment_values():
     assert spec.as_of == date(2026, 5, 9)
     assert spec.decision_available_at == datetime(2026, 5, 10, 1, 0, tzinfo=UTC)
     assert spec.outcome_available_at == outcome_available_at
+    assert spec.provider == "csv"
+    assert spec.universe == "liquid-us"
+    assert spec.tickers == ("MSFT", "NVDA")
     assert spec.run_llm is False
     assert spec.llm_dry_run is True
     assert spec.dry_run_alerts is True
+
+
+def test_scheduler_config_passes_scan_scope_to_daily_spec():
+    config = SchedulerConfig(
+        owner="worker-test",
+        provider="sample",
+        universe="liquid-us",
+        tickers=("msft", "NVDA", "msft", ""),
+    )
+
+    spec = build_daily_spec(
+        config,
+        now=datetime(2026, 5, 10, 1, 0, tzinfo=UTC),
+    )
+
+    assert spec.provider == "sample"
+    assert spec.universe == "liquid-us"
+    assert spec.tickers == ("MSFT", "NVDA")
 
 
 def test_scheduler_config_rejects_unsupported_real_llm_and_alert_delivery():

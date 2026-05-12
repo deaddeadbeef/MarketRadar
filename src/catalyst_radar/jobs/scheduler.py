@@ -25,6 +25,9 @@ class SchedulerConfig:
     as_of: date | None = None
     decision_available_at: datetime | None = None
     outcome_available_at: datetime | None = None
+    provider: str | None = None
+    universe: str | None = None
+    tickers: tuple[str, ...] = ()
     run_llm: bool = False
     llm_dry_run: bool = True
     dry_run_alerts: bool = True
@@ -39,6 +42,9 @@ class SchedulerConfig:
         if not self.dry_run_alerts:
             msg = "daily alert delivery is not supported; use send-alerts dry-run"
             raise ValueError(msg)
+        object.__setattr__(self, "provider", _optional_string(self.provider))
+        object.__setattr__(self, "universe", _optional_string(self.universe))
+        object.__setattr__(self, "tickers", _ticker_tuple(self.tickers))
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str] | None = None) -> SchedulerConfig:
@@ -65,6 +71,9 @@ class SchedulerConfig:
                 source,
                 "CATALYST_OUTCOME_AVAILABLE_AT",
             ),
+            provider=_optional_text(source, "CATALYST_DAILY_PROVIDER"),
+            universe=_optional_text(source, "CATALYST_DAILY_UNIVERSE"),
+            tickers=_optional_csv_tuple(source, "CATALYST_DAILY_TICKERS"),
             run_llm=_bool(source, "CATALYST_RUN_LLM", False),
             llm_dry_run=_bool(source, "CATALYST_LLM_DRY_RUN", True),
             dry_run_alerts=_bool(source, "CATALYST_DRY_RUN_ALERTS", True),
@@ -101,6 +110,9 @@ def build_daily_spec(
         as_of=config.as_of or resolved_now.date(),
         decision_available_at=config.decision_available_at or resolved_now,
         outcome_available_at=config.outcome_available_at,
+        provider=config.provider,
+        universe=config.universe,
+        tickers=config.tickers,
         dry_run_alerts=config.dry_run_alerts,
         run_llm=config.run_llm,
         llm_dry_run=config.llm_dry_run,
@@ -232,6 +244,9 @@ def _lock_metadata(config: SchedulerConfig, spec: DailyRunSpec) -> dict[str, Any
         "dry_run_alerts": spec.dry_run_alerts,
         "run_llm": spec.run_llm,
         "llm_dry_run": spec.llm_dry_run,
+        "provider": spec.provider,
+        "universe": spec.universe,
+        "tickers": list(spec.tickers),
     }
 
 
@@ -285,6 +300,38 @@ def _optional_text(source: Mapping[str, str], key: str) -> str | None:
         return None
     value = raw.strip()
     return value or None
+
+
+def _optional_string(value: str | None) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _optional_csv_tuple(source: Mapping[str, str], key: str) -> tuple[str, ...]:
+    raw = source.get(key)
+    if raw is None or raw.strip() == "":
+        return ()
+    return _ticker_tuple(raw.split(","))
+
+
+def _ticker_tuple(values: tuple[str, ...] | list[str] | object) -> tuple[str, ...]:
+    if isinstance(values, str):
+        raw_items: object = values.split(",")
+    else:
+        raw_items = values
+    if not isinstance(raw_items, tuple | list):
+        return ()
+    tickers: list[str] = []
+    seen: set[str] = set()
+    for item in raw_items:
+        ticker = str(item).strip().upper()
+        if not ticker or ticker in seen:
+            continue
+        tickers.append(ticker)
+        seen.add(ticker)
+    return tuple(tickers)
 
 
 def _duration_seconds(
