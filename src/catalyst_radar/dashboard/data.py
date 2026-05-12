@@ -10,6 +10,12 @@ from typing import Any
 
 from sqlalchemy import Engine, and_, func, select
 
+from catalyst_radar.brokers.interactive import (
+    market_snapshot_payload,
+    opportunity_action_payload,
+    order_ticket_payload,
+    trigger_payload,
+)
 from catalyst_radar.brokers.portfolio_context import (
     balances_payload,
     exposure_payload,
@@ -18,6 +24,7 @@ from catalyst_radar.brokers.portfolio_context import (
     positions_payload,
 )
 from catalyst_radar.core.config import AppConfig
+from catalyst_radar.storage.broker_repositories import BrokerRepository
 from catalyst_radar.storage.budget_repositories import BudgetLedgerRepository
 from catalyst_radar.storage.schema import (
     alerts,
@@ -666,12 +673,23 @@ def load_ops_health(
 
 
 def load_broker_summary(engine: Engine) -> dict[str, object]:
+    broker_repo = BrokerRepository(engine)
     return {
         "snapshot": portfolio_snapshot_payload(engine),
         "positions": positions_payload(engine),
         "balances": balances_payload(engine),
         "open_orders": open_orders_payload(engine),
         "exposure": exposure_payload(engine),
+        "market_context": [
+            market_snapshot_payload(row) for row in broker_repo.latest_market_snapshots()
+        ],
+        "opportunity_actions": [
+            opportunity_action_payload(row) for row in broker_repo.list_opportunity_actions()
+        ],
+        "triggers": [trigger_payload(row) for row in broker_repo.list_triggers()],
+        "order_tickets": [
+            order_ticket_payload(row) for row in broker_repo.list_order_tickets()
+        ],
     }
 
 

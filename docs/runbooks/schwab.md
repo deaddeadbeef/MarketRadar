@@ -1,8 +1,9 @@
-# Schwab Read-Only Sync Runbook
+# Schwab Interactive Dashboard Runbook
 
-Market Radar treats Schwab as a read-only broker data source. Broker data can
-inform portfolio context, exposure, sizing previews, and manual review. The app
-does not submit Schwab orders in this implementation.
+Market Radar treats Schwab as a broker data source and interactive decision
+surface. Schwab data can inform portfolio context, exposure, sizing previews,
+market-context refreshes, and manual review actions. The app does not submit
+Schwab orders in this implementation.
 
 ## Local Configuration
 
@@ -46,17 +47,73 @@ The sync pulls account metadata, balances, positions, and open orders. It stores
 broker-specific rows and also writes holdings snapshots so existing portfolio
 risk logic can consume synced positions.
 
+## Market Context Sync
+
+To refresh Schwab quote, price-history, and option-chain context for one or more
+tickers:
+
+```powershell
+Invoke-RestMethod -Method Post http://127.0.0.1:8000/api/brokers/schwab/market-sync `
+  -ContentType application/json `
+  -Body '{"tickers":["GLW"],"include_history":true,"include_options":true}'
+```
+
+Stored market snapshots are available at:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8000/api/market/context
+```
+
 ## Dashboard
 
 The Streamlit dashboard includes a **Broker** tab with:
 
 - connection status,
+- Schwab connect, sync, market refresh, and disconnect controls,
 - latest portfolio equity/cash/buying power,
 - stale-data status,
 - exposure summary,
+- market snapshots,
+- opportunity action capture,
+- price/volume/options trigger creation and evaluation,
+- blocked order-ticket previews,
 - positions,
 - balances,
 - open orders.
+
+For local HTTPS OAuth callbacks, the dashboard infers the API origin from
+`SCHWAB_REDIRECT_URI`. If the API server is not running, dashboard action
+buttons fail visibly without changing stored data.
+
+## Interactive Workflows
+
+Opportunity actions:
+
+```powershell
+Invoke-RestMethod -Method Post http://127.0.0.1:8000/api/opportunities/actions `
+  -ContentType application/json `
+  -Body '{"ticker":"GLW","action":"watch","thesis":"early volume expansion"}'
+```
+
+Triggers:
+
+```powershell
+Invoke-RestMethod -Method Post http://127.0.0.1:8000/api/market/triggers `
+  -ContentType application/json `
+  -Body '{"ticker":"GLW","trigger_type":"price_above","operator":"gte","threshold":95}'
+
+Invoke-RestMethod -Method Post http://127.0.0.1:8000/api/market/triggers/evaluate `
+  -ContentType application/json `
+  -Body '{"tickers":["GLW"]}'
+```
+
+Blocked order tickets:
+
+```powershell
+Invoke-RestMethod -Method Post http://127.0.0.1:8000/api/orders/tickets `
+  -ContentType application/json `
+  -Body '{"ticker":"GLW","side":"buy","entry_price":95,"invalidation_price":90}'
+```
 
 ## Safety Rules
 
@@ -64,6 +121,8 @@ The Streamlit dashboard includes a **Broker** tab with:
 - Tokens are encrypted before persistence.
 - API responses do not expose raw access or refresh tokens.
 - Order preview is manual-review-only and never submits an order.
+- Saved order tickets are blocked previews with `submission_allowed=false`.
+- There is no order submit/place endpoint.
 - `SCHWAB_ORDER_SUBMISSION_ENABLED=true` does not enable submission in this
   read-only integration; it only appears in preview metadata.
 - Broker data older than 24 hours is marked stale in portfolio context.
@@ -71,6 +130,6 @@ The Streamlit dashboard includes a **Broker** tab with:
 ## Useful Checks
 
 ```powershell
-python -m pytest tests\unit\test_broker_tokens.py tests\integration\test_schwab_broker_sync.py tests\integration\test_broker_api_routes.py -q
+python -m pytest tests\unit\test_broker_tokens.py tests\integration\test_schwab_broker_sync.py tests\integration\test_broker_interactive_workflows.py tests\integration\test_broker_api_routes.py -q
 python -m ruff check src apps tests
 ```

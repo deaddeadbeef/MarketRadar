@@ -1,19 +1,31 @@
 from __future__ import annotations
 
+import json
+import ssl
 from collections.abc import Mapping, Sequence
 from datetime import UTC, date, datetime
 from html import escape
 from math import isfinite
 from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
+from urllib.request import Request, urlopen
 
 import pandas as pd
 import streamlit as st
 
 from apps.dashboard.access import require_viewer
+from catalyst_radar.brokers.interactive import (
+    create_blocked_order_ticket,
+    create_trigger,
+    evaluate_triggers,
+    record_opportunity_action,
+)
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.dashboard import data as dashboard_data
 from catalyst_radar.dashboard.design import dashboard_style
 from catalyst_radar.security.secrets import load_app_dotenv
+from catalyst_radar.storage.broker_repositories import BrokerRepository
 from catalyst_radar.storage.db import create_schema, engine_from_url
 
 USEFUL_FEEDBACK_LABELS = frozenset({"useful", "acted"})
@@ -228,8 +240,7 @@ def _value_html(value: object) -> str:
         url = value.get("url")
         if label and isinstance(url, str) and url.startswith(("https://", "http://")):
             return (
-                f'<a class="mr-table-link" href="{_html(url)}" target="_blank">'
-                f"{_html(label)}</a>"
+                f'<a class="mr-table-link" href="{_html(url)}" target="_blank">{_html(label)}</a>'
             )
         items = [
             f"<strong>{_html(key)}</strong>: {_value_html(item)}"
@@ -342,8 +353,8 @@ def _show_state_mix(rows: list[dict[str, object]]) -> None:
         bars.append(
             '<div class="mr-chart-row">'
             '<div class="mr-chart-row-head">'
-            f'<span>{_html(state)}</span>'
-            f'<strong>{count}</strong>'
+            f"<span>{_html(state)}</span>"
+            f"<strong>{count}</strong>"
             "</div>"
             '<div class="mr-chart-track">'
             f'<span class="mr-chart-bar" style="width: {pct * 100:.1f}%"></span>'
@@ -359,9 +370,7 @@ def _candidate_rows_with_labels(rows: list[dict[str, object]]) -> list[dict[str,
     for row in rows:
         values = dict(row)
         values["supporting_evidence"] = _evidence_label(values.get("top_supporting_evidence"))
-        values["disconfirming_evidence"] = _evidence_label(
-            values.get("top_disconfirming_evidence")
-        )
+        values["disconfirming_evidence"] = _evidence_label(values.get("top_disconfirming_evidence"))
         labeled.append(values)
     return labeled
 
@@ -736,7 +745,7 @@ def _show_ipo_notes(row: Mapping[str, object]) -> None:
     body = "".join(
         '<div class="mr-note-row">'
         f'<span class="mr-note-label">{_html(label)}</span>'
-        f'<p>{_value_html(value)}</p>'
+        f"<p>{_value_html(value)}</p>"
         "</div>"
         for label, value in notes
         if _metric_text(value) != "n/a"
@@ -1021,7 +1030,226 @@ def _show_costs_layer(summary: Mapping[str, Any]) -> None:
     _show_records("Spend By Model", summary.get("by_model"), empty="No model rows.")
 
 
-def _show_broker_layer(summary: Mapping[str, Any]) -> None:
+def _api_base_url(config: AppConfig) -> str:
+    redirect = str(config.schwab_redirect_uri or "").strip()
+    if redirect:
+        parsed = urlparse(redirect)
+        if parsed.scheme and parsed.netloc:
+            return f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
+    return "http://127.0.0.1:8000"
+
+
+def _api_post(config: AppConfig, path: str, payload: Mapping[str, Any] | None = None) -> object:
+    base_url = _api_base_url(config)
+    url = f"{base_url}{path}"
+    data = json.dumps(dict(payload or {})).encode("utf-8")
+    request = Request(
+        url,
+        data=data,
+        method="POST",
+        headers={"content-type": "application/json"},
+    )
+    parsed = urlparse(url)
+    local_https = parsed.scheme == "https" and parsed.hostname in {"127.0.0.1", "localhost"}
+    context = ssl._create_unverified_context() if local_https else None
+    try:
+        with urlopen(request, timeout=config.http_timeout_seconds, context=context) as response:
+            body = response.read().decode("utf-8")
+    except HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"API {exc.code}: {detail}") from exc
+    except URLError as exc:
+        raise RuntimeError(f"API unavailable: {exc.reason}") from exc
+    return json.loads(body) if body else {}
+
+
+def _broker_ticker_options(
+    summary: Mapping[str, Any],
+    candidate_rows: list[dict[str, object]],
+) -> list[str]:
+    tickers: set[str] = set()
+    for collection in (
+        candidate_rows,
+        _records(summary.get("positions")),
+        _records(summary.get("market_context")),
+        _records(summary.get("triggers")),
+        _records(summary.get("order_tickets")),
+    ):
+        for row in collection:
+            ticker = str(row.get("ticker") or "").strip().upper()
+            if ticker:
+                tickers.add(ticker)
+    return sorted(tickers)
+
+
+def _broker_latest_price(summary: Mapping[str, Any], ticker: str) -> float:
+    symbol = ticker.upper()
+    for row in _records(summary.get("market_context")):
+        if str(row.get("ticker") or "").upper() == symbol:
+            return _metric_number(row.get("last_price") or row.get("mark_price"))
+    return 0.0
+
+
+def _show_broker_controls(
+    *,
+    config: AppConfig,
+    selected_ticker: str,
+) -> None:
+    st.subheader("Broker Controls")
+    api_base = _api_base_url(config)
+    control_cols = st.columns(4)
+    control_cols[0].link_button(
+        "Connect Schwab",
+        f"{api_base}/api/brokers/schwab/connect",
+        use_container_width=True,
+    )
+    if control_cols[1].button("Sync Portfolio", use_container_width=True):
+        try:
+            result = _api_post(config, "/api/brokers/schwab/sync")
+            st.success(f"Portfolio sync queued: {_metric_text(_mapping(result).get('status'))}")
+        except RuntimeError as exc:
+            st.error(str(exc))
+    if control_cols[2].button("Refresh Market", use_container_width=True):
+        try:
+            result = _api_post(
+                config,
+                "/api/brokers/schwab/market-sync",
+                {"tickers": [selected_ticker], "include_history": True, "include_options": True},
+            )
+            st.success(f"Market context rows: {len(_records(_mapping(result).get('items')))}")
+        except RuntimeError as exc:
+            st.error(str(exc))
+    if control_cols[3].button("Disconnect", use_container_width=True):
+        try:
+            result = _api_post(config, "/api/brokers/schwab/disconnect")
+            st.warning(f"Broker status: {_metric_text(_mapping(result).get('status'))}")
+        except RuntimeError as exc:
+            st.error(str(exc))
+
+
+def _show_opportunity_action_form(
+    *,
+    engine: Any,
+    selected_ticker: str,
+) -> None:
+    with st.form("broker_opportunity_action_form"):
+        action = st.selectbox(
+            "Opportunity action",
+            ["watch", "ready", "simulate_entry", "dismiss"],
+        )
+        thesis = st.text_area("Thesis", height=90)
+        notes = st.text_input("Notes")
+        submitted = st.form_submit_button("Save Action")
+    if submitted:
+        try:
+            record_opportunity_action(
+                repo=BrokerRepository(engine),
+                ticker=selected_ticker,
+                action=action,
+                thesis=thesis,
+                notes=notes,
+                payload={"source": "dashboard"},
+            )
+            st.success(f"Saved {action} for {selected_ticker}.")
+        except ValueError as exc:
+            st.error(str(exc))
+
+
+def _show_trigger_form(*, engine: Any, selected_ticker: str) -> None:
+    left, right = st.columns([1, 1])
+    with left.form("broker_trigger_form"):
+        trigger_type = st.selectbox(
+            "Trigger",
+            [
+                "price_above",
+                "price_below",
+                "volume_above",
+                "relative_volume_above",
+                "call_put_ratio_above",
+            ],
+        )
+        operator = st.selectbox(
+            "Operator",
+            ["gte", "lte", "gt", "lt"],
+            index=1 if trigger_type.endswith("below") else 0,
+        )
+        threshold = st.number_input("Threshold", min_value=0.0, value=0.0)
+        notes = st.text_input("Trigger notes")
+        submitted = st.form_submit_button("Add Trigger")
+    if submitted:
+        try:
+            create_trigger(
+                repo=BrokerRepository(engine),
+                ticker=selected_ticker,
+                trigger_type=trigger_type,
+                operator=operator,
+                threshold=threshold,
+                notes=notes,
+                payload={"source": "dashboard"},
+            )
+            st.success(f"Added trigger for {selected_ticker}.")
+        except ValueError as exc:
+            st.error(str(exc))
+    with right:
+        if st.button("Evaluate Triggers", use_container_width=True):
+            try:
+                rows = evaluate_triggers(
+                    repo=BrokerRepository(engine),
+                    tickers=[selected_ticker],
+                )
+                fired = [row for row in rows if row.status.value == "fired"]
+                st.success(f"Evaluated {len(rows)} trigger(s); fired {len(fired)}.")
+            except ValueError as exc:
+                st.error(str(exc))
+
+
+def _show_order_ticket_form(
+    *,
+    engine: Any,
+    config: AppConfig,
+    summary: Mapping[str, Any],
+    selected_ticker: str,
+) -> None:
+    latest_price = _broker_latest_price(summary, selected_ticker)
+    with st.form("broker_order_ticket_form"):
+        side = st.selectbox("Side", ["buy", "sell"])
+        entry_price = st.number_input("Entry Price", min_value=0.0, value=latest_price)
+        invalidation_price = st.number_input("Invalidation Price", min_value=0.0, value=0.0)
+        risk_pct = st.number_input(
+            "Risk Per Trade",
+            min_value=0.0,
+            max_value=1.0,
+            value=float(config.risk_per_trade_pct),
+            format="%.4f",
+        )
+        notes = st.text_input("Ticket notes")
+        submitted = st.form_submit_button("Preview Ticket")
+    if submitted:
+        try:
+            ticket = create_blocked_order_ticket(
+                repo=BrokerRepository(engine),
+                ticker=selected_ticker,
+                side=side,
+                entry_price=entry_price,
+                invalidation_price=invalidation_price,
+                risk_per_trade_pct=risk_pct,
+                notes=notes,
+                config=config,
+            )
+            st.warning(
+                f"Ticket saved as blocked preview; submission_allowed={ticket.submission_allowed}."
+            )
+        except ValueError as exc:
+            st.error(str(exc))
+
+
+def _show_broker_layer(
+    summary: Mapping[str, Any],
+    *,
+    engine: Any,
+    config: AppConfig,
+    candidate_rows: list[dict[str, object]],
+) -> None:
     snapshot = _mapping(summary.get("snapshot"))
     exposure = _mapping(summary.get("exposure"))
     metric_cols = st.columns(5)
@@ -1041,6 +1269,26 @@ def _show_broker_layer(summary: Mapping[str, Any]) -> None:
             ("Action Routing", "disabled"),
         ]
     )
+    ticker_options = _broker_ticker_options(summary, candidate_rows)
+    selected_ticker = (
+        st.selectbox("Active Ticker", ticker_options)
+        if ticker_options
+        else st.text_input("Active Ticker", value="").strip().upper()
+    )
+    if selected_ticker:
+        _show_broker_controls(config=config, selected_ticker=selected_ticker)
+        action_col, trigger_col, ticket_col = st.columns([1, 1, 1])
+        with action_col:
+            _show_opportunity_action_form(engine=engine, selected_ticker=selected_ticker)
+        with trigger_col:
+            _show_trigger_form(engine=engine, selected_ticker=selected_ticker)
+        with ticket_col:
+            _show_order_ticket_form(
+                engine=engine,
+                config=config,
+                summary=summary,
+                selected_ticker=selected_ticker,
+            )
     left, right = st.columns([1, 1])
     with left:
         _show_mapping(
@@ -1060,6 +1308,18 @@ def _show_broker_layer(summary: Mapping[str, Any]) -> None:
     _show_records("Positions", summary.get("positions"), empty="No broker positions.")
     _show_records("Balances", summary.get("balances"), empty="No broker balances.")
     _show_records("Open Orders", summary.get("open_orders"), empty="No broker open orders.")
+    _show_records("Market Context", summary.get("market_context"), empty="No market context.")
+    _show_records(
+        "Opportunity Actions",
+        summary.get("opportunity_actions"),
+        empty="No opportunity actions.",
+    )
+    _show_records("Triggers", summary.get("triggers"), empty="No broker triggers.")
+    _show_records(
+        "Order Tickets",
+        summary.get("order_tickets"),
+        empty="No blocked order tickets.",
+    )
 
 
 def _show_ops_layer(health: Mapping[str, Any]) -> None:
@@ -1209,7 +1469,12 @@ with tabs[6]:
     _show_costs_layer(cost_summary)
 
 with tabs[7]:
-    _show_broker_layer(broker_summary)
+    _show_broker_layer(
+        broker_summary,
+        engine=engine,
+        config=config,
+        candidate_rows=candidate_rows,
+    )
 
 with tabs[8]:
     _show_ops_layer(ops_health)
