@@ -1099,6 +1099,22 @@ def _broker_latest_price(summary: Mapping[str, Any], ticker: str) -> float:
     return 0.0
 
 
+def _show_broker_rate_limits(summary: Mapping[str, Any]) -> None:
+    rows = []
+    for row in _records(summary.get("rate_limits")):
+        retry_after = int(_metric_number(row.get("retry_after_seconds")))
+        rows.append(
+            {
+                "Operation": _metric_text(row.get("operation")),
+                "Allowed": "yes" if bool(row.get("allowed")) else "no",
+                "Min Interval": f"{int(_metric_number(row.get('min_interval_seconds')))}s",
+                "Retry After": f"{retry_after}s" if retry_after else "ready",
+                "Reset At": _metric_text(row.get("reset_at")),
+            }
+        )
+    _show_records("Schwab API Guard", rows, empty="No Schwab API guard state.")
+
+
 def _show_broker_controls(
     *,
     config: AppConfig,
@@ -1317,6 +1333,7 @@ def _show_broker_layer(
     _show_records("Positions", summary.get("positions"), empty="No broker positions.")
     _show_records("Balances", summary.get("balances"), empty="No broker balances.")
     _show_records("Open Orders", summary.get("open_orders"), empty="No broker open orders.")
+    _show_broker_rate_limits(summary)
     _show_records("Market Context", summary.get("market_context"), empty="No market context.")
     _show_records(
         "Opportunity Actions",

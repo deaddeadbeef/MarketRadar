@@ -23,6 +23,10 @@ from catalyst_radar.brokers.portfolio_context import (
     portfolio_snapshot_payload,
     positions_payload,
 )
+from catalyst_radar.brokers.rate_limit import (
+    schwab_rate_limit_config_payload,
+    schwab_rate_limit_status,
+)
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.storage.broker_repositories import BrokerRepository
 from catalyst_radar.storage.budget_repositories import BudgetLedgerRepository
@@ -674,6 +678,7 @@ def load_ops_health(
 
 def load_broker_summary(engine: Engine) -> dict[str, object]:
     broker_repo = BrokerRepository(engine)
+    config = AppConfig.from_env()
     return {
         "snapshot": portfolio_snapshot_payload(engine),
         "positions": positions_payload(engine),
@@ -690,6 +695,8 @@ def load_broker_summary(engine: Engine) -> dict[str, object]:
         "order_tickets": [
             order_ticket_payload(row) for row in broker_repo.list_order_tickets()
         ],
+        "rate_limits": schwab_rate_limit_status(engine, config=config),
+        "rate_limit_config": schwab_rate_limit_config_payload(config),
     }
 
 

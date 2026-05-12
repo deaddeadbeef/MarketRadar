@@ -510,6 +510,8 @@ def test_load_broker_summary_returns_portfolio_context(tmp_path: Path) -> None:
     assert summary["balances"][0]["cash"] == 50000.0
     assert summary["exposure"]["broker_data_stale"] is False
     assert summary["exposure"]["exposure_before"]["single_name"] == {"GLW": 0.038}
+    assert summary["rate_limit_config"]["portfolio_sync_min_interval_seconds"] == 900
+    assert summary["rate_limits"][0]["operation"] == "portfolio_sync"
 
 
 def _engine(tmp_path: Path) -> Engine:
