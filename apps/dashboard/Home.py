@@ -374,6 +374,53 @@ def _show_state_mix(rows: list[dict[str, object]]) -> None:
     st.markdown(f'<div class="mr-chart-card">{"".join(bars)}</div>', unsafe_allow_html=True)
 
 
+def _show_radar_run_controls(config: AppConfig) -> None:
+    st.subheader("Radar Run")
+    control_col, status_col = st.columns([1, 3])
+    with control_col:
+        run_requested = st.button("Run Radar", key="run_radar_now", type="primary")
+    with status_col:
+        if not run_requested:
+            st.caption("Idle")
+            return
+        try:
+            result = _mapping(
+                _api_post(
+                    config,
+                    "/api/radar/runs",
+                    {
+                        "run_llm": False,
+                        "llm_dry_run": True,
+                        "dry_run_alerts": True,
+                    },
+                )
+            )
+        except RuntimeError as exc:
+            st.error(str(exc))
+            return
+        daily_result = _mapping(result.get("daily_result"))
+        status = _metric_text(daily_result.get("status") or result.get("reason") or "unknown")
+        st.success(f"Radar run status: {status}")
+        _show_records("Radar Run Steps", _radar_run_step_rows(daily_result), empty="No step rows.")
+
+
+def _radar_run_step_rows(daily_result: Mapping[str, Any]) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for name, step in _mapping(daily_result.get("steps")).items():
+        step_mapping = _mapping(step)
+        rows.append(
+            {
+                "Step": name,
+                "Status": step_mapping.get("status"),
+                "Requested": step_mapping.get("requested_count"),
+                "Raw": step_mapping.get("raw_count"),
+                "Normalized": step_mapping.get("normalized_count"),
+                "Reason": step_mapping.get("reason"),
+            }
+        )
+    return rows
+
+
 def _candidate_rows_with_labels(rows: list[dict[str, object]]) -> list[dict[str, object]]:
     labeled: list[dict[str, object]] = []
     for row in rows:
@@ -427,6 +474,7 @@ def _nested(mapping: Mapping[str, Any], *keys: str) -> object:
 
 def _show_overview(
     *,
+    config: AppConfig,
     candidate_rows: list[dict[str, object]],
     alert_rows: list[dict[str, object]],
     ipo_rows: list[dict[str, object]],
@@ -454,6 +502,8 @@ def _show_overview(
     metric_cols[3].metric("IPO S-1", len(ipo_rows))
     metric_cols[4].metric("Themes", len(theme_rows))
     metric_cols[5].metric("LLM Cost", _currency(cost_summary.get("total_actual_cost_usd")))
+
+    _show_radar_run_controls(config)
 
     secondary_cols = st.columns(5)
     secondary_cols[0].metric("Useful Alert Rate", _rate(validation_report.get("useful_alert_rate")))
@@ -1465,6 +1515,7 @@ tabs = st.tabs(
 
 with tabs[0]:
     _show_overview(
+        config=config,
         candidate_rows=candidate_rows,
         alert_rows=alert_rows,
         ipo_rows=ipo_rows,
