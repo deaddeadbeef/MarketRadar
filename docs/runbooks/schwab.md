@@ -130,6 +130,6 @@ Invoke-RestMethod -Method Post http://127.0.0.1:8000/api/orders/tickets `
 ## Useful Checks
 
 ```powershell
-python -m pytest tests\unit\test_broker_tokens.py tests\integration\test_schwab_broker_sync.py tests\integration\test_broker_interactive_workflows.py tests\integration\test_broker_api_routes.py -q
+python -m pytest tests\unit\test_broker_tokens.py tests\integration\test_schwab_broker_sync.py tests\integration\test_broker_interactive_workflows.py tests\integration\test_broker_api_routes.py tests\integration\test_security_boundaries.py -q
 python -m ruff check src apps tests
 ```
