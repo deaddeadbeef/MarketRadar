@@ -40,6 +40,7 @@ from catalyst_radar.dashboard.data import (
     load_theme_rows,
     load_ticker_detail,
     load_validation_summary,
+    readiness_checklist_payload,
 )
 from catalyst_radar.storage.broker_repositories import BrokerRepository
 from catalyst_radar.storage.budget_repositories import BudgetLedgerRepository
@@ -146,6 +147,69 @@ def test_data_source_coverage_payload_marks_fixture_and_read_only_modes() -> Non
 
     stale_by_layer = {str(row["layer"]): row for row in stale_rows}
     assert stale_by_layer["Schwab portfolio"]["mode"] == "stale_read_only_connected"
+
+
+def test_readiness_checklist_payload_separates_blockers_from_expected_gates() -> None:
+    config = AppConfig(
+        daily_market_provider="csv",
+        daily_event_provider="news_fixture",
+        enable_premium_llm=False,
+        llm_provider="none",
+        schwab_order_submission_enabled=False,
+        schwab_sync_min_interval_seconds=900,
+    )
+    run_summary = {
+        "steps": [
+            _run_step("daily_bar_ingest", "success", requested=43, raw=43, normalized=43),
+            _run_step("event_ingest", "success", requested=1, raw=1, normalized=1),
+            _run_step("local_text_triage", "success", requested=1, raw=1, normalized=1),
+            _run_step("feature_scan", "success", requested=6, raw=3, normalized=3),
+            _run_step("scoring_policy", "success", requested=3, raw=3, normalized=3),
+            _run_step("candidate_packets", "success", requested=2, raw=2, normalized=2),
+            _run_step(
+                "decision_cards",
+                "skipped",
+                reason="no_manual_buy_review_inputs",
+            ),
+            _run_step("llm_review", "skipped", reason="llm_disabled"),
+            _run_step("digest", "skipped", reason="no_alerts"),
+            _run_step(
+                "validation_update",
+                "skipped",
+                reason="outcome_available_at_not_supplied",
+            ),
+        ]
+    }
+
+    rows = readiness_checklist_payload(
+        config,
+        radar_run_summary=run_summary,
+        broker_summary={
+            "snapshot": {
+                "connection_status": "connected",
+                "account_count": 1,
+                "position_count": 0,
+            },
+            "exposure": {"broker_data_stale": True},
+            "rate_limit_config": {"portfolio_sync_min_interval_seconds": 900},
+        },
+    )
+
+    by_area = {str(row["area"]): row for row in rows}
+    assert by_area["Live market scan"]["status"] == "blocked"
+    assert "fixture" in str(by_area["Live market scan"]["finding"])
+    assert by_area["Catalyst feed"]["status"] == "blocked"
+    assert "fixture" in str(by_area["Catalyst feed"]["finding"])
+    assert by_area["Research loop"]["status"] == "ready"
+    assert by_area["Decision Cards"]["status"] == "attention"
+    assert "manual buy-review" in str(by_area["Decision Cards"]["finding"])
+    assert by_area["LLM review"]["status"] == "optional"
+    assert by_area["Portfolio context"]["status"] == "attention"
+    assert by_area["Alerting"]["status"] == "attention"
+    assert by_area["Outcome validation"]["status"] == "optional"
+    assert by_area["Order safety"]["status"] == "safe"
+    joined = " ".join(str(value) for row in rows for value in row.values())
+    assert "CLIENT_SECRET" not in joined
 
 
 def test_load_candidate_rows_respects_available_at_cutoff(tmp_path: Path) -> None:
@@ -829,6 +893,25 @@ def _engine(tmp_path: Path) -> Engine:
     engine = create_engine(f"sqlite:///{(tmp_path / 'dashboard.db').as_posix()}", future=True)
     create_schema(engine)
     return engine
+
+
+def _run_step(
+    step: str,
+    status: str,
+    *,
+    requested: int = 0,
+    raw: int = 0,
+    normalized: int = 0,
+    reason: str | None = None,
+) -> dict[str, object]:
+    return {
+        "step": step,
+        "status": status,
+        "requested_count": requested,
+        "raw_count": raw,
+        "normalized_count": normalized,
+        "reason": reason,
+    }
 
 
 def _insert_dashboard_fixture(engine: Engine) -> None:

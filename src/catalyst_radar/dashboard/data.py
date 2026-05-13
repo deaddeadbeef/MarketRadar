@@ -884,6 +884,314 @@ def data_source_coverage_payload(
     ]
 
 
+def readiness_checklist_payload(
+    config: AppConfig,
+    *,
+    radar_run_summary: Mapping[str, object] | None = None,
+    broker_summary: Mapping[str, object] | None = None,
+) -> list[dict[str, object]]:
+    coverage_rows = data_source_coverage_payload(config, broker_summary=broker_summary)
+    coverage = {str(row.get("layer") or ""): row for row in coverage_rows}
+    steps = _radar_steps_by_name(radar_run_summary)
+    rows: list[dict[str, object]] = []
+
+    market = coverage.get("Market data", {})
+    market_mode = str(market.get("mode") or "unknown")
+    if market_mode == "live":
+        rows.append(
+            _readiness_row(
+                "Live market scan",
+                "ready",
+                f"Market scan is configured for live provider {market.get('provider')}.",
+                "Watch provider health, rejected counts, and rate-limit telemetry.",
+                _coverage_evidence(market),
+            )
+        )
+    elif market_mode == "disabled":
+        rows.append(
+            _readiness_row(
+                "Live market scan",
+                "blocked",
+                "Market scan has no enabled daily market provider.",
+                "Configure a daily market provider before treating radar output as current.",
+                _coverage_evidence(market),
+            )
+        )
+    else:
+        rows.append(
+            _readiness_row(
+                "Live market scan",
+                "blocked",
+                "Market scan is using local fixture data, not fresh US-market coverage.",
+                "Configure a live daily market provider and keep batch/rate limits enabled.",
+                _coverage_evidence(market),
+            )
+        )
+
+    events = coverage.get("News/events", {})
+    event_mode = str(events.get("mode") or "unknown")
+    if event_mode == "live":
+        rows.append(
+            _readiness_row(
+                "Catalyst feed",
+                "ready",
+                f"News/event ingestion is configured for provider {events.get('provider')}.",
+                "Monitor source freshness and event rejection telemetry.",
+                _coverage_evidence(events),
+            )
+        )
+    elif event_mode == "disabled":
+        rows.append(
+            _readiness_row(
+                "Catalyst feed",
+                "blocked",
+                "No news or catalyst provider is enabled.",
+                "Configure a scheduled event provider so the radar can detect new catalysts.",
+                _coverage_evidence(events),
+            )
+        )
+    else:
+        rows.append(
+            _readiness_row(
+                "Catalyst feed",
+                "blocked",
+                "Catalyst ingestion is using fixture events, not fresh news or filings.",
+                "Configure a live news/SEC event source before relying on early-discovery output.",
+                _coverage_evidence(events),
+            )
+        )
+
+    research_steps = (
+        "event_ingest",
+        "local_text_triage",
+        "feature_scan",
+        "scoring_policy",
+        "candidate_packets",
+    )
+    missing_or_unsuccessful = [
+        step
+        for step in research_steps
+        if str(steps.get(step, {}).get("status") or "") != "success"
+    ]
+    if not steps:
+        rows.append(
+            _readiness_row(
+                "Research loop",
+                "attention",
+                "No radar run telemetry is available yet.",
+                "Run the radar once and review step-level telemetry.",
+                "no latest run",
+            )
+        )
+    elif not missing_or_unsuccessful:
+        rows.append(
+            _readiness_row(
+                "Research loop",
+                "ready",
+                "The latest run produced features, scores, and candidate packets.",
+                "Use the Candidate Queue and Research Briefs for triage.",
+                _steps_evidence(steps, research_steps),
+            )
+        )
+    else:
+        rows.append(
+            _readiness_row(
+                "Research loop",
+                "blocked",
+                "The latest run did not complete the full research packet path.",
+                (
+                    "Fix the first skipped/failed upstream step before treating candidates "
+                    "as complete."
+                ),
+                _steps_evidence(steps, missing_or_unsuccessful),
+            )
+        )
+
+    decision_step = steps.get("decision_cards", {})
+    decision_reason = str(decision_step.get("reason") or "")
+    if str(decision_step.get("status") or "") == "success":
+        rows.append(
+            _readiness_row(
+                "Decision Cards",
+                "ready",
+                "Decision Cards were generated in the latest run.",
+                "Review card assumptions and next-review dates before acting.",
+                _step_evidence("decision_cards", decision_step),
+            )
+        )
+    elif decision_reason == "no_manual_buy_review_inputs":
+        rows.append(
+            _readiness_row(
+                "Decision Cards",
+                "attention",
+                "No candidate reached the manual buy-review gate in the latest run.",
+                (
+                    "Review high-scoring candidates or adjust policy thresholds if this "
+                    "is too conservative."
+                ),
+                _step_evidence("decision_cards", decision_step),
+            )
+        )
+    else:
+        rows.append(
+            _readiness_row(
+                "Decision Cards",
+                "blocked",
+                "Decision Cards were not generated.",
+                "Resolve the listed run-step reason before using cards as an action layer.",
+                _step_evidence("decision_cards", decision_step),
+            )
+        )
+
+    llm_step = steps.get("llm_review", {})
+    llm_mode = str(coverage.get("LLM review", {}).get("mode") or "unknown")
+    if str(llm_step.get("status") or "") == "success":
+        rows.append(
+            _readiness_row(
+                "LLM review",
+                "ready",
+                "LLM review ran for the latest candidate set.",
+                "Audit cost and evidence citations before increasing automation.",
+                _step_evidence("llm_review", llm_step),
+            )
+        )
+    elif llm_mode == "disabled" or str(llm_step.get("reason") or "") == "llm_disabled":
+        rows.append(
+            _readiness_row(
+                "LLM review",
+                "optional",
+                (
+                    "Premium LLM review is disabled; deterministic research briefs are "
+                    "still available."
+                ),
+                (
+                    "Configure OpenAI models, budgets, and credentials only when you want "
+                    "agentic review."
+                ),
+                _coverage_evidence(coverage.get("LLM review", {})),
+            )
+        )
+    else:
+        rows.append(
+            _readiness_row(
+                "LLM review",
+                "attention",
+                "LLM review did not run in the latest radar cycle.",
+                "Check model configuration, budget caps, and candidate-card availability.",
+                _step_evidence("llm_review", llm_step),
+            )
+        )
+
+    broker = coverage.get("Schwab portfolio", {})
+    broker_mode = str(broker.get("mode") or "unknown")
+    if broker_mode == "read_only_connected":
+        rows.append(
+            _readiness_row(
+                "Portfolio context",
+                "ready",
+                "Schwab read-only portfolio context is connected and fresh.",
+                "Use exposure warnings as context; order submission remains disabled.",
+                _coverage_evidence(broker),
+            )
+        )
+    elif broker_mode == "stale_read_only_connected":
+        rows.append(
+            _readiness_row(
+                "Portfolio context",
+                "attention",
+                "Schwab portfolio context is connected but stale.",
+                (
+                    "Run one portfolio sync from the Broker tab; the minimum sync interval "
+                    "is enforced."
+                ),
+                _coverage_evidence(broker),
+            )
+        )
+    else:
+        rows.append(
+            _readiness_row(
+                "Portfolio context",
+                "optional",
+                "Schwab portfolio context is not connected.",
+                "Connect Schwab when you want position-aware exposure checks.",
+                _coverage_evidence(broker),
+            )
+        )
+
+    digest_step = steps.get("digest", {})
+    digest_reason = str(digest_step.get("reason") or "")
+    if str(digest_step.get("status") or "") == "success":
+        rows.append(
+            _readiness_row(
+                "Alerting",
+                "ready",
+                "The latest run generated an alert digest.",
+                "Review alert route and dry-run status before delivery automation.",
+                _step_evidence("digest", digest_step),
+            )
+        )
+    elif digest_reason == "no_alerts":
+        rows.append(
+            _readiness_row(
+                "Alerting",
+                "attention",
+                "No alerts were generated in the latest run.",
+                "Use candidates/research briefs for manual triage or tune alert thresholds.",
+                _step_evidence("digest", digest_step),
+            )
+        )
+    else:
+        rows.append(
+            _readiness_row(
+                "Alerting",
+                "attention",
+                "Alert digest did not complete.",
+                "Check alert policy and upstream candidate-card availability.",
+                _step_evidence("digest", digest_step),
+            )
+        )
+
+    validation_step = steps.get("validation_update", {})
+    if str(validation_step.get("status") or "") == "success":
+        rows.append(
+            _readiness_row(
+                "Outcome validation",
+                "ready",
+                "Outcome validation updated in the latest run.",
+                "Use validation labels to tighten future scoring thresholds.",
+                _step_evidence("validation_update", validation_step),
+            )
+        )
+    else:
+        rows.append(
+            _readiness_row(
+                "Outcome validation",
+                "optional",
+                (
+                    "Outcome validation needs a future outcome cutoff, so it is expected "
+                    "to skip during live triage."
+                ),
+                "Run validation later with an outcome timestamp after the review window closes.",
+                _step_evidence("validation_update", validation_step),
+            )
+        )
+
+    orders = coverage.get("Order submission", {})
+    order_mode = str(orders.get("mode") or "unknown")
+    rows.append(
+        _readiness_row(
+            "Order safety",
+            "safe" if order_mode == "disabled" else "blocked",
+            "Real order submission is disabled; the dashboard can preview orders only."
+            if order_mode == "disabled"
+            else "Order submission configuration is not in the expected disabled state.",
+            "Keep the kill switch off until an explicit trading-safety review is complete.",
+            _coverage_evidence(orders),
+        )
+    )
+    return rows
+
+
 def _candidate_row(row: Any) -> dict[str, object]:
     values = dict(row)
     for key in (
@@ -1334,6 +1642,79 @@ def _mapping_value(source: object, key: str) -> dict[str, object]:
         return {}
     value = source.get(key)
     return _row_dict(value) if isinstance(value, Mapping) else {}
+
+
+def _readiness_row(
+    area: str,
+    status: str,
+    finding: str,
+    next_action: str,
+    evidence: str,
+) -> dict[str, object]:
+    return {
+        "area": area,
+        "status": status,
+        "finding": finding,
+        "next_action": next_action,
+        "evidence": evidence,
+    }
+
+
+def _radar_steps_by_name(
+    radar_run_summary: Mapping[str, object] | None,
+) -> dict[str, dict[str, object]]:
+    if not isinstance(radar_run_summary, Mapping):
+        return {}
+    raw_steps = radar_run_summary.get("steps")
+    steps: dict[str, dict[str, object]] = {}
+    if isinstance(raw_steps, Mapping):
+        for name, value in raw_steps.items():
+            if not isinstance(value, Mapping):
+                continue
+            row = _row_dict(value)
+            row.setdefault("step", str(name))
+            steps[str(name)] = row
+        return steps
+    if isinstance(raw_steps, Sequence) and not isinstance(raw_steps, str | bytes):
+        for value in raw_steps:
+            if not isinstance(value, Mapping):
+                continue
+            row = _row_dict(value)
+            name = str(row.get("step") or row.get("name") or row.get("job_type") or "")
+            if name:
+                steps[name] = row
+    return steps
+
+
+def _coverage_evidence(row: Mapping[str, object]) -> str:
+    parts = [
+        str(row.get("provider") or "").strip(),
+        str(row.get("mode") or "").strip(),
+        str(row.get("detail") or "").strip(),
+        str(row.get("guardrail") or "").strip(),
+    ]
+    return "; ".join(part for part in parts if part) or "n/a"
+
+
+def _step_evidence(name: str, step: Mapping[str, object]) -> str:
+    if not step:
+        return f"{name}: missing"
+    status = str(step.get("status") or "unknown")
+    reason = str(step.get("reason") or "n/a")
+    requested = int(_finite_float(step.get("requested_count")))
+    raw = int(_finite_float(step.get("raw_count")))
+    normalized = int(_finite_float(step.get("normalized_count")))
+    return (
+        f"{name}: {status}; requested={requested}; raw={raw}; "
+        f"normalized={normalized}; reason={reason}"
+    )
+
+
+def _steps_evidence(
+    steps: Mapping[str, Mapping[str, object]],
+    names: Sequence[str],
+) -> str:
+    return " | ".join(_step_evidence(name, steps.get(name, {})) for name in names)
 
 
 def _provider_name(value: object, *, default: str) -> str:
