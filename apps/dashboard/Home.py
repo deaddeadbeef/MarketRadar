@@ -551,6 +551,12 @@ def _candidate_rows_with_labels(rows: list[dict[str, object]]) -> list[dict[str,
     return labeled
 
 
+def _visible_research_brief(value: object) -> dict[str, object]:
+    brief = dict(_mapping(value))
+    brief.pop("audit", None)
+    return brief
+
+
 def _show_mapping(title: str, value: object, *, empty: str) -> None:
     st.subheader(title)
     mapping = _mapping(value)
@@ -711,7 +717,7 @@ def _show_overview(
         )
         _show_mapping(
             "Research Brief",
-            selected_candidate.get("research_brief"),
+            _visible_research_brief(selected_candidate.get("research_brief")),
             empty="No research brief.",
         )
 
