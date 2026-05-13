@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import fields, is_dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from enum import Enum
 from math import isfinite
 from typing import Any
@@ -1082,6 +1082,153 @@ def universe_coverage_payload(
     }
 
 
+def radar_discovery_snapshot_payload(
+    engine: Engine,
+    config: AppConfig,
+    *,
+    radar_run_summary: Mapping[str, object] | None = None,
+    ops_health: Mapping[str, object] | None = None,
+    candidate_rows: Sequence[Mapping[str, object]] | None = None,
+    limit: int = 5,
+) -> dict[str, object]:
+    """Summarize latest persisted discovery yield without touching providers."""
+    summary = (
+        _row_dict(radar_run_summary)
+        if isinstance(radar_run_summary, Mapping)
+        else load_radar_run_summary(engine)
+    )
+    cutoff = _parse_utc_datetime(summary.get("decision_available_at"))
+    health = (
+        _row_dict(ops_health)
+        if isinstance(ops_health, Mapping)
+        else load_ops_health(engine)
+    )
+    candidates = (
+        [_row_dict(row) for row in candidate_rows]
+        if candidate_rows is not None
+        else load_candidate_rows(engine, available_at=cutoff)
+    )
+    coverage_rows = data_source_coverage_payload(config)
+    coverage = {str(row.get("layer") or ""): row for row in coverage_rows}
+    market = coverage.get("Market data", {})
+    events = coverage.get("News/events", {})
+    database = _mapping_value(health, "database")
+    steps = _radar_steps_by_name(summary)
+    run_path = _radar_run_path_summary(summary)
+    as_of_date = _parse_date(summary.get("as_of"))
+    latest_bar_date = _parse_date(database.get("latest_daily_bar_date"))
+    latest_candidate_at = _latest_candidate_as_of(candidates)
+
+    candidate_count = len(candidates)
+    packet_count = _step_metric(
+        steps,
+        "candidate_packets",
+        "normalized_count",
+        default=sum(1 for row in candidates if row.get("candidate_packet_id")),
+    )
+    card_count = _step_metric(
+        steps,
+        "decision_cards",
+        "normalized_count",
+        default=sum(1 for row in candidates if row.get("decision_card_id")),
+    )
+    requested_count = _step_metric(
+        steps,
+        "daily_bar_ingest",
+        "requested_count",
+        default=_step_metric(
+            steps,
+            "feature_scan",
+            "requested_count",
+            default=int(_finite_float(database.get("active_security_count"))),
+        ),
+    )
+    scanned_count = _step_metric(
+        steps,
+        "feature_scan",
+        "normalized_count",
+        default=candidate_count,
+    )
+    blockers = _discovery_blockers(
+        summary=summary,
+        market=market,
+        events=events,
+        database=database,
+        run_path=run_path,
+        as_of_date=as_of_date,
+        latest_bar_date=latest_bar_date,
+        packet_count=packet_count,
+    )
+    status = _discovery_status(
+        has_run=bool(summary),
+        market_mode=str(market.get("mode") or "unknown"),
+        event_mode=str(events.get("mode") or "unknown"),
+        run_path=run_path,
+        blockers=blockers,
+        packet_count=packet_count,
+    )
+
+    return {
+        "status": status,
+        "headline": _discovery_headline(status, candidate_count),
+        "detail": _discovery_detail(
+            market=market,
+            events=events,
+            packet_count=packet_count,
+            card_count=card_count,
+        ),
+        "next_action": _discovery_next_action(status, blockers),
+        "evidence": (
+            f"as_of={summary.get('as_of') or 'n/a'}; "
+            f"decision_available_at={summary.get('decision_available_at') or 'n/a'}; "
+            f"market={market.get('provider') or 'unknown'}/{market.get('mode') or 'unknown'}; "
+            f"events={events.get('provider') or 'unknown'}/{events.get('mode') or 'unknown'}; "
+            f"latest_daily_bar={database.get('latest_daily_bar_date') or 'n/a'}; "
+            f"latest_candidate_as_of={_iso_or_na(latest_candidate_at)}"
+        ),
+        "run": {
+            "status": summary.get("status"),
+            "as_of": summary.get("as_of"),
+            "decision_available_at": summary.get("decision_available_at"),
+            "provider": summary.get("provider"),
+            "universe": summary.get("universe"),
+            "required_complete": run_path["required_complete"],
+            "required_total": run_path["required_total"],
+            "blocking_count": run_path["blocking_count"],
+            "expected_gate_count": run_path["expected_gate_count"],
+        },
+        "source_modes": {
+            "market": market.get("mode") or "unknown",
+            "market_provider": market.get("provider") or "unknown",
+            "events": events.get("mode") or "unknown",
+            "event_provider": events.get("provider") or "unknown",
+        },
+        "freshness": {
+            "latest_daily_bar_date": (
+                latest_bar_date.isoformat() if latest_bar_date is not None else None
+            ),
+            "latest_bars_older_than_as_of": bool(
+                as_of_date is not None
+                and latest_bar_date is not None
+                and latest_bar_date < as_of_date
+            ),
+            "latest_candidate_as_of": _iso_or_none(latest_candidate_at),
+            "latest_candidate_age_days": _age_days(cutoff, latest_candidate_at),
+        },
+        "yield": {
+            "requested_securities": requested_count,
+            "scanned_securities": scanned_count,
+            "candidate_states": candidate_count,
+            "candidate_packets": packet_count,
+            "decision_cards": card_count,
+        },
+        "blockers": blockers,
+        "top_discoveries": [
+            _discovery_candidate(row) for row in candidates[: max(0, int(limit))]
+        ],
+    }
+
+
 def readiness_checklist_payload(
     config: AppConfig,
     *,
@@ -1944,6 +2091,253 @@ def _radar_run_path_summary(
         "blocking_count": int(_finite_float(summary.get("blocking_step_count"))),
         "expected_gate_count": expected_gate_count,
     }
+
+
+def _discovery_candidate(row: Mapping[str, object]) -> dict[str, object]:
+    brief = _mapping_value(row, "research_brief")
+    support = _mapping_value(row, "top_supporting_evidence")
+    risk = _mapping_value(row, "top_disconfirming_evidence")
+    return {
+        "ticker": row.get("ticker"),
+        "score": _finite_float(row.get("final_score")),
+        "state": row.get("state"),
+        "setup": row.get("setup_type") or "n/a",
+        "why_now": brief.get("why_now"),
+        "top_catalyst": brief.get("top_catalyst") or row.get("top_event_title"),
+        "evidence": brief.get("supporting_evidence") or support.get("title"),
+        "risk_or_gap": brief.get("risk_or_gap") or risk.get("title"),
+        "packet": row.get("candidate_packet_id") or "n/a",
+        "card": row.get("decision_card_id") or "n/a",
+        "next_step": brief.get("next_step"),
+    }
+
+
+def _discovery_blockers(
+    *,
+    summary: Mapping[str, object],
+    market: Mapping[str, object],
+    events: Mapping[str, object],
+    database: Mapping[str, object],
+    run_path: Mapping[str, int],
+    as_of_date: date | None,
+    latest_bar_date: date | None,
+    packet_count: int,
+) -> list[dict[str, object]]:
+    blockers: list[dict[str, object]] = []
+    if not summary:
+        blockers.append(
+            _discovery_blocker(
+                "no_run",
+                "No radar run has been recorded yet.",
+                "Run one capped radar cycle from the dashboard.",
+            )
+        )
+    market_mode = str(market.get("mode") or "unknown")
+    event_mode = str(events.get("mode") or "unknown")
+    if market_mode == "fixture":
+        blockers.append(
+            _discovery_blocker(
+                "fixture_market_data",
+                "Market data is still fixture-backed.",
+                "Configure Polygon before relying on broad US-market discovery.",
+            )
+        )
+    elif market_mode in {"missing_credentials", "disabled"}:
+        blockers.append(
+            _discovery_blocker(
+                f"market_{market_mode}",
+                "Live market data is not available.",
+                "Set the market provider credentials and rerun preflight.",
+            )
+        )
+    if event_mode == "fixture":
+        blockers.append(
+            _discovery_blocker(
+                "fixture_events",
+                "Catalyst events are still fixture-backed.",
+                "Configure SEC/live event ingest before relying on fresh catalysts.",
+            )
+        )
+    elif event_mode in {"missing_credentials", "disabled"}:
+        blockers.append(
+            _discovery_blocker(
+                f"events_{event_mode}",
+                "Live catalyst ingestion is not available.",
+                "Set live event provider settings and rerun preflight.",
+            )
+        )
+    active_count = int(_finite_float(database.get("active_security_count")))
+    if active_count and active_count < 100:
+        blockers.append(
+            _discovery_blocker(
+                "thin_universe",
+                f"Only {active_count} active securities are loaded.",
+                "Seed or refresh the universe before treating discovery as broad.",
+            )
+        )
+    if as_of_date is not None and latest_bar_date is not None and latest_bar_date < as_of_date:
+        blockers.append(
+            _discovery_blocker(
+                "stale_daily_bars",
+                f"Latest daily bars are {latest_bar_date.isoformat()}, older than run as-of.",
+                "Refresh market bars for the selected as-of date before acting.",
+            )
+        )
+    if int(run_path.get("blocking_count") or 0) > 0:
+        blockers.append(
+            _discovery_blocker(
+                "blocked_run_steps",
+                f"{run_path['blocking_count']} required run step(s) need attention.",
+                "Open the run-step action table and fix the first blocked input.",
+            )
+        )
+    if summary and packet_count == 0:
+        blockers.append(
+            _discovery_blocker(
+                "no_candidate_packets",
+                "No candidate packets were produced for the latest run.",
+                "Treat scores as incomplete until candidate packet generation succeeds.",
+            )
+        )
+    return blockers
+
+
+def _discovery_blocker(
+    code: str,
+    finding: str,
+    next_action: str,
+) -> dict[str, object]:
+    return {"code": code, "finding": finding, "next_action": next_action}
+
+
+def _discovery_status(
+    *,
+    has_run: bool,
+    market_mode: str,
+    event_mode: str,
+    run_path: Mapping[str, int],
+    blockers: Sequence[Mapping[str, object]],
+    packet_count: int,
+) -> str:
+    if not has_run:
+        return "attention"
+    if market_mode in {"missing_credentials", "disabled"} or event_mode in {
+        "missing_credentials",
+        "disabled",
+    }:
+        return "blocked"
+    if int(run_path.get("blocking_count") or 0) > 0:
+        return "blocked"
+    if market_mode == "fixture" or event_mode == "fixture":
+        return "fixture"
+    if packet_count == 0 or blockers:
+        return "attention"
+    return "ready"
+
+
+def _discovery_headline(status: str, candidate_count: int) -> str:
+    if status == "ready":
+        return f"Latest run surfaced {candidate_count} current candidate(s)."
+    if status == "fixture":
+        return f"Fixture discovery snapshot: {candidate_count} candidate(s)."
+    if status == "blocked":
+        return "Latest discovery has blocking input gaps."
+    return f"Discovery needs attention: {candidate_count} candidate(s) visible."
+
+
+def _discovery_detail(
+    *,
+    market: Mapping[str, object],
+    events: Mapping[str, object],
+    packet_count: int,
+    card_count: int,
+) -> str:
+    return (
+        f"Market {market.get('provider') or 'unknown'}/"
+        f"{market.get('mode') or 'unknown'}; "
+        f"events {events.get('provider') or 'unknown'}/"
+        f"{events.get('mode') or 'unknown'}; "
+        f"candidate packets={packet_count}; decision cards={card_count}."
+    )
+
+
+def _discovery_next_action(
+    status: str,
+    blockers: Sequence[Mapping[str, object]],
+) -> str:
+    if blockers:
+        return str(blockers[0].get("next_action") or "Review discovery blockers.")
+    if status == "ready":
+        return "Review top discoveries, then open ticker detail before any trade action."
+    if status == "fixture":
+        return "Switch market and event providers to live mode before relying on timing."
+    return "Run one radar cycle and review discovery yield before changing thresholds."
+
+
+def _step_metric(
+    steps: Mapping[str, Mapping[str, object]],
+    step_name: str,
+    field: str,
+    *,
+    default: int,
+) -> int:
+    step = steps.get(step_name, {})
+    if field not in step:
+        return int(default)
+    return int(_finite_float(step.get(field)))
+
+
+def _latest_candidate_as_of(
+    candidates: Sequence[Mapping[str, object]],
+) -> datetime | None:
+    values = [
+        parsed
+        for row in candidates
+        if (parsed := _parse_utc_datetime(row.get("as_of"))) is not None
+    ]
+    return max(values) if values else None
+
+
+def _age_days(later: datetime | None, earlier: datetime | None) -> int | None:
+    if later is None or earlier is None:
+        return None
+    return max(0, (later.date() - earlier.date()).days)
+
+
+def _parse_utc_datetime(value: object) -> datetime | None:
+    parsed = _as_utc_datetime_or_none(value)
+    if parsed is not None:
+        return parsed
+    if isinstance(value, str) and value.strip():
+        try:
+            return _as_utc_datetime_or_none(
+                datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+            )
+        except ValueError:
+            return None
+    return None
+
+
+def _parse_date(value: object) -> date | None:
+    if isinstance(value, datetime):
+        converted = _as_utc_datetime(value)
+        return converted.date() if isinstance(converted, datetime) else None
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str) and value.strip():
+        try:
+            return date.fromisoformat(value.strip()[:10])
+        except ValueError:
+            return None
+    return None
+
+
+def _iso_or_none(value: datetime | None) -> str | None:
+    return value.isoformat() if value is not None else None
+
+
+def _iso_or_na(value: datetime | None) -> str:
+    return _iso_or_none(value) or "n/a"
 
 
 def _radar_steps_by_name(

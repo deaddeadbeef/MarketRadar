@@ -550,6 +550,7 @@ def _show_radar_run_controls(
             return
         daily_result = _mapping(result.get("daily_result"))
         _show_radar_run_result_notice(daily_result, fallback_reason=result.get("reason"))
+        _show_discovery_snapshot(_mapping(result.get("discovery_snapshot")))
         _show_radar_operator_sections(
             _radar_run_operator_rows(daily_result),
             _radar_run_raw_rows(daily_result),
@@ -623,6 +624,62 @@ def _show_radar_run_summary(summary: Mapping[str, Any]) -> None:
         _radar_summary_operator_rows(summary),
         _radar_summary_raw_rows(summary),
         last_run=True,
+    )
+
+
+def _show_discovery_snapshot(snapshot: Mapping[str, Any]) -> None:
+    if not snapshot:
+        return
+    st.subheader("Latest Discovery Snapshot")
+    status = str(snapshot.get("status") or "unknown")
+    message = (
+        f"{snapshot.get('headline') or 'Discovery snapshot'} "
+        f"{snapshot.get('detail') or ''} Next: {snapshot.get('next_action') or 'n/a'}"
+    ).strip()
+    if status == "ready":
+        st.success(message)
+    elif status in {"fixture", "attention"}:
+        st.warning(message)
+    elif status == "blocked":
+        st.error(message)
+    else:
+        st.info(message)
+    st.caption(str(snapshot.get("evidence") or "No discovery evidence."))
+    yield_payload = _mapping(snapshot.get("yield"))
+    freshness = _mapping(snapshot.get("freshness"))
+    cols = st.columns(5)
+    cols[0].metric("Requested", int(_metric_number(yield_payload.get("requested_securities"))))
+    cols[1].metric("Scanned", int(_metric_number(yield_payload.get("scanned_securities"))))
+    cols[2].metric("Candidates", int(_metric_number(yield_payload.get("candidate_states"))))
+    cols[3].metric("Packets", int(_metric_number(yield_payload.get("candidate_packets"))))
+    cols[4].metric("Cards", int(_metric_number(yield_payload.get("decision_cards"))))
+    _show_status_badges(
+        [
+            ("Latest Bars", freshness.get("latest_daily_bar_date") or "n/a"),
+            (
+                "Bars Stale",
+                "yes" if freshness.get("latest_bars_older_than_as_of") else "no",
+            ),
+            (
+                "Candidate Age",
+                freshness.get("latest_candidate_age_days")
+                if freshness.get("latest_candidate_age_days") is not None
+                else "n/a",
+            ),
+        ]
+    )
+    blockers = _records(snapshot.get("blockers"))
+    if blockers:
+        with st.expander(f"Discovery blockers ({len(blockers)})", expanded=True):
+            _show_records(
+                "Discovery Blockers",
+                blockers,
+                empty="No discovery blockers.",
+            )
+    _show_records(
+        "Top Discoveries",
+        snapshot.get("top_discoveries"),
+        empty="No top discoveries for this run.",
     )
 
 
@@ -1006,6 +1063,7 @@ def _show_overview(
     *,
     config: AppConfig,
     radar_run_summary: Mapping[str, Any],
+    discovery_snapshot: Mapping[str, Any],
     candidate_rows: list[dict[str, object]],
     alert_rows: list[dict[str, object]],
     ipo_rows: list[dict[str, object]],
@@ -1038,6 +1096,7 @@ def _show_overview(
     _show_activation_summary(config, radar_run_summary, broker_summary)
     _show_universe_coverage(config, ops_health)
     _show_radar_run_controls(config, radar_run_summary)
+    _show_discovery_snapshot(discovery_snapshot)
     _show_records(
         "Opportunity Focus",
         dashboard_data.opportunity_focus_payload(candidate_rows),
@@ -2077,6 +2136,15 @@ validation_summary = _mapping(dashboard_data.load_validation_summary(engine))
 cost_summary = _mapping(dashboard_data.load_cost_summary(engine, available_at=data_available_at))
 ops_health = _mapping(dashboard_data.load_ops_health(engine))
 broker_summary = _mapping(dashboard_data.load_broker_summary(engine))
+discovery_snapshot = _mapping(
+    dashboard_data.radar_discovery_snapshot_payload(
+        engine,
+        config,
+        radar_run_summary=radar_run_summary,
+        ops_health=ops_health,
+        candidate_rows=default_candidate_rows,
+    )
+)
 
 _show_command_header(
     candidate_rows=candidate_rows,
@@ -2103,6 +2171,7 @@ with tabs[0]:
     _show_overview(
         config=config,
         radar_run_summary=radar_run_summary,
+        discovery_snapshot=discovery_snapshot,
         candidate_rows=candidate_rows,
         alert_rows=alert_rows,
         ipo_rows=ipo_rows,
