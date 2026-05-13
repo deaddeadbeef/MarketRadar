@@ -42,11 +42,15 @@ RADAR_BLOCKING_REASONS = frozenset(
         "degraded_mode_blocks_decision_cards",
         "degraded_mode_blocks_llm_review",
         "no_scheduled_provider_input",
+        "scheduled_provider_not_supported",
         "no_scheduled_event_provider",
     }
 )
 RADAR_SKIP_EXPLANATIONS = {
     "no_scheduled_provider_input": "No market-data provider was scheduled for this run.",
+    "scheduled_provider_not_supported": (
+        "The scheduled market provider is not wired into dashboard runs yet."
+    ),
     "no_scheduled_event_provider": "No news/event provider was scheduled for this run.",
     "no_text_inputs": "No text or news inputs were available to triage.",
     "no_feature_inputs": "No signal inputs were available for feature scanning.",

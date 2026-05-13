@@ -152,6 +152,10 @@ class AppConfig:
     broker_token_encryption_key: str | None = None
     http_timeout_seconds: float = 10.0
     provider_availability_policy: str = "live_fetch"
+    daily_market_provider: str = "csv"
+    csv_securities_path: str = "data/sample/securities.csv"
+    csv_daily_bars_path: str = "data/sample/daily_bars.csv"
+    csv_holdings_path: str | None = "data/sample/holdings.csv"
     universe_name: str = "liquid-us"
     universe_min_price: float = 5.0
     universe_min_avg_dollar_volume: float = 10_000_000.0
@@ -267,6 +271,18 @@ class AppConfig:
             provider_availability_policy=source.get(
                 "CATALYST_PROVIDER_AVAILABILITY_POLICY", "live_fetch"
             ),
+            daily_market_provider=source.get(
+                "CATALYST_DAILY_MARKET_PROVIDER", "csv"
+            ).strip(),
+            csv_securities_path=source.get(
+                "CATALYST_CSV_SECURITIES_PATH", "data/sample/securities.csv"
+            ),
+            csv_daily_bars_path=source.get(
+                "CATALYST_CSV_DAILY_BARS_PATH", "data/sample/daily_bars.csv"
+            ),
+            csv_holdings_path=_optional_str(source, "CATALYST_CSV_HOLDINGS_PATH")
+            if "CATALYST_CSV_HOLDINGS_PATH" in source
+            else "data/sample/holdings.csv",
             universe_name=source.get("CATALYST_UNIVERSE_NAME", "liquid-us"),
             universe_min_price=_positive_float(
                 source, "CATALYST_UNIVERSE_MIN_PRICE", 5.0

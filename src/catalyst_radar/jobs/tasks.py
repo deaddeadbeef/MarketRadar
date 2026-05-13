@@ -9,6 +9,13 @@ from sqlalchemy import Engine, func, select
 
 from catalyst_radar.alerts.digest import build_alert_digest, digest_payload
 from catalyst_radar.brokers.portfolio_context import latest_broker_portfolio_context
+from catalyst_radar.connectors.base import ConnectorRequest
+from catalyst_radar.connectors.market_data import CsvMarketDataConnector
+from catalyst_radar.connectors.provider_ingest import (
+    ProviderIngestError,
+    ingest_provider_records,
+)
+from catalyst_radar.core.config import AppConfig
 from catalyst_radar.core.models import ActionState, JobStatus, PolicyResult
 from catalyst_radar.decision_cards.builder import build_decision_card
 from catalyst_radar.ops.health import DISABLED_DEGRADED_STATES, load_ops_health
@@ -46,8 +53,12 @@ LIMITED_ANALYSIS_SKIP_REASONS = frozenset(
         "degraded_mode_blocks_high_state_work",
         "degraded_mode_blocks_decision_cards",
         "degraded_mode_blocks_llm_review",
+        "no_scheduled_provider_input",
+        "scheduled_provider_not_supported",
     }
 )
+CSV_SCHEDULED_PROVIDER_NAMES = frozenset({"csv", "sample"})
+DISABLED_SCHEDULED_PROVIDER_NAMES = frozenset({"", "none", "off", "disabled"})
 
 
 @dataclass(frozen=True)
@@ -129,6 +140,7 @@ class _DailyRunContext:
     packet_repo: CandidatePacketRepository
     alert_repo: AlertRepository
     validation_repo: ValidationRepository
+    config: AppConfig
     scan_results: tuple[ScanResult, ...] = ()
     candidate_packets: tuple[Any, ...] = ()
     decision_cards: tuple[Any, ...] = ()
@@ -153,6 +165,7 @@ def run_daily(
     context = _DailyRunContext(
         engine=engine,
         spec=spec,
+        config=AppConfig.from_env(),
         market_repo=MarketRepository(engine),
         event_repo=EventRepository(engine),
         text_repo=TextRepository(engine),
@@ -264,8 +277,71 @@ def _run_step(
     )
 
 
-def _daily_bar_ingest(_: _DailyRunContext) -> _StepOutcome:
-    return _skipped("no_scheduled_provider_input")
+def _daily_bar_ingest(context: _DailyRunContext) -> _StepOutcome:
+    provider = _scheduled_market_provider(context)
+    if provider in DISABLED_SCHEDULED_PROVIDER_NAMES:
+        return _skipped("no_scheduled_provider_input")
+    if provider not in CSV_SCHEDULED_PROVIDER_NAMES:
+        return _skipped(
+            "scheduled_provider_not_supported",
+            payload={
+                "provider": provider,
+                "supported_offline_providers": sorted(CSV_SCHEDULED_PROVIDER_NAMES),
+            },
+        )
+
+    connector = CsvMarketDataConnector(
+        securities_path=context.config.csv_securities_path,
+        daily_bars_path=context.config.csv_daily_bars_path,
+        holdings_path=context.config.csv_holdings_path,
+        provider=provider,
+    )
+    metadata = {
+        "scheduled_provider": provider,
+        "scan_provider": context.spec.provider,
+        "securities": context.config.csv_securities_path,
+        "daily_bars": context.config.csv_daily_bars_path,
+        "holdings": context.config.csv_holdings_path,
+    }
+    request = ConnectorRequest(
+        provider=connector.provider,
+        endpoint="scheduled_csv_ingest",
+        params=metadata,
+        requested_at=context.spec.decision_available_at,
+        idempotency_key=(
+            f"daily_bar_ingest:{provider}:{context.spec.as_of.isoformat()}:"
+            f"{context.spec.decision_available_at.isoformat()}"
+        ),
+    )
+    try:
+        result = ingest_provider_records(
+            connector=connector,
+            request=request,
+            market_repo=context.market_repo,
+            provider_repo=ProviderRepository(context.engine),
+            job_type="scheduled_csv_ingest",
+            metadata=metadata,
+        )
+    except ProviderIngestError as exc:
+        return _StepOutcome(
+            status=JobStatus.FAILED.value,
+            reason=_truncate_reason(str(exc) or exc.__class__.__name__),
+            payload={"provider": provider, "endpoint": request.endpoint},
+        )
+    return _StepOutcome(
+        status=JobStatus.SUCCESS.value,
+        requested_count=result.requested_count,
+        raw_count=result.raw_count,
+        normalized_count=result.normalized_count,
+        payload={
+            "provider": result.provider,
+            "ingest_job_id": result.job_id,
+            "security_count": result.security_count,
+            "daily_bar_count": result.daily_bar_count,
+            "holding_count": result.holding_count,
+            "rejected_count": result.rejected_count,
+        },
+    )
 
 
 def _event_ingest(_: _DailyRunContext) -> _StepOutcome:
@@ -687,8 +763,42 @@ def _degraded_payload(context: _DailyRunContext) -> dict[str, Any]:
     if context.degraded_mode is None:
         health = load_ops_health(context.market_repo.engine, now=context.spec.decision_available_at)
         degraded_mode = health.get("degraded_mode")
-        context.degraded_mode = degraded_mode if isinstance(degraded_mode, Mapping) else {}
+        scoped = degraded_mode if isinstance(degraded_mode, Mapping) else {}
+        context.degraded_mode = _scoped_degraded_payload(
+            scoped,
+            relevant_providers=_relevant_degraded_providers(context),
+        )
     return dict(context.degraded_mode)
+
+
+def _scheduled_market_provider(context: _DailyRunContext) -> str:
+    provider = context.config.daily_market_provider.strip().lower()
+    return provider if provider else "csv"
+
+
+def _relevant_degraded_providers(context: _DailyRunContext) -> set[str]:
+    providers = {_scheduled_market_provider(context)}
+    if context.spec.provider:
+        providers.add(context.spec.provider.strip().lower())
+    return {provider for provider in providers if provider not in DISABLED_SCHEDULED_PROVIDER_NAMES}
+
+
+def _scoped_degraded_payload(
+    degraded_mode: Mapping[str, Any],
+    *,
+    relevant_providers: set[str],
+) -> dict[str, Any]:
+    reasons = [
+        str(reason)
+        for reason in degraded_mode.get("reasons", [])
+        if not str(reason).startswith("provider:")
+        or str(reason).removeprefix("provider:").strip().lower() in relevant_providers
+    ]
+    return {
+        **dict(degraded_mode),
+        "enabled": bool(reasons),
+        "reasons": reasons,
+    }
 
 
 def _skipped(
