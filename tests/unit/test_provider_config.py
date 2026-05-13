@@ -13,6 +13,8 @@ def test_polygon_config_reads_env_without_requiring_key() -> None:
             "CATALYST_CSV_SECURITIES_PATH": "fixtures/securities.csv",
             "CATALYST_CSV_DAILY_BARS_PATH": "fixtures/daily.csv",
             "CATALYST_CSV_HOLDINGS_PATH": "",
+            "CATALYST_DAILY_EVENT_PROVIDER": "fixture",
+            "CATALYST_NEWS_FIXTURE_PATH": "fixtures/news.json",
             "CATALYST_UNIVERSE_NAME": "liquid-us",
             "CATALYST_UNIVERSE_MIN_PRICE": "10",
             "CATALYST_UNIVERSE_MIN_AVG_DOLLAR_VOLUME": "25000000",
@@ -29,6 +31,8 @@ def test_polygon_config_reads_env_without_requiring_key() -> None:
     assert config.csv_securities_path == "fixtures/securities.csv"
     assert config.csv_daily_bars_path == "fixtures/daily.csv"
     assert config.csv_holdings_path is None
+    assert config.daily_event_provider == "fixture"
+    assert config.news_fixture_path == "fixtures/news.json"
     assert config.universe_name == "liquid-us"
     assert config.universe_min_price == 10
     assert config.universe_min_avg_dollar_volume == 25_000_000

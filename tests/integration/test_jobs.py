@@ -235,6 +235,7 @@ def test_daily_run_requires_timezone_aware_available_at():
 
 def test_daily_run_records_skipped_steps_without_llm_or_inputs(monkeypatch):
     monkeypatch.setenv("CATALYST_DAILY_MARKET_PROVIDER", "none")
+    monkeypatch.setenv("CATALYST_DAILY_EVENT_PROVIDER", "none")
     engine = _engine()
     spec = DailyRunSpec(
         as_of=date(2026, 5, 9),
@@ -292,6 +293,10 @@ def test_daily_run_ingests_default_csv_market_data(monkeypatch):
     assert ingest_step.payload["daily_bar_count"] == 36
     assert result.step("feature_scan").status == "success"
     assert result.step("scoring_policy").status == "success"
+    assert result.step("event_ingest").status == "success"
+    assert result.step("event_ingest").payload["event_count"] == 1
+    assert result.step("local_text_triage").status == "success"
+    assert result.step("local_text_triage").payload["feature_count"] == 1
     assert result.step("candidate_packets").status == "success"
     assert result.step("candidate_packets").payload["candidate_packet_count"] == 2
     assert result.step("decision_cards").reason == "no_manual_buy_review_inputs"
@@ -303,7 +308,12 @@ def test_daily_run_ingests_default_csv_market_data(monkeypatch):
             for row in conn.execute(
                 select(job_runs).where(
                     job_runs.c.job_type.in_(
-                        ["daily_bar_ingest", "scheduled_csv_ingest"]
+                        [
+                            "daily_bar_ingest",
+                            "scheduled_csv_ingest",
+                            "event_ingest",
+                            "scheduled_news_fixture_ingest",
+                        ]
                     )
                 )
             )
@@ -312,6 +322,50 @@ def test_daily_run_ingests_default_csv_market_data(monkeypatch):
     assert jobs["daily_bar_ingest"].status == "success"
     assert jobs["daily_bar_ingest"].metadata["result_payload"]["daily_bar_count"] == 36
     assert jobs["scheduled_csv_ingest"].status == "success"
+    assert jobs["event_ingest"].status == "success"
+    assert jobs["event_ingest"].metadata["result_payload"]["event_count"] == 1
+    assert jobs["scheduled_news_fixture_ingest"].status == "success"
+
+
+def test_daily_run_allows_blank_event_provider_to_disable_fixture(monkeypatch):
+    monkeypatch.setenv("CATALYST_DAILY_MARKET_PROVIDER", "none")
+    monkeypatch.setenv("CATALYST_DAILY_EVENT_PROVIDER", "")
+    engine = _engine()
+    spec = DailyRunSpec(
+        as_of=date(2026, 5, 8),
+        decision_available_at=datetime(2026, 5, 8, 21, 0, tzinfo=UTC),
+        run_llm=False,
+        dry_run_alerts=True,
+    )
+
+    result = run_daily(spec, engine=engine)
+
+    assert result.step("event_ingest").status == "skipped"
+    assert result.step("event_ingest").reason == "no_scheduled_event_provider"
+    assert result.step("local_text_triage").status == "skipped"
+    assert result.step("local_text_triage").reason == "no_text_inputs"
+
+
+def test_daily_run_skips_unsupported_event_provider(monkeypatch):
+    monkeypatch.setenv("CATALYST_DAILY_MARKET_PROVIDER", "none")
+    monkeypatch.setenv("CATALYST_DAILY_EVENT_PROVIDER", "live_news")
+    engine = _engine()
+    spec = DailyRunSpec(
+        as_of=date(2026, 5, 8),
+        decision_available_at=datetime(2026, 5, 8, 21, 0, tzinfo=UTC),
+        run_llm=False,
+        dry_run_alerts=True,
+    )
+
+    result = run_daily(spec, engine=engine)
+
+    event_step = result.step("event_ingest")
+    assert event_step.status == "skipped"
+    assert event_step.reason == "scheduled_event_provider_not_supported"
+    assert event_step.payload["provider"] == "live_news"
+    assert "news_fixture" in event_step.payload["supported_offline_providers"]
+    assert result.step("local_text_triage").status == "skipped"
+    assert result.step("local_text_triage").reason == "no_text_inputs"
 
 
 def test_daily_run_records_step_telemetry(monkeypatch):
@@ -345,6 +399,10 @@ def test_daily_run_records_step_telemetry(monkeypatch):
     assert by_step["daily_bar_ingest"].metadata["decision_available_at"] == (
         "2026-05-08T21:00:00+00:00"
     )
+    assert by_step["event_ingest"].status == "success"
+    assert by_step["event_ingest"].metadata["normalized_count"] == 1
+    assert by_step["local_text_triage"].status == "success"
+    assert by_step["local_text_triage"].metadata["normalized_count"] == 1
     assert by_step["candidate_packets"].status == "success"
     assert by_step["candidate_packets"].reason is None
     assert by_step["candidate_packets"].metadata["normalized_count"] == 2
