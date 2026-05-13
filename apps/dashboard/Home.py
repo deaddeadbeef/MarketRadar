@@ -2148,7 +2148,6 @@ discovery_snapshot = _mapping(
         engine,
         config,
         radar_run_summary=radar_run_summary,
-        candidate_rows=default_candidate_rows,
     )
 )
 
