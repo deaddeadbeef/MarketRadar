@@ -133,6 +133,7 @@ class AppConfig:
     llm_monthly_budget_usd: float = 0.0
     llm_monthly_soft_cap_pct: float = 0.80
     llm_task_daily_caps: Mapping[str, int] = field(default_factory=dict)
+    openai_api_key: str | None = None
     market_provider: str = "csv"
     polygon_api_key: str | None = None
     polygon_base_url: str = "https://api.polygon.io"
@@ -230,6 +231,7 @@ class AppConfig:
                 source, "CATALYST_LLM_MONTHLY_SOFT_CAP_PCT", 0.80
             ),
             llm_task_daily_caps=_task_caps(source, "CATALYST_LLM_TASK_DAILY_CAPS"),
+            openai_api_key=_optional_str(source, "OPENAI_API_KEY"),
             market_provider=source.get("CATALYST_MARKET_PROVIDER", "csv"),
             polygon_api_key=_optional_str(source, "CATALYST_POLYGON_API_KEY"),
             polygon_base_url=source.get(

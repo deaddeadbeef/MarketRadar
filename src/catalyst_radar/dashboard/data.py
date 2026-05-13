@@ -1152,6 +1152,16 @@ def readiness_checklist_payload(
                 _step_evidence("llm_review", llm_step),
             )
         )
+    elif llm_mode == "missing_credentials":
+        rows.append(
+            _readiness_row(
+                "LLM review",
+                "blocked",
+                "OpenAI review is enabled, but OPENAI_API_KEY is missing.",
+                "Set OPENAI_API_KEY before running real agentic LLM review.",
+                _coverage_evidence(coverage.get("LLM review", {})),
+            )
+        )
     elif llm_mode == "disabled" or str(llm_step.get("reason") or "") == "llm_disabled":
         rows.append(
             _readiness_row(
@@ -1998,6 +2008,10 @@ def _llm_preflight_row(
         status = "optional"
         call_budget = "0 LLM calls"
         next_action = "Enable OpenAI review only after model, budget, and key setup."
+    elif mode == "missing_credentials":
+        status = "blocked"
+        call_budget = "0 LLM calls until OPENAI_API_KEY is set"
+        next_action = "Set OPENAI_API_KEY, then run one dry-run review before real review."
     else:
         status = "ready"
         daily_cap = config.llm_task_daily_caps or {}
@@ -2082,6 +2096,8 @@ def _llm_mode(config: AppConfig) -> str:
     provider = str(config.llm_provider or "").strip().lower()
     if not config.enable_premium_llm or provider in {"", "none", "off", "disabled"}:
         return "disabled"
+    if provider == "openai" and not config.openai_api_key:
+        return "missing_credentials"
     return "enabled"
 
 
