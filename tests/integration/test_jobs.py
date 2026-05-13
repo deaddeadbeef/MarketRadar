@@ -232,7 +232,8 @@ def test_daily_run_requires_timezone_aware_available_at():
         )
 
 
-def test_daily_run_records_skipped_steps_without_llm_or_inputs():
+def test_daily_run_records_skipped_steps_without_llm_or_inputs(monkeypatch):
+    monkeypatch.setenv("CATALYST_DAILY_MARKET_PROVIDER", "none")
     engine = _engine()
     spec = DailyRunSpec(
         as_of=date(2026, 5, 9),
@@ -243,7 +244,7 @@ def test_daily_run_records_skipped_steps_without_llm_or_inputs():
 
     result = run_daily(spec, engine=engine)
 
-    assert result.status == "success"
+    assert result.status == "partial_success"
     assert {step.status for step in result.steps} == {"skipped"}
     assert result.step("daily_bar_ingest").status == "skipped"
     assert result.step("local_text_triage").status == "skipped"
@@ -269,6 +270,75 @@ def test_daily_run_records_skipped_steps_without_llm_or_inputs():
         persisted["daily_bar_ingest"].metadata["decision_available_at"]
         == "2026-05-10T01:00:00+00:00"
     )
+
+
+def test_daily_run_ingests_default_csv_market_data(monkeypatch):
+    monkeypatch.delenv("CATALYST_DAILY_MARKET_PROVIDER", raising=False)
+    engine = _engine()
+    spec = DailyRunSpec(
+        as_of=date(2026, 5, 8),
+        decision_available_at=datetime(2026, 5, 8, 21, 0, tzinfo=UTC),
+        run_llm=False,
+        dry_run_alerts=True,
+    )
+
+    result = run_daily(spec, engine=engine)
+
+    ingest_step = result.step("daily_bar_ingest")
+    assert ingest_step.status == "success"
+    assert ingest_step.payload["provider"] == "csv"
+    assert ingest_step.payload["security_count"] == 6
+    assert ingest_step.payload["daily_bar_count"] == 36
+    assert result.step("feature_scan").status == "success"
+    assert result.step("scoring_policy").status == "success"
+    assert result.step("candidate_packets").reason == "no_warning_or_higher_candidates"
+    assert result.step("llm_review").reason == "llm_disabled"
+
+    with engine.connect() as conn:
+        jobs = {
+            row.job_type: row
+            for row in conn.execute(
+                select(job_runs).where(
+                    job_runs.c.job_type.in_(
+                        ["daily_bar_ingest", "scheduled_csv_ingest"]
+                    )
+                )
+            )
+        }
+
+    assert jobs["daily_bar_ingest"].status == "success"
+    assert jobs["daily_bar_ingest"].metadata["result_payload"]["daily_bar_count"] == 36
+    assert jobs["scheduled_csv_ingest"].status == "success"
+
+
+def test_daily_run_ignores_irrelevant_degraded_provider(monkeypatch):
+    monkeypatch.delenv("CATALYST_DAILY_MARKET_PROVIDER", raising=False)
+    engine = _engine()
+    decision_available_at = datetime(2026, 5, 8, 21, 0, tzinfo=UTC)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(provider_health).values(
+                id="provider-health-polygon-down",
+                provider="polygon",
+                status="down",
+                checked_at=decision_available_at,
+                reason="old polygon outage",
+                latency_ms=None,
+            )
+        )
+    spec = DailyRunSpec(
+        as_of=date(2026, 5, 8),
+        decision_available_at=decision_available_at,
+        run_llm=True,
+        llm_dry_run=True,
+        dry_run_alerts=True,
+    )
+
+    result = run_daily(spec, engine=engine)
+
+    assert result.step("daily_bar_ingest").status == "success"
+    assert result.step("candidate_packets").reason == "no_warning_or_higher_candidates"
+    assert result.step("llm_review").reason in {"no_llm_review_inputs", "dry_run_only", None}
 
 
 def test_daily_run_runs_validation_update_when_outcome_cutoff_is_supplied():
@@ -304,7 +374,7 @@ def test_daily_run_caps_high_states_and_blocks_decision_work_when_degraded(monke
         conn.execute(
             insert(provider_health).values(
                 id="provider-health-down",
-                provider="polygon",
+                provider="csv",
                 status="down",
                 checked_at=decision_available_at,
                 reason="provider outage",
@@ -355,7 +425,7 @@ def test_daily_run_reports_llm_disabled_before_degraded_llm_block(monkeypatch):
         conn.execute(
             insert(provider_health).values(
                 id="provider-health-down",
-                provider="polygon",
+                provider="csv",
                 status="down",
                 checked_at=decision_available_at,
                 reason="provider outage",
