@@ -947,6 +947,89 @@ def provider_preflight_payload(
     ]
 
 
+def activation_summary_payload(
+    config: AppConfig,
+    *,
+    radar_run_summary: Mapping[str, object] | None = None,
+    broker_summary: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    coverage_rows = data_source_coverage_payload(config, broker_summary=broker_summary)
+    coverage = {str(row.get("layer") or ""): row for row in coverage_rows}
+    readiness_rows = readiness_checklist_payload(
+        config,
+        radar_run_summary=radar_run_summary,
+        broker_summary=broker_summary,
+    )
+    blocked_rows = [
+        row for row in readiness_rows if str(row.get("status") or "") == "blocked"
+    ]
+    attention_rows = [
+        row for row in readiness_rows if str(row.get("status") or "") == "attention"
+    ]
+    market = coverage.get("Market data", {})
+    events = coverage.get("News/events", {})
+    market_mode = str(market.get("mode") or "unknown")
+    event_mode = str(events.get("mode") or "unknown")
+    run_path = _radar_run_path_summary(radar_run_summary)
+
+    if blocked_rows and (
+        "missing_credentials" in {market_mode, event_mode}
+        or market_mode == "disabled"
+        or event_mode == "disabled"
+    ):
+        status = "blocked"
+        headline = "Live activation is blocked."
+        detail = _activation_blocker_detail(blocked_rows)
+        next_action = _activation_next_action(blocked_rows)
+    elif market_mode == "fixture" or event_mode == "fixture":
+        status = "fixture"
+        headline = "Fixture mode: not a live US-market scan yet."
+        detail = (
+            f"Market data is {market.get('provider') or market_mode}; "
+            f"news/events are {events.get('provider') or event_mode}."
+        )
+        next_action = (
+            "Set CATALYST_DAILY_MARKET_PROVIDER=polygon, CATALYST_POLYGON_API_KEY, "
+            "CATALYST_DAILY_EVENT_PROVIDER=sec, CATALYST_SEC_ENABLE_LIVE=1, and "
+            "CATALYST_SEC_USER_AGENT; then run one capped radar cycle."
+        )
+    elif blocked_rows:
+        status = "blocked"
+        headline = "Radar output has blockers."
+        detail = _activation_blocker_detail(blocked_rows)
+        next_action = _activation_next_action(blocked_rows)
+    elif attention_rows:
+        status = "attention"
+        headline = "Radar is usable with attention items."
+        detail = _activation_blocker_detail(attention_rows)
+        next_action = _activation_next_action(attention_rows)
+    else:
+        status = "ready"
+        headline = "Live radar inputs are ready."
+        detail = (
+            f"Market data provider {market.get('provider') or market_mode}; "
+            f"event provider {events.get('provider') or event_mode}."
+        )
+        next_action = (
+            "Run one radar cycle, inspect provider health and rejected counts, "
+            "then scale the universe cautiously."
+        )
+
+    return {
+        "status": status,
+        "headline": headline,
+        "detail": detail,
+        "next_action": next_action,
+        "evidence": (
+            f"market={market.get('provider') or 'unknown'}/{market_mode}; "
+            f"events={events.get('provider') or 'unknown'}/{event_mode}; "
+            f"required_path={run_path['required_complete']}/{run_path['required_total']}; "
+            f"action_needed={run_path['blocking_count']}; "
+            f"optional_gates={run_path['expected_gate_count']}"
+        ),
+    }
+
+
 def readiness_checklist_payload(
     config: AppConfig,
     *,
@@ -1775,6 +1858,39 @@ def _readiness_row(
         "finding": finding,
         "next_action": next_action,
         "evidence": evidence,
+    }
+
+
+def _activation_blocker_detail(rows: Sequence[Mapping[str, object]]) -> str:
+    if not rows:
+        return "No blocking readiness rows."
+    labels = [str(row.get("area") or "Unknown") for row in rows[:3]]
+    suffix = f" plus {len(rows) - 3} more" if len(rows) > 3 else ""
+    return f"{', '.join(labels)} need attention{suffix}."
+
+
+def _activation_next_action(rows: Sequence[Mapping[str, object]]) -> str:
+    if not rows:
+        return "No operator action required."
+    return str(rows[0].get("next_action") or "Review the readiness checklist.")
+
+
+def _radar_run_path_summary(
+    radar_run_summary: Mapping[str, object] | None,
+) -> dict[str, int]:
+    summary = radar_run_summary if isinstance(radar_run_summary, Mapping) else {}
+    outcome_counts = _string_int_mapping(summary.get("outcome_category_counts"))
+    step_count = int(_finite_float(summary.get("step_count")))
+    expected_gate_count = int(
+        _finite_float(summary.get("expected_gate_count"))
+        or outcome_counts.get("expected_gate", 0)
+    )
+    required_total = max(0, step_count - expected_gate_count)
+    return {
+        "required_total": required_total,
+        "required_complete": min(outcome_counts.get("completed", 0), required_total),
+        "blocking_count": int(_finite_float(summary.get("blocking_step_count"))),
+        "expected_gate_count": expected_gate_count,
     }
 
 
