@@ -894,6 +894,30 @@ def data_source_coverage_payload(
     ]
 
 
+def provider_preflight_payload(
+    config: AppConfig,
+    *,
+    radar_run_summary: Mapping[str, object] | None = None,
+    broker_summary: Mapping[str, object] | None = None,
+) -> list[dict[str, object]]:
+    coverage_rows = data_source_coverage_payload(config, broker_summary=broker_summary)
+    coverage = {str(row.get("layer") or ""): row for row in coverage_rows}
+    steps = _radar_steps_by_name(radar_run_summary)
+    market_provider = _provider_name(config.daily_market_provider, default="csv")
+    event_provider = _provider_name(config.daily_event_provider, default="news_fixture")
+    return [
+        _market_preflight_row(config, market_provider, coverage.get("Market data", {})),
+        _event_preflight_row(
+            config,
+            event_provider,
+            coverage.get("News/events", {}),
+            steps.get("event_ingest", {}),
+        ),
+        _schwab_preflight_row(config, coverage.get("Schwab portfolio", {})),
+        _llm_preflight_row(config, coverage.get("LLM review", {})),
+    ]
+
+
 def readiness_checklist_payload(
     config: AppConfig,
     *,
@@ -1774,6 +1798,191 @@ def _event_source_guardrail(config: AppConfig, provider: str) -> str:
             f"max_tickers={config.sec_daily_max_tickers}"
         )
     return "point-in-time event cutoff enforced"
+
+
+def _preflight_row(
+    layer: str,
+    status: str,
+    provider: str,
+    call_budget: str,
+    guardrail: str,
+    next_action: str,
+    evidence: str,
+) -> dict[str, object]:
+    return {
+        "layer": layer,
+        "status": status,
+        "provider": provider,
+        "call_budget": call_budget,
+        "guardrail": guardrail,
+        "next_action": next_action,
+        "evidence": evidence,
+    }
+
+
+def _market_preflight_row(
+    config: AppConfig,
+    provider: str,
+    coverage: Mapping[str, object],
+) -> dict[str, object]:
+    mode = str(coverage.get("mode") or "unknown")
+    if provider == "polygon" and mode == "missing_credentials":
+        return _preflight_row(
+            "Market data",
+            "blocked",
+            provider,
+            "0 live calls until CATALYST_POLYGON_API_KEY is set",
+            "Polygon grouped daily is capped at 1 request per radar run.",
+            "Set the Polygon API key, then run one radar cycle and inspect rejected_count.",
+            _coverage_evidence(coverage),
+        )
+    if provider == "polygon" and mode == "live":
+        return _preflight_row(
+            "Market data",
+            "ready",
+            provider,
+            "1 grouped-daily request per radar run",
+            (
+                "No ticker-by-ticker price polling in daily radar runs; "
+                f"scanner batch={config.scan_batch_size}."
+            ),
+            "Run one radar cycle and verify provider health plus rejected_count before scaling.",
+            _coverage_evidence(coverage),
+        )
+    if mode == "disabled":
+        return _preflight_row(
+            "Market data",
+            "blocked",
+            provider,
+            "0 live calls",
+            "No scheduled market provider is enabled.",
+            "Set CATALYST_DAILY_MARKET_PROVIDER=polygon for live grouped daily data.",
+            _coverage_evidence(coverage),
+        )
+    return _preflight_row(
+        "Market data",
+        "fixture",
+        provider,
+        "0 live calls",
+        "Local fixture data only; no external market-data requests.",
+        "Switch to Polygon when you are ready for fresh US-market coverage.",
+        _coverage_evidence(coverage),
+    )
+
+
+def _event_preflight_row(
+    config: AppConfig,
+    provider: str,
+    coverage: Mapping[str, object],
+    event_step: Mapping[str, object],
+) -> dict[str, object]:
+    mode = str(coverage.get("mode") or "unknown")
+    sec_budget = f"up to {config.sec_daily_max_tickers} SEC submissions requests per radar run"
+    if provider in {"sec", "sec_submissions"} and mode == "missing_credentials":
+        return _preflight_row(
+            "News/events",
+            "blocked",
+            provider,
+            "0 live calls until SEC live flag and User-Agent are set",
+            f"{sec_budget}; SEC live ingest fails closed without required settings.",
+            "Set CATALYST_SEC_ENABLE_LIVE=1 and CATALYST_SEC_USER_AGENT.",
+            _coverage_evidence(coverage),
+        )
+    if provider in {"sec", "sec_submissions"}:
+        if str(event_step.get("reason") or "") == "no_sec_cik_targets":
+            return _preflight_row(
+                "News/events",
+                "attention",
+                provider,
+                sec_budget,
+                "SEC calls are capped and require active securities with CIK metadata.",
+                "Seed active securities with CIKs through Polygon reference data or CSV metadata.",
+                _step_evidence("event_ingest", event_step),
+            )
+        return _preflight_row(
+            "News/events",
+            "ready",
+            provider,
+            sec_budget,
+            "SEC live ingest requires User-Agent and point-in-time cutoff.",
+            "Run one radar cycle and verify target_count, event_count, and rejected_count.",
+            _coverage_evidence(coverage),
+        )
+    if mode == "disabled":
+        return _preflight_row(
+            "News/events",
+            "blocked",
+            provider,
+            "0 live calls",
+            "No scheduled catalyst provider is enabled.",
+            "Set CATALYST_DAILY_EVENT_PROVIDER=sec when you want SEC catalyst polling.",
+            _coverage_evidence(coverage),
+        )
+    return _preflight_row(
+        "News/events",
+        "fixture",
+        provider,
+        "0 live calls",
+        "Local fixture events only; no external news or filing requests.",
+        "Switch to SEC scheduled ingest when you are ready for live catalyst discovery.",
+        _coverage_evidence(coverage),
+    )
+
+
+def _schwab_preflight_row(
+    config: AppConfig,
+    coverage: Mapping[str, object],
+) -> dict[str, object]:
+    mode = str(coverage.get("mode") or "unknown")
+    status = "attention" if mode == "stale_read_only_connected" else "ready"
+    if mode not in {"read_only_connected", "stale_read_only_connected"}:
+        status = "optional"
+    return _preflight_row(
+        "Schwab portfolio",
+        status,
+        "schwab",
+        (
+            f"portfolio sync min {config.schwab_sync_min_interval_seconds}s; "
+            f"market context max {config.schwab_market_sync_max_tickers} tickers "
+            f"per {config.schwab_market_sync_min_interval_seconds}s"
+        ),
+        "Read-only sync only; real order submission remains disabled by kill switch.",
+        (
+            "Run one sync from the Broker tab."
+            if status == "attention"
+            else "Use synced positions as context for candidate exposure checks."
+        ),
+        _coverage_evidence(coverage),
+    )
+
+
+def _llm_preflight_row(
+    config: AppConfig,
+    coverage: Mapping[str, object],
+) -> dict[str, object]:
+    mode = str(coverage.get("mode") or "unknown")
+    if mode == "disabled":
+        status = "optional"
+        call_budget = "0 LLM calls"
+        next_action = "Enable OpenAI review only after model, budget, and key setup."
+    else:
+        status = "ready"
+        daily_cap = config.llm_task_daily_caps or {}
+        call_budget = (
+            f"daily_budget={config.llm_daily_budget_usd}; "
+            f"monthly_budget={config.llm_monthly_budget_usd}; "
+            f"task_caps={dict(daily_cap)}"
+        )
+        next_action = "Keep dry-run review on until card quality and cost telemetry are acceptable."
+    return _preflight_row(
+        "LLM review",
+        status,
+        str(config.llm_provider or "none"),
+        call_budget,
+        "Budget caps and task caps gate agentic review.",
+        next_action,
+        _coverage_evidence(coverage),
+    )
 
 
 def _step_evidence(name: str, step: Mapping[str, object]) -> str:

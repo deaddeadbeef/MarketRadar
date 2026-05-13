@@ -15,6 +15,11 @@ The run uses the existing `daily-run` job lock, so another dashboard/API/worker 
 
 The radar run does not call Schwab. It can read the latest synced broker context already in the database when building decision cards, but Schwab portfolio and market refreshes stay behind the separate broker controls and their server-side rate guards.
 
+Before enabling live sources, check the dashboard **Provider Preflight** table.
+It shows the configured provider, live-call budget, safety guardrail, and next
+action for market data, SEC/news events, Schwab context, and LLM review. This is
+a configuration preflight; it does not call external APIs.
+
 ## Market Data Provider
 
 By default, local runs use fixture CSV market data:

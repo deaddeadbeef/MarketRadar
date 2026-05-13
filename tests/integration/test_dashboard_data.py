@@ -40,6 +40,7 @@ from catalyst_radar.dashboard.data import (
     load_theme_rows,
     load_ticker_detail,
     load_validation_summary,
+    provider_preflight_payload,
     readiness_checklist_payload,
 )
 from catalyst_radar.storage.broker_repositories import BrokerRepository
@@ -147,6 +148,76 @@ def test_data_source_coverage_payload_marks_fixture_and_read_only_modes() -> Non
 
     stale_by_layer = {str(row["layer"]): row for row in stale_rows}
     assert stale_by_layer["Schwab portfolio"]["mode"] == "stale_read_only_connected"
+
+
+def test_provider_preflight_payload_reports_fixture_no_live_calls() -> None:
+    config = AppConfig(
+        daily_market_provider="csv",
+        daily_event_provider="news_fixture",
+        enable_premium_llm=False,
+        llm_provider="none",
+        schwab_sync_min_interval_seconds=900,
+        schwab_market_sync_min_interval_seconds=300,
+        schwab_market_sync_max_tickers=5,
+    )
+
+    rows = provider_preflight_payload(config)
+
+    by_layer = {str(row["layer"]): row for row in rows}
+    assert by_layer["Market data"]["status"] == "fixture"
+    assert by_layer["Market data"]["call_budget"] == "0 live calls"
+    assert by_layer["News/events"]["status"] == "fixture"
+    assert by_layer["News/events"]["call_budget"] == "0 live calls"
+    assert by_layer["LLM review"]["status"] == "optional"
+    assert by_layer["LLM review"]["call_budget"] == "0 LLM calls"
+    assert "portfolio sync min 900s" in str(by_layer["Schwab portfolio"]["call_budget"])
+
+
+def test_provider_preflight_payload_reports_live_provider_call_budgets() -> None:
+    config = AppConfig(
+        daily_market_provider="polygon",
+        polygon_api_key="fixture-key",
+        daily_event_provider="sec",
+        sec_enable_live=True,
+        sec_user_agent="MarketRadar test@example.com",
+        sec_daily_max_tickers=3,
+    )
+
+    rows = provider_preflight_payload(config)
+
+    by_layer = {str(row["layer"]): row for row in rows}
+    assert by_layer["Market data"]["status"] == "ready"
+    assert by_layer["Market data"]["call_budget"] == (
+        "1 grouped-daily request per radar run"
+    )
+    assert "No ticker-by-ticker price polling" in str(by_layer["Market data"]["guardrail"])
+    assert by_layer["News/events"]["status"] == "ready"
+    assert by_layer["News/events"]["call_budget"] == (
+        "up to 3 SEC submissions requests per radar run"
+    )
+
+
+def test_provider_preflight_payload_flags_sec_cik_target_gap() -> None:
+    config = AppConfig(
+        daily_market_provider="polygon",
+        polygon_api_key="fixture-key",
+        daily_event_provider="sec",
+        sec_enable_live=True,
+        sec_user_agent="MarketRadar test@example.com",
+        sec_daily_max_tickers=2,
+    )
+    radar_run_summary = {
+        "steps": [
+            _run_step("event_ingest", "skipped", reason="no_sec_cik_targets"),
+        ]
+    }
+
+    rows = provider_preflight_payload(config, radar_run_summary=radar_run_summary)
+
+    event = next(row for row in rows if row["layer"] == "News/events")
+    assert event["status"] == "attention"
+    assert "up to 2 SEC submissions requests" in str(event["call_budget"])
+    assert "Seed active securities with CIKs" in str(event["next_action"])
 
 
 def test_readiness_checklist_blocks_polygon_without_api_key() -> None:
