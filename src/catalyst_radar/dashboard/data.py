@@ -828,15 +828,10 @@ def data_source_coverage_payload(
         },
         {
             "layer": "News/events",
-            "mode": _source_mode(
-                event_provider,
-                fixture_names={"news_fixture", "sample", "fixture"},
-            ),
+            "mode": _event_source_mode(config, event_provider),
             "provider": event_provider,
-            "detail": config.news_fixture_path
-            if event_provider in {"news_fixture", "sample", "fixture"}
-            else event_provider,
-            "guardrail": "point-in-time event cutoff enforced",
+            "detail": _event_source_detail(config, event_provider),
+            "guardrail": _event_source_guardrail(config, event_provider),
         },
         {
             "layer": "Schwab portfolio",
@@ -938,7 +933,20 @@ def readiness_checklist_payload(
 
     events = coverage.get("News/events", {})
     event_mode = str(events.get("mode") or "unknown")
-    if event_mode == "live":
+    if events.get("provider") in {"sec", "sec_submissions"} and event_mode == "missing_credentials":
+        rows.append(
+            _readiness_row(
+                "Catalyst feed",
+                "blocked",
+                "SEC catalyst ingestion is selected, but live SEC settings are incomplete.",
+                (
+                    "Set CATALYST_SEC_ENABLE_LIVE=1 and CATALYST_SEC_USER_AGENT before "
+                    "using SEC scheduled ingest."
+                ),
+                _coverage_evidence(events),
+            )
+        )
+    elif event_mode == "live":
         rows.append(
             _readiness_row(
                 "Catalyst feed",
@@ -1712,6 +1720,23 @@ def _market_data_detail(config: AppConfig, provider: str) -> str:
     return config.market_provider
 
 
+def _event_source_detail(config: AppConfig, provider: str) -> str:
+    if provider in {"news_fixture", "sample", "fixture"}:
+        return config.news_fixture_path
+    if provider in {"sec", "sec_submissions"}:
+        return f"submissions; base_url={config.sec_base_url}"
+    return provider
+
+
+def _event_source_guardrail(config: AppConfig, provider: str) -> str:
+    if provider in {"sec", "sec_submissions"}:
+        return (
+            "point-in-time event cutoff enforced; "
+            f"max_tickers={config.sec_daily_max_tickers}"
+        )
+    return "point-in-time event cutoff enforced"
+
+
 def _step_evidence(name: str, step: Mapping[str, object]) -> str:
     if not step:
         return f"{name}: missing"
@@ -1750,6 +1775,14 @@ def _market_source_mode(config: AppConfig, provider: str) -> str:
     if provider == "polygon" and not config.polygon_api_key:
         return "missing_credentials"
     return _source_mode(provider, fixture_names={"csv", "sample"})
+
+
+def _event_source_mode(config: AppConfig, provider: str) -> str:
+    if provider in {"sec", "sec_submissions"} and (
+        not config.sec_enable_live or not config.sec_user_agent
+    ):
+        return "missing_credentials"
+    return _source_mode(provider, fixture_names={"news_fixture", "sample", "fixture"})
 
 
 def _broker_mode(

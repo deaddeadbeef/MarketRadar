@@ -350,6 +350,7 @@ def test_production_compose_defaults_to_loopback_and_header_auth() -> None:
     assert "CATALYST_SEC_ENABLE_LIVE: ${CATALYST_SEC_ENABLE_LIVE:-false}" in compose
     assert "CATALYST_SEC_USER_AGENT: ${CATALYST_SEC_USER_AGENT:-}" in compose
     assert "CATALYST_SEC_BASE_URL: ${CATALYST_SEC_BASE_URL:-https://data.sec.gov}" in compose
+    assert "CATALYST_SEC_DAILY_MAX_TICKERS: ${CATALYST_SEC_DAILY_MAX_TICKERS:-5}" in compose
     assert "--server.headless true" in compose
     assert '"${CATALYST_API_BIND:-127.0.0.1}:8000:8000"' in compose
     assert '"${CATALYST_DASHBOARD_BIND:-127.0.0.1}:8501:8501"' in compose
@@ -366,6 +367,7 @@ def test_local_compose_passes_dashboard_runtime_env() -> None:
     assert "CATALYST_SEC_ENABLE_LIVE: ${CATALYST_SEC_ENABLE_LIVE:-false}" in compose
     assert "CATALYST_SEC_USER_AGENT: ${CATALYST_SEC_USER_AGENT:-}" in compose
     assert "CATALYST_SEC_BASE_URL: ${CATALYST_SEC_BASE_URL:-https://data.sec.gov}" in compose
+    assert "CATALYST_SEC_DAILY_MAX_TICKERS: ${CATALYST_SEC_DAILY_MAX_TICKERS:-5}" in compose
     assert "--server.headless true" in compose
 
 

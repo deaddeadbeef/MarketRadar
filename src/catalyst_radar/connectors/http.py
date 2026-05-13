@@ -91,6 +91,44 @@ class UrlLibHttpTransport:
             )
 
 
+class HeaderInjectingTransport:
+    def __init__(
+        self,
+        transport: HttpTransport,
+        headers: Mapping[str, str],
+    ) -> None:
+        self.transport = transport
+        self.headers = dict(headers)
+
+    def get(
+        self,
+        url: str,
+        *,
+        headers: Mapping[str, str],
+        timeout_seconds: float,
+    ) -> HttpResponse:
+        return self.transport.get(
+            url,
+            headers={**self.headers, **dict(headers)},
+            timeout_seconds=timeout_seconds,
+        )
+
+    def post(
+        self,
+        url: str,
+        *,
+        headers: Mapping[str, str],
+        body: bytes,
+        timeout_seconds: float,
+    ) -> HttpResponse:
+        return self.transport.post(
+            url,
+            headers={**self.headers, **dict(headers)},
+            body=body,
+            timeout_seconds=timeout_seconds,
+        )
+
+
 class FakeHttpTransport:
     def __init__(self, responses: Mapping[str, HttpResponse]) -> None:
         self._responses = dict(responses)
@@ -169,6 +207,7 @@ class JsonHttpClient:
 
 __all__ = [
     "FakeHttpTransport",
+    "HeaderInjectingTransport",
     "HttpResponse",
     "HttpTransport",
     "JsonHttpClient",

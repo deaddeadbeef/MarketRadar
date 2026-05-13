@@ -11,7 +11,11 @@ from sqlalchemy import Engine, func, select
 from catalyst_radar.alerts.digest import build_alert_digest, digest_payload
 from catalyst_radar.brokers.portfolio_context import latest_broker_portfolio_context
 from catalyst_radar.connectors.base import ConnectorRequest
-from catalyst_radar.connectors.http import JsonHttpClient, UrlLibHttpTransport
+from catalyst_radar.connectors.http import (
+    HeaderInjectingTransport,
+    JsonHttpClient,
+    UrlLibHttpTransport,
+)
 from catalyst_radar.connectors.market_data import CsvMarketDataConnector
 from catalyst_radar.connectors.news import NewsJsonConnector
 from catalyst_radar.connectors.polygon import PolygonEndpoint, PolygonMarketDataConnector
@@ -19,8 +23,9 @@ from catalyst_radar.connectors.provider_ingest import (
     ProviderIngestError,
     ingest_provider_records,
 )
+from catalyst_radar.connectors.sec import SecSubmissionsConnector
 from catalyst_radar.core.config import AppConfig
-from catalyst_radar.core.models import ActionState, JobStatus, PolicyResult
+from catalyst_radar.core.models import ActionState, JobStatus, PolicyResult, Security
 from catalyst_radar.decision_cards.builder import build_decision_card
 from catalyst_radar.ops.health import DISABLED_DEGRADED_STATES, load_ops_health
 from catalyst_radar.ops.telemetry import record_telemetry_event
@@ -69,6 +74,10 @@ MARKET_SCHEDULED_PROVIDER_NAMES = (
     CSV_SCHEDULED_PROVIDER_NAMES | POLYGON_SCHEDULED_PROVIDER_NAMES
 )
 NEWS_SCHEDULED_EVENT_PROVIDER_NAMES = frozenset({"news_fixture", "sample", "fixture"})
+SEC_SCHEDULED_EVENT_PROVIDER_NAMES = frozenset({"sec", "sec_submissions"})
+EVENT_SCHEDULED_PROVIDER_NAMES = (
+    NEWS_SCHEDULED_EVENT_PROVIDER_NAMES | SEC_SCHEDULED_EVENT_PROVIDER_NAMES
+)
 DISABLED_SCHEDULED_PROVIDER_NAMES = frozenset({"", "none", "off", "disabled"})
 logger = logging.getLogger("catalyst_radar.jobs.tasks")
 
@@ -438,15 +447,21 @@ def _event_ingest(context: _DailyRunContext) -> _StepOutcome:
     provider = _scheduled_event_provider(context)
     if provider in DISABLED_SCHEDULED_PROVIDER_NAMES:
         return _skipped("no_scheduled_event_provider")
-    if provider not in NEWS_SCHEDULED_EVENT_PROVIDER_NAMES:
+    if provider not in EVENT_SCHEDULED_PROVIDER_NAMES:
         return _skipped(
             "scheduled_event_provider_not_supported",
             payload={
                 "provider": provider,
-                "supported_offline_providers": sorted(NEWS_SCHEDULED_EVENT_PROVIDER_NAMES),
+                "supported_providers": sorted(EVENT_SCHEDULED_PROVIDER_NAMES),
             },
         )
+    if provider in SEC_SCHEDULED_EVENT_PROVIDER_NAMES:
+        return _daily_sec_event_ingest(context, provider)
 
+    return _daily_news_fixture_ingest(context, provider)
+
+
+def _daily_news_fixture_ingest(context: _DailyRunContext, provider: str) -> _StepOutcome:
     connector = NewsJsonConnector(
         fixture_path=context.config.news_fixture_path,
         provider=provider,
@@ -495,7 +510,111 @@ def _event_ingest(context: _DailyRunContext) -> _StepOutcome:
     )
 
 
+def _daily_sec_event_ingest(context: _DailyRunContext, provider: str) -> _StepOutcome:
+    if not context.config.sec_enable_live:
+        return _StepOutcome(
+            status=JobStatus.FAILED.value,
+            reason="CATALYST_SEC_ENABLE_LIVE=1 required for scheduled SEC ingest",
+            payload={"provider": provider, "endpoint": "submissions"},
+        )
+    if not context.config.sec_user_agent:
+        return _StepOutcome(
+            status=JobStatus.FAILED.value,
+            reason="CATALYST_SEC_USER_AGENT is required for scheduled SEC ingest",
+            payload={"provider": provider, "endpoint": "submissions"},
+        )
+
+    candidates = _scheduled_sec_targets(context)
+    if not candidates:
+        return _skipped(
+            "no_sec_cik_targets",
+            payload={
+                "provider": provider,
+                "endpoint": "submissions",
+                "max_tickers": context.config.sec_daily_max_tickers,
+            },
+        )
+
+    transport = HeaderInjectingTransport(
+        UrlLibHttpTransport(),
+        {"User-Agent": context.config.sec_user_agent or ""},
+    )
+    connector = SecSubmissionsConnector(
+        client=JsonHttpClient(
+            transport=transport,
+            timeout_seconds=context.config.http_timeout_seconds,
+        ),
+        base_url=context.config.sec_base_url,
+    )
+    job_ids: list[str] = []
+    requested_count = 0
+    raw_count = 0
+    normalized_count = 0
+    event_count = 0
+    rejected_count = 0
+    try:
+        for security, cik in candidates:
+            metadata = {
+                "scheduled_event_provider": provider,
+                "endpoint": "submissions",
+                "ticker": security.ticker,
+                "cik": cik,
+                "live": True,
+                "max_tickers": context.config.sec_daily_max_tickers,
+            }
+            request = ConnectorRequest(
+                provider=connector.provider,
+                endpoint="submissions",
+                params={"ticker": security.ticker, "cik": cik},
+                requested_at=context.spec.decision_available_at,
+                idempotency_key=(
+                    f"event_ingest:{provider}:submissions:{security.ticker}:"
+                    f"{context.spec.as_of.isoformat()}:"
+                    f"{context.spec.decision_available_at.isoformat()}"
+                ),
+            )
+            result = ingest_provider_records(
+                connector=connector,
+                request=request,
+                market_repo=context.market_repo,
+                provider_repo=ProviderRepository(context.engine),
+                event_repo=context.event_repo,
+                job_type="scheduled_sec_submissions",
+                metadata=metadata,
+            )
+            job_ids.append(result.job_id)
+            requested_count += result.requested_count
+            raw_count += result.raw_count
+            normalized_count += result.normalized_count
+            event_count += result.event_count
+            rejected_count += result.rejected_count
+    except ProviderIngestError as exc:
+        return _StepOutcome(
+            status=JobStatus.FAILED.value,
+            reason=_truncate_reason(str(exc) or exc.__class__.__name__),
+            payload={"provider": provider, "endpoint": "submissions"},
+        )
+
+    return _StepOutcome(
+        status=JobStatus.SUCCESS.value,
+        requested_count=requested_count,
+        raw_count=raw_count,
+        normalized_count=normalized_count,
+        payload={
+            "provider": "sec",
+            "endpoint": "submissions",
+            "target_count": len(candidates),
+            "job_ids": job_ids,
+            "event_count": event_count,
+            "rejected_count": rejected_count,
+        },
+    )
+
+
 def _local_text_triage(context: _DailyRunContext) -> _StepOutcome:
+    event_ingest = context.step_results.get("event_ingest")
+    if event_ingest is not None and event_ingest.status == JobStatus.FAILED.value:
+        return _skipped("blocked_by_failed_dependency:event_ingest")
     event_count = _visible_event_count(context)
     if event_count == 0:
         return _skipped("no_text_inputs")
@@ -988,6 +1107,29 @@ def _scan_provider(context: _DailyRunContext) -> str | None:
 
 def _scheduled_event_provider(context: _DailyRunContext) -> str:
     return context.config.daily_event_provider.strip().lower()
+
+
+def _scheduled_sec_targets(context: _DailyRunContext) -> tuple[tuple[Security, str], ...]:
+    securities = (
+        context.market_repo.list_active_securities_by_tickers(context.spec.tickers)
+        if context.spec.tickers
+        else context.market_repo.list_active_securities()
+    )
+    targets: list[tuple[Security, str]] = []
+    for security in securities:
+        cik = _security_cik(security)
+        if cik is None:
+            continue
+        targets.append((security, cik))
+    return tuple(targets[: context.config.sec_daily_max_tickers])
+
+
+def _security_cik(security: Security) -> str | None:
+    for key in ("cik", "cik_str", "central_index_key"):
+        value = security.metadata.get(key)
+        if value is not None and str(value).strip():
+            return str(value).strip().zfill(10)
+    return None
 
 
 def _relevant_degraded_providers(context: _DailyRunContext) -> set[str]:

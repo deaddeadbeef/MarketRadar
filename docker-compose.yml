@@ -26,6 +26,7 @@ services:
       CATALYST_SEC_ENABLE_LIVE: ${CATALYST_SEC_ENABLE_LIVE:-false}
       CATALYST_SEC_USER_AGENT: ${CATALYST_SEC_USER_AGENT:-}
       CATALYST_SEC_BASE_URL: ${CATALYST_SEC_BASE_URL:-https://data.sec.gov}
+      CATALYST_SEC_DAILY_MAX_TICKERS: ${CATALYST_SEC_DAILY_MAX_TICKERS:-5}
     ports:
       - "8000:8000"
     depends_on:
@@ -43,6 +44,7 @@ services:
       CATALYST_SEC_ENABLE_LIVE: ${CATALYST_SEC_ENABLE_LIVE:-false}
       CATALYST_SEC_USER_AGENT: ${CATALYST_SEC_USER_AGENT:-}
       CATALYST_SEC_BASE_URL: ${CATALYST_SEC_BASE_URL:-https://data.sec.gov}
+      CATALYST_SEC_DAILY_MAX_TICKERS: ${CATALYST_SEC_DAILY_MAX_TICKERS:-5}
     ports:
       - "8501:8501"
     depends_on:
@@ -64,6 +66,7 @@ services:
       CATALYST_SEC_ENABLE_LIVE: ${CATALYST_SEC_ENABLE_LIVE:-false}
       CATALYST_SEC_USER_AGENT: ${CATALYST_SEC_USER_AGENT:-}
       CATALYST_SEC_BASE_URL: ${CATALYST_SEC_BASE_URL:-https://data.sec.gov}
+      CATALYST_SEC_DAILY_MAX_TICKERS: ${CATALYST_SEC_DAILY_MAX_TICKERS:-5}
     depends_on:
       postgres:
         condition: service_healthy

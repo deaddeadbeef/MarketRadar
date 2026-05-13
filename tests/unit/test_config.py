@@ -151,12 +151,14 @@ def test_config_reads_sec_live_settings_from_env() -> None:
             "CATALYST_SEC_ENABLE_LIVE": "true",
             "CATALYST_SEC_USER_AGENT": "CatalystRadar/0.1 contact@example.com",
             "CATALYST_SEC_BASE_URL": "https://sec.example.com",
+            "CATALYST_SEC_DAILY_MAX_TICKERS": "7",
         }
     )
 
     assert config.sec_enable_live is True
     assert config.sec_user_agent == "CatalystRadar/0.1 contact@example.com"
     assert config.sec_base_url == "https://sec.example.com"
+    assert config.sec_daily_max_tickers == 7
 
 
 def test_config_reads_schwab_settings_from_env() -> None:
