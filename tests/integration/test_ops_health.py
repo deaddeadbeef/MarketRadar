@@ -13,9 +13,11 @@ from catalyst_radar.storage.db import create_schema
 from catalyst_radar.storage.schema import (
     budget_ledger,
     candidate_states,
+    daily_bars,
     data_quality_incidents,
     job_runs,
     provider_health,
+    securities,
     useful_alert_labels,
     validation_runs,
 )
@@ -339,6 +341,34 @@ def test_ops_health_reports_recent_telemetry_events() -> None:
         "telemetry.radar_run.completed",
     ]
     assert telemetry["events"][0]["reason"] == "unsupported mode"
+
+
+def test_ops_health_reports_active_universe_coverage() -> None:
+    engine = _engine()
+    now = datetime(2026, 5, 10, 12, 0, tzinfo=UTC)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(securities),
+            [
+                _security_row("AAA", active=True, updated_at=now),
+                _security_row("BBB", active=False, updated_at=now),
+                _security_row("CCC", active=True, updated_at=now),
+            ],
+        )
+        conn.execute(
+            insert(daily_bars),
+            [
+                _daily_bar_row("AAA", now),
+                _daily_bar_row("CCC", now + timedelta(days=1)),
+            ],
+        )
+
+    health = load_ops_health(engine, now=now)
+
+    assert health["database"]["active_security_count"] == 2
+    assert health["database"]["active_security_with_daily_bar_count"] == 1
+    assert health["database"]["latest_daily_bar_date"] == now.date().isoformat()
+    json.dumps(health)
 
 
 def test_score_drift_uses_plan_default_thresholds() -> None:
@@ -680,6 +710,44 @@ def _candidate_state_row(
         "feature_version": "test-features",
         "policy_version": "test-policy",
         "created_at": created_at,
+    }
+
+
+def _security_row(
+    ticker: str,
+    *,
+    active: bool,
+    updated_at: datetime,
+) -> dict[str, object]:
+    return {
+        "ticker": ticker,
+        "name": f"{ticker} Corp",
+        "exchange": "XNYS",
+        "sector": "Technology",
+        "industry": "Software",
+        "market_cap": 1_000_000_000.0,
+        "avg_dollar_volume_20d": 25_000_000.0,
+        "has_options": True,
+        "is_active": active,
+        "updated_at": updated_at,
+        "metadata": {},
+    }
+
+
+def _daily_bar_row(ticker: str, available_at: datetime) -> dict[str, object]:
+    return {
+        "ticker": ticker,
+        "date": available_at.date(),
+        "provider": "polygon",
+        "open": 10.0,
+        "high": 11.0,
+        "low": 9.0,
+        "close": 10.5,
+        "volume": 1_000_000,
+        "vwap": 10.2,
+        "adjusted": True,
+        "source_ts": available_at,
+        "available_at": available_at,
     }
 
 

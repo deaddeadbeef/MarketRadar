@@ -44,6 +44,7 @@ from catalyst_radar.dashboard.data import (
     opportunity_focus_payload,
     provider_preflight_payload,
     readiness_checklist_payload,
+    universe_coverage_payload,
 )
 from catalyst_radar.storage.broker_repositories import BrokerRepository
 from catalyst_radar.storage.budget_repositories import BudgetLedgerRepository
@@ -275,6 +276,41 @@ def test_activation_summary_payload_reports_ready_live_inputs() -> None:
     assert "Live radar inputs are ready" in str(summary["headline"])
     assert "market=polygon/live" in str(summary["evidence"])
     assert "events=sec/live" in str(summary["evidence"])
+
+
+def test_universe_coverage_payload_warns_on_thin_sample_universe() -> None:
+    config = AppConfig(scan_batch_size=500, polygon_tickers_max_pages=1)
+    health = {
+        "database": {
+            "active_security_count": 6,
+            "active_security_with_daily_bar_count": 6,
+            "latest_daily_bar_date": "2026-05-10",
+        }
+    }
+
+    summary = universe_coverage_payload(config, health)
+
+    assert summary["status"] == "thin"
+    assert "6 active securities" in str(summary["headline"])
+    assert "not broad US-market discovery" in str(summary["detail"])
+    assert "--max-pages 1" in str(summary["next_action"])
+
+
+def test_universe_coverage_payload_reports_ready_covered_universe() -> None:
+    config = AppConfig(scan_batch_size=500)
+    health = {
+        "database": {
+            "active_security_count": 500,
+            "active_security_with_daily_bar_count": 500,
+            "latest_daily_bar_date": "2026-05-10",
+        }
+    }
+
+    summary = universe_coverage_payload(config, health)
+
+    assert summary["status"] == "ready"
+    assert "500 active securities" in str(summary["headline"])
+    assert "active=500" in str(summary["evidence"])
 
 
 def test_provider_preflight_payload_reports_live_provider_call_budgets() -> None:
