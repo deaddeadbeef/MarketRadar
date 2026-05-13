@@ -2153,7 +2153,9 @@ def _latest_run_packet_candidates(
 ) -> list[dict[str, object]]:
     if not summary:
         return []
-    run_started_at = _parse_utc_datetime(summary.get("started_at"))
+    run_lower_bound = _parse_utc_datetime(
+        summary.get("decision_available_at")
+    ) or _parse_utc_datetime(summary.get("started_at"))
     run_finished_at = _parse_utc_datetime(summary.get("finished_at"))
     rows: list[dict[str, object]] = []
     for row in candidates:
@@ -2162,7 +2164,7 @@ def _latest_run_packet_candidates(
         packet_available_at = _parse_utc_datetime(row.get("candidate_packet_available_at"))
         if packet_available_at is None:
             continue
-        if run_started_at is not None and packet_available_at < run_started_at:
+        if run_lower_bound is not None and packet_available_at < run_lower_bound:
             continue
         if run_finished_at is not None and packet_available_at > run_finished_at:
             continue
