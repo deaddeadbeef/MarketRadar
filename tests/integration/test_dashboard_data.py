@@ -1247,7 +1247,8 @@ def test_radar_discovery_snapshot_labels_fixture_thin_run(
     snapshot = radar_discovery_snapshot_payload(
         engine,
         AppConfig(
-            daily_market_provider="csv",
+            daily_market_provider="polygon",
+            polygon_api_key="fixture-key",
             daily_event_provider="news_fixture",
             scan_batch_size=500,
         ),
@@ -1287,6 +1288,7 @@ def test_radar_discovery_snapshot_flags_stale_bars_and_empty_packets(
     tmp_path: Path,
 ) -> None:
     engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
     metadata = {
         "as_of": "2026-05-10",
         "decision_available_at": AVAILABLE_AT.isoformat(),

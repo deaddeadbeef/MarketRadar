@@ -678,9 +678,16 @@ def _show_discovery_snapshot(snapshot: Mapping[str, Any]) -> None:
             )
     _show_records(
         "Top Discoveries",
-        snapshot.get("top_discoveries"),
+        _visible_discovery_rows(snapshot.get("top_discoveries")),
         empty="No top discoveries for this run.",
     )
+
+
+def _visible_discovery_rows(value: object) -> list[dict[str, object]]:
+    return [
+        {key: item for key, item in row.items() if key != "audit"}
+        for row in _records(value)
+    ]
 
 
 def _show_radar_operator_sections(
@@ -2141,7 +2148,6 @@ discovery_snapshot = _mapping(
         engine,
         config,
         radar_run_summary=radar_run_summary,
-        ops_health=ops_health,
         candidate_rows=default_candidate_rows,
     )
 )
