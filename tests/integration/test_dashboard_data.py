@@ -1200,7 +1200,10 @@ def test_radar_discovery_snapshot_labels_fixture_thin_run(
         conn.execute(
             update(candidate_packets)
             .where(candidate_packets.c.id == "packet-msft-latest")
-            .values(available_at=AVAILABLE_AT + timedelta(seconds=3))
+            .values(
+                available_at=SOURCE_TS,
+                created_at=AVAILABLE_AT + timedelta(seconds=3),
+            )
         )
         conn.execute(
             update(decision_cards)

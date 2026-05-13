@@ -88,6 +88,7 @@ def load_candidate_rows(
             candidate_packets.c.id,
             candidate_packets.c.candidate_state_id,
             candidate_packets.c.available_at,
+            candidate_packets.c.created_at,
             candidate_packets.c.payload,
             func.row_number()
             .over(
@@ -133,6 +134,7 @@ def load_candidate_rows(
             signal_features.c.payload.label("signal_payload"),
             ranked_packets.c.id.label("candidate_packet_id"),
             ranked_packets.c.available_at.label("candidate_packet_available_at"),
+            ranked_packets.c.created_at.label("candidate_packet_created_at"),
             ranked_packets.c.payload.label("candidate_packet_payload"),
             ranked_cards.c.id.label("decision_card_id"),
             ranked_cards.c.available_at.label("decision_card_available_at"),
@@ -1610,6 +1612,7 @@ def _candidate_row(row: Any) -> dict[str, object]:
         "as_of",
         "created_at",
         "candidate_packet_available_at",
+        "candidate_packet_created_at",
         "decision_card_available_at",
         "next_review_at",
     ):
@@ -2162,12 +2165,14 @@ def _latest_run_packet_candidates(
     for row in candidates:
         if not row.get("candidate_packet_id"):
             continue
-        packet_available_at = _parse_utc_datetime(row.get("candidate_packet_available_at"))
-        if packet_available_at is None:
+        packet_produced_at = _parse_utc_datetime(
+            row.get("candidate_packet_created_at")
+        ) or _parse_utc_datetime(row.get("candidate_packet_available_at"))
+        if packet_produced_at is None:
             continue
-        if run_lower_bound is not None and packet_available_at < run_lower_bound:
+        if run_lower_bound is not None and packet_produced_at < run_lower_bound:
             continue
-        if run_finished_at is not None and packet_available_at > run_finished_at:
+        if run_finished_at is not None and packet_produced_at > run_finished_at:
             continue
         rows.append(_row_dict(row))
     return rows
