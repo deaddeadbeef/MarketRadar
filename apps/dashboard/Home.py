@@ -395,6 +395,19 @@ def _show_radar_run_controls(
     st.subheader("Radar Run")
     control_col, status_col = st.columns([1, 3])
     with control_col:
+        run_llm_dry_run = st.checkbox(
+            "LLM dry run",
+            value=False,
+            key="run_radar_llm_dry_run",
+            help="Runs the LLM step in dry-run mode only; no model call is made.",
+        )
+        st.checkbox(
+            "Alert dry run",
+            value=True,
+            key="run_radar_alert_dry_run",
+            disabled=True,
+            help="Daily alert delivery is locked to dry-run mode from the dashboard.",
+        )
         run_requested = st.button("Run Radar", key="run_radar_now", type="primary")
     with status_col:
         if not run_requested:
@@ -406,7 +419,7 @@ def _show_radar_run_controls(
                     config,
                     "/api/radar/runs",
                     {
-                        "run_llm": False,
+                        "run_llm": run_llm_dry_run,
                         "llm_dry_run": True,
                         "dry_run_alerts": True,
                     },
