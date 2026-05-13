@@ -311,6 +311,9 @@ def test_run_llm_review_openai_provider_can_be_monkeypatched_without_fake(
     calls = []
 
     class FakeOpenAIResponsesClient:
+        def __init__(self, *, api_key: str | None = None) -> None:
+            assert api_key is None
+
         def complete(self, request: LLMClientRequest) -> LLMClientResult:
             calls.append(request)
             return LLMClientResult(

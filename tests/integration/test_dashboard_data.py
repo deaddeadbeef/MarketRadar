@@ -248,6 +248,31 @@ def test_provider_preflight_payload_flags_sec_cik_target_gap() -> None:
     assert "Seed active securities with CIKs" in str(event["next_action"])
 
 
+def test_provider_preflight_blocks_openai_when_key_missing() -> None:
+    config = AppConfig(
+        enable_premium_llm=True,
+        llm_provider="openai",
+        openai_api_key=None,
+    )
+
+    coverage = data_source_coverage_payload(config)
+    preflight = provider_preflight_payload(config)
+    readiness = readiness_checklist_payload(
+        config,
+        radar_run_summary={
+            "steps": [_run_step("llm_review", "skipped", reason="llm_disabled")]
+        },
+    )
+
+    llm_coverage = next(row for row in coverage if row["layer"] == "LLM review")
+    llm_preflight = next(row for row in preflight if row["layer"] == "LLM review")
+    llm_readiness = next(row for row in readiness if row["area"] == "LLM review")
+    assert llm_coverage["mode"] == "missing_credentials"
+    assert llm_preflight["status"] == "blocked"
+    assert "OPENAI_API_KEY" in str(llm_preflight["call_budget"])
+    assert llm_readiness["status"] == "blocked"
+
+
 def test_readiness_checklist_blocks_polygon_without_api_key() -> None:
     config = AppConfig(
         daily_market_provider="polygon",

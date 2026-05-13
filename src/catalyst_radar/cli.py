@@ -2270,7 +2270,7 @@ def _llm_client_for_provider(*, config: AppConfig, fake: bool):
     if fake or provider == "fake":
         return FakeLLMClient()
     if provider == "openai":
-        return OpenAIResponsesClient()
+        return OpenAIResponsesClient(api_key=config.openai_api_key)
     return _SafeDisabledLLMClient()
 
 

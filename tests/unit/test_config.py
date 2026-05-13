@@ -118,6 +118,13 @@ def test_llm_config_reads_pricing_and_caps() -> None:
     assert config.llm_task_daily_caps["gpt55_decision_card"] == 1
 
 
+def test_llm_config_reads_and_redacts_openai_api_key() -> None:
+    config = AppConfig.from_env({"OPENAI_API_KEY": "sk-test-secret"})
+
+    assert config.openai_api_key == "sk-test-secret"
+    assert config.sanitized()["openai_api_key"] == "<redacted>"
+
+
 def test_llm_config_trims_optional_model_values() -> None:
     config = AppConfig.from_env(
         {
