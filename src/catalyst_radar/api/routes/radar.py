@@ -89,6 +89,7 @@ def run_radar(
     x_catalyst_role: str | None = Header(default=None),
 ) -> dict[str, object]:
     engine = _engine()
+    app_config = AppConfig.from_env()
     run_artifact_id = f"radar-run-api:{uuid4().hex}"
     request_metadata = _radar_run_request_metadata(request)
     record_telemetry_event(
@@ -168,6 +169,7 @@ def run_radar(
             after_payload=payload,
         )
         raise HTTPException(status_code=409, detail=payload)
+    payload = _with_discovery_snapshot(engine, config=app_config, payload=payload)
     record_telemetry_event(
         engine,
         event_name="radar_run.completed",
@@ -189,7 +191,14 @@ def run_radar(
 @router.get("/runs/latest", dependencies=[Depends(require_role(Role.VIEWER))])
 def latest_radar_run() -> dict[str, object]:
     load_radar_run_summary = _dashboard_helper("load_radar_run_summary")
-    return load_radar_run_summary(_engine())
+    engine = _engine()
+    summary = load_radar_run_summary(engine)
+    return _with_discovery_snapshot(
+        engine,
+        config=AppConfig.from_env(),
+        payload=summary,
+        radar_run_summary=summary,
+    )
 
 
 @router.post("/universe/seed", dependencies=[Depends(require_role(Role.ANALYST))])
@@ -307,6 +316,28 @@ def _radar_run_request_metadata(request: RadarRunRequest) -> dict[str, object]:
         "run_llm": request.run_llm,
         "llm_dry_run": request.llm_dry_run,
         "dry_run_alerts": request.dry_run_alerts,
+    }
+
+
+def _with_discovery_snapshot(
+    engine,
+    *,
+    config: AppConfig,
+    payload: dict[str, object],
+    radar_run_summary: dict[str, object] | None = None,
+) -> dict[str, object]:
+    summary = (
+        radar_run_summary
+        if radar_run_summary is not None
+        else dashboard_data.load_radar_run_summary(engine)
+    )
+    return {
+        **payload,
+        "discovery_snapshot": dashboard_data.radar_discovery_snapshot_payload(
+            engine,
+            config,
+            radar_run_summary=summary,
+        ),
     }
 
 

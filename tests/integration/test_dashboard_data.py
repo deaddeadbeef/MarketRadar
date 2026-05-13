@@ -43,6 +43,7 @@ from catalyst_radar.dashboard.data import (
     load_validation_summary,
     opportunity_focus_payload,
     provider_preflight_payload,
+    radar_discovery_snapshot_payload,
     readiness_checklist_payload,
     universe_coverage_payload,
 )
@@ -1180,6 +1181,186 @@ def test_load_radar_run_summary_classifies_expected_gate_skips_success(
         "expected_gate",
         "expected_gate",
     ]
+
+
+def test_radar_discovery_snapshot_labels_fixture_thin_run(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    metadata = {
+        "as_of": "2026-05-10",
+        "decision_available_at": AVAILABLE_AT.isoformat(),
+        "outcome_available_at": None,
+        "provider": "csv",
+        "universe": "liquid-us",
+        "tickers": [],
+    }
+    with engine.begin() as conn:
+        conn.execute(
+            insert(job_runs),
+            [
+                _job_run_row(
+                    "daily-bars",
+                    job_type="daily_bar_ingest",
+                    status="success",
+                    started_at=AVAILABLE_AT,
+                    metadata=metadata,
+                    requested_count=6,
+                    raw_count=6,
+                    normalized_count=6,
+                ),
+                _job_run_row(
+                    "feature-scan",
+                    job_type="feature_scan",
+                    status="success",
+                    started_at=AVAILABLE_AT + timedelta(seconds=1),
+                    metadata=metadata,
+                    requested_count=6,
+                    raw_count=2,
+                    normalized_count=2,
+                ),
+                _job_run_row(
+                    "candidate-packets",
+                    job_type="candidate_packets",
+                    status="success",
+                    started_at=AVAILABLE_AT + timedelta(seconds=2),
+                    metadata=metadata,
+                    requested_count=2,
+                    raw_count=1,
+                    normalized_count=1,
+                ),
+                _job_run_row(
+                    "decision-cards",
+                    job_type="decision_cards",
+                    status="success",
+                    started_at=AVAILABLE_AT + timedelta(seconds=3),
+                    metadata=metadata,
+                    requested_count=1,
+                    raw_count=1,
+                    normalized_count=1,
+                ),
+            ],
+        )
+    summary = load_radar_run_summary(engine)
+
+    snapshot = radar_discovery_snapshot_payload(
+        engine,
+        AppConfig(
+            daily_market_provider="csv",
+            daily_event_provider="news_fixture",
+            scan_batch_size=500,
+        ),
+        radar_run_summary=summary,
+        ops_health={
+            "database": {
+                "active_security_count": 6,
+                "active_security_with_daily_bar_count": 6,
+                "latest_daily_bar_date": "2026-05-10",
+            }
+        },
+    )
+
+    assert snapshot["status"] == "fixture"
+    assert snapshot["source_modes"] == {
+        "market": "fixture",
+        "market_provider": "csv",
+        "events": "fixture",
+        "event_provider": "news_fixture",
+    }
+    assert snapshot["yield"] == {
+        "requested_securities": 6,
+        "scanned_securities": 2,
+        "candidate_states": 2,
+        "candidate_packets": 1,
+        "decision_cards": 1,
+    }
+    blocker_codes = {str(row["code"]) for row in snapshot["blockers"]}
+    assert {"fixture_market_data", "fixture_events", "thin_universe"} <= blocker_codes
+    assert snapshot["freshness"]["latest_bars_older_than_as_of"] is False
+    assert snapshot["top_discoveries"][0]["ticker"] == "MSFT"
+    assert snapshot["top_discoveries"][0]["packet"] == "packet-msft-latest"
+    assert snapshot["top_discoveries"][0]["card"] == "card-msft-latest"
+
+
+def test_radar_discovery_snapshot_flags_stale_bars_and_empty_packets(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    metadata = {
+        "as_of": "2026-05-10",
+        "decision_available_at": AVAILABLE_AT.isoformat(),
+        "outcome_available_at": None,
+        "provider": "polygon",
+        "universe": "liquid-us",
+        "tickers": [],
+    }
+    with engine.begin() as conn:
+        conn.execute(
+            insert(job_runs),
+            [
+                _job_run_row(
+                    "daily-bars",
+                    job_type="daily_bar_ingest",
+                    status="success",
+                    started_at=AVAILABLE_AT,
+                    metadata=metadata,
+                    requested_count=500,
+                    raw_count=500,
+                    normalized_count=500,
+                ),
+                _job_run_row(
+                    "feature-scan",
+                    job_type="feature_scan",
+                    status="success",
+                    started_at=AVAILABLE_AT + timedelta(seconds=1),
+                    metadata=metadata,
+                    requested_count=500,
+                    raw_count=0,
+                    normalized_count=0,
+                ),
+                _job_run_row(
+                    "candidate-packets",
+                    job_type="candidate_packets",
+                    status="success",
+                    started_at=AVAILABLE_AT + timedelta(seconds=2),
+                    metadata=metadata,
+                    requested_count=0,
+                    raw_count=0,
+                    normalized_count=0,
+                ),
+            ],
+        )
+    summary = load_radar_run_summary(engine)
+
+    snapshot = radar_discovery_snapshot_payload(
+        engine,
+        AppConfig(
+            daily_market_provider="polygon",
+            polygon_api_key="fixture-key",
+            daily_event_provider="sec",
+            sec_enable_live=True,
+            sec_user_agent="MarketRadar test@example.com",
+            scan_batch_size=500,
+        ),
+        radar_run_summary=summary,
+        ops_health={
+            "database": {
+                "active_security_count": 500,
+                "active_security_with_daily_bar_count": 500,
+                "latest_daily_bar_date": "2026-05-08",
+            }
+        },
+    )
+
+    assert snapshot["status"] == "attention"
+    assert snapshot["source_modes"]["market"] == "live"
+    assert snapshot["source_modes"]["events"] == "live"
+    assert snapshot["yield"]["candidate_packets"] == 0
+    assert snapshot["top_discoveries"] == []
+    assert snapshot["freshness"]["latest_bars_older_than_as_of"] is True
+    blocker_codes = {str(row["code"]) for row in snapshot["blockers"]}
+    assert blocker_codes == {"stale_daily_bars", "no_candidate_packets"}
 
 
 def test_load_broker_summary_returns_portfolio_context(tmp_path: Path) -> None:

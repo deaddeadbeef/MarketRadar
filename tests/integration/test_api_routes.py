@@ -157,12 +157,16 @@ def test_post_radar_run_builds_scheduler_config(tmp_path, monkeypatch) -> None:
     )
 
     assert response.status_code == 200
-    assert response.json() == {
+    payload = response.json()
+    assert payload == {
         "acquired_lock": True,
         "reason": None,
         "lock_expires_at": None,
         "daily_result": None,
+        "discovery_snapshot": payload["discovery_snapshot"],
     }
+    assert payload["discovery_snapshot"]["status"] == "attention"
+    assert payload["discovery_snapshot"]["blockers"][0]["code"] == "no_run"
     config = captured["config"]
     assert captured["engine_url"] == database_url
     assert config.owner == "api-radar-run"
@@ -553,12 +557,28 @@ def test_get_latest_radar_run_returns_summary(tmp_path, monkeypatch) -> None:
         lambda _engine: {"status": "success", "step_count": 10},
         raising=False,
     )
+    monkeypatch.setattr(
+        dashboard_data,
+        "radar_discovery_snapshot_payload",
+        lambda *_args, **_kwargs: {
+            "status": "fixture",
+            "yield": {"candidate_states": 2},
+        },
+        raising=False,
+    )
     client = TestClient(create_app())
 
     response = client.get("/api/radar/runs/latest")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "success", "step_count": 10}
+    assert response.json() == {
+        "status": "success",
+        "step_count": 10,
+        "discovery_snapshot": {
+            "status": "fixture",
+            "yield": {"candidate_states": 2},
+        },
+    }
 
 
 def test_get_candidate_detail_returns_404_for_missing_ticker(tmp_path, monkeypatch) -> None:

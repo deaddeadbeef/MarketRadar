@@ -93,6 +93,41 @@ Invoke-RestMethod `
   -SkipCertificateCheck
 ```
 
+Both `POST /api/radar/runs` and `GET /api/radar/runs/latest` include a
+`discovery_snapshot` block. That snapshot is DB-only: it reads the latest stored
+run telemetry, candidate queue, provider mode, universe coverage, and freshness
+evidence, and it does not call Polygon, SEC, Schwab, or OpenAI. Use it as the
+first operator answer to: "what did the latest run discover, and is it fresh
+enough to trust?"
+
+Key fields:
+
+```json
+{
+  "discovery_snapshot": {
+    "status": "fixture",
+    "yield": {
+      "requested_securities": 500,
+      "scanned_securities": 42,
+      "candidate_states": 8,
+      "candidate_packets": 3,
+      "decision_cards": 1
+    },
+    "freshness": {
+      "latest_daily_bar_date": "2026-05-10",
+      "latest_bars_older_than_as_of": false
+    },
+    "blockers": [
+      {
+        "code": "fixture_market_data",
+        "finding": "Market data is still fixture-backed."
+      }
+    ],
+    "top_discoveries": []
+  }
+}
+```
+
 Optional JSON fields:
 
 ```json
