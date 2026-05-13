@@ -88,6 +88,56 @@ def test_load_candidate_rows_returns_latest_state_per_ticker(tmp_path: Path) -> 
     assert [row["ticker"] for row in rows] == ["MSFT", "AAPL"]
 
 
+def test_load_candidate_rows_respects_available_at_cutoff(tmp_path: Path) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(candidate_states).values(
+                _candidate_state_row(
+                    id="state-msft-future",
+                    ticker="MSFT",
+                    as_of=FUTURE_AT,
+                    state=ActionState.WARNING.value,
+                    final_score=99.0,
+                    created_at=AVAILABLE_AT,
+                )
+            )
+        )
+        conn.execute(
+            insert(signal_features).values(
+                _signal_feature_row(
+                    ticker="MSFT",
+                    as_of=FUTURE_AT,
+                    state=ActionState.WARNING.value,
+                    final_score=99.0,
+                    theme="future_theme",
+                )
+            )
+        )
+        conn.execute(
+            insert(candidate_packets).values(
+                id="packet-msft-future",
+                ticker="MSFT",
+                as_of=AS_OF,
+                candidate_state_id="state-msft-latest",
+                state=ActionState.WARNING.value,
+                final_score=88.0,
+                schema_version="candidate-packet-v1",
+                source_ts=FUTURE_AT,
+                available_at=FUTURE_AT,
+                payload={"supporting_evidence": [{"title": "Future packet"}]},
+                created_at=FUTURE_AT,
+            )
+        )
+
+    rows = load_candidate_rows(engine, available_at=AVAILABLE_AT + timedelta(minutes=1))
+
+    msft = next(row for row in rows if row["ticker"] == "MSFT")
+    assert msft["id"] == "state-msft-latest"
+    assert msft["candidate_packet_id"] == "packet-msft-latest"
+
+
 def test_load_ticker_detail_returns_candidate_packet_card_events_and_validation(
     tmp_path: Path,
 ) -> None:
@@ -125,6 +175,44 @@ def test_load_ticker_detail_returns_candidate_packet_card_events_and_validation(
     assert "paper-msft-future" not in {row["id"] for row in detail["paper_trades"]}
 
 
+def test_load_ticker_detail_respects_candidate_state_cutoff(tmp_path: Path) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(candidate_states).values(
+                _candidate_state_row(
+                    id="state-msft-future",
+                    ticker="MSFT",
+                    as_of=FUTURE_AT,
+                    state=ActionState.WARNING.value,
+                    final_score=99.0,
+                    created_at=AVAILABLE_AT,
+                )
+            )
+        )
+        conn.execute(
+            insert(signal_features).values(
+                _signal_feature_row(
+                    ticker="MSFT",
+                    as_of=FUTURE_AT,
+                    state=ActionState.WARNING.value,
+                    final_score=99.0,
+                    theme="future_theme",
+                )
+            )
+        )
+
+    detail = load_ticker_detail(
+        engine,
+        "MSFT",
+        available_at=AVAILABLE_AT + timedelta(minutes=1),
+    )
+
+    assert detail is not None
+    assert detail["latest_candidate"]["id"] == "state-msft-latest"
+
+
 def test_load_theme_rows_groups_candidate_themes(tmp_path: Path) -> None:
     engine = _engine(tmp_path)
     _insert_dashboard_fixture(engine)
@@ -137,6 +225,39 @@ def test_load_theme_rows_groups_candidate_themes(tmp_path: Path) -> None:
     assert ai_row["top_tickers"] == ["MSFT", "AAPL"]
     assert ai_row["states"] == {"Warning": 2}
     assert ai_row["latest_as_of"] == AS_OF
+
+
+def test_load_theme_rows_respects_available_at_cutoff(tmp_path: Path) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(candidate_states).values(
+                _candidate_state_row(
+                    id="state-aapl-future",
+                    ticker="AAPL",
+                    as_of=FUTURE_AT,
+                    state=ActionState.WARNING.value,
+                    final_score=99.0,
+                    created_at=AVAILABLE_AT,
+                )
+            )
+        )
+        conn.execute(
+            insert(signal_features).values(
+                _signal_feature_row(
+                    ticker="AAPL",
+                    as_of=FUTURE_AT,
+                    state=ActionState.WARNING.value,
+                    final_score=99.0,
+                    theme="future_theme",
+                )
+            )
+        )
+
+    rows = load_theme_rows(engine, available_at=AVAILABLE_AT + timedelta(minutes=1))
+
+    assert {row["theme"] for row in rows} == {"ai_infrastructure"}
 
 
 def test_load_validation_summary_returns_latest_run_report_and_paper_trades(
@@ -1245,6 +1366,7 @@ def _candidate_state_row(
     as_of: datetime,
     state: str,
     final_score: float,
+    created_at: datetime = AVAILABLE_AT,
 ) -> dict[str, object]:
     return {
         "id": id,
@@ -1258,7 +1380,7 @@ def _candidate_state_row(
         "transition_reasons": ["score_requires_manual_review"],
         "feature_version": "score-v4-options-theme",
         "policy_version": "policy-v2-events",
-        "created_at": AVAILABLE_AT,
+        "created_at": created_at,
     }
 
 
