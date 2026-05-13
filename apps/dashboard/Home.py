@@ -417,7 +417,11 @@ def _show_radar_run_controls(
             return
         daily_result = _mapping(result.get("daily_result"))
         _show_radar_run_result_notice(daily_result, fallback_reason=result.get("reason"))
-        _show_records("Radar Run Steps", _radar_run_step_rows(daily_result), empty="No step rows.")
+        _show_records(
+            "Radar Run Operator View",
+            _radar_run_step_rows(daily_result),
+            empty="No step rows.",
+        )
 
 
 def _show_radar_run_summary(summary: Mapping[str, Any]) -> None:
@@ -432,13 +436,24 @@ def _show_radar_run_summary(summary: Mapping[str, Any]) -> None:
             ("Universe", summary.get("universe") or "default"),
         ]
     )
-    metric_cols = st.columns(4)
-    metric_cols[0].metric("Steps", int(_metric_number(summary.get("step_count"))))
-    metric_cols[1].metric("Requested", int(_metric_number(summary.get("requested_count"))))
-    metric_cols[2].metric("Raw", int(_metric_number(summary.get("raw_count"))))
-    metric_cols[3].metric("Normalized", int(_metric_number(summary.get("normalized_count"))))
     status_counts = _mapping(summary.get("status_counts"))
+    outcome_counts = _mapping(summary.get("outcome_category_counts"))
     skipped_count = int(_metric_number(status_counts.get("skipped")))
+    blocking_count = int(_metric_number(summary.get("blocking_step_count")))
+    expected_gate_count = int(
+        _metric_number(summary.get("expected_gate_count"))
+        or _metric_number(outcome_counts.get("expected_gate"))
+    )
+    metric_cols = st.columns(5)
+    metric_cols[0].metric("Steps", int(_metric_number(summary.get("step_count"))))
+    metric_cols[1].metric("Completed", int(_metric_number(outcome_counts.get("completed"))))
+    metric_cols[2].metric("Action Needed", blocking_count)
+    metric_cols[3].metric("Expected Gates", expected_gate_count)
+    metric_cols[4].metric("Raw Skipped", skipped_count)
+    volume_cols = st.columns(3)
+    volume_cols[0].metric("Requested", int(_metric_number(summary.get("requested_count"))))
+    volume_cols[1].metric("Raw", int(_metric_number(summary.get("raw_count"))))
+    volume_cols[2].metric("Normalized", int(_metric_number(summary.get("normalized_count"))))
     summary_steps = _records(summary.get("steps"))
     blocking_skips = [
         step
@@ -457,12 +472,12 @@ def _show_radar_run_summary(summary: Mapping[str, Any]) -> None:
             "Use the readiness checklist before treating the run as current."
         )
     elif skipped_count:
-        st.info(
+        st.success(
             f"{len(expected_skips) or skipped_count} run step(s) were expected gates, "
-            "not scan failures. The raw step telemetry is still shown below."
+            "not scan failures. Required scan stages completed; raw telemetry remains below."
         )
     _show_records(
-        "Last Radar Run Steps",
+        "Last Radar Run Operator View",
         _radar_summary_step_rows(summary),
         empty="No radar run step rows.",
     )
@@ -526,10 +541,15 @@ def _radar_run_step_rows(daily_result: Mapping[str, Any]) -> list[dict[str, obje
             str(step_mapping.get("status") or ""),
             reason or None,
         )
+        blocks_reliance = bool(
+            step_mapping.get("blocks_reliance", classification.blocks_reliance)
+        )
         rows.append(
             {
+                "Outcome": step_mapping.get("label") or classification.label,
+                "Needs Action": "yes" if blocks_reliance else "no",
                 "Step": name,
-                "Status": step_mapping.get("status"),
+                "Raw Status": step_mapping.get("status"),
                 "Category": step_mapping.get("category") or classification.category,
                 "Requested": step_mapping.get("requested_count"),
                 "Raw": step_mapping.get("raw_count"),
@@ -550,18 +570,21 @@ def _radar_summary_step_rows(summary: Mapping[str, Any]) -> list[dict[str, objec
         status = str(step.get("status") or "")
         reason = str(step.get("reason") or "")
         category = str(step.get("category") or "")
+        classification = classify_step_outcome(status, reason or None)
+        blocks_reliance = bool(step.get("blocks_reliance", classification.blocks_reliance))
         rows.append(
             {
+                "outcome": step.get("label") or classification.label,
+                "needs_action": "yes" if blocks_reliance else "no",
                 "step": name,
-                "status": status,
+                "raw_status": status,
                 "category": category or _radar_step_category(status, reason),
                 "requested": step.get("requested_count"),
                 "raw": step.get("raw_count"),
                 "normalized": step.get("normalized_count"),
                 "reason": reason or None,
                 "meaning": step.get("meaning") or RADAR_SKIP_EXPLANATIONS.get(reason),
-                "action": step.get("operator_action")
-                or classify_step_outcome(status, reason or None).operator_action,
+                "action": step.get("operator_action") or classification.operator_action,
             }
         )
     return rows
