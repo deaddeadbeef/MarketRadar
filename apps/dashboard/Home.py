@@ -686,6 +686,11 @@ def _show_overview(
 
     _show_radar_run_controls(config, radar_run_summary)
     _show_records(
+        "Opportunity Focus",
+        dashboard_data.opportunity_focus_payload(candidate_rows),
+        empty="No opportunity focus rows.",
+    )
+    _show_records(
         "Provider Preflight",
         dashboard_data.provider_preflight_payload(
             config,
