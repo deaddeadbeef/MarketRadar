@@ -222,19 +222,32 @@ class ProviderRepository:
         raw_count: int,
         normalized_count: int,
         error_summary: str | None = None,
+        metadata_update: Mapping[str, Any] | None = None,
     ) -> None:
         with self.engine.begin() as conn:
+            values: dict[str, Any] = {
+                "status": status,
+                "finished_at": datetime.now(UTC),
+                "requested_count": requested_count,
+                "raw_count": raw_count,
+                "normalized_count": normalized_count,
+                "error_summary": error_summary,
+            }
+            if metadata_update:
+                existing_metadata = conn.scalar(
+                    select(job_runs.c.metadata).where(job_runs.c.id == job_id)
+                )
+                metadata = (
+                    dict(existing_metadata)
+                    if isinstance(existing_metadata, Mapping)
+                    else {}
+                )
+                metadata.update(thaw_json_value(metadata_update))
+                values["metadata"] = metadata
             conn.execute(
                 update(job_runs)
                 .where(job_runs.c.id == job_id)
-                .values(
-                    status=status,
-                    finished_at=datetime.now(UTC),
-                    requested_count=requested_count,
-                    raw_count=raw_count,
-                    normalized_count=normalized_count,
-                    error_summary=error_summary,
-                )
+                .values(**values)
             )
 
     def record_incident(

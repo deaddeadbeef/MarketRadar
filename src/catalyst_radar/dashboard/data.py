@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import fields, is_dataclass
 from datetime import UTC, datetime, timedelta
 from enum import Enum
@@ -28,7 +28,7 @@ from catalyst_radar.brokers.rate_limit import (
     schwab_rate_limit_status,
 )
 from catalyst_radar.core.config import AppConfig
-from catalyst_radar.jobs.tasks import DAILY_STEP_ORDER
+from catalyst_radar.jobs.tasks import DAILY_STEP_ORDER, LIMITED_ANALYSIS_SKIP_REASONS
 from catalyst_radar.storage.broker_repositories import BrokerRepository
 from catalyst_radar.storage.budget_repositories import BudgetLedgerRepository
 from catalyst_radar.storage.schema import (
@@ -720,7 +720,7 @@ def load_radar_run_summary(engine: Engine, *, limit: int = 250) -> dict[str, obj
     first_metadata = rows[0].get("metadata")
     metadata = _row_dict(first_metadata) if isinstance(first_metadata, Mapping) else {}
     return {
-        "status": _radar_run_status(tuple(status_counts.elements())),
+        "status": _radar_run_status(ordered_steps),
         "as_of": metadata.get("as_of"),
         "decision_available_at": metadata.get("decision_available_at"),
         "outcome_available_at": metadata.get("outcome_available_at"),
@@ -753,6 +753,8 @@ def load_radar_run_summary(engine: Engine, *, limit: int = 250) -> dict[str, obj
                 "raw_count": row.get("raw_count"),
                 "normalized_count": row.get("normalized_count"),
                 "error_summary": row.get("error_summary"),
+                "reason": _radar_run_step_reason(row),
+                "payload": _radar_run_step_payload(row),
             }
             for row in ordered_steps
         ],
@@ -1204,7 +1206,8 @@ def _radar_run_key(row: Mapping[str, object]) -> tuple[object, ...]:
     )
 
 
-def _radar_run_status(statuses: tuple[str, ...]) -> str:
+def _radar_run_status(rows: Sequence[Mapping[str, object]]) -> str:
+    statuses = tuple(str(row.get("status") or "unknown") for row in rows)
     if not statuses:
         return "unknown"
     if any(status == "running" for status in statuses):
@@ -1213,7 +1216,29 @@ def _radar_run_status(statuses: tuple[str, ...]) -> str:
         if any(status != "failed" for status in statuses):
             return "partial_success"
         return "failed"
+    if any(
+        row.get("status") == "skipped"
+        and _radar_run_step_reason(row) in LIMITED_ANALYSIS_SKIP_REASONS
+        for row in rows
+    ):
+        return "partial_success"
     return "success"
+
+
+def _radar_run_step_reason(row: Mapping[str, object]) -> str | None:
+    metadata = row.get("metadata")
+    reason = metadata.get("result_reason") if isinstance(metadata, Mapping) else None
+    if reason is None:
+        reason = row.get("error_summary")
+    return str(reason) if reason else None
+
+
+def _radar_run_step_payload(row: Mapping[str, object]) -> object:
+    metadata = row.get("metadata")
+    if not isinstance(metadata, Mapping):
+        return {}
+    payload = metadata.get("result_payload")
+    return payload if payload is not None else {}
 
 
 def _latest_validation_run_id(
