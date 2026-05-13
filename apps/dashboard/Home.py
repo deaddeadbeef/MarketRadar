@@ -709,6 +709,11 @@ def _show_overview(
             },
             empty="No selected candidate.",
         )
+        _show_mapping(
+            "Research Brief",
+            selected_candidate.get("research_brief"),
+            empty="No research brief.",
+        )
 
     st.subheader("Recent Alerts")
     _table(

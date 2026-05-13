@@ -473,6 +473,52 @@ def test_get_candidate_detail_redacts_external_export_blocked_payload(
     }
 
 
+def test_get_candidates_redacts_restricted_research_brief(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "candidate-brief-export-block.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+
+    def load_candidate_rows(_engine) -> list[dict[str, object]]:
+        return [
+            {
+                "ticker": "MSFT",
+                "research_brief": {
+                    "why_now": "restricted catalyst",
+                    "audit": {
+                        "provider_license_policy": {
+                            "license_tags": ["local-csv-fixture"],
+                            "metadata_complete": True,
+                            "prompt_allowed": True,
+                            "external_export_allowed": False,
+                            "attribution_required": False,
+                            "policies": [],
+                        }
+                    },
+                },
+            }
+        ]
+
+    monkeypatch.setattr(
+        dashboard_data,
+        "load_candidate_rows",
+        load_candidate_rows,
+        raising=False,
+    )
+    client = TestClient(create_app())
+
+    response = client.get("/api/radar/candidates")
+
+    assert response.status_code == 200
+    assert response.json()["items"][0]["research_brief"] == {
+        "external_export_blocked": True,
+        "license_tags": ["local-csv-fixture"],
+        "attribution_required": False,
+    }
+
+
 def test_get_ops_health(tmp_path, monkeypatch) -> None:
     database_url = _database_url(tmp_path, "ops.db")
     monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)

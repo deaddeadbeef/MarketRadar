@@ -881,6 +881,7 @@ def _candidate_row(row: Any) -> dict[str, object]:
         packet_payload.get("disconfirming_evidence", [])
     )
     values["manual_review_disclaimer"] = card_payload.get("disclaimer")
+    values["research_brief"] = _candidate_research_brief(values, packet_payload)
     return values
 
 
@@ -1091,6 +1092,100 @@ def _top_evidence_summary(value: object) -> dict[str, object] | None:
         "computed_feature_id": item.get("computed_feature_id"),
         "strength": item.get("strength"),
     }
+
+
+def _candidate_research_brief(
+    candidate: Mapping[str, object],
+    packet_payload: Mapping[str, object],
+) -> dict[str, object]:
+    state = str(candidate.get("state") or "")
+    support = _mapping_value(candidate, "top_supporting_evidence")
+    risk = _mapping_value(candidate, "top_disconfirming_evidence")
+    top_event = _first_present(candidate.get("top_event_title"), support.get("title"))
+    source = _first_present(
+        candidate.get("top_event_source"),
+        support.get("source_id"),
+        support.get("kind"),
+    )
+    source_url = _first_present(candidate.get("top_event_source_url"), support.get("source_url"))
+    risk_or_gap = _first_present(
+        risk.get("title"),
+        _first_item(candidate.get("portfolio_hard_blocks")),
+        "No disconfirming evidence captured yet.",
+    )
+    decision_card_id = str(candidate.get("decision_card_id") or "").strip()
+    return {
+        "focus": _research_focus(state),
+        "why_now": _research_why_now(candidate, top_event=top_event),
+        "top_catalyst": top_event,
+        "source": source,
+        "source_url": source_url,
+        "supporting_evidence": support.get("title"),
+        "risk_or_gap": risk_or_gap,
+        "next_step": _research_next_step(state, has_decision_card=bool(decision_card_id)),
+        "decision_card_status": (
+            f"available: {decision_card_id}"
+            if decision_card_id
+            else "not generated; candidate is not in manual-buy-review state"
+        ),
+        "audit": _research_brief_audit(packet_payload),
+    }
+
+
+def _research_focus(state: str) -> str:
+    normalized = state.strip().lower()
+    if normalized == "eligibleformanualbuyreview":
+        return "Manual buy review"
+    if normalized == "warning":
+        return "Research now"
+    if normalized == "addtowatchlist":
+        return "Watchlist"
+    if normalized == "blocked":
+        return "Blocked"
+    if normalized in {"thesisweakening", "exitinvalidatereview"}:
+        return "Risk review"
+    return "Monitor"
+
+
+def _research_why_now(candidate: Mapping[str, object], *, top_event: object) -> str:
+    if top_event not in (None, ""):
+        return str(top_event)
+    setup = candidate.get("setup_type")
+    score = candidate.get("final_score")
+    if setup not in (None, "") and score not in (None, ""):
+        return f"{setup} setup with score {score}"
+    if score not in (None, ""):
+        return f"Candidate score {score}"
+    return "Candidate is in the current radar queue."
+
+
+def _research_next_step(state: str, *, has_decision_card: bool) -> str:
+    normalized = state.strip().lower()
+    if has_decision_card:
+        return "Review the Decision Card before any trade action."
+    if normalized == "warning":
+        return "Review catalyst, evidence, and missing trade-plan items before escalation."
+    if normalized == "addtowatchlist":
+        return "Track for stronger score, volume confirmation, or a fresh catalyst."
+    if normalized == "blocked":
+        return "Do not escalate until hard blocks or policy gaps clear."
+    if normalized in {"thesisweakening", "exitinvalidatereview"}:
+        return "Check position risk and thesis invalidation evidence."
+    return "Continue monitoring; no buy workflow has been opened."
+
+
+def _first_item(value: object) -> object:
+    if isinstance(value, list | tuple) and value:
+        return value[0]
+    return None
+
+
+def _research_brief_audit(packet_payload: Mapping[str, object]) -> dict[str, object]:
+    audit = _mapping_value(packet_payload, "audit")
+    provider_policy = _mapping_value(audit, "provider_license_policy")
+    if not provider_policy:
+        return {}
+    return {"provider_license_policy": provider_policy}
 
 
 def _as_utc_datetime(value: object) -> object:

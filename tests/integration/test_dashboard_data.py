@@ -86,6 +86,21 @@ def test_load_candidate_rows_returns_latest_state_per_ticker(tmp_path: Path) -> 
 
     assert [row["id"] for row in rows] == ["state-msft-latest", "state-aapl-latest"]
     assert [row["ticker"] for row in rows] == ["MSFT", "AAPL"]
+    msft_brief = rows[0]["research_brief"]
+    assert msft_brief["focus"] == "Research now"
+    assert msft_brief["why_now"] == "MSFT guidance raised"
+    assert msft_brief["supporting_evidence"] == "MSFT guidance raised"
+    assert msft_brief["risk_or_gap"] == "Valuation stretched"
+    assert msft_brief["decision_card_status"] == "available: card-msft-latest"
+    assert msft_brief["audit"]["provider_license_policy"]["license_tags"] == [
+        "local-csv-fixture"
+    ]
+    aapl_brief = rows[1]["research_brief"]
+    assert aapl_brief["focus"] == "Research now"
+    assert aapl_brief["why_now"] == "breakout setup with score 76.0"
+    assert aapl_brief["decision_card_status"] == (
+        "not generated; candidate is not in manual-buy-review state"
+    )
 
 
 def test_load_candidate_rows_respects_available_at_cutoff(tmp_path: Path) -> None:
@@ -1471,7 +1486,18 @@ def _candidate_packet_payload() -> dict[str, object]:
             }
         ],
         "hard_blocks": [],
-        "audit": {"source_ts": SOURCE_TS.isoformat(), "available_at": AVAILABLE_AT.isoformat()},
+        "audit": {
+            "source_ts": SOURCE_TS.isoformat(),
+            "available_at": AVAILABLE_AT.isoformat(),
+            "provider_license_policy": {
+                "license_tags": ["local-csv-fixture"],
+                "metadata_complete": True,
+                "prompt_allowed": True,
+                "external_export_allowed": False,
+                "attribution_required": False,
+                "policies": [],
+            },
+        },
     }
 
 
