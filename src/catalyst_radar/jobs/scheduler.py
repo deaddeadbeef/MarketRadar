@@ -291,7 +291,7 @@ def _heartbeat_interval(ttl: timedelta) -> float:
     ttl_seconds = ttl.total_seconds()
     if ttl_seconds <= 0:
         return 1.0
-    return max(0.1, min(30.0, ttl_seconds / 3.0))
+    return max(0.05, min(30.0, ttl_seconds / 5.0))
 
 
 def _optional_text(source: Mapping[str, str], key: str) -> str | None:

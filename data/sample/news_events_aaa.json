@@ -1,0 +1,14 @@
+{
+  "ticker": "AAA",
+  "articles": [
+    {
+      "source": "Reuters",
+      "source_category": "reputable_news",
+      "title": "Alpha Analytics raises guidance on inference storage demand",
+      "body": "Alpha Analytics raises guidance after stronger enterprise demand for datacenter storage, SSD deployments, and inference storage tied to AI infrastructure workloads.",
+      "url": "https://reuters.example.com/markets/aaa-guidance-storage",
+      "published_at": "2026-05-08T20:15:00Z",
+      "available_at": "2026-05-08T20:30:00Z"
+    }
+  ]
+}

@@ -12,6 +12,7 @@ from catalyst_radar.alerts.digest import build_alert_digest, digest_payload
 from catalyst_radar.brokers.portfolio_context import latest_broker_portfolio_context
 from catalyst_radar.connectors.base import ConnectorRequest
 from catalyst_radar.connectors.market_data import CsvMarketDataConnector
+from catalyst_radar.connectors.news import NewsJsonConnector
 from catalyst_radar.connectors.provider_ingest import (
     ProviderIngestError,
     ingest_provider_records,
@@ -57,9 +58,11 @@ LIMITED_ANALYSIS_SKIP_REASONS = frozenset(
         "degraded_mode_blocks_llm_review",
         "no_scheduled_provider_input",
         "scheduled_provider_not_supported",
+        "scheduled_event_provider_not_supported",
     }
 )
 CSV_SCHEDULED_PROVIDER_NAMES = frozenset({"csv", "sample"})
+NEWS_SCHEDULED_EVENT_PROVIDER_NAMES = frozenset({"news_fixture", "sample", "fixture"})
 DISABLED_SCHEDULED_PROVIDER_NAMES = frozenset({"", "none", "off", "disabled"})
 logger = logging.getLogger("catalyst_radar.jobs.tasks")
 
@@ -352,8 +355,65 @@ def _daily_bar_ingest(context: _DailyRunContext) -> _StepOutcome:
     )
 
 
-def _event_ingest(_: _DailyRunContext) -> _StepOutcome:
-    return _skipped("no_scheduled_event_provider")
+def _event_ingest(context: _DailyRunContext) -> _StepOutcome:
+    provider = _scheduled_event_provider(context)
+    if provider in DISABLED_SCHEDULED_PROVIDER_NAMES:
+        return _skipped("no_scheduled_event_provider")
+    if provider not in NEWS_SCHEDULED_EVENT_PROVIDER_NAMES:
+        return _skipped(
+            "scheduled_event_provider_not_supported",
+            payload={
+                "provider": provider,
+                "supported_offline_providers": sorted(NEWS_SCHEDULED_EVENT_PROVIDER_NAMES),
+            },
+        )
+
+    connector = NewsJsonConnector(
+        fixture_path=context.config.news_fixture_path,
+        provider=provider,
+    )
+    metadata = {
+        "scheduled_event_provider": provider,
+        "fixture": context.config.news_fixture_path,
+    }
+    request = ConnectorRequest(
+        provider=connector.provider,
+        endpoint="scheduled_news_fixture_ingest",
+        params=metadata,
+        requested_at=context.spec.decision_available_at,
+        idempotency_key=(
+            f"event_ingest:{provider}:{context.spec.as_of.isoformat()}:"
+            f"{context.spec.decision_available_at.isoformat()}"
+        ),
+    )
+    try:
+        result = ingest_provider_records(
+            connector=connector,
+            request=request,
+            market_repo=context.market_repo,
+            provider_repo=ProviderRepository(context.engine),
+            event_repo=context.event_repo,
+            job_type="scheduled_news_fixture_ingest",
+            metadata=metadata,
+        )
+    except ProviderIngestError as exc:
+        return _StepOutcome(
+            status=JobStatus.FAILED.value,
+            reason=_truncate_reason(str(exc) or exc.__class__.__name__),
+            payload={"provider": provider, "endpoint": request.endpoint},
+        )
+    return _StepOutcome(
+        status=JobStatus.SUCCESS.value,
+        requested_count=result.requested_count,
+        raw_count=result.raw_count,
+        normalized_count=result.normalized_count,
+        payload={
+            "provider": result.provider,
+            "ingest_job_id": result.job_id,
+            "event_count": result.event_count,
+            "rejected_count": result.rejected_count,
+        },
+    )
 
 
 def _local_text_triage(context: _DailyRunContext) -> _StepOutcome:
@@ -831,8 +891,12 @@ def _scheduled_market_provider(context: _DailyRunContext) -> str:
     return provider if provider else "csv"
 
 
+def _scheduled_event_provider(context: _DailyRunContext) -> str:
+    return context.config.daily_event_provider.strip().lower()
+
+
 def _relevant_degraded_providers(context: _DailyRunContext) -> set[str]:
-    providers = {_scheduled_market_provider(context)}
+    providers = {_scheduled_market_provider(context), _scheduled_event_provider(context)}
     if context.spec.provider:
         providers.add(context.spec.provider.strip().lower())
     return {provider for provider in providers if provider not in DISABLED_SCHEDULED_PROVIDER_NAMES}
