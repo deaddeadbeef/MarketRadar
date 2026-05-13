@@ -609,6 +609,7 @@ def _show_overview(
     validation_summary: Mapping[str, Any],
     cost_summary: Mapping[str, Any],
     ops_health: Mapping[str, Any],
+    broker_summary: Mapping[str, Any],
 ) -> None:
     candidate_frame = pd.DataFrame(candidate_rows)
     alert_frame = pd.DataFrame(alert_rows)
@@ -631,6 +632,14 @@ def _show_overview(
     metric_cols[5].metric("LLM Cost", _currency(cost_summary.get("total_actual_cost_usd")))
 
     _show_radar_run_controls(config, radar_run_summary)
+    _show_records(
+        "Data Source Coverage",
+        dashboard_data.data_source_coverage_payload(
+            config,
+            broker_summary=broker_summary,
+        ),
+        empty="No data source coverage rows.",
+    )
 
     secondary_cols = st.columns(5)
     secondary_cols[0].metric("Useful Alert Rate", _rate(validation_report.get("useful_alert_rate")))
@@ -1672,6 +1681,7 @@ with tabs[0]:
         validation_summary=validation_summary,
         cost_summary=cost_summary,
         ops_health=ops_health,
+        broker_summary=broker_summary,
     )
 
 with tabs[1]:
