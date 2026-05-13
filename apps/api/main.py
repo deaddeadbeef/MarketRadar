@@ -8,9 +8,12 @@ from catalyst_radar.api.routes.costs import router as costs_router
 from catalyst_radar.api.routes.feedback import router as feedback_router
 from catalyst_radar.api.routes.ops import router as ops_router
 from catalyst_radar.api.routes.radar import router as radar_router
+from catalyst_radar.security.secrets import load_app_dotenv
 
 
 def create_app() -> FastAPI:
+    load_app_dotenv()
+
     app = FastAPI(
         title="Catalyst Radar API",
         version="0.1.0",
