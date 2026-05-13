@@ -388,6 +388,32 @@ def _show_state_mix(rows: list[dict[str, object]]) -> None:
     st.markdown(f'<div class="mr-chart-card">{"".join(bars)}</div>', unsafe_allow_html=True)
 
 
+def _show_activation_summary(
+    config: AppConfig,
+    radar_run_summary: Mapping[str, Any],
+    broker_summary: Mapping[str, Any],
+) -> None:
+    summary = _mapping(
+        dashboard_data.activation_summary_payload(
+            config,
+            radar_run_summary=radar_run_summary,
+            broker_summary=broker_summary,
+        )
+    )
+    status = str(summary.get("status") or "unknown")
+    message = (
+        f"{summary.get('headline') or 'Radar activation status'} "
+        f"{summary.get('detail') or ''} Next: {summary.get('next_action') or 'n/a'}"
+    ).strip()
+    if status == "ready":
+        st.success(message)
+    elif status == "attention":
+        st.info(message)
+    else:
+        st.warning(message)
+    st.caption(str(summary.get("evidence") or "No activation evidence."))
+
+
 def _show_radar_run_controls(
     config: AppConfig,
     radar_run_summary: Mapping[str, Any],
@@ -774,6 +800,7 @@ def _show_overview(
     metric_cols[4].metric("Themes", len(theme_rows))
     metric_cols[5].metric("LLM Cost", _currency(cost_summary.get("total_actual_cost_usd")))
 
+    _show_activation_summary(config, radar_run_summary, broker_summary)
     _show_radar_run_controls(config, radar_run_summary)
     _show_records(
         "Opportunity Focus",

@@ -28,6 +28,7 @@ from catalyst_radar.brokers.models import (
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.core.models import ActionState
 from catalyst_radar.dashboard.data import (
+    activation_summary_payload,
     data_source_coverage_payload,
     load_alert_detail,
     load_alert_rows,
@@ -196,6 +197,84 @@ def test_provider_preflight_payload_reports_fixture_no_live_calls() -> None:
     assert by_layer["LLM review"]["status"] == "optional"
     assert by_layer["LLM review"]["call_budget"] == "0 LLM calls"
     assert "portfolio sync min 900s" in str(by_layer["Schwab portfolio"]["call_budget"])
+
+
+def test_activation_summary_payload_calls_out_fixture_mode() -> None:
+    config = AppConfig(
+        daily_market_provider="csv",
+        daily_event_provider="news_fixture",
+        enable_premium_llm=False,
+        llm_provider="none",
+    )
+    run_summary = {
+        "step_count": 10,
+        "blocking_step_count": 0,
+        "expected_gate_count": 4,
+        "outcome_category_counts": {"completed": 6, "expected_gate": 4},
+    }
+
+    summary = activation_summary_payload(config, radar_run_summary=run_summary)
+
+    assert summary["status"] == "fixture"
+    assert "not a live US-market scan" in str(summary["headline"])
+    assert "CATALYST_POLYGON_API_KEY" in str(summary["next_action"])
+    assert "required_path=6/6" in str(summary["evidence"])
+
+
+def test_activation_summary_payload_blocks_missing_live_credentials() -> None:
+    config = AppConfig(
+        daily_market_provider="polygon",
+        polygon_api_key=None,
+        daily_event_provider="sec",
+        sec_enable_live=False,
+        sec_user_agent=None,
+    )
+
+    summary = activation_summary_payload(config, radar_run_summary={"steps": []})
+
+    assert summary["status"] == "blocked"
+    assert "blocked" in str(summary["headline"]).lower()
+    assert "Live market scan" in str(summary["detail"])
+    assert "CATALYST_POLYGON_API_KEY" in str(summary["next_action"])
+
+
+def test_activation_summary_payload_reports_ready_live_inputs() -> None:
+    config = AppConfig(
+        daily_market_provider="polygon",
+        polygon_api_key="fixture-key",
+        daily_event_provider="sec",
+        sec_enable_live=True,
+        sec_user_agent="MarketRadar test@example.com",
+    )
+    run_summary = {
+        "step_count": 10,
+        "blocking_step_count": 0,
+        "expected_gate_count": 4,
+        "outcome_category_counts": {"completed": 6, "expected_gate": 4},
+        "steps": [
+            _run_step("daily_bar_ingest", "success", requested=43, raw=43, normalized=43),
+            _run_step("event_ingest", "success", requested=1, raw=1, normalized=1),
+            _run_step("local_text_triage", "success", requested=1, raw=1, normalized=1),
+            _run_step("feature_scan", "success", requested=6, raw=3, normalized=3),
+            _run_step("scoring_policy", "success", requested=3, raw=3, normalized=3),
+            _run_step("candidate_packets", "success", requested=2, raw=2, normalized=2),
+            _run_step("decision_cards", "skipped", reason="no_manual_buy_review_inputs"),
+            _run_step("llm_review", "skipped", reason="llm_disabled"),
+            _run_step("digest", "skipped", reason="no_alerts"),
+            _run_step(
+                "validation_update",
+                "skipped",
+                reason="outcome_available_at_not_supplied",
+            ),
+        ],
+    }
+
+    summary = activation_summary_payload(config, radar_run_summary=run_summary)
+
+    assert summary["status"] == "ready"
+    assert "Live radar inputs are ready" in str(summary["headline"])
+    assert "market=polygon/live" in str(summary["evidence"])
+    assert "events=sec/live" in str(summary["evidence"])
 
 
 def test_provider_preflight_payload_reports_live_provider_call_budgets() -> None:
