@@ -20,6 +20,19 @@ It shows the configured provider, live-call budget, safety guardrail, and next
 action for market data, SEC/news events, Schwab context, and LLM review. This is
 a configuration preflight; it does not call external APIs.
 
+The dashboard **Live Activation Plan** is also DB/config-only. It separates:
+
+- the required scan path, such as market ingest, event ingest, feature scan,
+  scoring, and candidate packet creation;
+- expected optional gates, such as Decision Cards, LLM review, digest delivery,
+  and outcome validation when their trigger is absent;
+- blocked inputs that need operator action before relying on the run.
+
+Raw telemetry can still show `status=skipped` for expected optional gates. Treat
+the `category`, required-path count, and action-needed count as the operator
+truth: `expected_gate` means no failure occurred unless you intentionally wanted
+that gate to run.
+
 ## Market Data Provider
 
 By default, local runs use fixture CSV market data:
