@@ -36,6 +36,37 @@ ALERT_ROUTES = [
     "daily_digest",
     "position_watch",
 ]
+RADAR_BLOCKING_REASONS = frozenset(
+    {
+        "degraded_mode_blocks_high_state_work",
+        "degraded_mode_blocks_decision_cards",
+        "degraded_mode_blocks_llm_review",
+        "no_scheduled_provider_input",
+        "no_scheduled_event_provider",
+    }
+)
+RADAR_SKIP_EXPLANATIONS = {
+    "no_scheduled_provider_input": "No market-data provider was scheduled for this run.",
+    "no_scheduled_event_provider": "No news/event provider was scheduled for this run.",
+    "no_text_inputs": "No text or news inputs were available to triage.",
+    "no_feature_inputs": "No signal inputs were available for feature scanning.",
+    "no_warning_or_higher_candidates": "No candidates crossed the warning threshold.",
+    "degraded_mode_blocks_high_state_work": (
+        "Degraded mode blocked candidate packets because a provider is unhealthy."
+    ),
+    "degraded_mode_blocks_decision_cards": (
+        "Degraded mode blocked Decision Cards because upstream data is not trusted."
+    ),
+    "degraded_mode_blocks_llm_review": (
+        "Degraded mode blocked LLM review because upstream data is not trusted."
+    ),
+    "llm_disabled": "LLM review was not requested for this run.",
+    "no_llm_review_inputs": "There were no Decision Cards for LLM review.",
+    "no_alerts": "No alert candidates were generated.",
+    "outcome_available_at_not_supplied": (
+        "Validation was skipped because no outcome cutoff was supplied."
+    ),
+}
 
 
 def _mapping(value: object) -> Mapping[str, Any]:
@@ -402,8 +433,7 @@ def _show_radar_run_controls(
             st.error(str(exc))
             return
         daily_result = _mapping(result.get("daily_result"))
-        status = _metric_text(daily_result.get("status") or result.get("reason") or "unknown")
-        st.success(f"Radar run status: {status}")
+        _show_radar_run_result_notice(daily_result, fallback_reason=result.get("reason"))
         _show_records("Radar Run Steps", _radar_run_step_rows(daily_result), empty="No step rows.")
 
 
@@ -424,6 +454,13 @@ def _show_radar_run_summary(summary: Mapping[str, Any]) -> None:
     metric_cols[1].metric("Requested", int(_metric_number(summary.get("requested_count"))))
     metric_cols[2].metric("Raw", int(_metric_number(summary.get("raw_count"))))
     metric_cols[3].metric("Normalized", int(_metric_number(summary.get("normalized_count"))))
+    status_counts = _mapping(summary.get("status_counts"))
+    skipped_count = int(_metric_number(status_counts.get("skipped")))
+    if skipped_count:
+        st.info(
+            f"{skipped_count} run step(s) were skipped. Open the step table before treating "
+            "the run as actionable."
+        )
     _show_records(
         "Last Radar Run Steps",
         summary.get("steps"),
@@ -431,10 +468,47 @@ def _show_radar_run_summary(summary: Mapping[str, Any]) -> None:
     )
 
 
+def _show_radar_run_result_notice(
+    daily_result: Mapping[str, Any],
+    *,
+    fallback_reason: object = None,
+) -> None:
+    status = _metric_text(daily_result.get("status") or fallback_reason or "unknown")
+    blocking_messages = _radar_run_limiting_messages(daily_result, blocking_only=True)
+    informational_messages = _radar_run_limiting_messages(daily_result, blocking_only=False)
+    if status == "success" and not blocking_messages:
+        st.success("Radar run status: success")
+    elif status == "failed":
+        st.error(f"Radar run status: {status}")
+    else:
+        st.warning(f"Radar run status: {status}. Analysis is limited.")
+    for message in (blocking_messages or informational_messages)[:6]:
+        st.caption(message)
+
+
+def _radar_run_limiting_messages(
+    daily_result: Mapping[str, Any],
+    *,
+    blocking_only: bool,
+) -> list[str]:
+    messages: list[str] = []
+    for name, step in _mapping(daily_result.get("steps")).items():
+        step_mapping = _mapping(step)
+        reason = str(step_mapping.get("reason") or "")
+        if not reason:
+            continue
+        if blocking_only and reason not in RADAR_BLOCKING_REASONS:
+            continue
+        explanation = RADAR_SKIP_EXPLANATIONS.get(reason, reason)
+        messages.append(f"{name}: {explanation}")
+    return messages
+
+
 def _radar_run_step_rows(daily_result: Mapping[str, Any]) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     for name, step in _mapping(daily_result.get("steps")).items():
         step_mapping = _mapping(step)
+        reason = str(step_mapping.get("reason") or "")
         rows.append(
             {
                 "Step": name,
@@ -442,7 +516,8 @@ def _radar_run_step_rows(daily_result: Mapping[str, Any]) -> list[dict[str, obje
                 "Requested": step_mapping.get("requested_count"),
                 "Raw": step_mapping.get("raw_count"),
                 "Normalized": step_mapping.get("normalized_count"),
-                "Reason": step_mapping.get("reason"),
+                "Reason": reason or None,
+                "Meaning": RADAR_SKIP_EXPLANATIONS.get(reason),
             }
         )
     return rows

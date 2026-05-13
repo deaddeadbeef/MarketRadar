@@ -41,6 +41,14 @@ DAILY_STEP_ORDER = (
     "validation_update",
 )
 
+LIMITED_ANALYSIS_SKIP_REASONS = frozenset(
+    {
+        "degraded_mode_blocks_high_state_work",
+        "degraded_mode_blocks_decision_cards",
+        "degraded_mode_blocks_llm_review",
+    }
+)
+
 
 @dataclass(frozen=True)
 class DailyRunSpec:
@@ -448,13 +456,13 @@ def _decision_cards(context: _DailyRunContext) -> _StepOutcome:
 
 
 def _llm_review(context: _DailyRunContext) -> _StepOutcome:
+    if not context.spec.run_llm:
+        return _skipped("llm_disabled")
     if _degraded_mode_enabled(context):
         return _skipped(
             "degraded_mode_blocks_llm_review",
             payload={"degraded_mode": _degraded_payload(context)},
         )
-    if not context.spec.run_llm:
-        return _skipped("llm_disabled")
     if not context.decision_cards:
         return _skipped("no_llm_review_inputs")
     if context.spec.llm_dry_run:
@@ -734,6 +742,11 @@ def _daily_status(steps: tuple[JobStepResult, ...]) -> str:
         if any(step.status != JobStatus.FAILED.value for step in steps):
             return JobStatus.PARTIAL_SUCCESS.value
         return JobStatus.FAILED.value
+    if any(
+        step.status == "skipped" and step.reason in LIMITED_ANALYSIS_SKIP_REASONS
+        for step in steps
+    ):
+        return JobStatus.PARTIAL_SUCCESS.value
     return JobStatus.SUCCESS.value
 
 
