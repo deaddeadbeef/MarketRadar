@@ -333,10 +333,12 @@ def _with_discovery_snapshot(
     )
     return {
         **payload,
-        "discovery_snapshot": dashboard_data.radar_discovery_snapshot_payload(
-            engine,
-            config,
-            radar_run_summary=summary,
+        "discovery_snapshot": redact_restricted_external_payload(
+            dashboard_data.radar_discovery_snapshot_payload(
+                engine,
+                config,
+                radar_run_summary=summary,
+            )
         ),
     }
 

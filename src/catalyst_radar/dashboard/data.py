@@ -1101,19 +1101,24 @@ def radar_discovery_snapshot_payload(
     health = (
         _row_dict(ops_health)
         if isinstance(ops_health, Mapping)
-        else load_ops_health(engine)
+        else load_ops_health(engine, now=cutoff)
     )
-    candidates = (
+    unscoped_candidates = (
         [_row_dict(row) for row in candidate_rows]
         if candidate_rows is not None
         else load_candidate_rows(engine, available_at=cutoff)
     )
-    coverage_rows = data_source_coverage_payload(config)
+    steps = _radar_steps_by_name(summary)
+    candidates = _discovery_run_candidates(unscoped_candidates, summary)
+    coverage_rows = _discovery_source_coverage_payload(
+        config,
+        summary=summary,
+        steps=steps,
+    )
     coverage = {str(row.get("layer") or ""): row for row in coverage_rows}
     market = coverage.get("Market data", {})
     events = coverage.get("News/events", {})
     database = _mapping_value(health, "database")
-    steps = _radar_steps_by_name(summary)
     run_path = _radar_run_path_summary(summary)
     as_of_date = _parse_date(summary.get("as_of"))
     latest_bar_date = _parse_date(database.get("latest_daily_bar_date"))
@@ -1224,7 +1229,12 @@ def radar_discovery_snapshot_payload(
         },
         "blockers": blockers,
         "top_discoveries": [
-            _discovery_candidate(row) for row in candidates[: max(0, int(limit))]
+            _discovery_candidate(row)
+            for row in (
+                candidates[: max(0, int(limit))]
+                if packet_count > 0 and summary
+                else []
+            )
         ],
     }
 
@@ -2109,7 +2119,136 @@ def _discovery_candidate(row: Mapping[str, object]) -> dict[str, object]:
         "packet": row.get("candidate_packet_id") or "n/a",
         "card": row.get("decision_card_id") or "n/a",
         "next_step": brief.get("next_step"),
+        "audit": _mapping_value(brief, "audit"),
     }
+
+
+def _discovery_run_candidates(
+    candidates: Sequence[Mapping[str, object]],
+    summary: Mapping[str, object],
+) -> list[dict[str, object]]:
+    if not summary:
+        return []
+    as_of_date = _parse_date(summary.get("as_of"))
+    tickers = {
+        str(ticker).strip().upper()
+        for ticker in _sequence_value(summary.get("tickers"))
+        if str(ticker).strip()
+    }
+    rows: list[dict[str, object]] = []
+    for row in candidates:
+        ticker = str(row.get("ticker") or "").strip().upper()
+        if tickers and ticker not in tickers:
+            continue
+        if as_of_date is not None and _parse_date(row.get("as_of")) != as_of_date:
+            continue
+        rows.append(_row_dict(row))
+    return rows
+
+
+def _discovery_source_coverage_payload(
+    config: AppConfig,
+    *,
+    summary: Mapping[str, object],
+    steps: Mapping[str, Mapping[str, object]],
+) -> list[dict[str, object]]:
+    market_provider = _run_market_provider(config, summary=summary, steps=steps)
+    event_provider = _run_event_provider(config, steps=steps)
+    market_mode = _run_market_source_mode(
+        config,
+        provider=market_provider,
+        step=steps.get("daily_bar_ingest", {}),
+    )
+    event_mode = _run_event_source_mode(
+        config,
+        provider=event_provider,
+        step=steps.get("event_ingest", {}),
+    )
+    return [
+        {
+            "layer": "Market data",
+            "mode": market_mode,
+            "provider": market_provider,
+            "detail": _market_data_detail(config, market_provider),
+            "guardrail": f"universe={config.universe_name}; batch={config.scan_batch_size}",
+        },
+        {
+            "layer": "News/events",
+            "mode": event_mode,
+            "provider": event_provider,
+            "detail": _event_source_detail(config, event_provider),
+            "guardrail": _event_source_guardrail(config, event_provider),
+        },
+    ]
+
+
+def _run_market_provider(
+    config: AppConfig,
+    *,
+    summary: Mapping[str, object],
+    steps: Mapping[str, Mapping[str, object]],
+) -> str:
+    return _provider_name(
+        _step_provider(steps, "daily_bar_ingest")
+        or summary.get("provider")
+        or config.daily_market_provider,
+        default="csv",
+    )
+
+
+def _run_event_provider(
+    config: AppConfig,
+    *,
+    steps: Mapping[str, Mapping[str, object]],
+) -> str:
+    return _provider_name(
+        _step_provider(steps, "event_ingest") or config.daily_event_provider,
+        default="news_fixture",
+    )
+
+
+def _step_provider(
+    steps: Mapping[str, Mapping[str, object]],
+    step_name: str,
+) -> object:
+    payload = _mapping_value(steps.get(step_name, {}), "payload")
+    return (
+        payload.get("provider")
+        or payload.get("scheduled_provider")
+        or payload.get("scheduled_event_provider")
+    )
+
+
+def _run_market_source_mode(
+    config: AppConfig,
+    *,
+    provider: str,
+    step: Mapping[str, object],
+) -> str:
+    if provider == "polygon":
+        if str(step.get("status") or "") == "success":
+            return "live"
+        reason = str(step.get("reason") or step.get("error_summary") or "")
+        if "CATALYST_POLYGON_API_KEY" in reason or not config.polygon_api_key:
+            return "missing_credentials"
+    return _market_source_mode(config, provider)
+
+
+def _run_event_source_mode(
+    config: AppConfig,
+    *,
+    provider: str,
+    step: Mapping[str, object],
+) -> str:
+    if provider in {"sec", "sec_submissions"}:
+        if str(step.get("status") or "") == "success":
+            return "live"
+        reason = str(step.get("reason") or step.get("error_summary") or "")
+        if "CATALYST_SEC_ENABLE_LIVE" in reason or "CATALYST_SEC_USER_AGENT" in reason:
+            return "missing_credentials"
+        if reason == "no_sec_cik_targets":
+            return "live"
+    return _event_source_mode(config, provider)
 
 
 def _discovery_blockers(
@@ -2671,6 +2810,14 @@ def _first_mapping(*values: object) -> dict[str, object]:
         if isinstance(value, Mapping) and value:
             return _row_dict(value)
     return {}
+
+
+def _sequence_value(value: object) -> tuple[object, ...]:
+    if isinstance(value, Mapping) or isinstance(value, str | bytes):
+        return ()
+    if isinstance(value, Sequence):
+        return tuple(value)
+    return ()
 
 
 def _first_present(*values: object) -> object:
