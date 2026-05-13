@@ -25,8 +25,10 @@ from catalyst_radar.brokers.models import (
     broker_connection_id,
     broker_position_id,
 )
+from catalyst_radar.core.config import AppConfig
 from catalyst_radar.core.models import ActionState
 from catalyst_radar.dashboard.data import (
+    data_source_coverage_payload,
     load_alert_detail,
     load_alert_rows,
     load_broker_summary,
@@ -101,6 +103,49 @@ def test_load_candidate_rows_returns_latest_state_per_ticker(tmp_path: Path) -> 
     assert aapl_brief["decision_card_status"] == (
         "not generated; candidate is not in manual-buy-review state"
     )
+
+
+def test_data_source_coverage_payload_marks_fixture_and_read_only_modes() -> None:
+    config = AppConfig(
+        daily_market_provider="csv",
+        daily_event_provider="news_fixture",
+        enable_premium_llm=False,
+        llm_provider="none",
+        schwab_order_submission_enabled=False,
+        schwab_sync_min_interval_seconds=900,
+    )
+
+    rows = data_source_coverage_payload(
+        config,
+        broker_summary={
+            "snapshot": {
+                "connection_status": "connected",
+                "account_count": 1,
+                "position_count": 4,
+            },
+            "exposure": {"broker_data_stale": False},
+            "rate_limit_config": {"portfolio_sync_min_interval_seconds": 900},
+        },
+    )
+
+    by_layer = {str(row["layer"]): row for row in rows}
+    assert by_layer["Market data"]["mode"] == "fixture"
+    assert by_layer["News/events"]["mode"] == "fixture"
+    assert by_layer["Schwab portfolio"]["mode"] == "read_only_connected"
+    assert "read_only=true" in str(by_layer["Schwab portfolio"]["guardrail"])
+    assert by_layer["LLM review"]["mode"] == "disabled"
+    assert by_layer["Order submission"]["mode"] == "disabled"
+
+    stale_rows = data_source_coverage_payload(
+        config,
+        broker_summary={
+            "snapshot": {"connection_status": "connected"},
+            "exposure": {"broker_data_stale": True},
+        },
+    )
+
+    stale_by_layer = {str(row["layer"]): row for row in stale_rows}
+    assert stale_by_layer["Schwab portfolio"]["mode"] == "stale_read_only_connected"
 
 
 def test_load_candidate_rows_respects_available_at_cutoff(tmp_path: Path) -> None:

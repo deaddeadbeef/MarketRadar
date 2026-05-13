@@ -807,6 +807,83 @@ def load_broker_summary(engine: Engine) -> dict[str, object]:
     }
 
 
+def data_source_coverage_payload(
+    config: AppConfig,
+    *,
+    broker_summary: Mapping[str, object] | None = None,
+) -> list[dict[str, object]]:
+    broker = broker_summary if isinstance(broker_summary, Mapping) else {}
+    broker_snapshot = _mapping_value(broker, "snapshot")
+    broker_exposure = _mapping_value(broker, "exposure")
+    rate_limit_config = _mapping_value(broker, "rate_limit_config")
+    market_provider = _provider_name(config.daily_market_provider, default="csv")
+    event_provider = _provider_name(config.daily_event_provider, default="news_fixture")
+    return [
+        {
+            "layer": "Market data",
+            "mode": _source_mode(market_provider, fixture_names={"csv", "sample"}),
+            "provider": market_provider,
+            "detail": config.csv_daily_bars_path
+            if market_provider in {"csv", "sample"}
+            else config.market_provider,
+            "guardrail": f"universe={config.universe_name}; batch={config.scan_batch_size}",
+        },
+        {
+            "layer": "News/events",
+            "mode": _source_mode(
+                event_provider,
+                fixture_names={"news_fixture", "sample", "fixture"},
+            ),
+            "provider": event_provider,
+            "detail": config.news_fixture_path
+            if event_provider in {"news_fixture", "sample", "fixture"}
+            else event_provider,
+            "guardrail": "point-in-time event cutoff enforced",
+        },
+        {
+            "layer": "Schwab portfolio",
+            "mode": _broker_mode(broker_snapshot, broker_exposure),
+            "provider": "schwab",
+            "detail": (
+                f"accounts={broker_snapshot.get('account_count', 0)}; "
+                f"positions={broker_snapshot.get('position_count', 0)}"
+            ),
+            "guardrail": (
+                f"read_only=true; stale={bool(broker_exposure.get('broker_data_stale'))}; "
+                f"sync_min={rate_limit_config.get('portfolio_sync_min_interval_seconds', 'n/a')}s"
+            ),
+        },
+        {
+            "layer": "LLM review",
+            "mode": _llm_mode(config),
+            "provider": config.llm_provider or "none",
+            "detail": ", ".join(
+                item
+                for item in (
+                    config.llm_evidence_model,
+                    config.llm_skeptic_model,
+                    config.llm_decision_card_model,
+                )
+                if item
+            )
+            or "no model configured",
+            "guardrail": (
+                f"daily_budget={config.llm_daily_budget_usd}; "
+                f"monthly_budget={config.llm_monthly_budget_usd}"
+            ),
+        },
+        {
+            "layer": "Order submission",
+            "mode": "disabled"
+            if not config.schwab_order_submission_enabled
+            else "blocked_by_policy",
+            "provider": "schwab",
+            "detail": "order preview only",
+            "guardrail": "real order submission is disabled by kill switch",
+        },
+    ]
+
+
 def _candidate_row(row: Any) -> dict[str, object]:
     values = dict(row)
     for key in (
@@ -1257,6 +1334,38 @@ def _mapping_value(source: object, key: str) -> dict[str, object]:
         return {}
     value = source.get(key)
     return _row_dict(value) if isinstance(value, Mapping) else {}
+
+
+def _provider_name(value: object, *, default: str) -> str:
+    text = str(value or "").strip().lower()
+    return text or default
+
+
+def _source_mode(provider: str, *, fixture_names: set[str]) -> str:
+    if provider in {"none", "off", "disabled", ""}:
+        return "disabled"
+    if provider in fixture_names or "fixture" in provider:
+        return "fixture"
+    return "live"
+
+
+def _broker_mode(
+    snapshot: Mapping[str, object],
+    exposure: Mapping[str, object],
+) -> str:
+    status = str(snapshot.get("connection_status") or "unknown").strip().lower()
+    if status == "connected":
+        if bool(exposure.get("broker_data_stale")):
+            return "stale_read_only_connected"
+        return "read_only_connected"
+    return status or "unknown"
+
+
+def _llm_mode(config: AppConfig) -> str:
+    provider = str(config.llm_provider or "").strip().lower()
+    if not config.enable_premium_llm or provider in {"", "none", "off", "disabled"}:
+        return "disabled"
+    return "enabled"
 
 
 def _first_mapping(*values: object) -> dict[str, object]:
