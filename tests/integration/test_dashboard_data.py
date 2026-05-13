@@ -149,6 +149,24 @@ def test_data_source_coverage_payload_marks_fixture_and_read_only_modes() -> Non
     assert stale_by_layer["Schwab portfolio"]["mode"] == "stale_read_only_connected"
 
 
+def test_readiness_checklist_blocks_polygon_without_api_key() -> None:
+    config = AppConfig(
+        daily_market_provider="polygon",
+        polygon_api_key=None,
+        daily_event_provider="news_fixture",
+    )
+
+    rows = readiness_checklist_payload(config, radar_run_summary={"steps": []})
+    coverage = data_source_coverage_payload(config)
+
+    market = next(row for row in rows if row["area"] == "Live market scan")
+    coverage_market = next(row for row in coverage if row["layer"] == "Market data")
+    assert coverage_market["mode"] == "missing_credentials"
+    assert market["status"] == "blocked"
+    assert "API key is missing" in str(market["finding"])
+    assert "grouped daily" in str(market["evidence"])
+
+
 def test_readiness_checklist_payload_separates_blockers_from_expected_gates() -> None:
     config = AppConfig(
         daily_market_provider="csv",

@@ -22,6 +22,7 @@ from catalyst_radar.brokers.models import (
     broker_position_id,
 )
 from catalyst_radar.cli import main as cli_main
+from catalyst_radar.connectors.http import HttpResponse
 from catalyst_radar.core.models import (
     ActionState,
     CandidateSnapshot,
@@ -62,6 +63,23 @@ def _file_engine(tmp_path):
     engine = create_engine(f"sqlite:///{(tmp_path / 'jobs.db').as_posix()}", future=True)
     create_schema(engine)
     return engine
+
+
+class _AnyJsonTransport:
+    def __init__(self, fixture_path: str) -> None:
+        with open(fixture_path, "rb") as handle:
+            self.body = handle.read()
+        self.requests: list[str] = []
+
+    def get(self, url: str, *, headers, timeout_seconds) -> HttpResponse:
+        del headers, timeout_seconds
+        self.requests.append(url)
+        return HttpResponse(status_code=200, url=url, headers={}, body=self.body)
+
+    def post(self, url: str, *, headers, body, timeout_seconds) -> HttpResponse:
+        del headers, body, timeout_seconds
+        msg = f"unexpected POST in polygon grouped-daily test: {url}"
+        raise AssertionError(msg)
 
 
 def _insert_active_security(engine, now: datetime) -> None:
@@ -325,6 +343,94 @@ def test_daily_run_ingests_default_csv_market_data(monkeypatch):
     assert jobs["event_ingest"].status == "success"
     assert jobs["event_ingest"].metadata["result_payload"]["event_count"] == 1
     assert jobs["scheduled_news_fixture_ingest"].status == "success"
+
+
+def test_daily_run_polygon_provider_fails_closed_without_api_key(monkeypatch):
+    monkeypatch.setenv("CATALYST_DAILY_MARKET_PROVIDER", "polygon")
+    monkeypatch.setenv("CATALYST_DAILY_EVENT_PROVIDER", "none")
+    monkeypatch.setenv("CATALYST_POLYGON_API_KEY", "")
+    engine = _engine()
+    spec = DailyRunSpec(
+        as_of=date(2026, 5, 8),
+        decision_available_at=datetime(2026, 5, 8, 21, 0, tzinfo=UTC),
+        run_llm=False,
+        dry_run_alerts=True,
+    )
+
+    result = run_daily(spec, engine=engine)
+
+    ingest_step = result.step("daily_bar_ingest")
+    assert ingest_step.status == "failed"
+    assert ingest_step.reason == "missing CATALYST_POLYGON_API_KEY"
+    assert ingest_step.payload["provider"] == "polygon"
+    assert result.step("feature_scan").status == "skipped"
+    assert result.step("feature_scan").reason == "blocked_by_failed_dependency:daily_bar_ingest"
+    with engine.connect() as conn:
+        polygon_job = conn.execute(
+            select(job_runs).where(job_runs.c.job_type == "polygon_grouped_daily")
+        ).one()
+        health = conn.execute(
+            select(provider_health).where(provider_health.c.provider == "polygon")
+        ).one()
+    assert polygon_job.status == "failed"
+    assert polygon_job.error_summary == "missing CATALYST_POLYGON_API_KEY"
+    assert health.status == "down"
+
+
+def test_daily_run_polygon_provider_ingests_grouped_daily_with_guarded_http(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("CATALYST_DAILY_MARKET_PROVIDER", "polygon")
+    monkeypatch.setenv("CATALYST_DAILY_EVENT_PROVIDER", "none")
+    monkeypatch.setenv("CATALYST_POLYGON_API_KEY", "fixture-key")
+    monkeypatch.setattr(
+        "catalyst_radar.jobs.tasks.UrlLibHttpTransport",
+        lambda: _AnyJsonTransport("tests/fixtures/polygon/grouped_daily_2026-05-08.json"),
+    )
+    engine = _engine()
+    now = datetime(2026, 5, 8, 21, 0, tzinfo=UTC)
+    _insert_active_security(engine, now)
+    spec = DailyRunSpec(
+        as_of=date(2026, 5, 8),
+        decision_available_at=now,
+        run_llm=False,
+        dry_run_alerts=True,
+    )
+
+    result = run_daily(spec, engine=engine)
+
+    ingest_step = result.step("daily_bar_ingest")
+    assert ingest_step.status == "success"
+    assert ingest_step.payload["provider"] == "polygon"
+    assert ingest_step.payload["endpoint"] == "polygon_grouped_daily"
+    assert ingest_step.payload["daily_bar_count"] == 6
+    with engine.connect() as conn:
+        polygon_job = conn.execute(
+            select(job_runs).where(job_runs.c.job_type == "polygon_grouped_daily")
+        ).one()
+    assert polygon_job.metadata["date"] == "2026-05-08"
+    assert polygon_job.metadata["scan_provider"] == "polygon"
+
+
+def test_daily_run_skips_unknown_market_provider_with_supported_list(monkeypatch):
+    monkeypatch.setenv("CATALYST_DAILY_MARKET_PROVIDER", "unknown_vendor")
+    monkeypatch.setenv("CATALYST_DAILY_EVENT_PROVIDER", "none")
+    engine = _engine()
+    spec = DailyRunSpec(
+        as_of=date(2026, 5, 8),
+        decision_available_at=datetime(2026, 5, 8, 21, 0, tzinfo=UTC),
+        run_llm=False,
+        dry_run_alerts=True,
+    )
+
+    result = run_daily(spec, engine=engine)
+
+    ingest_step = result.step("daily_bar_ingest")
+    assert ingest_step.status == "skipped"
+    assert ingest_step.reason == "scheduled_provider_not_supported"
+    assert ingest_step.payload["provider"] == "unknown_vendor"
+    assert "csv" in ingest_step.payload["supported_providers"]
+    assert "polygon" in ingest_step.payload["supported_providers"]
 
 
 def test_daily_run_allows_blank_event_provider_to_disable_fixture(monkeypatch):

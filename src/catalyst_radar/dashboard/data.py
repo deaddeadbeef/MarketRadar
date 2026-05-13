@@ -821,11 +821,9 @@ def data_source_coverage_payload(
     return [
         {
             "layer": "Market data",
-            "mode": _source_mode(market_provider, fixture_names={"csv", "sample"}),
+            "mode": _market_source_mode(config, market_provider),
             "provider": market_provider,
-            "detail": config.csv_daily_bars_path
-            if market_provider in {"csv", "sample"}
-            else config.market_provider,
+            "detail": _market_data_detail(config, market_provider),
             "guardrail": f"universe={config.universe_name}; batch={config.scan_batch_size}",
         },
         {
@@ -897,7 +895,17 @@ def readiness_checklist_payload(
 
     market = coverage.get("Market data", {})
     market_mode = str(market.get("mode") or "unknown")
-    if market_mode == "live":
+    if market.get("provider") == "polygon" and not config.polygon_api_key:
+        rows.append(
+            _readiness_row(
+                "Live market scan",
+                "blocked",
+                "Polygon daily market data is selected, but the API key is missing.",
+                "Set CATALYST_POLYGON_API_KEY before using Polygon from the dashboard run.",
+                _coverage_evidence(market),
+            )
+        )
+    elif market_mode == "live":
         rows.append(
             _readiness_row(
                 "Live market scan",
@@ -1696,6 +1704,14 @@ def _coverage_evidence(row: Mapping[str, object]) -> str:
     return "; ".join(part for part in parts if part) or "n/a"
 
 
+def _market_data_detail(config: AppConfig, provider: str) -> str:
+    if provider in {"csv", "sample"}:
+        return config.csv_daily_bars_path
+    if provider == "polygon":
+        return f"grouped daily; base_url={config.polygon_base_url}"
+    return config.market_provider
+
+
 def _step_evidence(name: str, step: Mapping[str, object]) -> str:
     if not step:
         return f"{name}: missing"
@@ -1728,6 +1744,12 @@ def _source_mode(provider: str, *, fixture_names: set[str]) -> str:
     if provider in fixture_names or "fixture" in provider:
         return "fixture"
     return "live"
+
+
+def _market_source_mode(config: AppConfig, provider: str) -> str:
+    if provider == "polygon" and not config.polygon_api_key:
+        return "missing_credentials"
+    return _source_mode(provider, fixture_names={"csv", "sample"})
 
 
 def _broker_mode(

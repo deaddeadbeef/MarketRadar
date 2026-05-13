@@ -11,8 +11,10 @@ from sqlalchemy import Engine, func, select
 from catalyst_radar.alerts.digest import build_alert_digest, digest_payload
 from catalyst_radar.brokers.portfolio_context import latest_broker_portfolio_context
 from catalyst_radar.connectors.base import ConnectorRequest
+from catalyst_radar.connectors.http import JsonHttpClient, UrlLibHttpTransport
 from catalyst_radar.connectors.market_data import CsvMarketDataConnector
 from catalyst_radar.connectors.news import NewsJsonConnector
+from catalyst_radar.connectors.polygon import PolygonEndpoint, PolygonMarketDataConnector
 from catalyst_radar.connectors.provider_ingest import (
     ProviderIngestError,
     ingest_provider_records,
@@ -62,6 +64,10 @@ LIMITED_ANALYSIS_SKIP_REASONS = frozenset(
     }
 )
 CSV_SCHEDULED_PROVIDER_NAMES = frozenset({"csv", "sample"})
+POLYGON_SCHEDULED_PROVIDER_NAMES = frozenset({"polygon"})
+MARKET_SCHEDULED_PROVIDER_NAMES = (
+    CSV_SCHEDULED_PROVIDER_NAMES | POLYGON_SCHEDULED_PROVIDER_NAMES
+)
 NEWS_SCHEDULED_EVENT_PROVIDER_NAMES = frozenset({"news_fixture", "sample", "fixture"})
 DISABLED_SCHEDULED_PROVIDER_NAMES = frozenset({"", "none", "off", "disabled"})
 logger = logging.getLogger("catalyst_radar.jobs.tasks")
@@ -292,15 +298,21 @@ def _daily_bar_ingest(context: _DailyRunContext) -> _StepOutcome:
     provider = _scheduled_market_provider(context)
     if provider in DISABLED_SCHEDULED_PROVIDER_NAMES:
         return _skipped("no_scheduled_provider_input")
-    if provider not in CSV_SCHEDULED_PROVIDER_NAMES:
+    if provider not in MARKET_SCHEDULED_PROVIDER_NAMES:
         return _skipped(
             "scheduled_provider_not_supported",
             payload={
                 "provider": provider,
-                "supported_offline_providers": sorted(CSV_SCHEDULED_PROVIDER_NAMES),
+                "supported_providers": sorted(MARKET_SCHEDULED_PROVIDER_NAMES),
             },
         )
+    if provider in POLYGON_SCHEDULED_PROVIDER_NAMES:
+        return _daily_polygon_bar_ingest(context, provider)
 
+    return _daily_csv_bar_ingest(context, provider)
+
+
+def _daily_csv_bar_ingest(context: _DailyRunContext, provider: str) -> _StepOutcome:
     connector = CsvMarketDataConnector(
         securities_path=context.config.csv_securities_path,
         daily_bars_path=context.config.csv_daily_bars_path,
@@ -346,6 +358,73 @@ def _daily_bar_ingest(context: _DailyRunContext) -> _StepOutcome:
         normalized_count=result.normalized_count,
         payload={
             "provider": result.provider,
+            "ingest_job_id": result.job_id,
+            "security_count": result.security_count,
+            "daily_bar_count": result.daily_bar_count,
+            "holding_count": result.holding_count,
+            "rejected_count": result.rejected_count,
+        },
+    )
+
+
+def _daily_polygon_bar_ingest(context: _DailyRunContext, provider: str) -> _StepOutcome:
+    endpoint = PolygonEndpoint.GROUPED_DAILY
+    connector = PolygonMarketDataConnector(
+        api_key=context.config.polygon_api_key,
+        client=JsonHttpClient(
+            transport=UrlLibHttpTransport(),
+            timeout_seconds=context.config.http_timeout_seconds,
+        ),
+        base_url=context.config.polygon_base_url,
+        availability_policy=context.config.provider_availability_policy,
+    )
+    metadata = {
+        "scheduled_provider": provider,
+        "scan_provider": context.spec.provider or provider,
+        "endpoint": endpoint.value,
+        "date": context.spec.as_of.isoformat(),
+        "adjusted": True,
+        "include_otc": False,
+        "availability_policy": context.config.provider_availability_policy,
+    }
+    request = ConnectorRequest(
+        provider=connector.provider,
+        endpoint=endpoint.value,
+        params={
+            "date": context.spec.as_of.isoformat(),
+            "adjusted": True,
+            "include_otc": False,
+        },
+        requested_at=context.spec.decision_available_at,
+        idempotency_key=(
+            f"daily_bar_ingest:{provider}:{endpoint.value}:"
+            f"{context.spec.as_of.isoformat()}:"
+            f"{context.spec.decision_available_at.isoformat()}"
+        ),
+    )
+    try:
+        result = ingest_provider_records(
+            connector=connector,
+            request=request,
+            market_repo=context.market_repo,
+            provider_repo=ProviderRepository(context.engine),
+            job_type=endpoint.value,
+            metadata=metadata,
+        )
+    except ProviderIngestError as exc:
+        return _StepOutcome(
+            status=JobStatus.FAILED.value,
+            reason=_truncate_reason(str(exc) or exc.__class__.__name__),
+            payload={"provider": provider, "endpoint": request.endpoint},
+        )
+    return _StepOutcome(
+        status=JobStatus.SUCCESS.value,
+        requested_count=result.requested_count,
+        raw_count=result.raw_count,
+        normalized_count=result.normalized_count,
+        payload={
+            "provider": result.provider,
+            "endpoint": endpoint.value,
             "ingest_job_id": result.job_id,
             "security_count": result.security_count,
             "daily_bar_count": result.daily_bar_count,
@@ -442,6 +521,9 @@ def _local_text_triage(context: _DailyRunContext) -> _StepOutcome:
 
 
 def _feature_scan(context: _DailyRunContext) -> _StepOutcome:
+    daily_ingest = context.step_results.get("daily_bar_ingest")
+    if daily_ingest is not None and daily_ingest.status == JobStatus.FAILED.value:
+        return _skipped("blocked_by_failed_dependency:daily_bar_ingest")
     securities = (
         context.market_repo.list_active_securities_by_tickers(context.spec.tickers)
         if context.spec.tickers
@@ -455,7 +537,7 @@ def _feature_scan(context: _DailyRunContext) -> _StepOutcome:
             context.market_repo,
             context.spec.as_of,
             available_at=context.spec.decision_available_at,
-            provider=context.spec.provider,
+            provider=_scan_provider(context),
             universe_tickers=set(context.spec.tickers) if context.spec.tickers else None,
             event_repo=context.event_repo,
             text_repo=context.text_repo,
@@ -889,6 +971,19 @@ def _degraded_payload(context: _DailyRunContext) -> dict[str, Any]:
 def _scheduled_market_provider(context: _DailyRunContext) -> str:
     provider = context.config.daily_market_provider.strip().lower()
     return provider if provider else "csv"
+
+
+def _scan_provider(context: _DailyRunContext) -> str | None:
+    if context.spec.provider:
+        return context.spec.provider.strip().lower()
+    scheduled = _scheduled_market_provider(context)
+    if scheduled in DISABLED_SCHEDULED_PROVIDER_NAMES:
+        return None
+    if scheduled in POLYGON_SCHEDULED_PROVIDER_NAMES:
+        return scheduled
+    if scheduled == "sample":
+        return scheduled
+    return None
 
 
 def _scheduled_event_provider(context: _DailyRunContext) -> str:
