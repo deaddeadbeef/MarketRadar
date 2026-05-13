@@ -2205,12 +2205,15 @@ def _step_evidence(name: str, step: Mapping[str, object]) -> str:
         return f"{name}: missing"
     status = str(step.get("status") or "unknown")
     reason = str(step.get("reason") or "n/a")
+    classification = classify_step_outcome(status, None if reason == "n/a" else reason)
+    outcome = str(step.get("label") or classification.label)
+    category = str(step.get("category") or classification.category)
     requested = int(_finite_float(step.get("requested_count")))
     raw = int(_finite_float(step.get("raw_count")))
     normalized = int(_finite_float(step.get("normalized_count")))
     return (
-        f"{name}: {status}; requested={requested}; raw={raw}; "
-        f"normalized={normalized}; reason={reason}"
+        f"{name}: outcome={outcome}; category={category}; requested={requested}; "
+        f"raw={raw}; normalized={normalized}; reason={reason}"
     )
 
 

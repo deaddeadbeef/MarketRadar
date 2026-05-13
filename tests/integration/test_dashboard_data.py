@@ -480,10 +480,16 @@ def test_readiness_checklist_payload_separates_blockers_from_expected_gates() ->
     assert by_area["Research loop"]["status"] == "ready"
     assert by_area["Decision Cards"]["status"] == "optional"
     assert "manual buy-review" in str(by_area["Decision Cards"]["finding"])
+    assert "outcome=Expected gate" in str(by_area["Decision Cards"]["evidence"])
+    assert "decision_cards: skipped" not in str(by_area["Decision Cards"]["evidence"])
     assert by_area["LLM review"]["status"] == "optional"
     assert by_area["Portfolio context"]["status"] == "attention"
     assert by_area["Alerting"]["status"] == "optional"
+    assert "digest: skipped" not in str(by_area["Alerting"]["evidence"])
     assert by_area["Outcome validation"]["status"] == "optional"
+    assert "validation_update: skipped" not in str(
+        by_area["Outcome validation"]["evidence"]
+    )
     assert by_area["Order safety"]["status"] == "safe"
     joined = " ".join(str(value) for row in rows for value in row.values())
     assert "CLIENT_SECRET" not in joined

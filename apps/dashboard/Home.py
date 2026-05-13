@@ -514,17 +514,10 @@ def _show_radar_run_controls(
             return
         daily_result = _mapping(result.get("daily_result"))
         _show_radar_run_result_notice(daily_result, fallback_reason=result.get("reason"))
-        _show_records(
-            "Radar Run Operator View",
+        _show_radar_operator_sections(
             _radar_run_operator_rows(daily_result),
-            empty="No step rows.",
+            _radar_run_raw_rows(daily_result),
         )
-        with st.expander("Advanced raw step telemetry"):
-            _show_records(
-                "Raw Step Telemetry",
-                _radar_run_raw_rows(daily_result),
-                empty="No raw step telemetry.",
-            )
 
 
 def _show_radar_run_summary(summary: Mapping[str, Any]) -> None:
@@ -553,14 +546,17 @@ def _show_radar_run_summary(summary: Mapping[str, Any]) -> None:
     )
     completed_required_count = max(0, int(_metric_number(outcome_counts.get("completed"))))
     metric_cols = st.columns(5)
-    metric_cols[0].metric("Steps", int(_metric_number(summary.get("step_count"))))
+    metric_cols[0].metric(
+        "Tracked Stages",
+        int(_metric_number(summary.get("step_count"))),
+    )
     metric_cols[1].metric(
         "Required Path",
         f"{min(completed_required_count, required_stage_count)}/{required_stage_count}",
     )
     metric_cols[2].metric("Action Needed", blocking_count)
     metric_cols[3].metric("Optional Gates", expected_gate_count)
-    metric_cols[4].metric("Raw Telemetry", int(_metric_number(summary.get("step_count"))))
+    metric_cols[4].metric("Raw Records", int(_metric_number(summary.get("step_count"))))
     volume_cols = st.columns(3)
     volume_cols[0].metric("Requested", int(_metric_number(summary.get("requested_count"))))
     volume_cols[1].metric("Raw", int(_metric_number(summary.get("raw_count"))))
@@ -587,17 +583,116 @@ def _show_radar_run_summary(summary: Mapping[str, Any]) -> None:
             f"{len(expected_skips) or skipped_count} run step(s) were expected gates, "
             "not scan failures. Required scan stages completed; raw telemetry remains below."
         )
-    _show_records(
-        "Last Radar Run Operator View",
+    _show_radar_operator_sections(
         _radar_summary_operator_rows(summary),
-        empty="No radar run step rows.",
+        _radar_summary_raw_rows(summary),
+        last_run=True,
     )
-    with st.expander("Advanced raw step telemetry"):
+
+
+def _show_radar_operator_sections(
+    operator_rows: list[dict[str, object]],
+    raw_rows: list[dict[str, object]],
+    *,
+    last_run: bool = False,
+) -> None:
+    action_rows = [
+        row
+        for row in operator_rows
+        if _operator_row_value(row, "Needs Action", "needs_action") == "yes"
+    ]
+    optional_rows = [
+        row
+        for row in operator_rows
+        if _operator_row_value(row, "Stage", "stage") == "Optional gate"
+    ]
+    required_rows = [
+        row
+        for row in operator_rows
+        if _operator_row_value(row, "Stage", "stage") != "Optional gate"
+    ]
+    if action_rows:
+        _show_records(
+            "Run Steps Needing Action",
+            _operator_action_rows(action_rows),
+            empty="No blocked run steps.",
+        )
+    else:
+        _show_records(
+            "Required Run Path" if not last_run else "Last Required Run Path",
+            _operator_required_rows(required_rows),
+            empty="No required run path telemetry.",
+        )
+    if optional_rows:
+        with st.expander(f"Expected optional gates ({len(optional_rows)})"):
+            st.caption(
+                "These gates did not run because their trigger was absent; they are not "
+                "scan failures."
+            )
+            _show_records(
+                "Expected Optional Gates",
+                _operator_optional_rows(optional_rows),
+                empty="No optional gate telemetry.",
+            )
+    with st.expander("Diagnostic raw step telemetry"):
+        st.caption("Raw status/reason records are kept here for audit and debugging.")
         _show_records(
             "Raw Step Telemetry",
-            _radar_summary_raw_rows(summary),
+            raw_rows,
             empty="No raw step telemetry.",
         )
+
+
+def _operator_required_rows(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    return [
+        {
+            "Outcome": _operator_row_value(row, "Outcome", "outcome"),
+            "Stage": _operator_row_value(row, "Stage", "stage"),
+            "Step": _operator_row_value(row, "Step", "step"),
+            "Requested": _operator_row_object(row, "Requested", "requested"),
+            "Raw": _operator_row_object(row, "Raw", "raw"),
+            "Normalized": _operator_row_object(row, "Normalized", "normalized"),
+        }
+        for row in rows
+    ]
+
+
+def _operator_action_rows(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    return [
+        {
+            "Outcome": _operator_row_value(row, "Outcome", "outcome"),
+            "Step": _operator_row_value(row, "Step", "step"),
+            "Reason": _operator_row_value(row, "Reason", "reason"),
+            "Meaning": _operator_row_value(row, "Meaning", "meaning"),
+            "Action": _operator_row_value(row, "Action", "action"),
+        }
+        for row in rows
+    ]
+
+
+def _operator_optional_rows(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    return [
+        {
+            "Gate": _operator_row_value(row, "Step", "step"),
+            "Outcome": _operator_row_value(row, "Outcome", "outcome"),
+            "Reason": _operator_row_value(row, "Reason", "reason"),
+            "Meaning": _operator_row_value(row, "Meaning", "meaning"),
+            "Operator Note": _operator_row_value(row, "Action", "action"),
+        }
+        for row in rows
+    ]
+
+
+def _operator_row_value(row: Mapping[str, object], *keys: str) -> str:
+    value = _operator_row_object(row, *keys)
+    return "" if value is None else str(value)
+
+
+def _operator_row_object(row: Mapping[str, object], *keys: str) -> object:
+    for key in keys:
+        if key in row:
+            return row.get(key)
+    return None
 
 
 def _show_radar_run_result_notice(
@@ -607,7 +702,6 @@ def _show_radar_run_result_notice(
 ) -> None:
     status = _metric_text(daily_result.get("status") or fallback_reason or "unknown")
     blocking_messages = _radar_run_limiting_messages(daily_result, blocking_only=True)
-    informational_messages = _radar_run_limiting_messages(daily_result, blocking_only=False)
     if status == "success" and not blocking_messages:
         st.success("Radar run status: success")
     elif status == "failed":
@@ -616,7 +710,7 @@ def _show_radar_run_result_notice(
         st.warning(f"Radar run status: {status}. Analysis is limited.")
     else:
         st.info(f"Radar run status: {status}. No blocking scan failures detected.")
-    for message in (blocking_messages or informational_messages)[:6]:
+    for message in blocking_messages[:6]:
         st.caption(message)
 
 
