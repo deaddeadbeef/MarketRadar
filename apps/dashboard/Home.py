@@ -414,6 +414,25 @@ def _show_activation_summary(
     st.caption(str(summary.get("evidence") or "No activation evidence."))
 
 
+def _show_universe_coverage(
+    config: AppConfig,
+    ops_health: Mapping[str, Any],
+) -> None:
+    summary = _mapping(dashboard_data.universe_coverage_payload(config, ops_health))
+    status = str(summary.get("status") or "unknown")
+    message = (
+        f"{summary.get('headline') or 'Universe coverage status'} "
+        f"{summary.get('detail') or ''} Next: {summary.get('next_action') or 'n/a'}"
+    ).strip()
+    if status == "ready":
+        st.success(message)
+    elif status in {"attention", "partial"}:
+        st.info(message)
+    else:
+        st.warning(message)
+    st.caption(str(summary.get("evidence") or "No universe coverage evidence."))
+
+
 def _show_radar_run_controls(
     config: AppConfig,
     radar_run_summary: Mapping[str, Any],
@@ -887,6 +906,7 @@ def _show_overview(
     metric_cols[5].metric("LLM Cost", _currency(cost_summary.get("total_actual_cost_usd")))
 
     _show_activation_summary(config, radar_run_summary, broker_summary)
+    _show_universe_coverage(config, ops_health)
     _show_radar_run_controls(config, radar_run_summary)
     _show_records(
         "Opportunity Focus",

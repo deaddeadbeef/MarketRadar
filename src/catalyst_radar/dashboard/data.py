@@ -1030,6 +1030,58 @@ def activation_summary_payload(
     }
 
 
+def universe_coverage_payload(
+    config: AppConfig,
+    ops_health: Mapping[str, object],
+) -> dict[str, object]:
+    database = _mapping_value(ops_health, "database")
+    active_count = int(_finite_float(database.get("active_security_count")))
+    with_bars_count = int(
+        _finite_float(database.get("active_security_with_daily_bar_count"))
+    )
+    target_count = max(1, int(config.scan_batch_size))
+    thin_floor = min(100, target_count)
+
+    if active_count == 0:
+        status = "blocked"
+        headline = "No active scan universe is loaded."
+        detail = "The radar has no active securities to scan."
+    elif active_count < thin_floor:
+        status = "thin"
+        headline = f"Thin scan universe: {active_count} active securities."
+        detail = "This is useful for smoke tests, not broad US-market discovery."
+    elif active_count < target_count:
+        status = "partial"
+        headline = f"Partial scan universe: {active_count} active securities."
+        detail = f"The configured scan batch target is {target_count}."
+    elif with_bars_count < active_count:
+        status = "attention"
+        headline = "Scan universe is loaded, but daily bars are incomplete."
+        detail = f"{with_bars_count} of {active_count} active securities have daily bars."
+    else:
+        status = "ready"
+        headline = f"Scan universe is loaded: {active_count} active securities."
+        detail = "Active securities and daily bars are available for scanning."
+
+    return {
+        "status": status,
+        "headline": headline,
+        "detail": detail,
+        "next_action": (
+            "Seed or refresh the universe with "
+            f"`python -m catalyst_radar.cli ingest-polygon tickers --max-pages "
+            f"{config.polygon_tickers_max_pages}` before relying on broad discovery."
+            if status in {"blocked", "thin", "partial"}
+            else "Monitor daily-bar coverage and rejected provider records after each run."
+        ),
+        "evidence": (
+            f"active={active_count}; with_daily_bars={with_bars_count}; "
+            f"target={target_count}; "
+            f"latest_daily_bar={database.get('latest_daily_bar_date') or 'n/a'}"
+        ),
+    }
+
+
 def readiness_checklist_payload(
     config: AppConfig,
     *,

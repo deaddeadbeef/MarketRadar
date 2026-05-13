@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from enum import Enum
 from typing import Any
 
@@ -15,10 +15,12 @@ from catalyst_radar.storage.schema import (
     audit_events,
     candidate_packets,
     candidate_states,
+    daily_bars,
     data_quality_incidents,
     decision_cards,
     job_runs,
     provider_health,
+    securities,
     validation_runs,
 )
 
@@ -57,6 +59,26 @@ def load_ops_health(
         )
         database = {
             "status": "ok",
+            "active_security_count": conn.scalar(
+                select(func.count())
+                .select_from(securities)
+                .where(securities.c.is_active.is_(True))
+            ),
+            "active_security_with_daily_bar_count": conn.scalar(
+                select(func.count(func.distinct(daily_bars.c.ticker))).where(
+                    daily_bars.c.available_at <= resolved_now,
+                    daily_bars.c.ticker.in_(
+                        select(securities.c.ticker).where(
+                            securities.c.is_active.is_(True)
+                        )
+                    ),
+                )
+            ),
+            "latest_daily_bar_date": conn.scalar(
+                select(func.max(daily_bars.c.date)).where(
+                    daily_bars.c.available_at <= resolved_now
+                )
+            ),
             "candidate_state_count": conn.scalar(
                 select(func.count())
                 .select_from(candidate_states)
@@ -239,6 +261,8 @@ def _row_dict(row: Mapping[str, object] | None) -> dict[str, object]:
 def _json_safe(value: object) -> object:
     if isinstance(value, datetime):
         return _as_utc_datetime(value).isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
     if isinstance(value, Enum):
         return value.value
     if isinstance(value, Mapping):
