@@ -5,6 +5,7 @@ from datetime import UTC, date, datetime
 from fastapi.testclient import TestClient
 from sqlalchemy import func, insert, select
 
+import apps.api.main as api_main
 from apps.api.main import create_app
 from catalyst_radar.alerts.models import Alert, alert_id
 from catalyst_radar.api.routes import radar as radar_routes
@@ -37,6 +38,15 @@ def test_api_health() -> None:
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok", "service": "catalyst-radar"}
+
+
+def test_api_app_loads_local_dotenv(monkeypatch) -> None:
+    calls = []
+    monkeypatch.setattr(api_main, "load_app_dotenv", lambda: calls.append(True) or True)
+
+    create_app()
+
+    assert calls == [True]
 
 
 def test_get_candidates_returns_rows(tmp_path, monkeypatch) -> None:
