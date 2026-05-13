@@ -40,6 +40,7 @@ from catalyst_radar.dashboard.data import (
     load_theme_rows,
     load_ticker_detail,
     load_validation_summary,
+    opportunity_focus_payload,
     provider_preflight_payload,
     readiness_checklist_payload,
 )
@@ -105,6 +106,30 @@ def test_load_candidate_rows_returns_latest_state_per_ticker(tmp_path: Path) -> 
     assert aapl_brief["decision_card_status"] == (
         "not generated; candidate is not in manual-buy-review state"
     )
+
+
+def test_opportunity_focus_payload_promotes_research_briefs(tmp_path: Path) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+
+    rows = load_candidate_rows(engine)
+    focus = opportunity_focus_payload(rows, limit=1)
+
+    assert focus == [
+        {
+            "rank": 1,
+            "ticker": "MSFT",
+            "focus": "Research now",
+            "state": "Warning",
+            "score": 88.0,
+            "why_now": "MSFT guidance raised",
+            "top_catalyst": "MSFT guidance raised",
+            "evidence": "MSFT guidance raised",
+            "risk_or_gap": "Valuation stretched",
+            "next_step": "Review the Decision Card before any trade action.",
+            "card": "card-msft-latest",
+        }
+    ]
 
 
 def test_data_source_coverage_payload_marks_fixture_and_read_only_modes() -> None:

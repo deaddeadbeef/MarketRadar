@@ -178,6 +178,35 @@ def load_candidate_rows(
         return [_candidate_row(row._mapping) for row in conn.execute(stmt)]
 
 
+def opportunity_focus_payload(
+    candidate_rows: Sequence[Mapping[str, object]],
+    *,
+    limit: int = 5,
+) -> list[dict[str, object]]:
+    if limit <= 0:
+        return []
+    rows: list[dict[str, object]] = []
+    for rank, candidate in enumerate(candidate_rows[:limit], start=1):
+        brief = _mapping_value(candidate, "research_brief")
+        support = _mapping_value(candidate, "top_supporting_evidence")
+        rows.append(
+            {
+                "rank": rank,
+                "ticker": candidate.get("ticker"),
+                "focus": brief.get("focus") or _research_focus(str(candidate.get("state") or "")),
+                "state": candidate.get("state"),
+                "score": _finite_float(candidate.get("final_score")),
+                "why_now": brief.get("why_now"),
+                "top_catalyst": brief.get("top_catalyst"),
+                "evidence": brief.get("supporting_evidence") or support.get("title"),
+                "risk_or_gap": brief.get("risk_or_gap"),
+                "next_step": brief.get("next_step"),
+                "card": candidate.get("decision_card_id") or "n/a",
+            }
+        )
+    return rows
+
+
 def load_ticker_detail(
     engine: Engine,
     ticker: str,
