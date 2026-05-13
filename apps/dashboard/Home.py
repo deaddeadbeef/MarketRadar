@@ -431,6 +431,42 @@ def _show_universe_coverage(
     else:
         st.warning(message)
     st.caption(str(summary.get("evidence") or "No universe coverage evidence."))
+    seed_configured = bool(config.polygon_api_key)
+    st.caption(
+        f"Manual seed uses Polygon ticker reference data, capped at "
+        f"{config.polygon_tickers_max_pages} page(s). "
+        + (
+            "It may make live Polygon calls because CATALYST_POLYGON_API_KEY is configured."
+            if seed_configured
+            else "No live Polygon call is available until CATALYST_POLYGON_API_KEY is set."
+        )
+    )
+    if st.button(
+        "Seed Universe",
+        key="seed_universe_polygon",
+        disabled=not seed_configured,
+        help="Ingest Polygon ticker reference data using the configured page cap.",
+    ):
+        try:
+            result = _mapping(
+                _api_post(
+                    config,
+                    "/api/radar/universe/seed",
+                    {
+                        "provider": "polygon",
+                        "max_pages": config.polygon_tickers_max_pages,
+                    },
+                )
+            )
+        except RuntimeError as exc:
+            st.error(str(exc))
+            return
+        st.success(
+            "Universe seed completed: "
+            f"securities={int(_metric_number(result.get('security_count')))}; "
+            f"rejected={int(_metric_number(result.get('rejected_count')))}; "
+            f"cap={int(_metric_number(result.get('max_pages')))} page(s)."
+        )
 
 
 def _show_radar_run_controls(

@@ -26,6 +26,7 @@ from catalyst_radar.storage.schema import (
     useful_alert_labels,
     user_feedback,
 )
+from catalyst_radar.universe.seed import UniverseSeedResult
 
 AS_OF = datetime(2026, 5, 1, 21, tzinfo=UTC)
 SOURCE_TS = datetime(2026, 5, 1, 20, 30, tzinfo=UTC)
@@ -378,6 +379,168 @@ def test_post_radar_run_reports_lock_contention(tmp_path, monkeypatch) -> None:
     assert telemetry[1]["status"] == "blocked"
     assert telemetry[1]["reason"] == "lock_held"
     assert telemetry[1]["after_payload"]["acquired_lock"] is False
+
+
+def test_post_universe_seed_uses_capped_polygon_ingest(tmp_path, monkeypatch) -> None:
+    database_url = _database_url(tmp_path, "universe-seed.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("CATALYST_POLYGON_API_KEY", "fixture-key")
+    monkeypatch.setenv("CATALYST_POLYGON_TICKERS_MAX_PAGES", "2")
+    engine = _create_database(database_url)
+    calls = []
+
+    def fake_seed(engine_arg, *, config, max_pages, date_value):
+        calls.append(
+            {
+                "database_url": str(engine_arg.url),
+                "max_pages": max_pages,
+                "date_value": date_value,
+                "configured_cap": config.polygon_tickers_max_pages,
+            }
+        )
+        return UniverseSeedResult(
+            provider="polygon",
+            job_id="job-seed",
+            max_pages=max_pages,
+            date=date_value,
+            requested_count=2,
+            raw_count=2,
+            normalized_count=2,
+            security_count=2,
+            daily_bar_count=0,
+            holding_count=0,
+            rejected_count=0,
+        )
+
+    monkeypatch.setattr(radar_routes, "seed_polygon_tickers", fake_seed)
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/radar/universe/seed",
+        headers={"X-Catalyst-Actor": "tester", "X-Catalyst-Role": "analyst"},
+        json={"provider": "polygon", "max_pages": 2, "date": "2026-05-08"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["security_count"] == 2
+    assert calls == [
+        {
+            "database_url": str(engine.url),
+            "max_pages": 2,
+            "date_value": date(2026, 5, 8),
+            "configured_cap": 2,
+        }
+    ]
+    telemetry = _audit_event_rows(engine)
+    assert [row["event_type"] for row in telemetry] == [
+        "telemetry.universe_seed.requested",
+        "telemetry.universe_seed.completed",
+    ]
+    assert telemetry[0]["actor_id"] == "tester"
+    assert telemetry[0]["actor_role"] == "analyst"
+    assert telemetry[0]["metadata"]["configured_max_pages"] == 2
+    assert telemetry[1]["after_payload"]["job_id"] == "job-seed"
+
+
+def test_post_universe_seed_rejects_max_pages_above_configured_cap(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "universe-seed-cap.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("CATALYST_POLYGON_API_KEY", "fixture-key")
+    monkeypatch.setenv("CATALYST_POLYGON_TICKERS_MAX_PAGES", "1")
+    engine = _create_database(database_url)
+    monkeypatch.setattr(
+        radar_routes,
+        "seed_polygon_tickers",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("seed called")),
+    )
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/radar/universe/seed",
+        json={"provider": "polygon", "max_pages": 2},
+    )
+
+    assert response.status_code == 422
+    assert "max_pages exceeds configured cap" in response.json()["detail"]
+    telemetry = _audit_event_rows(engine)
+    assert [row["event_type"] for row in telemetry] == [
+        "telemetry.universe_seed.requested",
+        "telemetry.universe_seed.rejected",
+    ]
+
+
+def test_post_universe_seed_rate_limits_repeated_requests(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "universe-seed-rate.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("CATALYST_POLYGON_API_KEY", "fixture-key")
+    monkeypatch.setenv("CATALYST_POLYGON_TICKER_SEED_MIN_INTERVAL_SECONDS", "60")
+    engine = _create_database(database_url)
+    calls = []
+
+    def fake_seed(*_args, **kwargs):
+        calls.append(kwargs)
+        return UniverseSeedResult(
+            provider="polygon",
+            job_id="job-seed",
+            max_pages=1,
+            date=None,
+            requested_count=1,
+            raw_count=1,
+            normalized_count=1,
+            security_count=1,
+            daily_bar_count=0,
+            holding_count=0,
+            rejected_count=0,
+        )
+
+    monkeypatch.setattr(radar_routes, "seed_polygon_tickers", fake_seed)
+    client = TestClient(create_app())
+
+    first = client.post("/api/radar/universe/seed", json={"provider": "polygon"})
+    second = client.post("/api/radar/universe/seed", json={"provider": "polygon"})
+
+    assert first.status_code == 200
+    assert second.status_code == 429
+    assert int(second.headers["Retry-After"]) > 0
+    assert len(calls) == 1
+    telemetry = _audit_event_rows(engine)
+    assert [row["event_type"] for row in telemetry] == [
+        "telemetry.universe_seed.requested",
+        "telemetry.universe_seed.completed",
+        "telemetry.universe_seed.requested",
+        "telemetry.universe_seed.rate_limited",
+    ]
+
+
+def test_post_universe_seed_requires_analyst_when_auth_enabled(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "universe-seed-auth.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("CATALYST_API_AUTH_MODE", "header")
+    _create_database(database_url)
+    monkeypatch.setattr(
+        radar_routes,
+        "seed_polygon_tickers",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("seed called")),
+    )
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/radar/universe/seed",
+        headers={"X-Catalyst-Role": "viewer"},
+        json={"provider": "polygon"},
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "insufficient role"}
 
 
 def test_get_latest_radar_run_returns_summary(tmp_path, monkeypatch) -> None:

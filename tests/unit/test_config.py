@@ -169,15 +169,28 @@ def test_config_reads_sec_live_settings_from_env() -> None:
 
 
 def test_config_reads_polygon_ticker_page_cap_from_env() -> None:
-    config = AppConfig.from_env({"CATALYST_POLYGON_TICKERS_MAX_PAGES": "3"})
+    config = AppConfig.from_env(
+        {
+            "CATALYST_POLYGON_TICKERS_MAX_PAGES": "3",
+            "CATALYST_POLYGON_TICKER_SEED_MIN_INTERVAL_SECONDS": "120",
+        }
+    )
 
     assert config.polygon_tickers_max_pages == 3
+    assert config.polygon_ticker_seed_min_interval_seconds == 120
 
 
-@pytest.mark.parametrize("value", ["0", "-1"])
-def test_config_rejects_invalid_polygon_ticker_page_cap(value: str) -> None:
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("CATALYST_POLYGON_TICKERS_MAX_PAGES", "0"),
+        ("CATALYST_POLYGON_TICKERS_MAX_PAGES", "-1"),
+        ("CATALYST_POLYGON_TICKER_SEED_MIN_INTERVAL_SECONDS", "0"),
+    ],
+)
+def test_config_rejects_invalid_polygon_ticker_settings(key: str, value: str) -> None:
     with pytest.raises(ValueError):
-        AppConfig.from_env({"CATALYST_POLYGON_TICKERS_MAX_PAGES": value})
+        AppConfig.from_env({key: value})
 
 
 def test_config_reads_schwab_settings_from_env() -> None:

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import date, datetime
+from datetime import UTC, datetime, timedelta
+from datetime import date as Date
+from math import ceil
 from typing import Any
 from uuid import uuid4
 
@@ -20,8 +22,11 @@ from catalyst_radar.ops.telemetry import record_telemetry_event
 from catalyst_radar.security.access import Role, require_role
 from catalyst_radar.security.licenses import redact_restricted_external_payload
 from catalyst_radar.storage.db import create_schema, engine_from_url
+from catalyst_radar.storage.job_repositories import JobLockRepository
+from catalyst_radar.universe.seed import seed_polygon_tickers
 
 router = APIRouter(prefix="/api/radar", tags=["radar"])
+UNIVERSE_SEED_LOCK_NAME = "polygon_ticker_seed"
 
 
 def _engine():
@@ -33,7 +38,7 @@ def _engine():
 class RadarRunRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    as_of: date | None = None
+    as_of: Date | None = None
     decision_available_at: datetime | None = None
     outcome_available_at: datetime | None = None
     provider: str | None = None
@@ -42,6 +47,14 @@ class RadarRunRequest(BaseModel):
     run_llm: bool = False
     llm_dry_run: bool = True
     dry_run_alerts: bool = True
+
+
+class UniverseSeedRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider: str = "polygon"
+    date: Date | None = None
+    max_pages: int | None = Field(default=None, ge=1)
 
 
 def _dashboard_helper(name: str) -> Callable[..., Any]:
@@ -179,6 +192,101 @@ def latest_radar_run() -> dict[str, object]:
     return load_radar_run_summary(_engine())
 
 
+@router.post("/universe/seed", dependencies=[Depends(require_role(Role.ANALYST))])
+def seed_universe(
+    request: UniverseSeedRequest,
+    x_catalyst_actor: str | None = Header(default=None),
+    x_catalyst_role: str | None = Header(default=None),
+) -> dict[str, object]:
+    engine = _engine()
+    config = AppConfig.from_env()
+    artifact_id = f"universe-seed-api:{uuid4().hex}"
+    metadata = _universe_seed_request_metadata(request, config)
+    record_telemetry_event(
+        engine,
+        event_name="universe_seed.requested",
+        status="received",
+        actor_source="api",
+        actor_id=x_catalyst_actor,
+        actor_role=x_catalyst_role,
+        artifact_type="universe_seed",
+        artifact_id=artifact_id,
+        metadata=metadata,
+    )
+    try:
+        _validate_universe_seed_request(request, config)
+        _acquire_universe_seed_slot(engine, config=config, metadata=metadata)
+        result = seed_polygon_tickers(
+            engine,
+            config=config,
+            max_pages=request.max_pages,
+            date_value=request.date,
+        )
+    except _UniverseSeedRateLimited as exc:
+        payload = exc.as_payload()
+        record_telemetry_event(
+            engine,
+            event_name="universe_seed.rate_limited",
+            status="blocked",
+            actor_source="api",
+            actor_id=x_catalyst_actor,
+            actor_role=x_catalyst_role,
+            artifact_type="universe_seed",
+            artifact_id=artifact_id,
+            reason="rate_limited",
+            metadata={**metadata, **payload},
+        )
+        raise HTTPException(
+            status_code=429,
+            detail=payload,
+            headers={"Retry-After": str(payload["retry_after_seconds"])},
+        ) from exc
+    except ValueError as exc:
+        record_telemetry_event(
+            engine,
+            event_name="universe_seed.rejected",
+            status="rejected",
+            actor_source="api",
+            actor_id=x_catalyst_actor,
+            actor_role=x_catalyst_role,
+            artifact_type="universe_seed",
+            artifact_id=artifact_id,
+            reason=str(exc),
+            metadata=metadata,
+        )
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        reason = str(exc) or exc.__class__.__name__
+        record_telemetry_event(
+            engine,
+            event_name="universe_seed.rejected",
+            status="failed",
+            actor_source="api",
+            actor_id=x_catalyst_actor,
+            actor_role=x_catalyst_role,
+            artifact_type="universe_seed",
+            artifact_id=artifact_id,
+            reason=reason,
+            metadata={**metadata, "error_type": exc.__class__.__name__},
+        )
+        raise HTTPException(status_code=503, detail=reason) from exc
+
+    payload = result.as_payload()
+    record_telemetry_event(
+        engine,
+        event_name="universe_seed.completed",
+        status="success",
+        actor_source="api",
+        actor_id=x_catalyst_actor,
+        actor_role=x_catalyst_role,
+        artifact_type="universe_seed",
+        artifact_id=artifact_id,
+        metadata={**metadata, "job_id": result.job_id},
+        after_payload=payload,
+    )
+    return payload
+
+
 def _radar_run_request_metadata(request: RadarRunRequest) -> dict[str, object]:
     return {
         "lock_name": "daily-run",
@@ -200,6 +308,83 @@ def _radar_run_request_metadata(request: RadarRunRequest) -> dict[str, object]:
         "llm_dry_run": request.llm_dry_run,
         "dry_run_alerts": request.dry_run_alerts,
     }
+
+
+def _universe_seed_request_metadata(
+    request: UniverseSeedRequest,
+    config: AppConfig,
+) -> dict[str, object]:
+    return {
+        "provider": request.provider,
+        "date": request.date.isoformat() if request.date is not None else None,
+        "requested_max_pages": request.max_pages,
+        "configured_max_pages": config.polygon_tickers_max_pages,
+        "min_interval_seconds": config.polygon_ticker_seed_min_interval_seconds,
+    }
+
+
+def _validate_universe_seed_request(
+    request: UniverseSeedRequest,
+    config: AppConfig,
+) -> None:
+    provider = str(request.provider or "").strip().lower()
+    if provider != "polygon":
+        msg = "only provider=polygon is supported for universe seed"
+        raise ValueError(msg)
+    if (
+        request.max_pages is not None
+        and request.max_pages > config.polygon_tickers_max_pages
+    ):
+        msg = (
+            "max_pages exceeds configured cap "
+            f"CATALYST_POLYGON_TICKERS_MAX_PAGES={config.polygon_tickers_max_pages}"
+        )
+        raise ValueError(msg)
+
+
+class _UniverseSeedRateLimited(RuntimeError):
+    def __init__(self, *, retry_after_seconds: int, reset_at: datetime | None) -> None:
+        self.retry_after_seconds = retry_after_seconds
+        self.reset_at = reset_at
+        super().__init__(f"universe seed is rate limited for {retry_after_seconds}s")
+
+    def as_payload(self) -> dict[str, object]:
+        return {
+            "operation": "polygon_ticker_seed",
+            "retry_after_seconds": self.retry_after_seconds,
+            "reset_at": self.reset_at.isoformat() if self.reset_at is not None else None,
+        }
+
+
+def _acquire_universe_seed_slot(
+    engine,
+    *,
+    config: AppConfig,
+    metadata: dict[str, object],
+) -> None:
+    now = datetime.now(UTC)
+    result = JobLockRepository(engine).acquire(
+        UNIVERSE_SEED_LOCK_NAME,
+        owner=f"api-universe-seed:{uuid4().hex}",
+        ttl=timedelta(seconds=config.polygon_ticker_seed_min_interval_seconds),
+        now=now,
+        metadata={
+            "operation": "polygon_ticker_seed",
+            **metadata,
+        },
+    )
+    if result.acquired:
+        return
+    raise _UniverseSeedRateLimited(
+        retry_after_seconds=_retry_after_seconds(result.expires_at, now),
+        reset_at=result.expires_at,
+    )
+
+
+def _retry_after_seconds(reset_at: datetime | None, now: datetime) -> int:
+    if reset_at is None:
+        return 1
+    return max(1, int(ceil((reset_at.astimezone(UTC) - now).total_seconds())))
 
 
 def _radar_run_result_metadata(payload: dict[str, object]) -> dict[str, object]:

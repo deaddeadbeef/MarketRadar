@@ -104,6 +104,10 @@ EXPECTED_API_ROUTES = {
         "/api/radar/runs/latest",
     ): ("catalyst_radar.api.routes.radar", "latest_radar_run", ("radar",)),
     (
+        "POST",
+        "/api/radar/universe/seed",
+    ): ("catalyst_radar.api.routes.radar", "seed_universe", ("radar",)),
+    (
         "GET",
         "/api/brokers/schwab/connect",
     ): ("catalyst_radar.api.routes.brokers", "schwab_connect", ("brokers",)),
