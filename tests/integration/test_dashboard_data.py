@@ -30,6 +30,7 @@ from catalyst_radar.core.models import ActionState
 from catalyst_radar.dashboard.data import (
     activation_summary_payload,
     data_source_coverage_payload,
+    live_activation_plan_payload,
     load_alert_detail,
     load_alert_rows,
     load_broker_summary,
@@ -277,6 +278,71 @@ def test_activation_summary_payload_reports_ready_live_inputs() -> None:
     assert "Live radar inputs are ready" in str(summary["headline"])
     assert "market=polygon/live" in str(summary["evidence"])
     assert "events=sec/live" in str(summary["evidence"])
+
+
+def test_live_activation_plan_payload_separates_optional_gates_from_blockers() -> None:
+    config = AppConfig(
+        daily_market_provider="csv",
+        daily_event_provider="news_fixture",
+        enable_premium_llm=False,
+        llm_provider="none",
+    )
+    run_summary = {
+        "step_count": 10,
+        "required_step_count": 6,
+        "required_completed_count": 6,
+        "blocking_step_count": 0,
+        "expected_gate_count": 4,
+        "outcome_category_counts": {"completed": 6, "expected_gate": 4},
+    }
+
+    plan = live_activation_plan_payload(config, radar_run_summary=run_summary)
+
+    assert plan["status"] == "blocked"
+    assert "run_path=6/6" in str(plan["evidence"])
+    assert "optional_expected_gates=4" in str(plan["evidence"])
+    assert "CATALYST_POLYGON_API_KEY" in plan["missing_env"]
+    by_area = {str(row["area"]): row for row in plan["tasks"]}
+    assert by_area["Required run path"]["status"] == "ready"
+    assert by_area["Required run path"]["current_state"] == "6/6 completed"
+    assert by_area["Live market data"]["status"] == "blocked"
+    assert "CATALYST_DAILY_MARKET_PROVIDER=polygon" in str(
+        by_area["Live market data"]["missing_env"]
+    )
+
+
+def test_live_activation_plan_payload_never_leaks_configured_secrets() -> None:
+    config = AppConfig(
+        daily_market_provider="polygon",
+        polygon_api_key="polygon-secret-value",
+        daily_event_provider="sec",
+        sec_enable_live=True,
+        sec_user_agent="Secret User Agent",
+        enable_premium_llm=True,
+        llm_provider="openai",
+        llm_evidence_model="evidence-model",
+        llm_skeptic_model="skeptic-model",
+        llm_decision_card_model="card-model",
+        llm_daily_budget_usd=1.0,
+        llm_monthly_budget_usd=10.0,
+        openai_api_key="sk-secret-value",
+    )
+    run_summary = {
+        "step_count": 6,
+        "required_step_count": 6,
+        "required_completed_count": 6,
+        "blocking_step_count": 0,
+        "expected_gate_count": 0,
+        "outcome_category_counts": {"completed": 6},
+    }
+
+    plan = live_activation_plan_payload(config, radar_run_summary=run_summary)
+
+    rendered = str(plan)
+    assert plan["status"] == "ready"
+    assert "polygon-secret-value" not in rendered
+    assert "sk-secret-value" not in rendered
+    assert "Secret User Agent" not in rendered
 
 
 def test_universe_coverage_payload_warns_on_thin_sample_universe() -> None:
@@ -1176,6 +1242,12 @@ def test_load_radar_run_summary_classifies_expected_gate_skips_success(
     }
     assert summary["blocking_step_count"] == 0
     assert summary["expected_gate_count"] == 2
+    assert summary["required_step_count"] == 1
+    assert summary["required_completed_count"] == 1
+    assert summary["required_incomplete_count"] == 0
+    assert summary["optional_expected_gate_count"] == 2
+    assert summary["action_needed_count"] == 0
+    assert summary["run_path_status"] == "complete"
     assert [row["category"] for row in summary["steps"]] == [
         "completed",
         "expected_gate",

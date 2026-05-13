@@ -763,6 +763,9 @@ def load_radar_run_summary(engine: Engine, *, limit: int = 250) -> dict[str, obj
         for step in DAILY_STEP_ORDER
         if step in run_rows_by_step
     ]
+    classified_steps = [
+        (row, _radar_run_step_classification(row)) for row in ordered_steps
+    ]
     started_values = [
         value
         for value in (_as_utc_datetime_or_none(row.get("started_at")) for row in ordered_steps)
@@ -774,8 +777,15 @@ def load_radar_run_summary(engine: Engine, *, limit: int = 250) -> dict[str, obj
         if value is not None
     ]
     status_counts = Counter(str(row.get("status") or "unknown") for row in ordered_steps)
-    outcome_counts = Counter(
-        _radar_run_step_classification(row).category for row in ordered_steps
+    outcome_counts = Counter(classification.category for _, classification in classified_steps)
+    expected_gate_count = outcome_counts.get("expected_gate", 0)
+    required_step_count = max(0, len(ordered_steps) - expected_gate_count)
+    required_completed_count = min(
+        sum(1 for _, classification in classified_steps if classification.category == "completed"),
+        required_step_count,
+    )
+    blocking_step_count = sum(
+        1 for _, classification in classified_steps if classification.blocks_reliance
     )
     first_metadata = rows[0].get("metadata")
     metadata = _row_dict(first_metadata) if isinstance(first_metadata, Mapping) else {}
@@ -794,12 +804,22 @@ def load_radar_run_summary(engine: Engine, *, limit: int = 250) -> dict[str, obj
             else None
         ),
         "step_count": len(ordered_steps),
+        "required_step_count": required_step_count,
+        "required_completed_count": required_completed_count,
+        "required_incomplete_count": max(
+            0, required_step_count - required_completed_count
+        ),
+        "optional_expected_gate_count": expected_gate_count,
+        "action_needed_count": blocking_step_count,
+        "run_path_status": _radar_run_path_status(
+            required_completed_count=required_completed_count,
+            required_step_count=required_step_count,
+            blocking_step_count=blocking_step_count,
+        ),
         "status_counts": dict(sorted(status_counts.items())),
         "outcome_category_counts": dict(sorted(outcome_counts.items())),
-        "blocking_step_count": outcome_counts.get("blocked_input", 0)
-        + outcome_counts.get("failed", 0)
-        + outcome_counts.get("needs_review", 0),
-        "expected_gate_count": outcome_counts.get("expected_gate", 0),
+        "blocking_step_count": blocking_step_count,
+        "expected_gate_count": expected_gate_count,
         "requested_count": sum(
             int(_finite_float(row.get("requested_count"))) for row in ordered_steps
         ),
@@ -821,12 +841,12 @@ def load_radar_run_summary(engine: Engine, *, limit: int = 250) -> dict[str, obj
                 "normalized_count": row.get("normalized_count"),
                 "error_summary": row.get("error_summary"),
                 "reason": _radar_run_step_reason(row),
-                "meaning": _radar_run_step_classification(row).meaning,
-                "operator_action": _radar_run_step_classification(row).operator_action,
-                "blocks_reliance": _radar_run_step_classification(row).blocks_reliance,
+                "meaning": classification.meaning,
+                "operator_action": classification.operator_action,
+                "blocks_reliance": classification.blocks_reliance,
                 "payload": _radar_run_step_payload(row),
             }
-            for row in ordered_steps
+            for row, classification in classified_steps
         ],
     }
 
@@ -1028,6 +1048,125 @@ def activation_summary_payload(
             f"required_path={run_path['required_complete']}/{run_path['required_total']}; "
             f"action_needed={run_path['blocking_count']}; "
             f"optional_gates={run_path['expected_gate_count']}"
+        ),
+    }
+
+
+def live_activation_plan_payload(
+    config: AppConfig,
+    *,
+    radar_run_summary: Mapping[str, object] | None = None,
+    broker_summary: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    coverage_rows = data_source_coverage_payload(config, broker_summary=broker_summary)
+    coverage = {str(row.get("layer") or ""): row for row in coverage_rows}
+    preflight_rows = provider_preflight_payload(
+        config,
+        radar_run_summary=radar_run_summary,
+        broker_summary=broker_summary,
+    )
+    run_path = _radar_run_path_summary(radar_run_summary)
+    market_missing_env = _market_activation_missing_env(config)
+    event_missing_env = _event_activation_missing_env(config)
+    missing_env = [*market_missing_env, *event_missing_env]
+    action_needed = run_path["blocking_count"]
+    required_complete = run_path["required_complete"]
+    required_total = run_path["required_total"]
+    market = coverage.get("Market data", {})
+    events = coverage.get("News/events", {})
+    market_mode = str(market.get("mode") or "unknown")
+    event_mode = str(events.get("mode") or "unknown")
+
+    if missing_env:
+        status = "blocked"
+        headline = "Live market activation is not configured yet."
+        next_action = "Set the missing environment variables, then run one capped radar cycle."
+    elif action_needed:
+        status = "attention"
+        headline = "Live inputs are configured, but the last run needs action."
+        next_action = "Fix the blocked run step before relying on the output."
+    elif required_total and required_complete >= required_total:
+        status = "ready"
+        headline = "Live activation inputs and required run path are ready."
+        next_action = "Run one capped radar cycle and inspect discovery blockers before scaling."
+    else:
+        status = "attention"
+        headline = "Live activation needs a fresh run."
+        next_action = "Run one capped radar cycle and inspect required-path telemetry."
+
+    task_rows = [
+        {
+            "area": "Required run path",
+            "status": (
+                "ready"
+                if required_total and required_complete >= required_total and not action_needed
+                else "attention"
+            ),
+            "current_state": f"{required_complete}/{required_total} completed",
+            "missing_env": "",
+            "safe_next_action": (
+                "No run-step action needed."
+                if not action_needed
+                else "Review the blocked run-step table before using candidates."
+            ),
+        },
+        _activation_task_row(
+            "Live market data",
+            market,
+            missing=market_missing_env,
+            ready_modes={"live"},
+            safe_next_action=(
+                "Set Polygon provider/key, then keep the first run to one grouped-daily request."
+            ),
+        ),
+        _activation_task_row(
+            "SEC catalyst feed",
+            events,
+            missing=event_missing_env,
+            ready_modes={"live"},
+            safe_next_action=(
+                "Set SEC live mode/User-Agent, then keep submissions capped per run."
+            ),
+        ),
+        _activation_task_row(
+            "Schwab portfolio context",
+            coverage.get("Schwab portfolio", {}),
+            missing=[],
+            ready_modes={"read_only_connected", "stale_read_only_connected"},
+            safe_next_action="Use read-only sync as context; order submission stays disabled.",
+            optional=True,
+        ),
+        _activation_task_row(
+            "Agentic LLM review",
+            coverage.get("LLM review", {}),
+            missing=_llm_missing_env(config),
+            ready_modes={"live"},
+            safe_next_action="Enable only after provider, model, key, and budget caps are set.",
+            optional=True,
+        ),
+    ]
+    call_budget_rows = [
+        {
+            "layer": str(row.get("layer") or ""),
+            "status": str(row.get("status") or ""),
+            "call_budget": str(row.get("call_budget") or ""),
+            "guardrail": str(row.get("guardrail") or ""),
+        }
+        for row in preflight_rows
+    ]
+    return {
+        "status": status,
+        "headline": headline,
+        "next_action": next_action,
+        "missing_env": missing_env,
+        "tasks": task_rows,
+        "call_budgets": call_budget_rows,
+        "evidence": (
+            f"run_path={required_complete}/{required_total}; "
+            f"optional_expected_gates={run_path['expected_gate_count']}; "
+            f"action_needed={action_needed}; "
+            f"market={market.get('provider') or 'unknown'}/{market_mode}; "
+            f"events={events.get('provider') or 'unknown'}/{event_mode}"
         ),
     }
 
@@ -2089,6 +2228,84 @@ def _activation_next_action(rows: Sequence[Mapping[str, object]]) -> str:
     return str(rows[0].get("next_action") or "Review the readiness checklist.")
 
 
+def _activation_missing_env(config: AppConfig) -> list[str]:
+    return [*_market_activation_missing_env(config), *_event_activation_missing_env(config)]
+
+
+def _market_activation_missing_env(config: AppConfig) -> list[str]:
+    items: list[str] = []
+    market_provider = _provider_name(config.daily_market_provider, default="csv")
+    if market_provider != "polygon":
+        items.append("CATALYST_DAILY_MARKET_PROVIDER=polygon")
+        items.append("CATALYST_DAILY_PROVIDER=polygon")
+    if not config.polygon_api_key:
+        items.append("CATALYST_POLYGON_API_KEY")
+    return items
+
+
+def _event_activation_missing_env(config: AppConfig) -> list[str]:
+    items: list[str] = []
+    event_provider = _provider_name(config.daily_event_provider, default="news_fixture")
+    if event_provider not in {"sec", "sec_submissions"}:
+        items.append("CATALYST_DAILY_EVENT_PROVIDER=sec")
+    if not config.sec_enable_live:
+        items.append("CATALYST_SEC_ENABLE_LIVE=1")
+    if not config.sec_user_agent:
+        items.append("CATALYST_SEC_USER_AGENT")
+    return items
+
+
+def _llm_missing_env(config: AppConfig) -> list[str]:
+    provider = _provider_name(config.llm_provider, default="none")
+    if not config.enable_premium_llm or provider in {"none", "off", "disabled"}:
+        return []
+    items: list[str] = []
+    if provider != "openai":
+        items.append("CATALYST_LLM_PROVIDER=openai")
+    if not config.openai_api_key:
+        items.append("OPENAI_API_KEY")
+    if not any(
+        (
+            config.llm_evidence_model,
+            config.llm_skeptic_model,
+            config.llm_decision_card_model,
+        )
+    ):
+        items.append("CATALYST_LLM_*_MODEL")
+    if config.llm_daily_budget_usd <= 0 or config.llm_monthly_budget_usd <= 0:
+        items.append("CATALYST_LLM_DAILY_BUDGET_USD / CATALYST_LLM_MONTHLY_BUDGET_USD")
+    return items
+
+
+def _activation_task_row(
+    area: str,
+    coverage: Mapping[str, object],
+    *,
+    missing: Sequence[str],
+    ready_modes: set[str],
+    safe_next_action: str,
+    optional: bool = False,
+) -> dict[str, object]:
+    mode = str(coverage.get("mode") or "unknown")
+    provider = str(coverage.get("provider") or "unknown")
+    missing_text = ", ".join(dict.fromkeys(missing))
+    if missing_text:
+        status = "blocked"
+    elif mode in ready_modes:
+        status = "ready" if not optional or mode != "stale_read_only_connected" else "attention"
+    elif optional:
+        status = "optional"
+    else:
+        status = "attention"
+    return {
+        "area": area,
+        "status": status,
+        "current_state": f"{provider}/{mode}",
+        "missing_env": missing_text,
+        "safe_next_action": safe_next_action,
+    }
+
+
 def _radar_run_path_summary(
     radar_run_summary: Mapping[str, object] | None,
 ) -> dict[str, int]:
@@ -2099,13 +2316,45 @@ def _radar_run_path_summary(
         _finite_float(summary.get("expected_gate_count"))
         or outcome_counts.get("expected_gate", 0)
     )
-    required_total = max(0, step_count - expected_gate_count)
+    required_total_value = summary.get("required_step_count")
+    required_total = (
+        int(_finite_float(required_total_value))
+        if required_total_value is not None
+        else max(0, step_count - expected_gate_count)
+    )
+    required_complete_value = summary.get("required_completed_count")
+    required_complete = (
+        int(_finite_float(required_complete_value))
+        if required_complete_value is not None
+        else min(outcome_counts.get("completed", 0), required_total)
+    )
+    blocking_value = summary.get("action_needed_count")
+    blocking_count = (
+        int(_finite_float(blocking_value))
+        if blocking_value is not None
+        else int(_finite_float(summary.get("blocking_step_count")))
+    )
     return {
         "required_total": required_total,
-        "required_complete": min(outcome_counts.get("completed", 0), required_total),
-        "blocking_count": int(_finite_float(summary.get("blocking_step_count"))),
+        "required_complete": min(required_complete, required_total),
+        "blocking_count": blocking_count,
         "expected_gate_count": expected_gate_count,
     }
+
+
+def _radar_run_path_status(
+    *,
+    required_completed_count: int,
+    required_step_count: int,
+    blocking_step_count: int,
+) -> str:
+    if blocking_step_count:
+        return "action_needed"
+    if required_step_count == 0:
+        return "no_run"
+    if required_completed_count >= required_step_count:
+        return "complete"
+    return "incomplete"
 
 
 def _discovery_candidate(row: Mapping[str, object]) -> dict[str, object]:

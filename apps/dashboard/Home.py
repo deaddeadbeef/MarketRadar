@@ -414,6 +414,51 @@ def _show_activation_summary(
     st.caption(str(summary.get("evidence") or "No activation evidence."))
 
 
+def _show_live_activation_plan(
+    config: AppConfig,
+    radar_run_summary: Mapping[str, Any],
+    broker_summary: Mapping[str, Any],
+) -> None:
+    plan = _mapping(
+        dashboard_data.live_activation_plan_payload(
+            config,
+            radar_run_summary=radar_run_summary,
+            broker_summary=broker_summary,
+        )
+    )
+    st.subheader("Live Activation Plan")
+    status = str(plan.get("status") or "unknown")
+    message = (
+        f"{plan.get('headline') or 'Live activation status'} "
+        f"Next: {plan.get('next_action') or 'n/a'}"
+    ).strip()
+    if status == "ready":
+        st.success(message)
+    elif status == "blocked":
+        st.warning(message)
+    else:
+        st.info(message)
+    st.caption(str(plan.get("evidence") or "No live activation evidence."))
+    missing_env = [str(item) for item in _records(plan.get("missing_env"))]
+    if not missing_env:
+        raw_missing = plan.get("missing_env")
+        if isinstance(raw_missing, Sequence) and not isinstance(raw_missing, str | bytes):
+            missing_env = [str(item) for item in raw_missing]
+    if missing_env:
+        st.code("\n".join(missing_env), language="text")
+    _show_records(
+        "Activation Tasks",
+        plan.get("tasks"),
+        empty="No activation tasks.",
+    )
+    with st.expander("Live call budgets and safety guards"):
+        _show_records(
+            "Call Budgets And Guards",
+            plan.get("call_budgets"),
+            empty="No call-budget rows.",
+        )
+
+
 def _show_universe_coverage(
     config: AppConfig,
     ops_health: Mapping[str, Any],
@@ -1101,6 +1146,7 @@ def _show_overview(
     metric_cols[5].metric("LLM Cost", _currency(cost_summary.get("total_actual_cost_usd")))
 
     _show_activation_summary(config, radar_run_summary, broker_summary)
+    _show_live_activation_plan(config, radar_run_summary, broker_summary)
     _show_universe_coverage(config, ops_health)
     _show_radar_run_controls(config, radar_run_summary)
     _show_discovery_snapshot(discovery_snapshot)
