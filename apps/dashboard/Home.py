@@ -1466,6 +1466,11 @@ def _show_ops_layer(health: Mapping[str, Any]) -> None:
         _show_mapping("Degraded Mode", degraded_mode, empty="No degraded-mode status.")
     _show_records("Provider Health", health.get("providers"), empty="No provider health rows.")
     _show_records("Recent Incidents", health.get("incidents"), empty="No incidents.")
+    _show_records(
+        "Telemetry Events",
+        _mapping(health.get("telemetry")).get("events"),
+        empty="No telemetry events.",
+    )
     _show_records("Job Rows", health.get("jobs"), empty="No job rows.")
 
 

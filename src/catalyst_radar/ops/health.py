@@ -10,7 +10,9 @@ from sqlalchemy import Engine, func, select
 from catalyst_radar.core.models import ActionState
 from catalyst_radar.ops.metrics import detect_score_drift, load_ops_metrics
 from catalyst_radar.ops.runbooks import all_runbooks, provider_runbook
+from catalyst_radar.ops.telemetry import TELEMETRY_PREFIX
 from catalyst_radar.storage.schema import (
+    audit_events,
     candidate_packets,
     candidate_states,
     data_quality_incidents,
@@ -89,6 +91,7 @@ def load_ops_health(
                 .limit(25)
             )
         ]
+        telemetry_events = _latest_telemetry_rows(conn, available_at=resolved_now)
 
     stale_providers = [
         str(row["provider"])
@@ -126,6 +129,7 @@ def load_ops_health(
         "metrics": load_ops_metrics(engine, now=resolved_now),
         "score_drift": detect_score_drift(engine, now=resolved_now),
         "incidents": incidents,
+        "telemetry": _telemetry_payload(telemetry_events),
         "runbooks": all_runbooks(),
     }
     serialized = _json_safe(payload)
@@ -146,6 +150,42 @@ def _latest_provider_rows(conn: Any, *, available_at: datetime) -> list[dict[str
         values = _row_dict(row._mapping)
         rows.setdefault(str(values["provider"]), values)
     return [rows[key] for key in sorted(rows)]
+
+
+def _latest_telemetry_rows(conn: Any, *, available_at: datetime) -> list[dict[str, object]]:
+    return [
+        _row_dict(row._mapping)
+        for row in conn.execute(
+            select(audit_events)
+            .where(
+                audit_events.c.event_type.like(f"{TELEMETRY_PREFIX}%"),
+                audit_events.c.occurred_at <= available_at,
+            )
+            .order_by(
+                audit_events.c.occurred_at.desc(),
+                audit_events.c.created_at.desc(),
+                audit_events.c.id.desc(),
+            )
+            .limit(25)
+        )
+    ]
+
+
+def _telemetry_payload(events: list[dict[str, object]]) -> dict[str, object]:
+    event_counts: dict[str, int] = {}
+    status_counts: dict[str, int] = {}
+    for event in events:
+        event_type = str(event.get("event_type") or "unknown")
+        status = str(event.get("status") or "unknown")
+        event_counts[event_type] = event_counts.get(event_type, 0) + 1
+        status_counts[status] = status_counts.get(status, 0) + 1
+    return {
+        "event_count": len(events),
+        "event_counts": dict(sorted(event_counts.items())),
+        "status_counts": dict(sorted(status_counts.items())),
+        "latest_event_at": events[0].get("occurred_at") if events else None,
+        "events": events,
+    }
 
 
 def _resolve_now(now: datetime | None) -> datetime:

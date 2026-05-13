@@ -116,7 +116,7 @@ def test_viewer_can_read_but_cannot_post_feedback(tmp_path, monkeypatch) -> None
 def test_post_radar_run_builds_scheduler_config(tmp_path, monkeypatch) -> None:
     database_url = _database_url(tmp_path, "radar-run.db")
     monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
-    _create_database(database_url)
+    engine = _create_database(database_url)
     captured: dict[str, object] = {}
 
     def fake_run_once(*, engine, config):
@@ -133,6 +133,7 @@ def test_post_radar_run_builds_scheduler_config(tmp_path, monkeypatch) -> None:
 
     response = client.post(
         "/api/radar/runs",
+        headers={"X-Catalyst-Actor": "tester", "X-Catalyst-Role": "analyst"},
         json={
             "as_of": "2026-05-09",
             "decision_available_at": "2026-05-10T01:00:00Z",
@@ -162,6 +163,21 @@ def test_post_radar_run_builds_scheduler_config(tmp_path, monkeypatch) -> None:
     assert config.run_llm is False
     assert config.llm_dry_run is True
     assert config.dry_run_alerts is True
+    telemetry = _audit_event_rows(engine)
+    assert [row["event_type"] for row in telemetry] == [
+        "telemetry.radar_run.requested",
+        "telemetry.radar_run.completed",
+    ]
+    assert telemetry[0]["actor_id"] == "tester"
+    assert telemetry[0]["actor_role"] == "analyst"
+    assert telemetry[0]["artifact_type"] == "radar_run"
+    assert telemetry[0]["artifact_id"].startswith("radar-run-api:")
+    assert telemetry[1]["artifact_id"] == telemetry[0]["artifact_id"]
+    assert telemetry[0]["metadata"]["lock_name"] == "daily-run"
+    assert telemetry[0]["metadata"]["tickers"] == ["MSFT", "NVDA", "MSFT"]
+    assert telemetry[1]["status"] == "success"
+    assert telemetry[1]["metadata"]["daily_status"] is None
+    assert telemetry[1]["after_payload"]["acquired_lock"] is True
 
 
 def test_post_radar_run_requires_analyst_when_auth_enabled(tmp_path, monkeypatch) -> None:
@@ -189,7 +205,7 @@ def test_post_radar_run_requires_analyst_when_auth_enabled(tmp_path, monkeypatch
 def test_post_radar_run_rejects_unsupported_real_llm(tmp_path, monkeypatch) -> None:
     database_url = _database_url(tmp_path, "radar-run-real-llm.db")
     monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
-    _create_database(database_url)
+    engine = _create_database(database_url)
     monkeypatch.setattr(
         radar_routes,
         "run_once",
@@ -206,12 +222,21 @@ def test_post_radar_run_rejects_unsupported_real_llm(tmp_path, monkeypatch) -> N
     assert response.json() == {
         "detail": "real daily LLM review is not supported; use run-llm-review per candidate"
     }
+    telemetry = _audit_event_rows(engine)
+    assert [row["event_type"] for row in telemetry] == [
+        "telemetry.radar_run.requested",
+        "telemetry.radar_run.rejected",
+    ]
+    assert telemetry[1]["status"] == "rejected"
+    assert telemetry[1]["reason"] == (
+        "real daily LLM review is not supported; use run-llm-review per candidate"
+    )
 
 
 def test_post_radar_run_reports_lock_contention(tmp_path, monkeypatch) -> None:
     database_url = _database_url(tmp_path, "radar-run-lock.db")
     monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
-    _create_database(database_url)
+    engine = _create_database(database_url)
     expires_at = datetime(2026, 5, 10, 1, 5, tzinfo=UTC)
 
     def fake_run_once(*, engine, config):
@@ -237,6 +262,14 @@ def test_post_radar_run_reports_lock_contention(tmp_path, monkeypatch) -> None:
             "daily_result": None,
         }
     }
+    telemetry = _audit_event_rows(engine)
+    assert [row["event_type"] for row in telemetry] == [
+        "telemetry.radar_run.requested",
+        "telemetry.radar_run.lock_contention",
+    ]
+    assert telemetry[1]["status"] == "blocked"
+    assert telemetry[1]["reason"] == "lock_held"
+    assert telemetry[1]["after_payload"]["acquired_lock"] is False
 
 
 def test_get_latest_radar_run_returns_summary(tmp_path, monkeypatch) -> None:
@@ -658,6 +691,20 @@ def _create_database(database_url: str):
     engine = engine_from_url(database_url)
     create_schema(engine)
     return engine
+
+
+def _audit_event_rows(engine) -> list[dict[str, object]]:
+    with engine.connect() as conn:
+        return [
+            dict(row._mapping)
+            for row in conn.execute(
+                select(audit_events).order_by(
+                    audit_events.c.occurred_at,
+                    audit_events.c.created_at,
+                    audit_events.c.id,
+                )
+            )
+        ]
 
 
 def _insert_candidate(engine) -> None:
