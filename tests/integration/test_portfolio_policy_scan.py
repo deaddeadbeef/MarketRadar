@@ -87,6 +87,7 @@ def test_save_scan_result_persists_portfolio_impact_evidence() -> None:
 
     with engine.connect() as conn:
         row = conn.execute(select(portfolio_impacts)).one()
+        state = conn.execute(select(candidate_states)).one()
 
     impact = result.candidate.metadata["portfolio_impact"]
     assert row.ticker == "AAA"
@@ -104,6 +105,7 @@ def test_save_scan_result_persists_portfolio_impact_evidence() -> None:
     assert row.payload["portfolio_impact"]["hard_blocks"] == list(impact["hard_blocks"])
     assert row.payload["candidate"]["setup_type"] == result.candidate.metadata["setup_type"]
     assert row.payload["candidate"]["entry_zone"] == list(result.candidate.entry_zone)
+    assert state.created_at == datetime(2026, 5, 8, 21, tzinfo=UTC).replace(tzinfo=None)
 
 
 def test_save_scan_result_is_idempotent_for_dashboard_rows() -> None:

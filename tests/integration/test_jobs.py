@@ -292,7 +292,9 @@ def test_daily_run_ingests_default_csv_market_data(monkeypatch):
     assert ingest_step.payload["daily_bar_count"] == 36
     assert result.step("feature_scan").status == "success"
     assert result.step("scoring_policy").status == "success"
-    assert result.step("candidate_packets").reason == "no_warning_or_higher_candidates"
+    assert result.step("candidate_packets").status == "success"
+    assert result.step("candidate_packets").payload["candidate_packet_count"] == 2
+    assert result.step("decision_cards").reason == "no_manual_buy_review_inputs"
     assert result.step("llm_review").reason == "llm_disabled"
 
     with engine.connect() as conn:
@@ -343,11 +345,9 @@ def test_daily_run_records_step_telemetry(monkeypatch):
     assert by_step["daily_bar_ingest"].metadata["decision_available_at"] == (
         "2026-05-08T21:00:00+00:00"
     )
-    assert by_step["candidate_packets"].status == "skipped"
-    assert by_step["candidate_packets"].reason == "no_warning_or_higher_candidates"
-    assert by_step["candidate_packets"].metadata["result_reason"] == (
-        "no_warning_or_higher_candidates"
-    )
+    assert by_step["candidate_packets"].status == "success"
+    assert by_step["candidate_packets"].reason is None
+    assert by_step["candidate_packets"].metadata["normalized_count"] == 2
 
 
 def test_daily_run_ignores_irrelevant_degraded_provider(monkeypatch):
@@ -376,7 +376,7 @@ def test_daily_run_ignores_irrelevant_degraded_provider(monkeypatch):
     result = run_daily(spec, engine=engine)
 
     assert result.step("daily_bar_ingest").status == "success"
-    assert result.step("candidate_packets").reason == "no_warning_or_higher_candidates"
+    assert result.step("candidate_packets").status == "success"
     assert result.step("llm_review").reason in {"no_llm_review_inputs", "dry_run_only", None}
 
 
@@ -396,13 +396,13 @@ def test_daily_run_runs_validation_update_when_outcome_cutoff_is_supplied():
     validation_step = result.step("validation_update")
     assert validation_step.status == "success"
     assert validation_step.reason is None
-    assert validation_step.payload["candidate_count"] == 0
+    assert validation_step.payload["candidate_count"] == 3
     with engine.connect() as conn:
         run = conn.execute(select(validation_runs)).one()
 
     assert run.status == "success"
     assert run.config["outcome_available_at"] == outcome_available_at.isoformat()
-    assert run.metrics["candidate_count"] == 0
+    assert run.metrics["candidate_count"] == 3
 
 
 def test_daily_run_caps_high_states_and_blocks_decision_work_when_degraded(monkeypatch):
