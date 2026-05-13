@@ -12,6 +12,7 @@ from catalyst_radar.api.routes import radar as radar_routes
 from catalyst_radar.core.models import ActionState
 from catalyst_radar.dashboard import data as dashboard_data
 from catalyst_radar.jobs.scheduler import SchedulerRunResult
+from catalyst_radar.jobs.tasks import DailyRunResult, DailyRunSpec, JobStepResult
 from catalyst_radar.security.audit import AuditLogRepository
 from catalyst_radar.storage.alert_repositories import AlertRepository
 from catalyst_radar.storage.db import create_schema, engine_from_url
@@ -188,6 +189,82 @@ def test_post_radar_run_builds_scheduler_config(tmp_path, monkeypatch) -> None:
     assert telemetry[1]["status"] == "success"
     assert telemetry[1]["metadata"]["daily_status"] is None
     assert telemetry[1]["after_payload"]["acquired_lock"] is True
+
+
+def test_post_radar_run_telemetry_summarizes_skipped_steps(tmp_path, monkeypatch) -> None:
+    database_url = _database_url(tmp_path, "radar-run-skip-telemetry.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = _create_database(database_url)
+
+    def fake_run_once(**_kwargs):
+        spec = DailyRunSpec(
+            as_of=date(2026, 5, 9),
+            decision_available_at=datetime(2026, 5, 10, 1, 0, tzinfo=UTC),
+            run_llm=False,
+            dry_run_alerts=True,
+        )
+        daily_result = DailyRunResult(
+            status="success",
+            spec=spec,
+            steps=(
+                JobStepResult(
+                    name="daily_bar_ingest",
+                    status="success",
+                    job_id="job-daily",
+                    requested_count=43,
+                    raw_count=43,
+                    normalized_count=43,
+                ),
+                JobStepResult(
+                    name="event_ingest",
+                    status="skipped",
+                    job_id="job-events",
+                    reason="no_scheduled_event_provider",
+                ),
+                JobStepResult(
+                    name="local_text_triage",
+                    status="skipped",
+                    job_id="job-text",
+                    reason="no_text_inputs",
+                ),
+            ),
+        )
+        return SchedulerRunResult(
+            acquired_lock=True,
+            reason=None,
+            daily_result=daily_result,
+        )
+
+    monkeypatch.setattr(radar_routes, "run_once", fake_run_once)
+    client = TestClient(create_app())
+
+    response = client.post("/api/radar/runs", json={})
+
+    assert response.status_code == 200
+    telemetry = _audit_event_rows(engine)
+    completed = telemetry[1]
+    assert completed["event_type"] == "telemetry.radar_run.completed"
+    assert completed["metadata"]["step_counts"] == {"skipped": 2, "success": 1}
+    assert completed["metadata"]["skip_reason_counts"] == {
+        "no_scheduled_event_provider": 1,
+        "no_text_inputs": 1,
+    }
+    assert completed["metadata"]["skipped_steps"] == [
+        {
+            "step": "event_ingest",
+            "reason": "no_scheduled_event_provider",
+            "requested_count": 0,
+            "raw_count": 0,
+            "normalized_count": 0,
+        },
+        {
+            "step": "local_text_triage",
+            "reason": "no_text_inputs",
+            "requested_count": 0,
+            "raw_count": 0,
+            "normalized_count": 0,
+        },
+    ]
 
 
 def test_post_radar_run_requires_analyst_when_auth_enabled(tmp_path, monkeypatch) -> None:

@@ -41,6 +41,7 @@ from catalyst_radar.storage.broker_repositories import BrokerRepository
 from catalyst_radar.storage.db import create_schema
 from catalyst_radar.storage.job_repositories import JobLockRepository
 from catalyst_radar.storage.schema import (
+    audit_events,
     candidate_states,
     decision_cards,
     job_locks,
@@ -309,6 +310,44 @@ def test_daily_run_ingests_default_csv_market_data(monkeypatch):
     assert jobs["daily_bar_ingest"].status == "success"
     assert jobs["daily_bar_ingest"].metadata["result_payload"]["daily_bar_count"] == 36
     assert jobs["scheduled_csv_ingest"].status == "success"
+
+
+def test_daily_run_records_step_telemetry(monkeypatch):
+    monkeypatch.delenv("CATALYST_DAILY_MARKET_PROVIDER", raising=False)
+    engine = _engine()
+    spec = DailyRunSpec(
+        as_of=date(2026, 5, 8),
+        decision_available_at=datetime(2026, 5, 8, 21, 0, tzinfo=UTC),
+        run_llm=False,
+        dry_run_alerts=True,
+    )
+
+    result = run_daily(spec, engine=engine)
+
+    with engine.connect() as conn:
+        rows = conn.execute(
+            select(audit_events)
+            .where(audit_events.c.event_type == "telemetry.radar_run.step_finished")
+            .order_by(
+                audit_events.c.occurred_at,
+                audit_events.c.created_at,
+                audit_events.c.id,
+            )
+        ).all()
+
+    assert len(rows) == len(DAILY_STEP_ORDER)
+    assert [row.metadata["step"] for row in rows] == list(DAILY_STEP_ORDER)
+    by_step = {row.metadata["step"]: row for row in rows}
+    assert by_step["daily_bar_ingest"].status == result.step("daily_bar_ingest").status
+    assert by_step["daily_bar_ingest"].metadata["normalized_count"] == 43
+    assert by_step["daily_bar_ingest"].metadata["decision_available_at"] == (
+        "2026-05-08T21:00:00+00:00"
+    )
+    assert by_step["candidate_packets"].status == "skipped"
+    assert by_step["candidate_packets"].reason == "no_warning_or_higher_candidates"
+    assert by_step["candidate_packets"].metadata["result_reason"] == (
+        "no_warning_or_higher_candidates"
+    )
 
 
 def test_daily_run_ignores_irrelevant_degraded_provider(monkeypatch):
