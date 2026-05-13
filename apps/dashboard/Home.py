@@ -47,6 +47,14 @@ RADAR_BLOCKING_REASONS = frozenset(
         "no_scheduled_event_provider",
     }
 )
+RADAR_EXPECTED_GATE_REASONS = frozenset(
+    {
+        "no_manual_buy_review_inputs",
+        "llm_disabled",
+        "no_alerts",
+        "outcome_available_at_not_supplied",
+    }
+)
 RADAR_SKIP_EXPLANATIONS = {
     "no_scheduled_provider_input": "No market-data provider was scheduled for this run.",
     "scheduled_provider_not_supported": (
@@ -474,14 +482,30 @@ def _show_radar_run_summary(summary: Mapping[str, Any]) -> None:
     metric_cols[3].metric("Normalized", int(_metric_number(summary.get("normalized_count"))))
     status_counts = _mapping(summary.get("status_counts"))
     skipped_count = int(_metric_number(status_counts.get("skipped")))
-    if skipped_count:
+    summary_steps = _records(summary.get("steps"))
+    blocking_skips = [
+        step
+        for step in summary_steps
+        if str(step.get("reason") or "") in RADAR_BLOCKING_REASONS
+    ]
+    expected_skips = [
+        step
+        for step in summary_steps
+        if str(step.get("reason") or "") in RADAR_EXPECTED_GATE_REASONS
+    ]
+    if blocking_skips:
+        st.warning(
+            f"{len(blocking_skips)} run step(s) were blocked by missing or degraded inputs. "
+            "Use the readiness checklist before treating the run as current."
+        )
+    elif skipped_count:
         st.info(
-            f"{skipped_count} run step(s) were skipped. Open the step table before treating "
-            "the run as actionable."
+            f"{len(expected_skips) or skipped_count} run step(s) were expected gates, "
+            "not scan failures. The raw step telemetry is still shown below."
         )
     _show_records(
         "Last Radar Run Steps",
-        summary.get("steps"),
+        _radar_summary_step_rows(summary),
         empty="No radar run step rows.",
     )
 
@@ -539,6 +563,41 @@ def _radar_run_step_rows(daily_result: Mapping[str, Any]) -> list[dict[str, obje
             }
         )
     return rows
+
+
+def _radar_summary_step_rows(summary: Mapping[str, Any]) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for step in _records(summary.get("steps")):
+        name = str(step.get("step") or step.get("name") or "")
+        status = str(step.get("status") or "")
+        reason = str(step.get("reason") or "")
+        rows.append(
+            {
+                "step": name,
+                "status": status,
+                "category": _radar_step_category(status, reason),
+                "requested": step.get("requested_count"),
+                "raw": step.get("raw_count"),
+                "normalized": step.get("normalized_count"),
+                "reason": reason or None,
+                "meaning": RADAR_SKIP_EXPLANATIONS.get(reason),
+            }
+        )
+    return rows
+
+
+def _radar_step_category(status: str, reason: str) -> str:
+    if status == "success":
+        return "completed"
+    if status == "failed":
+        return "failed"
+    if reason in RADAR_BLOCKING_REASONS:
+        return "blocked_input"
+    if reason in RADAR_EXPECTED_GATE_REASONS:
+        return "expected_gate"
+    if status == "skipped":
+        return "needs_review"
+    return status or "unknown"
 
 
 def _candidate_rows_with_labels(rows: list[dict[str, object]]) -> list[dict[str, object]]:
@@ -639,6 +698,15 @@ def _show_overview(
             broker_summary=broker_summary,
         ),
         empty="No data source coverage rows.",
+    )
+    _show_records(
+        "Readiness Checklist",
+        dashboard_data.readiness_checklist_payload(
+            config,
+            radar_run_summary=radar_run_summary,
+            broker_summary=broker_summary,
+        ),
+        empty="No readiness checklist rows.",
     )
 
     secondary_cols = st.columns(5)
