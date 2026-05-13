@@ -1129,14 +1129,15 @@ def radar_discovery_snapshot_payload(
         steps,
         "candidate_packets",
         "normalized_count",
-        default=sum(1 for row in candidates if row.get("candidate_packet_id")),
+        default=0,
     )
     card_count = _step_metric(
         steps,
         "decision_cards",
         "normalized_count",
-        default=sum(1 for row in candidates if row.get("decision_card_id")),
+        default=0,
     )
+    packet_candidates = _latest_run_packet_candidates(candidates, summary)
     requested_count = _step_metric(
         steps,
         "daily_bar_ingest",
@@ -1231,7 +1232,7 @@ def radar_discovery_snapshot_payload(
         "top_discoveries": [
             _discovery_candidate(row)
             for row in (
-                candidates[: max(0, int(limit))]
+                packet_candidates[: max(0, int(limit))]
                 if packet_count > 0 and summary
                 else []
             )
@@ -2141,6 +2142,29 @@ def _discovery_run_candidates(
         if tickers and ticker not in tickers:
             continue
         if as_of_date is not None and _parse_date(row.get("as_of")) != as_of_date:
+            continue
+        rows.append(_row_dict(row))
+    return rows
+
+
+def _latest_run_packet_candidates(
+    candidates: Sequence[Mapping[str, object]],
+    summary: Mapping[str, object],
+) -> list[dict[str, object]]:
+    if not summary:
+        return []
+    run_started_at = _parse_utc_datetime(summary.get("started_at"))
+    run_finished_at = _parse_utc_datetime(summary.get("finished_at"))
+    rows: list[dict[str, object]] = []
+    for row in candidates:
+        if not row.get("candidate_packet_id"):
+            continue
+        packet_available_at = _parse_utc_datetime(row.get("candidate_packet_available_at"))
+        if packet_available_at is None:
+            continue
+        if run_started_at is not None and packet_available_at < run_started_at:
+            continue
+        if run_finished_at is not None and packet_available_at > run_finished_at:
             continue
         rows.append(_row_dict(row))
     return rows
