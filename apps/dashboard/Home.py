@@ -161,6 +161,16 @@ def _parse_cutoff(value: str) -> datetime | None:
     return parsed.astimezone(UTC)
 
 
+def _radar_summary_cutoff(summary: Mapping[str, Any]) -> datetime | None:
+    value = summary.get("decision_available_at")
+    if value is None or value == "":
+        return None
+    try:
+        return _parse_cutoff(str(value))
+    except ValueError:
+        return None
+
+
 def _select_value(label: str, options: list[str]) -> str | None:
     value = st.sidebar.selectbox(label, ["All", *options])
     return None if value == "All" else value
@@ -1567,10 +1577,15 @@ config = AppConfig.from_env()
 engine = engine_from_url(config.database_url)
 create_schema(engine)
 
-candidate_rows = dashboard_data.load_candidate_rows(engine)
+radar_run_summary = _mapping(dashboard_data.load_radar_run_summary(engine))
+latest_run_cutoff = _radar_summary_cutoff(radar_run_summary)
+default_candidate_rows = dashboard_data.load_candidate_rows(
+    engine,
+    available_at=latest_run_cutoff,
+)
 default_ticker = _default_ticker(
-    candidate_rows,
-    dashboard_data.load_ipo_s1_rows(engine),
+    default_candidate_rows,
+    dashboard_data.load_ipo_s1_rows(engine, available_at=latest_run_cutoff),
 )
 if default_ticker and "ticker_filter" not in st.session_state:
     st.session_state["ticker_filter"] = default_ticker
@@ -1587,27 +1602,32 @@ try:
 except ValueError as exc:
     st.sidebar.warning(str(exc))
     available_at = None
+data_available_at = available_at or latest_run_cutoff
+if latest_run_cutoff is not None and available_at is None:
+    st.sidebar.caption(
+        f"Using latest radar run cutoff: {latest_run_cutoff.isoformat()}"
+    )
 alert_status = _select_value("Alert status", ALERT_STATUSES)
 alert_route = _select_value("Alert route", ALERT_ROUTES)
 
-theme_rows = dashboard_data.load_theme_rows(engine)
+candidate_rows = dashboard_data.load_candidate_rows(engine, available_at=data_available_at)
+theme_rows = dashboard_data.load_theme_rows(engine, available_at=data_available_at)
 alert_rows = dashboard_data.load_alert_rows(
     engine,
     ticker=ticker_filter or None,
     status=alert_status,
     route=alert_route,
-    available_at=available_at,
+    available_at=data_available_at,
 )
 ipo_rows = dashboard_data.load_ipo_s1_rows(
     engine,
     ticker=ticker_filter or None,
-    available_at=available_at,
+    available_at=data_available_at,
 )
 validation_summary = _mapping(dashboard_data.load_validation_summary(engine))
-cost_summary = _mapping(dashboard_data.load_cost_summary(engine, available_at=available_at))
+cost_summary = _mapping(dashboard_data.load_cost_summary(engine, available_at=data_available_at))
 ops_health = _mapping(dashboard_data.load_ops_health(engine))
 broker_summary = _mapping(dashboard_data.load_broker_summary(engine))
-radar_run_summary = _mapping(dashboard_data.load_radar_run_summary(engine))
 
 _show_command_header(
     candidate_rows=candidate_rows,
@@ -1644,13 +1664,13 @@ with tabs[0]:
     )
 
 with tabs[1]:
-    _show_ticker_layer(engine, ticker_filter, available_at)
+    _show_ticker_layer(engine, ticker_filter, data_available_at)
 
 with tabs[2]:
     _show_ipo_layer(ipo_rows)
 
 with tabs[3]:
-    _show_alerts_layer(alert_rows, engine=engine, cutoff=available_at)
+    _show_alerts_layer(alert_rows, engine=engine, cutoff=data_available_at)
 
 with tabs[4]:
     _show_themes_layer(theme_rows)

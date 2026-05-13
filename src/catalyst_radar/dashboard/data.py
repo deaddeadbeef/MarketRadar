@@ -53,24 +53,33 @@ from catalyst_radar.validation.reports import (
 )
 
 
-def load_candidate_rows(engine: Engine) -> list[dict[str, object]]:
-    ranked_states = (
-        select(
-            candidate_states.c.id.label("candidate_state_id"),
-            func.row_number()
-            .over(
-                partition_by=candidate_states.c.ticker,
-                order_by=(
-                    candidate_states.c.as_of.desc(),
-                    candidate_states.c.created_at.desc(),
-                    candidate_states.c.id.desc(),
-                ),
-            )
-            .label("state_rank"),
+def load_candidate_rows(
+    engine: Engine,
+    *,
+    available_at: datetime | None = None,
+) -> list[dict[str, object]]:
+    cutoff = _as_utc_datetime_or_none(available_at)
+    ranked_state_stmt = select(
+        candidate_states.c.id.label("candidate_state_id"),
+        func.row_number()
+        .over(
+            partition_by=candidate_states.c.ticker,
+            order_by=(
+                candidate_states.c.as_of.desc(),
+                candidate_states.c.created_at.desc(),
+                candidate_states.c.id.desc(),
+            ),
         )
-        .subquery()
+        .label("state_rank"),
     )
-    ranked_packets = (
+    if cutoff is not None:
+        ranked_state_stmt = ranked_state_stmt.where(
+            candidate_states.c.created_at <= cutoff,
+            candidate_states.c.as_of <= cutoff,
+        )
+    ranked_states = ranked_state_stmt.subquery()
+
+    ranked_packet_stmt = (
         select(
             candidate_packets.c.id,
             candidate_packets.c.candidate_state_id,
@@ -88,28 +97,32 @@ def load_candidate_rows(engine: Engine) -> list[dict[str, object]]:
             .label("packet_rank"),
         )
         .where(candidate_packets.c.candidate_state_id.is_not(None))
-        .subquery()
     )
-    ranked_cards = (
-        select(
-            decision_cards.c.id,
-            decision_cards.c.candidate_packet_id,
-            decision_cards.c.available_at,
-            decision_cards.c.next_review_at,
-            decision_cards.c.payload,
-            func.row_number()
-            .over(
-                partition_by=decision_cards.c.candidate_packet_id,
-                order_by=(
-                    decision_cards.c.available_at.desc(),
-                    decision_cards.c.created_at.desc(),
-                    decision_cards.c.id.desc(),
-                ),
-            )
-            .label("card_rank"),
+    if cutoff is not None:
+        ranked_packet_stmt = ranked_packet_stmt.where(candidate_packets.c.available_at <= cutoff)
+    ranked_packets = ranked_packet_stmt.subquery()
+
+    ranked_card_stmt = select(
+        decision_cards.c.id,
+        decision_cards.c.candidate_packet_id,
+        decision_cards.c.available_at,
+        decision_cards.c.next_review_at,
+        decision_cards.c.payload,
+        func.row_number()
+        .over(
+            partition_by=decision_cards.c.candidate_packet_id,
+            order_by=(
+                decision_cards.c.available_at.desc(),
+                decision_cards.c.created_at.desc(),
+                decision_cards.c.id.desc(),
+            ),
         )
-        .subquery()
+        .label("card_rank"),
     )
+    if cutoff is not None:
+        ranked_card_stmt = ranked_card_stmt.where(decision_cards.c.available_at <= cutoff)
+    ranked_cards = ranked_card_stmt.subquery()
+
     stmt = (
         select(
             candidate_states,
@@ -344,23 +357,32 @@ def load_ticker_detail(
     }
 
 
-def load_theme_rows(engine: Engine) -> list[dict[str, object]]:
-    ranked_states = (
-        select(
-            candidate_states.c.id.label("candidate_state_id"),
-            func.row_number()
-            .over(
-                partition_by=candidate_states.c.ticker,
-                order_by=(
-                    candidate_states.c.as_of.desc(),
-                    candidate_states.c.created_at.desc(),
-                    candidate_states.c.id.desc(),
-                ),
-            )
-            .label("state_rank"),
+def load_theme_rows(
+    engine: Engine,
+    *,
+    available_at: datetime | None = None,
+) -> list[dict[str, object]]:
+    cutoff = _as_utc_datetime_or_none(available_at)
+    ranked_state_stmt = select(
+        candidate_states.c.id.label("candidate_state_id"),
+        func.row_number()
+        .over(
+            partition_by=candidate_states.c.ticker,
+            order_by=(
+                candidate_states.c.as_of.desc(),
+                candidate_states.c.created_at.desc(),
+                candidate_states.c.id.desc(),
+            ),
         )
-        .subquery()
+        .label("state_rank"),
     )
+    if cutoff is not None:
+        ranked_state_stmt = ranked_state_stmt.where(
+            candidate_states.c.created_at <= cutoff,
+            candidate_states.c.as_of <= cutoff,
+        )
+    ranked_states = ranked_state_stmt.subquery()
+
     stmt = (
         select(
             candidate_states,
@@ -953,6 +975,7 @@ def _latest_state_row(
     filters = [candidate_states.c.ticker == ticker]
     if available_at is not None:
         filters.append(candidate_states.c.created_at <= available_at)
+        filters.append(candidate_states.c.as_of <= available_at)
     row = conn.execute(
         select(candidate_states)
         .where(*filters)
