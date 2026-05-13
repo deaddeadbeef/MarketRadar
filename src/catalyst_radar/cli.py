@@ -37,6 +37,7 @@ from catalyst_radar.connectors.base import ConnectorRequest
 from catalyst_radar.connectors.earnings import EarningsCalendarConnector
 from catalyst_radar.connectors.http import (
     FakeHttpTransport,
+    HeaderInjectingTransport,
     HttpResponse,
     HttpTransport,
     JsonHttpClient,
@@ -1364,7 +1365,7 @@ def _ingest_sec_provider(
 
     transport: HttpTransport | None = None
     if fixture_path is None:
-        transport = _HeaderInjectingTransport(
+        transport = HeaderInjectingTransport(
             UrlLibHttpTransport(),
             {"User-Agent": config.sec_user_agent or ""},
         )
@@ -2428,46 +2429,6 @@ def _fixture_next_url(url: str) -> str:
     if "apiKey=" in url:
         return url
     return f"{url}{separator}apiKey=fixture-key"
-
-
-class _HeaderInjectingTransport:
-    def __init__(
-        self,
-        transport: HttpTransport,
-        headers: Mapping[str, str],
-    ) -> None:
-        self.transport = transport
-        self.headers = dict(headers)
-
-    def get(
-        self,
-        url: str,
-        *,
-        headers: Mapping[str, str],
-        timeout_seconds: float,
-    ) -> HttpResponse:
-        merged_headers: dict[str, str] = {**self.headers, **dict(headers)}
-        return self.transport.get(
-            url,
-            headers=merged_headers,
-            timeout_seconds=timeout_seconds,
-        )
-
-    def post(
-        self,
-        url: str,
-        *,
-        headers: Mapping[str, str],
-        body: bytes,
-        timeout_seconds: float,
-    ) -> HttpResponse:
-        merged_headers: dict[str, str] = {**self.headers, **dict(headers)}
-        return self.transport.post(
-            url,
-            headers=merged_headers,
-            body=body,
-            timeout_seconds=timeout_seconds,
-        )
 
 
 def _print_provider_result(result: ProviderIngestResult) -> None:

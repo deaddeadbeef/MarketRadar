@@ -139,6 +139,7 @@ class AppConfig:
     sec_enable_live: bool = False
     sec_user_agent: str | None = None
     sec_base_url: str = "https://data.sec.gov"
+    sec_daily_max_tickers: int = 5
     schwab_client_id: str | None = None
     schwab_client_secret: str | None = None
     schwab_redirect_uri: str | None = None
@@ -236,6 +237,9 @@ class AppConfig:
             sec_enable_live=_bool(source.get("CATALYST_SEC_ENABLE_LIVE"), False),
             sec_user_agent=_optional_str(source, "CATALYST_SEC_USER_AGENT"),
             sec_base_url=source.get("CATALYST_SEC_BASE_URL", "https://data.sec.gov"),
+            sec_daily_max_tickers=_positive_int(
+                source, "CATALYST_SEC_DAILY_MAX_TICKERS", 5
+            ),
             schwab_client_id=_optional_str(source, "SCHWAB_CLIENT_ID"),
             schwab_client_secret=_optional_str(source, "SCHWAB_CLIENT_SECRET"),
             schwab_redirect_uri=_optional_str(source, "SCHWAB_REDIRECT_URI"),

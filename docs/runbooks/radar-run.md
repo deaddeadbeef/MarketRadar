@@ -37,6 +37,29 @@ request for the selected `as_of` date. Seed/refresh Polygon ticker reference dat
 separately with `ingest-polygon tickers` when the securities master is empty or
 stale.
 
+## Catalyst Provider
+
+By default, local runs use fixture news/events:
+
+```text
+CATALYST_DAILY_EVENT_PROVIDER=news_fixture
+```
+
+To let a daily radar run ingest SEC submissions for active securities with CIK
+metadata, set:
+
+```text
+CATALYST_DAILY_EVENT_PROVIDER=sec
+CATALYST_SEC_ENABLE_LIVE=1
+CATALYST_SEC_USER_AGENT="CatalystRadar/0.1 your-email@example.com"
+CATALYST_SEC_DAILY_MAX_TICKERS=5
+```
+
+The scheduled SEC path fails closed before making a request when live mode or a
+User-Agent is missing. The ticker cap bounds SEC submissions calls per radar run.
+When using Polygon as the market provider, run `ingest-polygon tickers` first so
+active securities include CIK metadata.
+
 To inspect the last persisted daily radar pass without starting a new one:
 
 ```powershell
