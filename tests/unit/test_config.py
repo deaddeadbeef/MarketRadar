@@ -161,6 +161,18 @@ def test_config_reads_sec_live_settings_from_env() -> None:
     assert config.sec_daily_max_tickers == 7
 
 
+def test_config_reads_polygon_ticker_page_cap_from_env() -> None:
+    config = AppConfig.from_env({"CATALYST_POLYGON_TICKERS_MAX_PAGES": "3"})
+
+    assert config.polygon_tickers_max_pages == 3
+
+
+@pytest.mark.parametrize("value", ["0", "-1"])
+def test_config_rejects_invalid_polygon_ticker_page_cap(value: str) -> None:
+    with pytest.raises(ValueError):
+        AppConfig.from_env({"CATALYST_POLYGON_TICKERS_MAX_PAGES": value})
+
+
 def test_config_reads_schwab_settings_from_env() -> None:
     config = AppConfig.from_env(
         {

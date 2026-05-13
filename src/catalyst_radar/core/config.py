@@ -136,6 +136,7 @@ class AppConfig:
     market_provider: str = "csv"
     polygon_api_key: str | None = None
     polygon_base_url: str = "https://api.polygon.io"
+    polygon_tickers_max_pages: int = 1
     sec_enable_live: bool = False
     sec_user_agent: str | None = None
     sec_base_url: str = "https://data.sec.gov"
@@ -233,6 +234,9 @@ class AppConfig:
             polygon_api_key=_optional_str(source, "CATALYST_POLYGON_API_KEY"),
             polygon_base_url=source.get(
                 "CATALYST_POLYGON_BASE_URL", "https://api.polygon.io"
+            ),
+            polygon_tickers_max_pages=_positive_int(
+                source, "CATALYST_POLYGON_TICKERS_MAX_PAGES", 1
             ),
             sec_enable_live=_bool(source.get("CATALYST_SEC_ENABLE_LIVE"), False),
             sec_user_agent=_optional_str(source, "CATALYST_SEC_USER_AGENT"),

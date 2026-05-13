@@ -1832,7 +1832,10 @@ def _market_preflight_row(
             "blocked",
             provider,
             "0 live calls until CATALYST_POLYGON_API_KEY is set",
-            "Polygon grouped daily is capped at 1 request per radar run.",
+            (
+                "Polygon grouped daily is capped at 1 request per radar run; "
+                f"ticker reference seed cap={config.polygon_tickers_max_pages} page(s)."
+            ),
             "Set the Polygon API key, then run one radar cycle and inspect rejected_count.",
             _coverage_evidence(coverage),
         )
@@ -1844,7 +1847,8 @@ def _market_preflight_row(
             "1 grouped-daily request per radar run",
             (
                 "No ticker-by-ticker price polling in daily radar runs; "
-                f"scanner batch={config.scan_batch_size}."
+                f"scanner batch={config.scan_batch_size}; "
+                f"ticker reference seed cap={config.polygon_tickers_max_pages} page(s)."
             ),
             "Run one radar cycle and verify provider health plus rejected_count before scaling.",
             _coverage_evidence(coverage),

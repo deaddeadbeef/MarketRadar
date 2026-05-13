@@ -34,13 +34,15 @@ To let a daily radar run ingest Polygon grouped daily bars, set:
 CATALYST_DAILY_MARKET_PROVIDER=polygon
 CATALYST_DAILY_PROVIDER=polygon
 CATALYST_POLYGON_API_KEY=<your key>
+CATALYST_POLYGON_TICKERS_MAX_PAGES=1
 ```
 
 The daily Polygon path fails closed before making a request when
 `CATALYST_POLYGON_API_KEY` is missing. A guarded run makes one grouped-daily
 request for the selected `as_of` date. Seed/refresh Polygon ticker reference data
 separately with `ingest-polygon tickers` when the securities master is empty or
-stale.
+stale. Ticker-reference pagination is capped by `CATALYST_POLYGON_TICKERS_MAX_PAGES`
+or `ingest-polygon tickers --max-pages`; start with `1` and raise it deliberately.
 
 ## Catalyst Provider
 
