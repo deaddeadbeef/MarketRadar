@@ -44,6 +44,24 @@ separately with `ingest-polygon tickers` when the securities master is empty or
 stale. Ticker-reference pagination is capped by `CATALYST_POLYGON_TICKERS_MAX_PAGES`
 or `ingest-polygon tickers --max-pages`; start with `1` and raise it deliberately.
 
+The dashboard **Seed Universe** control runs the same capped Polygon ticker-reference
+ingest path from the API. It is disabled until `CATALYST_POLYGON_API_KEY` is set.
+The API route is rate limited by
+`CATALYST_POLYGON_TICKER_SEED_MIN_INTERVAL_SECONDS`:
+
+```powershell
+Invoke-RestMethod `
+  -Method Post `
+  -Uri https://127.0.0.1:8443/api/radar/universe/seed `
+  -SkipCertificateCheck `
+  -ContentType 'application/json' `
+  -Body '{"provider":"polygon","max_pages":1}'
+```
+
+Missing Polygon credentials, provider contract failures, and critical rejected
+payloads fail closed and are recorded in provider jobs, data-quality incidents,
+and telemetry audit events.
+
 ## Catalyst Provider
 
 By default, local runs use fixture news/events:
