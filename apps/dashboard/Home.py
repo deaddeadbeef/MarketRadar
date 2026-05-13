@@ -686,6 +686,15 @@ def _show_overview(
 
     _show_radar_run_controls(config, radar_run_summary)
     _show_records(
+        "Provider Preflight",
+        dashboard_data.provider_preflight_payload(
+            config,
+            radar_run_summary=radar_run_summary,
+            broker_summary=broker_summary,
+        ),
+        empty="No provider preflight rows.",
+    )
+    _show_records(
         "Data Source Coverage",
         dashboard_data.data_source_coverage_payload(
             config,
