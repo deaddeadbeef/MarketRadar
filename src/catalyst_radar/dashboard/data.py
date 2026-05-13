@@ -1098,6 +1098,7 @@ def radar_discovery_snapshot_payload(
         else load_radar_run_summary(engine)
     )
     cutoff = _parse_utc_datetime(summary.get("decision_available_at"))
+    artifact_cutoff = _parse_utc_datetime(summary.get("finished_at")) or cutoff
     health = (
         _row_dict(ops_health)
         if isinstance(ops_health, Mapping)
@@ -1106,7 +1107,7 @@ def radar_discovery_snapshot_payload(
     unscoped_candidates = (
         [_row_dict(row) for row in candidate_rows]
         if candidate_rows is not None
-        else load_candidate_rows(engine, available_at=cutoff)
+        else load_candidate_rows(engine, available_at=artifact_cutoff)
     )
     steps = _radar_steps_by_name(summary)
     candidates = _discovery_run_candidates(unscoped_candidates, summary)

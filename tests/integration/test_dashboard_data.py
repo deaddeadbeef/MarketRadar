@@ -1198,6 +1198,16 @@ def test_radar_discovery_snapshot_labels_fixture_thin_run(
     }
     with engine.begin() as conn:
         conn.execute(
+            update(candidate_packets)
+            .where(candidate_packets.c.id == "packet-msft-latest")
+            .values(available_at=AVAILABLE_AT + timedelta(seconds=3))
+        )
+        conn.execute(
+            update(decision_cards)
+            .where(decision_cards.c.id == "card-msft-latest")
+            .values(available_at=AVAILABLE_AT + timedelta(seconds=5))
+        )
+        conn.execute(
             insert(job_runs),
             [
                 _job_run_row(
