@@ -154,6 +154,7 @@ def build_parser() -> argparse.ArgumentParser:
     tickers = polygon_sub.add_parser("tickers")
     tickers.add_argument("--fixture", type=Path)
     tickers.add_argument("--date", type=date.fromisoformat)
+    tickers.add_argument("--max-pages", type=int)
 
     sec = subparsers.add_parser("ingest-sec")
     sec_sub = sec.add_subparsers(dest="sec_command", required=True)
@@ -428,6 +429,7 @@ def main(argv: list[str] | None = None) -> int:
             polygon_command=args.polygon_command,
             date_value=args.date if hasattr(args, "date") else None,
             fixture_path=args.fixture,
+            max_pages=getattr(args, "max_pages", None),
         )
 
     if args.command == "ingest-sec":
@@ -1311,6 +1313,7 @@ def _ingest_polygon_provider(
     polygon_command: str,
     date_value: date | None,
     fixture_path: Path | None,
+    max_pages: int | None,
 ) -> int:
     try:
         connector, request, metadata, job_type = _build_polygon_ingest(
@@ -1318,6 +1321,7 @@ def _ingest_polygon_provider(
             polygon_command=polygon_command,
             date_value=date_value,
             fixture_path=fixture_path,
+            max_pages=max_pages,
         )
         result = ingest_provider_records(
             connector=connector,
@@ -2276,6 +2280,7 @@ def _build_polygon_ingest(
     polygon_command: str,
     date_value: date | None,
     fixture_path: Path | None,
+    max_pages: int | None = None,
 ) -> tuple[PolygonMarketDataConnector, ConnectorRequest, dict[str, object], str]:
     if polygon_command == "grouped-daily":
         if date_value is None:
@@ -2301,7 +2306,16 @@ def _build_polygon_ingest(
         }
     elif polygon_command == "tickers":
         endpoint = PolygonEndpoint.TICKERS
-        params = {"market": "stocks", "active": True, "limit": 1000}
+        page_cap = config.polygon_tickers_max_pages if max_pages is None else max_pages
+        if page_cap <= 0:
+            msg = "max_pages must be greater than zero"
+            raise ValueError(msg)
+        params = {
+            "market": "stocks",
+            "active": True,
+            "limit": 1000,
+            "max_pages": page_cap,
+        }
         if date_value is not None:
             params["date"] = date_value.isoformat()
         first_url = _polygon_tickers_url(
@@ -2314,6 +2328,7 @@ def _build_polygon_ingest(
             "endpoint": endpoint.value,
             "date": date_value.isoformat() if date_value is not None else None,
             "fixture": str(fixture_path) if fixture_path is not None else None,
+            "max_pages": page_cap,
             "availability_policy": config.provider_availability_policy,
         }
     else:
@@ -2321,7 +2336,13 @@ def _build_polygon_ingest(
         raise ValueError(msg)
 
     transport = (
-        _fixture_transport(first_url=first_url, fixture_path=fixture_path)
+        _fixture_transport(
+            first_url=first_url,
+            fixture_path=fixture_path,
+            max_pages=(
+                config.polygon_tickers_max_pages if max_pages is None else max_pages
+            ),
+        )
         if fixture_path is not None
         else UrlLibHttpTransport()
     )
@@ -2343,16 +2364,25 @@ def _build_polygon_ingest(
     return connector, request, metadata, endpoint.value
 
 
-def _fixture_transport(*, first_url: str, fixture_path: Path) -> FakeHttpTransport:
+def _fixture_transport(
+    *,
+    first_url: str,
+    fixture_path: Path,
+    max_pages: int | None = None,
+) -> FakeHttpTransport:
     responses = {first_url: _fixture_response(first_url, fixture_path)}
     payload = _read_fixture_payload(fixture_path)
     next_url = payload.get("next_url")
     current_path = fixture_path
+    page_count = 1
     while next_url:
+        if max_pages is not None and page_count >= max_pages:
+            break
         if not isinstance(next_url, str):
             msg = "polygon fixture next_url must be a string"
             raise ValueError(msg)
         current_path = _next_fixture_path(current_path)
+        page_count += 1
         if not current_path.exists():
             msg = f"missing polygon fixture page for {next_url}: {current_path}"
             raise ValueError(msg)

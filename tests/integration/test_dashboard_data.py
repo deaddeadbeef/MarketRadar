@@ -191,6 +191,9 @@ def test_provider_preflight_payload_reports_live_provider_call_budgets() -> None
         "1 grouped-daily request per radar run"
     )
     assert "No ticker-by-ticker price polling" in str(by_layer["Market data"]["guardrail"])
+    assert "ticker reference seed cap=1 page(s)" in str(
+        by_layer["Market data"]["guardrail"]
+    )
     assert by_layer["News/events"]["status"] == "ready"
     assert by_layer["News/events"]["call_budget"] == (
         "up to 3 SEC submissions requests per radar run"

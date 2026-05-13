@@ -110,6 +110,37 @@ def test_ticker_pages_follow_next_url_without_leaking_key() -> None:
     assert aapl.payload["metadata"]["type"] == "CS"
 
 
+def test_ticker_pages_stop_at_request_page_cap() -> None:
+    first_url = (
+        "https://api.polygon.io/v3/reference/tickers?"
+        "market=stocks&active=true&limit=1000&apiKey=fixture-key"
+    )
+    fixture_next_url = "https://api.polygon.io/v3/reference/tickers?cursor=page-2"
+    second_url = f"{fixture_next_url}&apiKey=fixture-key"
+    transport = FakeHttpTransport(
+        {
+            first_url: _response(first_url, _fixture("tickers_page_1.json")),
+            second_url: _response(second_url, _fixture("tickers_page_2.json")),
+        }
+    )
+    connector = PolygonMarketDataConnector(
+        api_key="fixture-key",
+        client=JsonHttpClient(transport=transport, timeout_seconds=3),
+    )
+
+    raw_records = connector.fetch(
+        ConnectorRequest(
+            provider="polygon",
+            endpoint=PolygonEndpoint.TICKERS.value,
+            params={"market": "stocks", "active": True, "limit": 1000, "max_pages": 1},
+            requested_at=datetime(2026, 5, 9, 12, tzinfo=UTC),
+        )
+    )
+
+    assert transport.requests == [first_url]
+    assert len(raw_records) == 2
+
+
 def test_grouped_daily_contract_failure_is_abort_rejection() -> None:
     url = _grouped_daily_url()
     transport = FakeHttpTransport(
@@ -145,6 +176,24 @@ def test_cost_estimate_counts_one_grouped_daily_request() -> None:
     assert estimate.provider == "polygon"
     assert estimate.request_count == 1
     assert estimate.estimated_cost_usd == 0.0
+
+
+def test_cost_estimate_honors_ticker_page_cap() -> None:
+    connector = PolygonMarketDataConnector(
+        api_key="fixture-key",
+        client=JsonHttpClient(transport=FakeHttpTransport({}), timeout_seconds=3),
+    )
+
+    estimate = connector.estimate_cost(
+        ConnectorRequest(
+            provider="polygon",
+            endpoint=PolygonEndpoint.TICKERS.value,
+            params={"expected_pages": 10, "max_pages": 3},
+            requested_at=datetime(2026, 5, 9, 12, tzinfo=UTC),
+        )
+    )
+
+    assert estimate.request_count == 3
 
 
 def _grouped_daily_request() -> ConnectorRequest:

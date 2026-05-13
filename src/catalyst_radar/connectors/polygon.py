@@ -120,6 +120,9 @@ class PolygonMarketDataConnector:
         request_count = 1
         if endpoint == PolygonEndpoint.TICKERS:
             request_count = int(request.params.get("expected_pages", 1))
+            max_pages = _optional_positive_int_param(request.params.get("max_pages"))
+            if max_pages is not None:
+                request_count = min(request_count, max_pages)
         return ProviderCostEstimate(
             provider=self.provider,
             request_count=request_count,
@@ -229,8 +232,11 @@ class PolygonMarketDataConnector:
             params["date"] = str(date_value)
         url = self._url("/v3/reference/tickers", params)
         records = []
+        max_pages = _optional_positive_int_param(request.params.get("max_pages"))
+        page_count = 0
         while url:
             page_payload = self.client.get_json(url)
+            page_count += 1
             if page_payload.get("status") not in {"OK", "DELAYED"}:
                 self._reject(
                     ConnectorRecordKind.SECURITY,
@@ -281,6 +287,8 @@ class PolygonMarketDataConnector:
                     )
                 except (TypeError, ValueError) as exc:
                     self._reject(ConnectorRecordKind.SECURITY, raw_payload, str(exc))
+            if max_pages is not None and page_count >= max_pages:
+                break
             next_url = page_payload.get("next_url")
             url = self._next_url(str(next_url)) if next_url else ""
         return records
@@ -452,6 +460,20 @@ def _bool_param(value: Any) -> bool:
 
 def _url_bool(value: bool) -> str:
     return "true" if value else "false"
+
+
+def _optional_positive_int_param(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        number = int(value)
+    except (TypeError, ValueError) as exc:
+        msg = f"max_pages must be an integer: {value!r}"
+        raise ValueError(msg) from exc
+    if number <= 0:
+        msg = "max_pages must be greater than zero"
+        raise ValueError(msg)
+    return number
 
 
 def _clean_mapping(value: Mapping[str, Any]) -> dict[str, Any]:

@@ -130,6 +130,8 @@ def test_polygon_fixture_ingest_does_not_require_real_api_key(
             "tickers",
             "--date",
             "2026-05-08",
+            "--max-pages",
+            "2",
             "--fixture",
             "tests/fixtures/polygon/tickers_page_1.json",
         ],
@@ -141,6 +143,54 @@ def test_polygon_fixture_ingest_does_not_require_real_api_key(
 
     assert result.exit_code == 0
     assert "securities=4" in result.stdout
+
+
+def test_polygon_ticker_ingest_defaults_to_one_reference_page(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    result = run_cli(
+        [
+            "ingest-polygon",
+            "tickers",
+            "--date",
+            "2026-05-08",
+            "--fixture",
+            "tests/fixtures/polygon/tickers_page_1.json",
+        ],
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        capsys=capsys,
+        env={"CATALYST_POLYGON_API_KEY": ""},
+    )
+
+    assert result.exit_code == 0
+    assert "securities=2" in result.stdout
+
+
+def test_polygon_ticker_ingest_rejects_invalid_page_cap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    result = run_cli(
+        [
+            "ingest-polygon",
+            "tickers",
+            "--max-pages",
+            "0",
+            "--fixture",
+            "tests/fixtures/polygon/tickers_page_1.json",
+        ],
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        capsys=capsys,
+        env={"CATALYST_POLYGON_API_KEY": ""},
+    )
+
+    assert result.exit_code == 1
+    assert "max_pages must be greater than zero" in result.stderr
 
 
 def test_polygon_unadjusted_grouped_daily_fails_closed(
