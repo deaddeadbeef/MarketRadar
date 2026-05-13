@@ -434,6 +434,44 @@ def _show_radar_run_controls(
             disabled=True,
             help="Daily alert delivery is locked to dry-run mode from the dashboard.",
         )
+        run_scope_payload: dict[str, object] = {}
+        custom_scope = st.checkbox(
+            "Custom scope",
+            value=False,
+            key="run_radar_custom_scope",
+            help="Optionally constrain the radar run without changing global settings.",
+        )
+        if custom_scope:
+            with st.expander("Run scope", expanded=True):
+                as_of_value = st.date_input(
+                    "As of date",
+                    value=_radar_default_as_of(radar_run_summary),
+                    key="run_radar_as_of",
+                )
+                tickers_text = st.text_input(
+                    "Tickers",
+                    value="",
+                    placeholder="AAPL, MSFT",
+                    key="run_radar_tickers",
+                )
+                provider_text = st.text_input(
+                    "Provider override",
+                    value="",
+                    placeholder="default",
+                    key="run_radar_provider",
+                )
+                universe_text = st.text_input(
+                    "Universe override",
+                    value="",
+                    placeholder="default",
+                    key="run_radar_universe",
+                )
+                run_scope_payload = _radar_run_scope_payload(
+                    as_of_value=as_of_value,
+                    tickers_text=tickers_text,
+                    provider_text=provider_text,
+                    universe_text=universe_text,
+                )
         run_requested = st.button("Run Radar", key="run_radar_now", type="primary")
     with status_col:
         if not run_requested:
@@ -448,6 +486,7 @@ def _show_radar_run_controls(
                         "run_llm": run_llm_dry_run,
                         "llm_dry_run": True,
                         "dry_run_alerts": True,
+                        **run_scope_payload,
                     },
                 )
             )
@@ -560,6 +599,53 @@ def _show_radar_run_result_notice(
         st.info(f"Radar run status: {status}. No blocking scan failures detected.")
     for message in (blocking_messages or informational_messages)[:6]:
         st.caption(message)
+
+
+def _radar_default_as_of(radar_run_summary: Mapping[str, Any]) -> date:
+    value = radar_run_summary.get("as_of")
+    if value is not None:
+        try:
+            return date.fromisoformat(str(value)[:10])
+        except ValueError:
+            pass
+    return datetime.now(UTC).date()
+
+
+def _radar_run_scope_payload(
+    *,
+    as_of_value: object,
+    tickers_text: str,
+    provider_text: str,
+    universe_text: str,
+) -> dict[str, object]:
+    payload: dict[str, object] = {}
+    if isinstance(as_of_value, datetime):
+        payload["as_of"] = as_of_value.date().isoformat()
+    elif isinstance(as_of_value, date):
+        payload["as_of"] = as_of_value.isoformat()
+
+    tickers = _parse_ticker_list(tickers_text)
+    if tickers:
+        payload["tickers"] = tickers
+    provider = provider_text.strip().lower()
+    if provider:
+        payload["provider"] = provider
+    universe = universe_text.strip()
+    if universe:
+        payload["universe"] = universe
+    return payload
+
+
+def _parse_ticker_list(value: str) -> list[str]:
+    return [
+        ticker
+        for ticker in dict.fromkeys(
+            item.strip().upper()
+            for chunk in value.splitlines()
+            for item in chunk.replace(";", ",").split(",")
+        )
+        if ticker
+    ]
 
 
 def _radar_run_limiting_messages(
