@@ -432,9 +432,15 @@ def _show_radar_run_controls(
         _show_radar_run_result_notice(daily_result, fallback_reason=result.get("reason"))
         _show_records(
             "Radar Run Operator View",
-            _radar_run_step_rows(daily_result),
+            _radar_run_operator_rows(daily_result),
             empty="No step rows.",
         )
+        with st.expander("Advanced raw step telemetry"):
+            _show_records(
+                "Raw Step Telemetry",
+                _radar_run_raw_rows(daily_result),
+                empty="No raw step telemetry.",
+            )
 
 
 def _show_radar_run_summary(summary: Mapping[str, Any]) -> None:
@@ -457,12 +463,20 @@ def _show_radar_run_summary(summary: Mapping[str, Any]) -> None:
         _metric_number(summary.get("expected_gate_count"))
         or _metric_number(outcome_counts.get("expected_gate"))
     )
+    required_stage_count = max(
+        0,
+        int(_metric_number(summary.get("step_count"))) - expected_gate_count,
+    )
+    completed_required_count = max(0, int(_metric_number(outcome_counts.get("completed"))))
     metric_cols = st.columns(5)
     metric_cols[0].metric("Steps", int(_metric_number(summary.get("step_count"))))
-    metric_cols[1].metric("Completed", int(_metric_number(outcome_counts.get("completed"))))
+    metric_cols[1].metric(
+        "Required Path",
+        f"{min(completed_required_count, required_stage_count)}/{required_stage_count}",
+    )
     metric_cols[2].metric("Action Needed", blocking_count)
-    metric_cols[3].metric("Expected Gates", expected_gate_count)
-    metric_cols[4].metric("Raw Skipped", skipped_count)
+    metric_cols[3].metric("Optional Gates", expected_gate_count)
+    metric_cols[4].metric("Raw Telemetry", int(_metric_number(summary.get("step_count"))))
     volume_cols = st.columns(3)
     volume_cols[0].metric("Requested", int(_metric_number(summary.get("requested_count"))))
     volume_cols[1].metric("Raw", int(_metric_number(summary.get("raw_count"))))
@@ -491,9 +505,15 @@ def _show_radar_run_summary(summary: Mapping[str, Any]) -> None:
         )
     _show_records(
         "Last Radar Run Operator View",
-        _radar_summary_step_rows(summary),
+        _radar_summary_operator_rows(summary),
         empty="No radar run step rows.",
     )
+    with st.expander("Advanced raw step telemetry"):
+        _show_records(
+            "Raw Step Telemetry",
+            _radar_summary_raw_rows(summary),
+            empty="No raw step telemetry.",
+        )
 
 
 def _show_radar_run_result_notice(
@@ -545,7 +565,7 @@ def _radar_run_limiting_messages(
     return messages
 
 
-def _radar_run_step_rows(daily_result: Mapping[str, Any]) -> list[dict[str, object]]:
+def _radar_run_operator_rows(daily_result: Mapping[str, Any]) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     for name, step in _mapping(daily_result.get("steps")).items():
         step_mapping = _mapping(step)
@@ -561,9 +581,8 @@ def _radar_run_step_rows(daily_result: Mapping[str, Any]) -> list[dict[str, obje
             {
                 "Outcome": step_mapping.get("label") or classification.label,
                 "Needs Action": "yes" if blocks_reliance else "no",
+                "Stage": _radar_operator_stage(classification.category),
                 "Step": name,
-                "Raw Status": step_mapping.get("status"),
-                "Category": step_mapping.get("category") or classification.category,
                 "Requested": step_mapping.get("requested_count"),
                 "Raw": step_mapping.get("raw_count"),
                 "Normalized": step_mapping.get("normalized_count"),
@@ -576,7 +595,31 @@ def _radar_run_step_rows(daily_result: Mapping[str, Any]) -> list[dict[str, obje
     return rows
 
 
-def _radar_summary_step_rows(summary: Mapping[str, Any]) -> list[dict[str, object]]:
+def _radar_run_raw_rows(daily_result: Mapping[str, Any]) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for name, step in _mapping(daily_result.get("steps")).items():
+        step_mapping = _mapping(step)
+        reason = str(step_mapping.get("reason") or "")
+        classification = classify_step_outcome(
+            str(step_mapping.get("status") or ""),
+            reason or None,
+        )
+        rows.append(
+            {
+                "step": name,
+                "raw_status": step_mapping.get("status"),
+                "category": step_mapping.get("category") or classification.category,
+                "requested": step_mapping.get("requested_count"),
+                "raw": step_mapping.get("raw_count"),
+                "normalized": step_mapping.get("normalized_count"),
+                "reason": reason or None,
+                "payload": step_mapping.get("payload"),
+            }
+        )
+    return rows
+
+
+def _radar_summary_operator_rows(summary: Mapping[str, Any]) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     for step in _records(summary.get("steps")):
         name = str(step.get("step") or step.get("name") or "")
@@ -589,9 +632,8 @@ def _radar_summary_step_rows(summary: Mapping[str, Any]) -> list[dict[str, objec
             {
                 "outcome": step.get("label") or classification.label,
                 "needs_action": "yes" if blocks_reliance else "no",
+                "stage": _radar_operator_stage(category or classification.category),
                 "step": name,
-                "raw_status": status,
-                "category": category or _radar_step_category(status, reason),
                 "requested": step.get("requested_count"),
                 "raw": step.get("raw_count"),
                 "normalized": step.get("normalized_count"),
@@ -601,6 +643,41 @@ def _radar_summary_step_rows(summary: Mapping[str, Any]) -> list[dict[str, objec
             }
         )
     return rows
+
+
+def _radar_summary_raw_rows(summary: Mapping[str, Any]) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for step in _records(summary.get("steps")):
+        name = str(step.get("step") or step.get("name") or "")
+        status = str(step.get("status") or "")
+        reason = str(step.get("reason") or "")
+        category = str(step.get("category") or "")
+        rows.append(
+            {
+                "step": name,
+                "raw_status": status,
+                "category": category or _radar_step_category(status, reason),
+                "requested": step.get("requested_count"),
+                "raw": step.get("raw_count"),
+                "normalized": step.get("normalized_count"),
+                "reason": reason or None,
+                "payload": step.get("payload"),
+            }
+        )
+    return rows
+
+
+def _radar_operator_stage(category: object) -> str:
+    value = str(category or "").strip()
+    if value == "completed":
+        return "Required path"
+    if value == "expected_gate":
+        return "Optional gate"
+    if value in {"blocked_input", "failed", "needs_review"}:
+        return "Blocked"
+    if value == "not_ready":
+        return "Waiting for input"
+    return value.replace("_", " ").title() if value else "Unknown"
 
 
 def _radar_step_category(status: str, reason: str) -> str:
