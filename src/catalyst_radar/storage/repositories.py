@@ -195,6 +195,7 @@ class MarketRepository:
 
     def save_scan_result(self, candidate: CandidateSnapshot, policy: PolicyResult) -> None:
         pillar_scores = dict(candidate.metadata.get("pillar_scores", {}))
+        candidate_available_at = _candidate_available_at(candidate)
         with self.engine.begin() as conn:
             conn.execute(
                 delete(signal_features).where(
@@ -238,7 +239,7 @@ class MarketRepository:
                     transition_reasons=list(policy.reasons),
                     feature_version=candidate.features.feature_version,
                     policy_version=POLICY_VERSION,
-                    created_at=datetime.now(UTC),
+                    created_at=candidate_available_at,
                 )
             )
 
@@ -258,6 +259,10 @@ def _coerce_datetime(value: object, fallback: datetime) -> datetime:
         except ValueError:
             return _as_datetime(fallback)
     return _as_datetime(fallback)
+
+
+def _candidate_available_at(candidate: CandidateSnapshot) -> datetime:
+    return _coerce_datetime(candidate.metadata.get("available_at"), candidate.as_of)
 
 
 def _float_from_mapping(payload: dict[str, Any], key: str) -> float:
