@@ -24,6 +24,12 @@ from catalyst_radar.brokers.interactive import (
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.dashboard import data as dashboard_data
 from catalyst_radar.dashboard.design import dashboard_style
+from catalyst_radar.jobs.step_outcomes import (
+    SKIP_EXPLANATIONS as RADAR_SKIP_EXPLANATIONS,
+)
+from catalyst_radar.jobs.step_outcomes import (
+    classify_step_outcome,
+)
 from catalyst_radar.security.secrets import load_app_dotenv
 from catalyst_radar.storage.broker_repositories import BrokerRepository
 from catalyst_radar.storage.db import create_schema, engine_from_url
@@ -36,55 +42,6 @@ ALERT_ROUTES = [
     "daily_digest",
     "position_watch",
 ]
-RADAR_BLOCKING_REASONS = frozenset(
-    {
-        "degraded_mode_blocks_high_state_work",
-        "degraded_mode_blocks_decision_cards",
-        "degraded_mode_blocks_llm_review",
-        "no_scheduled_provider_input",
-        "scheduled_provider_not_supported",
-        "scheduled_event_provider_not_supported",
-        "no_scheduled_event_provider",
-    }
-)
-RADAR_EXPECTED_GATE_REASONS = frozenset(
-    {
-        "no_manual_buy_review_inputs",
-        "llm_disabled",
-        "no_alerts",
-        "outcome_available_at_not_supplied",
-    }
-)
-RADAR_SKIP_EXPLANATIONS = {
-    "no_scheduled_provider_input": "No market-data provider was scheduled for this run.",
-    "scheduled_provider_not_supported": (
-        "The scheduled market provider is not wired into dashboard runs yet."
-    ),
-    "no_scheduled_event_provider": "No news/event provider was scheduled for this run.",
-    "scheduled_event_provider_not_supported": (
-        "The scheduled event provider is not wired into dashboard runs yet."
-    ),
-    "no_text_inputs": "No text or news inputs were available to triage.",
-    "no_feature_inputs": "No signal inputs were available for feature scanning.",
-    "no_warning_or_higher_candidates": "No candidates crossed the warning threshold.",
-    "degraded_mode_blocks_high_state_work": (
-        "Degraded mode blocked candidate packets because a provider is unhealthy."
-    ),
-    "degraded_mode_blocks_decision_cards": (
-        "Degraded mode blocked Decision Cards because upstream data is not trusted."
-    ),
-    "degraded_mode_blocks_llm_review": (
-        "Degraded mode blocked LLM review because upstream data is not trusted."
-    ),
-    "llm_disabled": "LLM review was not requested for this run.",
-    "no_llm_review_inputs": "There were no Decision Cards for LLM review.",
-    "no_alerts": "No alert candidates were generated.",
-    "outcome_available_at_not_supplied": (
-        "Validation was skipped because no outcome cutoff was supplied."
-    ),
-}
-
-
 def _mapping(value: object) -> Mapping[str, Any]:
     return value if isinstance(value, Mapping) else {}
 
@@ -486,12 +443,13 @@ def _show_radar_run_summary(summary: Mapping[str, Any]) -> None:
     blocking_skips = [
         step
         for step in summary_steps
-        if str(step.get("reason") or "") in RADAR_BLOCKING_REASONS
+        if bool(step.get("blocks_reliance"))
+        or str(step.get("category") or "") in {"blocked_input", "failed", "needs_review"}
     ]
     expected_skips = [
         step
         for step in summary_steps
-        if str(step.get("reason") or "") in RADAR_EXPECTED_GATE_REASONS
+        if str(step.get("category") or "") == "expected_gate"
     ]
     if blocking_skips:
         st.warning(
@@ -522,8 +480,10 @@ def _show_radar_run_result_notice(
         st.success("Radar run status: success")
     elif status == "failed":
         st.error(f"Radar run status: {status}")
-    else:
+    elif blocking_messages:
         st.warning(f"Radar run status: {status}. Analysis is limited.")
+    else:
+        st.info(f"Radar run status: {status}. No blocking scan failures detected.")
     for message in (blocking_messages or informational_messages)[:6]:
         st.caption(message)
 
@@ -539,9 +499,20 @@ def _radar_run_limiting_messages(
         reason = str(step_mapping.get("reason") or "")
         if not reason:
             continue
-        if blocking_only and reason not in RADAR_BLOCKING_REASONS:
+        classification = classify_step_outcome(
+            str(step_mapping.get("status") or ""),
+            reason,
+        )
+        blocks_reliance = bool(
+            step_mapping.get("blocks_reliance", classification.blocks_reliance)
+        )
+        if blocking_only and not blocks_reliance:
             continue
-        explanation = RADAR_SKIP_EXPLANATIONS.get(reason, reason)
+        explanation = (
+            str(step_mapping.get("meaning"))
+            if step_mapping.get("meaning") is not None
+            else RADAR_SKIP_EXPLANATIONS.get(reason, reason)
+        )
         messages.append(f"{name}: {explanation}")
     return messages
 
@@ -551,15 +522,22 @@ def _radar_run_step_rows(daily_result: Mapping[str, Any]) -> list[dict[str, obje
     for name, step in _mapping(daily_result.get("steps")).items():
         step_mapping = _mapping(step)
         reason = str(step_mapping.get("reason") or "")
+        classification = classify_step_outcome(
+            str(step_mapping.get("status") or ""),
+            reason or None,
+        )
         rows.append(
             {
                 "Step": name,
                 "Status": step_mapping.get("status"),
+                "Category": step_mapping.get("category") or classification.category,
                 "Requested": step_mapping.get("requested_count"),
                 "Raw": step_mapping.get("raw_count"),
                 "Normalized": step_mapping.get("normalized_count"),
                 "Reason": reason or None,
-                "Meaning": RADAR_SKIP_EXPLANATIONS.get(reason),
+                "Meaning": step_mapping.get("meaning") or RADAR_SKIP_EXPLANATIONS.get(reason),
+                "Action": step_mapping.get("operator_action")
+                or classification.operator_action,
             }
         )
     return rows
@@ -571,33 +549,26 @@ def _radar_summary_step_rows(summary: Mapping[str, Any]) -> list[dict[str, objec
         name = str(step.get("step") or step.get("name") or "")
         status = str(step.get("status") or "")
         reason = str(step.get("reason") or "")
+        category = str(step.get("category") or "")
         rows.append(
             {
                 "step": name,
                 "status": status,
-                "category": _radar_step_category(status, reason),
+                "category": category or _radar_step_category(status, reason),
                 "requested": step.get("requested_count"),
                 "raw": step.get("raw_count"),
                 "normalized": step.get("normalized_count"),
                 "reason": reason or None,
-                "meaning": RADAR_SKIP_EXPLANATIONS.get(reason),
+                "meaning": step.get("meaning") or RADAR_SKIP_EXPLANATIONS.get(reason),
+                "action": step.get("operator_action")
+                or classify_step_outcome(status, reason or None).operator_action,
             }
         )
     return rows
 
 
 def _radar_step_category(status: str, reason: str) -> str:
-    if status == "success":
-        return "completed"
-    if status == "failed":
-        return "failed"
-    if reason in RADAR_BLOCKING_REASONS:
-        return "blocked_input"
-    if reason in RADAR_EXPECTED_GATE_REASONS:
-        return "expected_gate"
-    if status == "skipped":
-        return "needs_review"
-    return status or "unknown"
+    return classify_step_outcome(status, reason or None).category
 
 
 def _candidate_rows_with_labels(rows: list[dict[str, object]]) -> list[dict[str, object]]:

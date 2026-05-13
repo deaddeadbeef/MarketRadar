@@ -581,6 +581,14 @@ def test_daily_run_records_step_telemetry(monkeypatch):
     assert by_step["candidate_packets"].status == "success"
     assert by_step["candidate_packets"].reason is None
     assert by_step["candidate_packets"].metadata["normalized_count"] == 2
+    assert by_step["candidate_packets"].metadata["outcome_category"] == "completed"
+    assert by_step["decision_cards"].metadata["outcome_category"] == "expected_gate"
+    assert by_step["decision_cards"].metadata["blocks_reliance"] is False
+    assert (
+        by_step["decision_cards"].metadata["outcome_meaning"]
+        == "No candidate crossed the manual buy-review gate."
+    )
+    assert by_step["llm_review"].metadata["outcome_category"] == "expected_gate"
 
 
 def test_daily_run_ignores_irrelevant_degraded_provider(monkeypatch):
