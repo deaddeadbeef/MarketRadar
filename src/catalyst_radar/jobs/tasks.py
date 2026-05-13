@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time
@@ -19,6 +20,7 @@ from catalyst_radar.core.config import AppConfig
 from catalyst_radar.core.models import ActionState, JobStatus, PolicyResult
 from catalyst_radar.decision_cards.builder import build_decision_card
 from catalyst_radar.ops.health import DISABLED_DEGRADED_STATES, load_ops_health
+from catalyst_radar.ops.telemetry import record_telemetry_event
 from catalyst_radar.pipeline.candidate_packet import build_candidate_packet
 from catalyst_radar.pipeline.scan import ScanResult, run_scan
 from catalyst_radar.storage.alert_repositories import AlertRepository
@@ -59,6 +61,7 @@ LIMITED_ANALYSIS_SKIP_REASONS = frozenset(
 )
 CSV_SCHEDULED_PROVIDER_NAMES = frozenset({"csv", "sample"})
 DISABLED_SCHEDULED_PROVIDER_NAMES = frozenset({"", "none", "off", "disabled"})
+logger = logging.getLogger("catalyst_radar.jobs.tasks")
 
 
 @dataclass(frozen=True)
@@ -201,6 +204,7 @@ def _run_step(
         context.spec.provider,
         metadata=_step_metadata(context.spec, step_name),
     )
+    _log_step_started(context, step_name, job_id)
     try:
         if abort_event is not None and abort_event.is_set():
             outcome = _StepOutcome(
@@ -244,13 +248,15 @@ def _run_step(
                 "result_payload": {"error_type": exc.__class__.__name__},
             },
         )
-        return JobStepResult(
+        failed_step = JobStepResult(
             name=step_name,
             status=JobStatus.FAILED.value,
             job_id=job_id,
             reason=reason,
             payload={"error_type": exc.__class__.__name__},
         )
+        _record_step_finished(context, failed_step)
+        return failed_step
 
     provider_repo.finish_job(
         job_id,
@@ -265,7 +271,7 @@ def _run_step(
             "result_payload": outcome.payload,
         },
     )
-    return JobStepResult(
+    step_result = JobStepResult(
         name=step_name,
         status=outcome.status,
         job_id=job_id,
@@ -275,6 +281,8 @@ def _run_step(
         reason=outcome.reason,
         payload=outcome.payload,
     )
+    _record_step_finished(context, step_result)
+    return step_result
 
 
 def _daily_bar_ingest(context: _DailyRunContext) -> _StepOutcome:
@@ -719,6 +727,53 @@ def _step_metadata(spec: DailyRunSpec, step_name: str) -> dict[str, Any]:
         "universe": spec.universe,
         "tickers": list(spec.tickers),
     }
+
+
+def _log_step_started(context: _DailyRunContext, step_name: str, job_id: str) -> None:
+    logger.info(
+        "radar_step_started",
+        extra={
+            "catalyst_radar": {
+                **_step_metadata(context.spec, step_name),
+                "job_id": job_id,
+            }
+        },
+    )
+
+
+def _record_step_finished(context: _DailyRunContext, step: JobStepResult) -> None:
+    metadata = {
+        **_step_metadata(context.spec, step.name),
+        "job_id": step.job_id,
+        "result_status": step.status,
+        "result_reason": step.reason,
+        "requested_count": step.requested_count,
+        "raw_count": step.raw_count,
+        "normalized_count": step.normalized_count,
+    }
+    log_payload = {
+        **metadata,
+        "result_payload": dict(step.payload),
+    }
+    logger.info("radar_step_finished", extra={"catalyst_radar": log_payload})
+    try:
+        record_telemetry_event(
+            context.engine,
+            event_name="radar_run.step_finished",
+            status=step.status,
+            actor_source="radar_pipeline",
+            artifact_type="job_run",
+            artifact_id=step.job_id,
+            reason=step.reason,
+            metadata=metadata,
+            after_payload={"step": step.name, "payload": dict(step.payload)},
+            available_at=context.spec.decision_available_at,
+        )
+    except Exception:
+        logger.exception(
+            "radar_step_telemetry_failed",
+            extra={"catalyst_radar": log_payload},
+        )
 
 
 def _failed_dependency(step_name: str, context: _DailyRunContext) -> str | None:
