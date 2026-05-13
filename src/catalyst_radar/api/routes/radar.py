@@ -15,6 +15,7 @@ from catalyst_radar.jobs.scheduler import (
     run_once,
     scheduler_run_payload,
 )
+from catalyst_radar.jobs.step_outcomes import classify_step_outcome
 from catalyst_radar.ops.telemetry import record_telemetry_event
 from catalyst_radar.security.access import Role, require_role
 from catalyst_radar.security.licenses import redact_restricted_external_payload
@@ -207,7 +208,10 @@ def _radar_run_result_metadata(payload: dict[str, object]) -> dict[str, object]:
         return {
             "daily_status": None,
             "step_counts": {},
+            "outcome_category_counts": {},
             "skip_reason_counts": {},
+            "blocked_steps": [],
+            "expected_gate_steps": [],
             "skipped_steps": [],
         }
     steps = daily_result.get("steps")
@@ -215,30 +219,64 @@ def _radar_run_result_metadata(payload: dict[str, object]) -> dict[str, object]:
         return {
             "daily_status": daily_result.get("status"),
             "step_counts": {},
+            "outcome_category_counts": {},
             "skip_reason_counts": {},
+            "blocked_steps": [],
+            "expected_gate_steps": [],
             "skipped_steps": [],
         }
     counts: dict[str, int] = {}
+    outcome_category_counts: dict[str, int] = {}
     skip_reason_counts: dict[str, int] = {}
     skipped_steps: list[dict[str, object]] = []
+    blocked_steps: list[dict[str, object]] = []
+    expected_gate_steps: list[dict[str, object]] = []
     for step_name, step in steps.items():
         status = str(step.get("status") if isinstance(step, dict) else "unknown")
         counts[status] = counts.get(status, 0) + 1
-        if status == "skipped" and isinstance(step, dict):
+        if isinstance(step, dict):
             reason = str(step.get("reason") or "unspecified")
-            skip_reason_counts[reason] = skip_reason_counts.get(reason, 0) + 1
-            skipped_steps.append(
-                {
-                    "step": str(step.get("name") or step_name),
-                    "reason": None if reason == "unspecified" else reason,
-                    "requested_count": step.get("requested_count"),
-                    "raw_count": step.get("raw_count"),
-                    "normalized_count": step.get("normalized_count"),
-                }
+            category = str(step.get("category") or "")
+            classification = (
+                classify_step_outcome(status, None if reason == "unspecified" else reason)
+                if not category
+                else None
             )
+            outcome_category = category or classification.category
+            outcome_category_counts[outcome_category] = (
+                outcome_category_counts.get(outcome_category, 0) + 1
+            )
+            step_summary = {
+                "step": str(step.get("name") or step_name),
+                "reason": None if reason == "unspecified" else reason,
+                "category": outcome_category,
+                "label": step.get("label")
+                or (classification.label if classification is not None else None),
+                "requested_count": step.get("requested_count"),
+                "raw_count": step.get("raw_count"),
+                "normalized_count": step.get("normalized_count"),
+            }
+            if bool(
+                step.get("blocks_reliance")
+                if "blocks_reliance" in step
+                else (
+                    classification.blocks_reliance
+                    if classification is not None
+                    else outcome_category in {"blocked_input", "failed", "needs_review"}
+                )
+            ):
+                blocked_steps.append(step_summary)
+            if outcome_category == "expected_gate":
+                expected_gate_steps.append(step_summary)
+        if status == "skipped" and isinstance(step, dict):
+            skip_reason_counts[reason] = skip_reason_counts.get(reason, 0) + 1
+            skipped_steps.append(step_summary)
     return {
         "daily_status": daily_result.get("status"),
         "step_counts": dict(sorted(counts.items())),
+        "outcome_category_counts": dict(sorted(outcome_category_counts.items())),
         "skip_reason_counts": dict(sorted(skip_reason_counts.items())),
+        "blocked_steps": blocked_steps,
+        "expected_gate_steps": expected_gate_steps,
         "skipped_steps": skipped_steps,
     }

@@ -27,6 +27,10 @@ from catalyst_radar.connectors.sec import SecSubmissionsConnector
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.core.models import ActionState, JobStatus, PolicyResult, Security
 from catalyst_radar.decision_cards.builder import build_decision_card
+from catalyst_radar.jobs.step_outcomes import (
+    BLOCKING_SKIP_REASONS,
+    classify_step_outcome,
+)
 from catalyst_radar.ops.health import DISABLED_DEGRADED_STATES, load_ops_health
 from catalyst_radar.ops.telemetry import record_telemetry_event
 from catalyst_radar.pipeline.candidate_packet import build_candidate_packet
@@ -58,16 +62,7 @@ DAILY_STEP_ORDER = (
     "validation_update",
 )
 
-LIMITED_ANALYSIS_SKIP_REASONS = frozenset(
-    {
-        "degraded_mode_blocks_high_state_work",
-        "degraded_mode_blocks_decision_cards",
-        "degraded_mode_blocks_llm_review",
-        "no_scheduled_provider_input",
-        "scheduled_provider_not_supported",
-        "scheduled_event_provider_not_supported",
-    }
-)
+LIMITED_ANALYSIS_SKIP_REASONS = BLOCKING_SKIP_REASONS
 CSV_SCHEDULED_PROVIDER_NAMES = frozenset({"csv", "sample"})
 POLYGON_SCHEDULED_PROVIDER_NAMES = frozenset({"polygon"})
 MARKET_SCHEDULED_PROVIDER_NAMES = (
@@ -264,6 +259,7 @@ def _run_step(
                 "result_status": JobStatus.FAILED.value,
                 "result_reason": reason,
                 "result_payload": {"error_type": exc.__class__.__name__},
+                **classify_step_outcome(JobStatus.FAILED.value, reason).as_metadata(),
             },
         )
         failed_step = JobStepResult(
@@ -287,6 +283,7 @@ def _run_step(
             "result_status": outcome.status,
             "result_reason": outcome.reason,
             "result_payload": outcome.payload,
+            **classify_step_outcome(outcome.status, outcome.reason).as_metadata(),
         },
     )
     step_result = JobStepResult(
@@ -1011,6 +1008,7 @@ def _record_step_finished(context: _DailyRunContext, step: JobStepResult) -> Non
         "requested_count": step.requested_count,
         "raw_count": step.raw_count,
         "normalized_count": step.normalized_count,
+        **classify_step_outcome(step.status, step.reason).as_metadata(),
     }
     log_payload = {
         **metadata,

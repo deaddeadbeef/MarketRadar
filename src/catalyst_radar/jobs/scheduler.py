@@ -12,6 +12,7 @@ from typing import Any
 
 from sqlalchemy import Engine
 
+from catalyst_radar.jobs.step_outcomes import classify_step_outcome
 from catalyst_radar.jobs.tasks import DailyRunResult, DailyRunSpec, JobStepResult, run_daily
 from catalyst_radar.storage.job_repositories import JobLockRepository
 
@@ -219,14 +220,20 @@ def daily_spec_payload(spec: DailyRunSpec) -> dict[str, Any]:
 
 
 def step_payload(step: JobStepResult) -> dict[str, Any]:
+    classification = classify_step_outcome(step.status, step.reason)
     return {
         "name": step.name,
         "status": step.status,
+        "category": classification.category,
+        "label": classification.label,
         "job_id": step.job_id,
         "requested_count": step.requested_count,
         "raw_count": step.raw_count,
         "normalized_count": step.normalized_count,
         "reason": step.reason,
+        "meaning": classification.meaning,
+        "operator_action": classification.operator_action,
+        "blocks_reliance": classification.blocks_reliance,
         "payload": _json_safe(step.payload),
     }
 

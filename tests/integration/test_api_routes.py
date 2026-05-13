@@ -245,14 +245,33 @@ def test_post_radar_run_telemetry_summarizes_skipped_steps(tmp_path, monkeypatch
     completed = telemetry[1]
     assert completed["event_type"] == "telemetry.radar_run.completed"
     assert completed["metadata"]["step_counts"] == {"skipped": 2, "success": 1}
+    assert completed["metadata"]["outcome_category_counts"] == {
+        "blocked_input": 1,
+        "completed": 1,
+        "not_ready": 1,
+    }
     assert completed["metadata"]["skip_reason_counts"] == {
         "no_scheduled_event_provider": 1,
         "no_text_inputs": 1,
     }
+    assert completed["metadata"]["blocked_steps"] == [
+        {
+            "step": "event_ingest",
+            "reason": "no_scheduled_event_provider",
+            "category": "blocked_input",
+            "label": "Blocked input",
+            "requested_count": 0,
+            "raw_count": 0,
+            "normalized_count": 0,
+        },
+    ]
+    assert completed["metadata"]["expected_gate_steps"] == []
     assert completed["metadata"]["skipped_steps"] == [
         {
             "step": "event_ingest",
             "reason": "no_scheduled_event_provider",
+            "category": "blocked_input",
+            "label": "Blocked input",
             "requested_count": 0,
             "raw_count": 0,
             "normalized_count": 0,
@@ -260,6 +279,8 @@ def test_post_radar_run_telemetry_summarizes_skipped_steps(tmp_path, monkeypatch
         {
             "step": "local_text_triage",
             "reason": "no_text_inputs",
+            "category": "not_ready",
+            "label": "Not ready",
             "requested_count": 0,
             "raw_count": 0,
             "normalized_count": 0,

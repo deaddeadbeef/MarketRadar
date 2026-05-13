@@ -28,7 +28,11 @@ from catalyst_radar.brokers.rate_limit import (
     schwab_rate_limit_status,
 )
 from catalyst_radar.core.config import AppConfig
-from catalyst_radar.jobs.tasks import DAILY_STEP_ORDER, LIMITED_ANALYSIS_SKIP_REASONS
+from catalyst_radar.jobs.step_outcomes import (
+    StepOutcomeClassification,
+    classify_step_outcome,
+)
+from catalyst_radar.jobs.tasks import DAILY_STEP_ORDER
 from catalyst_radar.storage.broker_repositories import BrokerRepository
 from catalyst_radar.storage.budget_repositories import BudgetLedgerRepository
 from catalyst_radar.storage.schema import (
@@ -739,6 +743,9 @@ def load_radar_run_summary(engine: Engine, *, limit: int = 250) -> dict[str, obj
         if value is not None
     ]
     status_counts = Counter(str(row.get("status") or "unknown") for row in ordered_steps)
+    outcome_counts = Counter(
+        _radar_run_step_classification(row).category for row in ordered_steps
+    )
     first_metadata = rows[0].get("metadata")
     metadata = _row_dict(first_metadata) if isinstance(first_metadata, Mapping) else {}
     return {
@@ -757,6 +764,11 @@ def load_radar_run_summary(engine: Engine, *, limit: int = 250) -> dict[str, obj
         ),
         "step_count": len(ordered_steps),
         "status_counts": dict(sorted(status_counts.items())),
+        "outcome_category_counts": dict(sorted(outcome_counts.items())),
+        "blocking_step_count": outcome_counts.get("blocked_input", 0)
+        + outcome_counts.get("failed", 0)
+        + outcome_counts.get("needs_review", 0),
+        "expected_gate_count": outcome_counts.get("expected_gate", 0),
         "requested_count": sum(
             int(_finite_float(row.get("requested_count"))) for row in ordered_steps
         ),
@@ -769,6 +781,8 @@ def load_radar_run_summary(engine: Engine, *, limit: int = 250) -> dict[str, obj
                 "id": row.get("id"),
                 "step": row.get("job_type"),
                 "status": row.get("status"),
+                "category": _radar_run_step_classification(row).category,
+                "label": _radar_run_step_classification(row).label,
                 "started_at": row.get("started_at"),
                 "finished_at": row.get("finished_at"),
                 "requested_count": row.get("requested_count"),
@@ -776,6 +790,9 @@ def load_radar_run_summary(engine: Engine, *, limit: int = 250) -> dict[str, obj
                 "normalized_count": row.get("normalized_count"),
                 "error_summary": row.get("error_summary"),
                 "reason": _radar_run_step_reason(row),
+                "meaning": _radar_run_step_classification(row).meaning,
+                "operator_action": _radar_run_step_classification(row).operator_action,
+                "blocks_reliance": _radar_run_step_classification(row).blocks_reliance,
                 "payload": _radar_run_step_payload(row),
             }
             for row in ordered_steps
@@ -1025,6 +1042,7 @@ def readiness_checklist_payload(
 
     decision_step = steps.get("decision_cards", {})
     decision_reason = str(decision_step.get("reason") or "")
+    decision_category = str(decision_step.get("category") or "")
     if str(decision_step.get("status") or "") == "success":
         rows.append(
             _readiness_row(
@@ -1039,12 +1057,22 @@ def readiness_checklist_payload(
         rows.append(
             _readiness_row(
                 "Decision Cards",
-                "attention",
+                "optional",
                 "No candidate reached the manual buy-review gate in the latest run.",
                 (
-                    "Review high-scoring candidates or adjust policy thresholds if this "
-                    "is too conservative."
+                    "Review research briefs manually, or adjust policy thresholds if this "
+                    "gate is too conservative."
                 ),
+                _step_evidence("decision_cards", decision_step),
+            )
+        )
+    elif decision_category == "expected_gate":
+        rows.append(
+            _readiness_row(
+                "Decision Cards",
+                "optional",
+                "Decision Cards were not needed for the latest run.",
+                "No action required unless you want this optional gate to run.",
                 _step_evidence("decision_cards", decision_step),
             )
         )
@@ -1136,6 +1164,7 @@ def readiness_checklist_payload(
 
     digest_step = steps.get("digest", {})
     digest_reason = str(digest_step.get("reason") or "")
+    digest_category = str(digest_step.get("category") or "")
     if str(digest_step.get("status") or "") == "success":
         rows.append(
             _readiness_row(
@@ -1150,9 +1179,19 @@ def readiness_checklist_payload(
         rows.append(
             _readiness_row(
                 "Alerting",
-                "attention",
+                "optional",
                 "No alerts were generated in the latest run.",
                 "Use candidates/research briefs for manual triage or tune alert thresholds.",
+                _step_evidence("digest", digest_step),
+            )
+        )
+    elif digest_category == "expected_gate":
+        rows.append(
+            _readiness_row(
+                "Alerting",
+                "optional",
+                "Alerting was not needed for the latest run.",
+                "No action required unless you want alert delivery to run.",
                 _step_evidence("digest", digest_step),
             )
         )
@@ -1879,13 +1918,42 @@ def _radar_run_status(rows: Sequence[Mapping[str, object]]) -> str:
         if any(status != "failed" for status in statuses):
             return "partial_success"
         return "failed"
-    if any(
-        row.get("status") == "skipped"
-        and _radar_run_step_reason(row) in LIMITED_ANALYSIS_SKIP_REASONS
-        for row in rows
-    ):
+    if any(_radar_run_step_classification(row).blocks_reliance for row in rows):
         return "partial_success"
     return "success"
+
+
+def _radar_run_step_classification(
+    row: Mapping[str, object],
+) -> StepOutcomeClassification:
+    metadata = row.get("metadata")
+    if isinstance(metadata, Mapping):
+        category = metadata.get("outcome_category")
+        label = metadata.get("outcome_label")
+        if isinstance(category, str) and isinstance(label, str):
+            inferred = classify_step_outcome(
+                str(row.get("status") or ""),
+                _radar_run_step_reason(row),
+            )
+            return StepOutcomeClassification(
+                category=category,
+                label=label,
+                meaning=(
+                    str(metadata.get("outcome_meaning"))
+                    if metadata.get("outcome_meaning") is not None
+                    else inferred.meaning
+                ),
+                operator_action=(
+                    str(metadata.get("operator_action"))
+                    if metadata.get("operator_action") is not None
+                    else inferred.operator_action
+                ),
+                blocks_reliance=bool(metadata.get("blocks_reliance")),
+            )
+    return classify_step_outcome(
+        str(row.get("status") or ""),
+        _radar_run_step_reason(row),
+    )
 
 
 def _radar_run_step_reason(row: Mapping[str, object]) -> str | None:

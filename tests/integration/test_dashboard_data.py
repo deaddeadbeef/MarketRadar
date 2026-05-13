@@ -239,11 +239,11 @@ def test_readiness_checklist_payload_separates_blockers_from_expected_gates() ->
     assert by_area["Catalyst feed"]["status"] == "blocked"
     assert "fixture" in str(by_area["Catalyst feed"]["finding"])
     assert by_area["Research loop"]["status"] == "ready"
-    assert by_area["Decision Cards"]["status"] == "attention"
+    assert by_area["Decision Cards"]["status"] == "optional"
     assert "manual buy-review" in str(by_area["Decision Cards"]["finding"])
     assert by_area["LLM review"]["status"] == "optional"
     assert by_area["Portfolio context"]["status"] == "attention"
-    assert by_area["Alerting"]["status"] == "attention"
+    assert by_area["Alerting"]["status"] == "optional"
     assert by_area["Outcome validation"]["status"] == "optional"
     assert by_area["Order safety"]["status"] == "safe"
     joined = " ".join(str(value) for row in rows for value in row.values())
@@ -849,8 +849,92 @@ def test_load_radar_run_summary_marks_limited_analysis_skips_partial(
 
     assert summary["status"] == "partial_success"
     assert summary["status_counts"] == {"skipped": 1, "success": 1}
+    assert summary["outcome_category_counts"] == {
+        "blocked_input": 1,
+        "completed": 1,
+    }
+    assert summary["blocking_step_count"] == 1
+    assert summary["expected_gate_count"] == 0
     assert summary["steps"][1]["reason"] == "degraded_mode_blocks_high_state_work"
+    assert summary["steps"][1]["category"] == "blocked_input"
+    assert summary["steps"][1]["blocks_reliance"] is True
     assert summary["steps"][1]["payload"] == {"degraded_mode": {"enabled": True}}
+
+
+def test_load_radar_run_summary_classifies_expected_gate_skips_success(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    latest_decision_at = AVAILABLE_AT
+    metadata = {
+        "as_of": "2026-05-10",
+        "decision_available_at": latest_decision_at.isoformat(),
+        "outcome_available_at": None,
+        "provider": None,
+        "universe": None,
+        "tickers": [],
+    }
+    with engine.begin() as conn:
+        conn.execute(
+            insert(job_runs),
+            [
+                _job_run_row(
+                    "candidate-packets",
+                    job_type="candidate_packets",
+                    status="success",
+                    started_at=latest_decision_at + timedelta(seconds=1),
+                    metadata={
+                        **metadata,
+                        "result_status": "success",
+                        "result_reason": None,
+                        "result_payload": {"candidate_packet_count": 2},
+                    },
+                    requested_count=2,
+                    raw_count=2,
+                    normalized_count=2,
+                ),
+                _job_run_row(
+                    "decision-cards",
+                    job_type="decision_cards",
+                    status="skipped",
+                    started_at=latest_decision_at + timedelta(seconds=2),
+                    metadata={
+                        **metadata,
+                        "result_status": "skipped",
+                        "result_reason": "no_manual_buy_review_inputs",
+                        "result_payload": {},
+                    },
+                ),
+                _job_run_row(
+                    "llm-review",
+                    job_type="llm_review",
+                    status="skipped",
+                    started_at=latest_decision_at + timedelta(seconds=3),
+                    metadata={
+                        **metadata,
+                        "result_status": "skipped",
+                        "result_reason": "llm_disabled",
+                        "result_payload": {},
+                    },
+                ),
+            ],
+        )
+
+    summary = load_radar_run_summary(engine)
+
+    assert summary["status"] == "success"
+    assert summary["status_counts"] == {"skipped": 2, "success": 1}
+    assert summary["outcome_category_counts"] == {
+        "completed": 1,
+        "expected_gate": 2,
+    }
+    assert summary["blocking_step_count"] == 0
+    assert summary["expected_gate_count"] == 2
+    assert [row["category"] for row in summary["steps"]] == [
+        "completed",
+        "expected_gate",
+        "expected_gate",
+    ]
 
 
 def test_load_broker_summary_returns_portfolio_context(tmp_path: Path) -> None:
