@@ -1365,6 +1365,66 @@ def test_radar_discovery_snapshot_flags_stale_bars_and_empty_packets(
     assert blocker_codes == {"stale_daily_bars", "no_candidate_packets"}
 
 
+def test_radar_discovery_snapshot_ignores_old_packets_without_latest_packet_step(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    latest_decision_at = AVAILABLE_AT + timedelta(hours=1)
+    metadata = {
+        "as_of": "2026-05-10",
+        "decision_available_at": latest_decision_at.isoformat(),
+        "outcome_available_at": None,
+        "provider": "polygon",
+        "universe": "liquid-us",
+        "tickers": [],
+    }
+    with engine.begin() as conn:
+        conn.execute(
+            insert(job_runs),
+            [
+                _job_run_row(
+                    "latest-feature-scan-only",
+                    job_type="feature_scan",
+                    status="success",
+                    started_at=latest_decision_at,
+                    metadata=metadata,
+                    requested_count=500,
+                    raw_count=2,
+                    normalized_count=2,
+                ),
+            ],
+        )
+    summary = load_radar_run_summary(engine)
+
+    snapshot = radar_discovery_snapshot_payload(
+        engine,
+        AppConfig(
+            daily_market_provider="polygon",
+            polygon_api_key="fixture-key",
+            daily_event_provider="sec",
+            sec_enable_live=True,
+            sec_user_agent="MarketRadar test@example.com",
+            scan_batch_size=500,
+        ),
+        radar_run_summary=summary,
+        ops_health={
+            "database": {
+                "active_security_count": 500,
+                "active_security_with_daily_bar_count": 500,
+                "latest_daily_bar_date": "2026-05-10",
+            }
+        },
+    )
+
+    assert snapshot["yield"]["candidate_states"] == 2
+    assert snapshot["yield"]["candidate_packets"] == 0
+    assert snapshot["top_discoveries"] == []
+    assert {str(row["code"]) for row in snapshot["blockers"]} == {
+        "no_candidate_packets"
+    }
+
+
 def test_load_broker_summary_returns_portfolio_context(tmp_path: Path) -> None:
     engine = _engine(tmp_path)
     repo = BrokerRepository(engine)
