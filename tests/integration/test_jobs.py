@@ -327,6 +327,7 @@ def test_daily_run_caps_high_states_and_blocks_decision_work_when_degraded(monke
 
     result = run_daily(spec, engine=engine)
 
+    assert result.status == "partial_success"
     assert result.step("scoring_policy").status == "success"
     assert result.step("scoring_policy").payload["degraded_state_cap_count"] == 1
     assert result.step("candidate_packets").status == "skipped"
@@ -344,6 +345,41 @@ def test_daily_run_caps_high_states_and_blocks_decision_work_when_degraded(monke
 
     assert state.state == ActionState.ADD_TO_WATCHLIST.value
     assert "degraded_mode_state_cap" in state.transition_reasons
+
+
+def test_daily_run_reports_llm_disabled_before_degraded_llm_block(monkeypatch):
+    engine = _engine()
+    decision_available_at = datetime(2026, 5, 10, 1, 0, tzinfo=UTC)
+    _insert_active_security(engine, decision_available_at)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(provider_health).values(
+                id="provider-health-down",
+                provider="polygon",
+                status="down",
+                checked_at=decision_available_at,
+                reason="provider outage",
+                latency_ms=None,
+            )
+        )
+
+    def fake_run_scan(*args, **kwargs):
+        del args, kwargs
+        return [_high_score_scan_result(date(2026, 5, 9))]
+
+    monkeypatch.setattr("catalyst_radar.jobs.tasks.run_scan", fake_run_scan)
+    spec = DailyRunSpec(
+        as_of=date(2026, 5, 9),
+        decision_available_at=decision_available_at,
+        run_llm=False,
+        dry_run_alerts=True,
+    )
+
+    result = run_daily(spec, engine=engine)
+
+    assert result.status == "partial_success"
+    assert result.step("candidate_packets").reason == "degraded_mode_blocks_high_state_work"
+    assert result.step("llm_review").reason == "llm_disabled"
 
 
 def test_daily_run_decision_cards_include_broker_context(monkeypatch):
