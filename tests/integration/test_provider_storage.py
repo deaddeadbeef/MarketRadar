@@ -266,6 +266,11 @@ def test_job_run_transitions_from_running_to_terminal_status() -> None:
         requested_count=1,
         raw_count=1,
         normalized_count=1,
+        metadata_update={
+            "result_status": "success",
+            "result_reason": None,
+            "result_payload": {"normalized_count": 1},
+        },
     )
 
     with engine.connect() as conn:
@@ -276,6 +281,12 @@ def test_job_run_transitions_from_running_to_terminal_status() -> None:
     assert finished.requested_count == 1
     assert finished.raw_count == 1
     assert finished.normalized_count == 1
+    assert finished._mapping["metadata"] == {
+        "symbols": ["MSFT"],
+        "result_status": "success",
+        "result_reason": None,
+        "result_payload": {"normalized_count": 1},
+    }
 
 
 def test_job_run_records_failure_status_and_error_summary() -> None:

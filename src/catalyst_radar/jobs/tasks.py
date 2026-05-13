@@ -225,6 +225,11 @@ def _run_step(
             raw_count=0,
             normalized_count=0,
             error_summary=reason,
+            metadata_update={
+                "result_status": JobStatus.FAILED.value,
+                "result_reason": reason,
+                "result_payload": {"error_type": exc.__class__.__name__},
+            },
         )
         return JobStepResult(
             name=step_name,
@@ -241,6 +246,11 @@ def _run_step(
         raw_count=outcome.raw_count,
         normalized_count=outcome.normalized_count,
         error_summary=outcome.reason if outcome.status == JobStatus.FAILED.value else None,
+        metadata_update={
+            "result_status": outcome.status,
+            "result_reason": outcome.reason,
+            "result_payload": outcome.payload,
+        },
     )
     return JobStepResult(
         name=step_name,

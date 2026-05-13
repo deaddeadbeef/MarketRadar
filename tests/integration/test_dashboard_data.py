@@ -515,6 +515,61 @@ def test_load_radar_run_summary_returns_latest_daily_step_group(tmp_path: Path) 
     assert summary["steps"][1]["error_summary"] == "policy input missing"
 
 
+def test_load_radar_run_summary_marks_limited_analysis_skips_partial(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    latest_decision_at = AVAILABLE_AT
+    metadata = {
+        "as_of": "2026-05-10",
+        "decision_available_at": latest_decision_at.isoformat(),
+        "outcome_available_at": None,
+        "provider": None,
+        "universe": None,
+        "tickers": [],
+    }
+    with engine.begin() as conn:
+        conn.execute(
+            insert(job_runs),
+            [
+                _job_run_row(
+                    "feature-scan",
+                    job_type="feature_scan",
+                    status="success",
+                    started_at=latest_decision_at + timedelta(seconds=1),
+                    metadata={
+                        **metadata,
+                        "result_status": "success",
+                        "result_reason": None,
+                        "result_payload": {"scan_result_count": 2},
+                    },
+                    requested_count=3,
+                    raw_count=2,
+                    normalized_count=2,
+                ),
+                _job_run_row(
+                    "candidate-packets",
+                    job_type="candidate_packets",
+                    status="skipped",
+                    started_at=latest_decision_at + timedelta(seconds=2),
+                    metadata={
+                        **metadata,
+                        "result_status": "skipped",
+                        "result_reason": "degraded_mode_blocks_high_state_work",
+                        "result_payload": {"degraded_mode": {"enabled": True}},
+                    },
+                ),
+            ],
+        )
+
+    summary = load_radar_run_summary(engine)
+
+    assert summary["status"] == "partial_success"
+    assert summary["status_counts"] == {"skipped": 1, "success": 1}
+    assert summary["steps"][1]["reason"] == "degraded_mode_blocks_high_state_work"
+    assert summary["steps"][1]["payload"] == {"degraded_mode": {"enabled": True}}
+
+
 def test_load_broker_summary_returns_portfolio_context(tmp_path: Path) -> None:
     engine = _engine(tmp_path)
     repo = BrokerRepository(engine)
