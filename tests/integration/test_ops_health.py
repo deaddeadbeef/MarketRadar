@@ -8,6 +8,7 @@ from sqlalchemy import Engine, create_engine, insert
 from catalyst_radar.core.models import ActionState
 from catalyst_radar.ops.health import load_ops_health
 from catalyst_radar.ops.metrics import detect_score_drift, load_ops_metrics
+from catalyst_radar.security.audit import AuditLogRepository
 from catalyst_radar.storage.db import create_schema
 from catalyst_radar.storage.schema import (
     budget_ledger,
@@ -288,6 +289,56 @@ def test_ops_health_reports_metrics_banners_incidents_drift_and_runbooks() -> No
     assert metrics["unsupported_claim_count"] == 1
     assert metrics["unsupported_claim_rate"] == 0.25
     assert metrics["false_positive_rate"] == 0.25
+
+
+def test_ops_health_reports_recent_telemetry_events() -> None:
+    engine = _engine()
+    now = datetime(2026, 5, 10, 12, 0, tzinfo=UTC)
+    repo = AuditLogRepository(engine)
+    repo.append_event(
+        event_type="decision.approved",
+        actor_source="operator",
+        status="accepted",
+        artifact_type="decision_card",
+        artifact_id="card-ignored",
+        occurred_at=now - timedelta(minutes=3),
+        created_at=now - timedelta(minutes=3),
+    )
+    repo.append_event(
+        event_type="telemetry.radar_run.completed",
+        actor_source="api",
+        status="success",
+        artifact_type="radar_run",
+        artifact_id="daily-run",
+        metadata={"schema_version": "telemetry-v1", "step_counts": {"success": 2}},
+        occurred_at=now - timedelta(minutes=2),
+        created_at=now - timedelta(minutes=2),
+    )
+    repo.append_event(
+        event_type="telemetry.radar_run.rejected",
+        actor_source="api",
+        status="rejected",
+        artifact_type="radar_run",
+        artifact_id="daily-run",
+        reason="unsupported mode",
+        occurred_at=now - timedelta(minutes=1),
+        created_at=now - timedelta(minutes=1),
+    )
+
+    health = load_ops_health(engine, now=now)
+
+    telemetry = health["telemetry"]
+    assert telemetry["event_count"] == 2
+    assert telemetry["event_counts"] == {
+        "telemetry.radar_run.completed": 1,
+        "telemetry.radar_run.rejected": 1,
+    }
+    assert telemetry["status_counts"] == {"rejected": 1, "success": 1}
+    assert [event["event_type"] for event in telemetry["events"]] == [
+        "telemetry.radar_run.rejected",
+        "telemetry.radar_run.completed",
+    ]
+    assert telemetry["events"][0]["reason"] == "unsupported mode"
 
 
 def test_score_drift_uses_plan_default_thresholds() -> None:
