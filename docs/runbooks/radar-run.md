@@ -12,6 +12,9 @@ Invoke-RestMethod `
 ```
 
 The run uses the existing `daily-run` job lock, so another dashboard/API/worker run will return `409` instead of overlapping.
+Manual dashboard/API runs also use `CATALYST_RADAR_RUN_MIN_INTERVAL_SECONDS`
+as a durable cooldown. Repeated run requests inside that window return `429`
+with `Retry-After`, even if the previous run has already finished.
 
 The radar run does not call Schwab. It can read the latest synced broker context already in the database when building decision cards, but Schwab portfolio and market refreshes stay behind the separate broker controls and their server-side rate guards.
 
@@ -58,6 +61,7 @@ CATALYST_DAILY_MARKET_PROVIDER=polygon
 CATALYST_DAILY_PROVIDER=polygon
 CATALYST_POLYGON_API_KEY=<your key>
 CATALYST_POLYGON_TICKERS_MAX_PAGES=1
+CATALYST_RADAR_RUN_MIN_INTERVAL_SECONDS=300
 ```
 
 The daily Polygon path fails closed before making a request when

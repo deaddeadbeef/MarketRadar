@@ -26,6 +26,7 @@ from catalyst_radar.storage.job_repositories import JobLockRepository
 from catalyst_radar.universe.seed import seed_polygon_tickers
 
 router = APIRouter(prefix="/api/radar", tags=["radar"])
+RADAR_RUN_COOLDOWN_LOCK_NAME = "manual_radar_run_cooldown"
 UNIVERSE_SEED_LOCK_NAME = "polygon_ticker_seed"
 
 
@@ -91,7 +92,7 @@ def run_radar(
     engine = _engine()
     app_config = AppConfig.from_env()
     run_artifact_id = f"radar-run-api:{uuid4().hex}"
-    request_metadata = _radar_run_request_metadata(request)
+    request_metadata = _radar_run_request_metadata(request, app_config)
     record_telemetry_event(
         engine,
         event_name="radar_run.requested",
@@ -116,7 +117,27 @@ def run_radar(
             llm_dry_run=request.llm_dry_run,
             dry_run_alerts=request.dry_run_alerts,
         )
+        _acquire_radar_run_slot(engine, config=app_config, metadata=request_metadata)
         result = run_once(engine=engine, config=config)
+    except _RadarRunRateLimited as exc:
+        payload = exc.as_payload()
+        record_telemetry_event(
+            engine,
+            event_name="radar_run.rate_limited",
+            status="blocked",
+            actor_source="api",
+            actor_id=x_catalyst_actor,
+            actor_role=x_catalyst_role,
+            artifact_type="radar_run",
+            artifact_id=run_artifact_id,
+            reason="rate_limited",
+            metadata={**request_metadata, **payload},
+        )
+        raise HTTPException(
+            status_code=429,
+            detail=payload,
+            headers={"Retry-After": str(payload["retry_after_seconds"])},
+        ) from exc
     except ValueError as exc:
         record_telemetry_event(
             engine,
@@ -296,9 +317,14 @@ def seed_universe(
     return payload
 
 
-def _radar_run_request_metadata(request: RadarRunRequest) -> dict[str, object]:
+def _radar_run_request_metadata(
+    request: RadarRunRequest,
+    config: AppConfig,
+) -> dict[str, object]:
     return {
         "lock_name": "daily-run",
+        "cooldown_lock_name": RADAR_RUN_COOLDOWN_LOCK_NAME,
+        "min_interval_seconds": config.radar_run_min_interval_seconds,
         "as_of": request.as_of.isoformat() if request.as_of is not None else None,
         "decision_available_at": (
             request.decision_available_at.isoformat()
@@ -387,6 +413,45 @@ class _UniverseSeedRateLimited(RuntimeError):
             "retry_after_seconds": self.retry_after_seconds,
             "reset_at": self.reset_at.isoformat() if self.reset_at is not None else None,
         }
+
+
+class _RadarRunRateLimited(RuntimeError):
+    def __init__(self, *, retry_after_seconds: int, reset_at: datetime | None) -> None:
+        self.retry_after_seconds = retry_after_seconds
+        self.reset_at = reset_at
+        super().__init__(f"radar run is rate limited for {retry_after_seconds}s")
+
+    def as_payload(self) -> dict[str, object]:
+        return {
+            "operation": "manual_radar_run",
+            "retry_after_seconds": self.retry_after_seconds,
+            "reset_at": self.reset_at.isoformat() if self.reset_at is not None else None,
+        }
+
+
+def _acquire_radar_run_slot(
+    engine,
+    *,
+    config: AppConfig,
+    metadata: dict[str, object],
+) -> None:
+    now = datetime.now(UTC)
+    result = JobLockRepository(engine).acquire(
+        RADAR_RUN_COOLDOWN_LOCK_NAME,
+        owner=f"api-radar-run-cooldown:{uuid4().hex}",
+        ttl=timedelta(seconds=config.radar_run_min_interval_seconds),
+        now=now,
+        metadata={
+            "operation": "manual_radar_run",
+            **metadata,
+        },
+    )
+    if result.acquired:
+        return
+    raise _RadarRunRateLimited(
+        retry_after_seconds=_retry_after_seconds(result.expires_at, now),
+        reset_at=result.expires_at,
+    )
 
 
 def _acquire_universe_seed_slot(

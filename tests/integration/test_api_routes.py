@@ -385,6 +385,47 @@ def test_post_radar_run_reports_lock_contention(tmp_path, monkeypatch) -> None:
     assert telemetry[1]["after_payload"]["acquired_lock"] is False
 
 
+def test_post_radar_run_rate_limits_repeated_manual_requests(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "radar-run-cooldown.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("CATALYST_RADAR_RUN_MIN_INTERVAL_SECONDS", "60")
+    engine = _create_database(database_url)
+    calls = []
+
+    def fake_run_once(*, engine, config):
+        calls.append({"engine_url": str(engine.url), "config": config})
+        return SchedulerRunResult(
+            acquired_lock=True,
+            reason=None,
+            daily_result=None,
+        )
+
+    monkeypatch.setattr(radar_routes, "run_once", fake_run_once)
+    client = TestClient(create_app())
+
+    first = client.post("/api/radar/runs", json={})
+    second = client.post("/api/radar/runs", json={})
+
+    assert first.status_code == 200
+    assert second.status_code == 429
+    assert second.json()["detail"]["operation"] == "manual_radar_run"
+    assert int(second.headers["Retry-After"]) > 0
+    assert len(calls) == 1
+    telemetry = _audit_event_rows(engine)
+    assert [row["event_type"] for row in telemetry] == [
+        "telemetry.radar_run.requested",
+        "telemetry.radar_run.completed",
+        "telemetry.radar_run.requested",
+        "telemetry.radar_run.rate_limited",
+    ]
+    assert telemetry[0]["metadata"]["min_interval_seconds"] == 60
+    assert telemetry[3]["status"] == "blocked"
+    assert telemetry[3]["reason"] == "rate_limited"
+
+
 def test_post_universe_seed_uses_capped_polygon_ingest(tmp_path, monkeypatch) -> None:
     database_url = _database_url(tmp_path, "universe-seed.db")
     monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)

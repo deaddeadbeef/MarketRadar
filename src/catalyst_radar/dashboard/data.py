@@ -2511,7 +2511,11 @@ def _telemetry_event_summary(
             f"steps={_count_map_label(step_counts)}; "
             f"blocked={blocked_count}; expected_gates={expected_gate_count}"
         )
-    if short_event in {"radar_run.rejected", "radar_run.lock_contention"}:
+    if short_event in {
+        "radar_run.rejected",
+        "radar_run.lock_contention",
+        "radar_run.rate_limited",
+    }:
         return (
             f"provider={metadata.get('provider') or 'default'}; "
             f"universe={metadata.get('universe') or 'default'}"
@@ -3083,9 +3087,10 @@ def _market_preflight_row(
             provider,
             "0 live calls until CATALYST_POLYGON_API_KEY is set",
             (
-                "Polygon grouped daily is capped at 1 request per radar run; "
-                f"ticker reference seed cap={config.polygon_tickers_max_pages} page(s)."
-            ),
+            "Polygon grouped daily is capped at 1 request per radar run; "
+            f"manual run cooldown={config.radar_run_min_interval_seconds}s; "
+            f"ticker reference seed cap={config.polygon_tickers_max_pages} page(s)."
+        ),
             "Set the Polygon API key, then run one radar cycle and inspect rejected_count.",
             _coverage_evidence(coverage),
         )
@@ -3098,6 +3103,7 @@ def _market_preflight_row(
             (
                 "No ticker-by-ticker price polling in daily radar runs; "
                 f"scanner batch={config.scan_batch_size}; "
+                f"manual run cooldown={config.radar_run_min_interval_seconds}s; "
                 f"ticker reference seed cap={config.polygon_tickers_max_pages} page(s)."
             ),
             "Run one radar cycle and verify provider health plus rejected_count before scaling.",
