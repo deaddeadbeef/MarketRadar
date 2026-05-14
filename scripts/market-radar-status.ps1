@@ -61,7 +61,7 @@ Write-Output (
     $readiness.next_action
 )
 Write-Output (
-    "Latest run: {0}; required={1}/{2}; action_needed={3}; optional_gates={4}; raw_skips={5}" -f
+    "Latest run: {0}; required={1}/{2}; action_needed={3}; optional_gates={4}; audit_rows={5}" -f
     $latestRun.status,
     $latestRun.required_completed_count,
     $latestRun.required_step_count,
