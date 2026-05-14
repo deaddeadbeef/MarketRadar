@@ -34,7 +34,8 @@ foreach ($proc in $running) {
 
 Start-Sleep -Seconds 2
 
-$commonEnv = @{ PYTHONPATH = $PythonPath }
+$previousPythonPath = $env:PYTHONPATH
+$env:PYTHONPATH = $PythonPath
 
 $apiArgs = @(
     "-m", "uvicorn", "apps.api.main:app",
@@ -56,7 +57,6 @@ $apiProcess = Start-Process -FilePath "python" `
     -WindowStyle Hidden `
     -RedirectStandardOutput $ApiOut `
     -RedirectStandardError $ApiErr `
-    -Environment $commonEnv `
     -PassThru
 
 $dashboardProcess = Start-Process -FilePath "python" `
@@ -65,8 +65,14 @@ $dashboardProcess = Start-Process -FilePath "python" `
     -WindowStyle Hidden `
     -RedirectStandardOutput $DashboardOut `
     -RedirectStandardError $DashboardErr `
-    -Environment $commonEnv `
     -PassThru
+
+if ($null -eq $previousPythonPath) {
+    Remove-Item Env:\PYTHONPATH -ErrorAction SilentlyContinue
+}
+else {
+    $env:PYTHONPATH = $previousPythonPath
+}
 
 if (-not $SkipHealthCheck) {
     $healthUri = "https://$ApiHost`:$ApiPort/api/health"
