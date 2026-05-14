@@ -42,10 +42,11 @@ that gate to run.
 The dashboard **Recent Radar Telemetry** tape is a compact view of append-only
 telemetry audit events. Use it to confirm whether a dashboard/API action was
 requested, completed, rejected, blocked by a lock, or rate limited before
-rerunning a live operation. Run-step telemetry keeps the raw stored status, but
-also surfaces the operator outcome category, so expected optional gates are
-shown as `expected_gate` with `raw_status=skipped` instead of looking like scan
-failures.
+rerunning a live operation. Each radar step writes both `radar_run.step_started`
+and `radar_run.step_finished` audit rows. Finished run-step telemetry keeps the
+raw stored status, but also surfaces the operator outcome category, so expected
+optional gates are shown as `expected_gate` with `raw_status=skipped` instead of
+looking like scan failures.
 
 The dashboard **Actionability Breakdown** explains why the current queue is or is
 not ready for investment work. It buckets candidates into buy-review, research,
@@ -63,6 +64,11 @@ The **Candidate Queue** repeats that decision mode per row. Its `Decision`
 column can show `manual_buy_review`, `research_only`, `missing_card`, `blocked`,
 `monitor`, or `not_ready`; use that label before interpreting a high score as
 actionable.
+
+The dashboard **Research Shortlist** condenses the current queue into the rows
+most worth manual attention. It keeps the raw audit trail server-side, but the
+visible table focuses on priority, ticker, decision label, why-now evidence,
+risk/gap, next step, and Decision Card availability.
 
 ## Market Data Provider
 
@@ -153,6 +159,21 @@ breakdown, investment readiness gate, candidate decision labels, and telemetry
 tape. Use `safe_to_make_investment_decision=false` as a hard stop; high scores
 remain research-only until this endpoint says the queue is ready for
 `manual_buy_review`.
+
+To get the prioritized research queue without opening the dashboard:
+
+```powershell
+Invoke-RestMethod `
+  -Uri https://127.0.0.1:8443/api/radar/research-shortlist `
+  -SkipCertificateCheck
+```
+
+`GET /api/radar/research-shortlist` is also DB/config-only. It ranks persisted
+candidates into manual-review, research-now, missing-card, watchlist, blocked,
+or monitor priorities. When a row is backed by restricted provider data, the
+API keeps operational fields such as ticker, priority, decision label, score,
+card, and next step, while withholding provider-derived prose such as why-now
+evidence and risk/gap text.
 
 To inspect the external call budget for a proposed radar run without starting
 the run:

@@ -214,6 +214,57 @@ def opportunity_focus_payload(
     return rows
 
 
+def research_shortlist_payload(
+    candidate_rows: Sequence[Mapping[str, object]],
+    investment_readiness: Mapping[str, object] | None = None,
+    *,
+    limit: int = 8,
+) -> dict[str, object]:
+    readiness = investment_readiness if isinstance(investment_readiness, Mapping) else {}
+    labeled_rows = candidate_decision_labels_payload(candidate_rows, readiness)
+    rows = [
+        _research_shortlist_row(row)
+        for row in sorted(
+            (row for row in labeled_rows if isinstance(row, Mapping)),
+            key=_research_shortlist_sort_key,
+        )[: _positive_limit(limit)]
+    ]
+    actionable_count = sum(
+        1 for row in rows if str(row.get("priority") or "") == "manual_review"
+    )
+    research_count = sum(
+        1 for row in rows if str(row.get("priority") or "") == "research_now"
+    )
+    if actionable_count:
+        status = "manual_review"
+        headline = f"{actionable_count} candidate(s) are ready for manual review."
+        next_action = "Review cards, exposure, hard blocks, and source freshness."
+    elif research_count:
+        status = "research"
+        headline = f"{research_count} candidate(s) should be researched first."
+        next_action = "Start with the top catalyst and risk/gap columns."
+    elif rows:
+        status = "monitor"
+        headline = "No shortlist item is ready for manual review yet."
+        next_action = "Use the listed verification steps before changing thresholds."
+    else:
+        status = "empty"
+        headline = "No candidates are available for the research shortlist."
+        next_action = "Run the radar after live inputs are configured."
+    return {
+        "schema_version": "research-shortlist-v1",
+        "status": status,
+        "headline": headline,
+        "next_action": next_action,
+        "decision_mode": readiness.get("decision_mode") or "unknown",
+        "safe_to_make_investment_decision": bool(
+            readiness.get("manual_buy_review_ready")
+        ),
+        "count": len(rows),
+        "rows": rows,
+    }
+
+
 def candidate_decision_labels_payload(
     candidate_rows: Sequence[Mapping[str, object]],
     investment_readiness: Mapping[str, object] | None = None,
@@ -500,6 +551,41 @@ def radar_readiness_payload(
             for row in labeled_candidates[: _positive_limit(candidate_limit)]
         ],
         "telemetry_tape": telemetry,
+    }
+
+
+def radar_research_shortlist_payload(
+    engine: Engine,
+    config: AppConfig,
+    *,
+    limit: int = 8,
+) -> dict[str, object]:
+    radar_run_summary = load_radar_run_summary(engine)
+    latest_run_cutoff = _parse_utc_datetime(radar_run_summary.get("decision_available_at"))
+    candidate_rows = load_candidate_rows(engine, available_at=latest_run_cutoff)
+    discovery_snapshot = radar_discovery_snapshot_payload(
+        engine,
+        config,
+        radar_run_summary=radar_run_summary,
+    )
+    actionability = actionability_breakdown_payload(candidate_rows)
+    readiness = investment_readiness_payload(
+        discovery_snapshot,
+        actionability,
+        candidate_rows,
+    )
+    shortlist = research_shortlist_payload(
+        candidate_rows,
+        readiness,
+        limit=limit,
+    )
+    return {
+        **shortlist,
+        "latest_run_cutoff": (
+            latest_run_cutoff.isoformat() if latest_run_cutoff is not None else None
+        ),
+        "radar_status": radar_run_summary.get("status") or "unknown",
+        "readiness_status": readiness.get("status") or "unknown",
     }
 
 
@@ -2617,6 +2703,70 @@ def _candidate_decision_label(
     }
 
 
+def _research_shortlist_sort_key(row: Mapping[str, object]) -> tuple[int, float, str]:
+    priority = _research_shortlist_priority(row)
+    return (
+        {
+            "manual_review": 0,
+            "research_now": 1,
+            "missing_card": 2,
+            "watchlist": 3,
+            "blocked": 4,
+            "monitor": 5,
+        }.get(priority, 6),
+        -_finite_float(row.get("final_score")),
+        str(row.get("ticker") or ""),
+    )
+
+
+def _research_shortlist_priority(row: Mapping[str, object]) -> str:
+    decision_status = str(row.get("decision_status") or "")
+    state = str(row.get("state") or "")
+    if decision_status == "manual_buy_review":
+        return "manual_review"
+    if state == ActionState.WARNING.value:
+        return "research_now"
+    if decision_status == "missing_card":
+        return "missing_card"
+    if state == ActionState.ADD_TO_WATCHLIST.value:
+        return "watchlist"
+    if decision_status == "blocked" or state in {
+        ActionState.BLOCKED.value,
+        ActionState.THESIS_WEAKENING.value,
+        ActionState.EXIT_INVALIDATE_REVIEW.value,
+    }:
+        return "blocked"
+    return "monitor"
+
+
+def _research_shortlist_row(row: Mapping[str, object]) -> dict[str, object]:
+    brief = _mapping_value(row, "research_brief")
+    support = _mapping_value(row, "top_supporting_evidence")
+    risk = _mapping_value(row, "top_disconfirming_evidence")
+    priority = _research_shortlist_priority(row)
+    return {
+        "priority": priority,
+        "ticker": row.get("ticker"),
+        "decision_status": row.get("decision_status") or "unknown",
+        "state": row.get("state"),
+        "score": _finite_float(row.get("final_score")),
+        "setup": row.get("setup_type") or "n/a",
+        "why_now": brief.get("why_now") or row.get("top_event_title"),
+        "top_catalyst": brief.get("top_catalyst") or support.get("title"),
+        "evidence": brief.get("supporting_evidence") or support.get("title"),
+        "risk_or_gap": brief.get("risk_or_gap") or risk.get("title"),
+        "next_step": row.get("decision_next_step")
+        or brief.get("next_step")
+        or _research_next_step(
+            str(row.get("state") or ""),
+            has_decision_card=bool(row.get("decision_card_id")),
+        ),
+        "decision_card_id": row.get("decision_card_id") or "n/a",
+        "source": brief.get("source") or support.get("source_id") or support.get("kind"),
+        "audit": _mapping_value(brief, "audit"),
+    }
+
+
 def _actionability_status(
     buckets: Mapping[str, int],
     *,
@@ -3001,6 +3151,13 @@ def _telemetry_event_summary(
         if action:
             parts.append(f"action={action}")
         return "; ".join(parts)
+    if short_event == "radar_run.step_started":
+        return (
+            f"step={metadata.get('step') or 'n/a'}; "
+            f"job_id={metadata.get('job_id') or 'n/a'}; "
+            f"provider={metadata.get('provider') or 'default'}; "
+            f"universe={metadata.get('universe') or 'default'}"
+        )
     if short_event == "radar_run.completed":
         step_counts = _string_int_mapping(metadata.get("step_counts"))
         blocked_count = len(_sequence_value(metadata.get("blocked_steps")))

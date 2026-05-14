@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from datetime import date as Date
 from math import ceil
 from typing import Any
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from catalyst_radar.core.config import AppConfig
@@ -20,7 +20,10 @@ from catalyst_radar.jobs.scheduler import (
 from catalyst_radar.jobs.step_outcomes import classify_step_outcome
 from catalyst_radar.ops.telemetry import record_telemetry_event
 from catalyst_radar.security.access import Role, require_role
-from catalyst_radar.security.licenses import redact_restricted_external_payload
+from catalyst_radar.security.licenses import (
+    provider_license_report_from_payload,
+    redact_restricted_external_payload,
+)
 from catalyst_radar.storage.db import create_schema, engine_from_url
 from catalyst_radar.storage.job_repositories import JobLockRepository
 from catalyst_radar.universe.seed import seed_polygon_tickers
@@ -28,6 +31,22 @@ from catalyst_radar.universe.seed import seed_polygon_tickers
 router = APIRouter(prefix="/api/radar", tags=["radar"])
 RADAR_RUN_COOLDOWN_LOCK_NAME = "manual_radar_run_cooldown"
 UNIVERSE_SEED_LOCK_NAME = "polygon_ticker_seed"
+SHORTLIST_REDACTED_TEXT_FIELDS = (
+    "why_now",
+    "top_catalyst",
+    "evidence",
+    "risk_or_gap",
+    "source",
+)
+SHORTLIST_RESTRICTED_SAFE_FIELDS = (
+    "priority",
+    "ticker",
+    "decision_status",
+    "state",
+    "score",
+    "setup",
+    "decision_card_id",
+)
 
 
 def _engine():
@@ -230,6 +249,16 @@ def radar_readiness() -> dict[str, object]:
     )
 
 
+@router.get("/research-shortlist", dependencies=[Depends(require_role(Role.VIEWER))])
+def radar_research_shortlist(
+    limit: int = Query(default=8, ge=1, le=50),
+) -> dict[str, object]:
+    shortlist_payload = _dashboard_helper("radar_research_shortlist_payload")
+    return _redact_restricted_research_shortlist(
+        shortlist_payload(_engine(), AppConfig.from_env(), limit=limit)
+    )
+
+
 @router.post("/runs/call-plan", dependencies=[Depends(require_role(Role.VIEWER))])
 def radar_run_call_plan(request: RadarRunRequest) -> dict[str, object]:
     call_plan_payload = _dashboard_helper("radar_run_call_plan_payload")
@@ -244,6 +273,51 @@ def radar_run_call_plan(request: RadarRunRequest) -> dict[str, object]:
         llm_dry_run=request.llm_dry_run,
         dry_run_alerts=request.dry_run_alerts,
     )
+
+
+def _redact_restricted_research_shortlist(
+    payload: Mapping[str, object],
+) -> dict[str, object]:
+    rows = payload.get("rows")
+    base = {
+        str(key): redact_restricted_external_payload(value)
+        for key, value in payload.items()
+        if key != "rows"
+    }
+    base["rows"] = []
+    if isinstance(rows, list | tuple):
+        base["rows"] = [
+            _redact_restricted_research_shortlist_row(row)
+            for row in rows
+            if isinstance(row, Mapping)
+        ]
+    return base
+
+
+def _redact_restricted_research_shortlist_row(
+    row: Mapping[str, object],
+) -> dict[str, object]:
+    report = provider_license_report_from_payload(row)
+    if report["metadata_complete"] and not report["external_export_allowed"]:
+        safe = {
+            key: row[key]
+            for key in SHORTLIST_RESTRICTED_SAFE_FIELDS
+            if row.get(key) not in (None, "")
+        }
+        safe["next_step"] = (
+            "Review source details in the local dashboard; provider text is withheld "
+            "by export policy."
+        )
+        safe["external_export_blocked"] = True
+        safe["license_tags"] = report["license_tags"]
+        safe["attribution_required"] = report["attribution_required"]
+        safe["restricted_fields"] = [
+            key
+            for key in SHORTLIST_REDACTED_TEXT_FIELDS
+            if row.get(key) not in (None, "")
+        ]
+        return safe
+    return redact_restricted_external_payload(row)
 
 
 @router.post("/universe/seed", dependencies=[Depends(require_role(Role.ANALYST))])

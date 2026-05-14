@@ -49,9 +49,11 @@ from catalyst_radar.dashboard.data import (
     provider_preflight_payload,
     radar_discovery_snapshot_payload,
     radar_readiness_payload,
+    radar_research_shortlist_payload,
     radar_run_call_plan_payload,
     radar_run_cooldown_payload,
     readiness_checklist_payload,
+    research_shortlist_payload,
     telemetry_tape_payload,
     universe_coverage_payload,
 )
@@ -248,6 +250,62 @@ def test_candidate_decision_labels_mark_manual_buy_review_rows() -> None:
     assert rows[0]["decision_next_step"] == "Review card, exposure, and hard blocks."
     assert rows[1]["decision_status"] == "research_only"
     assert rows[1]["decision_next_step"] == "Not in manual buy-review state."
+
+
+def test_research_shortlist_prioritizes_review_and_research_rows() -> None:
+    rows = research_shortlist_payload(
+        [
+            {
+                "ticker": "AAA",
+                "state": ActionState.BLOCKED.value,
+                "final_score": 100.0,
+                "decision_card_id": "",
+                "research_brief": {
+                    "risk_or_gap": "Hard block",
+                    "next_step": "Clear hard block.",
+                    "audit": {
+                        "provider_license_policy": {
+                            "license_tags": ["local-csv-fixture"],
+                            "external_export_allowed": False,
+                        }
+                    },
+                },
+            },
+            {
+                "ticker": "BBB",
+                "state": ActionState.WARNING.value,
+                "final_score": 84.0,
+                "decision_card_id": "",
+                "research_brief": {
+                    "why_now": "New catalyst",
+                    "top_catalyst": "Revenue guide raised",
+                    "risk_or_gap": "Needs primary-source review",
+                    "next_step": "Open source filing.",
+                },
+            },
+            {
+                "ticker": "CCC",
+                "state": ActionState.ELIGIBLE_FOR_MANUAL_BUY_REVIEW.value,
+                "final_score": 91.0,
+                "decision_card_id": "card-ccc",
+                "research_brief": {
+                    "why_now": "Validated catalyst",
+                    "top_catalyst": "Contract award",
+                    "next_step": "Review card.",
+                },
+            },
+        ],
+        {"decision_mode": "manual_buy_review", "manual_buy_review_ready": True},
+    )
+
+    assert rows["status"] == "manual_review"
+    assert rows["safe_to_make_investment_decision"] is True
+    assert [row["ticker"] for row in rows["rows"]] == ["CCC", "BBB", "AAA"]
+    assert rows["rows"][0]["priority"] == "manual_review"
+    assert rows["rows"][1]["priority"] == "research_now"
+    assert rows["rows"][2]["audit"]["provider_license_policy"]["license_tags"] == [
+        "local-csv-fixture"
+    ]
 
 
 def test_actionability_breakdown_payload_flags_buy_review_ready() -> None:
@@ -494,6 +552,23 @@ def test_radar_readiness_payload_summarizes_operator_decision_gate(
     assert payload["candidate_decision_labels"][0]["audit"]["provider_license_policy"][
         "external_export_allowed"
     ] is False
+
+
+def test_radar_research_shortlist_payload_uses_latest_candidates(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+
+    payload = radar_research_shortlist_payload(engine, AppConfig.from_env({}), limit=2)
+
+    assert payload["schema_version"] == "research-shortlist-v1"
+    assert payload["status"] in {"research", "monitor"}
+    assert payload["count"] == 2
+    assert payload["radar_status"] == "unknown"
+    assert payload["rows"][0]["ticker"] == "MSFT"
+    assert payload["rows"][0]["why_now"] == "MSFT guidance raised"
+    assert payload["rows"][0]["decision_status"] == "research_only"
 
 
 def test_data_source_coverage_payload_marks_fixture_and_read_only_modes() -> None:
@@ -801,6 +876,48 @@ def test_telemetry_tape_payload_summarizes_recent_radar_events() -> None:
         "raw_status=skipped; reason=llm_disabled; "
         "action=No action required unless you want this optional gate to run."
     )
+
+
+def test_telemetry_tape_payload_summarizes_step_started_events() -> None:
+    payload = telemetry_tape_payload(
+        {
+            "telemetry": {
+                "event_count": 1,
+                "latest_event_at": "2026-05-10T20:58:00+00:00",
+                "status_counts": {"started": 1},
+                "events": [
+                    {
+                        "event_type": "telemetry.radar_run.step_started",
+                        "status": "started",
+                        "artifact_type": "job_run",
+                        "artifact_id": "job-started-1",
+                        "occurred_at": "2026-05-10T20:58:00+00:00",
+                        "metadata": {
+                            "step": "daily_bar_ingest",
+                            "job_id": "job-started-1",
+                            "provider": "polygon",
+                            "universe": "liquid-us",
+                        },
+                    },
+                ],
+            }
+        }
+    )
+
+    assert payload["status"] == "ready"
+    assert payload["events"] == [
+        {
+            "occurred_at": "2026-05-10T20:58:00+00:00",
+            "event": "radar_run.step_started",
+            "status": "started",
+            "reason": "",
+            "artifact": "job_run:job-started-1",
+            "summary": (
+                "step=daily_bar_ingest; job_id=job-started-1; "
+                "provider=polygon; universe=liquid-us"
+            ),
+        }
+    ]
 
 
 def test_telemetry_tape_payload_handles_empty_telemetry() -> None:

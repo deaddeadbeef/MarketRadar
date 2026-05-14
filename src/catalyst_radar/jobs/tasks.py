@@ -988,15 +988,32 @@ def _step_metadata(spec: DailyRunSpec, step_name: str) -> dict[str, Any]:
 
 
 def _log_step_started(context: _DailyRunContext, step_name: str, job_id: str) -> None:
+    metadata = {
+        **_step_metadata(context.spec, step_name),
+        "job_id": job_id,
+    }
     logger.info(
         "radar_step_started",
         extra={
-            "catalyst_radar": {
-                **_step_metadata(context.spec, step_name),
-                "job_id": job_id,
-            }
+            "catalyst_radar": metadata,
         },
     )
+    try:
+        record_telemetry_event(
+            context.engine,
+            event_name="radar_run.step_started",
+            status="started",
+            actor_source="radar_pipeline",
+            artifact_type="job_run",
+            artifact_id=job_id,
+            metadata=metadata,
+            available_at=context.spec.decision_available_at,
+        )
+    except Exception:
+        logger.exception(
+            "radar_step_started_telemetry_failed",
+            extra={"catalyst_radar": metadata},
+        )
 
 
 def _record_step_finished(context: _DailyRunContext, step: JobStepResult) -> None:

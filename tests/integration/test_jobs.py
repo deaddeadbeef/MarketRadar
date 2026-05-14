@@ -565,9 +565,22 @@ def test_daily_run_records_step_telemetry(monkeypatch):
                 audit_events.c.id,
             )
         ).all()
+        started_rows = conn.execute(
+            select(audit_events)
+            .where(audit_events.c.event_type == "telemetry.radar_run.step_started")
+            .order_by(
+                audit_events.c.occurred_at,
+                audit_events.c.created_at,
+                audit_events.c.id,
+            )
+        ).all()
 
     assert len(rows) == len(DAILY_STEP_ORDER)
     assert [row.metadata["step"] for row in rows] == list(DAILY_STEP_ORDER)
+    assert len(started_rows) == len(DAILY_STEP_ORDER)
+    assert [row.metadata["step"] for row in started_rows] == list(DAILY_STEP_ORDER)
+    assert {row.status for row in started_rows} == {"started"}
+    assert all(row.artifact_id for row in started_rows)
     by_step = {row.metadata["step"]: row for row in rows}
     assert by_step["daily_bar_ingest"].status == result.step("daily_bar_ingest").status
     assert by_step["daily_bar_ingest"].metadata["normalized_count"] == 43

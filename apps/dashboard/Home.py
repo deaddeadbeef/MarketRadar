@@ -940,6 +940,44 @@ def _show_decision_contract(readiness: Mapping[str, Any]) -> None:
     )
 
 
+def _show_research_shortlist(
+    candidate_rows: list[dict[str, object]],
+    investment_readiness: Mapping[str, Any],
+) -> None:
+    shortlist = _mapping(
+        dashboard_data.research_shortlist_payload(
+            candidate_rows,
+            investment_readiness,
+        )
+    )
+    st.subheader("Research Shortlist")
+    status = str(shortlist.get("status") or "unknown")
+    message = (
+        f"{shortlist.get('headline') or 'No research shortlist.'} "
+        f"Next: {shortlist.get('next_action') or 'n/a'}"
+    ).strip()
+    if status == "manual_review":
+        st.success(message)
+    elif status == "research":
+        st.info(message)
+    elif status == "empty":
+        st.caption(message)
+    else:
+        st.warning(message)
+    _show_records(
+        "Research Shortlist",
+        _visible_shortlist_rows(shortlist.get("rows")),
+        empty="No shortlist rows.",
+    )
+
+
+def _visible_shortlist_rows(value: object) -> list[dict[str, object]]:
+    return [
+        {key: item for key, item in row.items() if key != "audit"}
+        for row in _records(value)
+    ]
+
+
 def _visible_discovery_rows(value: object) -> list[dict[str, object]]:
     return [
         {key: item for key, item in row.items() if key != "audit"}
@@ -1373,6 +1411,7 @@ def _show_overview(
     _show_discovery_snapshot(discovery_snapshot)
     investment_readiness = _show_investment_readiness(discovery_snapshot, candidate_rows)
     _show_decision_contract(investment_readiness)
+    _show_research_shortlist(candidate_rows, investment_readiness)
     _show_actionability_breakdown(candidate_rows)
     _show_records(
         "Opportunity Focus",

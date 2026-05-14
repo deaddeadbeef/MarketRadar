@@ -765,6 +765,69 @@ def test_get_radar_readiness_redacts_restricted_discovery_snapshot(
     ]
 
 
+def test_get_radar_research_shortlist_returns_redacted_rows(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "radar-research-shortlist.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+    monkeypatch.setattr(
+        dashboard_data,
+        "radar_research_shortlist_payload",
+        lambda _engine, _config, *, limit: {
+            "schema_version": "research-shortlist-v1",
+            "status": "research",
+            "count": 1,
+            "rows": [
+                {
+                    "priority": "research_now",
+                    "ticker": "MSFT",
+                    "decision_status": "research_only",
+                    "state": "Warning",
+                    "score": 84.0,
+                    "setup": "guidance_raise",
+                    "why_now": "restricted fixture catalyst",
+                    "top_catalyst": "restricted fixture guide raise",
+                    "risk_or_gap": "restricted fixture gap",
+                    "next_step": "Open restricted fixture source.",
+                    "decision_card_id": "n/a",
+                    "audit": {
+                        "provider_license_policy": {
+                            "license_tags": ["local-csv-fixture"],
+                        }
+                    },
+                }
+            ],
+        },
+        raising=False,
+    )
+    client = TestClient(create_app())
+
+    response = client.get("/api/radar/research-shortlist?limit=3")
+
+    assert response.status_code == 200
+    assert response.json()["rows"] == [
+        {
+            "priority": "research_now",
+            "ticker": "MSFT",
+            "decision_status": "research_only",
+            "state": "Warning",
+            "score": 84.0,
+            "setup": "guidance_raise",
+            "decision_card_id": "n/a",
+            "next_step": (
+                "Review source details in the local dashboard; provider text is "
+                "withheld by export policy."
+            ),
+            "external_export_blocked": True,
+            "license_tags": ["local-csv-fixture"],
+            "attribution_required": False,
+            "restricted_fields": ["why_now", "top_catalyst", "risk_or_gap"],
+        }
+    ]
+
+
 def test_post_radar_run_call_plan_returns_read_only_call_budget(
     tmp_path,
     monkeypatch,
