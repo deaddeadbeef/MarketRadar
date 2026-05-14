@@ -493,6 +493,40 @@ def _show_telemetry_tape(ops_health: Mapping[str, Any]) -> None:
         )
 
 
+def _show_alert_planning_diagnostics(
+    engine: object,
+    radar_run_summary: Mapping[str, Any],
+) -> None:
+    diagnostics = _mapping(
+        dashboard_data.alert_planning_diagnostics_payload(
+            engine,
+            radar_run_summary=radar_run_summary,
+        )
+    )
+    status = str(diagnostics.get("status") or "unknown")
+    message = (
+        f"{diagnostics.get('headline') or 'Alert planning diagnostics'} "
+        f"Next: {diagnostics.get('next_action') or 'n/a'}"
+    ).strip()
+    if status in {"suppressed", "not_ready", "blocked_input", "failed"}:
+        st.warning(message)
+    elif status == "ready":
+        st.success(message)
+    else:
+        st.info(message)
+    st.caption(str(diagnostics.get("evidence") or "No alert planning evidence."))
+    _show_records(
+        "Alert Suppression Counts",
+        diagnostics.get("counts"),
+        empty="No alert suppression counts.",
+    )
+    _show_records(
+        "Alert Suppression Reasons",
+        diagnostics.get("rows"),
+        empty="No alert suppression rows.",
+    )
+
+
 def _show_live_data_activation_contract(
     config: AppConfig,
     radar_run_summary: Mapping[str, Any],
@@ -2058,6 +2092,7 @@ def _show_overview(
         ),
         empty="No readiness checklist rows.",
     )
+    _show_alert_planning_diagnostics(engine, radar_run_summary)
 
     secondary_cols = st.columns(5)
     secondary_cols[0].metric("Useful Alert Rate", _rate(validation_report.get("useful_alert_rate")))

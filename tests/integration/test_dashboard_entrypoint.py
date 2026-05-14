@@ -523,6 +523,27 @@ def test_dashboard_wires_live_data_activation_contract_after_plan() -> None:
     )
 
 
+def test_dashboard_wires_alert_planning_diagnostics_after_readiness() -> None:
+    source = Path("apps/dashboard/Home.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    functions = {
+        node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)
+    }
+    overview_source = ast.get_source_segment(source, functions["_show_overview"])
+    helper_source = ast.get_source_segment(
+        source,
+        functions["_show_alert_planning_diagnostics"],
+    )
+
+    assert overview_source is not None
+    assert helper_source is not None
+    assert "_show_alert_planning_diagnostics" in functions
+    assert "alert_planning_diagnostics_payload" in helper_source
+    assert overview_source.index("readiness_checklist_payload") < overview_source.index(
+        "_show_alert_planning_diagnostics"
+    )
+
+
 def _load_dashboard_module():
     path = Path("apps/dashboard/Home.py")
     spec = importlib.util.spec_from_file_location("dashboard_home_for_test", path)
