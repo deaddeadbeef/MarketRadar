@@ -2056,6 +2056,7 @@ def test_load_radar_run_summary_classifies_expected_gate_skips_success(
     assert summary["required_completed_count"] == 1
     assert summary["required_incomplete_count"] == 0
     assert summary["optional_expected_gate_count"] == 2
+    assert summary["optional_expected_gate_count"] == summary["status_counts"]["skipped"]
     assert summary["action_needed_count"] == 0
     assert summary["run_path_status"] == "complete"
     assert [row["category"] for row in summary["steps"]] == [
@@ -2063,6 +2064,68 @@ def test_load_radar_run_summary_classifies_expected_gate_skips_success(
         "expected_gate",
         "expected_gate",
     ]
+
+
+def test_load_radar_run_summary_keeps_not_ready_skips_out_of_expected_gates(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    latest_decision_at = AVAILABLE_AT
+    metadata = {
+        "as_of": "2026-05-10",
+        "decision_available_at": latest_decision_at.isoformat(),
+        "outcome_available_at": None,
+        "provider": None,
+        "universe": None,
+        "tickers": [],
+    }
+    with engine.begin() as conn:
+        conn.execute(
+            insert(job_runs),
+            [
+                _job_run_row(
+                    "event-ingest",
+                    job_type="event_ingest",
+                    status="success",
+                    started_at=latest_decision_at + timedelta(seconds=1),
+                    metadata={
+                        **metadata,
+                        "result_status": "success",
+                        "result_reason": None,
+                        "result_payload": {"event_count": 0},
+                    },
+                ),
+                _job_run_row(
+                    "local-text-triage",
+                    job_type="local_text_triage",
+                    status="skipped",
+                    started_at=latest_decision_at + timedelta(seconds=2),
+                    metadata={
+                        **metadata,
+                        "result_status": "skipped",
+                        "result_reason": "no_text_inputs",
+                        "result_payload": {},
+                    },
+                ),
+            ],
+        )
+
+    summary = load_radar_run_summary(engine)
+
+    assert summary["status_counts"] == {"skipped": 1, "success": 1}
+    assert summary["outcome_category_counts"] == {
+        "completed": 1,
+        "not_ready": 1,
+    }
+    assert summary["expected_gate_count"] == 0
+    assert summary["optional_expected_gate_count"] == 0
+    assert summary["required_step_count"] == 2
+    assert summary["required_completed_count"] == 1
+    assert summary["required_incomplete_count"] == 1
+    assert summary["action_needed_count"] == 0
+    assert summary["run_path_status"] == "incomplete"
+    assert summary["steps"][1]["category"] == "not_ready"
+    assert summary["steps"][1]["blocks_reliance"] is False
 
 
 def test_radar_discovery_snapshot_labels_fixture_thin_run(
