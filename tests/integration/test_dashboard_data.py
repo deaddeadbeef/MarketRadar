@@ -33,6 +33,7 @@ from catalyst_radar.dashboard.data import (
     actionability_breakdown_payload,
     activation_summary_payload,
     agent_review_ledger_rows_payload,
+    agent_review_real_mode_gate_payload,
     agent_review_summary_payload,
     alert_planning_diagnostics_payload,
     candidate_decision_labels_payload,
@@ -3073,6 +3074,42 @@ def test_agent_review_ledger_rows_payload_filters_cost_summary_rows(
     assert rows[0]["task"] == "mid_review"
     assert rows[0]["status"] == "completed"
     assert rows[0]["actual_cost_usd"] == 0.19
+
+
+def test_agent_review_real_mode_gate_blocks_until_guardrails_are_set() -> None:
+    gate = agent_review_real_mode_gate_payload(AppConfig())
+
+    assert gate["status"] == "blocked"
+    assert gate["call_budget"] == "0 OpenAI calls while blocked"
+    missing = str(gate["missing_env"])
+    assert "CATALYST_ENABLE_PREMIUM_LLM=1" in missing
+    assert "CATALYST_LLM_PROVIDER=openai" in missing
+    assert "OPENAI_API_KEY" in missing
+    assert "CATALYST_LLM_TASK_DAILY_CAPS=skeptic_review=<low cap>" in missing
+
+
+def test_agent_review_real_mode_gate_ready_never_leaks_openai_key() -> None:
+    config = AppConfig(
+        enable_premium_llm=True,
+        llm_provider="openai",
+        llm_skeptic_model="skeptic-model",
+        llm_input_cost_per_1m=1.0,
+        llm_cached_input_cost_per_1m=0.1,
+        llm_output_cost_per_1m=2.0,
+        llm_pricing_updated_at="2026-05-14",
+        llm_daily_budget_usd=1.0,
+        llm_monthly_budget_usd=20.0,
+        llm_task_daily_caps={"skeptic_review": 1},
+        openai_api_key="sk-secret-value",
+    )
+
+    gate = agent_review_real_mode_gate_payload(config)
+
+    assert gate["status"] == "ready"
+    assert gate["missing_env"] == []
+    assert gate["task_cap_configured"] is True
+    assert "skeptic_review_cap=1" in str(gate["call_budget"])
+    assert "sk-secret-value" not in str(gate)
 
 
 def test_load_cost_summary_keeps_validation_cost_separate(tmp_path: Path) -> None:

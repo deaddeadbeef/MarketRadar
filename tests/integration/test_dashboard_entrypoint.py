@@ -262,12 +262,16 @@ def test_dashboard_selected_candidate_has_agent_review_dry_run_action() -> None:
     assert "cost_summary=cost_summary" in overview_source
     assert "Agent Review Action" in action_source
     assert "Run Agent Review Dry Run" in action_source
+    assert "Run Real Agent Review" in action_source
     assert "Agent Review Ledger Evidence" in action_source
     assert "agent_review_ledger_rows_payload" in action_source
+    assert "agent_review_real_mode_gate_payload" in action_source
     assert "No persisted agent review ledger row" in action_source
     assert "/api/agents/review" in action_source
     assert '"mode": "dry_run"' in action_source
+    assert '"mode": "real"' in action_source
     assert "OpenAI call" in action_source
+    assert "budget, and skeptic_review task cap" in action_source
 
 
 def test_dashboard_wires_operator_work_queue_before_activation_sections() -> None:
