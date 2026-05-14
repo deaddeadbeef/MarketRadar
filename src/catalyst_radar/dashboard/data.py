@@ -4861,7 +4861,10 @@ def _live_data_operator_steps(
             "status": "manual",
             "action": "Restart the local API and dashboard so the new env is loaded.",
             "external_calls": 0,
-            "command": "restart local Market Radar services",
+            "command": (
+                "powershell -ExecutionPolicy Bypass -File "
+                "scripts/restart-local.ps1"
+            ),
         },
         {
             "step": 3,
