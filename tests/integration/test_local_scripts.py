@@ -56,6 +56,8 @@ def test_prepare_live_env_script_writes_only_safe_defaults() -> None:
     assert "CATALYST_DAILY_PROVIDER" in text
     assert "CATALYST_POLYGON_TICKERS_MAX_PAGES" in text
     assert "CATALYST_SEC_DAILY_MAX_TICKERS" in text
+    assert "function Test-EnvKey" in text
+    assert 'Set-EnvLine -InputLines $lines -Key $key -Value ""' in text
     assert "CATALYST_POLYGON_API_KEY=placeholder" not in text
     assert "OPENAI_API_KEY=" not in text
     assert "SCHWAB_CLIENT_SECRET=" not in text
