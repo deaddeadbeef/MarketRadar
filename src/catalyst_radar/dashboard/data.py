@@ -5,6 +5,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import fields, is_dataclass
 from datetime import UTC, date, datetime, timedelta
 from enum import Enum
+from hashlib import sha256
 from math import ceil, isfinite
 from pathlib import Path
 from typing import Any
@@ -1957,6 +1958,104 @@ def radar_run_effective_status(
     if any(str(step.get("status") or "") == "failed" for step in steps):
         return "partial_success"
     return status
+
+
+def runtime_context_payload(
+    config: AppConfig,
+    *,
+    radar_run_summary: Mapping[str, object] | None = None,
+    dotenv_loaded: bool | None = None,
+) -> dict[str, object]:
+    """Return non-secret runtime context for dashboard/operator display."""
+    summary = radar_run_summary if isinstance(radar_run_summary, Mapping) else {}
+    run_path = _radar_run_path_summary(summary)
+    database = _database_context_payload(config.database_url)
+    return {
+        "environment": config.environment,
+        "env_file": ".env.local",
+        "env_file_loaded": dotenv_loaded,
+        "database": database,
+        "daily_market_provider": _provider_name(config.daily_market_provider, default="csv"),
+        "daily_event_provider": _provider_name(
+            config.daily_event_provider,
+            default="news_fixture",
+        ),
+        "polygon_key_configured": bool(config.polygon_api_key),
+        "sec_live_enabled": bool(config.sec_enable_live),
+        "sec_user_agent_configured": bool(config.sec_user_agent),
+        "openai_key_configured": bool(config.openai_api_key),
+        "schwab_credentials_configured": bool(
+            config.schwab_client_id
+            and config.schwab_client_secret
+            and config.schwab_redirect_uri
+        ),
+        "latest_run_as_of": summary.get("as_of"),
+        "latest_run_cutoff": summary.get("decision_available_at")
+        or summary.get("finished_at"),
+        "run_path": run_path,
+        "evidence": (
+            f"db={database['name']}#{database['fingerprint']}; "
+            f"providers={config.daily_market_provider or 'unset'}/"
+            f"{config.daily_event_provider or 'unset'}; "
+            f"required_path={run_path['required_complete']}/{run_path['required_total']}; "
+            f"action_needed={run_path['blocking_count']}; "
+            f"optional_gates={run_path['expected_gate_count']}"
+        ),
+    }
+
+
+def radar_step_root_cause_rows(
+    run_payload: Mapping[str, object],
+    config: AppConfig,
+) -> list[dict[str, object]]:
+    rows = _radar_payload_step_rows(run_payload.get("steps"))
+    grouped: dict[str, dict[str, object]] = {}
+    for step in rows:
+        reason = str(step.get("reason") or "")
+        status = str(step.get("status") or "")
+        classification = classify_step_outcome(status, reason or None)
+        category = str(step.get("category") or classification.category)
+        if category == "completed":
+            continue
+        group = _radar_step_root_cause_group(step, config)
+        key = str(group["root_cause"])
+        existing = grouped.setdefault(
+            key,
+            {
+                **group,
+                "affected_steps": [],
+                "reasons": [],
+            },
+        )
+        existing_steps = existing["affected_steps"]
+        if isinstance(existing_steps, list):
+            existing_steps.append(str(step.get("step") or step.get("name") or "unknown"))
+        existing_reasons = existing["reasons"]
+        if isinstance(existing_reasons, list) and reason:
+            existing_reasons.append(reason)
+
+    result: list[dict[str, object]] = []
+    for row in grouped.values():
+        steps = tuple(dict.fromkeys(str(value) for value in row.pop("affected_steps", [])))
+        reasons = tuple(dict.fromkeys(str(value) for value in row.pop("reasons", [])))
+        result.append(
+            {
+                "root_cause": row["root_cause"],
+                "status": row["status"],
+                "affected_steps": ", ".join(steps),
+                "why": row["why"],
+                "current_config": row["current_config"],
+                "next_action": row["next_action"],
+                "evidence": row["evidence"] if row["evidence"] != "n/a" else ", ".join(reasons),
+            }
+        )
+    return sorted(
+        result,
+        key=lambda row: (
+            _root_cause_rank(str(row.get("status") or "")),
+            str(row.get("root_cause") or ""),
+        ),
+    )
 
 
 def load_broker_summary(engine: Engine) -> dict[str, object]:
@@ -5243,6 +5342,203 @@ def _telemetry_event_summary(
 
 def _count_map_label(values: Mapping[str, int]) -> str:
     return ", ".join(f"{key}={value}" for key, value in sorted(values.items()))
+
+
+def _database_context_payload(database_url: str) -> dict[str, object]:
+    raw = str(database_url or "")
+    fingerprint = sha256(raw.encode("utf-8")).hexdigest()[:10] if raw else "unknown"
+    if raw.startswith("sqlite:///"):
+        path_text = raw.removeprefix("sqlite:///")
+        name = Path(path_text).name or "sqlite"
+        return {
+            "kind": "sqlite",
+            "name": name,
+            "location": path_text,
+            "fingerprint": fingerprint,
+        }
+    scheme = raw.split("://", maxsplit=1)[0] if "://" in raw else "configured"
+    return {
+        "kind": scheme,
+        "name": f"{scheme} database",
+        "location": f"{scheme}://<configured>",
+        "fingerprint": fingerprint,
+    }
+
+
+def _radar_step_root_cause_group(
+    step: Mapping[str, object],
+    config: AppConfig,
+) -> dict[str, object]:
+    reason = str(step.get("reason") or "")
+    category = str(
+        step.get("category")
+        or classify_step_outcome(str(step.get("status") or ""), reason or None).category
+    )
+    if reason == "no_scheduled_provider_input":
+        return {
+            "root_cause": "Scheduled market input disabled",
+            "status": "blocked",
+            "why": (
+                "The run did not schedule a market-data provider, so fresh bars were "
+                "unavailable."
+            ),
+            "current_config": (
+                f"CATALYST_DAILY_MARKET_PROVIDER={config.daily_market_provider or 'unset'}"
+            ),
+            "next_action": (
+                "Set CATALYST_DAILY_MARKET_PROVIDER=polygon and CATALYST_POLYGON_API_KEY, "
+                "then run one capped radar cycle."
+            ),
+            "evidence": _step_config_evidence(step),
+        }
+    if reason == "no_scheduled_event_provider":
+        return {
+            "root_cause": "Scheduled event input disabled",
+            "status": "blocked",
+            "why": (
+                "The run did not schedule a news/filing provider, so catalyst text "
+                "was unavailable."
+            ),
+            "current_config": (
+                f"CATALYST_DAILY_EVENT_PROVIDER={config.daily_event_provider or 'unset'}"
+            ),
+            "next_action": (
+                "Set CATALYST_DAILY_EVENT_PROVIDER=sec, CATALYST_SEC_ENABLE_LIVE=1, "
+                "and CATALYST_SEC_USER_AGENT."
+            ),
+            "evidence": _step_config_evidence(step),
+        }
+    if reason == "no_text_inputs":
+        return {
+            "root_cause": "No catalyst text available",
+            "status": "attention",
+            "why": "No events or local text snippets were available for triage.",
+            "current_config": (
+                f"event_provider={config.daily_event_provider or 'unset'}; "
+                f"SEC live={'yes' if config.sec_enable_live else 'no'}"
+            ),
+            "next_action": "Configure SEC/news ingestion or add local text snippets.",
+            "evidence": _step_config_evidence(step),
+        }
+    if reason.startswith("degraded_mode_blocks"):
+        return {
+            "root_cause": "Degraded mode protected high-state work",
+            "status": "blocked",
+            "why": (
+                "The system refused to build high-conviction research artifacts because "
+                "current inputs were not trusted."
+            ),
+            "current_config": "ops degraded mode is enabled for this run",
+            "next_action": "Fix the degraded-mode reason, rerun, then rely on packet/card output.",
+            "evidence": _degraded_step_evidence(step),
+        }
+    if reason == "llm_disabled":
+        return {
+            "root_cause": "Agent review disabled",
+            "status": "optional",
+            "why": "The run did not request the optional agent-review gate.",
+            "current_config": (
+                f"CATALYST_LLM_PROVIDER={config.llm_provider or 'none'}; "
+                f"OPENAI_API_KEY={'set' if config.openai_api_key else 'unset'}"
+            ),
+            "next_action": (
+                "Use dry-run review for smoke tests, or configure OpenAI credentials, "
+                "pricing, budgets, and task caps for real review."
+            ),
+            "evidence": _step_config_evidence(step),
+        }
+    if category == "expected_gate":
+        return {
+            "root_cause": "Expected optional gate did not trigger",
+            "status": "optional",
+            "why": (
+                step.get("meaning")
+                or classify_step_outcome(str(step.get("status") or ""), reason or None).meaning
+                or "This optional gate had no trigger in the run."
+            ),
+            "current_config": "required scan path can still be complete",
+            "next_action": (
+                step.get("operator_action")
+                or classify_step_outcome(
+                    str(step.get("status") or ""),
+                    reason or None,
+                ).operator_action
+                or "No action required unless this optional gate was expected."
+            ),
+            "evidence": _step_config_evidence(step),
+        }
+    if category == "not_ready":
+        return {
+            "root_cause": "Input not ready",
+            "status": "attention",
+            "why": (
+                step.get("meaning")
+                or classify_step_outcome(str(step.get("status") or ""), reason or None).meaning
+                or "The step had no usable input."
+            ),
+            "current_config": "input-dependent step",
+            "next_action": (
+                step.get("operator_action")
+                or classify_step_outcome(
+                    str(step.get("status") or ""),
+                    reason or None,
+                ).operator_action
+                or "Add the missing upstream input and rerun."
+            ),
+            "evidence": _step_config_evidence(step),
+        }
+    return {
+        "root_cause": "Step needs review",
+        "status": "review",
+        "why": (
+            step.get("meaning")
+            or classify_step_outcome(str(step.get("status") or ""), reason or None).meaning
+            or "The step recorded a non-completed outcome."
+        ),
+        "current_config": "see raw telemetry",
+        "next_action": "Inspect the raw step payload and upstream telemetry.",
+        "evidence": _step_config_evidence(step),
+    }
+
+
+def _step_config_evidence(step: Mapping[str, object]) -> str:
+    payload = _mapping_value(step, "payload")
+    provider = (
+        payload.get("provider")
+        or payload.get("scheduled_provider")
+        or payload.get("scheduled_event_provider")
+    )
+    parts = [
+        f"reason={step.get('reason')}" if step.get("reason") else "",
+        f"provider={provider}" if provider else "",
+        f"requested={int(_finite_float(step.get('requested_count')))}",
+        f"raw={int(_finite_float(step.get('raw_count')))}",
+        f"normalized={int(_finite_float(step.get('normalized_count')))}",
+    ]
+    return "; ".join(part for part in parts if part) or "n/a"
+
+
+def _degraded_step_evidence(step: Mapping[str, object]) -> str:
+    payload = _mapping_value(step, "payload")
+    degraded = _mapping_value(payload, "degraded_mode")
+    reasons = ", ".join(str(value) for value in _sequence_value(degraded.get("reasons")))
+    max_action_state = degraded.get("max_action_state")
+    parts = [
+        f"reason={step.get('reason')}" if step.get("reason") else "",
+        f"degraded_reasons={reasons}" if reasons else "",
+        f"max_action_state={max_action_state}" if max_action_state else "",
+        f"requested={int(_finite_float(step.get('requested_count')))}",
+    ]
+    return "; ".join(part for part in parts if part) or _step_config_evidence(step)
+
+
+def _root_cause_rank(status: str) -> int:
+    return {
+        "blocked": 0,
+        "attention": 1,
+        "review": 2,
+        "optional": 3,
+    }.get(status, 9)
 
 
 def _boolish(value: object) -> bool:

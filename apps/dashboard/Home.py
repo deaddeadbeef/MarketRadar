@@ -814,6 +814,15 @@ def _show_radar_run_controls(
             help=_radar_run_button_help(cooldown_allowed, call_plan),
         )
     with status_col:
+        _show_runtime_context(
+            _mapping(
+                dashboard_data.runtime_context_payload(
+                    config,
+                    radar_run_summary=radar_run_summary,
+                    dotenv_loaded=DOTENV_LOADED,
+                )
+            )
+        )
         _show_radar_run_cooldown(cooldown)
         _show_radar_call_plan(call_plan)
         if previous_run_result:
@@ -828,9 +837,11 @@ def _show_radar_run_controls(
             _show_radar_operator_sections(
                 _radar_run_operator_rows(daily_result),
                 _radar_run_raw_rows(daily_result),
+                run_payload=daily_result,
+                config=config,
             )
         if not run_requested:
-            _show_radar_run_summary(radar_run_summary)
+            _show_radar_run_summary(radar_run_summary, config)
             return
         try:
             result = _mapping(
@@ -941,7 +952,58 @@ def _show_radar_run_cooldown(cooldown: Mapping[str, Any]) -> None:
     st.caption(str(cooldown.get("evidence") or "No cooldown evidence."))
 
 
-def _show_radar_run_summary(summary: Mapping[str, Any]) -> None:
+def _show_runtime_context(context: Mapping[str, Any]) -> None:
+    if not context:
+        return
+    database = _mapping(context.get("database"))
+    run_path = _mapping(context.get("run_path"))
+    env_loaded = context.get("env_file_loaded")
+    env_status = (
+        "loaded"
+        if env_loaded is True
+        else "not loaded"
+        if env_loaded is False
+        else "unknown"
+    )
+    _show_status_badges(
+        [
+            ("DB", database.get("name") or "unknown"),
+            ("Env", env_status),
+            ("Market Provider", context.get("daily_market_provider") or "n/a"),
+            ("Event Provider", context.get("daily_event_provider") or "n/a"),
+            (
+                "Run Path",
+                f"{int(_metric_number(run_path.get('required_complete')))}"
+                f"/{int(_metric_number(run_path.get('required_total')))}",
+            ),
+        ]
+    )
+    st.caption(str(context.get("evidence") or "No runtime context evidence."))
+    with st.expander("Active runtime context"):
+        _show_mapping(
+            "Runtime",
+            {
+                "database_kind": database.get("kind"),
+                "database_name": database.get("name"),
+                "database_location": database.get("location"),
+                "database_fingerprint": database.get("fingerprint"),
+                "env_file": context.get("env_file"),
+                "env_file_loaded": env_status,
+                "latest_run_as_of": context.get("latest_run_as_of"),
+                "latest_run_cutoff": context.get("latest_run_cutoff"),
+                "polygon_key_configured": context.get("polygon_key_configured"),
+                "sec_live_enabled": context.get("sec_live_enabled"),
+                "sec_user_agent_configured": context.get("sec_user_agent_configured"),
+                "openai_key_configured": context.get("openai_key_configured"),
+                "schwab_credentials_configured": context.get(
+                    "schwab_credentials_configured"
+                ),
+            },
+            empty="No runtime context.",
+        )
+
+
+def _show_radar_run_summary(summary: Mapping[str, Any], config: AppConfig) -> None:
     if not summary:
         st.caption("No prior radar run.")
         return
@@ -1051,6 +1113,8 @@ def _show_radar_run_summary(summary: Mapping[str, Any]) -> None:
         _radar_summary_operator_rows(summary),
         _radar_summary_raw_rows(summary),
         last_run=True,
+        run_payload=summary,
+        config=config,
     )
 
 
@@ -1563,7 +1627,31 @@ def _show_radar_operator_sections(
     raw_rows: list[dict[str, object]],
     *,
     last_run: bool = False,
+    run_payload: Mapping[str, Any] | None = None,
+    config: AppConfig | None = None,
 ) -> None:
+    if run_payload is not None and config is not None:
+        root_cause_rows = dashboard_data.radar_step_root_cause_rows(
+            run_payload,
+            config,
+        )
+        if root_cause_rows:
+            _show_records(
+                "Run Step Root Causes",
+                [
+                    {
+                        "Status": row.get("status"),
+                        "Root Cause": row.get("root_cause"),
+                        "Affected Steps": row.get("affected_steps"),
+                        "Why": row.get("why"),
+                        "Current Config": row.get("current_config"),
+                        "Next Action": row.get("next_action"),
+                        "Evidence": row.get("evidence"),
+                    }
+                    for row in root_cause_rows
+                ],
+                empty="No skipped or gated run steps.",
+            )
     action_rows = [
         row
         for row in operator_rows
@@ -3684,7 +3772,7 @@ def _show_ops_layer(health: Mapping[str, Any]) -> None:
     _show_records("Job Rows", health.get("jobs"), empty="No job rows.")
 
 
-load_app_dotenv()
+DOTENV_LOADED = load_app_dotenv()
 dashboard_role = require_viewer()
 
 st.set_page_config(page_title="Market Radar Command Center", layout="wide")
