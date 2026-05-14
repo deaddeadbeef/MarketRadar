@@ -14,8 +14,10 @@ def test_restart_local_script_restarts_only_market_radar_processes() -> None:
     assert "data\\local\\schwab-localhost-cert.pem" in text
     assert "PYTHONPATH" in text
     assert "-Environment" not in text
-    assert "Invoke-WebRequest" in text
-    assert "ServerCertificateValidationCallback" in text
+    assert "curl.exe" in text
+    assert "--insecure" in text
+    assert "--fail" in text
+    assert "ServerCertificateValidationCallback" not in text
     assert "SkipCertificateCheck" not in text
 
 
