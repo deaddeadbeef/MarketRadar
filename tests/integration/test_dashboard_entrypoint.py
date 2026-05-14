@@ -229,6 +229,8 @@ def test_candidate_schwab_context_refresh_is_explicit_and_rate_guarded() -> None
     assert '"include_history": True' in helper_source
     assert '"include_options": True' in helper_source
     assert "market-sync cooldown" in helper_source
+    assert 'st.session_state["candidate_schwab_refresh_message"]' in helper_source
+    assert "st.rerun()" in helper_source
 
 
 def test_broker_write_controls_require_analyst_role() -> None:

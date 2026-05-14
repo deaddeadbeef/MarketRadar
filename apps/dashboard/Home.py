@@ -2073,6 +2073,9 @@ def _show_candidate_schwab_context_refresh(
     dashboard_role: Role,
 ) -> None:
     st.subheader("Schwab Market Context")
+    refresh_message = st.session_state.pop("candidate_schwab_refresh_message", None)
+    if refresh_message:
+        st.success(str(refresh_message))
     ticker = str(selected_candidate.get("ticker") or "").strip().upper()
     context_status = str(selected_candidate.get("schwab_context_status") or "missing")
     if context_status == "available":
@@ -2098,9 +2101,10 @@ def _show_candidate_schwab_context_refresh(
                 "/api/brokers/schwab/market-sync",
                 {"tickers": [ticker], "include_history": True, "include_options": True},
             )
-            st.success(
+            st.session_state["candidate_schwab_refresh_message"] = (
                 f"Schwab market context rows: {len(_records(_mapping(result).get('items')))}"
             )
+            st.rerun()
         except RuntimeError as exc:
             st.error(str(exc))
 
