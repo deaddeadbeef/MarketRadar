@@ -275,6 +275,51 @@ def test_candidate_delta_payload_reports_no_current_run_candidates(tmp_path: Pat
     assert payload["rows"] == []
 
 
+def test_candidate_delta_payload_counts_run_candidates_created_after_decision_cutoff(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    early_decision_at = AS_OF - timedelta(hours=2)
+    finished_at = early_decision_at + timedelta(seconds=8)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(candidate_states),
+            [
+                _candidate_state_row(
+                    id="state-msft-prior",
+                    ticker="MSFT",
+                    as_of=EARLIER_AS_OF,
+                    state=ActionState.ADD_TO_WATCHLIST.value,
+                    final_score=70.0,
+                    created_at=early_decision_at - timedelta(days=1),
+                ),
+                _candidate_state_row(
+                    id="state-msft-current",
+                    ticker="MSFT",
+                    as_of=AS_OF,
+                    state=ActionState.WARNING.value,
+                    final_score=88.0,
+                    created_at=early_decision_at + timedelta(seconds=3),
+                ),
+            ],
+        )
+
+    payload = candidate_delta_payload(
+        engine,
+        radar_run_summary={
+            "as_of": AS_OF.date().isoformat(),
+            "decision_available_at": early_decision_at.isoformat(),
+            "finished_at": finished_at.isoformat(),
+        },
+        score_move_threshold=5.0,
+    )
+
+    assert payload["status"] == "changed"
+    assert payload["summary"]["current_run_candidates"] == 1
+    assert payload["summary"]["state_changes"] == 1
+    assert payload["rows"][0]["ticker"] == "MSFT"
+
+
 def test_actionability_breakdown_payload_explains_current_queue() -> None:
     rows = [
         {
@@ -684,6 +729,150 @@ def test_radar_readiness_payload_summarizes_operator_decision_gate(
     assert payload["candidate_decision_labels"][0]["audit"]["provider_license_policy"][
         "external_export_allowed"
     ] is False
+
+
+def test_radar_readiness_candidate_delta_uses_artifact_cutoff(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    early_decision_at = AS_OF - timedelta(hours=2)
+    metadata = {
+        "as_of": AS_OF.date().isoformat(),
+        "decision_available_at": early_decision_at.isoformat(),
+        "outcome_available_at": None,
+        "provider": "csv",
+        "universe": "liquid-us",
+        "tickers": ["MSFT"],
+    }
+    with engine.begin() as conn:
+        conn.execute(
+            insert(candidate_states),
+            [
+                _candidate_state_row(
+                    id="state-msft-prior",
+                    ticker="MSFT",
+                    as_of=EARLIER_AS_OF,
+                    state=ActionState.ADD_TO_WATCHLIST.value,
+                    final_score=70.0,
+                    created_at=early_decision_at + timedelta(seconds=2),
+                ),
+                _candidate_state_row(
+                    id="state-msft-current",
+                    ticker="MSFT",
+                    as_of=AS_OF,
+                    state=ActionState.WARNING.value,
+                    final_score=88.0,
+                    created_at=early_decision_at + timedelta(seconds=3),
+                ),
+            ],
+        )
+        conn.execute(
+            insert(job_runs),
+            [
+                _job_run_row(
+                    "delta-feature-scan",
+                    job_type="feature_scan",
+                    status="success",
+                    started_at=early_decision_at + timedelta(seconds=1),
+                    metadata={**metadata, "result_status": "success"},
+                    requested_count=1,
+                    raw_count=1,
+                    normalized_count=1,
+                ),
+                _job_run_row(
+                    "delta-scoring",
+                    job_type="scoring_policy",
+                    status="success",
+                    started_at=early_decision_at + timedelta(seconds=2),
+                    metadata={**metadata, "result_status": "success"},
+                    requested_count=1,
+                    raw_count=1,
+                    normalized_count=1,
+                ),
+            ],
+        )
+
+    payload = radar_readiness_payload(engine, AppConfig.from_env({}))
+
+    delta = payload["candidate_delta"]
+    assert delta["summary"]["current_run_candidates"] == 1
+    assert delta["summary"]["state_changes"] == 1
+    assert delta["rows"][0]["ticker"] == "MSFT"
+    assert delta["rows"][0]["change_type"] == "state_changed"
+
+
+def test_radar_readiness_candidate_delta_keeps_stale_context_without_current_rows(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    stale_run_cutoff = AVAILABLE_AT + timedelta(days=4)
+    metadata = {
+        "as_of": stale_run_cutoff.date().isoformat(),
+        "decision_available_at": stale_run_cutoff.isoformat(),
+        "outcome_available_at": None,
+        "provider": "csv",
+        "universe": "liquid-us",
+        "tickers": [],
+    }
+    with engine.begin() as conn:
+        conn.execute(
+            insert(candidate_states).values(
+                _candidate_state_row(
+                    id="state-msft-stale-readiness",
+                    ticker="MSFT",
+                    as_of=AS_OF,
+                    state=ActionState.WARNING.value,
+                    final_score=88.0,
+                    created_at=AVAILABLE_AT,
+                )
+            )
+        )
+        conn.execute(
+            insert(job_runs),
+            [
+                _job_run_row(
+                    "stale-readiness-feature-scan",
+                    job_type="feature_scan",
+                    status="success",
+                    started_at=stale_run_cutoff,
+                    metadata={**metadata, "result_status": "success"},
+                    requested_count=1,
+                    raw_count=0,
+                    normalized_count=0,
+                ),
+                _job_run_row(
+                    "stale-readiness-scoring",
+                    job_type="scoring_policy",
+                    status="success",
+                    started_at=stale_run_cutoff + timedelta(seconds=1),
+                    metadata={**metadata, "result_status": "success"},
+                    requested_count=0,
+                    raw_count=0,
+                    normalized_count=0,
+                ),
+            ],
+        )
+
+    payload = radar_readiness_payload(engine, AppConfig.from_env({}))
+
+    delta = payload["candidate_delta"]
+    assert delta["status"] == "no_current_candidates"
+    assert delta["summary"]["current_run_candidates"] == 0
+    assert delta["summary"]["stale_context_candidates"] == 1
+
+
+def test_radar_readiness_candidate_delta_treats_candidates_without_run_as_context(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+
+    payload = radar_readiness_payload(engine, AppConfig.from_env({}))
+
+    delta = payload["candidate_delta"]
+    assert delta["status"] == "no_current_candidates"
+    assert delta["summary"]["current_run_candidates"] == 0
+    assert delta["summary"]["stale_context_candidates"] == 2
 
 
 def test_radar_research_shortlist_payload_uses_latest_candidates(
@@ -2460,6 +2649,103 @@ def test_radar_discovery_snapshot_labels_fixture_thin_run(
     assert snapshot["top_discoveries"][0]["ticker"] == "MSFT"
     assert snapshot["top_discoveries"][0]["packet"] == "packet-msft-latest"
     assert snapshot["top_discoveries"][0]["card"] == "card-msft-latest"
+
+
+def test_radar_discovery_snapshot_counts_run_candidates_when_cutoff_precedes_as_of(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    early_decision_at = AS_OF - timedelta(hours=2)
+    metadata = {
+        "as_of": AS_OF.date().isoformat(),
+        "decision_available_at": early_decision_at.isoformat(),
+        "outcome_available_at": None,
+        "provider": "csv",
+        "universe": "liquid-us",
+        "tickers": [],
+    }
+    with engine.begin() as conn:
+        conn.execute(
+            update(candidate_states)
+            .where(candidate_states.c.id.in_(["state-msft-latest", "state-aapl-latest"]))
+            .values(created_at=early_decision_at)
+        )
+        conn.execute(
+            update(candidate_packets)
+            .where(candidate_packets.c.id == "packet-msft-latest")
+            .values(
+                available_at=early_decision_at,
+                created_at=early_decision_at + timedelta(seconds=3),
+            )
+        )
+        conn.execute(
+            update(decision_cards)
+            .where(decision_cards.c.id == "card-msft-latest")
+            .values(
+                available_at=early_decision_at,
+                created_at=early_decision_at + timedelta(seconds=4),
+            )
+        )
+        conn.execute(
+            insert(job_runs),
+            [
+                _job_run_row(
+                    "same-day-feature-scan",
+                    job_type="feature_scan",
+                    status="success",
+                    started_at=early_decision_at + timedelta(seconds=1),
+                    metadata=metadata,
+                    requested_count=6,
+                    raw_count=2,
+                    normalized_count=2,
+                ),
+                _job_run_row(
+                    "same-day-scoring",
+                    job_type="scoring_policy",
+                    status="success",
+                    started_at=early_decision_at + timedelta(seconds=2),
+                    metadata=metadata,
+                    requested_count=2,
+                    raw_count=2,
+                    normalized_count=2,
+                ),
+                _job_run_row(
+                    "same-day-candidate-packets",
+                    job_type="candidate_packets",
+                    status="success",
+                    started_at=early_decision_at + timedelta(seconds=3),
+                    metadata=metadata,
+                    requested_count=2,
+                    raw_count=1,
+                    normalized_count=1,
+                ),
+            ],
+        )
+    summary = load_radar_run_summary(engine)
+
+    snapshot = radar_discovery_snapshot_payload(
+        engine,
+        AppConfig(
+            daily_market_provider="csv",
+            daily_event_provider="news_fixture",
+            scan_batch_size=500,
+        ),
+        radar_run_summary=summary,
+        ops_health={
+            "database": {
+                "active_security_count": 6,
+                "active_security_with_daily_bar_count": 6,
+                "latest_daily_bar_date": AS_OF.date().isoformat(),
+            }
+        },
+    )
+
+    assert snapshot["yield"]["candidate_states"] == 2
+    assert snapshot["yield"]["candidate_packets"] == 1
+    assert snapshot["latest_candidate_context"]["stale_relative_to_run"] is False
+    assert snapshot["latest_candidate_context"]["latest_candidate_as_of"] == AS_OF.isoformat()
+    assert snapshot["top_discoveries"][0]["ticker"] == "MSFT"
 
 
 def test_radar_discovery_snapshot_flags_stale_bars_and_empty_packets(

@@ -141,13 +141,15 @@ def _parse_cutoff(value: str) -> datetime | None:
 
 
 def _radar_summary_cutoff(summary: Mapping[str, Any]) -> datetime | None:
-    value = summary.get("decision_available_at")
-    if value is None or value == "":
-        return None
-    try:
-        return _parse_cutoff(str(value))
-    except ValueError:
-        return None
+    for key in ("finished_at", "decision_available_at"):
+        value = summary.get(key)
+        if value is None or value == "":
+            continue
+        try:
+            return _parse_cutoff(str(value))
+        except ValueError:
+            continue
+    return None
 
 
 def _select_value(label: str, options: list[str]) -> str | None:
@@ -2950,7 +2952,11 @@ if latest_run_cutoff is not None and available_at is None:
 alert_status = _select_value("Alert status", ALERT_STATUSES)
 alert_route = _select_value("Alert route", ALERT_ROUTES)
 
-candidate_rows = dashboard_data.load_candidate_rows(engine, available_at=data_available_at)
+candidate_rows = (
+    dashboard_data.load_radar_run_candidate_rows(engine, radar_run_summary)
+    if available_at is None and radar_run_summary
+    else dashboard_data.load_candidate_rows(engine, available_at=data_available_at)
+)
 theme_rows = dashboard_data.load_theme_rows(engine, available_at=data_available_at)
 alert_rows = dashboard_data.load_alert_rows(
     engine,
