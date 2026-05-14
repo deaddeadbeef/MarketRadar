@@ -400,6 +400,62 @@ div[data-baseweb="select"] svg {
   overflow-wrap: anywhere;
 }
 
+.mr-command-next {
+  align-items: center;
+  border-left: 3px solid var(--mr-border);
+  border-top: 1px solid #E7EBF0;
+  display: grid;
+  gap: 0.65rem;
+  grid-column: 1 / -1;
+  grid-template-columns: max-content 1fr;
+  margin-top: 0.1rem;
+  min-width: 0;
+  padding: 0.58rem 0 0.12rem;
+}
+
+.mr-command-next-good {
+  border-left-color: var(--mr-positive);
+}
+
+.mr-command-next-warn {
+  border-left-color: var(--mr-warning);
+}
+
+.mr-command-next-danger {
+  border-left-color: var(--mr-danger);
+}
+
+.mr-command-next-label {
+  color: var(--mr-secondary);
+  font-size: 0.66rem;
+  font-weight: 720;
+  letter-spacing: 0.05em;
+  line-height: 1.1;
+  padding-left: 0.55rem;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.mr-command-next-copy {
+  color: var(--mr-primary);
+  display: grid;
+  gap: 0.12rem;
+  line-height: 1.25;
+  min-width: 0;
+}
+
+.mr-command-next-copy strong {
+  font-size: 0.88rem;
+  font-weight: 680;
+  overflow-wrap: anywhere;
+}
+
+.mr-command-next-copy span {
+  color: var(--mr-secondary);
+  font-size: 0.76rem;
+  overflow-wrap: anywhere;
+}
+
 .mr-badge-row {
   display: flex;
   flex-wrap: wrap;
@@ -492,6 +548,15 @@ div[data-baseweb="select"] svg {
 
   .mr-command-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .mr-command-next {
+    align-items: start;
+    grid-template-columns: 1fr;
+  }
+
+  .mr-command-next-label {
+    padding-left: 0.55rem;
   }
 }
 </style>

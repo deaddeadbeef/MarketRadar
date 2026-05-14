@@ -347,6 +347,47 @@ def _command_cell(label: str, value: object, *, tone_value: object = None) -> st
     )
 
 
+def _command_next_action_notice(
+    *,
+    discovery_snapshot: Mapping[str, Any],
+    investment_readiness: Mapping[str, Any],
+) -> str:
+    ready = bool(investment_readiness.get("manual_buy_review_ready"))
+    status = str(
+        investment_readiness.get("status")
+        or investment_readiness.get("decision_mode")
+        or discovery_snapshot.get("status")
+        or "unknown"
+    )
+    tone = "good" if ready else _tone(status)
+    label = (
+        "Manual Review Ready"
+        if ready
+        else "Next Required Action"
+        if status in {"blocked", "research_only", "not_ready"}
+        else "Next Action"
+    )
+    headline = _first_present(
+        investment_readiness.get("headline"),
+        discovery_snapshot.get("headline"),
+        "Readiness status unavailable.",
+    )
+    next_action = _first_present(
+        investment_readiness.get("next_action"),
+        discovery_snapshot.get("next_action"),
+        "Review readiness inputs.",
+    )
+    return (
+        f'<div class="mr-command-next mr-command-next-{tone}">'
+        f'<span class="mr-command-next-label">{_html(label)}</span>'
+        '<span class="mr-command-next-copy">'
+        f'<strong>{_html(next_action)}</strong>'
+        f'<span>{_html(headline)}</span>'
+        "</span>"
+        "</div>"
+    )
+
+
 def _show_command_header(
     *,
     candidate_rows: list[dict[str, object]],
@@ -386,6 +427,10 @@ def _show_command_header(
         _command_cell("Degraded", degraded),
         _command_cell("Build", build_label),
     ]
+    next_action_notice = _command_next_action_notice(
+        discovery_snapshot=discovery_snapshot,
+        investment_readiness=investment_readiness,
+    )
     st.markdown(
         '<section class="mr-app-header">'
         '<div class="mr-title-block">'
@@ -394,6 +439,7 @@ def _show_command_header(
         '<div class="mr-status-panel" aria-label="System status">'
         '<span class="mr-status-title">System Status</span>'
         f'<div class="mr-command-strip">{"".join(cells)}</div>'
+        f"{next_action_notice}"
         "</div>"
         "</section>",
         unsafe_allow_html=True,
