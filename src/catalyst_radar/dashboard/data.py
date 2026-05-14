@@ -66,8 +66,10 @@ def load_candidate_rows(
     engine: Engine,
     *,
     available_at: datetime | None = None,
+    as_of_date: date | None = None,
 ) -> list[dict[str, object]]:
     cutoff = _as_utc_datetime_or_none(available_at)
+    run_date = _parse_date(as_of_date)
     ranked_state_stmt = select(
         candidate_states.c.id.label("candidate_state_id"),
         func.row_number()
@@ -84,8 +86,15 @@ def load_candidate_rows(
     if cutoff is not None:
         ranked_state_stmt = ranked_state_stmt.where(
             candidate_states.c.created_at <= cutoff,
-            candidate_states.c.as_of <= cutoff,
         )
+    if run_date is not None:
+        start, end = _date_window(run_date)
+        ranked_state_stmt = ranked_state_stmt.where(
+            candidate_states.c.as_of >= start,
+            candidate_states.c.as_of < end,
+        )
+    elif cutoff is not None:
+        ranked_state_stmt = ranked_state_stmt.where(candidate_states.c.as_of <= cutoff)
     ranked_states = ranked_state_stmt.subquery()
 
     ranked_packet_stmt = (
@@ -185,6 +194,21 @@ def load_candidate_rows(
         return [_candidate_row(row._mapping) for row in conn.execute(stmt)]
 
 
+def load_radar_run_candidate_rows(
+    engine: Engine,
+    radar_run_summary: Mapping[str, object],
+) -> list[dict[str, object]]:
+    summary = _row_dict(radar_run_summary)
+    cutoff = _parse_utc_datetime(summary.get("finished_at")) or _parse_utc_datetime(
+        summary.get("decision_available_at")
+    )
+    return load_candidate_rows(
+        engine,
+        available_at=cutoff,
+        as_of_date=_parse_date(summary.get("as_of")),
+    )
+
+
 def opportunity_focus_payload(
     candidate_rows: Sequence[Mapping[str, object]],
     *,
@@ -224,21 +248,40 @@ def candidate_delta_payload(
     score_move_threshold: float = 5.0,
 ) -> dict[str, object]:
     summary = radar_run_summary if isinstance(radar_run_summary, Mapping) else {}
-    cutoff = available_at or _parse_utc_datetime(summary.get("decision_available_at"))
-    current_rows = [
-        _row_dict(row)
-        for row in (
-            candidate_rows
-            if candidate_rows is not None
-            else load_candidate_rows(engine, available_at=cutoff)
-        )
-        if isinstance(row, Mapping)
-    ]
+    cutoff = (
+        available_at
+        or _parse_utc_datetime(summary.get("finished_at"))
+        or _parse_utc_datetime(summary.get("decision_available_at"))
+    )
     run_as_of = _parse_date(summary.get("as_of"))
-    current_run_rows = [
-        row for row in current_rows if _parse_date(row.get("as_of")) == run_as_of
-    ]
-    stale_context_count = max(0, len(current_rows) - len(current_run_rows))
+    if candidate_rows is not None:
+        current_rows = [
+            _row_dict(row) for row in candidate_rows if isinstance(row, Mapping)
+        ]
+        current_run_rows = [
+            row for row in current_rows if _parse_date(row.get("as_of")) == run_as_of
+        ]
+        stale_context_count = max(0, len(current_rows) - len(current_run_rows))
+    elif run_as_of is None:
+        current_run_rows = []
+        stale_context_count = len(load_candidate_rows(engine, available_at=cutoff))
+    else:
+        current_run_rows = load_candidate_rows(
+            engine,
+            available_at=cutoff,
+            as_of_date=run_as_of,
+        )
+        context_rows = load_candidate_rows(engine, available_at=cutoff)
+        current_tickers = {
+            str(row.get("ticker") or "").strip().upper()
+            for row in current_run_rows
+            if str(row.get("ticker") or "").strip()
+        }
+        stale_context_count = sum(
+            1
+            for row in context_rows
+            if str(row.get("ticker") or "").strip().upper() not in current_tickers
+        )
     changes: list[dict[str, object]] = []
     with engine.connect() as conn:
         for row in current_run_rows:
@@ -718,7 +761,7 @@ def radar_readiness_payload(
 ) -> dict[str, object]:
     radar_run_summary = load_radar_run_summary(engine)
     latest_run_cutoff = _parse_utc_datetime(radar_run_summary.get("decision_available_at"))
-    candidate_rows = load_candidate_rows(engine, available_at=latest_run_cutoff)
+    candidate_rows = load_radar_run_candidate_rows(engine, radar_run_summary)
     broker_summary = load_broker_summary(engine)
     ops_health = load_ops_health(engine, now=latest_run_cutoff)
     discovery_snapshot = radar_discovery_snapshot_payload(
@@ -753,8 +796,6 @@ def radar_readiness_payload(
     candidate_delta = candidate_delta_payload(
         engine,
         radar_run_summary=radar_run_summary,
-        candidate_rows=candidate_rows,
-        available_at=latest_run_cutoff,
     )
     operator_queue = operator_work_queue_payload(
         config,
@@ -801,7 +842,7 @@ def radar_research_shortlist_payload(
 ) -> dict[str, object]:
     radar_run_summary = load_radar_run_summary(engine)
     latest_run_cutoff = _parse_utc_datetime(radar_run_summary.get("decision_available_at"))
-    candidate_rows = load_candidate_rows(engine, available_at=latest_run_cutoff)
+    candidate_rows = load_radar_run_candidate_rows(engine, radar_run_summary)
     discovery_snapshot = radar_discovery_snapshot_payload(
         engine,
         config,
@@ -2074,6 +2115,7 @@ def radar_discovery_snapshot_payload(
         if isinstance(radar_run_summary, Mapping)
         else load_radar_run_summary(engine)
     )
+    as_of_date = _parse_date(summary.get("as_of"))
     cutoff = _parse_utc_datetime(summary.get("decision_available_at"))
     artifact_cutoff = _parse_utc_datetime(summary.get("finished_at")) or cutoff
     health = (
@@ -2081,13 +2123,22 @@ def radar_discovery_snapshot_payload(
         if isinstance(ops_health, Mapping)
         else load_ops_health(engine, now=cutoff)
     )
-    unscoped_candidates = (
-        [_row_dict(row) for row in candidate_rows]
-        if candidate_rows is not None
-        else load_candidate_rows(engine, available_at=artifact_cutoff)
-    )
+    if candidate_rows is not None:
+        run_candidate_rows = [_row_dict(row) for row in candidate_rows]
+        context_candidate_rows = run_candidate_rows
+    else:
+        run_candidate_rows = load_candidate_rows(
+            engine,
+            available_at=artifact_cutoff,
+            as_of_date=as_of_date,
+        )
+        context_candidate_rows = run_candidate_rows or load_candidate_rows(
+            engine,
+            available_at=artifact_cutoff,
+        )
     steps = _radar_steps_by_name(summary)
-    scoped_candidates = _discovery_scoped_candidates(unscoped_candidates, summary)
+    scoped_candidates = _discovery_scoped_candidates(run_candidate_rows, summary)
+    context_candidates = _discovery_scoped_candidates(context_candidate_rows, summary)
     candidates = _discovery_run_candidates(scoped_candidates, summary)
     coverage_rows = _discovery_source_coverage_payload(
         config,
@@ -2099,9 +2150,8 @@ def radar_discovery_snapshot_payload(
     events = coverage.get("News/events", {})
     database = _mapping_value(health, "database")
     run_path = _radar_run_path_summary(summary)
-    as_of_date = _parse_date(summary.get("as_of"))
     latest_bar_date = _parse_date(database.get("latest_daily_bar_date"))
-    latest_candidate_at = _latest_candidate_as_of(scoped_candidates)
+    latest_candidate_at = _latest_candidate_as_of(context_candidates)
 
     candidate_count = len(candidates)
     packet_count = _step_metric(
@@ -2118,7 +2168,7 @@ def radar_discovery_snapshot_payload(
     )
     packet_candidates = _latest_run_packet_candidates(candidates, summary)
     latest_candidate_context = _latest_candidate_context_payload(
-        scoped_candidates,
+        context_candidates,
         summary,
         cutoff=cutoff,
         limit=limit,
@@ -4406,6 +4456,11 @@ def _latest_candidate_as_of(
         if parsed is not None:
             values.append(parsed)
     return max(values) if values else None
+
+
+def _date_window(value: date) -> tuple[datetime, datetime]:
+    start = datetime.combine(value, datetime.min.time(), tzinfo=UTC)
+    return start, start + timedelta(days=1)
 
 
 def _age_days(later: datetime | None, earlier: datetime | None) -> int | None:
