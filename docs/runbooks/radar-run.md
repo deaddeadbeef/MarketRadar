@@ -34,6 +34,12 @@ The dashboard **Live Activation Plan** is also DB/config-only. It separates:
   and outcome validation when their trigger is absent;
 - blocked inputs that need operator action before relying on the run.
 
+The dashboard **Live Data Activation** contract turns that plan into exact
+operator steps. It is read-only and makes zero external calls. It shows a
+redacted `.env.local` template, safe caps, first-run commands, and the maximum
+external calls that would happen only if you manually seed the universe or run a
+capped live radar cycle.
+
 Raw telemetry can still show `status=skipped` for expected optional gates. Treat
 the `category`, required-path count, and action-needed count as the operator
 truth: `expected_gate` means no failure occurred unless you intentionally wanted
@@ -159,6 +165,20 @@ breakdown, investment readiness gate, candidate decision labels, and telemetry
 tape. Use `safe_to_make_investment_decision=false` as a hard stop; high scores
 remain research-only until this endpoint says the queue is ready for
 `manual_buy_review`.
+
+To inspect the live-data activation contract without starting a run or calling
+providers:
+
+```powershell
+Invoke-RestMethod `
+  -Uri https://127.0.0.1:8443/api/radar/live-activation `
+  -SkipCertificateCheck
+```
+
+`GET /api/radar/live-activation` is DB/config-only. It returns missing env vars,
+a redacted environment template, safe caps, exact operator commands, and the
+call budget if you later choose to activate live data manually. Reading this
+endpoint does not call Polygon, SEC, Schwab, or OpenAI.
 
 To get the prioritized research queue without opening the dashboard:
 

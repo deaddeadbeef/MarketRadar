@@ -474,7 +474,68 @@ def _show_telemetry_tape(ops_health: Mapping[str, Any]) -> None:
         "Recent Radar Telemetry",
         tape.get("events"),
         empty="No recent radar telemetry.",
+        )
+
+
+def _show_live_data_activation_contract(
+    config: AppConfig,
+    radar_run_summary: Mapping[str, Any],
+    broker_summary: Mapping[str, Any],
+) -> None:
+    contract = _mapping(
+        dashboard_data.live_data_activation_contract_payload(
+            config,
+            radar_run_summary=radar_run_summary,
+            broker_summary=broker_summary,
+        )
     )
+    st.subheader("Live Data Activation")
+    status = str(contract.get("status") or "unknown")
+    message = (
+        f"{contract.get('headline') or 'Live data activation'} "
+        f"Next: {contract.get('next_action') or 'n/a'}"
+    ).strip()
+    if status == "ready":
+        st.success(message)
+    else:
+        st.warning(message)
+    _show_status_badges(
+        [
+            (
+                "Contract Calls",
+                "yes" if contract.get("makes_external_calls") else "no",
+            ),
+            ("Read Only", "yes" if contract.get("read_only") else "no"),
+            ("Missing Env", len(_sequence(contract.get("missing_env")))),
+        ]
+    )
+    _show_records(
+        "Activation Steps",
+        contract.get("operator_steps"),
+        empty="No activation steps.",
+    )
+    with st.expander("Environment template"):
+        env_lines = [
+            f"{row.get('name')}={row.get('value_template')}"
+            for row in _records(contract.get("env_template"))
+        ]
+        st.code("\n".join(env_lines), language="text")
+        _show_records(
+            "Environment Status",
+            contract.get("env_template"),
+            empty="No environment template rows.",
+        )
+    with st.expander("Activation guardrails"):
+        _show_records(
+            "Safe Limits",
+            contract.get("safe_limits"),
+            empty="No safe limits.",
+        )
+        _show_records(
+            "Call Budget If Activated",
+            contract.get("call_budget_if_activated"),
+            empty="No activation call budget.",
+        )
 
 
 def _show_universe_coverage(
@@ -1435,6 +1496,7 @@ def _show_overview(
 
     _show_activation_summary(config, radar_run_summary, broker_summary)
     _show_live_activation_plan(config, radar_run_summary, broker_summary)
+    _show_live_data_activation_contract(config, radar_run_summary, broker_summary)
     _show_telemetry_tape(ops_health)
     _show_universe_coverage(config, ops_health)
     _show_radar_run_controls(engine, config, radar_run_summary, radar_run_cooldown)

@@ -249,6 +249,19 @@ def radar_readiness() -> dict[str, object]:
     )
 
 
+@router.get("/live-activation", dependencies=[Depends(require_role(Role.VIEWER))])
+def radar_live_activation() -> dict[str, object]:
+    activation_payload = _dashboard_helper("live_data_activation_contract_payload")
+    load_radar_run_summary = _dashboard_helper("load_radar_run_summary")
+    load_broker_summary = _dashboard_helper("load_broker_summary")
+    engine = _engine()
+    return activation_payload(
+        AppConfig.from_env(),
+        radar_run_summary=load_radar_run_summary(engine),
+        broker_summary=load_broker_summary(engine),
+    )
+
+
 @router.get("/research-shortlist", dependencies=[Depends(require_role(Role.VIEWER))])
 def radar_research_shortlist(
     limit: int = Query(default=8, ge=1, le=50),

@@ -34,6 +34,7 @@ from catalyst_radar.dashboard.data import (
     data_source_coverage_payload,
     investment_readiness_payload,
     live_activation_plan_payload,
+    live_data_activation_contract_payload,
     load_alert_detail,
     load_alert_rows,
     load_broker_summary,
@@ -778,6 +779,78 @@ def test_live_activation_plan_payload_never_leaks_configured_secrets() -> None:
     assert "polygon-secret-value" not in rendered
     assert "sk-secret-value" not in rendered
     assert "Secret User Agent" not in rendered
+
+
+def test_live_data_activation_contract_gives_exact_safe_next_steps() -> None:
+    contract = live_data_activation_contract_payload(
+        AppConfig(
+            daily_market_provider="csv",
+            daily_event_provider="news_fixture",
+            polygon_tickers_max_pages=1,
+            sec_daily_max_tickers=5,
+            radar_run_min_interval_seconds=300,
+        ),
+        radar_run_summary={"steps": []},
+    )
+
+    assert contract["schema_version"] == "live-data-activation-contract-v1"
+    assert contract["status"] == "blocked"
+    assert contract["read_only"] is True
+    assert contract["makes_external_calls"] is False
+    assert "CATALYST_POLYGON_API_KEY" in contract["missing_env"]
+    assert "CATALYST_SEC_USER_AGENT" in contract["missing_env"]
+    assert contract["call_budget_if_activated"] == [
+        {
+            "operation": "read this activation contract",
+            "max_external_calls": 0,
+            "provider": "none",
+        },
+        {
+            "operation": "seed universe once",
+            "max_external_calls": 1,
+            "provider": "polygon",
+        },
+        {
+            "operation": "run one radar cycle",
+            "max_external_calls": 6,
+            "provider": "polygon + sec",
+        },
+    ]
+    assert [row["step"] for row in contract["operator_steps"]] == [1, 2, 3, 4, 5, 6]
+    assert "runs/call-plan" in str(contract["operator_steps"][3]["command"])
+    assert "runs" in str(contract["operator_steps"][4]["command"])
+
+
+def test_live_data_activation_contract_never_leaks_configured_secrets() -> None:
+    contract = live_data_activation_contract_payload(
+        AppConfig(
+            daily_market_provider="polygon",
+            market_provider="polygon",
+            polygon_api_key="polygon-secret-value",
+            daily_event_provider="sec",
+            sec_enable_live=True,
+            sec_user_agent="Secret User Agent",
+            polygon_tickers_max_pages=2,
+            sec_daily_max_tickers=3,
+            radar_run_min_interval_seconds=600,
+        ),
+        radar_run_summary={"steps": []},
+    )
+
+    rendered = str(contract)
+    assert contract["status"] == "ready"
+    assert contract["missing_env"] == []
+    assert "polygon-secret-value" not in rendered
+    assert "Secret User Agent" not in rendered
+    secret_rows = {
+        str(row["name"]): row
+        for row in contract["env_template"]
+        if bool(row.get("secret"))
+    }
+    assert secret_rows["CATALYST_POLYGON_API_KEY"]["current"] == "set"
+    assert secret_rows["CATALYST_SEC_USER_AGENT"]["current"] == "set"
+    assert contract["call_budget_if_activated"][1]["max_external_calls"] == 2
+    assert contract["call_budget_if_activated"][2]["max_external_calls"] == 4
 
 
 def test_telemetry_tape_payload_summarizes_recent_radar_events() -> None:
