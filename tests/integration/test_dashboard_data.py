@@ -1573,6 +1573,7 @@ def test_live_data_activation_contract_gives_exact_safe_next_steps() -> None:
         },
     ]
     assert [row["step"] for row in contract["operator_steps"]] == [1, 2, 3, 4, 5, 6]
+    assert "scripts/restart-local.ps1" in str(contract["operator_steps"][1]["command"])
     assert "runs/call-plan" in str(contract["operator_steps"][3]["command"])
     assert "runs" in str(contract["operator_steps"][4]["command"])
     env_template = {str(row["name"]): row for row in contract["env_template"]}

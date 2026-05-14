@@ -64,11 +64,12 @@ there before building point-in-time universe snapshots.
 ## Dashboard
 
 ```powershell
-$env:PYTHONPATH="src;."
-streamlit run apps/dashboard/Home.py
+powershell -ExecutionPolicy Bypass -File scripts/restart-local.ps1
 ```
 
-Docker Compose runs the same command-center entry point at
+The local restart script starts the API at `https://127.0.0.1:8443` and the
+dashboard at `http://127.0.0.1:8514`, loading `.env.local` through the app
+startup path. Docker Compose runs the same command-center entry point at
 `http://localhost:8501`.
 
 ## Phase 1 rule
