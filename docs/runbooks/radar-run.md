@@ -138,6 +138,22 @@ Invoke-RestMethod `
   -SkipCertificateCheck
 ```
 
+To get the single operator contract for whether the radar is actionable without
+starting a new run:
+
+```powershell
+Invoke-RestMethod `
+  -Uri https://127.0.0.1:8443/api/radar/readiness `
+  -SkipCertificateCheck
+```
+
+`GET /api/radar/readiness` is DB/config-only. It composes the latest run path,
+live activation plan, readiness checklist, discovery snapshot, actionability
+breakdown, investment readiness gate, candidate decision labels, and telemetry
+tape. Use `safe_to_make_investment_decision=false` as a hard stop; high scores
+remain research-only until this endpoint says the queue is ready for
+`manual_buy_review`.
+
 Both `POST /api/radar/runs` and `GET /api/radar/runs/latest` include a
 `discovery_snapshot` block. That snapshot is DB-only: it reads the latest stored
 run telemetry, candidate queue, provider mode, universe coverage, and freshness

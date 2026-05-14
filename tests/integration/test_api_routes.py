@@ -668,6 +668,103 @@ def test_get_latest_radar_run_redacts_restricted_discovery_snapshot(
     ]
 
 
+def test_get_radar_readiness_returns_decision_contract(tmp_path, monkeypatch) -> None:
+    database_url = _database_url(tmp_path, "radar-readiness.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+    monkeypatch.setattr(
+        dashboard_data,
+        "radar_readiness_payload",
+        lambda _engine, _config: {
+            "schema_version": "radar-readiness-v1",
+            "status": "research_only",
+            "decision_mode": "research_only",
+            "safe_to_make_investment_decision": False,
+            "next_action": "Configure live sources.",
+            "candidate_decision_labels": [
+                {"ticker": "MSFT", "decision_status": "research_only"}
+            ],
+        },
+        raising=False,
+    )
+    client = TestClient(create_app())
+
+    response = client.get("/api/radar/readiness")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "schema_version": "radar-readiness-v1",
+        "status": "research_only",
+        "decision_mode": "research_only",
+        "safe_to_make_investment_decision": False,
+        "next_action": "Configure live sources.",
+        "candidate_decision_labels": [
+            {"ticker": "MSFT", "decision_status": "research_only"}
+        ],
+    }
+
+
+def test_get_radar_readiness_redacts_restricted_discovery_snapshot(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "radar-readiness-redacted.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+    monkeypatch.setattr(
+        dashboard_data,
+        "radar_readiness_payload",
+        lambda _engine, _config: {
+            "schema_version": "radar-readiness-v1",
+            "status": "research_only",
+            "discovery_snapshot": {
+                "top_discoveries": [
+                    {
+                        "ticker": "MSFT",
+                        "why_now": "restricted fixture catalyst",
+                        "audit": {
+                            "provider_license_policy": {
+                                "license_tags": ["local-csv-fixture"],
+                            }
+                        },
+                    }
+                ],
+            },
+            "candidate_decision_labels": [
+                {
+                    "ticker": "MSFT",
+                    "top_catalyst": "restricted fixture catalyst",
+                    "audit": {
+                        "provider_license_policy": {
+                            "license_tags": ["local-csv-fixture"],
+                        }
+                    },
+                }
+            ],
+        },
+        raising=False,
+    )
+    client = TestClient(create_app())
+
+    response = client.get("/api/radar/readiness")
+
+    assert response.status_code == 200
+    assert response.json()["discovery_snapshot"]["top_discoveries"] == [
+        {
+            "external_export_blocked": True,
+            "license_tags": ["local-csv-fixture"],
+            "attribution_required": False,
+        }
+    ]
+    assert response.json()["candidate_decision_labels"] == [
+        {
+            "external_export_blocked": True,
+            "license_tags": ["local-csv-fixture"],
+            "attribution_required": False,
+        }
+    ]
+
+
 def test_get_candidate_detail_returns_404_for_missing_ticker(tmp_path, monkeypatch) -> None:
     database_url = _database_url(tmp_path, "missing-detail.db")
     monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
