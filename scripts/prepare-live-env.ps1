@@ -77,12 +77,30 @@ function Get-EnvValue {
     return ""
 }
 
+function Test-EnvKey {
+    param(
+        [string[]]$InputLines,
+        [string]$Key
+    )
+
+    $pattern = "^\s*$([regex]::Escape($Key))\s*="
+    foreach ($line in $InputLines) {
+        if ($line -match $pattern) {
+            return $true
+        }
+    }
+    return $false
+}
+
 foreach ($entry in $safeDefaults.GetEnumerator()) {
     $lines = Set-EnvLine -InputLines $lines -Key $entry.Key -Value $entry.Value
 }
 
 $missingManual = @()
 foreach ($key in $manualValues) {
+    if (-not (Test-EnvKey -InputLines $lines -Key $key)) {
+        $lines = Set-EnvLine -InputLines $lines -Key $key -Value ""
+    }
     if ([string]::IsNullOrWhiteSpace((Get-EnvValue -InputLines $lines -Key $key))) {
         $missingManual += $key
     }
