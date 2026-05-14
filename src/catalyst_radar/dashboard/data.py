@@ -4125,17 +4125,12 @@ def _telemetry_step_outcome_fields(
     reason = _first_present(event.get("reason"), metadata.get("result_reason"))
     reason_text = str(reason) if reason not in (None, "") else None
     classification = classify_step_outcome(raw_status, reason_text)
-    category = str(metadata.get("outcome_category") or classification.category)
-    label = str(metadata.get("outcome_label") or classification.label)
-    blocks_reliance = _boolish(
-        metadata.get("blocks_reliance", classification.blocks_reliance)
-    )
     return {
-        "status": category,
+        "status": classification.category,
         "step": metadata.get("step") or "n/a",
-        "outcome": label,
+        "outcome": classification.label,
         "raw_status": raw_status,
-        "blocks_reliance": "yes" if blocks_reliance else "no",
+        "blocks_reliance": "yes" if classification.blocks_reliance else "no",
     }
 
 
@@ -4165,11 +4160,11 @@ def _telemetry_event_summary(
             raw_status,
             None if reason == "n/a" else reason,
         )
-        category = str(metadata.get("outcome_category") or classification.category)
-        label = str(metadata.get("outcome_label") or classification.label)
-        action = str(metadata.get("operator_action") or classification.operator_action or "")
+        category = classification.category
+        label = classification.label
+        action = str(classification.operator_action or metadata.get("operator_action") or "")
         trigger_condition = str(
-            metadata.get("trigger_condition") or classification.trigger_condition or ""
+            classification.trigger_condition or metadata.get("trigger_condition") or ""
         )
         parts = [
             f"step={metadata.get('step') or 'n/a'}",
@@ -5573,51 +5568,45 @@ def _radar_run_status(rows: Sequence[Mapping[str, object]]) -> str:
 def _radar_run_step_classification(
     row: Mapping[str, object],
 ) -> StepOutcomeClassification:
-    metadata = row.get("metadata")
-    if isinstance(metadata, Mapping):
-        category = metadata.get("outcome_category")
-        label = metadata.get("outcome_label")
-        if isinstance(category, str) and isinstance(label, str):
-            inferred = classify_step_outcome(
-                str(row.get("status") or ""),
-                _radar_run_step_reason(row),
-            )
-            return StepOutcomeClassification(
-                category=category,
-                label=label,
-                meaning=(
-                    inferred.meaning
-                    if inferred.meaning is not None
-                    else (
-                        str(metadata.get("outcome_meaning"))
-                        if metadata.get("outcome_meaning") is not None
-                        else None
-                    )
-                ),
-                operator_action=(
-                    inferred.operator_action
-                    if inferred.operator_action is not None
-                    else (
-                        str(metadata.get("operator_action"))
-                        if metadata.get("operator_action") is not None
-                        else None
-                    )
-                ),
-                trigger_condition=(
-                    inferred.trigger_condition
-                    if inferred.trigger_condition is not None
-                    else (
-                        str(metadata.get("trigger_condition"))
-                        if metadata.get("trigger_condition") is not None
-                        else None
-                    )
-                ),
-                blocks_reliance=bool(metadata.get("blocks_reliance")),
-            )
-    return classify_step_outcome(
+    inferred = classify_step_outcome(
         str(row.get("status") or ""),
         _radar_run_step_reason(row),
     )
+    metadata = row.get("metadata")
+    if isinstance(metadata, Mapping):
+        return StepOutcomeClassification(
+            category=inferred.category,
+            label=inferred.label,
+            meaning=(
+                inferred.meaning
+                if inferred.meaning is not None
+                else (
+                    str(metadata.get("outcome_meaning"))
+                    if metadata.get("outcome_meaning") is not None
+                    else None
+                )
+            ),
+            operator_action=(
+                inferred.operator_action
+                if inferred.operator_action is not None
+                else (
+                    str(metadata.get("operator_action"))
+                    if metadata.get("operator_action") is not None
+                    else None
+                )
+            ),
+            trigger_condition=(
+                inferred.trigger_condition
+                if inferred.trigger_condition is not None
+                else (
+                    str(metadata.get("trigger_condition"))
+                    if metadata.get("trigger_condition") is not None
+                    else None
+                )
+            ),
+            blocks_reliance=inferred.blocks_reliance,
+        )
+    return inferred
 
 
 def _radar_run_step_reason(row: Mapping[str, object]) -> str | None:

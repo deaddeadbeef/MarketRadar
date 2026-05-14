@@ -1400,6 +1400,46 @@ def test_telemetry_tape_payload_summarizes_recent_radar_events() -> None:
     )
 
 
+def test_telemetry_tape_payload_refreshes_stale_step_metadata() -> None:
+    payload = telemetry_tape_payload(
+        {
+            "telemetry": {
+                "event_count": 1,
+                "latest_event_at": "2026-05-10T11:58:00+00:00",
+                "status_counts": {"skipped": 1},
+                "events": [
+                    {
+                        "event_type": "telemetry.radar_run.step_finished",
+                        "status": "skipped",
+                        "reason": "degraded_mode_blocks_llm_review",
+                        "artifact_type": "job_run",
+                        "artifact_id": "legacy-stale-llm-job-run",
+                        "occurred_at": "2026-05-10T11:58:00+00:00",
+                        "metadata": {
+                            "step": "llm_review",
+                            "result_status": "skipped",
+                            "result_reason": "degraded_mode_blocks_llm_review",
+                            "outcome_category": "expected_gate",
+                            "outcome_label": "Expected gate",
+                            "operator_action": "Old non-blocking action.",
+                            "blocks_reliance": False,
+                        },
+                    },
+                ],
+            }
+        }
+    )
+
+    assert payload["events"][0]["status"] == "blocked_input"
+    assert payload["events"][0]["outcome"] == "Blocked input"
+    assert payload["events"][0]["blocks_reliance"] == "yes"
+    assert payload["events"][0]["summary"] == (
+        "step=llm_review; outcome=Blocked input; category=blocked_input; "
+        "raw_status=skipped; reason=degraded_mode_blocks_llm_review; "
+        "action=Resolve the upstream data/provider issue before relying on this run."
+    )
+
+
 def test_telemetry_tape_payload_summarizes_step_started_events() -> None:
     payload = telemetry_tape_payload(
         {
@@ -2611,6 +2651,74 @@ def test_load_radar_run_summary_marks_limited_analysis_skips_partial(
     assert summary["steps"][1]["category"] == "blocked_input"
     assert summary["steps"][1]["blocks_reliance"] is True
     assert summary["steps"][1]["payload"] == {"degraded_mode": {"enabled": True}}
+
+
+def test_load_radar_run_summary_refreshes_stale_blocking_metadata(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    latest_decision_at = AVAILABLE_AT
+    metadata = {
+        "as_of": "2026-05-10",
+        "decision_available_at": latest_decision_at.isoformat(),
+        "outcome_available_at": None,
+        "provider": None,
+        "universe": None,
+        "tickers": [],
+        "result_status": "skipped",
+        "result_reason": "degraded_mode_blocks_llm_review",
+        "result_payload": {"degraded_mode": {"enabled": True}},
+        "outcome_category": "expected_gate",
+        "outcome_label": "Expected gate",
+        "outcome_meaning": "Old non-blocking explanation.",
+        "operator_action": "Old non-blocking action.",
+        "blocks_reliance": False,
+    }
+    with engine.begin() as conn:
+        conn.execute(
+            insert(job_runs),
+            [
+                _job_run_row(
+                    "feature-scan",
+                    job_type="feature_scan",
+                    status="success",
+                    started_at=latest_decision_at + timedelta(seconds=1),
+                    metadata={
+                        **metadata,
+                        "result_status": "success",
+                        "result_reason": None,
+                        "result_payload": {"scan_result_count": 2},
+                    },
+                    requested_count=3,
+                    raw_count=2,
+                    normalized_count=2,
+                ),
+                _job_run_row(
+                    "llm-review",
+                    job_type="llm_review",
+                    status="skipped",
+                    started_at=latest_decision_at + timedelta(seconds=2),
+                    metadata=metadata,
+                ),
+            ],
+        )
+
+    summary = load_radar_run_summary(engine)
+
+    assert summary["status"] == "partial_success"
+    assert summary["outcome_category_counts"] == {
+        "blocked_input": 1,
+        "completed": 1,
+    }
+    assert summary["blocking_step_count"] == 1
+    assert summary["expected_gate_count"] == 0
+    assert summary["steps"][1]["reason"] == "degraded_mode_blocks_llm_review"
+    assert summary["steps"][1]["category"] == "blocked_input"
+    assert summary["steps"][1]["label"] == "Blocked input"
+    assert summary["steps"][1]["blocks_reliance"] is True
+    assert summary["steps"][1]["meaning"] == (
+        "Degraded mode blocked LLM review because current data is not trusted."
+    )
 
 
 def test_load_radar_run_summary_classifies_expected_gate_skips_success(
