@@ -99,6 +99,17 @@ endpoint is for local audit/debugging: it preserves append-only event metadata,
 before/after payloads, artifacts, timestamps, and reasons while redacting
 secret-looking fields and URL query tokens.
 
+To capture the full local operator state in one file, use:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/export-operator-evidence.ps1
+```
+
+This writes health, readiness, latest run, live activation, run call plan,
+telemetry summary, raw telemetry, and Schwab status under `data\ops\bundles\`.
+It is the fastest zero-call snapshot to attach to an investigation before and
+after the first capped live smoke.
+
 The dashboard **Actionability Breakdown** explains why the current queue is or is
 not ready for investment work. It buckets candidates into buy-review, research,
 watchlist, blocked/risk-review, and monitor groups, then lists the dominant

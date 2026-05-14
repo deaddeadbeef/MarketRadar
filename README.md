@@ -121,6 +121,16 @@ powershell -ExecutionPolicy Bypass -File scripts/export-telemetry.ps1
 This reads `GET /api/ops/telemetry/raw`, writes a JSON export under
 `data\ops\telemetry\`, and makes 0 Polygon, SEC, Schwab, or OpenAI calls.
 
+For a complete zero-call operator evidence bundle:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/export-operator-evidence.ps1
+```
+
+This writes health, readiness, latest run, live activation, call plan, telemetry,
+raw telemetry, and Schwab status evidence under `data\ops\bundles\`. It makes
+0 Polygon, SEC, Schwab, or OpenAI calls.
+
 For a zero-call deployment/readiness gate that exits non-zero until Market Radar
 is safe to use for investment decisions:
 
