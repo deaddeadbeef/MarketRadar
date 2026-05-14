@@ -862,6 +862,7 @@ def _show_investment_readiness(
                 blocker_rows,
                 empty="No decision-readiness blockers.",
             )
+    return readiness
 
 
 def _visible_discovery_rows(value: object) -> list[dict[str, object]]:
@@ -1190,9 +1191,15 @@ def _radar_step_category(status: str, reason: str) -> str:
     return classify_step_outcome(status, reason or None).category
 
 
-def _candidate_rows_with_labels(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+def _candidate_rows_with_labels(
+    rows: list[dict[str, object]],
+    investment_readiness: Mapping[str, Any] | None = None,
+) -> list[dict[str, object]]:
     labeled: list[dict[str, object]] = []
-    for row in rows:
+    for row in dashboard_data.candidate_decision_labels_payload(
+        rows,
+        investment_readiness,
+    ):
         values = dict(row)
         values["supporting_evidence"] = _evidence_label(values.get("top_supporting_evidence"))
         values["disconfirming_evidence"] = _evidence_label(values.get("top_disconfirming_evidence"))
@@ -1288,7 +1295,7 @@ def _show_overview(
     _show_universe_coverage(config, ops_health)
     _show_radar_run_controls(config, radar_run_summary, radar_run_cooldown)
     _show_discovery_snapshot(discovery_snapshot)
-    _show_investment_readiness(discovery_snapshot, candidate_rows)
+    investment_readiness = _show_investment_readiness(discovery_snapshot, candidate_rows)
     _show_actionability_breakdown(candidate_rows)
     _show_records(
         "Opportunity Focus",
@@ -1353,25 +1360,29 @@ def _show_overview(
     with left:
         st.subheader("Candidate Queue")
         selected_candidate = _table(
-            _candidate_rows_with_labels(candidate_rows),
+            _candidate_rows_with_labels(candidate_rows, investment_readiness),
             columns=[
                 "ticker",
+                "decision_status",
                 "state",
                 "final_score",
                 "setup_type",
                 "top_event_type",
                 "supporting_evidence",
                 "decision_card_id",
+                "decision_next_step",
                 "next_review_at",
             ],
             labels={
                 "ticker": "Ticker",
+                "decision_status": "Decision",
                 "state": "State",
                 "final_score": "Score",
                 "setup_type": "Setup",
                 "top_event_type": "Top Event",
                 "supporting_evidence": "Evidence",
                 "decision_card_id": "Card",
+                "decision_next_step": "Next Step",
                 "next_review_at": "Next Review",
             },
             empty="No candidate rows.",
@@ -1387,6 +1398,7 @@ def _show_overview(
             [
                 ("Ticker", selected_candidate.get("ticker")),
                 ("State", selected_candidate.get("state")),
+                ("Decision", selected_candidate.get("decision_status")),
                 ("Priority Score", selected_candidate.get("final_score")),
                 ("Setup", selected_candidate.get("setup_type")),
             ]
@@ -1395,6 +1407,8 @@ def _show_overview(
             "Selected Candidate",
             {
                 "ticker": selected_candidate.get("ticker"),
+                "decision_status": selected_candidate.get("decision_status"),
+                "decision_next_step": selected_candidate.get("decision_next_step"),
                 "state": selected_candidate.get("state"),
                 "score": selected_candidate.get("final_score"),
                 "top_event": selected_candidate.get("top_event_title"),

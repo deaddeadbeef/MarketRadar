@@ -59,6 +59,11 @@ candidate packets, or missing Decision Cards force `research_only` even when
 demo candidates have high scores. Treat the queue as decision-ready only when
 that gate says `manual_buy_review`.
 
+The **Candidate Queue** repeats that decision mode per row. Its `Decision`
+column can show `manual_buy_review`, `research_only`, `missing_card`, `blocked`,
+`monitor`, or `not_ready`; use that label before interpreting a high score as
+actionable.
+
 ## Market Data Provider
 
 By default, local runs use fixture CSV market data:

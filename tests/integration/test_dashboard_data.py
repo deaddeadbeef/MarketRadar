@@ -30,6 +30,7 @@ from catalyst_radar.core.models import ActionState
 from catalyst_radar.dashboard.data import (
     actionability_breakdown_payload,
     activation_summary_payload,
+    candidate_decision_labels_payload,
     data_source_coverage_payload,
     investment_readiness_payload,
     live_activation_plan_payload,
@@ -191,6 +192,59 @@ def test_actionability_breakdown_payload_explains_current_queue() -> None:
     }
     assert payload["next_actions"][0]["ticker"] == "MSFT"
     assert payload["next_actions"][0]["card"] == "card-msft"
+
+
+def test_candidate_decision_labels_mark_research_only_rows() -> None:
+    rows = candidate_decision_labels_payload(
+        [
+            {
+                "ticker": "AAA",
+                "state": ActionState.BLOCKED.value,
+                "decision_card_id": "",
+            },
+            {
+                "ticker": "BBB",
+                "state": ActionState.ELIGIBLE_FOR_MANUAL_BUY_REVIEW.value,
+                "decision_card_id": "",
+            },
+            {
+                "ticker": "CCC",
+                "state": ActionState.WARNING.value,
+                "decision_card_id": "",
+            },
+        ],
+        {"decision_mode": "research_only", "next_action": "Configure live sources."},
+    )
+
+    assert rows[0]["decision_status"] == "blocked"
+    assert rows[0]["decision_next_step"] == "Clear hard blocks before escalation."
+    assert rows[1]["decision_status"] == "missing_card"
+    assert rows[1]["decision_next_step"] == "Build a Decision Card first."
+    assert rows[2]["decision_status"] == "research_only"
+    assert rows[2]["decision_next_step"] == "Configure live sources."
+
+
+def test_candidate_decision_labels_mark_manual_buy_review_rows() -> None:
+    rows = candidate_decision_labels_payload(
+        [
+            {
+                "ticker": "MSFT",
+                "state": ActionState.ELIGIBLE_FOR_MANUAL_BUY_REVIEW.value,
+                "decision_card_id": "card-msft",
+            },
+            {
+                "ticker": "AAPL",
+                "state": ActionState.WARNING.value,
+                "decision_card_id": "",
+            },
+        ],
+        {"decision_mode": "manual_buy_review"},
+    )
+
+    assert rows[0]["decision_status"] == "manual_buy_review"
+    assert rows[0]["decision_next_step"] == "Review card, exposure, and hard blocks."
+    assert rows[1]["decision_status"] == "research_only"
+    assert rows[1]["decision_next_step"] == "Not in manual buy-review state."
 
 
 def test_actionability_breakdown_payload_flags_buy_review_ready() -> None:
