@@ -31,6 +31,7 @@ from catalyst_radar.dashboard.data import (
     actionability_breakdown_payload,
     activation_summary_payload,
     candidate_decision_labels_payload,
+    candidate_delta_payload,
     data_source_coverage_payload,
     investment_readiness_payload,
     live_activation_plan_payload,
@@ -146,6 +147,131 @@ def test_opportunity_focus_payload_promotes_research_briefs(tmp_path: Path) -> N
             "card": "card-msft-latest",
         }
     ]
+
+
+def test_candidate_delta_payload_summarizes_latest_run_changes(tmp_path: Path) -> None:
+    engine = _engine(tmp_path)
+    with engine.begin() as conn:
+        rows = [
+            _candidate_state_row(
+                id="state-msft-prior",
+                ticker="MSFT",
+                as_of=EARLIER_AS_OF,
+                state=ActionState.ADD_TO_WATCHLIST.value,
+                final_score=70.0,
+                created_at=AVAILABLE_AT - timedelta(days=1),
+            ),
+            _candidate_state_row(
+                id="state-msft-current",
+                ticker="MSFT",
+                as_of=AS_OF,
+                state=ActionState.WARNING.value,
+                final_score=88.0,
+                created_at=AVAILABLE_AT,
+            ),
+            _candidate_state_row(
+                id="state-aaa-prior",
+                ticker="AAA",
+                as_of=EARLIER_AS_OF,
+                state=ActionState.BLOCKED.value,
+                final_score=82.0,
+                created_at=AVAILABLE_AT - timedelta(days=1),
+            ),
+            _candidate_state_row(
+                id="state-aaa-current",
+                ticker="AAA",
+                as_of=AS_OF,
+                state=ActionState.BLOCKED.value,
+                final_score=83.0,
+                created_at=AVAILABLE_AT,
+            ),
+            _candidate_state_row(
+                id="state-nvda-current",
+                ticker="NVDA",
+                as_of=AS_OF,
+                state=ActionState.WARNING.value,
+                final_score=91.0,
+                created_at=AVAILABLE_AT,
+            ),
+            _candidate_state_row(
+                id="state-ibm-stale",
+                ticker="IBM",
+                as_of=EARLIER_AS_OF,
+                state=ActionState.WARNING.value,
+                final_score=72.0,
+                created_at=AVAILABLE_AT - timedelta(days=1),
+            ),
+        ]
+        rows[1]["hard_blocks"] = ["risk_hard_block"]
+        rows[2]["hard_blocks"] = ["data_stale"]
+        rows[3]["hard_blocks"] = ["liquidity_hard_block"]
+        conn.execute(insert(candidate_states), rows)
+
+    payload = candidate_delta_payload(
+        engine,
+        radar_run_summary={
+            "as_of": AS_OF.date().isoformat(),
+            "decision_available_at": AVAILABLE_AT.isoformat(),
+        },
+        score_move_threshold=5.0,
+    )
+
+    assert payload["schema_version"] == "candidate-delta-v1"
+    assert payload["status"] == "changed"
+    assert payload["summary"] == {
+        "current_run_candidates": 3,
+        "stale_context_candidates": 1,
+        "changed_candidates": 3,
+        "new_candidates": 1,
+        "state_changes": 1,
+        "score_moves": 1,
+        "blocker_changes": 2,
+    }
+    rows_by_ticker = {str(row["ticker"]): row for row in payload["rows"]}
+    assert rows_by_ticker["NVDA"]["change_type"] == "new_candidate"
+    assert rows_by_ticker["MSFT"]["change_type"] == "state_changed"
+    assert rows_by_ticker["MSFT"]["previous_state"] == ActionState.ADD_TO_WATCHLIST.value
+    assert rows_by_ticker["MSFT"]["current_state"] == ActionState.WARNING.value
+    assert rows_by_ticker["MSFT"]["score_change"] == 18.0
+    assert rows_by_ticker["MSFT"]["state_changed"] is True
+    assert rows_by_ticker["MSFT"]["score_moved"] is True
+    assert rows_by_ticker["MSFT"]["blocker_changed"] is True
+    assert rows_by_ticker["MSFT"]["blockers_added"] == ["risk_hard_block"]
+    assert rows_by_ticker["AAA"]["change_type"] == "blocker_changed"
+    assert rows_by_ticker["AAA"]["blocker_changed"] is True
+    assert rows_by_ticker["AAA"]["blockers_added"] == ["liquidity_hard_block"]
+    assert rows_by_ticker["AAA"]["blockers_removed"] == ["data_stale"]
+
+
+def test_candidate_delta_payload_reports_no_current_run_candidates(tmp_path: Path) -> None:
+    engine = _engine(tmp_path)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(candidate_states),
+            [
+                _candidate_state_row(
+                    id="state-msft-stale",
+                    ticker="MSFT",
+                    as_of=EARLIER_AS_OF,
+                    state=ActionState.WARNING.value,
+                    final_score=70.0,
+                    created_at=AVAILABLE_AT - timedelta(days=1),
+                )
+            ],
+        )
+
+    payload = candidate_delta_payload(
+        engine,
+        radar_run_summary={
+            "as_of": AS_OF.date().isoformat(),
+            "decision_available_at": AVAILABLE_AT.isoformat(),
+        },
+    )
+
+    assert payload["status"] == "no_current_candidates"
+    assert payload["summary"]["current_run_candidates"] == 0
+    assert payload["summary"]["stale_context_candidates"] == 1
+    assert payload["rows"] == []
 
 
 def test_actionability_breakdown_payload_explains_current_queue() -> None:
@@ -547,6 +673,8 @@ def test_radar_readiness_payload_summarizes_operator_decision_gate(
     assert payload["radar_run"]["provider"] == "csv"
     assert payload["live_activation_plan"]["status"] == "blocked"
     assert payload["investment_readiness"]["manual_buy_review_ready"] is False
+    assert payload["candidate_delta"]["schema_version"] == "candidate-delta-v1"
+    assert payload["candidate_delta"]["summary"]["current_run_candidates"] == 2
     assert payload["candidate_decision_labels"][0]["ticker"] == "MSFT"
     assert payload["candidate_decision_labels"][0]["decision_status"] == "research_only"
     assert payload["candidate_decision_labels"][0]["next_step"]

@@ -121,6 +121,27 @@ def test_dashboard_candidate_queue_surfaces_blocker_diagnostics() -> None:
     assert "transition_reasons" in overview_source
 
 
+def test_dashboard_wires_candidate_delta_before_actionability() -> None:
+    tree = ast.parse(Path("apps/dashboard/Home.py").read_text(encoding="utf-8"))
+    functions = {
+        node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)
+    }
+    overview = functions["_show_overview"]
+    calls = [
+        (node.func.id, node.lineno)
+        for node in ast.walk(overview)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    ]
+    line_by_call = {name: line for name, line in calls}
+
+    assert "_show_candidate_delta" in line_by_call
+    assert (
+        line_by_call["_show_research_shortlist"]
+        < line_by_call["_show_candidate_delta"]
+        < line_by_call["_show_actionability_breakdown"]
+    )
+
+
 def test_candidate_blocker_summary_uses_transition_reasons() -> None:
     module = _load_dashboard_module()
 

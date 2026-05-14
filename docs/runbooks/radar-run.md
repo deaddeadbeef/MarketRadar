@@ -83,6 +83,12 @@ most worth manual attention. It keeps the raw audit trail server-side, but the
 visible table focuses on priority, ticker, decision label, why-now evidence,
 risk/gap, next step, and Decision Card availability.
 
+The dashboard **Candidate Delta** is DB-only and makes no provider calls. It
+compares the latest run's candidate states against the previous state for the
+same ticker, then highlights new candidates, state transitions, material score
+moves, and hard-block changes. Use it after each radar run to answer "what
+changed?" before reading the full queue.
+
 ## Market Data Provider
 
 By default, local runs use fixture CSV market data:
