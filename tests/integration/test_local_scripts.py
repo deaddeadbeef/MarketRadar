@@ -30,6 +30,7 @@ def test_readme_mentions_restart_script_for_local_dashboard() -> None:
     assert "scripts/run-first-live-smoke.ps1" in readme
     assert "scripts/run-worker-once.ps1" in readme
     assert "scripts/market-radar-status.ps1" in readme
+    assert "scripts/assert-investable-readiness.ps1" in readme
     assert "-Execute" in readme
     assert "CATALYST_DAILY_MARKET_PROVIDER=polygon" in readme
     assert "CATALYST_DAILY_PROVIDER=polygon" in readme
@@ -119,6 +120,27 @@ def test_market_radar_status_script_is_zero_external_call_sitrep() -> None:
     assert "attention=" in text
     assert "guarded=" in text
     assert "External calls made: 0" in text
+    assert "CATALYST_POLYGON_API_KEY=" not in text
+    assert "OPENAI_API_KEY=" not in text
+    assert "SCHWAB_CLIENT_SECRET=" not in text
+
+
+def test_assert_investable_readiness_script_fails_closed_without_external_calls() -> None:
+    script = Path("scripts/assert-investable-readiness.ps1")
+    text = script.read_text(encoding="utf-8")
+
+    assert script.is_file()
+    assert "/api/radar/readiness" in text
+    assert "/api/radar/live-activation" in text
+    assert "/api/radar/runs/call-plan" in text
+    assert "/api/ops/telemetry?limit=5" in text
+    assert "[string]::IsNullOrWhiteSpace($Body)" in text
+    assert "safe_to_make_investment_decision" in text
+    assert "Live activation is" in text
+    assert "Call plan is blocked" in text
+    assert "Telemetry has attention events" in text
+    assert "External calls made: 0" in text
+    assert "exit 1" in text
     assert "CATALYST_POLYGON_API_KEY=" not in text
     assert "OPENAI_API_KEY=" not in text
     assert "SCHWAB_CLIENT_SECRET=" not in text
