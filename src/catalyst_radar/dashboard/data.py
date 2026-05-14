@@ -3945,6 +3945,9 @@ def _telemetry_event_summary(
         category = str(metadata.get("outcome_category") or classification.category)
         label = str(metadata.get("outcome_label") or classification.label)
         action = str(metadata.get("operator_action") or classification.operator_action or "")
+        trigger_condition = str(
+            metadata.get("trigger_condition") or classification.trigger_condition or ""
+        )
         parts = [
             f"step={metadata.get('step') or 'n/a'}",
             f"outcome={label}",
@@ -3952,6 +3955,8 @@ def _telemetry_event_summary(
             f"raw_status={raw_status}",
             f"reason={reason}",
         ]
+        if trigger_condition:
+            parts.append(f"trigger={trigger_condition}")
         if action:
             parts.append(f"action={action}")
         return "; ".join(parts)
@@ -5372,6 +5377,15 @@ def _radar_run_step_classification(
                     else (
                         str(metadata.get("operator_action"))
                         if metadata.get("operator_action") is not None
+                        else None
+                    )
+                ),
+                trigger_condition=(
+                    inferred.trigger_condition
+                    if inferred.trigger_condition is not None
+                    else (
+                        str(metadata.get("trigger_condition"))
+                        if metadata.get("trigger_condition") is not None
                         else None
                     )
                 ),
