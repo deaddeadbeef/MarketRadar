@@ -201,6 +201,8 @@ def test_candidate_opportunity_action_form_requires_analyst_role() -> None:
     assert helper_source is not None
     assert "role_allows(dashboard_role, Role.ANALYST)" in helper_source
     assert "record_opportunity_action" in helper_source
+    assert 'actor_source="dashboard"' in helper_source
+    assert "actor_role=dashboard_role.value" in helper_source
 
 
 def test_broker_write_controls_require_analyst_role() -> None:
@@ -219,6 +221,16 @@ def test_broker_write_controls_require_analyst_role() -> None:
         helper_source = ast.get_source_segment(source, functions[name])
         assert helper_source is not None
         assert "role_allows(dashboard_role, Role.ANALYST)" in helper_source
+
+    action_source = ast.get_source_segment(source, functions["_show_opportunity_action_form"])
+    trigger_source = ast.get_source_segment(source, functions["_show_trigger_form"])
+    ticket_source = ast.get_source_segment(source, functions["_show_order_ticket_form"])
+    assert action_source is not None
+    assert trigger_source is not None
+    assert ticket_source is not None
+    assert 'actor_source="dashboard"' in action_source
+    assert 'actor_source="dashboard"' in trigger_source
+    assert 'actor_source="dashboard"' in ticket_source
 
     broker_source = ast.get_source_segment(source, functions["_show_broker_layer"])
     assert broker_source is not None

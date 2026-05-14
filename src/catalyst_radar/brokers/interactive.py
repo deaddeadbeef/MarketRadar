@@ -25,6 +25,8 @@ from catalyst_radar.brokers.order_preview import (
 from catalyst_radar.brokers.portfolio_context import latest_broker_portfolio_context
 from catalyst_radar.brokers.schwab import SchwabClient
 from catalyst_radar.core.config import AppConfig
+from catalyst_radar.ops.telemetry import record_telemetry_event
+from catalyst_radar.security.redaction import redact_text, redact_value
 from catalyst_radar.storage.broker_repositories import BrokerRepository
 
 
@@ -42,6 +44,9 @@ def record_opportunity_action(
     notes: str | None = None,
     payload: Mapping[str, Any] | None = None,
     now: datetime | None = None,
+    actor_source: str | None = None,
+    actor_id: str | None = None,
+    actor_role: str | None = None,
 ) -> BrokerOpportunityAction:
     timestamp = _now(now)
     action_type = BrokerOpportunityActionType(action)
@@ -57,7 +62,27 @@ def record_opportunity_action(
         created_at=timestamp,
         updated_at=timestamp,
     )
-    return repo.upsert_opportunity_action(row)
+    saved = repo.upsert_opportunity_action(row)
+    _record_operator_telemetry(
+        repo,
+        event_name="operator.opportunity_action.saved",
+        actor_source=actor_source,
+        actor_id=actor_id,
+        actor_role=actor_role,
+        artifact_type="opportunity_action",
+        artifact_id=saved.id,
+        ticker=saved.ticker,
+        decision=saved.action.value,
+        reason=saved.status,
+        metadata={
+            "action": saved.action.value,
+            "status": saved.status,
+            "payload_source": _mapping(saved.payload).get("source"),
+        },
+        after_payload=opportunity_action_payload(saved),
+        occurred_at=timestamp,
+    )
+    return saved
 
 
 def sync_market_context(
@@ -106,6 +131,9 @@ def create_trigger(
     notes: str | None = None,
     payload: Mapping[str, Any] | None = None,
     now: datetime | None = None,
+    actor_source: str | None = None,
+    actor_id: str | None = None,
+    actor_role: str | None = None,
 ) -> BrokerTrigger:
     timestamp = _now(now)
     trigger = BrokerTrigger(
@@ -121,7 +149,27 @@ def create_trigger(
         created_at=timestamp,
         updated_at=timestamp,
     )
-    return repo.upsert_trigger(trigger)
+    saved = repo.upsert_trigger(trigger)
+    _record_operator_telemetry(
+        repo,
+        event_name="operator.trigger.saved",
+        actor_source=actor_source,
+        actor_id=actor_id,
+        actor_role=actor_role,
+        artifact_type="market_trigger",
+        artifact_id=saved.id,
+        ticker=saved.ticker,
+        reason=saved.status.value,
+        metadata={
+            "trigger_type": saved.trigger_type,
+            "operator": saved.operator,
+            "threshold": saved.threshold,
+            "payload_source": _mapping(saved.payload).get("source"),
+        },
+        after_payload=trigger_payload(saved),
+        occurred_at=timestamp,
+    )
+    return saved
 
 
 def evaluate_triggers(
@@ -129,6 +177,9 @@ def evaluate_triggers(
     repo: BrokerRepository,
     tickers: Sequence[str] | str | None = None,
     now: datetime | None = None,
+    actor_source: str | None = None,
+    actor_id: str | None = None,
+    actor_role: str | None = None,
 ) -> list[BrokerTrigger]:
     timestamp = _now(now)
     requested = set(normalize_tickers(tickers or []))
@@ -159,6 +210,37 @@ def evaluate_triggers(
             fired_at=timestamp if fired else trigger.fired_at,
         )
         evaluated.append(repo.upsert_trigger(updated))
+    _record_operator_telemetry(
+        repo,
+        event_name="operator.triggers.evaluated",
+        actor_source=actor_source,
+        actor_id=actor_id,
+        actor_role=actor_role,
+        artifact_type="market_trigger",
+        artifact_id=None,
+        ticker=next(iter(requested), None) if len(requested) == 1 else None,
+        reason="evaluated",
+        metadata={
+            "requested_tickers": sorted(requested),
+            "evaluated_count": len(evaluated),
+            "fired_count": sum(
+                1 for row in evaluated if row.status == BrokerTriggerStatus.FIRED
+            ),
+        },
+        after_payload={
+            "items": [
+                {
+                    "id": row.id,
+                    "ticker": row.ticker,
+                    "status": row.status.value,
+                    "latest_value": row.latest_value,
+                    "fired_at": row.fired_at.isoformat() if row.fired_at else None,
+                }
+                for row in evaluated
+            ]
+        },
+        occurred_at=timestamp,
+    )
     return evaluated
 
 
@@ -174,6 +256,9 @@ def create_blocked_order_ticket(
     risk_per_trade_pct: float | None = None,
     notes: str | None = None,
     now: datetime | None = None,
+    actor_source: str | None = None,
+    actor_id: str | None = None,
+    actor_role: str | None = None,
 ) -> BrokerOrderTicket:
     timestamp = _now(now)
     request = OrderPreviewRequest(
@@ -208,7 +293,28 @@ def create_blocked_order_ticket(
         created_at=timestamp,
         updated_at=timestamp,
     )
-    return repo.upsert_order_ticket(ticket)
+    saved = repo.upsert_order_ticket(ticket)
+    _record_operator_telemetry(
+        repo,
+        event_name="operator.order_ticket.preview_saved",
+        actor_source=actor_source,
+        actor_id=actor_id,
+        actor_role=actor_role,
+        artifact_type="order_ticket",
+        artifact_id=saved.id,
+        ticker=saved.ticker,
+        decision=saved.side,
+        reason=saved.status.value,
+        metadata={
+            "side": saved.side,
+            "status": saved.status.value,
+            "submission_allowed": saved.submission_allowed,
+            "hard_blocks": saved.preview_payload.get("hard_blocks", []),
+        },
+        after_payload=order_ticket_payload(saved),
+        occurred_at=timestamp,
+    )
+    return saved
 
 
 def market_snapshot_payload(row: BrokerMarketSnapshot) -> dict[str, object]:
@@ -278,6 +384,47 @@ def order_ticket_payload(row: BrokerOrderTicket) -> dict[str, object]:
         "updated_at": row.updated_at.isoformat(),
         "preview": dict(row.preview_payload),
     }
+
+
+def _record_operator_telemetry(
+    repo: BrokerRepository,
+    *,
+    event_name: str,
+    actor_source: str | None,
+    actor_id: str | None,
+    actor_role: str | None,
+    artifact_type: str,
+    artifact_id: str | None,
+    ticker: str | None,
+    reason: str,
+    metadata: Mapping[str, Any],
+    after_payload: Mapping[str, Any],
+    occurred_at: datetime,
+    decision: str | None = None,
+) -> None:
+    if not actor_source:
+        return
+    redacted_metadata = redact_value(metadata)
+    redacted_after_payload = redact_value(after_payload)
+    record_telemetry_event(
+        repo.engine,
+        event_name=event_name,
+        status="success",
+        actor_source=actor_source,
+        actor_id=redact_text(actor_id) if actor_id is not None else None,
+        actor_role=redact_text(actor_role) if actor_role is not None else None,
+        artifact_type=artifact_type,
+        artifact_id=artifact_id,
+        ticker=ticker,
+        decision=decision,
+        reason=reason,
+        metadata=redacted_metadata if isinstance(redacted_metadata, Mapping) else {},
+        after_payload=(
+            redacted_after_payload if isinstance(redacted_after_payload, Mapping) else {}
+        ),
+        occurred_at=occurred_at,
+        available_at=occurred_at,
+    )
 
 
 def _snapshot_from_schwab(

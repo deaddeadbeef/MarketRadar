@@ -24,6 +24,7 @@ from catalyst_radar.brokers.models import (
     broker_token_id,
 )
 from catalyst_radar.brokers.tokens import TokenCipher
+from catalyst_radar.security.audit import AuditLogRepository
 from catalyst_radar.storage.broker_repositories import BrokerRepository
 from catalyst_radar.storage.db import create_schema, engine_from_url
 
@@ -364,20 +365,45 @@ def test_interactive_routes_record_actions_triggers_and_blocked_tickets(
 
     action = client.post(
         "/api/opportunities/actions",
-        json={"ticker": "GLW", "action": "watch", "thesis": "early signal"},
+        headers={
+            "X-Catalyst-Actor": "analyst-1 apikey=hidden-actor-secret",
+            "X-Catalyst-Role": "analyst apikey=hidden-role-secret",
+        },
+        json={
+            "ticker": "GLW",
+            "action": "watch",
+            "thesis": "early signal",
+            "source": "apikey=hidden-action-source",
+        },
     )
     trigger = client.post(
         "/api/market/triggers",
+        headers={
+            "X-Catalyst-Actor": "analyst-1 apikey=hidden-actor-secret",
+            "X-Catalyst-Role": "analyst apikey=hidden-role-secret",
+        },
         json={
             "ticker": "GLW",
             "trigger_type": "price_above",
             "operator": "gte",
             "threshold": 90.0,
+            "source": "apikey=hidden-trigger-source",
         },
     )
-    evaluated = client.post("/api/market/triggers/evaluate", json={"tickers": ["GLW"]})
+    evaluated = client.post(
+        "/api/market/triggers/evaluate",
+        headers={
+            "X-Catalyst-Actor": "analyst-1 apikey=hidden-actor-secret",
+            "X-Catalyst-Role": "analyst apikey=hidden-role-secret",
+        },
+        json={"tickers": ["GLW"]},
+    )
     ticket = client.post(
         "/api/orders/tickets",
+        headers={
+            "X-Catalyst-Actor": "analyst-1 apikey=hidden-actor-secret",
+            "X-Catalyst-Role": "analyst apikey=hidden-role-secret",
+        },
         json={
             "ticker": "GLW",
             "side": "buy",
@@ -402,6 +428,21 @@ def test_interactive_routes_record_actions_triggers_and_blocked_tickets(
     assert actions.json()["items"][0]["thesis"] == "early signal"
     assert triggers.json()["items"][0]["status"] == "fired"
     assert tickets.json()["items"][0]["submission_allowed"] is False
+    telemetry = AuditLogRepository(engine).list_events(ticker="GLW")
+    assert [event.event_type for event in telemetry] == [
+        "telemetry.operator.opportunity_action.saved",
+        "telemetry.operator.trigger.saved",
+        "telemetry.operator.triggers.evaluated",
+        "telemetry.operator.order_ticket.preview_saved",
+    ]
+    assert {event.actor_source for event in telemetry} == {"api"}
+    assert {event.actor_id for event in telemetry} == {"analyst-1 apikey=<redacted>"}
+    assert {event.actor_role for event in telemetry} == {"analyst apikey=<redacted>"}
+    assert "hidden-actor-secret" not in str(telemetry)
+    assert "hidden-role-secret" not in str(telemetry)
+    assert "hidden-action-source" not in str(telemetry[0].metadata)
+    assert "hidden-trigger-source" not in str(telemetry[1].metadata)
+    assert telemetry[3].metadata["submission_allowed"] is False
     assert not [
         route.path
         for route in create_app().routes

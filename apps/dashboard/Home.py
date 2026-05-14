@@ -1709,6 +1709,9 @@ def _show_candidate_opportunity_action_form(
                 "final_score": selected_candidate.get("final_score"),
                 "blocker_summary": selected_candidate.get("blocker_summary"),
             },
+            actor_source="dashboard",
+            actor_id="local-dashboard",
+            actor_role=dashboard_role.value,
         )
     except ValueError as exc:
         st.error(str(exc))
@@ -2613,6 +2616,9 @@ def _show_opportunity_action_form(
                 thesis=thesis,
                 notes=notes,
                 payload={"source": "dashboard"},
+                actor_source="dashboard",
+                actor_id="local-dashboard",
+                actor_role=dashboard_role.value,
             )
             st.success(f"Saved {action} for {selected_ticker}.")
         except ValueError as exc:
@@ -2658,6 +2664,9 @@ def _show_trigger_form(
                 threshold=threshold,
                 notes=notes,
                 payload={"source": "dashboard"},
+                actor_source="dashboard",
+                actor_id="local-dashboard",
+                actor_role=dashboard_role.value,
             )
             st.success(f"Added trigger for {selected_ticker}.")
         except ValueError as exc:
@@ -2668,6 +2677,9 @@ def _show_trigger_form(
                 rows = evaluate_triggers(
                     repo=BrokerRepository(engine),
                     tickers=[selected_ticker],
+                    actor_source="dashboard",
+                    actor_id="local-dashboard",
+                    actor_role=dashboard_role.value,
                 )
                 fired = [row for row in rows if row.status.value == "fired"]
                 st.success(f"Evaluated {len(rows)} trigger(s); fired {len(fired)}.")
@@ -2711,6 +2723,9 @@ def _show_order_ticket_form(
                 risk_per_trade_pct=risk_pct,
                 notes=notes,
                 config=config,
+                actor_source="dashboard",
+                actor_id="local-dashboard",
+                actor_role=dashboard_role.value,
             )
             st.warning(
                 f"Ticket saved as blocked preview; submission_allowed={ticket.submission_allowed}."

@@ -22,6 +22,7 @@ from catalyst_radar.brokers.models import (
 from catalyst_radar.brokers.schwab import SchwabClient
 from catalyst_radar.connectors.http import FakeHttpTransport, HttpResponse, JsonHttpClient
 from catalyst_radar.core.config import AppConfig
+from catalyst_radar.security.audit import AuditLogRepository
 from catalyst_radar.storage.broker_repositories import BrokerRepository
 from catalyst_radar.storage.db import create_schema, engine_from_url
 
@@ -75,8 +76,11 @@ def test_interactive_market_context_triggers_actions_and_blocked_ticket(
         repo=repo,
         ticker="GLW",
         action="watch",
-        thesis="early breakout with rising volume",
+        thesis="early breakout with rising volume apikey=hidden-action-secret",
         now=now,
+        actor_source="dashboard",
+        actor_id="local-dashboard",
+        actor_role="analyst",
     )
     trigger = create_trigger(
         repo=repo,
@@ -85,8 +89,18 @@ def test_interactive_market_context_triggers_actions_and_blocked_ticket(
         operator="gte",
         threshold=12.0,
         now=now,
+        actor_source="dashboard",
+        actor_id="local-dashboard",
+        actor_role="analyst",
     )
-    evaluated = evaluate_triggers(repo=repo, tickers=["GLW"], now=now)
+    evaluated = evaluate_triggers(
+        repo=repo,
+        tickers=["GLW"],
+        now=now,
+        actor_source="dashboard",
+        actor_id="local-dashboard",
+        actor_role="analyst",
+    )
     ticket = create_blocked_order_ticket(
         repo=repo,
         ticker="GLW",
@@ -94,7 +108,11 @@ def test_interactive_market_context_triggers_actions_and_blocked_ticket(
         entry_price=12.5,
         invalidation_price=11.5,
         config=AppConfig(portfolio_value=100000.0),
+        notes="operator preview apikey=hidden-ticket-secret",
         now=now,
+        actor_source="dashboard",
+        actor_id="local-dashboard",
+        actor_role="analyst",
     )
 
     assert snapshots[0].last_price == 12.5
@@ -105,12 +123,30 @@ def test_interactive_market_context_triggers_actions_and_blocked_ticket(
     assert evaluated[0].status.value == "fired"
     assert repo.latest_market_snapshot("GLW").last_price == 12.5
     assert repo.list_opportunity_actions(ticker="GLW")[0].thesis == (
-        "early breakout with rising volume"
+        "early breakout with rising volume apikey=hidden-action-secret"
     )
     assert repo.list_triggers(ticker="GLW")[0].status.value == "fired"
     assert ticket.submission_allowed is False
     assert ticket.status.value == "blocked"
     assert "broker_submission_disabled" in ticket.preview_payload["hard_blocks"]
+    events = AuditLogRepository(engine).list_events(ticker="GLW")
+    assert [event.event_type for event in events] == [
+        "telemetry.operator.opportunity_action.saved",
+        "telemetry.operator.trigger.saved",
+        "telemetry.operator.triggers.evaluated",
+        "telemetry.operator.order_ticket.preview_saved",
+    ]
+    assert {event.actor_source for event in events} == {"dashboard"}
+    assert {event.actor_role for event in events} == {"analyst"}
+    assert events[0].artifact_type == "opportunity_action"
+    assert events[0].artifact_id == action.id
+    assert events[0].decision == "watch"
+    assert "hidden-action-secret" not in str(events[0].after_payload)
+    assert events[2].metadata["fired_count"] == 1
+    assert events[3].artifact_type == "order_ticket"
+    assert events[3].artifact_id == ticket.id
+    assert events[3].metadata["submission_allowed"] is False
+    assert "hidden-ticket-secret" not in str(events[3].after_payload)
 
 
 def _seed_account(repo: BrokerRepository, now: datetime) -> None:
