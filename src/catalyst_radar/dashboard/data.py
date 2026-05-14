@@ -1618,6 +1618,51 @@ def live_activation_plan_payload(
     }
 
 
+def live_data_activation_contract_payload(
+    config: AppConfig,
+    *,
+    radar_run_summary: Mapping[str, object] | None = None,
+    broker_summary: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    """Return exact operator steps for moving from fixture mode to capped live inputs."""
+    plan = live_activation_plan_payload(
+        config,
+        radar_run_summary=radar_run_summary,
+        broker_summary=broker_summary,
+    )
+    missing_env = [str(item) for item in _sequence_value(plan.get("missing_env"))]
+    status = "blocked" if missing_env else "ready"
+    headline = (
+        "Live data activation needs environment edits."
+        if missing_env
+        else "Live data activation inputs are configured."
+    )
+    next_action = (
+        "Fill the template values in .env.local, restart services, then inspect the call plan."
+        if missing_env
+        else "Inspect the call plan, seed the universe once if needed, then run one capped cycle."
+    )
+    return {
+        "schema_version": "live-data-activation-contract-v1",
+        "status": status,
+        "headline": headline,
+        "next_action": next_action,
+        "read_only": True,
+        "makes_external_calls": False,
+        "missing_env": missing_env,
+        "env_template": _live_data_env_template(config),
+        "safe_limits": _live_data_safe_limits(config),
+        "operator_steps": _live_data_operator_steps(config, missing_env=missing_env),
+        "call_budget_if_activated": _live_data_call_budget_if_activated(config),
+        "evidence": (
+            f"contract_calls_external=no; missing_env={len(missing_env)}; "
+            f"polygon_ticker_pages={config.polygon_tickers_max_pages}; "
+            f"sec_daily_tickers={config.sec_daily_max_tickers}; "
+            f"manual_run_cooldown={config.radar_run_min_interval_seconds}s"
+        ),
+    }
+
+
 def telemetry_tape_payload(
     ops_health: Mapping[str, object],
     *,
@@ -3071,6 +3116,205 @@ def _activation_task_row(
         "missing_env": missing_text,
         "safe_next_action": safe_next_action,
     }
+
+
+def _live_data_env_template(config: AppConfig) -> list[dict[str, object]]:
+    return [
+        _activation_env_row(
+            "CATALYST_DAILY_MARKET_PROVIDER",
+            "polygon",
+            configured=_provider_name(config.daily_market_provider, default="csv")
+            == "polygon",
+            current=_provider_name(config.daily_market_provider, default="csv"),
+        ),
+        _activation_env_row(
+            "CATALYST_DAILY_PROVIDER",
+            "polygon",
+            configured=_provider_name(config.daily_market_provider, default="csv")
+            == "polygon",
+            current="aligned with CATALYST_DAILY_MARKET_PROVIDER",
+        ),
+        _activation_env_row(
+            "CATALYST_POLYGON_API_KEY",
+            "<your Polygon API key>",
+            configured=bool(config.polygon_api_key),
+            secret=True,
+        ),
+        _activation_env_row(
+            "CATALYST_POLYGON_TICKERS_MAX_PAGES",
+            str(max(1, int(config.polygon_tickers_max_pages))),
+            configured=True,
+            current=str(max(1, int(config.polygon_tickers_max_pages))),
+        ),
+        _activation_env_row(
+            "CATALYST_DAILY_EVENT_PROVIDER",
+            "sec",
+            configured=_provider_name(config.daily_event_provider, default="news_fixture")
+            in {"sec", "sec_submissions"},
+            current=_provider_name(config.daily_event_provider, default="news_fixture"),
+        ),
+        _activation_env_row(
+            "CATALYST_SEC_ENABLE_LIVE",
+            "1",
+            configured=bool(config.sec_enable_live),
+            current="1" if config.sec_enable_live else "0",
+        ),
+        _activation_env_row(
+            "CATALYST_SEC_USER_AGENT",
+            "MarketRadar/0.1 your-email@example.com",
+            configured=bool(config.sec_user_agent),
+            secret=True,
+        ),
+        _activation_env_row(
+            "CATALYST_SEC_DAILY_MAX_TICKERS",
+            str(max(1, int(config.sec_daily_max_tickers))),
+            configured=True,
+            current=str(max(1, int(config.sec_daily_max_tickers))),
+        ),
+        _activation_env_row(
+            "CATALYST_RADAR_RUN_MIN_INTERVAL_SECONDS",
+            str(max(1, int(config.radar_run_min_interval_seconds))),
+            configured=True,
+            current=str(max(1, int(config.radar_run_min_interval_seconds))),
+        ),
+    ]
+
+
+def _activation_env_row(
+    name: str,
+    value_template: str,
+    *,
+    configured: bool,
+    current: str | None = None,
+    secret: bool = False,
+) -> dict[str, object]:
+    return {
+        "name": name,
+        "value_template": value_template,
+        "configured": configured,
+        "current": "set" if secret and configured else ("missing" if secret else current),
+        "secret": secret,
+    }
+
+
+def _live_data_safe_limits(config: AppConfig) -> list[dict[str, object]]:
+    return [
+        {
+            "guardrail": "Polygon universe seed cap",
+            "value": f"{max(1, int(config.polygon_tickers_max_pages))} page(s)",
+            "reason": "Bounds ticker-reference requests before broad discovery.",
+        },
+        {
+            "guardrail": "SEC daily ticker cap",
+            "value": f"{max(1, int(config.sec_daily_max_tickers))} ticker(s)",
+            "reason": "Bounds SEC submissions requests per radar run.",
+        },
+        {
+            "guardrail": "Manual radar cooldown",
+            "value": f"{max(1, int(config.radar_run_min_interval_seconds))} second(s)",
+            "reason": "Prevents repeated dashboard/API runs from hammering providers.",
+        },
+        {
+            "guardrail": "Schwab isolation",
+            "value": "not called by radar runs",
+            "reason": "Portfolio sync remains behind separate broker controls and rate guards.",
+        },
+        {
+            "guardrail": "Daily LLM safety",
+            "value": "real daily LLM disabled",
+            "reason": "Use per-candidate review after live data quality is acceptable.",
+        },
+    ]
+
+
+def _live_data_operator_steps(
+    config: AppConfig,
+    *,
+    missing_env: Sequence[str],
+) -> list[dict[str, object]]:
+    env_status = "blocked" if missing_env else "ready"
+    seed_pages = max(1, int(config.polygon_tickers_max_pages))
+    return [
+        {
+            "step": 1,
+            "status": env_status,
+            "action": "Edit .env.local using the template below; do not paste keys into chat.",
+            "external_calls": 0,
+            "command": "notepad .env.local",
+        },
+        {
+            "step": 2,
+            "status": "manual",
+            "action": "Restart the local API and dashboard so the new env is loaded.",
+            "external_calls": 0,
+            "command": "restart local Market Radar services",
+        },
+        {
+            "step": 3,
+            "status": "manual",
+            "action": "Seed the active universe with the configured Polygon page cap.",
+            "external_calls": seed_pages,
+            "command": (
+                "Invoke-RestMethod -Method Post "
+                "-Uri https://127.0.0.1:8443/api/radar/universe/seed "
+                "-SkipCertificateCheck -ContentType 'application/json' "
+                f"-Body '{{\"provider\":\"polygon\",\"max_pages\":{seed_pages}}}'"
+            ),
+        },
+        {
+            "step": 4,
+            "status": "safe_check",
+            "action": "Inspect the radar call plan before running live ingestion.",
+            "external_calls": 0,
+            "command": (
+                "Invoke-RestMethod -Method Post "
+                "-Uri https://127.0.0.1:8443/api/radar/runs/call-plan "
+                "-SkipCertificateCheck -ContentType 'application/json' -Body '{}'"
+            ),
+        },
+        {
+            "step": 5,
+            "status": "manual",
+            "action": "Run one capped radar cycle only after the call plan matches intent.",
+            "external_calls": 1 + max(1, int(config.sec_daily_max_tickers)),
+            "command": (
+                "Invoke-RestMethod -Method Post "
+                "-Uri https://127.0.0.1:8443/api/radar/runs "
+                "-SkipCertificateCheck -ContentType 'application/json' -Body '{}'"
+            ),
+        },
+        {
+            "step": 6,
+            "status": "safe_check",
+            "action": "Review readiness and the research shortlist before any investment work.",
+            "external_calls": 0,
+            "command": (
+                "Invoke-RestMethod "
+                "-Uri https://127.0.0.1:8443/api/radar/readiness "
+                "-SkipCertificateCheck"
+            ),
+        },
+    ]
+
+
+def _live_data_call_budget_if_activated(config: AppConfig) -> list[dict[str, object]]:
+    return [
+        {
+            "operation": "read this activation contract",
+            "max_external_calls": 0,
+            "provider": "none",
+        },
+        {
+            "operation": "seed universe once",
+            "max_external_calls": max(1, int(config.polygon_tickers_max_pages)),
+            "provider": "polygon",
+        },
+        {
+            "operation": "run one radar cycle",
+            "max_external_calls": 1 + max(1, int(config.sec_daily_max_tickers)),
+            "provider": "polygon + sec",
+        },
+    ]
 
 
 def _telemetry_tape_status(status_counts: Mapping[str, int]) -> str:

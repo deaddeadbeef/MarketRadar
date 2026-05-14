@@ -765,6 +765,54 @@ def test_get_radar_readiness_redacts_restricted_discovery_snapshot(
     ]
 
 
+def test_get_radar_live_activation_returns_read_only_contract(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "radar-live-activation.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+    monkeypatch.setattr(
+        dashboard_data,
+        "load_radar_run_summary",
+        lambda _engine: {"status": "success", "steps": []},
+        raising=False,
+    )
+    monkeypatch.setattr(
+        dashboard_data,
+        "load_broker_summary",
+        lambda _engine: {"status": "not_connected"},
+        raising=False,
+    )
+    monkeypatch.setattr(
+        dashboard_data,
+        "live_data_activation_contract_payload",
+        lambda _config, *, radar_run_summary, broker_summary: {
+            "schema_version": "live-data-activation-contract-v1",
+            "status": "blocked",
+            "read_only": True,
+            "makes_external_calls": False,
+            "evidence": (
+                f"run={radar_run_summary['status']}; "
+                f"broker={broker_summary['status']}"
+            ),
+        },
+        raising=False,
+    )
+    client = TestClient(create_app())
+
+    response = client.get("/api/radar/live-activation")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "schema_version": "live-data-activation-contract-v1",
+        "status": "blocked",
+        "read_only": True,
+        "makes_external_calls": False,
+        "evidence": "run=success; broker=not_connected",
+    }
+
+
 def test_get_radar_research_shortlist_returns_redacted_rows(
     tmp_path,
     monkeypatch,

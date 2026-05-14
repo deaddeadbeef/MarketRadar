@@ -113,3 +113,24 @@ def test_dashboard_research_shortlist_strips_restricted_audit_from_visible_rows(
         )
         for node in ast.walk(helper)
     )
+
+
+def test_dashboard_wires_live_data_activation_contract_after_plan() -> None:
+    tree = ast.parse(Path("apps/dashboard/Home.py").read_text(encoding="utf-8"))
+    functions = {
+        node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)
+    }
+    overview = functions["_show_overview"]
+    calls = [
+        (node.func.id, node.lineno)
+        for node in ast.walk(overview)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    ]
+    line_by_call = {name: line for name, line in calls}
+
+    assert "_show_live_data_activation_contract" in line_by_call
+    assert (
+        line_by_call["_show_live_activation_plan"]
+        < line_by_call["_show_live_data_activation_contract"]
+        < line_by_call["_show_telemetry_tape"]
+    )
