@@ -268,6 +268,66 @@ def test_dashboard_relables_raw_skip_status_for_operator_tables() -> None:
     assert '"Skipped"' not in costs_source
 
 
+def test_dashboard_operator_tables_hide_raw_skip_reason_codes() -> None:
+    module = _load_dashboard_module()
+    daily_result = {
+        "steps": {
+            "daily_bar_ingest": {
+                "status": "skipped",
+                "reason": "no_scheduled_provider_input",
+                "requested_count": 0,
+                "raw_count": 0,
+                "normalized_count": 0,
+            },
+            "decision_cards": {
+                "status": "skipped",
+                "reason": "no_manual_buy_review_inputs",
+                "requested_count": 0,
+                "raw_count": 0,
+                "normalized_count": 0,
+            },
+        }
+    }
+
+    operator_rows = module._radar_run_operator_rows(daily_result)  # noqa: SLF001
+    action_rows = module._operator_action_rows(  # noqa: SLF001
+        [row for row in operator_rows if row["Needs Action"] == "yes"]
+    )
+    optional_rows = module._operator_optional_rows(  # noqa: SLF001
+        [row for row in operator_rows if row["Stage"] == "Optional gate"]
+    )
+    visible_text = f"{action_rows} {optional_rows}"
+
+    assert action_rows == [
+        {
+            "Outcome": "Blocked input",
+            "Step": "daily_bar_ingest",
+            "Why": "No market-data provider was scheduled for this run.",
+            "Action": (
+                "Set CATALYST_DAILY_MARKET_PROVIDER=polygon and provide "
+                "CATALYST_POLYGON_API_KEY."
+            ),
+        }
+    ]
+    assert optional_rows == [
+        {
+            "Gate": "decision_cards",
+            "Outcome": "Not triggered (expected)",
+            "Why": "No candidate crossed the manual buy-review gate.",
+            "Runs When": (
+                "At least one candidate must pass policy into manual buy review."
+            ),
+            "Operator Note": (
+                "No Decision Card action required until a candidate crosses "
+                "manual buy-review."
+            ),
+        }
+    ]
+    assert "skipped" not in visible_text
+    assert "no_scheduled_provider_input" not in visible_text
+    assert "no_manual_buy_review_inputs" not in visible_text
+
+
 def test_dashboard_does_not_render_legacy_raw_run_steps_table() -> None:
     source = Path("apps/dashboard/Home.py").read_text(encoding="utf-8")
     tree = ast.parse(source)
