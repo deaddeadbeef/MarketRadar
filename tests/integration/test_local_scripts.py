@@ -33,6 +33,8 @@ def test_readme_mentions_restart_script_for_local_dashboard() -> None:
     assert "-Execute" in readme
     assert "CATALYST_DAILY_MARKET_PROVIDER=polygon" in readme
     assert "CATALYST_DAILY_PROVIDER=polygon" in readme
+    assert "CATALYST_DAILY_MARKET_PROVIDER` controls scheduled daily bar ingest" in readme
+    assert "CATALYST_DAILY_PROVIDER` override keeps manual/default radar runs aligned" in readme
     assert "CATALYST_DAILY_EVENT_PROVIDER=sec" in readme
     assert "CATALYST_SEC_ENABLE_LIVE=1" in readme
     assert "/api/radar/runs/call-plan" in readme

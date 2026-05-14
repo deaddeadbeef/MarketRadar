@@ -1706,6 +1706,12 @@ def test_live_data_activation_contract_gives_exact_safe_next_steps() -> None:
     env_template = {str(row["name"]): row for row in contract["env_template"]}
     assert env_template["CATALYST_DAILY_PROVIDER"]["configured"] is False
     assert env_template["CATALYST_DAILY_PROVIDER"]["current"] == "missing"
+    assert "Scheduled daily bar provider" in str(
+        env_template["CATALYST_DAILY_MARKET_PROVIDER"]["purpose"]
+    )
+    assert "Manual/default radar-run provider" in str(
+        env_template["CATALYST_DAILY_PROVIDER"]["purpose"]
+    )
     assert env_template["CATALYST_ENABLE_PREMIUM_LLM"]["value_template"] == "1"
     assert env_template["CATALYST_LLM_PROVIDER"]["value_template"] == "openai"
     assert "skeptic_review" in str(
