@@ -31,6 +31,7 @@ def test_readme_mentions_restart_script_for_local_dashboard() -> None:
     assert "scripts/run-worker-once.ps1" in readme
     assert "scripts/market-radar-status.ps1" in readme
     assert "scripts/export-telemetry.ps1" in readme
+    assert "scripts/export-operator-evidence.ps1" in readme
     assert "scripts/assert-investable-readiness.ps1" in readme
     assert "/api/ops/telemetry/raw" in readme
     assert "-Execute" in readme
@@ -188,6 +189,30 @@ def test_export_telemetry_script_writes_zero_call_raw_snapshot() -> None:
     assert "--insecure" in text
     assert "--fail" in text
     assert "data/ops/telemetry/" in gitignore
+    assert "OPENAI_API_KEY=" not in text
+    assert "CATALYST_POLYGON_API_KEY=" not in text
+    assert "SCHWAB_CLIENT_SECRET=" not in text
+
+
+def test_export_operator_evidence_script_writes_zero_call_bundle() -> None:
+    script = Path("scripts/export-operator-evidence.ps1")
+    text = script.read_text(encoding="utf-8")
+    gitignore = Path(".gitignore").read_text(encoding="utf-8")
+
+    assert script.is_file()
+    assert "operator-evidence-bundle-v1" in text
+    assert "/api/health" in text
+    assert "/api/radar/readiness" in text
+    assert "/api/radar/runs/latest" in text
+    assert "/api/radar/live-activation" in text
+    assert "/api/radar/runs/call-plan" in text
+    assert "/api/ops/telemetry?limit={0}" in text
+    assert "/api/ops/telemetry/raw?limit={0}" in text
+    assert "/api/brokers/schwab/status" in text
+    assert "data\\ops\\bundles" in text
+    assert "operator-evidence-$stamp.json" in text
+    assert "External calls made: 0" in text
+    assert "data/ops/bundles/" in gitignore
     assert "OPENAI_API_KEY=" not in text
     assert "CATALYST_POLYGON_API_KEY=" not in text
     assert "SCHWAB_CLIENT_SECRET=" not in text
