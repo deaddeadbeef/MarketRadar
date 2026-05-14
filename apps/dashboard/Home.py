@@ -1246,6 +1246,60 @@ def _show_operator_work_queue(
     )
 
 
+def _show_market_radar_usefulness(
+    *,
+    engine: object,
+    config: AppConfig,
+    radar_run_summary: Mapping[str, Any],
+    broker_summary: Mapping[str, Any],
+    discovery_snapshot: Mapping[str, Any],
+    candidate_rows: list[dict[str, object]],
+) -> None:
+    usefulness = _mapping(
+        dashboard_data.market_radar_usefulness_payload(
+            config,
+            radar_run_summary=radar_run_summary,
+            broker_summary=broker_summary,
+            discovery_snapshot=discovery_snapshot,
+            candidate_rows=candidate_rows,
+            worker_status=dashboard_data.worker_status_payload(engine),
+        )
+    )
+    st.subheader("Market Radar Usefulness")
+    status = str(usefulness.get("status") or "unknown")
+    message = (
+        f"{usefulness.get('headline') or 'Market Radar usefulness status.'} "
+        f"Next: {usefulness.get('next_action') or 'n/a'}"
+    ).strip()
+    if status == "decision_ready":
+        st.success(message)
+    elif status == "research_ready":
+        st.info(message)
+    else:
+        st.warning(message)
+    _show_status_badges(
+        [
+            (
+                "Layers Ready",
+                f"{int(_metric_number(usefulness.get('ready_layers')))}/"
+                f"{int(_metric_number(usefulness.get('total_layers')))}",
+            ),
+            ("Blocked", int(_metric_number(usefulness.get("blocked_layers")))),
+            ("Research", int(_metric_number(usefulness.get("research_layers")))),
+            (
+                "Investable",
+                "yes" if usefulness.get("safe_to_make_investment_decision") else "no",
+            ),
+        ]
+    )
+    _show_records(
+        "Usefulness Layers",
+        _records(usefulness.get("layers")),
+        empty="No usefulness layers.",
+    )
+    st.caption(str(usefulness.get("evidence") or "No usefulness evidence."))
+
+
 def _visible_operator_queue_rows(value: object) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     for rank, row in enumerate(_records(value), start=1):
@@ -2210,6 +2264,14 @@ def _show_overview(
     metric_cols[4].metric("Themes", len(theme_rows))
     metric_cols[5].metric("LLM Cost", _currency(cost_summary.get("total_actual_cost_usd")))
 
+    _show_market_radar_usefulness(
+        engine=engine,
+        config=config,
+        radar_run_summary=radar_run_summary,
+        broker_summary=broker_summary,
+        discovery_snapshot=discovery_snapshot,
+        candidate_rows=candidate_rows,
+    )
     _show_operator_work_queue(
         config=config,
         radar_run_summary=radar_run_summary,

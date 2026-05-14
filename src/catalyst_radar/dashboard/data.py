@@ -589,6 +589,148 @@ def operator_work_queue_payload(
     }
 
 
+def market_radar_usefulness_payload(
+    config: AppConfig,
+    *,
+    radar_run_summary: Mapping[str, object] | None = None,
+    broker_summary: Mapping[str, object] | None = None,
+    discovery_snapshot: Mapping[str, object] | None = None,
+    candidate_rows: Sequence[Mapping[str, object]] | None = None,
+    worker_status: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    """Summarize whether Market Radar is useful for scan, research, and decisions."""
+    candidates = [row for row in candidate_rows or () if isinstance(row, Mapping)]
+    snapshot = discovery_snapshot if isinstance(discovery_snapshot, Mapping) else {}
+    worker = worker_status if isinstance(worker_status, Mapping) else {}
+    source_modes = _mapping_value(snapshot, "source_modes")
+    live_plan = live_activation_plan_payload(
+        config,
+        radar_run_summary=radar_run_summary,
+        broker_summary=broker_summary,
+    )
+    coverage = {
+        str(row.get("layer") or ""): row
+        for row in data_source_coverage_payload(config, broker_summary=broker_summary)
+    }
+    actionability = actionability_breakdown_payload(candidates)
+    investment = investment_readiness_payload(snapshot, actionability, candidates)
+    queue = operator_work_queue_payload(
+        config,
+        radar_run_summary=radar_run_summary,
+        broker_summary=broker_summary,
+        discovery_snapshot=snapshot,
+        candidate_rows=candidates,
+    )
+    steps = _radar_steps_by_name(radar_run_summary)
+    llm_step = steps.get("llm_review", {})
+
+    market_live = (
+        source_modes.get("market") == "live" and source_modes.get("events") == "live"
+    )
+    worker_state = str(worker.get("status") or "not_seen")
+    decision_ready = bool(investment.get("manual_buy_review_ready"))
+    research_available = bool(candidates) and str(investment.get("status") or "") in {
+        "research_only",
+        "ready",
+        "monitor",
+    }
+    layers = [
+        _usefulness_layer(
+            "Automatic market scan",
+            "ready" if market_live else "blocked",
+            (
+                "Market and catalyst sources are live."
+                if market_live
+                else "Market Radar is still using fixture or incomplete live inputs."
+            ),
+            (
+                "Run one capped radar cycle and inspect rejected/provider counts."
+                if market_live
+                else str(
+                    live_plan.get("next_action")
+                    or "Configure live market and catalyst sources."
+                )
+            ),
+            (
+                f"market={source_modes.get('market') or 'unknown'}; "
+                f"events={source_modes.get('events') or 'unknown'}"
+            ),
+        ),
+        _usefulness_layer(
+            "Agentic research loop",
+            _agent_loop_usefulness_status(llm_step, coverage.get("LLM review", {})),
+            _agent_loop_usefulness_current(llm_step, coverage.get("LLM review", {})),
+            _agent_loop_usefulness_action(llm_step, coverage.get("LLM review", {})),
+            _step_evidence("llm_review", llm_step) if llm_step else "no llm_review step",
+        ),
+        _usefulness_layer(
+            "Worker automation",
+            "ready" if worker_state in {"running", "idle"} else "blocked",
+            str(worker.get("headline") or "No daily worker activity has been recorded."),
+            str(
+                worker.get("next_action")
+                or "Start the worker after live input configuration is complete."
+            ),
+            str(worker.get("evidence") or "no worker evidence"),
+        ),
+        _usefulness_layer(
+            "Investment decision support",
+            "ready" if decision_ready else ("research" if research_available else "blocked"),
+            str(
+                investment.get("headline")
+                or "Investment readiness has not been evaluated."
+            ),
+            str(investment.get("next_action") or "Review investment readiness."),
+            str(investment.get("evidence") or "no investment readiness evidence"),
+        ),
+    ]
+    ready_layers = sum(1 for row in layers if row["status"] == "ready")
+    blocked_layers = sum(1 for row in layers if row["status"] == "blocked")
+    research_layers = sum(1 for row in layers if row["status"] == "research")
+
+    if decision_ready:
+        status = "decision_ready"
+        headline = "Market Radar is ready for manual investment review."
+        next_action = str(
+            investment.get("next_action")
+            or "Open Decision Cards and verify exposure, source freshness, and hard blocks."
+        )
+    elif blocked_layers:
+        status = "setup_blocked"
+        headline = "Market Radar is not yet useful for live investment decisions."
+        next_action = str(queue.get("next_action") or live_plan.get("next_action"))
+    elif research_layers or research_available:
+        status = "research_ready"
+        headline = "Market Radar is useful for research triage, not buy decisions."
+        next_action = str(
+            investment.get("next_action") or "Work the research shortlist first."
+        )
+    else:
+        status = "monitor"
+        headline = "Market Radar has no actionable candidate insight yet."
+        next_action = "Keep monitoring or run a fresh capped radar cycle."
+
+    return {
+        "schema_version": "market-radar-usefulness-v1",
+        "status": status,
+        "headline": headline,
+        "next_action": next_action,
+        "safe_to_make_investment_decision": decision_ready,
+        "ready_layers": ready_layers,
+        "total_layers": len(layers),
+        "blocked_layers": blocked_layers,
+        "research_layers": research_layers,
+        "layers": layers,
+        "evidence": (
+            f"ready_layers={ready_layers}/{len(layers)}; "
+            f"blocked_layers={blocked_layers}; "
+            f"research_layers={research_layers}; "
+            f"operator_queue={queue.get('status') or 'unknown'}; "
+            f"live_plan={live_plan.get('status') or 'unknown'}"
+        ),
+    }
+
+
 def candidate_decision_labels_payload(
     candidate_rows: Sequence[Mapping[str, object]],
     investment_readiness: Mapping[str, object] | None = None,
@@ -872,6 +1014,14 @@ def radar_readiness_payload(
         discovery_snapshot=discovery_snapshot,
         candidate_rows=market_candidate_rows,
     )
+    usefulness = market_radar_usefulness_payload(
+        config,
+        radar_run_summary=radar_run_summary,
+        broker_summary=broker_summary,
+        discovery_snapshot=discovery_snapshot,
+        candidate_rows=market_candidate_rows,
+        worker_status=worker_status_payload(engine),
+    )
     safe_to_decide = bool(investment.get("manual_buy_review_ready"))
     return {
         "schema_version": "radar-readiness-v1",
@@ -895,6 +1045,7 @@ def radar_readiness_payload(
         "investment_readiness": investment,
         "candidate_delta": candidate_delta,
         "operator_work_queue": operator_queue,
+        "market_radar_usefulness": usefulness,
         "candidate_decision_labels": [
             _readiness_candidate_label(row)
             for row in labeled_candidates[: _positive_limit(candidate_limit)]
@@ -4122,6 +4273,76 @@ def _operator_work_queue_row(
     if ticker:
         row["ticker"] = ticker
     return row
+
+
+def _usefulness_layer(
+    layer: str,
+    status: str,
+    current: str,
+    next_action: str,
+    evidence: str,
+) -> dict[str, object]:
+    return {
+        "layer": layer,
+        "status": status,
+        "current": current,
+        "next_action": next_action,
+        "evidence": evidence,
+    }
+
+
+def _agent_loop_usefulness_status(
+    llm_step: Mapping[str, object],
+    llm_coverage: Mapping[str, object],
+) -> str:
+    status = str(llm_step.get("status") or "")
+    reason = str(llm_step.get("reason") or "")
+    category = str(llm_step.get("category") or "")
+    mode = str(llm_coverage.get("mode") or "")
+    if status == "success" and reason != "dry_run_only":
+        return "ready"
+    if status == "success" and reason == "dry_run_only":
+        return "research"
+    if category == "expected_gate" and reason in {
+        "no_llm_review_inputs",
+        "no_warning_or_higher_candidates",
+    }:
+        return "research"
+    if mode == "enabled":
+        return "research"
+    return "blocked"
+
+
+def _agent_loop_usefulness_current(
+    llm_step: Mapping[str, object],
+    llm_coverage: Mapping[str, object],
+) -> str:
+    status = str(llm_step.get("status") or "")
+    reason = str(llm_step.get("reason") or "")
+    if status == "success" and reason == "dry_run_only":
+        return "Agent review ran in dry-run mode; no external model call was made."
+    if status == "success":
+        return "Agent review completed for the latest run."
+    if llm_step:
+        return str(
+            llm_step.get("meaning")
+            or llm_step.get("label")
+            or "Agent review did not run."
+        )
+    mode = str(llm_coverage.get("mode") or "disabled")
+    return f"LLM review mode is {mode}."
+
+
+def _agent_loop_usefulness_action(
+    llm_step: Mapping[str, object],
+    llm_coverage: Mapping[str, object],
+) -> str:
+    if llm_step.get("operator_action"):
+        return str(llm_step.get("operator_action"))
+    mode = str(llm_coverage.get("mode") or "")
+    if mode == "enabled":
+        return "Wait for Warning or manual-review candidates, then run review."
+    return "Keep dry-run review for smoke tests, or configure OpenAI credentials and budgets."
 
 
 def _activation_blocker_detail(rows: Sequence[Mapping[str, object]]) -> str:

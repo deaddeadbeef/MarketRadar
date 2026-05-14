@@ -205,12 +205,24 @@ def test_dashboard_wires_operator_work_queue_before_activation_sections() -> Non
         node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)
     }
     overview_source = ast.get_source_segment(source, functions["_show_overview"])
+    usefulness_source = ast.get_source_segment(
+        source,
+        functions["_show_market_radar_usefulness"],
+    )
     helper_source = ast.get_source_segment(source, functions["_show_operator_work_queue"])
 
+    assert "_show_market_radar_usefulness" in functions
     assert "_show_operator_work_queue" in functions
     assert "_visible_operator_queue_rows" in functions
     assert overview_source is not None
+    assert usefulness_source is not None
     assert helper_source is not None
+    assert "market_radar_usefulness_payload" in usefulness_source
+    assert "Market Radar Usefulness" in usefulness_source
+    assert "Usefulness Layers" in usefulness_source
+    assert overview_source.index("_show_market_radar_usefulness") < overview_source.index(
+        "_show_operator_work_queue"
+    )
     assert "operator_work_queue_payload" in helper_source
     assert "Priority Queue" in helper_source
     assert overview_source.index("_show_operator_work_queue") < overview_source.index(
