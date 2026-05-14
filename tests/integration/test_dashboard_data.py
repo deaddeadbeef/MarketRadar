@@ -815,7 +815,7 @@ def test_radar_readiness_payload_summarizes_operator_decision_gate(
     ] is False
 
 
-def test_radar_readiness_telemetry_uses_finished_run_cutoff(
+def test_radar_readiness_telemetry_uses_current_ops_cutoff(
     tmp_path: Path,
 ) -> None:
     engine = _engine(tmp_path)
@@ -886,9 +886,9 @@ def test_radar_readiness_telemetry_uses_finished_run_cutoff(
                 },
                 "before_payload": {},
                 "after_payload": {"dry_run": True},
-                "occurred_at": AVAILABLE_AT + timedelta(seconds=3, milliseconds=500),
+                "occurred_at": AVAILABLE_AT + timedelta(seconds=5),
                 "available_at": AVAILABLE_AT,
-                "created_at": AVAILABLE_AT + timedelta(seconds=3, milliseconds=500),
+                "created_at": AVAILABLE_AT + timedelta(seconds=5),
             },
         )
 
