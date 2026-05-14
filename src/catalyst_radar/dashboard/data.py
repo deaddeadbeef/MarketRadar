@@ -37,6 +37,7 @@ from catalyst_radar.jobs.tasks import DAILY_STEP_ORDER
 from catalyst_radar.storage.broker_repositories import BrokerRepository
 from catalyst_radar.storage.budget_repositories import BudgetLedgerRepository
 from catalyst_radar.storage.schema import (
+    alert_suppressions,
     alerts,
     candidate_packets,
     candidate_states,
@@ -60,6 +61,28 @@ from catalyst_radar.validation.reports import (
 )
 
 RADAR_RUN_COOLDOWN_LOCK_NAME = "manual_radar_run_cooldown"
+
+ALERT_SUPPRESSION_EXPLANATIONS = {
+    "duplicate_trigger": "A prior alert already covers the same trigger.",
+    "manual_review_missing_decision_card": (
+        "Manual review candidates need a Decision Card before alerting."
+    ),
+    "state_not_alertable": "The candidate state is not alertable.",
+    "warning_delta_below_threshold": (
+        "Warning score movement did not clear the alert delta threshold."
+    ),
+}
+
+ALERT_SUPPRESSION_ACTIONS = {
+    "duplicate_trigger": "Use the existing alert instead of creating a duplicate.",
+    "manual_review_missing_decision_card": (
+        "Generate or review the Decision Card before manual-buy escalation."
+    ),
+    "state_not_alertable": "Keep this candidate in research/watchlist flow.",
+    "warning_delta_below_threshold": (
+        "Review the candidate manually or lower alert thresholds if this is too quiet."
+    ),
+}
 
 
 def load_candidate_rows(
@@ -828,6 +851,10 @@ def radar_readiness_payload(
         radar_run_summary=radar_run_summary,
         broker_summary=broker_summary,
     )
+    alert_diagnostics = alert_planning_diagnostics_payload(
+        engine,
+        radar_run_summary=radar_run_summary,
+    )
     telemetry = telemetry_tape_payload(ops_health)
     labeled_candidates = candidate_decision_labels_payload(
         market_candidate_rows,
@@ -861,6 +888,7 @@ def radar_readiness_payload(
         "activation_summary": activation,
         "live_activation_plan": live_plan,
         "readiness_checklist": checklist,
+        "alert_planning_diagnostics": alert_diagnostics,
         "discovery_snapshot": discovery_snapshot,
         "actionability_breakdown": actionability,
         "investment_readiness": investment,
@@ -1271,6 +1299,98 @@ def load_alert_detail(
     with engine.connect() as conn:
         row = conn.execute(stmt).first()
     return _alert_row(row._mapping) if row is not None else None
+
+
+def alert_planning_diagnostics_payload(
+    engine: Engine,
+    radar_run_summary: Mapping[str, object] | None = None,
+    *,
+    limit: int = 50,
+) -> dict[str, object]:
+    summary = _row_dict(radar_run_summary) if isinstance(radar_run_summary, Mapping) else {}
+    steps = _radar_steps_by_name(summary)
+    planning_step = steps.get("alert_planning", {})
+    digest_step = steps.get("digest", {})
+    planning_status = str(planning_step.get("status") or "")
+    planning_category = str(planning_step.get("category") or "")
+    planning_payload = _mapping_value(planning_step, "payload")
+    digest_reason = str(digest_step.get("reason") or "")
+    cutoff = _parse_utc_datetime(summary.get("decision_available_at"))
+    run_as_of = _parse_date(summary.get("as_of"))
+    if not summary:
+        return {
+            "status": "unknown",
+            "headline": "No radar run is available for alert diagnostics.",
+            "next_action": "Run the radar once before reviewing alert planning.",
+            "evidence": "no latest run",
+            "counts": [],
+            "rows": [],
+        }
+    if planning_status != "success":
+        reason = str(planning_step.get("reason") or "n/a")
+        return {
+            "status": planning_category or planning_status or "unknown",
+            "headline": "Alert planning did not complete for the latest run.",
+            "next_action": str(
+                planning_step.get("operator_action")
+                or "Resolve alert-planning telemetry before expecting digest alerts."
+            ),
+            "evidence": _step_evidence("alert_planning", planning_step),
+            "counts": [],
+            "rows": [],
+            "reason": reason,
+        }
+
+    rows = _alert_suppression_diagnostic_rows(
+        engine,
+        available_at=cutoff,
+        as_of_date=run_as_of,
+        limit=limit,
+    )
+    reason_counts = Counter(str(row.get("reason") or "unknown") for row in rows)
+    planned_alert_count = int(_finite_float(planning_payload.get("alert_count")))
+    digest_alert_count = int(_finite_float(planning_payload.get("digest_alert_count")))
+    suppression_count = int(
+        _finite_float(planning_payload.get("suppression_count"))
+        or len(rows)
+    )
+    status = "ready" if digest_alert_count else "suppressed"
+    headline = (
+        f"Alert planning produced {digest_alert_count} digest alert(s)."
+        if digest_alert_count
+        else (
+            "Alert planning ran, but every candidate was suppressed or routed away "
+            "from digest alerts."
+        )
+    )
+    next_action = (
+        "Review planned alerts in the Alerts tab."
+        if digest_alert_count
+        else "Review suppression reasons before changing alert thresholds."
+    )
+    if digest_reason == "no_alerts" and rows:
+        next_action = (
+            "Start with the top suppression reason; adjust thresholds only if the "
+            "suppressed candidates should have paged you."
+        )
+    return {
+        "status": status,
+        "headline": headline,
+        "next_action": next_action,
+        "evidence": (
+            f"alert_count={planned_alert_count}; digest_alert_count={digest_alert_count}; "
+            f"suppression_count={suppression_count}; "
+            f"reasons={_count_map_label(dict(sorted(reason_counts.items())))}"
+        ),
+        "counts": [
+            {"reason": reason, "count": count}
+            for reason, count in sorted(
+                reason_counts.items(),
+                key=lambda item: (-item[1], item[0]),
+            )
+        ],
+        "rows": rows,
+    }
 
 
 def load_ipo_s1_rows(
@@ -3202,6 +3322,72 @@ def _alert_row(row: Any) -> dict[str, object]:
     )
     values["feedback"] = values.get("feedback_label")
     return values
+
+
+def _alert_suppression_diagnostic_rows(
+    engine: Engine,
+    *,
+    available_at: datetime | None,
+    as_of_date: date | None,
+    limit: int,
+) -> list[dict[str, object]]:
+    if available_at is None:
+        return []
+    filters = [alert_suppressions.c.available_at == available_at]
+    if as_of_date is not None:
+        start, end = _date_window(as_of_date)
+        filters.extend(
+            [
+                alert_suppressions.c.as_of >= start,
+                alert_suppressions.c.as_of < end,
+            ]
+        )
+    stmt = (
+        select(
+            alert_suppressions.c.ticker,
+            alert_suppressions.c.reason,
+            alert_suppressions.c.route,
+            alert_suppressions.c.trigger_kind,
+            alert_suppressions.c.trigger_fingerprint,
+            alert_suppressions.c.candidate_state_id,
+            alert_suppressions.c.decision_card_id,
+            alert_suppressions.c.available_at,
+            alert_suppressions.c.created_at,
+        )
+        .where(*filters)
+        .order_by(
+            alert_suppressions.c.reason,
+            alert_suppressions.c.ticker,
+            alert_suppressions.c.created_at.desc(),
+            alert_suppressions.c.id.desc(),
+        )
+        .limit(_positive_limit(limit))
+    )
+    rows: list[dict[str, object]] = []
+    with engine.connect() as conn:
+        for row in conn.execute(stmt):
+            values = _row_dict(row._mapping)
+            reason = str(values.get("reason") or "unknown")
+            rows.append(
+                {
+                    "ticker": values.get("ticker"),
+                    "reason": reason,
+                    "route": values.get("route"),
+                    "trigger": values.get("trigger_kind"),
+                    "meaning": ALERT_SUPPRESSION_EXPLANATIONS.get(
+                        reason,
+                        "Alert planner suppressed this candidate.",
+                    ),
+                    "next_action": ALERT_SUPPRESSION_ACTIONS.get(
+                        reason,
+                        "Review the candidate and alert policy before changing thresholds.",
+                    ),
+                    "candidate_state_id": values.get("candidate_state_id"),
+                    "decision_card_id": values.get("decision_card_id") or "n/a",
+                    "available_at": values.get("available_at"),
+                }
+            )
+    return rows
 
 
 def _ipo_s1_row(row: Any) -> dict[str, object] | None:

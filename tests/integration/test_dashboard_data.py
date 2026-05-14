@@ -32,6 +32,7 @@ from catalyst_radar.core.models import ActionState
 from catalyst_radar.dashboard.data import (
     actionability_breakdown_payload,
     activation_summary_payload,
+    alert_planning_diagnostics_payload,
     agent_review_summary_payload,
     candidate_decision_labels_payload,
     candidate_delta_payload,
@@ -70,6 +71,7 @@ from catalyst_radar.storage.budget_repositories import BudgetLedgerRepository
 from catalyst_radar.storage.db import create_schema
 from catalyst_radar.storage.schema import (
     alerts,
+    alert_suppressions,
     audit_events,
     candidate_packets,
     candidate_states,
@@ -2225,6 +2227,88 @@ def test_readiness_checklist_payload_separates_blockers_from_expected_gates() ->
     assert by_area["Order safety"]["status"] == "safe"
     joined = " ".join(str(value) for row in rows for value in row.values())
     assert "CLIENT_SECRET" not in joined
+
+
+def test_alert_planning_diagnostics_payload_lists_latest_run_suppressions(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(alert_suppressions),
+            [
+                {
+                    "id": "suppression-msft-latest",
+                    "ticker": "MSFT",
+                    "as_of": AS_OF,
+                    "available_at": AVAILABLE_AT,
+                    "candidate_state_id": "state-msft-latest",
+                    "decision_card_id": None,
+                    "route": "warning_digest",
+                    "dedupe_key": "dedupe-msft-latest",
+                    "trigger_kind": "score_delta",
+                    "trigger_fingerprint": "msft-score-delta",
+                    "reason": "warning_delta_below_threshold",
+                    "payload": {"suppression_reason": "warning_delta_below_threshold"},
+                    "created_at": AVAILABLE_AT,
+                },
+                {
+                    "id": "suppression-nvda-latest",
+                    "ticker": "NVDA",
+                    "as_of": AS_OF,
+                    "available_at": AVAILABLE_AT,
+                    "candidate_state_id": "state-nvda-latest",
+                    "decision_card_id": None,
+                    "route": "daily_digest",
+                    "dedupe_key": "dedupe-nvda-latest",
+                    "trigger_kind": "state",
+                    "trigger_fingerprint": "nvda-state",
+                    "reason": "state_not_alertable",
+                    "payload": {"suppression_reason": "state_not_alertable"},
+                    "created_at": AVAILABLE_AT,
+                },
+                {
+                    "id": "suppression-msft-old",
+                    "ticker": "MSFT",
+                    "as_of": EARLIER_AS_OF,
+                    "available_at": AVAILABLE_AT - timedelta(minutes=5),
+                    "candidate_state_id": "state-msft-earlier",
+                    "decision_card_id": None,
+                    "route": "daily_digest",
+                    "dedupe_key": "dedupe-msft-old",
+                    "trigger_kind": "state",
+                    "trigger_fingerprint": "msft-old",
+                    "reason": "duplicate_trigger",
+                    "payload": {"suppression_reason": "duplicate_trigger"},
+                    "created_at": AVAILABLE_AT - timedelta(minutes=5),
+                },
+            ],
+        )
+
+    payload = alert_planning_diagnostics_payload(
+        engine,
+        {
+            "as_of": AS_OF.date().isoformat(),
+            "decision_available_at": AVAILABLE_AT.isoformat(),
+            "steps": [
+                _run_step("alert_planning", "success", requested=2, raw=2, normalized=0),
+                _run_step("digest", "skipped", reason="no_alerts"),
+            ],
+        },
+    )
+
+    assert payload["status"] == "suppressed"
+    assert "every candidate was suppressed" in str(payload["headline"])
+    assert "suppression_count=2" in str(payload["evidence"])
+    assert payload["counts"] == [
+        {"reason": "state_not_alertable", "count": 1},
+        {"reason": "warning_delta_below_threshold", "count": 1},
+    ]
+    rows = payload["rows"]
+    assert [row["ticker"] for row in rows] == ["NVDA", "MSFT"]
+    assert rows[0]["meaning"] == "The candidate state is not alertable."
+    assert "state-msft-earlier" not in str(rows)
 
 
 def test_load_candidate_rows_respects_available_at_cutoff(tmp_path: Path) -> None:
