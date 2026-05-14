@@ -1531,7 +1531,8 @@ def test_telemetry_tape_payload_summarizes_recent_radar_events() -> None:
     assert payload["events"][0]["artifact"] == "radar_run:radar-run-api-very-long"
     assert payload["events"][0]["summary"] == "provider=default; universe=liquid-us"
     assert payload["events"][1]["summary"] == (
-        "daily_status=success; steps=skipped=4, success=6; blocked=0; expected_gates=1"
+        "daily_status=success; required=6/9; blocked=0; expected_gates=1; "
+        "audit_raw_skips=4"
     )
     assert payload["events"][2]["event"] == "radar_run.step_finished"
     assert payload["events"][2]["status"] == "expected_gate"
@@ -2171,6 +2172,7 @@ def test_readiness_checklist_payload_separates_blockers_from_expected_gates() ->
             _run_step("feature_scan", "success", requested=6, raw=3, normalized=3),
             _run_step("scoring_policy", "success", requested=3, raw=3, normalized=3),
             _run_step("candidate_packets", "success", requested=2, raw=2, normalized=2),
+            _run_step("alert_planning", "success", requested=3, raw=3, normalized=0),
             _run_step(
                 "decision_cards",
                 "skipped",
@@ -2213,6 +2215,8 @@ def test_readiness_checklist_payload_separates_blockers_from_expected_gates() ->
     assert by_area["LLM review"]["status"] == "optional"
     assert by_area["Portfolio context"]["status"] == "attention"
     assert by_area["Alerting"]["status"] == "optional"
+    assert "Alert planning ran" in str(by_area["Alerting"]["finding"])
+    assert "alert_planning: outcome=Completed" in str(by_area["Alerting"]["evidence"])
     assert "digest: skipped" not in str(by_area["Alerting"]["evidence"])
     assert by_area["Outcome validation"]["status"] == "optional"
     assert "validation_update: skipped" not in str(

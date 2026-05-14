@@ -2857,16 +2857,29 @@ def readiness_checklist_payload(
             )
         )
     elif digest_reason == "no_alerts":
+        alert_planning_step = steps.get("alert_planning", {})
+        alert_planning_status = str(alert_planning_step.get("status") or "")
+        if alert_planning_status == "success":
+            finding = "Alert planning ran, but no digest-routed alerts were produced."
+            next_action = (
+                "Use candidates/research briefs for manual triage, or review alert "
+                "thresholds and suppressions if you expect digest alerts."
+            )
+            evidence = _steps_evidence(steps, ("alert_planning", "digest"))
+        else:
+            finding = "No digest-routed alerts were available for the latest digest step."
+            next_action = (
+                "Use candidates/research briefs for manual triage, or fix alert "
+                "planning before expecting digest automation."
+            )
+            evidence = _step_evidence("digest", digest_step)
         rows.append(
             _readiness_row(
                 "Alerting",
                 "optional",
-                "No existing alerts were available for the latest digest step.",
-                (
-                    "Use candidates/research briefs for manual triage, or add alert "
-                    "planning before digest automation."
-                ),
-                _step_evidence("digest", digest_step),
+                finding,
+                next_action,
+                evidence,
             )
         )
     elif digest_category == "expected_gate":
@@ -4305,10 +4318,26 @@ def _telemetry_event_summary(
         step_counts = _string_int_mapping(metadata.get("step_counts"))
         blocked_count = len(_sequence_value(metadata.get("blocked_steps")))
         expected_gate_count = len(_sequence_value(metadata.get("expected_gate_steps")))
+        outcome_counts = _string_int_mapping(metadata.get("outcome_category_counts"))
+        required_total = max(0, sum(step_counts.values()) - expected_gate_count)
+        required_complete = min(
+            outcome_counts.get("completed", step_counts.get("success", 0)),
+            required_total,
+        )
+        raw_skipped_count = step_counts.get("skipped", 0)
+        required_label = (
+            f"required={required_complete}/{required_total}; "
+            if required_total
+            else ""
+        )
+        raw_skips_label = (
+            f"; audit_raw_skips={raw_skipped_count}" if raw_skipped_count else ""
+        )
         return (
             f"daily_status={metadata.get('daily_status') or 'unknown'}; "
-            f"steps={_count_map_label(step_counts)}; "
+            f"{required_label}"
             f"blocked={blocked_count}; expected_gates={expected_gate_count}"
+            f"{raw_skips_label}"
         )
     if short_event in {
         "radar_run.rejected",
