@@ -792,19 +792,6 @@ def _show_radar_run_controls(
                     provider_text=provider_text,
                     universe_text=universe_text,
                 )
-        run_requested = st.button(
-            "Run Radar",
-            key="run_radar_now",
-            type="primary",
-            disabled=not cooldown_allowed,
-            help=(
-                "Manual run cooldown is active."
-                if not cooldown_allowed
-                else "Start one guarded daily radar pass."
-            ),
-        )
-    with status_col:
-        _show_radar_run_cooldown(cooldown)
         call_plan = _mapping(
             dashboard_data.radar_run_call_plan_payload(
                 engine,
@@ -818,6 +805,16 @@ def _show_radar_run_controls(
                 dry_run_alerts=True,
             )
         )
+        call_plan_blocked = str(call_plan.get("status") or "") == "blocked"
+        run_requested = st.button(
+            _radar_run_button_label(call_plan),
+            key="run_radar_now",
+            type="primary",
+            disabled=(not cooldown_allowed) or call_plan_blocked,
+            help=_radar_run_button_help(cooldown_allowed, call_plan),
+        )
+    with status_col:
+        _show_radar_run_cooldown(cooldown)
         _show_radar_call_plan(call_plan)
         if previous_run_result:
             daily_result = _mapping(previous_run_result.get("daily_result"))
@@ -853,6 +850,29 @@ def _show_radar_run_controls(
             return
         st.session_state["manual_radar_run_result"] = result
         st.rerun()
+
+
+def _radar_run_button_label(call_plan: Mapping[str, Any]) -> str:
+    status = str(call_plan.get("status") or "unknown")
+    if status == "blocked":
+        return "Fix Run Setup First"
+    if bool(call_plan.get("will_call_external_providers")):
+        return "Run Capped Live Radar"
+    return "Run Fixture Smoke"
+
+
+def _radar_run_button_help(
+    cooldown_allowed: bool,
+    call_plan: Mapping[str, Any],
+) -> str:
+    if not cooldown_allowed:
+        return "Manual run cooldown is active."
+    status = str(call_plan.get("status") or "unknown")
+    if status == "blocked":
+        return "Resolve the blocked call-plan rows before running."
+    if bool(call_plan.get("will_call_external_providers")):
+        return "Start one capped live radar pass using the call budget shown here."
+    return "Start a local fixture/dry-run smoke test; this is not live market discovery."
 
 
 def _show_radar_call_plan(call_plan: Mapping[str, Any]) -> None:
