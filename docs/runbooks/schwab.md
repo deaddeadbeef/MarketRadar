@@ -107,6 +107,12 @@ Invoke-RestMethod -Method Post http://127.0.0.1:8000/api/opportunities/actions `
   -Body '{"ticker":"GLW","action":"watch","thesis":"early volume expansion"}'
 ```
 
+The Overview tab also exposes the same opportunity-action storage on the
+selected candidate. Use **Saved Candidate Actions** and **Save Candidate Action**
+to record `watch`, `ready`, `simulate_entry`, or `dismiss` without leaving the
+main review queue. This writes only to the local Market Radar database; it does
+not call Schwab and does not submit orders.
+
 Triggers:
 
 ```powershell

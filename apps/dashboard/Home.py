@@ -19,6 +19,7 @@ from catalyst_radar.brokers.interactive import (
     create_blocked_order_ticket,
     create_trigger,
     evaluate_triggers,
+    opportunity_action_payload,
     record_opportunity_action,
 )
 from catalyst_radar.core.config import AppConfig
@@ -30,6 +31,7 @@ from catalyst_radar.jobs.step_outcomes import (
 from catalyst_radar.jobs.step_outcomes import (
     classify_step_outcome,
 )
+from catalyst_radar.security.access import Role, role_allows
 from catalyst_radar.security.secrets import load_app_dotenv
 from catalyst_radar.storage.broker_repositories import BrokerRepository
 from catalyst_radar.storage.db import create_schema, engine_from_url
@@ -1582,6 +1584,70 @@ def _candidate_blocker_rows(row: Mapping[str, object]) -> list[dict[str, object]
     return rows
 
 
+def _latest_opportunity_action_rows(
+    engine: object,
+    ticker: object,
+    *,
+    limit: int = 3,
+) -> list[dict[str, object]]:
+    symbol = str(ticker or "").strip().upper()
+    if not symbol:
+        return []
+    repo = BrokerRepository(engine)
+    return [
+        opportunity_action_payload(row)
+        for row in repo.list_opportunity_actions(ticker=symbol, limit=max(1, int(limit)))
+    ]
+
+
+def _show_candidate_opportunity_action_form(
+    *,
+    engine: object,
+    selected_candidate: Mapping[str, object],
+    dashboard_role: Role,
+) -> None:
+    ticker = str(selected_candidate.get("ticker") or "").strip().upper()
+    if not ticker:
+        return
+    if not role_allows(dashboard_role, Role.ANALYST):
+        st.caption("Analyst role required to save candidate actions.")
+        return
+    with st.form(f"overview_opportunity_action_form_{ticker}"):
+        action = st.selectbox(
+            "Candidate action",
+            ["watch", "ready", "simulate_entry", "dismiss"],
+            help="Save your current operator stance for this candidate.",
+        )
+        thesis = st.text_area(
+            "Thesis",
+            value=str(_mapping(selected_candidate.get("research_brief")).get("why_now") or ""),
+            height=80,
+        )
+        notes = st.text_input("Notes")
+        submitted = st.form_submit_button("Save Candidate Action")
+    if not submitted:
+        return
+    try:
+        record_opportunity_action(
+            repo=BrokerRepository(engine),
+            ticker=ticker,
+            action=action,
+            thesis=thesis,
+            notes=notes,
+            payload={
+                "source": "overview_candidate_queue",
+                "decision_status": selected_candidate.get("decision_status"),
+                "state": selected_candidate.get("state"),
+                "final_score": selected_candidate.get("final_score"),
+                "blocker_summary": selected_candidate.get("blocker_summary"),
+            },
+        )
+    except ValueError as exc:
+        st.error(str(exc))
+        return
+    st.success(f"Saved {action} action for {ticker}.")
+
+
 def _visible_research_brief(value: object) -> dict[str, object]:
     brief = dict(_mapping(value))
     brief.pop("audit", None)
@@ -1644,6 +1710,7 @@ def _show_overview(
     cost_summary: Mapping[str, Any],
     ops_health: Mapping[str, Any],
     broker_summary: Mapping[str, Any],
+    dashboard_role: Role,
 ) -> None:
     candidate_frame = pd.DataFrame(candidate_rows)
     alert_frame = pd.DataFrame(alert_rows)
@@ -1808,6 +1875,19 @@ def _show_overview(
             "Blocker Diagnostics",
             _candidate_blocker_rows(selected_candidate),
             empty="No blocker diagnostics.",
+        )
+        _show_candidate_opportunity_action_form(
+            engine=engine,
+            selected_candidate=selected_candidate,
+            dashboard_role=dashboard_role,
+        )
+        _show_records(
+            "Saved Candidate Actions",
+            _latest_opportunity_action_rows(
+                engine,
+                selected_candidate.get("ticker"),
+            ),
+            empty="No saved candidate actions.",
         )
         _show_mapping(
             "Research Brief",
@@ -2395,8 +2475,12 @@ def _show_broker_controls(
     *,
     config: AppConfig,
     selected_ticker: str,
+    dashboard_role: Role,
 ) -> None:
     st.subheader("Broker Controls")
+    if not role_allows(dashboard_role, Role.ANALYST):
+        st.caption("Analyst role required for broker control actions.")
+        return
     api_base = _api_base_url(config)
     control_cols = st.columns(4)
     control_cols[0].link_button(
@@ -2432,7 +2516,11 @@ def _show_opportunity_action_form(
     *,
     engine: Any,
     selected_ticker: str,
+    dashboard_role: Role,
 ) -> None:
+    if not role_allows(dashboard_role, Role.ANALYST):
+        st.caption("Analyst role required to save opportunity actions.")
+        return
     with st.form("broker_opportunity_action_form"):
         action = st.selectbox(
             "Opportunity action",
@@ -2456,7 +2544,15 @@ def _show_opportunity_action_form(
             st.error(str(exc))
 
 
-def _show_trigger_form(*, engine: Any, selected_ticker: str) -> None:
+def _show_trigger_form(
+    *,
+    engine: Any,
+    selected_ticker: str,
+    dashboard_role: Role,
+) -> None:
+    if not role_allows(dashboard_role, Role.ANALYST):
+        st.caption("Analyst role required to manage triggers.")
+        return
     left, right = st.columns([1, 1])
     with left.form("broker_trigger_form"):
         trigger_type = st.selectbox(
@@ -2510,7 +2606,11 @@ def _show_order_ticket_form(
     config: AppConfig,
     summary: Mapping[str, Any],
     selected_ticker: str,
+    dashboard_role: Role,
 ) -> None:
+    if not role_allows(dashboard_role, Role.ANALYST):
+        st.caption("Analyst role required to save order previews.")
+        return
     latest_price = _broker_latest_price(summary, selected_ticker)
     with st.form("broker_order_ticket_form"):
         side = st.selectbox("Side", ["buy", "sell"])
@@ -2550,6 +2650,7 @@ def _show_broker_layer(
     engine: Any,
     config: AppConfig,
     candidate_rows: list[dict[str, object]],
+    dashboard_role: Role,
 ) -> None:
     snapshot = _mapping(summary.get("snapshot"))
     exposure = _mapping(summary.get("exposure"))
@@ -2577,18 +2678,31 @@ def _show_broker_layer(
         else st.text_input("Active Ticker", value="").strip().upper()
     )
     if selected_ticker:
-        _show_broker_controls(config=config, selected_ticker=selected_ticker)
+        _show_broker_controls(
+            config=config,
+            selected_ticker=selected_ticker,
+            dashboard_role=dashboard_role,
+        )
         action_col, trigger_col, ticket_col = st.columns([1, 1, 1])
         with action_col:
-            _show_opportunity_action_form(engine=engine, selected_ticker=selected_ticker)
+            _show_opportunity_action_form(
+                engine=engine,
+                selected_ticker=selected_ticker,
+                dashboard_role=dashboard_role,
+            )
         with trigger_col:
-            _show_trigger_form(engine=engine, selected_ticker=selected_ticker)
+            _show_trigger_form(
+                engine=engine,
+                selected_ticker=selected_ticker,
+                dashboard_role=dashboard_role,
+            )
         with ticket_col:
             _show_order_ticket_form(
                 engine=engine,
                 config=config,
                 summary=summary,
                 selected_ticker=selected_ticker,
+                dashboard_role=dashboard_role,
             )
     left, right = st.columns([1, 1])
     with left:
@@ -2673,7 +2787,7 @@ def _show_ops_layer(health: Mapping[str, Any]) -> None:
 
 
 load_app_dotenv()
-require_viewer()
+dashboard_role = require_viewer()
 
 st.set_page_config(page_title="Market Radar Command Center", layout="wide")
 st.markdown(dashboard_style(), unsafe_allow_html=True)
@@ -2780,6 +2894,7 @@ with tabs[0]:
         cost_summary=cost_summary,
         ops_health=ops_health,
         broker_summary=broker_summary,
+        dashboard_role=dashboard_role,
     )
 
 with tabs[1]:
@@ -2806,6 +2921,7 @@ with tabs[7]:
         engine=engine,
         config=config,
         candidate_rows=candidate_rows,
+        dashboard_role=dashboard_role,
     )
 
 with tabs[8]:
