@@ -24,6 +24,7 @@ def test_restart_local_script_restarts_only_market_radar_processes() -> None:
 def test_readme_mentions_restart_script_for_local_dashboard() -> None:
     readme = Path("README.md").read_text(encoding="utf-8")
 
+    assert "scripts/prepare-live-env.ps1" in readme
     assert "scripts/restart-local.ps1" in readme
     assert "scripts/check-live-activation.ps1" in readme
     assert "CATALYST_DAILY_MARKET_PROVIDER=polygon" in readme
@@ -32,6 +33,26 @@ def test_readme_mentions_restart_script_for_local_dashboard() -> None:
     assert "CATALYST_SEC_ENABLE_LIVE=1" in readme
     assert "/api/radar/runs/call-plan" in readme
     assert "CATALYST_MARKET_PROVIDER=polygon" not in readme
+
+
+def test_prepare_live_env_script_writes_only_safe_defaults() -> None:
+    script = Path("scripts/prepare-live-env.ps1")
+    text = script.read_text(encoding="utf-8")
+
+    assert script.is_file()
+    assert "External calls made by this script: 0" in text
+    assert "SCHWAB_ORDER_SUBMISSION_ENABLED" in text
+    assert "false" in text
+    assert "CATALYST_RUN_LLM" in text
+    assert "CATALYST_LLM_DRY_RUN" in text
+    assert "CATALYST_DRY_RUN_ALERTS" in text
+    assert "CATALYST_DAILY_MARKET_PROVIDER" in text
+    assert "CATALYST_DAILY_PROVIDER" in text
+    assert "CATALYST_POLYGON_TICKERS_MAX_PAGES" in text
+    assert "CATALYST_SEC_DAILY_MAX_TICKERS" in text
+    assert "CATALYST_POLYGON_API_KEY=placeholder" not in text
+    assert "OPENAI_API_KEY=" not in text
+    assert "SCHWAB_CLIENT_SECRET=" not in text
 
 
 def test_check_live_activation_script_is_zero_external_call_status_check() -> None:

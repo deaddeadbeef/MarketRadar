@@ -60,9 +60,16 @@ Before any live provider call, run the activation checker and inspect the
 call plan:
 
 ```powershell
+powershell -ExecutionPolicy Bypass -File scripts/prepare-live-env.ps1
 powershell -ExecutionPolicy Bypass -File scripts/check-live-activation.ps1
 curl.exe --insecure --fail --silent --show-error --request POST https://127.0.0.1:8443/api/radar/runs/call-plan --header "Content-Type: application/json" --data '{}'
 ```
+
+`scripts/prepare-live-env.ps1` only writes safe non-secret local defaults such
+as `CATALYST_DAILY_MARKET_PROVIDER=polygon`, low provider caps, disabled order
+submission, and dry-run LLM/alert settings. It makes 0 external calls, does not
+print secrets, and still requires you to fill `CATALYST_POLYGON_API_KEY` and
+`CATALYST_SEC_USER_AGENT` manually.
 
 Schwab broker integration is read-only. Configure the Schwab app credentials,
 callback URL, and `BROKER_TOKEN_ENCRYPTION_KEY` in `.env.local`, then use the
@@ -88,11 +95,13 @@ After editing `.env.local`, run the activation checker before making live
 provider calls:
 
 ```powershell
+powershell -ExecutionPolicy Bypass -File scripts/prepare-live-env.ps1
 powershell -ExecutionPolicy Bypass -File scripts/check-live-activation.ps1
 ```
 
-This reads the local API activation contract only. It makes 0 Polygon, SEC,
-Schwab, or OpenAI calls and prints the missing values plus the safe next
+The preparation script writes local defaults only. The activation checker reads
+the local API activation contract only. Together they make 0 Polygon, SEC,
+Schwab, or OpenAI calls and print the missing values plus the safe next
 commands.
 
 ## Phase 1 rule
