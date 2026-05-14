@@ -38,6 +38,11 @@ telemetry audit events. Use it to confirm whether a dashboard/API action was
 requested, completed, rejected, blocked by a lock, or rate limited before
 rerunning a live operation.
 
+The dashboard **Actionability Breakdown** explains why the current queue is or is
+not ready for investment work. It buckets candidates into buy-review, research,
+watchlist, blocked/risk-review, and monitor groups, then lists the dominant
+risks or gaps plus the next action for each top candidate.
+
 ## Market Data Provider
 
 By default, local runs use fixture CSV market data:

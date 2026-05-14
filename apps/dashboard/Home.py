@@ -746,6 +746,39 @@ def _show_discovery_snapshot(snapshot: Mapping[str, Any]) -> None:
     )
 
 
+def _show_actionability_breakdown(candidate_rows: list[dict[str, object]]) -> None:
+    breakdown = _mapping(dashboard_data.actionability_breakdown_payload(candidate_rows))
+    st.subheader("Actionability Breakdown")
+    status = str(breakdown.get("status") or "unknown")
+    message = (
+        f"{breakdown.get('headline') or 'No actionability summary.'} "
+        f"Next: {breakdown.get('next_action') or 'n/a'}"
+    ).strip()
+    if status == "ready":
+        st.success(message)
+    elif status in {"research", "watchlist"}:
+        st.info(message)
+    elif status == "empty":
+        st.caption(message)
+    else:
+        st.warning(message)
+    _show_records(
+        "Actionability Counts",
+        breakdown.get("counts"),
+        empty="No actionability counts.",
+    )
+    _show_records(
+        "Top Blockers Or Gaps",
+        breakdown.get("top_blockers"),
+        empty="No blockers or gaps.",
+    )
+    _show_records(
+        "Candidate Next Actions",
+        breakdown.get("next_actions"),
+        empty="No candidate next actions.",
+    )
+
+
 def _visible_discovery_rows(value: object) -> list[dict[str, object]]:
     return [
         {key: item for key, item in row.items() if key != "audit"}
@@ -1169,6 +1202,7 @@ def _show_overview(
     _show_universe_coverage(config, ops_health)
     _show_radar_run_controls(config, radar_run_summary)
     _show_discovery_snapshot(discovery_snapshot)
+    _show_actionability_breakdown(candidate_rows)
     _show_records(
         "Opportunity Focus",
         dashboard_data.opportunity_focus_payload(candidate_rows),

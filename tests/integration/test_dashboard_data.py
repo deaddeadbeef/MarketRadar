@@ -28,6 +28,7 @@ from catalyst_radar.brokers.models import (
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.core.models import ActionState
 from catalyst_radar.dashboard.data import (
+    actionability_breakdown_payload,
     activation_summary_payload,
     data_source_coverage_payload,
     live_activation_plan_payload,
@@ -135,6 +136,79 @@ def test_opportunity_focus_payload_promotes_research_briefs(tmp_path: Path) -> N
             "card": "card-msft-latest",
         }
     ]
+
+
+def test_actionability_breakdown_payload_explains_current_queue() -> None:
+    rows = [
+        {
+            "ticker": "MSFT",
+            "state": ActionState.WARNING.value,
+            "final_score": 88.0,
+            "decision_card_id": "card-msft",
+            "research_brief": {
+                "focus": "Research now",
+                "risk_or_gap": "Valuation stretched",
+                "next_step": "Review the Decision Card before any trade action.",
+            },
+        },
+        {
+            "ticker": "AAPL",
+            "state": ActionState.BLOCKED.value,
+            "final_score": 92.0,
+            "research_brief": {
+                "focus": "Blocked",
+                "risk_or_gap": "Hard policy block",
+                "next_step": "Do not escalate until hard blocks clear.",
+            },
+        },
+        {
+            "ticker": "NVDA",
+            "state": ActionState.BLOCKED.value,
+            "final_score": 91.0,
+            "research_brief": {
+                "focus": "Blocked",
+                "risk_or_gap": "Hard policy block",
+                "next_step": "Do not escalate until hard blocks clear.",
+            },
+        },
+    ]
+
+    payload = actionability_breakdown_payload(rows)
+
+    assert payload["status"] == "research"
+    assert payload["total_candidates"] == 3
+    assert payload["counts"] == [
+        {"bucket": "Research now", "count": 1},
+        {"bucket": "Blocked or risk review", "count": 2},
+    ]
+    assert payload["top_blockers"][0] == {
+        "risk_or_gap": "Hard policy block",
+        "count": 2,
+        "sample_tickers": "AAPL, NVDA",
+    }
+    assert payload["next_actions"][0]["ticker"] == "MSFT"
+    assert payload["next_actions"][0]["card"] == "card-msft"
+
+
+def test_actionability_breakdown_payload_flags_buy_review_ready() -> None:
+    payload = actionability_breakdown_payload(
+        [
+            {
+                "ticker": "MSFT",
+                "state": ActionState.ELIGIBLE_FOR_MANUAL_BUY_REVIEW.value,
+                "final_score": 96.0,
+                "decision_card_id": "card-msft",
+                "research_brief": {
+                    "risk_or_gap": "Position size needs review",
+                    "next_step": "Review the Decision Card before any trade action.",
+                },
+            }
+        ]
+    )
+
+    assert payload["status"] == "ready"
+    assert payload["counts"] == [{"bucket": "Buy-review ready", "count": 1}]
+    assert "ready for manual buy review" in str(payload["headline"])
 
 
 def test_data_source_coverage_payload_marks_fixture_and_read_only_modes() -> None:
