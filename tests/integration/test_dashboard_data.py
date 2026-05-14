@@ -1679,14 +1679,27 @@ def test_live_data_activation_contract_gives_exact_safe_next_steps() -> None:
         },
     ]
     assert [row["step"] for row in contract["operator_steps"]] == [1, 2, 3, 4, 5, 6]
-    assert "scripts/restart-local.ps1" in str(contract["operator_steps"][1]["command"])
+    assert "scripts/prepare-live-env.ps1" in str(
+        contract["operator_steps"][0]["command"]
+    )
+    assert "notepad .env.local" in str(contract["operator_steps"][1]["command"])
+    assert "scripts/restart-local.ps1" in str(contract["operator_steps"][2]["command"])
+    assert "scripts/run-first-live-smoke.ps1" in str(
+        contract["operator_steps"][3]["command"]
+    )
+    assert "-Execute" not in str(contract["operator_steps"][3]["command"])
+    assert "scripts/run-first-live-smoke.ps1 -Execute" in str(
+        contract["operator_steps"][4]["command"]
+    )
     operator_commands = "\n".join(str(row["command"]) for row in contract["operator_steps"])
     assert "curl.exe --insecure --fail" in operator_commands
     assert "Invoke-RestMethod" not in operator_commands
     assert "SkipCertificateCheck" not in operator_commands
-    assert "--data '{\"provider\":\"polygon\",\"max_pages\":1}'" in operator_commands
-    assert "runs/call-plan" in str(contract["operator_steps"][3]["command"])
-    assert "runs" in str(contract["operator_steps"][4]["command"])
+    assert "--data '{\"provider\":\"polygon\",\"max_pages\":1}'" not in operator_commands
+    assert "runs/call-plan" not in operator_commands
+    assert "run-first-live-smoke.ps1 -Execute" in str(
+        contract["operator_steps"][4]["command"]
+    )
     env_template = {str(row["name"]): row for row in contract["env_template"]}
     assert env_template["CATALYST_DAILY_PROVIDER"]["configured"] is False
     assert env_template["CATALYST_DAILY_PROVIDER"]["current"] == "missing"
