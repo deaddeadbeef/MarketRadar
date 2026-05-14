@@ -121,6 +121,91 @@ def test_dashboard_candidate_queue_surfaces_blocker_diagnostics() -> None:
     assert "transition_reasons" in overview_source
 
 
+def test_dashboard_overview_wires_candidate_opportunity_actions() -> None:
+    source = Path("apps/dashboard/Home.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    functions = {
+        node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)
+    }
+    overview_source = ast.get_source_segment(source, functions["_show_overview"])
+
+    assert "_latest_opportunity_action_rows" in functions
+    assert "_show_candidate_opportunity_action_form" in functions
+    assert overview_source is not None
+    assert "Saved Candidate Actions" in overview_source
+    assert "_show_candidate_opportunity_action_form" in overview_source
+    assert overview_source.index("_show_candidate_opportunity_action_form") < (
+        overview_source.index("Saved Candidate Actions")
+    )
+
+
+def test_latest_opportunity_action_rows_queries_repository_by_selected_ticker(
+    monkeypatch,
+) -> None:
+    module = _load_dashboard_module()
+    captured = {}
+
+    class FakeRepo:
+        def __init__(self, engine) -> None:
+            captured["engine"] = engine
+
+        def list_opportunity_actions(self, *, ticker=None, limit=100):
+            captured["ticker"] = ticker
+            captured["limit"] = limit
+            return [
+                {"ticker": ticker, "action": "watch"},
+                {"ticker": ticker, "action": "ready"},
+            ]
+
+    monkeypatch.setattr(module, "BrokerRepository", FakeRepo)
+    monkeypatch.setattr(module, "opportunity_action_payload", lambda row: row)
+    engine = object()
+
+    rows = module._latest_opportunity_action_rows(engine, "msft")  # noqa: SLF001
+
+    assert [row["action"] for row in rows] == ["watch", "ready"]
+    assert captured == {"engine": engine, "ticker": "MSFT", "limit": 3}
+
+
+def test_candidate_opportunity_action_form_requires_analyst_role() -> None:
+    source = Path("apps/dashboard/Home.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    functions = {
+        node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)
+    }
+    helper_source = ast.get_source_segment(
+        source,
+        functions["_show_candidate_opportunity_action_form"],
+    )
+
+    assert helper_source is not None
+    assert "role_allows(dashboard_role, Role.ANALYST)" in helper_source
+    assert "record_opportunity_action" in helper_source
+
+
+def test_broker_write_controls_require_analyst_role() -> None:
+    source = Path("apps/dashboard/Home.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    functions = {
+        node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)
+    }
+
+    for name in [
+        "_show_broker_controls",
+        "_show_opportunity_action_form",
+        "_show_trigger_form",
+        "_show_order_ticket_form",
+    ]:
+        helper_source = ast.get_source_segment(source, functions[name])
+        assert helper_source is not None
+        assert "role_allows(dashboard_role, Role.ANALYST)" in helper_source
+
+    broker_source = ast.get_source_segment(source, functions["_show_broker_layer"])
+    assert broker_source is not None
+    assert "dashboard_role: Role" in broker_source
+    assert "dashboard_role=dashboard_role" in broker_source
+
+
 def test_dashboard_wires_candidate_delta_before_actionability() -> None:
     tree = ast.parse(Path("apps/dashboard/Home.py").read_text(encoding="utf-8"))
     functions = {
