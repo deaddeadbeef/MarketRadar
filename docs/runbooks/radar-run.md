@@ -48,6 +48,11 @@ required stage was waiting for input, such as missing text snippets or active
 securities. The dashboard keeps those rows in the required path and shows the
 run as incomplete instead of counting them as expected optional skips.
 
+The manual **LLM dry run** option verifies the agent-review path without calling
+OpenAI. It reviews Warning, ThesisWeakening, and manual-review candidate packets;
+it no longer waits for Decision Cards, because those are later buy-review
+artifacts.
+
 The dashboard **Recent Radar Telemetry** tape is a compact view of append-only
 telemetry audit events. Use it to confirm whether a dashboard/API action was
 requested, completed, rejected, blocked by a lock, or rate limited before

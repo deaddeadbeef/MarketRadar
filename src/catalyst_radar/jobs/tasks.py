@@ -36,7 +36,7 @@ from catalyst_radar.jobs.step_outcomes import (
 )
 from catalyst_radar.ops.health import DISABLED_DEGRADED_STATES, load_ops_health
 from catalyst_radar.ops.telemetry import record_telemetry_event
-from catalyst_radar.pipeline.candidate_packet import build_candidate_packet
+from catalyst_radar.pipeline.candidate_packet import CandidatePacket, build_candidate_packet
 from catalyst_radar.pipeline.scan import ScanResult, run_scan
 from catalyst_radar.storage.alert_repositories import AlertRepository
 from catalyst_radar.storage.candidate_packet_repositories import CandidatePacketRepository
@@ -78,6 +78,13 @@ EVENT_SCHEDULED_PROVIDER_NAMES = (
     NEWS_SCHEDULED_EVENT_PROVIDER_NAMES | SEC_SCHEDULED_EVENT_PROVIDER_NAMES
 )
 DISABLED_SCHEDULED_PROVIDER_NAMES = frozenset({"", "none", "off", "disabled"})
+LLM_REVIEW_PACKET_STATES = frozenset(
+    {
+        ActionState.WARNING,
+        ActionState.THESIS_WEAKENING,
+        ActionState.ELIGIBLE_FOR_MANUAL_BUY_REVIEW,
+    }
+)
 logger = logging.getLogger("catalyst_radar.jobs.tasks")
 
 
@@ -844,23 +851,39 @@ def _llm_review(context: _DailyRunContext) -> _StepOutcome:
             "degraded_mode_blocks_llm_review",
             payload={"degraded_mode": _degraded_payload(context)},
         )
-    if not context.decision_cards:
-        return _skipped("no_llm_review_inputs")
+    review_packets = _llm_review_candidate_packets(context)
+    if not review_packets:
+        return _skipped(
+            "no_llm_review_inputs",
+            requested_count=len(context.candidate_packets),
+            payload={
+                "candidate_packet_count": len(context.candidate_packets),
+                "candidate_packet_state_counts": _candidate_packet_state_counts(
+                    context.candidate_packets
+                ),
+                "eligible_states": sorted(
+                    state.value for state in LLM_REVIEW_PACKET_STATES
+                ),
+            },
+        )
     if context.spec.llm_dry_run:
         return _StepOutcome(
             status=JobStatus.SUCCESS.value,
-            requested_count=len(context.decision_cards),
+            requested_count=len(review_packets),
             raw_count=0,
-            normalized_count=len(context.decision_cards),
+            normalized_count=len(review_packets),
             reason="dry_run_only",
             payload={
                 "dry_run": True,
-                "reviewed_card_count": len(context.decision_cards),
+                "review_task": "skeptic_review",
+                "reviewed_packet_count": len(review_packets),
+                "reviewed_tickers": [packet.ticker for packet in review_packets],
+                "candidate_packet_ids": [packet.id for packet in review_packets],
             },
         )
     return _StepOutcome(
         status=JobStatus.FAILED.value,
-        requested_count=len(context.decision_cards),
+        requested_count=len(review_packets),
         reason="real_llm_review_not_configured",
         payload={"dry_run": False},
     )
@@ -1298,6 +1321,24 @@ def _filter_alerts_by_tickers(alerts: list[Any], tickers: tuple[str, ...]) -> tu
         return tuple(alerts)
     allowed = set(tickers)
     return tuple(alert for alert in alerts if alert.ticker in allowed)
+
+
+def _llm_review_candidate_packets(context: _DailyRunContext) -> tuple[CandidatePacket, ...]:
+    return tuple(
+        packet
+        for packet in context.candidate_packets
+        if packet.state in LLM_REVIEW_PACKET_STATES
+    )
+
+
+def _candidate_packet_state_counts(
+    packets: tuple[CandidatePacket, ...],
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for packet in packets:
+        state = packet.state.value
+        counts[state] = counts.get(state, 0) + 1
+    return counts
 
 
 def _current_scan_tickers(context: _DailyRunContext) -> tuple[str, ...]:
