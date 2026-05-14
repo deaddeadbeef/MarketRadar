@@ -1904,6 +1904,74 @@ def _candidate_blocker_rows(row: Mapping[str, object]) -> list[dict[str, object]
     return rows
 
 
+def _candidate_decision_brief_rows(row: Mapping[str, object]) -> list[dict[str, object]]:
+    brief = _mapping(row.get("research_brief"))
+    support = _mapping(row.get("top_supporting_evidence"))
+    risk = _mapping(row.get("top_disconfirming_evidence"))
+    source = _first_present(
+        brief.get("source"),
+        support.get("source_id"),
+        support.get("kind"),
+    )
+    source_url = _first_present(
+        brief.get("source_url"),
+        support.get("source_url"),
+    )
+    return [
+        {
+            "question": "Why now",
+            "answer": _first_present(
+                brief.get("why_now"),
+                row.get("top_event_title"),
+                _evidence_label(support),
+                "No catalyst summary captured.",
+            ),
+        },
+        {
+            "question": "Best evidence",
+            "answer": _first_present(
+                brief.get("supporting_evidence"),
+                row.get("supporting_evidence"),
+                _evidence_label(support),
+                "No supporting evidence captured.",
+            ),
+        },
+        {
+            "question": "Risk or gap",
+            "answer": _first_present(
+                brief.get("risk_or_gap"),
+                row.get("blocker_summary"),
+                row.get("disconfirming_evidence"),
+                _evidence_label(risk),
+                "No risk or gap captured.",
+            ),
+        },
+        {
+            "question": "Candidate next step",
+            "answer": _first_present(
+                row.get("decision_next_step"),
+                brief.get("next_step"),
+                "Review the candidate before escalation.",
+            ),
+        },
+        {
+            "question": "Readiness gate",
+            "answer": _first_present(
+                row.get("decision_readiness_gate"),
+                "No global readiness gate is blocking this row.",
+            ),
+        },
+        {
+            "question": "Source",
+            "answer": (
+                _url_link(source, source_url)
+                if source not in (None, "")
+                else _first_present(source_url, "No source reference captured.")
+            ),
+        },
+    ]
+
+
 def _latest_opportunity_action_rows(
     engine: object,
     ticker: object,
@@ -2203,6 +2271,11 @@ def _show_overview(
                 ("Setup", selected_candidate.get("setup_type")),
                 ("Schwab", selected_candidate.get("schwab_context_status")),
             ]
+        )
+        _show_records(
+            "Decision Brief",
+            _candidate_decision_brief_rows(selected_candidate),
+            empty="No decision brief.",
         )
         _show_mapping(
             "Selected Candidate",
