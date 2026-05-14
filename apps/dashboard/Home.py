@@ -839,7 +839,7 @@ def _show_radar_run_summary(summary: Mapping[str, Any]) -> None:
     )
     metric_cols = st.columns(5)
     metric_cols[0].metric(
-        "Run Steps",
+        "All Steps",
         int(_metric_number(summary.get("step_count"))),
     )
     metric_cols[1].metric(
@@ -847,8 +847,8 @@ def _show_radar_run_summary(summary: Mapping[str, Any]) -> None:
         f"{min(completed_required_count, required_stage_count)}/{required_stage_count}",
     )
     metric_cols[2].metric("Action Needed", blocking_count)
-    metric_cols[3].metric("Expected Skips", expected_gate_count)
-    metric_cols[4].metric("Skipped Raw", raw_skipped_count)
+    metric_cols[3].metric("Expected Gates", expected_gate_count)
+    metric_cols[4].metric("Raw Skipped", raw_skipped_count)
     volume_cols = st.columns(3)
     volume_cols[0].metric("Requested", int(_metric_number(summary.get("requested_count"))))
     volume_cols[1].metric("Raw", int(_metric_number(summary.get("raw_count"))))
@@ -1267,6 +1267,10 @@ def _show_radar_operator_sections(
             empty="No blocked run steps.",
         )
     else:
+        st.caption(
+            "Required scan stages are separated from optional gates; raw skipped "
+            "telemetry is audit-only."
+        )
         _show_records(
             "Required Run Path" if not last_run else "Last Required Run Path",
             _operator_required_rows(required_rows),
@@ -1283,7 +1287,7 @@ def _show_radar_operator_sections(
                 _operator_optional_rows(optional_rows),
                 empty="No optional gate telemetry.",
             )
-    with st.expander("Diagnostic raw step telemetry"):
+    with st.expander("Audit: raw step telemetry"):
         st.caption("Raw status/reason records are kept here for audit and debugging.")
         _show_records(
             "Raw Step Telemetry",
@@ -1351,8 +1355,15 @@ def _show_radar_run_result_notice(
 ) -> None:
     status = _metric_text(daily_result.get("status") or fallback_reason or "unknown")
     blocking_messages = _radar_run_limiting_messages(daily_result, blocking_only=True)
+    optional_gate_count = _radar_expected_gate_count(daily_result)
     if status == "success" and not blocking_messages:
-        st.success("Radar run status: success")
+        if optional_gate_count:
+            st.success(
+                "Radar run status: success. Required path completed; "
+                f"{optional_gate_count} optional gate(s) did not trigger."
+            )
+        else:
+            st.success("Radar run status: success. Required path completed.")
     elif status == "failed":
         st.error(f"Radar run status: {status}")
     elif blocking_messages:
@@ -1361,6 +1372,23 @@ def _show_radar_run_result_notice(
         st.info(f"Radar run status: {status}. No blocking scan failures detected.")
     for message in blocking_messages[:6]:
         st.caption(message)
+
+
+def _radar_expected_gate_count(daily_result: Mapping[str, Any]) -> int:
+    count = 0
+    for step in _mapping(daily_result.get("steps")).values():
+        step_mapping = _mapping(step)
+        category = str(step_mapping.get("category") or "")
+        if category == "expected_gate":
+            count += 1
+            continue
+        classification = classify_step_outcome(
+            str(step_mapping.get("status") or ""),
+            str(step_mapping.get("reason") or "") or None,
+        )
+        if classification.category == "expected_gate":
+            count += 1
+    return count
 
 
 def _radar_default_as_of(radar_run_summary: Mapping[str, Any]) -> date:

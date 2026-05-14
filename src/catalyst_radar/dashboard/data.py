@@ -2398,6 +2398,16 @@ def readiness_checklist_payload(
                 _step_evidence("decision_cards", decision_step),
             )
         )
+    elif decision_reason == "no_candidate_packets":
+        rows.append(
+            _readiness_row(
+                "Decision Cards",
+                "blocked",
+                "Decision Cards did not run because no candidate packets were produced.",
+                "Fix packet generation or loosen the warning threshold before expecting cards.",
+                _step_evidence("decision_cards", decision_step),
+            )
+        )
     elif decision_category == "expected_gate":
         rows.append(
             _readiness_row(
@@ -2522,8 +2532,11 @@ def readiness_checklist_payload(
             _readiness_row(
                 "Alerting",
                 "optional",
-                "No alerts were generated in the latest run.",
-                "Use candidates/research briefs for manual triage or tune alert thresholds.",
+                "No existing alerts were available for the latest digest step.",
+                (
+                    "Use candidates/research briefs for manual triage, or add alert "
+                    "planning before digest automation."
+                ),
                 _step_evidence("digest", digest_step),
             )
         )

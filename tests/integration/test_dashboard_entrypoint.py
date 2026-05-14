@@ -87,15 +87,16 @@ def test_dashboard_radar_run_summary_uses_operator_skip_labels() -> None:
     )
 
     assert summary_source is not None
-    assert "Run Steps" in summary_source
-    assert "Expected Skips" in summary_source
-    assert "Skipped Raw" in summary_source
+    assert "All Steps" in summary_source
+    assert "Expected Gates" in summary_source
+    assert "Raw Skipped" in summary_source
     assert "Tracked Stages" not in summary_source
     assert "Raw Records" not in summary_source
     assert "optional_expected_gate_count" in summary_source
     assert "required_incomplete_count" in summary_source
     assert sections_source is not None
     assert "Expected skipped gates" in sections_source
+    assert "Audit: raw step telemetry" in sections_source
 
 
 def test_dashboard_wires_operator_work_queue_before_activation_sections() -> None:

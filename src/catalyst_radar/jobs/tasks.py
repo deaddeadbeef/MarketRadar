@@ -723,7 +723,11 @@ def _candidate_packets(context: _DailyRunContext) -> _StepOutcome:
         states=_states_at_or_above(ActionState.WARNING),
     )
     if not inputs:
-        return _skipped("no_warning_or_higher_candidates")
+        return _skipped(
+            "no_warning_or_higher_candidates",
+            requested_count=len(context.scan_results),
+            payload=_scan_result_summary_payload(context),
+        )
 
     packets = []
     for item in inputs:
@@ -780,6 +784,25 @@ def _decision_cards(context: _DailyRunContext) -> _StepOutcome:
         for packet in context.candidate_packets
         if packet.state == ActionState.ELIGIBLE_FOR_MANUAL_BUY_REVIEW
     )
+    if not context.candidate_packets:
+        packet_step = context.step_results.get("candidate_packets")
+        return _skipped(
+            "no_candidate_packets",
+            payload={
+                "candidate_packets_status": (
+                    packet_step.status if packet_step is not None else None
+                ),
+                "candidate_packets_reason": (
+                    packet_step.reason if packet_step is not None else None
+                ),
+                "candidate_packets_requested_count": (
+                    packet_step.requested_count if packet_step is not None else 0
+                ),
+                "candidate_packets_normalized_count": (
+                    packet_step.normalized_count if packet_step is not None else 0
+                ),
+            },
+        )
     if not eligible_packets:
         return _skipped("no_manual_buy_review_inputs")
 
@@ -1213,6 +1236,38 @@ def _filter_alerts_by_tickers(alerts: list[Any], tickers: tuple[str, ...]) -> tu
         return tuple(alerts)
     allowed = set(tickers)
     return tuple(alert for alert in alerts if alert.ticker in allowed)
+
+
+def _scan_result_summary_payload(context: _DailyRunContext) -> dict[str, Any]:
+    state_counts: dict[str, int] = {}
+    top_candidates: list[dict[str, Any]] = []
+    max_score: float | None = None
+    max_state: str | None = None
+    for result in context.scan_results:
+        state = result.policy.state.value
+        state_counts[state] = state_counts.get(state, 0) + 1
+        score = float(result.candidate.final_score)
+        if max_score is None or score > max_score:
+            max_score = score
+            max_state = state
+        if len(top_candidates) < 5:
+            top_candidates.append(
+                {
+                    "ticker": result.ticker,
+                    "state": state,
+                    "score": round(score, 2),
+                    "hard_blocks": list(result.policy.hard_blocks),
+                    "reasons": list(result.policy.reasons),
+                }
+            )
+    return {
+        "scored_candidate_count": len(context.scan_results),
+        "warning_threshold_state": ActionState.WARNING.value,
+        "state_counts": state_counts,
+        "max_score": round(max_score, 2) if max_score is not None else None,
+        "max_state": max_state,
+        "top_scored_candidates": top_candidates,
+    }
 
 
 def _visible_event_count(context: _DailyRunContext) -> int:
