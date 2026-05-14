@@ -534,6 +534,9 @@ def test_dashboard_wires_live_data_activation_contract_after_plan() -> None:
     assert contract_source is not None
     assert "minimum_env_lines" in contract_source
     assert "Minimum .env.local block" in contract_source
+    assert "Worker automation handoff" in contract_source
+    assert "worker_env_lines" in contract_source
+    assert "worker_commands" in contract_source
 
 
 def test_dashboard_wires_alert_planning_diagnostics_after_readiness() -> None:

@@ -16,6 +16,10 @@ def test_env_example_covers_live_activation_keys() -> None:
         "CATALYST_SEC_USER_AGENT",
         "CATALYST_SEC_DAILY_MAX_TICKERS",
         "CATALYST_RADAR_RUN_MIN_INTERVAL_SECONDS",
+        "CATALYST_WORKER_INTERVAL_SECONDS",
+        "CATALYST_WORKER_LOCK_TTL_SECONDS",
+        "CATALYST_WORKER_OWNER",
+        "CATALYST_WORKER_LOCK_NAME",
         "CATALYST_ENABLE_PREMIUM_LLM",
         "CATALYST_LLM_PROVIDER",
         "CATALYST_LLM_SKEPTIC_MODEL",
@@ -44,6 +48,9 @@ def test_env_example_defaults_are_safe_fixture_and_dry_run() -> None:
     assert values["CATALYST_RUN_LLM"] == "false"
     assert values["CATALYST_LLM_DRY_RUN"] == "true"
     assert values["CATALYST_DRY_RUN_ALERTS"] == "true"
+    assert values["CATALYST_WORKER_INTERVAL_SECONDS"] == "86400"
+    assert values["CATALYST_WORKER_LOCK_TTL_SECONDS"] == "2700"
+    assert values["CATALYST_WORKER_LOCK_NAME"] == "daily-run"
     assert values["SCHWAB_ORDER_SUBMISSION_ENABLED"] == "false"
 
 

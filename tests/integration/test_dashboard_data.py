@@ -1419,6 +1419,15 @@ def test_live_data_activation_contract_gives_exact_safe_next_steps() -> None:
         "CATALYST_RADAR_RUN_MIN_INTERVAL_SECONDS=300",
     ]
     assert not any("OPENAI_API_KEY" in line for line in contract["minimum_env_lines"])
+    assert contract["worker_env_lines"] == [
+        "CATALYST_WORKER_INTERVAL_SECONDS=86400",
+        "CATALYST_WORKER_LOCK_TTL_SECONDS=2700",
+        "CATALYST_RUN_LLM=false",
+        "CATALYST_LLM_DRY_RUN=true",
+        "CATALYST_DRY_RUN_ALERTS=true",
+    ]
+    assert contract["worker_commands"][0]["mode"] == "one-shot smoke"
+    assert "python -m apps.worker.main" in str(contract["worker_commands"][0]["command"])
     assert contract["call_budget_if_activated"] == [
         {
             "operation": "read this activation contract",

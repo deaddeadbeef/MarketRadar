@@ -571,6 +571,20 @@ def _show_live_data_activation_contract(
         contract.get("operator_steps"),
         empty="No activation steps.",
     )
+    with st.expander("Worker automation handoff"):
+        worker_env_lines = [
+            str(item) for item in _sequence(contract.get("worker_env_lines"))
+        ]
+        if worker_env_lines:
+            st.caption(
+                "Use these dry-run-safe worker settings after live inputs are configured."
+            )
+            st.code("\n".join(worker_env_lines), language="text")
+        _show_records(
+            "Worker Commands",
+            contract.get("worker_commands"),
+            empty="No worker commands.",
+        )
     with st.expander("Environment template"):
         env_lines = [
             f"{row.get('name')}={row.get('value_template')}"
