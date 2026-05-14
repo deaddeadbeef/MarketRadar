@@ -77,6 +77,29 @@ def test_dashboard_shows_radar_call_plan_before_run_post() -> None:
     assert plan_line < post_line
 
 
+def test_dashboard_manual_radar_run_button_uses_call_plan_mode() -> None:
+    source = Path("apps/dashboard/Home.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    functions = {
+        node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)
+    }
+    controls_source = ast.get_source_segment(source, functions["_show_radar_run_controls"])
+    label_source = ast.get_source_segment(source, functions["_radar_run_button_label"])
+    help_source = ast.get_source_segment(source, functions["_radar_run_button_help"])
+
+    assert controls_source is not None
+    assert label_source is not None
+    assert help_source is not None
+    assert "call_plan_blocked" in controls_source
+    assert "_radar_run_button_label(call_plan)" in controls_source
+    assert "_radar_run_button_help(cooldown_allowed, call_plan)" in controls_source
+    assert "disabled=(not cooldown_allowed) or call_plan_blocked" in controls_source
+    assert "Run Fixture Smoke" in label_source
+    assert "Run Capped Live Radar" in label_source
+    assert "Fix Run Setup First" in label_source
+    assert "not live market discovery" in help_source
+
+
 def test_dashboard_manual_radar_run_uses_default_scope_payload() -> None:
     source = Path("apps/dashboard/Home.py").read_text(encoding="utf-8")
     tree = ast.parse(source)
