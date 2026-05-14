@@ -93,6 +93,13 @@ The Streamlit dashboard includes a **Broker** tab with:
 - balances,
 - open orders.
 
+Stored market-context snapshots are also joined into the Overview candidate
+queue, research shortlist, and opportunity focus rows. This join is read-only:
+rendering the dashboard does not call Schwab. Only the explicit market refresh
+control or `/api/brokers/schwab/market-sync` endpoint can make Schwab market-data
+requests, and those calls remain guarded by the configured ticker cap and
+cooldown.
+
 For local HTTPS OAuth callbacks, the dashboard infers the API origin from
 `SCHWAB_REDIRECT_URI`. If the API server is not running, dashboard action
 buttons fail visibly without changing stored data.

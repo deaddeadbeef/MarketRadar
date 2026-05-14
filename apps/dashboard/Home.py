@@ -1199,11 +1199,14 @@ def _show_decision_contract(readiness: Mapping[str, Any]) -> None:
 def _show_research_shortlist(
     candidate_rows: list[dict[str, object]],
     investment_readiness: Mapping[str, Any],
+    *,
+    market_context: object = (),
 ) -> None:
     shortlist = _mapping(
         dashboard_data.research_shortlist_payload(
             candidate_rows,
             investment_readiness,
+            market_context=market_context,
         )
     )
     st.subheader("Research Shortlist")
@@ -1823,6 +1826,11 @@ def _show_overview(
     alert_frame = pd.DataFrame(alert_rows)
     validation_report = _mapping(validation_summary.get("report"))
     database = _mapping(ops_health.get("database"))
+    market_context = broker_summary.get("market_context")
+    display_candidate_rows = dashboard_data.candidate_rows_with_market_context(
+        candidate_rows,
+        market_context,
+    )
 
     metric_cols = st.columns(6)
     metric_cols[0].metric("Candidates", len(candidate_rows))
@@ -1855,12 +1863,16 @@ def _show_overview(
     _show_discovery_snapshot(discovery_snapshot)
     investment_readiness = _show_investment_readiness(discovery_snapshot, candidate_rows)
     _show_decision_contract(investment_readiness)
-    _show_research_shortlist(candidate_rows, investment_readiness)
+    _show_research_shortlist(
+        candidate_rows,
+        investment_readiness,
+        market_context=market_context,
+    )
     _show_candidate_delta(engine, radar_run_summary)
     _show_actionability_breakdown(candidate_rows)
     _show_records(
         "Opportunity Focus",
-        dashboard_data.opportunity_focus_payload(candidate_rows),
+        dashboard_data.opportunity_focus_payload(display_candidate_rows),
         empty="No opportunity focus rows.",
     )
     _show_records(
@@ -1921,13 +1933,17 @@ def _show_overview(
     with left:
         st.subheader("Candidate Queue")
         selected_candidate = _table(
-            _candidate_rows_with_labels(candidate_rows, investment_readiness),
+            _candidate_rows_with_labels(display_candidate_rows, investment_readiness),
             columns=[
                 "ticker",
                 "decision_status",
                 "state",
                 "final_score",
                 "setup_type",
+                "schwab_last_price",
+                "schwab_day_change_percent",
+                "schwab_relative_volume",
+                "schwab_context_status",
                 "top_event_type",
                 "supporting_evidence",
                 "blocker_summary",
@@ -1941,6 +1957,10 @@ def _show_overview(
                 "state": "State",
                 "final_score": "Score",
                 "setup_type": "Setup",
+                "schwab_last_price": "Schwab Price",
+                "schwab_day_change_percent": "Schwab %",
+                "schwab_relative_volume": "Schwab RVOL",
+                "schwab_context_status": "Schwab Context",
                 "top_event_type": "Top Event",
                 "supporting_evidence": "Evidence",
                 "blocker_summary": "Risk / Blocker",
@@ -1964,6 +1984,7 @@ def _show_overview(
                 ("Decision", selected_candidate.get("decision_status")),
                 ("Priority Score", selected_candidate.get("final_score")),
                 ("Setup", selected_candidate.get("setup_type")),
+                ("Schwab", selected_candidate.get("schwab_context_status")),
             ]
         )
         _show_mapping(
@@ -1975,6 +1996,20 @@ def _show_overview(
                 "state": selected_candidate.get("state"),
                 "score": selected_candidate.get("final_score"),
                 "top_event": selected_candidate.get("top_event_title"),
+                "schwab_last_price": selected_candidate.get("schwab_last_price"),
+                "schwab_day_change_percent": selected_candidate.get(
+                    "schwab_day_change_percent"
+                ),
+                "schwab_relative_volume": selected_candidate.get(
+                    "schwab_relative_volume"
+                ),
+                "schwab_price_trend_5d_percent": selected_candidate.get(
+                    "schwab_price_trend_5d_percent"
+                ),
+                "schwab_option_call_put_ratio": selected_candidate.get(
+                    "schwab_option_call_put_ratio"
+                ),
+                "schwab_market_as_of": selected_candidate.get("schwab_market_as_of"),
                 "supporting_evidence": selected_candidate.get("supporting_evidence"),
                 "disconfirming_evidence": selected_candidate.get("disconfirming_evidence"),
                 "blocker_summary": selected_candidate.get("blocker_summary"),

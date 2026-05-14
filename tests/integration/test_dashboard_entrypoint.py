@@ -138,6 +138,8 @@ def test_dashboard_candidate_queue_surfaces_blocker_diagnostics() -> None:
     assert overview_source is not None
     assert "Risk / Blocker" in overview_source
     assert "Blocker Diagnostics" in overview_source
+    assert "Schwab Price" in overview_source
+    assert "Schwab RVOL" in overview_source
     assert "hard_blocks" in overview_source
     assert "transition_reasons" in overview_source
 
