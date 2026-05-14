@@ -4686,8 +4686,10 @@ def _activation_missing_env(config: AppConfig) -> list[str]:
 def _market_activation_missing_env(config: AppConfig) -> list[str]:
     items: list[str] = []
     market_provider = _provider_name(config.daily_market_provider, default="csv")
+    scan_provider = _provider_name(config.daily_provider, default="")
     if market_provider != "polygon":
         items.append("CATALYST_DAILY_MARKET_PROVIDER=polygon")
+    if scan_provider != "polygon":
         items.append("CATALYST_DAILY_PROVIDER=polygon")
     if not config.polygon_api_key:
         items.append("CATALYST_POLYGON_API_KEY")
@@ -4806,9 +4808,8 @@ def _live_data_env_template(config: AppConfig) -> list[dict[str, object]]:
         _activation_env_row(
             "CATALYST_DAILY_PROVIDER",
             "polygon",
-            configured=_provider_name(config.daily_market_provider, default="csv")
-            == "polygon",
-            current="aligned with CATALYST_DAILY_MARKET_PROVIDER",
+            configured=_provider_name(config.daily_provider, default="") == "polygon",
+            current=_provider_name(config.daily_provider, default="missing"),
         ),
         _activation_env_row(
             "CATALYST_POLYGON_API_KEY",
@@ -4993,8 +4994,10 @@ def _dotenv_value_set(value: object) -> bool:
 
 
 def _dotenv_key_loaded(config: AppConfig, key: str) -> bool:
-    if key in {"CATALYST_DAILY_MARKET_PROVIDER", "CATALYST_DAILY_PROVIDER"}:
+    if key == "CATALYST_DAILY_MARKET_PROVIDER":
         return config.daily_market_provider.strip().lower() == "polygon"
+    if key == "CATALYST_DAILY_PROVIDER":
+        return _provider_name(config.daily_provider, default="") == "polygon"
     if key == "CATALYST_POLYGON_API_KEY":
         return bool(config.polygon_api_key)
     if key == "CATALYST_DAILY_EVENT_PROVIDER":

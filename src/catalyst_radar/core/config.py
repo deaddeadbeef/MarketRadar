@@ -157,6 +157,7 @@ class AppConfig:
     broker_token_encryption_key: str | None = None
     http_timeout_seconds: float = 10.0
     provider_availability_policy: str = "live_fetch"
+    daily_provider: str | None = None
     daily_market_provider: str = "csv"
     csv_securities_path: str = "data/sample/securities.csv"
     csv_daily_bars_path: str = "data/sample/daily_bars.csv"
@@ -291,6 +292,7 @@ class AppConfig:
             provider_availability_policy=source.get(
                 "CATALYST_PROVIDER_AVAILABILITY_POLICY", "live_fetch"
             ),
+            daily_provider=_optional_str(source, "CATALYST_DAILY_PROVIDER"),
             daily_market_provider=source.get(
                 "CATALYST_DAILY_MARKET_PROVIDER", "csv"
             ).strip(),
