@@ -230,6 +230,22 @@ def radar_readiness() -> dict[str, object]:
     )
 
 
+@router.post("/runs/call-plan", dependencies=[Depends(require_role(Role.VIEWER))])
+def radar_run_call_plan(request: RadarRunRequest) -> dict[str, object]:
+    call_plan_payload = _dashboard_helper("radar_run_call_plan_payload")
+    return call_plan_payload(
+        _engine(),
+        AppConfig.from_env(),
+        as_of=request.as_of,
+        provider=request.provider,
+        universe=request.universe,
+        tickers=request.tickers,
+        run_llm=request.run_llm,
+        llm_dry_run=request.llm_dry_run,
+        dry_run_alerts=request.dry_run_alerts,
+    )
+
+
 @router.post("/universe/seed", dependencies=[Depends(require_role(Role.ANALYST))])
 def seed_universe(
     request: UniverseSeedRequest,

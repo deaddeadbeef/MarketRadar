@@ -154,6 +154,24 @@ tape. Use `safe_to_make_investment_decision=false` as a hard stop; high scores
 remain research-only until this endpoint says the queue is ready for
 `manual_buy_review`.
 
+To inspect the external call budget for a proposed radar run without starting
+the run:
+
+```powershell
+Invoke-RestMethod `
+  -Method Post `
+  -Uri https://127.0.0.1:8443/api/radar/runs/call-plan `
+  -SkipCertificateCheck `
+  -ContentType 'application/json' `
+  -Body '{"tickers":["MSFT","NVDA"],"run_llm":true,"llm_dry_run":true}'
+```
+
+`POST /api/radar/runs/call-plan` is also DB/config-only. It returns per-layer
+`external_call_count_max` rows for market data, SEC/news events, LLM review,
+alert delivery, and Schwab. It does not acquire the daily run lock, record
+telemetry, call Polygon, call SEC, sync Schwab, or call OpenAI. Use it before
+clicking **Run Radar** when live providers are configured.
+
 Both `POST /api/radar/runs` and `GET /api/radar/runs/latest` include a
 `discovery_snapshot` block. That snapshot is DB-only: it reads the latest stored
 run telemetry, candidate queue, provider mode, universe coverage, and freshness
