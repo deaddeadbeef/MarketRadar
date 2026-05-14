@@ -139,6 +139,7 @@ class AppConfig:
     polygon_base_url: str = "https://api.polygon.io"
     polygon_tickers_max_pages: int = 1
     polygon_ticker_seed_min_interval_seconds: int = 900
+    radar_run_min_interval_seconds: int = 300
     sec_enable_live: bool = False
     sec_user_agent: str | None = None
     sec_base_url: str = "https://data.sec.gov"
@@ -243,6 +244,9 @@ class AppConfig:
             ),
             polygon_ticker_seed_min_interval_seconds=_positive_int(
                 source, "CATALYST_POLYGON_TICKER_SEED_MIN_INTERVAL_SECONDS", 900
+            ),
+            radar_run_min_interval_seconds=_positive_int(
+                source, "CATALYST_RADAR_RUN_MIN_INTERVAL_SECONDS", 300
             ),
             sec_enable_live=_bool(source.get("CATALYST_SEC_ENABLE_LIVE"), False),
             sec_user_agent=_optional_str(source, "CATALYST_SEC_USER_AGENT"),

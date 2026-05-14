@@ -173,11 +173,13 @@ def test_config_reads_polygon_ticker_page_cap_from_env() -> None:
         {
             "CATALYST_POLYGON_TICKERS_MAX_PAGES": "3",
             "CATALYST_POLYGON_TICKER_SEED_MIN_INTERVAL_SECONDS": "120",
+            "CATALYST_RADAR_RUN_MIN_INTERVAL_SECONDS": "45",
         }
     )
 
     assert config.polygon_tickers_max_pages == 3
     assert config.polygon_ticker_seed_min_interval_seconds == 120
+    assert config.radar_run_min_interval_seconds == 45
 
 
 @pytest.mark.parametrize(
@@ -186,6 +188,7 @@ def test_config_reads_polygon_ticker_page_cap_from_env() -> None:
         ("CATALYST_POLYGON_TICKERS_MAX_PAGES", "0"),
         ("CATALYST_POLYGON_TICKERS_MAX_PAGES", "-1"),
         ("CATALYST_POLYGON_TICKER_SEED_MIN_INTERVAL_SECONDS", "0"),
+        ("CATALYST_RADAR_RUN_MIN_INTERVAL_SECONDS", "0"),
     ],
 )
 def test_config_rejects_invalid_polygon_ticker_settings(key: str, value: str) -> None:
