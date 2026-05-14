@@ -233,6 +233,7 @@ def step_payload(step: JobStepResult) -> dict[str, Any]:
         "reason": step.reason,
         "meaning": classification.meaning,
         "operator_action": classification.operator_action,
+        "trigger_condition": classification.trigger_condition,
         "blocks_reliance": classification.blocks_reliance,
         "payload": _json_safe(step.payload),
     }

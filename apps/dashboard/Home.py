@@ -1340,6 +1340,7 @@ def _operator_optional_rows(rows: list[dict[str, object]]) -> list[dict[str, obj
             "Gate": _operator_row_value(row, "Step", "step"),
             "Outcome": _operator_row_value(row, "Outcome", "outcome"),
             "Reason": _operator_row_value(row, "Reason", "reason"),
+            "Runs When": _operator_row_value(row, "Trigger", "trigger"),
             "Meaning": _operator_row_value(row, "Meaning", "meaning"),
             "Operator Note": _operator_row_value(row, "Action", "action"),
         }
@@ -1367,10 +1368,12 @@ def _show_radar_run_result_notice(
     status = _metric_text(daily_result.get("status") or fallback_reason or "unknown")
     blocking_messages = _radar_run_limiting_messages(daily_result, blocking_only=True)
     optional_gate_count = _radar_expected_gate_count(daily_result)
+    path_counts = _radar_run_path_counts(daily_result)
     if status == "success" and not blocking_messages:
         if optional_gate_count:
-            st.success(
-                "Radar run status: success. Required path completed; "
+            st.info(
+                "Radar run completed with expected gates: required path "
+                f"{path_counts['completed']}/{path_counts['required']}; "
                 f"{optional_gate_count} optional gate(s) did not trigger."
             )
         else:
@@ -1383,6 +1386,24 @@ def _show_radar_run_result_notice(
         st.info(f"Radar run status: {status}. No blocking scan failures detected.")
     for message in blocking_messages[:6]:
         st.caption(message)
+
+
+def _radar_run_path_counts(daily_result: Mapping[str, Any]) -> dict[str, int]:
+    required = 0
+    completed = 0
+    for step in _mapping(daily_result.get("steps")).values():
+        step_mapping = _mapping(step)
+        classification = classify_step_outcome(
+            str(step_mapping.get("status") or ""),
+            str(step_mapping.get("reason") or "") or None,
+        )
+        category = str(step_mapping.get("category") or classification.category)
+        if category == "expected_gate":
+            continue
+        required += 1
+        if category == "completed":
+            completed += 1
+    return {"required": required, "completed": completed}
 
 
 def _radar_expected_gate_count(daily_result: Mapping[str, Any]) -> int:
@@ -1503,6 +1524,8 @@ def _radar_run_operator_rows(daily_result: Mapping[str, Any]) -> list[dict[str, 
                 "Meaning": step_mapping.get("meaning") or RADAR_SKIP_EXPLANATIONS.get(reason),
                 "Action": step_mapping.get("operator_action")
                 or classification.operator_action,
+                "Trigger": step_mapping.get("trigger_condition")
+                or classification.trigger_condition,
             }
         )
     return rows
@@ -1553,6 +1576,8 @@ def _radar_summary_operator_rows(summary: Mapping[str, Any]) -> list[dict[str, o
                 "reason": reason or None,
                 "meaning": step.get("meaning") or RADAR_SKIP_EXPLANATIONS.get(reason),
                 "action": step.get("operator_action") or classification.operator_action,
+                "trigger": step.get("trigger_condition")
+                or classification.trigger_condition,
             }
         )
     return rows

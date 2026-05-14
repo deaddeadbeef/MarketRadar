@@ -689,7 +689,13 @@ def test_daily_run_records_step_telemetry(monkeypatch):
         by_step["decision_cards"].metadata["outcome_meaning"]
         == "No candidate crossed the manual buy-review gate."
     )
+    assert by_step["decision_cards"].metadata["trigger_condition"] == (
+        "At least one candidate must pass policy into manual buy review."
+    )
     assert by_step["llm_review"].metadata["outcome_category"] == "expected_gate"
+    assert by_step["llm_review"].metadata["trigger_condition"] == (
+        "Request LLM dry-run review after Decision Cards exist."
+    )
 
 
 def test_daily_run_ignores_irrelevant_degraded_provider(monkeypatch):

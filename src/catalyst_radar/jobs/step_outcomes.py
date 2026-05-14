@@ -104,6 +104,18 @@ OPERATOR_ACTIONS = {
     "not_ready": "Add the missing input or tune the scan thresholds if this is too conservative.",
 }
 
+GATE_TRIGGER_CONDITIONS = {
+    "llm_disabled": "Request LLM dry-run review after Decision Cards exist.",
+    "no_alerts": "Alert planning must produce at least one digest alert.",
+    "no_llm_review_inputs": "At least one Decision Card must exist.",
+    "no_manual_buy_review_inputs": (
+        "At least one candidate must pass policy into manual buy review."
+    ),
+    "outcome_available_at_not_supplied": (
+        "Provide an outcome cutoff for validation/replay."
+    ),
+}
+
 
 @dataclass(frozen=True)
 class StepOutcomeClassification:
@@ -111,6 +123,7 @@ class StepOutcomeClassification:
     label: str
     meaning: str | None = None
     operator_action: str | None = None
+    trigger_condition: str | None = None
     blocks_reliance: bool = False
 
     def as_metadata(self) -> dict[str, object]:
@@ -119,6 +132,7 @@ class StepOutcomeClassification:
             "outcome_label": self.label,
             "outcome_meaning": self.meaning,
             "operator_action": self.operator_action,
+            "trigger_condition": self.trigger_condition,
             "blocks_reliance": self.blocks_reliance,
         }
 
@@ -156,6 +170,7 @@ def classify_step_outcome(
             label="Expected gate",
             meaning=meaning,
             operator_action=OPERATOR_ACTIONS["expected_gate"],
+            trigger_condition=GATE_TRIGGER_CONDITIONS.get(reason_text),
         )
     if reason_text in NOT_READY_REASONS:
         return StepOutcomeClassification(

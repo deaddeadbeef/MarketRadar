@@ -1384,6 +1384,7 @@ def test_telemetry_tape_payload_summarizes_recent_radar_events() -> None:
     assert payload["events"][2]["summary"] == (
         "step=decision_cards; outcome=Expected gate; category=expected_gate; "
         "raw_status=skipped; reason=no_manual_buy_review_inputs; "
+        "trigger=At least one candidate must pass policy into manual buy review.; "
         "action=No action required unless you want this optional gate to run."
     )
     assert payload["events"][3]["status"] == "expected_gate"
@@ -1391,6 +1392,7 @@ def test_telemetry_tape_payload_summarizes_recent_radar_events() -> None:
     assert payload["events"][3]["summary"] == (
         "step=llm_review; outcome=Expected gate; category=expected_gate; "
         "raw_status=skipped; reason=llm_disabled; "
+        "trigger=Request LLM dry-run review after Decision Cards exist.; "
         "action=No action required unless you want this optional gate to run."
     )
 

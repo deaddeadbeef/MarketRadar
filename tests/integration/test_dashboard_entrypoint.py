@@ -85,6 +85,10 @@ def test_dashboard_radar_run_summary_uses_operator_skip_labels() -> None:
         source,
         functions["_show_radar_operator_sections"],
     )
+    optional_source = ast.get_source_segment(
+        source,
+        functions["_operator_optional_rows"],
+    )
 
     assert summary_source is not None
     assert "All Steps" in summary_source
@@ -97,6 +101,15 @@ def test_dashboard_radar_run_summary_uses_operator_skip_labels() -> None:
     assert sections_source is not None
     assert "Expected skipped gates" in sections_source
     assert "Audit: raw step telemetry" in sections_source
+    assert optional_source is not None
+    assert "Runs When" in optional_source
+    notice_source = ast.get_source_segment(
+        source,
+        functions["_show_radar_run_result_notice"],
+    )
+    assert notice_source is not None
+    assert "Radar run completed with expected gates" in notice_source
+    assert "st.info" in notice_source
 
 
 def test_dashboard_wires_operator_work_queue_before_activation_sections() -> None:
