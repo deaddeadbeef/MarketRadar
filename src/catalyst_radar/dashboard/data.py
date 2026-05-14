@@ -2326,6 +2326,8 @@ def live_data_activation_contract_payload(
         "env_template": _live_data_env_template(config),
         "safe_limits": _live_data_safe_limits(config),
         "operator_steps": _live_data_operator_steps(config, missing_env=missing_env),
+        "worker_env_lines": _live_data_worker_env_lines(),
+        "worker_commands": _live_data_worker_commands(),
         "call_budget_if_activated": _live_data_call_budget_if_activated(config),
         "evidence": (
             f"contract_calls_external=no; missing_env={len(missing_env)}; "
@@ -4317,6 +4319,39 @@ def _live_data_minimum_env_lines(config: AppConfig) -> list[str]:
         f"{row['name']}={row['value_template']}"
         for row in _live_data_env_template(config)
         if str(row["name"]) in required_names
+    ]
+
+
+def _live_data_worker_env_lines() -> list[str]:
+    return [
+        "CATALYST_WORKER_INTERVAL_SECONDS=86400",
+        "CATALYST_WORKER_LOCK_TTL_SECONDS=2700",
+        "CATALYST_RUN_LLM=false",
+        "CATALYST_LLM_DRY_RUN=true",
+        "CATALYST_DRY_RUN_ALERTS=true",
+    ]
+
+
+def _live_data_worker_commands() -> list[dict[str, object]]:
+    return [
+        {
+            "mode": "one-shot smoke",
+            "when": "after .env.local is edited and services are restarted",
+            "external_calls": "one capped radar cycle",
+            "command": (
+                "$env:CATALYST_WORKER_INTERVAL_SECONDS='0'; "
+                "python -m apps.worker.main"
+            ),
+        },
+        {
+            "mode": "daily worker loop",
+            "when": "after the one-shot smoke succeeds",
+            "external_calls": "one capped radar cycle per interval",
+            "command": (
+                "$env:CATALYST_WORKER_INTERVAL_SECONDS='86400'; "
+                "python -m apps.worker.main"
+            ),
+        },
     ]
 
 
