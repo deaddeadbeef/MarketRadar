@@ -72,6 +72,56 @@ def test_get_candidates_returns_rows(tmp_path, monkeypatch) -> None:
     assert item["setup_type"] == "breakout"
 
 
+def test_get_candidates_uses_latest_radar_run_scope(tmp_path, monkeypatch) -> None:
+    database_url = _database_url(tmp_path, "candidates-latest-run.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+    latest_run = {
+        "as_of": "2026-05-01",
+        "decision_available_at": AVAILABLE_AT.isoformat(),
+        "finished_at": "2026-05-01T21:06:00+00:00",
+    }
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(
+        dashboard_data,
+        "load_radar_run_summary",
+        lambda _engine: latest_run,
+        raising=False,
+    )
+
+    def load_radar_run_candidate_rows(_engine, summary) -> list[dict[str, object]]:
+        captured["summary"] = summary
+        return [{"ticker": "RUN", "state": ActionState.WARNING.value}]
+
+    monkeypatch.setattr(
+        dashboard_data,
+        "load_radar_run_candidate_rows",
+        load_radar_run_candidate_rows,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        dashboard_data,
+        "load_candidate_rows",
+        lambda _engine: (_ for _ in ()).throw(AssertionError("fallback called")),
+        raising=False,
+    )
+    client = TestClient(create_app())
+
+    response = client.get("/api/radar/candidates")
+
+    assert response.status_code == 200
+    assert captured["summary"] == latest_run
+    assert response.json()["scope"] == {
+        "source": "latest_radar_run",
+        "as_of": "2026-05-01",
+        "decision_available_at": AVAILABLE_AT.isoformat(),
+        "finished_at": "2026-05-01T21:06:00+00:00",
+    }
+    assert response.json()["items"] == [
+        {"ticker": "RUN", "state": ActionState.WARNING.value}
+    ]
+
+
 def test_auth_required_when_enabled(tmp_path, monkeypatch) -> None:
     database_url = _database_url(tmp_path, "auth-required.db")
     monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
@@ -1097,6 +1147,52 @@ def test_get_candidate_detail_returns_payload(tmp_path, monkeypatch) -> None:
         "ticker": "MSFT",
         "latest_candidate": {"ticker": "MSFT", "state": ActionState.WARNING.value},
         "manual_review_only": True,
+    }
+
+
+def test_get_candidate_detail_uses_latest_run_cutoff(tmp_path, monkeypatch) -> None:
+    database_url = _database_url(tmp_path, "detail-latest-run.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+    latest_run = {
+        "as_of": "2026-05-01",
+        "decision_available_at": AVAILABLE_AT.isoformat(),
+        "finished_at": "2026-05-01T21:06:00+00:00",
+    }
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(
+        dashboard_data,
+        "load_radar_run_summary",
+        lambda _engine: latest_run,
+        raising=False,
+    )
+
+    def load_ticker_detail(
+        _engine,
+        ticker: str,
+        *,
+        available_at: datetime | None = None,
+    ) -> dict[str, object]:
+        captured["ticker"] = ticker
+        captured["available_at"] = available_at
+        return {"ticker": ticker, "cutoff": available_at.isoformat() if available_at else None}
+
+    monkeypatch.setattr(
+        dashboard_data,
+        "load_ticker_detail",
+        load_ticker_detail,
+        raising=False,
+    )
+    client = TestClient(create_app())
+
+    response = client.get("/api/radar/candidates/msft")
+
+    assert response.status_code == 200
+    assert captured["ticker"] == "MSFT"
+    assert captured["available_at"] == datetime(2026, 5, 1, 21, 6, tzinfo=UTC)
+    assert response.json() == {
+        "ticker": "MSFT",
+        "cutoff": "2026-05-01T21:06:00+00:00",
     }
 
 

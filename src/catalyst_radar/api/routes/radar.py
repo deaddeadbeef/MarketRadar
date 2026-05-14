@@ -77,6 +77,41 @@ class UniverseSeedRequest(BaseModel):
     max_pages: int | None = Field(default=None, ge=1)
 
 
+def _candidate_api_scope(latest_run: object) -> dict[str, object]:
+    summary = latest_run if isinstance(latest_run, Mapping) else {}
+    return {
+        "source": "latest_radar_run" if summary else "latest_candidate_state",
+        "as_of": summary.get("as_of"),
+        "decision_available_at": summary.get("decision_available_at"),
+        "finished_at": summary.get("finished_at"),
+    }
+
+
+def _latest_run_detail_cutoff(latest_run: object) -> datetime | None:
+    if not isinstance(latest_run, Mapping):
+        return None
+    for key in ("finished_at", "decision_available_at"):
+        parsed = _parse_api_datetime(latest_run.get(key))
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _parse_api_datetime(value: object) -> datetime | None:
+    if isinstance(value, datetime):
+        parsed = value
+    elif isinstance(value, str) and value.strip():
+        try:
+            parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    else:
+        return None
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
 def _dashboard_helper(name: str) -> Callable[..., Any]:
     try:
         return getattr(dashboard_data, name)
@@ -87,16 +122,34 @@ def _dashboard_helper(name: str) -> Callable[..., Any]:
 
 @router.get("/candidates", dependencies=[Depends(require_role(Role.VIEWER))])
 def candidates() -> dict[str, object]:
+    engine = _engine()
+    load_radar_run_summary = _dashboard_helper("load_radar_run_summary")
+    load_radar_run_candidate_rows = _dashboard_helper("load_radar_run_candidate_rows")
     load_candidate_rows = _dashboard_helper("load_candidate_rows")
+    latest_run = load_radar_run_summary(engine)
+    rows = (
+        load_radar_run_candidate_rows(engine, latest_run)
+        if isinstance(latest_run, Mapping) and latest_run
+        else load_candidate_rows(engine)
+    )
     return {
-        "items": redact_restricted_external_payload(load_candidate_rows(_engine()))
+        "scope": _candidate_api_scope(latest_run),
+        "items": redact_restricted_external_payload(rows),
     }
 
 
 @router.get("/candidates/{ticker}", dependencies=[Depends(require_role(Role.VIEWER))])
 def candidate_detail(ticker: str) -> dict[str, object]:
+    engine = _engine()
+    load_radar_run_summary = _dashboard_helper("load_radar_run_summary")
     load_ticker_detail = _dashboard_helper("load_ticker_detail")
-    detail = load_ticker_detail(_engine(), ticker.upper())
+    latest_run = load_radar_run_summary(engine)
+    cutoff = _latest_run_detail_cutoff(latest_run)
+    detail = (
+        load_ticker_detail(engine, ticker.upper(), available_at=cutoff)
+        if cutoff is not None
+        else load_ticker_detail(engine, ticker.upper())
+    )
     if detail is None:
         raise HTTPException(status_code=404, detail="candidate not found")
     return redact_restricted_external_payload(detail)
