@@ -16,7 +16,7 @@ Provider health is `degraded`, `down`, `failed`, `error`, or stale beyond the fr
 Inspect the API:
 
 ```powershell
-Invoke-RestMethod http://localhost:8000/api/ops/health | ConvertTo-Json -Depth 8
+curl.exe --insecure --fail --silent --show-error --request GET https://127.0.0.1:8443/api/ops/health
 ```
 
 Check provider health and incidents:

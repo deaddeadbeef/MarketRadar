@@ -16,7 +16,7 @@ Score distribution, rank order, or escalation volume shifts outside the expected
 Inspect ops drift:
 
 ```powershell
-Invoke-RestMethod http://localhost:8000/api/ops/health | ConvertTo-Json -Depth 8
+curl.exe --insecure --fail --silent --show-error --request GET https://127.0.0.1:8443/api/ops/health
 ```
 
 Compare score distributions:
