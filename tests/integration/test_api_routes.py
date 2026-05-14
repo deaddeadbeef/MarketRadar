@@ -1439,6 +1439,64 @@ def test_get_ops_telemetry_returns_summarized_tape(tmp_path, monkeypatch) -> Non
     )
 
 
+def test_get_ops_raw_telemetry_exports_redacted_audit_evidence(
+    tmp_path, monkeypatch
+) -> None:
+    database_url = _database_url(tmp_path, "ops-telemetry-raw.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = _create_database(database_url)
+    repo = AuditLogRepository(engine)
+    repo.append_event(
+        event_type="telemetry.radar_run.completed",
+        actor_source="api",
+        actor_id="tester",
+        actor_role="analyst",
+        artifact_type="radar_run",
+        artifact_id="run-1",
+        ticker="msft",
+        status="success",
+        reason="done",
+        metadata={
+            "source_url": "https://api.polygon.io/v2/aggs?apiKey=secret-key",
+            "access_token": "plain-token",
+        },
+        before_payload={"authorization": "Bearer secret-token"},
+        after_payload={"completed": True},
+        occurred_at=AVAILABLE_AT,
+    )
+    repo.append_event(
+        event_type="telemetry.radar_run.rate_limited",
+        actor_source="api",
+        artifact_type="radar_run",
+        artifact_id="run-2",
+        ticker="NVDA",
+        status="blocked",
+        reason="rate_limited",
+        occurred_at=datetime(2026, 5, 1, 21, 6, tzinfo=UTC),
+    )
+    client = TestClient(create_app())
+
+    response = client.get("/api/ops/telemetry/raw?event_type=radar_run.completed&limit=5")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["schema_version"] == "ops-telemetry-raw-v1"
+    assert payload["external_calls_made"] == 0
+    assert payload["count"] == 1
+    assert payload["filters"]["event_type"] == "telemetry.radar_run.completed"
+    event = payload["events"][0]
+    assert event["event_type"] == "telemetry.radar_run.completed"
+    assert event["ticker"] == "MSFT"
+    assert event["metadata"]["access_token"] == "<redacted>"
+    assert event["metadata"]["source_url"] == (
+        "https://api.polygon.io/v2/aggs?apiKey=<redacted>"
+    )
+    assert event["before_payload"]["authorization"] == "<redacted>"
+    assert "secret-key" not in str(payload)
+    assert "plain-token" not in str(payload)
+    assert "secret-token" not in str(payload)
+
+
 def test_get_cost_summary(tmp_path, monkeypatch) -> None:
     database_url = _database_url(tmp_path, "costs.db")
     monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)

@@ -850,6 +850,27 @@ def test_dashboard_telemetry_tape_separates_guarded_events_from_attention() -> N
     assert "tape.get('next_action')" in helper_source
     assert "Telemetry Status Summary" in helper_source
     assert "tape.get(\"rollup\")" in helper_source
+    assert "Download Raw Telemetry Evidence" in helper_source
+    assert "download_button" in helper_source
+    assert "_raw_telemetry_download_payload" in helper_source
+
+
+def test_dashboard_raw_telemetry_download_is_redacted() -> None:
+    source = Path("apps/dashboard/Home.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    functions = {
+        node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)
+    }
+    helper_source = ast.get_source_segment(
+        source,
+        functions["_raw_telemetry_download_payload"],
+    )
+
+    assert helper_source is not None
+    assert "ops-telemetry-raw-v1" in helper_source
+    assert "external_calls_made" in helper_source
+    assert "redact_value" in helper_source
+    assert "_json_ready" in helper_source
 
 
 def test_dashboard_wires_alert_planning_diagnostics_after_readiness() -> None:

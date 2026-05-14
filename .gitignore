@@ -17,3 +17,4 @@ build/
 .streamlit/secrets.toml
 data/local/
 data/cache/
+data/ops/telemetry/

@@ -40,6 +40,9 @@ def test_radar_run_runbook_matches_current_operator_dashboard() -> None:
     assert "Safety guard" in text
     assert "Bars Stale" in text
     assert "scripts/assert-investable-readiness.ps1" in text
+    assert "scripts/export-telemetry.ps1" in text
+    assert "/api/ops/telemetry/raw" in text
+    assert "Download Raw Telemetry Evidence" in text
     assert "Placeholder template values" in text
     assert "status=skipped" not in text
     assert "raw_status=skipped" not in text

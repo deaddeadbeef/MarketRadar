@@ -32,6 +32,7 @@ from catalyst_radar.jobs.step_outcomes import (
     classify_step_outcome,
 )
 from catalyst_radar.security.access import Role, role_allows
+from catalyst_radar.security.redaction import redact_value
 from catalyst_radar.security.secrets import load_app_dotenv
 from catalyst_radar.storage.broker_repositories import BrokerRepository
 from catalyst_radar.storage.db import create_schema, engine_from_url
@@ -595,6 +596,33 @@ def _show_telemetry_tape(ops_health: Mapping[str, Any]) -> None:
         _telemetry_operator_rows(tape.get("events")),
         empty="No recent radar telemetry.",
     )
+    raw_payload = _raw_telemetry_download_payload(ops_health)
+    if int(_metric_number(raw_payload.get("count"))) > 0:
+        st.download_button(
+            "Download Raw Telemetry Evidence",
+            data=json.dumps(raw_payload, indent=2, sort_keys=True),
+            file_name="market-radar-telemetry.json",
+            mime="application/json",
+            help=(
+                "Download the redacted append-only telemetry audit events currently "
+                "loaded by the dashboard. This does not call external providers."
+            ),
+        )
+
+
+def _raw_telemetry_download_payload(
+    ops_health: Mapping[str, Any],
+) -> dict[str, object]:
+    telemetry = _mapping(ops_health.get("telemetry"))
+    events = _records(telemetry.get("events"))
+    payload = {
+        "schema_version": "ops-telemetry-raw-v1",
+        "external_calls_made": 0,
+        "count": len(events),
+        "events": events,
+    }
+    redacted = redact_value(_json_ready(payload))
+    return redacted if isinstance(redacted, dict) else payload
 
 
 def _telemetry_operator_rows(rows: object) -> list[dict[str, object]]:
