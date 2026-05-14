@@ -616,9 +616,11 @@ def _show_radar_run_controls(
     radar_run_cooldown: Mapping[str, Any],
 ) -> None:
     st.subheader("Radar Run")
+    previous_run_result = _mapping(
+        st.session_state.pop("manual_radar_run_result", None)
+    )
     cooldown = _mapping(radar_run_cooldown)
     cooldown_allowed = bool(cooldown.get("allowed", True))
-    retry_after_seconds = int(_metric_number(cooldown.get("retry_after_seconds")))
     control_col, status_col = st.columns([1, 3])
     with control_col:
         run_llm_dry_run = st.checkbox(
@@ -718,6 +720,19 @@ def _show_radar_run_controls(
             )
         )
         _show_radar_call_plan(call_plan)
+        if previous_run_result:
+            daily_result = _mapping(previous_run_result.get("daily_result"))
+            _show_radar_run_result_notice(
+                daily_result,
+                fallback_reason=previous_run_result.get("reason"),
+            )
+            _show_discovery_snapshot(
+                _mapping(previous_run_result.get("discovery_snapshot"))
+            )
+            _show_radar_operator_sections(
+                _radar_run_operator_rows(daily_result),
+                _radar_run_raw_rows(daily_result),
+            )
         if not run_requested:
             _show_radar_run_summary(radar_run_summary)
             return
@@ -737,15 +752,8 @@ def _show_radar_run_controls(
         except RuntimeError as exc:
             st.error(str(exc))
             return
-        daily_result = _mapping(result.get("daily_result"))
-        _show_radar_run_result_notice(daily_result, fallback_reason=result.get("reason"))
-        _show_discovery_snapshot(_mapping(result.get("discovery_snapshot")))
-        _show_radar_operator_sections(
-            _radar_run_operator_rows(daily_result),
-            _radar_run_raw_rows(daily_result),
-        )
-        if retry_after_seconds:
-            st.caption(f"Previous cooldown estimate was {retry_after_seconds} second(s).")
+        st.session_state["manual_radar_run_result"] = result
+        st.rerun()
 
 
 def _show_radar_call_plan(call_plan: Mapping[str, Any]) -> None:

@@ -122,6 +122,35 @@ def test_dashboard_manual_radar_run_defaults_agent_review_dry_run_on() -> None:
     )
 
 
+def test_dashboard_manual_radar_run_reruns_after_successful_post() -> None:
+    source = Path("apps/dashboard/Home.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    functions = {
+        node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)
+    }
+    controls_source = ast.get_source_segment(source, functions["_show_radar_run_controls"])
+
+    assert controls_source is not None
+    assert 'st.session_state["manual_radar_run_result"] = result' in controls_source
+    assert "st.rerun()" in controls_source
+    assert controls_source.index("_api_post") < controls_source.index("st.rerun()")
+
+
+def test_dashboard_manual_radar_run_displays_flash_before_latest_summary() -> None:
+    source = Path("apps/dashboard/Home.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    functions = {
+        node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)
+    }
+    controls_source = ast.get_source_segment(source, functions["_show_radar_run_controls"])
+
+    assert controls_source is not None
+    assert 'st.session_state.pop("manual_radar_run_result", None)' in controls_source
+    assert controls_source.index("_show_radar_run_result_notice") < controls_source.index(
+        "_show_radar_run_summary"
+    )
+
+
 def test_dashboard_radar_run_summary_uses_operator_skip_labels() -> None:
     source = Path("apps/dashboard/Home.py").read_text(encoding="utf-8")
     tree = ast.parse(source)
