@@ -5362,7 +5362,11 @@ def _telemetry_event_summary(
             f"step={metadata.get('step') or 'n/a'}",
             f"outcome={label}",
             f"category={category}",
-            f"raw_status={raw_status}",
+            (
+                "audit_state=raw record retained"
+                if raw_status == "skipped"
+                else f"raw_status={raw_status}"
+            ),
             f"reason={reason}",
         ]
         if trigger_condition:

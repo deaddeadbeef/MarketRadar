@@ -534,9 +534,47 @@ def _show_telemetry_tape(ops_health: Mapping[str, Any]) -> None:
     st.caption(str(tape.get("evidence") or "No telemetry evidence."))
     _show_records(
         "Recent Radar Telemetry",
-        tape.get("events"),
+        _telemetry_operator_rows(tape.get("events")),
         empty="No recent radar telemetry.",
+    )
+
+
+def _telemetry_operator_rows(rows: object) -> list[dict[str, object]]:
+    visible: list[dict[str, object]] = []
+    for row in _records(rows):
+        status = str(row.get("status") or "").strip()
+        raw_status = str(row.get("raw_status") or "").strip()
+        outcome = str(row.get("outcome") or status or "unknown").strip()
+        expected_gate = status == "expected_gate" or outcome == "Expected gate"
+        visible.append(
+            {
+                "Occurred At": row.get("occurred_at"),
+                "Event": row.get("event"),
+                "Operator Status": (
+                    "Not triggered (expected)" if expected_gate else outcome or status
+                ),
+                "Step": row.get("step") or "n/a",
+                "Reason": row.get("reason") or "n/a",
+                "Blocks Reliance": row.get("blocks_reliance") or "n/a",
+                "Audit State": _telemetry_audit_state_label(raw_status, expected_gate),
+                "Summary": _operator_summary_label(row.get("summary")),
+            }
         )
+    return visible
+
+
+def _telemetry_audit_state_label(raw_status: object, expected_gate: bool) -> str:
+    text = str(raw_status or "").strip()
+    if expected_gate and text.lower() == "skipped":
+        return "raw record retained"
+    return text or "n/a"
+
+
+def _operator_summary_label(value: object) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return "n/a"
+    return text.replace("raw_status=skipped", "audit_state=raw record retained")
 
 
 def _show_alert_planning_diagnostics(
@@ -1147,7 +1185,7 @@ def _show_radar_run_summary(summary: Mapping[str, Any], config: AppConfig) -> No
         )
     elif raw_skipped_count:
         st.warning(
-            f"{raw_skipped_count} raw skipped step(s) were not classified as expected "
+            f"{raw_skipped_count} raw audit step(s) were not classified as expected "
             "gates. Inspect diagnostic telemetry before relying on the run."
         )
     step_status_rows = _radar_step_status_rows(summary)
@@ -2899,14 +2937,33 @@ def _show_candidate_agent_review_action(
         st.rerun()
     _show_records(
         "Agent Review Ledger Evidence",
-        dashboard_data.agent_review_ledger_rows_payload(
-            cost_summary,
-            ticker,
-            task="skeptic_review",
-            limit=5,
+        _llm_ledger_display_rows(
+            dashboard_data.agent_review_ledger_rows_payload(
+                cost_summary,
+                ticker,
+                task="skeptic_review",
+                limit=5,
+            )
         ),
         empty="No persisted agent review ledger row for this candidate yet.",
     )
+
+
+def _llm_ledger_display_rows(rows: object) -> list[dict[str, object]]:
+    visible: list[dict[str, object]] = []
+    for row in _records(rows):
+        values = dict(row)
+        if "status" in values:
+            values["status"] = _llm_status_label(values.get("status"))
+        visible.append(values)
+    return visible
+
+
+def _llm_status_label(value: object) -> str:
+    text = str(value or "").strip()
+    if text.lower() == "skipped":
+        return "Not run (guarded)"
+    return text or "n/a"
 
 
 def _candidate_review_as_of(candidate: Mapping[str, object]) -> date | None:
@@ -3398,7 +3455,7 @@ def _show_costs_layer(summary: Mapping[str, Any]) -> None:
     metric_cols[0].metric("Actual LLM Cost", _currency(actual_cost))
     metric_cols[1].metric("Estimated LLM Cost", _currency(estimated_cost))
     metric_cols[2].metric("Attempts", int(_metric_number(summary.get("attempt_count"))))
-    metric_cols[3].metric("Skipped", int(_metric_number(status_counts.get("skipped"))))
+    metric_cols[3].metric("Not Run", int(_metric_number(status_counts.get("skipped"))))
     secondary_cols = st.columns(3)
     secondary_cols[0].metric("Completed", int(_metric_number(status_counts.get("completed"))))
     secondary_cols[1].metric("Useful Alerts", useful_count)
@@ -3406,7 +3463,11 @@ def _show_costs_layer(summary: Mapping[str, Any]) -> None:
         "Cost / Useful",
         "n/a" if cost_per_useful is None else _currency(cost_per_useful),
     )
-    _show_records("Ledger Rows", summary.get("rows"), empty="No budget ledger rows.")
+    _show_records(
+        "Ledger Rows",
+        _llm_ledger_display_rows(summary.get("rows")),
+        empty="No budget ledger rows.",
+    )
     _show_records("Spend By Task", summary.get("by_task"), empty="No task rows.")
     _show_records("Spend By Model", summary.get("by_model"), empty="No model rows.")
 
