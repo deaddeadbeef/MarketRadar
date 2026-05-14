@@ -88,8 +88,8 @@ def test_dashboard_radar_run_summary_uses_operator_skip_labels() -> None:
 
     assert summary_source is not None
     assert "All Steps" in summary_source
-    assert "Expected Gates" in summary_source
-    assert "Raw Skipped" in summary_source
+    assert "Optional Gates" in summary_source
+    assert "Audit Skips" in summary_source
     assert "Tracked Stages" not in summary_source
     assert "Raw Records" not in summary_source
     assert "optional_expected_gate_count" in summary_source

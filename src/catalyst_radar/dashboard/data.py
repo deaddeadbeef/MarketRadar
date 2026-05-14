@@ -2152,6 +2152,7 @@ def radar_discovery_snapshot_payload(
     run_path = _radar_run_path_summary(summary)
     latest_bar_date = _parse_date(database.get("latest_daily_bar_date"))
     latest_candidate_at = _latest_candidate_as_of(context_candidates)
+    latest_candidate_session_date = _date_iso_or_none(latest_candidate_at)
 
     candidate_count = len(candidates)
     packet_count = _step_metric(
@@ -2225,6 +2226,7 @@ def radar_discovery_snapshot_payload(
             f"market={market.get('provider') or 'unknown'}/{market.get('mode') or 'unknown'}; "
             f"events={events.get('provider') or 'unknown'}/{events.get('mode') or 'unknown'}; "
             f"latest_daily_bar={database.get('latest_daily_bar_date') or 'n/a'}; "
+            f"latest_candidate_session_date={latest_candidate_session_date or 'n/a'}; "
             f"latest_candidate_as_of={_iso_or_na(latest_candidate_at)}"
         ),
         "run": {
@@ -2254,6 +2256,7 @@ def radar_discovery_snapshot_payload(
                 and latest_bar_date < as_of_date
             ),
             "latest_candidate_as_of": _iso_or_none(latest_candidate_at),
+            "latest_candidate_session_date": latest_candidate_session_date,
             "latest_candidate_age_days": _age_days(cutoff, latest_candidate_at),
         },
         "yield": {
@@ -4128,6 +4131,7 @@ def _latest_candidate_context_payload(
     return {
         "candidate_states": len(candidates),
         "latest_candidate_as_of": _iso_or_none(latest_candidate_at),
+        "latest_candidate_session_date": _date_iso_or_none(latest_candidate_at),
         "latest_candidate_age_days": _age_days(cutoff, latest_candidate_at),
         "stale_relative_to_run": bool(
             run_as_of is not None
@@ -4499,6 +4503,14 @@ def _parse_date(value: object) -> date | None:
 
 def _iso_or_none(value: datetime | None) -> str | None:
     return value.isoformat() if value is not None else None
+
+
+def _date_iso_or_none(value: date | datetime | None) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    return value.isoformat()
 
 
 def _iso_or_na(value: datetime | None) -> str:

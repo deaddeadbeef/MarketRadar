@@ -849,8 +849,8 @@ def _show_radar_run_summary(summary: Mapping[str, Any]) -> None:
         f"{min(completed_required_count, required_stage_count)}/{required_stage_count}",
     )
     metric_cols[2].metric("Action Needed", blocking_count)
-    metric_cols[3].metric("Expected Gates", expected_gate_count)
-    metric_cols[4].metric("Raw Skipped", raw_skipped_count)
+    metric_cols[3].metric("Optional Gates", expected_gate_count)
+    metric_cols[4].metric("Audit Skips", raw_skipped_count)
     volume_cols = st.columns(3)
     volume_cols[0].metric("Requested", int(_metric_number(summary.get("requested_count"))))
     volume_cols[1].metric("Raw", int(_metric_number(summary.get("raw_count"))))
@@ -880,9 +880,9 @@ def _show_radar_run_summary(summary: Mapping[str, Any]) -> None:
         )
     elif expected_gate_count:
         st.success(
-            f"{len(expected_skips) or expected_gate_count} skipped step(s) were expected "
-            "optional gates, not scan failures. Required scan stages completed; raw "
-            "telemetry remains below."
+            f"{len(expected_skips) or expected_gate_count} optional gate(s) did not "
+            "trigger. Required scan stages completed; audit-only skip telemetry "
+            "remains below."
         )
     elif raw_skipped_count:
         st.warning(
@@ -935,6 +935,10 @@ def _show_discovery_snapshot(snapshot: Mapping[str, Any]) -> None:
                 if freshness.get("latest_candidate_age_days") is not None
                 else "n/a",
             ),
+            (
+                "Candidate Session",
+                freshness.get("latest_candidate_session_date") or "n/a",
+            ),
         ]
     )
     blockers = _records(snapshot.get("blockers"))
@@ -966,8 +970,10 @@ def _show_discovery_snapshot(snapshot: Mapping[str, Any]) -> None:
                 [
                     ("Context Candidates", latest_context.get("candidate_states") or 0),
                     (
-                        "Latest Candidate As Of",
-                        latest_context.get("latest_candidate_as_of") or "n/a",
+                        "Candidate Session",
+                        latest_context.get("latest_candidate_session_date")
+                        or latest_context.get("latest_candidate_as_of")
+                        or "n/a",
                     ),
                     (
                         "Stale vs Run",
