@@ -80,11 +80,16 @@ if (@($activation.missing_env).Count -gt 0) {
     }
 }
 Write-Output (
-    "Telemetry: {0}; events={1}; latest={2}" -f
+    "Telemetry: {0}; events={1}; attention={2}; guarded={3}; latest={4}" -f
     $telemetry.status,
     $telemetry.event_count,
+    $(if ($null -ne $telemetry.attention_count) { $telemetry.attention_count } else { "n/a" }),
+    $(if ($null -ne $telemetry.guarded_count) { $telemetry.guarded_count } else { "n/a" }),
     $telemetry.latest_event_at
 )
+if ($telemetry.headline -or $telemetry.next_action) {
+    Write-Output ("- telemetry: {0} Next: {1}" -f $telemetry.headline, $telemetry.next_action)
+}
 foreach ($event in @($telemetry.events)) {
     Write-Output (
         "- {0}: {1}; {2}" -f

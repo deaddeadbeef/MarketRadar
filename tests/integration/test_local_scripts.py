@@ -87,6 +87,8 @@ def test_market_radar_status_script_is_zero_external_call_sitrep() -> None:
     assert "/api/radar/runs/latest" in text
     assert "/api/radar/live-activation" in text
     assert "/api/ops/telemetry?limit=" in text
+    assert "attention=" in text
+    assert "guarded=" in text
     assert "External calls made: 0" in text
     assert "CATALYST_POLYGON_API_KEY=" not in text
     assert "OPENAI_API_KEY=" not in text

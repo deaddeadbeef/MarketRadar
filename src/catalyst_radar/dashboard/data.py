@@ -2823,8 +2823,14 @@ def telemetry_tape_payload(
                 ),
             }
         )
+    tape_status = _telemetry_tape_status(rows)
     return {
-        "status": _telemetry_tape_status(status_counts),
+        "status": tape_status["status"],
+        "headline": tape_status["headline"],
+        "next_action": tape_status["next_action"],
+        "attention_count": tape_status["attention_count"],
+        "guarded_count": tape_status["guarded_count"],
+        "evidence": tape_status["evidence"],
         "event_count": int(_finite_float(telemetry.get("event_count"))),
         "latest_event_at": telemetry.get("latest_event_at"),
         "status_counts": status_counts,
@@ -5212,10 +5218,67 @@ def _live_data_call_budget_if_activated(config: AppConfig) -> list[dict[str, obj
     ]
 
 
-def _telemetry_tape_status(status_counts: Mapping[str, int]) -> str:
-    if not status_counts:
-        return "empty"
-    if any(status_counts.get(status, 0) for status in ("failed", "rejected", "blocked")):
+def _telemetry_tape_status(rows: Sequence[Mapping[str, object]]) -> dict[str, object]:
+    if not rows:
+        return {
+            "status": "empty",
+            "headline": "No recent telemetry events.",
+            "next_action": "Run a radar cycle before reviewing telemetry.",
+            "attention_count": 0,
+            "guarded_count": 0,
+            "evidence": "events=0",
+        }
+    categories = [_telemetry_row_category(row) for row in rows]
+    attention_count = sum(1 for category in categories if category == "attention")
+    guarded_count = sum(1 for category in categories if category == "guarded")
+    latest_category = categories[0]
+    latest = rows[0]
+    latest_event = str(latest.get("event") or "unknown")
+    latest_status = str(latest.get("status") or "unknown")
+    latest_reason = str(latest.get("reason") or "n/a") or "n/a"
+    if latest_category == "attention":
+        status = "attention"
+        headline = "Latest telemetry event needs attention."
+        next_action = "Inspect the latest event and resolve the failed or rejected operation."
+    elif latest_category == "guarded":
+        status = "guarded"
+        headline = "Latest telemetry event is a safety guard."
+        next_action = "Wait for the guard cooldown or adjust the operation cadence deliberately."
+    else:
+        status = "ready"
+        headline = "Latest telemetry event is healthy."
+        next_action = (
+            "Review older attention events only if they explain current operator behavior."
+            if attention_count
+            else "No telemetry action required."
+        )
+    return {
+        "status": status,
+        "headline": headline,
+        "next_action": next_action,
+        "attention_count": attention_count,
+        "guarded_count": guarded_count,
+        "evidence": (
+            f"latest={latest_event}; latest_status={latest_status}; "
+            f"latest_reason={latest_reason}; attention={attention_count}; "
+            f"guarded={guarded_count}"
+        ),
+    }
+
+
+def _telemetry_row_category(row: Mapping[str, object]) -> str:
+    event = str(row.get("event") or "")
+    status = str(row.get("status") or "").strip().lower()
+    reason = str(row.get("reason") or "").strip().lower()
+    if event.endswith(".rate_limited") or reason == "rate_limited":
+        return "guarded"
+    if status in {
+        "failed",
+        "rejected",
+        "blocked",
+        "blocked_input",
+        "needs_review",
+    }:
         return "attention"
     return "ready"
 

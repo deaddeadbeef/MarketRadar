@@ -1427,6 +1427,9 @@ def test_get_ops_telemetry_returns_summarized_tape(tmp_path, monkeypatch) -> Non
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "ready"
+    assert payload["attention_count"] == 0
+    assert payload["guarded_count"] == 0
+    assert payload["headline"] == "Latest telemetry event is healthy."
     assert payload["event_count"] == 1
     assert payload["status_counts"] == {"success": 1}
     assert payload["events"][0]["event"] == "radar_run.completed"

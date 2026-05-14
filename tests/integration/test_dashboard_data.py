@@ -1900,6 +1900,10 @@ def test_telemetry_tape_payload_summarizes_recent_radar_events() -> None:
     )
 
     assert payload["status"] == "attention"
+    assert payload["attention_count"] == 1
+    assert payload["guarded_count"] == 0
+    assert payload["headline"] == "Latest telemetry event needs attention."
+    assert "attention=1" in payload["evidence"]
     assert payload["event_count"] == 4
     assert payload["events"][0]["event"] == "radar_run.lock_contention"
     assert payload["events"][0]["artifact"] == "radar_run:radar-run-api-very-long"
@@ -1929,6 +1933,55 @@ def test_telemetry_tape_payload_summarizes_recent_radar_events() -> None:
         "action=Enable the dashboard agent dry-run switch, or configure OPENAI_API_KEY "
         "for real review."
     )
+
+
+def test_telemetry_tape_payload_classifies_rate_limit_as_guarded() -> None:
+    payload = telemetry_tape_payload(
+        {
+            "telemetry": {
+                "event_count": 2,
+                "latest_event_at": "2026-05-10T12:01:00+00:00",
+                "status_counts": {"blocked": 1, "success": 1},
+                "events": [
+                    {
+                        "event_type": "telemetry.radar_run.rate_limited",
+                        "status": "blocked",
+                        "reason": "rate_limited",
+                        "artifact_type": "radar_run",
+                        "artifact_id": "radar-run-api-rate-limited",
+                        "occurred_at": "2026-05-10T12:01:00+00:00",
+                        "metadata": {"provider": None, "universe": None},
+                    },
+                    {
+                        "event_type": "telemetry.radar_run.completed",
+                        "status": "success",
+                        "artifact_type": "radar_run",
+                        "artifact_id": "radar-run-api-completed",
+                        "occurred_at": "2026-05-10T12:00:00+00:00",
+                        "metadata": {
+                            "daily_status": "success",
+                            "step_counts": {"success": 7, "skipped": 4},
+                            "blocked_steps": [],
+                            "expected_gate_steps": [{"step": "digest"}],
+                            "outcome_category_counts": {
+                                "completed": 7,
+                                "expected_gate": 4,
+                            },
+                        },
+                    },
+                ],
+            }
+        }
+    )
+
+    assert payload["status"] == "guarded"
+    assert payload["attention_count"] == 0
+    assert payload["guarded_count"] == 1
+    assert payload["headline"] == "Latest telemetry event is a safety guard."
+    assert payload["next_action"] == (
+        "Wait for the guard cooldown or adjust the operation cadence deliberately."
+    )
+    assert "latest=radar_run.rate_limited" in payload["evidence"]
 
 
 def test_telemetry_tape_payload_refreshes_stale_step_metadata() -> None:
@@ -1962,6 +2015,8 @@ def test_telemetry_tape_payload_refreshes_stale_step_metadata() -> None:
     )
 
     assert payload["events"][0]["status"] == "blocked_input"
+    assert payload["status"] == "attention"
+    assert payload["attention_count"] == 1
     assert payload["events"][0]["outcome"] == "Blocked input"
     assert payload["events"][0]["blocks_reliance"] == "yes"
     assert payload["events"][0]["summary"] == (
@@ -1998,6 +2053,8 @@ def test_telemetry_tape_payload_summarizes_step_started_events() -> None:
     )
 
     assert payload["status"] == "ready"
+    assert payload["attention_count"] == 0
+    assert payload["guarded_count"] == 0
     assert payload["events"] == [
         {
             "occurred_at": "2026-05-10T20:58:00+00:00",
@@ -2017,6 +2074,8 @@ def test_telemetry_tape_payload_handles_empty_telemetry() -> None:
     payload = telemetry_tape_payload({"telemetry": {"events": []}})
 
     assert payload["status"] == "empty"
+    assert payload["attention_count"] == 0
+    assert payload["guarded_count"] == 0
     assert payload["events"] == []
 
 

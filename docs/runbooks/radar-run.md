@@ -59,6 +59,10 @@ raw stored status, but also surfaces the operator outcome category, so expected
 optional gates are shown as `expected_gate` with `raw_status=skipped` instead of
 looking like scan failures.
 
+Rate-limit events stay on the tape, but they are classified as `guarded` rather
+than `attention`: the guard is proving the no-DDOS safety path. Failed,
+rejected, blocked-input, or needs-review events still surface as `attention`.
+
 The dashboard **Actionability Breakdown** explains why the current queue is or is
 not ready for investment work. It buckets candidates into buy-review, research,
 watchlist, blocked/risk-review, and monitor groups, then lists the dominant
