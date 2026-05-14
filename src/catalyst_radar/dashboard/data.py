@@ -1171,6 +1171,44 @@ def live_activation_plan_payload(
     }
 
 
+def telemetry_tape_payload(
+    ops_health: Mapping[str, object],
+    *,
+    limit: int = 8,
+) -> dict[str, object]:
+    telemetry = _mapping_value(ops_health, "telemetry")
+    status_counts = _string_int_mapping(telemetry.get("status_counts"))
+    rows: list[dict[str, object]] = []
+    for event in _sequence_value(telemetry.get("events"))[: _positive_limit(limit)]:
+        if not isinstance(event, Mapping):
+            continue
+        row = _row_dict(event)
+        event_type = str(row.get("event_type") or "unknown")
+        metadata = _mapping_value(row, "metadata")
+        after_payload = _mapping_value(row, "after_payload")
+        rows.append(
+            {
+                "occurred_at": row.get("occurred_at"),
+                "event": event_type.removeprefix("telemetry."),
+                "status": row.get("status") or "unknown",
+                "reason": row.get("reason") or "",
+                "artifact": _telemetry_artifact_label(row),
+                "summary": _telemetry_event_summary(
+                    event_type,
+                    metadata=metadata,
+                    after_payload=after_payload,
+                ),
+            }
+        )
+    return {
+        "status": _telemetry_tape_status(status_counts),
+        "event_count": int(_finite_float(telemetry.get("event_count"))),
+        "latest_event_at": telemetry.get("latest_event_at"),
+        "status_counts": status_counts,
+        "events": rows,
+    }
+
+
 def universe_coverage_payload(
     config: AppConfig,
     ops_health: Mapping[str, object],
@@ -2304,6 +2342,62 @@ def _activation_task_row(
         "missing_env": missing_text,
         "safe_next_action": safe_next_action,
     }
+
+
+def _telemetry_tape_status(status_counts: Mapping[str, int]) -> str:
+    if not status_counts:
+        return "empty"
+    if any(status_counts.get(status, 0) for status in ("failed", "rejected", "blocked")):
+        return "attention"
+    return "ready"
+
+
+def _telemetry_artifact_label(event: Mapping[str, object]) -> str:
+    artifact_type = str(event.get("artifact_type") or "").strip()
+    artifact_id = str(event.get("artifact_id") or "").strip()
+    if artifact_type and artifact_id:
+        return f"{artifact_type}:{artifact_id[:24].rstrip('-:_')}"
+    return artifact_type or artifact_id or "n/a"
+
+
+def _telemetry_event_summary(
+    event_type: str,
+    *,
+    metadata: Mapping[str, object],
+    after_payload: Mapping[str, object],
+) -> str:
+    short_event = event_type.removeprefix("telemetry.")
+    if short_event == "radar_run.completed":
+        step_counts = _string_int_mapping(metadata.get("step_counts"))
+        blocked_count = len(_sequence_value(metadata.get("blocked_steps")))
+        expected_gate_count = len(_sequence_value(metadata.get("expected_gate_steps")))
+        return (
+            f"daily_status={metadata.get('daily_status') or 'unknown'}; "
+            f"steps={_count_map_label(step_counts)}; "
+            f"blocked={blocked_count}; expected_gates={expected_gate_count}"
+        )
+    if short_event in {"radar_run.rejected", "radar_run.lock_contention"}:
+        return (
+            f"provider={metadata.get('provider') or 'default'}; "
+            f"universe={metadata.get('universe') or 'default'}"
+        )
+    if short_event == "universe_seed.completed":
+        return (
+            f"job_id={metadata.get('job_id') or after_payload.get('job_id') or 'n/a'}; "
+            f"max_pages={metadata.get('max_pages') or after_payload.get('max_pages') or 'n/a'}; "
+            f"normalized={after_payload.get('normalized_count') or 'n/a'}; "
+            f"rejected={after_payload.get('rejected_count') or 0}"
+        )
+    if short_event.startswith("universe_seed."):
+        return (
+            f"provider={metadata.get('provider') or 'polygon'}; "
+            f"max_pages={metadata.get('max_pages') or 'n/a'}"
+        )
+    return _count_map_label(_string_int_mapping(metadata.get("step_counts"))) or "n/a"
+
+
+def _count_map_label(values: Mapping[str, int]) -> str:
+    return ", ".join(f"{key}={value}" for key, value in sorted(values.items()))
 
 
 def _radar_run_path_summary(

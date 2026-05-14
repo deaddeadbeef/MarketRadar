@@ -33,6 +33,11 @@ the `category`, required-path count, and action-needed count as the operator
 truth: `expected_gate` means no failure occurred unless you intentionally wanted
 that gate to run.
 
+The dashboard **Recent Radar Telemetry** tape is a compact view of append-only
+telemetry audit events. Use it to confirm whether a dashboard/API action was
+requested, completed, rejected, blocked by a lock, or rate limited before
+rerunning a live operation.
+
 ## Market Data Provider
 
 By default, local runs use fixture CSV market data:

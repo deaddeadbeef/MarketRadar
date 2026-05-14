@@ -46,6 +46,7 @@ from catalyst_radar.dashboard.data import (
     provider_preflight_payload,
     radar_discovery_snapshot_payload,
     readiness_checklist_payload,
+    telemetry_tape_payload,
     universe_coverage_payload,
 )
 from catalyst_radar.storage.broker_repositories import BrokerRepository
@@ -343,6 +344,61 @@ def test_live_activation_plan_payload_never_leaks_configured_secrets() -> None:
     assert "polygon-secret-value" not in rendered
     assert "sk-secret-value" not in rendered
     assert "Secret User Agent" not in rendered
+
+
+def test_telemetry_tape_payload_summarizes_recent_radar_events() -> None:
+    payload = telemetry_tape_payload(
+        {
+            "telemetry": {
+                "event_count": 2,
+                "latest_event_at": "2026-05-10T12:00:00+00:00",
+                "status_counts": {"blocked": 1, "success": 1},
+                "events": [
+                    {
+                        "event_type": "telemetry.radar_run.lock_contention",
+                        "status": "blocked",
+                        "reason": "lock_held",
+                        "artifact_type": "radar_run",
+                        "artifact_id": "radar-run-api-very-long-id",
+                        "occurred_at": "2026-05-10T12:00:00+00:00",
+                        "metadata": {
+                            "provider": None,
+                            "universe": "liquid-us",
+                        },
+                    },
+                    {
+                        "event_type": "telemetry.radar_run.completed",
+                        "status": "success",
+                        "artifact_type": "radar_run",
+                        "artifact_id": "radar-run-api-completed",
+                        "occurred_at": "2026-05-10T11:59:00+00:00",
+                        "metadata": {
+                            "daily_status": "success",
+                            "step_counts": {"success": 6, "skipped": 4},
+                            "blocked_steps": [],
+                            "expected_gate_steps": [{"step": "llm_review"}],
+                        },
+                    },
+                ],
+            }
+        }
+    )
+
+    assert payload["status"] == "attention"
+    assert payload["event_count"] == 2
+    assert payload["events"][0]["event"] == "radar_run.lock_contention"
+    assert payload["events"][0]["artifact"] == "radar_run:radar-run-api-very-long"
+    assert payload["events"][0]["summary"] == "provider=default; universe=liquid-us"
+    assert payload["events"][1]["summary"] == (
+        "daily_status=success; steps=skipped=4, success=6; blocked=0; expected_gates=1"
+    )
+
+
+def test_telemetry_tape_payload_handles_empty_telemetry() -> None:
+    payload = telemetry_tape_payload({"telemetry": {"events": []}})
+
+    assert payload["status"] == "empty"
+    assert payload["events"] == []
 
 
 def test_universe_coverage_payload_warns_on_thin_sample_universe() -> None:
