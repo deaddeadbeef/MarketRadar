@@ -5113,13 +5113,26 @@ def _live_data_operator_steps(
     return [
         {
             "step": 1,
+            "status": "manual",
+            "action": "Prepare safe non-secret live defaults in .env.local.",
+            "external_calls": 0,
+            "command": (
+                "powershell -ExecutionPolicy Bypass -File "
+                "scripts/prepare-live-env.ps1"
+            ),
+        },
+        {
+            "step": 2,
             "status": env_status,
-            "action": "Edit .env.local using the template below; do not paste keys into chat.",
+            "action": (
+                "Fill the remaining manual values in .env.local; do not paste keys "
+                "into chat."
+            ),
             "external_calls": 0,
             "command": "notepad .env.local",
         },
         {
-            "step": 2,
+            "step": 3,
             "status": "manual",
             "action": "Restart the local API and dashboard so the new env is loaded.",
             "external_calls": 0,
@@ -5129,36 +5142,29 @@ def _live_data_operator_steps(
             ),
         },
         {
-            "step": 3,
-            "status": "manual",
-            "action": "Seed the active universe with the configured Polygon page cap.",
-            "external_calls": seed_pages,
-            "command": _local_api_curl_command(
-                "POST",
-                "/api/radar/universe/seed",
-                body=f'{{"provider":"polygon","max_pages":{seed_pages}}}',
-            ),
-        },
-        {
             "step": 4,
             "status": "safe_check",
-            "action": "Inspect the radar call plan before running live ingestion.",
+            "action": (
+                "Run the first-live-smoke preflight in plan-only mode before any "
+                "provider call."
+            ),
             "external_calls": 0,
-            "command": _local_api_curl_command(
-                "POST",
-                "/api/radar/runs/call-plan",
-                body="{}",
+            "command": (
+                "powershell -ExecutionPolicy Bypass -File "
+                "scripts/run-first-live-smoke.ps1"
             ),
         },
         {
             "step": 5,
             "status": "manual",
-            "action": "Run one capped radar cycle only after the call plan matches intent.",
-            "external_calls": 1 + max(1, int(config.sec_daily_max_tickers)),
-            "command": _local_api_curl_command(
-                "POST",
-                "/api/radar/runs",
-                body="{}",
+            "action": (
+                "Execute one capped live smoke only after the plan-only preflight "
+                "matches intent."
+            ),
+            "external_calls": seed_pages + 1 + max(1, int(config.sec_daily_max_tickers)),
+            "command": (
+                "powershell -ExecutionPolicy Bypass -File "
+                "scripts/run-first-live-smoke.ps1 -Execute"
             ),
         },
         {
