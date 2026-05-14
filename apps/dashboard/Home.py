@@ -1083,8 +1083,8 @@ def _show_radar_run_summary(summary: Mapping[str, Any], config: AppConfig) -> No
     )
     metric_cols = st.columns(5)
     st.caption(
-        "The required path is the decision signal. Raw skipped rows are retained "
-        "for audit, but expected optional gates are not scan failures."
+        "The required path is the decision signal. Optional gates that do not "
+        "trigger are normal; raw audit rows stay collapsed below."
     )
     metric_cols[0].metric(
         "Telemetry Rows",
@@ -1095,8 +1095,8 @@ def _show_radar_run_summary(summary: Mapping[str, Any], config: AppConfig) -> No
         f"{min(completed_required_count, required_stage_count)}/{required_stage_count}",
     )
     metric_cols[2].metric("Action Needed", blocking_count)
-    metric_cols[3].metric("Optional Gates", expected_gate_count)
-    metric_cols[4].metric("Raw Skips Retained", raw_skipped_count)
+    metric_cols[3].metric("Optional Gates Not Triggered", expected_gate_count)
+    metric_cols[4].metric("Audit-only Rows", raw_skipped_count)
     volume_cols = st.columns(3)
     volume_cols[0].metric("Requested", int(_metric_number(summary.get("requested_count"))))
     volume_cols[1].metric("Raw", int(_metric_number(summary.get("raw_count"))))
@@ -1127,7 +1127,7 @@ def _show_radar_run_summary(summary: Mapping[str, Any], config: AppConfig) -> No
     elif expected_gate_count:
         st.success(
             f"{len(expected_skips) or expected_gate_count} optional gate(s) did not "
-            "trigger by design. Required scan stages completed; raw skip telemetry "
+            "trigger by design. Required scan stages completed; audit telemetry "
             "is retained only in the audit section below."
         )
     elif raw_skipped_count:
@@ -1138,9 +1138,9 @@ def _show_radar_run_summary(summary: Mapping[str, Any], config: AppConfig) -> No
     step_status_rows = _radar_step_status_rows(summary)
     if step_status_rows:
         _show_records(
-            "Why Steps Did Not Run",
+            "Optional Gates and Waiting Inputs",
             step_status_rows,
-            empty="No skipped or gated run steps.",
+            empty="No optional gates or waiting inputs.",
         )
     _show_radar_operator_sections(
         _radar_summary_operator_rows(summary),
@@ -1683,7 +1683,7 @@ def _show_radar_operator_sections(
                     }
                     for row in root_cause_rows
                 ],
-                empty="No skipped or gated run steps.",
+                empty="No optional gates or waiting inputs.",
             )
     action_rows = [
         row
@@ -1693,18 +1693,12 @@ def _show_radar_operator_sections(
     optional_rows = [
         row
         for row in operator_rows
-        if (
-            _operator_row_value(row, "Stage", "stage")
-            in {"Optional gate", "Expected skipped gate"}
-        )
+        if _operator_row_value(row, "Stage", "stage") == "Optional gate"
     ]
     required_rows = [
         row
         for row in operator_rows
-        if (
-            _operator_row_value(row, "Stage", "stage")
-            not in {"Optional gate", "Expected skipped gate"}
-        )
+        if _operator_row_value(row, "Stage", "stage") != "Optional gate"
     ]
     if action_rows:
         _show_records(
@@ -1714,8 +1708,8 @@ def _show_radar_operator_sections(
         )
     else:
         st.caption(
-            "Required scan stages are separated from optional gates; raw skipped "
-            "telemetry is audit-only."
+            "Required scan stages are separated from optional gates; raw audit "
+            "telemetry is collapsed below."
         )
         _show_records(
             "Required Run Path" if not last_run else "Last Required Run Path",
@@ -1729,7 +1723,7 @@ def _show_radar_operator_sections(
                 "scan failures."
             )
             _show_records(
-                "Expected Skipped Gates",
+                "Optional Gates Not Triggered",
                 _operator_optional_rows(optional_rows),
                 empty="No optional gate telemetry.",
             )
@@ -1739,7 +1733,7 @@ def _show_radar_operator_sections(
         if str(row.get("raw_status") or row.get("status") or "").lower() == "skipped"
     )
     with st.expander(
-        f"Audit-only raw telemetry ({raw_skip_count} raw skip record(s) retained)"
+        f"Audit-only raw telemetry ({raw_skip_count} raw record(s) retained)"
     ):
         st.caption(
             "Raw status/reason records are kept here for audit and debugging; "
@@ -2100,7 +2094,7 @@ def _radar_operator_stage(category: object) -> str:
     if value == "completed":
         return "Required path"
     if value == "expected_gate":
-        return "Expected skipped gate"
+        return "Optional gate"
     if value in {"blocked_input", "failed", "needs_review"}:
         return "Blocked"
     if value == "not_ready":
@@ -2709,8 +2703,8 @@ def _show_run_path_pulse(radar_run_summary: Mapping[str, Any]) -> None:
         )
     elif required_total and required_complete >= required_total:
         st.success(
-            "Latest run required path is complete. Raw skipped rows are optional gates "
-            "or audit telemetry, not scan failures."
+            "Latest run required path is complete. Optional gates are normal when "
+            "their triggers are absent; audit rows are not scan failures."
         )
     else:
         st.info(
@@ -2723,8 +2717,8 @@ def _show_run_path_pulse(radar_run_summary: Mapping[str, Any]) -> None:
             ("Run", display_status),
             ("Required Path", f"{required_complete}/{required_total}"),
             ("Action Needed", action_needed),
-            ("Optional Gates", optional_gates),
-            ("Audit Raw Skips", raw_skips),
+            ("Optional Gates Not Triggered", optional_gates),
+            ("Audit-only Rows", raw_skips),
         ]
     )
     st.caption(

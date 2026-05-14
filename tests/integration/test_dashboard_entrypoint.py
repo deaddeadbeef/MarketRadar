@@ -178,7 +178,7 @@ def test_dashboard_manual_radar_run_displays_flash_before_latest_summary() -> No
     )
 
 
-def test_dashboard_radar_run_summary_uses_operator_skip_labels() -> None:
+def test_dashboard_radar_run_summary_uses_operator_gate_labels() -> None:
     source = Path("apps/dashboard/Home.py").read_text(encoding="utf-8")
     tree = ast.parse(source)
     functions = {
@@ -197,9 +197,10 @@ def test_dashboard_radar_run_summary_uses_operator_skip_labels() -> None:
 
     assert summary_source is not None
     assert "Telemetry Rows" in summary_source
-    assert "Optional Gates" in summary_source
-    assert "Raw Skips Retained" in summary_source
-    assert "Why Steps Did Not Run" in summary_source
+    assert "Optional Gates Not Triggered" in summary_source
+    assert "Audit-only Rows" in summary_source
+    assert "Optional Gates and Waiting Inputs" in summary_source
+    assert "Why Steps Did Not Run" not in summary_source
     assert "_radar_step_status_rows" in summary_source
     assert "Tracked Stages" not in summary_source
     assert "Raw Records" not in summary_source
@@ -208,6 +209,8 @@ def test_dashboard_radar_run_summary_uses_operator_skip_labels() -> None:
     assert sections_source is not None
     assert "Optional gates not triggered" in sections_source
     assert "Audit-only raw telemetry" in sections_source
+    assert "Optional Gates Not Triggered" in sections_source
+    assert "Expected Skipped Gates" not in sections_source
     assert optional_source is not None
     assert "_operator_optional_outcome_label" in optional_source
     assert "Not triggered (expected)" in source
@@ -247,7 +250,8 @@ def test_dashboard_does_not_render_legacy_raw_run_steps_table() -> None:
     assert "Radar Run Steps" not in run_surface_source
     assert "Last Radar Run Steps" not in run_surface_source
     assert "Required Run Path" in run_surface_source
-    assert "Expected Skipped Gates" in run_surface_source
+    assert "Optional Gates Not Triggered" in run_surface_source
+    assert "Expected Skipped Gates" not in run_surface_source
     assert "Raw Step Telemetry" in run_surface_source
     assert "Audit-only raw telemetry" in run_surface_source
 
@@ -270,8 +274,9 @@ def test_dashboard_overview_surfaces_latest_run_path_before_usefulness() -> None
     assert "Latest Run Path" in pulse_source
     assert "Required Path" in pulse_source
     assert "Action Needed" in pulse_source
-    assert "Optional Gates" in pulse_source
-    assert "Audit Raw Skips" in pulse_source
+    assert "Optional Gates Not Triggered" in pulse_source
+    assert "Audit-only Rows" in pulse_source
+    assert "Audit Raw Skips" not in pulse_source
     assert "not scan failures" in pulse_source
 
 
