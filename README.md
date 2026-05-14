@@ -72,6 +72,17 @@ dashboard at `http://127.0.0.1:8514`, loading `.env.local` through the app
 startup path. Docker Compose runs the same command-center entry point at
 `http://localhost:8501`.
 
+After editing `.env.local`, run the activation checker before making live
+provider calls:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/check-live-activation.ps1
+```
+
+This reads the local API activation contract only. It makes 0 Polygon, SEC,
+Schwab, or OpenAI calls and prints the missing values plus the safe next
+commands.
+
 ## Phase 1 rule
 
 No premium LLM calls are used or required in Phase 1.

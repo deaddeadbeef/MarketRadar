@@ -25,3 +25,21 @@ def test_readme_mentions_restart_script_for_local_dashboard() -> None:
     readme = Path("README.md").read_text(encoding="utf-8")
 
     assert "scripts/restart-local.ps1" in readme
+    assert "scripts/check-live-activation.ps1" in readme
+
+
+def test_check_live_activation_script_is_zero_external_call_status_check() -> None:
+    script = Path("scripts/check-live-activation.ps1")
+    text = script.read_text(encoding="utf-8")
+
+    assert script.is_file()
+    assert "/api/radar/live-activation" in text
+    assert "curl.exe" in text
+    assert "--insecure" in text
+    assert "--fail" in text
+    assert "External calls made by this check: 0" in text
+    assert "missing_env" in text
+    assert "operator_steps" in text
+    assert "OPENAI_API_KEY=" not in text
+    assert "CATALYST_POLYGON_API_KEY=" not in text
+    assert "SCHWAB_CLIENT_SECRET=" not in text
