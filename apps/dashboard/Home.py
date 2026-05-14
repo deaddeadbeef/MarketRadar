@@ -2030,6 +2030,11 @@ def _show_overview(
             selected_candidate=selected_candidate,
             dashboard_role=dashboard_role,
         )
+        _show_candidate_schwab_context_refresh(
+            config=config,
+            selected_candidate=selected_candidate,
+            dashboard_role=dashboard_role,
+        )
         _show_records(
             "Saved Candidate Actions",
             _latest_opportunity_action_rows(
@@ -2059,6 +2064,45 @@ def _show_overview(
         },
         empty="No alert rows.",
     )
+
+
+def _show_candidate_schwab_context_refresh(
+    *,
+    config: AppConfig,
+    selected_candidate: Mapping[str, object],
+    dashboard_role: Role,
+) -> None:
+    st.subheader("Schwab Market Context")
+    ticker = str(selected_candidate.get("ticker") or "").strip().upper()
+    context_status = str(selected_candidate.get("schwab_context_status") or "missing")
+    if context_status == "available":
+        st.caption("Stored Schwab quote, volume, history, and options context is available.")
+    else:
+        st.caption(
+            "No stored Schwab market context for this candidate yet. Refreshing is an "
+            "explicit Schwab API call guarded by the market-sync cooldown and ticker cap."
+        )
+    if not role_allows(dashboard_role, Role.ANALYST):
+        st.caption("Analyst role required to refresh Schwab market context.")
+        return
+    disabled = not ticker
+    if st.button(
+        "Refresh Schwab Context",
+        key=f"refresh_schwab_context_{ticker or 'none'}",
+        disabled=disabled,
+        help="Calls the existing rate-limited Schwab market-sync endpoint for this ticker.",
+    ):
+        try:
+            result = _api_post(
+                config,
+                "/api/brokers/schwab/market-sync",
+                {"tickers": [ticker], "include_history": True, "include_options": True},
+            )
+            st.success(
+                f"Schwab market context rows: {len(_records(_mapping(result).get('items')))}"
+            )
+        except RuntimeError as exc:
+            st.error(str(exc))
 
 
 def _show_ticker_layer(engine, ticker: str, cutoff: datetime | None) -> None:
