@@ -30,7 +30,9 @@ def test_readme_mentions_restart_script_for_local_dashboard() -> None:
     assert "scripts/run-first-live-smoke.ps1" in readme
     assert "scripts/run-worker-once.ps1" in readme
     assert "scripts/market-radar-status.ps1" in readme
+    assert "scripts/export-telemetry.ps1" in readme
     assert "scripts/assert-investable-readiness.ps1" in readme
+    assert "/api/ops/telemetry/raw" in readme
     assert "-Execute" in readme
     assert "CATALYST_DAILY_MARKET_PROVIDER=polygon" in readme
     assert "CATALYST_DAILY_PROVIDER=polygon" in readme
@@ -166,6 +168,26 @@ def test_check_live_activation_script_is_zero_external_call_status_check() -> No
     assert "These commands read local API state only" in text
     assert "missing_env" in text
     assert "operator_steps" in text
+    assert "OPENAI_API_KEY=" not in text
+    assert "CATALYST_POLYGON_API_KEY=" not in text
+    assert "SCHWAB_CLIENT_SECRET=" not in text
+
+
+def test_export_telemetry_script_writes_zero_call_raw_snapshot() -> None:
+    script = Path("scripts/export-telemetry.ps1")
+    text = script.read_text(encoding="utf-8")
+    gitignore = Path(".gitignore").read_text(encoding="utf-8")
+
+    assert script.is_file()
+    assert "/api/ops/telemetry/raw?limit=$resolvedLimit" in text
+    assert "data\\ops\\telemetry" in text
+    assert "telemetry-export-$stamp.json" in text
+    assert "ConvertFrom-Json" in text
+    assert "External calls made: 0" in text
+    assert "curl.exe" in text
+    assert "--insecure" in text
+    assert "--fail" in text
+    assert "data/ops/telemetry/" in gitignore
     assert "OPENAI_API_KEY=" not in text
     assert "CATALYST_POLYGON_API_KEY=" not in text
     assert "SCHWAB_CLIENT_SECRET=" not in text

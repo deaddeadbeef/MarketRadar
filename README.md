@@ -112,6 +112,15 @@ powershell -ExecutionPolicy Bypass -File scripts/market-radar-status.ps1
 This reads local API health, readiness, latest run, live activation, and recent
 telemetry. It makes 0 Polygon, SEC, Schwab, or OpenAI calls.
 
+For a redacted raw telemetry evidence snapshot:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/export-telemetry.ps1
+```
+
+This reads `GET /api/ops/telemetry/raw`, writes a JSON export under
+`data\ops\telemetry\`, and makes 0 Polygon, SEC, Schwab, or OpenAI calls.
+
 For a zero-call deployment/readiness gate that exits non-zero until Market Radar
 is safe to use for investment decisions:
 

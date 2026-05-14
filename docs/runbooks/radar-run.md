@@ -85,6 +85,20 @@ rather than `Needs attention`: the guard is proving the no-DDOS safety path.
 Failed, rejected, blocked-input, or needs-review events still surface as
 `Needs attention`.
 
+When the summary is not enough, export the redacted raw telemetry evidence:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/export-telemetry.ps1
+```
+
+The dashboard also exposes **Download Raw Telemetry Evidence** in the telemetry
+section. Both paths use redacted JSON and make zero Polygon, SEC, Schwab, or
+OpenAI calls. The script calls `GET /api/ops/telemetry/raw`, writes a JSON
+snapshot under `data\ops\telemetry\`, and makes zero provider calls. The raw
+endpoint is for local audit/debugging: it preserves append-only event metadata,
+before/after payloads, artifacts, timestamps, and reasons while redacting
+secret-looking fields and URL query tokens.
+
 The dashboard **Actionability Breakdown** explains why the current queue is or is
 not ready for investment work. It buckets candidates into buy-review, research,
 watchlist, blocked/risk-review, and monitor groups, then lists the dominant
