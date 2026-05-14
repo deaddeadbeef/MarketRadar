@@ -221,6 +221,37 @@ def test_dashboard_radar_run_summary_uses_operator_skip_labels() -> None:
     assert "st.info" in notice_source
 
 
+def test_dashboard_does_not_render_legacy_raw_run_steps_table() -> None:
+    source = Path("apps/dashboard/Home.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    functions = {
+        node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)
+    }
+    controls_source = ast.get_source_segment(
+        source,
+        functions["_show_radar_run_controls"],
+    )
+    summary_source = ast.get_source_segment(source, functions["_show_radar_run_summary"])
+    sections_source = ast.get_source_segment(
+        source,
+        functions["_show_radar_operator_sections"],
+    )
+
+    assert controls_source is not None
+    assert summary_source is not None
+    assert sections_source is not None
+
+    run_surface_source = "\n".join(
+        [controls_source, summary_source, sections_source],
+    )
+    assert "Radar Run Steps" not in run_surface_source
+    assert "Last Radar Run Steps" not in run_surface_source
+    assert "Required Run Path" in run_surface_source
+    assert "Expected Skipped Gates" in run_surface_source
+    assert "Raw Step Telemetry" in run_surface_source
+    assert "Audit-only raw telemetry" in run_surface_source
+
+
 def test_dashboard_overview_surfaces_latest_run_path_before_usefulness() -> None:
     source = Path("apps/dashboard/Home.py").read_text(encoding="utf-8")
     tree = ast.parse(source)
