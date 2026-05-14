@@ -48,6 +48,7 @@ from catalyst_radar.dashboard.data import (
     opportunity_focus_payload,
     provider_preflight_payload,
     radar_discovery_snapshot_payload,
+    radar_readiness_payload,
     radar_run_cooldown_payload,
     readiness_checklist_payload,
     telemetry_tape_payload,
@@ -416,6 +417,81 @@ def test_investment_readiness_payload_keeps_live_research_out_of_buy_review() ->
     assert readiness["decision_mode"] == "research_only"
     assert readiness["manual_buy_review_ready"] is False
     assert "need research" in str(readiness["headline"])
+
+
+def test_radar_readiness_payload_summarizes_operator_decision_gate(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    metadata = {
+        "as_of": "2026-05-10",
+        "decision_available_at": AVAILABLE_AT.isoformat(),
+        "outcome_available_at": None,
+        "provider": "csv",
+        "universe": "liquid-us",
+        "tickers": ["MSFT", "AAPL"],
+    }
+    with engine.begin() as conn:
+        conn.execute(
+            insert(job_runs),
+            [
+                _job_run_row(
+                    "feature-scan",
+                    job_type="feature_scan",
+                    status="success",
+                    started_at=AVAILABLE_AT + timedelta(seconds=1),
+                    metadata={**metadata, "result_status": "success"},
+                    requested_count=2,
+                    raw_count=2,
+                    normalized_count=2,
+                ),
+                _job_run_row(
+                    "candidate-packets",
+                    job_type="candidate_packets",
+                    status="success",
+                    started_at=AVAILABLE_AT + timedelta(seconds=2),
+                    metadata={**metadata, "result_status": "success"},
+                    requested_count=1,
+                    raw_count=1,
+                    normalized_count=1,
+                ),
+                _job_run_row(
+                    "decision-cards",
+                    job_type="decision_cards",
+                    status="skipped",
+                    started_at=AVAILABLE_AT + timedelta(seconds=3),
+                    metadata={
+                        **metadata,
+                        "result_status": "skipped",
+                        "result_reason": "no_manual_buy_review_inputs",
+                    },
+                ),
+            ],
+        )
+
+    payload = radar_readiness_payload(engine, AppConfig.from_env({}))
+
+    assert payload["schema_version"] == "radar-readiness-v1"
+    assert payload["status"] == "research_only"
+    assert payload["decision_mode"] == "research_only"
+    assert payload["safe_to_make_investment_decision"] is False
+    assert payload["latest_run_cutoff"] == AVAILABLE_AT.isoformat()
+    assert payload["run_path"] == {
+        "required_total": 2,
+        "required_complete": 2,
+        "blocking_count": 0,
+        "expected_gate_count": 1,
+    }
+    assert payload["radar_run"]["provider"] == "csv"
+    assert payload["live_activation_plan"]["status"] == "blocked"
+    assert payload["investment_readiness"]["manual_buy_review_ready"] is False
+    assert payload["candidate_decision_labels"][0]["ticker"] == "MSFT"
+    assert payload["candidate_decision_labels"][0]["decision_status"] == "research_only"
+    assert payload["candidate_decision_labels"][0]["next_step"]
+    assert payload["candidate_decision_labels"][0]["audit"]["provider_license_policy"][
+        "external_export_allowed"
+    ] is False
 
 
 def test_data_source_coverage_payload_marks_fixture_and_read_only_modes() -> None:

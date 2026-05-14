@@ -434,6 +434,74 @@ def investment_readiness_payload(
     }
 
 
+def radar_readiness_payload(
+    engine: Engine,
+    config: AppConfig,
+    *,
+    candidate_limit: int = 25,
+) -> dict[str, object]:
+    radar_run_summary = load_radar_run_summary(engine)
+    latest_run_cutoff = _parse_utc_datetime(radar_run_summary.get("decision_available_at"))
+    candidate_rows = load_candidate_rows(engine, available_at=latest_run_cutoff)
+    broker_summary = load_broker_summary(engine)
+    ops_health = load_ops_health(engine, now=latest_run_cutoff)
+    discovery_snapshot = radar_discovery_snapshot_payload(
+        engine,
+        config,
+        radar_run_summary=radar_run_summary,
+        ops_health=ops_health,
+    )
+    actionability = actionability_breakdown_payload(candidate_rows)
+    investment = investment_readiness_payload(
+        discovery_snapshot,
+        actionability,
+        candidate_rows,
+    )
+    activation = activation_summary_payload(
+        config,
+        radar_run_summary=radar_run_summary,
+        broker_summary=broker_summary,
+    )
+    live_plan = live_activation_plan_payload(
+        config,
+        radar_run_summary=radar_run_summary,
+        broker_summary=broker_summary,
+    )
+    checklist = readiness_checklist_payload(
+        config,
+        radar_run_summary=radar_run_summary,
+        broker_summary=broker_summary,
+    )
+    telemetry = telemetry_tape_payload(ops_health)
+    labeled_candidates = candidate_decision_labels_payload(candidate_rows, investment)
+    safe_to_decide = bool(investment.get("manual_buy_review_ready"))
+    return {
+        "schema_version": "radar-readiness-v1",
+        "status": investment.get("status") or "unknown",
+        "decision_mode": investment.get("decision_mode") or "unknown",
+        "safe_to_make_investment_decision": safe_to_decide,
+        "headline": investment.get("headline") or "Investment readiness unavailable.",
+        "next_action": investment.get("next_action") or "Review readiness inputs.",
+        "evidence": investment.get("evidence") or "",
+        "latest_run_cutoff": (
+            latest_run_cutoff.isoformat() if latest_run_cutoff is not None else None
+        ),
+        "run_path": _radar_run_path_summary(radar_run_summary),
+        "radar_run": _readiness_radar_run_summary(radar_run_summary),
+        "activation_summary": activation,
+        "live_activation_plan": live_plan,
+        "readiness_checklist": checklist,
+        "discovery_snapshot": discovery_snapshot,
+        "actionability_breakdown": actionability,
+        "investment_readiness": investment,
+        "candidate_decision_labels": [
+            _readiness_candidate_label(row)
+            for row in labeled_candidates[: _positive_limit(candidate_limit)]
+        ],
+        "telemetry_tape": telemetry,
+    }
+
+
 def load_ticker_detail(
     engine: Engine,
     ticker: str,
@@ -2943,6 +3011,52 @@ def _radar_run_path_summary(
         "required_complete": min(required_complete, required_total),
         "blocking_count": blocking_count,
         "expected_gate_count": expected_gate_count,
+    }
+
+
+def _readiness_radar_run_summary(
+    radar_run_summary: Mapping[str, object] | None,
+) -> dict[str, object]:
+    summary = radar_run_summary if isinstance(radar_run_summary, Mapping) else {}
+    return {
+        "status": summary.get("status") or "unknown",
+        "run_path_status": summary.get("run_path_status") or "unknown",
+        "as_of": summary.get("as_of"),
+        "decision_available_at": summary.get("decision_available_at"),
+        "started_at": summary.get("started_at"),
+        "finished_at": summary.get("finished_at"),
+        "provider": summary.get("provider"),
+        "universe": summary.get("universe"),
+        "tickers": summary.get("tickers") or [],
+        "required_step_count": int(_finite_float(summary.get("required_step_count"))),
+        "required_completed_count": int(
+            _finite_float(summary.get("required_completed_count"))
+        ),
+        "blocking_step_count": int(_finite_float(summary.get("blocking_step_count"))),
+        "expected_gate_count": int(_finite_float(summary.get("expected_gate_count"))),
+        "requested_count": int(_finite_float(summary.get("requested_count"))),
+        "raw_count": int(_finite_float(summary.get("raw_count"))),
+        "normalized_count": int(_finite_float(summary.get("normalized_count"))),
+    }
+
+
+def _readiness_candidate_label(row: Mapping[str, object]) -> dict[str, object]:
+    brief = _mapping_value(row, "research_brief")
+    support = _mapping_value(row, "top_supporting_evidence")
+    risk = _mapping_value(row, "top_disconfirming_evidence")
+    return {
+        "ticker": row.get("ticker"),
+        "decision_status": row.get("decision_status") or "unknown",
+        "state": row.get("state"),
+        "score": _finite_float(row.get("final_score")),
+        "setup": row.get("setup_type") or "n/a",
+        "top_catalyst": brief.get("top_catalyst")
+        or row.get("top_event_title")
+        or support.get("title"),
+        "risk_or_gap": brief.get("risk_or_gap") or risk.get("title"),
+        "decision_card_id": row.get("decision_card_id"),
+        "next_step": row.get("decision_next_step") or brief.get("next_step"),
+        "audit": _mapping_value(brief, "audit"),
     }
 
 

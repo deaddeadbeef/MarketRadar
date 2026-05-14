@@ -222,6 +222,14 @@ def latest_radar_run() -> dict[str, object]:
     )
 
 
+@router.get("/readiness", dependencies=[Depends(require_role(Role.VIEWER))])
+def radar_readiness() -> dict[str, object]:
+    readiness_payload = _dashboard_helper("radar_readiness_payload")
+    return redact_restricted_external_payload(
+        readiness_payload(_engine(), AppConfig.from_env())
+    )
+
+
 @router.post("/universe/seed", dependencies=[Depends(require_role(Role.ANALYST))])
 def seed_universe(
     request: UniverseSeedRequest,
