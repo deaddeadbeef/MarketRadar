@@ -426,9 +426,9 @@ def test_telemetry_tape_payload_summarizes_recent_radar_events() -> None:
     payload = telemetry_tape_payload(
         {
             "telemetry": {
-                "event_count": 2,
+                "event_count": 4,
                 "latest_event_at": "2026-05-10T12:00:00+00:00",
-                "status_counts": {"blocked": 1, "success": 1},
+                "status_counts": {"blocked": 1, "skipped": 2, "success": 1},
                 "events": [
                     {
                         "event_type": "telemetry.radar_run.lock_contention",
@@ -455,18 +455,68 @@ def test_telemetry_tape_payload_summarizes_recent_radar_events() -> None:
                             "expected_gate_steps": [{"step": "llm_review"}],
                         },
                     },
+                    {
+                        "event_type": "telemetry.radar_run.step_finished",
+                        "status": "skipped",
+                        "reason": "no_manual_buy_review_inputs",
+                        "artifact_type": "job_run",
+                        "artifact_id": "decision-card-job-run",
+                        "occurred_at": "2026-05-10T11:58:00+00:00",
+                        "metadata": {
+                            "step": "decision_cards",
+                            "result_status": "skipped",
+                            "result_reason": "no_manual_buy_review_inputs",
+                            "outcome_category": "expected_gate",
+                            "outcome_label": "Expected gate",
+                            "operator_action": (
+                                "No action required unless you want this optional gate to run."
+                            ),
+                            "blocks_reliance": False,
+                        },
+                    },
+                    {
+                        "event_type": "telemetry.radar_run.step_finished",
+                        "status": "skipped",
+                        "reason": "llm_disabled",
+                        "artifact_type": "job_run",
+                        "artifact_id": "legacy-llm-job-run",
+                        "occurred_at": "2026-05-10T11:57:00+00:00",
+                        "metadata": {
+                            "step": "llm_review",
+                            "outcome_category": "expected_gate",
+                            "outcome_label": "Expected gate",
+                        },
+                    },
                 ],
             }
         }
     )
 
     assert payload["status"] == "attention"
-    assert payload["event_count"] == 2
+    assert payload["event_count"] == 4
     assert payload["events"][0]["event"] == "radar_run.lock_contention"
     assert payload["events"][0]["artifact"] == "radar_run:radar-run-api-very-long"
     assert payload["events"][0]["summary"] == "provider=default; universe=liquid-us"
     assert payload["events"][1]["summary"] == (
         "daily_status=success; steps=skipped=4, success=6; blocked=0; expected_gates=1"
+    )
+    assert payload["events"][2]["event"] == "radar_run.step_finished"
+    assert payload["events"][2]["status"] == "expected_gate"
+    assert payload["events"][2]["raw_status"] == "skipped"
+    assert payload["events"][2]["step"] == "decision_cards"
+    assert payload["events"][2]["outcome"] == "Expected gate"
+    assert payload["events"][2]["blocks_reliance"] == "no"
+    assert payload["events"][2]["summary"] == (
+        "step=decision_cards; outcome=Expected gate; category=expected_gate; "
+        "raw_status=skipped; reason=no_manual_buy_review_inputs; "
+        "action=No action required unless you want this optional gate to run."
+    )
+    assert payload["events"][3]["status"] == "expected_gate"
+    assert payload["events"][3]["raw_status"] == "skipped"
+    assert payload["events"][3]["summary"] == (
+        "step=llm_review; outcome=Expected gate; category=expected_gate; "
+        "raw_status=skipped; reason=llm_disabled; "
+        "action=No action required unless you want this optional gate to run."
     )
 
 

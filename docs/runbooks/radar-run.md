@@ -42,7 +42,10 @@ that gate to run.
 The dashboard **Recent Radar Telemetry** tape is a compact view of append-only
 telemetry audit events. Use it to confirm whether a dashboard/API action was
 requested, completed, rejected, blocked by a lock, or rate limited before
-rerunning a live operation.
+rerunning a live operation. Run-step telemetry keeps the raw stored status, but
+also surfaces the operator outcome category, so expected optional gates are
+shown as `expected_gate` with `raw_status=skipped` instead of looking like scan
+failures.
 
 The dashboard **Actionability Breakdown** explains why the current queue is or is
 not ready for investment work. It buckets candidates into buy-review, research,
