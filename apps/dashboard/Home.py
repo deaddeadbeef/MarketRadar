@@ -307,7 +307,16 @@ def _tone(value: object) -> str:
     text = str(value or "").lower()
     if text in {"critical", "failed", "blocked", "degraded", "stale", "yes"}:
         return "danger"
-    if text in {"high", "warning", "planned", "dry_run", "enabled", "fixture"}:
+    if text in {
+        "high",
+        "warning",
+        "planned",
+        "dry_run",
+        "enabled",
+        "fixture",
+        "research_only",
+        "not_ready",
+    }:
         return "warn"
     if text in {"healthy", "success", "sent", "ok", "useful", "acted", "off", "no"}:
         return "good"
@@ -328,8 +337,8 @@ def _show_status_badges(items: Sequence[tuple[str, object]]) -> None:
         st.markdown(f'<div class="mr-badge-row">{markup}</div>', unsafe_allow_html=True)
 
 
-def _command_cell(label: str, value: object) -> str:
-    tone = _tone(value)
+def _command_cell(label: str, value: object, *, tone_value: object = None) -> str:
+    tone = _tone(tone_value if tone_value is not None else value)
     return (
         f'<div class="mr-command-cell mr-command-cell-{tone}">'
         f'<span class="mr-command-label">{_html(label)}</span>'
@@ -346,16 +355,31 @@ def _show_command_header(
     ops_health: Mapping[str, Any],
     discovery_snapshot: Mapping[str, Any],
     runtime_context: Mapping[str, Any],
+    investment_readiness: Mapping[str, Any],
 ) -> None:
     database = _mapping(ops_health.get("database"))
     degraded_mode = _mapping(ops_health.get("degraded_mode"))
     build = _mapping(runtime_context.get("build"))
     degraded = "enabled" if bool(degraded_mode.get("enabled")) else "off"
     data_mode = str(discovery_snapshot.get("status") or "unknown")
+    decision_mode = str(
+        investment_readiness.get("decision_mode")
+        or investment_readiness.get("status")
+        or "unknown"
+    )
+    investable = (
+        "yes" if bool(investment_readiness.get("manual_buy_review_ready")) else "no"
+    )
     build_label = str(build.get("commit") or "unknown")[:8]
     cells = [
         _command_cell("Database", database.get("status") or "unknown"),
         _command_cell("Data Mode", data_mode),
+        _command_cell("Decision Mode", decision_mode, tone_value=decision_mode),
+        _command_cell(
+            "Investable",
+            investable,
+            tone_value="ok" if investable == "yes" else "blocked",
+        ),
         _command_cell("Candidates", len(candidate_rows)),
         _command_cell("Alerts", len(alert_rows)),
         _command_cell("IPO/S-1", len(ipo_rows)),
@@ -3863,6 +3887,16 @@ runtime_context = _mapping(
         dotenv_loaded=DOTENV_LOADED,
     )
 )
+header_actionability = _mapping(
+    dashboard_data.actionability_breakdown_payload(candidate_rows)
+)
+header_investment_readiness = _mapping(
+    dashboard_data.investment_readiness_payload(
+        discovery_snapshot,
+        header_actionability,
+        candidate_rows,
+    )
+)
 
 _show_command_header(
     candidate_rows=candidate_rows,
@@ -3871,6 +3905,7 @@ _show_command_header(
     ops_health=ops_health,
     discovery_snapshot=discovery_snapshot,
     runtime_context=runtime_context,
+    investment_readiness=header_investment_readiness,
 )
 
 tabs = st.tabs(
