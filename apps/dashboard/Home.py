@@ -2309,6 +2309,7 @@ def _show_overview(
     metric_cols[4].metric("Themes", len(theme_rows))
     metric_cols[5].metric("LLM Cost", _currency(cost_summary.get("total_actual_cost_usd")))
 
+    _show_run_path_pulse(radar_run_summary)
     _show_market_radar_usefulness(
         engine=engine,
         config=config,
@@ -2546,6 +2547,62 @@ def _show_overview(
             "feedback": "Feedback",
         },
         empty="No alert rows.",
+    )
+
+
+def _show_run_path_pulse(radar_run_summary: Mapping[str, Any]) -> None:
+    st.subheader("Latest Run Path")
+    if not radar_run_summary:
+        st.info("No radar run has completed yet. Run a fixture smoke before reviewing signals.")
+        return
+
+    display_status = dashboard_data.radar_run_effective_status(radar_run_summary)
+    status_counts = _mapping(radar_run_summary.get("status_counts"))
+    outcome_counts = _mapping(radar_run_summary.get("outcome_category_counts"))
+    required_total = _summary_metric_int(radar_run_summary, "required_step_count")
+    required_complete = _summary_metric_int(radar_run_summary, "required_completed_count")
+    action_needed = _summary_metric_int(
+        radar_run_summary,
+        "action_needed_count",
+        "blocking_step_count",
+    )
+    optional_gates = _summary_metric_int(
+        radar_run_summary,
+        "optional_expected_gate_count",
+        "expected_gate_count",
+        fallback=int(_metric_number(outcome_counts.get("expected_gate"))),
+    )
+    raw_skips = int(_metric_number(status_counts.get("skipped")))
+
+    if action_needed:
+        st.warning(
+            "Latest run has blocked required steps. Use the operator work queue before "
+            "treating candidates as current."
+        )
+    elif required_total and required_complete >= required_total:
+        st.success(
+            "Latest run required path is complete. Raw skipped rows are optional gates "
+            "or audit telemetry, not scan failures."
+        )
+    else:
+        st.info(
+            "Latest run is not fully classified yet. Review the run controls before "
+            "using candidate output."
+        )
+
+    _show_status_badges(
+        [
+            ("Run", display_status),
+            ("Required Path", f"{required_complete}/{required_total}"),
+            ("Action Needed", action_needed),
+            ("Optional Gates", optional_gates),
+            ("Audit Raw Skips", raw_skips),
+        ]
+    )
+    st.caption(
+        "As of "
+        f"{radar_run_summary.get('as_of') or 'n/a'}; cutoff "
+        f"{radar_run_summary.get('decision_available_at') or 'n/a'}."
     )
 
 
