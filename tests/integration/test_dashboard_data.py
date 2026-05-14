@@ -2049,6 +2049,64 @@ def test_telemetry_tape_payload_classifies_rate_limit_as_guarded() -> None:
     assert "latest=radar_run.rate_limited" in payload["evidence"]
 
 
+def test_telemetry_tape_payload_adds_operator_rollup_rows() -> None:
+    payload = telemetry_tape_payload(
+        {
+            "telemetry": {
+                "event_count": 3,
+                "latest_event_at": "2026-05-10T12:02:00+00:00",
+                "status_counts": {"blocked": 1, "rejected": 1, "success": 1},
+                "events": [
+                    {
+                        "event_type": "telemetry.radar_run.rate_limited",
+                        "status": "blocked",
+                        "reason": "rate_limited",
+                        "artifact_type": "radar_run",
+                        "artifact_id": "rate-limited",
+                        "occurred_at": "2026-05-10T12:02:00+00:00",
+                    },
+                    {
+                        "event_type": "telemetry.universe_seed.rejected",
+                        "status": "rejected",
+                        "reason": "cooldown",
+                        "artifact_type": "universe_seed",
+                        "artifact_id": "seed-rejected",
+                        "occurred_at": "2026-05-10T12:01:00+00:00",
+                    },
+                    {
+                        "event_type": "telemetry.radar_run.completed",
+                        "status": "success",
+                        "artifact_type": "radar_run",
+                        "artifact_id": "run-completed",
+                        "occurred_at": "2026-05-10T12:00:00+00:00",
+                        "metadata": {
+                            "daily_status": "success",
+                            "step_counts": {"success": 7},
+                            "blocked_steps": [],
+                            "expected_gate_steps": [],
+                            "outcome_category_counts": {"completed": 7},
+                        },
+                    },
+                ],
+            }
+        }
+    )
+
+    rollup = {row["category"]: row for row in payload["rollup"]}
+    assert list(rollup) == ["Needs attention", "Safety guard", "Healthy"]
+    assert rollup["Needs attention"]["count"] == 1
+    assert rollup["Needs attention"]["latest_event"] == "universe_seed.rejected"
+    assert rollup["Needs attention"]["operator_action"] == (
+        "Inspect the latest failed, rejected, or blocked operation."
+    )
+    assert rollup["Safety guard"]["latest_event"] == "radar_run.rate_limited"
+    assert rollup["Safety guard"]["operator_action"] == (
+        "Wait for the cooldown or deliberately adjust the operation cadence."
+    )
+    assert rollup["Healthy"]["latest_event"] == "radar_run.completed"
+    assert "raw_status=skipped" not in str(payload["rollup"])
+
+
 def test_telemetry_tape_payload_refreshes_stale_step_metadata() -> None:
     payload = telemetry_tape_payload(
         {

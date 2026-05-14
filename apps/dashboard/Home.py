@@ -579,6 +579,11 @@ def _show_telemetry_tape(ops_health: Mapping[str, Any]) -> None:
     )
     st.caption(str(tape.get("evidence") or "No telemetry evidence."))
     _show_records(
+        "Telemetry Status Summary",
+        tape.get("rollup"),
+        empty="No telemetry rollup.",
+    )
+    _show_records(
         "Recent Radar Telemetry",
         _telemetry_operator_rows(tape.get("events")),
         empty="No recent radar telemetry.",
