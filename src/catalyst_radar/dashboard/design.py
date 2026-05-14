@@ -349,7 +349,7 @@ div[data-baseweb="select"] svg {
 .mr-command-strip {
   display: grid;
   gap: 0.28rem;
-  grid-template-columns: repeat(5, minmax(5.6rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(5.6rem, 1fr));
   min-width: 0;
 }
 

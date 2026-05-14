@@ -307,7 +307,7 @@ def _tone(value: object) -> str:
     text = str(value or "").lower()
     if text in {"critical", "failed", "blocked", "degraded", "stale", "yes"}:
         return "danger"
-    if text in {"high", "warning", "planned", "dry_run", "enabled"}:
+    if text in {"high", "warning", "planned", "dry_run", "enabled", "fixture"}:
         return "warn"
     if text in {"healthy", "success", "sent", "ok", "useful", "acted", "off", "no"}:
         return "good"
@@ -344,16 +344,23 @@ def _show_command_header(
     alert_rows: list[dict[str, object]],
     ipo_rows: list[dict[str, object]],
     ops_health: Mapping[str, Any],
+    discovery_snapshot: Mapping[str, Any],
+    runtime_context: Mapping[str, Any],
 ) -> None:
     database = _mapping(ops_health.get("database"))
     degraded_mode = _mapping(ops_health.get("degraded_mode"))
+    build = _mapping(runtime_context.get("build"))
     degraded = "enabled" if bool(degraded_mode.get("enabled")) else "off"
+    data_mode = str(discovery_snapshot.get("status") or "unknown")
+    build_label = str(build.get("commit") or "unknown")[:8]
     cells = [
         _command_cell("Database", database.get("status") or "unknown"),
+        _command_cell("Data Mode", data_mode),
         _command_cell("Candidates", len(candidate_rows)),
         _command_cell("Alerts", len(alert_rows)),
         _command_cell("IPO/S-1", len(ipo_rows)),
         _command_cell("Degraded", degraded),
+        _command_cell("Build", build_label),
     ]
     st.markdown(
         '<section class="mr-app-header">'
@@ -983,6 +990,8 @@ def _show_runtime_context(context: Mapping[str, Any]) -> None:
         _show_mapping(
             "Runtime",
             {
+                "build_commit": _mapping(context.get("build")).get("commit"),
+                "build_source": _mapping(context.get("build")).get("source"),
                 "database_kind": database.get("kind"),
                 "database_name": database.get("name"),
                 "database_location": database.get("location"),
@@ -3847,12 +3856,21 @@ discovery_snapshot = _mapping(
         radar_run_summary=radar_run_summary,
     )
 )
+runtime_context = _mapping(
+    dashboard_data.runtime_context_payload(
+        config,
+        radar_run_summary=radar_run_summary,
+        dotenv_loaded=DOTENV_LOADED,
+    )
+)
 
 _show_command_header(
     candidate_rows=candidate_rows,
     alert_rows=alert_rows,
     ipo_rows=ipo_rows,
     ops_health=ops_health,
+    discovery_snapshot=discovery_snapshot,
+    runtime_context=runtime_context,
 )
 
 tabs = st.tabs(
