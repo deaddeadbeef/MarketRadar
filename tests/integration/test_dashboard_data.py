@@ -1649,7 +1649,22 @@ def test_agent_review_summary_payload_surfaces_dry_run_reviewed_tickers() -> Non
                     ),
                 },
             ],
-        }
+        },
+        [
+            {
+                "ticker": "AAA",
+                "state": "Warning",
+                "final_score": 88.0,
+                "setup_type": "breakout",
+                "decision_next_step": "Open source evidence before escalation.",
+                "research_brief": {
+                    "why_now": "AAA volume breakout",
+                    "supporting_evidence": "AAA S-1 catalyst",
+                    "risk_or_gap": "Customer concentration",
+                    "next_step": "Review packet evidence.",
+                },
+            }
+        ],
     )
 
     assert payload["schema_version"] == "agent-review-summary-v1"
@@ -1658,6 +1673,18 @@ def test_agent_review_summary_payload_surfaces_dry_run_reviewed_tickers() -> Non
     assert payload["review_task"] == "skeptic_review"
     assert payload["reviewed_tickers"] == ["AAA"]
     assert payload["reviewed_packet_count"] == 1
+    assert payload["reviewed_candidates"] == [
+        {
+            "ticker": "AAA",
+            "state": "Warning",
+            "score": 88.0,
+            "setup": "breakout",
+            "why_now": "AAA volume breakout",
+            "evidence": "AAA S-1 catalyst",
+            "risk_or_gap": "Customer concentration",
+            "next_step": "Open source evidence before escalation.",
+        }
+    ]
     assert payload["remaining_expected_gates"][0]["step"] == "decision_cards"
     assert "AAA" in str(payload["headline"])
 

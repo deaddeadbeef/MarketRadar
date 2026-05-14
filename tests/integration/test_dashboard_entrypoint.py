@@ -159,7 +159,9 @@ def test_dashboard_wires_agent_review_summary_near_radar_run() -> None:
     assert overview_source is not None
     assert helper_source is not None
     assert "agent_review_summary_payload" in helper_source
+    assert "candidate_rows" in helper_source
     assert "Agent Review" in helper_source
+    assert "Reviewed Candidate Context" in helper_source
     assert overview_source.index("_show_radar_run_controls") < overview_source.index(
         "_show_agent_review_summary"
     )
