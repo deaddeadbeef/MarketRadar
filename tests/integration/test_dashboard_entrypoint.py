@@ -37,7 +37,9 @@ def test_dashboard_wires_manual_review_gate_as_display_only() -> None:
         "bool",
         "columns",
         "get",
+        "_manual_review_gate_rows",
         "metric",
+        "_show_records",
         "str",
         "subheader",
         "success",
@@ -49,6 +51,8 @@ def test_dashboard_wires_manual_review_gate_as_display_only() -> None:
     assert {"subheader", "success", "warning", "columns", "metric"}.issubset(
         gate_calls
     )
+    assert "_manual_review_gate_rows" in gate_calls
+    assert "_show_records" in gate_calls
 
 
 def test_dashboard_shows_radar_call_plan_before_run_post() -> None:
@@ -413,6 +417,46 @@ def test_candidate_blocker_summary_uses_transition_reasons() -> None:
             "transition_reasons": ["candidate data is stale"],
         }
     ) == "candidate data is stale"
+
+
+def test_manual_review_gate_rows_explain_high_score_blockers() -> None:
+    module = _load_dashboard_module()
+
+    rows = module._manual_review_gate_rows(  # noqa: SLF001
+        [
+            {
+                "ticker": "AAA",
+                "state": "Warning",
+                "final_score": 100,
+                "decision_card_id": None,
+                "hard_blocks": [],
+                "portfolio_hard_blocks": [],
+                "transition_reasons": ["trade_plan_required"],
+                "risk_or_gap": "Trade plan is incomplete",
+            },
+            {
+                "ticker": "BBB",
+                "state": "EligibleForManualBuyReview",
+                "final_score": 91,
+                "decision_card_id": "",
+                "transition_reasons": [],
+            },
+            {
+                "ticker": "CCC",
+                "state": "EligibleForManualBuyReview",
+                "final_score": 92,
+                "decision_card_id": "card-ccc",
+                "transition_reasons": [],
+            },
+        ]
+    )
+
+    assert rows[0]["Ticker"] == "AAA"
+    assert rows[0]["Gate Status"] == "blocked"
+    assert rows[0]["Why Not Ready"] == "trade_plan_required"
+    assert rows[1]["Gate Status"] == "needs decision card"
+    assert rows[1]["Why Not Ready"] == "Decision card is required."
+    assert rows[2]["Gate Status"] == "ready"
 
 
 def test_dashboard_wires_research_shortlist_after_manual_review_gate() -> None:

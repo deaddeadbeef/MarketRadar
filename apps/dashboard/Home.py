@@ -1261,7 +1261,10 @@ def _show_investment_readiness(
     return readiness
 
 
-def _show_decision_contract(readiness: Mapping[str, Any]) -> None:
+def _show_decision_contract(
+    readiness: Mapping[str, Any],
+    candidate_rows: list[dict[str, object]],
+) -> None:
     st.subheader("Manual Review Gate")
     review_ready = bool(readiness.get("manual_buy_review_ready"))
     mode = str(readiness.get("decision_mode") or "unknown")
@@ -1277,6 +1280,49 @@ def _show_decision_contract(readiness: Mapping[str, Any]) -> None:
         "Decision Use",
         "manual review" if review_ready else "research only",
     )
+    _show_records(
+        "Manual Review Gate Diagnostics",
+        _manual_review_gate_rows(candidate_rows),
+        empty="No candidate gate diagnostics.",
+    )
+
+
+def _manual_review_gate_rows(
+    candidate_rows: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for candidate in candidate_rows[:8]:
+        ticker = _metric_text(candidate.get("ticker"))
+        if ticker == "n/a":
+            continue
+        state = _metric_text(candidate.get("state"))
+        card_id = _metric_text(candidate.get("decision_card_id"))
+        blockers = _candidate_blocker_values(candidate)
+        risk_or_gap = _metric_text(candidate.get("risk_or_gap"))
+        if state == "EligibleForManualBuyReview":
+            gate_status = "ready" if card_id != "n/a" else "needs decision card"
+            why_not_ready = "Decision card is required." if card_id == "n/a" else "n/a"
+        elif blockers:
+            gate_status = "blocked"
+            why_not_ready = "; ".join(blockers)
+        else:
+            gate_status = "research"
+            why_not_ready = (
+                risk_or_gap
+                if risk_or_gap != "n/a"
+                else "Candidate has not reached manual-buy-review state."
+            )
+        rows.append(
+            {
+                "Ticker": ticker,
+                "State": state,
+                "Score": f"{_metric_number(candidate.get('final_score')):.2f}",
+                "Gate Status": gate_status,
+                "Why Not Ready": why_not_ready,
+                "Decision Card": card_id,
+            }
+        )
+    return rows
 
 
 def _show_research_shortlist(
@@ -1973,7 +2019,7 @@ def _show_overview(
     _show_agent_review_summary(radar_run_summary, candidate_rows)
     _show_discovery_snapshot(discovery_snapshot)
     investment_readiness = _show_investment_readiness(discovery_snapshot, candidate_rows)
-    _show_decision_contract(investment_readiness)
+    _show_decision_contract(investment_readiness, candidate_rows)
     _show_research_shortlist(
         candidate_rows,
         investment_readiness,
