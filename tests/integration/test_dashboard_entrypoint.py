@@ -176,6 +176,8 @@ def test_dashboard_radar_run_summary_uses_operator_skip_labels() -> None:
     assert "Telemetry Rows" in summary_source
     assert "Optional Gates" in summary_source
     assert "Raw Skips Retained" in summary_source
+    assert "Why Steps Did Not Run" in summary_source
+    assert "_radar_step_status_rows" in summary_source
     assert "Tracked Stages" not in summary_source
     assert "Raw Records" not in summary_source
     assert "optional_expected_gate_count" in summary_source
@@ -522,11 +524,17 @@ def test_dashboard_wires_live_data_activation_contract_after_plan() -> None:
     line_by_call = {name: line for name, line in calls}
 
     assert "_show_live_data_activation_contract" in line_by_call
+    assert "_show_worker_status" in line_by_call
     assert (
         line_by_call["_show_live_activation_plan"]
         < line_by_call["_show_live_data_activation_contract"]
+        < line_by_call["_show_worker_status"]
         < line_by_call["_show_telemetry_tape"]
     )
+    worker_source = ast.get_source_segment(source, functions["_show_worker_status"])
+    assert worker_source is not None
+    assert "worker_status_payload" in worker_source
+    assert "Worker Status" in worker_source
     contract_source = ast.get_source_segment(
         source,
         functions["_show_live_data_activation_contract"],

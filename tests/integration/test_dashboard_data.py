@@ -65,6 +65,7 @@ from catalyst_radar.dashboard.data import (
     research_shortlist_payload,
     telemetry_tape_payload,
     universe_coverage_payload,
+    worker_status_payload,
 )
 from catalyst_radar.storage.broker_repositories import BrokerRepository
 from catalyst_radar.storage.budget_repositories import BudgetLedgerRepository
@@ -1580,7 +1581,7 @@ def test_telemetry_tape_payload_summarizes_recent_radar_events() -> None:
         "step=decision_cards; outcome=Expected gate; category=expected_gate; "
         "raw_status=skipped; reason=no_manual_buy_review_inputs; "
         "trigger=At least one candidate must pass policy into manual buy review.; "
-        "action=No action required unless you want this optional gate to run."
+        "action=No Decision Card action required until a candidate crosses manual buy-review."
     )
     assert payload["events"][3]["status"] == "expected_gate"
     assert payload["events"][3]["raw_status"] == "skipped"
@@ -1588,7 +1589,8 @@ def test_telemetry_tape_payload_summarizes_recent_radar_events() -> None:
         "step=llm_review; outcome=Expected gate; category=expected_gate; "
         "raw_status=skipped; reason=llm_disabled; "
         "trigger=Request LLM dry-run review after candidate packets exist.; "
-        "action=No action required unless you want this optional gate to run."
+        "action=Enable the dashboard agent dry-run switch, or configure OPENAI_API_KEY "
+        "for real review."
     )
 
 
@@ -1628,7 +1630,7 @@ def test_telemetry_tape_payload_refreshes_stale_step_metadata() -> None:
     assert payload["events"][0]["summary"] == (
         "step=llm_review; outcome=Blocked input; category=blocked_input; "
         "raw_status=skipped; reason=degraded_mode_blocks_llm_review; "
-        "action=Resolve the upstream data/provider issue before relying on this run."
+        "action=Exit degraded mode before running agent review against the latest candidates."
     )
 
 
@@ -1760,6 +1762,84 @@ def test_radar_run_cooldown_payload_ignores_expired_lock(
     assert payload["retry_after_seconds"] == 0
     assert payload["reset_at"] == expired_at.isoformat()
     assert "lock=inactive" in str(payload["evidence"])
+
+
+def test_worker_status_payload_reports_active_worker_lock(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    now = AVAILABLE_AT
+    reset_at = now + timedelta(minutes=44)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(job_locks).values(
+                lock_name="daily-run",
+                owner="worker-test",
+                acquired_at=now - timedelta(minutes=1),
+                heartbeat_at=now,
+                expires_at=reset_at,
+                metadata={"source": "test"},
+            )
+        )
+
+    payload = worker_status_payload(engine, now=now)
+
+    assert payload["schema_version"] == "worker-status-v1"
+    assert payload["status"] == "running"
+    assert payload["lock_active"] is True
+    assert payload["lock_owner"] == "worker-test"
+    assert payload["lock_expires_at"] == reset_at.isoformat()
+    assert "lock=active" in str(payload["evidence"])
+
+
+def test_worker_status_payload_reports_idle_latest_job(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(job_runs),
+            [
+                _job_run_row(
+                    "feature-scan",
+                    job_type="feature_scan",
+                    status="success",
+                    started_at=AVAILABLE_AT - timedelta(minutes=5),
+                    metadata={
+                        "as_of": "2026-05-10",
+                        "decision_available_at": AVAILABLE_AT.isoformat(),
+                        "provider": "polygon",
+                        "result_status": "success",
+                        "result_reason": None,
+                        "result_payload": {"scan_result_count": 2},
+                    },
+                    requested_count=3,
+                    raw_count=2,
+                    normalized_count=2,
+                )
+            ],
+        )
+
+    payload = worker_status_payload(engine, now=AVAILABLE_AT)
+
+    assert payload["status"] == "idle"
+    assert payload["lock_active"] is False
+    assert payload["latest_job_type"] == "feature_scan"
+    assert payload["latest_job_status"] == "success"
+    assert "latest_job=feature_scan" in str(payload["evidence"])
+
+
+def test_worker_status_payload_reports_no_worker_activity(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+
+    payload = worker_status_payload(engine, now=AVAILABLE_AT)
+
+    assert payload["status"] == "not_seen"
+    assert payload["lock_active"] is False
+    assert payload["latest_job_type"] is None
+    assert "latest_job=n/a" in str(payload["evidence"])
 
 
 def test_universe_coverage_payload_warns_on_thin_sample_universe() -> None:
@@ -2953,6 +3033,9 @@ def test_load_radar_run_summary_marks_limited_analysis_skips_partial(
     assert summary["steps"][1]["reason"] == "degraded_mode_blocks_high_state_work"
     assert summary["steps"][1]["category"] == "blocked_input"
     assert summary["steps"][1]["blocks_reliance"] is True
+    assert summary["steps"][1]["operator_action"] == (
+        "Exit degraded mode with trusted current market/event inputs before high-state research."
+    )
     assert summary["steps"][1]["payload"] == {"degraded_mode": {"enabled": True}}
 
 
@@ -3151,10 +3234,10 @@ def test_load_radar_run_summary_refreshes_stale_skip_explanations(
 
     assert summary["steps"][0]["reason"] == "no_alerts"
     assert summary["steps"][0]["meaning"] == (
-        "No existing alerts were available for the digest step."
+        "Alert planning did not produce any digest-routed alerts for this run."
     )
     assert summary["steps"][0]["operator_action"] == (
-        "No action required unless you want this optional gate to run."
+        "No action required unless you expected digest-routed alerts."
     )
     assert summary["steps"][0]["trigger_condition"] == (
         "Alert planning must produce at least one digest alert."
@@ -3221,6 +3304,9 @@ def test_load_radar_run_summary_keeps_not_ready_skips_out_of_expected_gates(
     assert summary["run_path_status"] == "incomplete"
     assert summary["steps"][1]["category"] == "not_ready"
     assert summary["steps"][1]["blocks_reliance"] is False
+    assert summary["steps"][1]["operator_action"] == (
+        "Configure SEC/news ingestion or add local text snippets before triage."
+    )
 
 
 def test_radar_discovery_snapshot_labels_fixture_thin_run(
