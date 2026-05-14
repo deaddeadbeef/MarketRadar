@@ -566,6 +566,25 @@ def _show_live_data_activation_contract(
             "The full template below adds optional LLM review settings."
         )
         st.code("\n".join(minimum_env_lines), language="text")
+    dotenv_file = _mapping(contract.get("dotenv_file"))
+    if dotenv_file:
+        st.caption(
+            f"{dotenv_file.get('headline') or '.env.local status unavailable'} "
+            f"Next: {dotenv_file.get('next_action') or 'n/a'}"
+        )
+        _show_status_badges(
+            [
+                (".env.local", dotenv_file.get("status") or "unknown"),
+                ("Loaded", dotenv_file.get("loaded_count") or 0),
+                ("Missing", dotenv_file.get("missing_count") or 0),
+                ("Restart", dotenv_file.get("restart_required_count") or 0),
+            ]
+        )
+        _show_records(
+            ".env.local Activation Status",
+            dotenv_file.get("rows"),
+            empty="No .env.local activation rows.",
+        )
     _show_records(
         "Activation Steps",
         contract.get("operator_steps"),
