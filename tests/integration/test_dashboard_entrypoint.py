@@ -221,6 +221,29 @@ def test_dashboard_radar_run_summary_uses_operator_skip_labels() -> None:
     assert "st.info" in notice_source
 
 
+def test_dashboard_overview_surfaces_latest_run_path_before_usefulness() -> None:
+    source = Path("apps/dashboard/Home.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    functions = {
+        node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)
+    }
+    overview_source = ast.get_source_segment(source, functions["_show_overview"])
+    pulse_source = ast.get_source_segment(source, functions["_show_run_path_pulse"])
+
+    assert overview_source is not None
+    assert pulse_source is not None
+    assert "_show_run_path_pulse(radar_run_summary)" in overview_source
+    assert overview_source.index("_show_run_path_pulse") < overview_source.index(
+        "_show_market_radar_usefulness"
+    )
+    assert "Latest Run Path" in pulse_source
+    assert "Required Path" in pulse_source
+    assert "Action Needed" in pulse_source
+    assert "Optional Gates" in pulse_source
+    assert "Audit Raw Skips" in pulse_source
+    assert "not scan failures" in pulse_source
+
+
 def test_dashboard_wires_operator_work_queue_before_activation_sections() -> None:
     source = Path("apps/dashboard/Home.py").read_text(encoding="utf-8")
     tree = ast.parse(source)
