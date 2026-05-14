@@ -1,14 +1,10 @@
 # Radar Run
 
-Use the dashboard **Run Radar** control or call the API to execute one guarded daily radar pass:
+Use the dashboard **Run Fixture Smoke** or **Run Capped Live Radar** control, or
+call the API to execute one guarded daily radar pass:
 
 ```powershell
-Invoke-RestMethod `
-  -Method Post `
-  -Uri https://127.0.0.1:8443/api/radar/runs `
-  -SkipCertificateCheck `
-  -ContentType 'application/json' `
-  -Body '{}'
+curl.exe --insecure --fail --silent --show-error --request POST https://127.0.0.1:8443/api/radar/runs --header "Content-Type: application/json" --data '{}'
 ```
 
 The run uses the existing `daily-run` job lock, so another dashboard/API/worker run will return `409` instead of overlapping.
@@ -16,8 +12,9 @@ Manual dashboard/API runs also use `CATALYST_RADAR_RUN_MIN_INTERVAL_SECONDS`
 as a durable cooldown. Repeated run requests inside that window return `429`
 with `Retry-After`, even if the previous run has already finished.
 The dashboard reads the same cooldown lock before submitting a request, so the
-**Run Radar** control shows when the next manual run is allowed and disables the
-button while the cooldown is active.
+run control shows whether the next click is a fixture smoke test or capped live
+run, when the next manual run is allowed, and disables the button while the
+cooldown or call-plan setup block is active.
 
 The radar run does not call Schwab. It can read the latest synced broker context already in the database when building decision cards, but Schwab portfolio and market refreshes stay behind the separate broker controls and their server-side rate guards.
 
@@ -125,12 +122,7 @@ The API route is rate limited by
 `CATALYST_POLYGON_TICKER_SEED_MIN_INTERVAL_SECONDS`:
 
 ```powershell
-Invoke-RestMethod `
-  -Method Post `
-  -Uri https://127.0.0.1:8443/api/radar/universe/seed `
-  -SkipCertificateCheck `
-  -ContentType 'application/json' `
-  -Body '{"provider":"polygon","max_pages":1}'
+curl.exe --insecure --fail --silent --show-error --request POST https://127.0.0.1:8443/api/radar/universe/seed --header "Content-Type: application/json" --data '{"provider":"polygon","max_pages":1}'
 ```
 
 Missing Polygon credentials, provider contract failures, and critical rejected
@@ -163,18 +155,14 @@ active securities include CIK metadata.
 To inspect the last persisted daily radar pass without starting a new one:
 
 ```powershell
-Invoke-RestMethod `
-  -Uri https://127.0.0.1:8443/api/radar/runs/latest `
-  -SkipCertificateCheck
+curl.exe --insecure --fail --silent --show-error --request GET https://127.0.0.1:8443/api/radar/runs/latest
 ```
 
 To get the single operator contract for whether the radar is actionable without
 starting a new run:
 
 ```powershell
-Invoke-RestMethod `
-  -Uri https://127.0.0.1:8443/api/radar/readiness `
-  -SkipCertificateCheck
+curl.exe --insecure --fail --silent --show-error --request GET https://127.0.0.1:8443/api/radar/readiness
 ```
 
 `GET /api/radar/readiness` is DB/config-only. It composes the latest run path,
@@ -188,9 +176,7 @@ To inspect the live-data activation contract without starting a run or calling
 providers:
 
 ```powershell
-Invoke-RestMethod `
-  -Uri https://127.0.0.1:8443/api/radar/live-activation `
-  -SkipCertificateCheck
+curl.exe --insecure --fail --silent --show-error --request GET https://127.0.0.1:8443/api/radar/live-activation
 ```
 
 `GET /api/radar/live-activation` is DB/config-only. It returns missing env vars,
@@ -201,9 +187,7 @@ endpoint does not call Polygon, SEC, Schwab, or OpenAI.
 To get the prioritized research queue without opening the dashboard:
 
 ```powershell
-Invoke-RestMethod `
-  -Uri https://127.0.0.1:8443/api/radar/research-shortlist `
-  -SkipCertificateCheck
+curl.exe --insecure --fail --silent --show-error --request GET https://127.0.0.1:8443/api/radar/research-shortlist
 ```
 
 `GET /api/radar/research-shortlist` is also DB/config-only. It ranks persisted
@@ -217,19 +201,14 @@ To inspect the external call budget for a proposed radar run without starting
 the run:
 
 ```powershell
-Invoke-RestMethod `
-  -Method Post `
-  -Uri https://127.0.0.1:8443/api/radar/runs/call-plan `
-  -SkipCertificateCheck `
-  -ContentType 'application/json' `
-  -Body '{"tickers":["MSFT","NVDA"],"run_llm":true,"llm_dry_run":true}'
+curl.exe --insecure --fail --silent --show-error --request POST https://127.0.0.1:8443/api/radar/runs/call-plan --header "Content-Type: application/json" --data '{"tickers":["MSFT","NVDA"],"run_llm":true,"llm_dry_run":true}'
 ```
 
 `POST /api/radar/runs/call-plan` is also DB/config-only. It returns per-layer
 `external_call_count_max` rows for market data, SEC/news events, LLM review,
 alert delivery, and Schwab. It does not acquire the daily run lock, record
 telemetry, call Polygon, call SEC, sync Schwab, or call OpenAI. Use it before
-clicking **Run Radar** when live providers are configured.
+clicking **Run Capped Live Radar** when live providers are configured.
 
 Both `POST /api/radar/runs` and `GET /api/radar/runs/latest` include a
 `discovery_snapshot` block. That snapshot is DB-only: it reads the latest stored
