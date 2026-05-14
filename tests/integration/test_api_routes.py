@@ -1333,6 +1333,61 @@ def test_get_ops_health(tmp_path, monkeypatch) -> None:
     assert "runbooks" in payload
 
 
+def test_get_ops_telemetry_returns_summarized_tape(tmp_path, monkeypatch) -> None:
+    database_url = _database_url(tmp_path, "ops-telemetry.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+    monkeypatch.setattr(
+        dashboard_data,
+        "load_ops_health",
+        lambda _engine: {
+            "telemetry": {
+                "event_count": 1,
+                "latest_event_at": AVAILABLE_AT.isoformat(),
+                "status_counts": {"success": 1},
+                "events": [
+                    {
+                        "event_type": "telemetry.radar_run.completed",
+                        "status": "success",
+                        "artifact_type": "radar_run",
+                        "artifact_id": "radar-run-api:abc123",
+                        "occurred_at": AVAILABLE_AT.isoformat(),
+                        "metadata": {
+                            "daily_status": "success",
+                            "step_counts": {"success": 8, "skipped": 3},
+                            "outcome_category_counts": {
+                                "completed": 8,
+                                "expected_gate": 3,
+                            },
+                            "blocked_steps": [],
+                            "expected_gate_steps": [
+                                {"step": "decision_cards"},
+                                {"step": "digest"},
+                                {"step": "validation_update"},
+                            ],
+                        },
+                    }
+                ],
+            }
+        },
+        raising=False,
+    )
+    client = TestClient(create_app())
+
+    response = client.get("/api/ops/telemetry?limit=1")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ready"
+    assert payload["event_count"] == 1
+    assert payload["status_counts"] == {"success": 1}
+    assert payload["events"][0]["event"] == "radar_run.completed"
+    assert payload["events"][0]["summary"] == (
+        "daily_status=success; required=8/8; blocked=0; "
+        "expected_gates=3; audit_raw_skips=3"
+    )
+
+
 def test_get_cost_summary(tmp_path, monkeypatch) -> None:
     database_url = _database_url(tmp_path, "costs.db")
     monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
