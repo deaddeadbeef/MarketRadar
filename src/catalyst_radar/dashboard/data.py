@@ -794,14 +794,13 @@ def radar_readiness_payload(
 ) -> dict[str, object]:
     radar_run_summary = load_radar_run_summary(engine)
     latest_run_cutoff = _parse_utc_datetime(radar_run_summary.get("decision_available_at"))
-    ops_cutoff = _radar_run_ops_cutoff(radar_run_summary) or latest_run_cutoff
     candidate_rows = load_radar_run_candidate_rows(engine, radar_run_summary)
     broker_summary = load_broker_summary(engine)
     market_candidate_rows = candidate_rows_with_market_context(
         candidate_rows,
         _mapping_value(broker_summary, "market_context"),
     )
-    ops_health = load_ops_health(engine, now=ops_cutoff)
+    ops_health = load_ops_health(engine)
     discovery_snapshot = radar_discovery_snapshot_payload(
         engine,
         config,
@@ -873,17 +872,6 @@ def radar_readiness_payload(
         ],
         "telemetry_tape": telemetry,
     }
-
-
-def _radar_run_ops_cutoff(
-    radar_run_summary: Mapping[str, object] | None,
-) -> datetime | None:
-    summary = radar_run_summary if isinstance(radar_run_summary, Mapping) else {}
-    for key in ("finished_at", "started_at", "decision_available_at"):
-        cutoff = _parse_utc_datetime(summary.get(key))
-        if cutoff is not None:
-            return cutoff
-    return None
 
 
 def radar_research_shortlist_payload(
