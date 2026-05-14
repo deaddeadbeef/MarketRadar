@@ -13,6 +13,7 @@ def test_restart_local_script_restarts_only_market_radar_processes() -> None:
     assert "data\\local\\schwab-localhost-key.pem" in text
     assert "data\\local\\schwab-localhost-cert.pem" in text
     assert "PYTHONPATH" in text
+    assert "-Environment" not in text
     assert "Invoke-RestMethod" in text
     assert "SkipCertificateCheck" in text
 
