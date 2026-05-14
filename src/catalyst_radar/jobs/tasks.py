@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections import Counter
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time
@@ -9,6 +10,8 @@ from typing import Any
 from sqlalchemy import Engine, func, select
 
 from catalyst_radar.alerts.digest import build_alert_digest, digest_payload
+from catalyst_radar.alerts.models import AlertChannel
+from catalyst_radar.alerts.planner import plan_alerts
 from catalyst_radar.brokers.portfolio_context import latest_broker_portfolio_context
 from catalyst_radar.connectors.base import ConnectorRequest
 from catalyst_radar.connectors.http import (
@@ -58,6 +61,7 @@ DAILY_STEP_ORDER = (
     "candidate_packets",
     "decision_cards",
     "llm_review",
+    "alert_planning",
     "digest",
     "validation_update",
 )
@@ -162,6 +166,8 @@ class _DailyRunContext:
     decision_cards: tuple[Any, ...] = ()
     step_results: dict[str, JobStepResult] = field(default_factory=dict)
     degraded_mode: Mapping[str, Any] | None = None
+    planned_alerts: tuple[Any, ...] = ()
+    alert_suppressions: tuple[Any, ...] = ()
 
     @property
     def as_of_datetime(self) -> datetime:
@@ -860,27 +866,79 @@ def _llm_review(context: _DailyRunContext) -> _StepOutcome:
     )
 
 
-def _digest(context: _DailyRunContext) -> _StepOutcome:
-    alerts = tuple(
-        _filter_alerts_by_tickers(
-            context.alert_repo.list_alerts(
-                available_at=context.spec.decision_available_at,
-                limit=500,
-            ),
-            context.spec.tickers,
+def _alert_planning(context: _DailyRunContext) -> _StepOutcome:
+    if not context.scan_results:
+        return _skipped("no_alert_planning_inputs")
+    if _degraded_mode_enabled(context):
+        return _skipped(
+            "degraded_mode_blocks_high_state_work",
+            requested_count=len(context.scan_results),
+            payload={"degraded_mode": _degraded_payload(context)},
         )
+
+    alerts = []
+    suppressions = []
+    tickers = _current_scan_tickers(context)
+    for ticker in tickers:
+        result = plan_alerts(
+            context.alert_repo,
+            as_of=context.as_of_datetime,
+            available_at=context.spec.decision_available_at,
+            ticker=ticker,
+            limit=1,
+        )
+        alerts.extend(result.alerts)
+        suppressions.extend(result.suppressions)
+
+    context.planned_alerts = tuple(alerts)
+    context.alert_suppressions = tuple(suppressions)
+    if not alerts and not suppressions:
+        return _skipped("no_alert_planning_inputs")
+
+    route_counts = Counter(alert.route.value for alert in alerts)
+    channel_counts = Counter(alert.channel.value for alert in alerts)
+    suppression_counts = Counter(suppression.reason for suppression in suppressions)
+    digest_alert_count = sum(
+        1 for alert in alerts if getattr(alert.channel, "value", alert.channel) == "digest"
     )
-    if not alerts:
+    return _StepOutcome(
+        status=JobStatus.SUCCESS.value,
+        requested_count=len(tickers),
+        raw_count=len(alerts) + len(suppressions),
+        normalized_count=len(alerts),
+        payload={
+            "alert_count": len(alerts),
+            "suppression_count": len(suppressions),
+            "digest_alert_count": digest_alert_count,
+            "planned_input_tickers": list(tickers),
+            "route_counts": dict(sorted(route_counts.items())),
+            "channel_counts": dict(sorted(channel_counts.items())),
+            "suppression_reason_counts": dict(sorted(suppression_counts.items())),
+            "dry_run": context.spec.dry_run_alerts,
+            "external_delivery": False,
+        },
+    )
+
+
+def _digest(context: _DailyRunContext) -> _StepOutcome:
+    alert_planning_step = context.step_results.get("alert_planning")
+    if (
+        alert_planning_step is not None
+        and alert_planning_step.status == "skipped"
+        and alert_planning_step.reason in BLOCKING_SKIP_REASONS
+    ):
+        return _skipped("blocked_by_failed_dependency:alert_planning")
+
+    alerts = _filter_alerts_by_tickers(list(context.planned_alerts), context.spec.tickers)
+    digest_alerts = tuple(
+        alert for alert in alerts if getattr(alert.channel, "value", alert.channel) == "digest"
+    )
+    if not digest_alerts:
         return _skipped("no_alerts")
 
-    suppressions = tuple(
-        context.alert_repo.list_suppressions(
-            available_at=context.spec.decision_available_at,
-            limit=500,
-        )
-    )
+    suppressions = tuple(context.alert_suppressions)
     digest = build_alert_digest(
-        alerts,
+        digest_alerts,
         suppressions,
         generated_at=context.spec.decision_available_at,
     )
@@ -892,6 +950,10 @@ def _digest(context: _DailyRunContext) -> _StepOutcome:
         normalized_count=int(payload["group_count"]),
         payload={
             "dry_run": context.spec.dry_run_alerts,
+            "visible_alert_count": len(alerts),
+            "planned_alert_count": len(context.planned_alerts),
+            "digest_alert_count": len(digest_alerts),
+            "channel_filter": AlertChannel.DIGEST.value,
             "digest": payload,
         },
     )
@@ -1238,6 +1300,10 @@ def _filter_alerts_by_tickers(alerts: list[Any], tickers: tuple[str, ...]) -> tu
     return tuple(alert for alert in alerts if alert.ticker in allowed)
 
 
+def _current_scan_tickers(context: _DailyRunContext) -> tuple[str, ...]:
+    return tuple(dict.fromkeys(result.ticker.upper() for result in context.scan_results))
+
+
 def _scan_result_summary_payload(context: _DailyRunContext) -> dict[str, Any]:
     state_counts: dict[str, int] = {}
     top_candidates: list[dict[str, Any]] = []
@@ -1326,6 +1392,7 @@ _STEP_HANDLERS: Mapping[str, _StepHandler] = {
     "candidate_packets": _candidate_packets,
     "decision_cards": _decision_cards,
     "llm_review": _llm_review,
+    "alert_planning": _alert_planning,
     "digest": _digest,
     "validation_update": _validation_update,
 }
@@ -1335,7 +1402,8 @@ _STEP_DEPENDENCIES: Mapping[str, tuple[str, ...]] = {
     "candidate_packets": ("feature_scan", "scoring_policy"),
     "decision_cards": ("candidate_packets",),
     "llm_review": ("decision_cards",),
-    "digest": ("candidate_packets",),
+    "alert_planning": ("scoring_policy",),
+    "digest": ("candidate_packets", "alert_planning"),
     "validation_update": ("candidate_packets",),
 }
 
