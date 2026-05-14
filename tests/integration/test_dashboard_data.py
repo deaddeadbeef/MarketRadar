@@ -32,8 +32,8 @@ from catalyst_radar.core.models import ActionState
 from catalyst_radar.dashboard.data import (
     actionability_breakdown_payload,
     activation_summary_payload,
-    alert_planning_diagnostics_payload,
     agent_review_summary_payload,
+    alert_planning_diagnostics_payload,
     candidate_decision_labels_payload,
     candidate_delta_payload,
     candidate_rows_with_market_context,
@@ -52,6 +52,7 @@ from catalyst_radar.dashboard.data import (
     load_theme_rows,
     load_ticker_detail,
     load_validation_summary,
+    market_radar_usefulness_payload,
     operator_work_queue_payload,
     opportunity_focus_payload,
     provider_preflight_payload,
@@ -71,8 +72,8 @@ from catalyst_radar.storage.broker_repositories import BrokerRepository
 from catalyst_radar.storage.budget_repositories import BudgetLedgerRepository
 from catalyst_radar.storage.db import create_schema
 from catalyst_radar.storage.schema import (
-    alerts,
     alert_suppressions,
+    alerts,
     audit_events,
     candidate_packets,
     candidate_states,
@@ -749,6 +750,118 @@ def test_investment_readiness_payload_keeps_live_research_out_of_buy_review() ->
     assert "need research" in str(readiness["headline"])
 
 
+def test_market_radar_usefulness_payload_blocks_fixture_decisions() -> None:
+    payload = market_radar_usefulness_payload(
+        AppConfig.from_env({}),
+        radar_run_summary={
+            "steps": [
+                {
+                    "step": "llm_review",
+                    "status": "success",
+                    "reason": "dry_run_only",
+                    "category": "completed",
+                    "requested_count": 1,
+                    "raw_count": 0,
+                    "normalized_count": 1,
+                }
+            ],
+        },
+        discovery_snapshot={
+            "status": "fixture",
+            "source_modes": {"market": "fixture", "events": "fixture"},
+            "freshness": {"latest_bars_older_than_as_of": False},
+            "yield": {"candidate_packets": 1, "decision_cards": 0},
+            "blockers": [
+                {
+                    "code": "fixture_market_data",
+                    "next_action": "Configure Polygon before relying on broad US-market discovery.",
+                }
+            ],
+        },
+        candidate_rows=[
+            {
+                "ticker": "MSFT",
+                "state": ActionState.WARNING.value,
+                "final_score": 88.0,
+                "decision_card_id": "",
+            }
+        ],
+        worker_status={
+            "status": "not_seen",
+            "headline": "No daily worker activity has been recorded yet.",
+            "next_action": "Use the worker handoff only after the live data contract is ready.",
+            "evidence": "lock=inactive; latest_job=n/a",
+        },
+    )
+
+    assert payload["schema_version"] == "market-radar-usefulness-v1"
+    assert payload["status"] == "setup_blocked"
+    assert payload["safe_to_make_investment_decision"] is False
+    assert payload["blocked_layers"] == 2
+    assert payload["research_layers"] == 2
+    by_layer = {row["layer"]: row for row in payload["layers"]}
+    assert by_layer["Automatic market scan"]["status"] == "blocked"
+    assert by_layer["Agentic research loop"]["status"] == "research"
+    assert by_layer["Worker automation"]["status"] == "blocked"
+    assert by_layer["Investment decision support"]["status"] == "research"
+
+
+def test_market_radar_usefulness_payload_opens_decision_review_when_live_ready() -> None:
+    config = AppConfig.from_env(
+        {
+            "CATALYST_DAILY_MARKET_PROVIDER": "polygon",
+            "CATALYST_DAILY_PROVIDER": "polygon",
+            "CATALYST_POLYGON_API_KEY": "fixture-key",
+            "CATALYST_DAILY_EVENT_PROVIDER": "sec",
+            "CATALYST_SEC_ENABLE_LIVE": "1",
+            "CATALYST_SEC_USER_AGENT": "MarketRadar/0.1 test@example.com",
+        }
+    )
+    payload = market_radar_usefulness_payload(
+        config,
+        radar_run_summary={
+            "steps": [
+                {
+                    "step": "llm_review",
+                    "status": "success",
+                    "reason": "model_reviewed",
+                    "category": "completed",
+                    "requested_count": 1,
+                    "raw_count": 1,
+                    "normalized_count": 1,
+                }
+            ],
+        },
+        discovery_snapshot={
+            "status": "ready",
+            "source_modes": {"market": "live", "events": "live"},
+            "freshness": {"latest_bars_older_than_as_of": False},
+            "yield": {"candidate_packets": 1, "decision_cards": 1},
+            "blockers": [],
+        },
+        candidate_rows=[
+            {
+                "ticker": "MSFT",
+                "state": ActionState.ELIGIBLE_FOR_MANUAL_BUY_REVIEW.value,
+                "final_score": 96.0,
+                "decision_card_id": "card-msft",
+            }
+        ],
+        worker_status={
+            "status": "idle",
+            "headline": "No daily worker lock is active, but radar job history exists.",
+            "next_action": "Start the daily worker loop after live inputs are configured.",
+            "evidence": "lock=inactive; latest_job=feature_scan",
+        },
+    )
+
+    assert payload["status"] == "decision_ready"
+    assert payload["safe_to_make_investment_decision"] is True
+    assert payload["ready_layers"] == 4
+    assert payload["blocked_layers"] == 0
+    assert "manual investment review" in str(payload["headline"])
+
+
 def test_radar_readiness_payload_summarizes_operator_decision_gate(
     tmp_path: Path,
 ) -> None:
@@ -820,6 +933,11 @@ def test_radar_readiness_payload_summarizes_operator_decision_gate(
     assert payload["candidate_delta"]["summary"]["current_run_candidates"] == 2
     assert payload["operator_work_queue"]["schema_version"] == "operator-work-queue-v1"
     assert payload["operator_work_queue"]["safe_to_make_investment_decision"] is False
+    assert payload["market_radar_usefulness"]["schema_version"] == (
+        "market-radar-usefulness-v1"
+    )
+    assert payload["market_radar_usefulness"]["status"] == "setup_blocked"
+    assert payload["market_radar_usefulness"]["safe_to_make_investment_decision"] is False
     assert payload["candidate_decision_labels"][0]["ticker"] == "MSFT"
     assert payload["candidate_decision_labels"][0]["decision_status"] == "research_only"
     assert payload["candidate_decision_labels"][0]["next_step"]
