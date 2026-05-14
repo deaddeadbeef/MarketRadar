@@ -1803,7 +1803,8 @@ def radar_discovery_snapshot_payload(
         else load_candidate_rows(engine, available_at=artifact_cutoff)
     )
     steps = _radar_steps_by_name(summary)
-    candidates = _discovery_run_candidates(unscoped_candidates, summary)
+    scoped_candidates = _discovery_scoped_candidates(unscoped_candidates, summary)
+    candidates = _discovery_run_candidates(scoped_candidates, summary)
     coverage_rows = _discovery_source_coverage_payload(
         config,
         summary=summary,
@@ -1816,7 +1817,7 @@ def radar_discovery_snapshot_payload(
     run_path = _radar_run_path_summary(summary)
     as_of_date = _parse_date(summary.get("as_of"))
     latest_bar_date = _parse_date(database.get("latest_daily_bar_date"))
-    latest_candidate_at = _latest_candidate_as_of(candidates)
+    latest_candidate_at = _latest_candidate_as_of(scoped_candidates)
 
     candidate_count = len(candidates)
     packet_count = _step_metric(
@@ -1832,6 +1833,12 @@ def radar_discovery_snapshot_payload(
         default=0,
     )
     packet_candidates = _latest_run_packet_candidates(candidates, summary)
+    latest_candidate_context = _latest_candidate_context_payload(
+        scoped_candidates,
+        summary,
+        cutoff=cutoff,
+        limit=limit,
+    )
     requested_count = _step_metric(
         steps,
         "daily_bar_ingest",
@@ -1922,6 +1929,7 @@ def radar_discovery_snapshot_payload(
             "candidate_packets": packet_count,
             "decision_cards": card_count,
         },
+        "latest_candidate_context": latest_candidate_context,
         "blockers": blockers,
         "top_discoveries": [
             _discovery_candidate(row)
@@ -3320,6 +3328,26 @@ def _discovery_candidate(row: Mapping[str, object]) -> dict[str, object]:
     }
 
 
+def _discovery_scoped_candidates(
+    candidates: Sequence[Mapping[str, object]],
+    summary: Mapping[str, object],
+) -> list[dict[str, object]]:
+    if not summary:
+        return []
+    tickers = {
+        str(ticker).strip().upper()
+        for ticker in _sequence_value(summary.get("tickers"))
+        if str(ticker).strip()
+    }
+    rows: list[dict[str, object]] = []
+    for row in candidates:
+        ticker = str(row.get("ticker") or "").strip().upper()
+        if tickers and ticker not in tickers:
+            continue
+        rows.append(_row_dict(row))
+    return rows
+
+
 def _discovery_run_candidates(
     candidates: Sequence[Mapping[str, object]],
     summary: Mapping[str, object],
@@ -3341,6 +3369,33 @@ def _discovery_run_candidates(
             continue
         rows.append(_row_dict(row))
     return rows
+
+
+def _latest_candidate_context_payload(
+    candidates: Sequence[Mapping[str, object]],
+    summary: Mapping[str, object],
+    *,
+    cutoff: datetime | None,
+    limit: int,
+) -> dict[str, object]:
+    latest_candidate_at = _latest_candidate_as_of(candidates)
+    run_as_of = _parse_date(summary.get("as_of"))
+    latest_candidate_date = latest_candidate_at.date() if latest_candidate_at else None
+    top_candidates = sorted(
+        (_row_dict(row) for row in candidates),
+        key=lambda row: (-_finite_float(row.get("final_score")), str(row.get("ticker") or "")),
+    )[: max(0, int(limit))]
+    return {
+        "candidate_states": len(candidates),
+        "latest_candidate_as_of": _iso_or_none(latest_candidate_at),
+        "latest_candidate_age_days": _age_days(cutoff, latest_candidate_at),
+        "stale_relative_to_run": bool(
+            run_as_of is not None
+            and latest_candidate_date is not None
+            and latest_candidate_date < run_as_of
+        ),
+        "top_candidates": [_discovery_candidate(row) for row in top_candidates],
+    }
 
 
 def _latest_run_packet_candidates(
@@ -3653,11 +3708,13 @@ def _step_metric(
 def _latest_candidate_as_of(
     candidates: Sequence[Mapping[str, object]],
 ) -> datetime | None:
-    values = [
-        parsed
-        for row in candidates
-        if (parsed := _parse_utc_datetime(row.get("as_of"))) is not None
-    ]
+    values: list[datetime] = []
+    for row in candidates:
+        parsed = _parse_utc_datetime(row.get("as_of"))
+        if parsed is None and (parsed_date := _parse_date(row.get("as_of"))) is not None:
+            parsed = datetime.combine(parsed_date, datetime.min.time(), tzinfo=UTC)
+        if parsed is not None:
+            values.append(parsed)
     return max(values) if values else None
 
 

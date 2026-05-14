@@ -2187,6 +2187,86 @@ def test_radar_discovery_snapshot_flags_stale_bars_and_empty_packets(
     assert blocker_codes == {"stale_daily_bars", "no_candidate_packets"}
 
 
+def test_radar_discovery_snapshot_exposes_stale_candidate_context(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    stale_run_cutoff = AVAILABLE_AT + timedelta(days=4)
+    metadata = {
+        "as_of": stale_run_cutoff.date().isoformat(),
+        "decision_available_at": stale_run_cutoff.isoformat(),
+        "outcome_available_at": None,
+        "provider": "csv",
+        "universe": "liquid-us",
+        "tickers": [],
+    }
+    with engine.begin() as conn:
+        conn.execute(
+            insert(job_runs),
+            [
+                _job_run_row(
+                    "stale-daily-bars",
+                    job_type="daily_bar_ingest",
+                    status="success",
+                    started_at=stale_run_cutoff,
+                    metadata=metadata,
+                    requested_count=43,
+                    raw_count=43,
+                    normalized_count=43,
+                ),
+                _job_run_row(
+                    "stale-feature-scan",
+                    job_type="feature_scan",
+                    status="success",
+                    started_at=stale_run_cutoff + timedelta(seconds=1),
+                    metadata=metadata,
+                    requested_count=6,
+                    raw_count=3,
+                    normalized_count=3,
+                ),
+                _job_run_row(
+                    "stale-candidate-packets",
+                    job_type="candidate_packets",
+                    status="success",
+                    started_at=stale_run_cutoff + timedelta(seconds=2),
+                    metadata=metadata,
+                    requested_count=3,
+                    raw_count=3,
+                    normalized_count=3,
+                ),
+            ],
+        )
+    summary = load_radar_run_summary(engine)
+
+    snapshot = radar_discovery_snapshot_payload(
+        engine,
+        AppConfig(
+            daily_market_provider="csv",
+            daily_event_provider="news_fixture",
+            scan_batch_size=500,
+        ),
+        radar_run_summary=summary,
+        ops_health={
+            "database": {
+                "active_security_count": 6,
+                "active_security_with_daily_bar_count": 6,
+                "latest_daily_bar_date": AS_OF.date().isoformat(),
+            }
+        },
+    )
+
+    assert snapshot["yield"]["candidate_states"] == 0
+    assert snapshot["freshness"]["latest_candidate_as_of"] == AS_OF.isoformat()
+    assert snapshot["freshness"]["latest_candidate_age_days"] == 4
+    context = snapshot["latest_candidate_context"]
+    assert context["candidate_states"] == 2
+    assert context["latest_candidate_as_of"] == AS_OF.isoformat()
+    assert context["latest_candidate_age_days"] == 4
+    assert context["stale_relative_to_run"] is True
+    assert context["top_candidates"][0]["ticker"] == "MSFT"
+
+
 def test_radar_discovery_snapshot_ignores_old_packets_without_latest_packet_step(
     tmp_path: Path,
 ) -> None:
