@@ -133,7 +133,9 @@ def test_assert_investable_readiness_script_fails_closed_without_external_calls(
     assert "/api/radar/readiness" in text
     assert "/api/radar/live-activation" in text
     assert "/api/radar/runs/call-plan" in text
-    assert "/api/ops/telemetry?limit=5" in text
+    assert "/api/ops/telemetry?limit={0}" in text
+    assert "[int]$TelemetryLimit = 8" in text
+    assert "telemetry_limit" in text
     assert "[string]::IsNullOrWhiteSpace($Body)" in text
     assert "safe_to_make_investment_decision" in text
     assert "Live activation is" in text
@@ -159,7 +161,7 @@ def test_check_live_activation_script_is_zero_external_call_status_check() -> No
     assert "Zero-call verification commands:" in text
     assert "/api/radar/readiness" in text
     assert "/api/radar/runs/latest" in text
-    assert "/api/ops/telemetry?limit=5" in text
+    assert "/api/ops/telemetry?limit=8" in text
     assert "/api/radar/runs/call-plan" in text
     assert "These commands read local API state only" in text
     assert "missing_env" in text

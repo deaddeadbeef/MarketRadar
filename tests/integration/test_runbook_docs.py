@@ -28,3 +28,18 @@ def test_local_api_runbook_commands_use_current_https_endpoint() -> None:
         assert "SkipCertificateCheck" not in text
         assert "http://localhost:8000" not in text
         assert "http://127.0.0.1:8000" not in text
+
+
+def test_radar_run_runbook_matches_current_operator_dashboard() -> None:
+    text = Path("docs/runbooks/radar-run.md").read_text(encoding="utf-8")
+
+    assert "Latest Run Path" in text
+    assert "Optional Gates Not Triggered" in text
+    assert "Audit-only Rows" in text
+    assert "Telemetry Status Summary" in text
+    assert "Safety guard" in text
+    assert "Bars Stale" in text
+    assert "scripts/assert-investable-readiness.ps1" in text
+    assert "Placeholder template values" in text
+    assert "status=skipped" not in text
+    assert "raw_status=skipped" not in text

@@ -1,6 +1,7 @@
 param(
     [string]$ApiHost = "127.0.0.1",
     [int]$ApiPort = 8443,
+    [int]$TelemetryLimit = 8,
     [switch]$Json
 )
 
@@ -43,7 +44,8 @@ function Invoke-ApiJson {
 $readiness = Invoke-ApiJson -Path "/api/radar/readiness"
 $activation = Invoke-ApiJson -Path "/api/radar/live-activation"
 $callPlan = Invoke-ApiJson -Method "POST" -Path "/api/radar/runs/call-plan" -Body "{}"
-$telemetry = Invoke-ApiJson -Path "/api/ops/telemetry?limit=5"
+$resolvedTelemetryLimit = [Math]::Max(1, $TelemetryLimit)
+$telemetry = Invoke-ApiJson -Path ("/api/ops/telemetry?limit={0}" -f $resolvedTelemetryLimit)
 
 $blockers = New-Object System.Collections.Generic.List[string]
 if ($readiness.safe_to_make_investment_decision -ne $true) {
@@ -72,6 +74,7 @@ $payload = [ordered]@{
     live_activation_status = $activation.status
     call_plan_status = $callPlan.status
     telemetry_status = $telemetry.status
+    telemetry_limit = $resolvedTelemetryLimit
     telemetry_attention_count = $telemetry.attention_count
     telemetry_guarded_count = $telemetry.guarded_count
     blockers = @($blockers)
