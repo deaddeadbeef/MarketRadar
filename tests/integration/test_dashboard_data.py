@@ -58,6 +58,7 @@ from catalyst_radar.dashboard.data import (
     radar_research_shortlist_payload,
     radar_run_call_plan_payload,
     radar_run_cooldown_payload,
+    radar_run_default_scope_payload,
     readiness_checklist_payload,
     research_shortlist_payload,
     telemetry_tape_payload,
@@ -70,6 +71,7 @@ from catalyst_radar.storage.schema import (
     alerts,
     candidate_packets,
     candidate_states,
+    daily_bars,
     decision_cards,
     events,
     job_locks,
@@ -1626,6 +1628,75 @@ def test_radar_run_call_plan_reports_local_fixture_no_external_calls(
     assert by_layer["News/events"]["status"] == "local_only"
     assert by_layer["LLM review"]["external_call_count_max"] == 0
     assert by_layer["Schwab"]["status"] == "not_called"
+
+
+def test_radar_run_default_scope_uses_latest_local_bar_date(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    now = datetime(2026, 5, 14, 12, tzinfo=UTC)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(daily_bars),
+            [
+                {
+                    "ticker": "AAA",
+                    "date": datetime(2026, 5, 7, tzinfo=UTC).date(),
+                    "provider": "csv",
+                    "open": 10.0,
+                    "high": 11.0,
+                    "low": 9.5,
+                    "close": 10.5,
+                    "volume": 1_000_000,
+                    "vwap": 10.3,
+                    "adjusted": True,
+                    "source_ts": now,
+                    "available_at": now,
+                },
+                {
+                    "ticker": "AAA",
+                    "date": datetime(2026, 5, 8, tzinfo=UTC).date(),
+                    "provider": "csv",
+                    "open": 10.5,
+                    "high": 12.0,
+                    "low": 10.0,
+                    "close": 11.7,
+                    "volume": 1_500_000,
+                    "vwap": 11.4,
+                    "adjusted": True,
+                    "source_ts": now,
+                    "available_at": now,
+                },
+            ],
+        )
+
+    payload = radar_run_default_scope_payload(
+        engine,
+        AppConfig(daily_market_provider="csv"),
+        now=now,
+    )
+
+    assert payload["status"] == "suggested"
+    assert payload["scope"] == {"as_of": "2026-05-08"}
+    assert payload["latest_daily_bar_date"] == "2026-05-08"
+    assert "latest local daily bar" in str(payload["headline"])
+    assert "No external calls" in str(payload["detail"])
+
+
+def test_radar_run_default_scope_leaves_live_market_runs_current_date(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+
+    payload = radar_run_default_scope_payload(
+        engine,
+        AppConfig(daily_market_provider="polygon", polygon_api_key="fixture-key"),
+        now=datetime(2026, 5, 14, 12, tzinfo=UTC),
+    )
+
+    assert payload["status"] == "current_default"
+    assert payload["scope"] == {}
+    assert payload["market_mode"] == "live"
 
 
 def test_radar_run_call_plan_caps_polygon_and_sec_calls(
