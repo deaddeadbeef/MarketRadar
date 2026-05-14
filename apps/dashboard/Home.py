@@ -2720,6 +2720,53 @@ def _show_candidate_agent_review_action(
             f"ledger={ledger.get('id') or 'n/a'}."
         )
         st.rerun()
+    real_gate = _mapping(dashboard_data.agent_review_real_mode_gate_payload(config))
+    real_missing = [str(value) for value in _sequence(real_gate.get("missing_env"))]
+    st.caption(
+        f"{real_gate.get('headline') or 'Real agent review status unknown.'} "
+        f"Next: {real_gate.get('next_action') or 'n/a'}"
+    )
+    if real_missing:
+        st.code(" ".join(real_missing))
+    real_disabled = disabled or str(real_gate.get("status") or "") != "ready"
+    if st.button(
+        "Run Real Agent Review",
+        key=f"agent_review_real_{ticker or 'none'}",
+        disabled=real_disabled,
+        help=(
+            "Calls OpenAI for one candidate only after provider, model, pricing, "
+            "budget, and skeptic_review task cap guardrails are configured."
+        ),
+    ):
+        try:
+            result = _mapping(
+                _api_post(
+                    config,
+                    "/api/agents/review",
+                    {
+                        "ticker": ticker,
+                        "as_of": as_of.isoformat() if as_of is not None else None,
+                        "available_at": (
+                            available_at.isoformat()
+                            if available_at is not None
+                            else None
+                        ),
+                        "task": "skeptic_review",
+                        "mode": "real",
+                    },
+                )
+            )
+        except RuntimeError as exc:
+            st.error(str(exc))
+            return
+        ledger = _mapping(result.get("ledger"))
+        route = _mapping(result.get("route"))
+        reason = _first_present(ledger.get("skip_reason"), route.get("reason"), "n/a")
+        st.session_state["candidate_agent_review_message"] = (
+            f"Real agent review {result.get('status')}; reason={reason}; "
+            f"ledger={ledger.get('id') or 'n/a'}."
+        )
+        st.rerun()
     _show_records(
         "Agent Review Ledger Evidence",
         dashboard_data.agent_review_ledger_rows_payload(

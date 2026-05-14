@@ -1775,6 +1775,45 @@ def agent_review_ledger_rows_payload(
     return rows[: _positive_limit(limit)]
 
 
+def agent_review_real_mode_gate_payload(config: AppConfig) -> dict[str, object]:
+    missing = list(_llm_activation_missing_env(config))
+    if int(config.llm_task_daily_caps.get("skeptic_review", 0)) <= 0:
+        missing.append("CATALYST_LLM_TASK_DAILY_CAPS=skeptic_review=<low cap>")
+    missing = list(dict.fromkeys(missing))
+    ready = not missing
+    return {
+        "schema_version": "agent-review-real-mode-gate-v1",
+        "status": "ready" if ready else "blocked",
+        "headline": (
+            "Real agent review is configured."
+            if ready
+            else "Real agent review is disabled until OpenAI review guardrails are set."
+        ),
+        "next_action": (
+            "Run one real review only after dry-run evidence and call budget look right."
+            if ready
+            else "Set OpenAI provider, model, pricing, budgets, and a skeptic_review task cap."
+        ),
+        "missing_env": missing,
+        "call_budget": (
+            f"daily_budget={config.llm_daily_budget_usd}; "
+            f"monthly_budget={config.llm_monthly_budget_usd}; "
+            f"skeptic_review_cap={config.llm_task_daily_caps.get('skeptic_review')}"
+            if ready
+            else "0 OpenAI calls while blocked"
+        ),
+        "provider": _provider_name(config.llm_provider, default="none"),
+        "model_configured": bool(config.llm_skeptic_model),
+        "pricing_configured": _llm_pricing_configured(config),
+        "budgets_configured": (
+            config.llm_daily_budget_usd > 0 and config.llm_monthly_budget_usd > 0
+        ),
+        "task_cap_configured": (
+            int(config.llm_task_daily_caps.get("skeptic_review", 0)) > 0
+        ),
+    }
+
+
 def load_ops_health(
     engine: Engine,
     *,
