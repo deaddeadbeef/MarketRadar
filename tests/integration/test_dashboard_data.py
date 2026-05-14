@@ -70,6 +70,7 @@ from catalyst_radar.storage.budget_repositories import BudgetLedgerRepository
 from catalyst_radar.storage.db import create_schema
 from catalyst_radar.storage.schema import (
     alerts,
+    audit_events,
     candidate_packets,
     candidate_states,
     daily_bars,
@@ -812,6 +813,92 @@ def test_radar_readiness_payload_summarizes_operator_decision_gate(
     assert payload["candidate_decision_labels"][0]["audit"]["provider_license_policy"][
         "external_export_allowed"
     ] is False
+
+
+def test_radar_readiness_telemetry_uses_finished_run_cutoff(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    metadata = {
+        "as_of": "2026-05-10",
+        "decision_available_at": AVAILABLE_AT.isoformat(),
+        "outcome_available_at": None,
+        "provider": "csv",
+        "universe": "liquid-us",
+        "tickers": ["MSFT"],
+    }
+    with engine.begin() as conn:
+        conn.execute(
+            insert(job_runs),
+            [
+                _job_run_row(
+                    "telemetry-feature-scan",
+                    job_type="feature_scan",
+                    status="success",
+                    started_at=AVAILABLE_AT + timedelta(seconds=1),
+                    metadata={**metadata, "result_status": "success"},
+                    requested_count=1,
+                    raw_count=1,
+                    normalized_count=1,
+                ),
+                _job_run_row(
+                    "telemetry-llm-review",
+                    job_type="llm_review",
+                    status="success",
+                    started_at=AVAILABLE_AT + timedelta(seconds=3),
+                    metadata={
+                        **metadata,
+                        "result_status": "success",
+                        "result_reason": "dry_run_only",
+                    },
+                    requested_count=1,
+                    raw_count=0,
+                    normalized_count=1,
+                ),
+            ],
+        )
+        conn.execute(
+            insert(audit_events),
+            {
+                "id": "audit-after-decision-cutoff",
+                "event_type": "telemetry.radar_run.step_finished",
+                "actor_source": "radar_pipeline",
+                "actor_id": None,
+                "actor_role": None,
+                "artifact_type": "job_run",
+                "artifact_id": "telemetry-llm-review",
+                "ticker": None,
+                "candidate_state_id": None,
+                "candidate_packet_id": None,
+                "decision_card_id": None,
+                "budget_ledger_id": None,
+                "paper_trade_id": None,
+                "alert_id": None,
+                "decision": None,
+                "reason": "dry_run_only",
+                "hard_blocks": [],
+                "status": "success",
+                "metadata": {
+                    "step": "llm_review",
+                    "result_status": "success",
+                    "result_reason": "dry_run_only",
+                },
+                "before_payload": {},
+                "after_payload": {"dry_run": True},
+                "occurred_at": AVAILABLE_AT + timedelta(seconds=3, milliseconds=500),
+                "available_at": AVAILABLE_AT,
+                "created_at": AVAILABLE_AT + timedelta(seconds=3, milliseconds=500),
+            },
+        )
+
+    payload = radar_readiness_payload(engine, AppConfig.from_env({}))
+
+    telemetry = payload["telemetry_tape"]
+    assert telemetry["event_count"] >= 1
+    assert telemetry["events"][0]["event"] == "radar_run.step_finished"
+    assert telemetry["events"][0]["step"] == "llm_review"
+    assert telemetry["events"][0]["reason"] == "dry_run_only"
 
 
 def test_radar_readiness_candidate_delta_uses_artifact_cutoff(
