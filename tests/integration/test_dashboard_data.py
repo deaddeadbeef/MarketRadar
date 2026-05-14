@@ -1447,6 +1447,7 @@ def test_live_activation_plan_payload_separates_optional_gates_from_blockers() -
 def test_live_activation_plan_payload_never_leaks_configured_secrets() -> None:
     config = AppConfig(
         daily_market_provider="polygon",
+        daily_provider="polygon",
         polygon_api_key="polygon-secret-value",
         daily_event_provider="sec",
         sec_enable_live=True,
@@ -1681,6 +1682,8 @@ def test_live_data_activation_contract_gives_exact_safe_next_steps() -> None:
     assert "runs/call-plan" in str(contract["operator_steps"][3]["command"])
     assert "runs" in str(contract["operator_steps"][4]["command"])
     env_template = {str(row["name"]): row for row in contract["env_template"]}
+    assert env_template["CATALYST_DAILY_PROVIDER"]["configured"] is False
+    assert env_template["CATALYST_DAILY_PROVIDER"]["current"] == "missing"
     assert env_template["CATALYST_ENABLE_PREMIUM_LLM"]["value_template"] == "1"
     assert env_template["CATALYST_LLM_PROVIDER"]["value_template"] == "openai"
     assert "skeptic_review" in str(
@@ -1694,6 +1697,7 @@ def test_live_data_activation_contract_never_leaks_configured_secrets() -> None:
     contract = live_data_activation_contract_payload(
         AppConfig(
             daily_market_provider="polygon",
+            daily_provider="polygon",
             market_provider="polygon",
             polygon_api_key="polygon-secret-value",
             daily_event_provider="sec",
@@ -1785,6 +1789,7 @@ def test_dotenv_activation_status_reports_loaded_values(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     config = AppConfig(
+        daily_provider="polygon",
         daily_market_provider="polygon",
         polygon_api_key="polygon-secret-value",
         daily_event_provider="sec",
