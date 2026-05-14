@@ -5040,10 +5040,19 @@ def _live_data_worker_commands() -> list[dict[str, object]]:
         {
             "mode": "one-shot smoke",
             "when": "after .env.local is edited and services are restarted",
+            "external_calls": "0 in plan-only mode; one capped radar cycle with -Execute",
+            "command": (
+                "powershell -ExecutionPolicy Bypass -File "
+                "scripts/run-worker-once.ps1"
+            ),
+        },
+        {
+            "mode": "one-shot execute",
+            "when": "after the plan-only one-shot smoke matches intent",
             "external_calls": "one capped radar cycle",
             "command": (
-                "$env:CATALYST_WORKER_INTERVAL_SECONDS='0'; "
-                "python -m apps.worker.main"
+                "powershell -ExecutionPolicy Bypass -File "
+                "scripts/run-worker-once.ps1 -Execute"
             ),
         },
         {

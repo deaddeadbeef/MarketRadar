@@ -1660,7 +1660,10 @@ def test_live_data_activation_contract_gives_exact_safe_next_steps() -> None:
         "CATALYST_DRY_RUN_ALERTS=true",
     ]
     assert contract["worker_commands"][0]["mode"] == "one-shot smoke"
-    assert "python -m apps.worker.main" in str(contract["worker_commands"][0]["command"])
+    assert "scripts/run-worker-once.ps1" in str(contract["worker_commands"][0]["command"])
+    assert contract["worker_commands"][1]["mode"] == "one-shot execute"
+    assert "-Execute" in str(contract["worker_commands"][1]["command"])
+    assert "python -m apps.worker.main" in str(contract["worker_commands"][2]["command"])
     assert contract["call_budget_if_activated"] == [
         {
             "operation": "read this activation contract",
