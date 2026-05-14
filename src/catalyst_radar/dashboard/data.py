@@ -2135,9 +2135,12 @@ def live_activation_plan_payload(
         _activation_task_row(
             "Agentic LLM review",
             coverage.get("LLM review", {}),
-            missing=_llm_missing_env(config),
-            ready_modes={"live"},
-            safe_next_action="Enable only after provider, model, key, and budget caps are set.",
+            missing=_llm_activation_missing_env(config),
+            ready_modes={"enabled"},
+            safe_next_action=(
+                "Enable only after provider, skeptic model, key, pricing, budget caps, "
+                "and a low task cap are set."
+            ),
             optional=True,
         ),
     ]
@@ -2753,6 +2756,7 @@ def readiness_checklist_payload(
 
     llm_step = steps.get("llm_review", {})
     llm_mode = str(coverage.get("LLM review", {}).get("mode") or "unknown")
+    llm_missing = _llm_missing_env(config)
     if str(llm_step.get("status") or "") == "success":
         rows.append(
             _readiness_row(
@@ -2763,13 +2767,16 @@ def readiness_checklist_payload(
                 _step_evidence("llm_review", llm_step),
             )
         )
-    elif llm_mode == "missing_credentials":
+    elif llm_missing:
         rows.append(
             _readiness_row(
                 "LLM review",
                 "blocked",
-                "OpenAI review is enabled, but OPENAI_API_KEY is missing.",
-                "Set OPENAI_API_KEY before running real agentic LLM review.",
+                "OpenAI review is enabled, but setup is incomplete.",
+                (
+                    "Set missing model, key, pricing, and budget variables before "
+                    "running real agentic LLM review."
+                ),
                 _coverage_evidence(coverage.get("LLM review", {})),
             )
         )
@@ -3851,17 +3858,54 @@ def _llm_missing_env(config: AppConfig) -> list[str]:
         items.append("CATALYST_LLM_PROVIDER=openai")
     if not config.openai_api_key:
         items.append("OPENAI_API_KEY")
-    if not any(
-        (
-            config.llm_evidence_model,
-            config.llm_skeptic_model,
-            config.llm_decision_card_model,
+    if not config.llm_skeptic_model:
+        items.append("CATALYST_LLM_SKEPTIC_MODEL")
+    if not _llm_pricing_configured(config):
+        items.append(
+            "CATALYST_LLM_INPUT_COST_PER_1M / "
+            "CATALYST_LLM_CACHED_INPUT_COST_PER_1M / "
+            "CATALYST_LLM_OUTPUT_COST_PER_1M / "
+            "CATALYST_LLM_PRICING_UPDATED_AT"
         )
-    ):
-        items.append("CATALYST_LLM_*_MODEL")
     if config.llm_daily_budget_usd <= 0 or config.llm_monthly_budget_usd <= 0:
         items.append("CATALYST_LLM_DAILY_BUDGET_USD / CATALYST_LLM_MONTHLY_BUDGET_USD")
     return items
+
+
+def _llm_activation_missing_env(config: AppConfig) -> list[str]:
+    provider = _provider_name(config.llm_provider, default="none")
+    items: list[str] = []
+    if not config.enable_premium_llm:
+        items.append("CATALYST_ENABLE_PREMIUM_LLM=1")
+    if provider != "openai":
+        items.append("CATALYST_LLM_PROVIDER=openai")
+    items.extend(_llm_missing_env(config))
+    if provider in {"none", "off", "disabled"}:
+        if not config.openai_api_key:
+            items.append("OPENAI_API_KEY")
+        if not config.llm_skeptic_model:
+            items.append("CATALYST_LLM_SKEPTIC_MODEL")
+        if not _llm_pricing_configured(config):
+            items.append(
+                "CATALYST_LLM_INPUT_COST_PER_1M / "
+                "CATALYST_LLM_CACHED_INPUT_COST_PER_1M / "
+                "CATALYST_LLM_OUTPUT_COST_PER_1M / "
+                "CATALYST_LLM_PRICING_UPDATED_AT"
+            )
+        if config.llm_daily_budget_usd <= 0 or config.llm_monthly_budget_usd <= 0:
+            items.append(
+                "CATALYST_LLM_DAILY_BUDGET_USD / CATALYST_LLM_MONTHLY_BUDGET_USD"
+            )
+    return list(dict.fromkeys(items))
+
+
+def _llm_pricing_configured(config: AppConfig) -> bool:
+    return (
+        config.llm_input_cost_per_1m is not None
+        and config.llm_cached_input_cost_per_1m is not None
+        and config.llm_output_cost_per_1m is not None
+        and bool(config.llm_pricing_updated_at)
+    )
 
 
 def _activation_task_row(
@@ -3877,7 +3921,7 @@ def _activation_task_row(
     provider = str(coverage.get("provider") or "unknown")
     missing_text = ", ".join(dict.fromkeys(missing))
     if missing_text:
-        status = "blocked"
+        status = "optional_setup" if optional else "blocked"
     elif mode in ready_modes:
         status = "ready" if not optional or mode != "stale_read_only_connected" else "attention"
     elif optional:
@@ -3952,7 +3996,79 @@ def _live_data_env_template(config: AppConfig) -> list[dict[str, object]]:
             configured=True,
             current=str(max(1, int(config.radar_run_min_interval_seconds))),
         ),
+        _activation_env_row(
+            "CATALYST_ENABLE_PREMIUM_LLM",
+            "1",
+            configured=bool(config.enable_premium_llm),
+            current="1" if config.enable_premium_llm else "0",
+        ),
+        _activation_env_row(
+            "CATALYST_LLM_PROVIDER",
+            "openai",
+            configured=_provider_name(config.llm_provider, default="none") == "openai",
+            current=_provider_name(config.llm_provider, default="none"),
+        ),
+        _activation_env_row(
+            "CATALYST_LLM_SKEPTIC_MODEL",
+            "<OpenAI model for skeptic_review>",
+            configured=bool(config.llm_skeptic_model),
+            current=config.llm_skeptic_model or "missing",
+        ),
+        _activation_env_row(
+            "OPENAI_API_KEY",
+            "<your OpenAI API key>",
+            configured=bool(config.openai_api_key),
+            secret=True,
+        ),
+        _activation_env_row(
+            "CATALYST_LLM_INPUT_COST_PER_1M",
+            "<input dollars per 1M tokens>",
+            configured=config.llm_input_cost_per_1m is not None,
+            current=_activation_float_current(config.llm_input_cost_per_1m),
+        ),
+        _activation_env_row(
+            "CATALYST_LLM_CACHED_INPUT_COST_PER_1M",
+            "<cached-input dollars per 1M tokens>",
+            configured=config.llm_cached_input_cost_per_1m is not None,
+            current=_activation_float_current(config.llm_cached_input_cost_per_1m),
+        ),
+        _activation_env_row(
+            "CATALYST_LLM_OUTPUT_COST_PER_1M",
+            "<output dollars per 1M tokens>",
+            configured=config.llm_output_cost_per_1m is not None,
+            current=_activation_float_current(config.llm_output_cost_per_1m),
+        ),
+        _activation_env_row(
+            "CATALYST_LLM_PRICING_UPDATED_AT",
+            "YYYY-MM-DD",
+            configured=bool(config.llm_pricing_updated_at),
+            current=config.llm_pricing_updated_at or "missing",
+        ),
+        _activation_env_row(
+            "CATALYST_LLM_DAILY_BUDGET_USD",
+            "1.00",
+            configured=config.llm_daily_budget_usd > 0,
+            current=str(config.llm_daily_budget_usd),
+        ),
+        _activation_env_row(
+            "CATALYST_LLM_MONTHLY_BUDGET_USD",
+            "20.00",
+            configured=config.llm_monthly_budget_usd > 0,
+            current=str(config.llm_monthly_budget_usd),
+        ),
+        _activation_env_row(
+            "CATALYST_LLM_TASK_DAILY_CAPS",
+            "skeptic_review=3",
+            configured="skeptic_review" in config.llm_task_daily_caps,
+            current=str(dict(config.llm_task_daily_caps))
+            if config.llm_task_daily_caps
+            else "default caps",
+        ),
     ]
+
+
+def _activation_float_current(value: float | None) -> str:
+    return "missing" if value is None else str(value)
 
 
 def _activation_env_row(
@@ -5377,14 +5493,19 @@ def _llm_preflight_row(
     coverage: Mapping[str, object],
 ) -> dict[str, object]:
     mode = str(coverage.get("mode") or "unknown")
+    missing = _llm_missing_env(config)
     if mode == "disabled":
         status = "optional"
-        call_budget = "0 LLM calls"
-        next_action = "Enable OpenAI review only after model, budget, and key setup."
-    elif mode == "missing_credentials":
+        setup = ", ".join(_llm_activation_missing_env(config))
+        call_budget = f"0 LLM calls; setup requires {setup}" if setup else "0 LLM calls"
+        next_action = (
+            "Enable OpenAI review only after model, key, pricing, budget, and task-cap "
+            "setup."
+        )
+    elif missing:
         status = "blocked"
-        call_budget = "0 LLM calls until OPENAI_API_KEY is set"
-        next_action = "Set OPENAI_API_KEY, then run one dry-run review before real review."
+        call_budget = f"0 LLM calls until {', '.join(missing)} are set"
+        next_action = "Complete OpenAI setup, then run one dry-run review before real review."
     else:
         status = "ready"
         daily_cap = config.llm_task_daily_caps or {}

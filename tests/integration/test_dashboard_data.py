@@ -1081,7 +1081,11 @@ def test_provider_preflight_payload_reports_fixture_no_live_calls() -> None:
     assert by_layer["News/events"]["status"] == "fixture"
     assert by_layer["News/events"]["call_budget"] == "0 live calls"
     assert by_layer["LLM review"]["status"] == "optional"
-    assert by_layer["LLM review"]["call_budget"] == "0 LLM calls"
+    assert str(by_layer["LLM review"]["call_budget"]).startswith("0 LLM calls")
+    assert "CATALYST_ENABLE_PREMIUM_LLM=1" in str(
+        by_layer["LLM review"]["call_budget"]
+    )
+    assert "OPENAI_API_KEY" in str(by_layer["LLM review"]["call_budget"])
     assert "portfolio sync min 900s" in str(by_layer["Schwab portfolio"]["call_budget"])
 
 
@@ -1192,6 +1196,24 @@ def test_live_activation_plan_payload_separates_optional_gates_from_blockers() -
     assert "CATALYST_DAILY_MARKET_PROVIDER=polygon" in str(
         by_area["Live market data"]["missing_env"]
     )
+    assert by_area["Agentic LLM review"]["status"] == "optional_setup"
+    assert "CATALYST_ENABLE_PREMIUM_LLM=1" in str(
+        by_area["Agentic LLM review"]["missing_env"]
+    )
+    assert "CATALYST_LLM_PROVIDER=openai" in str(
+        by_area["Agentic LLM review"]["missing_env"]
+    )
+    assert "OPENAI_API_KEY" in str(by_area["Agentic LLM review"]["missing_env"])
+    assert "CATALYST_LLM_SKEPTIC_MODEL" in str(
+        by_area["Agentic LLM review"]["missing_env"]
+    )
+    assert "CATALYST_LLM_INPUT_COST_PER_1M" in str(
+        by_area["Agentic LLM review"]["missing_env"]
+    )
+    assert "CATALYST_LLM_DAILY_BUDGET_USD" in str(
+        by_area["Agentic LLM review"]["missing_env"]
+    )
+    assert "OPENAI_API_KEY" not in plan["missing_env"]
 
 
 def test_live_activation_plan_payload_never_leaks_configured_secrets() -> None:
@@ -1226,6 +1248,43 @@ def test_live_activation_plan_payload_never_leaks_configured_secrets() -> None:
     assert "polygon-secret-value" not in rendered
     assert "sk-secret-value" not in rendered
     assert "Secret User Agent" not in rendered
+
+
+def test_live_activation_plan_marks_agentic_review_ready_when_capped() -> None:
+    config = AppConfig(
+        daily_market_provider="polygon",
+        polygon_api_key="polygon-secret-value",
+        daily_event_provider="sec",
+        sec_enable_live=True,
+        sec_user_agent="MarketRadar test@example.com",
+        enable_premium_llm=True,
+        llm_provider="openai",
+        llm_skeptic_model="skeptic-model",
+        llm_input_cost_per_1m=1.0,
+        llm_cached_input_cost_per_1m=0.1,
+        llm_output_cost_per_1m=2.0,
+        llm_pricing_updated_at="2026-05-14",
+        llm_daily_budget_usd=1.0,
+        llm_monthly_budget_usd=20.0,
+        llm_task_daily_caps={"skeptic_review": 3},
+        openai_api_key="sk-secret-value",
+    )
+    run_summary = {
+        "step_count": 6,
+        "required_step_count": 6,
+        "required_completed_count": 6,
+        "blocking_step_count": 0,
+        "expected_gate_count": 0,
+        "outcome_category_counts": {"completed": 6},
+    }
+
+    plan = live_activation_plan_payload(config, radar_run_summary=run_summary)
+
+    by_area = {str(row["area"]): row for row in plan["tasks"]}
+    assert by_area["Agentic LLM review"]["status"] == "ready"
+    assert by_area["Agentic LLM review"]["missing_env"] == ""
+    assert "sk-secret-value" not in str(plan)
+    assert "polygon-secret-value" not in str(plan)
 
 
 def test_live_data_activation_contract_gives_exact_safe_next_steps() -> None:
@@ -1266,6 +1325,14 @@ def test_live_data_activation_contract_gives_exact_safe_next_steps() -> None:
     assert [row["step"] for row in contract["operator_steps"]] == [1, 2, 3, 4, 5, 6]
     assert "runs/call-plan" in str(contract["operator_steps"][3]["command"])
     assert "runs" in str(contract["operator_steps"][4]["command"])
+    env_template = {str(row["name"]): row for row in contract["env_template"]}
+    assert env_template["CATALYST_ENABLE_PREMIUM_LLM"]["value_template"] == "1"
+    assert env_template["CATALYST_LLM_PROVIDER"]["value_template"] == "openai"
+    assert "skeptic_review" in str(
+        env_template["CATALYST_LLM_TASK_DAILY_CAPS"]["value_template"]
+    )
+    assert env_template["OPENAI_API_KEY"]["secret"] is True
+    assert env_template["OPENAI_API_KEY"]["current"] == "missing"
 
 
 def test_live_data_activation_contract_never_leaks_configured_secrets() -> None:
@@ -1296,6 +1363,7 @@ def test_live_data_activation_contract_never_leaks_configured_secrets() -> None:
     }
     assert secret_rows["CATALYST_POLYGON_API_KEY"]["current"] == "set"
     assert secret_rows["CATALYST_SEC_USER_AGENT"]["current"] == "set"
+    assert secret_rows["OPENAI_API_KEY"]["current"] == "missing"
     assert contract["call_budget_if_activated"][1]["max_external_calls"] == 2
     assert contract["call_budget_if_activated"][2]["max_external_calls"] == 4
 
@@ -1932,6 +2000,32 @@ def test_provider_preflight_blocks_openai_when_key_missing() -> None:
     assert llm_coverage["mode"] == "missing_credentials"
     assert llm_preflight["status"] == "blocked"
     assert "OPENAI_API_KEY" in str(llm_preflight["call_budget"])
+    assert llm_readiness["status"] == "blocked"
+
+
+def test_provider_preflight_blocks_openai_when_pricing_or_budget_missing() -> None:
+    config = AppConfig(
+        enable_premium_llm=True,
+        llm_provider="openai",
+        openai_api_key="sk-test",
+        llm_skeptic_model="skeptic-model",
+        llm_daily_budget_usd=0.0,
+        llm_monthly_budget_usd=0.0,
+    )
+
+    preflight = provider_preflight_payload(config)
+    readiness = readiness_checklist_payload(
+        config,
+        radar_run_summary={
+            "steps": [_run_step("llm_review", "skipped", reason="llm_disabled")]
+        },
+    )
+
+    llm_preflight = next(row for row in preflight if row["layer"] == "LLM review")
+    llm_readiness = next(row for row in readiness if row["area"] == "LLM review")
+    assert llm_preflight["status"] == "blocked"
+    assert "CATALYST_LLM_INPUT_COST_PER_1M" in str(llm_preflight["call_budget"])
+    assert "CATALYST_LLM_DAILY_BUDGET_USD" in str(llm_preflight["call_budget"])
     assert llm_readiness["status"] == "blocked"
 
 
