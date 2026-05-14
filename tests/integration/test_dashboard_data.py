@@ -1575,6 +1575,11 @@ def test_live_data_activation_contract_gives_exact_safe_next_steps() -> None:
     ]
     assert [row["step"] for row in contract["operator_steps"]] == [1, 2, 3, 4, 5, 6]
     assert "scripts/restart-local.ps1" in str(contract["operator_steps"][1]["command"])
+    operator_commands = "\n".join(str(row["command"]) for row in contract["operator_steps"])
+    assert "curl.exe --insecure --fail" in operator_commands
+    assert "Invoke-RestMethod" not in operator_commands
+    assert "SkipCertificateCheck" not in operator_commands
+    assert "--data '{\"provider\":\"polygon\",\"max_pages\":1}'" in operator_commands
     assert "runs/call-plan" in str(contract["operator_steps"][3]["command"])
     assert "runs" in str(contract["operator_steps"][4]["command"])
     env_template = {str(row["name"]): row for row in contract["env_template"]}
