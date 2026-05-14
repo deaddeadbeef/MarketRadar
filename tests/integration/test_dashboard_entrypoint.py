@@ -845,6 +845,8 @@ def test_dashboard_telemetry_tape_separates_guarded_events_from_attention() -> N
     assert "guarded_count" in helper_source
     assert "tape.get('headline')" in helper_source
     assert "tape.get('next_action')" in helper_source
+    assert "Telemetry Status Summary" in helper_source
+    assert "tape.get(\"rollup\")" in helper_source
 
 
 def test_dashboard_wires_alert_planning_diagnostics_after_readiness() -> None:

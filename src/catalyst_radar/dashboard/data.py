@@ -2835,6 +2835,7 @@ def telemetry_tape_payload(
         "latest_event_at": telemetry.get("latest_event_at"),
         "status_counts": status_counts,
         "events": rows,
+        "rollup": _telemetry_rollup_rows(rows),
     }
 
 
@@ -5312,6 +5313,52 @@ def _telemetry_tape_status(rows: Sequence[Mapping[str, object]]) -> dict[str, ob
             f"guarded={guarded_count}"
         ),
     }
+
+
+def _telemetry_rollup_rows(rows: Sequence[Mapping[str, object]]) -> list[dict[str, object]]:
+    grouped: dict[str, dict[str, object]] = {}
+    for row in rows:
+        category = _telemetry_row_category(row)
+        group = grouped.setdefault(category, {"count": 0, "latest": row})
+        group["count"] = int(group["count"]) + 1
+
+    visible: list[dict[str, object]] = []
+    for category in ("attention", "guarded", "ready"):
+        group = grouped.get(category)
+        if not group:
+            continue
+        latest = group["latest"]
+        latest_row = latest if isinstance(latest, Mapping) else {}
+        visible.append(
+            {
+                "category": _telemetry_category_label(category),
+                "count": group["count"],
+                "latest_event": latest_row.get("event") or "n/a",
+                "latest_status": latest_row.get("outcome")
+                or latest_row.get("status")
+                or "n/a",
+                "latest_reason": latest_row.get("reason") or "n/a",
+                "latest_at": latest_row.get("occurred_at") or "n/a",
+                "operator_action": _telemetry_category_action(category),
+            }
+        )
+    return visible
+
+
+def _telemetry_category_label(category: str) -> str:
+    return {
+        "attention": "Needs attention",
+        "guarded": "Safety guard",
+        "ready": "Healthy",
+    }.get(category, category.replace("_", " ").title())
+
+
+def _telemetry_category_action(category: str) -> str:
+    return {
+        "attention": "Inspect the latest failed, rejected, or blocked operation.",
+        "guarded": "Wait for the cooldown or deliberately adjust the operation cadence.",
+        "ready": "No telemetry action required.",
+    }.get(category, "Review the latest telemetry rows.")
 
 
 def _telemetry_row_category(row: Mapping[str, object]) -> str:
