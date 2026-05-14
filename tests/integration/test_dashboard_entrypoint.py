@@ -73,6 +73,20 @@ def test_dashboard_shows_radar_call_plan_before_run_post() -> None:
     assert plan_line < post_line
 
 
+def test_dashboard_manual_radar_run_uses_default_scope_payload() -> None:
+    source = Path("apps/dashboard/Home.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    functions = {
+        node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)
+    }
+    controls_source = ast.get_source_segment(source, functions["_show_radar_run_controls"])
+
+    assert controls_source is not None
+    assert "radar_run_default_scope_payload" in controls_source
+    assert "default_run_scope_payload" in controls_source
+    assert "**run_scope_payload" in controls_source
+
+
 def test_dashboard_radar_run_summary_uses_operator_skip_labels() -> None:
     source = Path("apps/dashboard/Home.py").read_text(encoding="utf-8")
     tree = ast.parse(source)

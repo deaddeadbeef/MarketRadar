@@ -1743,6 +1743,71 @@ def radar_run_call_plan_payload(
     }
 
 
+def radar_run_default_scope_payload(
+    engine: Engine,
+    config: AppConfig,
+    *,
+    radar_run_summary: Mapping[str, object] | None = None,
+    ops_health: Mapping[str, object] | None = None,
+    now: datetime | None = None,
+) -> dict[str, object]:
+    """Return the implicit manual-run scope the dashboard should use."""
+    resolved_now = _as_utc_datetime_or_none(now) or datetime.now(UTC)
+    summary = _row_dict(radar_run_summary) if isinstance(radar_run_summary, Mapping) else {}
+    health = (
+        _row_dict(ops_health)
+        if isinstance(ops_health, Mapping)
+        else load_ops_health(engine, now=resolved_now)
+    )
+    database = _mapping_value(health, "database")
+    market_provider = _provider_name(config.daily_market_provider, default="csv")
+    market_mode = _market_source_mode(config, market_provider)
+    latest_bar_date = _parse_date(database.get("latest_daily_bar_date"))
+    current_date = resolved_now.date()
+    previous_as_of = _parse_date(summary.get("as_of"))
+
+    payload: dict[str, object] = {
+        "schema_version": "radar-run-default-scope-v1",
+        "status": "current_default",
+        "scope": {},
+        "market_provider": market_provider,
+        "market_mode": market_mode,
+        "current_date": current_date.isoformat(),
+        "latest_daily_bar_date": _date_iso_or_none(latest_bar_date),
+        "previous_run_as_of": _date_iso_or_none(previous_as_of),
+        "headline": "Manual run defaults to the current date.",
+        "detail": "Live market runs should use the current as-of date.",
+    }
+
+    if market_mode != "fixture":
+        return payload
+    if latest_bar_date is None:
+        payload.update(
+            {
+                "status": "no_local_bars",
+                "headline": "No local daily bars are available for a default scope.",
+                "detail": "Refresh or load local market data before running offline discovery.",
+            }
+        )
+        return payload
+
+    payload.update(
+        {
+            "status": "suggested",
+            "scope": {"as_of": latest_bar_date.isoformat()},
+            "headline": (
+                "Fixture run default uses the latest local daily bar "
+                f"{latest_bar_date.isoformat()}."
+            ),
+            "detail": (
+                "No external calls are needed to choose this scope; it avoids "
+                "false stale-bar blocks during offline dashboard validation."
+            ),
+        }
+    )
+    return payload
+
+
 def activation_summary_payload(
     config: AppConfig,
     *,

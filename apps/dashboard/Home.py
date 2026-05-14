@@ -634,7 +634,21 @@ def _show_radar_run_controls(
             disabled=True,
             help="Daily alert delivery is locked to dry-run mode from the dashboard.",
         )
-        run_scope_payload: dict[str, object] = {}
+        default_run_scope_payload = _mapping(
+            dashboard_data.radar_run_default_scope_payload(
+                engine,
+                config,
+                radar_run_summary=radar_run_summary,
+            )
+        )
+        run_scope_payload: dict[str, object] = dict(
+            _mapping(default_run_scope_payload.get("scope"))
+        )
+        if run_scope_payload:
+            st.caption(
+                str(default_run_scope_payload.get("headline") or "").strip()
+                or "Using default radar scope."
+            )
         custom_scope = st.checkbox(
             "Custom scope",
             value=False,
@@ -645,7 +659,10 @@ def _show_radar_run_controls(
             with st.expander("Run scope", expanded=True):
                 as_of_value = st.date_input(
                     "As of date",
-                    value=_radar_default_as_of(radar_run_summary),
+                    value=_radar_default_as_of(
+                        default_run_scope_payload,
+                        radar_run_summary,
+                    ),
                     key="run_radar_as_of",
                 )
                 tickers_text = st.text_input(
@@ -1423,13 +1440,15 @@ def _radar_expected_gate_count(daily_result: Mapping[str, Any]) -> int:
     return count
 
 
-def _radar_default_as_of(radar_run_summary: Mapping[str, Any]) -> date:
-    value = radar_run_summary.get("as_of")
-    if value is not None:
-        try:
-            return date.fromisoformat(str(value)[:10])
-        except ValueError:
-            pass
+def _radar_default_as_of(*sources: Mapping[str, Any]) -> date:
+    for source in sources:
+        scope = _mapping(source.get("scope"))
+        for value in (scope.get("as_of"), source.get("as_of")):
+            if value is not None:
+                try:
+                    return date.fromisoformat(str(value)[:10])
+                except ValueError:
+                    pass
     return datetime.now(UTC).date()
 
 
