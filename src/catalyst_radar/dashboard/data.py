@@ -6,6 +6,7 @@ from dataclasses import fields, is_dataclass
 from datetime import UTC, date, datetime, timedelta
 from enum import Enum
 from math import ceil, isfinite
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy import Engine, and_, func, select
@@ -2476,6 +2477,7 @@ def live_data_activation_contract_payload(
         "missing_env": missing_env,
         "minimum_env_lines": _live_data_minimum_env_lines(config),
         "env_template": _live_data_env_template(config),
+        "dotenv_file": dotenv_activation_status_payload(config),
         "safe_limits": _live_data_safe_limits(config),
         "operator_steps": _live_data_operator_steps(config, missing_env=missing_env),
         "worker_env_lines": _live_data_worker_env_lines(),
@@ -2486,6 +2488,69 @@ def live_data_activation_contract_payload(
             f"polygon_ticker_pages={config.polygon_tickers_max_pages}; "
             f"sec_daily_tickers={config.sec_daily_max_tickers}; "
             f"manual_run_cooldown={config.radar_run_min_interval_seconds}s"
+        ),
+    }
+
+
+def dotenv_activation_status_payload(
+    config: AppConfig,
+    *,
+    dotenv_path: str | Path = ".env.local",
+) -> dict[str, object]:
+    path = Path(dotenv_path)
+    values: Mapping[str, object] = {}
+    exists = path.is_file()
+    updated_at: str | None = None
+    if exists:
+        from dotenv import dotenv_values
+
+        values = dotenv_values(path)
+        updated_at = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC).isoformat()
+
+    specs = _dotenv_activation_specs()
+    rows = [
+        _dotenv_activation_row(config, values=values, key=key, required=required)
+        for key, required in specs
+    ]
+    missing_rows = [row for row in rows if row["status"] == "missing"]
+    restart_rows = [row for row in rows if row["status"] == "restart_required"]
+    ready_rows = [row for row in rows if row["status"] == "loaded"]
+
+    if not exists:
+        status = "missing_file"
+        headline = ".env.local was not found."
+        next_action = "Create .env.local from the minimum block, then restart services."
+    elif restart_rows:
+        status = "restart_required"
+        headline = ".env.local has values that are not loaded by the running process."
+        next_action = "Restart the API, dashboard, and worker so .env.local is loaded."
+    elif missing_rows:
+        status = "missing_values"
+        headline = ".env.local exists but required live activation values are missing."
+        next_action = "Fill the missing values, then restart services."
+    else:
+        status = "loaded"
+        headline = ".env.local live activation values are loaded."
+        next_action = "Inspect the call plan, then run one capped radar cycle."
+
+    return {
+        "schema_version": "dotenv-activation-status-v1",
+        "status": status,
+        "headline": headline,
+        "next_action": next_action,
+        "path": str(path),
+        "exists": exists,
+        "updated_at": updated_at,
+        "required_count": len(specs),
+        "loaded_count": len(ready_rows),
+        "missing_count": len(missing_rows),
+        "restart_required_count": len(restart_rows),
+        "rows": rows,
+        "evidence": (
+            f"exists={'yes' if exists else 'no'}; "
+            f"loaded={len(ready_rows)}/{len(specs)}; "
+            f"missing={len(missing_rows)}; "
+            f"restart_required={len(restart_rows)}"
         ),
     }
 
@@ -4621,6 +4686,75 @@ def _live_data_minimum_env_lines(config: AppConfig) -> list[str]:
         for row in _live_data_env_template(config)
         if str(row["name"]) in required_names
     ]
+
+
+def _dotenv_activation_specs() -> list[tuple[str, bool]]:
+    return [
+        ("CATALYST_DAILY_MARKET_PROVIDER", True),
+        ("CATALYST_DAILY_PROVIDER", True),
+        ("CATALYST_POLYGON_API_KEY", True),
+        ("CATALYST_DAILY_EVENT_PROVIDER", True),
+        ("CATALYST_SEC_ENABLE_LIVE", True),
+        ("CATALYST_SEC_USER_AGENT", True),
+        ("CATALYST_POLYGON_TICKERS_MAX_PAGES", False),
+        ("CATALYST_SEC_DAILY_MAX_TICKERS", False),
+        ("CATALYST_RADAR_RUN_MIN_INTERVAL_SECONDS", False),
+    ]
+
+
+def _dotenv_activation_row(
+    config: AppConfig,
+    *,
+    values: Mapping[str, object],
+    key: str,
+    required: bool,
+) -> dict[str, object]:
+    file_has_value = _dotenv_value_set(values.get(key))
+    loaded = _dotenv_key_loaded(config, key)
+    if loaded:
+        status = "loaded"
+        action = "No action required."
+    elif file_has_value:
+        status = "restart_required"
+        action = "Restart services so this .env.local value is loaded."
+    elif required:
+        status = "missing"
+        action = "Add this value to .env.local."
+    else:
+        status = "optional_default"
+        action = "Optional; current default is acceptable for a capped first run."
+    return {
+        "key": key,
+        "required": "yes" if required else "no",
+        "file": "set" if file_has_value else "missing",
+        "loaded": "yes" if loaded else "no",
+        "status": status,
+        "action": action,
+    }
+
+
+def _dotenv_value_set(value: object) -> bool:
+    return value is not None and str(value).strip() != ""
+
+
+def _dotenv_key_loaded(config: AppConfig, key: str) -> bool:
+    if key in {"CATALYST_DAILY_MARKET_PROVIDER", "CATALYST_DAILY_PROVIDER"}:
+        return config.daily_market_provider.strip().lower() == "polygon"
+    if key == "CATALYST_POLYGON_API_KEY":
+        return bool(config.polygon_api_key)
+    if key == "CATALYST_DAILY_EVENT_PROVIDER":
+        return config.daily_event_provider.strip().lower() in {"sec", "sec_submissions"}
+    if key == "CATALYST_SEC_ENABLE_LIVE":
+        return bool(config.sec_enable_live)
+    if key == "CATALYST_SEC_USER_AGENT":
+        return bool(config.sec_user_agent)
+    if key == "CATALYST_POLYGON_TICKERS_MAX_PAGES":
+        return config.polygon_tickers_max_pages <= 1
+    if key == "CATALYST_SEC_DAILY_MAX_TICKERS":
+        return config.sec_daily_max_tickers <= 5
+    if key == "CATALYST_RADAR_RUN_MIN_INTERVAL_SECONDS":
+        return config.radar_run_min_interval_seconds >= 300
+    return False
 
 
 def _live_data_worker_env_lines() -> list[str]:

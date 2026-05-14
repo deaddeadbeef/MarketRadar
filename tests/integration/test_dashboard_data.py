@@ -38,6 +38,7 @@ from catalyst_radar.dashboard.data import (
     candidate_delta_payload,
     candidate_rows_with_market_context,
     data_source_coverage_payload,
+    dotenv_activation_status_payload,
     investment_readiness_payload,
     live_activation_plan_payload,
     live_data_activation_contract_payload,
@@ -1538,6 +1539,13 @@ def test_live_data_activation_contract_gives_exact_safe_next_steps() -> None:
         "CATALYST_RADAR_RUN_MIN_INTERVAL_SECONDS=300",
     ]
     assert not any("OPENAI_API_KEY" in line for line in contract["minimum_env_lines"])
+    assert contract["dotenv_file"]["schema_version"] == "dotenv-activation-status-v1"
+    assert contract["dotenv_file"]["status"] in {
+        "missing_file",
+        "missing_values",
+        "restart_required",
+        "loaded",
+    }
     assert contract["worker_env_lines"] == [
         "CATALYST_WORKER_INTERVAL_SECONDS=86400",
         "CATALYST_WORKER_LOCK_TTL_SECONDS=2700",
@@ -1608,6 +1616,88 @@ def test_live_data_activation_contract_never_leaks_configured_secrets() -> None:
     assert secret_rows["OPENAI_API_KEY"]["current"] == "missing"
     assert contract["call_budget_if_activated"][1]["max_external_calls"] == 2
     assert contract["call_budget_if_activated"][2]["max_external_calls"] == 4
+
+
+def test_dotenv_activation_status_reports_missing_file(tmp_path: Path) -> None:
+    payload = dotenv_activation_status_payload(
+        AppConfig.from_env({}),
+        dotenv_path=tmp_path / ".env.local",
+    )
+
+    assert payload["status"] == "missing_file"
+    assert payload["exists"] is False
+    assert payload["missing_count"] >= 1
+    assert "exists=no" in str(payload["evidence"])
+
+
+def test_dotenv_activation_status_reports_restart_required_without_leaking_values(
+    tmp_path: Path,
+) -> None:
+    dotenv_path = tmp_path / ".env.local"
+    dotenv_path.write_text(
+        "\n".join(
+            [
+                "CATALYST_DAILY_MARKET_PROVIDER=polygon",
+                "CATALYST_DAILY_PROVIDER=polygon",
+                "CATALYST_POLYGON_API_KEY=polygon-secret-value",
+                "CATALYST_DAILY_EVENT_PROVIDER=sec",
+                "CATALYST_SEC_ENABLE_LIVE=1",
+                "CATALYST_SEC_USER_AGENT=Secret User Agent",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    payload = dotenv_activation_status_payload(
+        AppConfig.from_env({}),
+        dotenv_path=dotenv_path,
+    )
+
+    assert payload["status"] == "restart_required"
+    assert payload["exists"] is True
+    assert payload["restart_required_count"] >= 1
+    assert "polygon-secret-value" not in str(payload)
+    assert "Secret User Agent" not in str(payload)
+    by_key = {str(row["key"]): row for row in payload["rows"]}
+    assert by_key["CATALYST_POLYGON_API_KEY"]["file"] == "set"
+    assert by_key["CATALYST_POLYGON_API_KEY"]["loaded"] == "no"
+    assert by_key["CATALYST_POLYGON_API_KEY"]["status"] == "restart_required"
+
+
+def test_dotenv_activation_status_reports_loaded_values(tmp_path: Path) -> None:
+    dotenv_path = tmp_path / ".env.local"
+    dotenv_path.write_text(
+        "\n".join(
+            [
+                "CATALYST_DAILY_MARKET_PROVIDER=polygon",
+                "CATALYST_DAILY_PROVIDER=polygon",
+                "CATALYST_POLYGON_API_KEY=polygon-secret-value",
+                "CATALYST_DAILY_EVENT_PROVIDER=sec",
+                "CATALYST_SEC_ENABLE_LIVE=1",
+                "CATALYST_SEC_USER_AGENT=Secret User Agent",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    config = AppConfig(
+        daily_market_provider="polygon",
+        polygon_api_key="polygon-secret-value",
+        daily_event_provider="sec",
+        sec_enable_live=True,
+        sec_user_agent="Secret User Agent",
+        polygon_tickers_max_pages=1,
+        sec_daily_max_tickers=5,
+        radar_run_min_interval_seconds=300,
+    )
+
+    payload = dotenv_activation_status_payload(config, dotenv_path=dotenv_path)
+
+    assert payload["status"] == "loaded"
+    assert payload["loaded_count"] == payload["required_count"]
+    assert payload["missing_count"] == 0
+    assert payload["restart_required_count"] == 0
+    assert "polygon-secret-value" not in str(payload)
+    assert "Secret User Agent" not in str(payload)
 
 
 def test_telemetry_tape_payload_summarizes_recent_radar_events() -> None:
