@@ -559,6 +559,13 @@ def _show_live_data_activation_contract(
             ("Missing Env", len(_sequence(contract.get("missing_env")))),
         ]
     )
+    minimum_env_lines = [str(item) for item in _sequence(contract.get("minimum_env_lines"))]
+    if minimum_env_lines:
+        st.caption(
+            "Minimum .env.local block for read-only live market and catalyst data. "
+            "The full template below adds optional LLM review settings."
+        )
+        st.code("\n".join(minimum_env_lines), language="text")
     _show_records(
         "Activation Steps",
         contract.get("operator_steps"),
