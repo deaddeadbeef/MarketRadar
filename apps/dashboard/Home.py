@@ -823,7 +823,7 @@ def _show_actionability_breakdown(candidate_rows: list[dict[str, object]]) -> No
 def _show_investment_readiness(
     discovery_snapshot: Mapping[str, Any],
     candidate_rows: list[dict[str, object]],
-) -> None:
+) -> Mapping[str, Any]:
     actionability = _mapping(dashboard_data.actionability_breakdown_payload(candidate_rows))
     readiness = _mapping(
         dashboard_data.investment_readiness_payload(
@@ -863,6 +863,24 @@ def _show_investment_readiness(
                 empty="No decision-readiness blockers.",
             )
     return readiness
+
+
+def _show_decision_contract(readiness: Mapping[str, Any]) -> None:
+    st.subheader("Manual Review Gate")
+    review_ready = bool(readiness.get("manual_buy_review_ready"))
+    mode = str(readiness.get("decision_mode") or "unknown")
+    next_action = str(readiness.get("next_action") or "Review readiness inputs.")
+    if review_ready:
+        st.success(f"Manual buy review can open. Next: {next_action}")
+    else:
+        st.warning(f"Investment decision blocked for this run. Next: {next_action}")
+    cols = st.columns(3)
+    cols[0].metric("Manual Review", "OPEN" if review_ready else "BLOCKED")
+    cols[1].metric("Mode", mode)
+    cols[2].metric(
+        "Decision Use",
+        "manual review" if review_ready else "research only",
+    )
 
 
 def _visible_discovery_rows(value: object) -> list[dict[str, object]]:
@@ -1296,6 +1314,7 @@ def _show_overview(
     _show_radar_run_controls(config, radar_run_summary, radar_run_cooldown)
     _show_discovery_snapshot(discovery_snapshot)
     investment_readiness = _show_investment_readiness(discovery_snapshot, candidate_rows)
+    _show_decision_contract(investment_readiness)
     _show_actionability_breakdown(candidate_rows)
     _show_records(
         "Opportunity Focus",
