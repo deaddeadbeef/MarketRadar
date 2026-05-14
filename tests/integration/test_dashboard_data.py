@@ -63,6 +63,7 @@ from catalyst_radar.dashboard.data import (
     radar_run_call_plan_payload,
     radar_run_cooldown_payload,
     radar_run_default_scope_payload,
+    radar_run_effective_status,
     readiness_checklist_payload,
     research_shortlist_payload,
     telemetry_tape_payload,
@@ -3246,6 +3247,39 @@ def test_load_radar_run_summary_marks_limited_analysis_skips_partial(
         "Exit degraded mode with trusted current market/event inputs before high-state research."
     )
     assert summary["steps"][1]["payload"] == {"degraded_mode": {"enabled": True}}
+
+
+def test_radar_run_effective_status_overrides_success_with_blocking_steps() -> None:
+    assert (
+        radar_run_effective_status(
+            {
+                "status": "success",
+                "steps": {
+                    "feature_scan": {"status": "success"},
+                    "candidate_packets": {
+                        "status": "skipped",
+                        "reason": "degraded_mode_blocks_high_state_work",
+                    },
+                },
+            }
+        )
+        == "partial_success"
+    )
+
+
+def test_radar_run_effective_status_keeps_expected_gates_success() -> None:
+    assert (
+        radar_run_effective_status(
+            {
+                "status": "success",
+                "steps": {
+                    "feature_scan": {"status": "success"},
+                    "llm_review": {"status": "skipped", "reason": "llm_disabled"},
+                },
+            }
+        )
+        == "success"
+    )
 
 
 def test_load_radar_run_summary_refreshes_stale_blocking_metadata(

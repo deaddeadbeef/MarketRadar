@@ -1831,6 +1831,23 @@ def load_radar_run_summary(engine: Engine, *, limit: int = 250) -> dict[str, obj
     }
 
 
+def radar_run_effective_status(
+    run_payload: Mapping[str, object],
+    *,
+    fallback_status: object = None,
+) -> str:
+    status = str(run_payload.get("status") or fallback_status or "unknown").strip()
+    status = status or "unknown"
+    if status in {"running", "failed"}:
+        return status
+    steps = _radar_payload_step_rows(run_payload.get("steps"))
+    if any(_radar_payload_step_blocks_reliance(step) for step in steps):
+        return "partial_success"
+    if any(str(step.get("status") or "") == "failed" for step in steps):
+        return "partial_success"
+    return status
+
+
 def load_broker_summary(engine: Engine) -> dict[str, object]:
     broker_repo = BrokerRepository(engine)
     config = AppConfig.from_env()
@@ -6427,6 +6444,29 @@ def _radar_run_status(rows: Sequence[Mapping[str, object]]) -> str:
     if any(_radar_run_step_classification(row).blocks_reliance for row in rows):
         return "partial_success"
     return "success"
+
+
+def _radar_payload_step_rows(value: object) -> tuple[dict[str, object], ...]:
+    if isinstance(value, Mapping):
+        rows = value.values()
+    elif isinstance(value, Sequence) and not isinstance(value, str | bytes):
+        rows = value
+    else:
+        rows = ()
+    return tuple(_row_dict(row) for row in rows if isinstance(row, Mapping))
+
+
+def _radar_payload_step_blocks_reliance(step: Mapping[str, object]) -> bool:
+    status = str(step.get("status") or "")
+    reason = step.get("reason")
+    reason_text = str(reason) if reason is not None else None
+    classification = classify_step_outcome(status, reason_text)
+    category = str(step.get("category") or classification.category)
+    return bool(step.get("blocks_reliance", classification.blocks_reliance)) or category in {
+        "blocked_input",
+        "failed",
+        "needs_review",
+    }
 
 
 def _radar_run_step_classification(

@@ -925,9 +925,10 @@ def _show_radar_run_summary(summary: Mapping[str, Any]) -> None:
     if not summary:
         st.caption("No prior radar run.")
         return
+    display_status = dashboard_data.radar_run_effective_status(summary)
     _show_status_badges(
         [
-            ("Last Run", summary.get("status")),
+            ("Last Run", display_status),
             ("As Of", summary.get("as_of")),
             ("Provider", summary.get("provider") or "default"),
             ("Universe", summary.get("universe") or "default"),
@@ -1677,7 +1678,12 @@ def _show_radar_run_result_notice(
     *,
     fallback_reason: object = None,
 ) -> None:
-    status = _metric_text(daily_result.get("status") or fallback_reason or "unknown")
+    status = _metric_text(
+        dashboard_data.radar_run_effective_status(
+            daily_result,
+            fallback_status=fallback_reason,
+        )
+    )
     blocking_messages = _radar_run_limiting_messages(daily_result, blocking_only=True)
     optional_gate_count = _radar_expected_gate_count(daily_result)
     path_counts = _radar_run_path_counts(daily_result)
