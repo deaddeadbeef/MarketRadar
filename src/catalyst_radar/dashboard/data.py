@@ -5155,14 +5155,22 @@ def _radar_run_step_classification(
                 category=category,
                 label=label,
                 meaning=(
-                    str(metadata.get("outcome_meaning"))
-                    if metadata.get("outcome_meaning") is not None
-                    else inferred.meaning
+                    inferred.meaning
+                    if inferred.meaning is not None
+                    else (
+                        str(metadata.get("outcome_meaning"))
+                        if metadata.get("outcome_meaning") is not None
+                        else None
+                    )
                 ),
                 operator_action=(
-                    str(metadata.get("operator_action"))
-                    if metadata.get("operator_action") is not None
-                    else inferred.operator_action
+                    inferred.operator_action
+                    if inferred.operator_action is not None
+                    else (
+                        str(metadata.get("operator_action"))
+                        if metadata.get("operator_action") is not None
+                        else None
+                    )
                 ),
                 blocks_reliance=bool(metadata.get("blocks_reliance")),
             )

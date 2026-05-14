@@ -2241,6 +2241,51 @@ def test_load_radar_run_summary_classifies_expected_gate_skips_success(
     ]
 
 
+def test_load_radar_run_summary_refreshes_stale_skip_explanations(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    metadata = {
+        "as_of": "2026-05-10",
+        "decision_available_at": AVAILABLE_AT.isoformat(),
+        "outcome_available_at": None,
+        "provider": None,
+        "universe": None,
+        "tickers": [],
+        "result_status": "skipped",
+        "result_reason": "no_alerts",
+        "result_payload": {},
+        "outcome_category": "expected_gate",
+        "outcome_label": "Expected gate",
+        "outcome_meaning": "No alert candidates were generated.",
+        "operator_action": "Old action copy.",
+        "blocks_reliance": False,
+    }
+    with engine.begin() as conn:
+        conn.execute(
+            insert(job_runs),
+            [
+                _job_run_row(
+                    "digest",
+                    job_type="digest",
+                    status="skipped",
+                    started_at=AVAILABLE_AT + timedelta(seconds=1),
+                    metadata=metadata,
+                ),
+            ],
+        )
+
+    summary = load_radar_run_summary(engine)
+
+    assert summary["steps"][0]["reason"] == "no_alerts"
+    assert summary["steps"][0]["meaning"] == (
+        "No existing alerts were available for the digest step."
+    )
+    assert summary["steps"][0]["operator_action"] == (
+        "No action required unless you want this optional gate to run."
+    )
+
+
 def test_load_radar_run_summary_keeps_not_ready_skips_out_of_expected_gates(
     tmp_path: Path,
 ) -> None:
