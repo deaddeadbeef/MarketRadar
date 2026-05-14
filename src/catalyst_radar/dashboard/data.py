@@ -355,6 +355,140 @@ def research_shortlist_payload(
     }
 
 
+def operator_work_queue_payload(
+    config: AppConfig,
+    *,
+    radar_run_summary: Mapping[str, object] | None = None,
+    broker_summary: Mapping[str, object] | None = None,
+    discovery_snapshot: Mapping[str, object] | None = None,
+    candidate_rows: Sequence[Mapping[str, object]] | None = None,
+    limit: int = 8,
+) -> dict[str, object]:
+    """Build the operator-facing next-action queue from existing diagnostics."""
+    candidates = [row for row in candidate_rows or () if isinstance(row, Mapping)]
+    actionability = actionability_breakdown_payload(candidates, limit=limit)
+    investment = investment_readiness_payload(
+        discovery_snapshot,
+        actionability,
+        candidates,
+    )
+    shortlist = research_shortlist_payload(candidates, investment, limit=limit)
+    readiness_rows = readiness_checklist_payload(
+        config,
+        radar_run_summary=radar_run_summary,
+        broker_summary=broker_summary,
+    )
+
+    queue_rows: list[dict[str, object]] = []
+    sequence = 0
+    for row in readiness_rows:
+        status = str(row.get("status") or "")
+        if status not in {"blocked", "attention"}:
+            continue
+        sequence += 1
+        queue_rows.append(
+            _operator_work_queue_row(
+                sequence=sequence,
+                severity=100 if status == "blocked" else 80,
+                priority="must_fix" if status == "blocked" else "attention",
+                area=str(row.get("area") or "Readiness"),
+                item=str(row.get("finding") or row.get("area") or "Readiness item"),
+                status=status,
+                next_action=str(row.get("next_action") or "Review readiness details."),
+                evidence=str(row.get("evidence") or "n/a"),
+                source="readiness_checklist",
+            )
+        )
+
+    for row in _sequence_value(shortlist.get("rows")):
+        if not isinstance(row, Mapping):
+            continue
+        priority = str(row.get("priority") or "monitor")
+        if priority == "manual_review":
+            severity = 70
+            queue_priority = "review_now"
+        elif priority in {"research_now", "missing_card"}:
+            severity = 55
+            queue_priority = "research"
+        elif priority == "blocked":
+            severity = 35
+            queue_priority = "blocked_candidate"
+        else:
+            severity = 20
+            queue_priority = "monitor"
+        sequence += 1
+        ticker = str(row.get("ticker") or "n/a")
+        queue_rows.append(
+            _operator_work_queue_row(
+                sequence=sequence,
+                severity=severity,
+                priority=queue_priority,
+                area="Candidate",
+                item=f"{ticker}: {row.get('why_now') or row.get('setup') or 'candidate review'}",
+                status=priority,
+                next_action=str(row.get("next_step") or "Review research brief."),
+                evidence=str(row.get("risk_or_gap") or row.get("evidence") or "n/a"),
+                source="research_shortlist",
+                ticker=ticker,
+            )
+        )
+
+    queue_rows = sorted(
+        queue_rows,
+        key=lambda row: (
+            -int(row["severity"]),
+            int(row["sequence"]),
+            str(row.get("ticker") or ""),
+        ),
+    )[: _positive_limit(limit)]
+    blocking_count = sum(
+        1 for row in queue_rows if str(row.get("priority") or "") == "must_fix"
+    )
+    review_count = sum(
+        1 for row in queue_rows if str(row.get("priority") or "") == "review_now"
+    )
+    research_count = sum(
+        1 for row in queue_rows if str(row.get("priority") or "") == "research"
+    )
+    if blocking_count:
+        status = "blocked"
+        headline = f"{blocking_count} setup blocker(s) must be cleared first."
+        next_action = str(queue_rows[0].get("next_action") or "Review the top queue item.")
+    elif review_count:
+        status = "review"
+        headline = f"{review_count} candidate(s) need manual review."
+        next_action = "Open the top candidate and save an operator action."
+    elif research_count:
+        status = "research"
+        headline = f"{research_count} candidate(s) need research before review."
+        next_action = "Work the research rows from top to bottom."
+    elif queue_rows:
+        status = "monitor"
+        headline = "No urgent operator action is required."
+        next_action = "Monitor the listed context items."
+    else:
+        status = "empty"
+        headline = "No operator work queue items are available."
+        next_action = "Run the radar after live inputs are configured."
+    return {
+        "schema_version": "operator-work-queue-v1",
+        "status": status,
+        "headline": headline,
+        "next_action": next_action,
+        "counts": {
+            "blocking": blocking_count,
+            "review": review_count,
+            "research": research_count,
+            "total": len(queue_rows),
+        },
+        "investment_mode": investment.get("decision_mode") or "unknown",
+        "safe_to_make_investment_decision": bool(
+            investment.get("manual_buy_review_ready")
+        ),
+        "rows": queue_rows,
+    }
+
+
 def candidate_decision_labels_payload(
     candidate_rows: Sequence[Mapping[str, object]],
     investment_readiness: Mapping[str, object] | None = None,
@@ -622,6 +756,13 @@ def radar_readiness_payload(
         candidate_rows=candidate_rows,
         available_at=latest_run_cutoff,
     )
+    operator_queue = operator_work_queue_payload(
+        config,
+        radar_run_summary=radar_run_summary,
+        broker_summary=broker_summary,
+        discovery_snapshot=discovery_snapshot,
+        candidate_rows=candidate_rows,
+    )
     safe_to_decide = bool(investment.get("manual_buy_review_ready"))
     return {
         "schema_version": "radar-readiness-v1",
@@ -643,6 +784,7 @@ def radar_readiness_payload(
         "actionability_breakdown": actionability,
         "investment_readiness": investment,
         "candidate_delta": candidate_delta,
+        "operator_work_queue": operator_queue,
         "candidate_decision_labels": [
             _readiness_candidate_label(row)
             for row in labeled_candidates[: _positive_limit(candidate_limit)]
@@ -3286,6 +3428,35 @@ def _readiness_row(
         "next_action": next_action,
         "evidence": evidence,
     }
+
+
+def _operator_work_queue_row(
+    *,
+    sequence: int,
+    severity: int,
+    priority: str,
+    area: str,
+    item: str,
+    status: str,
+    next_action: str,
+    evidence: str,
+    source: str,
+    ticker: str | None = None,
+) -> dict[str, object]:
+    row: dict[str, object] = {
+        "sequence": sequence,
+        "severity": severity,
+        "priority": priority,
+        "area": area,
+        "item": item,
+        "status": status,
+        "next_action": next_action,
+        "evidence": evidence,
+        "source": source,
+    }
+    if ticker:
+        row["ticker"] = ticker
+    return row
 
 
 def _activation_blocker_detail(rows: Sequence[Mapping[str, object]]) -> str:
