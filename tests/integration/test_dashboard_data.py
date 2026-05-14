@@ -2745,6 +2745,11 @@ def test_radar_discovery_snapshot_counts_run_candidates_when_cutoff_precedes_as_
     assert snapshot["yield"]["candidate_packets"] == 1
     assert snapshot["latest_candidate_context"]["stale_relative_to_run"] is False
     assert snapshot["latest_candidate_context"]["latest_candidate_as_of"] == AS_OF.isoformat()
+    assert (
+        snapshot["latest_candidate_context"]["latest_candidate_session_date"]
+        == AS_OF.date().isoformat()
+    )
+    assert snapshot["freshness"]["latest_candidate_session_date"] == AS_OF.date().isoformat()
     assert snapshot["top_discoveries"][0]["ticker"] == "MSFT"
 
 
@@ -2900,10 +2905,12 @@ def test_radar_discovery_snapshot_exposes_stale_candidate_context(
 
     assert snapshot["yield"]["candidate_states"] == 0
     assert snapshot["freshness"]["latest_candidate_as_of"] == AS_OF.isoformat()
+    assert snapshot["freshness"]["latest_candidate_session_date"] == AS_OF.date().isoformat()
     assert snapshot["freshness"]["latest_candidate_age_days"] == 4
     context = snapshot["latest_candidate_context"]
     assert context["candidate_states"] == 2
     assert context["latest_candidate_as_of"] == AS_OF.isoformat()
+    assert context["latest_candidate_session_date"] == AS_OF.date().isoformat()
     assert context["latest_candidate_age_days"] == 4
     assert context["stale_relative_to_run"] is True
     assert context["top_candidates"][0]["ticker"] == "MSFT"
