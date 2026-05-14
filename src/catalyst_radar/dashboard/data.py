@@ -294,6 +294,131 @@ def actionability_breakdown_payload(
     }
 
 
+def investment_readiness_payload(
+    discovery_snapshot: Mapping[str, object] | None,
+    actionability_breakdown: Mapping[str, object] | None,
+    candidate_rows: Sequence[Mapping[str, object]] | None = None,
+) -> dict[str, object]:
+    snapshot = discovery_snapshot if isinstance(discovery_snapshot, Mapping) else {}
+    actionability = (
+        actionability_breakdown if isinstance(actionability_breakdown, Mapping) else {}
+    )
+    blocker_rows = [
+        _row_dict(row)
+        for row in _sequence_value(snapshot.get("blockers"))
+        if isinstance(row, Mapping)
+    ]
+    blocker_codes = [str(row.get("code") or "") for row in blocker_rows]
+    counts_by_bucket = _actionability_counts_by_bucket(actionability.get("counts"))
+    buy_ready_count = counts_by_bucket.get("Buy-review ready", 0)
+    buy_ready_with_card_count = _buy_review_ready_with_card_count(candidate_rows or ())
+    research_count = counts_by_bucket.get("Research now", 0)
+    snapshot_status = str(snapshot.get("status") or "unknown")
+    source_modes = _mapping_value(snapshot, "source_modes")
+    freshness = _mapping_value(snapshot, "freshness")
+    yield_payload = _mapping_value(snapshot, "yield")
+    packet_count = int(_finite_float(yield_payload.get("candidate_packets")))
+    card_count = int(_finite_float(yield_payload.get("decision_cards")))
+    hard_blockers = [
+        code
+        for code in blocker_codes
+        if code
+        and code
+        in {
+            "no_run",
+            "fixture_market_data",
+            "fixture_events",
+            "market_missing_credentials",
+            "market_disabled",
+            "events_missing_credentials",
+            "events_disabled",
+            "thin_universe",
+            "stale_daily_bars",
+            "blocked_run_steps",
+            "no_candidate_packets",
+        }
+    ]
+    bars_stale = bool(freshness.get("latest_bars_older_than_as_of"))
+    source_live = (
+        source_modes.get("market") == "live" and source_modes.get("events") == "live"
+    )
+    buy_review_ready = (
+        source_live
+        and not hard_blockers
+        and not bars_stale
+        and packet_count > 0
+        and card_count > 0
+        and buy_ready_with_card_count > 0
+    )
+
+    if not snapshot:
+        status = "blocked"
+        decision_mode = "not_ready"
+        headline = "No run has produced decision evidence yet."
+        next_action = "Run one capped radar cycle after live inputs are configured."
+    elif buy_review_ready:
+        status = "ready"
+        decision_mode = "manual_buy_review"
+        headline = f"{buy_ready_with_card_count} candidate(s) can enter manual buy review."
+        next_action = "Open Decision Cards and verify hard blocks, exposure, and source freshness."
+    elif snapshot_status in {"fixture", "blocked"} or hard_blockers or bars_stale:
+        status = "research_only"
+        decision_mode = "research_only"
+        headline = "Current candidates are research-only, not investment-decision ready."
+        next_action = _first_blocker_action(
+            blocker_rows,
+            default="Configure live sources, refresh stale data, then rerun the radar.",
+        )
+    elif buy_ready_count and buy_ready_with_card_count == 0:
+        status = "research_only"
+        decision_mode = "research_only"
+        headline = "Buy-review candidates are missing Decision Cards."
+        next_action = "Build Decision Cards before opening any manual buy-review workflow."
+    elif research_count:
+        status = "research_only"
+        decision_mode = "research_only"
+        headline = f"{research_count} candidate(s) need research before buy review."
+        next_action = str(
+            actionability.get("next_action")
+            or "Review research gaps before changing thresholds."
+        )
+    else:
+        status = "monitor"
+        decision_mode = "monitor"
+        headline = "No current candidate is ready for manual buy review."
+        next_action = str(
+            actionability.get("next_action")
+            or "Keep monitoring until a fresher catalyst or stronger score appears."
+        )
+
+    return {
+        "status": status,
+        "decision_mode": decision_mode,
+        "manual_buy_review_ready": buy_review_ready,
+        "headline": headline,
+        "detail": (
+            f"market={source_modes.get('market') or 'unknown'}; "
+            f"events={source_modes.get('events') or 'unknown'}; "
+            f"packets={packet_count}; cards={card_count}; "
+            f"buy_review={buy_ready_count}; "
+            f"buy_review_with_card={buy_ready_with_card_count}"
+        ),
+        "next_action": next_action,
+        "evidence": (
+            f"snapshot_status={snapshot_status}; "
+            f"blockers={', '.join(code for code in blocker_codes if code) or 'none'}; "
+            f"latest_bars_stale={'yes' if bars_stale else 'no'}; "
+            f"source_live={'yes' if source_live else 'no'}"
+        ),
+        "counts": [
+            {"bucket": bucket, "count": count}
+            for bucket, count in counts_by_bucket.items()
+            if count
+        ],
+        "blocking_reasons": blocker_rows,
+    }
+
+
 def load_ticker_detail(
     engine: Engine,
     ticker: str,
@@ -2327,6 +2452,48 @@ def _actionability_status(
         "No candidate is actionable yet.",
         "Use the top blocker list to decide whether inputs, thresholds, or candidates need work.",
     )
+
+
+def _actionability_counts_by_bucket(value: object) -> dict[str, int]:
+    rows = _sequence_value(value)
+    counts: dict[str, int] = {}
+    for row in rows:
+        if not isinstance(row, Mapping):
+            continue
+        bucket = str(row.get("bucket") or "").strip()
+        if not bucket:
+            continue
+        counts[bucket] = int(_finite_float(row.get("count")))
+    return counts
+
+
+def _buy_review_ready_with_card_count(
+    candidate_rows: Sequence[Mapping[str, object]],
+) -> int:
+    count = 0
+    for candidate in candidate_rows:
+        if not isinstance(candidate, Mapping):
+            continue
+        if (
+            str(candidate.get("state") or "")
+            != ActionState.ELIGIBLE_FOR_MANUAL_BUY_REVIEW.value
+        ):
+            continue
+        if str(candidate.get("decision_card_id") or "").strip():
+            count += 1
+    return count
+
+
+def _first_blocker_action(
+    blockers: Sequence[Mapping[str, object]],
+    *,
+    default: str,
+) -> str:
+    for blocker in blockers:
+        action = blocker.get("next_action")
+        if action not in (None, ""):
+            return str(action)
+    return default
 
 
 def _research_why_now(candidate: Mapping[str, object], *, top_event: object) -> str:

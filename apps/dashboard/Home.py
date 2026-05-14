@@ -820,6 +820,50 @@ def _show_actionability_breakdown(candidate_rows: list[dict[str, object]]) -> No
     )
 
 
+def _show_investment_readiness(
+    discovery_snapshot: Mapping[str, Any],
+    candidate_rows: list[dict[str, object]],
+) -> None:
+    actionability = _mapping(dashboard_data.actionability_breakdown_payload(candidate_rows))
+    readiness = _mapping(
+        dashboard_data.investment_readiness_payload(
+            discovery_snapshot,
+            actionability,
+            candidate_rows,
+        )
+    )
+    st.subheader("Investment Decision Readiness")
+    status = str(readiness.get("status") or "unknown")
+    message = (
+        f"{readiness.get('headline') or 'Investment readiness status'} "
+        f"{readiness.get('detail') or ''} Next: {readiness.get('next_action') or 'n/a'}"
+    ).strip()
+    if status == "ready":
+        st.success(message)
+    elif status == "monitor":
+        st.info(message)
+    else:
+        st.warning(message)
+    st.caption(str(readiness.get("evidence") or "No investment readiness evidence."))
+    _show_status_badges(
+        [
+            ("Decision Mode", readiness.get("decision_mode") or "unknown"),
+            (
+                "Buy Review",
+                "ready" if readiness.get("manual_buy_review_ready") else "not ready",
+            ),
+        ]
+    )
+    blocker_rows = _records(readiness.get("blocking_reasons"))
+    if blocker_rows:
+        with st.expander("Why this is not decision-ready", expanded=status != "ready"):
+            _show_records(
+                "Decision Readiness Blockers",
+                blocker_rows,
+                empty="No decision-readiness blockers.",
+            )
+
+
 def _visible_discovery_rows(value: object) -> list[dict[str, object]]:
     return [
         {key: item for key, item in row.items() if key != "audit"}
@@ -1244,6 +1288,7 @@ def _show_overview(
     _show_universe_coverage(config, ops_health)
     _show_radar_run_controls(config, radar_run_summary, radar_run_cooldown)
     _show_discovery_snapshot(discovery_snapshot)
+    _show_investment_readiness(discovery_snapshot, candidate_rows)
     _show_actionability_breakdown(candidate_rows)
     _show_records(
         "Opportunity Focus",
