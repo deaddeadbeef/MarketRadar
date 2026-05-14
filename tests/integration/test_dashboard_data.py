@@ -32,6 +32,7 @@ from catalyst_radar.core.models import ActionState
 from catalyst_radar.dashboard.data import (
     actionability_breakdown_payload,
     activation_summary_payload,
+    agent_review_ledger_rows_payload,
     agent_review_summary_payload,
     alert_planning_diagnostics_payload,
     candidate_decision_labels_payload,
@@ -42,6 +43,7 @@ from catalyst_radar.dashboard.data import (
     investment_readiness_payload,
     live_activation_plan_payload,
     live_data_activation_contract_payload,
+    load_agent_review_history,
     load_alert_detail,
     load_alert_rows,
     load_broker_summary,
@@ -3030,6 +3032,47 @@ def test_load_cost_summary_uses_budget_ledger_rows(tmp_path: Path) -> None:
         "monthly_budget_usd": 0.0,
         "task_daily_caps": {},
     }
+
+
+def test_load_agent_review_history_filters_budget_ledger_rows(tmp_path: Path) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    _insert_budget_ledger_fixture(engine, available_at=AVAILABLE_AT)
+
+    history = load_agent_review_history(
+        engine,
+        available_at=AVAILABLE_AT + timedelta(minutes=1),
+        ticker="msft",
+        task="mid_review",
+        limit=10,
+    )
+
+    assert history["source"] == "budget_ledger"
+    assert history["schema_version"] == "agent-review-history-v1"
+    assert history["attempt_count"] == 1
+    assert history["filters"]["ticker"] == "MSFT"
+    assert history["filters"]["task"] == "mid_review"
+    assert [row["ticker"] for row in history["rows"]] == ["MSFT"]
+    assert history["rows"][0]["candidate_packet_id"] == "candidate-packet-MSFT"
+    assert history["rows"][0]["status"] == "completed"
+    assert history["rows"][0]["actual_cost_usd"] == 0.19
+
+
+def test_agent_review_ledger_rows_payload_filters_cost_summary_rows(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    _insert_budget_ledger_fixture(engine, available_at=AVAILABLE_AT)
+    summary = load_cost_summary(engine, available_at=AVAILABLE_AT + timedelta(minutes=1))
+
+    rows = agent_review_ledger_rows_payload(summary, "msft", task="mid_review")
+
+    assert len(rows) == 1
+    assert rows[0]["ticker"] == "MSFT"
+    assert rows[0]["task"] == "mid_review"
+    assert rows[0]["status"] == "completed"
+    assert rows[0]["actual_cost_usd"] == 0.19
 
 
 def test_load_cost_summary_keeps_validation_cost_separate(tmp_path: Path) -> None:

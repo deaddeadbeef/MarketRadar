@@ -165,6 +165,49 @@ def test_post_agent_review_dry_run_logs_budget_and_audit(tmp_path, monkeypatch) 
     assert events[0].status == "dry_run"
 
 
+def test_get_agent_reviews_returns_budget_ledger_history(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "agent-review-history.db")
+    _configure_fake_safe_llm(monkeypatch, database_url)
+    engine = _create_database(database_url)
+    _insert_candidate(engine)
+
+    client = TestClient(create_app())
+
+    post_response = client.post(
+        "/api/agents/review",
+        json={
+            "ticker": "MSFT",
+            "as_of": AS_OF.date().isoformat(),
+            "available_at": AVAILABLE_AT.isoformat(),
+            "task": "mid_review",
+            "mode": "dry_run",
+        },
+    )
+    history_response = client.get(
+        "/api/agents/reviews",
+        params={
+            "ticker": "MSFT",
+            "task": "mid_review",
+            "available_at": AVAILABLE_AT.isoformat(),
+        },
+    )
+
+    assert post_response.status_code == 200
+    assert history_response.status_code == 200
+    payload = history_response.json()
+    assert payload["source"] == "budget_ledger"
+    assert payload["schema_version"] == "agent-review-history-v1"
+    assert payload["attempt_count"] == 1
+    assert payload["filters"]["ticker"] == "MSFT"
+    assert payload["rows"][0]["ticker"] == "MSFT"
+    assert payload["rows"][0]["task"] == "mid_review"
+    assert payload["rows"][0]["status"] == "dry_run"
+    assert payload["rows"][0]["candidate_packet_id"] == "packet-MSFT"
+
+
 def test_post_agent_review_requires_analyst_when_auth_enabled(
     tmp_path,
     monkeypatch,
