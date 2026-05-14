@@ -2510,6 +2510,12 @@ def test_load_radar_run_summary_classifies_expected_gate_skips_success(
         "expected_gate",
         "expected_gate",
     ]
+    assert summary["steps"][1]["trigger_condition"] == (
+        "At least one candidate must pass policy into manual buy review."
+    )
+    assert summary["steps"][2]["trigger_condition"] == (
+        "Request LLM dry-run review after Decision Cards exist."
+    )
 
 
 def test_load_radar_run_summary_refreshes_stale_skip_explanations(
@@ -2554,6 +2560,9 @@ def test_load_radar_run_summary_refreshes_stale_skip_explanations(
     )
     assert summary["steps"][0]["operator_action"] == (
         "No action required unless you want this optional gate to run."
+    )
+    assert summary["steps"][0]["trigger_condition"] == (
+        "Alert planning must produce at least one digest alert."
     )
 
 

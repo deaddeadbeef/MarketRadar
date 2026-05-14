@@ -1549,6 +1549,7 @@ def load_radar_run_summary(engine: Engine, *, limit: int = 250) -> dict[str, obj
                 "reason": _radar_run_step_reason(row),
                 "meaning": classification.meaning,
                 "operator_action": classification.operator_action,
+                "trigger_condition": classification.trigger_condition,
                 "blocks_reliance": classification.blocks_reliance,
                 "payload": _radar_run_step_payload(row),
             }
