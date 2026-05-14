@@ -61,6 +61,24 @@ def test_polygon_ingest_requires_api_key(
     assert incident.fail_closed_action == "abort-ingest"
 
 
+def test_polygon_ingest_rejects_placeholder_api_key(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    result = run_cli(
+        ["ingest-polygon", "grouped-daily", "--date", "2026-05-08"],
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        capsys=capsys,
+        env={"CATALYST_POLYGON_API_KEY": "<your Polygon API key>"},
+    )
+
+    assert result.exit_code == 1
+    assert result.stdout == ""
+    assert "missing CATALYST_POLYGON_API_KEY" in result.stderr
+
+
 def test_polygon_fixture_ingest_persists_raw_normalized_and_daily_bars(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

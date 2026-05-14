@@ -181,6 +181,21 @@ def test_sec_user_agent_placeholder_is_not_configured() -> None:
     assert config.sec_user_agent_configured is False
 
 
+def test_polygon_api_key_placeholder_is_not_configured() -> None:
+    config = AppConfig.from_env(
+        {"CATALYST_POLYGON_API_KEY": "<your Polygon API key>"}
+    )
+
+    assert config.polygon_api_key == "<your Polygon API key>"
+    assert config.polygon_api_key_configured is False
+
+
+def test_polygon_api_key_real_value_is_configured() -> None:
+    config = AppConfig.from_env({"CATALYST_POLYGON_API_KEY": "fixture-key"})
+
+    assert config.polygon_api_key_configured is True
+
+
 def test_config_reads_polygon_ticker_page_cap_from_env() -> None:
     config = AppConfig.from_env(
         {

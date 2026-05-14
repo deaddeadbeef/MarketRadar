@@ -389,7 +389,11 @@ def _daily_csv_bar_ingest(context: _DailyRunContext, provider: str) -> _StepOutc
 def _daily_polygon_bar_ingest(context: _DailyRunContext, provider: str) -> _StepOutcome:
     endpoint = PolygonEndpoint.GROUPED_DAILY
     connector = PolygonMarketDataConnector(
-        api_key=context.config.polygon_api_key,
+        api_key=(
+            context.config.polygon_api_key
+            if context.config.polygon_api_key_configured
+            else None
+        ),
         client=JsonHttpClient(
             transport=UrlLibHttpTransport(),
             timeout_seconds=context.config.http_timeout_seconds,

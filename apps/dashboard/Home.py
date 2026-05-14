@@ -800,7 +800,7 @@ def _show_universe_coverage(
     else:
         st.warning(message)
     st.caption(str(summary.get("evidence") or "No universe coverage evidence."))
-    seed_configured = bool(config.polygon_api_key)
+    seed_configured = config.polygon_api_key_configured
     st.caption(
         f"Manual seed uses Polygon ticker reference data, capped at "
         f"{config.polygon_tickers_max_pages} page(s). "

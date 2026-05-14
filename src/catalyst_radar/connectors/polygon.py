@@ -348,7 +348,21 @@ def _secret_value(value: str | SecretValue | None) -> SecretValue | None:
     if isinstance(value, SecretValue):
         return value
     text = value.strip()
-    return SecretValue(text) if text else None
+    if not text or _looks_like_placeholder_api_key(text):
+        return None
+    return SecretValue(text)
+
+
+def _looks_like_placeholder_api_key(value: str) -> bool:
+    text = value.strip().lower()
+    placeholder_tokens = {
+        "<your",
+        "placeholder",
+        "replace-me",
+        "your polygon",
+        "polygon api key",
+    }
+    return any(token in text for token in placeholder_tokens)
 
 
 def _normalize_grouped_daily_payload(record: Mapping[str, Any]) -> dict[str, Any]:

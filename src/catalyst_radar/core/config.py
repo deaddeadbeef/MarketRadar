@@ -80,6 +80,11 @@ def _optional_str(env: Mapping[str, str], key: str) -> str | None:
     return value
 
 
+def _looks_like_placeholder(value: str | None, tokens: set[str]) -> bool:
+    text = (value or "").strip().lower()
+    return bool(text) and any(token in text for token in tokens)
+
+
 def _task_caps(env: Mapping[str, str], key: str) -> Mapping[str, int]:
     raw = env.get(key)
     if raw is None or raw.strip() == "":
@@ -171,6 +176,20 @@ class AppConfig:
     universe_include_etfs: bool = False
     universe_include_adrs: bool = True
     scan_batch_size: int = 500
+
+    @property
+    def polygon_api_key_configured(self) -> bool:
+        value = (self.polygon_api_key or "").strip()
+        if not value:
+            return False
+        placeholder_tokens = {
+            "<your",
+            "placeholder",
+            "replace-me",
+            "your polygon",
+            "polygon api key",
+        }
+        return not _looks_like_placeholder(value, placeholder_tokens)
 
     @property
     def sec_user_agent_configured(self) -> bool:

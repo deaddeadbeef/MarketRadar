@@ -72,7 +72,7 @@ def seed_polygon_tickers(
     if date_value is not None:
         params["date"] = date_value.isoformat()
     connector = PolygonMarketDataConnector(
-        api_key=config.polygon_api_key,
+        api_key=config.polygon_api_key if config.polygon_api_key_configured else None,
         client=JsonHttpClient(
             transport=transport or UrlLibHttpTransport(),
             timeout_seconds=config.http_timeout_seconds,

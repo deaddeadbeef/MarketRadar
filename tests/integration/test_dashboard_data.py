@@ -1506,6 +1506,35 @@ def test_live_activation_plan_rejects_sec_user_agent_placeholder() -> None:
     assert "CATALYST_SEC_USER_AGENT" in contract["missing_env"]
 
 
+def test_live_activation_plan_rejects_polygon_key_placeholder() -> None:
+    config = AppConfig(
+        daily_market_provider="polygon",
+        daily_provider="polygon",
+        polygon_api_key="<your Polygon API key>",
+        daily_event_provider="sec",
+        sec_enable_live=True,
+        sec_user_agent="MarketRadar/0.1 contact@example.com",
+    )
+    run_summary = {
+        "step_count": 6,
+        "required_step_count": 6,
+        "required_completed_count": 6,
+        "blocking_step_count": 0,
+        "expected_gate_count": 0,
+        "outcome_category_counts": {"completed": 6},
+    }
+
+    plan = live_activation_plan_payload(config, radar_run_summary=run_summary)
+    contract = live_data_activation_contract_payload(config, radar_run_summary=run_summary)
+    runtime = runtime_context_payload(config, radar_run_summary=run_summary)
+
+    assert plan["status"] == "blocked"
+    assert "CATALYST_POLYGON_API_KEY" in plan["missing_env"]
+    assert contract["status"] == "blocked"
+    assert "CATALYST_POLYGON_API_KEY" in contract["missing_env"]
+    assert runtime["polygon_key_configured"] is False
+
+
 def test_runtime_context_payload_identifies_active_database_without_secrets() -> None:
     config = AppConfig(
         database_url="sqlite:///data/local/schwab-live.db",
