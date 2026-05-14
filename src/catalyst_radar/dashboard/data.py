@@ -1271,15 +1271,22 @@ def telemetry_tape_payload(
         event_type = str(row.get("event_type") or "unknown")
         metadata = _mapping_value(row, "metadata")
         after_payload = _mapping_value(row, "after_payload")
+        outcome = _telemetry_step_outcome_fields(event_type, row, metadata)
         rows.append(
             {
                 "occurred_at": row.get("occurred_at"),
                 "event": event_type.removeprefix("telemetry."),
-                "status": row.get("status") or "unknown",
+                "status": outcome.get("status") or row.get("status") or "unknown",
                 "reason": row.get("reason") or "",
                 "artifact": _telemetry_artifact_label(row),
+                **{
+                    key: value
+                    for key, value in outcome.items()
+                    if key != "status"
+                },
                 "summary": _telemetry_event_summary(
                     event_type,
+                    event=row,
                     metadata=metadata,
                     after_payload=after_payload,
                 ),
@@ -2558,13 +2565,76 @@ def _telemetry_artifact_label(event: Mapping[str, object]) -> str:
     return artifact_type or artifact_id or "n/a"
 
 
+def _telemetry_step_outcome_fields(
+    event_type: str,
+    event: Mapping[str, object],
+    metadata: Mapping[str, object],
+) -> dict[str, object]:
+    if event_type.removeprefix("telemetry.") != "radar_run.step_finished":
+        return {}
+    raw_status = str(
+        _first_present(
+            event.get("status"),
+            metadata.get("result_status"),
+            "unknown",
+        )
+    )
+    reason = _first_present(event.get("reason"), metadata.get("result_reason"))
+    reason_text = str(reason) if reason not in (None, "") else None
+    classification = classify_step_outcome(raw_status, reason_text)
+    category = str(metadata.get("outcome_category") or classification.category)
+    label = str(metadata.get("outcome_label") or classification.label)
+    blocks_reliance = _boolish(
+        metadata.get("blocks_reliance", classification.blocks_reliance)
+    )
+    return {
+        "status": category,
+        "step": metadata.get("step") or "n/a",
+        "outcome": label,
+        "raw_status": raw_status,
+        "blocks_reliance": "yes" if blocks_reliance else "no",
+    }
+
+
 def _telemetry_event_summary(
     event_type: str,
     *,
+    event: Mapping[str, object] | None = None,
     metadata: Mapping[str, object],
     after_payload: Mapping[str, object],
 ) -> str:
     short_event = event_type.removeprefix("telemetry.")
+    if short_event == "radar_run.step_finished":
+        event_mapping = event if isinstance(event, Mapping) else {}
+        raw_status = str(
+            _first_present(
+                metadata.get("result_status"),
+                event_mapping.get("status"),
+                "unknown",
+            )
+        )
+        reason_value = _first_present(
+            metadata.get("result_reason"),
+            event_mapping.get("reason"),
+        )
+        reason = str(reason_value) if reason_value not in (None, "") else "n/a"
+        classification = classify_step_outcome(
+            raw_status,
+            None if reason == "n/a" else reason,
+        )
+        category = str(metadata.get("outcome_category") or classification.category)
+        label = str(metadata.get("outcome_label") or classification.label)
+        action = str(metadata.get("operator_action") or classification.operator_action or "")
+        parts = [
+            f"step={metadata.get('step') or 'n/a'}",
+            f"outcome={label}",
+            f"category={category}",
+            f"raw_status={raw_status}",
+            f"reason={reason}",
+        ]
+        if action:
+            parts.append(f"action={action}")
+        return "; ".join(parts)
     if short_event == "radar_run.completed":
         step_counts = _string_int_mapping(metadata.get("step_counts"))
         blocked_count = len(_sequence_value(metadata.get("blocked_steps")))
@@ -2600,6 +2670,14 @@ def _telemetry_event_summary(
 
 def _count_map_label(values: Mapping[str, int]) -> str:
     return ", ".join(f"{key}={value}" for key, value in sorted(values.items()))
+
+
+def _boolish(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int | float):
+        return bool(value)
+    return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
 def _radar_run_path_summary(
