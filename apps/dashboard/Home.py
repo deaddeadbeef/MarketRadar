@@ -1864,8 +1864,7 @@ def _operator_action_rows(rows: list[dict[str, object]]) -> list[dict[str, objec
         {
             "Outcome": _operator_row_value(row, "Outcome", "outcome"),
             "Step": _operator_row_value(row, "Step", "step"),
-            "Reason": _operator_row_value(row, "Reason", "reason"),
-            "Meaning": _operator_row_value(row, "Meaning", "meaning"),
+            "Why": _operator_row_value(row, "Meaning", "meaning", "Reason", "reason"),
             "Action": _operator_row_value(row, "Action", "action"),
         }
         for row in rows
@@ -1879,9 +1878,8 @@ def _operator_optional_rows(rows: list[dict[str, object]]) -> list[dict[str, obj
             "Outcome": _operator_optional_outcome_label(
                 _operator_row_value(row, "Outcome", "outcome")
             ),
-            "Reason": _operator_row_value(row, "Reason", "reason"),
+            "Why": _operator_row_value(row, "Meaning", "meaning", "Reason", "reason"),
             "Runs When": _operator_row_value(row, "Trigger", "trigger"),
-            "Meaning": _operator_row_value(row, "Meaning", "meaning"),
             "Operator Note": _operator_row_value(row, "Action", "action"),
         }
         for row in rows
