@@ -28,6 +28,7 @@ from catalyst_radar.brokers.rate_limit import (
     schwab_rate_limit_status,
 )
 from catalyst_radar.core.config import AppConfig
+from catalyst_radar.core.models import ActionState
 from catalyst_radar.jobs.step_outcomes import (
     StepOutcomeClassification,
     classify_step_outcome,
@@ -207,6 +208,87 @@ def opportunity_focus_payload(
             }
         )
     return rows
+
+
+def actionability_breakdown_payload(
+    candidate_rows: Sequence[Mapping[str, object]],
+    *,
+    limit: int = 5,
+) -> dict[str, object]:
+    rows = [row for row in candidate_rows if isinstance(row, Mapping)]
+    buckets = {
+        "Buy-review ready": 0,
+        "Research now": 0,
+        "Watchlist": 0,
+        "Blocked or risk review": 0,
+        "Monitor": 0,
+    }
+    risk_counts: dict[str, dict[str, object]] = {}
+    action_rows: list[dict[str, object]] = []
+    for candidate in rows:
+        state = str(candidate.get("state") or "")
+        bucket = _actionability_bucket(state)
+        buckets[bucket] += 1
+        brief = _mapping_value(candidate, "research_brief")
+        risk_or_gap = str(
+            _first_present(
+                brief.get("risk_or_gap"),
+                _mapping_value(candidate, "top_disconfirming_evidence").get("title"),
+                "No explicit risk/gap captured.",
+            )
+        )
+        risk_entry = risk_counts.setdefault(
+            risk_or_gap,
+            {"risk_or_gap": risk_or_gap, "count": 0, "sample_tickers": []},
+        )
+        risk_entry["count"] = int(risk_entry["count"]) + 1
+        sample_tickers = risk_entry["sample_tickers"]
+        if isinstance(sample_tickers, list) and len(sample_tickers) < 4:
+            sample_tickers.append(candidate.get("ticker"))
+        if len(action_rows) < limit:
+            action_rows.append(
+                {
+                    "ticker": candidate.get("ticker"),
+                    "state": candidate.get("state"),
+                    "score": _finite_float(candidate.get("final_score")),
+                    "focus": brief.get("focus") or _research_focus(state),
+                    "risk_or_gap": risk_or_gap,
+                    "next_step": brief.get("next_step")
+                    or _research_next_step(
+                        state,
+                        has_decision_card=bool(candidate.get("decision_card_id")),
+                    ),
+                    "card": candidate.get("decision_card_id") or "n/a",
+                }
+            )
+    counts = [
+        {"bucket": bucket, "count": count}
+        for bucket, count in buckets.items()
+        if count
+    ]
+    blockers = sorted(
+        (
+            {
+                "risk_or_gap": str(value["risk_or_gap"]),
+                "count": int(value["count"]),
+                "sample_tickers": ", ".join(
+                    str(item) for item in value["sample_tickers"] if item
+                ),
+            }
+            for value in risk_counts.values()
+        ),
+        key=lambda row: (-int(row["count"]), str(row["risk_or_gap"])),
+    )[:limit]
+    status, headline, next_action = _actionability_status(buckets, total=len(rows))
+    return {
+        "status": status,
+        "headline": headline,
+        "next_action": next_action,
+        "total_candidates": len(rows),
+        "counts": counts,
+        "top_blockers": blockers,
+        "next_actions": action_rows,
+    }
 
 
 def load_ticker_detail(
@@ -2122,6 +2204,59 @@ def _research_focus(state: str) -> str:
     if normalized in {"thesisweakening", "exitinvalidatereview"}:
         return "Risk review"
     return "Monitor"
+
+
+def _actionability_bucket(state: str) -> str:
+    normalized = state.strip()
+    if normalized == ActionState.ELIGIBLE_FOR_MANUAL_BUY_REVIEW.value:
+        return "Buy-review ready"
+    if normalized == ActionState.WARNING.value:
+        return "Research now"
+    if normalized == ActionState.ADD_TO_WATCHLIST.value:
+        return "Watchlist"
+    if normalized in {
+        ActionState.BLOCKED.value,
+        ActionState.THESIS_WEAKENING.value,
+        ActionState.EXIT_INVALIDATE_REVIEW.value,
+    }:
+        return "Blocked or risk review"
+    return "Monitor"
+
+
+def _actionability_status(
+    buckets: Mapping[str, int],
+    *,
+    total: int,
+) -> tuple[str, str, str]:
+    if total == 0:
+        return (
+            "empty",
+            "No candidates are currently queued.",
+            "Run the radar after live inputs are configured.",
+        )
+    if buckets.get("Buy-review ready", 0):
+        return (
+            "ready",
+            f"{buckets['Buy-review ready']} candidate(s) are ready for manual buy review.",
+            "Review Decision Cards, hard blocks, exposure, and source freshness.",
+        )
+    if buckets.get("Research now", 0):
+        return (
+            "research",
+            f"{buckets['Research now']} candidate(s) need research before buy review.",
+            "Review the top risk/gap and confirm whether policy thresholds are too conservative.",
+        )
+    if buckets.get("Watchlist", 0):
+        return (
+            "watchlist",
+            f"{buckets['Watchlist']} candidate(s) belong on the watchlist.",
+            "Wait for stronger score, volume confirmation, or a fresher catalyst.",
+        )
+    return (
+        "blocked",
+        "No candidate is actionable yet.",
+        "Use the top blocker list to decide whether inputs, thresholds, or candidates need work.",
+    )
 
 
 def _research_why_now(candidate: Mapping[str, object], *, top_event: object) -> str:
