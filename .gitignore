@@ -1,5 +1,6 @@
 .worktrees/
 .playwright-mcp/
+.state/
 .env
 .env.local
 .venv/
