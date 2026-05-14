@@ -35,15 +35,25 @@ The dashboard **Live Data Activation** contract turns that plan into exact
 operator steps. It is read-only and makes zero external calls. It shows a
 redacted `.env.local` template, safe caps, first-run commands, and the maximum
 external calls that would happen only if you manually seed the universe or run a
-capped live radar cycle.
+capped live radar cycle. Placeholder template values, such as
+`CATALYST_POLYGON_API_KEY=<your Polygon API key>`, are treated as missing and
+will not unlock live calls.
 
-Raw telemetry can still show `status=skipped` for expected optional gates. Treat
-the `category`, required-path count, and action-needed count as the operator
-truth: `expected_gate` means no failure occurred unless you intentionally wanted
-that gate to run. A raw skipped row with `not_ready` is different: it means a
-required stage was waiting for input, such as missing text snippets or active
-securities. The dashboard keeps those rows in the required path and shows the
-run as incomplete instead of counting them as expected optional skips.
+The dashboard **Latest Run Path** is the operator view of the last run. Read
+`Required Path`, `Action Needed`, `Optional Gates Not Triggered`, and
+`Audit-only Rows` before opening raw audit details. The old raw
+`Radar Run Steps` table is not the primary control surface: optional Decision
+Cards, LLM review, digest delivery, and outcome validation can remain untriggered
+without making the scan unhealthy. Raw stored statuses and reason codes are kept
+for auditability, but the dashboard translates them into required-path
+completion, expected optional gates, and root-cause rows.
+
+A required-stage row that is waiting for input, such as missing active
+securities or missing text snippets, is different from an expected optional
+gate. Those rows stay in the required path and make the run incomplete until the
+upstream input is fixed. Expected optional gates do not block the run by
+themselves; they become action items only when you intentionally want that gate
+to execute.
 
 The manual **LLM dry run** option verifies the agent-review path without calling
 OpenAI. It reviews Warning, ThesisWeakening, and manual-review candidate packets;
@@ -60,18 +70,20 @@ This command reads local API state and the run call plan only. It starts no
 worker and makes zero external calls unless you rerun it with `-Execute`. The
 script forces daily worker LLM review off and keeps alerts in dry-run mode.
 
-The dashboard **Recent Radar Telemetry** tape is a compact view of append-only
-telemetry audit events. Use it to confirm whether a dashboard/API action was
-requested, completed, rejected, blocked by a lock, or rate limited before
-rerunning a live operation. Each radar step writes both `radar_run.step_started`
-and `radar_run.step_finished` audit rows. Finished run-step telemetry keeps the
-raw stored status, but also surfaces the operator outcome category, so expected
-optional gates are shown as `expected_gate` with `raw_status=skipped` instead of
-looking like scan failures.
+The dashboard **Telemetry Status Summary** is the first telemetry view to read.
+It rolls the append-only event tape into `Needs attention`, `Safety guard`, and
+`Healthy` categories so rate-limit protection is visible without looking like a
+scan failure. Use **Recent Radar Telemetry** only when you need the detailed
+audit trail for a dashboard/API action that was requested, completed, rejected,
+blocked by a lock, or rate limited before rerunning a live operation. Each radar
+step still writes both `radar_run.step_started` and `radar_run.step_finished`
+audit rows, and raw stored status/reason values remain available in collapsed
+audit detail.
 
-Rate-limit events stay on the tape, but they are classified as `guarded` rather
-than `attention`: the guard is proving the no-DDOS safety path. Failed,
-rejected, blocked-input, or needs-review events still surface as `attention`.
+Rate-limit events stay on the tape, but they are classified as `Safety guard`
+rather than `Needs attention`: the guard is proving the no-DDOS safety path.
+Failed, rejected, blocked-input, or needs-review events still surface as
+`Needs attention`.
 
 The dashboard **Actionability Breakdown** explains why the current queue is or is
 not ready for investment work. It buckets candidates into buy-review, research,
@@ -82,8 +94,9 @@ The dashboard **Investment Decision Readiness** gate is the operator truth for
 whether the visible queue can support a real manual buy review. Fixture data,
 missing live sources, thin universes, stale bars, blocked run steps, missing
 candidate packets, or missing Decision Cards force `research_only` even when
-demo candidates have high scores. Treat the queue as decision-ready only when
-that gate says `manual_buy_review`.
+demo candidates have high scores. The top **System Status** strip also surfaces
+`Bars Stale` so freshness cannot be missed when the run itself completed. Treat
+the queue as decision-ready only when that gate says `manual_buy_review`.
 
 The **Candidate Queue** repeats that decision mode per row. Its `Decision`
 column can show `manual_buy_review`, `research_only`, `missing_card`, `blocked`,
@@ -185,6 +198,20 @@ breakdown, investment readiness gate, candidate decision labels, and telemetry
 tape. Use `safe_to_make_investment_decision=false` as a hard stop; high scores
 remain research-only until this endpoint says the queue is ready for
 `manual_buy_review`.
+
+For a single local pass/fail gate that matches the dashboard readiness contract,
+run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/assert-investable-readiness.ps1
+```
+
+The script reads the local API only and makes zero Polygon, SEC, Schwab, or
+OpenAI calls. It exits non-zero until `safe_to_make_investment_decision=true`,
+live activation is ready, the run call plan is unblocked, and telemetry has no
+`Needs attention` events. In the current setup flow this failure is intentional
+until the missing live credentials are filled and one capped live smoke has
+succeeded.
 
 To inspect the live-data activation contract without starting a run or calling
 providers:
