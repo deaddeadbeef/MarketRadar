@@ -1456,8 +1456,86 @@ def _candidate_rows_with_labels(
         values = dict(row)
         values["supporting_evidence"] = _evidence_label(values.get("top_supporting_evidence"))
         values["disconfirming_evidence"] = _evidence_label(values.get("top_disconfirming_evidence"))
+        values["blocker_summary"] = _candidate_blocker_summary(values)
         labeled.append(values)
     return labeled
+
+
+def _candidate_blocker_summary(row: Mapping[str, object]) -> object:
+    blockers = _candidate_blocker_values(row)
+    if blockers:
+        visible = blockers[:3]
+        suffix = f" +{len(blockers) - len(visible)}" if len(blockers) > len(visible) else ""
+        return f"{', '.join(visible)}{suffix}"
+    evidence = _mapping(row.get("top_disconfirming_evidence"))
+    if evidence:
+        return _evidence_label(evidence)
+    risk_or_gap = str(_mapping(row.get("research_brief")).get("risk_or_gap") or "").strip()
+    if risk_or_gap and not risk_or_gap.lower().startswith("no disconfirming evidence"):
+        return risk_or_gap
+    return "none captured"
+
+
+def _candidate_blocker_values(
+    row: Mapping[str, object],
+    *,
+    include_transition_reasons: bool = True,
+) -> list[str]:
+    values: list[str] = []
+    for key in ("hard_blocks", "portfolio_hard_blocks"):
+        for item in _sequence(row.get(key)):
+            text = str(item or "").strip()
+            if text and text not in values:
+                values.append(text)
+    if include_transition_reasons:
+        for item in _sequence(row.get("transition_reasons")):
+            text = str(item or "").strip()
+            if text and text not in values:
+                values.append(text)
+    return values
+
+
+def _candidate_blocker_rows(row: Mapping[str, object]) -> list[dict[str, object]]:
+    action = _first_present(
+        row.get("decision_next_step"),
+        _mapping(row.get("research_brief")).get("next_step"),
+        "Review the raw candidate state before escalation.",
+    )
+    rows: list[dict[str, object]] = []
+    seen: set[tuple[str, str]] = set()
+
+    def add(kind: str, detail: object, source: str) -> None:
+        text = _metric_text(detail)
+        if text == "n/a":
+            return
+        key = (kind, text)
+        if key in seen:
+            return
+        seen.add(key)
+        rows.append(
+            {
+                "type": kind,
+                "detail": detail,
+                "source": source,
+                "action": action,
+            }
+        )
+
+    for block in _sequence(row.get("hard_blocks")):
+        add("Hard block", block, "scoring policy")
+    for block in _sequence(row.get("portfolio_hard_blocks")):
+        add("Portfolio block", block, "portfolio context")
+    for reason in _sequence(row.get("transition_reasons")):
+        add("Transition reason", reason, "state policy")
+
+    evidence = _mapping(row.get("top_disconfirming_evidence"))
+    if evidence:
+        add(
+            "Disconfirming evidence",
+            _evidence_label(evidence),
+            str(evidence.get("kind") or "candidate packet"),
+        )
+    return rows
 
 
 def _visible_research_brief(value: object) -> dict[str, object]:
@@ -1626,6 +1704,7 @@ def _show_overview(
                 "setup_type",
                 "top_event_type",
                 "supporting_evidence",
+                "blocker_summary",
                 "decision_card_id",
                 "decision_next_step",
                 "next_review_at",
@@ -1638,6 +1717,7 @@ def _show_overview(
                 "setup_type": "Setup",
                 "top_event_type": "Top Event",
                 "supporting_evidence": "Evidence",
+                "blocker_summary": "Risk / Blocker",
                 "decision_card_id": "Card",
                 "decision_next_step": "Next Step",
                 "next_review_at": "Next Review",
@@ -1671,10 +1751,18 @@ def _show_overview(
                 "top_event": selected_candidate.get("top_event_title"),
                 "supporting_evidence": selected_candidate.get("supporting_evidence"),
                 "disconfirming_evidence": selected_candidate.get("disconfirming_evidence"),
+                "blocker_summary": selected_candidate.get("blocker_summary"),
+                "hard_blocks": selected_candidate.get("hard_blocks"),
+                "transition_reasons": selected_candidate.get("transition_reasons"),
                 "decision_card_id": selected_candidate.get("decision_card_id"),
                 "next_review_at": selected_candidate.get("next_review_at"),
             },
             empty="No selected candidate.",
+        )
+        _show_records(
+            "Blocker Diagnostics",
+            _candidate_blocker_rows(selected_candidate),
+            empty="No blocker diagnostics.",
         )
         _show_mapping(
             "Research Brief",
