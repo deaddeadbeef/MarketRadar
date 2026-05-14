@@ -2195,6 +2195,7 @@ def radar_run_call_plan_payload(
         limit=config.sec_daily_max_tickers,
     )
     rows = [
+        _scan_provider_alignment_call_plan_row(config, provider=provider),
         _market_call_plan_row(config),
         _event_call_plan_row(config, sec_targets=sec_targets),
         _llm_call_plan_row(run_llm=run_llm, llm_dry_run=llm_dry_run),
@@ -6495,6 +6496,53 @@ def _market_call_plan_row(config: AppConfig) -> dict[str, object]:
         0,
         "Scheduled market provider is not supported by daily radar runs.",
         "Use csv, sample, polygon, none, off, or disabled.",
+    )
+
+
+def _scan_provider_alignment_call_plan_row(
+    config: AppConfig,
+    *,
+    provider: str | None,
+) -> dict[str, object]:
+    scheduled_provider = _provider_name(config.daily_market_provider, default="csv")
+    override = str(provider or "").strip().lower()
+    if not override:
+        return _call_plan_row(
+            "Scan provider",
+            "aligned",
+            scheduled_provider,
+            "feature_scan",
+            0,
+            (
+                "Feature scanning derives its provider from "
+                f"CATALYST_DAILY_MARKET_PROVIDER={scheduled_provider}."
+            ),
+            "No action required unless you intentionally override the scan provider.",
+        )
+    if override != scheduled_provider:
+        return _call_plan_row(
+            "Scan provider",
+            "blocked",
+            override,
+            "feature_scan",
+            0,
+            (
+                f"Provider override {override} does not match scheduled market "
+                f"provider {scheduled_provider}."
+            ),
+            (
+                "Remove the provider override, or align CATALYST_DAILY_MARKET_PROVIDER "
+                "and CATALYST_DAILY_PROVIDER before running."
+            ),
+        )
+    return _call_plan_row(
+        "Scan provider",
+        "aligned",
+        override,
+        "feature_scan",
+        0,
+        "Provider override matches the scheduled market-data provider.",
+        "No action required.",
     )
 
 
