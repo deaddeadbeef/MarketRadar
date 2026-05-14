@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import threading
 import time
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from types import SimpleNamespace
 
@@ -743,6 +744,61 @@ def test_daily_run_reports_llm_disabled_before_degraded_llm_block(monkeypatch):
     assert result.status == "partial_success"
     assert result.step("candidate_packets").reason == "degraded_mode_blocks_high_state_work"
     assert result.step("llm_review").reason == "llm_disabled"
+
+
+def test_daily_run_explains_threshold_packet_and_card_skips(monkeypatch):
+    monkeypatch.delenv("CATALYST_DAILY_MARKET_PROVIDER", raising=False)
+    monkeypatch.setenv("CATALYST_DAILY_EVENT_PROVIDER", "none")
+    engine = _engine()
+    decision_available_at = datetime(2026, 5, 10, 1, 0, tzinfo=UTC)
+
+    def fake_run_scan(*args, **kwargs):
+        del args, kwargs
+        high = _high_score_scan_result(date(2026, 5, 9))
+        return [
+            ScanResult(
+                ticker=high.ticker,
+                candidate=replace(high.candidate, final_score=55.0),
+                policy=PolicyResult(
+                    state=ActionState.RESEARCH_ONLY,
+                    reasons=("below_warning_threshold",),
+                ),
+            )
+        ]
+
+    monkeypatch.setattr("catalyst_radar.jobs.tasks.run_scan", fake_run_scan)
+    spec = DailyRunSpec(
+        as_of=date(2026, 5, 9),
+        decision_available_at=decision_available_at,
+        run_llm=False,
+        dry_run_alerts=True,
+    )
+
+    result = run_daily(spec, engine=engine)
+
+    packet_step = result.step("candidate_packets")
+    card_step = result.step("decision_cards")
+    assert packet_step.status == "skipped"
+    assert packet_step.reason == "no_warning_or_higher_candidates"
+    assert packet_step.requested_count == 1
+    assert packet_step.payload["scored_candidate_count"] == 1
+    assert packet_step.payload["max_score"] == 55.0
+    assert packet_step.payload["max_state"] == ActionState.RESEARCH_ONLY.value
+    assert card_step.status == "skipped"
+    assert card_step.reason == "no_candidate_packets"
+    assert card_step.payload["candidate_packets_reason"] == (
+        "no_warning_or_higher_candidates"
+    )
+
+    with engine.connect() as conn:
+        card_job = conn.execute(
+            select(job_runs).where(job_runs.c.job_type == "decision_cards")
+        ).one()
+
+    assert card_job.metadata["outcome_category"] == "not_ready"
+    assert card_job.metadata["result_payload"]["candidate_packets_reason"] == (
+        "no_warning_or_higher_candidates"
+    )
 
 
 def test_daily_run_decision_cards_include_broker_context(monkeypatch):

@@ -31,6 +31,7 @@ NOT_READY_REASONS = frozenset(
     {
         "no_active_securities",
         "no_candidate_inputs",
+        "no_candidate_packets",
         "no_current_scan_results",
         "no_feature_inputs",
         "no_sec_cik_targets",
@@ -66,8 +67,9 @@ SKIP_EXPLANATIONS = {
     ),
     "llm_disabled": "LLM review was not requested for this run.",
     "no_active_securities": "No active securities were available for scanning.",
-    "no_alerts": "No alert candidates were generated.",
+    "no_alerts": "No existing alerts were available for the digest step.",
     "no_candidate_inputs": "No scan results were available for scoring.",
+    "no_candidate_packets": "No candidate packets were available for Decision Cards.",
     "no_current_scan_results": "No current scan results were available for packet building.",
     "no_feature_inputs": "No signal inputs were available for feature scanning.",
     "no_llm_review_inputs": "There were no Decision Cards for LLM review.",
