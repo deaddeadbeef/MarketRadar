@@ -68,3 +68,5 @@ def test_dashboard_style_owns_table_and_select_surfaces() -> None:
         'div[data-baseweb="select"] > div',
     ):
         assert selector in DASHBOARD_STYLE
+
+    assert "repeat(auto-fit, minmax(5.6rem, 1fr))" in DASHBOARD_STYLE

@@ -32,6 +32,7 @@ from catalyst_radar.brokers.rate_limit import (
 )
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.core.models import ActionState
+from catalyst_radar.core.runtime import build_info
 from catalyst_radar.jobs.step_outcomes import (
     StepOutcomeClassification,
     classify_step_outcome,
@@ -1970,10 +1971,12 @@ def runtime_context_payload(
     summary = radar_run_summary if isinstance(radar_run_summary, Mapping) else {}
     run_path = _radar_run_path_summary(summary)
     database = _database_context_payload(config.database_url)
+    build = build_info()
     return {
         "environment": config.environment,
         "env_file": ".env.local",
         "env_file_loaded": dotenv_loaded,
+        "build": build,
         "database": database,
         "daily_market_provider": _provider_name(config.daily_market_provider, default="csv"),
         "daily_event_provider": _provider_name(
@@ -1994,6 +1997,7 @@ def runtime_context_payload(
         or summary.get("finished_at"),
         "run_path": run_path,
         "evidence": (
+            f"build={build['commit']}; "
             f"db={database['name']}#{database['fingerprint']}; "
             f"providers={config.daily_market_provider or 'unset'}/"
             f"{config.daily_event_provider or 'unset'}; "

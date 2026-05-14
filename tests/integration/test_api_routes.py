@@ -40,7 +40,12 @@ def test_api_health() -> None:
     response = client.get("/api/health")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "service": "catalyst-radar"}
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert payload["service"] == "catalyst-radar"
+    assert payload["build"]["version"] == "0.1.0"
+    assert payload["build"]["commit"]
+    assert "secret" not in str(payload).lower()
 
 
 def test_api_app_loads_local_dotenv(monkeypatch) -> None:

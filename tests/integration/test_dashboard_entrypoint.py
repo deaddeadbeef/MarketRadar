@@ -275,6 +275,36 @@ def test_dashboard_overview_surfaces_latest_run_path_before_usefulness() -> None
     assert "not scan failures" in pulse_source
 
 
+def test_dashboard_header_surfaces_data_mode_and_build_fingerprint() -> None:
+    source = Path("apps/dashboard/Home.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    functions = {
+        node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)
+    }
+    header_source = ast.get_source_segment(source, functions["_show_command_header"])
+
+    assert header_source is not None
+    assert "discovery_snapshot" in header_source
+    assert "runtime_context" in header_source
+    assert 'runtime_context.get("build")' in header_source
+    assert '"Data Mode"' in header_source
+    assert '"Build"' in header_source
+
+
+def test_dashboard_runtime_context_expander_shows_build_fingerprint() -> None:
+    source = Path("apps/dashboard/Home.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    functions = {
+        node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)
+    }
+    runtime_source = ast.get_source_segment(source, functions["_show_runtime_context"])
+
+    assert runtime_source is not None
+    assert "build_commit" in runtime_source
+    assert "build_source" in runtime_source
+    assert 'context.get("build")' in runtime_source
+
+
 def test_dashboard_selected_candidate_has_agent_review_dry_run_action() -> None:
     source = Path("apps/dashboard/Home.py").read_text(encoding="utf-8")
     tree = ast.parse(source)

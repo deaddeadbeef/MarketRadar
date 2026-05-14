@@ -1505,13 +1505,19 @@ def test_runtime_context_payload_identifies_active_database_without_secrets() ->
     )
 
     database = payload["database"]
+    build = payload["build"]
     assert isinstance(database, dict)
+    assert isinstance(build, dict)
+    assert build["service"] == "catalyst-radar"
+    assert build["version"] == "0.1.0"
+    assert build["commit"]
     assert database["name"] == "schwab-live.db"
     assert database["fingerprint"]
     assert payload["env_file_loaded"] is True
     assert payload["polygon_key_configured"] is True
     assert payload["openai_key_configured"] is True
     assert "required_path=8/8" in str(payload["evidence"])
+    assert "build=" in str(payload["evidence"])
     assert "polygon-secret-value" not in str(payload)
     assert "sk-secret-value" not in str(payload)
 
