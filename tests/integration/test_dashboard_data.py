@@ -19,10 +19,12 @@ from catalyst_radar.brokers.models import (
     BrokerBalanceSnapshot,
     BrokerConnection,
     BrokerConnectionStatus,
+    BrokerMarketSnapshot,
     BrokerPosition,
     broker_account_id,
     broker_balance_snapshot_id,
     broker_connection_id,
+    broker_market_snapshot_id,
     broker_position_id,
 )
 from catalyst_radar.core.config import AppConfig
@@ -32,6 +34,7 @@ from catalyst_radar.dashboard.data import (
     activation_summary_payload,
     candidate_decision_labels_payload,
     candidate_delta_payload,
+    candidate_rows_with_market_context,
     data_source_coverage_payload,
     investment_readiness_payload,
     live_activation_plan_payload,
@@ -425,6 +428,42 @@ def test_candidate_decision_labels_mark_manual_buy_review_rows() -> None:
     assert rows[1]["decision_next_step"] == "Not in manual buy-review state."
 
 
+def test_candidate_rows_with_market_context_attaches_latest_schwab_snapshot() -> None:
+    rows = candidate_rows_with_market_context(
+        [{"ticker": "MSFT", "final_score": 88.0}, {"ticker": "AAPL", "final_score": 76.0}],
+        [
+            {
+                "ticker": "MSFT",
+                "as_of": (AVAILABLE_AT - timedelta(minutes=5)).isoformat(),
+                "last_price": 340.0,
+                "day_change_percent": 1.2,
+                "relative_volume": 1.1,
+                "option_call_put_ratio": 0.8,
+                "created_at": (AVAILABLE_AT - timedelta(minutes=5)).isoformat(),
+            },
+            {
+                "ticker": "MSFT",
+                "as_of": AVAILABLE_AT.isoformat(),
+                "last_price": 345.5,
+                "day_change_percent": 2.4,
+                "relative_volume": 1.9,
+                "option_call_put_ratio": 2.1,
+                "created_at": AVAILABLE_AT.isoformat(),
+            },
+        ],
+    )
+
+    assert rows[0]["ticker"] == "MSFT"
+    assert rows[0]["schwab_context_status"] == "available"
+    assert rows[0]["schwab_last_price"] == 345.5
+    assert rows[0]["schwab_day_change_percent"] == 2.4
+    assert rows[0]["schwab_relative_volume"] == 1.9
+    assert rows[0]["schwab_option_call_put_ratio"] == 2.1
+    assert rows[1]["ticker"] == "AAPL"
+    assert rows[1]["schwab_context_status"] == "missing"
+    assert rows[1]["schwab_last_price"] is None
+
+
 def test_research_shortlist_prioritizes_review_and_research_rows() -> None:
     rows = research_shortlist_payload(
         [
@@ -479,6 +518,47 @@ def test_research_shortlist_prioritizes_review_and_research_rows() -> None:
     assert rows["rows"][2]["audit"]["provider_license_policy"]["license_tags"] == [
         "local-csv-fixture"
     ]
+
+
+def test_research_shortlist_payload_surfaces_schwab_market_context() -> None:
+    rows = research_shortlist_payload(
+        [
+            {
+                "ticker": "BBB",
+                "state": ActionState.WARNING.value,
+                "final_score": 84.0,
+                "decision_card_id": "",
+                "research_brief": {
+                    "why_now": "New catalyst",
+                    "top_catalyst": "Revenue guide raised",
+                    "risk_or_gap": "Needs primary-source review",
+                    "next_step": "Open source filing.",
+                },
+            }
+        ],
+        {"decision_mode": "research_only"},
+        market_context=[
+            {
+                "ticker": "BBB",
+                "as_of": AVAILABLE_AT.isoformat(),
+                "last_price": 42.25,
+                "day_change_percent": 3.1,
+                "relative_volume": 2.3,
+                "price_trend_5d_percent": 6.5,
+                "option_call_put_ratio": 1.7,
+                "created_at": AVAILABLE_AT.isoformat(),
+            }
+        ],
+    )
+
+    row = rows["rows"][0]
+    assert row["ticker"] == "BBB"
+    assert row["schwab_context_status"] == "available"
+    assert row["schwab_last_price"] == 42.25
+    assert row["schwab_day_change_percent"] == 3.1
+    assert row["schwab_relative_volume"] == 2.3
+    assert row["schwab_price_trend_5d_percent"] == 6.5
+    assert row["schwab_option_call_put_ratio"] == 1.7
 
 
 def test_actionability_breakdown_payload_flags_buy_review_ready() -> None:
@@ -3037,12 +3117,29 @@ def test_load_broker_summary_returns_portfolio_context(tmp_path: Path) -> None:
             )
         ]
     )
+    repo.upsert_market_snapshots(
+        [
+            BrokerMarketSnapshot(
+                id=broker_market_snapshot_id("GLW", now),
+                ticker="GLW",
+                as_of=now,
+                last_price=95.0,
+                day_change_percent=1.5,
+                relative_volume=1.8,
+                option_call_put_ratio=2.2,
+                raw_payload={},
+                created_at=now,
+            )
+        ]
+    )
 
     summary = load_broker_summary(engine)
 
     assert summary["snapshot"]["connection_status"] == "connected"
     assert summary["snapshot"]["account_count"] == 1
     assert summary["positions"][0]["ticker"] == "GLW"
+    assert summary["market_context"][0]["ticker"] == "GLW"
+    assert summary["market_context"][0]["last_price"] == 95.0
     assert summary["balances"][0]["cash"] == 50000.0
     assert summary["exposure"]["broker_data_stale"] is False
     assert summary["exposure"]["exposure_before"]["single_name"] == {"GLW": 0.038}

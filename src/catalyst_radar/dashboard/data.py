@@ -220,22 +220,53 @@ def opportunity_focus_payload(
     for rank, candidate in enumerate(candidate_rows[:limit], start=1):
         brief = _mapping_value(candidate, "research_brief")
         support = _mapping_value(candidate, "top_supporting_evidence")
-        rows.append(
-            {
-                "rank": rank,
-                "ticker": candidate.get("ticker"),
-                "focus": brief.get("focus") or _research_focus(str(candidate.get("state") or "")),
-                "state": candidate.get("state"),
-                "score": _finite_float(candidate.get("final_score")),
-                "why_now": brief.get("why_now"),
-                "top_catalyst": brief.get("top_catalyst"),
-                "evidence": brief.get("supporting_evidence") or support.get("title"),
-                "risk_or_gap": brief.get("risk_or_gap"),
-                "next_step": brief.get("next_step"),
-                "card": candidate.get("decision_card_id") or "n/a",
-            }
-        )
+        row = {
+            "rank": rank,
+            "ticker": candidate.get("ticker"),
+            "focus": brief.get("focus") or _research_focus(str(candidate.get("state") or "")),
+            "state": candidate.get("state"),
+            "score": _finite_float(candidate.get("final_score")),
+            "why_now": brief.get("why_now"),
+            "top_catalyst": brief.get("top_catalyst"),
+            "evidence": brief.get("supporting_evidence") or support.get("title"),
+            "risk_or_gap": brief.get("risk_or_gap"),
+            "next_step": brief.get("next_step"),
+            "card": candidate.get("decision_card_id") or "n/a",
+        }
+        if "schwab_context_status" in candidate:
+            row.update(
+                {
+                    "schwab_last_price": candidate.get("schwab_last_price"),
+                    "schwab_day_change_percent": candidate.get(
+                        "schwab_day_change_percent"
+                    ),
+                    "schwab_relative_volume": candidate.get("schwab_relative_volume"),
+                    "schwab_context_status": candidate.get("schwab_context_status"),
+                }
+            )
+        rows.append(row)
     return rows
+
+
+def candidate_rows_with_market_context(
+    candidate_rows: Sequence[Mapping[str, object]],
+    market_context: Sequence[Mapping[str, object]] | object,
+) -> list[dict[str, object]]:
+    """Attach latest stored Schwab market context to candidate rows without API calls."""
+    context_by_ticker = _latest_market_context_by_ticker(market_context)
+    enriched: list[dict[str, object]] = []
+    for row in candidate_rows:
+        if not isinstance(row, Mapping):
+            continue
+        values = _row_dict(row)
+        ticker = str(values.get("ticker") or "").strip().upper()
+        context = context_by_ticker.get(ticker)
+        if context is None:
+            values.update(_empty_candidate_market_context())
+        else:
+            values.update(_candidate_market_context_fields(context))
+        enriched.append(values)
+    return enriched
 
 
 def candidate_delta_payload(
@@ -352,9 +383,11 @@ def research_shortlist_payload(
     investment_readiness: Mapping[str, object] | None = None,
     *,
     limit: int = 8,
+    market_context: Sequence[Mapping[str, object]] | object = (),
 ) -> dict[str, object]:
     readiness = investment_readiness if isinstance(investment_readiness, Mapping) else {}
-    labeled_rows = candidate_decision_labels_payload(candidate_rows, readiness)
+    enriched_rows = candidate_rows_with_market_context(candidate_rows, market_context)
+    labeled_rows = candidate_decision_labels_payload(enriched_rows, readiness)
     rows = [
         _research_shortlist_row(row)
         for row in sorted(
@@ -763,6 +796,10 @@ def radar_readiness_payload(
     latest_run_cutoff = _parse_utc_datetime(radar_run_summary.get("decision_available_at"))
     candidate_rows = load_radar_run_candidate_rows(engine, radar_run_summary)
     broker_summary = load_broker_summary(engine)
+    market_candidate_rows = candidate_rows_with_market_context(
+        candidate_rows,
+        _mapping_value(broker_summary, "market_context"),
+    )
     ops_health = load_ops_health(engine, now=latest_run_cutoff)
     discovery_snapshot = radar_discovery_snapshot_payload(
         engine,
@@ -770,11 +807,11 @@ def radar_readiness_payload(
         radar_run_summary=radar_run_summary,
         ops_health=ops_health,
     )
-    actionability = actionability_breakdown_payload(candidate_rows)
+    actionability = actionability_breakdown_payload(market_candidate_rows)
     investment = investment_readiness_payload(
         discovery_snapshot,
         actionability,
-        candidate_rows,
+        market_candidate_rows,
     )
     activation = activation_summary_payload(
         config,
@@ -792,7 +829,10 @@ def radar_readiness_payload(
         broker_summary=broker_summary,
     )
     telemetry = telemetry_tape_payload(ops_health)
-    labeled_candidates = candidate_decision_labels_payload(candidate_rows, investment)
+    labeled_candidates = candidate_decision_labels_payload(
+        market_candidate_rows,
+        investment,
+    )
     candidate_delta = candidate_delta_payload(
         engine,
         radar_run_summary=radar_run_summary,
@@ -802,7 +842,7 @@ def radar_readiness_payload(
         radar_run_summary=radar_run_summary,
         broker_summary=broker_summary,
         discovery_snapshot=discovery_snapshot,
-        candidate_rows=candidate_rows,
+        candidate_rows=market_candidate_rows,
     )
     safe_to_decide = bool(investment.get("manual_buy_review_ready"))
     return {
@@ -843,21 +883,27 @@ def radar_research_shortlist_payload(
     radar_run_summary = load_radar_run_summary(engine)
     latest_run_cutoff = _parse_utc_datetime(radar_run_summary.get("decision_available_at"))
     candidate_rows = load_radar_run_candidate_rows(engine, radar_run_summary)
+    broker_summary = load_broker_summary(engine)
+    market_candidate_rows = candidate_rows_with_market_context(
+        candidate_rows,
+        _mapping_value(broker_summary, "market_context"),
+    )
     discovery_snapshot = radar_discovery_snapshot_payload(
         engine,
         config,
         radar_run_summary=radar_run_summary,
     )
-    actionability = actionability_breakdown_payload(candidate_rows)
+    actionability = actionability_breakdown_payload(market_candidate_rows)
     readiness = investment_readiness_payload(
         discovery_snapshot,
         actionability,
-        candidate_rows,
+        market_candidate_rows,
     )
     shortlist = research_shortlist_payload(
-        candidate_rows,
+        market_candidate_rows,
         readiness,
         limit=limit,
+        market_context=_mapping_value(broker_summary, "market_context"),
     )
     return {
         **shortlist,
@@ -3286,6 +3332,13 @@ def _research_shortlist_row(row: Mapping[str, object]) -> dict[str, object]:
         ),
         "decision_card_id": row.get("decision_card_id") or "n/a",
         "source": brief.get("source") or support.get("source_id") or support.get("kind"),
+        "schwab_last_price": row.get("schwab_last_price"),
+        "schwab_day_change_percent": row.get("schwab_day_change_percent"),
+        "schwab_relative_volume": row.get("schwab_relative_volume"),
+        "schwab_price_trend_5d_percent": row.get("schwab_price_trend_5d_percent"),
+        "schwab_option_call_put_ratio": row.get("schwab_option_call_put_ratio"),
+        "schwab_context_status": row.get("schwab_context_status"),
+        "schwab_market_as_of": row.get("schwab_market_as_of"),
         "audit": _mapping_value(brief, "audit"),
     }
 
@@ -4032,8 +4085,91 @@ def _readiness_candidate_label(row: Mapping[str, object]) -> dict[str, object]:
         "risk_or_gap": brief.get("risk_or_gap") or risk.get("title"),
         "decision_card_id": row.get("decision_card_id"),
         "next_step": row.get("decision_next_step") or brief.get("next_step"),
+        "schwab_last_price": row.get("schwab_last_price"),
+        "schwab_day_change_percent": row.get("schwab_day_change_percent"),
+        "schwab_relative_volume": row.get("schwab_relative_volume"),
+        "schwab_context_status": row.get("schwab_context_status"),
         "audit": _mapping_value(brief, "audit"),
     }
+
+
+def _latest_market_context_by_ticker(
+    market_context: Sequence[Mapping[str, object]] | object,
+) -> dict[str, dict[str, object]]:
+    rows = [
+        _row_dict(row)
+        for row in _sequence_value(market_context)
+        if isinstance(row, Mapping)
+    ]
+    rows = sorted(
+        rows,
+        key=lambda row: (
+            str(row.get("ticker") or "").strip().upper(),
+            _parse_utc_datetime(row.get("as_of")) or datetime.min.replace(tzinfo=UTC),
+            _parse_utc_datetime(row.get("created_at"))
+            or datetime.min.replace(tzinfo=UTC),
+            str(row.get("id") or ""),
+        ),
+        reverse=True,
+    )
+    context_by_ticker: dict[str, dict[str, object]] = {}
+    for row in rows:
+        ticker = str(row.get("ticker") or "").strip().upper()
+        if ticker and ticker not in context_by_ticker:
+            context_by_ticker[ticker] = row
+    return context_by_ticker
+
+
+def _candidate_market_context_fields(context: Mapping[str, object]) -> dict[str, object]:
+    return {
+        "schwab_context_status": "available",
+        "schwab_market_as_of": context.get("as_of"),
+        "schwab_last_price": _optional_float(context.get("last_price")),
+        "schwab_bid_price": _optional_float(context.get("bid_price")),
+        "schwab_ask_price": _optional_float(context.get("ask_price")),
+        "schwab_mark_price": _optional_float(context.get("mark_price")),
+        "schwab_day_change_percent": _optional_float(context.get("day_change_percent")),
+        "schwab_total_volume": _optional_float(context.get("total_volume")),
+        "schwab_relative_volume": _optional_float(context.get("relative_volume")),
+        "schwab_price_trend_5d_percent": _optional_float(
+            context.get("price_trend_5d_percent")
+        ),
+        "schwab_option_call_put_ratio": _optional_float(
+            context.get("option_call_put_ratio")
+        ),
+        "schwab_option_iv_percentile": _optional_float(
+            context.get("option_iv_percentile")
+        ),
+    }
+
+
+def _empty_candidate_market_context() -> dict[str, object]:
+    return {
+        "schwab_context_status": "missing",
+        "schwab_market_as_of": None,
+        "schwab_last_price": None,
+        "schwab_bid_price": None,
+        "schwab_ask_price": None,
+        "schwab_mark_price": None,
+        "schwab_day_change_percent": None,
+        "schwab_total_volume": None,
+        "schwab_relative_volume": None,
+        "schwab_price_trend_5d_percent": None,
+        "schwab_option_call_put_ratio": None,
+        "schwab_option_iv_percentile": None,
+    }
+
+
+def _optional_float(value: object) -> float | None:
+    if value is None:
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not isfinite(number):
+        return None
+    return number
 
 
 def _radar_run_path_status(
