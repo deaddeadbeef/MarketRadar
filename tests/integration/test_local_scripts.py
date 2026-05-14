@@ -26,6 +26,12 @@ def test_readme_mentions_restart_script_for_local_dashboard() -> None:
 
     assert "scripts/restart-local.ps1" in readme
     assert "scripts/check-live-activation.ps1" in readme
+    assert "CATALYST_DAILY_MARKET_PROVIDER=polygon" in readme
+    assert "CATALYST_DAILY_PROVIDER=polygon" in readme
+    assert "CATALYST_DAILY_EVENT_PROVIDER=sec" in readme
+    assert "CATALYST_SEC_ENABLE_LIVE=1" in readme
+    assert "/api/radar/runs/call-plan" in readme
+    assert "CATALYST_MARKET_PROVIDER=polygon" not in readme
 
 
 def test_check_live_activation_script_is_zero_external_call_status_check() -> None:
@@ -38,6 +44,12 @@ def test_check_live_activation_script_is_zero_external_call_status_check() -> No
     assert "--insecure" in text
     assert "--fail" in text
     assert "External calls made by this check: 0" in text
+    assert "Zero-call verification commands:" in text
+    assert "/api/radar/readiness" in text
+    assert "/api/radar/runs/latest" in text
+    assert "/api/ops/telemetry?limit=5" in text
+    assert "/api/radar/runs/call-plan" in text
+    assert "These commands read local API state only" in text
     assert "missing_env" in text
     assert "operator_steps" in text
     assert "OPENAI_API_KEY=" not in text
