@@ -5078,14 +5078,53 @@ def _activation_env_row(
     configured: bool,
     current: str | None = None,
     secret: bool = False,
+    purpose: str | None = None,
 ) -> dict[str, object]:
     return {
         "name": name,
         "value_template": value_template,
+        "purpose": purpose or _activation_env_purpose(name),
         "configured": configured,
         "current": "set" if secret and configured else ("missing" if secret else current),
         "secret": secret,
     }
+
+
+def _activation_env_purpose(name: str) -> str:
+    return {
+        "CATALYST_DAILY_MARKET_PROVIDER": (
+            "Scheduled daily bar provider used by worker and normal radar ingest."
+        ),
+        "CATALYST_DAILY_PROVIDER": (
+            "Manual/default radar-run provider; keep aligned with the scheduled provider."
+        ),
+        "CATALYST_POLYGON_API_KEY": (
+            "Polygon credential for ticker seeding and live daily bars."
+        ),
+        "CATALYST_POLYGON_TICKERS_MAX_PAGES": (
+            "Hard cap for the first Polygon ticker-reference seed."
+        ),
+        "CATALYST_DAILY_EVENT_PROVIDER": "Scheduled catalyst/event provider.",
+        "CATALYST_SEC_ENABLE_LIVE": "Explicit switch that permits live SEC reads.",
+        "CATALYST_SEC_USER_AGENT": "SEC-compliant contact string for live SEC requests.",
+        "CATALYST_SEC_DAILY_MAX_TICKERS": "Hard cap for SEC submissions per radar run.",
+        "CATALYST_RADAR_RUN_MIN_INTERVAL_SECONDS": (
+            "Cooldown that prevents repeated dashboard/API radar runs."
+        ),
+        "CATALYST_ENABLE_PREMIUM_LLM": "Optional switch for real model-backed review.",
+        "CATALYST_LLM_PROVIDER": "Model provider for optional agent review.",
+        "CATALYST_LLM_SKEPTIC_MODEL": "Model name for skeptic_review tasks.",
+        "OPENAI_API_KEY": "OpenAI credential for optional real agent review.",
+        "CATALYST_LLM_INPUT_COST_PER_1M": "Pricing guardrail for LLM input tokens.",
+        "CATALYST_LLM_CACHED_INPUT_COST_PER_1M": (
+            "Pricing guardrail for cached LLM input tokens."
+        ),
+        "CATALYST_LLM_OUTPUT_COST_PER_1M": "Pricing guardrail for LLM output tokens.",
+        "CATALYST_LLM_PRICING_UPDATED_AT": "Date used to flag stale model pricing.",
+        "CATALYST_LLM_DAILY_BUDGET_USD": "Daily dollar cap for optional LLM review.",
+        "CATALYST_LLM_MONTHLY_BUDGET_USD": "Monthly dollar cap for optional LLM review.",
+        "CATALYST_LLM_TASK_DAILY_CAPS": "Per-task daily call cap for optional LLM review.",
+    }.get(name, "Activation setting.")
 
 
 def _live_data_safe_limits(config: AppConfig) -> list[dict[str, object]]:

@@ -55,6 +55,9 @@ and `CATALYST_POLYGON_API_KEY`. For live SEC catalyst discovery, use
 `CATALYST_DAILY_EVENT_PROVIDER=sec`, `CATALYST_SEC_ENABLE_LIVE=1`, and a
 compliant `CATALYST_SEC_USER_AGENT`. Keep provider keys unset or blank unless
 you are intentionally running a capped live provider call.
+`CATALYST_DAILY_MARKET_PROVIDER` controls scheduled daily bar ingest; the
+`CATALYST_DAILY_PROVIDER` override keeps manual/default radar runs aligned with
+that scheduled provider.
 
 Before any live provider call, run the activation checker and inspect the
 call plan:
