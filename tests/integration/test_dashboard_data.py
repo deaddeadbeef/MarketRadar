@@ -2466,11 +2466,36 @@ def test_radar_run_call_plan_caps_polygon_and_sec_calls(
     assert payload["max_external_call_count"] == 2
     assert payload["scope"]["tickers"] == ["MSFT", "NVDA"]
     by_layer = {str(row["layer"]): row for row in payload["rows"]}
+    assert by_layer["Scan provider"]["status"] == "aligned"
     assert by_layer["Market data"]["external_call_count_max"] == 1
     assert by_layer["News/events"]["external_call_count_max"] == 1
     assert "this scope has 1 target" in str(by_layer["News/events"]["detail"])
     assert by_layer["LLM review"]["status"] == "dry_run"
     assert by_layer["Schwab"]["external_call_count_max"] == 0
+
+
+def test_radar_run_call_plan_blocks_scan_provider_mismatch(
+    tmp_path: Path,
+) -> None:
+    config = AppConfig(daily_market_provider="csv")
+
+    payload = radar_run_call_plan_payload(
+        _engine(tmp_path),
+        config,
+        provider="polygon",
+    )
+
+    assert payload["status"] == "blocked"
+    assert payload["will_call_external_providers"] is False
+    assert payload["max_external_call_count"] == 0
+    by_layer = {str(row["layer"]): row for row in payload["rows"]}
+    assert by_layer["Scan provider"]["status"] == "blocked"
+    assert by_layer["Scan provider"]["provider"] == "polygon"
+    assert "scheduled market provider csv" in str(by_layer["Scan provider"]["detail"])
+    assert "CATALYST_DAILY_MARKET_PROVIDER" in str(
+        by_layer["Scan provider"]["next_action"]
+    )
+    assert by_layer["Market data"]["provider"] == "csv"
 
 
 def test_radar_run_call_plan_blocks_missing_live_credentials(

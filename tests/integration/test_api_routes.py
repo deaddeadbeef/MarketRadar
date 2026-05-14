@@ -1101,6 +1101,49 @@ def test_post_radar_run_call_plan_returns_read_only_call_budget(
     assert captured["llm_dry_run"] is True
 
 
+def test_post_radar_run_call_plan_blocks_provider_override_mismatch(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "radar-call-plan-mismatch.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("CATALYST_DAILY_MARKET_PROVIDER", "csv")
+    _create_database(database_url)
+    client = TestClient(create_app())
+
+    response = client.post("/api/radar/runs/call-plan", json={"provider": "polygon"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "blocked"
+    assert payload["max_external_call_count"] == 0
+    by_layer = {str(row["layer"]): row for row in payload["rows"]}
+    assert by_layer["Scan provider"]["status"] == "blocked"
+    assert by_layer["Scan provider"]["provider"] == "polygon"
+    assert "scheduled market provider csv" in by_layer["Scan provider"]["detail"]
+
+
+def test_post_radar_run_rejects_provider_override_mismatch_before_running(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "radar-run-mismatch.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("CATALYST_DAILY_MARKET_PROVIDER", "csv")
+    _create_database(database_url)
+    monkeypatch.setattr(
+        radar_routes,
+        "run_once",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("run called")),
+    )
+    client = TestClient(create_app())
+
+    response = client.post("/api/radar/runs", json={"provider": "polygon"})
+
+    assert response.status_code == 422
+    assert "provider override polygon does not match" in response.json()["detail"]
+
+
 def test_get_candidate_detail_returns_404_for_missing_ticker(tmp_path, monkeypatch) -> None:
     database_url = _database_url(tmp_path, "missing-detail.db")
     monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)

@@ -177,6 +177,7 @@ def run_radar(
         metadata=request_metadata,
     )
     try:
+        _validate_radar_run_request(request, app_config)
         config = SchedulerConfig(
             owner="api-radar-run",
             as_of=request.as_of,
@@ -507,6 +508,24 @@ def _radar_run_request_metadata(
         "llm_dry_run": request.llm_dry_run,
         "dry_run_alerts": request.dry_run_alerts,
     }
+
+
+def _validate_radar_run_request(
+    request: RadarRunRequest,
+    config: AppConfig,
+) -> None:
+    override = str(request.provider or "").strip().lower()
+    if not override:
+        return
+    scheduled_provider = (config.daily_market_provider or "").strip().lower() or "csv"
+    if override == scheduled_provider:
+        return
+    msg = (
+        f"provider override {override} does not match "
+        f"CATALYST_DAILY_MARKET_PROVIDER={scheduled_provider}; remove the override "
+        "or align CATALYST_DAILY_MARKET_PROVIDER and CATALYST_DAILY_PROVIDER"
+    )
+    raise ValueError(msg)
 
 
 def _with_discovery_snapshot(
