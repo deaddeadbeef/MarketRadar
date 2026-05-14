@@ -1407,6 +1407,18 @@ def test_live_data_activation_contract_gives_exact_safe_next_steps() -> None:
     assert contract["makes_external_calls"] is False
     assert "CATALYST_POLYGON_API_KEY" in contract["missing_env"]
     assert "CATALYST_SEC_USER_AGENT" in contract["missing_env"]
+    assert contract["minimum_env_lines"] == [
+        "CATALYST_DAILY_MARKET_PROVIDER=polygon",
+        "CATALYST_DAILY_PROVIDER=polygon",
+        "CATALYST_POLYGON_API_KEY=<your Polygon API key>",
+        "CATALYST_POLYGON_TICKERS_MAX_PAGES=1",
+        "CATALYST_DAILY_EVENT_PROVIDER=sec",
+        "CATALYST_SEC_ENABLE_LIVE=1",
+        "CATALYST_SEC_USER_AGENT=MarketRadar/0.1 your-email@example.com",
+        "CATALYST_SEC_DAILY_MAX_TICKERS=5",
+        "CATALYST_RADAR_RUN_MIN_INTERVAL_SECONDS=300",
+    ]
+    assert not any("OPENAI_API_KEY" in line for line in contract["minimum_env_lines"])
     assert contract["call_budget_if_activated"] == [
         {
             "operation": "read this activation contract",

@@ -2322,6 +2322,7 @@ def live_data_activation_contract_payload(
         "read_only": True,
         "makes_external_calls": False,
         "missing_env": missing_env,
+        "minimum_env_lines": _live_data_minimum_env_lines(config),
         "env_template": _live_data_env_template(config),
         "safe_limits": _live_data_safe_limits(config),
         "operator_steps": _live_data_operator_steps(config, missing_env=missing_env),
@@ -4297,6 +4298,25 @@ def _live_data_env_template(config: AppConfig) -> list[dict[str, object]]:
             if config.llm_task_daily_caps
             else "default caps",
         ),
+    ]
+
+
+def _live_data_minimum_env_lines(config: AppConfig) -> list[str]:
+    required_names = {
+        "CATALYST_DAILY_MARKET_PROVIDER",
+        "CATALYST_DAILY_PROVIDER",
+        "CATALYST_POLYGON_API_KEY",
+        "CATALYST_POLYGON_TICKERS_MAX_PAGES",
+        "CATALYST_DAILY_EVENT_PROVIDER",
+        "CATALYST_SEC_ENABLE_LIVE",
+        "CATALYST_SEC_USER_AGENT",
+        "CATALYST_SEC_DAILY_MAX_TICKERS",
+        "CATALYST_RADAR_RUN_MIN_INTERVAL_SECONDS",
+    }
+    return [
+        f"{row['name']}={row['value_template']}"
+        for row in _live_data_env_template(config)
+        if str(row["name"]) in required_names
     ]
 
 

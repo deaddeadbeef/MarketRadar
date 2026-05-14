@@ -508,7 +508,8 @@ def test_dashboard_research_shortlist_strips_restricted_audit_from_visible_rows(
 
 
 def test_dashboard_wires_live_data_activation_contract_after_plan() -> None:
-    tree = ast.parse(Path("apps/dashboard/Home.py").read_text(encoding="utf-8"))
+    source = Path("apps/dashboard/Home.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
     functions = {
         node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)
     }
@@ -526,6 +527,13 @@ def test_dashboard_wires_live_data_activation_contract_after_plan() -> None:
         < line_by_call["_show_live_data_activation_contract"]
         < line_by_call["_show_telemetry_tape"]
     )
+    contract_source = ast.get_source_segment(
+        source,
+        functions["_show_live_data_activation_contract"],
+    )
+    assert contract_source is not None
+    assert "minimum_env_lines" in contract_source
+    assert "Minimum .env.local block" in contract_source
 
 
 def test_dashboard_wires_alert_planning_diagnostics_after_readiness() -> None:
