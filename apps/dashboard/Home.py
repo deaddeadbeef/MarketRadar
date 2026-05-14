@@ -913,8 +913,16 @@ def _show_radar_run_summary(summary: Mapping[str, Any]) -> None:
     )
 
 
-def _show_agent_review_summary(radar_run_summary: Mapping[str, Any]) -> None:
-    summary = _mapping(dashboard_data.agent_review_summary_payload(radar_run_summary))
+def _show_agent_review_summary(
+    radar_run_summary: Mapping[str, Any],
+    candidate_rows: list[dict[str, object]],
+) -> None:
+    summary = _mapping(
+        dashboard_data.agent_review_summary_payload(
+            radar_run_summary,
+            candidate_rows,
+        )
+    )
     if not summary:
         return
     st.subheader("Agent Review")
@@ -946,9 +954,9 @@ def _show_agent_review_summary(radar_run_summary: Mapping[str, Any]) -> None:
     )
     if reviewed_tickers:
         _show_records(
-            "Reviewed Tickers",
-            [{"Ticker": ticker} for ticker in reviewed_tickers],
-            empty="No reviewed tickers.",
+            "Reviewed Candidate Context",
+            _records(summary.get("reviewed_candidates")),
+            empty="No reviewed candidate context.",
         )
     remaining_gates = _records(summary.get("remaining_expected_gates"))
     if remaining_gates:
@@ -1952,7 +1960,7 @@ def _show_overview(
     _show_telemetry_tape(ops_health)
     _show_universe_coverage(config, ops_health)
     _show_radar_run_controls(engine, config, radar_run_summary, radar_run_cooldown)
-    _show_agent_review_summary(radar_run_summary)
+    _show_agent_review_summary(radar_run_summary, candidate_rows)
     _show_discovery_snapshot(discovery_snapshot)
     investment_readiness = _show_investment_readiness(discovery_snapshot, candidate_rows)
     _show_decision_contract(investment_readiness)

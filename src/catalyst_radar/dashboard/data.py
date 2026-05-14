@@ -1810,6 +1810,7 @@ def radar_run_default_scope_payload(
 
 def agent_review_summary_payload(
     radar_run_summary: Mapping[str, object] | None,
+    candidate_rows: Sequence[Mapping[str, object]] | None = None,
 ) -> dict[str, object]:
     """Summarize the latest agentic review step for dashboard triage."""
     summary = _row_dict(radar_run_summary) if isinstance(radar_run_summary, Mapping) else {}
@@ -1838,6 +1839,15 @@ def agent_review_summary_payload(
         if name in steps
         and name != "llm_review"
         and str(steps[name].get("category") or "") == "expected_gate"
+    ]
+    candidate_by_ticker = {
+        str(row.get("ticker") or "").strip().upper(): _row_dict(row)
+        for row in candidate_rows or ()
+        if isinstance(row, Mapping) and str(row.get("ticker") or "").strip()
+    }
+    reviewed_candidates = [
+        _agent_review_candidate_row(ticker, candidate_by_ticker.get(ticker))
+        for ticker in reviewed_tickers
     ]
     ticker_text = ", ".join(reviewed_tickers[:5])
 
@@ -1890,6 +1900,7 @@ def agent_review_summary_payload(
         "reviewed_packet_count": reviewed_packet_count,
         "review_task": llm_payload.get("review_task"),
         "reviewed_tickers": reviewed_tickers,
+        "reviewed_candidates": reviewed_candidates,
         "candidate_packet_ids": [
             str(value)
             for value in _sequence_value(llm_payload.get("candidate_packet_ids"))
@@ -1905,6 +1916,39 @@ def agent_review_summary_payload(
         ],
         "remaining_expected_gates": remaining_gates,
         "evidence": _step_evidence("llm_review", llm_step) if llm_step else "n/a",
+    }
+
+
+def _agent_review_candidate_row(
+    ticker: str,
+    row: Mapping[str, object] | None,
+) -> dict[str, object]:
+    candidate = _row_dict(row) if isinstance(row, Mapping) else {}
+    brief = _mapping_value(candidate, "research_brief")
+    support = _mapping_value(candidate, "top_supporting_evidence")
+    if not candidate:
+        return {
+            "ticker": ticker,
+            "state": "n/a",
+            "score": None,
+            "setup": "n/a",
+            "why_now": "Reviewed ticker is not in the current candidate table.",
+            "evidence": None,
+            "risk_or_gap": None,
+            "next_step": "Refresh the dashboard data and rerun the radar if needed.",
+        }
+    return {
+        "ticker": ticker,
+        "state": candidate.get("state"),
+        "score": candidate.get("final_score"),
+        "setup": candidate.get("setup_type"),
+        "why_now": brief.get("why_now"),
+        "evidence": brief.get("supporting_evidence") or support.get("title"),
+        "risk_or_gap": brief.get("risk_or_gap"),
+        "next_step": _first_present(
+            candidate.get("decision_next_step"),
+            brief.get("next_step"),
+        ),
     }
 
 
