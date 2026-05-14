@@ -286,9 +286,23 @@ def test_dashboard_header_surfaces_data_mode_and_build_fingerprint() -> None:
     assert header_source is not None
     assert "discovery_snapshot" in header_source
     assert "runtime_context" in header_source
+    assert "investment_readiness" in header_source
     assert 'runtime_context.get("build")' in header_source
     assert '"Data Mode"' in header_source
+    assert '"Decision Mode"' in header_source
+    assert '"Investable"' in header_source
+    assert 'tone_value="ok" if investable == "yes" else "blocked"' in header_source
     assert '"Build"' in header_source
+
+
+def test_dashboard_header_uses_investment_readiness_payload() -> None:
+    source = Path("apps/dashboard/Home.py").read_text(encoding="utf-8")
+
+    assert "header_actionability = _mapping(" in source
+    assert "actionability_breakdown_payload(candidate_rows)" in source
+    assert "header_investment_readiness = _mapping(" in source
+    assert "investment_readiness_payload(" in source
+    assert "investment_readiness=header_investment_readiness" in source
 
 
 def test_dashboard_runtime_context_expander_shows_build_fingerprint() -> None:
