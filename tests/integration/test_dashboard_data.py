@@ -32,6 +32,7 @@ from catalyst_radar.core.models import ActionState
 from catalyst_radar.dashboard.data import (
     actionability_breakdown_payload,
     activation_summary_payload,
+    agent_review_summary_payload,
     candidate_decision_labels_payload,
     candidate_delta_payload,
     candidate_rows_with_market_context,
@@ -1613,6 +1614,91 @@ def test_provider_preflight_payload_flags_sec_cik_target_gap() -> None:
     assert event["status"] == "attention"
     assert "up to 2 SEC submissions requests" in str(event["call_budget"])
     assert "Seed active securities with CIKs" in str(event["next_action"])
+
+
+def test_agent_review_summary_payload_surfaces_dry_run_reviewed_tickers() -> None:
+    payload = agent_review_summary_payload(
+        {
+            "as_of": "2026-05-08",
+            "steps": [
+                _run_step(
+                    "llm_review",
+                    "success",
+                    requested=1,
+                    raw=0,
+                    normalized=1,
+                    reason="dry_run_only",
+                )
+                | {
+                    "payload": {
+                        "dry_run": True,
+                        "review_task": "skeptic_review",
+                        "reviewed_packet_count": 1,
+                        "reviewed_tickers": ["AAA"],
+                    }
+                },
+                _run_step(
+                    "decision_cards",
+                    "skipped",
+                    reason="no_manual_buy_review_inputs",
+                )
+                | {
+                    "category": "expected_gate",
+                    "trigger_condition": (
+                        "At least one candidate must pass policy into manual buy review."
+                    ),
+                },
+            ],
+        }
+    )
+
+    assert payload["schema_version"] == "agent-review-summary-v1"
+    assert payload["status"] == "dry_run_reviewed"
+    assert payload["mode"] == "dry_run"
+    assert payload["review_task"] == "skeptic_review"
+    assert payload["reviewed_tickers"] == ["AAA"]
+    assert payload["reviewed_packet_count"] == 1
+    assert payload["remaining_expected_gates"][0]["step"] == "decision_cards"
+    assert "AAA" in str(payload["headline"])
+
+
+def test_agent_review_summary_payload_explains_no_review_inputs() -> None:
+    payload = agent_review_summary_payload(
+        {
+            "steps": [
+                _run_step(
+                    "llm_review",
+                    "skipped",
+                    requested=3,
+                    raw=0,
+                    normalized=0,
+                    reason="no_llm_review_inputs",
+                )
+                | {
+                    "category": "expected_gate",
+                    "payload": {
+                        "candidate_packet_count": 3,
+                        "candidate_packet_state_counts": {"Blocked": 3},
+                        "eligible_states": [
+                            "EligibleForManualBuyReview",
+                            "ThesisWeakening",
+                            "Warning",
+                        ],
+                    },
+                    "trigger_condition": (
+                        "At least one Warning or manual-review candidate packet must exist."
+                    ),
+                },
+            ],
+        }
+    )
+
+    assert payload["status"] == "no_review_inputs"
+    assert payload["mode"] == "not_run"
+    assert payload["requested_count"] == 3
+    assert payload["reviewed_packet_count"] == 0
+    assert payload["candidate_packet_state_counts"] == {"Blocked": 3}
+    assert "Warning" in str(payload["next_action"])
 
 
 def test_radar_run_call_plan_reports_local_fixture_no_external_calls(

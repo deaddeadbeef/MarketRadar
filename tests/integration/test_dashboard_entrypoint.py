@@ -146,6 +146,28 @@ def test_dashboard_wires_operator_work_queue_before_activation_sections() -> Non
     )
 
 
+def test_dashboard_wires_agent_review_summary_near_radar_run() -> None:
+    source = Path("apps/dashboard/Home.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    functions = {
+        node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)
+    }
+    overview_source = ast.get_source_segment(source, functions["_show_overview"])
+    helper_source = ast.get_source_segment(source, functions["_show_agent_review_summary"])
+
+    assert "_show_agent_review_summary" in functions
+    assert overview_source is not None
+    assert helper_source is not None
+    assert "agent_review_summary_payload" in helper_source
+    assert "Agent Review" in helper_source
+    assert overview_source.index("_show_radar_run_controls") < overview_source.index(
+        "_show_agent_review_summary"
+    )
+    assert overview_source.index("_show_agent_review_summary") < overview_source.index(
+        "_show_discovery_snapshot"
+    )
+
+
 def test_dashboard_candidate_queue_surfaces_blocker_diagnostics() -> None:
     source = Path("apps/dashboard/Home.py").read_text(encoding="utf-8")
     tree = ast.parse(source)

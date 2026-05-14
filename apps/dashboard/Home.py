@@ -913,6 +913,54 @@ def _show_radar_run_summary(summary: Mapping[str, Any]) -> None:
     )
 
 
+def _show_agent_review_summary(radar_run_summary: Mapping[str, Any]) -> None:
+    summary = _mapping(dashboard_data.agent_review_summary_payload(radar_run_summary))
+    if not summary:
+        return
+    st.subheader("Agent Review")
+    status = str(summary.get("status") or "unknown")
+    message = (
+        f"{summary.get('headline') or 'Agent review status'} "
+        f"Next: {summary.get('next_action') or 'n/a'}"
+    ).strip()
+    if status in {"reviewed", "dry_run_reviewed"}:
+        if status == "dry_run_reviewed":
+            st.info(message)
+        else:
+            st.success(message)
+    elif status in {"no_review_inputs", "disabled", "expected_gate"}:
+        st.caption(message)
+    elif status == "attention":
+        st.warning(message)
+    else:
+        st.info(message)
+    reviewed_tickers = [str(value) for value in _sequence(summary.get("reviewed_tickers"))]
+    _show_status_badges(
+        [
+            ("Mode", summary.get("mode") or "n/a"),
+            ("Requested", int(_metric_number(summary.get("requested_count")))),
+            ("Reviewed", int(_metric_number(summary.get("reviewed_packet_count")))),
+            ("Tickers", ", ".join(reviewed_tickers) if reviewed_tickers else "none"),
+            ("Remaining Gates", len(_records(summary.get("remaining_expected_gates")))),
+        ]
+    )
+    if reviewed_tickers:
+        _show_records(
+            "Reviewed Tickers",
+            [{"Ticker": ticker} for ticker in reviewed_tickers],
+            empty="No reviewed tickers.",
+        )
+    remaining_gates = _records(summary.get("remaining_expected_gates"))
+    if remaining_gates:
+        with st.expander("Remaining Agent Gates"):
+            _show_records(
+                "Gate Conditions",
+                remaining_gates,
+                empty="No remaining agent gates.",
+            )
+    st.caption(str(summary.get("evidence") or "No agent review evidence."))
+
+
 def _show_discovery_snapshot(snapshot: Mapping[str, Any]) -> None:
     if not snapshot:
         return
@@ -1904,6 +1952,7 @@ def _show_overview(
     _show_telemetry_tape(ops_health)
     _show_universe_coverage(config, ops_health)
     _show_radar_run_controls(engine, config, radar_run_summary, radar_run_cooldown)
+    _show_agent_review_summary(radar_run_summary)
     _show_discovery_snapshot(discovery_snapshot)
     investment_readiness = _show_investment_readiness(discovery_snapshot, candidate_rows)
     _show_decision_contract(investment_readiness)
