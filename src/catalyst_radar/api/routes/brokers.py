@@ -4,7 +4,7 @@ import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import RedirectResponse
 
 from catalyst_radar.brokers.interactive import (
@@ -316,7 +316,11 @@ def market_context(ticker: str | None = None) -> dict[str, object]:
 
 
 @router.post("/api/opportunities/actions", dependencies=[Depends(require_role(Role.ANALYST))])
-def opportunity_action(payload: dict[str, Any]) -> dict[str, object]:
+def opportunity_action(
+    payload: dict[str, Any],
+    x_catalyst_actor: str | None = Header(default=None),
+    x_catalyst_role: str | None = Header(default=None),
+) -> dict[str, object]:
     ticker = str(payload.get("ticker") or "").strip().upper()
     action = str(payload.get("action") or "").strip()
     if not ticker or not action:
@@ -328,6 +332,9 @@ def opportunity_action(payload: dict[str, Any]) -> dict[str, object]:
         thesis=payload.get("thesis"),
         notes=payload.get("notes"),
         payload={key: value for key, value in payload.items() if key not in {"thesis", "notes"}},
+        actor_source="api",
+        actor_id=x_catalyst_actor,
+        actor_role=x_catalyst_role,
     )
     return opportunity_action_payload(row)
 
@@ -343,7 +350,11 @@ def opportunity_actions(ticker: str | None = None) -> dict[str, object]:
 
 
 @router.post("/api/market/triggers", dependencies=[Depends(require_role(Role.ANALYST))])
-def market_trigger(payload: dict[str, Any]) -> dict[str, object]:
+def market_trigger(
+    payload: dict[str, Any],
+    x_catalyst_actor: str | None = Header(default=None),
+    x_catalyst_role: str | None = Header(default=None),
+) -> dict[str, object]:
     required = ("ticker", "trigger_type", "operator", "threshold")
     missing = [name for name in required if payload.get(name) in (None, "")]
     if missing:
@@ -356,6 +367,9 @@ def market_trigger(payload: dict[str, Any]) -> dict[str, object]:
         threshold=float(payload["threshold"]),
         notes=payload.get("notes"),
         payload={key: value for key, value in payload.items() if key != "notes"},
+        actor_source="api",
+        actor_id=x_catalyst_actor,
+        actor_role=x_catalyst_role,
     )
     return trigger_payload(row)
 
@@ -364,11 +378,18 @@ def market_trigger(payload: dict[str, Any]) -> dict[str, object]:
     "/api/market/triggers/evaluate",
     dependencies=[Depends(require_role(Role.ANALYST))],
 )
-def market_triggers_evaluate(payload: dict[str, Any] | None = None) -> dict[str, object]:
+def market_triggers_evaluate(
+    payload: dict[str, Any] | None = None,
+    x_catalyst_actor: str | None = Header(default=None),
+    x_catalyst_role: str | None = Header(default=None),
+) -> dict[str, object]:
     body = payload or {}
     rows = evaluate_triggers(
         repo=BrokerRepository(_engine()),
         tickers=body.get("tickers") or body.get("ticker") or [],
+        actor_source="api",
+        actor_id=x_catalyst_actor,
+        actor_role=x_catalyst_role,
     )
     return {"items": [trigger_payload(row) for row in rows]}
 
@@ -420,7 +441,11 @@ def order_preview(payload: dict[str, Any]) -> dict[str, object]:
 
 
 @router.post("/api/orders/tickets", dependencies=[Depends(require_role(Role.ANALYST))])
-def order_ticket(payload: dict[str, Any]) -> dict[str, object]:
+def order_ticket(
+    payload: dict[str, Any],
+    x_catalyst_actor: str | None = Header(default=None),
+    x_catalyst_role: str | None = Header(default=None),
+) -> dict[str, object]:
     required = ("ticker", "side", "entry_price", "invalidation_price")
     missing = [name for name in required if payload.get(name) in (None, "")]
     if missing:
@@ -439,6 +464,9 @@ def order_ticket(payload: dict[str, Any]) -> dict[str, object]:
         account_id=payload.get("account_id"),
         notes=payload.get("notes"),
         config=AppConfig.from_env(),
+        actor_source="api",
+        actor_id=x_catalyst_actor,
+        actor_role=x_catalyst_role,
     )
     return order_ticket_payload(row)
 
