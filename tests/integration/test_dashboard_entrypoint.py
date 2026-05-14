@@ -72,6 +72,31 @@ def test_dashboard_shows_radar_call_plan_before_run_post() -> None:
     assert plan_line < post_line
 
 
+def test_dashboard_radar_run_summary_uses_operator_skip_labels() -> None:
+    source = Path("apps/dashboard/Home.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    functions = {
+        node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)
+    }
+
+    summary_source = ast.get_source_segment(source, functions["_show_radar_run_summary"])
+    sections_source = ast.get_source_segment(
+        source,
+        functions["_show_radar_operator_sections"],
+    )
+
+    assert summary_source is not None
+    assert "Run Steps" in summary_source
+    assert "Expected Skips" in summary_source
+    assert "Skipped Raw" in summary_source
+    assert "Tracked Stages" not in summary_source
+    assert "Raw Records" not in summary_source
+    assert "optional_expected_gate_count" in summary_source
+    assert "required_incomplete_count" in summary_source
+    assert sections_source is not None
+    assert "Expected skipped gates" in sections_source
+
+
 def test_dashboard_wires_research_shortlist_after_manual_review_gate() -> None:
     tree = ast.parse(Path("apps/dashboard/Home.py").read_text(encoding="utf-8"))
     functions = {

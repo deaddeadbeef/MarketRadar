@@ -80,6 +80,18 @@ def _metric_number(value: object) -> float:
     return number if isfinite(number) else 0.0
 
 
+def _summary_metric_int(
+    summary: Mapping[str, Any],
+    *keys: str,
+    fallback: int = 0,
+) -> int:
+    for key in keys:
+        value = summary.get(key)
+        if value is not None:
+            return int(_metric_number(value))
+    return int(fallback)
+
+
 def _metric_text(value: object) -> str:
     if value is None or value == "":
         return "n/a"
@@ -793,20 +805,39 @@ def _show_radar_run_summary(summary: Mapping[str, Any]) -> None:
     )
     status_counts = _mapping(summary.get("status_counts"))
     outcome_counts = _mapping(summary.get("outcome_category_counts"))
-    skipped_count = int(_metric_number(status_counts.get("skipped")))
-    blocking_count = int(_metric_number(summary.get("blocking_step_count")))
-    expected_gate_count = int(
-        _metric_number(summary.get("expected_gate_count"))
-        or _metric_number(outcome_counts.get("expected_gate"))
+    raw_skipped_count = int(_metric_number(status_counts.get("skipped")))
+    blocking_count = _summary_metric_int(
+        summary,
+        "action_needed_count",
+        "blocking_step_count",
     )
-    required_stage_count = max(
-        0,
-        int(_metric_number(summary.get("step_count"))) - expected_gate_count,
+    expected_gate_count = _summary_metric_int(
+        summary,
+        "optional_expected_gate_count",
+        "expected_gate_count",
+        fallback=int(_metric_number(outcome_counts.get("expected_gate"))),
     )
-    completed_required_count = max(0, int(_metric_number(outcome_counts.get("completed"))))
+    required_stage_count = _summary_metric_int(
+        summary,
+        "required_step_count",
+        fallback=max(
+            0,
+            int(_metric_number(summary.get("step_count"))) - expected_gate_count,
+        ),
+    )
+    completed_required_count = _summary_metric_int(
+        summary,
+        "required_completed_count",
+        fallback=max(0, int(_metric_number(outcome_counts.get("completed")))),
+    )
+    required_incomplete_count = _summary_metric_int(
+        summary,
+        "required_incomplete_count",
+        fallback=max(0, required_stage_count - completed_required_count),
+    )
     metric_cols = st.columns(5)
     metric_cols[0].metric(
-        "Tracked Stages",
+        "Run Steps",
         int(_metric_number(summary.get("step_count"))),
     )
     metric_cols[1].metric(
@@ -814,8 +845,8 @@ def _show_radar_run_summary(summary: Mapping[str, Any]) -> None:
         f"{min(completed_required_count, required_stage_count)}/{required_stage_count}",
     )
     metric_cols[2].metric("Action Needed", blocking_count)
-    metric_cols[3].metric("Optional Gates", expected_gate_count)
-    metric_cols[4].metric("Raw Records", int(_metric_number(summary.get("step_count"))))
+    metric_cols[3].metric("Expected Skips", expected_gate_count)
+    metric_cols[4].metric("Skipped Raw", raw_skipped_count)
     volume_cols = st.columns(3)
     volume_cols[0].metric("Requested", int(_metric_number(summary.get("requested_count"))))
     volume_cols[1].metric("Raw", int(_metric_number(summary.get("raw_count"))))
@@ -837,10 +868,22 @@ def _show_radar_run_summary(summary: Mapping[str, Any]) -> None:
             f"{len(blocking_skips)} run step(s) were blocked by missing or degraded inputs. "
             "Use the readiness checklist before treating the run as current."
         )
-    elif skipped_count:
+    elif required_incomplete_count:
+        st.warning(
+            f"Required path is incomplete: {min(completed_required_count, required_stage_count)}"
+            f"/{required_stage_count} required step(s) completed. Inspect the required "
+            "run path for missing inputs before relying on the latest scan."
+        )
+    elif expected_gate_count:
         st.success(
-            f"{len(expected_skips) or skipped_count} run step(s) were expected gates, "
-            "not scan failures. Required scan stages completed; raw telemetry remains below."
+            f"{len(expected_skips) or expected_gate_count} skipped step(s) were expected "
+            "optional gates, not scan failures. Required scan stages completed; raw "
+            "telemetry remains below."
+        )
+    elif raw_skipped_count:
+        st.warning(
+            f"{raw_skipped_count} raw skipped step(s) were not classified as expected "
+            "gates. Inspect diagnostic telemetry before relying on the run."
         )
     _show_radar_operator_sections(
         _radar_summary_operator_rows(summary),
@@ -1090,12 +1133,18 @@ def _show_radar_operator_sections(
     optional_rows = [
         row
         for row in operator_rows
-        if _operator_row_value(row, "Stage", "stage") == "Optional gate"
+        if (
+            _operator_row_value(row, "Stage", "stage")
+            in {"Optional gate", "Expected skipped gate"}
+        )
     ]
     required_rows = [
         row
         for row in operator_rows
-        if _operator_row_value(row, "Stage", "stage") != "Optional gate"
+        if (
+            _operator_row_value(row, "Stage", "stage")
+            not in {"Optional gate", "Expected skipped gate"}
+        )
     ]
     if action_rows:
         _show_records(
@@ -1110,13 +1159,13 @@ def _show_radar_operator_sections(
             empty="No required run path telemetry.",
         )
     if optional_rows:
-        with st.expander(f"Expected optional gates ({len(optional_rows)})"):
+        with st.expander(f"Expected skipped gates ({len(optional_rows)})"):
             st.caption(
                 "These gates did not run because their trigger was absent; they are not "
                 "scan failures."
             )
             _show_records(
-                "Expected Optional Gates",
+                "Expected Skipped Gates",
                 _operator_optional_rows(optional_rows),
                 empty="No optional gate telemetry.",
             )
@@ -1383,7 +1432,7 @@ def _radar_operator_stage(category: object) -> str:
     if value == "completed":
         return "Required path"
     if value == "expected_gate":
-        return "Optional gate"
+        return "Expected skipped gate"
     if value in {"blocked_input", "failed", "needs_review"}:
         return "Blocked"
     if value == "not_ready":

@@ -43,7 +43,10 @@ capped live radar cycle.
 Raw telemetry can still show `status=skipped` for expected optional gates. Treat
 the `category`, required-path count, and action-needed count as the operator
 truth: `expected_gate` means no failure occurred unless you intentionally wanted
-that gate to run.
+that gate to run. A raw skipped row with `not_ready` is different: it means a
+required stage was waiting for input, such as missing text snippets or active
+securities. The dashboard keeps those rows in the required path and shows the
+run as incomplete instead of counting them as expected optional skips.
 
 The dashboard **Recent Radar Telemetry** tape is a compact view of append-only
 telemetry audit events. Use it to confirm whether a dashboard/API action was
