@@ -4888,11 +4888,10 @@ def _live_data_operator_steps(
             "status": "manual",
             "action": "Seed the active universe with the configured Polygon page cap.",
             "external_calls": seed_pages,
-            "command": (
-                "Invoke-RestMethod -Method Post "
-                "-Uri https://127.0.0.1:8443/api/radar/universe/seed "
-                "-SkipCertificateCheck -ContentType 'application/json' "
-                f"-Body '{{\"provider\":\"polygon\",\"max_pages\":{seed_pages}}}'"
+            "command": _local_api_curl_command(
+                "POST",
+                "/api/radar/universe/seed",
+                body=f'{{"provider":"polygon","max_pages":{seed_pages}}}',
             ),
         },
         {
@@ -4900,10 +4899,10 @@ def _live_data_operator_steps(
             "status": "safe_check",
             "action": "Inspect the radar call plan before running live ingestion.",
             "external_calls": 0,
-            "command": (
-                "Invoke-RestMethod -Method Post "
-                "-Uri https://127.0.0.1:8443/api/radar/runs/call-plan "
-                "-SkipCertificateCheck -ContentType 'application/json' -Body '{}'"
+            "command": _local_api_curl_command(
+                "POST",
+                "/api/radar/runs/call-plan",
+                body="{}",
             ),
         },
         {
@@ -4911,10 +4910,10 @@ def _live_data_operator_steps(
             "status": "manual",
             "action": "Run one capped radar cycle only after the call plan matches intent.",
             "external_calls": 1 + max(1, int(config.sec_daily_max_tickers)),
-            "command": (
-                "Invoke-RestMethod -Method Post "
-                "-Uri https://127.0.0.1:8443/api/radar/runs "
-                "-SkipCertificateCheck -ContentType 'application/json' -Body '{}'"
+            "command": _local_api_curl_command(
+                "POST",
+                "/api/radar/runs",
+                body="{}",
             ),
         },
         {
@@ -4922,13 +4921,24 @@ def _live_data_operator_steps(
             "status": "safe_check",
             "action": "Review readiness and the research shortlist before any investment work.",
             "external_calls": 0,
-            "command": (
-                "Invoke-RestMethod "
-                "-Uri https://127.0.0.1:8443/api/radar/readiness "
-                "-SkipCertificateCheck"
-            ),
+            "command": _local_api_curl_command("GET", "/api/radar/readiness"),
         },
     ]
+
+
+def _local_api_curl_command(
+    method: str,
+    path: str,
+    *,
+    body: str | None = None,
+) -> str:
+    command = (
+        "curl.exe --insecure --fail --silent --show-error "
+        f"--request {method} https://127.0.0.1:8443{path}"
+    )
+    if body is None:
+        return command
+    return f'{command} --header "Content-Type: application/json" --data \'{body}\''
 
 
 def _live_data_call_budget_if_activated(config: AppConfig) -> list[dict[str, object]]:
