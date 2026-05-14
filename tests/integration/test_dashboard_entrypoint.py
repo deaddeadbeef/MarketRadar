@@ -717,6 +717,22 @@ def test_dashboard_wires_live_data_activation_contract_after_plan() -> None:
     assert "worker_commands" in contract_source
 
 
+def test_dashboard_telemetry_tape_separates_guarded_events_from_attention() -> None:
+    source = Path("apps/dashboard/Home.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    functions = {
+        node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)
+    }
+    helper_source = ast.get_source_segment(source, functions["_show_telemetry_tape"])
+
+    assert helper_source is not None
+    assert 'status == "guarded"' in helper_source
+    assert "attention_count" in helper_source
+    assert "guarded_count" in helper_source
+    assert "tape.get('headline')" in helper_source
+    assert "tape.get('next_action')" in helper_source
+
+
 def test_dashboard_wires_alert_planning_diagnostics_after_readiness() -> None:
     source = Path("apps/dashboard/Home.py").read_text(encoding="utf-8")
     tree = ast.parse(source)

@@ -511,12 +511,27 @@ def _show_telemetry_tape(ops_health: Mapping[str, Any]) -> None:
     status = str(tape.get("status") or "unknown")
     latest = tape.get("latest_event_at") or "n/a"
     event_count = int(_metric_number(tape.get("event_count")))
+    message = (
+        f"{tape.get('headline') or 'Telemetry tape'} "
+        f"Next: {tape.get('next_action') or 'n/a'} "
+        f"Latest: {latest}."
+    ).strip()
     if status == "attention":
-        st.warning(f"Telemetry tape: {event_count} recent event(s); latest {latest}.")
+        st.warning(message)
+    elif status == "guarded":
+        st.info(message)
     elif status == "ready":
-        st.info(f"Telemetry tape: {event_count} recent event(s); latest {latest}.")
+        st.info(message)
     else:
         st.caption("Telemetry tape: no recent telemetry events.")
+    _show_status_badges(
+        [
+            ("Events", event_count),
+            ("Attention", int(_metric_number(tape.get("attention_count")))),
+            ("Guarded", int(_metric_number(tape.get("guarded_count")))),
+        ]
+    )
+    st.caption(str(tape.get("evidence") or "No telemetry evidence."))
     _show_records(
         "Recent Radar Telemetry",
         tape.get("events"),
