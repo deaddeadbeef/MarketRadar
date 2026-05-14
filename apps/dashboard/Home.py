@@ -403,6 +403,8 @@ def _show_command_header(
     build = _mapping(runtime_context.get("build"))
     degraded = "enabled" if bool(degraded_mode.get("enabled")) else "off"
     data_mode = str(discovery_snapshot.get("status") or "unknown")
+    freshness = _mapping(discovery_snapshot.get("freshness"))
+    bars_stale = bool(freshness.get("latest_bars_older_than_as_of"))
     decision_mode = str(
         investment_readiness.get("decision_mode")
         or investment_readiness.get("status")
@@ -415,6 +417,11 @@ def _show_command_header(
     cells = [
         _command_cell("Database", database.get("status") or "unknown"),
         _command_cell("Data Mode", data_mode),
+        _command_cell(
+            "Bars Stale",
+            "yes" if bars_stale else "no",
+            tone_value="stale" if bars_stale else "ok",
+        ),
         _command_cell("Decision Mode", decision_mode, tone_value=decision_mode),
         _command_cell(
             "Investable",

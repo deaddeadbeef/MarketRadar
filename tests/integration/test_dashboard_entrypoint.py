@@ -403,6 +403,9 @@ def test_dashboard_header_surfaces_data_mode_and_build_fingerprint() -> None:
     assert "investment_readiness" in header_source
     assert 'runtime_context.get("build")' in header_source
     assert '"Data Mode"' in header_source
+    assert 'discovery_snapshot.get("freshness")' in header_source
+    assert '"Bars Stale"' in header_source
+    assert 'tone_value="stale" if bars_stale else "ok"' in header_source
     assert '"Decision Mode"' in header_source
     assert '"Investable"' in header_source
     assert 'tone_value="ok" if investable == "yes" else "blocked"' in header_source
