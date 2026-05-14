@@ -173,17 +173,19 @@ def test_dashboard_radar_run_summary_uses_operator_skip_labels() -> None:
     )
 
     assert summary_source is not None
-    assert "All Steps" in summary_source
+    assert "Telemetry Rows" in summary_source
     assert "Optional Gates" in summary_source
-    assert "Audit Skips" in summary_source
+    assert "Raw Skips Retained" in summary_source
     assert "Tracked Stages" not in summary_source
     assert "Raw Records" not in summary_source
     assert "optional_expected_gate_count" in summary_source
     assert "required_incomplete_count" in summary_source
     assert sections_source is not None
-    assert "Expected skipped gates" in sections_source
-    assert "Audit: raw step telemetry" in sections_source
+    assert "Optional gates not triggered" in sections_source
+    assert "Audit-only raw telemetry" in sections_source
     assert optional_source is not None
+    assert "_operator_optional_outcome_label" in optional_source
+    assert "Not triggered (expected)" in source
     assert "Runs When" in optional_source
     notice_source = ast.get_source_segment(
         source,
