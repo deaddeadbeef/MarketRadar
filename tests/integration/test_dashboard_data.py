@@ -67,8 +67,10 @@ from catalyst_radar.dashboard.data import (
     radar_run_cooldown_payload,
     radar_run_default_scope_payload,
     radar_run_effective_status,
+    radar_step_root_cause_rows,
     readiness_checklist_payload,
     research_shortlist_payload,
+    runtime_context_payload,
     telemetry_tape_payload,
     universe_coverage_payload,
     worker_status_payload,
@@ -1474,6 +1476,99 @@ def test_live_activation_plan_payload_never_leaks_configured_secrets() -> None:
     assert "polygon-secret-value" not in rendered
     assert "sk-secret-value" not in rendered
     assert "Secret User Agent" not in rendered
+
+
+def test_runtime_context_payload_identifies_active_database_without_secrets() -> None:
+    config = AppConfig(
+        database_url="sqlite:///data/local/schwab-live.db",
+        daily_market_provider="polygon",
+        polygon_api_key="polygon-secret-value",
+        daily_event_provider="sec",
+        sec_enable_live=True,
+        sec_user_agent="MarketRadar test@example.com",
+        openai_api_key="sk-secret-value",
+    )
+    run_summary = {
+        "as_of": "2026-05-08",
+        "decision_available_at": AVAILABLE_AT.isoformat(),
+        "required_step_count": 8,
+        "required_completed_count": 8,
+        "blocking_step_count": 0,
+        "expected_gate_count": 3,
+    }
+
+    payload = runtime_context_payload(
+        config,
+        radar_run_summary=run_summary,
+        dotenv_loaded=True,
+    )
+
+    database = payload["database"]
+    assert isinstance(database, dict)
+    assert database["name"] == "schwab-live.db"
+    assert database["fingerprint"]
+    assert payload["env_file_loaded"] is True
+    assert payload["polygon_key_configured"] is True
+    assert payload["openai_key_configured"] is True
+    assert "required_path=8/8" in str(payload["evidence"])
+    assert "polygon-secret-value" not in str(payload)
+    assert "sk-secret-value" not in str(payload)
+
+
+def test_radar_step_root_cause_rows_groups_disabled_inputs_and_degraded_mode() -> None:
+    config = AppConfig(
+        daily_market_provider="off",
+        daily_event_provider="disabled",
+    )
+    run_payload = {
+        "steps": [
+            _run_step(
+                "daily_bar_ingest",
+                "skipped",
+                reason="no_scheduled_provider_input",
+            ),
+            _run_step(
+                "event_ingest",
+                "skipped",
+                reason="no_scheduled_event_provider",
+            ),
+            {
+                **_run_step(
+                    "candidate_packets",
+                    "skipped",
+                    requested=2,
+                    reason="degraded_mode_blocks_high_state_work",
+                ),
+                "payload": {
+                    "degraded_mode": {
+                        "reasons": ["provider_health_stale"],
+                        "max_action_state": "Warning",
+                    },
+                },
+            },
+            _run_step("digest", "skipped", reason="no_alerts"),
+        ],
+    }
+
+    rows = radar_step_root_cause_rows(run_payload, config)
+
+    by_cause = {str(row["root_cause"]): row for row in rows}
+    assert by_cause["Scheduled market input disabled"]["status"] == "blocked"
+    assert "CATALYST_DAILY_MARKET_PROVIDER=off" in str(
+        by_cause["Scheduled market input disabled"]["current_config"]
+    )
+    assert "daily_bar_ingest" in str(
+        by_cause["Scheduled market input disabled"]["affected_steps"]
+    )
+    assert by_cause["Scheduled event input disabled"]["status"] == "blocked"
+    assert "CATALYST_DAILY_EVENT_PROVIDER=disabled" in str(
+        by_cause["Scheduled event input disabled"]["current_config"]
+    )
+    assert by_cause["Degraded mode protected high-state work"]["status"] == "blocked"
+    assert "provider_health_stale" in str(
+        by_cause["Degraded mode protected high-state work"]["evidence"]
+    )
+    assert by_cause["Expected optional gate did not trigger"]["status"] == "optional"
 
 
 def test_live_activation_plan_marks_agentic_review_ready_when_capped() -> None:
