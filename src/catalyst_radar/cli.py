@@ -1360,7 +1360,7 @@ def _ingest_sec_provider(
             file=sys.stderr,
         )
         return 1
-    if fixture_path is None and not config.sec_user_agent:
+    if fixture_path is None and not config.sec_user_agent_configured:
         print(
             "sec ingest failed: CATALYST_SEC_USER_AGENT is required for live SEC ingest",
             file=sys.stderr,

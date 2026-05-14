@@ -206,6 +206,25 @@ def test_ingest_sec_live_mode_fails_closed_without_user_agent(
     assert "CATALYST_SEC_USER_AGENT is required" in captured.err
 
 
+def test_ingest_sec_live_mode_fails_closed_with_user_agent_placeholder(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("CATALYST_DATABASE_URL", _database_url(tmp_path))
+    monkeypatch.setenv("CATALYST_SEC_ENABLE_LIVE", "1")
+    monkeypatch.setenv("CATALYST_SEC_USER_AGENT", "CatalystRadar/0.1 your-email@example.com")
+
+    exit_code = main(
+        ["ingest-sec", "submissions", "--ticker", "MSFT", "--cik", "0000789019"]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 1
+    assert captured.out == ""
+    assert "CATALYST_SEC_USER_AGENT is required" in captured.err
+
+
 def _database_url(tmp_path: Path) -> str:
     return f"sqlite:///{(tmp_path / 'events.db').as_posix()}"
 

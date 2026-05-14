@@ -164,8 +164,21 @@ def test_config_reads_sec_live_settings_from_env() -> None:
 
     assert config.sec_enable_live is True
     assert config.sec_user_agent == "CatalystRadar/0.1 contact@example.com"
+    assert config.sec_user_agent_configured is True
     assert config.sec_base_url == "https://sec.example.com"
     assert config.sec_daily_max_tickers == 7
+
+
+def test_sec_user_agent_placeholder_is_not_configured() -> None:
+    config = AppConfig.from_env(
+        {
+            "CATALYST_SEC_ENABLE_LIVE": "true",
+            "CATALYST_SEC_USER_AGENT": "MarketRadar/0.1 your-email@example.com",
+        }
+    )
+
+    assert config.sec_enable_live is True
+    assert config.sec_user_agent_configured is False
 
 
 def test_config_reads_polygon_ticker_page_cap_from_env() -> None:
