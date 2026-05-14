@@ -1923,7 +1923,7 @@ def test_telemetry_tape_payload_summarizes_recent_radar_events() -> None:
     assert payload["events"][2]["blocks_reliance"] == "no"
     assert payload["events"][2]["summary"] == (
         "step=decision_cards; outcome=Expected gate; category=expected_gate; "
-        "raw_status=skipped; reason=no_manual_buy_review_inputs; "
+        "audit_state=raw record retained; reason=no_manual_buy_review_inputs; "
         "trigger=At least one candidate must pass policy into manual buy review.; "
         "action=No Decision Card action required until a candidate crosses manual buy-review."
     )
@@ -1931,7 +1931,7 @@ def test_telemetry_tape_payload_summarizes_recent_radar_events() -> None:
     assert payload["events"][3]["raw_status"] == "skipped"
     assert payload["events"][3]["summary"] == (
         "step=llm_review; outcome=Expected gate; category=expected_gate; "
-        "raw_status=skipped; reason=llm_disabled; "
+        "audit_state=raw record retained; reason=llm_disabled; "
         "trigger=Request LLM dry-run review after candidate packets exist.; "
         "action=Enable the dashboard agent dry-run switch, or configure OPENAI_API_KEY "
         "for real review."
@@ -2024,7 +2024,7 @@ def test_telemetry_tape_payload_refreshes_stale_step_metadata() -> None:
     assert payload["events"][0]["blocks_reliance"] == "yes"
     assert payload["events"][0]["summary"] == (
         "step=llm_review; outcome=Blocked input; category=blocked_input; "
-        "raw_status=skipped; reason=degraded_mode_blocks_llm_review; "
+        "audit_state=raw record retained; reason=degraded_mode_blocks_llm_review; "
         "action=Exit degraded mode before running agent review against the latest candidates."
     )
 

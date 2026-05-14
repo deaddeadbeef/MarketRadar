@@ -194,6 +194,10 @@ def test_dashboard_radar_run_summary_uses_operator_gate_labels() -> None:
         source,
         functions["_operator_optional_rows"],
     )
+    step_rows_source = ast.get_source_segment(
+        source,
+        functions["_radar_step_status_rows"],
+    )
 
     assert summary_source is not None
     assert "Telemetry Rows" in summary_source
@@ -201,6 +205,8 @@ def test_dashboard_radar_run_summary_uses_operator_gate_labels() -> None:
     assert "Audit-only Rows" in summary_source
     assert "Optional Gates and Waiting Inputs" in summary_source
     assert "Why Steps Did Not Run" not in summary_source
+    assert "raw skipped step" not in summary_source
+    assert "raw audit step" in summary_source
     assert "_radar_step_status_rows" in summary_source
     assert "Tracked Stages" not in summary_source
     assert "Raw Records" not in summary_source
@@ -212,7 +218,10 @@ def test_dashboard_radar_run_summary_uses_operator_gate_labels() -> None:
     assert "Optional Gates Not Triggered" in sections_source
     assert "Expected Skipped Gates" not in sections_source
     assert optional_source is not None
+    assert step_rows_source is not None
     assert "_operator_optional_outcome_label" in optional_source
+    assert '"raw_status"' not in step_rows_source
+    assert 'step.get("label") or classification.label' in step_rows_source
     assert "Not triggered (expected)" in source
     assert "Runs When" in optional_source
     notice_source = ast.get_source_segment(
@@ -222,6 +231,41 @@ def test_dashboard_radar_run_summary_uses_operator_gate_labels() -> None:
     assert notice_source is not None
     assert "Radar run completed with expected gates" in notice_source
     assert "st.info" in notice_source
+
+
+def test_dashboard_relables_raw_skip_status_for_operator_tables() -> None:
+    source = Path("apps/dashboard/Home.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    functions = {
+        node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)
+    }
+    telemetry_source = ast.get_source_segment(source, functions["_show_telemetry_tape"])
+    telemetry_rows_source = ast.get_source_segment(
+        source,
+        functions["_telemetry_operator_rows"],
+    )
+    llm_rows_source = ast.get_source_segment(
+        source,
+        functions["_llm_ledger_display_rows"],
+    )
+    audit_state_source = ast.get_source_segment(
+        source,
+        functions["_telemetry_audit_state_label"],
+    )
+    costs_source = ast.get_source_segment(source, functions["_show_costs_layer"])
+
+    assert telemetry_source is not None
+    assert telemetry_rows_source is not None
+    assert llm_rows_source is not None
+    assert audit_state_source is not None
+    assert costs_source is not None
+    assert "_telemetry_operator_rows" in telemetry_source
+    assert "Not triggered (expected)" in telemetry_rows_source
+    assert "raw record retained" in audit_state_source
+    assert "_llm_ledger_display_rows" in costs_source
+    assert "Not Run" in costs_source
+    assert "Not run (guarded)" in source
+    assert '"Skipped"' not in costs_source
 
 
 def test_dashboard_does_not_render_legacy_raw_run_steps_table() -> None:
