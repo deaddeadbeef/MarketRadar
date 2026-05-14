@@ -39,6 +39,7 @@ from catalyst_radar.jobs.scheduler import (
 )
 from catalyst_radar.jobs.tasks import DAILY_STEP_ORDER, DailyRunSpec, run_daily
 from catalyst_radar.pipeline.scan import ScanResult
+from catalyst_radar.storage.alert_repositories import AlertRepository
 from catalyst_radar.storage.broker_repositories import BrokerRepository
 from catalyst_radar.storage.db import create_schema
 from catalyst_radar.storage.job_repositories import JobLockRepository
@@ -326,6 +327,20 @@ def test_daily_run_ingests_default_csv_market_data(monkeypatch):
     assert result.step("candidate_packets").payload["candidate_packet_count"] == 2
     assert result.step("decision_cards").reason == "no_manual_buy_review_inputs"
     assert result.step("llm_review").reason == "llm_disabled"
+    assert result.step("alert_planning").status == "success"
+    assert result.step("alert_planning").payload["alert_count"] == 1
+    assert result.step("alert_planning").payload["suppression_count"] == 2
+    assert result.step("alert_planning").payload["external_delivery"] is False
+    assert result.step("digest").status == "success"
+    assert result.step("digest").payload["digest_alert_count"] == 1
+    assert result.step("digest").payload["channel_filter"] == "digest"
+
+    alert_rows = AlertRepository(engine).list_alerts(
+        available_at=datetime(2026, 5, 8, 21, 0, tzinfo=UTC),
+    )
+    assert len(alert_rows) == 1
+    assert alert_rows[0].status.value == "planned"
+    assert alert_rows[0].channel.value == "digest"
 
     with engine.connect() as conn:
         jobs = {
@@ -350,6 +365,78 @@ def test_daily_run_ingests_default_csv_market_data(monkeypatch):
     assert jobs["event_ingest"].status == "success"
     assert jobs["event_ingest"].metadata["result_payload"]["event_count"] == 1
     assert jobs["scheduled_news_fixture_ingest"].status == "success"
+
+
+def test_daily_run_alert_planning_dedupes_repeated_run(monkeypatch):
+    monkeypatch.delenv("CATALYST_DAILY_MARKET_PROVIDER", raising=False)
+    engine = _engine()
+    spec = DailyRunSpec(
+        as_of=date(2026, 5, 8),
+        decision_available_at=datetime(2026, 5, 8, 21, 0, tzinfo=UTC),
+        run_llm=False,
+        dry_run_alerts=True,
+    )
+
+    first = run_daily(spec, engine=engine)
+    second = run_daily(spec, engine=engine)
+
+    assert first.step("alert_planning").payload["alert_count"] == 1
+    assert first.step("alert_planning").payload["suppression_count"] == 2
+    assert second.step("alert_planning").payload["alert_count"] == 0
+    assert second.step("alert_planning").payload["suppression_count"] == 3
+    assert second.step("alert_planning").payload["suppression_reason_counts"][
+        "duplicate_trigger"
+    ] == 1
+    assert second.step("digest").status == "skipped"
+    assert second.step("digest").reason == "no_alerts"
+
+    alerts = AlertRepository(engine).list_alerts(
+        available_at=datetime(2026, 5, 8, 21, 0, tzinfo=UTC),
+    )
+    assert len(alerts) == 1
+    assert alerts[0].status.value == "planned"
+
+
+def test_daily_run_alert_planning_ignores_stale_candidates(monkeypatch):
+    monkeypatch.delenv("CATALYST_DAILY_MARKET_PROVIDER", raising=False)
+    engine = _engine()
+    with engine.begin() as conn:
+        conn.execute(
+            insert(candidate_states).values(
+                id="state-stale-zzz",
+                ticker="ZZZ",
+                as_of=datetime(2026, 5, 7, 21, 0, tzinfo=UTC),
+                state=ActionState.EXIT_INVALIDATE_REVIEW.value,
+                previous_state=ActionState.WARNING.value,
+                final_score=99.0,
+                score_delta_5d=40.0,
+                hard_blocks=[],
+                transition_reasons=["stale_high_priority_fixture"],
+                feature_version="stale-test-v1",
+                policy_version="stale-policy-v1",
+                created_at=datetime(2026, 5, 7, 21, 0, tzinfo=UTC),
+            )
+        )
+    spec = DailyRunSpec(
+        as_of=date(2026, 5, 8),
+        decision_available_at=datetime(2026, 5, 8, 21, 0, tzinfo=UTC),
+        run_llm=False,
+        dry_run_alerts=True,
+    )
+
+    result = run_daily(spec, engine=engine)
+
+    alert_planning = result.step("alert_planning")
+    assert alert_planning.status == "success"
+    assert "ZZZ" not in alert_planning.payload["planned_input_tickers"]
+
+    alert_tickers = {
+        alert.ticker
+        for alert in AlertRepository(engine).list_alerts(
+            available_at=datetime(2026, 5, 8, 21, 0, tzinfo=UTC),
+        )
+    }
+    assert "ZZZ" not in alert_tickers
 
 
 def test_daily_run_polygon_provider_fails_closed_without_api_key(monkeypatch):
@@ -698,6 +785,11 @@ def test_daily_run_caps_high_states_and_blocks_decision_work_when_degraded(monke
     assert result.step("candidate_packets").reason == "degraded_mode_blocks_high_state_work"
     assert result.step("decision_cards").reason == "degraded_mode_blocks_decision_cards"
     assert result.step("llm_review").reason == "degraded_mode_blocks_llm_review"
+    assert result.step("alert_planning").status == "skipped"
+    assert result.step("alert_planning").reason == "degraded_mode_blocks_high_state_work"
+    assert result.step("digest").status == "skipped"
+    assert result.step("digest").reason == "blocked_by_failed_dependency:alert_planning"
+    assert AlertRepository(engine).list_alerts(available_at=decision_available_at) == []
 
     with engine.connect() as conn:
         state = conn.execute(

@@ -9,6 +9,7 @@ BLOCKING_SKIP_REASONS = frozenset(
         "blocked_by_failed_dependency:feature_scan",
         "blocked_by_failed_dependency:scoring_policy",
         "blocked_by_failed_dependency:candidate_packets",
+        "blocked_by_failed_dependency:alert_planning",
         "degraded_mode_blocks_high_state_work",
         "degraded_mode_blocks_decision_cards",
         "degraded_mode_blocks_llm_review",
@@ -34,6 +35,7 @@ NOT_READY_REASONS = frozenset(
         "no_candidate_packets",
         "no_current_scan_results",
         "no_feature_inputs",
+        "no_alert_planning_inputs",
         "no_sec_cik_targets",
         "no_text_inputs",
         "no_warning_or_higher_candidates",
@@ -56,6 +58,9 @@ SKIP_EXPLANATIONS = {
     "blocked_by_failed_dependency:candidate_packets": (
         "Candidate packets did not complete, so this dependent step did not run."
     ),
+    "blocked_by_failed_dependency:alert_planning": (
+        "Alert planning did not complete, so the digest step did not run."
+    ),
     "degraded_mode_blocks_high_state_work": (
         "Degraded mode blocked high-state research work because current data is not trusted."
     ),
@@ -72,6 +77,7 @@ SKIP_EXPLANATIONS = {
     "no_candidate_packets": "No candidate packets were available for Decision Cards.",
     "no_current_scan_results": "No current scan results were available for packet building.",
     "no_feature_inputs": "No signal inputs were available for feature scanning.",
+    "no_alert_planning_inputs": "No candidate states were available for alert planning.",
     "no_llm_review_inputs": "There were no Decision Cards for LLM review.",
     "no_manual_buy_review_inputs": "No candidate crossed the manual buy-review gate.",
     "no_scheduled_event_provider": "No news/event provider was scheduled for this run.",
