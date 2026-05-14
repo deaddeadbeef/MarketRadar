@@ -106,6 +106,72 @@ OPERATOR_ACTIONS = {
     "not_ready": "Add the missing input or tune the scan thresholds if this is too conservative.",
 }
 
+REASON_OPERATOR_ACTIONS = {
+    "blocked_by_failed_dependency:daily_bar_ingest": (
+        "Configure and run market-data ingestion before relying on downstream analysis."
+    ),
+    "blocked_by_failed_dependency:event_ingest": (
+        "Configure and run event ingestion before relying on text triage."
+    ),
+    "blocked_by_failed_dependency:feature_scan": (
+        "Unblock feature scanning before scoring or packet generation."
+    ),
+    "blocked_by_failed_dependency:scoring_policy": (
+        "Unblock scoring before building candidate packets."
+    ),
+    "blocked_by_failed_dependency:candidate_packets": (
+        "Build current candidate packets before Decision Cards, agent review, or alerts."
+    ),
+    "blocked_by_failed_dependency:alert_planning": (
+        "Run alert planning successfully before expecting a digest."
+    ),
+    "degraded_mode_blocks_high_state_work": (
+        "Exit degraded mode with trusted current market/event inputs before high-state research."
+    ),
+    "degraded_mode_blocks_decision_cards": (
+        "Exit degraded mode before treating Decision Cards as investable guidance."
+    ),
+    "degraded_mode_blocks_llm_review": (
+        "Exit degraded mode before running agent review against the latest candidates."
+    ),
+    "llm_disabled": (
+        "Enable the dashboard agent dry-run switch, or configure OPENAI_API_KEY for real review."
+    ),
+    "no_active_securities": "Load an active universe before scanning.",
+    "no_alerts": "No action required unless you expected digest-routed alerts.",
+    "no_candidate_inputs": "Run feature scanning with current inputs before scoring.",
+    "no_candidate_packets": "Build current candidate packets before this step can run.",
+    "no_current_scan_results": "Run feature scanning and scoring for the current run date.",
+    "no_feature_inputs": "Ingest market/events/text inputs before feature scanning.",
+    "no_alert_planning_inputs": "Produce current candidate states before alert planning.",
+    "no_llm_review_inputs": (
+        "No agent action required until a Warning or manual-review packet exists."
+    ),
+    "no_manual_buy_review_inputs": (
+        "No Decision Card action required until a candidate crosses manual buy-review."
+    ),
+    "no_scheduled_event_provider": (
+        "Set CATALYST_DAILY_EVENT_PROVIDER=sec, enable SEC live mode, and add a SEC user agent."
+    ),
+    "no_scheduled_provider_input": (
+        "Set CATALYST_DAILY_MARKET_PROVIDER=polygon and provide CATALYST_POLYGON_API_KEY."
+    ),
+    "no_sec_cik_targets": "Add CIK metadata before SEC submission checks can run.",
+    "no_text_inputs": "Configure SEC/news ingestion or add local text snippets before triage.",
+    "no_warning_or_higher_candidates": (
+        "No agent action required until scoring produces a Warning or higher candidate."
+    ),
+    "outcome_available_at_not_supplied": (
+        "Provide an outcome cutoff only when running validation/replay."
+    ),
+    "scheduled_event_provider_not_supported": (
+        "Use a supported scheduled event provider such as sec."
+    ),
+    "scheduled_provider_not_supported": (
+        "Use a supported scheduled market provider such as polygon, csv, or sample."
+    ),
+}
+
 GATE_TRIGGER_CONDITIONS = {
     "llm_disabled": "Request LLM dry-run review after candidate packets exist.",
     "no_alerts": "Alert planning must produce at least one digest alert.",
@@ -163,7 +229,10 @@ def classify_step_outcome(
             category="blocked_input",
             label="Blocked input",
             meaning=meaning,
-            operator_action=OPERATOR_ACTIONS["blocked_input"],
+            operator_action=REASON_OPERATOR_ACTIONS.get(
+                reason_text,
+                OPERATOR_ACTIONS["blocked_input"],
+            ),
             blocks_reliance=True,
         )
     if reason_text in EXPECTED_GATE_REASONS:
@@ -171,7 +240,10 @@ def classify_step_outcome(
             category="expected_gate",
             label="Expected gate",
             meaning=meaning,
-            operator_action=OPERATOR_ACTIONS["expected_gate"],
+            operator_action=REASON_OPERATOR_ACTIONS.get(
+                reason_text,
+                OPERATOR_ACTIONS["expected_gate"],
+            ),
             trigger_condition=GATE_TRIGGER_CONDITIONS.get(reason_text),
         )
     if reason_text in NOT_READY_REASONS:
@@ -179,7 +251,10 @@ def classify_step_outcome(
             category="not_ready",
             label="Not ready",
             meaning=meaning,
-            operator_action=OPERATOR_ACTIONS["not_ready"],
+            operator_action=REASON_OPERATOR_ACTIONS.get(
+                reason_text,
+                OPERATOR_ACTIONS["not_ready"],
+            ),
         )
     if status_text == "skipped":
         return StepOutcomeClassification(

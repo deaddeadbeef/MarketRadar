@@ -609,6 +609,31 @@ def _show_live_data_activation_contract(
         )
 
 
+def _show_worker_status(engine: object) -> None:
+    status_payload = _mapping(dashboard_data.worker_status_payload(engine))
+    st.subheader("Worker Status")
+    status = str(status_payload.get("status") or "unknown")
+    message = (
+        f"{status_payload.get('headline') or 'Worker status unavailable'} "
+        f"Next: {status_payload.get('next_action') or 'n/a'}"
+    ).strip()
+    if status == "running":
+        st.info(message)
+    elif status == "idle":
+        st.caption(message)
+    else:
+        st.warning(message)
+    _show_status_badges(
+        [
+            ("Worker", status),
+            ("Lock", "active" if status_payload.get("lock_active") else "inactive"),
+            ("Owner", status_payload.get("lock_owner") or "n/a"),
+            ("Latest Job", status_payload.get("latest_job_type") or "n/a"),
+        ]
+    )
+    st.caption(str(status_payload.get("evidence") or "No worker evidence."))
+
+
 def _show_universe_coverage(
     config: AppConfig,
     ops_health: Mapping[str, Any],
@@ -974,6 +999,13 @@ def _show_radar_run_summary(summary: Mapping[str, Any]) -> None:
         st.warning(
             f"{raw_skipped_count} raw skipped step(s) were not classified as expected "
             "gates. Inspect diagnostic telemetry before relying on the run."
+        )
+    step_status_rows = _radar_step_status_rows(summary)
+    if step_status_rows:
+        _show_records(
+            "Why Steps Did Not Run",
+            step_status_rows,
+            empty="No skipped or gated run steps.",
         )
     _show_radar_operator_sections(
         _radar_summary_operator_rows(summary),
@@ -1814,6 +1846,35 @@ def _radar_summary_raw_rows(summary: Mapping[str, Any]) -> list[dict[str, object
     return rows
 
 
+def _radar_step_status_rows(summary: Mapping[str, Any]) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for step in _records(summary.get("steps")):
+        name = str(step.get("step") or step.get("name") or "")
+        status = str(step.get("status") or "")
+        reason = str(step.get("reason") or "")
+        classification = classify_step_outcome(status, reason or None)
+        category = str(step.get("category") or classification.category)
+        if category == "completed":
+            continue
+        rows.append(
+            {
+                "Step": name,
+                "Stage": _radar_operator_stage(category),
+                "Status": step.get("label") or classification.label,
+                "Why": step.get("meaning")
+                or RADAR_SKIP_EXPLANATIONS.get(reason)
+                or reason
+                or "No reason recorded.",
+                "Unlock / Trigger": step.get("operator_action")
+                or classification.operator_action
+                or step.get("trigger_condition")
+                or classification.trigger_condition
+                or "Review telemetry for this step.",
+            }
+        )
+    return rows
+
+
 def _radar_operator_stage(category: object) -> str:
     value = str(category or "").strip()
     if value == "completed":
@@ -2159,6 +2220,7 @@ def _show_overview(
     _show_activation_summary(config, radar_run_summary, broker_summary)
     _show_live_activation_plan(config, radar_run_summary, broker_summary)
     _show_live_data_activation_contract(config, radar_run_summary, broker_summary)
+    _show_worker_status(engine)
     _show_telemetry_tape(ops_health)
     _show_universe_coverage(config, ops_health)
     _show_radar_run_controls(engine, config, radar_run_summary, radar_run_cooldown)

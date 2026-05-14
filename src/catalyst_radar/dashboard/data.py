@@ -61,6 +61,7 @@ from catalyst_radar.validation.reports import (
 )
 
 RADAR_RUN_COOLDOWN_LOCK_NAME = "manual_radar_run_cooldown"
+DAILY_WORKER_LOCK_NAME = "daily-run"
 
 ALERT_SUPPRESSION_EXPLANATIONS = {
     "duplicate_trigger": "A prior alert already covers the same trigger.",
@@ -2439,6 +2440,85 @@ def radar_run_cooldown_payload(
             f"lock={'active' if active else 'inactive'}; "
             f"expires_at={_iso_or_na(reset_at)}; "
             f"min_interval_seconds={min_interval_seconds}"
+        ),
+    }
+
+
+def worker_status_payload(
+    engine: Engine,
+    *,
+    now: datetime | None = None,
+) -> dict[str, object]:
+    resolved_now = _as_utc_datetime_or_none(now) or datetime.now(UTC)
+    step_names = set(DAILY_STEP_ORDER)
+    with engine.connect() as conn:
+        lock_row = conn.execute(
+            select(
+                job_locks.c.lock_name,
+                job_locks.c.owner,
+                job_locks.c.acquired_at,
+                job_locks.c.heartbeat_at,
+                job_locks.c.expires_at,
+                job_locks.c.metadata,
+            )
+            .where(job_locks.c.lock_name == DAILY_WORKER_LOCK_NAME)
+            .limit(1)
+        ).mappings().first()
+        latest_run = conn.execute(
+            select(
+                job_runs.c.job_type,
+                job_runs.c.status,
+                job_runs.c.started_at,
+                job_runs.c.finished_at,
+                job_runs.c.metadata,
+            )
+            .where(job_runs.c.job_type.in_(step_names))
+            .order_by(job_runs.c.started_at.desc(), job_runs.c.id.desc())
+            .limit(1)
+        ).mappings().first()
+
+    lock = _row_dict(lock_row) if lock_row is not None else {}
+    expires_at = _parse_utc_datetime(lock.get("expires_at"))
+    heartbeat_at = _parse_utc_datetime(lock.get("heartbeat_at"))
+    active = expires_at is not None and expires_at > resolved_now
+    run = _row_dict(latest_run) if latest_run is not None else {}
+    latest_started_at = _parse_utc_datetime(run.get("started_at"))
+    latest_finished_at = _parse_utc_datetime(run.get("finished_at"))
+    if active:
+        status = "running"
+        headline = "Daily worker lock is active."
+        next_action = "Let the current worker cycle finish before starting another one."
+    elif run:
+        status = "idle"
+        headline = "No daily worker lock is active, but radar job history exists."
+        next_action = (
+            "Start the one-shot smoke or daily worker loop after live inputs are configured."
+        )
+    else:
+        status = "not_seen"
+        headline = "No daily worker activity has been recorded yet."
+        next_action = "Use the worker handoff only after the live data contract is ready."
+    return {
+        "schema_version": "worker-status-v1",
+        "status": status,
+        "headline": headline,
+        "next_action": next_action,
+        "lock_name": DAILY_WORKER_LOCK_NAME,
+        "lock_active": active,
+        "lock_owner": lock.get("owner"),
+        "lock_acquired_at": _iso_or_none(_parse_utc_datetime(lock.get("acquired_at"))),
+        "lock_heartbeat_at": _iso_or_none(heartbeat_at),
+        "lock_expires_at": _iso_or_none(expires_at),
+        "latest_job_type": run.get("job_type"),
+        "latest_job_status": run.get("status"),
+        "latest_started_at": _iso_or_none(latest_started_at),
+        "latest_finished_at": _iso_or_none(latest_finished_at),
+        "evidence": (
+            f"lock={'active' if active else 'inactive'}; "
+            f"owner={lock.get('owner') or 'n/a'}; "
+            f"heartbeat_at={_iso_or_na(heartbeat_at)}; "
+            f"expires_at={_iso_or_na(expires_at)}; "
+            f"latest_job={run.get('job_type') or 'n/a'}"
         ),
     }
 
