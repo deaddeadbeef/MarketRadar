@@ -46,6 +46,7 @@ from catalyst_radar.dashboard.data import (
     opportunity_focus_payload,
     provider_preflight_payload,
     radar_discovery_snapshot_payload,
+    radar_run_cooldown_payload,
     readiness_checklist_payload,
     telemetry_tape_payload,
     universe_coverage_payload,
@@ -59,6 +60,7 @@ from catalyst_radar.storage.schema import (
     candidate_states,
     decision_cards,
     events,
+    job_locks,
     job_runs,
     paper_trades,
     provider_health,
@@ -473,6 +475,87 @@ def test_telemetry_tape_payload_handles_empty_telemetry() -> None:
 
     assert payload["status"] == "empty"
     assert payload["events"] == []
+
+
+def test_radar_run_cooldown_payload_reports_ready_without_active_lock(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    now = AVAILABLE_AT
+
+    payload = radar_run_cooldown_payload(
+        engine,
+        AppConfig(radar_run_min_interval_seconds=300),
+        now=now,
+    )
+
+    assert payload["status"] == "ready"
+    assert payload["allowed"] is True
+    assert payload["retry_after_seconds"] == 0
+    assert payload["reset_at"] is None
+    assert payload["min_interval_seconds"] == 300
+
+
+def test_radar_run_cooldown_payload_reports_active_lock(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    now = AVAILABLE_AT
+    reset_at = now + timedelta(seconds=125)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(job_locks).values(
+                lock_name="manual_radar_run_cooldown",
+                owner="api-radar-run-cooldown:test",
+                acquired_at=now - timedelta(seconds=10),
+                heartbeat_at=now - timedelta(seconds=10),
+                expires_at=reset_at,
+                metadata={"operation": "manual_radar_run"},
+            )
+        )
+
+    payload = radar_run_cooldown_payload(
+        engine,
+        AppConfig(radar_run_min_interval_seconds=300),
+        now=now,
+    )
+
+    assert payload["status"] == "cooldown"
+    assert payload["allowed"] is False
+    assert payload["retry_after_seconds"] == 125
+    assert payload["reset_at"] == reset_at.isoformat()
+    assert "lock=active" in str(payload["evidence"])
+
+
+def test_radar_run_cooldown_payload_ignores_expired_lock(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    now = AVAILABLE_AT
+    expired_at = now - timedelta(seconds=5)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(job_locks).values(
+                lock_name="manual_radar_run_cooldown",
+                owner="api-radar-run-cooldown:test",
+                acquired_at=now - timedelta(minutes=5),
+                heartbeat_at=now - timedelta(minutes=5),
+                expires_at=expired_at,
+                metadata={"operation": "manual_radar_run"},
+            )
+        )
+
+    payload = radar_run_cooldown_payload(
+        engine,
+        AppConfig(radar_run_min_interval_seconds=300),
+        now=now,
+    )
+
+    assert payload["status"] == "ready"
+    assert payload["allowed"] is True
+    assert payload["retry_after_seconds"] == 0
+    assert payload["reset_at"] == expired_at.isoformat()
+    assert "lock=inactive" in str(payload["evidence"])
 
 
 def test_universe_coverage_payload_warns_on_thin_sample_universe() -> None:

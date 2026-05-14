@@ -535,8 +535,12 @@ def _show_universe_coverage(
 def _show_radar_run_controls(
     config: AppConfig,
     radar_run_summary: Mapping[str, Any],
+    radar_run_cooldown: Mapping[str, Any],
 ) -> None:
     st.subheader("Radar Run")
+    cooldown = _mapping(radar_run_cooldown)
+    cooldown_allowed = bool(cooldown.get("allowed", True))
+    retry_after_seconds = int(_metric_number(cooldown.get("retry_after_seconds")))
     control_col, status_col = st.columns([1, 3])
     with control_col:
         run_llm_dry_run = st.checkbox(
@@ -590,8 +594,19 @@ def _show_radar_run_controls(
                     provider_text=provider_text,
                     universe_text=universe_text,
                 )
-        run_requested = st.button("Run Radar", key="run_radar_now", type="primary")
+        run_requested = st.button(
+            "Run Radar",
+            key="run_radar_now",
+            type="primary",
+            disabled=not cooldown_allowed,
+            help=(
+                "Manual run cooldown is active."
+                if not cooldown_allowed
+                else "Start one guarded daily radar pass."
+            ),
+        )
     with status_col:
+        _show_radar_run_cooldown(cooldown)
         if not run_requested:
             _show_radar_run_summary(radar_run_summary)
             return
@@ -618,6 +633,32 @@ def _show_radar_run_controls(
             _radar_run_operator_rows(daily_result),
             _radar_run_raw_rows(daily_result),
         )
+        if retry_after_seconds:
+            st.caption(f"Previous cooldown estimate was {retry_after_seconds} second(s).")
+
+
+def _show_radar_run_cooldown(cooldown: Mapping[str, Any]) -> None:
+    if not cooldown:
+        st.caption("Manual run cooldown status is unavailable.")
+        return
+    status = str(cooldown.get("status") or "unknown")
+    headline = str(cooldown.get("headline") or "Manual radar run cooldown")
+    detail = str(cooldown.get("detail") or "")
+    next_action = str(cooldown.get("next_action") or "n/a")
+    message = f"{headline} {detail} Next: {next_action}".strip()
+    if status == "cooldown":
+        st.warning(message)
+    else:
+        st.caption(message)
+    _show_status_badges(
+        [
+            ("Run Gate", "blocked" if status == "cooldown" else "ok"),
+            ("Min Interval", f"{int(_metric_number(cooldown.get('min_interval_seconds')))}s"),
+            ("Retry After", f"{int(_metric_number(cooldown.get('retry_after_seconds')))}s"),
+            ("Reset At", cooldown.get("reset_at") or "n/a"),
+        ]
+    )
+    st.caption(str(cooldown.get("evidence") or "No cooldown evidence."))
 
 
 def _show_radar_run_summary(summary: Mapping[str, Any]) -> None:
@@ -1166,6 +1207,7 @@ def _show_overview(
     *,
     config: AppConfig,
     radar_run_summary: Mapping[str, Any],
+    radar_run_cooldown: Mapping[str, Any],
     discovery_snapshot: Mapping[str, Any],
     candidate_rows: list[dict[str, object]],
     alert_rows: list[dict[str, object]],
@@ -1200,7 +1242,7 @@ def _show_overview(
     _show_live_activation_plan(config, radar_run_summary, broker_summary)
     _show_telemetry_tape(ops_health)
     _show_universe_coverage(config, ops_health)
-    _show_radar_run_controls(config, radar_run_summary)
+    _show_radar_run_controls(config, radar_run_summary, radar_run_cooldown)
     _show_discovery_snapshot(discovery_snapshot)
     _show_actionability_breakdown(candidate_rows)
     _show_records(
@@ -2192,6 +2234,9 @@ engine = engine_from_url(config.database_url)
 create_schema(engine)
 
 radar_run_summary = _mapping(dashboard_data.load_radar_run_summary(engine))
+radar_run_cooldown = _mapping(
+    dashboard_data.radar_run_cooldown_payload(engine, config)
+)
 latest_run_cutoff = _radar_summary_cutoff(radar_run_summary)
 default_candidate_rows = dashboard_data.load_candidate_rows(
     engine,
@@ -2275,6 +2320,7 @@ with tabs[0]:
     _show_overview(
         config=config,
         radar_run_summary=radar_run_summary,
+        radar_run_cooldown=radar_run_cooldown,
         discovery_snapshot=discovery_snapshot,
         candidate_rows=candidate_rows,
         alert_rows=alert_rows,
