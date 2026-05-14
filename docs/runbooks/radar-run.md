@@ -50,6 +50,16 @@ OpenAI. It reviews Warning, ThesisWeakening, and manual-review candidate packets
 it no longer waits for Decision Cards, because those are later buy-review
 artifacts.
 
+For worker automation, use the same plan-first flow:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/run-worker-once.ps1
+```
+
+This command reads local API state and the run call plan only. It starts no
+worker and makes zero external calls unless you rerun it with `-Execute`. The
+script forces daily worker LLM review off and keeps alerts in dry-run mode.
+
 The dashboard **Recent Radar Telemetry** tape is a compact view of append-only
 telemetry audit events. Use it to confirm whether a dashboard/API action was
 requested, completed, rejected, blocked by a lock, or rate limited before

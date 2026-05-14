@@ -63,6 +63,7 @@ call plan:
 powershell -ExecutionPolicy Bypass -File scripts/prepare-live-env.ps1
 powershell -ExecutionPolicy Bypass -File scripts/check-live-activation.ps1
 powershell -ExecutionPolicy Bypass -File scripts/run-first-live-smoke.ps1
+powershell -ExecutionPolicy Bypass -File scripts/run-worker-once.ps1
 curl.exe --insecure --fail --silent --show-error --request POST https://127.0.0.1:8443/api/radar/runs/call-plan --header "Content-Type: application/json" --data '{}'
 ```
 
@@ -75,6 +76,9 @@ print secrets, and still requires you to fill `CATALYST_POLYGON_API_KEY` and
 API readiness and call-plan state, makes 0 external calls, and requires
 `-Execute` before seeding one Polygon universe page and running one capped radar
 cycle.
+`scripts/run-worker-once.ps1` does the same for worker automation: plan-only by
+default, `-Execute` required, no Schwab calls, and OpenAI disabled for the daily
+worker path.
 
 Schwab broker integration is read-only. Configure the Schwab app credentials,
 callback URL, and `BROKER_TOKEN_ENCRYPTION_KEY` in `.env.local`, then use the
@@ -112,12 +116,15 @@ provider calls:
 powershell -ExecutionPolicy Bypass -File scripts/prepare-live-env.ps1
 powershell -ExecutionPolicy Bypass -File scripts/check-live-activation.ps1
 powershell -ExecutionPolicy Bypass -File scripts/run-first-live-smoke.ps1
+powershell -ExecutionPolicy Bypass -File scripts/run-worker-once.ps1
 ```
 
 The preparation script writes local defaults only. The activation checker reads
 the local API activation contract only. The first-live-smoke script also makes
 0 external calls unless `-Execute` is supplied. Together they print the missing
-values plus the safe next commands before any provider request can happen.
+values plus the safe next commands before any provider request can happen. The
+worker script uses the same plan-first contract before starting a one-shot
+worker cycle.
 
 ## Phase 1 rule
 

@@ -28,6 +28,7 @@ def test_readme_mentions_restart_script_for_local_dashboard() -> None:
     assert "scripts/restart-local.ps1" in readme
     assert "scripts/check-live-activation.ps1" in readme
     assert "scripts/run-first-live-smoke.ps1" in readme
+    assert "scripts/run-worker-once.ps1" in readme
     assert "scripts/market-radar-status.ps1" in readme
     assert "-Execute" in readme
     assert "CATALYST_DAILY_MARKET_PROVIDER=polygon" in readme
@@ -75,6 +76,25 @@ def test_run_first_live_smoke_requires_explicit_execute_for_provider_calls() -> 
     assert "External calls made: 0" in text
     assert "Re-run with -Execute" in text
     assert "Schwab and OpenAI are not called" in text
+
+
+def test_run_worker_once_requires_explicit_execute_for_worker_cycle() -> None:
+    script = Path("scripts/run-worker-once.ps1")
+    text = script.read_text(encoding="utf-8")
+
+    assert script.is_file()
+    assert "[switch]$Execute" in text
+    assert "/api/radar/live-activation" in text
+    assert "/api/radar/runs/call-plan" in text
+    assert "Plan only: no provider calls were made and the worker was not started." in text
+    assert "CATALYST_WORKER_INTERVAL_SECONDS" in text
+    assert "CATALYST_RUN_LLM" in text
+    assert "false" in text
+    assert "python -m apps.worker.main" in text
+    assert "External calls made: 0" in text
+    assert "SCHWAB_CLIENT_SECRET=" not in text
+    assert "OPENAI_API_KEY=" not in text
+    assert "CATALYST_POLYGON_API_KEY=" not in text
 
 
 def test_market_radar_status_script_is_zero_external_call_sitrep() -> None:
