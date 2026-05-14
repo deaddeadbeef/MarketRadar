@@ -2519,6 +2519,12 @@ def _show_overview(
             selected_candidate=selected_candidate,
             dashboard_role=dashboard_role,
         )
+        _show_candidate_agent_review_action(
+            config=config,
+            selected_candidate=selected_candidate,
+            radar_run_summary=radar_run_summary,
+            dashboard_role=dashboard_role,
+        )
         _show_records(
             "Saved Candidate Actions",
             _latest_opportunity_action_rows(
@@ -2647,6 +2653,90 @@ def _show_candidate_schwab_context_refresh(
             st.rerun()
         except RuntimeError as exc:
             st.error(str(exc))
+
+
+def _show_candidate_agent_review_action(
+    *,
+    config: AppConfig,
+    selected_candidate: Mapping[str, object],
+    radar_run_summary: Mapping[str, Any],
+    dashboard_role: Role,
+) -> None:
+    st.subheader("Agent Review Action")
+    review_message = st.session_state.pop("candidate_agent_review_message", None)
+    if review_message:
+        st.info(str(review_message))
+    if not role_allows(dashboard_role, Role.ANALYST):
+        st.caption("Analyst role required to request candidate agent review.")
+        return
+
+    ticker = str(selected_candidate.get("ticker") or "").strip().upper()
+    as_of = _candidate_review_as_of(selected_candidate)
+    available_at = _radar_summary_cutoff(radar_run_summary) or _parse_candidate_datetime(
+        selected_candidate.get("candidate_packet_available_at")
+    )
+    st.caption(
+        "Runs a budget-ledger dry run for this candidate. The default action makes no "
+        "OpenAI call."
+    )
+    disabled = not ticker or as_of is None or available_at is None
+    if st.button(
+        "Run Agent Review Dry Run",
+        key=f"agent_review_dry_run_{ticker or 'none'}",
+        disabled=disabled,
+        help=(
+            "Records the agent-review route, budget estimate, and audit telemetry "
+            "without a model call."
+        ),
+    ):
+        try:
+            result = _mapping(
+                _api_post(
+                    config,
+                    "/api/agents/review",
+                    {
+                        "ticker": ticker,
+                        "as_of": as_of.isoformat() if as_of is not None else None,
+                        "available_at": (
+                            available_at.isoformat()
+                            if available_at is not None
+                            else None
+                        ),
+                        "task": "skeptic_review",
+                        "mode": "dry_run",
+                    },
+                )
+            )
+        except RuntimeError as exc:
+            st.error(str(exc))
+            return
+        ledger = _mapping(result.get("ledger"))
+        route = _mapping(result.get("route"))
+        reason = _first_present(ledger.get("skip_reason"), route.get("reason"), "n/a")
+        st.session_state["candidate_agent_review_message"] = (
+            f"Agent review {result.get('status')}; reason={reason}; "
+            f"ledger={ledger.get('id') or 'n/a'}."
+        )
+        st.rerun()
+
+
+def _candidate_review_as_of(candidate: Mapping[str, object]) -> date | None:
+    value = candidate.get("as_of")
+    if value in (None, ""):
+        return None
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except ValueError:
+        return None
+
+
+def _parse_candidate_datetime(value: object) -> datetime | None:
+    if value in (None, ""):
+        return None
+    try:
+        return _parse_cutoff(str(value))
+    except ValueError:
+        return None
 
 
 def _show_ticker_layer(engine, ticker: str, cutoff: datetime | None) -> None:

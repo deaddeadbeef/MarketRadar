@@ -244,6 +244,28 @@ def test_dashboard_overview_surfaces_latest_run_path_before_usefulness() -> None
     assert "not scan failures" in pulse_source
 
 
+def test_dashboard_selected_candidate_has_agent_review_dry_run_action() -> None:
+    source = Path("apps/dashboard/Home.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    functions = {
+        node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)
+    }
+    overview_source = ast.get_source_segment(source, functions["_show_overview"])
+    action_source = ast.get_source_segment(
+        source,
+        functions["_show_candidate_agent_review_action"],
+    )
+
+    assert overview_source is not None
+    assert action_source is not None
+    assert "_show_candidate_agent_review_action(" in overview_source
+    assert "Agent Review Action" in action_source
+    assert "Run Agent Review Dry Run" in action_source
+    assert "/api/agents/review" in action_source
+    assert '"mode": "dry_run"' in action_source
+    assert "OpenAI call" in action_source
+
+
 def test_dashboard_wires_operator_work_queue_before_activation_sections() -> None:
     source = Path("apps/dashboard/Home.py").read_text(encoding="utf-8")
     tree = ast.parse(source)

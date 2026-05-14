@@ -57,6 +57,12 @@ Dry-run review:
 python -m catalyst_radar.cli run-llm-review --ticker MSFT --as-of 2026-05-09 --available-at 2026-05-10T01:00:00+00:00 --task skeptic_review --dry-run --json
 ```
 
+Dashboard/API dry-run review:
+
+```powershell
+curl.exe --insecure --fail --silent --show-error --request POST https://127.0.0.1:8443/api/agents/review --header "Content-Type: application/json" --data '{"ticker":"MSFT","as_of":"2026-05-09","available_at":"2026-05-10T01:00:00+00:00","task":"skeptic_review","mode":"dry_run"}'
+```
+
 Fake-provider smoke:
 
 ```powershell

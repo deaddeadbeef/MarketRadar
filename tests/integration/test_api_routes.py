@@ -19,6 +19,7 @@ from catalyst_radar.storage.db import create_schema, engine_from_url
 from catalyst_radar.storage.schema import (
     alerts,
     audit_events,
+    budget_ledger,
     candidate_packets,
     candidate_states,
     decision_cards,
@@ -123,6 +124,82 @@ def test_viewer_can_read_but_cannot_post_feedback(tmp_path, monkeypatch) -> None
     assert write_response.status_code == 403
     assert write_response.json() == {"detail": "insufficient role"}
     assert analyst_write_response.status_code == 200
+
+
+def test_post_agent_review_dry_run_logs_budget_and_audit(tmp_path, monkeypatch) -> None:
+    database_url = _database_url(tmp_path, "agent-review.db")
+    _configure_fake_safe_llm(monkeypatch, database_url)
+    engine = _create_database(database_url)
+    _insert_candidate(engine)
+
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/agents/review",
+        json={
+            "ticker": "MSFT",
+            "as_of": AS_OF.date().isoformat(),
+            "available_at": AVAILABLE_AT.isoformat(),
+            "task": "mid_review",
+            "mode": "dry_run",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "dry_run"
+    assert payload["mode"] == "dry_run"
+    assert payload["ticker"] == "MSFT"
+    assert payload["candidate_packet_id"] == "packet-MSFT"
+    assert payload["ledger"]["status"] == "dry_run"
+    assert payload["ledger"]["candidate_packet_id"] == "packet-MSFT"
+    with engine.connect() as conn:
+        rows = [dict(row._mapping) for row in conn.execute(select(budget_ledger))]
+    assert [(row["status"], row["candidate_packet_id"]) for row in rows] == [
+        ("dry_run", "packet-MSFT")
+    ]
+    events = AuditLogRepository(engine).list_events(event_type="model_call_recorded")
+    assert len(events) == 1
+    assert events[0].ticker == "MSFT"
+    assert events[0].candidate_packet_id == "packet-MSFT"
+    assert events[0].status == "dry_run"
+
+
+def test_post_agent_review_requires_analyst_when_auth_enabled(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "agent-review-auth.db")
+    _configure_fake_safe_llm(monkeypatch, database_url)
+    engine = _create_database(database_url)
+    _insert_candidate(engine)
+    monkeypatch.setenv("CATALYST_API_AUTH_MODE", "header")
+
+    client = TestClient(create_app())
+
+    viewer_response = client.post(
+        "/api/agents/review",
+        headers={"X-Catalyst-Role": "viewer"},
+        json={
+            "ticker": "MSFT",
+            "as_of": AS_OF.date().isoformat(),
+            "available_at": AVAILABLE_AT.isoformat(),
+        },
+    )
+    analyst_response = client.post(
+        "/api/agents/review",
+        headers={"X-Catalyst-Role": "analyst"},
+        json={
+            "ticker": "MSFT",
+            "as_of": AS_OF.date().isoformat(),
+            "available_at": AVAILABLE_AT.isoformat(),
+            "task": "mid_review",
+            "mode": "dry_run",
+        },
+    )
+
+    assert viewer_response.status_code == 403
+    assert analyst_response.status_code == 200
 
 
 def test_post_radar_run_builds_scheduler_config(tmp_path, monkeypatch) -> None:
@@ -1380,6 +1457,21 @@ def _create_database(database_url: str):
     return engine
 
 
+def _configure_fake_safe_llm(monkeypatch, database_url: str) -> None:
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("CATALYST_ENABLE_PREMIUM_LLM", "true")
+    monkeypatch.setenv("CATALYST_LLM_PROVIDER", "fake")
+    monkeypatch.setenv("CATALYST_LLM_EVIDENCE_MODEL", "fake")
+    monkeypatch.setenv("CATALYST_LLM_SKEPTIC_MODEL", "fake")
+    monkeypatch.setenv("CATALYST_LLM_DECISION_CARD_MODEL", "fake")
+    monkeypatch.setenv("CATALYST_LLM_INPUT_COST_PER_1M", "0")
+    monkeypatch.setenv("CATALYST_LLM_CACHED_INPUT_COST_PER_1M", "0")
+    monkeypatch.setenv("CATALYST_LLM_OUTPUT_COST_PER_1M", "0")
+    monkeypatch.setenv("CATALYST_LLM_PRICING_UPDATED_AT", "2026-05-10")
+    monkeypatch.setenv("CATALYST_LLM_DAILY_BUDGET_USD", "1")
+    monkeypatch.setenv("CATALYST_LLM_MONTHLY_BUDGET_USD", "10")
+
+
 def _audit_event_rows(engine) -> list[dict[str, object]]:
     with engine.connect() as conn:
         return [
@@ -1456,8 +1548,34 @@ def _insert_candidate(engine) -> None:
                 source_ts=SOURCE_TS,
                 available_at=AVAILABLE_AT,
                 payload={
-                    "supporting_evidence": [],
-                    "disconfirming_evidence": [],
+                    "supporting_evidence": [
+                        {
+                            "kind": "news",
+                            "title": "MSFT evidence update",
+                            "summary": "MSFT reported a material product catalyst.",
+                            "polarity": "supporting",
+                            "strength": 0.81,
+                            "source_id": "event-msft",
+                            "source_quality": 0.9,
+                            "source_ts": SOURCE_TS.isoformat(),
+                            "available_at": AVAILABLE_AT.isoformat(),
+                        }
+                    ],
+                    "disconfirming_evidence": [
+                        {
+                            "kind": "risk",
+                            "title": "MSFT valuation risk",
+                            "summary": "Valuation remains extended versus recent growth.",
+                            "polarity": "disconfirming",
+                            "strength": 0.42,
+                            "computed_feature_id": "risk-msft",
+                            "source_quality": 0.7,
+                            "source_ts": SOURCE_TS.isoformat(),
+                            "available_at": AVAILABLE_AT.isoformat(),
+                        }
+                    ],
+                    "conflicts": [],
+                    "hard_blocks": [],
                     "trade_plan": {
                         "entry_zone": [100.0, 104.0],
                         "invalidation_price": 94.0,
