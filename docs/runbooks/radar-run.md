@@ -52,6 +52,13 @@ not ready for investment work. It buckets candidates into buy-review, research,
 watchlist, blocked/risk-review, and monitor groups, then lists the dominant
 risks or gaps plus the next action for each top candidate.
 
+The dashboard **Investment Decision Readiness** gate is the operator truth for
+whether the visible queue can support a real manual buy review. Fixture data,
+missing live sources, thin universes, stale bars, blocked run steps, missing
+candidate packets, or missing Decision Cards force `research_only` even when
+demo candidates have high scores. Treat the queue as decision-ready only when
+that gate says `manual_buy_review`.
+
 ## Market Data Provider
 
 By default, local runs use fixture CSV market data:

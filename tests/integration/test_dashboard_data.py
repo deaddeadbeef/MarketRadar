@@ -31,6 +31,7 @@ from catalyst_radar.dashboard.data import (
     actionability_breakdown_payload,
     activation_summary_payload,
     data_source_coverage_payload,
+    investment_readiness_payload,
     live_activation_plan_payload,
     load_alert_detail,
     load_alert_rows,
@@ -211,6 +212,156 @@ def test_actionability_breakdown_payload_flags_buy_review_ready() -> None:
     assert payload["status"] == "ready"
     assert payload["counts"] == [{"bucket": "Buy-review ready", "count": 1}]
     assert "ready for manual buy review" in str(payload["headline"])
+
+
+def test_investment_readiness_payload_blocks_fixture_candidates() -> None:
+    actionability = actionability_breakdown_payload(
+        [
+            {
+                "ticker": "MSFT",
+                "state": ActionState.ELIGIBLE_FOR_MANUAL_BUY_REVIEW.value,
+                "final_score": 96.0,
+                "decision_card_id": "card-msft",
+            }
+        ]
+    )
+    readiness = investment_readiness_payload(
+        {
+            "status": "fixture",
+            "source_modes": {"market": "fixture", "events": "fixture"},
+            "freshness": {"latest_bars_older_than_as_of": False},
+            "yield": {"candidate_packets": 1, "decision_cards": 1},
+            "blockers": [
+                {
+                    "code": "fixture_market_data",
+                    "finding": "Market data is still fixture-backed.",
+                    "next_action": "Configure Polygon before relying on broad US-market discovery.",
+                }
+            ],
+        },
+        actionability,
+        [
+            {
+                "ticker": "MSFT",
+                "state": ActionState.ELIGIBLE_FOR_MANUAL_BUY_REVIEW.value,
+                "decision_card_id": "card-msft",
+            }
+        ],
+    )
+
+    assert readiness["status"] == "research_only"
+    assert readiness["decision_mode"] == "research_only"
+    assert readiness["manual_buy_review_ready"] is False
+    assert "research-only" in str(readiness["headline"])
+    assert "fixture_market_data" in str(readiness["evidence"])
+    assert readiness["next_action"] == (
+        "Configure Polygon before relying on broad US-market discovery."
+    )
+
+
+def test_investment_readiness_payload_allows_live_buy_review() -> None:
+    actionability = actionability_breakdown_payload(
+        [
+            {
+                "ticker": "MSFT",
+                "state": ActionState.ELIGIBLE_FOR_MANUAL_BUY_REVIEW.value,
+                "final_score": 96.0,
+                "decision_card_id": "card-msft",
+            }
+        ]
+    )
+    readiness = investment_readiness_payload(
+        {
+            "status": "ready",
+            "source_modes": {"market": "live", "events": "live"},
+            "freshness": {"latest_bars_older_than_as_of": False},
+            "yield": {"candidate_packets": 1, "decision_cards": 1},
+            "blockers": [],
+        },
+        actionability,
+        [
+            {
+                "ticker": "MSFT",
+                "state": ActionState.ELIGIBLE_FOR_MANUAL_BUY_REVIEW.value,
+                "decision_card_id": "card-msft",
+            }
+        ],
+    )
+
+    assert readiness["status"] == "ready"
+    assert readiness["decision_mode"] == "manual_buy_review"
+    assert readiness["manual_buy_review_ready"] is True
+    assert "1 candidate" in str(readiness["headline"])
+
+
+def test_investment_readiness_payload_requires_buy_review_card() -> None:
+    actionability = actionability_breakdown_payload(
+        [
+            {
+                "ticker": "MSFT",
+                "state": ActionState.ELIGIBLE_FOR_MANUAL_BUY_REVIEW.value,
+                "final_score": 96.0,
+                "decision_card_id": "",
+            }
+        ]
+    )
+    readiness = investment_readiness_payload(
+        {
+            "status": "ready",
+            "source_modes": {"market": "live", "events": "live"},
+            "freshness": {"latest_bars_older_than_as_of": False},
+            "yield": {"candidate_packets": 1, "decision_cards": 1},
+            "blockers": [],
+        },
+        actionability,
+        [
+            {
+                "ticker": "MSFT",
+                "state": ActionState.ELIGIBLE_FOR_MANUAL_BUY_REVIEW.value,
+                "decision_card_id": "",
+            }
+        ],
+    )
+
+    assert readiness["status"] == "research_only"
+    assert readiness["decision_mode"] == "research_only"
+    assert readiness["manual_buy_review_ready"] is False
+    assert "missing Decision Cards" in str(readiness["headline"])
+
+
+def test_investment_readiness_payload_keeps_live_research_out_of_buy_review() -> None:
+    actionability = actionability_breakdown_payload(
+        [
+            {
+                "ticker": "MSFT",
+                "state": ActionState.WARNING.value,
+                "final_score": 88.0,
+                "decision_card_id": "",
+            }
+        ]
+    )
+    readiness = investment_readiness_payload(
+        {
+            "status": "ready",
+            "source_modes": {"market": "live", "events": "live"},
+            "freshness": {"latest_bars_older_than_as_of": False},
+            "yield": {"candidate_packets": 1, "decision_cards": 0},
+            "blockers": [],
+        },
+        actionability,
+        [
+            {
+                "ticker": "MSFT",
+                "state": ActionState.WARNING.value,
+                "decision_card_id": "",
+            }
+        ],
+    )
+
+    assert readiness["status"] == "research_only"
+    assert readiness["decision_mode"] == "research_only"
+    assert readiness["manual_buy_review_ready"] is False
+    assert "need research" in str(readiness["headline"])
 
 
 def test_data_source_coverage_payload_marks_fixture_and_read_only_modes() -> None:
