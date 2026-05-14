@@ -28,6 +28,7 @@ def test_readme_mentions_restart_script_for_local_dashboard() -> None:
     assert "scripts/restart-local.ps1" in readme
     assert "scripts/check-live-activation.ps1" in readme
     assert "scripts/run-first-live-smoke.ps1" in readme
+    assert "scripts/market-radar-status.ps1" in readme
     assert "-Execute" in readme
     assert "CATALYST_DAILY_MARKET_PROVIDER=polygon" in readme
     assert "CATALYST_DAILY_PROVIDER=polygon" in readme
@@ -74,6 +75,22 @@ def test_run_first_live_smoke_requires_explicit_execute_for_provider_calls() -> 
     assert "External calls made: 0" in text
     assert "Re-run with -Execute" in text
     assert "Schwab and OpenAI are not called" in text
+
+
+def test_market_radar_status_script_is_zero_external_call_sitrep() -> None:
+    script = Path("scripts/market-radar-status.ps1")
+    text = script.read_text(encoding="utf-8")
+
+    assert script.is_file()
+    assert "/api/health" in text
+    assert "/api/radar/readiness" in text
+    assert "/api/radar/runs/latest" in text
+    assert "/api/radar/live-activation" in text
+    assert "/api/ops/telemetry?limit=" in text
+    assert "External calls made: 0" in text
+    assert "CATALYST_POLYGON_API_KEY=" not in text
+    assert "OPENAI_API_KEY=" not in text
+    assert "SCHWAB_CLIENT_SECRET=" not in text
 
 
 def test_check_live_activation_script_is_zero_external_call_status_check() -> None:

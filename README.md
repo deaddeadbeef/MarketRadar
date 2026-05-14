@@ -96,6 +96,15 @@ dashboard at `http://127.0.0.1:8514`, loading `.env.local` through the app
 startup path. Docker Compose runs the same command-center entry point at
 `http://localhost:8501`.
 
+For a zero-call local sitrep:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/market-radar-status.ps1
+```
+
+This reads local API health, readiness, latest run, live activation, and recent
+telemetry. It makes 0 Polygon, SEC, Schwab, or OpenAI calls.
+
 After editing `.env.local`, run the activation checker before making live
 provider calls:
 

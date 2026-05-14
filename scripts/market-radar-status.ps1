@@ -1,0 +1,96 @@
+param(
+    [string]$ApiHost = "127.0.0.1",
+    [int]$ApiPort = 8443,
+    [int]$TelemetryLimit = 3,
+    [switch]$Json
+)
+
+$ErrorActionPreference = "Stop"
+$baseUrl = "https://$ApiHost`:$ApiPort"
+
+function Invoke-ApiJson {
+    param(
+        [string]$Path
+    )
+
+    $response = & curl.exe `
+        --insecure `
+        --silent `
+        --show-error `
+        --fail `
+        --max-time 15 `
+        "$baseUrl$Path"
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not read local API status from $baseUrl$Path. Start services with scripts\restart-local.ps1."
+    }
+    try {
+        return $response | ConvertFrom-Json
+    }
+    catch {
+        throw "Local API returned invalid JSON for $Path."
+    }
+}
+
+$health = Invoke-ApiJson -Path "/api/health"
+$readiness = Invoke-ApiJson -Path "/api/radar/readiness"
+$latestRun = Invoke-ApiJson -Path "/api/radar/runs/latest"
+$activation = Invoke-ApiJson -Path "/api/radar/live-activation"
+$telemetry = Invoke-ApiJson -Path ("/api/ops/telemetry?limit={0}" -f [Math]::Max(1, $TelemetryLimit))
+
+$payload = [ordered]@{
+    health = $health
+    readiness = $readiness
+    latest_run = $latestRun
+    live_activation = $activation
+    telemetry = $telemetry
+    external_calls_made = 0
+}
+
+if ($Json) {
+    $payload | ConvertTo-Json -Depth 12
+    return
+}
+
+$build = $health.build
+Write-Output "Market Radar local status"
+Write-Output ("API: {0}; build={1}; version={2}" -f $health.status, $build.commit, $build.version)
+Write-Output (
+    "Readiness: {0}; investable={1}; next={2}" -f
+    $readiness.status,
+    $readiness.safe_to_make_investment_decision,
+    $readiness.next_action
+)
+Write-Output (
+    "Latest run: {0}; required={1}/{2}; action_needed={3}; optional_gates={4}; raw_skips={5}" -f
+    $latestRun.status,
+    $latestRun.required_completed_count,
+    $latestRun.required_step_count,
+    $latestRun.action_needed_count,
+    $latestRun.optional_expected_gate_count,
+    $latestRun.status_counts.skipped
+)
+Write-Output (
+    "Live activation: {0}; missing={1}" -f
+    $activation.status,
+    @($activation.missing_env).Count
+)
+if (@($activation.missing_env).Count -gt 0) {
+    foreach ($item in @($activation.missing_env)) {
+        Write-Output ("- missing: {0}" -f $item)
+    }
+}
+Write-Output (
+    "Telemetry: {0}; events={1}; latest={2}" -f
+    $telemetry.status,
+    $telemetry.event_count,
+    $telemetry.latest_event_at
+)
+foreach ($event in @($telemetry.events)) {
+    Write-Output (
+        "- {0}: {1}; {2}" -f
+        $event.occurred_at,
+        $event.event,
+        $event.status
+    )
+}
+Write-Output "External calls made: 0"
