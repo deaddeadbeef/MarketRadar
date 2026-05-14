@@ -213,6 +213,21 @@ def opportunity_focus_payload(
     return rows
 
 
+def candidate_decision_labels_payload(
+    candidate_rows: Sequence[Mapping[str, object]],
+    investment_readiness: Mapping[str, object] | None = None,
+) -> list[dict[str, object]]:
+    readiness = investment_readiness if isinstance(investment_readiness, Mapping) else {}
+    return [
+        {
+            **_row_dict(candidate),
+            **_candidate_decision_label(candidate, readiness),
+        }
+        for candidate in candidate_rows
+        if isinstance(candidate, Mapping)
+    ]
+
+
 def actionability_breakdown_payload(
     candidate_rows: Sequence[Mapping[str, object]],
     *,
@@ -2416,6 +2431,54 @@ def _actionability_bucket(state: str) -> str:
     }:
         return "Blocked or risk review"
     return "Monitor"
+
+
+def _candidate_decision_label(
+    candidate: Mapping[str, object],
+    readiness: Mapping[str, object],
+) -> dict[str, object]:
+    decision_mode = str(readiness.get("decision_mode") or "unknown")
+    state = str(candidate.get("state") or "")
+    has_card = bool(str(candidate.get("decision_card_id") or "").strip())
+    if decision_mode == "manual_buy_review":
+        if state == ActionState.ELIGIBLE_FOR_MANUAL_BUY_REVIEW.value and has_card:
+            return {
+                "decision_status": "manual_buy_review",
+                "decision_next_step": "Review card, exposure, and hard blocks.",
+            }
+        return {
+            "decision_status": "research_only",
+            "decision_next_step": "Not in manual buy-review state.",
+        }
+    if decision_mode == "research_only":
+        if state == ActionState.BLOCKED.value:
+            return {
+                "decision_status": "blocked",
+                "decision_next_step": "Clear hard blocks before escalation.",
+            }
+        if state == ActionState.ELIGIBLE_FOR_MANUAL_BUY_REVIEW.value and not has_card:
+            return {
+                "decision_status": "missing_card",
+                "decision_next_step": "Build a Decision Card first.",
+            }
+        return {
+            "decision_status": "research_only",
+            "decision_next_step": str(
+                readiness.get("next_action")
+                or "Use this row for research only until readiness clears."
+            ),
+        }
+    if decision_mode == "monitor":
+        return {
+            "decision_status": "monitor",
+            "decision_next_step": "Wait for stronger evidence or a fresher catalyst.",
+        }
+    return {
+        "decision_status": "not_ready",
+        "decision_next_step": str(
+            readiness.get("next_action") or "Complete live readiness first."
+        ),
+    }
 
 
 def _actionability_status(
