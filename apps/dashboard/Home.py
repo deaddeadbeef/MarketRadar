@@ -459,6 +459,24 @@ def _show_live_activation_plan(
         )
 
 
+def _show_telemetry_tape(ops_health: Mapping[str, Any]) -> None:
+    tape = _mapping(dashboard_data.telemetry_tape_payload(ops_health))
+    status = str(tape.get("status") or "unknown")
+    latest = tape.get("latest_event_at") or "n/a"
+    event_count = int(_metric_number(tape.get("event_count")))
+    if status == "attention":
+        st.warning(f"Telemetry tape: {event_count} recent event(s); latest {latest}.")
+    elif status == "ready":
+        st.info(f"Telemetry tape: {event_count} recent event(s); latest {latest}.")
+    else:
+        st.caption("Telemetry tape: no recent telemetry events.")
+    _show_records(
+        "Recent Radar Telemetry",
+        tape.get("events"),
+        empty="No recent radar telemetry.",
+    )
+
+
 def _show_universe_coverage(
     config: AppConfig,
     ops_health: Mapping[str, Any],
@@ -1147,6 +1165,7 @@ def _show_overview(
 
     _show_activation_summary(config, radar_run_summary, broker_summary)
     _show_live_activation_plan(config, radar_run_summary, broker_summary)
+    _show_telemetry_tape(ops_health)
     _show_universe_coverage(config, ops_health)
     _show_radar_run_controls(config, radar_run_summary)
     _show_discovery_snapshot(discovery_snapshot)
