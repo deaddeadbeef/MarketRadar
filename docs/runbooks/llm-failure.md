@@ -16,7 +16,7 @@ LLM review jobs fail, skip unexpectedly, exceed budget, or produce degraded stat
 Inspect ops health and budget status:
 
 ```powershell
-Invoke-RestMethod http://localhost:8000/api/ops/health | ConvertTo-Json -Depth 8
+curl.exe --insecure --fail --silent --show-error --request GET https://127.0.0.1:8443/api/ops/health
 python -m catalyst_radar.cli llm-budget-status --json
 ```
 

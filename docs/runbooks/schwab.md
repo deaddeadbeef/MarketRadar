@@ -43,7 +43,7 @@ If credentials are missing, the connect and callback routes return a clear
 After OAuth succeeds, trigger:
 
 ```powershell
-Invoke-RestMethod -Method Post http://127.0.0.1:8000/api/brokers/schwab/sync
+curl.exe --insecure --fail --silent --show-error --request POST https://127.0.0.1:8443/api/brokers/schwab/sync
 ```
 
 The sync pulls account metadata, balances, positions, and open orders. It stores
@@ -60,15 +60,13 @@ To refresh Schwab quote, price-history, and option-chain context for one or more
 tickers:
 
 ```powershell
-Invoke-RestMethod -Method Post http://127.0.0.1:8000/api/brokers/schwab/market-sync `
-  -ContentType application/json `
-  -Body '{"tickers":["GLW"],"include_history":true,"include_options":true}'
+curl.exe --insecure --fail --silent --show-error --request POST https://127.0.0.1:8443/api/brokers/schwab/market-sync --header "Content-Type: application/json" --data '{"tickers":["GLW"],"include_history":true,"include_options":true}'
 ```
 
 Stored market snapshots are available at:
 
 ```powershell
-Invoke-RestMethod http://127.0.0.1:8000/api/market/context
+curl.exe --insecure --fail --silent --show-error --request GET https://127.0.0.1:8443/api/market/context
 ```
 
 Market-context refresh is guarded by `SCHWAB_MARKET_SYNC_MIN_INTERVAL_SECONDS`
@@ -114,9 +112,7 @@ buttons fail visibly without changing stored data.
 Opportunity actions:
 
 ```powershell
-Invoke-RestMethod -Method Post http://127.0.0.1:8000/api/opportunities/actions `
-  -ContentType application/json `
-  -Body '{"ticker":"GLW","action":"watch","thesis":"early volume expansion"}'
+curl.exe --insecure --fail --silent --show-error --request POST https://127.0.0.1:8443/api/opportunities/actions --header "Content-Type: application/json" --data '{"ticker":"GLW","action":"watch","thesis":"early volume expansion"}'
 ```
 
 The Overview tab also exposes the same opportunity-action storage on the
@@ -128,21 +124,15 @@ not call Schwab and does not submit orders.
 Triggers:
 
 ```powershell
-Invoke-RestMethod -Method Post http://127.0.0.1:8000/api/market/triggers `
-  -ContentType application/json `
-  -Body '{"ticker":"GLW","trigger_type":"price_above","operator":"gte","threshold":95}'
+curl.exe --insecure --fail --silent --show-error --request POST https://127.0.0.1:8443/api/market/triggers --header "Content-Type: application/json" --data '{"ticker":"GLW","trigger_type":"price_above","operator":"gte","threshold":95}'
 
-Invoke-RestMethod -Method Post http://127.0.0.1:8000/api/market/triggers/evaluate `
-  -ContentType application/json `
-  -Body '{"tickers":["GLW"]}'
+curl.exe --insecure --fail --silent --show-error --request POST https://127.0.0.1:8443/api/market/triggers/evaluate --header "Content-Type: application/json" --data '{"tickers":["GLW"]}'
 ```
 
 Blocked order tickets:
 
 ```powershell
-Invoke-RestMethod -Method Post http://127.0.0.1:8000/api/orders/tickets `
-  -ContentType application/json `
-  -Body '{"ticker":"GLW","side":"buy","entry_price":95,"invalidation_price":90}'
+curl.exe --insecure --fail --silent --show-error --request POST https://127.0.0.1:8443/api/orders/tickets --header "Content-Type: application/json" --data '{"ticker":"GLW","side":"buy","entry_price":95,"invalidation_price":90}'
 ```
 
 ## Safety Rules
