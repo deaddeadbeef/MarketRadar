@@ -47,6 +47,7 @@ from catalyst_radar.dashboard.data import (
     load_theme_rows,
     load_ticker_detail,
     load_validation_summary,
+    operator_work_queue_payload,
     opportunity_focus_payload,
     provider_preflight_payload,
     radar_discovery_snapshot_payload,
@@ -675,6 +676,8 @@ def test_radar_readiness_payload_summarizes_operator_decision_gate(
     assert payload["investment_readiness"]["manual_buy_review_ready"] is False
     assert payload["candidate_delta"]["schema_version"] == "candidate-delta-v1"
     assert payload["candidate_delta"]["summary"]["current_run_candidates"] == 2
+    assert payload["operator_work_queue"]["schema_version"] == "operator-work-queue-v1"
+    assert payload["operator_work_queue"]["safe_to_make_investment_decision"] is False
     assert payload["candidate_decision_labels"][0]["ticker"] == "MSFT"
     assert payload["candidate_decision_labels"][0]["decision_status"] == "research_only"
     assert payload["candidate_decision_labels"][0]["next_step"]
@@ -698,6 +701,50 @@ def test_radar_research_shortlist_payload_uses_latest_candidates(
     assert payload["rows"][0]["ticker"] == "MSFT"
     assert payload["rows"][0]["why_now"] == "MSFT guidance raised"
     assert payload["rows"][0]["decision_status"] == "research_only"
+
+
+def test_operator_work_queue_prioritizes_setup_blockers_and_candidate_context(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    config = AppConfig(
+        daily_market_provider="csv",
+        daily_event_provider="news_fixture",
+        enable_premium_llm=False,
+        llm_provider="none",
+    )
+    radar_summary = load_radar_run_summary(engine)
+    ops_health = load_ops_health(engine, now=AVAILABLE_AT)
+    broker_summary = load_broker_summary(engine)
+    discovery = radar_discovery_snapshot_payload(
+        engine,
+        config,
+        radar_run_summary=radar_summary,
+        ops_health=ops_health,
+    )
+    candidates = load_candidate_rows(engine, available_at=AVAILABLE_AT)
+
+    payload = operator_work_queue_payload(
+        config,
+        radar_run_summary=radar_summary,
+        broker_summary=broker_summary,
+        discovery_snapshot=discovery,
+        candidate_rows=candidates,
+    )
+
+    assert payload["schema_version"] == "operator-work-queue-v1"
+    assert payload["status"] == "blocked"
+    assert payload["counts"]["blocking"] >= 2
+    assert payload["investment_mode"] == "research_only"
+    assert payload["safe_to_make_investment_decision"] is False
+    assert [row["area"] for row in payload["rows"][:2]] == [
+        "Live market scan",
+        "Catalyst feed",
+    ]
+    assert payload["rows"][0]["priority"] == "must_fix"
+    assert "fresh US-market coverage" in str(payload["rows"][0]["item"])
+    assert any(row.get("area") == "Candidate" for row in payload["rows"])
 
 
 def test_data_source_coverage_payload_marks_fixture_and_read_only_modes() -> None:

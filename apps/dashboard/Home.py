@@ -1013,6 +1013,74 @@ def _show_actionability_breakdown(candidate_rows: list[dict[str, object]]) -> No
     )
 
 
+def _show_operator_work_queue(
+    *,
+    config: AppConfig,
+    radar_run_summary: Mapping[str, Any],
+    broker_summary: Mapping[str, Any],
+    discovery_snapshot: Mapping[str, Any],
+    candidate_rows: list[dict[str, object]],
+) -> None:
+    queue = _mapping(
+        dashboard_data.operator_work_queue_payload(
+            config,
+            radar_run_summary=radar_run_summary,
+            broker_summary=broker_summary,
+            discovery_snapshot=discovery_snapshot,
+            candidate_rows=candidate_rows,
+        )
+    )
+    st.subheader("Operator Work Queue")
+    status = str(queue.get("status") or "unknown")
+    message = (
+        f"{queue.get('headline') or 'No operator queue headline.'} "
+        f"Next: {queue.get('next_action') or 'n/a'}"
+    ).strip()
+    if status == "blocked":
+        st.warning(message)
+    elif status in {"review", "research"}:
+        st.info(message)
+    elif status == "monitor":
+        st.success(message)
+    else:
+        st.caption(message)
+    counts = _mapping(queue.get("counts"))
+    _show_status_badges(
+        [
+            ("Blocking", counts.get("blocking") or 0),
+            ("Review", counts.get("review") or 0),
+            ("Research", counts.get("research") or 0),
+            ("Decision Mode", queue.get("investment_mode") or "unknown"),
+            (
+                "Investment Ready",
+                "yes" if queue.get("safe_to_make_investment_decision") else "no",
+            ),
+        ]
+    )
+    _show_records(
+        "Priority Queue",
+        _visible_operator_queue_rows(queue.get("rows")),
+        empty="No operator work queue rows.",
+    )
+
+
+def _visible_operator_queue_rows(value: object) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for rank, row in enumerate(_records(value), start=1):
+        rows.append(
+            {
+                "rank": rank,
+                "priority": row.get("priority"),
+                "area": row.get("area"),
+                "item": row.get("item"),
+                "status": row.get("status"),
+                "next_action": row.get("next_action"),
+                "evidence": row.get("evidence"),
+            }
+        )
+    return rows
+
+
 def _show_candidate_delta(
     engine: object,
     radar_run_summary: Mapping[str, Any],
@@ -1732,6 +1800,13 @@ def _show_overview(
     metric_cols[4].metric("Themes", len(theme_rows))
     metric_cols[5].metric("LLM Cost", _currency(cost_summary.get("total_actual_cost_usd")))
 
+    _show_operator_work_queue(
+        config=config,
+        radar_run_summary=radar_run_summary,
+        broker_summary=broker_summary,
+        discovery_snapshot=discovery_snapshot,
+        candidate_rows=candidate_rows,
+    )
     _show_activation_summary(config, radar_run_summary, broker_summary)
     _show_live_activation_plan(config, radar_run_summary, broker_summary)
     _show_live_data_activation_contract(config, radar_run_summary, broker_summary)

@@ -681,6 +681,12 @@ def test_get_radar_readiness_returns_decision_contract(tmp_path, monkeypatch) ->
             "decision_mode": "research_only",
             "safe_to_make_investment_decision": False,
             "next_action": "Configure live sources.",
+            "operator_work_queue": {
+                "schema_version": "operator-work-queue-v1",
+                "status": "blocked",
+                "safe_to_make_investment_decision": False,
+                "rows": [{"priority": "must_fix", "area": "Live market scan"}],
+            },
             "candidate_decision_labels": [
                 {"ticker": "MSFT", "decision_status": "research_only"}
             ],
@@ -698,6 +704,12 @@ def test_get_radar_readiness_returns_decision_contract(tmp_path, monkeypatch) ->
         "decision_mode": "research_only",
         "safe_to_make_investment_decision": False,
         "next_action": "Configure live sources.",
+        "operator_work_queue": {
+            "schema_version": "operator-work-queue-v1",
+            "status": "blocked",
+            "safe_to_make_investment_decision": False,
+            "rows": [{"priority": "must_fix", "area": "Live market scan"}],
+        },
         "candidate_decision_labels": [
             {"ticker": "MSFT", "decision_status": "research_only"}
         ],
