@@ -1985,7 +1985,7 @@ def runtime_context_payload(
         ),
         "polygon_key_configured": bool(config.polygon_api_key),
         "sec_live_enabled": bool(config.sec_enable_live),
-        "sec_user_agent_configured": bool(config.sec_user_agent),
+        "sec_user_agent_configured": config.sec_user_agent_configured,
         "openai_key_configured": bool(config.openai_api_key),
         "schwab_credentials_configured": bool(
             config.schwab_client_id
@@ -4713,7 +4713,7 @@ def _event_activation_missing_env(config: AppConfig) -> list[str]:
         items.append("CATALYST_DAILY_EVENT_PROVIDER=sec")
     if not config.sec_enable_live:
         items.append("CATALYST_SEC_ENABLE_LIVE=1")
-    if not config.sec_user_agent:
+    if not config.sec_user_agent_configured:
         items.append("CATALYST_SEC_USER_AGENT")
     return items
 
@@ -4849,7 +4849,7 @@ def _live_data_env_template(config: AppConfig) -> list[dict[str, object]]:
         _activation_env_row(
             "CATALYST_SEC_USER_AGENT",
             "MarketRadar/0.1 your-email@example.com",
-            configured=bool(config.sec_user_agent),
+            configured=config.sec_user_agent_configured,
             secret=True,
         ),
         _activation_env_row(
@@ -5015,7 +5015,7 @@ def _dotenv_key_loaded(config: AppConfig, key: str) -> bool:
     if key == "CATALYST_SEC_ENABLE_LIVE":
         return bool(config.sec_enable_live)
     if key == "CATALYST_SEC_USER_AGENT":
-        return bool(config.sec_user_agent)
+        return config.sec_user_agent_configured
     if key == "CATALYST_POLYGON_TICKERS_MAX_PAGES":
         return config.polygon_tickers_max_pages <= 1
     if key == "CATALYST_SEC_DAILY_MAX_TICKERS":
@@ -6711,7 +6711,7 @@ def _event_call_plan_row(
                 "SEC provider is selected, but CATALYST_SEC_ENABLE_LIVE=1 is missing.",
                 "Set CATALYST_SEC_ENABLE_LIVE=1 before scheduled SEC ingest.",
             )
-        if not config.sec_user_agent:
+        if not config.sec_user_agent_configured:
             return _call_plan_row(
                 "News/events",
                 "blocked",
@@ -6951,7 +6951,7 @@ def _market_source_mode(config: AppConfig, provider: str) -> str:
 
 def _event_source_mode(config: AppConfig, provider: str) -> str:
     if provider in {"sec", "sec_submissions"} and (
-        not config.sec_enable_live or not config.sec_user_agent
+        not config.sec_enable_live or not config.sec_user_agent_configured
     ):
         return "missing_credentials"
     return _source_mode(provider, fixture_names={"news_fixture", "sample", "fixture"})

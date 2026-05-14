@@ -172,6 +172,18 @@ class AppConfig:
     universe_include_adrs: bool = True
     scan_batch_size: int = 500
 
+    @property
+    def sec_user_agent_configured(self) -> bool:
+        value = (self.sec_user_agent or "").strip().lower()
+        if not value:
+            return False
+        placeholder_tokens = {
+            "<your",
+            "your-email@example.com",
+            "your-email",
+        }
+        return not any(token in value for token in placeholder_tokens)
+
     def sanitized(self) -> dict[str, object]:
         return redact_value(asdict(self))
 

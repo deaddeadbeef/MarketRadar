@@ -592,6 +592,32 @@ def test_daily_run_sec_event_provider_fails_closed_without_live_enable(monkeypat
     assert result.step("local_text_triage").reason == "blocked_by_failed_dependency:event_ingest"
 
 
+def test_daily_run_sec_event_provider_fails_closed_with_user_agent_placeholder(
+    monkeypatch,
+):
+    monkeypatch.setenv("CATALYST_DAILY_MARKET_PROVIDER", "none")
+    monkeypatch.setenv("CATALYST_DAILY_EVENT_PROVIDER", "sec")
+    monkeypatch.setenv("CATALYST_SEC_ENABLE_LIVE", "1")
+    monkeypatch.setenv("CATALYST_SEC_USER_AGENT", "CatalystRadar/0.1 your-email@example.com")
+    engine = _engine()
+    now = datetime(2026, 5, 10, 14, tzinfo=UTC)
+    _insert_active_security(engine, now, metadata={"cik": "0000789019"})
+    spec = DailyRunSpec(
+        as_of=date(2026, 5, 10),
+        decision_available_at=now,
+        run_llm=False,
+        dry_run_alerts=True,
+    )
+
+    result = run_daily(spec, engine=engine)
+
+    event_step = result.step("event_ingest")
+    assert event_step.status == "failed"
+    assert event_step.reason == "CATALYST_SEC_USER_AGENT is required for scheduled SEC ingest"
+    assert result.step("local_text_triage").status == "skipped"
+    assert result.step("local_text_triage").reason == "blocked_by_failed_dependency:event_ingest"
+
+
 def test_daily_run_sec_event_provider_ingests_capped_submissions_with_guarded_http(
     monkeypatch,
 ) -> None:

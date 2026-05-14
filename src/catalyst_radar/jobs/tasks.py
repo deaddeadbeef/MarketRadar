@@ -527,7 +527,7 @@ def _daily_sec_event_ingest(context: _DailyRunContext, provider: str) -> _StepOu
             reason="CATALYST_SEC_ENABLE_LIVE=1 required for scheduled SEC ingest",
             payload={"provider": provider, "endpoint": "submissions"},
         )
-    if not context.config.sec_user_agent:
+    if not context.config.sec_user_agent_configured:
         return _StepOutcome(
             status=JobStatus.FAILED.value,
             reason="CATALYST_SEC_USER_AGENT is required for scheduled SEC ingest",
