@@ -3660,45 +3660,78 @@ def _candidate_decision_label(
     decision_mode = str(readiness.get("decision_mode") or "unknown")
     state = str(candidate.get("state") or "")
     has_card = bool(str(candidate.get("decision_card_id") or "").strip())
+    readiness_gate = _readiness_gate_next_action(readiness)
     if decision_mode == "manual_buy_review":
         if state == ActionState.ELIGIBLE_FOR_MANUAL_BUY_REVIEW.value and has_card:
             return {
                 "decision_status": "manual_buy_review",
                 "decision_next_step": "Review card, exposure, and hard blocks.",
+                "decision_readiness_gate": None,
             }
         return {
             "decision_status": "research_only",
             "decision_next_step": "Not in manual buy-review state.",
+            "decision_readiness_gate": None,
         }
     if decision_mode == "research_only":
         if state == ActionState.BLOCKED.value:
             return {
                 "decision_status": "blocked",
                 "decision_next_step": "Clear hard blocks before escalation.",
+                "decision_readiness_gate": readiness_gate,
             }
         if state == ActionState.ELIGIBLE_FOR_MANUAL_BUY_REVIEW.value and not has_card:
             return {
                 "decision_status": "missing_card",
                 "decision_next_step": "Build a Decision Card first.",
+                "decision_readiness_gate": readiness_gate,
             }
         return {
             "decision_status": "research_only",
-            "decision_next_step": str(
-                readiness.get("next_action")
-                or "Use this row for research only until readiness clears."
+            "decision_next_step": _candidate_specific_next_step(
+                candidate,
+                has_decision_card=has_card,
             ),
+            "decision_readiness_gate": readiness_gate,
         }
     if decision_mode == "monitor":
         return {
             "decision_status": "monitor",
             "decision_next_step": "Wait for stronger evidence or a fresher catalyst.",
+            "decision_readiness_gate": readiness_gate,
         }
     return {
         "decision_status": "not_ready",
         "decision_next_step": str(
             readiness.get("next_action") or "Complete live readiness first."
         ),
+        "decision_readiness_gate": readiness_gate,
     }
+
+
+def _readiness_gate_next_action(readiness: Mapping[str, object]) -> str | None:
+    next_action = str(readiness.get("next_action") or "").strip()
+    if not next_action:
+        return None
+    decision_mode = str(readiness.get("decision_mode") or "unknown")
+    if decision_mode == "manual_buy_review":
+        return None
+    return next_action
+
+
+def _candidate_specific_next_step(
+    candidate: Mapping[str, object],
+    *,
+    has_decision_card: bool,
+) -> str:
+    brief = _mapping_value(candidate, "research_brief")
+    brief_next_step = str(brief.get("next_step") or "").strip()
+    if brief_next_step:
+        return brief_next_step
+    return _research_next_step(
+        str(candidate.get("state") or ""),
+        has_decision_card=has_decision_card,
+    )
 
 
 def _research_shortlist_sort_key(row: Mapping[str, object]) -> tuple[int, float, str]:
@@ -3759,6 +3792,7 @@ def _research_shortlist_row(row: Mapping[str, object]) -> dict[str, object]:
             str(row.get("state") or ""),
             has_decision_card=bool(row.get("decision_card_id")),
         ),
+        "readiness_gate": row.get("decision_readiness_gate"),
         "decision_card_id": row.get("decision_card_id") or "n/a",
         "source": brief.get("source") or support.get("source_id") or support.get("kind"),
         "schwab_last_price": row.get("schwab_last_price"),
@@ -4639,6 +4673,7 @@ def _readiness_candidate_label(row: Mapping[str, object]) -> dict[str, object]:
         "risk_or_gap": brief.get("risk_or_gap") or risk.get("title"),
         "decision_card_id": row.get("decision_card_id"),
         "next_step": row.get("decision_next_step") or brief.get("next_step"),
+        "readiness_gate": row.get("decision_readiness_gate"),
         "schwab_last_price": row.get("schwab_last_price"),
         "schwab_day_change_percent": row.get("schwab_day_change_percent"),
         "schwab_relative_volume": row.get("schwab_relative_volume"),

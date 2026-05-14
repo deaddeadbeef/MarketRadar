@@ -398,6 +398,9 @@ def test_candidate_decision_labels_mark_research_only_rows() -> None:
                 "ticker": "CCC",
                 "state": ActionState.WARNING.value,
                 "decision_card_id": "",
+                "research_brief": {
+                    "next_step": "Complete the trade plan and verify source evidence.",
+                },
             },
         ],
         {"decision_mode": "research_only", "next_action": "Configure live sources."},
@@ -405,10 +408,15 @@ def test_candidate_decision_labels_mark_research_only_rows() -> None:
 
     assert rows[0]["decision_status"] == "blocked"
     assert rows[0]["decision_next_step"] == "Clear hard blocks before escalation."
+    assert rows[0]["decision_readiness_gate"] == "Configure live sources."
     assert rows[1]["decision_status"] == "missing_card"
     assert rows[1]["decision_next_step"] == "Build a Decision Card first."
+    assert rows[1]["decision_readiness_gate"] == "Configure live sources."
     assert rows[2]["decision_status"] == "research_only"
-    assert rows[2]["decision_next_step"] == "Configure live sources."
+    assert rows[2]["decision_next_step"] == (
+        "Complete the trade plan and verify source evidence."
+    )
+    assert rows[2]["decision_readiness_gate"] == "Configure live sources."
 
 
 def test_candidate_decision_labels_mark_manual_buy_review_rows() -> None:
@@ -430,8 +438,10 @@ def test_candidate_decision_labels_mark_manual_buy_review_rows() -> None:
 
     assert rows[0]["decision_status"] == "manual_buy_review"
     assert rows[0]["decision_next_step"] == "Review card, exposure, and hard blocks."
+    assert rows[0]["decision_readiness_gate"] is None
     assert rows[1]["decision_status"] == "research_only"
     assert rows[1]["decision_next_step"] == "Not in manual buy-review state."
+    assert rows[1]["decision_readiness_gate"] is None
 
 
 def test_candidate_rows_with_market_context_attaches_latest_schwab_snapshot() -> None:
@@ -812,6 +822,9 @@ def test_radar_readiness_payload_summarizes_operator_decision_gate(
     assert payload["candidate_decision_labels"][0]["ticker"] == "MSFT"
     assert payload["candidate_decision_labels"][0]["decision_status"] == "research_only"
     assert payload["candidate_decision_labels"][0]["next_step"]
+    assert payload["candidate_decision_labels"][0]["readiness_gate"] == (
+        "Configure Polygon before relying on broad US-market discovery."
+    )
     assert payload["candidate_decision_labels"][0]["audit"]["provider_license_policy"][
         "external_export_allowed"
     ] is False
