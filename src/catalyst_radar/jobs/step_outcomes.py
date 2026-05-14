@@ -72,7 +72,7 @@ SKIP_EXPLANATIONS = {
     ),
     "llm_disabled": "LLM review was not requested for this run.",
     "no_active_securities": "No active securities were available for scanning.",
-    "no_alerts": "No existing alerts were available for the digest step.",
+    "no_alerts": "Alert planning did not produce any digest-routed alerts for this run.",
     "no_candidate_inputs": "No scan results were available for scoring.",
     "no_candidate_packets": "No candidate packets were available for Decision Cards.",
     "no_current_scan_results": "No current scan results were available for packet building.",
