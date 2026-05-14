@@ -15,6 +15,9 @@ The run uses the existing `daily-run` job lock, so another dashboard/API/worker 
 Manual dashboard/API runs also use `CATALYST_RADAR_RUN_MIN_INTERVAL_SECONDS`
 as a durable cooldown. Repeated run requests inside that window return `429`
 with `Retry-After`, even if the previous run has already finished.
+The dashboard reads the same cooldown lock before submitting a request, so the
+**Run Radar** control shows when the next manual run is allowed and disables the
+button while the cooldown is active.
 
 The radar run does not call Schwab. It can read the latest synced broker context already in the database when building decision cards, but Schwab portfolio and market refreshes stay behind the separate broker controls and their server-side rate guards.
 

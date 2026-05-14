@@ -5,7 +5,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import fields, is_dataclass
 from datetime import UTC, date, datetime, timedelta
 from enum import Enum
-from math import isfinite
+from math import ceil, isfinite
 from typing import Any
 
 from sqlalchemy import Engine, and_, func, select
@@ -42,6 +42,7 @@ from catalyst_radar.storage.schema import (
     candidate_states,
     decision_cards,
     events,
+    job_locks,
     job_runs,
     paper_trades,
     signal_features,
@@ -56,6 +57,8 @@ from catalyst_radar.validation.reports import (
     build_validation_report,
     validation_report_payload,
 )
+
+RADAR_RUN_COOLDOWN_LOCK_NAME = "manual_radar_run_cooldown"
 
 
 def load_candidate_rows(
@@ -1288,6 +1291,66 @@ def telemetry_tape_payload(
         "latest_event_at": telemetry.get("latest_event_at"),
         "status_counts": status_counts,
         "events": rows,
+    }
+
+
+def radar_run_cooldown_payload(
+    engine: Engine,
+    config: AppConfig,
+    *,
+    now: datetime | None = None,
+) -> dict[str, object]:
+    resolved_now = _as_utc_datetime_or_none(now) or datetime.now(UTC)
+    min_interval_seconds = max(1, int(config.radar_run_min_interval_seconds))
+    with engine.connect() as conn:
+        lock_row = conn.execute(
+            select(
+                job_locks.c.lock_name,
+                job_locks.c.owner,
+                job_locks.c.acquired_at,
+                job_locks.c.expires_at,
+                job_locks.c.metadata,
+            )
+            .where(job_locks.c.lock_name == RADAR_RUN_COOLDOWN_LOCK_NAME)
+            .limit(1)
+        ).mappings().first()
+
+    lock = _row_dict(lock_row) if lock_row is not None else {}
+    reset_at = _parse_utc_datetime(lock.get("expires_at"))
+    acquired_at = _parse_utc_datetime(lock.get("acquired_at"))
+    active = reset_at is not None and reset_at > resolved_now
+    retry_after_seconds = (
+        _retry_after_seconds(reset_at, resolved_now) if active else 0
+    )
+
+    if active:
+        status = "cooldown"
+        headline = "Manual radar run is cooling down."
+        detail = f"Next run is allowed in {retry_after_seconds} second(s)."
+        next_action = "Wait for the cooldown to expire before starting another manual run."
+    else:
+        status = "ready"
+        headline = "Manual radar run is ready."
+        detail = f"Minimum interval is {min_interval_seconds} second(s)."
+        next_action = "Start one capped radar cycle when you are ready to refresh signals."
+
+    return {
+        "status": status,
+        "allowed": not active,
+        "operation": "manual_radar_run",
+        "lock_name": RADAR_RUN_COOLDOWN_LOCK_NAME,
+        "min_interval_seconds": min_interval_seconds,
+        "retry_after_seconds": retry_after_seconds,
+        "reset_at": _iso_or_none(reset_at),
+        "acquired_at": _iso_or_none(acquired_at),
+        "headline": headline,
+        "detail": detail,
+        "next_action": next_action,
+        "evidence": (
+            f"lock={'active' if active else 'inactive'}; "
+            f"expires_at={_iso_or_na(reset_at)}; "
+            f"min_interval_seconds={min_interval_seconds}"
+        ),
     }
 
 
@@ -2991,6 +3054,13 @@ def _iso_or_none(value: datetime | None) -> str | None:
 
 def _iso_or_na(value: datetime | None) -> str:
     return _iso_or_none(value) or "n/a"
+
+
+def _retry_after_seconds(reset_at: datetime | None, now: datetime) -> int:
+    resolved_reset_at = _as_utc_datetime_or_none(reset_at)
+    if resolved_reset_at is None:
+        return 1
+    return max(1, int(ceil((resolved_reset_at - now).total_seconds())))
 
 
 def _radar_steps_by_name(
