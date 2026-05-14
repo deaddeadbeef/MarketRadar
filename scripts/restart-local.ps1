@@ -77,25 +77,18 @@ else {
 if (-not $SkipHealthCheck) {
     $healthUri = "https://$ApiHost`:$ApiPort/api/health"
     $deadline = (Get-Date).AddSeconds(30)
-    $previousCertificateCallback = [System.Net.ServicePointManager]::ServerCertificateValidationCallback
-    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
-    try {
-        do {
-            try {
-                $response = Invoke-WebRequest -Uri $healthUri -UseBasicParsing -TimeoutSec 5
-                if ($response.StatusCode -eq 200) {
-                    $apiHealthy = $true
-                    break
-                }
+    do {
+        try {
+            $curlOutput = & curl.exe --insecure --silent --show-error --fail --max-time 5 $healthUri
+            if ($LASTEXITCODE -eq 0 -and ($curlOutput -join "`n") -match '"status"\s*:\s*"ok"') {
+                $apiHealthy = $true
+                break
             }
-            catch {
-                Start-Sleep -Seconds 1
-            }
-        } while ((Get-Date) -lt $deadline)
-    }
-    finally {
-        [System.Net.ServicePointManager]::ServerCertificateValidationCallback = $previousCertificateCallback
-    }
+        }
+        catch {
+            Start-Sleep -Seconds 1
+        }
+    } while ((Get-Date) -lt $deadline)
 
     if (-not $apiHealthy) {
         throw "API did not become healthy within 30 seconds. See $ApiErr"
