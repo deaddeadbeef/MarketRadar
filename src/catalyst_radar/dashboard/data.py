@@ -1808,6 +1808,119 @@ def radar_run_default_scope_payload(
     return payload
 
 
+def agent_review_summary_payload(
+    radar_run_summary: Mapping[str, object] | None,
+) -> dict[str, object]:
+    """Summarize the latest agentic review step for dashboard triage."""
+    summary = _row_dict(radar_run_summary) if isinstance(radar_run_summary, Mapping) else {}
+    steps = _radar_steps_by_name(summary)
+    llm_step = _row_dict(steps.get("llm_review"))
+    llm_payload = _mapping_value(llm_step, "payload")
+    reviewed_tickers = _call_plan_tickers(
+        [str(value) for value in _sequence_value(llm_payload.get("reviewed_tickers"))]
+    )
+    reviewed_packet_count = int(
+        _finite_float(
+            _first_present(
+                llm_payload.get("reviewed_packet_count"),
+                llm_step.get("normalized_count"),
+            )
+        )
+    )
+    requested_count = int(_finite_float(llm_step.get("requested_count")))
+    reason = str(llm_step.get("reason") or "")
+    step_status = str(llm_step.get("status") or "not_run")
+    dry_run = bool(llm_payload.get("dry_run")) or reason == "dry_run_only"
+    mode = "dry_run" if dry_run else "live" if step_status == "success" else "not_run"
+    remaining_gates = [
+        _agent_review_gate_row(name, steps[name])
+        for name in DAILY_STEP_ORDER
+        if name in steps
+        and name != "llm_review"
+        and str(steps[name].get("category") or "") == "expected_gate"
+    ]
+    ticker_text = ", ".join(reviewed_tickers[:5])
+
+    if step_status == "success":
+        status = "dry_run_reviewed" if dry_run else "reviewed"
+        headline = (
+            f"Agent review checked {reviewed_packet_count} packet(s)"
+            + (f" for {ticker_text}." if ticker_text else ".")
+        )
+        next_action = (
+            "Open reviewed tickers, compare the research brief with source evidence, "
+            "then decide whether the candidate deserves manual follow-up."
+        )
+    elif reason == "no_llm_review_inputs":
+        status = "no_review_inputs"
+        headline = "Agent review had no eligible packets."
+        next_action = str(
+            llm_step.get("trigger_condition")
+            or "At least one Warning or manual-review candidate packet must exist."
+        )
+    elif reason == "llm_disabled":
+        status = "disabled"
+        headline = "Agent review is disabled for the latest run."
+        next_action = (
+            "Enable dry-run review first; use real model calls only after budgets are set."
+        )
+    elif str(llm_step.get("category") or "") == "expected_gate":
+        status = "expected_gate"
+        headline = "Agent review did not trigger for the latest run."
+        next_action = str(llm_step.get("trigger_condition") or "Review the run gate reason.")
+    elif llm_step:
+        status = "attention"
+        headline = "Agent review needs attention."
+        next_action = str(llm_step.get("operator_action") or "Inspect LLM step telemetry.")
+    else:
+        status = "not_available"
+        headline = "No agent review step is available yet."
+        next_action = "Run Radar with LLM dry run enabled to produce an auditable review step."
+
+    return {
+        "schema_version": "agent-review-summary-v1",
+        "status": status,
+        "mode": mode,
+        "headline": headline,
+        "next_action": next_action,
+        "as_of": summary.get("as_of"),
+        "step_status": step_status,
+        "reason": reason or None,
+        "requested_count": requested_count,
+        "reviewed_packet_count": reviewed_packet_count,
+        "review_task": llm_payload.get("review_task"),
+        "reviewed_tickers": reviewed_tickers,
+        "candidate_packet_ids": [
+            str(value)
+            for value in _sequence_value(llm_payload.get("candidate_packet_ids"))
+            if str(value).strip()
+        ],
+        "candidate_packet_state_counts": _string_int_mapping(
+            llm_payload.get("candidate_packet_state_counts")
+        ),
+        "eligible_states": [
+            str(value)
+            for value in _sequence_value(llm_payload.get("eligible_states"))
+            if str(value).strip()
+        ],
+        "remaining_expected_gates": remaining_gates,
+        "evidence": _step_evidence("llm_review", llm_step) if llm_step else "n/a",
+    }
+
+
+def _agent_review_gate_row(
+    step: str,
+    row: Mapping[str, object],
+) -> dict[str, object]:
+    return {
+        "step": step,
+        "reason": row.get("reason"),
+        "trigger_condition": row.get("trigger_condition"),
+        "meaning": row.get("meaning"),
+        "operator_action": row.get("operator_action"),
+    }
+
+
 def activation_summary_payload(
     config: AppConfig,
     *,
