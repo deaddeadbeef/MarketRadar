@@ -200,6 +200,13 @@ evidence, and it does not call Polygon, SEC, Schwab, or OpenAI. Use it as the
 first operator answer to: "what did the latest run discover, and is it fresh
 enough to trust?"
 
+If the latest run is newer than the latest available bars or candidate states,
+`yield.candidate_states` only counts candidates aligned with the run `as_of`.
+The separate `latest_candidate_context` block shows the latest persisted
+candidate rows available at the run cutoff, marks whether they are stale
+relative to the run, and should be treated as context rather than fresh
+discoveries.
+
 Key fields:
 
 ```json
@@ -215,7 +222,16 @@ Key fields:
     },
     "freshness": {
       "latest_daily_bar_date": "2026-05-10",
-      "latest_bars_older_than_as_of": false
+      "latest_bars_older_than_as_of": false,
+      "latest_candidate_as_of": "2026-05-10T00:00:00+00:00",
+      "latest_candidate_age_days": 0
+    },
+    "latest_candidate_context": {
+      "candidate_states": 8,
+      "latest_candidate_as_of": "2026-05-10T00:00:00+00:00",
+      "latest_candidate_age_days": 0,
+      "stale_relative_to_run": false,
+      "top_candidates": []
     },
     "blockers": [
       {

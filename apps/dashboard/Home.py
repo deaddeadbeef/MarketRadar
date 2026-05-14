@@ -842,6 +842,36 @@ def _show_discovery_snapshot(snapshot: Mapping[str, Any]) -> None:
         _visible_discovery_rows(snapshot.get("top_discoveries")),
         empty="No top discoveries for this run.",
     )
+    latest_context = _mapping(snapshot.get("latest_candidate_context"))
+    latest_rows = _visible_discovery_rows(latest_context.get("top_candidates"))
+    if latest_rows:
+        stale = bool(latest_context.get("stale_relative_to_run"))
+        with st.expander("Latest candidate context", expanded=stale):
+            if stale:
+                st.caption(
+                    "These candidates exist in the database, but their as-of date is older "
+                    "than the latest run. Treat them as context, not fresh discoveries."
+                )
+            else:
+                st.caption("Latest persisted candidates available at the run cutoff.")
+            _show_status_badges(
+                [
+                    ("Context Candidates", latest_context.get("candidate_states") or 0),
+                    (
+                        "Latest Candidate As Of",
+                        latest_context.get("latest_candidate_as_of") or "n/a",
+                    ),
+                    (
+                        "Stale vs Run",
+                        "yes" if stale else "no",
+                    ),
+                ]
+            )
+            _show_records(
+                "Latest Candidate Context",
+                latest_rows,
+                empty="No latest candidate context.",
+            )
 
 
 def _show_actionability_breakdown(candidate_rows: list[dict[str, object]]) -> None:
