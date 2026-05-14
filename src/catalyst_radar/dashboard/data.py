@@ -1983,7 +1983,7 @@ def runtime_context_payload(
             config.daily_event_provider,
             default="news_fixture",
         ),
-        "polygon_key_configured": bool(config.polygon_api_key),
+        "polygon_key_configured": config.polygon_api_key_configured,
         "sec_live_enabled": bool(config.sec_enable_live),
         "sec_user_agent_configured": config.sec_user_agent_configured,
         "openai_key_configured": bool(config.openai_api_key),
@@ -3221,7 +3221,7 @@ def readiness_checklist_payload(
 
     market = coverage.get("Market data", {})
     market_mode = str(market.get("mode") or "unknown")
-    if market.get("provider") == "polygon" and not config.polygon_api_key:
+    if market.get("provider") == "polygon" and not config.polygon_api_key_configured:
         rows.append(
             _readiness_row(
                 "Live market scan",
@@ -4701,7 +4701,7 @@ def _market_activation_missing_env(config: AppConfig) -> list[str]:
         items.append("CATALYST_DAILY_MARKET_PROVIDER=polygon")
     if scan_provider != "polygon":
         items.append("CATALYST_DAILY_PROVIDER=polygon")
-    if not config.polygon_api_key:
+    if not config.polygon_api_key_configured:
         items.append("CATALYST_POLYGON_API_KEY")
     return items
 
@@ -4824,7 +4824,7 @@ def _live_data_env_template(config: AppConfig) -> list[dict[str, object]]:
         _activation_env_row(
             "CATALYST_POLYGON_API_KEY",
             "<your Polygon API key>",
-            configured=bool(config.polygon_api_key),
+            configured=config.polygon_api_key_configured,
             secret=True,
         ),
         _activation_env_row(
@@ -5009,7 +5009,7 @@ def _dotenv_key_loaded(config: AppConfig, key: str) -> bool:
     if key == "CATALYST_DAILY_PROVIDER":
         return _provider_name(config.daily_provider, default="") == "polygon"
     if key == "CATALYST_POLYGON_API_KEY":
-        return bool(config.polygon_api_key)
+        return config.polygon_api_key_configured
     if key == "CATALYST_DAILY_EVENT_PROVIDER":
         return config.daily_event_provider.strip().lower() in {"sec", "sec_submissions"}
     if key == "CATALYST_SEC_ENABLE_LIVE":
@@ -6060,7 +6060,7 @@ def _run_market_source_mode(
         if str(step.get("status") or "") == "success":
             return "live"
         reason = str(step.get("reason") or step.get("error_summary") or "")
-        if "CATALYST_POLYGON_API_KEY" in reason or not config.polygon_api_key:
+        if "CATALYST_POLYGON_API_KEY" in reason or not config.polygon_api_key_configured:
             return "missing_credentials"
     return _market_source_mode(config, provider)
 
@@ -6597,7 +6597,7 @@ def _market_call_plan_row(config: AppConfig) -> dict[str, object]:
             "Use for dry-run validation; configure Polygon for live discovery.",
         )
     if provider == "polygon":
-        if not config.polygon_api_key:
+        if not config.polygon_api_key_configured:
             return _call_plan_row(
                 "Market data",
                 "blocked",
@@ -6944,7 +6944,7 @@ def _source_mode(provider: str, *, fixture_names: set[str]) -> str:
 
 
 def _market_source_mode(config: AppConfig, provider: str) -> str:
-    if provider == "polygon" and not config.polygon_api_key:
+    if provider == "polygon" and not config.polygon_api_key_configured:
         return "missing_credentials"
     return _source_mode(provider, fixture_names={"csv", "sample"})
 

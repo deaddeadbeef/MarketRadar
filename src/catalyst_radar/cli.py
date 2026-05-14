@@ -2639,7 +2639,7 @@ def _universe_snapshot_for_scan(
 def _polygon_api_key(*, config: AppConfig, fixture_path: Path | None) -> str | None:
     if fixture_path is not None:
         return "fixture-key"
-    return config.polygon_api_key
+    return config.polygon_api_key if config.polygon_api_key_configured else None
 
 
 def _scan_timestamp(value: date) -> datetime:
