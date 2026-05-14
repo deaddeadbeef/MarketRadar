@@ -78,6 +78,9 @@ if (@($activation.missing_env).Count -gt 0) {
     foreach ($item in @($activation.missing_env)) {
         Write-Output ("- missing: {0}" -f $item)
     }
+    Write-Output "- next safe command: powershell -ExecutionPolicy Bypass -File scripts\prepare-live-env.ps1"
+    Write-Output "- after editing .env.local: powershell -ExecutionPolicy Bypass -File scripts\restart-local.ps1"
+    Write-Output "- verify again: powershell -ExecutionPolicy Bypass -File scripts\check-live-activation.ps1"
 }
 Write-Output (
     "Telemetry: {0}; events={1}; attention={2}; guarded={3}; latest={4}" -f
