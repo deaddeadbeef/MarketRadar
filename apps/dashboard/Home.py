@@ -1011,6 +1011,50 @@ def _show_actionability_breakdown(candidate_rows: list[dict[str, object]]) -> No
     )
 
 
+def _show_candidate_delta(
+    engine: object,
+    radar_run_summary: Mapping[str, Any],
+) -> None:
+    delta = _mapping(
+        dashboard_data.candidate_delta_payload(
+            engine,
+            radar_run_summary=radar_run_summary,
+            available_at=_radar_summary_cutoff(radar_run_summary),
+        )
+    )
+    st.subheader("Candidate Delta")
+    status = str(delta.get("status") or "unknown")
+    message = (
+        f"{delta.get('headline') or 'Candidate delta unavailable.'} "
+        f"Next: {delta.get('next_action') or 'Review candidate history.'}"
+    ).strip()
+    if status == "changed":
+        st.warning(message)
+    elif status == "unchanged":
+        st.success(message)
+    elif status == "no_current_candidates":
+        st.info(message)
+    else:
+        st.caption(message)
+    summary = _mapping(delta.get("summary"))
+    _show_status_badges(
+        [
+            ("Changed", summary.get("changed_candidates") or 0),
+            ("New", summary.get("new_candidates") or 0),
+            ("State", summary.get("state_changes") or 0),
+            ("Score", summary.get("score_moves") or 0),
+            ("Blockers", summary.get("blocker_changes") or 0),
+            ("Stale Context", summary.get("stale_context_candidates") or 0),
+        ]
+    )
+    st.caption(str(delta.get("evidence") or "No delta evidence."))
+    _show_records(
+        "Latest Candidate Changes",
+        delta.get("rows"),
+        empty="No current-run candidate changes.",
+    )
+
+
 def _show_investment_readiness(
     discovery_snapshot: Mapping[str, Any],
     candidate_rows: list[dict[str, object]],
@@ -1631,6 +1675,7 @@ def _show_overview(
     investment_readiness = _show_investment_readiness(discovery_snapshot, candidate_rows)
     _show_decision_contract(investment_readiness)
     _show_research_shortlist(candidate_rows, investment_readiness)
+    _show_candidate_delta(engine, radar_run_summary)
     _show_actionability_breakdown(candidate_rows)
     _show_records(
         "Opportunity Focus",

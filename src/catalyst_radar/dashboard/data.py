@@ -214,6 +214,96 @@ def opportunity_focus_payload(
     return rows
 
 
+def candidate_delta_payload(
+    engine: Engine,
+    *,
+    radar_run_summary: Mapping[str, object] | None = None,
+    candidate_rows: Sequence[Mapping[str, object]] | None = None,
+    available_at: datetime | None = None,
+    limit: int = 8,
+    score_move_threshold: float = 5.0,
+) -> dict[str, object]:
+    summary = radar_run_summary if isinstance(radar_run_summary, Mapping) else {}
+    cutoff = available_at or _parse_utc_datetime(summary.get("decision_available_at"))
+    current_rows = [
+        _row_dict(row)
+        for row in (
+            candidate_rows
+            if candidate_rows is not None
+            else load_candidate_rows(engine, available_at=cutoff)
+        )
+        if isinstance(row, Mapping)
+    ]
+    run_as_of = _parse_date(summary.get("as_of"))
+    current_run_rows = [
+        row for row in current_rows if _parse_date(row.get("as_of")) == run_as_of
+    ]
+    stale_context_count = max(0, len(current_rows) - len(current_run_rows))
+    changes: list[dict[str, object]] = []
+    with engine.connect() as conn:
+        for row in current_run_rows:
+            previous = _previous_candidate_state_row(
+                conn,
+                row,
+                available_at=cutoff,
+            )
+            change = _candidate_delta_row(
+                row,
+                previous,
+                score_move_threshold=score_move_threshold,
+            )
+            if change is not None:
+                changes.append(change)
+
+    all_changes = changes
+    changes = sorted(
+        changes,
+        key=lambda row: (
+            -int(row["severity"]),
+            -abs(_finite_float(row.get("score_change"))),
+            -_finite_float(row.get("current_score")),
+            str(row.get("ticker") or ""),
+        ),
+    )[: _positive_limit(limit)]
+    summary_counts = _candidate_delta_counts(all_changes)
+    if all_changes:
+        status = "changed"
+        headline = f"{len(all_changes)} candidate change(s) need review."
+        next_action = "Review state, score, and blocker changes before acting on the queue."
+    elif current_run_rows:
+        status = "unchanged"
+        headline = "No material candidate changes in the latest run."
+        next_action = "Keep monitoring or adjust thresholds only after live inputs are ready."
+    else:
+        status = "no_current_candidates"
+        headline = "No current-run candidate changes are available."
+        next_action = (
+            "Configure live inputs or inspect stale candidate context before relying on deltas."
+        )
+    return {
+        "schema_version": "candidate-delta-v1",
+        "status": status,
+        "headline": headline,
+        "next_action": next_action,
+        "as_of": summary.get("as_of"),
+        "latest_run_cutoff": cutoff.isoformat() if cutoff is not None else None,
+        "score_move_threshold": float(score_move_threshold),
+        "summary": {
+            "current_run_candidates": len(current_run_rows),
+            "stale_context_candidates": stale_context_count,
+            "changed_candidates": len(all_changes),
+            **summary_counts,
+        },
+        "evidence": (
+            f"as_of={summary.get('as_of') or 'n/a'}; "
+            f"current_run_candidates={len(current_run_rows)}; "
+            f"stale_context_candidates={stale_context_count}; "
+            f"score_move_threshold={float(score_move_threshold):.2f}"
+        ),
+        "rows": changes,
+    }
+
+
 def research_shortlist_payload(
     candidate_rows: Sequence[Mapping[str, object]],
     investment_readiness: Mapping[str, object] | None = None,
@@ -526,6 +616,12 @@ def radar_readiness_payload(
     )
     telemetry = telemetry_tape_payload(ops_health)
     labeled_candidates = candidate_decision_labels_payload(candidate_rows, investment)
+    candidate_delta = candidate_delta_payload(
+        engine,
+        radar_run_summary=radar_run_summary,
+        candidate_rows=candidate_rows,
+        available_at=latest_run_cutoff,
+    )
     safe_to_decide = bool(investment.get("manual_buy_review_ready"))
     return {
         "schema_version": "radar-readiness-v1",
@@ -546,6 +642,7 @@ def radar_readiness_payload(
         "discovery_snapshot": discovery_snapshot,
         "actionability_breakdown": actionability,
         "investment_readiness": investment,
+        "candidate_delta": candidate_delta,
         "candidate_decision_labels": [
             _readiness_candidate_label(row)
             for row in labeled_candidates[: _positive_limit(candidate_limit)]
@@ -2427,6 +2524,171 @@ def _candidate_row(row: Any) -> dict[str, object]:
     values["manual_review_disclaimer"] = card_payload.get("disclaimer")
     values["research_brief"] = _candidate_research_brief(values, packet_payload)
     return values
+
+
+def _previous_candidate_state_row(
+    conn: Any,
+    current: Mapping[str, object],
+    *,
+    available_at: datetime | None,
+) -> dict[str, object] | None:
+    ticker = str(current.get("ticker") or "").strip().upper()
+    current_as_of = _as_utc_datetime_or_none(current.get("as_of"))
+    if not ticker or current_as_of is None:
+        return None
+    filters = [
+        candidate_states.c.ticker == ticker,
+        candidate_states.c.as_of < current_as_of,
+    ]
+    if available_at is not None:
+        filters.append(candidate_states.c.created_at <= available_at)
+    row = conn.execute(
+        select(candidate_states)
+        .where(*filters)
+        .order_by(
+            candidate_states.c.as_of.desc(),
+            candidate_states.c.created_at.desc(),
+            candidate_states.c.id.desc(),
+        )
+        .limit(1)
+    ).first()
+    return _row_dict(row._mapping) if row is not None else None
+
+
+def _candidate_delta_row(
+    current: Mapping[str, object],
+    previous: Mapping[str, object] | None,
+    *,
+    score_move_threshold: float,
+) -> dict[str, object] | None:
+    ticker = str(current.get("ticker") or "").strip().upper()
+    current_score = _finite_float(current.get("final_score"))
+    current_state = str(current.get("state") or "unknown")
+    current_blocks = _candidate_delta_blockers(current)
+    if previous is None:
+        return {
+            "ticker": ticker,
+            "change_type": "new_candidate",
+            "severity": _candidate_delta_severity("new_candidate"),
+            "is_new_candidate": True,
+            "state_changed": False,
+            "score_moved": False,
+            "blocker_changed": bool(current_blocks),
+            "previous_state": None,
+            "current_state": current_state,
+            "previous_score": None,
+            "current_score": current_score,
+            "score_change": None,
+            "blockers_added": current_blocks,
+            "blockers_removed": [],
+            "current_blockers": current_blocks,
+            "as_of": current.get("as_of"),
+            "action": "Open the research brief and verify source freshness before escalation.",
+        }
+
+    previous_state = str(previous.get("state") or "unknown")
+    previous_score = _finite_float(previous.get("final_score"))
+    score_change = current_score - previous_score
+    previous_blocks = _candidate_delta_blockers(previous)
+    blockers_added = [block for block in current_blocks if block not in previous_blocks]
+    blockers_removed = [block for block in previous_blocks if block not in current_blocks]
+    state_changed = current_state != previous_state
+    blocker_changed = bool(blockers_added or blockers_removed)
+    score_moved = abs(score_change) >= float(score_move_threshold)
+    if not (state_changed or blocker_changed or score_moved):
+        return None
+    change_type = _candidate_delta_change_type(
+        state_changed=state_changed,
+        blocker_changed=blocker_changed,
+        score_moved=score_moved,
+    )
+    return {
+        "ticker": ticker,
+        "change_type": change_type,
+        "severity": _candidate_delta_severity(change_type),
+        "is_new_candidate": False,
+        "state_changed": state_changed,
+        "score_moved": score_moved,
+        "blocker_changed": blocker_changed,
+        "previous_state": previous_state,
+        "current_state": current_state,
+        "previous_score": previous_score,
+        "current_score": current_score,
+        "score_change": round(score_change, 2),
+        "blockers_added": blockers_added,
+        "blockers_removed": blockers_removed,
+        "current_blockers": current_blocks,
+        "as_of": current.get("as_of"),
+        "action": _candidate_delta_action(
+            change_type,
+            blockers_added=blockers_added,
+            blockers_removed=blockers_removed,
+            current_state=current_state,
+        ),
+    }
+
+
+def _candidate_delta_blockers(row: Mapping[str, object]) -> list[str]:
+    blockers: list[str] = []
+    for key in ("hard_blocks", "portfolio_hard_blocks"):
+        for item in _sequence_value(row.get(key)):
+            text = str(item or "").strip()
+            if text and text not in blockers:
+                blockers.append(text)
+    return blockers
+
+
+def _candidate_delta_change_type(
+    *,
+    state_changed: bool,
+    blocker_changed: bool,
+    score_moved: bool,
+) -> str:
+    if state_changed:
+        return "state_changed"
+    if blocker_changed:
+        return "blocker_changed"
+    if score_moved:
+        return "score_moved"
+    return "unchanged"
+
+
+def _candidate_delta_severity(change_type: str) -> int:
+    return {
+        "new_candidate": 4,
+        "state_changed": 3,
+        "blocker_changed": 2,
+        "score_moved": 1,
+    }.get(change_type, 0)
+
+
+def _candidate_delta_action(
+    change_type: str,
+    *,
+    blockers_added: Sequence[str],
+    blockers_removed: Sequence[str],
+    current_state: str,
+) -> str:
+    if blockers_added:
+        return "Review newly added blockers before escalating this candidate."
+    if blockers_removed:
+        return "Check whether cleared blockers make this candidate eligible for deeper review."
+    if change_type == "state_changed" and current_state == ActionState.BLOCKED.value:
+        return "Open blocker diagnostics before treating the high score as actionable."
+    if change_type == "state_changed":
+        return "Review the state transition and the evidence that caused it."
+    if change_type == "score_moved":
+        return "Inspect the research brief and top evidence behind the score move."
+    return "Review the candidate history before acting."
+
+
+def _candidate_delta_counts(rows: Sequence[Mapping[str, object]]) -> dict[str, int]:
+    return {
+        "new_candidates": sum(1 for row in rows if bool(row.get("is_new_candidate"))),
+        "state_changes": sum(1 for row in rows if bool(row.get("state_changed"))),
+        "score_moves": sum(1 for row in rows if bool(row.get("score_moved"))),
+        "blocker_changes": sum(1 for row in rows if bool(row.get("blocker_changed"))),
+    }
 
 
 def _alert_row(row: Any) -> dict[str, object]:
