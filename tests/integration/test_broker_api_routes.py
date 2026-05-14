@@ -35,6 +35,7 @@ def test_schwab_status_and_connect_fail_cleanly_without_app_credentials(
 ) -> None:
     database_url = f"sqlite:///{(tmp_path / 'api.db').as_posix()}"
     monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _blank_schwab_app_env(monkeypatch)
     create_schema(engine_from_url(database_url))
     client = TestClient(create_app())
 
@@ -448,6 +449,15 @@ def test_interactive_routes_record_actions_triggers_and_blocked_tickets(
         for route in create_app().routes
         if "submit" in getattr(route, "path", "") or "place" in getattr(route, "path", "")
     ]
+
+
+def _blank_schwab_app_env(monkeypatch) -> None:
+    for key in (
+        "SCHWAB_CLIENT_ID",
+        "SCHWAB_CLIENT_SECRET",
+        "SCHWAB_REDIRECT_URI",
+    ):
+        monkeypatch.setenv(key, "")
 
 
 def _seed_broker_rows(engine) -> None:
