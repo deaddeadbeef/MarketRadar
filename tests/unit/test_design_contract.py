@@ -60,6 +60,7 @@ def test_dashboard_style_owns_table_and_select_surfaces() -> None:
         ".mr-app-header",
         ".mr-status-panel",
         ".mr-command-strip",
+        ".mr-command-next",
         ".mr-table-wrap",
         ".mr-table-selected",
         ".mr-chart-card",
@@ -70,3 +71,4 @@ def test_dashboard_style_owns_table_and_select_surfaces() -> None:
         assert selector in DASHBOARD_STYLE
 
     assert "repeat(auto-fit, minmax(5.6rem, 1fr))" in DASHBOARD_STYLE
+    assert "grid-column: 1 / -1" in DASHBOARD_STYLE

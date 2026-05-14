@@ -331,8 +331,13 @@ def test_dashboard_header_surfaces_data_mode_and_build_fingerprint() -> None:
         node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)
     }
     header_source = ast.get_source_segment(source, functions["_show_command_header"])
+    notice_source = ast.get_source_segment(
+        source,
+        functions["_command_next_action_notice"],
+    )
 
     assert header_source is not None
+    assert notice_source is not None
     assert "discovery_snapshot" in header_source
     assert "runtime_context" in header_source
     assert "investment_readiness" in header_source
@@ -342,6 +347,11 @@ def test_dashboard_header_surfaces_data_mode_and_build_fingerprint() -> None:
     assert '"Investable"' in header_source
     assert 'tone_value="ok" if investable == "yes" else "blocked"' in header_source
     assert '"Build"' in header_source
+    assert "_command_next_action_notice" in header_source
+    assert "Next Required Action" in notice_source
+    assert "investment_readiness.get(\"next_action\")" in notice_source
+    assert "discovery_snapshot.get(\"next_action\")" in notice_source
+    assert "mr-command-next" in notice_source
 
 
 def test_dashboard_header_uses_investment_readiness_payload() -> None:
