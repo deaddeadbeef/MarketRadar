@@ -694,7 +694,7 @@ def test_daily_run_records_step_telemetry(monkeypatch):
     )
     assert by_step["llm_review"].metadata["outcome_category"] == "expected_gate"
     assert by_step["llm_review"].metadata["trigger_condition"] == (
-        "Request LLM dry-run review after Decision Cards exist."
+        "Request LLM dry-run review after candidate packets exist."
     )
 
 
@@ -726,6 +726,31 @@ def test_daily_run_ignores_irrelevant_degraded_provider(monkeypatch):
     assert result.step("daily_bar_ingest").status == "success"
     assert result.step("candidate_packets").status == "success"
     assert result.step("llm_review").reason in {"no_llm_review_inputs", "dry_run_only", None}
+
+
+def test_daily_run_llm_dry_run_reviews_warning_candidate_packets(monkeypatch):
+    monkeypatch.delenv("CATALYST_DAILY_MARKET_PROVIDER", raising=False)
+    engine = _engine()
+    spec = DailyRunSpec(
+        as_of=date(2026, 5, 8),
+        decision_available_at=datetime(2026, 5, 8, 21, 0, tzinfo=UTC),
+        run_llm=True,
+        llm_dry_run=True,
+        dry_run_alerts=True,
+    )
+
+    result = run_daily(spec, engine=engine)
+
+    packet_step = result.step("candidate_packets")
+    llm_step = result.step("llm_review")
+    assert packet_step.status == "success"
+    assert llm_step.status == "success"
+    assert llm_step.reason == "dry_run_only"
+    assert 0 < llm_step.requested_count <= packet_step.normalized_count
+    assert llm_step.normalized_count == llm_step.requested_count
+    assert llm_step.payload["review_task"] == "skeptic_review"
+    assert llm_step.payload["reviewed_packet_count"] == llm_step.requested_count
+    assert llm_step.payload["reviewed_tickers"] == ["AAA"]
 
 
 def test_daily_run_runs_validation_update_when_outcome_cutoff_is_supplied():

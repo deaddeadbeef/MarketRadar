@@ -78,7 +78,9 @@ SKIP_EXPLANATIONS = {
     "no_current_scan_results": "No current scan results were available for packet building.",
     "no_feature_inputs": "No signal inputs were available for feature scanning.",
     "no_alert_planning_inputs": "No candidate states were available for alert planning.",
-    "no_llm_review_inputs": "There were no Decision Cards for LLM review.",
+    "no_llm_review_inputs": (
+        "There were no Warning or manual-review candidate packets for LLM review."
+    ),
     "no_manual_buy_review_inputs": "No candidate crossed the manual buy-review gate.",
     "no_scheduled_event_provider": "No news/event provider was scheduled for this run.",
     "no_scheduled_provider_input": "No market-data provider was scheduled for this run.",
@@ -105,9 +107,9 @@ OPERATOR_ACTIONS = {
 }
 
 GATE_TRIGGER_CONDITIONS = {
-    "llm_disabled": "Request LLM dry-run review after Decision Cards exist.",
+    "llm_disabled": "Request LLM dry-run review after candidate packets exist.",
     "no_alerts": "Alert planning must produce at least one digest alert.",
-    "no_llm_review_inputs": "At least one Decision Card must exist.",
+    "no_llm_review_inputs": "At least one Warning or manual-review candidate packet must exist.",
     "no_manual_buy_review_inputs": (
         "At least one candidate must pass policy into manual buy review."
     ),
