@@ -258,6 +258,7 @@ def test_dashboard_candidate_queue_surfaces_blocker_diagnostics() -> None:
     assert "_candidate_blocker_rows" in functions
     assert overview_source is not None
     assert "Risk / Blocker" in overview_source
+    assert "Readiness Gate" in overview_source
     assert "Blocker Diagnostics" in overview_source
     assert "Schwab Price" in overview_source
     assert "Schwab RVOL" in overview_source

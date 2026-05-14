@@ -2164,6 +2164,7 @@ def _show_overview(
                 "blocker_summary",
                 "decision_card_id",
                 "decision_next_step",
+                "decision_readiness_gate",
                 "next_review_at",
             ],
             labels={
@@ -2181,6 +2182,7 @@ def _show_overview(
                 "blocker_summary": "Risk / Blocker",
                 "decision_card_id": "Card",
                 "decision_next_step": "Next Step",
+                "decision_readiness_gate": "Readiness Gate",
                 "next_review_at": "Next Review",
             },
             empty="No candidate rows.",
@@ -2208,6 +2210,9 @@ def _show_overview(
                 "ticker": selected_candidate.get("ticker"),
                 "decision_status": selected_candidate.get("decision_status"),
                 "decision_next_step": selected_candidate.get("decision_next_step"),
+                "decision_readiness_gate": selected_candidate.get(
+                    "decision_readiness_gate"
+                ),
                 "state": selected_candidate.get("state"),
                 "score": selected_candidate.get("final_score"),
                 "top_event": selected_candidate.get("top_event_title"),
