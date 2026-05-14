@@ -100,6 +100,11 @@ control or `/api/brokers/schwab/market-sync` endpoint can make Schwab market-dat
 requests, and those calls remain guarded by the configured ticker cap and
 cooldown.
 
+The Overview selected-candidate panel also has **Refresh Schwab Context**. Use it
+for one candidate at a time when a row shows missing Schwab context. It calls the
+same `/api/brokers/schwab/market-sync` endpoint, so repeated clicks are suppressed
+by the same server-side guard.
+
 For local HTTPS OAuth callbacks, the dashboard infers the API origin from
 `SCHWAB_REDIRECT_URI`. If the API server is not running, dashboard action
 buttons fail visibly without changing stored data.

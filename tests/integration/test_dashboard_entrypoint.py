@@ -208,6 +208,29 @@ def test_candidate_opportunity_action_form_requires_analyst_role() -> None:
     assert "actor_role=dashboard_role.value" in helper_source
 
 
+def test_candidate_schwab_context_refresh_is_explicit_and_rate_guarded() -> None:
+    source = Path("apps/dashboard/Home.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    functions = {
+        node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)
+    }
+    overview_source = ast.get_source_segment(source, functions["_show_overview"])
+    helper_source = ast.get_source_segment(
+        source,
+        functions["_show_candidate_schwab_context_refresh"],
+    )
+
+    assert overview_source is not None
+    assert "_show_candidate_schwab_context_refresh" in overview_source
+    assert helper_source is not None
+    assert "role_allows(dashboard_role, Role.ANALYST)" in helper_source
+    assert "Refresh Schwab Context" in helper_source
+    assert '"/api/brokers/schwab/market-sync"' in helper_source
+    assert '"include_history": True' in helper_source
+    assert '"include_options": True' in helper_source
+    assert "market-sync cooldown" in helper_source
+
+
 def test_broker_write_controls_require_analyst_role() -> None:
     source = Path("apps/dashboard/Home.py").read_text(encoding="utf-8")
     tree = ast.parse(source)
@@ -218,6 +241,7 @@ def test_broker_write_controls_require_analyst_role() -> None:
     for name in [
         "_show_broker_controls",
         "_show_opportunity_action_form",
+        "_show_candidate_schwab_context_refresh",
         "_show_trigger_form",
         "_show_order_ticket_form",
     ]:
