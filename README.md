@@ -112,6 +112,17 @@ powershell -ExecutionPolicy Bypass -File scripts/market-radar-status.ps1
 This reads local API health, readiness, latest run, live activation, and recent
 telemetry. It makes 0 Polygon, SEC, Schwab, or OpenAI calls.
 
+For a zero-call deployment/readiness gate that exits non-zero until Market Radar
+is safe to use for investment decisions:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/assert-investable-readiness.ps1
+```
+
+This checks local readiness, live activation, call-plan, and telemetry state. It
+makes 0 Polygon, SEC, Schwab, or OpenAI calls and is expected to fail closed
+while required live credentials or data-quality gates are missing.
+
 After editing `.env.local`, run the activation checker before making live
 provider calls:
 
