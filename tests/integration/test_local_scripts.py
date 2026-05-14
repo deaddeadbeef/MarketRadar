@@ -27,6 +27,8 @@ def test_readme_mentions_restart_script_for_local_dashboard() -> None:
     assert "scripts/prepare-live-env.ps1" in readme
     assert "scripts/restart-local.ps1" in readme
     assert "scripts/check-live-activation.ps1" in readme
+    assert "scripts/run-first-live-smoke.ps1" in readme
+    assert "-Execute" in readme
     assert "CATALYST_DAILY_MARKET_PROVIDER=polygon" in readme
     assert "CATALYST_DAILY_PROVIDER=polygon" in readme
     assert "CATALYST_DAILY_EVENT_PROVIDER=sec" in readme
@@ -53,6 +55,25 @@ def test_prepare_live_env_script_writes_only_safe_defaults() -> None:
     assert "CATALYST_POLYGON_API_KEY=placeholder" not in text
     assert "OPENAI_API_KEY=" not in text
     assert "SCHWAB_CLIENT_SECRET=" not in text
+
+
+def test_run_first_live_smoke_requires_explicit_execute_for_provider_calls() -> None:
+    script = Path("scripts/run-first-live-smoke.ps1")
+    text = script.read_text(encoding="utf-8")
+
+    assert script.is_file()
+    assert "[switch]$Execute" in text
+    assert "/api/radar/live-activation" in text
+    assert "/api/radar/runs/call-plan" in text
+    assert "/api/radar/universe/seed" in text
+    assert "/api/radar/runs" in text
+    assert "/api/radar/readiness" in text
+    assert "MaxRadarExternalCalls" in text
+    assert "MaxUniversePages -gt 1" in text
+    assert "Plan only: no provider calls were made." in text
+    assert "External calls made: 0" in text
+    assert "Re-run with -Execute" in text
+    assert "Schwab and OpenAI are not called" in text
 
 
 def test_check_live_activation_script_is_zero_external_call_status_check() -> None:
