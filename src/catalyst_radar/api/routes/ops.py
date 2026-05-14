@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.dashboard import data as dashboard_data
@@ -29,3 +29,12 @@ def _dashboard_helper(name: str) -> Callable[..., Any]:
 def health() -> dict[str, object]:
     load_ops_health = _dashboard_helper("load_ops_health")
     return load_ops_health(_engine())
+
+
+@router.get("/telemetry", dependencies=[Depends(require_role(Role.VIEWER))])
+def telemetry(
+    limit: int = Query(default=8, ge=1, le=100),
+) -> dict[str, object]:
+    load_ops_health = _dashboard_helper("load_ops_health")
+    telemetry_tape_payload = _dashboard_helper("telemetry_tape_payload")
+    return telemetry_tape_payload(load_ops_health(_engine()), limit=limit)
