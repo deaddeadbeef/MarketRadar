@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import importlib.util
 from pathlib import Path
 
 
@@ -97,6 +98,41 @@ def test_dashboard_radar_run_summary_uses_operator_skip_labels() -> None:
     assert "Expected skipped gates" in sections_source
 
 
+def test_dashboard_candidate_queue_surfaces_blocker_diagnostics() -> None:
+    source = Path("apps/dashboard/Home.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    functions = {
+        node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)
+    }
+    rows_helper_source = ast.get_source_segment(
+        source,
+        functions["_candidate_rows_with_labels"],
+    )
+    overview_source = ast.get_source_segment(source, functions["_show_overview"])
+
+    assert rows_helper_source is not None
+    assert "blocker_summary" in rows_helper_source
+    assert "_candidate_blocker_summary" in rows_helper_source
+    assert "_candidate_blocker_rows" in functions
+    assert overview_source is not None
+    assert "Risk / Blocker" in overview_source
+    assert "Blocker Diagnostics" in overview_source
+    assert "hard_blocks" in overview_source
+    assert "transition_reasons" in overview_source
+
+
+def test_candidate_blocker_summary_uses_transition_reasons() -> None:
+    module = _load_dashboard_module()
+
+    assert module._candidate_blocker_summary(  # noqa: SLF001
+        {
+            "hard_blocks": [],
+            "portfolio_hard_blocks": [],
+            "transition_reasons": ["candidate data is stale"],
+        }
+    ) == "candidate data is stale"
+
+
 def test_dashboard_wires_research_shortlist_after_manual_review_gate() -> None:
     tree = ast.parse(Path("apps/dashboard/Home.py").read_text(encoding="utf-8"))
     functions = {
@@ -159,3 +195,13 @@ def test_dashboard_wires_live_data_activation_contract_after_plan() -> None:
         < line_by_call["_show_live_data_activation_contract"]
         < line_by_call["_show_telemetry_tape"]
     )
+
+
+def _load_dashboard_module():
+    path = Path("apps/dashboard/Home.py")
+    spec = importlib.util.spec_from_file_location("dashboard_home_for_test", path)
+    assert spec is not None
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module

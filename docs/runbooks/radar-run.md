@@ -72,7 +72,11 @@ that gate says `manual_buy_review`.
 The **Candidate Queue** repeats that decision mode per row. Its `Decision`
 column can show `manual_buy_review`, `research_only`, `missing_card`, `blocked`,
 `monitor`, or `not_ready`; use that label before interpreting a high score as
-actionable.
+actionable. The queue also shows `Risk / Blocker` from stored hard blocks,
+portfolio blocks, transition reasons, or disconfirming evidence. Selecting a
+row opens **Blocker Diagnostics**, which is the fastest way to see whether a
+candidate is blocked by stale data, portfolio/risk policy, missing evidence, or
+a real negative signal.
 
 The dashboard **Research Shortlist** condenses the current queue into the rows
 most worth manual attention. It keeps the raw audit trail server-side, but the
