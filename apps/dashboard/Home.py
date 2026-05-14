@@ -622,10 +622,12 @@ def _show_radar_run_controls(
     control_col, status_col = st.columns([1, 3])
     with control_col:
         run_llm_dry_run = st.checkbox(
-            "LLM dry run",
-            value=False,
+            "Agent review dry run",
+            value=True,
             key="run_radar_llm_dry_run",
-            help="Runs the LLM step in dry-run mode only; no model call is made.",
+            help=(
+                "Runs the agent-review step in dry-run mode only; no model call is made."
+            ),
         )
         st.checkbox(
             "Alert dry run",

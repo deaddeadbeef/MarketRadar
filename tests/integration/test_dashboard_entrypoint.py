@@ -87,6 +87,41 @@ def test_dashboard_manual_radar_run_uses_default_scope_payload() -> None:
     assert "**run_scope_payload" in controls_source
 
 
+def test_dashboard_manual_radar_run_defaults_agent_review_dry_run_on() -> None:
+    source = Path("apps/dashboard/Home.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    functions = {
+        node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)
+    }
+    controls = functions["_show_radar_run_controls"]
+    checkboxes = [
+        node
+        for node in ast.walk(controls)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "checkbox"
+    ]
+    llm_checkbox = next(
+        node
+        for node in checkboxes
+        if any(
+            keyword.arg == "key"
+            and isinstance(keyword.value, ast.Constant)
+            and keyword.value.value == "run_radar_llm_dry_run"
+            for keyword in node.keywords
+        )
+    )
+
+    assert isinstance(llm_checkbox.args[0], ast.Constant)
+    assert llm_checkbox.args[0].value == "Agent review dry run"
+    assert any(
+        keyword.arg == "value"
+        and isinstance(keyword.value, ast.Constant)
+        and keyword.value.value is True
+        for keyword in llm_checkbox.keywords
+    )
+
+
 def test_dashboard_radar_run_summary_uses_operator_skip_labels() -> None:
     source = Path("apps/dashboard/Home.py").read_text(encoding="utf-8")
     tree = ast.parse(source)
