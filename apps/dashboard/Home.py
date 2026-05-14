@@ -2523,6 +2523,7 @@ def _show_overview(
             config=config,
             selected_candidate=selected_candidate,
             radar_run_summary=radar_run_summary,
+            cost_summary=cost_summary,
             dashboard_role=dashboard_role,
         )
         _show_records(
@@ -2660,6 +2661,7 @@ def _show_candidate_agent_review_action(
     config: AppConfig,
     selected_candidate: Mapping[str, object],
     radar_run_summary: Mapping[str, Any],
+    cost_summary: Mapping[str, Any],
     dashboard_role: Role,
 ) -> None:
     st.subheader("Agent Review Action")
@@ -2718,6 +2720,16 @@ def _show_candidate_agent_review_action(
             f"ledger={ledger.get('id') or 'n/a'}."
         )
         st.rerun()
+    _show_records(
+        "Agent Review Ledger Evidence",
+        dashboard_data.agent_review_ledger_rows_payload(
+            cost_summary,
+            ticker,
+            task="skeptic_review",
+            limit=5,
+        ),
+        empty="No persisted agent review ledger row for this candidate yet.",
+    )
 
 
 def _candidate_review_as_of(candidate: Mapping[str, object]) -> date | None:

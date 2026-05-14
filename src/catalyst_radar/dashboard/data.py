@@ -11,6 +11,7 @@ from typing import Any
 
 from sqlalchemy import Engine, and_, func, select
 
+from catalyst_radar.agents.models import BudgetLedgerEntry
 from catalyst_radar.brokers.interactive import (
     market_snapshot_payload,
     opportunity_action_payload,
@@ -1701,6 +1702,77 @@ def load_cost_summary(
         "useful_labels": [_dataclass_dict(label) for label in useful_labels],
         "source": "budget_ledger",
     }
+
+
+def load_agent_review_history(
+    engine: Engine,
+    *,
+    available_at: datetime | None = None,
+    ticker: str | None = None,
+    task: str | None = None,
+    status: str | None = None,
+    limit: int = 50,
+) -> dict[str, object]:
+    cutoff = _as_utc_datetime_or_none(available_at)
+    entries = BudgetLedgerRepository(engine).list_entries(
+        available_at=cutoff or datetime.now(UTC),
+        ticker=ticker,
+        task=task,
+        status=status,
+        limit=limit,
+    )
+    return {
+        "source": "budget_ledger",
+        "schema_version": "agent-review-history-v1",
+        "attempt_count": len(entries),
+        "filters": {
+            "available_at": cutoff.isoformat() if cutoff is not None else None,
+            "ticker": ticker.upper() if ticker is not None and ticker.strip() else None,
+            "task": task,
+            "status": status,
+            "limit": _positive_limit(limit),
+        },
+        "rows": [_budget_ledger_history_row(entry) for entry in entries],
+    }
+
+
+def agent_review_ledger_rows_payload(
+    cost_summary: Mapping[str, object],
+    ticker: object,
+    *,
+    task: str = "skeptic_review",
+    limit: int = 5,
+) -> list[dict[str, object]]:
+    symbol = str(ticker or "").strip().upper()
+    rows: list[dict[str, object]] = []
+    for raw_row in _sequence_value(cost_summary.get("rows")):
+        if not isinstance(raw_row, Mapping):
+            continue
+        row = _row_dict(raw_row)
+        if symbol and str(row.get("ticker") or "").upper() != symbol:
+            continue
+        if task and str(row.get("task") or "") != task:
+            continue
+        rows.append(
+            {
+                "id": row.get("id"),
+                "available_at": row.get("available_at"),
+                "ticker": row.get("ticker"),
+                "task": row.get("task"),
+                "status": row.get("status"),
+                "skip_reason": row.get("skip_reason"),
+                "estimated_cost_usd": row.get("estimated_cost_usd"),
+                "actual_cost_usd": row.get("actual_cost_usd"),
+                "input_tokens": row.get("input_tokens"),
+                "output_tokens": row.get("output_tokens"),
+                "provider": row.get("provider"),
+                "model": row.get("model"),
+                "candidate_state": row.get("candidate_state"),
+                "prompt_version": row.get("prompt_version"),
+                "schema_version": row.get("schema_version"),
+            }
+        )
+    return rows[: _positive_limit(limit)]
 
 
 def load_ops_health(
@@ -4310,6 +4382,33 @@ def _mapping_value(source: object, key: str) -> dict[str, object]:
         return {}
     value = source.get(key)
     return _row_dict(value) if isinstance(value, Mapping) else {}
+
+
+def _budget_ledger_history_row(entry: BudgetLedgerEntry) -> dict[str, object]:
+    return {
+        "id": entry.id,
+        "ts": _as_utc_datetime(entry.ts),
+        "available_at": _as_utc_datetime(entry.available_at),
+        "ticker": entry.ticker,
+        "task": _json_safe(entry.task),
+        "model": entry.model,
+        "provider": entry.provider,
+        "status": _json_safe(entry.status),
+        "skip_reason": _json_safe(entry.skip_reason),
+        "input_tokens": entry.token_usage.input_tokens,
+        "cached_input_tokens": entry.token_usage.cached_input_tokens,
+        "output_tokens": entry.token_usage.output_tokens,
+        "estimated_cost_usd": entry.estimated_cost,
+        "actual_cost_usd": entry.actual_cost,
+        "currency": entry.currency,
+        "candidate_state": entry.candidate_state,
+        "candidate_state_id": entry.candidate_state_id,
+        "candidate_packet_id": entry.candidate_packet_id,
+        "decision_card_id": entry.decision_card_id,
+        "prompt_version": entry.prompt_version,
+        "schema_version": entry.schema_version,
+        "outcome_label": entry.outcome_label,
+    }
 
 
 def _readiness_row(

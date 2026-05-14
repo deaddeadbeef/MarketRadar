@@ -259,8 +259,12 @@ def test_dashboard_selected_candidate_has_agent_review_dry_run_action() -> None:
     assert overview_source is not None
     assert action_source is not None
     assert "_show_candidate_agent_review_action(" in overview_source
+    assert "cost_summary=cost_summary" in overview_source
     assert "Agent Review Action" in action_source
     assert "Run Agent Review Dry Run" in action_source
+    assert "Agent Review Ledger Evidence" in action_source
+    assert "agent_review_ledger_rows_payload" in action_source
+    assert "No persisted agent review ledger row" in action_source
     assert "/api/agents/review" in action_source
     assert '"mode": "dry_run"' in action_source
     assert "OpenAI call" in action_source

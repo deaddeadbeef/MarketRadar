@@ -71,6 +71,14 @@ DEPENDENCY_DECLARATION_PATTERNS = (
     "yarn.lock",
 )
 EXPECTED_API_ROUTES = {
+    (
+        "POST",
+        "/api/agents/review",
+    ): ("catalyst_radar.api.routes.agents", "review_candidate", ("agents",)),
+    (
+        "GET",
+        "/api/agents/reviews",
+    ): ("catalyst_radar.api.routes.agents", "review_history", ("agents",)),
     ("GET", "/api/alerts"): ("catalyst_radar.api.routes.alerts", "alerts", ("alerts",)),
     (
         "GET",

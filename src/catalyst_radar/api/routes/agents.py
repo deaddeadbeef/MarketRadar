@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
-from typing import Literal
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from catalyst_radar.agents.review_service import run_agent_review
 from catalyst_radar.agents.tasks import DEFAULT_TASKS
 from catalyst_radar.core.config import AppConfig
+from catalyst_radar.dashboard import data as dashboard_data
 from catalyst_radar.security.access import Role, require_role
 from catalyst_radar.storage.db import create_schema, engine_from_url
 
@@ -58,6 +59,27 @@ def review_candidate(request: AgentReviewRequest) -> dict[str, object]:
     if result.status_code >= 400:
         raise HTTPException(status_code=result.status_code, detail=result.payload)
     return result.payload
+
+
+@router.get("/reviews", dependencies=[Depends(require_role(Role.VIEWER))])
+def review_history(
+    ticker: Annotated[str | None, Query(min_length=1, max_length=12)] = None,
+    task: str | None = None,
+    status: str | None = None,
+    available_at: datetime | None = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+) -> dict[str, object]:
+    try:
+        return dashboard_data.load_agent_review_history(
+            _engine(),
+            available_at=available_at,
+            ticker=ticker.upper() if ticker is not None else None,
+            task=task,
+            status=status,
+            limit=limit,
+        )
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 def _aware_utc(value: datetime) -> datetime:
