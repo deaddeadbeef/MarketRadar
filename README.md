@@ -48,9 +48,21 @@ catalyst-radar init-db
 
 ## Provider configuration
 
-Real market-data provider settings are configured through environment variables.
-Use `CATALYST_MARKET_PROVIDER=polygon` for Polygon workflows, and keep
-`CATALYST_POLYGON_API_KEY` unset or blank unless running a live provider call.
+Real daily-radar provider settings are configured through environment variables.
+For the first capped live market run, use the daily provider contract:
+`CATALYST_DAILY_MARKET_PROVIDER=polygon`, `CATALYST_DAILY_PROVIDER=polygon`,
+and `CATALYST_POLYGON_API_KEY`. For live SEC catalyst discovery, use
+`CATALYST_DAILY_EVENT_PROVIDER=sec`, `CATALYST_SEC_ENABLE_LIVE=1`, and a
+compliant `CATALYST_SEC_USER_AGENT`. Keep provider keys unset or blank unless
+you are intentionally running a capped live provider call.
+
+Before any live provider call, run the activation checker and inspect the
+call plan:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/check-live-activation.ps1
+curl.exe --insecure --fail --silent --show-error --request POST https://127.0.0.1:8443/api/radar/runs/call-plan --header "Content-Type: application/json" --data '{}'
+```
 
 Schwab broker integration is read-only. Configure the Schwab app credentials,
 callback URL, and `BROKER_TOKEN_ENCRYPTION_KEY` in `.env.local`, then use the

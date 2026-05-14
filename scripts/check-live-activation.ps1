@@ -67,3 +67,11 @@ if ($steps.Count -gt 0) {
         }
     }
 }
+
+Write-Output ""
+Write-Output "Zero-call verification commands:"
+Write-Output ("- Readiness: curl.exe --insecure --fail --silent --show-error --request GET https://{0}:{1}/api/radar/readiness" -f $ApiHost, $ApiPort)
+Write-Output ("- Latest run: curl.exe --insecure --fail --silent --show-error --request GET https://{0}:{1}/api/radar/runs/latest" -f $ApiHost, $ApiPort)
+Write-Output ("- Telemetry: curl.exe --insecure --fail --silent --show-error --request GET https://{0}:{1}/api/ops/telemetry?limit=5" -f $ApiHost, $ApiPort)
+Write-Output ("- Call plan: curl.exe --insecure --fail --silent --show-error --request POST https://{0}:{1}/api/radar/runs/call-plan --header ""Content-Type: application/json"" --data '{{}}'" -f $ApiHost, $ApiPort)
+Write-Output "These commands read local API state only; they do not call Polygon, SEC, Schwab, or OpenAI."
