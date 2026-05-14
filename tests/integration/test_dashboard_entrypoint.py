@@ -48,3 +48,25 @@ def test_dashboard_wires_manual_review_gate_as_display_only() -> None:
     assert {"subheader", "success", "warning", "columns", "metric"}.issubset(
         gate_calls
     )
+
+
+def test_dashboard_shows_radar_call_plan_before_run_post() -> None:
+    tree = ast.parse(Path("apps/dashboard/Home.py").read_text(encoding="utf-8"))
+    functions = {
+        node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)
+    }
+    controls = functions["_show_radar_run_controls"]
+    calls = [
+        (node.func.attr if isinstance(node.func, ast.Attribute) else node.func.id, node.lineno)
+        for node in ast.walk(controls)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute | ast.Name)
+    ]
+    call_names = [name for name, _line in calls]
+
+    assert "radar_run_call_plan_payload" in call_names
+    assert "_show_radar_call_plan" in call_names
+    assert "_api_post" in call_names
+    plan_line = next(line for name, line in calls if name == "radar_run_call_plan_payload")
+    post_line = next(line for name, line in calls if name == "_api_post")
+    assert plan_line < post_line

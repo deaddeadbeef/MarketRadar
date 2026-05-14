@@ -49,6 +49,7 @@ from catalyst_radar.dashboard.data import (
     provider_preflight_payload,
     radar_discovery_snapshot_payload,
     radar_readiness_payload,
+    radar_run_call_plan_payload,
     radar_run_cooldown_payload,
     readiness_checklist_payload,
     telemetry_tape_payload,
@@ -67,6 +68,7 @@ from catalyst_radar.storage.schema import (
     job_runs,
     paper_trades,
     provider_health,
+    securities,
     signal_features,
     text_snippets,
     useful_alert_labels,
@@ -973,6 +975,79 @@ def test_provider_preflight_payload_flags_sec_cik_target_gap() -> None:
     assert event["status"] == "attention"
     assert "up to 2 SEC submissions requests" in str(event["call_budget"])
     assert "Seed active securities with CIKs" in str(event["next_action"])
+
+
+def test_radar_run_call_plan_reports_local_fixture_no_external_calls(
+    tmp_path: Path,
+) -> None:
+    payload = radar_run_call_plan_payload(_engine(tmp_path), AppConfig.from_env({}))
+
+    assert payload["status"] == "local_or_dry_run_only"
+    assert payload["will_call_external_providers"] is False
+    assert payload["max_external_call_count"] == 0
+    by_layer = {str(row["layer"]): row for row in payload["rows"]}
+    assert by_layer["Market data"]["status"] == "local_only"
+    assert by_layer["News/events"]["status"] == "local_only"
+    assert by_layer["LLM review"]["external_call_count_max"] == 0
+    assert by_layer["Schwab"]["status"] == "not_called"
+
+
+def test_radar_run_call_plan_caps_polygon_and_sec_calls(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    _insert_active_security_for_call_plan(engine, "MSFT", cik="789")
+    _insert_active_security_for_call_plan(engine, "NVDA", cik="123")
+    _insert_active_security_for_call_plan(engine, "AAPL", cik=None)
+    config = AppConfig(
+        daily_market_provider="polygon",
+        polygon_api_key="fixture-key",
+        daily_event_provider="sec",
+        sec_enable_live=True,
+        sec_user_agent="MarketRadar test@example.com",
+        sec_daily_max_tickers=1,
+    )
+
+    payload = radar_run_call_plan_payload(
+        engine,
+        config,
+        tickers=["MSFT", "NVDA", "MSFT"],
+        run_llm=True,
+        llm_dry_run=True,
+    )
+
+    assert payload["status"] == "live_calls_planned"
+    assert payload["will_call_external_providers"] is True
+    assert payload["max_external_call_count"] == 2
+    assert payload["scope"]["tickers"] == ["MSFT", "NVDA"]
+    by_layer = {str(row["layer"]): row for row in payload["rows"]}
+    assert by_layer["Market data"]["external_call_count_max"] == 1
+    assert by_layer["News/events"]["external_call_count_max"] == 1
+    assert "this scope has 1 target" in str(by_layer["News/events"]["detail"])
+    assert by_layer["LLM review"]["status"] == "dry_run"
+    assert by_layer["Schwab"]["external_call_count_max"] == 0
+
+
+def test_radar_run_call_plan_blocks_missing_live_credentials(
+    tmp_path: Path,
+) -> None:
+    config = AppConfig(
+        daily_market_provider="polygon",
+        polygon_api_key=None,
+        daily_event_provider="sec",
+        sec_enable_live=False,
+        sec_user_agent=None,
+    )
+
+    payload = radar_run_call_plan_payload(_engine(tmp_path), config)
+
+    assert payload["status"] == "blocked"
+    assert payload["max_external_call_count"] == 0
+    by_layer = {str(row["layer"]): row for row in payload["rows"]}
+    assert by_layer["Market data"]["status"] == "blocked"
+    assert "CATALYST_POLYGON_API_KEY" in str(by_layer["Market data"]["detail"])
+    assert by_layer["News/events"]["status"] == "blocked"
+    assert "CATALYST_SEC_ENABLE_LIVE=1" in str(by_layer["News/events"]["detail"])
 
 
 def test_provider_preflight_blocks_openai_when_key_missing() -> None:
@@ -2133,6 +2208,30 @@ def _engine(tmp_path: Path) -> Engine:
     engine = create_engine(f"sqlite:///{(tmp_path / 'dashboard.db').as_posix()}", future=True)
     create_schema(engine)
     return engine
+
+
+def _insert_active_security_for_call_plan(
+    engine: Engine,
+    ticker: str,
+    *,
+    cik: str | None,
+) -> None:
+    with engine.begin() as conn:
+        conn.execute(
+            insert(securities).values(
+                ticker=ticker,
+                name=ticker,
+                exchange="NASDAQ",
+                sector="Technology",
+                industry="Software",
+                market_cap=100_000_000_000.0,
+                avg_dollar_volume_20d=1_000_000_000.0,
+                has_options=True,
+                is_active=True,
+                updated_at=AVAILABLE_AT,
+                metadata={"cik": cik} if cik is not None else {},
+            )
+        )
 
 
 def _run_step(

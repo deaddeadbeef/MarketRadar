@@ -765,6 +765,49 @@ def test_get_radar_readiness_redacts_restricted_discovery_snapshot(
     ]
 
 
+def test_post_radar_run_call_plan_returns_read_only_call_budget(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "radar-call-plan.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+    captured: dict[str, object] = {}
+
+    def _fake_call_plan(_engine, _config, **kwargs):
+        captured.update(kwargs)
+        return {
+            "schema_version": "radar-run-call-plan-v1",
+            "status": "local_or_dry_run_only",
+            "will_call_external_providers": False,
+            "max_external_call_count": 0,
+        }
+
+    monkeypatch.setattr(
+        dashboard_data,
+        "radar_run_call_plan_payload",
+        _fake_call_plan,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        radar_routes,
+        "run_once",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("run called")),
+    )
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/radar/runs/call-plan",
+        json={"tickers": ["msft", "nvda"], "run_llm": True, "llm_dry_run": True},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["max_external_call_count"] == 0
+    assert captured["tickers"] == ["msft", "nvda"]
+    assert captured["run_llm"] is True
+    assert captured["llm_dry_run"] is True
+
+
 def test_get_candidate_detail_returns_404_for_missing_ticker(tmp_path, monkeypatch) -> None:
     database_url = _database_url(tmp_path, "missing-detail.db")
     monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)

@@ -533,6 +533,7 @@ def _show_universe_coverage(
 
 
 def _show_radar_run_controls(
+    engine: object,
     config: AppConfig,
     radar_run_summary: Mapping[str, Any],
     radar_run_cooldown: Mapping[str, Any],
@@ -607,6 +608,20 @@ def _show_radar_run_controls(
         )
     with status_col:
         _show_radar_run_cooldown(cooldown)
+        call_plan = _mapping(
+            dashboard_data.radar_run_call_plan_payload(
+                engine,
+                config,
+                as_of=run_scope_payload.get("as_of"),
+                provider=run_scope_payload.get("provider"),
+                universe=run_scope_payload.get("universe"),
+                tickers=_sequence(run_scope_payload.get("tickers")),
+                run_llm=run_llm_dry_run,
+                llm_dry_run=True,
+                dry_run_alerts=True,
+            )
+        )
+        _show_radar_call_plan(call_plan)
         if not run_requested:
             _show_radar_run_summary(radar_run_summary)
             return
@@ -635,6 +650,48 @@ def _show_radar_run_controls(
         )
         if retry_after_seconds:
             st.caption(f"Previous cooldown estimate was {retry_after_seconds} second(s).")
+
+
+def _show_radar_call_plan(call_plan: Mapping[str, Any]) -> None:
+    if not call_plan:
+        st.caption("Run call plan is unavailable.")
+        return
+    status = str(call_plan.get("status") or "unknown")
+    message = (
+        f"{call_plan.get('headline') or 'Radar run call plan'} "
+        f"Next: {call_plan.get('next_action') or 'n/a'}"
+    ).strip()
+    if status == "blocked":
+        st.warning(message)
+    elif bool(call_plan.get("will_call_external_providers")):
+        st.info(message)
+    else:
+        st.caption(message)
+    _show_status_badges(
+        [
+            ("External Calls Max", call_plan.get("max_external_call_count", 0)),
+            (
+                "Live Providers",
+                "yes" if call_plan.get("will_call_external_providers") else "no",
+            ),
+            (
+                "Cooldown",
+                f"{_nested(call_plan, 'guardrails', 'manual_run_cooldown_seconds') or 'n/a'}s",
+            ),
+            (
+                "Schwab Calls",
+                "yes"
+                if _nested(call_plan, "guardrails", "schwab_called_by_radar_run")
+                else "no",
+            ),
+        ]
+    )
+    with st.expander("Run call plan"):
+        _show_records(
+            "Planned External Calls",
+            call_plan.get("rows"),
+            empty="No call-plan rows.",
+        )
 
 
 def _show_radar_run_cooldown(cooldown: Mapping[str, Any]) -> None:
@@ -1274,6 +1331,7 @@ def _nested(mapping: Mapping[str, Any], *keys: str) -> object:
 
 def _show_overview(
     *,
+    engine: object,
     config: AppConfig,
     radar_run_summary: Mapping[str, Any],
     radar_run_cooldown: Mapping[str, Any],
@@ -1311,7 +1369,7 @@ def _show_overview(
     _show_live_activation_plan(config, radar_run_summary, broker_summary)
     _show_telemetry_tape(ops_health)
     _show_universe_coverage(config, ops_health)
-    _show_radar_run_controls(config, radar_run_summary, radar_run_cooldown)
+    _show_radar_run_controls(engine, config, radar_run_summary, radar_run_cooldown)
     _show_discovery_snapshot(discovery_snapshot)
     investment_readiness = _show_investment_readiness(discovery_snapshot, candidate_rows)
     _show_decision_contract(investment_readiness)
@@ -2396,6 +2454,7 @@ tabs = st.tabs(
 
 with tabs[0]:
     _show_overview(
+        engine=engine,
         config=config,
         radar_run_summary=radar_run_summary,
         radar_run_cooldown=radar_run_cooldown,

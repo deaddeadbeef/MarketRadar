@@ -45,6 +45,7 @@ from catalyst_radar.storage.schema import (
     job_locks,
     job_runs,
     paper_trades,
+    securities,
     signal_features,
     text_snippets,
     user_feedback,
@@ -1260,6 +1261,73 @@ def provider_preflight_payload(
         _schwab_preflight_row(config, coverage.get("Schwab portfolio", {})),
         _llm_preflight_row(config, coverage.get("LLM review", {})),
     ]
+
+
+def radar_run_call_plan_payload(
+    engine: Engine,
+    config: AppConfig,
+    *,
+    as_of: date | str | None = None,
+    provider: str | None = None,
+    universe: str | None = None,
+    tickers: Sequence[str] | None = None,
+    run_llm: bool = False,
+    llm_dry_run: bool = True,
+    dry_run_alerts: bool = True,
+) -> dict[str, object]:
+    normalized_tickers = _call_plan_tickers(tickers)
+    sec_targets = _sec_call_plan_targets(
+        engine,
+        tickers=normalized_tickers,
+        limit=config.sec_daily_max_tickers,
+    )
+    rows = [
+        _market_call_plan_row(config),
+        _event_call_plan_row(config, sec_targets=sec_targets),
+        _llm_call_plan_row(run_llm=run_llm, llm_dry_run=llm_dry_run),
+        _alert_call_plan_row(dry_run_alerts=dry_run_alerts),
+        _schwab_call_plan_row(),
+    ]
+    max_external_calls = sum(
+        int(_finite_float(row.get("external_call_count_max"))) for row in rows
+    )
+    blocked_rows = [row for row in rows if str(row.get("status") or "") == "blocked"]
+    if blocked_rows:
+        status = "blocked"
+        headline = "Radar run call plan has blocked live steps."
+        next_action = str(blocked_rows[0].get("next_action") or "Review blocked call rows.")
+    elif max_external_calls:
+        status = "live_calls_planned"
+        headline = f"Radar run may make up to {max_external_calls} external call(s)."
+        next_action = "Run only if the caps and providers match your intent."
+    else:
+        status = "local_or_dry_run_only"
+        headline = "Radar run has no planned external provider calls."
+        next_action = "Safe to use for local fixture/dry-run validation."
+    return {
+        "schema_version": "radar-run-call-plan-v1",
+        "status": status,
+        "headline": headline,
+        "next_action": next_action,
+        "will_call_external_providers": max_external_calls > 0,
+        "max_external_call_count": max_external_calls,
+        "scope": {
+            "as_of": as_of.isoformat() if isinstance(as_of, date) else as_of,
+            "provider_override": provider,
+            "universe_override": universe,
+            "tickers": normalized_tickers,
+            "ticker_count": len(normalized_tickers),
+        },
+        "guardrails": {
+            "manual_run_cooldown_seconds": config.radar_run_min_interval_seconds,
+            "sec_daily_max_tickers": config.sec_daily_max_tickers,
+            "polygon_ticker_seed_max_pages": config.polygon_tickers_max_pages,
+            "daily_real_llm_supported": False,
+            "daily_real_alert_delivery_supported": False,
+            "schwab_called_by_radar_run": False,
+        },
+        "rows": rows,
+    }
 
 
 def activation_summary_payload(
@@ -3511,6 +3579,52 @@ def _radar_steps_by_name(
     return steps
 
 
+def _call_plan_tickers(tickers: Sequence[str] | None) -> list[str]:
+    values: list[str] = []
+    seen: set[str] = set()
+    for value in tickers or ():
+        ticker = str(value or "").strip().upper()
+        if ticker and ticker not in seen:
+            values.append(ticker)
+            seen.add(ticker)
+    return values
+
+
+def _sec_call_plan_targets(
+    engine: Engine,
+    *,
+    tickers: Sequence[str],
+    limit: int,
+) -> list[dict[str, object]]:
+    filters = [securities.c.is_active.is_(True)]
+    if tickers:
+        filters.append(securities.c.ticker.in_(tuple(tickers)))
+    stmt = (
+        select(securities.c.ticker, securities.c.metadata)
+        .where(*filters)
+        .order_by(securities.c.ticker)
+    )
+    rows: list[dict[str, object]] = []
+    cap = max(0, int(limit))
+    with engine.connect() as conn:
+        for row in conn.execute(stmt):
+            if len(rows) >= cap:
+                break
+            metadata = row._mapping["metadata"]
+            cik = _security_metadata_cik(metadata if isinstance(metadata, Mapping) else {})
+            if cik is not None:
+                rows.append({"ticker": row.ticker, "cik": cik})
+    return rows
+
+
+def _security_metadata_cik(metadata: Mapping[str, object]) -> str | None:
+    for key in ("cik", "cik_str", "central_index_key"):
+        value = metadata.get(key)
+        if value is not None and str(value).strip():
+            return str(value).strip().zfill(10)
+    return None
+
+
 def _coverage_evidence(row: Mapping[str, object]) -> str:
     parts = [
         str(row.get("provider") or "").strip(),
@@ -3679,6 +3793,226 @@ def _event_preflight_row(
         "Switch to SEC scheduled ingest when you are ready for live catalyst discovery.",
         _coverage_evidence(coverage),
     )
+
+
+def _market_call_plan_row(config: AppConfig) -> dict[str, object]:
+    provider = _provider_name(config.daily_market_provider, default="csv")
+    if provider in {"", "none", "off", "disabled"}:
+        return _call_plan_row(
+            "Market data",
+            "skipped",
+            provider,
+            "none",
+            0,
+            "Scheduled market provider is disabled.",
+            "Set CATALYST_DAILY_MARKET_PROVIDER before expecting fresh bars.",
+        )
+    if provider in {"csv", "sample"}:
+        return _call_plan_row(
+            "Market data",
+            "local_only",
+            provider,
+            "scheduled_csv_ingest",
+            0,
+            "Reads local fixture/CSV market files only.",
+            "Use for dry-run validation; configure Polygon for live discovery.",
+        )
+    if provider == "polygon":
+        if not config.polygon_api_key:
+            return _call_plan_row(
+                "Market data",
+                "blocked",
+                provider,
+                "grouped_daily",
+                0,
+                "Polygon is selected, but CATALYST_POLYGON_API_KEY is missing.",
+                "Set CATALYST_POLYGON_API_KEY before running live market ingest.",
+            )
+        return _call_plan_row(
+            "Market data",
+            "live_call_planned",
+            provider,
+            "grouped_daily",
+            1,
+            "One Polygon grouped-daily request for the selected as-of date.",
+            "Keep the manual cooldown active and inspect rejected_count after the run.",
+        )
+    return _call_plan_row(
+        "Market data",
+        "blocked",
+        provider,
+        "unknown",
+        0,
+        "Scheduled market provider is not supported by daily radar runs.",
+        "Use csv, sample, polygon, none, off, or disabled.",
+    )
+
+
+def _event_call_plan_row(
+    config: AppConfig,
+    *,
+    sec_targets: Sequence[Mapping[str, object]],
+) -> dict[str, object]:
+    provider = _provider_name(config.daily_event_provider, default="news_fixture")
+    if provider in {"", "none", "off", "disabled"}:
+        return _call_plan_row(
+            "News/events",
+            "skipped",
+            provider,
+            "none",
+            0,
+            "Scheduled event provider is disabled.",
+            "Set CATALYST_DAILY_EVENT_PROVIDER before expecting fresh catalysts.",
+        )
+    if provider in {"news_fixture", "sample", "fixture"}:
+        return _call_plan_row(
+            "News/events",
+            "local_only",
+            provider,
+            "scheduled_news_fixture_ingest",
+            0,
+            "Reads local fixture/news files only.",
+            "Configure SEC live mode for live filing catalysts.",
+        )
+    if provider in {"sec", "sec_submissions"}:
+        if not config.sec_enable_live:
+            return _call_plan_row(
+                "News/events",
+                "blocked",
+                provider,
+                "submissions",
+                0,
+                "SEC provider is selected, but CATALYST_SEC_ENABLE_LIVE=1 is missing.",
+                "Set CATALYST_SEC_ENABLE_LIVE=1 before scheduled SEC ingest.",
+            )
+        if not config.sec_user_agent:
+            return _call_plan_row(
+                "News/events",
+                "blocked",
+                provider,
+                "submissions",
+                0,
+                "SEC provider is selected, but CATALYST_SEC_USER_AGENT is missing.",
+                "Set a compliant SEC User-Agent before scheduled SEC ingest.",
+            )
+        target_count = len(sec_targets)
+        if target_count == 0:
+            return _call_plan_row(
+                "News/events",
+                "expected_gate",
+                provider,
+                "submissions",
+                0,
+                "No active securities with CIK metadata are available for SEC polling.",
+                "Seed/refresh Polygon tickers so securities include CIK metadata.",
+            )
+        return _call_plan_row(
+            "News/events",
+            "live_call_planned",
+            provider,
+            "submissions",
+            target_count,
+            (
+                f"SEC submissions polling is capped at {config.sec_daily_max_tickers} "
+                f"ticker(s); this scope has {target_count} target(s)."
+            ),
+            "Run only when this target count matches your intended call budget.",
+        )
+    return _call_plan_row(
+        "News/events",
+        "blocked",
+        provider,
+        "unknown",
+        0,
+        "Scheduled event provider is not supported by daily radar runs.",
+        "Use news_fixture, sample, fixture, sec, sec_submissions, none, off, or disabled.",
+    )
+
+
+def _llm_call_plan_row(*, run_llm: bool, llm_dry_run: bool) -> dict[str, object]:
+    if not run_llm:
+        return _call_plan_row(
+            "LLM review",
+            "expected_gate",
+            "none",
+            "daily_llm_review",
+            0,
+            "Daily LLM review is not requested.",
+            "Use per-candidate LLM review after live data quality is acceptable.",
+        )
+    if llm_dry_run:
+        return _call_plan_row(
+            "LLM review",
+            "dry_run",
+            "configured",
+            "daily_llm_review",
+            0,
+            "Daily LLM review is requested in dry-run mode; no model call is made.",
+            "Inspect budget estimates before enabling per-candidate model calls.",
+        )
+    return _call_plan_row(
+        "LLM review",
+        "blocked",
+        "configured",
+        "daily_llm_review",
+        0,
+        "Real daily LLM review is not supported.",
+        "Use run-llm-review per candidate instead of daily real LLM mode.",
+    )
+
+
+def _alert_call_plan_row(*, dry_run_alerts: bool) -> dict[str, object]:
+    if dry_run_alerts:
+        return _call_plan_row(
+            "Alert delivery",
+            "dry_run",
+            "internal",
+            "daily_digest",
+            0,
+            "Daily alert delivery is locked to dry-run mode.",
+            "Use explicit alert delivery workflows after review.",
+        )
+    return _call_plan_row(
+        "Alert delivery",
+        "blocked",
+        "internal",
+        "daily_digest",
+        0,
+        "Real daily alert delivery is not supported.",
+        "Keep daily radar runs in dry-run alert mode.",
+    )
+
+
+def _schwab_call_plan_row() -> dict[str, object]:
+    return _call_plan_row(
+        "Schwab",
+        "not_called",
+        "schwab",
+        "portfolio_sync",
+        0,
+        "Radar runs do not call Schwab APIs.",
+        "Use separate broker sync controls with their own rate guards.",
+    )
+
+
+def _call_plan_row(
+    layer: str,
+    status: str,
+    provider: str,
+    endpoint: str,
+    external_call_count_max: int,
+    detail: str,
+    next_action: str,
+) -> dict[str, object]:
+    return {
+        "layer": layer,
+        "status": status,
+        "provider": provider or "n/a",
+        "endpoint": endpoint,
+        "external_call_count_max": max(0, int(external_call_count_max)),
+        "detail": detail,
+        "next_action": next_action,
+    }
 
 
 def _schwab_preflight_row(
