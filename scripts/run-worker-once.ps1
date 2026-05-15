@@ -44,9 +44,31 @@ function Invoke-ApiJson {
     }
 }
 
+function Write-MissingValues {
+    param([object[]]$Missing)
+
+    if ($Missing.Count -eq 0) {
+        return
+    }
+    Write-Output ""
+    Write-Output "Missing live activation values:"
+    foreach ($item in $Missing) {
+        Write-Output ("- {0}" -f $item)
+    }
+}
+
 $activation = Invoke-ApiJson -Method "GET" -Path "/api/radar/live-activation"
 Write-Output ("Live activation: {0}" -f $activation.status)
 Write-Output ("Next: {0}" -f $activation.next_action)
+
+if ($activation.status -ne "ready") {
+    Write-MissingValues -Missing @($activation.missing_env)
+    Write-Output ""
+    Write-Output "Worker one-shot call plan: blocked; external_providers=False; max_external_calls=0"
+    Write-Output "External calls made: 0"
+    Write-Output "Run scripts\prepare-live-env.ps1, fill the manual values, restart, then retry."
+    exit 2
+}
 
 $plan = Invoke-ApiJson -Method "POST" -Path "/api/radar/runs/call-plan" -Body @{}
 $plannedCalls = [int]$plan.max_external_call_count
@@ -59,11 +81,13 @@ Write-Output (
 
 if ($plan.status -eq "blocked") {
     Write-Output "External calls made: 0"
-    throw "Worker call plan is blocked; inspect /api/radar/runs/call-plan before running."
+    Write-Output "Worker call plan is blocked; inspect /api/radar/runs/call-plan before running."
+    exit 2
 }
 if ($plannedCalls -gt $MaxWorkerExternalCalls) {
     Write-Output "External calls made: 0"
-    throw "Worker call plan exceeds MaxWorkerExternalCalls=$MaxWorkerExternalCalls."
+    Write-Output "Worker call plan exceeds MaxWorkerExternalCalls=$MaxWorkerExternalCalls."
+    exit 3
 }
 
 if (-not $Execute) {

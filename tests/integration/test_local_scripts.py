@@ -98,11 +98,15 @@ def test_run_worker_once_requires_explicit_execute_for_worker_cycle() -> None:
     assert "[switch]$Execute" in text
     assert "/api/radar/live-activation" in text
     assert "/api/radar/runs/call-plan" in text
+    assert "Missing live activation values:" in text
     assert "Plan only: no provider calls were made and the worker was not started." in text
     assert "CATALYST_WORKER_INTERVAL_SECONDS" in text
     assert "CATALYST_RUN_LLM" in text
     assert "false" in text
     assert "python -m apps.worker.main" in text
+    assert "Worker call plan is blocked" in text
+    assert "exit 2" in text
+    assert "exit 3" in text
     assert "External calls made: 0" in text
     assert "SCHWAB_CLIENT_SECRET=" not in text
     assert "OPENAI_API_KEY=" not in text
