@@ -2994,6 +2994,26 @@ def test_readiness_checklist_blocks_sec_without_live_settings() -> None:
     assert "max_tickers=3" in str(coverage_event["guardrail"])
     assert event["status"] == "blocked"
     assert "SEC catalyst ingestion" in str(event["finding"])
+    assert "CATALYST_SEC_ENABLE_LIVE=1 and CATALYST_SEC_USER_AGENT" in str(
+        event["next_action"]
+    )
+
+
+def test_readiness_checklist_names_only_missing_sec_user_agent() -> None:
+    config = AppConfig(
+        daily_market_provider="csv",
+        daily_event_provider="sec",
+        sec_enable_live=True,
+        sec_user_agent=None,
+        sec_daily_max_tickers=3,
+    )
+
+    rows = readiness_checklist_payload(config, radar_run_summary={"steps": []})
+
+    event = next(row for row in rows if row["area"] == "Catalyst feed")
+    assert event["status"] == "blocked"
+    assert "CATALYST_SEC_USER_AGENT" in str(event["next_action"])
+    assert "CATALYST_SEC_ENABLE_LIVE" not in str(event["next_action"])
 
 
 def test_readiness_checklist_payload_separates_blockers_from_expected_gates() -> None:
