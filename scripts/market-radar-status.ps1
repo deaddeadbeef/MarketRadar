@@ -46,6 +46,7 @@ $readiness = Invoke-ApiJson -Path "/api/radar/readiness"
 $latestRun = Invoke-ApiJson -Path "/api/radar/runs/latest"
 $activation = Invoke-ApiJson -Path "/api/radar/live-activation"
 $callPlan = Invoke-ApiJson -Method "POST" -Path "/api/radar/runs/call-plan" -Body "{}"
+$brokerStatus = Invoke-ApiJson -Path "/api/brokers/schwab/status"
 $telemetry = Invoke-ApiJson -Path ("/api/ops/telemetry?limit={0}" -f [Math]::Max(1, $TelemetryLimit))
 $telemetryCoverage = Invoke-ApiJson -Path "/api/ops/telemetry/coverage"
 
@@ -55,6 +56,7 @@ $payload = [ordered]@{
     latest_run = $latestRun
     live_activation = $activation
     call_plan = $callPlan
+    broker_status = $brokerStatus
     telemetry = $telemetry
     telemetry_coverage = $telemetryCoverage
     external_calls_made = 0
@@ -100,6 +102,14 @@ if ($null -ne $portfolioContext) {
         Write-Output ("- portfolio: {0}" -f $portfolioContext.next_action)
     }
 }
+Write-Output (
+    "Broker: connected={0}; connection_status={1}; access_token_active={2}; refresh_token_available={3}; order_submission_available={4}" -f
+    $brokerStatus.connected,
+    $(if ($null -ne $brokerStatus.connection_status) { $brokerStatus.connection_status } else { $brokerStatus.status }),
+    $(if ($null -ne $brokerStatus.access_token_active) { $brokerStatus.access_token_active } else { "n/a" }),
+    $(if ($null -ne $brokerStatus.refresh_token_available) { $brokerStatus.refresh_token_available } else { "n/a" }),
+    $brokerStatus.order_submission_available
+)
 Write-Output (
     "Latest run: {0}; required={1}/{2}; action_needed={3}; optional_gates={4}; audit_rows={5}" -f
     $latestRun.status,
