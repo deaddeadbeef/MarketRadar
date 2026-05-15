@@ -90,6 +90,11 @@ def test_open_live_env_script_prefers_vscode_without_external_calls() -> None:
     assert "External calls made by this script: 0" in text
     assert "CATALYST_POLYGON_API_KEY" in text
     assert "CATALYST_SEC_USER_AGENT" in text
+    assert "After filling manual values:" in text
+    assert "scripts\\restart-local.ps1" in text
+    assert "scripts\\check-live-activation.ps1" in text
+    assert "scripts\\run-first-live-smoke.ps1" in text
+    assert "scripts\\run-first-live-smoke.ps1 -Execute" in text
     assert "OPENAI_API_KEY=" not in text
     assert "CATALYST_POLYGON_API_KEY=" not in text
     assert "SCHWAB_CLIENT_SECRET=" not in text
