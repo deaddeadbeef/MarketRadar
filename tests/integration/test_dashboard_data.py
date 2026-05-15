@@ -1846,7 +1846,9 @@ def test_live_data_activation_contract_gives_exact_safe_next_steps() -> None:
     assert "scripts/prepare-live-env.ps1" in str(
         contract["operator_steps"][0]["command"]
     )
-    assert "notepad .env.local" in str(contract["operator_steps"][1]["command"])
+    assert "scripts/open-live-env.ps1" in str(
+        contract["operator_steps"][1]["command"]
+    )
     assert "scripts/restart-local.ps1" in str(contract["operator_steps"][2]["command"])
     assert "scripts/run-first-live-smoke.ps1" in str(
         contract["operator_steps"][3]["command"]

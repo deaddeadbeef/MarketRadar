@@ -26,6 +26,7 @@ def test_readme_mentions_restart_script_for_local_dashboard() -> None:
     readme = Path("README.md").read_text(encoding="utf-8")
 
     assert "scripts/prepare-live-env.ps1" in readme
+    assert "scripts/open-live-env.ps1" in readme
     assert "scripts/restart-local.ps1" in readme
     assert "scripts/check-live-activation.ps1" in readme
     assert "scripts/run-first-live-smoke.ps1" in readme
@@ -71,6 +72,25 @@ def test_prepare_live_env_script_writes_only_safe_defaults() -> None:
     assert 'Set-EnvLine -InputLines $lines -Key $key -Value ""' in text
     assert "CATALYST_POLYGON_API_KEY=placeholder" not in text
     assert "OPENAI_API_KEY=" not in text
+    assert "SCHWAB_CLIENT_SECRET=" not in text
+
+
+def test_open_live_env_script_prefers_vscode_without_external_calls() -> None:
+    script = Path("scripts/open-live-env.ps1")
+    text = script.read_text(encoding="utf-8")
+
+    assert script.is_file()
+    assert "scripts\\prepare-live-env.ps1" in text
+    assert "Get-Command code.cmd" in text
+    assert "Get-Command code" in text
+    assert "--reuse-window" in text
+    assert "notepad.exe" in text
+    assert "VS Code" in text
+    assert "External calls made by this script: 0" in text
+    assert "CATALYST_POLYGON_API_KEY" in text
+    assert "CATALYST_SEC_USER_AGENT" in text
+    assert "OPENAI_API_KEY=" not in text
+    assert "CATALYST_POLYGON_API_KEY=" not in text
     assert "SCHWAB_CLIENT_SECRET=" not in text
 
 

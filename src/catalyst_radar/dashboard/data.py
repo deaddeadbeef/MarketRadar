@@ -5540,11 +5540,14 @@ def _live_data_operator_steps(
             "step": 2,
             "status": env_status,
             "action": (
-                "Fill the remaining manual values in .env.local; do not paste keys "
-                "into chat."
+                "Open .env.local, fill the remaining manual values, and do not paste "
+                "keys into chat."
             ),
             "external_calls": 0,
-            "command": "notepad .env.local",
+            "command": (
+                "powershell -ExecutionPolicy Bypass -File "
+                "scripts/open-live-env.ps1"
+            ),
         },
         {
             "step": 3,
