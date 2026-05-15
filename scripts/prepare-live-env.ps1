@@ -38,6 +38,11 @@ $manualValues = @(
     "CATALYST_SEC_USER_AGENT"
 )
 
+$manualGuidance = @{
+    CATALYST_POLYGON_API_KEY = "Paste the Polygon API key from your Polygon dashboard."
+    CATALYST_SEC_USER_AGENT = "Use a SEC-compliant contact string, for example: MarketRadar/0.1 your-email@example.com"
+}
+
 function Set-EnvLine {
     param(
         [string[]]$InputLines,
@@ -130,7 +135,7 @@ if ($missingManual.Count -gt 0) {
     Write-Output ""
     Write-Output "Fill these values manually before the first live run:"
     foreach ($key in $missingManual) {
-        Write-Output ("- {0}" -f $key)
+        Write-Output ("- {0}: {1}" -f $key, $manualGuidance[$key])
     }
 }
 

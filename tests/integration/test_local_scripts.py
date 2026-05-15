@@ -64,6 +64,9 @@ def test_prepare_live_env_script_writes_only_safe_defaults() -> None:
     assert "CATALYST_DAILY_PROVIDER" in text
     assert "CATALYST_POLYGON_TICKERS_MAX_PAGES" in text
     assert "CATALYST_SEC_DAILY_MAX_TICKERS" in text
+    assert "Paste the Polygon API key from your Polygon dashboard." in text
+    assert "SEC-compliant contact string" in text
+    assert "MarketRadar/0.1 your-email@example.com" in text
     assert "function Test-EnvKey" in text
     assert 'Set-EnvLine -InputLines $lines -Key $key -Value ""' in text
     assert "CATALYST_POLYGON_API_KEY=placeholder" not in text
