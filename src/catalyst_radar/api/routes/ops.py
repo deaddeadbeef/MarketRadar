@@ -44,6 +44,12 @@ def telemetry(
     return telemetry_tape_payload(load_ops_health(_engine()), limit=limit)
 
 
+@router.get("/telemetry/coverage", dependencies=[Depends(require_role(Role.VIEWER))])
+def telemetry_coverage() -> dict[str, object]:
+    telemetry_coverage_payload = _dashboard_helper("telemetry_coverage_payload")
+    return telemetry_coverage_payload(_engine())
+
+
 @router.get("/telemetry/raw", dependencies=[Depends(require_role(Role.VIEWER))])
 def raw_telemetry(
     limit: int = Query(default=25, ge=1, le=500),

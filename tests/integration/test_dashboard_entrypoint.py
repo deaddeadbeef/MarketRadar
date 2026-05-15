@@ -815,6 +815,7 @@ def test_dashboard_wires_live_data_activation_contract_after_plan() -> None:
         < line_by_call["_show_live_data_activation_contract"]
         < line_by_call["_show_worker_status"]
         < line_by_call["_show_telemetry_tape"]
+        < line_by_call["_show_telemetry_coverage"]
     )
     worker_source = ast.get_source_segment(source, functions["_show_worker_status"])
     assert worker_source is not None
@@ -853,6 +854,34 @@ def test_dashboard_telemetry_tape_separates_guarded_events_from_attention() -> N
     assert "Download Raw Telemetry Evidence" in helper_source
     assert "download_button" in helper_source
     assert "_raw_telemetry_download_payload" in helper_source
+
+
+def test_dashboard_surfaces_telemetry_coverage_readiness() -> None:
+    source = Path("apps/dashboard/Home.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    functions = {
+        node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)
+    }
+    overview_source = ast.get_source_segment(source, functions["_show_overview"])
+    helper_source = ast.get_source_segment(
+        source,
+        functions["_show_telemetry_coverage"],
+    )
+    rows_source = ast.get_source_segment(
+        source,
+        functions["_telemetry_coverage_operator_rows"],
+    )
+
+    assert overview_source is not None
+    assert helper_source is not None
+    assert rows_source is not None
+    assert "_show_telemetry_coverage" in overview_source
+    assert "telemetry_coverage_payload" in helper_source
+    assert "Telemetry Coverage" in helper_source
+    assert "Download Telemetry Coverage Evidence" in helper_source
+    assert "external_calls_made" in helper_source
+    assert "Missing Required" in helper_source
+    assert "Operator Action" in rows_source
 
 
 def test_dashboard_raw_telemetry_download_is_redacted() -> None:
@@ -902,6 +931,8 @@ def test_dashboard_operator_evidence_bundle_is_downloadable_and_zero_call() -> N
     assert "_broker_status_evidence_payload" in payload_source
     assert "_load_pr_change_ledger" in payload_source
     assert "change_ledger" in payload_source
+    assert "telemetry_coverage_payload" in payload_source
+    assert "telemetry_coverage" in payload_source
     assert "tracked_merged_prs" in payload_source
     assert "redact_value" in payload_source
 

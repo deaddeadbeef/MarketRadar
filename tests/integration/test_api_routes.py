@@ -1439,6 +1439,50 @@ def test_get_ops_telemetry_returns_summarized_tape(tmp_path, monkeypatch) -> Non
     )
 
 
+def test_get_ops_telemetry_coverage_returns_zero_call_readiness(
+    tmp_path, monkeypatch
+) -> None:
+    database_url = _database_url(tmp_path, "ops-telemetry-coverage.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+    captured: dict[str, object] = {}
+
+    def coverage_payload(engine) -> dict[str, object]:
+        captured["engine"] = engine
+        return {
+            "schema_version": "ops-telemetry-coverage-v1",
+            "external_calls_made": 0,
+            "status": "attention",
+            "missing_required_count": 1,
+            "domains": [
+                {
+                    "domain": "Radar run step telemetry",
+                    "status": "attention",
+                    "required": True,
+                }
+            ],
+        }
+
+    monkeypatch.setattr(
+        dashboard_data,
+        "telemetry_coverage_payload",
+        coverage_payload,
+        raising=False,
+    )
+    client = TestClient(create_app())
+
+    response = client.get("/api/ops/telemetry/coverage")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["schema_version"] == "ops-telemetry-coverage-v1"
+    assert payload["external_calls_made"] == 0
+    assert payload["status"] == "attention"
+    assert payload["missing_required_count"] == 1
+    assert payload["domains"][0]["domain"] == "Radar run step telemetry"
+    assert captured["engine"] is not None
+
+
 def test_get_ops_raw_telemetry_exports_redacted_audit_evidence(
     tmp_path, monkeypatch
 ) -> None:

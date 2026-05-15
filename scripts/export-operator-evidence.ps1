@@ -75,6 +75,7 @@ $latestRun = Invoke-ApiJson -Path "/api/radar/runs/latest"
 $activation = Invoke-ApiJson -Path "/api/radar/live-activation"
 $callPlan = Invoke-ApiJson -Method "POST" -Path "/api/radar/runs/call-plan" -Body "{}"
 $telemetry = Invoke-ApiJson -Path ("/api/ops/telemetry?limit={0}" -f $resolvedTelemetryLimit)
+$telemetryCoverage = Invoke-ApiJson -Path "/api/ops/telemetry/coverage"
 $rawTelemetry = Invoke-ApiJson -Path ("/api/ops/telemetry/raw?limit={0}" -f $resolvedTelemetryLimit)
 $schwabStatus = Invoke-ApiJson -Path "/api/brokers/schwab/status"
 $changeLedger = Read-LocalJson -Path "docs\changes\pr-ledger.json" -SchemaVersion "pr-change-ledger-v1"
@@ -100,6 +101,8 @@ $bundle = [ordered]@{
         call_plan_status = $callPlan.status
         call_plan_next_action = $callPlan.next_action
         telemetry_status = $telemetry.status
+        telemetry_coverage_status = $telemetryCoverage.status
+        telemetry_coverage_missing_required = $telemetryCoverage.missing_required_count
         telemetry_attention_count = $telemetry.attention_count
         telemetry_guarded_count = $telemetry.guarded_count
         schwab_connected = $schwabStatus.connected
@@ -114,6 +117,7 @@ $bundle = [ordered]@{
         live_activation = $activation
         call_plan = $callPlan
         telemetry_summary = $telemetry
+        telemetry_coverage = $telemetryCoverage
         raw_telemetry = $rawTelemetry
         schwab_status = $schwabStatus
         change_ledger = $changeLedger
@@ -143,8 +147,10 @@ Write-Output (
     $bundle.summary.call_plan_status
 )
 Write-Output (
-    "Telemetry: {0}; attention={1}; guarded={2}; raw_events={3}" -f
+    "Telemetry: {0}; coverage={1}; missing_required={2}; attention={3}; guarded={4}; raw_events={5}" -f
     $bundle.summary.telemetry_status,
+    $bundle.summary.telemetry_coverage_status,
+    $bundle.summary.telemetry_coverage_missing_required,
     $bundle.summary.telemetry_attention_count,
     $bundle.summary.telemetry_guarded_count,
     $rawTelemetry.count
