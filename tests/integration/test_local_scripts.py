@@ -171,7 +171,7 @@ def test_market_radar_status_script_is_zero_external_call_sitrep() -> None:
     assert "audit_rows=" in text
     assert "raw_skips=" not in text
     assert "next safe command" in text
-    assert "scripts\\prepare-live-env.ps1" in text
+    assert "scripts\\open-live-env.ps1" in text
     assert "scripts\\check-live-activation.ps1" in text
     assert "attention=" in text
     assert "guarded=" in text
