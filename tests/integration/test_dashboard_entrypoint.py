@@ -384,7 +384,7 @@ def test_dashboard_overview_surfaces_latest_run_path_before_usefulness() -> None
     assert "not scan failures" in pulse_source
 
 
-def test_dashboard_header_surfaces_data_mode_and_build_fingerprint() -> None:
+def test_dashboard_header_surfaces_latest_run_data_and_build_fingerprint() -> None:
     source = Path("apps/dashboard/Home.py").read_text(encoding="utf-8")
     tree = ast.parse(source)
     functions = {
@@ -403,7 +403,7 @@ def test_dashboard_header_surfaces_data_mode_and_build_fingerprint() -> None:
     assert "investment_readiness" in header_source
     assert "operator_next_step" in header_source
     assert 'runtime_context.get("build")' in header_source
-    assert '"Data Mode"' in header_source
+    assert '"Latest Run Data"' in header_source
     assert 'discovery_snapshot.get("freshness")' in header_source
     assert '"Bars Stale"' in header_source
     assert 'tone_value="stale" if bars_stale else "ok"' in header_source

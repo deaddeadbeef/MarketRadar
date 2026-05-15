@@ -428,7 +428,7 @@ def _show_command_header(
     build_label = str(build.get("commit") or "unknown")[:8]
     cells = [
         _command_cell("Database", database.get("status") or "unknown"),
-        _command_cell("Data Mode", data_mode),
+        _command_cell("Latest Run Data", data_mode),
         _command_cell(
             "Bars Stale",
             "yes" if bars_stale else "no",
