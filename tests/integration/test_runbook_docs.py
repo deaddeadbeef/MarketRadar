@@ -44,8 +44,11 @@ def test_radar_run_runbook_matches_current_operator_dashboard() -> None:
     assert "scripts/export-operator-evidence.ps1" in text
     assert "scripts/open-live-env.ps1" in text
     assert "scripts/check-live-activation.ps1" in text
+    assert "CATALYST_POLYGON_API_KEY=<your Polygon API key>" in text
+    assert 'CATALYST_SEC_USER_AGENT="MarketRadar/0.1 your-email@example.com"' in text
     assert "/api/ops/telemetry/raw" in text
     assert "Download Raw Telemetry Evidence" in text
     assert "Placeholder template values" in text
+    assert "CatalystRadar/0.1" not in text
     assert "status=skipped" not in text
     assert "raw_status=skipped" not in text
