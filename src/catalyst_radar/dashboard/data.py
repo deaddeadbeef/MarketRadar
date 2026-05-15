@@ -2283,7 +2283,7 @@ def radar_run_call_plan_payload(
     if blocked_rows:
         status = "blocked"
         headline = "Radar run call plan has blocked live steps."
-        next_action = str(blocked_rows[0].get("next_action") or "Review blocked call rows.")
+        next_action = _call_plan_blocked_next_action(blocked_rows)
     elif max_external_calls:
         status = "live_calls_planned"
         headline = f"Radar run may make up to {max_external_calls} external call(s)."
@@ -2316,6 +2316,24 @@ def radar_run_call_plan_payload(
         },
         "rows": rows,
     }
+
+
+def _call_plan_blocked_next_action(rows: Sequence[Mapping[str, object]]) -> str:
+    actions: list[str] = []
+    seen: set[str] = set()
+    for row in rows:
+        action = str(row.get("next_action") or "").strip()
+        if not action or action in seen:
+            continue
+        seen.add(action)
+        actions.append(action.rstrip("."))
+        if len(actions) >= 3:
+            break
+    if len(rows) > 1 and actions:
+        return f"Clear {len(rows)} blocked call-plan rows: {'; '.join(actions)}."
+    if actions:
+        return f"{actions[0]}."
+    return "Review blocked call rows."
 
 
 def radar_run_default_scope_payload(
@@ -7182,25 +7200,20 @@ def _event_call_plan_row(
             "Configure SEC live mode for live filing catalysts.",
         )
     if provider in {"sec", "sec_submissions"}:
-        if not config.sec_enable_live:
+        missing_sec = [
+            item
+            for item in _event_activation_missing_env(config)
+            if item != "CATALYST_DAILY_EVENT_PROVIDER=sec"
+        ]
+        if missing_sec:
             return _call_plan_row(
                 "News/events",
                 "blocked",
                 provider,
                 "submissions",
                 0,
-                "SEC provider is selected, but CATALYST_SEC_ENABLE_LIVE=1 is missing.",
-                "Set CATALYST_SEC_ENABLE_LIVE=1 before scheduled SEC ingest.",
-            )
-        if not config.sec_user_agent_configured:
-            return _call_plan_row(
-                "News/events",
-                "blocked",
-                provider,
-                "submissions",
-                0,
-                "SEC provider is selected, but CATALYST_SEC_USER_AGENT is missing.",
-                "Set a compliant SEC User-Agent before scheduled SEC ingest.",
+                f"SEC provider is selected, but {', '.join(missing_sec)} is missing.",
+                _sec_activation_next_action(config),
             )
         target_count = len(sec_targets)
         if target_count == 0:
