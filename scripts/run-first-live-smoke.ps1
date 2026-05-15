@@ -8,6 +8,10 @@ param(
 
 $ErrorActionPreference = "Stop"
 $baseUrl = "https://$ApiHost`:$ApiPort"
+$manualGuidance = @{
+    CATALYST_POLYGON_API_KEY = "Paste the Polygon API key from your Polygon dashboard."
+    CATALYST_SEC_USER_AGENT = "Use a SEC-compliant contact string, for example: MarketRadar/0.1 your-email@example.com"
+}
 
 function Invoke-ApiJson {
     param(
@@ -54,7 +58,13 @@ function Write-MissingValues {
     Write-Output ""
     Write-Output "Missing live activation values:"
     foreach ($item in $Missing) {
-        Write-Output ("- {0}" -f $item)
+        $hint = $manualGuidance[$item]
+        if ([string]::IsNullOrWhiteSpace($hint)) {
+            Write-Output ("- {0}" -f $item)
+        }
+        else {
+            Write-Output ("- {0}: {1}" -f $item, $hint)
+        }
     }
 }
 
