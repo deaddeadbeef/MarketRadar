@@ -64,6 +64,7 @@ call plan:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/prepare-live-env.ps1
+powershell -ExecutionPolicy Bypass -File scripts/open-live-env.ps1
 powershell -ExecutionPolicy Bypass -File scripts/check-live-activation.ps1
 powershell -ExecutionPolicy Bypass -File scripts/run-first-live-smoke.ps1
 powershell -ExecutionPolicy Bypass -File scripts/run-worker-once.ps1
@@ -75,6 +76,8 @@ as `CATALYST_DAILY_MARKET_PROVIDER=polygon`, low provider caps, disabled order
 submission, and dry-run LLM/alert settings. It makes 0 external calls, does not
 print secrets, and still requires you to fill `CATALYST_POLYGON_API_KEY` and
 `CATALYST_SEC_USER_AGENT` manually.
+`scripts/open-live-env.ps1` runs that same safe preparation, opens `.env.local`
+in VS Code when available, falls back to Notepad, and makes 0 external calls.
 `scripts/run-first-live-smoke.ps1` defaults to plan-only mode: it reads local
 API readiness and call-plan state, makes 0 external calls, and requires
 `-Execute` before seeding one Polygon universe page and running one capped radar
@@ -169,6 +172,7 @@ provider calls:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/prepare-live-env.ps1
+powershell -ExecutionPolicy Bypass -File scripts/open-live-env.ps1
 powershell -ExecutionPolicy Bypass -File scripts/check-live-activation.ps1
 powershell -ExecutionPolicy Bypass -File scripts/run-first-live-smoke.ps1
 powershell -ExecutionPolicy Bypass -File scripts/run-worker-once.ps1

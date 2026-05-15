@@ -1,0 +1,38 @@
+param(
+    [string]$EnvPath = ".env.local",
+    [string]$ExamplePath = ".env.example",
+    [switch]$NoPrepare
+)
+
+$ErrorActionPreference = "Stop"
+
+$prepareScript = Join-Path $PSScriptRoot "prepare-live-env.ps1"
+if (-not (Test-Path -LiteralPath $prepareScript)) {
+    throw "Could not find scripts\prepare-live-env.ps1."
+}
+
+if (-not $NoPrepare) {
+    & $prepareScript -EnvPath $EnvPath -ExamplePath $ExamplePath
+}
+
+if (-not (Test-Path -LiteralPath $EnvPath)) {
+    throw "Could not find $EnvPath after preparing live env defaults."
+}
+
+$resolvedEnvPath = (Resolve-Path -LiteralPath $EnvPath).Path
+$codeCommand = Get-Command code.cmd -ErrorAction SilentlyContinue
+if ($null -eq $codeCommand) {
+    $codeCommand = Get-Command code -ErrorAction SilentlyContinue
+}
+
+if ($null -ne $codeCommand) {
+    & $codeCommand.Source --reuse-window $resolvedEnvPath
+    Write-Output ("Opened {0} in VS Code." -f $resolvedEnvPath)
+}
+else {
+    Start-Process -FilePath "notepad.exe" -ArgumentList $resolvedEnvPath
+    Write-Output ("Opened {0} in Notepad because VS Code was not found on PATH." -f $resolvedEnvPath)
+}
+
+Write-Output "External calls made by this script: 0"
+Write-Output "Fill CATALYST_POLYGON_API_KEY and CATALYST_SEC_USER_AGENT manually; do not paste secrets into chat."
