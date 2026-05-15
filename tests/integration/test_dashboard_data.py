@@ -2632,6 +2632,26 @@ def test_provider_preflight_payload_flags_sec_cik_target_gap() -> None:
     assert "Seed active securities with CIKs" in str(event["next_action"])
 
 
+def test_provider_preflight_names_only_missing_sec_user_agent() -> None:
+    config = AppConfig(
+        daily_market_provider="polygon",
+        polygon_api_key="fixture-key",
+        daily_event_provider="sec",
+        sec_enable_live=True,
+        sec_user_agent=None,
+        sec_daily_max_tickers=2,
+    )
+
+    rows = provider_preflight_payload(config)
+
+    event = next(row for row in rows if row["layer"] == "News/events")
+    assert event["status"] == "blocked"
+    assert "CATALYST_SEC_USER_AGENT" in str(event["call_budget"])
+    assert "CATALYST_SEC_USER_AGENT" in str(event["next_action"])
+    assert "CATALYST_SEC_ENABLE_LIVE" not in str(event["call_budget"])
+    assert "CATALYST_SEC_ENABLE_LIVE" not in str(event["next_action"])
+
+
 def test_agent_review_summary_payload_surfaces_dry_run_reviewed_tickers() -> None:
     payload = agent_review_summary_payload(
         {
