@@ -2714,7 +2714,9 @@ def live_activation_plan_payload(
             missing=event_missing_env,
             ready_modes={"live"},
             safe_next_action=(
-                "Set SEC live mode/User-Agent, then keep submissions capped per run."
+                _sec_activation_next_action(config)
+                if event_missing_env
+                else "Keep SEC submissions capped per run and watch rejected_count."
             ),
         ),
         _activation_task_row(
@@ -2783,7 +2785,8 @@ def live_data_activation_contract_payload(
         else "Live data activation inputs are configured."
     )
     next_action = (
-        "Fill the template values in .env.local, restart services, then inspect the call plan."
+        f"Set {'; '.join(missing_env)} in .env.local, restart services, "
+        "then inspect the call plan."
         if missing_env
         else "Inspect the call plan, seed the universe once if needed, then run one capped cycle."
     )
