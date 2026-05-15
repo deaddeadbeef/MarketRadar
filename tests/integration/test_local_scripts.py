@@ -58,6 +58,8 @@ def test_prepare_live_env_script_writes_only_safe_defaults() -> None:
     assert "External calls made by this script: 0" in text
     assert "SCHWAB_ORDER_SUBMISSION_ENABLED" in text
     assert "false" in text
+    assert "[switch]$NoNextSteps" in text
+    assert "if (-not $NoNextSteps)" in text
     assert "CATALYST_RUN_LLM" in text
     assert "CATALYST_LLM_DRY_RUN" in text
     assert "CATALYST_DRY_RUN_ALERTS" in text
@@ -81,6 +83,7 @@ def test_open_live_env_script_prefers_vscode_without_external_calls() -> None:
 
     assert script.is_file()
     assert "scripts\\prepare-live-env.ps1" in text
+    assert "-NoNextSteps" in text
     assert "Get-Command code.cmd" in text
     assert "Get-Command code" in text
     assert "Start-Process -FilePath $codeCommand.Source" in text
