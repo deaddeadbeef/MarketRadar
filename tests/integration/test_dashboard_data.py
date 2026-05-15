@@ -2902,6 +2902,9 @@ def test_radar_run_call_plan_blocks_missing_live_credentials(
 
     assert payload["status"] == "blocked"
     assert payload["max_external_call_count"] == 0
+    assert "CATALYST_POLYGON_API_KEY" in str(payload["next_action"])
+    assert "CATALYST_SEC_ENABLE_LIVE=1" in str(payload["next_action"])
+    assert "CATALYST_SEC_USER_AGENT" in str(payload["next_action"])
     by_layer = {str(row["layer"]): row for row in payload["rows"]}
     assert by_layer["Market data"]["status"] == "blocked"
     assert "CATALYST_POLYGON_API_KEY" in str(by_layer["Market data"]["detail"])
