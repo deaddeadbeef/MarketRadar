@@ -35,6 +35,7 @@ def test_readme_mentions_restart_script_for_local_dashboard() -> None:
     assert "scripts/export-operator-evidence.ps1" in readme
     assert "scripts/export-pr-ledger.ps1" in readme
     assert "docs\\changes\\pr-ledger.json" in readme
+    assert "data\\ops\\bundles\\pr-ledger-current.json" in readme
     assert "scripts/assert-investable-readiness.ps1" in readme
     assert "/api/ops/telemetry/raw" in readme
     assert "-Execute" in readme
@@ -221,7 +222,10 @@ def test_export_operator_evidence_script_writes_zero_call_bundle() -> None:
     assert "/api/ops/telemetry/raw?limit={0}" in text
     assert "/api/brokers/schwab/status" in text
     assert "docs\\changes\\pr-ledger.json" in text
+    assert "data\\ops\\bundles\\pr-ledger-current.json" in text
     assert "change_ledger" in text
+    assert "change_ledger_source" in text
+    assert "change_ledger_path" in text
     assert "operator_next_step" in text
     assert "operator_next_action" in text
     assert "telemetry_coverage" in text
