@@ -10,16 +10,26 @@ $baseUrl = "https://$ApiHost`:$ApiPort"
 
 function Invoke-ApiJson {
     param(
-        [string]$Path
+        [string]$Path,
+        [string]$Method = "GET",
+        [string]$Body = $null
     )
 
-    $response = & curl.exe `
-        --insecure `
-        --silent `
-        --show-error `
-        --fail `
-        --max-time 15 `
+    $args = @(
+        "--insecure",
+        "--silent",
+        "--show-error",
+        "--fail",
+        "--max-time",
+        "15",
+        "--request",
+        $Method,
         "$baseUrl$Path"
+    )
+    if ([string]::IsNullOrWhiteSpace($Body) -eq $false) {
+        $args += @("--header", "Content-Type: application/json", "--data", $Body)
+    }
+    $response = & curl.exe @args
     if ($LASTEXITCODE -ne 0) {
         throw "Could not read local API status from $baseUrl$Path. Start services with scripts\restart-local.ps1."
     }
@@ -35,6 +45,7 @@ $health = Invoke-ApiJson -Path "/api/health"
 $readiness = Invoke-ApiJson -Path "/api/radar/readiness"
 $latestRun = Invoke-ApiJson -Path "/api/radar/runs/latest"
 $activation = Invoke-ApiJson -Path "/api/radar/live-activation"
+$callPlan = Invoke-ApiJson -Method "POST" -Path "/api/radar/runs/call-plan" -Body "{}"
 $telemetry = Invoke-ApiJson -Path ("/api/ops/telemetry?limit={0}" -f [Math]::Max(1, $TelemetryLimit))
 $telemetryCoverage = Invoke-ApiJson -Path "/api/ops/telemetry/coverage"
 
@@ -43,6 +54,7 @@ $payload = [ordered]@{
     readiness = $readiness
     latest_run = $latestRun
     live_activation = $activation
+    call_plan = $callPlan
     telemetry = $telemetry
     telemetry_coverage = $telemetryCoverage
     external_calls_made = 0
@@ -101,6 +113,13 @@ Write-Output (
     "Live activation: {0}; missing={1}" -f
     $activation.status,
     @($activation.missing_env).Count
+)
+Write-Output (
+    "Call plan: {0}; will_call_external={1}; max_external_calls={2}; next={3}" -f
+    $callPlan.status,
+    $callPlan.will_call_external_providers,
+    $callPlan.max_external_call_count,
+    $callPlan.next_action
 )
 if (@($activation.missing_env).Count -gt 0) {
     foreach ($item in @($activation.missing_env)) {
