@@ -178,7 +178,7 @@ To let a daily radar run ingest Polygon grouped daily bars, set:
 ```text
 CATALYST_DAILY_MARKET_PROVIDER=polygon
 CATALYST_DAILY_PROVIDER=polygon
-CATALYST_POLYGON_API_KEY=<your key>
+CATALYST_POLYGON_API_KEY=<your Polygon API key>
 CATALYST_POLYGON_TICKERS_MAX_PAGES=1
 CATALYST_RADAR_RUN_MIN_INTERVAL_SECONDS=300
 ```
@@ -217,7 +217,7 @@ metadata, set:
 ```text
 CATALYST_DAILY_EVENT_PROVIDER=sec
 CATALYST_SEC_ENABLE_LIVE=1
-CATALYST_SEC_USER_AGENT="CatalystRadar/0.1 your-email@example.com"
+CATALYST_SEC_USER_AGENT="MarketRadar/0.1 your-email@example.com"
 CATALYST_SEC_DAILY_MAX_TICKERS=5
 ```
 
