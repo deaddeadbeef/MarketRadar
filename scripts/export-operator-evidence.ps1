@@ -69,6 +69,20 @@ function Read-LocalJson {
     }
 }
 
+function Select-ChangeLedger {
+    $currentSnapshot = "data\ops\bundles\pr-ledger-current.json"
+    if (Test-Path -Path $currentSnapshot) {
+        return [ordered]@{
+            source = "current_local_snapshot"
+            path = $currentSnapshot
+        }
+    }
+    return [ordered]@{
+        source = "checked_in_snapshot"
+        path = "docs\changes\pr-ledger.json"
+    }
+}
+
 $health = Invoke-ApiJson -Path "/api/health"
 $readiness = Invoke-ApiJson -Path "/api/radar/readiness"
 $latestRun = Invoke-ApiJson -Path "/api/radar/runs/latest"
@@ -78,7 +92,10 @@ $telemetry = Invoke-ApiJson -Path ("/api/ops/telemetry?limit={0}" -f $resolvedTe
 $telemetryCoverage = Invoke-ApiJson -Path "/api/ops/telemetry/coverage"
 $rawTelemetry = Invoke-ApiJson -Path ("/api/ops/telemetry/raw?limit={0}" -f $resolvedTelemetryLimit)
 $schwabStatus = Invoke-ApiJson -Path "/api/brokers/schwab/status"
-$changeLedger = Read-LocalJson -Path "docs\changes\pr-ledger.json" -SchemaVersion "pr-change-ledger-v1"
+$changeLedgerSelection = Select-ChangeLedger
+$changeLedger = Read-LocalJson `
+    -Path $changeLedgerSelection.path `
+    -SchemaVersion "pr-change-ledger-v1"
 
 $bundle = [ordered]@{
     schema_version = "operator-evidence-bundle-v1"
@@ -109,6 +126,8 @@ $bundle = [ordered]@{
         telemetry_guarded_count = $telemetry.guarded_count
         schwab_connected = $schwabStatus.connected
         schwab_order_submission_available = $schwabStatus.order_submission_available
+        change_ledger_source = $changeLedgerSelection.source
+        change_ledger_path = $changeLedgerSelection.path
         tracked_merged_prs = $changeLedger.total_merged
         latest_tracked_pr = $changeLedger.latest_merged_pr.number
     }
@@ -123,6 +142,7 @@ $bundle = [ordered]@{
         telemetry_coverage = $telemetryCoverage
         raw_telemetry = $rawTelemetry
         schwab_status = $schwabStatus
+        change_ledger_source = $changeLedgerSelection
         change_ledger = $changeLedger
     }
 }

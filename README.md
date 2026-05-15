@@ -144,6 +144,15 @@ This writes `docs\changes\pr-ledger.json` from GitHub PR metadata. It makes no
 Polygon, SEC, Schwab, or OpenAI calls; it does make one GitHub metadata request
 through `gh`.
 
+For an up-to-the-minute ignored ledger snapshot after the latest merge, write:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/export-pr-ledger.ps1 -OutputPath data\ops\bundles\pr-ledger-current.json
+```
+
+`scripts/export-operator-evidence.ps1` prefers that ignored current snapshot
+when it exists, then falls back to the checked-in ledger.
+
 For a zero-call deployment/readiness gate that exits non-zero until Market Radar
 is safe to use for investment decisions:
 
