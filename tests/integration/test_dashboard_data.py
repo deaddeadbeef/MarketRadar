@@ -1504,6 +1504,8 @@ def test_live_activation_plan_payload_separates_optional_gates_from_blockers() -
     assert "run_path=6/6" in str(plan["evidence"])
     assert "optional_expected_gates=4" in str(plan["evidence"])
     assert "CATALYST_POLYGON_API_KEY" in plan["missing_env"]
+    assert "CATALYST_DAILY_MARKET_PROVIDER=polygon" in str(plan["next_action"])
+    assert "CATALYST_POLYGON_API_KEY" in str(plan["next_action"])
     by_area = {str(row["area"]): row for row in plan["tasks"]}
     assert by_area["Required run path"]["status"] == "ready"
     assert by_area["Required run path"]["current_state"] == "6/6 completed"
