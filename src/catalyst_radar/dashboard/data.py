@@ -2669,7 +2669,7 @@ def live_activation_plan_payload(
     if missing_env:
         status = "blocked"
         headline = "Live market activation is not configured yet."
-        next_action = "Set the missing environment variables, then run one capped radar cycle."
+        next_action = _missing_env_next_action(missing_env)
     elif action_needed:
         status = "attention"
         headline = "Live inputs are configured, but the last run needs action."
@@ -5026,6 +5026,15 @@ def _activation_next_action(rows: Sequence[Mapping[str, object]]) -> str:
 
 def _activation_missing_env(config: AppConfig) -> list[str]:
     return [*_market_activation_missing_env(config), *_event_activation_missing_env(config)]
+
+
+def _missing_env_next_action(missing_env: Sequence[object]) -> str:
+    items = [str(item).strip() for item in missing_env if str(item).strip()]
+    if not items:
+        return "Run one capped radar cycle and inspect readiness."
+    listed = "; ".join(items[:4])
+    suffix = f"; plus {len(items) - 4} more" if len(items) > 4 else ""
+    return f"Set {listed}{suffix}, then run one capped radar cycle."
 
 
 def _market_activation_missing_env(config: AppConfig) -> list[str]:
