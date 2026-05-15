@@ -138,6 +138,8 @@ if (@($activation.missing_env).Count -gt 0) {
     Write-Output "- next safe command: powershell -ExecutionPolicy Bypass -File scripts\open-live-env.ps1"
     Write-Output "- after editing .env.local: powershell -ExecutionPolicy Bypass -File scripts\restart-local.ps1"
     Write-Output "- verify again: powershell -ExecutionPolicy Bypass -File scripts\check-live-activation.ps1"
+    Write-Output "- plan-only smoke: powershell -ExecutionPolicy Bypass -File scripts\run-first-live-smoke.ps1"
+    Write-Output "- capped live smoke only if plan matches intent: powershell -ExecutionPolicy Bypass -File scripts\run-first-live-smoke.ps1 -Execute"
 }
 Write-Output (
     "Telemetry: {0}; events={1}; attention={2}; guarded={3}; latest={4}" -f
