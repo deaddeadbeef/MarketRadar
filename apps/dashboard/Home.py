@@ -47,6 +47,7 @@ ALERT_ROUTES = [
     "position_watch",
 ]
 PR_CHANGE_LEDGER_PATH = Path("docs/changes/pr-ledger.json")
+CURRENT_PR_CHANGE_LEDGER_PATH = Path("data/ops/bundles/pr-ledger-current.json")
 
 
 def _mapping(value: object) -> Mapping[str, Any]:
@@ -720,8 +721,15 @@ def _show_pr_change_ledger() -> None:
     cols[2].metric("Snapshot", summary.get("snapshot_status", "unknown"))
     cols[3].metric("Provider Calls", 0)
     st.caption(
-        "Checked-in PR ledger snapshot. Refresh after each merge with "
-        "`scripts/export-pr-ledger.ps1`; dashboard reads this file locally."
+        (
+            "PR ledger snapshot source={source}; path={path}. For the freshest "
+            "post-merge view, run `scripts/export-pr-ledger.ps1 -OutputPath "
+            "data\\ops\\bundles\\pr-ledger-current.json`; dashboard reads the "
+            "local file and makes no provider calls."
+        ).format(
+            source=summary.get("source", "checked_in_snapshot"),
+            path=summary.get("path", str(PR_CHANGE_LEDGER_PATH)),
+        )
     )
     st.download_button(
         "Download PR Change Ledger",
@@ -812,6 +820,8 @@ def _operator_evidence_bundle_payload(
         ),
         "tracked_merged_prs": change_ledger_summary.get("tracked_merged_prs"),
         "latest_tracked_pr": change_ledger_summary.get("latest_pr_label"),
+        "change_ledger_source": change_ledger_summary.get("source"),
+        "change_ledger_path": change_ledger_summary.get("path"),
         "change_ledger_snapshot_status": change_ledger_summary.get("snapshot_status"),
     }
     operator_queue = _mapping(
@@ -854,14 +864,22 @@ def _operator_evidence_bundle_payload(
     return redacted if isinstance(redacted, dict) else payload
 
 
+def _select_pr_change_ledger_path(path: Path = PR_CHANGE_LEDGER_PATH) -> tuple[str, Path]:
+    if path == PR_CHANGE_LEDGER_PATH and CURRENT_PR_CHANGE_LEDGER_PATH.exists():
+        return "current_local_snapshot", CURRENT_PR_CHANGE_LEDGER_PATH
+    return "checked_in_snapshot", path
+
+
 def _load_pr_change_ledger(path: Path = PR_CHANGE_LEDGER_PATH) -> dict[str, object]:
+    source, selected_path = _select_pr_change_ledger_path(path)
     try:
-        raw = json.loads(path.read_text(encoding="utf-8-sig"))
+        raw = json.loads(selected_path.read_text(encoding="utf-8-sig"))
     except (OSError, json.JSONDecodeError) as exc:
         return {
             "schema_version": "pr-change-ledger-v1",
             "status": "missing_or_invalid",
-            "path": str(path),
+            "source": source,
+            "path": str(selected_path),
             "error": str(exc),
             "generated_at": None,
             "market_data_broker_llm_calls_made": 0,
@@ -871,14 +889,16 @@ def _load_pr_change_ledger(path: Path = PR_CHANGE_LEDGER_PATH) -> dict[str, obje
         return {
             "schema_version": "pr-change-ledger-v1",
             "status": "invalid",
-            "path": str(path),
+            "source": source,
+            "path": str(selected_path),
             "generated_at": None,
             "market_data_broker_llm_calls_made": 0,
             "entries": [],
         }
     payload = dict(raw)
     payload.setdefault("status", "tracked")
-    payload.setdefault("path", str(path))
+    payload.setdefault("source", source)
+    payload.setdefault("path", str(selected_path))
     return payload
 
 
@@ -895,6 +915,8 @@ def _pr_change_ledger_summary(ledger: Mapping[str, Any]) -> dict[str, object]:
     latest_label = f"#{latest_number}" if latest_number else "n/a"
     return {
         "schema_version": "pr-change-ledger-summary-v1",
+        "source": ledger.get("source") or "checked_in_snapshot",
+        "path": ledger.get("path") or str(PR_CHANGE_LEDGER_PATH),
         "snapshot_status": ledger.get("status") or "tracked",
         "generated_at": ledger.get("generated_at"),
         "tracked_merged_prs": int(_metric_number(ledger.get("total_merged")))
