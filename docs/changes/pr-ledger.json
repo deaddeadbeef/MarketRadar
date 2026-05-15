@@ -1,0 +1,1404 @@
+{
+    "schema_version":  "pr-change-ledger-v1",
+    "generated_at":  "2026-05-15T14:23:47.3821574Z",
+    "status":  "tracked",
+    "source":  "gh pr list --state all",
+    "repository_remote":  "https://github.com/deaddeadbeef/MarketRadar.git",
+    "gh_limit":  200,
+    "total_prs_seen":  138,
+    "total_merged":  138,
+    "latest_merged_pr":  {
+                             "number":  138,
+                             "title":  "Add operator evidence bundle export",
+                             "state":  "MERGED",
+                             "merged_at":  "2026-05-14T23:53:19Z",
+                             "branch":  "feat/operator-evidence-bundle",
+                             "base":  "main",
+                             "merge_commit":  "e3c0cb451064ce7bbc5b1516ba3cce2eba0179ad",
+                             "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/138"
+                         },
+    "github_metadata_calls_made":  1,
+    "market_data_broker_llm_calls_made":  0,
+    "entries":  [
+                    {
+                        "number":  1,
+                        "title":  "fix: align overview links and chart theme",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-11T16:33:11Z",
+                        "branch":  "codex/fix-dashboard-links-theme",
+                        "base":  "main",
+                        "merge_commit":  "08faff68ef5046b8cbd17fe515ea0f8fb37ec858",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/1"
+                    },
+                    {
+                        "number":  2,
+                        "title":  "feat: add read-only Schwab sync",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-12T14:05:28Z",
+                        "branch":  "codex/schwab-readonly-sync",
+                        "base":  "main",
+                        "merge_commit":  "14c052d37f387ad87d103321bb9191c449b0edbd",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/2"
+                    },
+                    {
+                        "number":  3,
+                        "title":  "Add interactive Schwab dashboard workflows",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-12T16:31:47Z",
+                        "branch":  "codex/schwab-interactive-dashboard",
+                        "base":  "main",
+                        "merge_commit":  "1004c9db164b679771767d5a57a0e6f29b38e185",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/3"
+                    },
+                    {
+                        "number":  4,
+                        "title":  "Fix dashboard header navigation hierarchy",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-12T16:57:29Z",
+                        "branch":  "codex/fix-dashboard-header-nav",
+                        "base":  "main",
+                        "merge_commit":  "22715ee01683a14a995b5adb59c8257c9bf3d323",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/4"
+                    },
+                    {
+                        "number":  5,
+                        "title":  "Add Schwab API rate guards",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-12T17:45:28Z",
+                        "branch":  "codex/schwab-rate-guard",
+                        "base":  "main",
+                        "merge_commit":  "25843ebdffdbf1e12967edd6ce9c6f5075a761a2",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/5"
+                    },
+                    {
+                        "number":  6,
+                        "title":  "Add manual radar run controls",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-12T18:13:56Z",
+                        "branch":  "codex/radar-run-api",
+                        "base":  "main",
+                        "merge_commit":  "7dbec7df399e88a987954d1d91d898566de66d19",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/6"
+                    },
+                    {
+                        "number":  7,
+                        "title":  "Show persisted radar run status",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-12T18:35:14Z",
+                        "branch":  "codex/radar-run-status",
+                        "base":  "main",
+                        "merge_commit":  "3cdd433eaf27d498fb62b992d7f36835d9bff8fe",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/7"
+                    },
+                    {
+                        "number":  8,
+                        "title":  "Add radar run telemetry events",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-13T00:10:12Z",
+                        "branch":  "codex/radar-telemetry",
+                        "base":  "main",
+                        "merge_commit":  "98585b4f29d7e5a35e28ef3781f46cf45b4589b7",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/8"
+                    },
+                    {
+                        "number":  9,
+                        "title":  "Clarify limited radar runs",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-13T15:54:55Z",
+                        "branch":  "codex/radar-run-truth",
+                        "base":  "main",
+                        "merge_commit":  "68e853c0f29f476fdfc3add7fc2bd03e7d079977",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/9"
+                    },
+                    {
+                        "number":  10,
+                        "title":  "Persist radar step outcomes",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-13T16:06:32Z",
+                        "branch":  "codex/radar-run-summary-truth",
+                        "base":  "main",
+                        "merge_commit":  "b739def5258d46649914e868b31a7bf8e8a54eb4",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/10"
+                    },
+                    {
+                        "number":  11,
+                        "title":  "Run scheduled CSV market ingest",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-13T16:35:32Z",
+                        "branch":  "codex/scheduler-csv-ingest",
+                        "base":  "main",
+                        "merge_commit":  "e7498015c8573b530c4db60efae6c24a375ce8d6",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/11"
+                    },
+                    {
+                        "number":  12,
+                        "title":  "Align API local env loading",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-13T16:46:06Z",
+                        "branch":  "codex/api-dotenv-alignment",
+                        "base":  "main",
+                        "merge_commit":  "f2e40cfd51ca62e6a2aa3509d64b34f8433ababf",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/12"
+                    },
+                    {
+                        "number":  13,
+                        "title":  "Record radar run step telemetry",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-13T17:02:23Z",
+                        "branch":  "codex/radar-run-telemetry",
+                        "base":  "main",
+                        "merge_commit":  "f9d5638adf0c489b1b91f34b4a63ef90ffc32f0e",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/13"
+                    },
+                    {
+                        "number":  14,
+                        "title":  "Use candidate availability for scan state visibility",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-13T17:20:21Z",
+                        "branch":  "codex/candidate-packet-live-gate",
+                        "base":  "main",
+                        "merge_commit":  "9af842aa5c5a30c48f69926c4533490c8647cf91",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/14"
+                    },
+                    {
+                        "number":  15,
+                        "title":  "Run scheduled news fixture ingest",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-13T17:46:27Z",
+                        "branch":  "codex/scheduled-news-events",
+                        "base":  "main",
+                        "merge_commit":  "381588e033f59d3afd5ddbf53e8ba5699d87b24e",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/15"
+                    },
+                    {
+                        "number":  16,
+                        "title":  "Scope dashboard candidates to radar run context",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-13T18:02:21Z",
+                        "branch":  "codex/dashboard-run-context",
+                        "base":  "main",
+                        "merge_commit":  "b3a3ca2eac843c8479a88153c0ad0c35a230b25f",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/16"
+                    },
+                    {
+                        "number":  17,
+                        "title":  "Add candidate research briefs",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-13T18:16:50Z",
+                        "branch":  "codex/research-briefs",
+                        "base":  "main",
+                        "merge_commit":  "12ffa1f251c624509fa24ab14b6dc527ec0dbf94",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/17"
+                    },
+                    {
+                        "number":  18,
+                        "title":  "Hide research brief audit metadata in dashboard",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-13T18:20:12Z",
+                        "branch":  "codex/research-brief-audit-display",
+                        "base":  "main",
+                        "merge_commit":  "cc8259b3efd3eab47c287a57a188602a8ca1d1e4",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/18"
+                    },
+                    {
+                        "number":  19,
+                        "title":  "Show dashboard data source coverage",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-13T18:32:00Z",
+                        "branch":  "codex/data-source-coverage",
+                        "base":  "main",
+                        "merge_commit":  "7bc75c5ecf562fc1748652738ccffef11c1d8ee8",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/19"
+                    },
+                    {
+                        "number":  20,
+                        "title":  "Clarify radar run readiness",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-13T18:49:44Z",
+                        "branch":  "codex/readiness-interpretation",
+                        "base":  "main",
+                        "merge_commit":  "9a90e97413c0f96519e00312b0e1a0de8592da6f",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/20"
+                    },
+                    {
+                        "number":  21,
+                        "title":  "Support Polygon daily radar ingest",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-13T19:10:27Z",
+                        "branch":  "codex/daily-polygon-provider",
+                        "base":  "main",
+                        "merge_commit":  "59b71a0c22f2ae6e255d231be8b7d3d01d4c3a55",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/21"
+                    },
+                    {
+                        "number":  22,
+                        "title":  "Support scheduled SEC event ingest",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-13T19:27:50Z",
+                        "branch":  "codex/daily-sec-events",
+                        "base":  "main",
+                        "merge_commit":  "99c37c9c655b8bf2f9699f07b6c07fdd0c1318a6",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/22"
+                    },
+                    {
+                        "number":  23,
+                        "title":  "Clarify radar step outcomes",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-13T19:48:19Z",
+                        "branch":  "codex/run-step-clarity",
+                        "base":  "main",
+                        "merge_commit":  "cd2e7c90bb384fcf9f28316c8b7a312eda000595",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/23"
+                    },
+                    {
+                        "number":  24,
+                        "title":  "Clarify radar run operator outcomes",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-13T20:00:37Z",
+                        "branch":  "fix/run-step-operator-view",
+                        "base":  "main",
+                        "merge_commit":  "1af3b47346475557c74ee0eb1050368d9cd5414a",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/24"
+                    },
+                    {
+                        "number":  25,
+                        "title":  "Add provider preflight dashboard",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-13T20:12:23Z",
+                        "branch":  "fix/provider-preflight-readiness",
+                        "base":  "main",
+                        "merge_commit":  "e5fdb01d54e02ae9f0d49adcd0c6c2125448cd17",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/25"
+                    },
+                    {
+                        "number":  26,
+                        "title":  "Cap Polygon ticker reference pagination",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-13T20:24:32Z",
+                        "branch":  "fix/polygon-ticker-page-cap",
+                        "base":  "main",
+                        "merge_commit":  "dc44c08d57aee835de9f1b2d0a38d8e357219674",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/26"
+                    },
+                    {
+                        "number":  27,
+                        "title":  "Add opportunity focus panel",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-13T20:34:15Z",
+                        "branch":  "feat/opportunity-focus-panel",
+                        "base":  "main",
+                        "merge_commit":  "fec00975536b0f3a6b145af82411d491e76b19ad",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/27"
+                    },
+                    {
+                        "number":  28,
+                        "title":  "Add OpenAI readiness preflight",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-13T20:43:50Z",
+                        "branch":  "fix/openai-readiness-preflight",
+                        "base":  "main",
+                        "merge_commit":  "2aec15e7fd863a6f9bcd9280f7b9854a47c402ec",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/28"
+                    },
+                    {
+                        "number":  29,
+                        "title":  "Add safe radar run controls",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-13T20:49:47Z",
+                        "branch":  "feat/dashboard-run-controls",
+                        "base":  "main",
+                        "merge_commit":  "7db4a023b545cecb2cbae34d59848e3a620992a5",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/29"
+                    },
+                    {
+                        "number":  30,
+                        "title":  "[codex] Clarify radar run operator status",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-13T21:05:15Z",
+                        "branch":  "codex/dashboard-run-interpretation",
+                        "base":  "main",
+                        "merge_commit":  "3e14f4a042bc4dd4b5036a795d86d2027f1f3b6c",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/30"
+                    },
+                    {
+                        "number":  31,
+                        "title":  "[codex] Surface live activation status",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-13T21:17:46Z",
+                        "branch":  "codex/live-activation-summary",
+                        "base":  "main",
+                        "merge_commit":  "eb42a15f54396be12599868c5cb4d8d3a2584b56",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/31"
+                    },
+                    {
+                        "number":  32,
+                        "title":  "[codex] Add dashboard radar run scope controls",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-13T21:26:18Z",
+                        "branch":  "codex/dashboard-run-scope",
+                        "base":  "main",
+                        "merge_commit":  "953a722619ca941547a759d807ae3882c67bd4ce",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/32"
+                    },
+                    {
+                        "number":  33,
+                        "title":  "[codex] Surface scan universe coverage",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-13T21:40:56Z",
+                        "branch":  "codex/universe-coverage-status",
+                        "base":  "main",
+                        "merge_commit":  "44546ba21cdbfcb3184ad5a3ca73ef543a8548ca",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/33"
+                    },
+                    {
+                        "number":  34,
+                        "title":  "Clarify optional radar run gates",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-13T22:03:28Z",
+                        "branch":  "codex/radar-run-operator-clarity",
+                        "base":  "main",
+                        "merge_commit":  "4aa9b19d4170b74d317d4dabc3e9ee83e079678f",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/34"
+                    },
+                    {
+                        "number":  35,
+                        "title":  "Add capped universe seed control",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-13T22:28:12Z",
+                        "branch":  "codex/universe-seed-control",
+                        "base":  "main",
+                        "merge_commit":  "38e4245d42c1ebc5db5ddb22bdf76c59564cf102",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/35"
+                    },
+                    {
+                        "number":  36,
+                        "title":  "Add latest discovery snapshot",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-13T23:09:39Z",
+                        "branch":  "codex/live-readiness-run",
+                        "base":  "main",
+                        "merge_commit":  "9bf65d34adeb725f3368737f36a1c00dde21e448",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/36"
+                    },
+                    {
+                        "number":  37,
+                        "title":  "Use decision cutoff for discovery packets",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-13T23:14:58Z",
+                        "branch":  "codex/discovery-packet-cutoff",
+                        "base":  "main",
+                        "merge_commit":  "3c32ce783d82b5b5cb6165bd95b09537b53ff4ca",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/37"
+                    },
+                    {
+                        "number":  38,
+                        "title":  "Use run finish cutoff for discovery artifacts",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-13T23:20:39Z",
+                        "branch":  "codex/discovery-artifact-cutoff",
+                        "base":  "main",
+                        "merge_commit":  "a936a2af43f58cebea12365aa9cde21795649280",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/38"
+                    },
+                    {
+                        "number":  39,
+                        "title":  "Use packet creation time for discovery artifacts",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-13T23:27:09Z",
+                        "branch":  "codex/discovery-packet-created-at",
+                        "base":  "main",
+                        "merge_commit":  "ac5e829a598dd0cb9144225b8d5224b5bdebba30",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/39"
+                    },
+                    {
+                        "number":  40,
+                        "title":  "Clarify radar activation path",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-13T23:49:44Z",
+                        "branch":  "codex/live-activation-plan",
+                        "base":  "main",
+                        "merge_commit":  "3f1ab091e20c8a8134bcdf3594da0578a243ca65",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/40"
+                    },
+                    {
+                        "number":  41,
+                        "title":  "Surface recent radar telemetry",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T00:02:09Z",
+                        "branch":  "codex/radar-telemetry-tape",
+                        "base":  "main",
+                        "merge_commit":  "7e4877eba4d083c63bbbed40f46c094349bd4ad7",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/41"
+                    },
+                    {
+                        "number":  42,
+                        "title":  "Explain candidate actionability",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T00:11:10Z",
+                        "branch":  "codex/actionability-breakdown",
+                        "base":  "main",
+                        "merge_commit":  "810c1bf866e29a69028c1b6943e61ca0c78a0c45",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/42"
+                    },
+                    {
+                        "number":  43,
+                        "title":  "Rate limit manual radar runs",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T00:24:16Z",
+                        "branch":  "codex/radar-run-cooldown",
+                        "base":  "main",
+                        "merge_commit":  "c34c53f98ebae2eaaba89720bbcbb717cef04e98",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/43"
+                    },
+                    {
+                        "number":  44,
+                        "title":  "Show manual radar run cooldown",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T00:43:38Z",
+                        "branch":  "feat/radar-run-cooldown-status",
+                        "base":  "main",
+                        "merge_commit":  "21a7faf18520ec390c40c654a3009a3f505c695d",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/44"
+                    },
+                    {
+                        "number":  45,
+                        "title":  "Clarify radar telemetry outcomes",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T01:05:10Z",
+                        "branch":  "feat/radar-telemetry-outcomes",
+                        "base":  "main",
+                        "merge_commit":  "1e6a6094f1b2f32531c9cd4e7047785f992b38b1",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/45"
+                    },
+                    {
+                        "number":  46,
+                        "title":  "Add investment decision readiness gate",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T01:31:15Z",
+                        "branch":  "feat/investment-readiness-gate",
+                        "base":  "main",
+                        "merge_commit":  "4fe0373b017fcf88ad5ab54d45653650c3fd3193",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/46"
+                    },
+                    {
+                        "number":  47,
+                        "title":  "Label candidate decision readiness",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T01:52:17Z",
+                        "branch":  "feat/candidate-decision-labels",
+                        "base":  "main",
+                        "merge_commit":  "2af0375b012e8aa4560ec1470aadda14a43d47a1",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/47"
+                    },
+                    {
+                        "number":  48,
+                        "title":  "Add radar readiness API contract",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T02:19:50Z",
+                        "branch":  "feat/readiness-api",
+                        "base":  "main",
+                        "merge_commit":  "1431fa24d3079e2fd22d6d0cd296ea7436f03a12",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/48"
+                    },
+                    {
+                        "number":  49,
+                        "title":  "Show manual review gate on dashboard",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T02:31:25Z",
+                        "branch":  "feat/dashboard-decision-contract",
+                        "base":  "main",
+                        "merge_commit":  "3950e31a0ea1d60e13474cd48519a047b741dca8",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/49"
+                    },
+                    {
+                        "number":  50,
+                        "title":  "Add radar run call plan",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T02:55:45Z",
+                        "branch":  "feat/radar-call-plan",
+                        "base":  "main",
+                        "merge_commit":  "5b4db5c8843272bf0feee491d9f7a3818cd28454",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/50"
+                    },
+                    {
+                        "number":  51,
+                        "title":  "Add research shortlist telemetry",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T03:26:28Z",
+                        "branch":  "feat/research-shortlist",
+                        "base":  "main",
+                        "merge_commit":  "dabc0e434639b6bea2d9882c8b5c204b8e555982",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/51"
+                    },
+                    {
+                        "number":  52,
+                        "title":  "Clarify stale candidate context",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T03:49:52Z",
+                        "branch":  "feat/discovery-candidate-context",
+                        "base":  "main",
+                        "merge_commit":  "a0ef8ec8029437ac73fad8a3118239bb65fcff53",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/52"
+                    },
+                    {
+                        "number":  53,
+                        "title":  "Add live data activation contract",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T04:03:52Z",
+                        "branch":  "feat/live-activation-contract",
+                        "base":  "main",
+                        "merge_commit":  "849ba6333511c282edfabf02ecc9e2552abb02f8",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/53"
+                    },
+                    {
+                        "number":  54,
+                        "title":  "Clarify radar skipped step status",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T04:28:14Z",
+                        "branch":  "feature/radar-run-explainability",
+                        "base":  "main",
+                        "merge_commit":  "d95cb24223f07c8ac786e7f500a54ee85a1c85f5",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/54"
+                    },
+                    {
+                        "number":  55,
+                        "title":  "Explain candidate blockers in dashboard",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T04:46:41Z",
+                        "branch":  "feature/candidate-blocker-explainability",
+                        "base":  "main",
+                        "merge_commit":  "e39b0bff87aa546bd9b354e3720381a5bb8403d4",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/55"
+                    },
+                    {
+                        "number":  56,
+                        "title":  "Add candidate delta insight",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T05:14:55Z",
+                        "branch":  "feature/candidate-delta-insight",
+                        "base":  "main",
+                        "merge_commit":  "885a2c1091fcf0fa9bb0a5759dab13276b55522e",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/56"
+                    },
+                    {
+                        "number":  57,
+                        "title":  "Add overview candidate action workflow",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T05:40:03Z",
+                        "branch":  "feature/overview-opportunity-actions",
+                        "base":  "main",
+                        "merge_commit":  "a3dbde7e00ee8a9c8a1723b5ccd431f72dd827ce",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/57"
+                    },
+                    {
+                        "number":  58,
+                        "title":  "Add operator work queue",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T06:06:19Z",
+                        "branch":  "codex/operator-work-queue",
+                        "base":  "main",
+                        "merge_commit":  "ccff1ed8bc3ac1411a446a41f23193d0f3d7bc89",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/58"
+                    },
+                    {
+                        "number":  59,
+                        "title":  "Audit operator dashboard actions",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T06:41:44Z",
+                        "branch":  "codex/dashboard-action-audit",
+                        "base":  "main",
+                        "merge_commit":  "6a1e8a2677c6f9fe6325e6195a589ce24882f394",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/59"
+                    },
+                    {
+                        "number":  60,
+                        "title":  "Isolate Schwab credential tests from local env",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T06:50:13Z",
+                        "branch":  "codex/schwab-test-env-isolation",
+                        "base":  "main",
+                        "merge_commit":  "3a13f265d11abe6f07a908b06dc565e504205ea1",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/60"
+                    },
+                    {
+                        "number":  61,
+                        "title":  "Clarify radar step skips",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T07:19:32Z",
+                        "branch":  "fix/radar-step-clarity",
+                        "base":  "main",
+                        "merge_commit":  "a91eb6a93b816b01d24582c392f72aec004be9ed",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/61"
+                    },
+                    {
+                        "number":  62,
+                        "title":  "Refresh radar skip explanations",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T07:29:01Z",
+                        "branch":  "fix/current-step-classifier",
+                        "base":  "main",
+                        "merge_commit":  "a6dc229198e052f6d552b8354d9226dc66564530",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/62"
+                    },
+                    {
+                        "number":  63,
+                        "title":  "Add daily alert planning step",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T08:20:47Z",
+                        "branch":  "codex/alert-planning-step",
+                        "base":  "main",
+                        "merge_commit":  "67baf467c6b6c1a04b52aa48408785bbf6f8c814",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/63"
+                    },
+                    {
+                        "number":  64,
+                        "title":  "Fix latest run discovery candidate scoping",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T09:18:08Z",
+                        "branch":  "codex/discovery-current-run",
+                        "base":  "main",
+                        "merge_commit":  "080bf0da25ae57cff484cba64c39b73fd54b9b28",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/64"
+                    },
+                    {
+                        "number":  65,
+                        "title":  "Clarify radar optional gates in dashboard",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T09:44:29Z",
+                        "branch":  "codex/candidate-session-date",
+                        "base":  "main",
+                        "merge_commit":  "a1ee7f7306735636c83ae4d172d8e1fc9d5841bd",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/65"
+                    },
+                    {
+                        "number":  66,
+                        "title":  "Surface Schwab market context in candidates",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T10:15:24Z",
+                        "branch":  "codex/candidate-market-context",
+                        "base":  "main",
+                        "merge_commit":  "3b516898af0081cc9a16986e466a52312c642251",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/66"
+                    },
+                    {
+                        "number":  67,
+                        "title":  "Add candidate Schwab context refresh",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T10:24:44Z",
+                        "branch":  "codex/candidate-schwab-refresh",
+                        "base":  "main",
+                        "merge_commit":  "3e299eae223b2ce52b5c58c27ae10fabe27f471f",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/67"
+                    },
+                    {
+                        "number":  68,
+                        "title":  "Refresh candidate Schwab context after sync",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T10:29:40Z",
+                        "branch":  "codex/candidate-refresh-rerun",
+                        "base":  "main",
+                        "merge_commit":  "c101adf4a09d0d07717b3799b90a0a3acda2cb06",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/68"
+                    },
+                    {
+                        "number":  69,
+                        "title":  "Clarify expected radar gate skips",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T10:44:25Z",
+                        "branch":  "codex/run-gate-clarity",
+                        "base":  "main",
+                        "merge_commit":  "1f52224d69661c6104b46273a5e4328688cd7de6",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/69"
+                    },
+                    {
+                        "number":  70,
+                        "title":  "Expose radar gate triggers in run summaries",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T10:52:06Z",
+                        "branch":  "codex/run-gate-summary-trigger",
+                        "base":  "main",
+                        "merge_commit":  "4c2d578d8488c3fadfe7c3c3beed860c1a0b1598",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/70"
+                    },
+                    {
+                        "number":  71,
+                        "title":  "Review candidate packets in daily LLM dry run",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T11:10:01Z",
+                        "branch":  "codex/daily-llm-packet-review",
+                        "base":  "main",
+                        "merge_commit":  "28304d942c33d275ec0dfe633df3b67651c325f7",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/71"
+                    },
+                    {
+                        "number":  72,
+                        "title":  "Use local bar date for fixture radar runs",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T11:29:19Z",
+                        "branch":  "codex/fixture-asof-default",
+                        "base":  "main",
+                        "merge_commit":  "27c5ec9b611cf10db3caab52f3c4a42c1347bcdd",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/72"
+                    },
+                    {
+                        "number":  73,
+                        "title":  "Surface agent review summary in dashboard",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T11:51:56Z",
+                        "branch":  "codex/agent-review-panel",
+                        "base":  "main",
+                        "merge_commit":  "72408ceef901878b8f51f58864105f75648c9080",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/73"
+                    },
+                    {
+                        "number":  74,
+                        "title":  "Enrich agent review with candidate context",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T12:02:41Z",
+                        "branch":  "codex/agent-review-context",
+                        "base":  "main",
+                        "merge_commit":  "4d04ce652385323106c77c0a344316ba94108c71",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/74"
+                    },
+                    {
+                        "number":  75,
+                        "title":  "Refresh radar step classifications",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T12:28:35Z",
+                        "branch":  "codex/radar-skip-status",
+                        "base":  "main",
+                        "merge_commit":  "23890845d32de90a4d3095aeb9499800e45a8b92",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/75"
+                    },
+                    {
+                        "number":  76,
+                        "title":  "Ignore runtime state logs",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T12:36:35Z",
+                        "branch":  "codex/ignore-runtime-state",
+                        "base":  "main",
+                        "merge_commit":  "648a2f4d7c608735e15d20c8a95e97abd5d555b6",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/76"
+                    },
+                    {
+                        "number":  77,
+                        "title":  "Clarify OpenAI review activation",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T12:59:41Z",
+                        "branch":  "codex/llm-activation-setup",
+                        "base":  "main",
+                        "merge_commit":  "af74abe2e5a58a5c479386ce74c2edc1f92e5b26",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/77"
+                    },
+                    {
+                        "number":  78,
+                        "title":  "Default dashboard radar runs to agent dry run",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T13:20:27Z",
+                        "branch":  "codex/agent-review-default-on",
+                        "base":  "main",
+                        "merge_commit":  "b797c3b187a731c03d89e34c00b7aeb87cd57191",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/78"
+                    },
+                    {
+                        "number":  79,
+                        "title":  "Refresh dashboard after manual radar run",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T13:33:51Z",
+                        "branch":  "codex/refresh-summary-after-run",
+                        "base":  "main",
+                        "merge_commit":  "864b5a3aa4e85ee72330d43c912939b3180616f0",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/79"
+                    },
+                    {
+                        "number":  80,
+                        "title":  "Use finished run cutoff for readiness telemetry",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T13:49:48Z",
+                        "branch":  "codex/readiness-telemetry-cutoff",
+                        "base":  "main",
+                        "merge_commit":  "c13ed94171bf080cebb235ab6f7cdde2d63ec87e",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/80"
+                    },
+                    {
+                        "number":  81,
+                        "title":  "Use current ops telemetry for readiness",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T13:58:36Z",
+                        "branch":  "codex/readiness-current-telemetry",
+                        "base":  "main",
+                        "merge_commit":  "98d01dc9b2c57a8c36b5d3d0cba1ae9809931c97",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/81"
+                    },
+                    {
+                        "number":  82,
+                        "title":  "Align env example with activation checklist",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T14:07:18Z",
+                        "branch":  "codex/env-example-activation",
+                        "base":  "main",
+                        "merge_commit":  "15e41fa6912750619234c798578fee72fb784fe5",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/82"
+                    },
+                    {
+                        "number":  83,
+                        "title":  "Show manual review gate diagnostics",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T14:16:40Z",
+                        "branch":  "codex/manual-review-gate-diagnostics",
+                        "base":  "main",
+                        "merge_commit":  "06a91e1d71ff6b71c367e0d8301ec4597f8f292a",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/83"
+                    },
+                    {
+                        "number":  84,
+                        "title":  "[codex] Clarify expected radar gates",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T14:31:44Z",
+                        "branch":  "codex/clarify-expected-gates",
+                        "base":  "main",
+                        "merge_commit":  "0e03fe98d92e005463a1cf39a428c063e25ab556",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/84"
+                    },
+                    {
+                        "number":  85,
+                        "title":  "[codex] Show alert planning suppression diagnostics",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T14:48:07Z",
+                        "branch":  "codex/alert-planning-diagnostics",
+                        "base":  "main",
+                        "merge_commit":  "07a332917f5d55cda7310bbdfb77c98ea6577201",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/85"
+                    },
+                    {
+                        "number":  86,
+                        "title":  "Clarify optional radar gates in dashboard",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T15:01:21Z",
+                        "branch":  "codex/operator-run-path",
+                        "base":  "main",
+                        "merge_commit":  "37129d99ef1ba7d3836e7ef213ba86be44803847",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/86"
+                    },
+                    {
+                        "number":  87,
+                        "title":  "Separate candidate next steps from readiness gates",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T15:16:10Z",
+                        "branch":  "codex/candidate-next-actions",
+                        "base":  "main",
+                        "merge_commit":  "0fa0b9320833dd583b434c674b0ccbddd28022d2",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/87"
+                    },
+                    {
+                        "number":  88,
+                        "title":  "Add selected candidate decision brief",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T15:27:15Z",
+                        "branch":  "codex/candidate-decision-brief",
+                        "base":  "main",
+                        "merge_commit":  "5ed5bbb7746d7a8da0b07ef78ad416c299a8aac0",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/88"
+                    },
+                    {
+                        "number":  89,
+                        "title":  "Promote minimum live data env block",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T15:35:26Z",
+                        "branch":  "codex/live-env-block",
+                        "base":  "main",
+                        "merge_commit":  "3590ae6c92b258f28bf47d799c9af0f7fd8d64c4",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/89"
+                    },
+                    {
+                        "number":  90,
+                        "title":  "Add live worker activation handoff",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T15:45:24Z",
+                        "branch":  "codex/worker-activation-handoff",
+                        "base":  "main",
+                        "merge_commit":  "80bc500c0e87b8314042e808700de1e0878eb95b",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/90"
+                    },
+                    {
+                        "number":  91,
+                        "title":  "Show actionable radar step status",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T16:24:06Z",
+                        "branch":  "codex/worker-status-panel",
+                        "base":  "main",
+                        "merge_commit":  "10d3d383d2c94417a919c1c226dcef91a8cac038",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/91"
+                    },
+                    {
+                        "number":  92,
+                        "title":  "Add market radar usefulness status",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T16:51:07Z",
+                        "branch":  "codex/usefulness-status",
+                        "base":  "main",
+                        "merge_commit":  "1fb227b1321c5e5fc25731d62fba7b25d89c6fd2",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/92"
+                    },
+                    {
+                        "number":  93,
+                        "title":  "Show dotenv activation status",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T17:05:42Z",
+                        "branch":  "codex/dotenv-activation-status",
+                        "base":  "main",
+                        "merge_commit":  "9d2366d6840695d24dbb893857dd820ca7375a78",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/93"
+                    },
+                    {
+                        "number":  94,
+                        "title":  "Add local restart script",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T17:16:10Z",
+                        "branch":  "codex/restart-local-script",
+                        "base":  "main",
+                        "merge_commit":  "8fc41bbd8c0bfe56ea803d58cb1b0913ab067f5c",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/94"
+                    },
+                    {
+                        "number":  95,
+                        "title":  "Fix restart script for Windows PowerShell",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T17:18:00Z",
+                        "branch":  "codex/fix-restart-script-powershell",
+                        "base":  "main",
+                        "merge_commit":  "5f14dee77f8f8db703e135c8867d0d97a90d12da",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/95"
+                    },
+                    {
+                        "number":  96,
+                        "title":  "Fix restart script health check",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T17:28:35Z",
+                        "branch":  "codex/fix-restart-healthcheck",
+                        "base":  "main",
+                        "merge_commit":  "56d114d9c34ec54573d228bc6c2ede5caa09d770",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/96"
+                    },
+                    {
+                        "number":  97,
+                        "title":  "Use curl for local restart health check",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T17:32:35Z",
+                        "branch":  "codex/fix-restart-curl-healthcheck",
+                        "base":  "main",
+                        "merge_commit":  "f391f4f9fde81f5cffe988cb35589e5c6ab0e006",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/97"
+                    },
+                    {
+                        "number":  98,
+                        "title":  "Make radar run status reflect blocking steps",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T17:44:31Z",
+                        "branch":  "codex/radar-run-effective-status",
+                        "base":  "main",
+                        "merge_commit":  "5c20bbae20e8f2ad0c5118759669f1a66968ae4f",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/98"
+                    },
+                    {
+                        "number":  99,
+                        "title":  "Label radar run mode from call plan",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T17:49:31Z",
+                        "branch":  "codex/radar-run-mode-guard",
+                        "base":  "main",
+                        "merge_commit":  "3d6cc8a0aaf84f7219d736cf2ed226119a0264a9",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/99"
+                    },
+                    {
+                        "number":  100,
+                        "title":  "Add live activation checker script",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T17:54:51Z",
+                        "branch":  "codex/live-activation-check-script",
+                        "base":  "main",
+                        "merge_commit":  "6bfc9f39fce23a3a2bcee436b41d3366f10200c4",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/100"
+                    },
+                    {
+                        "number":  101,
+                        "title":  "Use curl for activation operator commands",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T17:58:03Z",
+                        "branch":  "codex/windows-activation-commands",
+                        "base":  "main",
+                        "merge_commit":  "b167cce4de1e1a6e0893449bdf847282cb1defb5",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/101"
+                    },
+                    {
+                        "number":  102,
+                        "title":  "Use curl commands in radar runbook",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T18:02:11Z",
+                        "branch":  "codex/radar-runbook-curl-commands",
+                        "base":  "main",
+                        "merge_commit":  "59cd7400d31252cb2e623699b8d7e1164d24fd7a",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/102"
+                    },
+                    {
+                        "number":  103,
+                        "title":  "Align runbook local API commands",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T18:07:56Z",
+                        "branch":  "codex/runbook-local-api-commands",
+                        "base":  "main",
+                        "merge_commit":  "b45b0d048bbf8e5e1278d17651dfd09d94e638bf",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/103"
+                    },
+                    {
+                        "number":  104,
+                        "title":  "Surface run path status in dashboard",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T18:25:46Z",
+                        "branch":  "codex/run-path-header",
+                        "base":  "main",
+                        "merge_commit":  "8e1bb617c1b9823e30f8b1aed3d9a9bb05640b43",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/104"
+                    },
+                    {
+                        "number":  105,
+                        "title":  "Add interactive agent review dry run",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T18:47:47Z",
+                        "branch":  "codex/agent-review-api",
+                        "base":  "main",
+                        "merge_commit":  "2847872f4df388460b45c0a36127b1719c4935b8",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/105"
+                    },
+                    {
+                        "number":  106,
+                        "title":  "[codex] Surface agent review ledger history",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T19:18:29Z",
+                        "branch":  "codex/agent-review-history",
+                        "base":  "main",
+                        "merge_commit":  "4501ebc9569c05a481d2ea096e7f101bc9c9cbd4",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/106"
+                    },
+                    {
+                        "number":  107,
+                        "title":  "[codex] Gate real agent review from dashboard",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T19:32:02Z",
+                        "branch":  "codex/real-agent-review-gate",
+                        "base":  "main",
+                        "merge_commit":  "cecc5dbc10ca80473a091ca1b789cb2e33eff536",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/107"
+                    },
+                    {
+                        "number":  108,
+                        "title":  "Clarify radar run skip root causes",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T19:52:29Z",
+                        "branch":  "fix/run-skips-actionability",
+                        "base":  "main",
+                        "merge_commit":  "b96131c4dd85b87b99f73bf26cb0a307797e880c",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/108"
+                    },
+                    {
+                        "number":  109,
+                        "title":  "Scope candidate API to latest radar run",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T20:03:10Z",
+                        "branch":  "fix/api-candidate-cutoff",
+                        "base":  "main",
+                        "merge_commit":  "41373a2111594c113f1ec67026631ffb880617b3",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/109"
+                    },
+                    {
+                        "number":  110,
+                        "title":  "Expose summarized ops telemetry endpoint",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T20:09:43Z",
+                        "branch":  "feat/ops-telemetry-endpoint",
+                        "base":  "main",
+                        "merge_commit":  "25204e3a9568092dee5e43495a5fac6a74ef0266",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/110"
+                    },
+                    {
+                        "number":  111,
+                        "title":  "Guard against legacy radar run step table",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T20:20:35Z",
+                        "branch":  "codex/run-step-clarity",
+                        "base":  "main",
+                        "merge_commit":  "0f2cd1cf59ff4d6391508e9d9263277da4ad2c81",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/111"
+                    },
+                    {
+                        "number":  112,
+                        "title":  "Clarify first live radar handoff",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T20:25:52Z",
+                        "branch":  "codex/live-run-handoff",
+                        "base":  "main",
+                        "merge_commit":  "92b7730b339b75ac44310cfadad63183e0b18dc0",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/112"
+                    },
+                    {
+                        "number":  113,
+                        "title":  "Block mismatched radar provider overrides",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T20:33:30Z",
+                        "branch":  "codex/call-plan-provider-alignment",
+                        "base":  "main",
+                        "merge_commit":  "a6c0ff4bc3f6e09d840123056e19a193f6e2708f",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/113"
+                    },
+                    {
+                        "number":  114,
+                        "title":  "Track daily scan provider in activation status",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T20:44:13Z",
+                        "branch":  "codex/daily-provider-activation",
+                        "base":  "main",
+                        "merge_commit":  "01bb8b725f5ee94083414380aa840983423c00cb",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/114"
+                    },
+                    {
+                        "number":  115,
+                        "title":  "Expose runtime fingerprint in dashboard",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T20:55:25Z",
+                        "branch":  "codex/runtime-fingerprint",
+                        "base":  "main",
+                        "merge_commit":  "9597c31ddf27f3815942645d07de472131ea5e06",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/115"
+                    },
+                    {
+                        "number":  116,
+                        "title":  "Add safe live env preparation helper",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T21:01:45Z",
+                        "branch":  "codex/live-env-helper",
+                        "base":  "main",
+                        "merge_commit":  "e92e34c8e4fa1b6cea49e195b7284d587c33434c",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/116"
+                    },
+                    {
+                        "number":  117,
+                        "title":  "Add guarded first live smoke script",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T21:07:49Z",
+                        "branch":  "codex/first-live-smoke",
+                        "base":  "main",
+                        "merge_commit":  "bc207c12ad804ea4cae7ec03959d97b169d63e7f",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/117"
+                    },
+                    {
+                        "number":  118,
+                        "title":  "Point live activation guidance at guarded scripts",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T21:12:49Z",
+                        "branch":  "codex/activation-script-guidance",
+                        "base":  "main",
+                        "merge_commit":  "2b8535c1238ff5da6c1f1877f3d49e50c89d3a3f",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/118"
+                    },
+                    {
+                        "number":  119,
+                        "title":  "Add zero-call local status script",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T21:17:47Z",
+                        "branch":  "codex/status-script",
+                        "base":  "main",
+                        "merge_commit":  "280f9c91938eb1f52c5b3958441f12ab5e3b8e6b",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/119"
+                    },
+                    {
+                        "number":  120,
+                        "title":  "Surface investability in dashboard header",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T21:23:14Z",
+                        "branch":  "codex/header-investable",
+                        "base":  "main",
+                        "merge_commit":  "faf25beb29d8fa8a9db85a53c9a6ff0ad13bdaad",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/120"
+                    },
+                    {
+                        "number":  121,
+                        "title":  "[codex] Clarify optional radar gates in dashboard",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T21:38:48Z",
+                        "branch":  "codex/optional-gate-labels",
+                        "base":  "main",
+                        "merge_commit":  "5f64a9355742e6871c604b8bcbeb47e04c7b914e",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/121"
+                    },
+                    {
+                        "number":  122,
+                        "title":  "[codex] Classify telemetry rate limits as guarded",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T21:46:44Z",
+                        "branch":  "codex/telemetry-guard-status",
+                        "base":  "main",
+                        "merge_commit":  "fd83ccbf9663474d42552fb6fb645c11096f8d60",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/122"
+                    },
+                    {
+                        "number":  123,
+                        "title":  "[codex] Add guarded one-shot worker helper",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T21:52:26Z",
+                        "branch":  "codex/worker-once-helper",
+                        "base":  "main",
+                        "merge_commit":  "c4615acd2a214481533cd1c691e1192db9de284c",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/123"
+                    },
+                    {
+                        "number":  124,
+                        "title":  "Clarify retained skipped telemetry in dashboard",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T22:08:33Z",
+                        "branch":  "codex/operator-skip-labels",
+                        "base":  "main",
+                        "merge_commit":  "59e0a394d7a2eabf3840e9b0fe05711de85416f0",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/124"
+                    },
+                    {
+                        "number":  125,
+                        "title":  "Surface next action in dashboard header",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T22:15:25Z",
+                        "branch":  "codex/header-next-action",
+                        "base":  "main",
+                        "merge_commit":  "5ebf04207e2e7107ade0290a0db6211124c2a685",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/125"
+                    },
+                    {
+                        "number":  126,
+                        "title":  "Label status audit rows consistently",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T22:19:05Z",
+                        "branch":  "codex/status-audit-labels",
+                        "base":  "main",
+                        "merge_commit":  "28a73b31366bab1f86d8a2a5483ab9f316950046",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/126"
+                    },
+                    {
+                        "number":  127,
+                        "title":  "Explain live activation provider keys",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T22:25:40Z",
+                        "branch":  "codex/activation-env-purpose",
+                        "base":  "main",
+                        "merge_commit":  "0a97fe50ffdcb507ec1bc33882689cac04b06d72",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/127"
+                    },
+                    {
+                        "number":  128,
+                        "title":  "Ensure live env manual slots exist",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T22:29:16Z",
+                        "branch":  "codex/prepare-env-manual-slots",
+                        "base":  "main",
+                        "merge_commit":  "45747711291604b5e593f8051561ee18a8015c9c",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/128"
+                    },
+                    {
+                        "number":  129,
+                        "title":  "Show live setup next steps in status",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T22:32:25Z",
+                        "branch":  "codex/status-next-step",
+                        "base":  "main",
+                        "merge_commit":  "acbe5cb394c2f0c5d3bfc5edfcb0995eec59453e",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/129"
+                    },
+                    {
+                        "number":  130,
+                        "title":  "Reject placeholder SEC user agents",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T22:41:51Z",
+                        "branch":  "codex/sec-user-agent-placeholder",
+                        "base":  "main",
+                        "merge_commit":  "f6eb06ccc931220477a59f5c8d7c24878e5ce901",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/130"
+                    },
+                    {
+                        "number":  131,
+                        "title":  "Hide raw run skip codes from operator tables",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T22:51:23Z",
+                        "branch":  "fix/run-step-labels",
+                        "base":  "main",
+                        "merge_commit":  "23eec8d2752362935e60d3bd120f97dbc27e26b9",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/131"
+                    },
+                    {
+                        "number":  132,
+                        "title":  "Reject placeholder Polygon API keys",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T22:59:40Z",
+                        "branch":  "fix/polygon-key-placeholder",
+                        "base":  "main",
+                        "merge_commit":  "772cb2435b6e264cd5d5a0597e6e240e2cb5528f",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/132"
+                    },
+                    {
+                        "number":  133,
+                        "title":  "Add telemetry status rollup to dashboard",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T23:05:53Z",
+                        "branch":  "feat/telemetry-rollup",
+                        "base":  "main",
+                        "merge_commit":  "406ab49c5030b5d1f728c5aa98cc4789aaf6281f",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/133"
+                    },
+                    {
+                        "number":  134,
+                        "title":  "Surface stale bar status in dashboard header",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T23:10:58Z",
+                        "branch":  "feat/header-freshness",
+                        "base":  "main",
+                        "merge_commit":  "22aabb35b5fe08362bb3822b70459694d0b5dbad",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/134"
+                    },
+                    {
+                        "number":  135,
+                        "title":  "Add investable readiness gate script",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T23:16:43Z",
+                        "branch":  "feat/product-readiness-gate",
+                        "base":  "main",
+                        "merge_commit":  "8119f08a6561bb6991562556989f32851c74a24b",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/135"
+                    },
+                    {
+                        "number":  136,
+                        "title":  "Align radar runbook with operator dashboard",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T23:30:21Z",
+                        "branch":  "docs/radar-run-current",
+                        "base":  "main",
+                        "merge_commit":  "28094b23f2e2096c126747d3c0e39deab0ef1362",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/136"
+                    },
+                    {
+                        "number":  137,
+                        "title":  "Add raw telemetry evidence export",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T23:44:15Z",
+                        "branch":  "feat/raw-telemetry-export",
+                        "base":  "main",
+                        "merge_commit":  "d68eddc29a102a911f6096d0299acd55d2fba258",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/137"
+                    },
+                    {
+                        "number":  138,
+                        "title":  "Add operator evidence bundle export",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-14T23:53:19Z",
+                        "branch":  "feat/operator-evidence-bundle",
+                        "base":  "main",
+                        "merge_commit":  "e3c0cb451064ce7bbc5b1516ba3cce2eba0179ad",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/138"
+                    }
+                ]
+}

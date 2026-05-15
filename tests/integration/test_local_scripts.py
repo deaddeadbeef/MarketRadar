@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 
@@ -32,6 +33,8 @@ def test_readme_mentions_restart_script_for_local_dashboard() -> None:
     assert "scripts/market-radar-status.ps1" in readme
     assert "scripts/export-telemetry.ps1" in readme
     assert "scripts/export-operator-evidence.ps1" in readme
+    assert "scripts/export-pr-ledger.ps1" in readme
+    assert "docs\\changes\\pr-ledger.json" in readme
     assert "scripts/assert-investable-readiness.ps1" in readme
     assert "/api/ops/telemetry/raw" in readme
     assert "-Execute" in readme
@@ -209,6 +212,10 @@ def test_export_operator_evidence_script_writes_zero_call_bundle() -> None:
     assert "/api/ops/telemetry?limit={0}" in text
     assert "/api/ops/telemetry/raw?limit={0}" in text
     assert "/api/brokers/schwab/status" in text
+    assert "docs\\changes\\pr-ledger.json" in text
+    assert "change_ledger" in text
+    assert "tracked_merged_prs" in text
+    assert "latest_tracked_pr" in text
     assert "data\\ops\\bundles" in text
     assert "operator-evidence-$stamp.json" in text
     assert "External calls made: 0" in text
@@ -216,3 +223,36 @@ def test_export_operator_evidence_script_writes_zero_call_bundle() -> None:
     assert "OPENAI_API_KEY=" not in text
     assert "CATALYST_POLYGON_API_KEY=" not in text
     assert "SCHWAB_CLIENT_SECRET=" not in text
+
+
+def test_export_pr_ledger_script_tracks_pull_request_changes() -> None:
+    script = Path("scripts/export-pr-ledger.ps1")
+    text = script.read_text(encoding="utf-8")
+
+    assert script.is_file()
+    assert "gh pr list" in text
+    assert "--state all" in text
+    assert "--json number,title,state,mergedAt,headRefName,baseRefName,url,mergeCommit" in text
+    assert "pr-change-ledger-v1" in text
+    assert "docs\\changes\\pr-ledger.json" in text
+    assert "github_metadata_calls_made = 1" in text
+    assert "market_data_broker_llm_calls_made = 0" in text
+    assert "Market-data/broker/LLM calls made: 0" in text
+    assert "OPENAI_API_KEY=" not in text
+    assert "CATALYST_POLYGON_API_KEY=" not in text
+    assert "SCHWAB_CLIENT_SECRET=" not in text
+
+
+def test_checked_in_pr_ledger_snapshot_is_machine_readable() -> None:
+    ledger = Path("docs/changes/pr-ledger.json")
+    payload = json.loads(ledger.read_text(encoding="utf-8"))
+
+    assert payload["schema_version"] == "pr-change-ledger-v1"
+    assert payload["status"] == "tracked"
+    assert payload["market_data_broker_llm_calls_made"] == 0
+    assert payload["github_metadata_calls_made"] == 1
+    assert payload["total_merged"] >= 1
+    assert payload["entries"]
+    assert {"number", "title", "merged_at", "merge_commit", "url"}.issubset(
+        payload["entries"][-1]
+    )
