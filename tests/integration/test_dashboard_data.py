@@ -1962,6 +1962,36 @@ def test_dotenv_activation_status_reports_restart_required_without_leaking_value
     assert by_key["CATALYST_POLYGON_API_KEY"]["status"] == "restart_required"
 
 
+def test_dotenv_activation_status_names_missing_required_values(tmp_path: Path) -> None:
+    dotenv_path = tmp_path / ".env.local"
+    dotenv_path.write_text(
+        "\n".join(
+            [
+                "CATALYST_DAILY_MARKET_PROVIDER=polygon",
+                "CATALYST_DAILY_PROVIDER=polygon",
+                "CATALYST_DAILY_EVENT_PROVIDER=sec",
+                "CATALYST_SEC_ENABLE_LIVE=1",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    payload = dotenv_activation_status_payload(
+        AppConfig(
+            daily_provider="polygon",
+            daily_market_provider="polygon",
+            daily_event_provider="sec",
+            sec_enable_live=True,
+        ),
+        dotenv_path=dotenv_path,
+    )
+
+    assert payload["status"] == "missing_values"
+    assert "CATALYST_POLYGON_API_KEY" in str(payload["next_action"])
+    assert "CATALYST_SEC_USER_AGENT" in str(payload["next_action"])
+    assert "CATALYST_SEC_ENABLE_LIVE" not in str(payload["next_action"])
+
+
 def test_dotenv_activation_status_reports_loaded_values(tmp_path: Path) -> None:
     dotenv_path = tmp_path / ".env.local"
     dotenv_path.write_text(
