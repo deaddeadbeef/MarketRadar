@@ -1,21 +1,21 @@
 {
     "schema_version":  "pr-change-ledger-v1",
-    "generated_at":  "2026-05-15T15:52:10.3974462Z",
+    "generated_at":  "2026-05-15T17:39:49.1282678Z",
     "status":  "tracked",
     "source":  "gh pr list --state all",
     "repository_remote":  "https://github.com/deaddeadbeef/MarketRadar.git",
     "gh_limit":  200,
-    "total_prs_seen":  147,
-    "total_merged":  147,
+    "total_prs_seen":  168,
+    "total_merged":  168,
     "latest_merged_pr":  {
-                             "number":  147,
-                             "title":  "Clean live smoke preflight exits",
+                             "number":  168,
+                             "title":  "Align live provider runbook examples",
                              "state":  "MERGED",
-                             "merged_at":  "2026-05-15T15:49:46Z",
-                             "branch":  "feat/live-smoke-clean-exit",
+                             "merged_at":  "2026-05-15T17:35:35Z",
+                             "branch":  "docs/live-provider-examples",
                              "base":  "main",
-                             "merge_commit":  "3b3245191a4220dbf5a8adb176fa34e2abd97381",
-                             "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/147"
+                             "merge_commit":  "0d1b977d7bfb14a7347a4255aad9da75c3492585",
+                             "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/168"
                          },
     "github_metadata_calls_made":  1,
     "market_data_broker_llm_calls_made":  0,
@@ -1489,6 +1489,216 @@
                         "base":  "main",
                         "merge_commit":  "3b3245191a4220dbf5a8adb176fa34e2abd97381",
                         "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/147"
+                    },
+                    {
+                        "number":  148,
+                        "title":  "Refresh PR ledger through 147",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-15T15:53:23Z",
+                        "branch":  "chore/ledger-through-147",
+                        "base":  "main",
+                        "merge_commit":  "583814b34fc85950c61e8dc35007727a42f3cd07",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/148"
+                    },
+                    {
+                        "number":  149,
+                        "title":  "Clarify Schwab connection token status",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-15T15:59:17Z",
+                        "branch":  "feat/schwab-status-semantics",
+                        "base":  "main",
+                        "merge_commit":  "593305089d48758f25a4c3e8632c8b1746279b63",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/149"
+                    },
+                    {
+                        "number":  150,
+                        "title":  "Show broker token status in sitrep",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-15T16:06:46Z",
+                        "branch":  "feat/status-broker-token",
+                        "base":  "main",
+                        "merge_commit":  "9b202eb383bd602162bc68b4cc11e9a94557d9ec",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/150"
+                    },
+                    {
+                        "number":  151,
+                        "title":  "Clarify live env manual values",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-15T16:15:34Z",
+                        "branch":  "polish/live-env-manual-guidance",
+                        "base":  "main",
+                        "merge_commit":  "d684a4df29b15c27300b8651b0696cb8b350de6d",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/151"
+                    },
+                    {
+                        "number":  152,
+                        "title":  "Clarify live activation missing values",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-15T16:21:12Z",
+                        "branch":  "polish/live-activation-check-guidance",
+                        "base":  "main",
+                        "merge_commit":  "a80d680ec3dc6b7c3272cf63ac09d2e0d324f706",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/152"
+                    },
+                    {
+                        "number":  153,
+                        "title":  "Summarize setup blockers in operator next step",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-15T16:26:41Z",
+                        "branch":  "polish/aggregate-setup-next-action",
+                        "base":  "main",
+                        "merge_commit":  "5914baf62db07952844dcc5015f14d1126277e2d",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/153"
+                    },
+                    {
+                        "number":  154,
+                        "title":  "Tighten SEC readiness action",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-15T16:29:49Z",
+                        "branch":  "polish/sec-readiness-action",
+                        "base":  "main",
+                        "merge_commit":  "b96436c61434f98cb9cdd9c7afdfd62e7f1f7265",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/154"
+                    },
+                    {
+                        "number":  155,
+                        "title":  "Summarize activation blockers",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-15T16:33:17Z",
+                        "branch":  "polish/aggregate-activation-next-action",
+                        "base":  "main",
+                        "merge_commit":  "af16086625d6b5ba7f276beaf226159cefe91e4d",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/155"
+                    },
+                    {
+                        "number":  156,
+                        "title":  "Summarize blocked call plan actions",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-15T16:39:59Z",
+                        "branch":  "polish/call-plan-next-action",
+                        "base":  "main",
+                        "merge_commit":  "74932442a56f9122f12fa215ab7b45b3c86d8997",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/156"
+                    },
+                    {
+                        "number":  157,
+                        "title":  "Name live activation missing settings",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-15T16:44:33Z",
+                        "branch":  "polish/live-plan-specific-next-action",
+                        "base":  "main",
+                        "merge_commit":  "5a8e6f952b3e4f15b2520e36d92b5fb12113ab58",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/157"
+                    },
+                    {
+                        "number":  158,
+                        "title":  "Clarify SEC preflight missing settings",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-15T16:50:17Z",
+                        "branch":  "fix/sec-preflight-specific-missing-settings",
+                        "base":  "main",
+                        "merge_commit":  "787098781a0e64108c0eb77a13c523937fb2a12f",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/158"
+                    },
+                    {
+                        "number":  159,
+                        "title":  "Clarify live activation next actions",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-15T16:59:39Z",
+                        "branch":  "fix/live-activation-exact-next-actions",
+                        "base":  "main",
+                        "merge_commit":  "c58369c7a5a20c025a2cd2dd485d3fc7c355a440",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/159"
+                    },
+                    {
+                        "number":  160,
+                        "title":  "Name missing dotenv activation values",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-15T17:04:40Z",
+                        "branch":  "fix/dotenv-missing-next-action",
+                        "base":  "main",
+                        "merge_commit":  "5dd26c0c56e29e6b2ae73aadde8e85bd056117f5",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/160"
+                    },
+                    {
+                        "number":  161,
+                        "title":  "Clarify header data mode label",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-15T17:08:25Z",
+                        "branch":  "fix/header-latest-run-data-label",
+                        "base":  "main",
+                        "merge_commit":  "d62fa4fe43846342ad1b42f7c47ce00c89e8abcb",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/161"
+                    },
+                    {
+                        "number":  162,
+                        "title":  "Clarify blocked live run guidance",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-15T17:11:59Z",
+                        "branch":  "fix/live-run-script-guidance",
+                        "base":  "main",
+                        "merge_commit":  "b16e53a49b4d3e7cf467a56db04db893bacca657",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/162"
+                    },
+                    {
+                        "number":  163,
+                        "title":  "Add live env editor helper",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-15T17:15:47Z",
+                        "branch":  "feat/open-live-env-helper",
+                        "base":  "main",
+                        "merge_commit":  "8396859be947d1dc6eafc5c132f98c9c908dc792",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/163"
+                    },
+                    {
+                        "number":  164,
+                        "title":  "Point status script at env editor helper",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-15T17:17:35Z",
+                        "branch":  "fix/status-open-live-env-command",
+                        "base":  "main",
+                        "merge_commit":  "4d654b2e36bf0718fc7b5c4c6e00385ac00c70ff",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/164"
+                    },
+                    {
+                        "number":  165,
+                        "title":  "Make live env helper return after opening editor",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-15T17:20:26Z",
+                        "branch":  "fix/open-live-env-output",
+                        "base":  "main",
+                        "merge_commit":  "6060c7a23857a47a983b8860762dfc045e99fa51",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/165"
+                    },
+                    {
+                        "number":  166,
+                        "title":  "Point blocked live scripts at env helper",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-15T17:29:00Z",
+                        "branch":  "fix/live-blocked-helper-command",
+                        "base":  "main",
+                        "merge_commit":  "80a60822ab7ea0654f3fbe46fb89ae5b6c05a04f",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/166"
+                    },
+                    {
+                        "number":  167,
+                        "title":  "Document live env helper in radar runbook",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-15T17:31:43Z",
+                        "branch":  "docs/live-env-helper-runbook",
+                        "base":  "main",
+                        "merge_commit":  "229445b404283540f1cf367be5cb2a213cce087d",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/167"
+                    },
+                    {
+                        "number":  168,
+                        "title":  "Align live provider runbook examples",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-15T17:35:35Z",
+                        "branch":  "docs/live-provider-examples",
+                        "base":  "main",
+                        "merge_commit":  "0d1b977d7bfb14a7347a4255aad9da75c3492585",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/168"
                     }
                 ]
 }
