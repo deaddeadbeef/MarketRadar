@@ -198,6 +198,9 @@ def test_check_live_activation_script_is_zero_external_call_status_check() -> No
     assert "These commands read local API state only" in text
     assert "missing_env" in text
     assert "operator_steps" in text
+    assert "Paste the Polygon API key from your Polygon dashboard." in text
+    assert "SEC-compliant contact string" in text
+    assert "MarketRadar/0.1 your-email@example.com" in text
     assert "OPENAI_API_KEY=" not in text
     assert "CATALYST_POLYGON_API_KEY=" not in text
     assert "SCHWAB_CLIENT_SECRET=" not in text
