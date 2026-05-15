@@ -401,6 +401,7 @@ def test_dashboard_header_surfaces_data_mode_and_build_fingerprint() -> None:
     assert "discovery_snapshot" in header_source
     assert "runtime_context" in header_source
     assert "investment_readiness" in header_source
+    assert "operator_next_step" in header_source
     assert 'runtime_context.get("build")' in header_source
     assert '"Data Mode"' in header_source
     assert 'discovery_snapshot.get("freshness")' in header_source
@@ -412,6 +413,7 @@ def test_dashboard_header_surfaces_data_mode_and_build_fingerprint() -> None:
     assert '"Build"' in header_source
     assert "_command_next_action_notice" in header_source
     assert "Next Required Action" in notice_source
+    assert "next_step.get(\"action\")" in notice_source
     assert "investment_readiness.get(\"next_action\")" in notice_source
     assert "discovery_snapshot.get(\"next_action\")" in notice_source
     assert "mr-command-next" in notice_source
@@ -424,7 +426,11 @@ def test_dashboard_header_uses_investment_readiness_payload() -> None:
     assert "actionability_breakdown_payload(candidate_rows)" in source
     assert "header_investment_readiness = _mapping(" in source
     assert "investment_readiness_payload(" in source
+    assert "header_operator_next_step = _mapping(" in source
+    assert "operator_next_step_payload(" in source
+    assert "operator_work_queue_payload(" in source
     assert "investment_readiness=header_investment_readiness" in source
+    assert "operator_next_step=header_operator_next_step" in source
 
 
 def test_dashboard_runtime_context_expander_shows_build_fingerprint() -> None:
@@ -928,6 +934,8 @@ def test_dashboard_operator_evidence_bundle_is_downloadable_and_zero_call() -> N
     assert "radar_run_call_plan_payload" in payload_source
     assert "_raw_telemetry_download_payload" in payload_source
     assert "investment_readiness_payload" in payload_source
+    assert "operator_next_step_payload" in payload_source
+    assert "operator_next_step" in payload_source
     assert "_broker_status_evidence_payload" in payload_source
     assert "_load_pr_change_ledger" in payload_source
     assert "change_ledger" in payload_source

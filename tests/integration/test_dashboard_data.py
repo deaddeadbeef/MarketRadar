@@ -57,6 +57,7 @@ from catalyst_radar.dashboard.data import (
     load_ticker_detail,
     load_validation_summary,
     market_radar_usefulness_payload,
+    operator_next_step_payload,
     operator_work_queue_payload,
     opportunity_focus_payload,
     provider_preflight_payload,
@@ -941,6 +942,11 @@ def test_radar_readiness_payload_summarizes_operator_decision_gate(
     assert payload["candidate_delta"]["summary"]["current_run_candidates"] == 2
     assert payload["operator_work_queue"]["schema_version"] == "operator-work-queue-v1"
     assert payload["operator_work_queue"]["safe_to_make_investment_decision"] is False
+    assert payload["operator_next_step"]["schema_version"] == "operator-next-step-v1"
+    assert payload["operator_next_step"]["external_calls_made"] == 0
+    assert payload["operator_next_step"]["priority"] == "must_fix"
+    assert payload["operator_next_step"]["action"] == payload["next_action"]
+    assert payload["operator_next_step"]["area"]
     assert payload["market_radar_usefulness"]["schema_version"] == (
         "market-radar-usefulness-v1"
     )
@@ -955,6 +961,41 @@ def test_radar_readiness_payload_summarizes_operator_decision_gate(
     assert payload["candidate_decision_labels"][0]["audit"]["provider_license_policy"][
         "external_export_allowed"
     ] is False
+
+
+def test_operator_next_step_payload_uses_top_queue_row() -> None:
+    next_step = operator_next_step_payload(
+        {
+            "schema_version": "operator-work-queue-v1",
+            "status": "blocked",
+            "headline": "Setup blocked.",
+            "next_action": "Fallback action.",
+            "rows": [
+                {
+                    "priority": "must_fix",
+                    "area": "Live market scan",
+                    "item": "Market data is fixture.",
+                    "status": "blocked",
+                    "next_action": "Configure Polygon.",
+                    "evidence": "provider=csv; mode=fixture",
+                    "source": "readiness_checklist",
+                }
+            ],
+        }
+    )
+
+    assert next_step == {
+        "schema_version": "operator-next-step-v1",
+        "status": "blocked",
+        "priority": "must_fix",
+        "area": "Live market scan",
+        "item": "Market data is fixture.",
+        "ticker": None,
+        "action": "Configure Polygon.",
+        "evidence": "provider=csv; mode=fixture",
+        "source": "readiness_checklist",
+        "external_calls_made": 0,
+    }
 
 
 def test_radar_readiness_telemetry_uses_current_ops_cutoff(

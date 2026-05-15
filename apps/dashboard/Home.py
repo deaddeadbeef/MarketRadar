@@ -356,10 +356,13 @@ def _command_next_action_notice(
     *,
     discovery_snapshot: Mapping[str, Any],
     investment_readiness: Mapping[str, Any],
+    operator_next_step: Mapping[str, Any] | None = None,
 ) -> str:
+    next_step = _mapping(operator_next_step)
     ready = bool(investment_readiness.get("manual_buy_review_ready"))
     status = str(
-        investment_readiness.get("status")
+        next_step.get("status")
+        or investment_readiness.get("status")
         or investment_readiness.get("decision_mode")
         or discovery_snapshot.get("status")
         or "unknown"
@@ -373,11 +376,13 @@ def _command_next_action_notice(
         else "Next Action"
     )
     headline = _first_present(
+        next_step.get("item"),
         investment_readiness.get("headline"),
         discovery_snapshot.get("headline"),
         "Readiness status unavailable.",
     )
     next_action = _first_present(
+        next_step.get("action"),
         investment_readiness.get("next_action"),
         discovery_snapshot.get("next_action"),
         "Review readiness inputs.",
@@ -402,6 +407,7 @@ def _show_command_header(
     discovery_snapshot: Mapping[str, Any],
     runtime_context: Mapping[str, Any],
     investment_readiness: Mapping[str, Any],
+    operator_next_step: Mapping[str, Any] | None = None,
 ) -> None:
     database = _mapping(ops_health.get("database"))
     degraded_mode = _mapping(ops_health.get("degraded_mode"))
@@ -442,6 +448,7 @@ def _show_command_header(
     next_action_notice = _command_next_action_notice(
         discovery_snapshot=discovery_snapshot,
         investment_readiness=investment_readiness,
+        operator_next_step=operator_next_step,
     )
     st.markdown(
         '<section class="mr-app-header">'
@@ -807,6 +814,19 @@ def _operator_evidence_bundle_payload(
         "latest_tracked_pr": change_ledger_summary.get("latest_pr_label"),
         "change_ledger_snapshot_status": change_ledger_summary.get("snapshot_status"),
     }
+    operator_queue = _mapping(
+        dashboard_data.operator_work_queue_payload(
+            config,
+            radar_run_summary=radar_run_summary,
+            broker_summary=broker_summary,
+            discovery_snapshot=discovery_snapshot,
+            candidate_rows=candidate_rows,
+        )
+    )
+    operator_next_step = _mapping(
+        dashboard_data.operator_next_step_payload(operator_queue)
+    )
+    summary["operator_next_action"] = operator_next_step.get("action")
     payload = {
         "schema_version": "operator-evidence-bundle-v1",
         "generated_at": datetime.now(UTC).isoformat(),
@@ -819,6 +839,7 @@ def _operator_evidence_bundle_payload(
             "discovery_snapshot": discovery_snapshot,
             "actionability": actionability,
             "investment_readiness": investment,
+            "operator_next_step": operator_next_step,
             "live_activation": live_activation,
             "live_data_activation": live_data_contract,
             "call_plan": call_plan,
@@ -4403,6 +4424,17 @@ header_investment_readiness = _mapping(
         candidate_rows,
     )
 )
+header_operator_next_step = _mapping(
+    dashboard_data.operator_next_step_payload(
+        dashboard_data.operator_work_queue_payload(
+            config,
+            radar_run_summary=radar_run_summary,
+            broker_summary=broker_summary,
+            discovery_snapshot=discovery_snapshot,
+            candidate_rows=candidate_rows,
+        )
+    )
+)
 
 _show_command_header(
     candidate_rows=candidate_rows,
@@ -4412,6 +4444,7 @@ _show_command_header(
     discovery_snapshot=discovery_snapshot,
     runtime_context=runtime_context,
     investment_readiness=header_investment_readiness,
+    operator_next_step=header_operator_next_step,
 )
 
 tabs = st.tabs(
