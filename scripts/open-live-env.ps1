@@ -26,7 +26,7 @@ if ($null -eq $codeCommand) {
 }
 
 if ($null -ne $codeCommand) {
-    & $codeCommand.Source --reuse-window $resolvedEnvPath
+    Start-Process -FilePath $codeCommand.Source -ArgumentList @("--reuse-window", $resolvedEnvPath)
     Write-Output ("Opened {0} in VS Code." -f $resolvedEnvPath)
 }
 else {

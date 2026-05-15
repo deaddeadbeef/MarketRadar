@@ -83,6 +83,7 @@ def test_open_live_env_script_prefers_vscode_without_external_calls() -> None:
     assert "scripts\\prepare-live-env.ps1" in text
     assert "Get-Command code.cmd" in text
     assert "Get-Command code" in text
+    assert "Start-Process -FilePath $codeCommand.Source" in text
     assert "--reuse-window" in text
     assert "notepad.exe" in text
     assert "VS Code" in text
