@@ -36,6 +36,7 @@ $readiness = Invoke-ApiJson -Path "/api/radar/readiness"
 $latestRun = Invoke-ApiJson -Path "/api/radar/runs/latest"
 $activation = Invoke-ApiJson -Path "/api/radar/live-activation"
 $telemetry = Invoke-ApiJson -Path ("/api/ops/telemetry?limit={0}" -f [Math]::Max(1, $TelemetryLimit))
+$telemetryCoverage = Invoke-ApiJson -Path "/api/ops/telemetry/coverage"
 
 $payload = [ordered]@{
     health = $health
@@ -43,6 +44,7 @@ $payload = [ordered]@{
     latest_run = $latestRun
     live_activation = $activation
     telemetry = $telemetry
+    telemetry_coverage = $telemetryCoverage
     external_calls_made = 0
 }
 
@@ -92,6 +94,21 @@ Write-Output (
 )
 if ($telemetry.headline -or $telemetry.next_action) {
     Write-Output ("- telemetry: {0} Next: {1}" -f $telemetry.headline, $telemetry.next_action)
+}
+Write-Output (
+    "Telemetry coverage: {0}; required_ready={1}/{2}; missing_required={3}; latest={4}" -f
+    $telemetryCoverage.status,
+    $telemetryCoverage.ready_required_domain_count,
+    $telemetryCoverage.required_domain_count,
+    $telemetryCoverage.missing_required_count,
+    $telemetryCoverage.latest_event_at
+)
+if ($telemetryCoverage.headline -or $telemetryCoverage.next_action) {
+    Write-Output (
+        "- telemetry coverage: {0} Next: {1}" -f
+        $telemetryCoverage.headline,
+        $telemetryCoverage.next_action
+    )
 }
 foreach ($event in @($telemetry.events)) {
     Write-Output (

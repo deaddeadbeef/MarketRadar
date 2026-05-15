@@ -43,6 +43,7 @@ from catalyst_radar.storage.budget_repositories import BudgetLedgerRepository
 from catalyst_radar.storage.schema import (
     alert_suppressions,
     alerts,
+    audit_events,
     candidate_packets,
     candidate_states,
     decision_cards,
@@ -2839,6 +2840,241 @@ def telemetry_tape_payload(
     }
 
 
+def telemetry_coverage_payload(
+    engine: Engine,
+    *,
+    now: datetime | None = None,
+) -> dict[str, object]:
+    resolved_now = _as_utc_datetime_or_none(now) or datetime.now(UTC)
+    filters = [
+        audit_events.c.event_type.like("telemetry.%"),
+        audit_events.c.occurred_at <= resolved_now,
+    ]
+    with engine.connect() as conn:
+        summary = conn.execute(
+            select(
+                func.count(audit_events.c.id).label("event_count"),
+                func.max(audit_events.c.occurred_at).label("latest_event_at"),
+            ).where(*filters)
+        ).mappings().first()
+        event_rows = list(conn.execute(
+            select(
+                audit_events.c.event_type,
+                func.count(audit_events.c.id).label("event_count"),
+                func.max(audit_events.c.occurred_at).label("last_seen_at"),
+            )
+            .where(*filters)
+            .group_by(audit_events.c.event_type)
+        ).mappings())
+        status_rows = list(conn.execute(
+            select(
+                audit_events.c.status,
+                func.count(audit_events.c.id).label("event_count"),
+            )
+            .where(*filters)
+            .group_by(audit_events.c.status)
+        ).mappings())
+        actor_rows = list(conn.execute(
+            select(
+                audit_events.c.actor_source,
+                func.count(audit_events.c.id).label("event_count"),
+            )
+            .where(*filters)
+            .group_by(audit_events.c.actor_source)
+        ).mappings())
+        artifact_rows = list(conn.execute(
+            select(
+                audit_events.c.artifact_type,
+                func.count(audit_events.c.id).label("event_count"),
+            )
+            .where(*filters)
+            .group_by(audit_events.c.artifact_type)
+        ).mappings())
+        recent_rows = [
+            _row_dict(row._mapping)
+            for row in conn.execute(
+                select(
+                    audit_events.c.event_type,
+                    audit_events.c.status,
+                    audit_events.c.reason,
+                    audit_events.c.actor_source,
+                    audit_events.c.artifact_type,
+                    audit_events.c.artifact_id,
+                    audit_events.c.ticker,
+                    audit_events.c.occurred_at,
+                )
+                .where(*filters)
+                .order_by(
+                    audit_events.c.occurred_at.desc(),
+                    audit_events.c.created_at.desc(),
+                    audit_events.c.id.desc(),
+                )
+                .limit(8)
+            )
+        ]
+
+    event_counts: dict[str, int] = {}
+    last_seen_by_type: dict[str, datetime] = {}
+    for row in event_rows:
+        event_type = str(row.get("event_type") or "unknown")
+        event_counts[event_type] = int(_finite_float(row.get("event_count")))
+        last_seen = _parse_utc_datetime(row.get("last_seen_at"))
+        if last_seen is not None:
+            last_seen_by_type[event_type] = last_seen
+
+    status_counts = {
+        str(row.get("status") or "unknown"): int(_finite_float(row.get("event_count")))
+        for row in status_rows
+    }
+    actor_source_counts = {
+        str(row.get("actor_source") or "unknown"): int(
+            _finite_float(row.get("event_count"))
+        )
+        for row in actor_rows
+    }
+    artifact_type_counts = {
+        str(row.get("artifact_type") or "unknown"): int(
+            _finite_float(row.get("event_count"))
+        )
+        for row in artifact_rows
+    }
+
+    radar_terminals = [
+        "telemetry.radar_run.completed",
+        "telemetry.radar_run.rejected",
+        "telemetry.radar_run.error",
+        "telemetry.radar_run.lock_contention",
+        "telemetry.radar_run.rate_limited",
+    ]
+    universe_terminals = [
+        "telemetry.universe_seed.completed",
+        "telemetry.universe_seed.rejected",
+        "telemetry.universe_seed.rate_limited",
+    ]
+    operator_events = sorted(
+        event_type
+        for event_type in event_counts
+        if event_type.startswith("telemetry.operator.")
+    )
+    domains = [
+        _telemetry_coverage_domain(
+            name="Audit event store",
+            required=True,
+            status="ready" if event_counts else "missing",
+            event_counts=event_counts,
+            last_seen_by_type=last_seen_by_type,
+            event_types=sorted(event_counts),
+            missing_events=[] if event_counts else ["telemetry.*"],
+            ready_action="Use the coverage panel and raw export as the audit source.",
+            missing_action="Run a radar cycle to create the first telemetry event.",
+        ),
+        _telemetry_pair_domain(
+            name="Radar run lifecycle",
+            required=True,
+            event_counts=event_counts,
+            last_seen_by_type=last_seen_by_type,
+            requested="telemetry.radar_run.requested",
+            terminals=radar_terminals,
+            ready_action="Radar run request and terminal-state telemetry are present.",
+            missing_action="Start one capped radar run from the dashboard or API.",
+        ),
+        _telemetry_pair_domain(
+            name="Radar run step telemetry",
+            required=True,
+            event_counts=event_counts,
+            last_seen_by_type=last_seen_by_type,
+            requested="telemetry.radar_run.step_started",
+            terminals=["telemetry.radar_run.step_finished"],
+            ready_action="Step start and finish events are present for run diagnosis.",
+            missing_action=(
+                "Run a radar cycle that reaches the worker path, then review skipped "
+                "step reasons."
+            ),
+        ),
+        _telemetry_pair_domain(
+            name="Universe seed lifecycle",
+            required=False,
+            event_counts=event_counts,
+            last_seen_by_type=last_seen_by_type,
+            requested="telemetry.universe_seed.requested",
+            terminals=universe_terminals,
+            ready_action="Universe seeding request and terminal telemetry are present.",
+            missing_action="Optional until you seed or refresh the market universe.",
+        ),
+        _telemetry_coverage_domain(
+            name="Interactive dashboard actions",
+            required=False,
+            status="ready" if operator_events else "waiting",
+            event_counts=event_counts,
+            last_seen_by_type=last_seen_by_type,
+            event_types=operator_events,
+            missing_events=[] if operator_events else ["telemetry.operator.*"],
+            ready_action="Operator action telemetry is present.",
+            missing_action="Optional until you save an action, trigger, or order preview.",
+        ),
+    ]
+    missing_required = [
+        row
+        for row in domains
+        if row["required"] and row["status"] in {"missing", "attention"}
+    ]
+    attention_domains = [row for row in domains if row["status"] == "attention"]
+    ready_domains = [row for row in domains if row["status"] == "ready"]
+    total_event_count = int(_finite_float(summary.get("event_count") if summary else 0))
+    latest_event_at = _iso_or_none(
+        _parse_utc_datetime(summary.get("latest_event_at") if summary else None)
+    )
+    required_total = sum(1 for row in domains if row["required"])
+    required_ready = sum(
+        1 for row in domains if row["required"] and row["status"] == "ready"
+    )
+    if total_event_count == 0:
+        status = "missing"
+        headline = "Telemetry has not recorded any events yet."
+        next_action = "Run one capped radar cycle before relying on operational status."
+    elif missing_required or attention_domains:
+        status = "attention"
+        headline = "Telemetry coverage is incomplete."
+        next_action = "Resolve required coverage gaps before relying on run diagnostics."
+    else:
+        status = "ready"
+        headline = "Telemetry covers the core radar run path."
+        next_action = "Use raw telemetry export when you need audit evidence."
+
+    return {
+        "schema_version": "ops-telemetry-coverage-v1",
+        "external_calls_made": 0,
+        "status": status,
+        "headline": headline,
+        "next_action": next_action,
+        "generated_at": resolved_now.isoformat(),
+        "total_event_count": total_event_count,
+        "latest_event_at": latest_event_at,
+        "required_domain_count": required_total,
+        "ready_required_domain_count": required_ready,
+        "ready_domain_count": len(ready_domains),
+        "attention_domain_count": len(attention_domains),
+        "missing_required_count": len(missing_required),
+        "event_counts": event_counts,
+        "status_counts": status_counts,
+        "actor_source_counts": actor_source_counts,
+        "artifact_type_counts": artifact_type_counts,
+        "domains": domains,
+        "recent_events": [
+            {
+                **row,
+                "event": str(row.get("event_type") or "").removeprefix("telemetry."),
+            }
+            for row in recent_rows
+        ],
+        "evidence": (
+            f"events={total_event_count}; required_ready={required_ready}/"
+            f"{required_total}; missing_required={len(missing_required)}; "
+            f"attention_domains={len(attention_domains)}; provider_calls=0"
+        ),
+    }
+
+
 def radar_run_cooldown_payload(
     engine: Engine,
     config: AppConfig,
@@ -5313,6 +5549,113 @@ def _telemetry_tape_status(rows: Sequence[Mapping[str, object]]) -> dict[str, ob
             f"guarded={guarded_count}"
         ),
     }
+
+
+def _telemetry_pair_domain(
+    *,
+    name: str,
+    required: bool,
+    event_counts: Mapping[str, int],
+    last_seen_by_type: Mapping[str, datetime],
+    requested: str,
+    terminals: Sequence[str],
+    ready_action: str,
+    missing_action: str,
+) -> dict[str, object]:
+    has_requested = int(event_counts.get(requested, 0)) > 0
+    has_terminal = any(int(event_counts.get(event_type, 0)) > 0 for event_type in terminals)
+    event_types = [requested, *terminals]
+    if has_requested and has_terminal:
+        status = "ready"
+        missing_events: list[str] = []
+    elif has_requested or has_terminal:
+        status = "attention"
+        missing_events = []
+        if not has_requested:
+            missing_events.append(requested)
+        if not has_terminal:
+            missing_events.append("one_of:" + ",".join(terminals))
+    else:
+        status = "missing" if required else "waiting"
+        missing_events = [requested, "one_of:" + ",".join(terminals)]
+    return _telemetry_coverage_domain(
+        name=name,
+        required=required,
+        status=status,
+        event_counts=event_counts,
+        last_seen_by_type=last_seen_by_type,
+        event_types=event_types,
+        missing_events=missing_events,
+        ready_action=ready_action,
+        missing_action=missing_action,
+    )
+
+
+def _telemetry_coverage_domain(
+    *,
+    name: str,
+    required: bool,
+    status: str,
+    event_counts: Mapping[str, int],
+    last_seen_by_type: Mapping[str, datetime],
+    event_types: Sequence[str],
+    missing_events: Sequence[str],
+    ready_action: str,
+    missing_action: str,
+) -> dict[str, object]:
+    visible_event_types = [event_type for event_type in event_types if event_type]
+    event_count = sum(int(event_counts.get(event_type, 0)) for event_type in visible_event_types)
+    last_seen = _latest_datetime(
+        [last_seen_by_type.get(event_type) for event_type in visible_event_types]
+    )
+    if status == "ready":
+        operator_action = ready_action
+    elif status == "waiting":
+        operator_action = missing_action
+    else:
+        operator_action = missing_action
+    return {
+        "domain": name,
+        "status": status,
+        "required": required,
+        "event_count": event_count,
+        "last_seen_at": _iso_or_none(last_seen),
+        "events_seen": [
+            event_type.removeprefix("telemetry.")
+            for event_type in visible_event_types
+            if int(event_counts.get(event_type, 0)) > 0
+        ],
+        "missing_events": [_telemetry_missing_event_label(event) for event in missing_events],
+        "operator_action": operator_action,
+        "evidence": (
+            f"events={event_count}; last_seen={_iso_or_none(last_seen) or 'n/a'}; "
+            f"required={'yes' if required else 'no'}"
+        ),
+    }
+
+
+def _telemetry_missing_event_label(event: str) -> str:
+    if event.startswith("one_of:"):
+        choices = [
+            choice.removeprefix("telemetry.")
+            for choice in event.removeprefix("one_of:").split(",")
+            if choice
+        ]
+        return "one_of:" + ",".join(choices)
+    return event.removeprefix("telemetry.")
+
+
+def _latest_datetime(values: object) -> datetime | None:
+    parsed: list[datetime] = []
+    if isinstance(values, Sequence) and not isinstance(values, str | bytes):
+        iterable = values
+    else:
+        iterable = [values]
+    for value in iterable:
+        resolved = _parse_utc_datetime(value)
+        if resolved is not None:
+            parsed.append(resolved)
+    return max(parsed) if parsed else None
 
 
 def _telemetry_rollup_rows(rows: Sequence[Mapping[str, object]]) -> list[dict[str, object]]:

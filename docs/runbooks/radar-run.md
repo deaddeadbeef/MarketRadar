@@ -80,6 +80,12 @@ step still writes both `radar_run.step_started` and `radar_run.step_finished`
 audit rows, and raw stored status/reason values remain available in collapsed
 audit detail.
 
+The dashboard **Telemetry Coverage** view answers whether the expected telemetry
+families have actually shown up in the local audit store. Core radar run
+lifecycle and step telemetry are required; universe seeding and interactive
+dashboard action telemetry are optional until those actions are used. The view
+is local-only and makes zero provider calls.
+
 Rate-limit events stay on the tape, but they are classified as `Safety guard`
 rather than `Needs attention`: the guard is proving the no-DDOS safety path.
 Failed, rejected, blocked-input, or needs-review events still surface as
@@ -106,9 +112,9 @@ powershell -ExecutionPolicy Bypass -File scripts/export-operator-evidence.ps1
 ```
 
 This writes health, readiness, latest run, live activation, run call plan,
-telemetry summary, raw telemetry, and Schwab status under `data\ops\bundles\`.
-It is the fastest zero-call snapshot to attach to an investigation before and
-after the first capped live smoke.
+telemetry summary, telemetry coverage, raw telemetry, and Schwab status under
+`data\ops\bundles\`. It is the fastest zero-call snapshot to attach to an
+investigation before and after the first capped live smoke.
 
 The dashboard **Actionability Breakdown** explains why the current queue is or is
 not ready for investment work. It buckets candidates into buy-review, research,

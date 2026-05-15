@@ -118,6 +118,7 @@ def test_market_radar_status_script_is_zero_external_call_sitrep() -> None:
     assert "/api/radar/runs/latest" in text
     assert "/api/radar/live-activation" in text
     assert "/api/ops/telemetry?limit=" in text
+    assert "/api/ops/telemetry/coverage" in text
     assert "audit_rows=" in text
     assert "raw_skips=" not in text
     assert "next safe command" in text
@@ -125,6 +126,8 @@ def test_market_radar_status_script_is_zero_external_call_sitrep() -> None:
     assert "scripts\\check-live-activation.ps1" in text
     assert "attention=" in text
     assert "guarded=" in text
+    assert "Telemetry coverage:" in text
+    assert "missing_required=" in text
     assert "External calls made: 0" in text
     assert "CATALYST_POLYGON_API_KEY=" not in text
     assert "OPENAI_API_KEY=" not in text
@@ -210,10 +213,13 @@ def test_export_operator_evidence_script_writes_zero_call_bundle() -> None:
     assert "/api/radar/live-activation" in text
     assert "/api/radar/runs/call-plan" in text
     assert "/api/ops/telemetry?limit={0}" in text
+    assert "/api/ops/telemetry/coverage" in text
     assert "/api/ops/telemetry/raw?limit={0}" in text
     assert "/api/brokers/schwab/status" in text
     assert "docs\\changes\\pr-ledger.json" in text
     assert "change_ledger" in text
+    assert "telemetry_coverage" in text
+    assert "telemetry_coverage_missing_required" in text
     assert "tracked_merged_prs" in text
     assert "latest_tracked_pr" in text
     assert "data\\ops\\bundles" in text

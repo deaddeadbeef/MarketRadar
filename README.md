@@ -109,8 +109,9 @@ For a zero-call local sitrep:
 powershell -ExecutionPolicy Bypass -File scripts/market-radar-status.ps1
 ```
 
-This reads local API health, readiness, latest run, live activation, and recent
-telemetry. It makes 0 Polygon, SEC, Schwab, or OpenAI calls.
+This reads local API health, readiness, latest run, live activation, recent
+telemetry, and telemetry coverage. It makes 0 Polygon, SEC, Schwab, or OpenAI
+calls.
 
 For a redacted raw telemetry evidence snapshot:
 
@@ -128,8 +129,9 @@ powershell -ExecutionPolicy Bypass -File scripts/export-operator-evidence.ps1
 ```
 
 This writes health, readiness, latest run, live activation, call plan, telemetry,
-raw telemetry, Schwab status, and checked-in PR change ledger evidence under
-`data\ops\bundles\`. It makes 0 Polygon, SEC, Schwab, or OpenAI calls.
+telemetry coverage, raw telemetry, Schwab status, and checked-in PR change
+ledger evidence under `data\ops\bundles\`. It makes 0 Polygon, SEC, Schwab, or
+OpenAI calls.
 
 To refresh the checked-in PR/change ledger after a merge:
 

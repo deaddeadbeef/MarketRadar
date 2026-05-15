@@ -1,21 +1,21 @@
 {
     "schema_version":  "pr-change-ledger-v1",
-    "generated_at":  "2026-05-15T14:23:47.3821574Z",
+    "generated_at":  "2026-05-15T14:51:00.4174920Z",
     "status":  "tracked",
     "source":  "gh pr list --state all",
     "repository_remote":  "https://github.com/deaddeadbeef/MarketRadar.git",
     "gh_limit":  200,
-    "total_prs_seen":  138,
-    "total_merged":  138,
+    "total_prs_seen":  139,
+    "total_merged":  139,
     "latest_merged_pr":  {
-                             "number":  138,
-                             "title":  "Add operator evidence bundle export",
+                             "number":  139,
+                             "title":  "Track merged PR change ledger",
                              "state":  "MERGED",
-                             "merged_at":  "2026-05-14T23:53:19Z",
-                             "branch":  "feat/operator-evidence-bundle",
+                             "merged_at":  "2026-05-15T14:29:26Z",
+                             "branch":  "feat/dashboard-evidence-bundle",
                              "base":  "main",
-                             "merge_commit":  "e3c0cb451064ce7bbc5b1516ba3cce2eba0179ad",
-                             "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/138"
+                             "merge_commit":  "7e60d5db7f53c48e6e9c1423d17a24e6e964695b",
+                             "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/139"
                          },
     "github_metadata_calls_made":  1,
     "market_data_broker_llm_calls_made":  0,
@@ -1399,6 +1399,16 @@
                         "base":  "main",
                         "merge_commit":  "e3c0cb451064ce7bbc5b1516ba3cce2eba0179ad",
                         "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/138"
+                    },
+                    {
+                        "number":  139,
+                        "title":  "Track merged PR change ledger",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-15T14:29:26Z",
+                        "branch":  "feat/dashboard-evidence-bundle",
+                        "base":  "main",
+                        "merge_commit":  "7e60d5db7f53c48e6e9c1423d17a24e6e964695b",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/139"
                     }
                 ]
 }

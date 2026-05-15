@@ -614,6 +614,47 @@ def _show_telemetry_tape(ops_health: Mapping[str, Any]) -> None:
         )
 
 
+def _show_telemetry_coverage(engine: object) -> None:
+    coverage = _mapping(dashboard_data.telemetry_coverage_payload(engine))
+    status = str(coverage.get("status") or "unknown")
+    message = (
+        f"{coverage.get('headline') or 'Telemetry coverage'} "
+        f"Next: {coverage.get('next_action') or 'n/a'}"
+    ).strip()
+    st.subheader("Telemetry Coverage")
+    if status == "ready":
+        st.success(message)
+    elif status in {"attention", "missing"}:
+        st.warning(message)
+    else:
+        st.info(message)
+    _show_status_badges(
+        [
+            ("Required Ready", coverage.get("ready_required_domain_count", 0)),
+            ("Required Total", coverage.get("required_domain_count", 0)),
+            ("Attention", coverage.get("attention_domain_count", 0)),
+            ("Missing Required", coverage.get("missing_required_count", 0)),
+            ("Provider Calls", coverage.get("external_calls_made", 0)),
+        ]
+    )
+    st.caption(str(coverage.get("evidence") or "No telemetry coverage evidence."))
+    _show_records(
+        "Telemetry Coverage Domains",
+        _telemetry_coverage_operator_rows(coverage.get("domains")),
+        empty="No telemetry coverage domains.",
+    )
+    st.download_button(
+        "Download Telemetry Coverage Evidence",
+        data=json.dumps(redact_value(_json_ready(coverage)), indent=2, sort_keys=True),
+        file_name="market-radar-telemetry-coverage.json",
+        mime="application/json",
+        help=(
+            "Download telemetry coverage over the local audit store. This does not "
+            "call Polygon, SEC, Schwab, or OpenAI."
+        ),
+    )
+
+
 def _show_operator_evidence_bundle(
     *,
     engine: object,
@@ -725,6 +766,7 @@ def _operator_evidence_bundle_payload(
     )
     call_plan = _mapping(dashboard_data.radar_run_call_plan_payload(engine, config))
     telemetry_summary = _mapping(dashboard_data.telemetry_tape_payload(ops_health))
+    telemetry_coverage = _mapping(dashboard_data.telemetry_coverage_payload(engine))
     raw_telemetry = _raw_telemetry_download_payload(ops_health)
     broker_status = _broker_status_evidence_payload(config, broker_summary)
     change_ledger = _load_pr_change_ledger()
@@ -751,6 +793,10 @@ def _operator_evidence_bundle_payload(
         "live_activation_status": live_activation.get("status"),
         "call_plan_status": call_plan.get("status"),
         "telemetry_status": telemetry_summary.get("status"),
+        "telemetry_coverage_status": telemetry_coverage.get("status"),
+        "telemetry_coverage_missing_required": telemetry_coverage.get(
+            "missing_required_count"
+        ),
         "telemetry_attention_count": telemetry_summary.get("attention_count"),
         "telemetry_guarded_count": telemetry_summary.get("guarded_count"),
         "schwab_connected": broker_status.get("connected"),
@@ -777,6 +823,7 @@ def _operator_evidence_bundle_payload(
             "live_data_activation": live_data_contract,
             "call_plan": call_plan,
             "telemetry_summary": telemetry_summary,
+            "telemetry_coverage": telemetry_coverage,
             "raw_telemetry": raw_telemetry,
             "broker_status": broker_status,
             "change_ledger": change_ledger,
@@ -893,6 +940,29 @@ def _raw_telemetry_download_payload(
     }
     redacted = redact_value(_json_ready(payload))
     return redacted if isinstance(redacted, dict) else payload
+
+
+def _telemetry_coverage_operator_rows(rows: object) -> list[dict[str, object]]:
+    visible: list[dict[str, object]] = []
+    for row in _records(rows):
+        missing = row.get("missing_events")
+        missing_events = [
+            str(item)
+            for item in _sequence(missing)
+            if str(item or "").strip()
+        ]
+        visible.append(
+            {
+                "Domain": row.get("domain") or "n/a",
+                "Status": row.get("status") or "unknown",
+                "Required": "yes" if row.get("required") else "no",
+                "Events": row.get("event_count") or 0,
+                "Last Seen": row.get("last_seen_at") or "n/a",
+                "Missing": ", ".join(missing_events) or "none",
+                "Operator Action": row.get("operator_action") or "Review telemetry.",
+            }
+        )
+    return visible
 
 
 def _telemetry_operator_rows(rows: object) -> list[dict[str, object]]:
@@ -2852,6 +2922,7 @@ def _show_overview(
     _show_live_data_activation_contract(config, radar_run_summary, broker_summary)
     _show_worker_status(engine)
     _show_telemetry_tape(ops_health)
+    _show_telemetry_coverage(engine)
     _show_pr_change_ledger()
     _show_operator_evidence_bundle(
         engine=engine,

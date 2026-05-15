@@ -71,6 +71,7 @@ from catalyst_radar.dashboard.data import (
     readiness_checklist_payload,
     research_shortlist_payload,
     runtime_context_payload,
+    telemetry_coverage_payload,
     telemetry_tape_payload,
     universe_coverage_payload,
     worker_status_payload,
@@ -2200,6 +2201,102 @@ def test_telemetry_tape_payload_handles_empty_telemetry() -> None:
     assert payload["attention_count"] == 0
     assert payload["guarded_count"] == 0
     assert payload["events"] == []
+
+
+def test_telemetry_coverage_payload_reports_missing_core_audit_events(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+
+    payload = telemetry_coverage_payload(engine, now=AVAILABLE_AT)
+
+    assert payload["schema_version"] == "ops-telemetry-coverage-v1"
+    assert payload["external_calls_made"] == 0
+    assert payload["status"] == "missing"
+    assert payload["total_event_count"] == 0
+    assert payload["missing_required_count"] == 3
+    assert payload["ready_required_domain_count"] == 0
+    assert payload["required_domain_count"] == 3
+    assert "provider_calls=0" in payload["evidence"]
+    assert [row["domain"] for row in payload["domains"][:3]] == [
+        "Audit event store",
+        "Radar run lifecycle",
+        "Radar run step telemetry",
+    ]
+
+
+def test_telemetry_coverage_payload_marks_core_run_path_ready(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    events = [
+        "telemetry.radar_run.requested",
+        "telemetry.radar_run.completed",
+        "telemetry.radar_run.step_started",
+        "telemetry.radar_run.step_finished",
+        "telemetry.universe_seed.requested",
+        "telemetry.universe_seed.completed",
+        "telemetry.operator.opportunity_action.saved",
+    ]
+    for index, event_type in enumerate(events):
+        _insert_telemetry_audit_event(
+            engine,
+            event_id=f"telemetry-ready-{index}",
+            event_type=event_type,
+            occurred_at=AVAILABLE_AT + timedelta(seconds=index),
+            artifact_type="radar_run" if "radar_run" in event_type else "operator_action",
+            artifact_id=f"artifact-{index}",
+        )
+
+    payload = telemetry_coverage_payload(
+        engine,
+        now=AVAILABLE_AT + timedelta(minutes=1),
+    )
+
+    assert payload["status"] == "ready"
+    assert payload["total_event_count"] == len(events)
+    assert payload["missing_required_count"] == 0
+    assert payload["ready_required_domain_count"] == 3
+    assert payload["event_counts"]["telemetry.radar_run.completed"] == 1
+    domains = {row["domain"]: row for row in payload["domains"]}
+    assert domains["Radar run lifecycle"]["status"] == "ready"
+    assert domains["Radar run step telemetry"]["status"] == "ready"
+    assert domains["Universe seed lifecycle"]["status"] == "ready"
+    assert domains["Interactive dashboard actions"]["status"] == "ready"
+    assert payload["recent_events"][0]["event"] == "operator.opportunity_action.saved"
+
+
+def test_telemetry_coverage_payload_flags_partial_step_telemetry(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    for index, event_type in enumerate(
+        [
+            "telemetry.radar_run.requested",
+            "telemetry.radar_run.completed",
+            "telemetry.radar_run.step_started",
+        ]
+    ):
+        _insert_telemetry_audit_event(
+            engine,
+            event_id=f"telemetry-partial-{index}",
+            event_type=event_type,
+            occurred_at=AVAILABLE_AT + timedelta(seconds=index),
+        )
+
+    payload = telemetry_coverage_payload(
+        engine,
+        now=AVAILABLE_AT + timedelta(minutes=1),
+    )
+
+    assert payload["status"] == "attention"
+    assert payload["missing_required_count"] == 1
+    domains = {row["domain"]: row for row in payload["domains"]}
+    assert domains["Radar run lifecycle"]["status"] == "ready"
+    assert domains["Radar run step telemetry"]["status"] == "attention"
+    assert domains["Radar run step telemetry"]["missing_events"] == [
+        "one_of:radar_run.step_finished"
+    ]
 
 
 def test_radar_run_cooldown_payload_reports_ready_without_active_lock(
@@ -4497,6 +4594,47 @@ def _engine(tmp_path: Path) -> Engine:
     engine = create_engine(f"sqlite:///{(tmp_path / 'dashboard.db').as_posix()}", future=True)
     create_schema(engine)
     return engine
+
+
+def _insert_telemetry_audit_event(
+    engine: Engine,
+    *,
+    event_id: str,
+    event_type: str,
+    occurred_at: datetime,
+    status: str = "success",
+    artifact_type: str = "radar_run",
+    artifact_id: str = "run-1",
+) -> None:
+    with engine.begin() as conn:
+        conn.execute(
+            insert(audit_events).values(
+                id=event_id,
+                event_type=event_type,
+                actor_source="test",
+                actor_id="tester",
+                actor_role="analyst",
+                artifact_type=artifact_type,
+                artifact_id=artifact_id,
+                ticker=None,
+                candidate_state_id=None,
+                candidate_packet_id=None,
+                decision_card_id=None,
+                budget_ledger_id=None,
+                paper_trade_id=None,
+                alert_id=None,
+                decision=None,
+                reason=None,
+                hard_blocks=[],
+                status=status,
+                metadata={},
+                before_payload={},
+                after_payload={},
+                occurred_at=occurred_at,
+                available_at=occurred_at,
+                created_at=occurred_at,
+            )
+        )
 
 
 def _insert_active_security_for_call_plan(
