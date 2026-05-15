@@ -2850,7 +2850,10 @@ def dotenv_activation_status_payload(
     elif missing_rows:
         status = "missing_values"
         headline = ".env.local exists but required live activation values are missing."
-        next_action = "Fill the missing values, then restart services."
+        missing_keys = [str(row["key"]) for row in missing_rows]
+        next_action = (
+            f"Add {'; '.join(missing_keys)} to .env.local, then restart services."
+        )
     else:
         status = "loaded"
         headline = ".env.local live activation values are loaded."
