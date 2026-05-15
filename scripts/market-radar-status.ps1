@@ -62,6 +62,14 @@ Write-Output (
     $readiness.safe_to_make_investment_decision,
     $readiness.next_action
 )
+if ($null -ne $readiness.operator_next_step) {
+    Write-Output (
+        "Operator next: {0}; priority={1}; area={2}" -f
+        $readiness.operator_next_step.action,
+        $readiness.operator_next_step.priority,
+        $readiness.operator_next_step.area
+    )
+}
 Write-Output (
     "Latest run: {0}; required={1}/{2}; action_needed={3}; optional_gates={4}; audit_rows={5}" -f
     $latestRun.status,

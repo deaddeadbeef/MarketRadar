@@ -119,6 +119,8 @@ def test_market_radar_status_script_is_zero_external_call_sitrep() -> None:
     assert "/api/radar/live-activation" in text
     assert "/api/ops/telemetry?limit=" in text
     assert "/api/ops/telemetry/coverage" in text
+    assert "operator_next_step" in text
+    assert "Operator next:" in text
     assert "audit_rows=" in text
     assert "raw_skips=" not in text
     assert "next safe command" in text
@@ -218,6 +220,8 @@ def test_export_operator_evidence_script_writes_zero_call_bundle() -> None:
     assert "/api/brokers/schwab/status" in text
     assert "docs\\changes\\pr-ledger.json" in text
     assert "change_ledger" in text
+    assert "operator_next_step" in text
+    assert "operator_next_action" in text
     assert "telemetry_coverage" in text
     assert "telemetry_coverage_missing_required" in text
     assert "tracked_merged_prs" in text

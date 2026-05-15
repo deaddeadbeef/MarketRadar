@@ -856,6 +856,14 @@ def test_get_radar_readiness_returns_decision_contract(tmp_path, monkeypatch) ->
             "decision_mode": "research_only",
             "safe_to_make_investment_decision": False,
             "next_action": "Configure live sources.",
+            "operator_next_step": {
+                "schema_version": "operator-next-step-v1",
+                "status": "blocked",
+                "priority": "must_fix",
+                "area": "Live market scan",
+                "action": "Configure live sources.",
+                "external_calls_made": 0,
+            },
             "operator_work_queue": {
                 "schema_version": "operator-work-queue-v1",
                 "status": "blocked",
@@ -879,6 +887,14 @@ def test_get_radar_readiness_returns_decision_contract(tmp_path, monkeypatch) ->
         "decision_mode": "research_only",
         "safe_to_make_investment_decision": False,
         "next_action": "Configure live sources.",
+        "operator_next_step": {
+            "schema_version": "operator-next-step-v1",
+            "status": "blocked",
+            "priority": "must_fix",
+            "area": "Live market scan",
+            "action": "Configure live sources.",
+            "external_calls_made": 0,
+        },
         "operator_work_queue": {
             "schema_version": "operator-work-queue-v1",
             "status": "blocked",

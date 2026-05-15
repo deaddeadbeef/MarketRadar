@@ -594,6 +594,38 @@ def operator_work_queue_payload(
     }
 
 
+def operator_next_step_payload(
+    operator_queue: Mapping[str, object] | None,
+) -> dict[str, object]:
+    """Return the single canonical operator next step from the work queue."""
+    queue = _row_dict(operator_queue) if isinstance(operator_queue, Mapping) else {}
+    rows = [
+        _row_dict(row)
+        for row in _sequence_value(queue.get("rows"))
+        if isinstance(row, Mapping)
+    ]
+    top = rows[0] if rows else {}
+    action = str(
+        _first_present(
+            top.get("next_action"),
+            queue.get("next_action"),
+            "No operator action required.",
+        )
+    )
+    return {
+        "schema_version": "operator-next-step-v1",
+        "status": top.get("status") or queue.get("status") or "empty",
+        "priority": top.get("priority") or "none",
+        "area": top.get("area") or "Operator queue",
+        "item": top.get("item") or queue.get("headline") or "No queued operator item.",
+        "ticker": top.get("ticker"),
+        "action": action,
+        "evidence": top.get("evidence") or queue.get("headline") or "n/a",
+        "source": top.get("source") or "operator_work_queue",
+        "external_calls_made": 0,
+    }
+
+
 def market_radar_usefulness_payload(
     config: AppConfig,
     *,
@@ -1019,6 +1051,7 @@ def radar_readiness_payload(
         discovery_snapshot=discovery_snapshot,
         candidate_rows=market_candidate_rows,
     )
+    operator_next_step = operator_next_step_payload(operator_queue)
     usefulness = market_radar_usefulness_payload(
         config,
         radar_run_summary=radar_run_summary,
@@ -1034,7 +1067,7 @@ def radar_readiness_payload(
         "decision_mode": investment.get("decision_mode") or "unknown",
         "safe_to_make_investment_decision": safe_to_decide,
         "headline": investment.get("headline") or "Investment readiness unavailable.",
-        "next_action": investment.get("next_action") or "Review readiness inputs.",
+        "next_action": operator_next_step.get("action") or "Review readiness inputs.",
         "evidence": investment.get("evidence") or "",
         "latest_run_cutoff": (
             latest_run_cutoff.isoformat() if latest_run_cutoff is not None else None
@@ -1050,6 +1083,7 @@ def radar_readiness_payload(
         "investment_readiness": investment,
         "candidate_delta": candidate_delta,
         "operator_work_queue": operator_queue,
+        "operator_next_step": operator_next_step,
         "market_radar_usefulness": usefulness,
         "candidate_decision_labels": [
             _readiness_candidate_label(row)

@@ -111,10 +111,15 @@ To capture the full local operator state in one file, use:
 powershell -ExecutionPolicy Bypass -File scripts/export-operator-evidence.ps1
 ```
 
-This writes health, readiness, latest run, live activation, run call plan,
-telemetry summary, telemetry coverage, raw telemetry, and Schwab status under
-`data\ops\bundles\`. It is the fastest zero-call snapshot to attach to an
-investigation before and after the first capped live smoke.
+This writes health, readiness, the canonical operator next step, latest run,
+live activation, run call plan, telemetry summary, telemetry coverage, raw
+telemetry, and Schwab status under `data\ops\bundles\`. It is the fastest
+zero-call snapshot to attach to an investigation before and after the first
+capped live smoke.
+
+Use `/api/radar/readiness.operator_next_step` as the canonical next action when
+the dashboard, scripts, and evidence bundle disagree in wording. It is derived
+from the top operator work queue item and makes zero provider calls.
 
 The dashboard **Actionability Breakdown** explains why the current queue is or is
 not ready for investment work. It buckets candidates into buy-review, research,

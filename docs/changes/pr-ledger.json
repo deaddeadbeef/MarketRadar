@@ -1,21 +1,21 @@
 {
     "schema_version":  "pr-change-ledger-v1",
-    "generated_at":  "2026-05-15T14:51:00.4174920Z",
+    "generated_at":  "2026-05-15T15:10:19.7268970Z",
     "status":  "tracked",
     "source":  "gh pr list --state all",
     "repository_remote":  "https://github.com/deaddeadbeef/MarketRadar.git",
     "gh_limit":  200,
-    "total_prs_seen":  139,
-    "total_merged":  139,
+    "total_prs_seen":  140,
+    "total_merged":  140,
     "latest_merged_pr":  {
-                             "number":  139,
-                             "title":  "Track merged PR change ledger",
+                             "number":  140,
+                             "title":  "Add telemetry coverage readiness",
                              "state":  "MERGED",
-                             "merged_at":  "2026-05-15T14:29:26Z",
-                             "branch":  "feat/dashboard-evidence-bundle",
+                             "merged_at":  "2026-05-15T14:53:26Z",
+                             "branch":  "feat/telemetry-coverage",
                              "base":  "main",
-                             "merge_commit":  "7e60d5db7f53c48e6e9c1423d17a24e6e964695b",
-                             "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/139"
+                             "merge_commit":  "3f6f530f26df6c531078d748b1a510c0109574b5",
+                             "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/140"
                          },
     "github_metadata_calls_made":  1,
     "market_data_broker_llm_calls_made":  0,
@@ -1409,6 +1409,16 @@
                         "base":  "main",
                         "merge_commit":  "7e60d5db7f53c48e6e9c1423d17a24e6e964695b",
                         "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/139"
+                    },
+                    {
+                        "number":  140,
+                        "title":  "Add telemetry coverage readiness",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-15T14:53:26Z",
+                        "branch":  "feat/telemetry-coverage",
+                        "base":  "main",
+                        "merge_commit":  "3f6f530f26df6c531078d748b1a510c0109574b5",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/140"
                     }
                 ]
 }
