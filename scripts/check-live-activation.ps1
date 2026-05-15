@@ -6,6 +6,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+$manualGuidance = @{
+    CATALYST_POLYGON_API_KEY = "Paste the Polygon API key from your Polygon dashboard."
+    CATALYST_SEC_USER_AGENT = "Use a SEC-compliant contact string, for example: MarketRadar/0.1 your-email@example.com"
+}
+
 $uri = "https://$ApiHost`:$ApiPort/api/radar/live-activation"
 $responseBody = & curl.exe --insecure --silent --show-error --fail --max-time 10 $uri
 if ($LASTEXITCODE -ne 0) {
@@ -46,7 +51,13 @@ if ($missing.Count -gt 0) {
     Write-Output ""
     Write-Output "Missing live activation values:"
     foreach ($item in $missing) {
-        Write-Output ("- {0}" -f $item)
+        $hint = $manualGuidance[$item]
+        if ([string]::IsNullOrWhiteSpace($hint)) {
+            Write-Output ("- {0}" -f $item)
+        }
+        else {
+            Write-Output ("- {0}: {1}" -f $item, $hint)
+        }
     }
 }
 
