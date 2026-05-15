@@ -243,6 +243,9 @@ def test_export_operator_evidence_script_writes_zero_call_bundle() -> None:
     assert "telemetry_coverage_missing_required" in text
     assert "tracked_merged_prs" in text
     assert "latest_tracked_pr" in text
+    assert "schwab_connection_status" in text
+    assert "schwab_access_token_active" in text
+    assert "schwab_refresh_token_available" in text
     assert "data\\ops\\bundles" in text
     assert "operator-evidence-$stamp.json" in text
     assert "External calls made: 0" in text

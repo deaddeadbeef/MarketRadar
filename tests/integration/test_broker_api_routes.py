@@ -120,6 +120,46 @@ def test_disconnect_makes_portfolio_context_not_connected(
     assert "broker_disconnected" in exposure.json()["hard_blocks"]
 
 
+def test_schwab_status_separates_connection_from_token_freshness(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'status-token.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("BROKER_TOKEN_ENCRYPTION_KEY", "local-dev-key")
+    engine = engine_from_url(database_url)
+    create_schema(engine)
+    _seed_broker_rows(engine)
+    repo = BrokerRepository(engine)
+    connection = repo.latest_connection()
+    assert connection is not None
+    now = datetime.now(UTC)
+    repo.upsert_token(
+        BrokerToken(
+            id=broker_token_id(connection.id),
+            connection_id=connection.id,
+            access_token_encrypted=TokenCipher("local-dev-key").encrypt("expired-access"),
+            refresh_token_encrypted=TokenCipher("local-dev-key").encrypt("refresh-token"),
+            access_token_expires_at=now - timedelta(minutes=5),
+            refresh_token_expires_at=now + timedelta(days=1),
+            created_at=now - timedelta(hours=1),
+            updated_at=now - timedelta(hours=1),
+        )
+    )
+    client = TestClient(create_app())
+
+    response = client.get("/api/brokers/schwab/status")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["connected"] is True
+    assert payload["connection_status"] == "connected"
+    assert payload["access_token_active"] is False
+    assert payload["refresh_token_available"] is True
+    assert payload["access_token_expires_at"]
+    assert payload["refresh_token_expires_at"]
+
+
 def test_schwab_sync_rejects_expired_access_token_without_refresh(
     tmp_path: Path,
     monkeypatch,

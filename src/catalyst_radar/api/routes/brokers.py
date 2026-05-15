@@ -166,11 +166,23 @@ def schwab_status() -> dict[str, object]:
     repo = BrokerRepository(engine)
     connection = repo.latest_connection()
     token = repo.latest_token(connection.id) if connection is not None else None
+    now = datetime.now(UTC)
     connected = bool(
         connection
-        and token
         and connection.status == BrokerConnectionStatus.CONNECTED
-        and token.access_token_expires_at > datetime.now(UTC)
+    )
+    access_token_active = bool(
+        token
+        and token.access_token_expires_at is not None
+        and token.access_token_expires_at > now
+    )
+    refresh_token_available = bool(
+        token
+        and token.refresh_token_encrypted
+        and (
+            token.refresh_token_expires_at is None
+            or token.refresh_token_expires_at > now
+        )
     )
     return {
         "broker": "schwab",
@@ -182,7 +194,20 @@ def schwab_status() -> dict[str, object]:
             )
         ),
         "connected": connected,
+        "connection_status": connection.status.value if connection is not None else "missing",
         "status": connection.status.value if connection is not None else "missing",
+        "access_token_active": access_token_active,
+        "access_token_expires_at": (
+            token.access_token_expires_at.isoformat()
+            if token is not None and token.access_token_expires_at is not None
+            else None
+        ),
+        "refresh_token_available": refresh_token_available,
+        "refresh_token_expires_at": (
+            token.refresh_token_expires_at.isoformat()
+            if token is not None and token.refresh_token_expires_at is not None
+            else None
+        ),
         "last_successful_sync_at": (
             connection.last_successful_sync_at.isoformat()
             if connection is not None and connection.last_successful_sync_at is not None
