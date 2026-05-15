@@ -1439,6 +1439,8 @@ def test_activation_summary_payload_blocks_missing_live_credentials() -> None:
     assert "blocked" in str(summary["headline"]).lower()
     assert "Live market scan" in str(summary["detail"])
     assert "CATALYST_POLYGON_API_KEY" in str(summary["next_action"])
+    assert "CATALYST_SEC_ENABLE_LIVE=1" in str(summary["next_action"])
+    assert "CATALYST_SEC_USER_AGENT" in str(summary["next_action"])
 
 
 def test_activation_summary_payload_reports_ready_live_inputs() -> None:

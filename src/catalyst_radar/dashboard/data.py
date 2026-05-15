@@ -4989,7 +4989,21 @@ def _activation_blocker_detail(rows: Sequence[Mapping[str, object]]) -> str:
 def _activation_next_action(rows: Sequence[Mapping[str, object]]) -> str:
     if not rows:
         return "No operator action required."
-    return str(rows[0].get("next_action") or "Review the readiness checklist.")
+    actions: list[str] = []
+    seen: set[str] = set()
+    for row in rows:
+        action = str(row.get("next_action") or "").strip()
+        if not action or action in seen:
+            continue
+        seen.add(action)
+        actions.append(action.rstrip("."))
+        if len(actions) >= 3:
+            break
+    if len(rows) > 1 and actions:
+        return f"Clear {len(rows)} activation blockers: {'; '.join(actions)}."
+    if actions:
+        return f"{actions[0]}."
+    return "Review the readiness checklist."
 
 
 def _activation_missing_env(config: AppConfig) -> list[str]:
