@@ -184,6 +184,8 @@ def test_market_radar_status_script_is_zero_external_call_sitrep() -> None:
     assert "next safe command" in text
     assert "scripts\\open-live-env.ps1" in text
     assert "scripts\\check-live-activation.ps1" in text
+    assert "scripts\\run-first-live-smoke.ps1" in text
+    assert "scripts\\run-first-live-smoke.ps1 -Execute" in text
     assert "attention=" in text
     assert "guarded=" in text
     assert "Telemetry coverage:" in text
