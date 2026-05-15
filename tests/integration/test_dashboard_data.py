@@ -1778,6 +1778,8 @@ def test_live_data_activation_contract_gives_exact_safe_next_steps() -> None:
     assert contract["makes_external_calls"] is False
     assert "CATALYST_POLYGON_API_KEY" in contract["missing_env"]
     assert "CATALYST_SEC_USER_AGENT" in contract["missing_env"]
+    assert "CATALYST_POLYGON_API_KEY" in str(contract["next_action"])
+    assert "CATALYST_SEC_USER_AGENT" in str(contract["next_action"])
     assert contract["minimum_env_lines"] == [
         "CATALYST_DAILY_MARKET_PROVIDER=polygon",
         "CATALYST_DAILY_PROVIDER=polygon",
@@ -1826,6 +1828,20 @@ def test_live_data_activation_contract_gives_exact_safe_next_steps() -> None:
             "provider": "polygon + sec",
         },
     ]
+    plan = live_activation_plan_payload(
+        AppConfig(
+            daily_market_provider="polygon",
+            daily_provider="polygon",
+            polygon_api_key="fixture-key",
+            daily_event_provider="sec",
+            sec_enable_live=True,
+            sec_user_agent=None,
+        ),
+        radar_run_summary={"steps": []},
+    )
+    sec_task = next(row for row in plan["tasks"] if row["area"] == "SEC catalyst feed")
+    assert "CATALYST_SEC_USER_AGENT" in str(sec_task["safe_next_action"])
+    assert "CATALYST_SEC_ENABLE_LIVE" not in str(sec_task["safe_next_action"])
     assert [row["step"] for row in contract["operator_steps"]] == [1, 2, 3, 4, 5, 6]
     assert "scripts/prepare-live-env.ps1" in str(
         contract["operator_steps"][0]["command"]
