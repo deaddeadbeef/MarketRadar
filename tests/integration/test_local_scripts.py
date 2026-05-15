@@ -88,6 +88,9 @@ def test_run_first_live_smoke_requires_explicit_execute_for_provider_calls() -> 
     assert "External calls made: 0" in text
     assert "Re-run with -Execute" in text
     assert "Schwab and OpenAI are not called" in text
+    assert "Radar call plan is blocked" in text
+    assert "exit 2" in text
+    assert "exit 3" in text
 
 
 def test_run_worker_once_requires_explicit_execute_for_worker_cycle() -> None:

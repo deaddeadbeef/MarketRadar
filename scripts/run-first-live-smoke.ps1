@@ -76,11 +76,13 @@ Write-Output ("Radar call plan: {0}; max_external_calls={1}" -f $plan.status, $p
 
 if ($plan.status -eq "blocked") {
     Write-Output "External calls made: 0"
-    throw "Radar call plan is blocked; inspect /api/radar/runs/call-plan before running."
+    Write-Output "Radar call plan is blocked; inspect /api/radar/runs/call-plan before running."
+    exit 2
 }
 if ($plannedCalls -gt $MaxRadarExternalCalls) {
     Write-Output "External calls made: 0"
-    throw "Radar call plan exceeds MaxRadarExternalCalls=$MaxRadarExternalCalls."
+    Write-Output "Radar call plan exceeds MaxRadarExternalCalls=$MaxRadarExternalCalls."
+    exit 3
 }
 
 if (-not $Execute) {
@@ -94,7 +96,9 @@ if (-not $Execute) {
 }
 
 if ($MaxUniversePages -gt 1) {
-    throw "Refusing first live smoke with MaxUniversePages greater than 1."
+    Write-Output "External calls made: 0"
+    Write-Output "Refusing first live smoke with MaxUniversePages greater than 1."
+    exit 3
 }
 
 Write-Output ""
