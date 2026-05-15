@@ -3576,10 +3576,7 @@ def readiness_checklist_payload(
                 "Catalyst feed",
                 "blocked",
                 "SEC catalyst ingestion is selected, but live SEC settings are incomplete.",
-                (
-                    "Set CATALYST_SEC_ENABLE_LIVE=1 and CATALYST_SEC_USER_AGENT before "
-                    "using SEC scheduled ingest."
-                ),
+                _sec_activation_next_action(config),
                 _coverage_evidence(events),
             )
         )
@@ -5022,6 +5019,17 @@ def _event_activation_missing_env(config: AppConfig) -> list[str]:
     if not config.sec_user_agent_configured:
         items.append("CATALYST_SEC_USER_AGENT")
     return items
+
+
+def _sec_activation_next_action(config: AppConfig) -> str:
+    missing = [
+        item
+        for item in _event_activation_missing_env(config)
+        if item != "CATALYST_DAILY_EVENT_PROVIDER=sec"
+    ]
+    if missing:
+        return f"Set {' and '.join(missing)} before using SEC scheduled ingest."
+    return "Review SEC provider configuration before using scheduled ingest."
 
 
 def _llm_missing_env(config: AppConfig) -> list[str]:
