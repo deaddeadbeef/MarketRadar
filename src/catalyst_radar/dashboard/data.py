@@ -7032,13 +7032,19 @@ def _event_preflight_row(
     mode = str(coverage.get("mode") or "unknown")
     sec_budget = f"up to {config.sec_daily_max_tickers} SEC submissions requests per radar run"
     if provider in {"sec", "sec_submissions"} and mode == "missing_credentials":
+        missing = [
+            item
+            for item in _event_activation_missing_env(config)
+            if item != "CATALYST_DAILY_EVENT_PROVIDER=sec"
+        ]
+        missing_label = "; ".join(missing) if missing else "required SEC settings"
         return _preflight_row(
             "News/events",
             "blocked",
             provider,
-            "0 live calls until SEC live flag and User-Agent are set",
+            f"0 live calls until missing SEC settings are set: {missing_label}",
             f"{sec_budget}; SEC live ingest fails closed without required settings.",
-            "Set CATALYST_SEC_ENABLE_LIVE=1 and CATALYST_SEC_USER_AGENT.",
+            _sec_activation_next_action(config),
             _coverage_evidence(coverage),
         )
     if provider in {"sec", "sec_submissions"}:
