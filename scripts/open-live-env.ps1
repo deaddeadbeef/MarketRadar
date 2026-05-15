@@ -12,7 +12,7 @@ if (-not (Test-Path -LiteralPath $prepareScript)) {
 }
 
 if (-not $NoPrepare) {
-    & $prepareScript -EnvPath $EnvPath -ExamplePath $ExamplePath
+    & $prepareScript -EnvPath $EnvPath -ExamplePath $ExamplePath -NoNextSteps
 }
 
 if (-not (Test-Path -LiteralPath $EnvPath)) {

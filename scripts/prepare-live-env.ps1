@@ -1,7 +1,8 @@
 param(
     [string]$EnvPath = ".env.local",
     [string]$ExamplePath = ".env.example",
-    [switch]$DryRun
+    [switch]$DryRun,
+    [switch]$NoNextSteps
 )
 
 $ErrorActionPreference = "Stop"
@@ -139,7 +140,9 @@ if ($missingManual.Count -gt 0) {
     }
 }
 
-Write-Output ""
-Write-Output "After filling manual values:"
-Write-Output "1. powershell -ExecutionPolicy Bypass -File scripts\restart-local.ps1"
-Write-Output "2. powershell -ExecutionPolicy Bypass -File scripts\check-live-activation.ps1"
+if (-not $NoNextSteps) {
+    Write-Output ""
+    Write-Output "After filling manual values:"
+    Write-Output "1. powershell -ExecutionPolicy Bypass -File scripts\restart-local.ps1"
+    Write-Output "2. powershell -ExecutionPolicy Bypass -File scripts\check-live-activation.ps1"
+}
