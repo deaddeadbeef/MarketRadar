@@ -558,7 +558,7 @@ def operator_work_queue_payload(
     if blocking_count:
         status = "blocked"
         headline = f"{blocking_count} setup blocker(s) must be cleared first."
-        next_action = str(queue_rows[0].get("next_action") or "Review the top queue item.")
+        next_action = _operator_blocking_next_action(queue_rows, blocking_count)
     elif review_count:
         status = "review"
         headline = f"{review_count} candidate(s) need manual review."
@@ -594,6 +594,30 @@ def operator_work_queue_payload(
     }
 
 
+def _operator_blocking_next_action(
+    queue_rows: Sequence[Mapping[str, object]],
+    blocking_count: int,
+) -> str:
+    blocker_actions: list[str] = []
+    seen: set[str] = set()
+    for row in queue_rows:
+        if str(row.get("priority") or "") != "must_fix":
+            continue
+        action = str(row.get("next_action") or "").strip()
+        if not action or action in seen:
+            continue
+        seen.add(action)
+        blocker_actions.append(action.rstrip("."))
+        if len(blocker_actions) >= 3:
+            break
+    if blocking_count > 1 and blocker_actions:
+        joined = "; ".join(blocker_actions)
+        return f"Clear {blocking_count} setup blockers: {joined}."
+    if blocker_actions:
+        return f"{blocker_actions[0]}."
+    return "Review the top queue item."
+
+
 def operator_next_step_payload(
     operator_queue: Mapping[str, object] | None,
 ) -> dict[str, object]:
@@ -605,8 +629,11 @@ def operator_next_step_payload(
         if isinstance(row, Mapping)
     ]
     top = rows[0] if rows else {}
+    counts = _mapping_value(queue, "counts")
+    blocking_count = int(_finite_float(counts.get("blocking")))
     action = str(
         _first_present(
+            queue.get("next_action") if blocking_count > 1 else None,
             top.get("next_action"),
             queue.get("next_action"),
             "No operator action required.",
@@ -616,8 +643,16 @@ def operator_next_step_payload(
         "schema_version": "operator-next-step-v1",
         "status": top.get("status") or queue.get("status") or "empty",
         "priority": top.get("priority") or "none",
-        "area": top.get("area") or "Operator queue",
-        "item": top.get("item") or queue.get("headline") or "No queued operator item.",
+        "area": (
+            "Setup blockers"
+            if blocking_count > 1
+            else top.get("area") or "Operator queue"
+        ),
+        "item": (
+            queue.get("headline")
+            if blocking_count > 1
+            else top.get("item") or queue.get("headline") or "No queued operator item."
+        ),
         "ticker": top.get("ticker"),
         "action": action,
         "evidence": top.get("evidence") or queue.get("headline") or "n/a",

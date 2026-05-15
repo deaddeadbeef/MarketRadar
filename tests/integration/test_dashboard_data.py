@@ -998,6 +998,49 @@ def test_operator_next_step_payload_uses_top_queue_row() -> None:
     }
 
 
+def test_operator_next_step_payload_summarizes_multiple_setup_blockers() -> None:
+    next_step = operator_next_step_payload(
+        {
+            "schema_version": "operator-work-queue-v1",
+            "status": "blocked",
+            "headline": "2 setup blocker(s) must be cleared first.",
+            "next_action": (
+                "Clear 2 setup blockers: Set CATALYST_POLYGON_API_KEY; "
+                "Set CATALYST_SEC_USER_AGENT."
+            ),
+            "counts": {"blocking": 2, "review": 0, "research": 0, "total": 2},
+            "rows": [
+                {
+                    "priority": "must_fix",
+                    "area": "Live market scan",
+                    "item": "Polygon key missing.",
+                    "status": "blocked",
+                    "next_action": "Set CATALYST_POLYGON_API_KEY.",
+                    "evidence": "provider=polygon; mode=missing_credentials",
+                    "source": "readiness_checklist",
+                },
+                {
+                    "priority": "must_fix",
+                    "area": "Catalyst feed",
+                    "item": "SEC user agent missing.",
+                    "status": "blocked",
+                    "next_action": "Set CATALYST_SEC_USER_AGENT.",
+                    "evidence": "provider=sec; mode=missing_credentials",
+                    "source": "readiness_checklist",
+                },
+            ],
+        }
+    )
+
+    assert next_step["area"] == "Setup blockers"
+    assert next_step["item"] == "2 setup blocker(s) must be cleared first."
+    assert next_step["action"] == (
+        "Clear 2 setup blockers: Set CATALYST_POLYGON_API_KEY; "
+        "Set CATALYST_SEC_USER_AGENT."
+    )
+    assert next_step["external_calls_made"] == 0
+
+
 def test_radar_readiness_telemetry_uses_current_ops_cutoff(
     tmp_path: Path,
 ) -> None:
