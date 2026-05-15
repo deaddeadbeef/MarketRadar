@@ -48,6 +48,14 @@ $payload = [ordered]@{
     external_calls_made = 0
 }
 
+$portfolioContext = $null
+foreach ($row in @($readiness.readiness_checklist)) {
+    if ($row.area -eq "Portfolio context") {
+        $portfolioContext = $row
+        break
+    }
+}
+
 if ($Json) {
     $payload | ConvertTo-Json -Depth 12
     return
@@ -69,6 +77,16 @@ if ($null -ne $readiness.operator_next_step) {
         $readiness.operator_next_step.priority,
         $readiness.operator_next_step.area
     )
+}
+if ($null -ne $portfolioContext) {
+    Write-Output (
+        "Portfolio context: {0}; {1}" -f
+        $portfolioContext.status,
+        $portfolioContext.finding
+    )
+    if ($portfolioContext.next_action) {
+        Write-Output ("- portfolio: {0}" -f $portfolioContext.next_action)
+    }
 }
 Write-Output (
     "Latest run: {0}; required={1}/{2}; action_needed={3}; optional_gates={4}; audit_rows={5}" -f

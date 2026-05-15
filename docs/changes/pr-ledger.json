@@ -1,21 +1,21 @@
 {
     "schema_version":  "pr-change-ledger-v1",
-    "generated_at":  "2026-05-15T15:10:19.7268970Z",
+    "generated_at":  "2026-05-15T15:20:49.0263822Z",
     "status":  "tracked",
     "source":  "gh pr list --state all",
     "repository_remote":  "https://github.com/deaddeadbeef/MarketRadar.git",
     "gh_limit":  200,
-    "total_prs_seen":  140,
-    "total_merged":  140,
+    "total_prs_seen":  141,
+    "total_merged":  141,
     "latest_merged_pr":  {
-                             "number":  140,
-                             "title":  "Add telemetry coverage readiness",
+                             "number":  141,
+                             "title":  "Add canonical operator next step",
                              "state":  "MERGED",
-                             "merged_at":  "2026-05-15T14:53:26Z",
-                             "branch":  "feat/telemetry-coverage",
+                             "merged_at":  "2026-05-15T15:11:52Z",
+                             "branch":  "feat/activation-cockpit",
                              "base":  "main",
-                             "merge_commit":  "3f6f530f26df6c531078d748b1a510c0109574b5",
-                             "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/140"
+                             "merge_commit":  "9a8a2f243db2149db79b57a9e7744d5672f628a3",
+                             "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/141"
                          },
     "github_metadata_calls_made":  1,
     "market_data_broker_llm_calls_made":  0,
@@ -1419,6 +1419,16 @@
                         "base":  "main",
                         "merge_commit":  "3f6f530f26df6c531078d748b1a510c0109574b5",
                         "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/140"
+                    },
+                    {
+                        "number":  141,
+                        "title":  "Add canonical operator next step",
+                        "state":  "MERGED",
+                        "merged_at":  "2026-05-15T15:11:52Z",
+                        "branch":  "feat/activation-cockpit",
+                        "base":  "main",
+                        "merge_commit":  "9a8a2f243db2149db79b57a9e7744d5672f628a3",
+                        "url":  "https://github.com/deaddeadbeef/MarketRadar/pull/141"
                     }
                 ]
 }
