@@ -736,7 +736,10 @@ def _show_pr_change_ledger() -> None:
         data=json.dumps(redact_value(_json_ready(ledger)), indent=2, sort_keys=True),
         file_name="market-radar-pr-change-ledger.json",
         mime="application/json",
-        help="Download the checked-in PR ledger snapshot. No provider calls are made.",
+        help=(
+            "Download the selected local PR ledger snapshot. No provider calls "
+            "are made."
+        ),
     )
     if recent_entries:
         with st.expander(f"Recent tracked PRs ({len(recent_entries)})"):

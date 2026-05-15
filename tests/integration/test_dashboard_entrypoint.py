@@ -972,6 +972,7 @@ def test_dashboard_surfaces_pr_change_ledger_snapshot() -> None:
     assert summary_source is not None
     assert "_show_pr_change_ledger" in overview_source
     assert "Download PR Change Ledger" in helper_source
+    assert "selected local PR ledger snapshot" in helper_source
     assert "Tracked PRs" in helper_source
     assert "PR_CHANGE_LEDGER_PATH" in load_source
     assert "CURRENT_PR_CHANGE_LEDGER_PATH" in select_source
