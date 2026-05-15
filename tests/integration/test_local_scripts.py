@@ -118,12 +118,16 @@ def test_market_radar_status_script_is_zero_external_call_sitrep() -> None:
     assert "/api/radar/readiness" in text
     assert "/api/radar/runs/latest" in text
     assert "/api/radar/live-activation" in text
+    assert "/api/radar/runs/call-plan" in text
     assert "/api/ops/telemetry?limit=" in text
     assert "/api/ops/telemetry/coverage" in text
     assert "operator_next_step" in text
     assert "readiness_checklist" in text
     assert "Operator next:" in text
     assert "Portfolio context:" in text
+    assert "Call plan:" in text
+    assert "will_call_external=" in text
+    assert "max_external_calls=" in text
     assert "audit_rows=" in text
     assert "raw_skips=" not in text
     assert "next safe command" in text
