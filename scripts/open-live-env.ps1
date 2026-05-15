@@ -12,7 +12,7 @@ if (-not (Test-Path -LiteralPath $prepareScript)) {
 }
 
 if (-not $NoPrepare) {
-    & $prepareScript -EnvPath $EnvPath -ExamplePath $ExamplePath -NoNextSteps
+    & $prepareScript -EnvPath $EnvPath -ExamplePath $ExamplePath -Quiet
 }
 
 if (-not (Test-Path -LiteralPath $EnvPath)) {
@@ -35,6 +35,7 @@ else {
 }
 
 Write-Output "External calls made by this script: 0"
+Write-Output "Safe live defaults are prepared; order submission remains disabled."
 Write-Output "Fill CATALYST_POLYGON_API_KEY and CATALYST_SEC_USER_AGENT manually; do not paste secrets into chat."
 Write-Output ""
 Write-Output "After filling manual values:"

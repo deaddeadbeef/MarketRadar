@@ -2,6 +2,7 @@ param(
     [string]$EnvPath = ".env.local",
     [string]$ExamplePath = ".env.example",
     [switch]$DryRun,
+    [switch]$Quiet,
     [switch]$NoNextSteps
 )
 
@@ -123,26 +124,28 @@ else {
     Set-Content -LiteralPath $EnvPath -Value $lines -Encoding UTF8
 }
 
-if ($created) {
-    Write-Output ("Created {0} from {1}." -f $EnvPath, $ExamplePath)
-}
-else {
-    Write-Output ("Updated safe live defaults in {0}." -f $EnvPath)
-}
-Write-Output "External calls made by this script: 0"
-Write-Output "Order submission remains disabled."
-
-if ($missingManual.Count -gt 0) {
-    Write-Output ""
-    Write-Output "Fill these values manually before the first live run:"
-    foreach ($key in $missingManual) {
-        Write-Output ("- {0}: {1}" -f $key, $manualGuidance[$key])
+if (-not $Quiet) {
+    if ($created) {
+        Write-Output ("Created {0} from {1}." -f $EnvPath, $ExamplePath)
     }
-}
+    else {
+        Write-Output ("Updated safe live defaults in {0}." -f $EnvPath)
+    }
+    Write-Output "External calls made by this script: 0"
+    Write-Output "Order submission remains disabled."
 
-if (-not $NoNextSteps) {
-    Write-Output ""
-    Write-Output "After filling manual values:"
-    Write-Output "1. powershell -ExecutionPolicy Bypass -File scripts\restart-local.ps1"
-    Write-Output "2. powershell -ExecutionPolicy Bypass -File scripts\check-live-activation.ps1"
+    if ($missingManual.Count -gt 0) {
+        Write-Output ""
+        Write-Output "Fill these values manually before the first live run:"
+        foreach ($key in $missingManual) {
+            Write-Output ("- {0}: {1}" -f $key, $manualGuidance[$key])
+        }
+    }
+
+    if (-not $NoNextSteps) {
+        Write-Output ""
+        Write-Output "After filling manual values:"
+        Write-Output "1. powershell -ExecutionPolicy Bypass -File scripts\restart-local.ps1"
+        Write-Output "2. powershell -ExecutionPolicy Bypass -File scripts\check-live-activation.ps1"
+    }
 }
