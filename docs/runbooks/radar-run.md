@@ -39,6 +39,17 @@ capped live radar cycle. Placeholder template values, such as
 `CATALYST_POLYGON_API_KEY=<your Polygon API key>`, are treated as missing and
 will not unlock live calls.
 
+Use the local helper when the contract reports missing manual values:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/open-live-env.ps1
+```
+
+It prepares safe non-secret defaults, opens `.env.local` in VS Code when
+available, falls back to Notepad, and makes zero external calls. Fill
+`CATALYST_POLYGON_API_KEY` and `CATALYST_SEC_USER_AGENT`, then restart local
+services and rerun `scripts/check-live-activation.ps1` before any live smoke.
+
 The dashboard **Latest Run Path** is the operator view of the last run. Read
 `Required Path`, `Action Needed`, `Optional Gates Not Triggered`, and
 `Audit-only Rows` before opening raw audit details. The old raw
