@@ -76,7 +76,7 @@ if ($activation.status -ne "ready") {
     Write-Output ""
     Write-Output "Worker one-shot call plan: blocked; external_providers=False; max_external_calls=0"
     Write-Output "External calls made: 0"
-    Write-Output "Run scripts\prepare-live-env.ps1, fill the manual values, restart, then retry."
+    Write-Output "Run scripts\open-live-env.ps1, fill the manual values, restart, then retry."
     exit 2
 }
 

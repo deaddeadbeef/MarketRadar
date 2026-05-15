@@ -76,7 +76,7 @@ if ($activation.status -ne "ready") {
     Write-MissingValues -Missing @($activation.missing_env)
     Write-Output ""
     Write-Output "External calls made: 0"
-    Write-Output "Run scripts\prepare-live-env.ps1, fill the manual values, restart, then retry."
+    Write-Output "Run scripts\open-live-env.ps1, fill the manual values, restart, then retry."
     exit 2
 }
 
