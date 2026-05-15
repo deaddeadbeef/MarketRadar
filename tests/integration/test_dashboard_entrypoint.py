@@ -873,6 +873,67 @@ def test_dashboard_raw_telemetry_download_is_redacted() -> None:
     assert "_json_ready" in helper_source
 
 
+def test_dashboard_operator_evidence_bundle_is_downloadable_and_zero_call() -> None:
+    source = Path("apps/dashboard/Home.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    functions = {
+        node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)
+    }
+    overview_source = ast.get_source_segment(source, functions["_show_overview"])
+    helper_source = ast.get_source_segment(
+        source,
+        functions["_show_operator_evidence_bundle"],
+    )
+    payload_source = ast.get_source_segment(
+        source,
+        functions["_operator_evidence_bundle_payload"],
+    )
+
+    assert overview_source is not None
+    assert helper_source is not None
+    assert payload_source is not None
+    assert "_show_operator_evidence_bundle" in overview_source
+    assert "Download Operator Evidence Bundle" in helper_source
+    assert "operator-evidence-bundle-v1" in payload_source
+    assert "external_calls_made" in payload_source
+    assert "radar_run_call_plan_payload" in payload_source
+    assert "_raw_telemetry_download_payload" in payload_source
+    assert "investment_readiness_payload" in payload_source
+    assert "_broker_status_evidence_payload" in payload_source
+    assert "_load_pr_change_ledger" in payload_source
+    assert "change_ledger" in payload_source
+    assert "tracked_merged_prs" in payload_source
+    assert "redact_value" in payload_source
+
+
+def test_dashboard_surfaces_pr_change_ledger_snapshot() -> None:
+    source = Path("apps/dashboard/Home.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    functions = {
+        node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)
+    }
+    overview_source = ast.get_source_segment(source, functions["_show_overview"])
+    helper_source = ast.get_source_segment(source, functions["_show_pr_change_ledger"])
+    load_source = ast.get_source_segment(source, functions["_load_pr_change_ledger"])
+    summary_source = ast.get_source_segment(
+        source,
+        functions["_pr_change_ledger_summary"],
+    )
+
+    assert overview_source is not None
+    assert helper_source is not None
+    assert load_source is not None
+    assert summary_source is not None
+    assert "_show_pr_change_ledger" in overview_source
+    assert "Download PR Change Ledger" in helper_source
+    assert "Tracked PRs" in helper_source
+    assert "PR_CHANGE_LEDGER_PATH" in load_source
+    assert "pr-change-ledger-v1" in load_source
+    assert "market_data_broker_llm_calls_made" in summary_source
+    assert "github_metadata_calls_made" in summary_source
+    assert "Recent PR Changes" in helper_source
+
+
 def test_dashboard_wires_alert_planning_diagnostics_after_readiness() -> None:
     source = Path("apps/dashboard/Home.py").read_text(encoding="utf-8")
     tree = ast.parse(source)

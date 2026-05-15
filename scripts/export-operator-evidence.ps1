@@ -43,6 +43,32 @@ function Invoke-ApiJson {
     }
 }
 
+function Read-LocalJson {
+    param(
+        [string]$Path,
+        [string]$SchemaVersion
+    )
+
+    if ((Test-Path -Path $Path) -eq $false) {
+        return [ordered]@{
+            schema_version = $SchemaVersion
+            status = "missing"
+            path = $Path
+        }
+    }
+    try {
+        return Get-Content -Path $Path -Raw -Encoding UTF8 | ConvertFrom-Json
+    }
+    catch {
+        return [ordered]@{
+            schema_version = $SchemaVersion
+            status = "invalid"
+            path = $Path
+            error = $_.Exception.Message
+        }
+    }
+}
+
 $health = Invoke-ApiJson -Path "/api/health"
 $readiness = Invoke-ApiJson -Path "/api/radar/readiness"
 $latestRun = Invoke-ApiJson -Path "/api/radar/runs/latest"
@@ -51,6 +77,7 @@ $callPlan = Invoke-ApiJson -Method "POST" -Path "/api/radar/runs/call-plan" -Bod
 $telemetry = Invoke-ApiJson -Path ("/api/ops/telemetry?limit={0}" -f $resolvedTelemetryLimit)
 $rawTelemetry = Invoke-ApiJson -Path ("/api/ops/telemetry/raw?limit={0}" -f $resolvedTelemetryLimit)
 $schwabStatus = Invoke-ApiJson -Path "/api/brokers/schwab/status"
+$changeLedger = Read-LocalJson -Path "docs\changes\pr-ledger.json" -SchemaVersion "pr-change-ledger-v1"
 
 $bundle = [ordered]@{
     schema_version = "operator-evidence-bundle-v1"
@@ -77,6 +104,8 @@ $bundle = [ordered]@{
         telemetry_guarded_count = $telemetry.guarded_count
         schwab_connected = $schwabStatus.connected
         schwab_order_submission_available = $schwabStatus.order_submission_available
+        tracked_merged_prs = $changeLedger.total_merged
+        latest_tracked_pr = $changeLedger.latest_merged_pr.number
     }
     evidence = [ordered]@{
         health = $health
@@ -87,6 +116,7 @@ $bundle = [ordered]@{
         telemetry_summary = $telemetry
         raw_telemetry = $rawTelemetry
         schwab_status = $schwabStatus
+        change_ledger = $changeLedger
     }
 }
 

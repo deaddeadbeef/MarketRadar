@@ -6,6 +6,7 @@ from collections.abc import Mapping, Sequence
 from datetime import UTC, date, datetime
 from html import escape
 from math import isfinite
+from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
@@ -45,6 +46,9 @@ ALERT_ROUTES = [
     "daily_digest",
     "position_watch",
 ]
+PR_CHANGE_LEDGER_PATH = Path("docs/changes/pr-ledger.json")
+
+
 def _mapping(value: object) -> Mapping[str, Any]:
     return value if isinstance(value, Mapping) else {}
 
@@ -608,6 +612,272 @@ def _show_telemetry_tape(ops_health: Mapping[str, Any]) -> None:
                 "loaded by the dashboard. This does not call external providers."
             ),
         )
+
+
+def _show_operator_evidence_bundle(
+    *,
+    engine: object,
+    config: AppConfig,
+    radar_run_summary: Mapping[str, Any],
+    radar_run_cooldown: Mapping[str, Any],
+    discovery_snapshot: Mapping[str, Any],
+    candidate_rows: list[dict[str, object]],
+    ops_health: Mapping[str, Any],
+    broker_summary: Mapping[str, Any],
+) -> None:
+    payload = _operator_evidence_bundle_payload(
+        engine=engine,
+        config=config,
+        radar_run_summary=radar_run_summary,
+        radar_run_cooldown=radar_run_cooldown,
+        discovery_snapshot=discovery_snapshot,
+        candidate_rows=candidate_rows,
+        ops_health=ops_health,
+        broker_summary=broker_summary,
+    )
+    st.download_button(
+        "Download Operator Evidence Bundle",
+        data=json.dumps(payload, indent=2, sort_keys=True),
+        file_name="market-radar-operator-evidence.json",
+        mime="application/json",
+        help=(
+            "Download a redacted local evidence bundle with readiness, activation, "
+            "call-plan, telemetry, and Schwab status. This does not call external "
+            "providers."
+        ),
+    )
+    summary = _mapping(payload.get("summary"))
+    st.caption(
+        (
+            "bundle={schema}; readiness={readiness}; live_activation={activation}; "
+            "call_plan={call_plan}; tracked_prs={tracked_prs}; external_calls=0"
+        ).format(
+            schema=payload.get("schema_version"),
+            readiness=summary.get("readiness_status"),
+            activation=summary.get("live_activation_status"),
+            call_plan=summary.get("call_plan_status"),
+            tracked_prs=summary.get("tracked_merged_prs"),
+        )
+    )
+
+
+def _show_pr_change_ledger() -> None:
+    ledger = _load_pr_change_ledger()
+    summary = _pr_change_ledger_summary(ledger)
+    recent_entries = _records(summary.get("recent_entries"))
+    st.subheader("Change Ledger")
+    cols = st.columns(4)
+    cols[0].metric("Tracked PRs", summary.get("tracked_merged_prs", 0))
+    cols[1].metric("Latest PR", summary.get("latest_pr_label", "n/a"))
+    cols[2].metric("Snapshot", summary.get("snapshot_status", "unknown"))
+    cols[3].metric("Provider Calls", 0)
+    st.caption(
+        "Checked-in PR ledger snapshot. Refresh after each merge with "
+        "`scripts/export-pr-ledger.ps1`; dashboard reads this file locally."
+    )
+    st.download_button(
+        "Download PR Change Ledger",
+        data=json.dumps(redact_value(_json_ready(ledger)), indent=2, sort_keys=True),
+        file_name="market-radar-pr-change-ledger.json",
+        mime="application/json",
+        help="Download the checked-in PR ledger snapshot. No provider calls are made.",
+    )
+    if recent_entries:
+        with st.expander(f"Recent tracked PRs ({len(recent_entries)})"):
+            _show_records(
+                "Recent PR Changes",
+                recent_entries,
+                empty="No recent PRs are tracked.",
+            )
+
+
+def _operator_evidence_bundle_payload(
+    *,
+    engine: object,
+    config: AppConfig,
+    radar_run_summary: Mapping[str, Any],
+    radar_run_cooldown: Mapping[str, Any],
+    discovery_snapshot: Mapping[str, Any],
+    candidate_rows: list[dict[str, object]],
+    ops_health: Mapping[str, Any],
+    broker_summary: Mapping[str, Any],
+) -> dict[str, object]:
+    runtime_context = _mapping(
+        dashboard_data.runtime_context_payload(
+            config,
+            radar_run_summary=radar_run_summary,
+            dotenv_loaded=DOTENV_LOADED,
+        )
+    )
+    live_activation = _mapping(
+        dashboard_data.live_activation_plan_payload(
+            config,
+            radar_run_summary=radar_run_summary,
+            broker_summary=broker_summary,
+        )
+    )
+    live_data_contract = _mapping(
+        dashboard_data.live_data_activation_contract_payload(
+            config,
+            radar_run_summary=radar_run_summary,
+            broker_summary=broker_summary,
+        )
+    )
+    call_plan = _mapping(dashboard_data.radar_run_call_plan_payload(engine, config))
+    telemetry_summary = _mapping(dashboard_data.telemetry_tape_payload(ops_health))
+    raw_telemetry = _raw_telemetry_download_payload(ops_health)
+    broker_status = _broker_status_evidence_payload(config, broker_summary)
+    change_ledger = _load_pr_change_ledger()
+    change_ledger_summary = _pr_change_ledger_summary(change_ledger)
+    actionability = _mapping(
+        dashboard_data.actionability_breakdown_payload(candidate_rows)
+    )
+    investment = _mapping(
+        dashboard_data.investment_readiness_payload(
+            discovery_snapshot,
+            actionability,
+            candidate_rows,
+        )
+    )
+    summary = {
+        "readiness_status": investment.get("status")
+        or radar_run_summary.get("effective_status")
+        or radar_run_summary.get("status"),
+        "safe_to_make_investment_decision": investment.get(
+            "manual_buy_review_ready",
+            False,
+        ),
+        "readiness_next_action": investment.get("next_action"),
+        "live_activation_status": live_activation.get("status"),
+        "call_plan_status": call_plan.get("status"),
+        "telemetry_status": telemetry_summary.get("status"),
+        "telemetry_attention_count": telemetry_summary.get("attention_count"),
+        "telemetry_guarded_count": telemetry_summary.get("guarded_count"),
+        "schwab_connected": broker_status.get("connected"),
+        "schwab_order_submission_available": broker_status.get(
+            "order_submission_available"
+        ),
+        "tracked_merged_prs": change_ledger_summary.get("tracked_merged_prs"),
+        "latest_tracked_pr": change_ledger_summary.get("latest_pr_label"),
+        "change_ledger_snapshot_status": change_ledger_summary.get("snapshot_status"),
+    }
+    payload = {
+        "schema_version": "operator-evidence-bundle-v1",
+        "generated_at": datetime.now(UTC).isoformat(),
+        "external_calls_made": 0,
+        "summary": summary,
+        "evidence": {
+            "runtime_context": runtime_context,
+            "latest_run": radar_run_summary,
+            "radar_run_cooldown": radar_run_cooldown,
+            "discovery_snapshot": discovery_snapshot,
+            "actionability": actionability,
+            "investment_readiness": investment,
+            "live_activation": live_activation,
+            "live_data_activation": live_data_contract,
+            "call_plan": call_plan,
+            "telemetry_summary": telemetry_summary,
+            "raw_telemetry": raw_telemetry,
+            "broker_status": broker_status,
+            "change_ledger": change_ledger,
+        },
+    }
+    redacted = redact_value(_json_ready(payload))
+    return redacted if isinstance(redacted, dict) else payload
+
+
+def _load_pr_change_ledger(path: Path = PR_CHANGE_LEDGER_PATH) -> dict[str, object]:
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {
+            "schema_version": "pr-change-ledger-v1",
+            "status": "missing_or_invalid",
+            "path": str(path),
+            "error": str(exc),
+            "generated_at": None,
+            "market_data_broker_llm_calls_made": 0,
+            "entries": [],
+        }
+    if not isinstance(raw, Mapping):
+        return {
+            "schema_version": "pr-change-ledger-v1",
+            "status": "invalid",
+            "path": str(path),
+            "generated_at": None,
+            "market_data_broker_llm_calls_made": 0,
+            "entries": [],
+        }
+    payload = dict(raw)
+    payload.setdefault("status", "tracked")
+    payload.setdefault("path", str(path))
+    return payload
+
+
+def _pr_change_ledger_summary(ledger: Mapping[str, Any]) -> dict[str, object]:
+    entries = [
+        dict(entry)
+        for entry in _sequence(ledger.get("entries"))
+        if isinstance(entry, Mapping)
+    ]
+    entries.sort(key=lambda entry: int(_metric_number(entry.get("number"))))
+    latest = entries[-1] if entries else {}
+    latest_number = latest.get("number")
+    latest_title = latest.get("title") or "n/a"
+    latest_label = f"#{latest_number}" if latest_number else "n/a"
+    return {
+        "schema_version": "pr-change-ledger-summary-v1",
+        "snapshot_status": ledger.get("status") or "tracked",
+        "generated_at": ledger.get("generated_at"),
+        "tracked_merged_prs": int(_metric_number(ledger.get("total_merged")))
+        if ledger.get("total_merged") is not None
+        else len(entries),
+        "latest_pr_label": latest_label,
+        "latest_pr_title": latest_title,
+        "latest_merged_at": latest.get("merged_at"),
+        "market_data_broker_llm_calls_made": int(
+            _metric_number(ledger.get("market_data_broker_llm_calls_made"))
+        ),
+        "github_metadata_calls_made": int(
+            _metric_number(ledger.get("github_metadata_calls_made"))
+        ),
+        "recent_entries": [
+            {
+                "PR": f"#{entry.get('number')}",
+                "Title": entry.get("title"),
+                "Merged": entry.get("merged_at"),
+                "Branch": entry.get("branch"),
+                "Commit": str(entry.get("merge_commit") or "")[:12],
+                "URL": entry.get("url"),
+            }
+            for entry in entries[-8:]
+        ],
+    }
+
+
+def _broker_status_evidence_payload(
+    config: AppConfig,
+    broker_summary: Mapping[str, Any],
+) -> dict[str, object]:
+    snapshot = _mapping(broker_summary.get("snapshot"))
+    exposure = _mapping(broker_summary.get("exposure"))
+    return {
+        "broker": "schwab",
+        "configured": bool(
+            config.schwab_client_id
+            and config.schwab_client_secret
+            and config.schwab_redirect_uri
+        ),
+        "connected": str(snapshot.get("status") or "") == "connected",
+        "status": snapshot.get("status") or "missing",
+        "account_count": snapshot.get("account_count", 0),
+        "position_count": snapshot.get("position_count", 0),
+        "broker_data_stale": exposure.get("broker_data_stale"),
+        "order_submission_enabled": bool(config.schwab_order_submission_enabled),
+        "order_submission_available": False,
+        "rate_limits": broker_summary.get("rate_limits"),
+        "rate_limit_config": broker_summary.get("rate_limit_config"),
+    }
 
 
 def _raw_telemetry_download_payload(
@@ -2582,6 +2852,17 @@ def _show_overview(
     _show_live_data_activation_contract(config, radar_run_summary, broker_summary)
     _show_worker_status(engine)
     _show_telemetry_tape(ops_health)
+    _show_pr_change_ledger()
+    _show_operator_evidence_bundle(
+        engine=engine,
+        config=config,
+        radar_run_summary=radar_run_summary,
+        radar_run_cooldown=radar_run_cooldown,
+        discovery_snapshot=discovery_snapshot,
+        candidate_rows=candidate_rows,
+        ops_health=ops_health,
+        broker_summary=broker_summary,
+    )
     _show_universe_coverage(config, ops_health)
     _show_radar_run_controls(engine, config, radar_run_summary, radar_run_cooldown)
     _show_agent_review_summary(radar_run_summary, candidate_rows)
