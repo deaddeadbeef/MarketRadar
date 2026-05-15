@@ -36,3 +36,9 @@ else {
 
 Write-Output "External calls made by this script: 0"
 Write-Output "Fill CATALYST_POLYGON_API_KEY and CATALYST_SEC_USER_AGENT manually; do not paste secrets into chat."
+Write-Output ""
+Write-Output "After filling manual values:"
+Write-Output "1. powershell -ExecutionPolicy Bypass -File scripts\restart-local.ps1"
+Write-Output "2. powershell -ExecutionPolicy Bypass -File scripts\check-live-activation.ps1"
+Write-Output "3. powershell -ExecutionPolicy Bypass -File scripts\run-first-live-smoke.ps1"
+Write-Output "4. Only if the plan-only smoke matches intent: powershell -ExecutionPolicy Bypass -File scripts\run-first-live-smoke.ps1 -Execute"
