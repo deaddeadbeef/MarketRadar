@@ -1,6 +1,6 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-16 23:53:53 +08:00
+Last updated: 2026-05-17 00:02:19 +08:00
 
 ## Current Objective
 
@@ -34,9 +34,9 @@ CATALYST_POLYGON_API_KEY=
 
 The SEC-only activation work was merged to `main` through PR #176 using rebase
 merge. CIK target coverage for the CSV SEC smoke was later merged through PR
-#179. This handoff may also have later docs-only refresh commits, so use
-`git log -1` for the exact current SHA instead of relying on a hard-coded
-commit in this file.
+#179. SEC-only market freshness wording was merged through PR #181. This
+handoff may also have later docs-only refresh commits, so use `git log -1` for
+the exact current SHA instead of relying on a hard-coded commit in this file.
 
 Current expected branch:
 
@@ -69,6 +69,11 @@ Files changed by PR #179:
 - `tests/integration/test_dry_run_csv_provider.py`
 - `tests/integration/test_jobs.py`
 - `tests/integration/test_local_scripts.py`
+
+Files changed by PR #181:
+
+- `src/catalyst_radar/dashboard/data.py`
+- `tests/integration/test_dashboard_data.py`
 
 ## What Changed In PR #176
 
@@ -123,6 +128,17 @@ The old `no_sec_cik_targets` blocker is cleared for the local SEC-only path:
 - `scripts/run-first-live-smoke.ps1`
   - Fetches latest-run summary counts when the execute API returns the scheduler
     envelope, so `required=7/7` does not print as blanks.
+
+## What Changed In PR #181
+
+The dashboard/status wording now reflects the actual no-Polygon path:
+
+- Market data remains local CSV/fixture-backed, so investment readiness remains
+  `research_only`.
+- The next action now says: use SEC-only results for research only; refresh CSV
+  bars or configure a live market provider before acting.
+- Stale-bar blockers now name CSV refresh explicitly instead of only saying to
+  configure a live provider.
 
 ## Verification Already Run
 
@@ -236,18 +252,31 @@ blocker was product data shape: active local securities did not expose CIK
 metadata, so the SEC live adapter had no submission targets. PR #179 fixed that
 for the local SEC-only smoke path.
 
-After PR #179 was merged, the local CSV sample was re-ingested and services were
-restarted from `main`. `scripts\market-radar-status.ps1` reported:
+After PR #181 was merged, services were restarted from `main`.
+`scripts\market-radar-status.ps1` reported:
 
 ```text
 API: ok; version=0.1.0
-Readiness: research_only; investable=False; next=Configure a live daily market provider and keep batch/rate limits enabled.
+Readiness: research_only; investable=False; next=Use SEC-only results for research only; refresh CSV bars or configure a live market provider before acting.
 Latest run: success; required=7/7; action_needed=0; optional_gates=4; audit_rows=4
 Live activation: ready; missing=0
 Call plan: live_calls_planned; will_call_external=True; max_external_calls=2
+Portfolio context: ready; Schwab read-only portfolio context is connected and fresh.
 Telemetry: ready; events=25; attention=0; guarded=0
 Telemetry coverage: ready; required_ready=3/3; missing_required=0
 External calls made: 0
+```
+
+One read-only Schwab portfolio sync was run after PR #181 because status showed
+the broker context was stale. It returned:
+
+```text
+status=connected
+account_count=1
+balance_count=1
+position_count=0
+open_order_count=0
+order_submission_available=False
 ```
 
 Post-merge plan-only smoke from `main` reported:
@@ -349,16 +378,14 @@ Remaining limitations:
 
 ## Next Useful Product Slice
 
-CIK target coverage is done. The next change should stay small and focus on
-market-data freshness without assuming Polygon:
+CIK target coverage and operator wording are done. The next change should stay
+small and focus on market-data freshness without assuming Polygon:
 
-- Make the dashboard/operator wording explicit that CSV plus live SEC is useful
-  for catalyst plumbing, but market bars remain stale/fixture-backed.
 - Add a lightweight current-price/manual-bar path only if it can be done with
   clear operator control and without adding a large provider framework.
 - Keep Polygon optional unless the user explicitly gets a key.
-- Separately, Schwab portfolio context is connected but stale; a read-only sync
-  from the Broker tab is an operator action, not an order-submission path.
+- If touching Schwab again, keep it read-only; the latest sync is fresh and
+  order submission remains unavailable.
 
 Relevant code paths:
 
@@ -397,10 +424,11 @@ scripts\run-first-live-smoke.ps1
 
 The repo has been using protected `main` with PRs and rebase merges. Do not push directly to `main`.
 
-PR #176, `Make first live activation SEC-only`, and PR #179,
-`Add CSV CIK targets for SEC smoke`, have already been merged. Later docs-only
-handoff cleanup PRs may exist. The next product PR should address the
-market-data freshness/operator wording gap, unless the user redirects.
+PR #176, `Make first live activation SEC-only`, PR #179,
+`Add CSV CIK targets for SEC smoke`, and PR #181,
+`Clarify SEC-only market freshness status`, have already been merged. Later
+docs-only handoff cleanup PRs may exist. The next product PR should address a
+lightweight CSV/manual market freshness path, unless the user redirects.
 
 ## Do Not Do
 
