@@ -1,6 +1,6 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-16 11:23:43 +08:00
+Last updated: 2026-05-16 11:25:57 +08:00
 
 ## Current Objective
 
@@ -30,17 +30,23 @@ CATALYST_POLYGON_API_KEY=
 
 `CATALYST_POLYGON_API_KEY` must remain optional unless the operator explicitly switches `CATALYST_DAILY_MARKET_PROVIDER=polygon`.
 
-## Current Branch And Worktree
+## Current Repository State
 
-Current branch:
+This work was merged to `main` through PR #176 using rebase merge.
+
+Current expected branch:
 
 ```text
-polish/sec-only-live-activation
+main
 ```
 
-This branch was created from `main` after the user replied `Done`.
+Current expected commit:
 
-Expected changed files in this work:
+```text
+73eb7fa Make first live activation SEC-only
+```
+
+Files changed by PR #176:
 
 - `scripts/prepare-live-env.ps1`
 - `scripts/open-live-env.ps1`
@@ -54,7 +60,7 @@ Expected changed files in this work:
 - `tests/integration/test_dashboard_data.py`
 - `handoff.md`
 
-## What Changed In This Session
+## What Changed In PR #176
 
 Activation and helper behavior was changed from "Polygon plus SEC is required" to "CSV plus SEC is the safe first useful live mode":
 
@@ -115,7 +121,7 @@ passed; no failures
 
 This broader slice was rerun after the handoff was added. The first rerun attempt hit the 120-second tool timeout while Python was flushing output, so it was discarded. The standalone rerun with a longer timeout completed successfully.
 
-The local runtime was restarted after the `.env.local` update and after code changes:
+The local runtime was restarted after the `.env.local` update, after code changes, and again after PR #176 was merged to `main`:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\restart-local.ps1
@@ -168,7 +174,7 @@ External calls made: 0
 
 `scripts\run-first-live-smoke.ps1 -Execute` was run once. It skipped Polygon universe seeding because the market provider is CSV, made zero external calls, and created a local radar run.
 
-The latest status after that execute was:
+The latest status after the pre-merge execute was:
 
 ```text
 API: ok; build=564dc3f7dc72; version=0.1.0
@@ -195,6 +201,31 @@ operator_action=Add CIK metadata before SEC submission checks can run.
 ```
 
 That means the old Polygon-key blocker is gone, but the next usefulness blocker is real product data shape: the active local securities do not expose CIK metadata, so the SEC live adapter has no submission targets.
+
+After PR #176 was merged and services were restarted from `main`, `scripts\market-radar-status.ps1` reported:
+
+```text
+API: ok; build=73eb7fa89bc6; version=0.1.0
+Readiness: research_only; investable=False; next=Clear 2 setup blockers: Configure a live daily market provider and keep batch/rate limits enabled; Fix the first skipped/failed upstream step before treating candidates as complete.
+Latest run: success; required=6/7; action_needed=0; optional_gates=4; audit_rows=5
+Live activation: ready; missing=0
+Call plan: local_or_dry_run_only; will_call_external=False; max_external_calls=0
+Telemetry: ready; events=25; attention=0; guarded=0
+Telemetry coverage: ready; required_ready=3/3; missing_required=0
+External calls made: 0
+```
+
+Post-merge plan-only smoke from `main` reported:
+
+```text
+Live activation: ready
+Radar call plan: local_or_dry_run_only; max_external_calls=0
+Plan only: no provider calls were made.
+No live provider calls are currently planned; fix call-plan expected gates before expecting SEC data.
+Polygon universe seeding will be skipped unless the market provider is polygon.
+Execute budget: polygon_universe_seed_pages=0; radar_external_calls_max=0
+External calls made: 0
+```
 
 ## Local Secret State
 
@@ -298,7 +329,7 @@ data\sample\securities.csv
    py -m pytest tests\integration\test_local_scripts.py tests\integration\test_dashboard_data.py::test_live_data_activation_contract_gives_exact_safe_next_steps tests\integration\test_runbook_docs.py -q
    ```
 
-3. Run broader validation before PR:
+3. Run broader validation before a future PR:
 
    ```powershell
    py -m pytest tests\integration\test_local_scripts.py tests\integration\test_dashboard_data.py tests\integration\test_runbook_docs.py -q
@@ -306,24 +337,13 @@ data\sample\securities.csv
 
 4. Restart services and run the zero-call/live smoke sequence from the "Refresh Commands" section.
 
-5. If everything is clean, create a PR, rebase-merge it, switch back to `main`, pull, restart local services, and verify dashboard/API status.
+5. For future changes, create a new feature/docs branch and use PR plus rebase merge. PR #176 is already merged.
 
 ## PR And Merge Expectations
 
 The repo has been using protected `main` with PRs and rebase merges. Do not push directly to `main`.
 
-Suggested PR title:
-
-```text
-Make first live activation SEC-only
-```
-
-Suggested PR summary:
-
-- Makes Polygon optional for first live activation.
-- Uses CSV market data plus live SEC as the safe first useful smoke path.
-- Updates helper scripts, dashboard activation contracts, docs, and tests.
-- Adds this handoff file for continuity.
+PR #176, `Make first live activation SEC-only`, has already been merged. The next product PR should be the CIK target coverage slice described above, unless the user redirects.
 
 ## Do Not Do
 
