@@ -49,12 +49,13 @@ catalyst-radar init-db
 ## Provider configuration
 
 Real daily-radar provider settings are configured through environment variables.
-For the first capped live market run, use the daily provider contract:
-`CATALYST_DAILY_MARKET_PROVIDER=polygon`, `CATALYST_DAILY_PROVIDER=polygon`,
-and `CATALYST_POLYGON_API_KEY`. For live SEC catalyst discovery, use
+For the first useful live smoke without a market-data key, keep market data on
+local CSV with `CATALYST_DAILY_MARKET_PROVIDER=csv` and
+`CATALYST_DAILY_PROVIDER=csv`, then enable live SEC catalyst discovery with
 `CATALYST_DAILY_EVENT_PROVIDER=sec`, `CATALYST_SEC_ENABLE_LIVE=1`, and a
-compliant `CATALYST_SEC_USER_AGENT`. Keep provider keys unset or blank unless
-you are intentionally running a capped live provider call.
+compliant `CATALYST_SEC_USER_AGENT`. `CATALYST_POLYGON_API_KEY` is optional and
+only needed if you intentionally switch the market provider to Polygon for fresh
+broad-market bars.
 `CATALYST_DAILY_MARKET_PROVIDER` controls scheduled daily bar ingest; the
 `CATALYST_DAILY_PROVIDER` override keeps manual/default radar runs aligned with
 that scheduled provider.
@@ -72,16 +73,16 @@ curl.exe --insecure --fail --silent --show-error --request POST https://127.0.0.
 ```
 
 `scripts/prepare-live-env.ps1` only writes safe non-secret local defaults such
-as `CATALYST_DAILY_MARKET_PROVIDER=polygon`, low provider caps, disabled order
-submission, and dry-run LLM/alert settings. It makes 0 external calls, does not
-print secrets, and still requires you to fill `CATALYST_POLYGON_API_KEY` and
-`CATALYST_SEC_USER_AGENT` manually.
+as `CATALYST_DAILY_MARKET_PROVIDER=csv`, live SEC with low ticker caps,
+disabled order submission, and dry-run LLM/alert settings. It makes 0 external
+calls, does not print secrets, and only requires you to fill
+`CATALYST_SEC_USER_AGENT` manually for SEC access.
 `scripts/open-live-env.ps1` runs that same safe preparation, opens `.env.local`
 in VS Code when available, falls back to Notepad, and makes 0 external calls.
 `scripts/run-first-live-smoke.ps1` defaults to plan-only mode: it reads local
 API readiness and call-plan state, makes 0 external calls, and requires
-`-Execute` before seeding one Polygon universe page and running one capped radar
-cycle.
+`-Execute` before running one capped radar cycle. It skips Polygon universe
+seeding unless Polygon is actually configured as the market provider.
 `scripts/run-worker-once.ps1` does the same for worker automation: plan-only by
 default, `-Execute` required, no Schwab calls, and OpenAI disabled for the daily
 worker path.

@@ -630,7 +630,7 @@ def test_investment_readiness_payload_blocks_fixture_candidates() -> None:
                 {
                     "code": "fixture_market_data",
                     "finding": "Market data is still fixture-backed.",
-                    "next_action": "Configure Polygon before relying on broad US-market discovery.",
+                    "next_action": "Configure a live market-data provider before relying on broad discovery.",
                 }
             ],
         },
@@ -650,7 +650,7 @@ def test_investment_readiness_payload_blocks_fixture_candidates() -> None:
     assert "research-only" in str(readiness["headline"])
     assert "fixture_market_data" in str(readiness["evidence"])
     assert readiness["next_action"] == (
-        "Configure Polygon before relying on broad US-market discovery."
+        "Configure a live market-data provider before relying on broad discovery."
     )
 
 
@@ -783,7 +783,7 @@ def test_market_radar_usefulness_payload_blocks_fixture_decisions() -> None:
             "blockers": [
                 {
                     "code": "fixture_market_data",
-                    "next_action": "Configure Polygon before relying on broad US-market discovery.",
+                    "next_action": "Configure a live market-data provider before relying on broad discovery.",
                 }
             ],
         },
@@ -956,7 +956,7 @@ def test_radar_readiness_payload_summarizes_operator_decision_gate(
     assert payload["candidate_decision_labels"][0]["decision_status"] == "research_only"
     assert payload["candidate_decision_labels"][0]["next_step"]
     assert payload["candidate_decision_labels"][0]["readiness_gate"] == (
-        "Configure Polygon before relying on broad US-market discovery."
+        "Configure a live market-data provider before relying on broad discovery."
     )
     assert payload["candidate_decision_labels"][0]["audit"]["provider_license_policy"][
         "external_export_allowed"
@@ -1328,7 +1328,7 @@ def test_operator_work_queue_prioritizes_setup_blockers_and_candidate_context(
         "Catalyst feed",
     ]
     assert payload["rows"][0]["priority"] == "must_fix"
-    assert "fresh US-market coverage" in str(payload["rows"][0]["item"])
+    assert "fresh market coverage" in str(payload["rows"][0]["item"])
     assert any(row.get("area") == "Candidate" for row in payload["rows"])
 
 
@@ -1420,7 +1420,8 @@ def test_activation_summary_payload_calls_out_fixture_mode() -> None:
 
     assert summary["status"] == "fixture"
     assert "not a live US-market scan" in str(summary["headline"])
-    assert "CATALYST_POLYGON_API_KEY" in str(summary["next_action"])
+    assert "CATALYST_SEC_USER_AGENT" in str(summary["next_action"])
+    assert "add Polygon later" in str(summary["next_action"])
     assert "required_path=6/6" in str(summary["evidence"])
 
 
@@ -1503,16 +1504,15 @@ def test_live_activation_plan_payload_separates_optional_gates_from_blockers() -
     assert plan["status"] == "blocked"
     assert "run_path=6/6" in str(plan["evidence"])
     assert "optional_expected_gates=4" in str(plan["evidence"])
-    assert "CATALYST_POLYGON_API_KEY" in plan["missing_env"]
-    assert "CATALYST_DAILY_MARKET_PROVIDER=polygon" in str(plan["next_action"])
-    assert "CATALYST_POLYGON_API_KEY" in str(plan["next_action"])
+    assert "CATALYST_POLYGON_API_KEY" not in plan["missing_env"]
+    assert "CATALYST_DAILY_EVENT_PROVIDER=sec" in plan["missing_env"]
+    assert "CATALYST_SEC_USER_AGENT" in plan["missing_env"]
+    assert "CATALYST_SEC_USER_AGENT" in str(plan["next_action"])
     by_area = {str(row["area"]): row for row in plan["tasks"]}
     assert by_area["Required run path"]["status"] == "ready"
     assert by_area["Required run path"]["current_state"] == "6/6 completed"
-    assert by_area["Live market data"]["status"] == "blocked"
-    assert "CATALYST_DAILY_MARKET_PROVIDER=polygon" in str(
-        by_area["Live market data"]["missing_env"]
-    )
+    assert by_area["Live market data"]["status"] == "attention"
+    assert by_area["Live market data"]["missing_env"] == ""
     assert by_area["Agentic LLM review"]["status"] == "optional_setup"
     assert "CATALYST_ENABLE_PREMIUM_LLM=1" in str(
         by_area["Agentic LLM review"]["missing_env"]
@@ -1776,14 +1776,12 @@ def test_live_data_activation_contract_gives_exact_safe_next_steps() -> None:
     assert contract["status"] == "blocked"
     assert contract["read_only"] is True
     assert contract["makes_external_calls"] is False
-    assert "CATALYST_POLYGON_API_KEY" in contract["missing_env"]
     assert "CATALYST_SEC_USER_AGENT" in contract["missing_env"]
-    assert "CATALYST_POLYGON_API_KEY" in str(contract["next_action"])
+    assert "CATALYST_POLYGON_API_KEY" not in contract["missing_env"]
     assert "CATALYST_SEC_USER_AGENT" in str(contract["next_action"])
     assert contract["minimum_env_lines"] == [
-        "CATALYST_DAILY_MARKET_PROVIDER=polygon",
-        "CATALYST_DAILY_PROVIDER=polygon",
-        "CATALYST_POLYGON_API_KEY=<your Polygon API key>",
+        "CATALYST_DAILY_MARKET_PROVIDER=csv",
+        "CATALYST_DAILY_PROVIDER=csv",
         "CATALYST_POLYGON_TICKERS_MAX_PAGES=1",
         "CATALYST_DAILY_EVENT_PROVIDER=sec",
         "CATALYST_SEC_ENABLE_LIVE=1",
@@ -1818,14 +1816,14 @@ def test_live_data_activation_contract_gives_exact_safe_next_steps() -> None:
             "provider": "none",
         },
         {
-            "operation": "seed universe once",
-            "max_external_calls": 1,
-            "provider": "polygon",
+            "operation": "seed Polygon universe once",
+            "max_external_calls": 0,
+            "provider": "polygon (optional)",
         },
         {
             "operation": "run one radar cycle",
-            "max_external_calls": 6,
-            "provider": "polygon + sec",
+            "max_external_calls": 5,
+            "provider": "csv + sec",
         },
     ]
     plan = live_activation_plan_payload(
@@ -1867,8 +1865,8 @@ def test_live_data_activation_contract_gives_exact_safe_next_steps() -> None:
         contract["operator_steps"][4]["command"]
     )
     env_template = {str(row["name"]): row for row in contract["env_template"]}
-    assert env_template["CATALYST_DAILY_PROVIDER"]["configured"] is False
-    assert env_template["CATALYST_DAILY_PROVIDER"]["current"] == "missing"
+    assert env_template["CATALYST_DAILY_PROVIDER"]["configured"] is True
+    assert env_template["CATALYST_DAILY_PROVIDER"]["current"] == "csv"
     assert "Scheduled daily bar provider" in str(
         env_template["CATALYST_DAILY_MARKET_PROVIDER"]["purpose"]
     )

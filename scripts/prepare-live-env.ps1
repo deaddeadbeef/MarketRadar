@@ -22,8 +22,8 @@ else {
 }
 
 $safeDefaults = [ordered]@{
-    CATALYST_DAILY_MARKET_PROVIDER = "polygon"
-    CATALYST_DAILY_PROVIDER = "polygon"
+    CATALYST_DAILY_MARKET_PROVIDER = "csv"
+    CATALYST_DAILY_PROVIDER = "csv"
     CATALYST_POLYGON_TICKERS_MAX_PAGES = "1"
     CATALYST_DAILY_EVENT_PROVIDER = "sec"
     CATALYST_SEC_ENABLE_LIVE = "1"
@@ -36,12 +36,10 @@ $safeDefaults = [ordered]@{
 }
 
 $manualValues = @(
-    "CATALYST_POLYGON_API_KEY",
     "CATALYST_SEC_USER_AGENT"
 )
 
 $manualGuidance = @{
-    CATALYST_POLYGON_API_KEY = "Paste the Polygon API key from your Polygon dashboard."
     CATALYST_SEC_USER_AGENT = "Use a SEC-compliant contact string, for example: MarketRadar/0.1 your-email@example.com"
 }
 
