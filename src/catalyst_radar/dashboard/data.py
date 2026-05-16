@@ -3589,8 +3589,11 @@ def readiness_checklist_payload(
             _readiness_row(
                 "Live market scan",
                 "blocked",
-                "Market scan is using local fixture data, not fresh market coverage.",
-                "Configure a live daily market provider and keep batch/rate limits enabled.",
+                "Market scan is using local CSV/fixture bars, not fresh market coverage.",
+                (
+                    "Use SEC-only results for research only; refresh CSV bars or configure "
+                    "a live market provider before acting."
+                ),
                 _coverage_evidence(market),
             )
         )
@@ -6647,8 +6650,11 @@ def _discovery_blockers(
         blockers.append(
             _discovery_blocker(
                 "fixture_market_data",
-                "Market data is still fixture-backed.",
-                "Configure a live market-data provider before relying on broad discovery.",
+                "Market data is still local CSV/fixture-backed.",
+                (
+                    "Use SEC-only results for research only; refresh CSV bars or configure "
+                    "a live market provider before relying on broad discovery."
+                ),
             )
         )
     elif market_mode in {"missing_credentials", "disabled"}:
@@ -6689,7 +6695,10 @@ def _discovery_blockers(
             _discovery_blocker(
                 "stale_daily_bars",
                 f"Latest daily bars are {latest_bar_date.isoformat()}, older than run as-of.",
-                "Refresh market bars for the selected as-of date before acting.",
+                (
+                    "Refresh CSV bars for the selected as-of date or configure a live "
+                    "market provider before acting."
+                ),
             )
         )
     if int(run_path.get("blocking_count") or 0) > 0:
