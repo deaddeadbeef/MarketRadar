@@ -1,6 +1,6 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-16 11:29:15 +08:00
+Last updated: 2026-05-16 23:53:53 +08:00
 
 ## Current Objective
 
@@ -32,9 +32,11 @@ CATALYST_POLYGON_API_KEY=
 
 ## Current Repository State
 
-This work was merged to `main` through PR #176 using rebase merge. This
-handoff may also have later docs-only refresh commits, so use `git log -1` for
-the exact current SHA instead of relying on a hard-coded commit in this file.
+The SEC-only activation work was merged to `main` through PR #176 using rebase
+merge. CIK target coverage for the CSV SEC smoke was later merged through PR
+#179. This handoff may also have later docs-only refresh commits, so use
+`git log -1` for the exact current SHA instead of relying on a hard-coded
+commit in this file.
 
 Current expected branch:
 
@@ -55,6 +57,18 @@ Files changed by PR #176:
 - `tests/integration/test_local_scripts.py`
 - `tests/integration/test_dashboard_data.py`
 - `handoff.md`
+
+Files changed by PR #179:
+
+- `data/sample/securities.csv`
+- `scripts/run-first-live-smoke.ps1`
+- `src/catalyst_radar/connectors/csv_market.py`
+- `src/catalyst_radar/connectors/market_data.py`
+- `tests/integration/test_csv_ingest.py`
+- `tests/integration/test_dashboard_data.py`
+- `tests/integration/test_dry_run_csv_provider.py`
+- `tests/integration/test_jobs.py`
+- `tests/integration/test_local_scripts.py`
 
 ## What Changed In PR #176
 
@@ -88,6 +102,27 @@ Activation and helper behavior was changed from "Polygon plus SEC is required" t
 - `README.md` and `docs/runbooks/radar-run.md`
   - Updated to document SEC-only first live smoke.
   - Polygon is described as a later optional broad-market upgrade.
+
+## What Changed In PR #179
+
+The old `no_sec_cik_targets` blocker is cleared for the local SEC-only path:
+
+- `data/sample/securities.csv`
+  - Now includes a `cik` column.
+  - Keeps the original fixture tickers.
+  - Adds a tiny real watchlist with AAPL and MSFT CIKs.
+
+- `src/catalyst_radar/connectors/csv_market.py`
+  - Preserves optional `cik`, `cik_str`, and `central_index_key` columns as
+    `Security.metadata`.
+
+- `src/catalyst_radar/connectors/market_data.py`
+  - Carries the same optional CIK metadata through provider-style CSV ingest,
+    which is the path used by scheduled daily runs.
+
+- `scripts/run-first-live-smoke.ps1`
+  - Fetches latest-run summary counts when the execute API returns the scheduler
+    envelope, so `required=7/7` does not print as blanks.
 
 ## Verification Already Run
 
@@ -196,16 +231,20 @@ meaning=No active securities had CIK metadata for SEC submission checks.
 operator_action=Add CIK metadata before SEC submission checks can run.
 ```
 
-That means the old Polygon-key blocker is gone, but the next usefulness blocker is real product data shape: the active local securities do not expose CIK metadata, so the SEC live adapter has no submission targets.
+At that point, the old Polygon-key blocker was gone, but the next usefulness
+blocker was product data shape: active local securities did not expose CIK
+metadata, so the SEC live adapter had no submission targets. PR #179 fixed that
+for the local SEC-only smoke path.
 
-After PR #176 was merged and services were restarted from `main`, `scripts\market-radar-status.ps1` reported activation-ready state. The exact build SHA will change if this handoff receives docs-only cleanup commits; the important stable fields are:
+After PR #179 was merged, the local CSV sample was re-ingested and services were
+restarted from `main`. `scripts\market-radar-status.ps1` reported:
 
 ```text
 API: ok; version=0.1.0
-Readiness: research_only; investable=False; next=Clear 2 setup blockers: Configure a live daily market provider and keep batch/rate limits enabled; Fix the first skipped/failed upstream step before treating candidates as complete.
-Latest run: success; required=6/7; action_needed=0; optional_gates=4; audit_rows=5
+Readiness: research_only; investable=False; next=Configure a live daily market provider and keep batch/rate limits enabled.
+Latest run: success; required=7/7; action_needed=0; optional_gates=4; audit_rows=4
 Live activation: ready; missing=0
-Call plan: local_or_dry_run_only; will_call_external=False; max_external_calls=0
+Call plan: live_calls_planned; will_call_external=True; max_external_calls=2
 Telemetry: ready; events=25; attention=0; guarded=0
 Telemetry coverage: ready; required_ready=3/3; missing_required=0
 External calls made: 0
@@ -215,12 +254,26 @@ Post-merge plan-only smoke from `main` reported:
 
 ```text
 Live activation: ready
-Radar call plan: local_or_dry_run_only; max_external_calls=0
+Radar call plan: live_calls_planned; max_external_calls=2
 Plan only: no provider calls were made.
-No live provider calls are currently planned; fix call-plan expected gates before expecting SEC data.
 Polygon universe seeding will be skipped unless the market provider is polygon.
-Execute budget: polygon_universe_seed_pages=0; radar_external_calls_max=0
+Execute budget: polygon_universe_seed_pages=0; radar_external_calls_max=2
 External calls made: 0
+```
+
+The capped execute smoke was run once after PR #179. It made no Polygon, Schwab,
+or OpenAI calls. It made two SEC submissions calls for the CIK-backed CSV
+targets. `/api/radar/runs/latest` then reported:
+
+```text
+status=success
+required_step_count=7
+required_completed_count=7
+run_path_status=complete
+event_ingest.status=success
+event_ingest.provider=sec
+event_ingest.target_count=2
+event_ingest.event_count=2000
 ```
 
 ## Local Secret State
@@ -273,7 +326,8 @@ Expected first useful call budget without Polygon:
 
 - Polygon universe seed: `0`
 - Polygon market data: `0`
-- SEC submissions: up to `CATALYST_SEC_DAILY_MAX_TICKERS`, currently intended as `5`
+- SEC submissions: `2` with the current sample CSV, capped by
+  `CATALYST_SEC_DAILY_MAX_TICKERS`
 - Schwab: `0`
 - OpenAI: `0`
 
@@ -287,28 +341,32 @@ Remaining limitations:
 
 - Market data stays local CSV until another live market source is configured.
 - Investment readiness should remain `research_only` if market data is fixture/stale.
-- SEC polling requires active securities with CIK metadata. If the local CSV securities file lacks CIKs for useful tickers, SEC live calls may be capped but find no targets.
+- SEC polling now has AAPL/MSFT CIK-backed local targets, but this is only a
+  tiny watchlist, not broad discovery.
 - Polygon remains the existing broad-market live data adapter, but the user does not currently have a key.
 - OpenAI/LLM review remains disabled/dry-run by design.
 - Schwab is read-only context only; order submission remains disabled.
 
 ## Next Useful Product Slice
 
-The next change should focus on CIK target coverage, not Polygon:
+CIK target coverage is done. The next change should stay small and focus on
+market-data freshness without assuming Polygon:
 
-- Add support for optional CIK metadata in the local securities source, likely by accepting columns such as `cik`, `cik_str`, or `central_index_key` from `data\sample\securities.csv`.
-- Ensure `src\catalyst_radar\connectors\csv_market.py` carries those optional columns into `Security.metadata`.
-- Add a small watchlist of active real tickers with known CIKs so SEC submissions can actually be called in capped live mode.
-- Update call-plan/readiness tests so SEC-only activation can distinguish "configured but no CIK targets" from "ready to call SEC".
-- Re-run plan-only first, then execute only when the SEC call budget is low and explicit.
+- Make the dashboard/operator wording explicit that CSV plus live SEC is useful
+  for catalyst plumbing, but market bars remain stale/fixture-backed.
+- Add a lightweight current-price/manual-bar path only if it can be done with
+  clear operator control and without adding a large provider framework.
+- Keep Polygon optional unless the user explicitly gets a key.
+- Separately, Schwab portfolio context is connected but stale; a read-only sync
+  from the Broker tab is an operator action, not an order-submission path.
 
 Relevant code paths:
 
 ```text
-src\catalyst_radar\jobs\tasks.py::_security_cik
 src\catalyst_radar\dashboard\data.py
-src\catalyst_radar\connectors\csv_market.py
 data\sample\securities.csv
+scripts\market-radar-status.ps1
+scripts\run-first-live-smoke.ps1
 ```
 
 ## How To Resume If Interrupted
@@ -339,7 +397,10 @@ data\sample\securities.csv
 
 The repo has been using protected `main` with PRs and rebase merges. Do not push directly to `main`.
 
-PR #176, `Make first live activation SEC-only`, has already been merged. Later docs-only handoff cleanup PRs may exist. The next product PR should be the CIK target coverage slice described above, unless the user redirects.
+PR #176, `Make first live activation SEC-only`, and PR #179,
+`Add CSV CIK targets for SEC smoke`, have already been merged. Later docs-only
+handoff cleanup PRs may exist. The next product PR should address the
+market-data freshness/operator wording gap, unless the user redirects.
 
 ## Do Not Do
 
