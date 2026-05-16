@@ -7,7 +7,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $manualGuidance = @{
-    CATALYST_POLYGON_API_KEY = "Paste the Polygon API key from your Polygon dashboard."
+    CATALYST_POLYGON_API_KEY = "Only needed if CATALYST_DAILY_MARKET_PROVIDER=polygon."
     CATALYST_SEC_USER_AGENT = "Use a SEC-compliant contact string, for example: MarketRadar/0.1 your-email@example.com"
 }
 

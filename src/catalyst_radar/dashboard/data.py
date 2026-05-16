@@ -2600,9 +2600,9 @@ def activation_summary_payload(
             f"news/events are {events.get('provider') or event_mode}."
         )
         next_action = (
-            "Set CATALYST_DAILY_MARKET_PROVIDER=polygon, CATALYST_POLYGON_API_KEY, "
+            "Keep CATALYST_DAILY_MARKET_PROVIDER=csv for SEC-only smoke, set "
             "CATALYST_DAILY_EVENT_PROVIDER=sec, CATALYST_SEC_ENABLE_LIVE=1, and "
-            "CATALYST_SEC_USER_AGENT; then run one capped radar cycle."
+            "CATALYST_SEC_USER_AGENT; add Polygon later for live market bars."
         )
     elif blocked_rows:
         status = "blocked"
@@ -2705,7 +2705,7 @@ def live_activation_plan_payload(
             missing=market_missing_env,
             ready_modes={"live"},
             safe_next_action=(
-                "Set Polygon provider/key, then keep the first run to one grouped-daily request."
+                "Use CSV for SEC-only smoke; add Polygon later for fresh broad-market bars."
             ),
         ),
         _activation_task_row(
@@ -2788,7 +2788,10 @@ def live_data_activation_contract_payload(
         f"Set {'; '.join(missing_env)} in .env.local, restart services, "
         "then inspect the call plan."
         if missing_env
-        else "Inspect the call plan, seed the universe once if needed, then run one capped cycle."
+        else (
+            "Inspect the call plan, skip Polygon seeding unless configured, "
+            "then run one capped cycle."
+        )
     )
     return {
         "schema_version": "live-data-activation-contract-v1",
@@ -2830,7 +2833,7 @@ def dotenv_activation_status_payload(
         values = dotenv_values(path)
         updated_at = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC).isoformat()
 
-    specs = _dotenv_activation_specs()
+    specs = _dotenv_activation_specs(config)
     rows = [
         _dotenv_activation_row(config, values=values, key=key, required=required)
         for key, required in specs
@@ -3586,7 +3589,7 @@ def readiness_checklist_payload(
             _readiness_row(
                 "Live market scan",
                 "blocked",
-                "Market scan is using local fixture data, not fresh US-market coverage.",
+                "Market scan is using local fixture data, not fresh market coverage.",
                 "Configure a live daily market provider and keep batch/rate limits enabled.",
                 _coverage_evidence(market),
             )
@@ -5046,12 +5049,7 @@ def _missing_env_next_action(missing_env: Sequence[object]) -> str:
 def _market_activation_missing_env(config: AppConfig) -> list[str]:
     items: list[str] = []
     market_provider = _provider_name(config.daily_market_provider, default="csv")
-    scan_provider = _provider_name(config.daily_provider, default="")
-    if market_provider != "polygon":
-        items.append("CATALYST_DAILY_MARKET_PROVIDER=polygon")
-    if scan_provider != "polygon":
-        items.append("CATALYST_DAILY_PROVIDER=polygon")
-    if not config.polygon_api_key_configured:
+    if market_provider == "polygon" and not config.polygon_api_key_configured:
         items.append("CATALYST_POLYGON_API_KEY")
     return items
 
@@ -5171,16 +5169,17 @@ def _live_data_env_template(config: AppConfig) -> list[dict[str, object]]:
     return [
         _activation_env_row(
             "CATALYST_DAILY_MARKET_PROVIDER",
-            "polygon",
+            "csv",
             configured=_provider_name(config.daily_market_provider, default="csv")
-            == "polygon",
+            in {"csv", "sample", "polygon"},
             current=_provider_name(config.daily_market_provider, default="csv"),
         ),
         _activation_env_row(
             "CATALYST_DAILY_PROVIDER",
-            "polygon",
-            configured=_provider_name(config.daily_provider, default="") == "polygon",
-            current=_provider_name(config.daily_provider, default="missing"),
+            "csv",
+            configured=_provider_name(config.daily_provider, default="csv")
+            in {"csv", "sample", "polygon"},
+            current=_provider_name(config.daily_provider, default="csv"),
         ),
         _activation_env_row(
             "CATALYST_POLYGON_API_KEY",
@@ -5300,7 +5299,6 @@ def _live_data_minimum_env_lines(config: AppConfig) -> list[str]:
     required_names = {
         "CATALYST_DAILY_MARKET_PROVIDER",
         "CATALYST_DAILY_PROVIDER",
-        "CATALYST_POLYGON_API_KEY",
         "CATALYST_POLYGON_TICKERS_MAX_PAGES",
         "CATALYST_DAILY_EVENT_PROVIDER",
         "CATALYST_SEC_ENABLE_LIVE",
@@ -5315,11 +5313,18 @@ def _live_data_minimum_env_lines(config: AppConfig) -> list[str]:
     ]
 
 
-def _dotenv_activation_specs() -> list[tuple[str, bool]]:
+def _dotenv_activation_specs(config: AppConfig) -> list[tuple[str, bool]]:
+    market_provider = _provider_name(config.daily_market_provider, default="csv")
+    daily_provider = _provider_name(config.daily_provider, default="")
+    polygon_required = (
+        market_provider == "polygon"
+        or daily_provider == "polygon"
+        or bool(config.polygon_api_key_configured)
+    )
     return [
         ("CATALYST_DAILY_MARKET_PROVIDER", True),
-        ("CATALYST_DAILY_PROVIDER", True),
-        ("CATALYST_POLYGON_API_KEY", True),
+        ("CATALYST_DAILY_PROVIDER", False),
+        ("CATALYST_POLYGON_API_KEY", polygon_required),
         ("CATALYST_DAILY_EVENT_PROVIDER", True),
         ("CATALYST_SEC_ENABLE_LIVE", True),
         ("CATALYST_SEC_USER_AGENT", True),
@@ -5366,9 +5371,17 @@ def _dotenv_value_set(value: object) -> bool:
 
 def _dotenv_key_loaded(config: AppConfig, key: str) -> bool:
     if key == "CATALYST_DAILY_MARKET_PROVIDER":
-        return config.daily_market_provider.strip().lower() == "polygon"
+        return _provider_name(config.daily_market_provider, default="csv") in {
+            "csv",
+            "sample",
+            "polygon",
+        }
     if key == "CATALYST_DAILY_PROVIDER":
-        return _provider_name(config.daily_provider, default="") == "polygon"
+        return _provider_name(config.daily_provider, default="csv") in {
+            "csv",
+            "sample",
+            "polygon",
+        }
     if key == "CATALYST_POLYGON_API_KEY":
         return config.polygon_api_key_configured
     if key == "CATALYST_DAILY_EVENT_PROVIDER":
@@ -5491,9 +5504,9 @@ def _activation_env_purpose(name: str) -> str:
 def _live_data_safe_limits(config: AppConfig) -> list[dict[str, object]]:
     return [
         {
-            "guardrail": "Polygon universe seed cap",
+            "guardrail": "Optional Polygon universe seed cap",
             "value": f"{max(1, int(config.polygon_tickers_max_pages))} page(s)",
-            "reason": "Bounds ticker-reference requests before broad discovery.",
+            "reason": "Only applies after Polygon is configured for broad discovery.",
         },
         {
             "guardrail": "SEC daily ticker cap",
@@ -5524,7 +5537,11 @@ def _live_data_operator_steps(
     missing_env: Sequence[str],
 ) -> list[dict[str, object]]:
     env_status = "blocked" if missing_env else "ready"
-    seed_pages = max(1, int(config.polygon_tickers_max_pages))
+    market_provider = _provider_name(config.daily_market_provider, default="csv")
+    polygon_enabled = market_provider == "polygon" and config.polygon_api_key_configured
+    seed_pages = max(1, int(config.polygon_tickers_max_pages)) if polygon_enabled else 0
+    market_calls = 1 if polygon_enabled else 0
+    sec_calls = max(1, int(config.sec_daily_max_tickers))
     return [
         {
             "step": 1,
@@ -5579,7 +5596,7 @@ def _live_data_operator_steps(
                 "Execute one capped live smoke only after the plan-only preflight "
                 "matches intent."
             ),
-            "external_calls": seed_pages + 1 + max(1, int(config.sec_daily_max_tickers)),
+            "external_calls": seed_pages + market_calls + sec_calls,
             "command": (
                 "powershell -ExecutionPolicy Bypass -File "
                 "scripts/run-first-live-smoke.ps1 -Execute"
@@ -5611,6 +5628,11 @@ def _local_api_curl_command(
 
 
 def _live_data_call_budget_if_activated(config: AppConfig) -> list[dict[str, object]]:
+    market_provider = _provider_name(config.daily_market_provider, default="csv")
+    polygon_enabled = market_provider == "polygon" and config.polygon_api_key_configured
+    seed_pages = max(1, int(config.polygon_tickers_max_pages)) if polygon_enabled else 0
+    market_calls = 1 if polygon_enabled else 0
+    sec_calls = max(1, int(config.sec_daily_max_tickers))
     return [
         {
             "operation": "read this activation contract",
@@ -5618,14 +5640,14 @@ def _live_data_call_budget_if_activated(config: AppConfig) -> list[dict[str, obj
             "provider": "none",
         },
         {
-            "operation": "seed universe once",
-            "max_external_calls": max(1, int(config.polygon_tickers_max_pages)),
-            "provider": "polygon",
+            "operation": "seed Polygon universe once",
+            "max_external_calls": seed_pages,
+            "provider": "polygon" if polygon_enabled else "polygon (optional)",
         },
         {
             "operation": "run one radar cycle",
-            "max_external_calls": 1 + max(1, int(config.sec_daily_max_tickers)),
-            "provider": "polygon + sec",
+            "max_external_calls": market_calls + sec_calls,
+            "provider": f"{market_provider if polygon_enabled else 'csv'} + sec",
         },
     ]
 
@@ -6626,7 +6648,7 @@ def _discovery_blockers(
             _discovery_blocker(
                 "fixture_market_data",
                 "Market data is still fixture-backed.",
-                "Configure Polygon before relying on broad US-market discovery.",
+                "Configure a live market-data provider before relying on broad discovery.",
             )
         )
     elif market_mode in {"missing_credentials", "disabled"}:
@@ -7027,7 +7049,7 @@ def _market_preflight_row(
         provider,
         "0 live calls",
         "Local fixture data only; no external market-data requests.",
-        "Switch to Polygon when you are ready for fresh US-market coverage.",
+        "Good enough for SEC-only smoke; add Polygon later for fresh broad-market coverage.",
         _coverage_evidence(coverage),
     )
 
@@ -7117,7 +7139,7 @@ def _market_call_plan_row(config: AppConfig) -> dict[str, object]:
             "scheduled_csv_ingest",
             0,
             "Reads local fixture/CSV market files only.",
-            "Use for dry-run validation; configure Polygon for live discovery.",
+            "Use for SEC-only validation; configure Polygon later for live market discovery.",
         )
     if provider == "polygon":
         if not config.polygon_api_key_configured:
@@ -7248,7 +7270,7 @@ def _event_call_plan_row(
                 "submissions",
                 0,
                 "No active securities with CIK metadata are available for SEC polling.",
-                "Seed/refresh Polygon tickers so securities include CIK metadata.",
+                "Load securities with CIK metadata through CSV metadata or optional Polygon seed.",
             )
         return _call_plan_row(
             "News/events",

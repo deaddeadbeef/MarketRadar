@@ -9,7 +9,7 @@ param(
 $ErrorActionPreference = "Stop"
 $baseUrl = "https://$ApiHost`:$ApiPort"
 $manualGuidance = @{
-    CATALYST_POLYGON_API_KEY = "Paste the Polygon API key from your Polygon dashboard."
+    CATALYST_POLYGON_API_KEY = "Only needed if CATALYST_DAILY_MARKET_PROVIDER=polygon."
     CATALYST_SEC_USER_AGENT = "Use a SEC-compliant contact string, for example: MarketRadar/0.1 your-email@example.com"
 }
 
@@ -83,6 +83,9 @@ if ($activation.status -ne "ready") {
 $plan = Invoke-ApiJson -Method "POST" -Path "/api/radar/runs/call-plan" -Body @{}
 $plannedCalls = [int]$plan.max_external_call_count
 Write-Output ("Radar call plan: {0}; max_external_calls={1}" -f $plan.status, $plannedCalls)
+$marketRow = @($plan.rows | Where-Object { $_.layer -eq "Market data" } | Select-Object -First 1)
+$marketProvider = if ($marketRow.Count -gt 0) { [string]$marketRow[0].provider } else { "" }
+$seedPolygon = $marketProvider -eq "polygon"
 
 if ($plan.status -eq "blocked") {
     Write-Output "External calls made: 0"
@@ -98,8 +101,17 @@ if ($plannedCalls -gt $MaxRadarExternalCalls) {
 if (-not $Execute) {
     Write-Output ""
     Write-Output "Plan only: no provider calls were made."
-    Write-Output "Re-run with -Execute to seed one capped universe page and start one capped radar cycle."
-    Write-Output ("Execute budget: universe_seed_pages={0}; radar_external_calls_max={1}" -f $MaxUniversePages, $plannedCalls)
+    if ($plannedCalls -eq 0) {
+        Write-Output "No live provider calls are currently planned; fix call-plan expected gates before expecting SEC data."
+    }
+    Write-Output "Re-run with -Execute to start one capped radar cycle."
+    if ($seedPolygon) {
+        Write-Output "Because Polygon is selected, -Execute will also seed one capped universe page first."
+    }
+    else {
+        Write-Output "Polygon universe seeding will be skipped unless the market provider is polygon."
+    }
+    Write-Output ("Execute budget: polygon_universe_seed_pages={0}; radar_external_calls_max={1}" -f ($(if ($seedPolygon) { $MaxUniversePages } else { 0 })), $plannedCalls)
     Write-Output "Schwab and OpenAI are not called by this first-live-smoke path."
     Write-Output "External calls made: 0"
     return
@@ -113,29 +125,34 @@ if ($MaxUniversePages -gt 1) {
 
 Write-Output ""
 Write-Output "Executing capped first live smoke."
-Write-Output ("Universe seed cap: {0} Polygon page(s)." -f $MaxUniversePages)
-$seed = Invoke-ApiJson -Method "POST" -Path "/api/radar/universe/seed" -Body @{
-    provider = "polygon"
-    max_pages = $MaxUniversePages
+if ($seedPolygon) {
+    Write-Output ("Universe seed cap: {0} Polygon page(s)." -f $MaxUniversePages)
+    $seed = Invoke-ApiJson -Method "POST" -Path "/api/radar/universe/seed" -Body @{
+        provider = "polygon"
+        max_pages = $MaxUniversePages
+    }
+    Write-Output (
+        "Universe seed completed: securities={0}; rejected={1}; max_pages={2}" -f
+        $seed.security_count,
+        $seed.rejected_count,
+        $seed.max_pages
+    )
 }
-Write-Output (
-    "Universe seed completed: securities={0}; rejected={1}; max_pages={2}" -f
-    $seed.security_count,
-    $seed.rejected_count,
-    $seed.max_pages
-)
+else {
+    Write-Output ("Universe seed skipped: market_provider={0}; Polygon is optional." -f $marketProvider)
+}
 
 $planAfterSeed = Invoke-ApiJson -Method "POST" -Path "/api/radar/runs/call-plan" -Body @{}
 $plannedAfterSeedCalls = [int]$planAfterSeed.max_external_call_count
 if ($planAfterSeed.status -eq "blocked") {
-    throw "Radar call plan became blocked after universe seed."
+    throw "Radar call plan became blocked before the radar run."
 }
 if ($plannedAfterSeedCalls -gt $MaxRadarExternalCalls) {
     throw "Post-seed call plan exceeds MaxRadarExternalCalls=$MaxRadarExternalCalls."
 }
 
 $run = Invoke-ApiJson -Method "POST" -Path "/api/radar/runs" -Body @{}
-$daily = $run.daily_result
+$daily = if ($null -ne $run.daily_result) { $run.daily_result } else { $run }
 Write-Output (
     "Radar run completed: status={0}; required={1}/{2}; optional_gates={3}" -f
     $daily.status,
@@ -152,7 +169,7 @@ Write-Output (
     $readiness.next_action
 )
 Write-Output (
-    "External call budget used: universe_seed_max={0}; radar_external_calls_max={1}" -f
-    $MaxUniversePages,
+    "External call budget used: polygon_universe_seed_max={0}; radar_external_calls_max={1}" -f
+    $(if ($seedPolygon) { $MaxUniversePages } else { 0 }),
     $plannedAfterSeedCalls
 )

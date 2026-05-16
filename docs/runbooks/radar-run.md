@@ -36,8 +36,8 @@ operator steps. It is read-only and makes zero external calls. It shows a
 redacted `.env.local` template, safe caps, first-run commands, and the maximum
 external calls that would happen only if you manually seed the universe or run a
 capped live radar cycle. Placeholder template values, such as
-`CATALYST_POLYGON_API_KEY=<your Polygon API key>`, are treated as missing and
-will not unlock live calls.
+`CATALYST_SEC_USER_AGENT=MarketRadar/0.1 your-email@example.com`, are treated as
+missing and will not unlock SEC calls.
 
 Use the local helper when the contract reports missing manual values:
 
@@ -47,8 +47,9 @@ powershell -ExecutionPolicy Bypass -File scripts/open-live-env.ps1
 
 It prepares safe non-secret defaults, opens `.env.local` in VS Code when
 available, falls back to Notepad, and makes zero external calls. Fill
-`CATALYST_POLYGON_API_KEY` and `CATALYST_SEC_USER_AGENT`, then restart local
-services and rerun `scripts/check-live-activation.ps1` before any live smoke.
+`CATALYST_SEC_USER_AGENT`, then restart local services and rerun
+`scripts/check-live-activation.ps1` before any live smoke. Polygon is optional
+and only needed if you switch `CATALYST_DAILY_MARKET_PROVIDER` to `polygon`.
 
 The dashboard **Latest Run Path** is the operator view of the last run. Read
 `Required Path`, `Action Needed`, `Optional Gates Not Triggered`, and
@@ -223,8 +224,9 @@ CATALYST_SEC_DAILY_MAX_TICKERS=5
 
 The scheduled SEC path fails closed before making a request when live mode or a
 User-Agent is missing. The ticker cap bounds SEC submissions calls per radar run.
-When using Polygon as the market provider, run `ingest-polygon tickers` first so
-active securities include CIK metadata.
+When using CSV market data, make sure the securities CSV has CIK metadata for
+the names you want SEC to poll. When using Polygon as the market provider, run
+`ingest-polygon tickers` first so active securities include CIK metadata.
 
 To inspect the last persisted daily radar pass without starting a new one:
 

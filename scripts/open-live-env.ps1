@@ -36,7 +36,7 @@ else {
 
 Write-Output "External calls made by this script: 0"
 Write-Output "Safe live defaults are prepared; order submission remains disabled."
-Write-Output "Fill CATALYST_POLYGON_API_KEY and CATALYST_SEC_USER_AGENT manually; do not paste secrets into chat."
+Write-Output "Fill CATALYST_SEC_USER_AGENT manually; Polygon is optional and only needed if you switch the market provider to polygon."
 Write-Output ""
 Write-Output "After filling manual values:"
 Write-Output "1. powershell -ExecutionPolicy Bypass -File scripts\restart-local.ps1"

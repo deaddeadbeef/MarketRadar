@@ -40,8 +40,8 @@ def test_readme_mentions_restart_script_for_local_dashboard() -> None:
     assert "scripts/assert-investable-readiness.ps1" in readme
     assert "/api/ops/telemetry/raw" in readme
     assert "-Execute" in readme
-    assert "CATALYST_DAILY_MARKET_PROVIDER=polygon" in readme
-    assert "CATALYST_DAILY_PROVIDER=polygon" in readme
+    assert "CATALYST_DAILY_MARKET_PROVIDER=csv" in readme
+    assert "CATALYST_DAILY_PROVIDER=csv" in readme
     assert "CATALYST_DAILY_MARKET_PROVIDER` controls scheduled daily bar ingest" in readme
     assert "CATALYST_DAILY_PROVIDER` override keeps manual/default radar runs aligned" in readme
     assert "CATALYST_DAILY_EVENT_PROVIDER=sec" in readme
@@ -69,7 +69,7 @@ def test_prepare_live_env_script_writes_only_safe_defaults() -> None:
     assert "CATALYST_DAILY_PROVIDER" in text
     assert "CATALYST_POLYGON_TICKERS_MAX_PAGES" in text
     assert "CATALYST_SEC_DAILY_MAX_TICKERS" in text
-    assert "Paste the Polygon API key from your Polygon dashboard." in text
+    assert "Paste the Polygon API key from your Polygon dashboard." not in text
     assert "SEC-compliant contact string" in text
     assert "MarketRadar/0.1 your-email@example.com" in text
     assert "function Test-EnvKey" in text
@@ -94,7 +94,7 @@ def test_open_live_env_script_prefers_vscode_without_external_calls() -> None:
     assert "VS Code" in text
     assert "External calls made by this script: 0" in text
     assert "Safe live defaults are prepared; order submission remains disabled." in text
-    assert "CATALYST_POLYGON_API_KEY" in text
+    assert "Polygon is optional" in text
     assert "CATALYST_SEC_USER_AGENT" in text
     assert "After filling manual values:" in text
     assert "scripts\\restart-local.ps1" in text
@@ -125,7 +125,7 @@ def test_run_first_live_smoke_requires_explicit_execute_for_provider_calls() -> 
     assert "Schwab and OpenAI are not called" in text
     assert "Radar call plan is blocked" in text
     assert "Run scripts\\open-live-env.ps1" in text
-    assert "Paste the Polygon API key from your Polygon dashboard." in text
+    assert "Only needed if CATALYST_DAILY_MARKET_PROVIDER=polygon." in text
     assert "SEC-compliant contact string" in text
     assert "MarketRadar/0.1 your-email@example.com" in text
     assert "exit 2" in text
@@ -148,7 +148,7 @@ def test_run_worker_once_requires_explicit_execute_for_worker_cycle() -> None:
     assert "python -m apps.worker.main" in text
     assert "Worker call plan is blocked" in text
     assert "Run scripts\\open-live-env.ps1" in text
-    assert "Paste the Polygon API key from your Polygon dashboard." in text
+    assert "Only needed if CATALYST_DAILY_MARKET_PROVIDER=polygon." in text
     assert "SEC-compliant contact string" in text
     assert "MarketRadar/0.1 your-email@example.com" in text
     assert "exit 2" in text
@@ -240,7 +240,7 @@ def test_check_live_activation_script_is_zero_external_call_status_check() -> No
     assert "These commands read local API state only" in text
     assert "missing_env" in text
     assert "operator_steps" in text
-    assert "Paste the Polygon API key from your Polygon dashboard." in text
+    assert "Only needed if CATALYST_DAILY_MARKET_PROVIDER=polygon." in text
     assert "SEC-compliant contact string" in text
     assert "MarketRadar/0.1 your-email@example.com" in text
     assert "OPENAI_API_KEY=" not in text
