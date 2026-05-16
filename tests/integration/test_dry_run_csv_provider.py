@@ -20,8 +20,8 @@ def test_dry_run_connector_fetches_raw_securities_and_daily_bars() -> None:
     records = connector.fetch(_request())
     second_records = connector.fetch(_request())
 
-    assert len(records) == 43
-    assert sum(record.kind == ConnectorRecordKind.SECURITY for record in records) == 6
+    assert len(records) == 45
+    assert sum(record.kind == ConnectorRecordKind.SECURITY for record in records) == 8
     assert sum(record.kind == ConnectorRecordKind.DAILY_BAR for record in records) == 36
     assert sum(record.kind == ConnectorRecordKind.HOLDING for record in records) == 1
     assert all(record.provider == "csv" for record in records)
@@ -54,9 +54,12 @@ def test_dry_run_connector_normalizes_payloads_for_current_domain_models() -> No
         if record.kind == ConnectorRecordKind.HOLDING
     ]
 
-    assert len(securities) == 6
+    assert len(securities) == 8
     assert securities[0].ticker == "AAA"
     assert securities[0].updated_at == datetime(2026, 5, 8, 20, tzinfo=UTC)
+    by_ticker = {security.ticker: security for security in securities}
+    assert by_ticker["AAPL"].metadata["cik"] == "0000320193"
+    assert by_ticker["MSFT"].metadata["cik"] == "0000789019"
     assert len(daily_bars) == 36
     assert daily_bars[0].ticker == "AAA"
     assert daily_bars[0].available_at == datetime(2026, 5, 1, 21, tzinfo=UTC)
@@ -263,6 +266,7 @@ def _security_from_payload(payload: object) -> Security:
         has_options=bool(row["has_options"]),
         is_active=bool(row["is_active"]),
         updated_at=datetime.fromisoformat(str(row["updated_at"])),
+        metadata=dict(row.get("metadata") or {}),
     )
 
 

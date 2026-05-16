@@ -153,12 +153,16 @@ if ($plannedAfterSeedCalls -gt $MaxRadarExternalCalls) {
 
 $run = Invoke-ApiJson -Method "POST" -Path "/api/radar/runs" -Body @{}
 $daily = if ($null -ne $run.daily_result) { $run.daily_result } else { $run }
+$summary = $daily
+if ($null -eq $summary.required_completed_count -or $null -eq $summary.required_step_count) {
+    $summary = Invoke-ApiJson -Method "GET" -Path "/api/radar/runs/latest"
+}
 Write-Output (
     "Radar run completed: status={0}; required={1}/{2}; optional_gates={3}" -f
     $daily.status,
-    $daily.required_completed_count,
-    $daily.required_step_count,
-    $daily.optional_expected_gate_count
+    $summary.required_completed_count,
+    $summary.required_step_count,
+    $summary.optional_expected_gate_count
 )
 
 $readiness = Invoke-ApiJson -Method "GET" -Path "/api/radar/readiness"

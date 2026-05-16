@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -7,9 +8,12 @@ import pandas as pd
 
 from catalyst_radar.core.models import DailyBar, HoldingSnapshot, Security
 
+SECURITY_METADATA_COLUMNS = ("cik", "cik_str", "central_index_key")
+_SECURITY_METADATA_DTYPES = {column: "string" for column in SECURITY_METADATA_COLUMNS}
+
 
 def load_securities_csv(path: str | Path) -> list[Security]:
-    frame = pd.read_csv(path)
+    frame = read_securities_csv_frame(path)
     rows: list[Security] = []
     for record in frame.to_dict(orient="records"):
         rows.append(
@@ -24,9 +28,23 @@ def load_securities_csv(path: str | Path) -> list[Security]:
                 has_options=_to_bool(record["has_options"], "has_options"),
                 is_active=_to_bool(record["is_active"], "is_active"),
                 updated_at=_to_utc_datetime(record["updated_at"]),
+                metadata=security_metadata(record),
             )
         )
     return rows
+
+
+def read_securities_csv_frame(path: str | Path) -> pd.DataFrame:
+    return pd.read_csv(path, dtype=_SECURITY_METADATA_DTYPES, keep_default_na=False)
+
+
+def security_metadata(record: dict[str, object] | Mapping[str, object]) -> dict[str, str]:
+    metadata: dict[str, str] = {}
+    for key in SECURITY_METADATA_COLUMNS:
+        value = _optional_text(record.get(key))
+        if value is not None:
+            metadata[key] = value
+    return metadata
 
 
 def load_daily_bars_csv(path: str | Path) -> list[DailyBar]:
@@ -102,3 +120,19 @@ def _optional_float(record: dict[str, object], field: str) -> float:
     if isinstance(value, str) and not value.strip():
         return 0.0
     return float(value)
+
+
+def _optional_text(value: object) -> str | None:
+    if value is None:
+        return None
+    try:
+        if bool(pd.isna(value)):
+            return None
+    except (TypeError, ValueError):
+        pass
+    text = str(value).strip()
+    if not text:
+        return None
+    if text.endswith(".0") and text[:-2].isdigit():
+        return text[:-2]
+    return text

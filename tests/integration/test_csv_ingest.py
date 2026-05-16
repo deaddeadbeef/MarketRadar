@@ -107,6 +107,29 @@ def test_csv_connector_loads_fixture_rows() -> None:
     assert holdings_rows[0].as_of.isoformat().startswith("2026-05-08T20:00:00")
 
 
+def test_csv_connector_preserves_optional_security_cik_metadata(tmp_path: Path) -> None:
+    securities_csv = tmp_path / "securities.csv"
+    securities_csv.write_text(
+        "\n".join(
+            [
+                "ticker,name,exchange,sector,industry,market_cap,avg_dollar_volume_20d,"
+                "has_options,is_active,updated_at,cik,central_index_key",
+                "MSFT,Microsoft Corporation,NASDAQ,Technology,Software,1,1,true,true,"
+                "2026-05-08T20:00:00Z,0000789019,",
+                "AAPL,Apple Inc.,NASDAQ,Technology,Consumer Electronics,1,1,true,true,"
+                "2026-05-08T20:00:00Z,,320193",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    rows = load_securities_csv(securities_csv)
+
+    by_ticker = {row.ticker: row for row in rows}
+    assert by_ticker["MSFT"].metadata["cik"] == "0000789019"
+    assert by_ticker["AAPL"].metadata["central_index_key"] == "320193"
+
+
 def test_cli_ingests_holdings_csv(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

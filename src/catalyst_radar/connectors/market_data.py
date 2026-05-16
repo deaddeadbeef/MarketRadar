@@ -19,7 +19,11 @@ from catalyst_radar.connectors.base import (
     ProviderCostEstimate,
     RawRecord,
 )
-from catalyst_radar.connectors.csv_market import _to_bool
+from catalyst_radar.connectors.csv_market import (
+    _to_bool,
+    read_securities_csv_frame,
+    security_metadata,
+)
 from catalyst_radar.core.immutability import freeze_mapping, thaw_json_value
 from catalyst_radar.core.models import DataQualitySeverity
 
@@ -188,7 +192,11 @@ class CsvMarketDataConnector:
         timestamp_fields: tuple[str, ...],
     ) -> list[RawRecord]:
         rows: list[RawRecord] = []
-        frame = pd.read_csv(path)
+        frame = (
+            read_securities_csv_frame(path)
+            if kind == ConnectorRecordKind.SECURITY
+            else pd.read_csv(path)
+        )
         for index, record in enumerate(frame.to_dict(orient="records"), start=2):
             clean_record = _clean_record(record)
             missing = [field for field in timestamp_fields if _is_missing(clean_record.get(field))]
@@ -284,7 +292,7 @@ def _record_payload(record: RawRecord) -> Mapping[str, Any]:
 
 
 def _normalize_security_payload(record: Mapping[str, Any]) -> dict[str, Any]:
-    return {
+    payload = {
         "ticker": str(record["ticker"]).upper(),
         "name": str(record["name"]),
         "exchange": str(record["exchange"]),
@@ -296,6 +304,10 @@ def _normalize_security_payload(record: Mapping[str, Any]) -> dict[str, Any]:
         "is_active": _to_bool(record["is_active"], "is_active"),
         "updated_at": _to_strict_utc_datetime(record["updated_at"], "updated_at").isoformat(),
     }
+    metadata = security_metadata(record)
+    if metadata:
+        payload["metadata"] = metadata
+    return payload
 
 
 def _normalize_daily_bar_payload(record: Mapping[str, Any]) -> dict[str, Any]:

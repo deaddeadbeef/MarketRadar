@@ -27,6 +27,7 @@ from catalyst_radar.brokers.models import (
     broker_market_snapshot_id,
     broker_position_id,
 )
+from catalyst_radar.connectors.csv_market import load_securities_csv
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.core.models import ActionState
 from catalyst_radar.dashboard.data import (
@@ -80,6 +81,7 @@ from catalyst_radar.dashboard.data import (
 from catalyst_radar.storage.broker_repositories import BrokerRepository
 from catalyst_radar.storage.budget_repositories import BudgetLedgerRepository
 from catalyst_radar.storage.db import create_schema
+from catalyst_radar.storage.repositories import MarketRepository
 from catalyst_radar.storage.schema import (
     alert_suppressions,
     alerts,
@@ -630,7 +632,10 @@ def test_investment_readiness_payload_blocks_fixture_candidates() -> None:
                 {
                     "code": "fixture_market_data",
                     "finding": "Market data is still fixture-backed.",
-                    "next_action": "Configure a live market-data provider before relying on broad discovery.",
+                    "next_action": (
+                        "Configure a live market-data provider before relying on broad "
+                        "discovery."
+                    ),
                 }
             ],
         },
@@ -783,7 +788,10 @@ def test_market_radar_usefulness_payload_blocks_fixture_decisions() -> None:
             "blockers": [
                 {
                     "code": "fixture_market_data",
-                    "next_action": "Configure a live market-data provider before relying on broad discovery.",
+                    "next_action": (
+                        "Configure a live market-data provider before relying on broad "
+                        "discovery."
+                    ),
                 }
             ],
         },
@@ -2823,6 +2831,34 @@ def test_radar_run_call_plan_reports_local_fixture_no_external_calls(
     assert by_layer["News/events"]["status"] == "local_only"
     assert by_layer["LLM review"]["external_call_count_max"] == 0
     assert by_layer["Schwab"]["status"] == "not_called"
+
+
+def test_radar_run_call_plan_uses_sample_csv_cik_targets_for_sec_only(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    MarketRepository(engine).upsert_securities(
+        load_securities_csv("data/sample/securities.csv")
+    )
+    config = AppConfig(
+        daily_market_provider="csv",
+        daily_provider="csv",
+        daily_event_provider="sec",
+        sec_enable_live=True,
+        sec_user_agent="MarketRadar test@example.com",
+        sec_daily_max_tickers=5,
+    )
+
+    payload = radar_run_call_plan_payload(engine, config)
+
+    assert payload["status"] == "live_calls_planned"
+    assert payload["will_call_external_providers"] is True
+    assert payload["max_external_call_count"] == 2
+    by_layer = {str(row["layer"]): row for row in payload["rows"]}
+    assert by_layer["Market data"]["status"] == "local_only"
+    assert by_layer["News/events"]["status"] == "live_call_planned"
+    assert by_layer["News/events"]["external_call_count_max"] == 2
+    assert "this scope has 2 target" in str(by_layer["News/events"]["detail"])
 
 
 def test_radar_run_default_scope_uses_latest_local_bar_date(
