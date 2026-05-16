@@ -1,6 +1,6 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-16 11:25:57 +08:00
+Last updated: 2026-05-16 11:29:15 +08:00
 
 ## Current Objective
 
@@ -32,18 +32,14 @@ CATALYST_POLYGON_API_KEY=
 
 ## Current Repository State
 
-This work was merged to `main` through PR #176 using rebase merge.
+This work was merged to `main` through PR #176 using rebase merge. This
+handoff may also have later docs-only refresh commits, so use `git log -1` for
+the exact current SHA instead of relying on a hard-coded commit in this file.
 
 Current expected branch:
 
 ```text
 main
-```
-
-Current expected commit:
-
-```text
-73eb7fa Make first live activation SEC-only
 ```
 
 Files changed by PR #176:
@@ -202,10 +198,10 @@ operator_action=Add CIK metadata before SEC submission checks can run.
 
 That means the old Polygon-key blocker is gone, but the next usefulness blocker is real product data shape: the active local securities do not expose CIK metadata, so the SEC live adapter has no submission targets.
 
-After PR #176 was merged and services were restarted from `main`, `scripts\market-radar-status.ps1` reported:
+After PR #176 was merged and services were restarted from `main`, `scripts\market-radar-status.ps1` reported activation-ready state. The exact build SHA will change if this handoff receives docs-only cleanup commits; the important stable fields are:
 
 ```text
-API: ok; build=73eb7fa89bc6; version=0.1.0
+API: ok; version=0.1.0
 Readiness: research_only; investable=False; next=Clear 2 setup blockers: Configure a live daily market provider and keep batch/rate limits enabled; Fix the first skipped/failed upstream step before treating candidates as complete.
 Latest run: success; required=6/7; action_needed=0; optional_gates=4; audit_rows=5
 Live activation: ready; missing=0
@@ -343,7 +339,7 @@ data\sample\securities.csv
 
 The repo has been using protected `main` with PRs and rebase merges. Do not push directly to `main`.
 
-PR #176, `Make first live activation SEC-only`, has already been merged. The next product PR should be the CIK target coverage slice described above, unless the user redirects.
+PR #176, `Make first live activation SEC-only`, has already been merged. Later docs-only handoff cleanup PRs may exist. The next product PR should be the CIK target coverage slice described above, unless the user redirects.
 
 ## Do Not Do
 
