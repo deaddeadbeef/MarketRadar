@@ -302,6 +302,7 @@ def test_daily_run_records_skipped_steps_without_llm_or_inputs(monkeypatch):
 
 def test_daily_run_ingests_default_csv_market_data(monkeypatch):
     monkeypatch.delenv("CATALYST_DAILY_MARKET_PROVIDER", raising=False)
+    monkeypatch.delenv("CATALYST_DAILY_EVENT_PROVIDER", raising=False)
     engine = _engine()
     spec = DailyRunSpec(
         as_of=date(2026, 5, 8),
@@ -315,7 +316,7 @@ def test_daily_run_ingests_default_csv_market_data(monkeypatch):
     ingest_step = result.step("daily_bar_ingest")
     assert ingest_step.status == "success"
     assert ingest_step.payload["provider"] == "csv"
-    assert ingest_step.payload["security_count"] == 6
+    assert ingest_step.payload["security_count"] == 8
     assert ingest_step.payload["daily_bar_count"] == 36
     assert result.step("feature_scan").status == "success"
     assert result.step("scoring_policy").status == "success"
@@ -659,6 +660,7 @@ def test_daily_run_sec_event_provider_ingests_capped_submissions_with_guarded_ht
 
 def test_daily_run_records_step_telemetry(monkeypatch):
     monkeypatch.delenv("CATALYST_DAILY_MARKET_PROVIDER", raising=False)
+    monkeypatch.delenv("CATALYST_DAILY_EVENT_PROVIDER", raising=False)
     engine = _engine()
     spec = DailyRunSpec(
         as_of=date(2026, 5, 8),
@@ -697,7 +699,7 @@ def test_daily_run_records_step_telemetry(monkeypatch):
     assert all(row.artifact_id for row in started_rows)
     by_step = {row.metadata["step"]: row for row in rows}
     assert by_step["daily_bar_ingest"].status == result.step("daily_bar_ingest").status
-    assert by_step["daily_bar_ingest"].metadata["normalized_count"] == 43
+    assert by_step["daily_bar_ingest"].metadata["normalized_count"] == 45
     assert by_step["daily_bar_ingest"].metadata["decision_available_at"] == (
         "2026-05-08T21:00:00+00:00"
     )

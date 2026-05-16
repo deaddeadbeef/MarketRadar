@@ -116,6 +116,7 @@ def test_run_first_live_smoke_requires_explicit_execute_for_provider_calls() -> 
     assert "/api/radar/runs/call-plan" in text
     assert "/api/radar/universe/seed" in text
     assert "/api/radar/runs" in text
+    assert "/api/radar/runs/latest" in text
     assert "/api/radar/readiness" in text
     assert "MaxRadarExternalCalls" in text
     assert "MaxUniversePages -gt 1" in text
