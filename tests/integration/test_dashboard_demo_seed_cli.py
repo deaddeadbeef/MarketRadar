@@ -262,10 +262,13 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             await pilot.pause()
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert "MRDR // MARKET RADAR" in frame
-            assert "Overview" in frame
+            assert "START HERE" in frame
+            assert "Start here - answer these in order" in frame
+            assert "Can I act on this?" in frame
+            assert "Best next click" in frame
             assert "Candidates [1]" in frame
-            assert "MARKET BARS" in frame
-            assert "Decision safe: False" in frame
+            assert "FRESH BARS" in frame
+            assert "No - research only" in frame
             assert "KEYS" in frame
             assert "MAP" in frame
             assert "NEXT ACTION" in frame
