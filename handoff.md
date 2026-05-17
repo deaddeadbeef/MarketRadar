@@ -1,6 +1,6 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-17 00:25:00 +08:00
+Last updated: 2026-05-17 10:18:51 +08:00
 
 ## Current Objective
 
@@ -51,6 +51,17 @@ latest run `as_of=2026-05-16`), and the universe is intentionally tiny. The
 next small product slice should make the CSV/manual market refresh path obvious,
 not add a large new market-data framework.
 
+The current small slice adds that operator path:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\refresh-csv-market-data.ps1 -DailyBars <fresh-bars.csv> -ExpectedAsOf 2026-05-16
+powershell -ExecutionPolicy Bypass -File scripts\refresh-csv-market-data.ps1 -DailyBars <fresh-bars.csv> -ExpectedAsOf 2026-05-16 -Execute
+```
+
+The first command is preview-only. `-Execute` wraps the existing `ingest-csv`
+CLI, records provider health through the existing CSV provider path, and makes
+zero Polygon, SEC, Schwab, or OpenAI calls.
+
 ## Current Repository State
 
 The SEC-only activation work was merged to `main` through PR #176 using rebase
@@ -95,6 +106,14 @@ Files changed by PR #181:
 
 - `src/catalyst_radar/dashboard/data.py`
 - `tests/integration/test_dashboard_data.py`
+
+Files changed by the manual CSV market-refresh slice:
+
+- `scripts/refresh-csv-market-data.ps1`
+- `scripts/market-radar-status.ps1`
+- `tests/integration/test_local_scripts.py`
+- `README.md`
+- `handoff.md`
 
 ## What Changed In PR #176
 
@@ -399,11 +418,16 @@ Remaining limitations:
 
 ## Next Useful Product Slice
 
-CIK target coverage and operator wording are done. The next change should stay
-small and focus on market-data freshness without assuming Polygon:
+CIK target coverage, operator wording, and the manual CSV import wrapper are
+done. The next change should stay small and focus on making the operator's
+manual bar refresh verifiable after import without assuming Polygon:
 
-- Add a lightweight current-price/manual-bar path only if it can be done with
-  clear operator control and without adding a large provider framework.
+- Use `scripts\refresh-csv-market-data.ps1` with a fresh daily-bar CSV, rerun
+  `scripts\market-radar-status.ps1`, then run the plan-only smoke before any
+  capped cycle.
+- If this still leaves the product research-only, inspect the remaining blocker
+  in `Market freshness`, `Usefulness`, and `operator_next_step` before adding
+  new data-provider code.
 - Keep Polygon optional unless the user explicitly gets a key.
 - If touching Schwab again, keep it read-only; the latest sync is fresh and
   order submission remains unavailable.

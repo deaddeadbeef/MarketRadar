@@ -32,6 +32,7 @@ def test_readme_mentions_restart_script_for_local_dashboard() -> None:
     assert "scripts/run-first-live-smoke.ps1" in readme
     assert "scripts/run-worker-once.ps1" in readme
     assert "scripts/market-radar-status.ps1" in readme
+    assert "scripts/refresh-csv-market-data.ps1" in readme
     assert "scripts/export-telemetry.ps1" in readme
     assert "scripts/export-operator-evidence.ps1" in readme
     assert "scripts/export-pr-ledger.ps1" in readme
@@ -185,6 +186,8 @@ def test_market_radar_status_script_is_zero_external_call_sitrep() -> None:
     assert "Market freshness:" in text
     assert "latest_bar=" in text
     assert "run_as_of=" in text
+    assert "scripts\\refresh-csv-market-data.ps1" in text
+    assert "-ExpectedAsOf" in text
     assert "Portfolio context:" in text
     assert "Broker:" in text
     assert "access_token_active=" in text
@@ -206,6 +209,31 @@ def test_market_radar_status_script_is_zero_external_call_sitrep() -> None:
     assert "External calls made: 0" in text
     assert "CATALYST_POLYGON_API_KEY=" not in text
     assert "OPENAI_API_KEY=" not in text
+    assert "SCHWAB_CLIENT_SECRET=" not in text
+
+
+def test_refresh_csv_market_data_script_wraps_local_ingest_without_provider_calls() -> None:
+    script = Path("scripts/refresh-csv-market-data.ps1")
+    text = script.read_text(encoding="utf-8")
+
+    assert script.is_file()
+    assert "[switch]$Execute" in text
+    assert "data/sample/securities.csv" in text
+    assert "data/sample/daily_bars.csv" in text
+    assert "ExpectedAsOf" in text
+    assert "Import-Csv" in text
+    assert "latest_bar=" in text
+    assert "Freshness check:" in text
+    assert "Refusing to import stale bars" in text
+    assert "Plan only: no database writes were made." in text
+    assert "py @cliArgs" in text
+    assert "catalyst_radar.cli" in text
+    assert "ingest-csv" in text
+    assert "External calls made: 0" in text
+    assert "scripts\\market-radar-status.ps1" in text
+    assert "scripts\\run-first-live-smoke.ps1" in text
+    assert "OPENAI_API_KEY=" not in text
+    assert "CATALYST_POLYGON_API_KEY=" not in text
     assert "SCHWAB_CLIENT_SECRET=" not in text
 
 

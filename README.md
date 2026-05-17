@@ -118,6 +118,20 @@ telemetry, and telemetry coverage. The readiness payload includes
 `operator_next_step`, the canonical zero-call next action for the dashboard and
 scripts. It makes 0 Polygon, SEC, Schwab, or OpenAI calls.
 
+If the sitrep reports stale CSV market bars, import a manually prepared daily
+bar CSV with the same schema as `data/sample/daily_bars.csv`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/refresh-csv-market-data.ps1 -DailyBars <fresh-bars.csv> -ExpectedAsOf 2026-05-16
+powershell -ExecutionPolicy Bypass -File scripts/refresh-csv-market-data.ps1 -DailyBars <fresh-bars.csv> -ExpectedAsOf 2026-05-16 -Execute
+```
+
+The first command is a preview and writes nothing. The `-Execute` command wraps
+the existing local `ingest-csv` path, records provider health, and makes 0
+Polygon, SEC, Schwab, or OpenAI calls. After importing, rerun
+`scripts/market-radar-status.ps1`, then use the plan-only smoke before any
+capped live radar cycle.
+
 For a redacted raw telemetry evidence snapshot:
 
 ```powershell
