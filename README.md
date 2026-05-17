@@ -279,6 +279,16 @@ worker cycle.
 
 No premium LLM calls are used or required in Phase 1.
 
+## Agent Review Provider Boundary
+
+The agent-review loop is not connected to GitHub Copilot. Runtime dependencies
+do not include a Copilot SDK, and the source tree has a regression test that
+fails if Copilot references are added to application code. Real review mode is
+gated behind `CATALYST_ENABLE_PREMIUM_LLM=true`,
+`CATALYST_LLM_PROVIDER=openai`, and `OPENAI_API_KEY`, then uses the official
+`openai` Python SDK `responses.create(...)` path through
+`OpenAIResponsesClient`. Dry-run and fake modes do not call OpenAI.
+
 ## Verification commands
 
 ```powershell
