@@ -1,6 +1,6 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-17 11:13:22 +08:00
+Last updated: 2026-05-17 11:49:26 +08:00
 
 ## Current Objective
 
@@ -82,6 +82,17 @@ status/readiness output, capped for readability. The active local slice adds
 run-`as_of` coverage to status/readiness as well, so the operator sees the
 exact active ticker gap for the date the next import must satisfy.
 
+The current TUI slice adds `catalyst-radar dashboard-tui` as the terminal
+replacement surface for the command center, plus `dashboard-snapshot --json`
+for functional E2E assertions. It exposes the same useful dashboard data
+families: readiness, latest run, discovery snapshot, candidate rows, alerts,
+IPO/S-1 rows, themes, validation, costs, broker context, ops health, telemetry,
+telemetry coverage, live activation, call planning, and a feature inventory.
+Navigation/filtering/export are zero provider-call. The TUI also supports
+guarded manual radar runs (`run execute` after viewing the call plan), local
+opportunity actions, trigger creation/evaluation, blocked order-preview tickets,
+and alert feedback. Real order submission remains disabled.
+
 ## Current Repository State
 
 The SEC-only activation work was merged to `main` through PR #176 using rebase
@@ -139,6 +150,15 @@ Files changed by the API readiness refresh-command slice:
 
 - `src/catalyst_radar/dashboard/data.py`
 - `tests/integration/test_dashboard_data.py`
+- `handoff.md`
+
+Files changed by the dashboard CLI snapshot slice:
+
+- `src/catalyst_radar/cli.py`
+- `src/catalyst_radar/dashboard/tui.py`
+- `tests/integration/test_dashboard_demo_seed_cli.py`
+- `docs/dashboard-feature-inventory.md`
+- `README.md`
 - `handoff.md`
 
 ## What Changed In PR #176
@@ -409,6 +429,22 @@ curl.exe --insecure --fail --silent --show-error --request GET https://127.0.0.1
 curl.exe --insecure --fail --silent --show-error --request GET https://127.0.0.1:8443/api/radar/runs/latest
 ```
 
+For the terminal dashboard replacement and CLI-based functional E2E checks:
+
+```powershell
+catalyst-radar dashboard-tui
+catalyst-radar dashboard-tui --once --page features
+catalyst-radar dashboard-snapshot --json
+catalyst-radar dashboard-snapshot --ticker ACME --available-at 2026-05-10T21:06:00Z
+```
+
+The TUI reads the local database through dashboard data helpers, redacts
+restricted provider payloads, and makes 0 Polygon, SEC, Schwab, or OpenAI calls
+while rendering, navigating, filtering, refreshing, or exporting JSON. The
+explicit `run execute` command starts one capped scheduler cycle only after the
+call plan is visible. Broker/operator write commands save local rows only and
+do not enable real order submission.
+
 ## Provider-Call Safety Rules
 
 Do not make provider calls until:
@@ -465,9 +501,13 @@ Relevant code paths:
 
 ```text
 src\catalyst_radar\dashboard\data.py
+src\catalyst_radar\cli.py
+src\catalyst_radar\dashboard\tui.py
 data\sample\securities.csv
+docs\dashboard-feature-inventory.md
 scripts\market-radar-status.ps1
 scripts\run-first-live-smoke.ps1
+tests\integration\test_dashboard_demo_seed_cli.py
 ```
 
 ## How To Resume If Interrupted
@@ -481,6 +521,7 @@ scripts\run-first-live-smoke.ps1
 2. Re-run focused tests:
 
    ```powershell
+   py -m pytest tests\integration\test_dashboard_demo_seed_cli.py -q
    py -m pytest tests\integration\test_local_scripts.py tests\integration\test_dashboard_data.py::test_live_data_activation_contract_gives_exact_safe_next_steps tests\integration\test_runbook_docs.py -q
    ```
 

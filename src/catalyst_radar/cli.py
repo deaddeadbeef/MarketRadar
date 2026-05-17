@@ -61,6 +61,13 @@ from catalyst_radar.dashboard.demo_seed import (
     default_sec_fixture_path,
     seed_dashboard_demo,
 )
+from catalyst_radar.dashboard.tui import (
+    DashboardFilters,
+    dashboard_json_default,
+    dashboard_snapshot_payload,
+    render_dashboard_tui,
+    run_dashboard_tui,
+)
 from catalyst_radar.decision_cards.builder import build_decision_card
 from catalyst_radar.feedback.service import (
     FeedbackError,
@@ -327,14 +334,36 @@ def build_parser() -> argparse.ArgumentParser:
     provider_health = subparsers.add_parser("provider-health")
     provider_health.add_argument("--provider", required=True)
 
+    dashboard_snapshot = subparsers.add_parser("dashboard-snapshot")
+    dashboard_snapshot.add_argument("--database-url")
+    dashboard_snapshot.add_argument("--ticker")
+    dashboard_snapshot.add_argument("--available-at", type=_parse_aware_datetime)
+    dashboard_snapshot.add_argument("--alert-status")
+    dashboard_snapshot.add_argument("--alert-route")
+    dashboard_snapshot.add_argument("--telemetry-limit", type=int, default=8)
+    dashboard_snapshot.add_argument("--page", default="overview")
+    dashboard_snapshot.add_argument("--json", action="store_true")
+
+    dashboard_tui = subparsers.add_parser("dashboard-tui")
+    dashboard_tui.add_argument("--database-url")
+    dashboard_tui.add_argument("--ticker")
+    dashboard_tui.add_argument("--available-at", type=_parse_aware_datetime)
+    dashboard_tui.add_argument("--alert-status")
+    dashboard_tui.add_argument("--alert-route")
+    dashboard_tui.add_argument("--telemetry-limit", type=int, default=8)
+    dashboard_tui.add_argument("--page", default="overview")
+    dashboard_tui.add_argument("--once", action="store_true")
+    dashboard_tui.add_argument("--no-clear", action="store_true")
+
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
-    load_app_dotenv()
+    dotenv_loaded = load_app_dotenv()
     args = build_parser().parse_args(argv)
     config = AppConfig.from_env()
     database_url = getattr(args, "database_url", None) or config.database_url
+    config = replace(config, database_url=database_url)
     engine = engine_from_url(database_url)
 
     if args.command == "init-db":
@@ -561,6 +590,54 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print(f"provider={health.provider} status={health.status.value}")
         return 0
+
+    if args.command == "dashboard-snapshot":
+        create_schema(engine)
+        filters = DashboardFilters(
+            ticker=args.ticker,
+            available_at=args.available_at,
+            alert_status=args.alert_status,
+            alert_route=args.alert_route,
+            telemetry_limit=args.telemetry_limit,
+        )
+        payload = dashboard_snapshot_payload(
+            engine=engine,
+            config=config,
+            dotenv_loaded=dotenv_loaded,
+            filters=filters,
+        )
+        if args.json:
+            print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
+        else:
+            print(render_dashboard_tui(payload, page=args.page))
+        return 0
+
+    if args.command == "dashboard-tui":
+        create_schema(engine)
+        filters = DashboardFilters(
+            ticker=args.ticker,
+            available_at=args.available_at,
+            alert_status=args.alert_status,
+            alert_route=args.alert_route,
+            telemetry_limit=args.telemetry_limit,
+        )
+        if args.once:
+            payload = dashboard_snapshot_payload(
+                engine=engine,
+                config=config,
+                dotenv_loaded=dotenv_loaded,
+                filters=filters,
+            )
+            print(render_dashboard_tui(payload, page=args.page))
+            return 0
+        return run_dashboard_tui(
+            engine=engine,
+            config=config,
+            dotenv_loaded=dotenv_loaded,
+            filters=filters,
+            initial_page=args.page,
+            clear_screen=not args.no_clear,
+        )
 
     if args.command == "run-textint":
         create_schema(engine)

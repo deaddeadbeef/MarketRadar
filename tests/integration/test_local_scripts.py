@@ -32,6 +32,9 @@ def test_readme_mentions_restart_script_for_local_dashboard() -> None:
     assert "scripts/run-first-live-smoke.ps1" in readme
     assert "scripts/run-worker-once.ps1" in readme
     assert "scripts/market-radar-status.ps1" in readme
+    assert "catalyst-radar dashboard-tui" in readme
+    assert "catalyst-radar dashboard-snapshot --json" in readme
+    assert "docs/dashboard-feature-inventory.md" in readme
     assert "scripts/refresh-csv-market-data.ps1" in readme
     assert "scripts/export-telemetry.ps1" in readme
     assert "scripts/export-operator-evidence.ps1" in readme
