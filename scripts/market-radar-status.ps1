@@ -145,10 +145,17 @@ if ($null -ne $freshness) {
     }
 }
 if ($null -ne $databaseHealth) {
+    $activeSecurityCount = $(if ($null -ne $databaseHealth.active_security_count) { $databaseHealth.active_security_count } else { "n/a" })
+    $withAnyBarsCount = $(if ($null -ne $databaseHealth.active_security_with_daily_bar_count) { $databaseHealth.active_security_with_daily_bar_count } else { "n/a" })
+    $withLatestBarsCount = $databaseHealth.active_security_with_latest_daily_bar_count
+    if ($null -eq $withLatestBarsCount) {
+        $withLatestBarsCount = $withAnyBarsCount
+    }
     Write-Output (
-        "Market coverage: active={0}; with_bars={1}; latest_bar={2}" -f
-        $(if ($null -ne $databaseHealth.active_security_count) { $databaseHealth.active_security_count } else { "n/a" }),
-        $(if ($null -ne $databaseHealth.active_security_with_daily_bar_count) { $databaseHealth.active_security_with_daily_bar_count } else { "n/a" }),
+        "Market coverage: active={0}; with_bars={1}; with_latest_bar={2}; latest_bar={3}" -f
+        $activeSecurityCount,
+        $withAnyBarsCount,
+        $withLatestBarsCount,
         $(if ($databaseHealth.latest_daily_bar_date) { $databaseHealth.latest_daily_bar_date } else { "n/a" })
     )
     if (
@@ -157,6 +164,13 @@ if ($null -ne $databaseHealth) {
         [int]$databaseHealth.active_security_with_daily_bar_count -lt [int]$databaseHealth.active_security_count
     ) {
         Write-Output "- market coverage: Generate the manual bar template and fill every active ticker before import."
+    }
+    if (
+        $null -ne $databaseHealth.active_security_count -and
+        $null -ne $databaseHealth.active_security_with_latest_daily_bar_count -and
+        [int]$databaseHealth.active_security_with_latest_daily_bar_count -lt [int]$databaseHealth.active_security_count
+    ) {
+        Write-Output "- latest-bar coverage: Fill every active ticker for the latest/as-of date before treating bars as fresh."
     }
 }
 if ($null -ne $portfolioContext) {

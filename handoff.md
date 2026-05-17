@@ -1,6 +1,6 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-17 10:46:57 +08:00
+Last updated: 2026-05-17 10:55:23 +08:00
 
 ## Current Objective
 
@@ -74,7 +74,10 @@ The terminal sitrep also prints a template command that writes to ignored
 `data\local\manual-bars-<date>.csv`, plus active market-bar coverage from
 `/api/ops/health`. The latest local polish makes the preview failure more
 useful: an unfilled template reports every missing field it sees, then exits
-before any database write or provider call.
+before any database write or provider call. The active local polish adds
+latest-date coverage to the same health/readiness path, so a partial import
+cannot make the product look decision-ready just because one ticker has a fresh
+bar.
 
 ## Current Repository State
 
@@ -446,6 +449,8 @@ import without assuming Polygon:
 - Use `scripts\refresh-csv-market-data.ps1` with a fresh daily-bar CSV, rerun
   `scripts\market-radar-status.ps1`, then run the plan-only smoke before any
   capped cycle.
+- Treat market bars as fresh only when every active ticker has a bar on the
+  latest/as-of date; partial fresh imports should remain research-only.
 - If this still leaves the product research-only, inspect the remaining blocker
   in `Market freshness`, `Usefulness`, and `operator_next_step` before adding
   new data-provider code.

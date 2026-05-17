@@ -697,6 +697,59 @@ def test_investment_readiness_payload_allows_live_buy_review() -> None:
     assert "1 candidate" in str(readiness["headline"])
 
 
+def test_investment_readiness_payload_blocks_partial_latest_bar_coverage() -> None:
+    actionability = actionability_breakdown_payload(
+        [
+            {
+                "ticker": "MSFT",
+                "state": ActionState.ELIGIBLE_FOR_MANUAL_BUY_REVIEW.value,
+                "final_score": 96.0,
+                "decision_card_id": "card-msft",
+            }
+        ]
+    )
+    readiness = investment_readiness_payload(
+        {
+            "status": "attention",
+            "source_modes": {"market": "live", "events": "live"},
+            "freshness": {"latest_bars_older_than_as_of": False},
+            "yield": {"candidate_packets": 1, "decision_cards": 1},
+            "blockers": [
+                {
+                    "code": "incomplete_daily_bar_coverage",
+                    "finding": (
+                        "6 of 8 active securities have bars on the latest "
+                        "daily-bar date 2026-05-16."
+                    ),
+                    "next_action": (
+                        "Use SEC-only results for research only; import fresh CSV bars "
+                        "with `powershell -ExecutionPolicy Bypass -File "
+                        "scripts\\refresh-csv-market-data.ps1 -DailyBars "
+                        "<fresh-bars.csv> -ExpectedAsOf 2026-05-16 -Execute` "
+                        "or configure a live market provider before acting."
+                    ),
+                }
+            ],
+        },
+        actionability,
+        [
+            {
+                "ticker": "MSFT",
+                "state": ActionState.ELIGIBLE_FOR_MANUAL_BUY_REVIEW.value,
+                "decision_card_id": "card-msft",
+            }
+        ],
+    )
+
+    assert readiness["status"] == "research_only"
+    assert readiness["decision_mode"] == "research_only"
+    assert readiness["manual_buy_review_ready"] is False
+    assert "research-only" in str(readiness["headline"])
+    assert "incomplete_daily_bar_coverage" in str(readiness["evidence"])
+    assert "scripts\\refresh-csv-market-data.ps1" in str(readiness["next_action"])
+    assert "-ExpectedAsOf 2026-05-16" in str(readiness["next_action"])
+
+
 def test_investment_readiness_payload_requires_buy_review_card() -> None:
     actionability = actionability_breakdown_payload(
         [
@@ -4588,6 +4641,92 @@ def test_radar_discovery_snapshot_flags_stale_bars_and_empty_packets(
     stale_bars = next(row for row in snapshot["blockers"] if row["code"] == "stale_daily_bars")
     assert "scripts\\refresh-csv-market-data.ps1" in str(stale_bars["next_action"])
     assert "-ExpectedAsOf 2026-05-10" in str(stale_bars["next_action"])
+
+
+def test_radar_discovery_snapshot_flags_incomplete_latest_bar_coverage(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    metadata = {
+        "as_of": AS_OF.date().isoformat(),
+        "decision_available_at": AVAILABLE_AT.isoformat(),
+        "outcome_available_at": None,
+        "provider": "polygon",
+        "universe": "liquid-us",
+        "tickers": [],
+    }
+    with engine.begin() as conn:
+        conn.execute(
+            insert(job_runs),
+            [
+                _job_run_row(
+                    "coverage-daily-bars",
+                    job_type="daily_bar_ingest",
+                    status="success",
+                    started_at=AVAILABLE_AT + timedelta(seconds=1),
+                    metadata=metadata,
+                    requested_count=500,
+                    raw_count=500,
+                    normalized_count=500,
+                ),
+                _job_run_row(
+                    "coverage-feature-scan",
+                    job_type="feature_scan",
+                    status="success",
+                    started_at=AVAILABLE_AT + timedelta(seconds=2),
+                    metadata=metadata,
+                    requested_count=500,
+                    raw_count=2,
+                    normalized_count=2,
+                ),
+                _job_run_row(
+                    "coverage-candidate-packets",
+                    job_type="candidate_packets",
+                    status="success",
+                    started_at=AVAILABLE_AT + timedelta(seconds=3),
+                    metadata=metadata,
+                    requested_count=2,
+                    raw_count=1,
+                    normalized_count=1,
+                ),
+            ],
+        )
+    summary = load_radar_run_summary(engine)
+
+    snapshot = radar_discovery_snapshot_payload(
+        engine,
+        AppConfig(
+            daily_market_provider="polygon",
+            polygon_api_key="fixture-key",
+            daily_event_provider="sec",
+            sec_enable_live=True,
+            sec_user_agent="MarketRadar test@example.com",
+            scan_batch_size=500,
+        ),
+        radar_run_summary=summary,
+        ops_health={
+            "database": {
+                "active_security_count": 500,
+                "active_security_with_daily_bar_count": 500,
+                "active_security_with_latest_daily_bar_count": 498,
+                "latest_daily_bar_date": AS_OF.date().isoformat(),
+            }
+        },
+    )
+
+    assert snapshot["status"] == "attention"
+    assert snapshot["freshness"]["latest_bars_older_than_as_of"] is False
+    blocker_codes = {str(row["code"]) for row in snapshot["blockers"]}
+    assert "incomplete_daily_bar_coverage" in blocker_codes
+    coverage = next(
+        row
+        for row in snapshot["blockers"]
+        if row["code"] == "incomplete_daily_bar_coverage"
+    )
+    assert "498 of 500 active securities" in str(coverage["finding"])
+    assert "scripts\\refresh-csv-market-data.ps1" in str(coverage["next_action"])
+    assert "-ExpectedAsOf 2026-05-10" in str(coverage["next_action"])
 
 
 def test_radar_discovery_snapshot_exposes_stale_candidate_context(

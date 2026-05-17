@@ -190,6 +190,8 @@ def test_market_radar_status_script_is_zero_external_call_sitrep() -> None:
     assert "Market coverage:" in text
     assert "active=" in text
     assert "with_bars=" in text
+    assert "with_latest_bar=" in text
+    assert "latest-bar coverage:" in text
     assert "Generate the manual bar template" in text
     assert "scripts\\refresh-csv-market-data.ps1" in text
     assert "-ExpectedAsOf" in text
