@@ -1,6 +1,6 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-17 14:09:45 +08:00
+Last updated: 2026-05-17 14:15:46 +08:00
 
 ## Current Objective
 
@@ -166,6 +166,15 @@ clean `main` to `origin/main`, and runs `dashboard-tui` without setting
 arguments directly, for example `radar --once --page overview`. Use
 `radar --no-update` to skip Git update and `radar --force-install` to refresh
 the editable install.
+
+Agent review is not connected to GitHub Copilot. Runtime code has no Copilot
+SDK dependency or source reference, and `tests/unit/test_agent_provider_boundary.py`
+guards that boundary. The current real-provider path is the official `openai`
+Python SDK `responses.create(...)` call through `OpenAIResponsesClient`, gated
+behind `CATALYST_ENABLE_PREMIUM_LLM=true`, `CATALYST_LLM_PROVIDER=openai`, and
+`OPENAI_API_KEY`. Dry-run and fake review modes do not call OpenAI. This is not
+the separate OpenAI Agents SDK package today; migrating to that SDK should be a
+deliberate future slice if tool orchestration is needed.
 
 ## Current Repository State
 
