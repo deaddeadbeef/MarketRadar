@@ -1,17 +1,18 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-17 11:49:26 +08:00
+Last updated: 2026-05-17 12:34:30 +08:00
 
 ## Current Objective
 
-Keep polishing MarketRadar until it becomes genuinely useful to the user, not just technically complete. The immediate operational goal is to get the product out of local/demo-only mode without forcing the user to buy or obtain a Polygon API key.
+Keep polishing MarketRadar until it becomes genuinely useful to the user, not just technically complete. The immediate operational goal is to get the product out of local/demo-only mode without forcing the user to buy or obtain a Polygon/Massive API key. The user has now added a key and switched the local market provider to Polygon, but Polygon must remain optional for future setup paths.
 
 The user confirmed:
 
-- They do not have a Polygon API key.
+- They initially did not have a Polygon API key, then added one in `.env.local`.
+- Polygon.io has rebranded to Massive.com; keep code/provider names as `polygon` for now, but call the provider "Polygon/Massive" in user-facing guidance where clarity matters.
 - They were confused by `CATALYST_SEC_USER_AGENT`.
 - They filled `CATALYST_SEC_USER_AGENT` in `.env.local`.
-- Polygon should be treated as optional for now.
+- Polygon should still be treated as optional unless the operator explicitly selects it with `CATALYST_DAILY_MARKET_PROVIDER=polygon`.
 
 ## Key Decision
 
@@ -28,7 +29,51 @@ CATALYST_POLYGON_API_KEY=
 
 `CATALYST_SEC_USER_AGENT` is not a secret. It is a SEC-required identifying contact string for EDGAR requests, such as `MarketRadar user@example.com`. Do not paste the user's actual value into chat or checked-in docs.
 
-`CATALYST_POLYGON_API_KEY` must remain optional unless the operator explicitly switches `CATALYST_DAILY_MARKET_PROVIDER=polygon`.
+`CATALYST_POLYGON_API_KEY` must remain optional unless the operator explicitly switches `CATALYST_DAILY_MARKET_PROVIDER=polygon`. On 2026-05-17, the local `.env.local` had `CATALYST_DAILY_MARKET_PROVIDER=polygon`, `CATALYST_DAILY_PROVIDER=polygon`, and a configured non-placeholder Polygon/Massive key. Do not print the key.
+
+## Polygon/Massive Verification
+
+Live Polygon/Massive grouped-daily ingest was verified on 2026-05-17 after the user updated `.env.local`:
+
+```powershell
+$env:PYTHONPATH='src'
+py -m catalyst_radar.cli ingest-polygon grouped-daily --date 2026-05-15
+```
+
+Final successful output:
+
+```text
+ingested provider=polygon raw=12104 normalized=12104 securities=0 daily_bars=12104 holdings=0 events=0 rejected=0
+```
+
+The first live attempt proved the key worked, but exposed two small product bugs:
+
+- Polygon/Massive raw records include both `T` and `t`. That is valid JSON, but PowerShell's `ConvertFrom-Json` treats those as duplicate keys and broke `scripts\market-radar-status.ps1` after incidents included raw provider payloads.
+- Some live grouped-daily records omit `vw`. The connector required it and degraded provider health with 84 rejected records.
+
+Current fixes in the working tree:
+
+- `src/catalyst_radar/ops/health.py` makes operator health payload keys safe for case-insensitive PowerShell JSON consumers without changing raw provider storage.
+- `src/catalyst_radar/connectors/polygon.py` no longer requires `vw` in grouped-daily raw records; when missing, normalized `vwap` falls back to `close` and metadata marks `vwap_fallback=close`.
+- Regression tests were added in `tests/integration/test_ops_health.py` and `tests/integration/test_polygon_ingest_cli.py`.
+
+Verification already run:
+
+```powershell
+$env:PYTHONPATH='src'
+py -m pytest tests\integration\test_polygon_ingest_cli.py tests\integration\test_ops_health.py -q
+py -m ruff check src\catalyst_radar\connectors\polygon.py src\catalyst_radar\ops\health.py tests\integration\test_polygon_ingest_cli.py tests\integration\test_ops_health.py
+py -m catalyst_radar.cli dashboard-snapshot --json | ConvertFrom-Json > $null
+powershell -ExecutionPolicy Bypass -File scripts\market-radar-status.ps1
+py -m catalyst_radar.cli provider-health --provider polygon
+```
+
+Final status after restart:
+
+- Polygon provider health: `healthy`.
+- Latest daily bar: `2026-05-15`.
+- Active market coverage: `active=8`, `with_bars=8`, `with_latest_bar=8`.
+- Readiness still says `research_only` because the latest radar run `as_of` is `2026-05-16`, a Saturday, and the freshness gate currently expects bars on the exact run `as_of`. Do not treat this as a Polygon failure. The next useful slice should either run the radar for the latest trading day or teach freshness to use the previous trading session for weekend/non-trading-day runs.
 
 ## Definition Of Useful
 
