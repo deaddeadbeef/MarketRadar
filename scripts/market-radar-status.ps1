@@ -130,6 +130,18 @@ if ($null -ne $freshness) {
         $(if ($freshness.latest_daily_bar_date) { $freshness.latest_daily_bar_date } else { "n/a" }),
         $(if ($readiness.radar_run.as_of) { $readiness.radar_run.as_of } else { "n/a" })
     )
+    if ($null -ne $freshness.active_security_with_as_of_bar_count -and $null -ne $freshness.active_security_count) {
+        Write-Output (
+            "Market as-of coverage: active={0}; with_as_of_bar={1}; missing={2}" -f
+            $freshness.active_security_count,
+            $freshness.active_security_with_as_of_bar_count,
+            $(if ($null -ne $freshness.missing_as_of_daily_bar_count) { $freshness.missing_as_of_daily_bar_count } else { "n/a" })
+        )
+        $missingAsOf = @($freshness.missing_as_of_daily_bar_tickers)
+        if ($missingAsOf.Count -gt 0) {
+            Write-Output ("- missing as-of tickers: {0}" -f (($missingAsOf | Select-Object -First 12) -join ", "))
+        }
+    }
     if ($staleBarBlocker.next_action) {
         Write-Output ("- market freshness: {0}" -f $staleBarBlocker.next_action)
     }

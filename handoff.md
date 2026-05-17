@@ -1,6 +1,6 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-17 11:03:57 +08:00
+Last updated: 2026-05-17 11:13:22 +08:00
 
 ## Current Objective
 
@@ -78,7 +78,9 @@ before any database write or provider call. The active local polish adds
 latest-date coverage to the same health/readiness path, so a partial import
 cannot make the product look decision-ready just because one ticker has a fresh
 bar. The active follow-up also lists the first missing latest-bar tickers in
-status/readiness output, capped for readability.
+status/readiness output, capped for readability. The active local slice adds
+run-`as_of` coverage to status/readiness as well, so the operator sees the
+exact active ticker gap for the date the next import must satisfy.
 
 ## Current Repository State
 

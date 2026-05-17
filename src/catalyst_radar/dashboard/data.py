@@ -46,6 +46,7 @@ from catalyst_radar.storage.schema import (
     audit_events,
     candidate_packets,
     candidate_states,
+    daily_bars,
     decision_cards,
     events,
     job_locks,
@@ -3363,6 +3364,73 @@ def universe_coverage_payload(
     }
 
 
+def _daily_bar_coverage_for_date(
+    engine: Engine,
+    *,
+    as_of_date: date | None,
+    available_at: datetime | None,
+    limit: int = 12,
+) -> dict[str, object]:
+    if as_of_date is None:
+        return {
+            "active_security_count": None,
+            "with_as_of_bar_count": None,
+            "missing_count": None,
+            "missing_tickers": [],
+        }
+
+    cutoff = _as_utc_datetime_or_none(available_at)
+    active_tickers = select(securities.c.ticker).where(securities.c.is_active.is_(True))
+    bar_tickers = select(daily_bars.c.ticker).where(
+        daily_bars.c.date == as_of_date,
+        daily_bars.c.ticker.in_(active_tickers),
+    )
+    bar_count_filter = [
+        daily_bars.c.date == as_of_date,
+        daily_bars.c.ticker.in_(active_tickers),
+    ]
+    if cutoff is not None:
+        bar_tickers = bar_tickers.where(daily_bars.c.available_at <= cutoff)
+        bar_count_filter.append(daily_bars.c.available_at <= cutoff)
+
+    with engine.connect() as conn:
+        active_count = int(
+            conn.scalar(
+                select(func.count())
+                .select_from(securities)
+                .where(securities.c.is_active.is_(True))
+            )
+            or 0
+        )
+        with_as_of_bar_count = int(
+            conn.scalar(
+                select(func.count(func.distinct(daily_bars.c.ticker))).where(
+                    *bar_count_filter
+                )
+            )
+            or 0
+        )
+        missing_tickers = [
+            str(row[0])
+            for row in conn.execute(
+                select(securities.c.ticker)
+                .where(
+                    securities.c.is_active.is_(True),
+                    ~securities.c.ticker.in_(bar_tickers),
+                )
+                .order_by(securities.c.ticker.asc())
+                .limit(limit)
+            )
+        ]
+
+    return {
+        "active_security_count": active_count,
+        "with_as_of_bar_count": with_as_of_bar_count,
+        "missing_count": max(active_count - with_as_of_bar_count, 0),
+        "missing_tickers": missing_tickers,
+    }
+
+
 def radar_discovery_snapshot_payload(
     engine: Engine,
     config: AppConfig,
@@ -3414,6 +3482,11 @@ def radar_discovery_snapshot_payload(
     database = _mapping_value(health, "database")
     run_path = _radar_run_path_summary(summary)
     latest_bar_date = _parse_date(database.get("latest_daily_bar_date"))
+    as_of_bar_coverage = _daily_bar_coverage_for_date(
+        engine,
+        as_of_date=as_of_date,
+        available_at=artifact_cutoff,
+    )
     latest_candidate_at = _latest_candidate_as_of(context_candidates)
     latest_candidate_session_date = _date_iso_or_none(latest_candidate_at)
 
@@ -3459,6 +3532,7 @@ def radar_discovery_snapshot_payload(
         market=market,
         events=events,
         database=database,
+        as_of_bar_coverage=as_of_bar_coverage,
         run_path=run_path,
         as_of_date=as_of_date,
         latest_bar_date=latest_bar_date,
@@ -3517,6 +3591,15 @@ def radar_discovery_snapshot_payload(
                 as_of_date is not None
                 and latest_bar_date is not None
                 and latest_bar_date < as_of_date
+            ),
+            "active_security_count": as_of_bar_coverage.get("active_security_count"),
+            "active_security_with_as_of_bar_count": as_of_bar_coverage.get(
+                "with_as_of_bar_count"
+            ),
+            "missing_as_of_daily_bar_count": as_of_bar_coverage.get("missing_count"),
+            "missing_as_of_daily_bar_tickers": as_of_bar_coverage.get(
+                "missing_tickers",
+                [],
             ),
             "latest_candidate_as_of": _iso_or_none(latest_candidate_at),
             "latest_candidate_session_date": latest_candidate_session_date,
@@ -6630,6 +6713,7 @@ def _discovery_blockers(
     market: Mapping[str, object],
     events: Mapping[str, object],
     database: Mapping[str, object],
+    as_of_bar_coverage: Mapping[str, object],
     run_path: Mapping[str, int],
     as_of_date: date | None,
     latest_bar_date: date | None,
@@ -6701,10 +6785,34 @@ def _discovery_blockers(
             )
         )
     if as_of_date is not None and latest_bar_date is not None and latest_bar_date < as_of_date:
+        stale_finding = (
+            f"Latest daily bars are {latest_bar_date.isoformat()}, older than run as-of."
+        )
+        missing_as_of_count = int(_finite_float(as_of_bar_coverage.get("missing_count")))
+        active_as_of_count = int(
+            _finite_float(as_of_bar_coverage.get("active_security_count"))
+        )
+        missing_as_of_tickers = [
+            str(ticker)
+            for ticker in _sequence_value(
+                as_of_bar_coverage.get("missing_tickers")
+            )
+            if str(ticker).strip()
+        ]
+        if active_as_of_count:
+            stale_finding = (
+                f"{stale_finding} As-of coverage: "
+                f"{active_as_of_count - missing_as_of_count}/{active_as_of_count} "
+                "active securities."
+            )
+        if missing_as_of_tickers:
+            stale_finding = (
+                f"{stale_finding} Missing: {', '.join(missing_as_of_tickers[:6])}."
+            )
         blockers.append(
             _discovery_blocker(
                 "stale_daily_bars",
-                f"Latest daily bars are {latest_bar_date.isoformat()}, older than run as-of.",
+                stale_finding,
                 _csv_market_refresh_next_action(as_of_date),
             )
         )
