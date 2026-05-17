@@ -46,15 +46,16 @@ also supports low-risk operator writes: `action <ticker> <action> [notes]`,
 
 ## Remaining Replacement Gaps
 
-The TUI currently replaces the web dashboard for operations, navigation,
-filtering, drill-in review, JSON evidence export, guarded manual radar runs,
-opportunity action saves, trigger management, trigger evaluation, and blocked
-order-preview ticket creation. These lower-frequency live-provider actions
-still need terminal commands before the web surface can be fully retired:
+The TUI replaces the web dashboard for operations, navigation, filtering,
+drill-in review, JSON evidence export, guarded manual radar runs, opportunity
+action saves, trigger management, trigger evaluation, blocked order-preview
+ticket creation, and alert feedback. These live-provider actions stay behind
+existing explicit guarded commands or API routes because they can call external
+services and require credentials:
 
 - Trigger optional universe seeding only when Polygon is configured.
 - Refresh Schwab market context for a selected candidate.
 - Run candidate agent-review dry runs.
 
-Until those are implemented, keep the TUI as the primary operational read
-surface and keep write/action workflows behind existing CLI/API/script paths.
+Keep using the TUI as the primary operational surface, and use the existing
+guarded CLI/API/script paths for the credentialed live-provider actions above.
