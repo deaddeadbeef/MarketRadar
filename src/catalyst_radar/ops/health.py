@@ -44,13 +44,24 @@ def load_ops_health(
         active_security_tickers = select(securities.c.ticker).where(
             securities.c.is_active.is_(True)
         )
+        active_security_count = conn.scalar(
+            select(func.count())
+            .select_from(securities)
+            .where(securities.c.is_active.is_(True))
+        )
         latest_daily_bar_date = conn.scalar(
             select(func.max(daily_bars.c.date)).where(
                 daily_bars.c.available_at <= resolved_now
             )
         )
         active_with_latest_daily_bar_count = 0
+        missing_latest_daily_bar_tickers: list[str] = []
         if latest_daily_bar_date is not None:
+            active_latest_bar_tickers = select(daily_bars.c.ticker).where(
+                daily_bars.c.available_at <= resolved_now,
+                daily_bars.c.date == latest_daily_bar_date,
+                daily_bars.c.ticker.in_(active_security_tickers),
+            )
             active_with_latest_daily_bar_count = conn.scalar(
                 select(func.count(func.distinct(daily_bars.c.ticker))).where(
                     daily_bars.c.available_at <= resolved_now,
@@ -58,6 +69,18 @@ def load_ops_health(
                     daily_bars.c.ticker.in_(active_security_tickers),
                 )
             )
+            missing_latest_daily_bar_tickers = [
+                str(row[0])
+                for row in conn.execute(
+                    select(securities.c.ticker)
+                    .where(
+                        securities.c.is_active.is_(True),
+                        ~securities.c.ticker.in_(active_latest_bar_tickers),
+                    )
+                    .order_by(securities.c.ticker.asc())
+                    .limit(12)
+                )
+            ]
         jobs = [
             _row_dict(row._mapping)
             for row in conn.execute(
@@ -76,11 +99,7 @@ def load_ops_health(
         )
         database = {
             "status": "ok",
-            "active_security_count": conn.scalar(
-                select(func.count())
-                .select_from(securities)
-                .where(securities.c.is_active.is_(True))
-            ),
+            "active_security_count": active_security_count,
             "active_security_with_daily_bar_count": conn.scalar(
                 select(func.count(func.distinct(daily_bars.c.ticker))).where(
                     daily_bars.c.available_at <= resolved_now,
@@ -90,6 +109,7 @@ def load_ops_health(
             "active_security_with_latest_daily_bar_count": (
                 active_with_latest_daily_bar_count
             ),
+            "missing_latest_daily_bar_tickers": missing_latest_daily_bar_tickers,
             "latest_daily_bar_date": latest_daily_bar_date,
             "candidate_state_count": conn.scalar(
                 select(func.count())

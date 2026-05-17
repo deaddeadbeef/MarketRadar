@@ -1,6 +1,6 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-17 10:55:23 +08:00
+Last updated: 2026-05-17 11:03:57 +08:00
 
 ## Current Objective
 
@@ -77,7 +77,8 @@ useful: an unfilled template reports every missing field it sees, then exits
 before any database write or provider call. The active local polish adds
 latest-date coverage to the same health/readiness path, so a partial import
 cannot make the product look decision-ready just because one ticker has a fresh
-bar.
+bar. The active follow-up also lists the first missing latest-bar tickers in
+status/readiness output, capped for readability.
 
 ## Current Repository State
 
