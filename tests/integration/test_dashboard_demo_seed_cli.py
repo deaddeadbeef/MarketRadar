@@ -168,12 +168,11 @@ def test_dashboard_snapshot_cli_outputs_human_readable_zero_call_summary(
         "Page: overview",
         "DB:",
         "Ticker: ACME",
-        "Readiness",
-        "Usefulness",
-        "Dashboard Rows",
-        "Operator next",
-        "Market freshness",
-        "Call plan",
+        "What do you want Market Radar to do right now?",
+        "Find opportunities",
+        "Fix blockers",
+        "Run radar cycle",
+        "Select the matching workflow",
         "External calls made: 0",
     ):
         assert expected in output.out
@@ -274,9 +273,9 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert app.page == "overview"
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert "START HERE" in frame
-            assert "Start here - answer these in order" in frame
-            assert "Can I act on this?" in frame
-            assert "Best next click" in frame
+            assert "What do you want Market Radar to do right now?" in frame
+            assert "Find opportunities" in frame
+            assert "Fix blockers" in frame
             assert "Candidates [1]" in frame
             assert "FRESH BARS" in frame
             assert "No - research only" in frame
@@ -288,6 +287,14 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert "REVIEW" in frame
             assert "OPERATE" in frame
             assert "Up/Down on sidebar" in frame
+
+            app.query_one("#data-table").focus()
+            await pilot.press("enter")
+            await pilot.pause()
+            assert app.page == "candidates"
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            assert "Opened candidate queue" in frame
+
             assert await pilot.click("#nav-alerts")
             await pilot.pause()
             assert app.page == "alerts"

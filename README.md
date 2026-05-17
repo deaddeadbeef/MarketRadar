@@ -140,20 +140,23 @@ readiness, run/call-plan, candidates, alerts, IPO/S-1, broker, ops, telemetry,
 themes, validation, costs, and current feature inventory. `radar` opens on the
 `0 Tutorial` page by default. The tutorial shows the first 90-second path:
 press `1` for Start, `2` for Readiness, `4` for Candidates, and `3` only to
-review the call plan. `1 Start` answers three beginner questions: can I act on
-this, why or why not, and what should I click next. Inside the TUI, the left
-sidebar is the primary navigation: click a row, press a page number, use
-`Ctrl+N` / `Ctrl+P`, or focus the sidebar and use `Up` / `Down` plus `Enter`.
-The compact `KEYS` / `MOUSE` guide keeps shortcuts visible without adding a
-second navigation system. Candidate and alert rows are mouse-selectable in
-Windows Terminal. The `NEXT ACTION` card shows the useful operator move for the
-current page; the `LAST RESPONSE` card shows what the dashboard just did. Use
-`ticker <SYMBOL|all>` and `available-at <ISO|latest>` to filter, `json` to
-print the redacted machine-readable snapshot, `refresh` to reload the local
-database, and `q` to quit. It makes 0 Polygon, SEC, Schwab, or OpenAI calls
-while rendering, clicking, filtering, or navigating. From the run page, `run`
-explains the guarded execution path and `run execute` starts one capped
-scheduler cycle after the call plan is visible.
+review the call plan. `1 Start` is the operator cockpit: choose the job you
+want Market Radar to do now, such as find opportunities, review the
+candidate queue, check if anything is actionable, fix data/readiness blockers,
+run a radar cycle, review alerts, or record a portfolio-side decision. Click or
+press `Enter` on a workflow row to open the right operational view. Inside the
+TUI, the left sidebar is the primary navigation: click a row, press a page
+number, use `Ctrl+N` / `Ctrl+P`, or focus the sidebar and use `Up` / `Down`
+plus `Enter`. The compact `KEYS` / `MOUSE` guide keeps shortcuts visible
+without adding a second navigation system. Candidate and alert rows are
+mouse-selectable in Windows Terminal. The `NEXT ACTION` card shows the useful
+operator move for the current page; the `LAST RESPONSE` card shows what the
+dashboard just did. Use `ticker <SYMBOL|all>` and `available-at <ISO|latest>`
+to filter, `json` to print the redacted machine-readable snapshot, `refresh`
+to reload the local database, and `q` to quit. It makes 0 Polygon, SEC, Schwab,
+or OpenAI calls while rendering, clicking, filtering, or navigating. From the
+run page, `run` explains the guarded execution path and `run execute` starts
+one capped scheduler cycle after the call plan is visible.
 The broker page also supports local operator writes that do not submit real
 orders: `action <ticker> <watch|ready|simulate_entry|dismiss> [notes]`,
 `trigger <ticker> <type> <op> <threshold> [notes]`, `eval-triggers [ticker]`,
