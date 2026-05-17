@@ -172,6 +172,7 @@ def test_market_radar_status_script_is_zero_external_call_sitrep() -> None:
     assert "/api/radar/live-activation" in text
     assert "/api/radar/runs/call-plan" in text
     assert "/api/brokers/schwab/status" in text
+    assert "/api/ops/health" in text
     assert "/api/ops/telemetry?limit=" in text
     assert "/api/ops/telemetry/coverage" in text
     assert "operator_next_step" in text
@@ -186,6 +187,10 @@ def test_market_radar_status_script_is_zero_external_call_sitrep() -> None:
     assert "Market freshness:" in text
     assert "latest_bar=" in text
     assert "run_as_of=" in text
+    assert "Market coverage:" in text
+    assert "active=" in text
+    assert "with_bars=" in text
+    assert "Generate the manual bar template" in text
     assert "scripts\\refresh-csv-market-data.ps1" in text
     assert "-ExpectedAsOf" in text
     assert "Portfolio context:" in text

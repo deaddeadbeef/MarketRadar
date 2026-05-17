@@ -114,9 +114,11 @@ powershell -ExecutionPolicy Bypass -File scripts/market-radar-status.ps1
 ```
 
 This reads local API health, readiness, latest run, live activation, recent
-telemetry, and telemetry coverage. The readiness payload includes
+ops health, telemetry, and telemetry coverage. The readiness payload includes
 `operator_next_step`, the canonical zero-call next action for the dashboard and
-scripts. It makes 0 Polygon, SEC, Schwab, or OpenAI calls.
+scripts. The sitrep also prints active market-bar coverage so a manual CSV
+refresh can be verified after import. It makes 0 Polygon, SEC, Schwab, or
+OpenAI calls.
 
 If the sitrep reports stale CSV market bars, import a manually prepared daily
 bar CSV with the same schema as `data/sample/daily_bars.csv`:

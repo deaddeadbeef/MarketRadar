@@ -47,6 +47,7 @@ $latestRun = Invoke-ApiJson -Path "/api/radar/runs/latest"
 $activation = Invoke-ApiJson -Path "/api/radar/live-activation"
 $callPlan = Invoke-ApiJson -Method "POST" -Path "/api/radar/runs/call-plan" -Body "{}"
 $brokerStatus = Invoke-ApiJson -Path "/api/brokers/schwab/status"
+$opsHealth = Invoke-ApiJson -Path "/api/ops/health"
 $telemetry = Invoke-ApiJson -Path ("/api/ops/telemetry?limit={0}" -f [Math]::Max(1, $TelemetryLimit))
 $telemetryCoverage = Invoke-ApiJson -Path "/api/ops/telemetry/coverage"
 
@@ -57,6 +58,7 @@ $payload = [ordered]@{
     live_activation = $activation
     call_plan = $callPlan
     broker_status = $brokerStatus
+    ops_health = $opsHealth
     telemetry = $telemetry
     telemetry_coverage = $telemetryCoverage
     external_calls_made = 0
@@ -83,6 +85,7 @@ foreach ($blocker in @($discovery.blockers)) {
         break
     }
 }
+$databaseHealth = $opsHealth.database
 
 if ($Json) {
     $payload | ConvertTo-Json -Depth 12
@@ -139,6 +142,21 @@ if ($null -ne $freshness) {
             "- refresh command: powershell -ExecutionPolicy Bypass -File scripts\refresh-csv-market-data.ps1 -DailyBars <fresh-bars.csv> -ExpectedAsOf {0} -Execute" -f
             $readiness.radar_run.as_of
         )
+    }
+}
+if ($null -ne $databaseHealth) {
+    Write-Output (
+        "Market coverage: active={0}; with_bars={1}; latest_bar={2}" -f
+        $(if ($null -ne $databaseHealth.active_security_count) { $databaseHealth.active_security_count } else { "n/a" }),
+        $(if ($null -ne $databaseHealth.active_security_with_daily_bar_count) { $databaseHealth.active_security_with_daily_bar_count } else { "n/a" }),
+        $(if ($databaseHealth.latest_daily_bar_date) { $databaseHealth.latest_daily_bar_date } else { "n/a" })
+    )
+    if (
+        $null -ne $databaseHealth.active_security_count -and
+        $null -ne $databaseHealth.active_security_with_daily_bar_count -and
+        [int]$databaseHealth.active_security_with_daily_bar_count -lt [int]$databaseHealth.active_security_count
+    ) {
+        Write-Output "- market coverage: Generate the manual bar template and fill every active ticker before import."
     }
 }
 if ($null -ne $portfolioContext) {
