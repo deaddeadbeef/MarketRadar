@@ -1,6 +1,6 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-17 22:02:11 +08:00
+Last updated: 2026-05-17 22:31:51 +08:00
 
 ## Current Objective
 
@@ -131,20 +131,21 @@ The current TUI slice adds `catalyst-radar dashboard-tui` as the terminal
 replacement surface for the command center, plus `dashboard-snapshot --json`
 for functional E2E assertions. The default interactive TUI uses Textual for a
 modern Windows Terminal-compatible interface with sidebar mouse navigation,
-status cards, selectable candidate/alert rows, a command input, keyboard
-shortcuts, and a footer. The latest visual polish fixes the cropped sidebar
-button bug by using one-line clickable nav rows, groups the sidebar into
-`CORE`, `REVIEW`, `OPERATE`, and `SYSTEM`, surfaces candidate/alert/IPO counts
-in navigation, tightens the metric grid so all four cards fit, and uses a
-darker "ops console" style with clearer status values. The current usability
-polish removes the redundant top tab strip, makes the grouped sidebar the
-primary navigation surface, keeps shortcuts visible in a compact `KEYS` /
+status cards, selectable insight/candidate/alert rows, a command input,
+keyboard shortcuts, and a footer. The latest visual polish fixes the cropped
+sidebar button bug by using one-line clickable nav rows, groups the sidebar
+into `LEARN`, `CORE`, `REVIEW`, `OPERATE`, and `SYSTEM`, surfaces
+candidate/alert/IPO counts in navigation, tightens the metric grid so all four
+cards fit, and uses a darker "ops console" style with clearer status values.
+The current usability polish makes `1 Insights` the default operator surface:
+it is a market-insight action queue where each row shows scope/ticker, signal,
+why it matters now, and the next action. Candidate rows open candidate detail,
+alert rows open alert detail, blocker rows open Readiness/Ops, and refresh rows
+open the guarded Run plan. `0 Tutorial` remains available, but it is no longer
+the default landing page. The TUI keeps shortcuts visible in a compact `KEYS` /
 `MOUSE` guide, supports `Ctrl+N` / `Ctrl+P` and sidebar `Up` / `Down`
-navigation, adds a default `0 Tutorial` page for the first 90 seconds, keeps
-`1 Start` as the operator cockpit where selectable workflow rows route to
-Candidates, Readiness, Ops, Run, Alerts, and Broker, and shows side-by-side
-`NEXT ACTION` and `LAST RESPONSE` cards so operator intent is distinct from
-dashboard feedback.
+navigation, and shows side-by-side `NEXT ACTION` and `LAST RESPONSE` cards so
+operator intent is distinct from dashboard feedback.
 `dashboard-tui --once` still uses the plain text renderer for deterministic
 smoke tests and low-fi logs. The TUI exposes the same useful dashboard data
 families: readiness, latest run, discovery snapshot, candidate rows, alerts,

@@ -135,16 +135,16 @@ or mutate the caller's shell environment. Use `radar --no-update` to skip the
 Git update step and `radar --force-install` to refresh the editable install.
 
 The TUI is the operational replacement surface for the web dashboard. It loads
-the same command-center data helpers and provides pages for tutorial, start,
+the same command-center data helpers and provides pages for tutorial, insights,
 readiness, run/call-plan, candidates, alerts, IPO/S-1, broker, ops, telemetry,
-themes, validation, costs, and current feature inventory. `radar` opens on the
-`0 Tutorial` page by default. The tutorial shows the first 90-second path:
-press `1` for Start, `2` for Readiness, `4` for Candidates, and `3` only to
-review the call plan. `1 Start` is the operator cockpit: choose the job you
-want Market Radar to do now, such as find opportunities, review the
-candidate queue, check if anything is actionable, fix data/readiness blockers,
-run a radar cycle, review alerts, or record a portfolio-side decision. Click or
-press `Enter` on a workflow row to open the right operational view. Inside the
+themes, validation, costs, and current feature inventory. `radar` opens on
+`1 Insights` by default, because the main job is to show market context you can
+act on. `0 Tutorial` remains available for the first 90-second walkthrough.
+The insights page is a local action queue: each row shows the ticker or scope,
+the signal, why it matters now, and the next action. Candidate rows open the
+candidate evidence detail, alert rows open alert detail, blocker rows open
+readiness or ops, and refresh rows open the guarded run plan. Click or press
+`Enter` on an insight row to open the right operational view. Inside the
 TUI, the left sidebar is the primary navigation: click a row, press a page
 number, use `Ctrl+N` / `Ctrl+P`, or focus the sidebar and use `Up` / `Down`
 plus `Enter`. The compact `KEYS` / `MOUSE` guide keeps shortcuts visible
