@@ -517,6 +517,15 @@ def test_research_shortlist_prioritizes_review_and_research_rows() -> None:
                 "state": ActionState.WARNING.value,
                 "final_score": 84.0,
                 "decision_card_id": "",
+                "priced_in_status": "bullish_not_priced_in",
+                "priced_in_score": 36.0,
+                "priced_in_direction": "bullish",
+                "emotion_score": 77.0,
+                "reaction_score": 28.0,
+                "emotion_reaction_gap": 49.0,
+                "priced_in_reason": (
+                    "Bullish emotion 77 is ahead of price reaction 28 by 49 points."
+                ),
                 "research_brief": {
                     "why_now": "New catalyst",
                     "top_catalyst": "Revenue guide raised",
@@ -544,6 +553,10 @@ def test_research_shortlist_prioritizes_review_and_research_rows() -> None:
     assert [row["ticker"] for row in rows["rows"]] == ["CCC", "BBB", "AAA"]
     assert rows["rows"][0]["priority"] == "manual_review"
     assert rows["rows"][1]["priority"] == "research_now"
+    assert rows["rows"][1]["priced_in_status"] == "bullish_not_priced_in"
+    assert rows["rows"][1]["why_now"] == (
+        "Bullish emotion 77 is ahead of price reaction 28 by 49 points."
+    )
     assert rows["rows"][2]["audit"]["provider_license_policy"]["license_tags"] == [
         "local-csv-fixture"
     ]

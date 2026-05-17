@@ -1,10 +1,30 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-17 23:22:00 +08:00
+Last updated: 2026-05-18 00:45:00 +08:00
 
 ## Current Objective
 
-Keep polishing MarketRadar until it becomes genuinely useful to the user, not just technically complete. The immediate operational goal is to get the product out of local/demo-only mode without forcing the user to buy or obtain a Polygon/Massive API key. The user has now added a key and switched the local market provider to Polygon, but Polygon must remain optional for future setup paths.
+The corrected product goal is: **scan the whole available market to find stocks
+where market emotion has not fully priced into the stock price yet**. Everything
+else is supporting infrastructure for that goal.
+
+The dashboard is still important, but it is not the product by itself. It must
+act as the human control surface for a broad-market priced-in mismatch scanner:
+
+- First prove whether the latest run is actually broad-market, by showing active
+  universe size, requested/scanned securities, fresh bar coverage, and candidate
+  count.
+- Then rank the useful subset by "emotion versus price reaction": emotion score,
+  reaction score, emotion-minus-reaction gap, priced-in status, reason, and next
+  action.
+- Never make a tiny fixture universe look like a full-market scan.
+- Never hide provider/broker/OpenAI calls behind navigation, filtering, or row
+  opening. Browsing remains zero-call.
+
+The previous near-term operational work was to get out of local/demo-only mode
+without forcing a Polygon/Massive API key. The user has now added a key and
+switched the local market provider to Polygon, but Polygon must remain optional
+for future setup paths.
 
 The user confirmed:
 
@@ -79,9 +99,11 @@ Final status after restart:
 
 Keep the usefulness bar explicit and small:
 
-- **Research-useful** means a capped run completes the required radar path, uses
-  clearly labeled sources, surfaces candidate research/briefs, shows the single
-  next operator action, and makes no hidden external calls.
+- **Research-useful** means a capped run scans the active local universe, proves
+  how much of that universe was actually covered, computes priced-in mismatch
+  fields for candidates, uses clearly labeled sources, surfaces candidate
+  research/briefs, shows the single next operator action, and makes no hidden
+  external calls.
 - **Decision-useful** means research-useful plus fresh market bars for the run
   `as_of`, live catalyst input, no blocking run/readiness rows, a Decision Card
   for a manual-review candidate, fresh read-only portfolio context, and order
@@ -89,6 +111,46 @@ Keep the usefulness bar explicit and small:
 - **Not useful enough to act** includes stale bars, fixture/CSV market data that
   is older than the run date, a thin universe, missing live credentials, blocked
   run steps, or any unclear provider-call budget.
+
+The current active slice adds deterministic priced-in mismatch scoring directly
+to scan output. It does not add a new database table, new provider source, or new
+agent loop. It uses existing market reaction fields, local text/event/options
+scores, and portfolio/data-staleness gates. The intended metadata shape on each
+candidate is:
+
+- `priced_in.status`: `bullish_not_priced_in`, `bearish_not_priced_in`,
+  `fully_priced`, `overextended_hype`, `conflicted`, `stale`, `blocked`, or
+  `neutral`.
+- `priced_in.emotion_score`: source/event/text/options/theme strength.
+- `priced_in.reaction_score`: direction-aware price, relative strength, volume,
+  and extension reaction.
+- `priced_in.emotion_reaction_gap`: emotion minus reaction; positive means the
+  catalyst may not be fully priced.
+- `priced_in.priced_in_score`: rough percent priced, where low means underpriced
+  and high means fully/over-priced.
+- `priced_in.reason` and `priced_in.next_step`: the human-readable dashboard
+  explanation and operator move.
+
+Full-market scan boundary:
+
+- `catalyst-radar scan --as-of <date>` scans every active security in the local
+  database, excluding explicit benchmark ETFs, when no `--universe` filter is
+  provided.
+- `catalyst-radar scan --as-of <date> --universe <name>` scans only that named
+  universe snapshot.
+- Polygon/Massive grouped-daily ingest adds bars, not securities. If the active
+  local universe is tiny, run ticker-reference ingest first:
+
+```powershell
+catalyst-radar ingest-polygon tickers
+catalyst-radar ingest-polygon grouped-daily --date <LATEST_TRADING_DATE>
+catalyst-radar build-universe --as-of <LATEST_TRADING_DATE>
+catalyst-radar scan --as-of <LATEST_TRADING_DATE>
+```
+
+The TUI overview now needs to make this explicit: first row is scan coverage,
+then the priced-in candidate queue. If active security count is tiny, the first
+row should say "Universe too small" instead of implying full-market insight.
 
 Current state is **research-only**. The required run path and SEC catalyst path
 work, but daily bars are still local CSV and stale (`latest_bar=2026-05-08` vs.

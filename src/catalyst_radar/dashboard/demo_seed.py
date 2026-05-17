@@ -327,6 +327,52 @@ def _signal_feature_row(
                     "top_event_source_url": event_url,
                     "top_event_source_quality": 1.0,
                     "top_event_materiality": 0.9,
+                    "event_support_score": 90.0,
+                    "local_narrative_score": 82.0,
+                    "sentiment_score": 54.0,
+                    "novelty_score": 70.0,
+                    "source_quality_score": 100.0,
+                    "theme_match_score": 68.0,
+                    "options_flow_score": 0.0,
+                    "theme_velocity_score": 58.0,
+                    "priced_in_status": "bullish_not_priced_in",
+                    "priced_in_direction": "bullish",
+                    "priced_in_score": 36.36,
+                    "emotion_score": 77.0,
+                    "reaction_score": 28.0,
+                    "emotion_reaction_gap": 49.0,
+                    "priced_in_reason": (
+                        "Bullish emotion 77 is ahead of price reaction 28 by 49 points."
+                    ),
+                    "priced_in_next_step": (
+                        "Open the candidate, verify source links, then refresh or build "
+                        "the Decision Card."
+                    ),
+                    "priced_in": {
+                        "schema_version": "priced-in-v1",
+                        "status": "bullish_not_priced_in",
+                        "direction": "bullish",
+                        "emotion_score": 77.0,
+                        "reaction_score": 28.0,
+                        "opposite_reaction_score": 0.0,
+                        "emotion_reaction_gap": 49.0,
+                        "priced_in_score": 36.36,
+                        "reason": (
+                            "Bullish emotion 77 is ahead of price reaction 28 by 49 points."
+                        ),
+                        "next_step": (
+                            "Open the candidate, verify source links, then refresh or build "
+                            "the Decision Card."
+                        ),
+                        "evidence": {
+                            "event_support_score": 90.0,
+                            "local_narrative_score": 82.0,
+                            "sentiment_score": 54.0,
+                            "ret_5d_pct": 3.2,
+                            "ret_20d_pct": 6.8,
+                            "data_stale": False,
+                        },
+                    },
                     "portfolio_impact": {
                         "proposed_notional": 2500.0,
                         "max_loss": 350.0,

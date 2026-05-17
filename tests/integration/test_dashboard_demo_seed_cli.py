@@ -168,11 +168,13 @@ def test_dashboard_snapshot_cli_outputs_human_readable_zero_call_summary(
         "Page: overview",
         "DB:",
         "Ticker: ACME",
-        "Market insights - select a row to act",
+        "Full-market priced-in queue - select a row to act",
+        "UNIVERSE",
         "ACME",
-        "Warning candidate",
-        "score",
-        "Rows are local insight cards",
+        "Bullish not priced",
+        "emotion",
+        "reaction",
+        "candidate rows are priced-in mismatch cards",
         "External calls made: 0",
     ):
         assert expected in output.out
@@ -347,10 +349,11 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert app.page == "overview"
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert "INSIGHTS" in frame
-            assert "Market insights - select a row to act" in frame
+            assert "Full-market priced-in queue - select a row to act" in frame
+            assert "UNIVERSE" in frame
             assert "ACME" in frame
-            assert "Warning candidate" in frame
-            assert "Rows are local insight cards" in frame
+            assert "Bullish not priced" in frame
+            assert "candidate rows are priced-in mismatch cards" in frame
             assert "Candidates [1]" in frame
             assert "FRESH BARS" in frame
             assert "No - research only" in frame
@@ -364,6 +367,7 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert "Up/Down on sidebar" in frame
 
             app.query_one("#data-table").focus()
+            await pilot.press("down")
             await pilot.press("enter")
             await pilot.pause()
             assert app.page == "candidate:ACME"
