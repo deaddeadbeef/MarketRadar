@@ -119,7 +119,9 @@ ops health, telemetry, and telemetry coverage. The readiness payload includes
 scripts. The sitrep also prints active market-bar coverage so a manual CSV
 refresh can be verified after import, including how many active tickers have a
 bar on the latest daily-bar date and which active tickers are still missing
-latest bars. It makes 0 Polygon, SEC, Schwab, or OpenAI calls.
+latest bars. It also reports coverage for the latest run's `as_of` date, which
+is the date the manual template must satisfy before the run can become
+decision-useful. It makes 0 Polygon, SEC, Schwab, or OpenAI calls.
 
 If the sitrep reports stale CSV market bars, import a manually prepared daily
 bar CSV with the same schema as `data/sample/daily_bars.csv`:

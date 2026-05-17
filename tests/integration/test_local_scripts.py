@@ -187,6 +187,9 @@ def test_market_radar_status_script_is_zero_external_call_sitrep() -> None:
     assert "Market freshness:" in text
     assert "latest_bar=" in text
     assert "run_as_of=" in text
+    assert "Market as-of coverage:" in text
+    assert "with_as_of_bar=" in text
+    assert "missing as-of tickers:" in text
     assert "Market coverage:" in text
     assert "active=" in text
     assert "with_bars=" in text

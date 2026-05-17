@@ -4564,6 +4564,8 @@ def test_radar_discovery_snapshot_flags_stale_bars_and_empty_packets(
 ) -> None:
     engine = _engine(tmp_path)
     _insert_dashboard_fixture(engine)
+    _insert_active_security_for_call_plan(engine, "AAPL", cik="0000320193")
+    _insert_active_security_for_call_plan(engine, "MSFT", cik="0000789019")
     metadata = {
         "as_of": "2026-05-10",
         "decision_available_at": AVAILABLE_AT.isoformat(),
@@ -4636,9 +4638,14 @@ def test_radar_discovery_snapshot_flags_stale_bars_and_empty_packets(
     assert snapshot["yield"]["candidate_packets"] == 0
     assert snapshot["top_discoveries"] == []
     assert snapshot["freshness"]["latest_bars_older_than_as_of"] is True
+    assert snapshot["freshness"]["active_security_with_as_of_bar_count"] == 0
+    assert snapshot["freshness"]["missing_as_of_daily_bar_count"] == 2
+    assert snapshot["freshness"]["missing_as_of_daily_bar_tickers"] == ["AAPL", "MSFT"]
     blocker_codes = {str(row["code"]) for row in snapshot["blockers"]}
     assert blocker_codes == {"stale_daily_bars", "no_candidate_packets"}
     stale_bars = next(row for row in snapshot["blockers"] if row["code"] == "stale_daily_bars")
+    assert "As-of coverage: 0/2 active securities" in str(stale_bars["finding"])
+    assert "Missing: AAPL, MSFT" in str(stale_bars["finding"])
     assert "scripts\\refresh-csv-market-data.ps1" in str(stale_bars["next_action"])
     assert "-ExpectedAsOf 2026-05-10" in str(stale_bars["next_action"])
 
