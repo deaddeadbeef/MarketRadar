@@ -175,7 +175,16 @@ def test_market_radar_status_script_is_zero_external_call_sitrep() -> None:
     assert "/api/ops/telemetry/coverage" in text
     assert "operator_next_step" in text
     assert "readiness_checklist" in text
+    assert "market_radar_usefulness" in text
+    assert "discovery_snapshot" in text
     assert "Operator next:" in text
+    assert "Usefulness:" in text
+    assert "safe_decision=" in text
+    assert "ready_layers=" in text
+    assert "useful means:" in text
+    assert "Market freshness:" in text
+    assert "latest_bar=" in text
+    assert "run_as_of=" in text
     assert "Portfolio context:" in text
     assert "Broker:" in text
     assert "access_token_active=" in text
