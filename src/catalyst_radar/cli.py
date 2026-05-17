@@ -351,7 +351,7 @@ def build_parser() -> argparse.ArgumentParser:
     dashboard_tui.add_argument("--alert-status")
     dashboard_tui.add_argument("--alert-route")
     dashboard_tui.add_argument("--telemetry-limit", type=int, default=8)
-    dashboard_tui.add_argument("--page", default="overview")
+    dashboard_tui.add_argument("--page", default="tutorial")
     dashboard_tui.add_argument("--once", action="store_true")
     dashboard_tui.add_argument("--no-clear", action="store_true")
 

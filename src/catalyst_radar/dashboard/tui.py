@@ -136,6 +136,10 @@ DASHBOARD_FEATURES: tuple[dict[str, str], ...] = (
 )
 
 PAGE_ALIASES: Mapping[str, str] = {
+    "0": "tutorial",
+    "learn": "tutorial",
+    "tut": "tutorial",
+    "tutorial": "tutorial",
     "1": "overview",
     "home": "overview",
     "o": "overview",
@@ -172,11 +176,12 @@ PAGE_ALIASES: Mapping[str, str] = {
 }
 
 NAVIGATION_TEXT = (
-    "1 Start | 2 Readiness | 3 Run | 4 Candidates | 5 Alerts | "
+    "0 Tutorial | 1 Start | 2 Readiness | 3 Run | 4 Candidates | 5 Alerts | "
     "6 IPO/S-1 | 7 Broker | 8 Ops | 9 Telemetry | features | help | q"
 )
 
 MODERN_PAGES: tuple[tuple[str, str, str], ...] = (
+    ("tutorial", "0", "Tutorial"),
     ("overview", "1", "Start"),
     ("readiness", "2", "Readiness"),
     ("run", "3", "Run"),
@@ -325,7 +330,7 @@ def run_dashboard_tui(
     config: AppConfig,
     dotenv_loaded: bool,
     filters: DashboardFilters,
-    initial_page: str = "overview",
+    initial_page: str = "tutorial",
     input_fn: Callable[[str], str] = input,
     output_fn: Callable[[str], object] = print,
     clear_screen: bool = True,
@@ -362,7 +367,7 @@ def _run_dashboard_tui_legacy(
     config: AppConfig,
     dotenv_loaded: bool,
     filters: DashboardFilters,
-    initial_page: str = "overview",
+    initial_page: str = "tutorial",
     input_fn: Callable[[str], str] = input,
     output_fn: Callable[[str], object] = print,
     clear_screen: bool = True,
@@ -586,15 +591,16 @@ class MarketRadarDashboardApp(App[int]):
     BINDINGS = [
         ("q", "quit", "Quit"),
         ("r", "refresh", "Refresh"),
-        ("1", "go('overview')", "Start"),
-        ("2", "go('readiness')", "Readiness"),
-        ("3", "go('run')", "Run"),
-        ("4", "go('candidates')", "Candidates"),
-        ("5", "go('alerts')", "Alerts"),
-        ("6", "go('ipo')", "IPO/S-1"),
-        ("7", "go('broker')", "Broker"),
-        ("8", "go('ops')", "Ops"),
-        ("9", "go('telemetry')", "Telemetry"),
+        Binding("0", "go('tutorial')", "Tutorial", priority=True),
+        Binding("1", "go('overview')", "Start", priority=True),
+        Binding("2", "go('readiness')", "Readiness", priority=True),
+        Binding("3", "go('run')", "Run", priority=True),
+        Binding("4", "go('candidates')", "Candidates", priority=True),
+        Binding("5", "go('alerts')", "Alerts", priority=True),
+        Binding("6", "go('ipo')", "IPO/S-1", priority=True),
+        Binding("7", "go('broker')", "Broker", priority=True),
+        Binding("8", "go('ops')", "Ops", priority=True),
+        Binding("9", "go('telemetry')", "Telemetry", priority=True),
         ("f", "go('features')", "Features"),
         ("?", "go('help')", "Help"),
         Binding("ctrl+n", "next_page", "Next page", priority=True),
@@ -626,7 +632,9 @@ class MarketRadarDashboardApp(App[int]):
             with Vertical(id="sidebar"):
                 yield Static("MRDR // MARKET RADAR", classes="brand")
                 for page_key, shortcut, label in MODERN_PAGES:
-                    if page_key == "overview":
+                    if page_key == "tutorial":
+                        yield Static("LEARN", classes="side-section")
+                    elif page_key == "overview":
                         yield Static("CORE", classes="side-section")
                     elif page_key == "candidates":
                         yield Static("REVIEW", classes="side-section")
@@ -668,7 +676,10 @@ class MarketRadarDashboardApp(App[int]):
     def on_mount(self) -> None:
         self.reload_snapshot()
         self.refresh_view()
-        self.query_one("#command", Input).focus()
+        if self.page == "tutorial":
+            self.query_one("#nav-tutorial", FocusRow).focus()
+        else:
+            self.query_one("#command", Input).focus()
 
     def reload_snapshot(self) -> None:
         self.payload = dashboard_snapshot_payload(
@@ -843,12 +854,10 @@ class MarketRadarDashboardApp(App[int]):
 
     def _navigation_text(self) -> str:
         return (
-            "[bold #58a6ff]KEYS[/] 1-9/f/? jump | Ctrl+N/P page | "
+            "[bold #58a6ff]KEYS[/] 0 tutorial | 1 start | 2 readiness | 4 candidates | "
+            "Ctrl+N/P page\n"
+            "[bold #58a6ff]MOUSE[/] click sidebar or table rows | "
             "Tab focus | Up/Down on sidebar | Enter open | Esc command | q quit\n"
-            "[bold #58a6ff]MAP[/] "
-            "Core: 1 Start 2 Readiness 3 Run | "
-            "Review: 4 Candidates 5 Alerts 6 IPO | "
-            "Operate: 7 Broker 8 Ops 9 Telemetry"
         )
 
     def _response_text(self) -> str:
@@ -858,6 +867,7 @@ class MarketRadarDashboardApp(App[int]):
     def _action_text(self) -> str:
         page = self.page.split(":", 1)[0]
         page_action = {
+            "tutorial": "Follow the numbered rows. Press 1 when you are ready for the dashboard.",
             "overview": (
                 "Start with the highlighted questions. If Can I act? says No, "
                 "open Readiness or Candidates before running anything."
@@ -887,7 +897,41 @@ class MarketRadarDashboardApp(App[int]):
         next_step = _mapping(self.payload.get("operator_next_step"))
         next_action = next_step.get("action") or readiness.get("next_action")
         can_act = _decision_label(readiness)
-        page_title = "START HERE" if self.page.split(":", 1)[0] == "overview" else self.page.upper()
+        active_page = self.page.split(":", 1)[0]
+        page_title = (
+            "TUTORIAL"
+            if active_page == "tutorial"
+            else "START HERE"
+            if active_page == "overview"
+            else self.page.upper()
+        )
+
+        if active_page == "tutorial":
+            self.query_one("#hero", Static).update(
+                "\n".join(
+                    [
+                        "[bold #7ee787]MARKET RADAR[/] // [b]TUTORIAL[/b]",
+                        (
+                            "This walkthrough teaches the controls. "
+                            "It does not run providers, trade, or change data."
+                        ),
+                        "[bold #58a6ff]Do next[/] Read the rows below, then press 1 for Start.",
+                    ]
+                )
+            )
+            self.query_one("#metric-readiness", Static).update(
+                _metric_text("Step 1", "Learn controls", "mouse, keys, commands")
+            )
+            self.query_one("#metric-market", Static).update(
+                _metric_text("Step 2", "Open Start", "press 1")
+            )
+            self.query_one("#metric-calls", Static).update(
+                _metric_text("Safety", "0 calls", "tutorial is local")
+            )
+            self.query_one("#metric-broker", Static).update(
+                _metric_text("Orders", "Disabled", "no real trades")
+            )
+            return
 
         self.query_one("#hero", Static).update(
             "\n".join(
@@ -954,6 +998,18 @@ class MarketRadarDashboardApp(App[int]):
         next_action = next_step.get("action") or readiness.get("next_action") or "Open Readiness."
         usefulness = _mapping(readiness.get("market_radar_usefulness"))
         blocked_layers = usefulness.get("blocked_layers")
+        if page == "tutorial":
+            return "\n".join(
+                [
+                    "[bold #7ee787]TUTORIAL[/]  Do these in order. Nothing external runs here.",
+                    "[bold]1.[/] Press 1 or click Start to see whether Market Radar is usable.",
+                    "[bold]2.[/] Press 2 to see blockers. Press 4 to inspect candidate research.",
+                    (
+                        "[bold]3.[/] Press 3 only to review the run plan; "
+                        "type run execute only by intent."
+                    ),
+                ]
+            )
         if page == "overview":
             return "\n".join(
                 [
@@ -1078,6 +1134,8 @@ class MarketRadarDashboardApp(App[int]):
             return self._candidate_detail_model(page.split(":", 1)[1])
         if page.startswith("alert:"):
             return self._alert_detail_model(page.split(":", 1)[1])
+        if page == "tutorial":
+            return self._tutorial_model()
         if page == "overview":
             return self._overview_model()
         if page == "readiness":
@@ -1216,6 +1274,43 @@ class MarketRadarDashboardApp(App[int]):
         _, _, rows, _ = self._table_model()
         return rows
 
+    def _tutorial_model(
+        self,
+    ) -> tuple[str, Sequence[tuple[str, str, int]], list[Mapping[str, object]], str]:
+        rows = [
+            {
+                "step": "1",
+                "do": "Press 1 or click Start",
+                "result": "See the plain-language answer: can I act, why, and next click.",
+            },
+            {
+                "step": "2",
+                "do": "Press 2 or click Readiness",
+                "result": "See exactly what blocks a decision-useful workflow.",
+            },
+            {
+                "step": "3",
+                "do": "Press 4 or click Candidates",
+                "result": "Review companies. These are research rows, not trade signals.",
+            },
+            {
+                "step": "4",
+                "do": "Press 3 or click Run",
+                "result": "Review external-call budget before running anything.",
+            },
+            {
+                "step": "5",
+                "do": "Use the bottom command box",
+                "result": "Try ticker AAPL, refresh, help, or q. Esc focuses the box.",
+            },
+        ]
+        return (
+            "Tutorial - your first 90 seconds",
+            [("step", "Step", 6), ("do", "Do this", 34), ("result", "What happens", 96)],
+            rows,
+            "Safe rule: clicking, filtering, tutorial, and refresh make 0 provider calls.",
+        )
+
     def _overview_model(
         self,
     ) -> tuple[str, Sequence[tuple[str, str, int]], list[Mapping[str, object]], str]:
@@ -1328,7 +1423,11 @@ class MarketRadarDashboardApp(App[int]):
         rows = [
             {"command": "Click sidebar row", "meaning": "Switch pages with mouse support."},
             {"command": "Click candidate/alert row", "meaning": "Open the selected detail view."},
-            {"command": "1..9, f, ?", "meaning": "Keyboard page shortcuts."},
+            {"command": "0, 1..9, f, ?", "meaning": "Keyboard page shortcuts."},
+            {
+                "command": "tutorial / start",
+                "meaning": "Open the tutorial or the first dashboard page.",
+            },
             {"command": "ticker <SYMBOL|all>", "meaning": "Filter ticker-aware pages."},
             {"command": "run execute", "meaning": "Start one guarded capped radar cycle."},
             {
@@ -1356,13 +1455,15 @@ class MarketRadarDashboardApp(App[int]):
 def render_dashboard_tui(
     payload: Mapping[str, object],
     *,
-    page: str = "overview",
+    page: str = "tutorial",
     width: int | None = None,
 ) -> str:
     resolved_width = _resolve_width(width)
     page = _normalize_page(page)
     lines = _header_lines(payload, page, resolved_width)
-    if page == "overview":
+    if page == "tutorial":
+        lines.extend(_tutorial_lines(resolved_width))
+    elif page == "overview":
         lines.extend(_overview_lines(payload, resolved_width))
     elif page == "readiness":
         lines.extend(_readiness_lines(payload, resolved_width))
@@ -1807,6 +1908,60 @@ def _header_lines(
         ),
         NAVIGATION_TEXT,
     ]
+
+
+def _tutorial_lines(width: int) -> list[str]:
+    lines = [_rule("Tutorial - your first 90 seconds", width)]
+    lines.extend(
+        _table_lines(
+            [
+                {
+                    "step": "1",
+                    "do": "Press 1 / click Start",
+                    "result": "See whether Market Radar is usable and what to do next.",
+                },
+                {
+                    "step": "2",
+                    "do": "Press 2 / click Readiness",
+                    "result": "See blockers before trusting output.",
+                },
+                {
+                    "step": "3",
+                    "do": "Press 4 / click Candidates",
+                    "result": "Review company research rows.",
+                },
+                {
+                    "step": "4",
+                    "do": "Press 3 / click Run",
+                    "result": "Review the external-call plan before running anything.",
+                },
+                {
+                    "step": "5",
+                    "do": "Use command box",
+                    "result": "Try ticker AAPL, refresh, help, or q.",
+                },
+            ],
+            [
+                ("step", "Step", 6),
+                ("do", "Do this", 28),
+                ("result", "What happens", 80),
+            ],
+            width=width,
+            limit=8,
+        )
+    )
+    lines.append("")
+    lines.extend(
+        _kv_lines(
+            (
+                ("Safe rule", "Tutorial, clicking, filtering, and refresh make 0 provider calls."),
+                ("Orders", "Real order submission is disabled."),
+                ("Exit", "Press q."),
+            ),
+            width=width,
+        )
+    )
+    return lines
 
 
 def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
