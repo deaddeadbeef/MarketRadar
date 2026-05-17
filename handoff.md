@@ -1,6 +1,6 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-17 10:42:00 +08:00
+Last updated: 2026-05-17 10:40:36 +08:00
 
 ## Current Objective
 
@@ -71,7 +71,8 @@ The dashboard/API readiness wording now surfaces the same command from
 `operator_next_step`, stale market-data blockers, and candidate readiness gates
 instead of leaving the user with a generic "refresh CSV bars" instruction.
 The terminal sitrep also prints a template command that writes to ignored
-`data\local\manual-bars-<date>.csv`.
+`data\local\manual-bars-<date>.csv`, plus active market-bar coverage from
+`/api/ops/health`.
 
 ## Current Repository State
 
