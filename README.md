@@ -114,6 +114,26 @@ catalyst-radar dashboard-tui
 catalyst-radar dashboard-tui --once --page features
 ```
 
+For a one-command PowerShell launcher, install the profile alias:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/install-dashboard-profile.ps1 -ProfilePath $PROFILE
+```
+
+Then open a new PowerShell session and run:
+
+```powershell
+radar
+radar --once --page overview
+```
+
+The alias calls `scripts/run-dashboard-tui.ps1`. That script keeps setup local
+to this repo: it creates `.venv` if needed, installs the editable
+`catalyst-radar` command when `pyproject.toml` changes, fast-forwards clean
+`main` to `origin/main`, and then starts the TUI. It does not set `PYTHONPATH`
+or mutate the caller's shell environment. Use `radar --no-update` to skip the
+Git update step and `radar --force-install` to refresh the editable install.
+
 The TUI is the operational replacement surface for the web dashboard. It loads
 the same command-center data helpers and provides pages for overview,
 readiness, run/call-plan, candidates, alerts, IPO/S-1, broker, ops, telemetry,

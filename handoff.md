@@ -1,6 +1,6 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-17 12:34:30 +08:00
+Last updated: 2026-05-17 13:15:45 +08:00
 
 ## Current Objective
 
@@ -137,6 +137,23 @@ Navigation/filtering/export are zero provider-call. The TUI also supports
 guarded manual radar runs (`run execute` after viewing the call plan), local
 opportunity actions, trigger creation/evaluation, blocked order-preview tickets,
 and alert feedback. Real order submission remains disabled.
+
+The current local bootstrap slice adds a repo-owned PowerShell launcher:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install-dashboard-profile.ps1 -ProfilePath $PROFILE
+radar
+```
+
+`scripts\install-dashboard-profile.ps1` writes a small idempotent block to the
+user's PowerShell profile. The profile function calls
+`scripts\run-dashboard-tui.ps1`, which creates `.venv` if needed, installs the
+editable `catalyst-radar` command when `pyproject.toml` changes, fast-forwards
+clean `main` to `origin/main`, and runs `dashboard-tui` without setting
+`PYTHONPATH` or mutating the caller's shell environment. The user can pass TUI
+arguments directly, for example `radar --once --page overview`. Use
+`radar --no-update` to skip Git update and `radar --force-install` to refresh
+the editable install.
 
 ## Current Repository State
 
