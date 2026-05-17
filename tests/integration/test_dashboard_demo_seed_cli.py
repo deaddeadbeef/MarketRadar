@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import timedelta
 from pathlib import Path
@@ -19,7 +20,11 @@ from catalyst_radar.dashboard.data import (
     radar_readiness_payload,
 )
 from catalyst_radar.dashboard.demo_seed import DEMO_AVAILABLE_AT
-from catalyst_radar.dashboard.tui import DashboardFilters, run_dashboard_tui
+from catalyst_radar.dashboard.tui import (
+    DashboardFilters,
+    MarketRadarDashboardApp,
+    run_dashboard_tui,
+)
 
 
 def test_seed_dashboard_demo_populates_command_center_layers(
@@ -229,3 +234,37 @@ def test_dashboard_tui_supports_interactive_navigation_and_filters(
     assert "Evaluated 1 trigger(s)" in rendered
     assert "Saved blocked order ticket: ACME BUY submission_allowed=False" in rendered
     assert "Saved alert feedback: demo-alert-acme ACME acted" in rendered
+
+
+def test_modern_dashboard_tui_supports_mouse_navigation(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["seed-dashboard-demo"]) == 0
+    capsys.readouterr()
+
+    engine = create_engine(database_url, future=True)
+    app = MarketRadarDashboardApp(
+        engine=engine,
+        config=AppConfig.from_env(),
+        dotenv_loaded=False,
+        filters=DashboardFilters(),
+        initial_page="overview",
+    )
+
+    async def run_app() -> None:
+        async with app.run_test(size=(140, 42)) as pilot:
+            await pilot.pause()
+            assert app.page == "overview"
+            assert await pilot.click("#nav-candidates")
+            await pilot.pause()
+            assert app.page == "candidates"
+            assert await pilot.click("#nav-help")
+            await pilot.pause()
+            assert app.page == "help"
+
+    asyncio.run(run_app())
