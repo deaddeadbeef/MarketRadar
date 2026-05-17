@@ -137,8 +137,10 @@ DASHBOARD_FEATURES: tuple[dict[str, str], ...] = (
 
 PAGE_ALIASES: Mapping[str, str] = {
     "1": "overview",
+    "home": "overview",
     "o": "overview",
     "overview": "overview",
+    "start": "overview",
     "2": "readiness",
     "ready": "readiness",
     "readiness": "readiness",
@@ -170,12 +172,12 @@ PAGE_ALIASES: Mapping[str, str] = {
 }
 
 NAVIGATION_TEXT = (
-    "1 Overview | 2 Readiness | 3 Run | 4 Candidates | 5 Alerts | "
+    "1 Start | 2 Readiness | 3 Run | 4 Candidates | 5 Alerts | "
     "6 IPO/S-1 | 7 Broker | 8 Ops | 9 Telemetry | features | help | q"
 )
 
 MODERN_PAGES: tuple[tuple[str, str, str], ...] = (
-    ("overview", "1", "Overview"),
+    ("overview", "1", "Start"),
     ("readiness", "2", "Readiness"),
     ("run", "3", "Run"),
     ("candidates", "4", "Candidates"),
@@ -523,10 +525,10 @@ class MarketRadarDashboardApp(App[int]):
         padding: 0 1;
     }
 
-    #message {
-        height: 2;
-        max-height: 2;
-        background: #0d1721;
+    #guide {
+        height: 8;
+        border: round #315473;
+        background: #0a151f;
         color: #d7dde8;
         padding: 0 1;
         margin-bottom: 0;
@@ -584,7 +586,7 @@ class MarketRadarDashboardApp(App[int]):
     BINDINGS = [
         ("q", "quit", "Quit"),
         ("r", "refresh", "Refresh"),
-        ("1", "go('overview')", "Overview"),
+        ("1", "go('overview')", "Start"),
         ("2", "go('readiness')", "Readiness"),
         ("3", "go('run')", "Run"),
         ("4", "go('candidates')", "Candidates"),
@@ -648,6 +650,7 @@ class MarketRadarDashboardApp(App[int]):
                     yield Static(id="metric-market", classes="metric")
                     yield Static(id="metric-calls", classes="metric")
                     yield Static(id="metric-broker", classes="metric")
+                yield Static(id="guide")
                 yield Static(id="section-title")
                 yield DataTable(id="data-table", cursor_type="row")
                 yield Static(id="detail")
@@ -656,7 +659,7 @@ class MarketRadarDashboardApp(App[int]):
                     yield Static(id="operator-response")
                 yield Input(
                     placeholder=(
-                        "ACTION command: ticker AAPL, open 1, run execute, help, q"
+                        "Type a command or click a row. Try: 2, 4, run, refresh, help, q"
                     ),
                     id="command",
                 )
@@ -680,6 +683,7 @@ class MarketRadarDashboardApp(App[int]):
         self._refresh_header()
         self._refresh_table()
         self.query_one("#nav-helpbar", Static).update(self._navigation_text())
+        self.query_one("#guide", Static).update(self._guide_text())
         self.query_one("#operator-action", Static).update(self._action_text())
         self.query_one("#operator-response", Static).update(self._response_text())
 
@@ -842,7 +846,7 @@ class MarketRadarDashboardApp(App[int]):
             "[bold #58a6ff]KEYS[/] 1-9/f/? jump | Ctrl+N/P page | "
             "Tab focus | Up/Down on sidebar | Enter open | Esc command | q quit\n"
             "[bold #58a6ff]MAP[/] "
-            "Core: 1 Overview 2 Readiness 3 Run | "
+            "Core: 1 Start 2 Readiness 3 Run | "
             "Review: 4 Candidates 5 Alerts 6 IPO | "
             "Operate: 7 Broker 8 Ops 9 Telemetry"
         )
@@ -854,6 +858,10 @@ class MarketRadarDashboardApp(App[int]):
     def _action_text(self) -> str:
         page = self.page.split(":", 1)[0]
         page_action = {
+            "overview": (
+                "Start with the highlighted questions. If Can I act? says No, "
+                "open Readiness or Candidates before running anything."
+            ),
             "run": "Review call budget, then type run execute only if intended.",
             "candidates": "Click or focus a row and press Enter to open a candidate.",
             "alerts": "Click or focus a row and press Enter to open an alert.",
@@ -878,56 +886,166 @@ class MarketRadarDashboardApp(App[int]):
         controls = _mapping(self.payload.get("controls"))
         next_step = _mapping(self.payload.get("operator_next_step"))
         next_action = next_step.get("action") or readiness.get("next_action")
+        can_act = _decision_label(readiness)
+        page_title = "START HERE" if self.page.split(":", 1)[0] == "overview" else self.page.upper()
 
         self.query_one("#hero", Static).update(
             "\n".join(
                 [
                     (
-                        f"[bold #7ee787]MRDR[/] // [b]{self.page.upper()}[/b]  "
-                        f"[dim]mode={readiness.get('status') or 'unknown'} "
-                        f"safe={readiness.get('safe_to_make_investment_decision')} "
-                        f"calls={self.payload.get('external_calls_made', 0)}[/dim]"
+                        f"[bold #7ee787]MARKET RADAR[/] // [b]{page_title}[/b]  "
+                        f"[dim]{readiness.get('status') or 'unknown'} | "
+                        f"{can_act} | "
+                        f"{self.payload.get('external_calls_made', 0)} calls while viewing[/dim]"
                     ),
                     (
+                        f"[bold]Can I act?[/] {can_act}. "
                         f"{readiness.get('headline') or 'No readiness headline.'} "
                         f"[dim]Build {(_nested(runtime, 'build', 'commit') or 'n/a')} | "
                         f"Ticker {controls.get('ticker') or 'all'}[/dim]"
                     ),
-                    f"[bold #58a6ff]NEXT[/] {next_action or 'No operator action.'}",
+                    f"[bold #58a6ff]Do next[/] {next_action or 'No operator action.'}",
                 ]
             )
         )
         self.query_one("#metric-readiness", Static).update(
             _metric_text(
-                "Readiness",
+                "Can I act?",
+                can_act,
                 readiness.get("status"),
-                f"Decision safe: {readiness.get('safe_to_make_investment_decision')}",
             )
         )
         self.query_one("#metric-market", Static).update(
             _metric_text(
-                "Market bars",
+                "Fresh bars",
                 database.get("latest_daily_bar_date") or freshness.get("latest_daily_bar_date"),
                 (
-                    f"latest coverage "
+                    f"latest "
                     f"{database.get('active_security_with_latest_daily_bar_count')}/"
-                    f"{database.get('active_security_count')}"
+                    f"{database.get('active_security_count')}; run "
+                    f"{freshness.get('active_security_with_as_of_bar_count')}/"
+                    f"{freshness.get('active_security_count')}"
                 ),
             )
         )
         self.query_one("#metric-calls", Static).update(
             _metric_text(
-                "Call plan",
-                call_plan.get("status"),
-                f"max external {call_plan.get('max_external_call_count')}",
+                "Run calls",
+                f"{call_plan.get('max_external_call_count')} max",
+                "0 while browsing",
             )
         )
         self.query_one("#metric-broker", Static).update(
             _metric_text(
-                "Broker",
-                broker.get("connection_status") or "n/a",
-                "orders disabled",
+                "Orders",
+                "Disabled",
+                f"broker {broker.get('connection_status') or 'n/a'}",
             )
+        )
+
+    def _guide_text(self) -> str:
+        page = self.page.split(":", 1)[0]
+        readiness = _mapping(self.payload.get("readiness"))
+        candidates = _mapping(self.payload.get("candidates"))
+        alerts = _mapping(self.payload.get("alerts"))
+        call_plan = _mapping(self.payload.get("call_plan"))
+        next_step = _mapping(self.payload.get("operator_next_step"))
+        can_act = _decision_label(readiness)
+        next_action = next_step.get("action") or readiness.get("next_action") or "Open Readiness."
+        usefulness = _mapping(readiness.get("market_radar_usefulness"))
+        blocked_layers = usefulness.get("blocked_layers")
+        if page == "overview":
+            return "\n".join(
+                [
+                    "[bold #7ee787]START HERE[/]  This is a control desk, not investment advice.",
+                    f"[bold]1. Can I act?[/] {can_act}.",
+                    (
+                        f"[bold]2. Why?[/] {blocked_layers or 0} useful layer(s) blocked. "
+                        "Readiness lists each blocker."
+                    ),
+                    (
+                        "[bold]3. Best next click:[/] "
+                        "2 Readiness for blockers, 4 Candidates for research, 3 Run for call plan."
+                    ),
+                ]
+            )
+        if page == "readiness":
+            return "\n".join(
+                [
+                    "[bold #7ee787]USE THIS PAGE[/] Clear blockers before trusting output.",
+                    f"[bold]Current answer:[/] {can_act}.",
+                    f"[bold]Look for:[/] blocked or stale rows. [bold]Do next:[/] {next_action}",
+                ]
+            )
+        if page == "run":
+            return "\n".join(
+                [
+                    "[bold #7ee787]USE THIS PAGE[/] A run may call external providers.",
+                    (
+                        f"[bold]Budget:[/] max {call_plan.get('max_external_call_count')} calls. "
+                        f"[bold]Status:[/] {call_plan.get('status') or 'unknown'}."
+                    ),
+                    "[bold]Do next:[/] inspect rows first; type run execute only when you mean it.",
+                ]
+            )
+        if page == "candidates":
+            return "\n".join(
+                [
+                    "[bold #7ee787]USE THIS PAGE[/] Review companies, not trade signals.",
+                    (
+                        f"[bold]Rows:[/] {candidates.get('count') or 0}. "
+                        "Click a ticker row or press Enter."
+                    ),
+                    (
+                        "[bold]Do next:[/] open one candidate, then save "
+                        "watch/ready/dismiss from Broker if useful."
+                    ),
+                ]
+            )
+        if page == "alerts":
+            return "\n".join(
+                [
+                    "[bold #7ee787]USE THIS PAGE[/] Judge whether alert output is useful or noisy.",
+                    (
+                        f"[bold]Rows:[/] {alerts.get('count') or 0}. "
+                        "Click an alert row or press Enter."
+                    ),
+                    "[bold]Do next:[/] use feedback <#|id> useful|noisy|acted [notes].",
+                ]
+            )
+        if page == "broker":
+            return "\n".join(
+                [
+                    "[bold #7ee787]USE THIS PAGE[/] Save local review artifacts only.",
+                    "[bold]Safety:[/] real order submission is disabled.",
+                    "[bold]Do next:[/] action <ticker> watch|ready|simulate_entry|dismiss.",
+                ]
+            )
+        if page == "ops":
+            return "\n".join(
+                [
+                    "[bold #7ee787]USE THIS PAGE[/] Diagnose stale or broken data.",
+                    "[bold]Look for:[/] unhealthy providers, stale market bars, database gaps.",
+                    "[bold]Do next:[/] refresh after fixing data, then return to Start.",
+                ]
+            )
+        if page == "help":
+            return "\n".join(
+                [
+                    "[bold #7ee787]USE THIS PAGE[/] Command reference.",
+                    (
+                        "[bold]Click:[/] sidebar rows to move. "
+                        "[bold]Type:[/] commands in the bottom box."
+                    ),
+                    "[bold]Do next:[/] Esc focuses the command box; q quits.",
+                ]
+            )
+        return "\n".join(
+            [
+                "[bold #7ee787]USE THIS PAGE[/] Inspect this evidence before acting elsewhere.",
+                "[bold]Do next:[/] click rows when available, or return to Start with 1.",
+                "[bold]Reminder:[/] navigation and filtering make 0 provider calls.",
+            ]
         )
 
     def _refresh_table(self) -> None:
@@ -1107,49 +1225,71 @@ class MarketRadarDashboardApp(App[int]):
         freshness = _mapping(_mapping(readiness.get("discovery_snapshot")).get("freshness"))
         database = _mapping(_mapping(self.payload.get("ops_health")).get("database"))
         call_plan = _mapping(self.payload.get("call_plan"))
-        rows = [
-            {
-                "metric": "Readiness",
-                "value": readiness.get("headline"),
-                "detail": readiness.get("next_action"),
-            },
-            {
-                "metric": "Usefulness",
-                "value": usefulness.get("headline"),
-                "detail": (
-                    f"layers {usefulness.get('ready_layers')}/"
-                    f"{usefulness.get('total_layers')}"
-                ),
-            },
-            {
-                "metric": "Latest run",
-                "value": latest_run.get("status"),
-                "detail": (
-                    f"required {latest_run.get('required_completed_count')}/"
-                    f"{latest_run.get('required_step_count')}"
-                ),
-            },
-            {
-                "metric": "Market freshness",
-                "value": database.get("latest_daily_bar_date"),
-                "detail": (
-                    f"run as-of {freshness.get('active_security_with_as_of_bar_count')}/"
-                    f"{freshness.get('active_security_count')}"
-                ),
-            },
-            {
-                "metric": "Call plan",
-                "value": call_plan.get("status"),
-                "detail": f"max external {call_plan.get('max_external_call_count')}",
-            },
-        ]
+        can_act = _decision_label(readiness)
+        next_action = readiness.get("next_action") or "Open Readiness."
         counts = _mapping(self.payload.get("candidates")).get("count") or 0
         alerts = _mapping(self.payload.get("alerts")).get("count") or 0
+        rows = [
+            {
+                "question": "Can I act on this?",
+                "answer": can_act,
+                "do_this": (
+                    "Use it for research only."
+                    if readiness.get("safe_to_make_investment_decision") is not True
+                    else "Manual review is still required before any action."
+                ),
+            },
+            {
+                "question": "Why not?",
+                "answer": readiness.get("headline") or usefulness.get("headline"),
+                "do_this": next_action,
+            },
+            {
+                "question": "What should I click first?",
+                "answer": "Readiness or Candidates",
+                "do_this": f"Press 2 for blockers; press 4 to review {counts} candidate(s).",
+            },
+            {
+                "question": "What changed recently?",
+                "answer": (
+                    f"Run {latest_run.get('status') or 'unknown'}; "
+                    f"bars {database.get('latest_daily_bar_date') or 'n/a'}"
+                ),
+                "do_this": (
+                    f"Run coverage {freshness.get('active_security_with_as_of_bar_count')}/"
+                    f"{freshness.get('active_security_count')}; use Ops if this looks stale."
+                ),
+            },
+            {
+                "question": "Will this spend calls?",
+                "answer": "Not while browsing",
+                "do_this": (
+                    f"Run page shows: {call_plan.get('status') or 'unknown'}, "
+                    f"max {call_plan.get('max_external_call_count')} external calls."
+                ),
+            },
+            {
+                "question": "What else needs review?",
+                "answer": (
+                    f"{alerts} alert(s); "
+                    f"{usefulness.get('ready_layers')}/"
+                    f"{usefulness.get('total_layers')} layers ready"
+                ),
+                "do_this": "Press 5 for alerts or ? for the command reference.",
+            },
+        ]
         return (
-            "Overview",
-            [("metric", "Metric", 22), ("value", "Value", 48), ("detail", "Detail", 70)],
+            "Start here - answer these in order",
+            [
+                ("question", "Question", 28),
+                ("answer", "Answer", 52),
+                ("do_this", "Do this", 60),
+            ],
             rows,
-            f"Rows: candidates={counts}; alerts={alerts}; external calls while rendering=0.",
+            (
+                "Beginner path: 2 Readiness -> 4 Candidates -> 3 Run plan. "
+                "Browsing and filtering make 0 provider calls."
+            ),
         )
 
     def _candidate_detail_model(
@@ -2275,6 +2415,15 @@ def _metric_text(title: str, value: object, detail: object) -> str:
         f"[dim]{title.upper()}[/dim] [bold #7ee787]{_text(value)}[/]\n"
         f"[dim]{_text(detail)}[/dim]"
     )
+
+
+def _decision_label(readiness: Mapping[str, object]) -> str:
+    if readiness.get("safe_to_make_investment_decision") is True:
+        return "Yes, after manual review"
+    status = str(readiness.get("status") or "").strip().replace("_", " ")
+    if status:
+        return f"No - {status}"
+    return "No - not decision ready"
 
 
 def _ops_detail(payload: Mapping[str, object]) -> str:

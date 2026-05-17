@@ -137,17 +137,19 @@ Git update step and `radar --force-install` to refresh the editable install.
 The TUI is the operational replacement surface for the web dashboard. It loads
 the same command-center data helpers and provides pages for overview,
 readiness, run/call-plan, candidates, alerts, IPO/S-1, broker, ops, telemetry,
-themes, validation, costs, and current feature inventory. Inside the TUI, the
-left sidebar is the primary navigation: click a row, press a page number, use
-`Ctrl+N` / `Ctrl+P`, or focus the sidebar and use `Up` / `Down` plus `Enter`.
-The compact `KEYS` / `MAP` guide keeps shortcuts visible without adding a
-second navigation system. Candidate and alert rows are mouse-selectable in
-Windows Terminal. The `NEXT ACTION` card shows the useful operator move for the
-current page; the `LAST RESPONSE` card shows what the dashboard just did. Use
-`ticker <SYMBOL|all>` and `available-at <ISO|latest>` to filter, `json` to
-print the redacted machine-readable snapshot, `refresh` to reload the local
-database, and `q` to quit. It makes 0 Polygon, SEC, Schwab, or OpenAI calls
-while rendering, clicking, filtering, or navigating. From the run page, `run`
+themes, validation, costs, and current feature inventory. The first page is a
+`START HERE` guide that answers three beginner questions: can I act on this,
+why or why not, and what should I click next. Inside the TUI, the left sidebar
+is the primary navigation: click a row, press a page number, use `Ctrl+N` /
+`Ctrl+P`, or focus the sidebar and use `Up` / `Down` plus `Enter`. The compact
+`KEYS` / `MAP` guide keeps shortcuts visible without adding a second navigation
+system. Candidate and alert rows are mouse-selectable in Windows Terminal. The
+`NEXT ACTION` card shows the useful operator move for the current page; the
+`LAST RESPONSE` card shows what the dashboard just did. Use `ticker
+<SYMBOL|all>` and `available-at <ISO|latest>` to filter, `json` to print the
+redacted machine-readable snapshot, `refresh` to reload the local database,
+and `q` to quit. It makes 0 Polygon, SEC, Schwab, or OpenAI calls while
+rendering, clicking, filtering, or navigating. From the run page, `run`
 explains the guarded execution path and `run execute` starts one capped
 scheduler cycle after the call plan is visible.
 The broker page also supports local operator writes that do not submit real
