@@ -8,6 +8,9 @@ from datetime import UTC, date, datetime, timedelta
 from uuid import uuid4
 
 from sqlalchemy.engine import Engine
+from textual.app import App, ComposeResult
+from textual.containers import Horizontal, Vertical
+from textual.widgets import Button, DataTable, Footer, Header, Input, Static
 
 from catalyst_radar.brokers.interactive import (
     create_blocked_order_ticket,
@@ -169,6 +172,20 @@ NAVIGATION_TEXT = (
     "6 IPO/S-1 | 7 Broker | 8 Ops | 9 Telemetry | features | help | q"
 )
 
+MODERN_PAGES: tuple[tuple[str, str, str], ...] = (
+    ("overview", "1", "Overview"),
+    ("readiness", "2", "Readiness"),
+    ("run", "3", "Run"),
+    ("candidates", "4", "Candidates"),
+    ("alerts", "5", "Alerts"),
+    ("ipo", "6", "IPO/S-1"),
+    ("broker", "7", "Broker"),
+    ("ops", "8", "Ops"),
+    ("telemetry", "9", "Telemetry"),
+    ("features", "F", "Features"),
+    ("help", "?", "Help"),
+)
+
 
 def dashboard_snapshot_payload(
     *,
@@ -303,6 +320,43 @@ def run_dashboard_tui(
     output_fn: Callable[[str], object] = print,
     clear_screen: bool = True,
 ) -> int:
+    if input_fn is input and output_fn is print:
+        app = MarketRadarDashboardApp(
+            engine=engine,
+            config=config,
+            dotenv_loaded=dotenv_loaded,
+            filters=filters,
+            initial_page=initial_page,
+        )
+        result = app.run(
+            mouse=True,
+            inline=not clear_screen,
+            inline_no_clear=not clear_screen,
+        )
+        return int(result or 0)
+    return _run_dashboard_tui_legacy(
+        engine=engine,
+        config=config,
+        dotenv_loaded=dotenv_loaded,
+        filters=filters,
+        initial_page=initial_page,
+        input_fn=input_fn,
+        output_fn=output_fn,
+        clear_screen=clear_screen,
+    )
+
+
+def _run_dashboard_tui_legacy(
+    *,
+    engine: Engine,
+    config: AppConfig,
+    dotenv_loaded: bool,
+    filters: DashboardFilters,
+    initial_page: str = "overview",
+    input_fn: Callable[[str], str] = input,
+    output_fn: Callable[[str], object] = print,
+    clear_screen: bool = True,
+) -> int:
     current_filters = filters.normalized()
     page = _normalize_page(initial_page)
     message = ""
@@ -334,6 +388,631 @@ def run_dashboard_tui(
         page = update.page
         current_filters = update.filters
         message = update.message
+
+
+class MarketRadarDashboardApp(App[int]):
+    """Modern mouse-friendly terminal dashboard for Windows Terminal."""
+
+    CSS = """
+    Screen {
+        background: #101418;
+        color: #d7dde8;
+    }
+
+    Header {
+        background: #0b0f14;
+        color: #f2f5f8;
+    }
+
+    Footer {
+        background: #0b0f14;
+        color: #aeb8c6;
+    }
+
+    #workspace {
+        height: 1fr;
+    }
+
+    #sidebar {
+        width: 25;
+        min-width: 22;
+        background: #0f1720;
+        border-right: solid #273445;
+        padding: 1 1;
+    }
+
+    .brand {
+        height: 3;
+        content-align: center middle;
+        text-style: bold;
+        color: #ffffff;
+        background: #162234;
+        border: round #31445b;
+        margin-bottom: 1;
+    }
+
+    Button.nav {
+        width: 100%;
+        height: 1;
+        margin-bottom: 0;
+        text-align: left;
+    }
+
+    Button.nav.active {
+        background: #2364d8;
+        color: #ffffff;
+        text-style: bold;
+    }
+
+    .side-action {
+        width: 100%;
+        height: 1;
+        margin-top: 1;
+    }
+
+    #main {
+        width: 1fr;
+        padding: 1 2;
+    }
+
+    #hero {
+        height: 5;
+        border: round #33465d;
+        background: #121a24;
+        padding: 1 2;
+        margin-bottom: 1;
+    }
+
+    #metric-row {
+        height: 5;
+        margin-bottom: 1;
+    }
+
+    .metric {
+        width: 1fr;
+        height: 5;
+        margin-right: 1;
+        border: round #26384d;
+        background: #111923;
+        padding: 1 2;
+    }
+
+    #message {
+        height: auto;
+        max-height: 5;
+        border: round #3b4e65;
+        background: #111923;
+        color: #d7dde8;
+        padding: 0 1;
+        margin-bottom: 1;
+    }
+
+    #message:empty {
+        display: none;
+    }
+
+    #section-title {
+        height: 3;
+        content-align: left middle;
+        text-style: bold;
+        color: #ffffff;
+    }
+
+    #data-table {
+        height: 1fr;
+        border: round #33465d;
+        background: #0f151d;
+    }
+
+    #detail {
+        height: 6;
+        border: round #26384d;
+        background: #111923;
+        padding: 1 2;
+        margin-top: 1;
+    }
+
+    #command {
+        height: 3;
+        margin-top: 1;
+    }
+    """
+
+    BINDINGS = [
+        ("q", "quit", "Quit"),
+        ("r", "refresh", "Refresh"),
+        ("1", "go('overview')", "Overview"),
+        ("2", "go('readiness')", "Readiness"),
+        ("3", "go('run')", "Run"),
+        ("4", "go('candidates')", "Candidates"),
+        ("5", "go('alerts')", "Alerts"),
+        ("6", "go('ipo')", "IPO/S-1"),
+        ("7", "go('broker')", "Broker"),
+        ("8", "go('ops')", "Ops"),
+        ("9", "go('telemetry')", "Telemetry"),
+        ("f", "go('features')", "Features"),
+        ("?", "go('help')", "Help"),
+    ]
+
+    def __init__(
+        self,
+        *,
+        engine: Engine,
+        config: AppConfig,
+        dotenv_loaded: bool,
+        filters: DashboardFilters,
+        initial_page: str,
+    ) -> None:
+        super().__init__()
+        self.engine = engine
+        self.config = config
+        self.dotenv_loaded = dotenv_loaded
+        self.filters = filters.normalized()
+        self.page = _normalize_page(initial_page)
+        self.payload: Mapping[str, object] = {}
+        self.status_message = ""
+
+    def compose(self) -> ComposeResult:
+        yield Header(show_clock=True)
+        with Horizontal(id="workspace"):
+            with Vertical(id="sidebar"):
+                yield Static("Market Radar", classes="brand")
+                for page_key, shortcut, label in MODERN_PAGES:
+                    yield Button(
+                        f"{shortcut}  {label}",
+                        id=f"nav-{page_key}",
+                        classes="nav",
+                        variant="default",
+                    )
+                yield Button("Refresh", id="action-refresh", classes="side-action")
+                yield Button("Run page", id="action-run-page", classes="side-action")
+            with Vertical(id="main"):
+                yield Static(id="hero")
+                with Horizontal(id="metric-row"):
+                    yield Static(id="metric-readiness", classes="metric")
+                    yield Static(id="metric-market", classes="metric")
+                    yield Static(id="metric-calls", classes="metric")
+                    yield Static(id="metric-broker", classes="metric")
+                yield Static(id="message")
+                yield Static(id="section-title")
+                yield DataTable(id="data-table", cursor_type="row")
+                yield Static(id="detail")
+                yield Input(
+                    placeholder=(
+                        "Command: ticker AAPL, open 1, run execute, help, q"
+                    ),
+                    id="command",
+                )
+        yield Footer()
+
+    def on_mount(self) -> None:
+        self.reload_snapshot()
+        self.refresh_view()
+        self.query_one("#command", Input).focus()
+
+    def reload_snapshot(self) -> None:
+        self.payload = dashboard_snapshot_payload(
+            engine=self.engine,
+            config=self.config,
+            dotenv_loaded=self.dotenv_loaded,
+            filters=self.filters,
+        )
+
+    def refresh_view(self) -> None:
+        self._refresh_nav()
+        self._refresh_header()
+        self._refresh_table()
+        self.query_one("#message", Static).update(self.status_message)
+
+    def action_refresh(self) -> None:
+        self.reload_snapshot()
+        self.status_message = "Snapshot refreshed from the local database."
+        self.refresh_view()
+
+    def action_go(self, page: str) -> None:
+        self.page = _normalize_page(page)
+        self.status_message = ""
+        self.refresh_view()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        button_id = event.button.id or ""
+        if button_id.startswith("nav-"):
+            self.action_go(button_id.removeprefix("nav-"))
+            return
+        if button_id == "action-refresh":
+            self.action_refresh()
+            return
+        if button_id == "action-run-page":
+            self.action_go("run")
+            self.status_message = "Review the call plan, then type run execute if intended."
+            self.refresh_view()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        raw = event.value.strip()
+        event.input.value = ""
+        update = _apply_command(
+            raw,
+            self.payload,
+            self.page,
+            self.filters,
+            engine=self.engine,
+            config=self.config,
+        )
+        if update.exit_requested:
+            self.exit(0)
+            return
+        self.page = update.page
+        self.filters = update.filters
+        self.status_message = update.message
+        self.reload_snapshot()
+        self.refresh_view()
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        if self.page == "candidates":
+            row = self._row_by_key(event.row_key.value)
+            ticker = str(row.get("ticker") or "").upper()
+            if ticker:
+                self.page = f"candidate:{ticker}"
+                self.status_message = f"Opened candidate {ticker}."
+                self.refresh_view()
+        elif self.page == "alerts":
+            row = self._row_by_key(event.row_key.value)
+            alert_id = str(row.get("id") or "")
+            if alert_id:
+                self.page = f"alert:{alert_id}"
+                self.status_message = f"Opened alert {alert_id}."
+                self.refresh_view()
+
+    def _row_by_key(self, key: object) -> Mapping[str, object]:
+        key_text = str(key)
+        for row in self._current_rows():
+            if str(row.get("_row_key") or "") == key_text:
+                return row
+        return {}
+
+    def _refresh_nav(self) -> None:
+        active = self.page.split(":", 1)[0]
+        for page_key, _, _ in MODERN_PAGES:
+            button = self.query_one(f"#nav-{page_key}", Button)
+            button.set_class(page_key == active, "active")
+
+    def _refresh_header(self) -> None:
+        readiness = _mapping(self.payload.get("readiness"))
+        freshness = _mapping(_mapping(readiness.get("discovery_snapshot")).get("freshness"))
+        database = _mapping(_mapping(self.payload.get("ops_health")).get("database"))
+        call_plan = _mapping(self.payload.get("call_plan"))
+        broker = _mapping(_mapping(self.payload.get("broker")).get("snapshot"))
+        runtime = _mapping(self.payload.get("runtime_context"))
+        controls = _mapping(self.payload.get("controls"))
+        next_step = _mapping(self.payload.get("operator_next_step"))
+
+        self.query_one("#hero", Static).update(
+            "\n".join(
+                [
+                    f"[b]Market Radar[/b]  [dim]{self.page}[/dim]",
+                    (
+                        f"{readiness.get('headline') or 'No readiness headline.'} "
+                        f"[dim]Build {(_nested(runtime, 'build', 'commit') or 'n/a')} | "
+                        f"Ticker {controls.get('ticker') or 'all'}[/dim]"
+                    ),
+                    f"[b]Next[/b] {next_step.get('action') or readiness.get('next_action')}",
+                ]
+            )
+        )
+        self.query_one("#metric-readiness", Static).update(
+            _metric_text(
+                "Readiness",
+                readiness.get("status"),
+                f"Decision safe: {readiness.get('safe_to_make_investment_decision')}",
+            )
+        )
+        self.query_one("#metric-market", Static).update(
+            _metric_text(
+                "Market bars",
+                database.get("latest_daily_bar_date") or freshness.get("latest_daily_bar_date"),
+                (
+                    f"latest coverage "
+                    f"{database.get('active_security_with_latest_daily_bar_count')}/"
+                    f"{database.get('active_security_count')}"
+                ),
+            )
+        )
+        self.query_one("#metric-calls", Static).update(
+            _metric_text(
+                "Call plan",
+                call_plan.get("status"),
+                f"max external {call_plan.get('max_external_call_count')}",
+            )
+        )
+        self.query_one("#metric-broker", Static).update(
+            _metric_text(
+                "Broker",
+                broker.get("connection_status") or "n/a",
+                "orders disabled",
+            )
+        )
+
+    def _refresh_table(self) -> None:
+        title, columns, rows, detail = self._table_model()
+        self.query_one("#section-title", Static).update(title)
+        table = self.query_one("#data-table", DataTable)
+        table.clear(columns=True)
+        table.zebra_stripes = True
+        table.cursor_type = "row"
+        for _, label, width in columns:
+            table.add_column(label, width=width)
+        for index, row in enumerate(rows, start=1):
+            row_key = str(row.get("_row_key") or row.get("ticker") or row.get("id") or index)
+            table.add_row(
+                *[_clip(row.get(key), width) for key, _, width in columns],
+                key=row_key,
+            )
+        self.query_one("#detail", Static).update(detail)
+
+    def _table_model(
+        self,
+    ) -> tuple[
+        str,
+        Sequence[tuple[str, str, int]],
+        list[Mapping[str, object]],
+        str,
+    ]:
+        page = self.page
+        if page.startswith("candidate:"):
+            return self._candidate_detail_model(page.split(":", 1)[1])
+        if page.startswith("alert:"):
+            return self._alert_detail_model(page.split(":", 1)[1])
+        if page == "overview":
+            return self._overview_model()
+        if page == "readiness":
+            return (
+                "Readiness checklist",
+                [
+                    ("area", "Area", 18),
+                    ("status", "Status", 14),
+                    ("finding", "Finding", 44),
+                    ("next_action", "Next action", 58),
+                ],
+                _rows(_mapping(self.payload.get("readiness")).get("readiness_checklist")),
+                "Use this page to decide what blocks a human investment decision.",
+            )
+        if page == "run":
+            call_plan = _mapping(self.payload.get("call_plan"))
+            return (
+                "Run call plan",
+                [
+                    ("layer", "Layer", 18),
+                    ("provider", "Provider", 14),
+                    ("status", "Status", 16),
+                    ("external_call_count_max", "Calls", 8),
+                    ("next_action", "Next action", 66),
+                ],
+                _rows(call_plan.get("rows")),
+                f"{call_plan.get('headline') or ''} {call_plan.get('next_action') or ''}",
+            )
+        if page == "candidates":
+            rows = [
+                {**dict(row), "_row_key": str(row.get("ticker") or index)}
+                for index, row in enumerate(_candidate_rows(self.payload), start=1)
+            ]
+            return (
+                "Candidates - click a row or press Enter to open",
+                [
+                    ("ticker", "Ticker", 8),
+                    ("state", "State", 20),
+                    ("decision_status", "Decision", 16),
+                    ("score", "Score", 8),
+                    ("risk_or_gap", "Risk / gap", 34),
+                    ("next_step", "Next step", 52),
+                ],
+                rows,
+                "Commands: action <ticker> watch, trigger <ticker> ..., ticket <ticker> ...",
+            )
+        if page == "alerts":
+            rows = [
+                {**dict(row), "_row_key": str(row.get("id") or index)}
+                for index, row in enumerate(
+                    _rows(_mapping(self.payload.get("alerts")).get("rows")),
+                    start=1,
+                )
+            ]
+            return (
+                "Alerts - click a row or press Enter to open",
+                [
+                    ("id", "ID", 18),
+                    ("ticker", "Ticker", 8),
+                    ("status", "Status", 12),
+                    ("route", "Route", 22),
+                    ("priority", "Priority", 10),
+                    ("title", "Title", 58),
+                ],
+                rows,
+                "Commands: alert-status <status|all>, feedback <#|id> <label> [notes]",
+            )
+        if page == "ipo":
+            return (
+                "IPO / S-1 catalyst evidence",
+                [
+                    ("ticker", "Ticker", 8),
+                    ("proposed_ticker", "Proposed", 10),
+                    ("form_type", "Form", 8),
+                    ("filing_date", "Filed", 12),
+                    ("estimated_gross_proceeds", "Proceeds", 14),
+                    ("summary", "Summary", 70),
+                ],
+                _rows(_mapping(self.payload.get("ipo_s1")).get("rows")),
+                "SEC catalyst rows remain source-labeled and safe for research review.",
+            )
+        if page == "broker":
+            broker = _mapping(self.payload.get("broker"))
+            return (
+                "Broker actions and local order-preview tickets",
+                [
+                    ("ticker", "Ticker", 8),
+                    ("action", "Action", 18),
+                    ("status", "Status", 12),
+                    ("notes", "Notes", 46),
+                    ("created_at", "Created", 24),
+                ],
+                _rows(broker.get("opportunity_actions")),
+                "Read-only Schwab context is allowed; real order submission remains disabled.",
+            )
+        if page == "ops":
+            return (
+                "Provider health",
+                [
+                    ("provider", "Provider", 16),
+                    ("status", "Status", 14),
+                    ("checked_at", "Checked", 24),
+                    ("reason", "Reason", 72),
+                ],
+                _rows(_mapping(self.payload.get("ops_health")).get("providers")),
+                _ops_detail(self.payload),
+            )
+        if page == "telemetry":
+            telemetry = _mapping(self.payload.get("telemetry"))
+            return (
+                "Telemetry audit tape",
+                [
+                    ("occurred_at", "Occurred", 24),
+                    ("event", "Event", 28),
+                    ("status", "Status", 12),
+                    ("summary", "Summary", 72),
+                ],
+                _rows(telemetry.get("events")),
+                f"{telemetry.get('headline') or ''} Next: {telemetry.get('next_action') or ''}",
+            )
+        if page == "features":
+            return (
+                "Feature inventory",
+                [
+                    ("area", "Area", 18),
+                    ("feature", "Feature", 46),
+                    ("page", "Page", 20),
+                    ("use", "Operational use", 58),
+                ],
+                _rows(self.payload.get("feature_inventory")),
+                "This is the current terminal replacement surface inventory.",
+            )
+        return self._help_model()
+
+    def _current_rows(self) -> list[Mapping[str, object]]:
+        _, _, rows, _ = self._table_model()
+        return rows
+
+    def _overview_model(
+        self,
+    ) -> tuple[str, Sequence[tuple[str, str, int]], list[Mapping[str, object]], str]:
+        readiness = _mapping(self.payload.get("readiness"))
+        usefulness = _mapping(readiness.get("market_radar_usefulness"))
+        latest_run = _mapping(self.payload.get("latest_run"))
+        freshness = _mapping(_mapping(readiness.get("discovery_snapshot")).get("freshness"))
+        database = _mapping(_mapping(self.payload.get("ops_health")).get("database"))
+        call_plan = _mapping(self.payload.get("call_plan"))
+        rows = [
+            {
+                "metric": "Readiness",
+                "value": readiness.get("headline"),
+                "detail": readiness.get("next_action"),
+            },
+            {
+                "metric": "Usefulness",
+                "value": usefulness.get("headline"),
+                "detail": (
+                    f"layers {usefulness.get('ready_layers')}/"
+                    f"{usefulness.get('total_layers')}"
+                ),
+            },
+            {
+                "metric": "Latest run",
+                "value": latest_run.get("status"),
+                "detail": (
+                    f"required {latest_run.get('required_completed_count')}/"
+                    f"{latest_run.get('required_step_count')}"
+                ),
+            },
+            {
+                "metric": "Market freshness",
+                "value": database.get("latest_daily_bar_date"),
+                "detail": (
+                    f"run as-of {freshness.get('active_security_with_as_of_bar_count')}/"
+                    f"{freshness.get('active_security_count')}"
+                ),
+            },
+            {
+                "metric": "Call plan",
+                "value": call_plan.get("status"),
+                "detail": f"max external {call_plan.get('max_external_call_count')}",
+            },
+        ]
+        counts = _mapping(self.payload.get("candidates")).get("count") or 0
+        alerts = _mapping(self.payload.get("alerts")).get("count") or 0
+        return (
+            "Overview",
+            [("metric", "Metric", 22), ("value", "Value", 48), ("detail", "Detail", 70)],
+            rows,
+            f"Rows: candidates={counts}; alerts={alerts}; external calls while rendering=0.",
+        )
+
+    def _candidate_detail_model(
+        self,
+        ticker: str,
+    ) -> tuple[str, Sequence[tuple[str, str, int]], list[Mapping[str, object]], str]:
+        ticker = ticker.upper()
+        row = next(
+            (item for item in _candidate_rows(self.payload) if item.get("ticker") == ticker),
+            {},
+        )
+        rows = _mapping_items(_compact_detail(row))
+        return (
+            f"Candidate {ticker}",
+            [("key", "Field", 24), ("value", "Value", 110)],
+            rows,
+            "Local commands can save watch actions, triggers, and blocked order-preview tickets.",
+        )
+
+    def _alert_detail_model(
+        self,
+        alert_id: str,
+    ) -> tuple[str, Sequence[tuple[str, str, int]], list[Mapping[str, object]], str]:
+        rows = _rows(_mapping(self.payload.get("alerts")).get("rows"))
+        row = next((item for item in rows if str(item.get("id") or "") == alert_id), {})
+        return (
+            f"Alert {alert_id}",
+            [("key", "Field", 24), ("value", "Value", 110)],
+            _mapping_items(_compact_detail(row)),
+            "Use feedback <alert-id|#> <label> [notes] to record alert usefulness.",
+        )
+
+    def _help_model(
+        self,
+    ) -> tuple[str, Sequence[tuple[str, str, int]], list[Mapping[str, object]], str]:
+        rows = [
+            {"command": "Click sidebar", "meaning": "Switch pages with mouse support."},
+            {"command": "Click candidate/alert row", "meaning": "Open the selected detail view."},
+            {"command": "1..9, f, ?", "meaning": "Keyboard page shortcuts."},
+            {"command": "ticker <SYMBOL|all>", "meaning": "Filter ticker-aware pages."},
+            {"command": "run execute", "meaning": "Start one guarded capped radar cycle."},
+            {
+                "command": "action / trigger / ticket",
+                "meaning": "Save local broker-context artifacts only.",
+            },
+            {
+                "command": "feedback <alert-id|#> <label>",
+                "meaning": "Record useful/noisy/acted alert feedback.",
+            },
+            {"command": "r or Refresh", "meaning": "Reload local database state."},
+            {"command": "q", "meaning": "Quit."},
+        ]
+        return (
+            "Help",
+            [("command", "Command", 34), ("meaning", "Meaning", 92)],
+            rows,
+            (
+                "The TUI renders local snapshots only. Navigation and refresh "
+                "make zero provider calls."
+            ),
+        )
 
 
 def render_dashboard_tui(
@@ -1391,6 +2070,35 @@ def _dashboard_count_lines(payload: Mapping[str, object], width: int) -> list[st
             f"Themes: {_mapping(payload.get('themes')).get('count') or 0}"
         ),
     ]
+
+
+def _metric_text(title: str, value: object, detail: object) -> str:
+    return f"[b]{title}[/b]\n{_text(value)}\n[dim]{_text(detail)}[/dim]"
+
+
+def _ops_detail(payload: Mapping[str, object]) -> str:
+    database = _mapping(_mapping(payload.get("ops_health")).get("database"))
+    degraded = _mapping(_mapping(payload.get("ops_health")).get("degraded_mode"))
+    return (
+        f"database={database.get('status')}; "
+        f"latest_bar={database.get('latest_daily_bar_date')}; "
+        f"degraded={degraded.get('enabled')}; "
+        f"max_action_state={degraded.get('max_action_state')}"
+    )
+
+
+def _compact_detail(row: Mapping[str, object]) -> Mapping[str, object]:
+    if not row:
+        return {"status": "No row found for the current filters."}
+    excluded = {"payload", "raw_payload", "metadata", "_row_key"}
+    compact: dict[str, object] = {}
+    for key, value in row.items():
+        if key in excluded or value in (None, "", [], {}):
+            continue
+        compact[str(key)] = value
+        if len(compact) >= 14:
+            break
+    return compact
 
 
 def _footer_lines(width: int) -> list[str]:
