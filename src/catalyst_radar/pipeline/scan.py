@@ -46,6 +46,7 @@ from catalyst_radar.portfolio.risk import (
     evaluate_portfolio_impact,
 )
 from catalyst_radar.scoring.policy import evaluate_policy
+from catalyst_radar.scoring.priced_in import evaluate_priced_in
 from catalyst_radar.scoring.score import candidate_from_features
 from catalyst_radar.scoring.setup_policies import select_setup_plan
 from catalyst_radar.scoring.setups import SetupPlan
@@ -252,10 +253,26 @@ def run_scan(
             "market_provider": provider,
             "market_data_providers": sorted({bar.provider for bar in ticker_bars}),
         }
+        data_stale = _is_data_stale(ticker_bars, as_of)
+        priced_in = evaluate_priced_in(
+            features,
+            candidate_metadata,
+            data_stale=data_stale,
+            hard_blocks=portfolio_impact.hard_blocks,
+        )
+        candidate_metadata["priced_in"] = priced_in.as_payload()
+        candidate_metadata["priced_in_status"] = priced_in.status
+        candidate_metadata["priced_in_direction"] = priced_in.direction
+        candidate_metadata["priced_in_score"] = priced_in.priced_in_score
+        candidate_metadata["emotion_score"] = priced_in.emotion_score
+        candidate_metadata["reaction_score"] = priced_in.reaction_score
+        candidate_metadata["emotion_reaction_gap"] = priced_in.emotion_reaction_gap
+        candidate_metadata["priced_in_reason"] = priced_in.reason
+        candidate_metadata["priced_in_next_step"] = priced_in.next_step
         candidate = candidate_from_features(
             features,
             portfolio_penalty=portfolio_impact.portfolio_penalty,
-            data_stale=_is_data_stale(ticker_bars, as_of),
+            data_stale=data_stale,
             entry_zone=setup_plan.entry_zone,
             invalidation_price=setup_plan.invalidation_price,
             reward_risk=setup_plan.reward_risk,

@@ -31,13 +31,14 @@ from catalyst_radar.brokers.rate_limit import (
     schwab_rate_limit_status,
 )
 from catalyst_radar.core.config import AppConfig
-from catalyst_radar.core.models import ActionState
+from catalyst_radar.core.models import ActionState, MarketFeatures
 from catalyst_radar.core.runtime import build_info
 from catalyst_radar.jobs.step_outcomes import (
     StepOutcomeClassification,
     classify_step_outcome,
 )
 from catalyst_radar.jobs.tasks import DAILY_STEP_ORDER
+from catalyst_radar.scoring.priced_in import evaluate_priced_in
 from catalyst_radar.storage.broker_repositories import BrokerRepository
 from catalyst_radar.storage.budget_repositories import BudgetLedgerRepository
 from catalyst_radar.storage.schema import (
@@ -4075,6 +4076,46 @@ def _candidate_row(row: Any) -> dict[str, object]:
     values["candidate_theme"] = candidate_metadata.get("candidate_theme")
     values["theme_feature_version"] = candidate_metadata.get("theme_feature_version")
     values["options_feature_version"] = candidate_metadata.get("options_feature_version")
+    priced_in = candidate_metadata.get("priced_in")
+    if not isinstance(priced_in, Mapping):
+        priced_in = _priced_in_from_candidate_payload(
+            candidate_payload,
+            candidate_metadata,
+            hard_blocks=_sequence_value(values.get("hard_blocks")),
+        )
+    values["priced_in"] = _json_safe(priced_in)
+    values["priced_in_status"] = _first_present(
+        priced_in.get("status"),
+        candidate_metadata.get("priced_in_status"),
+    )
+    values["priced_in_direction"] = _first_present(
+        priced_in.get("direction"),
+        candidate_metadata.get("priced_in_direction"),
+    )
+    values["priced_in_score"] = _first_present(
+        priced_in.get("priced_in_score"),
+        candidate_metadata.get("priced_in_score"),
+    )
+    values["emotion_score"] = _first_present(
+        priced_in.get("emotion_score"),
+        candidate_metadata.get("emotion_score"),
+    )
+    values["reaction_score"] = _first_present(
+        priced_in.get("reaction_score"),
+        candidate_metadata.get("reaction_score"),
+    )
+    values["emotion_reaction_gap"] = _first_present(
+        priced_in.get("emotion_reaction_gap"),
+        candidate_metadata.get("emotion_reaction_gap"),
+    )
+    values["priced_in_reason"] = _first_present(
+        priced_in.get("reason"),
+        candidate_metadata.get("priced_in_reason"),
+    )
+    values["priced_in_next_step"] = _first_present(
+        priced_in.get("next_step"),
+        candidate_metadata.get("priced_in_next_step"),
+    )
     packet_payload = (
         candidate_packet_payload if isinstance(candidate_packet_payload, dict) else {}
     )
@@ -4094,6 +4135,52 @@ def _candidate_row(row: Any) -> dict[str, object]:
     values["manual_review_disclaimer"] = card_payload.get("disclaimer")
     values["research_brief"] = _candidate_research_brief(values, packet_payload)
     return values
+
+
+def _priced_in_from_candidate_payload(
+    candidate_payload: Mapping[str, object],
+    candidate_metadata: Mapping[str, object],
+    *,
+    hard_blocks: Sequence[object],
+) -> dict[str, object]:
+    features_payload = candidate_payload.get("features")
+    if not isinstance(features_payload, Mapping):
+        return {}
+    as_of = _parse_utc_datetime(features_payload.get("as_of")) or _parse_utc_datetime(
+        candidate_payload.get("as_of")
+    )
+    if as_of is None:
+        return {}
+    try:
+        features = MarketFeatures(
+            ticker=str(
+                features_payload.get("ticker")
+                or candidate_payload.get("ticker")
+                or ""
+            ).upper(),
+            as_of=as_of,
+            ret_5d=_finite_float(features_payload.get("ret_5d")),
+            ret_20d=_finite_float(features_payload.get("ret_20d")),
+            rs_20_sector=_finite_float(features_payload.get("rs_20_sector")),
+            rs_60_spy=_finite_float(features_payload.get("rs_60_spy")),
+            near_52w_high=_finite_float(features_payload.get("near_52w_high")),
+            ma_regime=_finite_float(features_payload.get("ma_regime")),
+            rel_volume_5d=_finite_float(features_payload.get("rel_volume_5d")),
+            dollar_volume_z=_finite_float(features_payload.get("dollar_volume_z")),
+            atr_pct=_finite_float(features_payload.get("atr_pct")),
+            extension_20d=_finite_float(features_payload.get("extension_20d")),
+            liquidity_score=_finite_float(features_payload.get("liquidity_score")),
+            feature_version=str(features_payload.get("feature_version") or "unknown"),
+        )
+    except (TypeError, ValueError):
+        return {}
+    result = evaluate_priced_in(
+        features,
+        candidate_metadata,
+        data_stale=bool(candidate_payload.get("data_stale")),
+        hard_blocks=tuple(str(item) for item in hard_blocks if item not in (None, "")),
+    )
+    return result.as_payload()
 
 
 def _previous_candidate_state_row(
@@ -4677,6 +4764,13 @@ def _candidate_specific_next_step(
     *,
     has_decision_card: bool,
 ) -> str:
+    priced_next_step = (
+        str(candidate.get("priced_in_next_step") or "").strip()
+        if _display_priced_in_reason(candidate)
+        else ""
+    )
+    if priced_next_step:
+        return priced_next_step
     brief = _mapping_value(candidate, "research_brief")
     brief_next_step = str(brief.get("next_step") or "").strip()
     if brief_next_step:
@@ -4735,11 +4829,22 @@ def _research_shortlist_row(row: Mapping[str, object]) -> dict[str, object]:
         "state": row.get("state"),
         "score": _finite_float(row.get("final_score")),
         "setup": row.get("setup_type") or "n/a",
-        "why_now": brief.get("why_now") or row.get("top_event_title"),
+        "priced_in_status": row.get("priced_in_status"),
+        "priced_in_score": row.get("priced_in_score"),
+        "priced_in_direction": row.get("priced_in_direction"),
+        "emotion_score": row.get("emotion_score"),
+        "reaction_score": row.get("reaction_score"),
+        "emotion_reaction_gap": row.get("emotion_reaction_gap"),
+        "why_now": _display_priced_in_reason(row)
+        or brief.get("why_now")
+        or row.get("top_event_title"),
         "top_catalyst": brief.get("top_catalyst") or support.get("title"),
         "evidence": brief.get("supporting_evidence") or support.get("title"),
-        "risk_or_gap": brief.get("risk_or_gap") or risk.get("title"),
+        "risk_or_gap": _display_priced_in_reason(row)
+        or brief.get("risk_or_gap")
+        or risk.get("title"),
         "next_step": row.get("decision_next_step")
+        or (_display_priced_in_reason(row) and row.get("priced_in_next_step"))
         or brief.get("next_step")
         or _research_next_step(
             str(row.get("state") or ""),
@@ -4838,6 +4943,9 @@ def _first_blocker_action(
 
 
 def _research_why_now(candidate: Mapping[str, object], *, top_event: object) -> str:
+    priced_reason = _display_priced_in_reason(candidate)
+    if priced_reason:
+        return priced_reason
     if top_event not in (None, ""):
         return str(top_event)
     setup = candidate.get("setup_type")
@@ -4862,6 +4970,13 @@ def _research_next_step(state: str, *, has_decision_card: bool) -> str:
     if normalized in {"thesisweakening", "exitinvalidatereview"}:
         return "Check position risk and thesis invalidation evidence."
     return "Continue monitoring; no buy workflow has been opened."
+
+
+def _display_priced_in_reason(candidate: Mapping[str, object]) -> str:
+    status = str(candidate.get("priced_in_status") or "").strip().lower()
+    if status in {"", "neutral"}:
+        return ""
+    return str(candidate.get("priced_in_reason") or "").strip()
 
 
 def _first_item(value: object) -> object:
@@ -6375,12 +6490,26 @@ def _readiness_candidate_label(row: Mapping[str, object]) -> dict[str, object]:
         "state": row.get("state"),
         "score": _finite_float(row.get("final_score")),
         "setup": row.get("setup_type") or "n/a",
+        "priced_in_status": row.get("priced_in_status"),
+        "priced_in_score": row.get("priced_in_score"),
+        "priced_in_direction": row.get("priced_in_direction"),
+        "emotion_score": row.get("emotion_score"),
+        "reaction_score": row.get("reaction_score"),
+        "emotion_reaction_gap": row.get("emotion_reaction_gap"),
+        "priced_in_reason": row.get("priced_in_reason"),
+        "priced_in_next_step": row.get("priced_in_next_step"),
         "top_catalyst": brief.get("top_catalyst")
         or row.get("top_event_title")
         or support.get("title"),
-        "risk_or_gap": brief.get("risk_or_gap") or risk.get("title"),
+        "risk_or_gap": _display_priced_in_reason(row)
+        or brief.get("risk_or_gap")
+        or risk.get("title"),
         "decision_card_id": row.get("decision_card_id"),
-        "next_step": row.get("decision_next_step") or brief.get("next_step"),
+        "next_step": (
+            row.get("decision_next_step")
+            or (_display_priced_in_reason(row) and row.get("priced_in_next_step"))
+            or brief.get("next_step")
+        ),
         "readiness_gate": row.get("decision_readiness_gate"),
         "schwab_last_price": row.get("schwab_last_price"),
         "schwab_day_change_percent": row.get("schwab_day_change_percent"),

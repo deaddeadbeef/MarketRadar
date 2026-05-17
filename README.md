@@ -60,6 +60,22 @@ broad-market bars.
 `CATALYST_DAILY_PROVIDER` override keeps manual/default radar runs aligned with
 that scheduled provider.
 
+A full-market scan means "all active securities currently stored in the local
+universe," not the few demo tickers. Polygon/Massive grouped-daily bars alone do
+not create securities. To expand beyond fixtures, ingest the active ticker
+reference set, ingest fresh bars, then scan without a ticker filter:
+
+```powershell
+catalyst-radar ingest-polygon tickers
+catalyst-radar ingest-polygon grouped-daily --date <LATEST_TRADING_DATE>
+catalyst-radar build-universe --as-of <LATEST_TRADING_DATE>
+catalyst-radar scan --as-of <LATEST_TRADING_DATE>
+```
+
+The dashboard shows active universe size, requested/scanned securities, fresh
+bar coverage, and candidate count so a tiny local universe is not mistaken for a
+full-market pass.
+
 Before any live provider call, run the activation checker and inspect the
 call plan:
 
@@ -140,11 +156,13 @@ readiness, run/call-plan, candidates, alerts, IPO/S-1, broker, ops, telemetry,
 themes, validation, costs, and current feature inventory. `radar` opens on
 `1 Insights` by default, because the main job is to show market context you can
 act on. `0 Tutorial` remains available for the first 90-second walkthrough.
-The insights page is a local action queue: each row shows the ticker or scope,
-the signal, why it matters now, and the next action. Candidate rows open the
-candidate evidence detail, alert rows open alert detail, blocker rows open
-readiness or ops, and refresh rows open the guarded run plan. Click or press
-`Enter` on an insight row to open the right operational view. Inside the
+The insights page is the full-market priced-in queue: the first row reports scan
+coverage, then candidate rows show emotion score, price-reaction score,
+emotion-minus-reaction gap, priced-in status, why the mismatch matters, and the
+next action. Candidate rows open the candidate evidence detail, alert rows open
+alert detail, blocker rows open readiness or ops, and refresh rows open the
+guarded run plan. Click or press `Enter` on an insight row to open the right
+operational view. Inside the
 TUI, the left sidebar is the primary navigation: click a row, press a page
 number, use `Ctrl+N` / `Ctrl+P`, or focus the sidebar and use `Up` / `Down`
 plus `Enter`. The compact `KEYS` / `MOUSE` guide keeps shortcuts visible

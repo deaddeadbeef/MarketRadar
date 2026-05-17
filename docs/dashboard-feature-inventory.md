@@ -1,6 +1,6 @@
 # Dashboard Feature Inventory
 
-Last updated: 2026-05-17
+Last updated: 2026-05-18
 
 This inventory tracks the current Market Radar dashboard features and where the
 terminal dashboard exposes them. The TUI uses the same dashboard data helpers as
@@ -32,6 +32,8 @@ also supports low-risk operator writes: `action <ticker> <action> [notes]`,
 | Area | Current dashboard feature | TUI page | Operational use |
 | --- | --- | --- | --- |
 | Readiness | Investment readiness, usefulness score, and operator next step | `overview`, `readiness` | Know whether output is research-only or decision-useful. |
+| Full scan coverage | Active universe size, requested/scanned securities, candidate count, latest/run bar coverage | `overview`, `ops`, `run` | Confirm the queue came from a real broad-market pass rather than a tiny fixture universe. |
+| Priced-in mismatch | Emotion score, price-reaction score, emotion-minus-reaction gap, status, reason, next step | `overview`, `candidates`, `candidate:<ticker>` | Find stocks where market emotion appears ahead of or behind price reaction. |
 | Market data | Run as-of coverage, latest bar coverage, stale-bar blockers | `overview`, `ops` | Verify fresh bars before relying on real market data. |
 | Radar run | Latest run path, required steps, optional gates, call plan | `overview`, `run` | Check what will call external providers before executing a cycle. |
 | Candidates | Candidate queue, decision labels, research gaps, card readiness | `candidates`, `candidate:<ticker>` | Work the research shortlist and manual-review queue. |
@@ -49,9 +51,12 @@ also supports low-risk operator writes: `action <ticker> <action> [notes]`,
 The TUI replaces the web dashboard for operations, navigation, filtering,
 drill-in review, JSON evidence export, guarded manual radar runs, opportunity
 action saves, trigger management, trigger evaluation, blocked order-preview
-ticket creation, and alert feedback. These live-provider actions stay behind
-existing explicit guarded commands or API routes because they can call external
-services and require credentials:
+ticket creation, and alert feedback. The `overview` page should be read as a
+priced-in mismatch queue, not as a complete ticker table: the first row states
+whether the active local universe is large enough to count as a full-market
+scan, and candidate rows are the ranked useful subset. These live-provider
+actions stay behind existing explicit guarded commands or API routes because
+they can call external services and require credentials:
 
 - Trigger optional universe seeding only when Polygon is configured.
 - Refresh Schwab market context for a selected candidate.

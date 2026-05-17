@@ -78,6 +78,11 @@ def test_scan_pipeline_excludes_future_available_same_date_bar() -> None:
     assert aaa.candidate.metadata["setup_type"] == "breakout"
     assert aaa.candidate.metadata["target_price"] == 119.7
     assert "near_52w_high_breakout" in aaa.candidate.metadata["setup_reasons"]
+    assert aaa.candidate.metadata["priced_in"]["schema_version"] == "priced-in-v1"
+    assert aaa.candidate.metadata["priced_in_status"] == "stale"
+    assert aaa.candidate.metadata["priced_in_next_step"] == (
+        "Refresh latest market bars, then re-run the radar."
+    )
 
 
 def test_dashboard_loads_candidate_rows() -> None:
@@ -114,6 +119,13 @@ def test_dashboard_loads_candidate_rows() -> None:
         "top_disconfirming_evidence",
         "decision_card_id",
         "next_review_at",
+        "priced_in_status",
+        "priced_in_score",
+        "emotion_score",
+        "reaction_score",
+        "emotion_reaction_gap",
+        "priced_in_reason",
+        "priced_in_next_step",
     }.issubset(rows[0])
     aaa_result = next(result for result in scan_results if result.ticker == "AAA")
     aaa = next(row for row in rows if row["ticker"] == "AAA")
@@ -121,3 +133,5 @@ def test_dashboard_loads_candidate_rows() -> None:
     assert aaa["portfolio_hard_blocks"] == []
     assert aaa["entry_zone"] == list(aaa_result.candidate.entry_zone)
     assert aaa["invalidation_price"] == aaa_result.candidate.invalidation_price
+    assert aaa["priced_in_status"] == aaa_result.candidate.metadata["priced_in_status"]
+    assert aaa["priced_in_reason"] == aaa_result.candidate.metadata["priced_in_reason"]

@@ -1030,9 +1030,20 @@ class MarketRadarDashboardApp(App[int]):
                 ]
             )
         if page == "overview":
+            discovery = _mapping(self.payload.get("discovery_snapshot"))
+            scan_yield = _mapping(discovery.get("yield"))
             return "\n".join(
                 [
-                    "[bold #7ee787]INSIGHT QUEUE[/]  What matters now, why, and what you can do.",
+                    (
+                        "[bold #7ee787]FULL-SCAN QUEUE[/]  Market emotion versus price "
+                        "reaction, ranked for human review."
+                    ),
+                    (
+                        f"[bold]Coverage:[/] scanned "
+                        f"{scan_yield.get('scanned_securities') or 'n/a'} of "
+                        f"{scan_yield.get('requested_securities') or 'n/a'} requested "
+                        f"securities; candidates {candidates.get('count') or 0}."
+                    ),
                     (
                         "[bold]Click or Enter on a row.[/] Candidate and alert rows "
                         "open their detail view."
@@ -1188,21 +1199,24 @@ class MarketRadarDashboardApp(App[int]):
             )
         if page == "candidates":
             rows = [
-                {**dict(row), "_row_key": str(row.get("ticker") or index)}
+                _candidate_table_row(row, row_key=str(row.get("ticker") or index))
                 for index, row in enumerate(_candidate_rows(self.payload), start=1)
             ]
             return (
                 "Candidates - click a row or press Enter to open",
                 [
                     ("ticker", "Ticker", 8),
-                    ("state", "State", 20),
-                    ("decision_status", "Decision", 16),
+                    ("priced_in_status", "Priced-in", 20),
+                    ("emotion_reaction_gap", "Gap", 8),
                     ("score", "Score", 8),
-                    ("risk_or_gap", "Risk / gap", 34),
-                    ("next_step", "Next step", 52),
+                    ("why_now", "Why now", 50),
+                    ("next_step", "Next step", 48),
                 ],
                 rows,
-                "Commands: action <ticker> watch, trigger <ticker> ..., ticket <ticker> ...",
+                (
+                    "Gap is emotion minus price reaction. Positive means the market "
+                    "may not have fully priced it."
+                ),
             )
         if page == "alerts":
             rows = [
@@ -1337,7 +1351,7 @@ class MarketRadarDashboardApp(App[int]):
         self,
     ) -> tuple[str, Sequence[tuple[str, str, int]], list[Mapping[str, object]], str]:
         return (
-            "Market insights - select a row to act",
+            "Full-market priced-in queue - select a row to act",
             [
                 ("scope", "Scope", 10),
                 ("signal", "Signal", 28),
@@ -1346,7 +1360,8 @@ class MarketRadarDashboardApp(App[int]):
             ],
             _market_insight_rows(self.payload),
             (
-                "Rows are local insight cards. Enter opens the relevant evidence or action page. "
+                "First row is scan coverage; candidate rows are priced-in mismatch cards. "
+                "Enter opens the relevant evidence or action page. "
                 "Browsing makes 0 provider calls."
             ),
         )
@@ -1932,38 +1947,54 @@ def _market_insight_rows(payload: Mapping[str, object]) -> list[Mapping[str, obj
     readiness = _mapping(payload.get("readiness"))
     usefulness = _mapping(readiness.get("market_radar_usefulness"))
     freshness = _mapping(_mapping(readiness.get("discovery_snapshot")).get("freshness"))
+    discovery = _mapping(payload.get("discovery_snapshot"))
+    scan_yield = _mapping(discovery.get("yield"))
     database = _mapping(_mapping(payload.get("ops_health")).get("database"))
     call_plan = _mapping(payload.get("call_plan"))
     can_act = _decision_label(readiness)
     rows: list[Mapping[str, object]] = []
 
-    for index, candidate in enumerate(_candidate_rows(payload), start=1):
+    rows.append(
+        _full_scan_coverage_row(
+            freshness=freshness,
+            database=database,
+            scan_yield=scan_yield,
+            candidate_count=len(_candidate_rows(payload)),
+        )
+    )
+
+    for candidate in _candidate_rows(payload):
         ticker = str(candidate.get("ticker") or "").strip().upper()
         if not ticker:
             continue
         state = _text(candidate.get("state") or candidate.get("decision_status") or "candidate")
         score = candidate.get("score") or candidate.get("final_score")
+        priced_status = str(candidate.get("priced_in_status") or "").strip()
+        emotion = candidate.get("emotion_score")
+        reaction = candidate.get("reaction_score")
+        gap = candidate.get("emotion_reaction_gap")
         setup = (
             candidate.get("setup_type")
             or candidate.get("candidate_theme")
             or candidate.get("top_event_type")
             or "candidate"
         )
-        risk = (
-            candidate.get("risk_or_gap")
-            or candidate.get("hard_blocks")
-            or candidate.get("decision_status")
-            or "Review evidence"
-        )
+        priced_reason = _priced_in_reason(candidate)
+        risk = candidate.get("risk_or_gap") or candidate.get("hard_blocks") or "Review evidence"
         score_text = f"score {_text(score)}" if score not in (None, "") else ""
-        why_now = _join_nonempty((score_text, _human_label(setup), risk), separator="; ")
+        mismatch_text = _priced_in_mismatch_text(emotion, reaction, gap)
+        why_now = _join_nonempty(
+            (mismatch_text, priced_reason, score_text, _human_label(setup), risk),
+            separator="; ",
+        )
         rows.append(
             {
                 "_row_key": f"candidate-{ticker}",
                 "scope": ticker,
-                "signal": f"{state} candidate",
+                "signal": _priced_in_signal(priced_status, fallback=f"{state} candidate"),
                 "why_now": why_now,
-                "next_action": candidate.get("next_step")
+                "next_action": candidate.get("priced_in_next_step")
+                or candidate.get("next_step")
                 or "Open candidate detail and decide watch, ready, or dismiss.",
                 "target_page": f"candidate:{ticker}",
                 "status_message": (
@@ -1971,8 +2002,6 @@ def _market_insight_rows(payload: Mapping[str, object]) -> list[Mapping[str, obj
                 ),
             }
         )
-        if index >= 5:
-            break
 
     for index, alert in enumerate(_rows(_mapping(payload.get("alerts")).get("rows")), start=1):
         alert_id = str(alert.get("id") or "").strip()
@@ -2042,8 +2071,93 @@ def _market_insight_rows(payload: Mapping[str, object]) -> list[Mapping[str, obj
     return rows
 
 
+def _full_scan_coverage_row(
+    *,
+    freshness: Mapping[str, object],
+    database: Mapping[str, object],
+    scan_yield: Mapping[str, object],
+    candidate_count: int,
+) -> Mapping[str, object]:
+    active_count = int(
+        _number_or_zero(
+            _first_value(
+                freshness.get("active_security_count"),
+                database.get("active_security_count"),
+            )
+        )
+    )
+    requested = int(_number_or_zero(scan_yield.get("requested_securities")))
+    scanned = int(_number_or_zero(scan_yield.get("scanned_securities")))
+    latest_with_bars = int(
+        _number_or_zero(
+            _first_value(
+                database.get("active_security_with_latest_daily_bar_count"),
+                database.get("active_security_with_daily_bar_count"),
+            )
+        )
+    )
+    run_with_bars = int(_number_or_zero(freshness.get("active_security_with_as_of_bar_count")))
+    denominator = active_count or requested or scanned
+    if denominator < 500:
+        signal = "Universe too small"
+        next_action = (
+            "Ingest Polygon/Massive tickers and bars, then run the radar without a ticker filter."
+        )
+    elif scanned and denominator and scanned < max(1, int(denominator * 0.9)):
+        signal = "Partial scan"
+        next_action = "Open Ops/Run and fix missing bars before trusting the ranked queue."
+    else:
+        signal = "Full scan coverage"
+        next_action = "Review ranked priced-in mismatches below, starting with the top candidate."
+    why_now = (
+        f"active {active_count or 'n/a'}; requested {requested or 'n/a'}; "
+        f"scanned {scanned or 'n/a'}; candidates {candidate_count}; "
+        f"latest bars {latest_with_bars or 'n/a'}/{active_count or 'n/a'}; "
+        f"run bars {run_with_bars or 'n/a'}/{active_count or 'n/a'}"
+    )
+    return {
+        "_row_key": "full-scan-coverage",
+        "scope": "UNIVERSE",
+        "signal": signal,
+        "why_now": why_now,
+        "next_action": next_action,
+        "target_page": "ops" if signal != "Full scan coverage" else "candidates",
+        "status_message": "Opened the full-scan coverage context.",
+    }
+
+
+def _priced_in_signal(status: str, *, fallback: str) -> str:
+    labels = {
+        "bullish_not_priced_in": "Bullish not priced",
+        "bearish_not_priced_in": "Bearish not priced",
+        "fully_priced": "Fully priced",
+        "overextended_hype": "Overextended",
+        "conflicted": "Conflict",
+        "stale": "Stale bars",
+        "blocked": "Blocked",
+        "neutral": "No mismatch",
+    }
+    return labels.get(status, fallback)
+
+
+def _priced_in_reason(row: Mapping[str, object]) -> str:
+    status = str(row.get("priced_in_status") or "").strip().lower()
+    if status in {"", "neutral"}:
+        return ""
+    return str(row.get("priced_in_reason") or "").strip()
+
+
+def _priced_in_mismatch_text(emotion: object, reaction: object, gap: object) -> str:
+    if emotion in (None, "") or reaction in (None, ""):
+        return ""
+    parts = [f"emotion {_text(emotion)}", f"reaction {_text(reaction)}"]
+    if gap not in (None, ""):
+        parts.append(f"gap {_text(gap)}")
+    return " / ".join(parts)
+
+
 def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
-    lines = [_rule("Market insights - select a row to act", width)]
+    lines = [_rule("Full-market priced-in queue - select a row to act", width)]
     lines.extend(
         _table_lines(
             _market_insight_rows(payload),
@@ -2054,12 +2168,13 @@ def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
                 ("next_action", "Next action", 44),
             ],
             width=width,
-            limit=10,
+            limit=20,
         )
     )
     lines.append("")
     lines.append(
-        "Rows are local insight cards. Enter opens the relevant evidence or action page. "
+        "First row is scan coverage; candidate rows are priced-in mismatch cards. "
+        "Enter opens the relevant evidence or action page. "
         "Browsing makes 0 provider calls."
     )
     return lines
@@ -2159,7 +2274,10 @@ def _run_lines(payload: Mapping[str, object], width: int) -> list[str]:
 
 
 def _candidates_lines(payload: Mapping[str, object], width: int) -> list[str]:
-    rows = _candidate_rows(payload)
+    rows = [
+        _candidate_table_row(row, row_key=str(index))
+        for index, row in enumerate(_candidate_rows(payload), start=1)
+    ]
     lines = [_rule("Candidates", width)]
     lines.extend(
         _table_lines(
@@ -2167,18 +2285,45 @@ def _candidates_lines(payload: Mapping[str, object], width: int) -> list[str]:
             [
                 ("index", "#", 4),
                 ("ticker", "Ticker", 8),
-                ("state", "State", 20),
-                ("decision_status", "Decision", 16),
+                ("priced_in_status", "Priced-in", 20),
+                ("emotion_reaction_gap", "Gap", 8),
                 ("score", "Score", 8),
-                ("risk_or_gap", "Risk / Gap", 38),
+                ("why_now", "Why Now", 48),
                 ("next_step", "Next Step", 42),
             ],
             width=width,
-            limit=16,
+            limit=30,
         )
+    )
+    lines.append(
+        "Gap is emotion minus price reaction. Positive gap means the market may not "
+        "have fully priced the catalyst."
     )
     lines.append("Use `open <#|ticker>` to inspect a candidate.")
     return lines
+
+
+def _candidate_table_row(row: Mapping[str, object], *, row_key: str) -> Mapping[str, object]:
+    brief = _mapping(row.get("research_brief"))
+    next_step = (
+        ((_priced_in_reason(row) and row.get("priced_in_next_step")) or None)
+        or row.get("next_step")
+        or row.get("decision_next_step")
+        or brief.get("next_step")
+    )
+    return {
+        **dict(row),
+        "_row_key": row_key,
+        "score": row.get("score") or row.get("final_score"),
+        "why_now": (
+            _priced_in_reason(row)
+            or brief.get("why_now")
+            or row.get("top_event_title")
+            or row.get("risk_or_gap")
+        ),
+        "next_step": next_step or "Open candidate detail and review the evidence.",
+        "priced_in_status": row.get("priced_in_status") or "n/a",
+    }
 
 
 def _candidate_detail_lines(
@@ -2201,10 +2346,20 @@ def _candidate_detail_lines(
                 ("State", row.get("state")),
                 ("Decision", row.get("decision_status")),
                 ("Score", row.get("score") or row.get("final_score")),
+                ("Priced-in status", row.get("priced_in_status")),
+                ("Emotion score", row.get("emotion_score")),
+                ("Reaction score", row.get("reaction_score")),
+                ("Emotion minus reaction", row.get("emotion_reaction_gap")),
+                ("Priced-in reason", row.get("priced_in_reason")),
                 ("Setup", row.get("setup") or row.get("setup_type")),
                 ("Top catalyst", row.get("top_catalyst") or row.get("top_event_title")),
                 ("Risk / gap", row.get("risk_or_gap")),
-                ("Next step", row.get("next_step") or row.get("decision_next_step")),
+                (
+                    "Next step",
+                    row.get("priced_in_next_step")
+                    or row.get("next_step")
+                    or row.get("decision_next_step"),
+                ),
                 ("Readiness gate", row.get("readiness_gate") or row.get("decision_readiness_gate")),
                 ("Schwab context", row.get("schwab_context_status")),
                 ("Decision card", row.get("decision_card_id") or row.get("card")),
@@ -2648,11 +2803,14 @@ def _footer_lines(width: int) -> list[str]:
 
 
 def _candidate_rows(payload: Mapping[str, object]) -> list[Mapping[str, object]]:
+    direct_rows = _rows(_mapping(payload.get("candidates")).get("rows"))
+    if direct_rows:
+        return direct_rows
     readiness = _mapping(payload.get("readiness"))
     labeled = _rows(readiness.get("candidate_decision_labels"))
     if labeled:
         return labeled
-    return _rows(_mapping(payload.get("candidates")).get("rows"))
+    return []
 
 
 def _join_nonempty(values: Sequence[object], *, separator: str = " ") -> str:
@@ -2748,6 +2906,20 @@ def _rows(value: object) -> list[Mapping[str, object]]:
 
 def _mapping(value: object) -> Mapping[str, object]:
     return value if isinstance(value, Mapping) else {}
+
+
+def _first_value(*values: object) -> object:
+    for value in values:
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def _number_or_zero(value: object) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def _nested(source: Mapping[str, object], *keys: str) -> object | None:
