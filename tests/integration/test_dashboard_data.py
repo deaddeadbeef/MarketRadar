@@ -633,8 +633,11 @@ def test_investment_readiness_payload_blocks_fixture_candidates() -> None:
                     "code": "fixture_market_data",
                     "finding": "Market data is still local CSV/fixture-backed.",
                     "next_action": (
-                        "Use SEC-only results for research only; refresh CSV bars or "
-                        "configure a live market provider before relying on broad discovery."
+                        "Use SEC-only results for research only; import fresh CSV bars "
+                        "with `powershell -ExecutionPolicy Bypass -File "
+                        "scripts\\refresh-csv-market-data.ps1 -DailyBars "
+                        "<fresh-bars.csv> -Execute` or configure a live market provider "
+                        "before relying on broad discovery."
                     ),
                 }
             ],
@@ -654,10 +657,9 @@ def test_investment_readiness_payload_blocks_fixture_candidates() -> None:
     assert readiness["manual_buy_review_ready"] is False
     assert "research-only" in str(readiness["headline"])
     assert "fixture_market_data" in str(readiness["evidence"])
-    assert readiness["next_action"] == (
-        "Use SEC-only results for research only; refresh CSV bars or configure a "
-        "live market provider before relying on broad discovery."
-    )
+    assert "Use SEC-only results for research only" in str(readiness["next_action"])
+    assert "scripts\\refresh-csv-market-data.ps1" in str(readiness["next_action"])
+    assert "-DailyBars <fresh-bars.csv>" in str(readiness["next_action"])
 
 
 def test_investment_readiness_payload_allows_live_buy_review() -> None:
@@ -964,9 +966,11 @@ def test_radar_readiness_payload_summarizes_operator_decision_gate(
     assert payload["candidate_decision_labels"][0]["ticker"] == "MSFT"
     assert payload["candidate_decision_labels"][0]["decision_status"] == "research_only"
     assert payload["candidate_decision_labels"][0]["next_step"]
-    assert payload["candidate_decision_labels"][0]["readiness_gate"] == (
-        "Use SEC-only results for research only; refresh CSV bars or configure a "
-        "live market provider before relying on broad discovery."
+    assert "Use SEC-only results for research only" in str(
+        payload["candidate_decision_labels"][0]["readiness_gate"]
+    )
+    assert "scripts\\refresh-csv-market-data.ps1" in str(
+        payload["candidate_decision_labels"][0]["readiness_gate"]
     )
     assert payload["candidate_decision_labels"][0]["audit"]["provider_license_policy"][
         "external_export_allowed"
@@ -3180,7 +3184,9 @@ def test_readiness_checklist_payload_separates_blockers_from_expected_gates() ->
     assert "SEC-only results for research only" in str(
         by_area["Live market scan"]["next_action"]
     )
-    assert "refresh CSV bars" in str(by_area["Live market scan"]["next_action"])
+    assert "scripts\\refresh-csv-market-data.ps1" in str(
+        by_area["Live market scan"]["next_action"]
+    )
     assert by_area["Catalyst feed"]["status"] == "blocked"
     assert "fixture" in str(by_area["Catalyst feed"]["finding"])
     assert by_area["Research loop"]["status"] == "ready"
@@ -4391,6 +4397,7 @@ def test_radar_discovery_snapshot_labels_fixture_thin_run(
         row for row in snapshot["blockers"] if row["code"] == "fixture_market_data"
     )
     assert "SEC-only results for research only" in str(fixture_market["next_action"])
+    assert "scripts\\refresh-csv-market-data.ps1" in str(fixture_market["next_action"])
     assert snapshot["freshness"]["latest_bars_older_than_as_of"] is False
     assert snapshot["top_discoveries"][0]["ticker"] == "MSFT"
     assert snapshot["top_discoveries"][0]["packet"] == "packet-msft-latest"
@@ -4579,7 +4586,8 @@ def test_radar_discovery_snapshot_flags_stale_bars_and_empty_packets(
     blocker_codes = {str(row["code"]) for row in snapshot["blockers"]}
     assert blocker_codes == {"stale_daily_bars", "no_candidate_packets"}
     stale_bars = next(row for row in snapshot["blockers"] if row["code"] == "stale_daily_bars")
-    assert "Refresh CSV bars" in str(stale_bars["next_action"])
+    assert "scripts\\refresh-csv-market-data.ps1" in str(stale_bars["next_action"])
+    assert "-ExpectedAsOf 2026-05-10" in str(stale_bars["next_action"])
 
 
 def test_radar_discovery_snapshot_exposes_stale_candidate_context(
