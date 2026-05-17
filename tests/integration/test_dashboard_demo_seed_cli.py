@@ -258,7 +258,7 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
     )
 
     async def run_app() -> None:
-        async with app.run_test(size=(140, 42)) as pilot:
+        async with app.run_test(size=(150, 44)) as pilot:
             await pilot.pause()
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert "MRDR // MARKET RADAR" in frame
@@ -266,19 +266,43 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert "Candidates [1]" in frame
             assert "MARKET BARS" in frame
             assert "Decision safe: False" in frame
+            assert "LEGEND" in frame
+            assert "ACTION" in frame
+            assert "RESPONSE" in frame
+            assert "Tab/Shift+Tab focus" in frame
+            assert "Ctrl+N/Ctrl+P page" in frame
+            assert "1 Overview" in frame
 
             assert app.page == "overview"
+            assert await pilot.click("#tab-alerts")
+            await pilot.pause()
+            assert app.page == "alerts"
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            assert ">> 5  Alerts [1]" in frame
+
+            await pilot.press("ctrl+p")
+            await pilot.pause()
+            assert app.page == "candidates"
+
             assert await pilot.click("#nav-candidates")
             await pilot.pause()
             assert app.page == "candidates"
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert ">> 4  Candidates [1]" in frame
 
-            assert await pilot.click("#nav-help")
+            app.query_one("#nav-help").focus()
+            await pilot.press("enter")
             await pilot.pause()
             assert app.page == "help"
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert ">> ?  Help" in frame
             assert "Click sidebar" in frame
+
+            app.query_one("#action-refresh").focus()
+            await pilot.press("enter")
+            await pilot.pause()
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            assert "RESPONSE" in frame
+            assert "Snapshot refreshed from the local database." in frame
 
     asyncio.run(run_app())

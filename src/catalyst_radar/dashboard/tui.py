@@ -10,8 +10,9 @@ from uuid import uuid4
 from sqlalchemy.engine import Engine
 from textual import events
 from textual.app import App, ComposeResult
+from textual.binding import Binding
 from textual.containers import Grid, Horizontal, Vertical
-from textual.widgets import DataTable, Footer, Header, Input, Static
+from textual.widgets import DataTable, Footer, Header, Input, Static, Tab, Tabs
 
 from catalyst_radar.brokers.interactive import (
     create_blocked_order_ticket,
@@ -186,6 +187,12 @@ MODERN_PAGES: tuple[tuple[str, str, str], ...] = (
     ("features", "F", "Features"),
     ("help", "?", "Help"),
 )
+
+
+class FocusRow(Static):
+    """One-line clickable/focusable row for terminal navigation."""
+
+    can_focus = True
 
 
 def dashboard_snapshot_payload(
@@ -474,50 +481,66 @@ class MarketRadarDashboardApp(App[int]):
         color: #ffffff;
     }
 
+    .nav-item:focus, .side-action:focus {
+        background: #235a83;
+        color: #ffffff;
+        text-style: bold;
+    }
+
     #main {
         width: 1fr;
-        padding: 1 2;
+        padding: 0 1;
     }
 
     #hero {
-        height: 5;
+        height: 4;
         border: round #25516f;
         background: #0c141d;
-        padding: 0 2;
-        margin-bottom: 1;
+        padding: 0 1;
+        margin-bottom: 0;
+    }
+
+    #page-tabs {
+        height: 2;
+        background: #080d13;
+        color: #b7c2d0;
+        margin-bottom: 0;
+    }
+
+    #legend {
+        height: 2;
+        background: #09131c;
+        color: #b7c2d0;
+        padding: 0 1;
+        margin-bottom: 0;
     }
 
     #metric-row {
         layout: grid;
         grid-size: 4 1;
         grid-gutter: 0 1;
-        height: 5;
-        margin-bottom: 1;
+        height: 4;
+        margin-bottom: 0;
     }
 
     .metric {
-        height: 5;
+        height: 4;
         border: round #20394f;
         background: #0b141d;
         padding: 0 1;
     }
 
     #message {
-        height: auto;
-        max-height: 5;
-        border: round #3b4e65;
+        height: 2;
+        max-height: 2;
         background: #0d1721;
         color: #d7dde8;
         padding: 0 1;
-        margin-bottom: 1;
-    }
-
-    #message:empty {
-        display: none;
+        margin-bottom: 0;
     }
 
     #section-title {
-        height: 2;
+        height: 1;
         content-align: left middle;
         text-style: bold;
         color: #ffffff;
@@ -530,16 +553,24 @@ class MarketRadarDashboardApp(App[int]):
     }
 
     #detail {
-        height: 6;
+        height: 4;
         border: round #26384d;
         background: #0b141d;
         padding: 0 1;
-        margin-top: 1;
+        margin-top: 0;
+    }
+
+    #action-bar {
+        height: 2;
+        background: #0d1f19;
+        color: #d7dde8;
+        padding: 0 1;
+        margin-top: 0;
     }
 
     #command {
         height: 3;
-        margin-top: 1;
+        margin-top: 0;
     }
     """
 
@@ -557,6 +588,9 @@ class MarketRadarDashboardApp(App[int]):
         ("9", "go('telemetry')", "Telemetry"),
         ("f", "go('features')", "Features"),
         ("?", "go('help')", "Help"),
+        Binding("ctrl+n", "next_page", "Next page", priority=True),
+        Binding("ctrl+p", "previous_page", "Prev page", priority=True),
+        ("escape", "focus_command", "Command"),
     ]
 
     def __init__(
@@ -576,6 +610,7 @@ class MarketRadarDashboardApp(App[int]):
         self.page = _normalize_page(initial_page)
         self.payload: Mapping[str, object] = {}
         self.status_message = ""
+        self._syncing_tabs = False
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -584,16 +619,25 @@ class MarketRadarDashboardApp(App[int]):
                 yield Static("MRDR // MARKET RADAR", classes="brand")
                 yield Static("NAV", classes="side-section")
                 for page_key, shortcut, label in MODERN_PAGES:
-                    yield Static(
+                    yield FocusRow(
                         self._nav_label(page_key, shortcut, label),
                         id=f"nav-{page_key}",
                         classes="nav-item",
                     )
                 yield Static("OPS", classes="side-section")
-                yield Static("R  Refresh snapshot", id="action-refresh", classes="side-action")
-                yield Static("RUN Review call plan", id="action-run-page", classes="side-action")
+                yield FocusRow("R  Refresh snapshot", id="action-refresh", classes="side-action")
+                yield FocusRow("RUN Review call plan", id="action-run-page", classes="side-action")
             with Vertical(id="main"):
                 yield Static(id="hero")
+                yield Tabs(
+                    *[
+                        Tab(f"{shortcut} {label}", id=f"tab-{page_key}")
+                        for page_key, shortcut, label in MODERN_PAGES
+                    ],
+                    active=f"tab-{self.page.split(':', 1)[0]}",
+                    id="page-tabs",
+                )
+                yield Static(id="legend")
                 with Grid(id="metric-row"):
                     yield Static(id="metric-readiness", classes="metric")
                     yield Static(id="metric-market", classes="metric")
@@ -603,9 +647,10 @@ class MarketRadarDashboardApp(App[int]):
                 yield Static(id="section-title")
                 yield DataTable(id="data-table", cursor_type="row")
                 yield Static(id="detail")
+                yield Static(id="action-bar")
                 yield Input(
                     placeholder=(
-                        "Command: ticker AAPL, open 1, run execute, help, q"
+                        "ACTION command: ticker AAPL, open 1, run execute, help, q"
                     ),
                     id="command",
                 )
@@ -628,7 +673,9 @@ class MarketRadarDashboardApp(App[int]):
         self._refresh_nav()
         self._refresh_header()
         self._refresh_table()
-        self.query_one("#message", Static).update(self.status_message)
+        self.query_one("#legend", Static).update(self._legend_text())
+        self.query_one("#message", Static).update(self._response_text())
+        self.query_one("#action-bar", Static).update(self._action_text())
 
     def action_refresh(self) -> None:
         self.reload_snapshot()
@@ -655,6 +702,38 @@ class MarketRadarDashboardApp(App[int]):
             self.action_go("run")
             self.status_message = "Review the call plan, then type run execute if intended."
             self.refresh_view()
+
+    def on_key(self, event: events.Key) -> None:
+        if event.key == "ctrl+n":
+            event.stop()
+            self.action_next_page()
+            return
+        if event.key == "ctrl+p":
+            event.stop()
+            self.action_previous_page()
+            return
+        if event.key != "enter":
+            return
+        focused_id = self.focused.id if self.focused else ""
+        if focused_id.startswith("nav-"):
+            event.stop()
+            self.action_go(focused_id.removeprefix("nav-"))
+            return
+        if focused_id == "action-refresh":
+            event.stop()
+            self.action_refresh()
+            return
+        if focused_id == "action-run-page":
+            event.stop()
+            self.action_go("run")
+            self.status_message = "Review the call plan, then type run execute if intended."
+            self.refresh_view()
+
+    def on_tabs_tab_activated(self, event: Tabs.TabActivated) -> None:
+        if self._syncing_tabs or not event.tab.id:
+            return
+        event.stop()
+        self.action_go(event.tab.id.removeprefix("tab-"))
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         raw = event.value.strip()
@@ -701,8 +780,14 @@ class MarketRadarDashboardApp(App[int]):
 
     def _refresh_nav(self) -> None:
         active = self.page.split(":", 1)[0]
+        tabs = self.query_one("#page-tabs", Tabs)
+        active_tab = f"tab-{active}"
+        if tabs.active != active_tab:
+            self._syncing_tabs = True
+            tabs.active = active_tab
+            self._syncing_tabs = False
         for page_key, shortcut, label in MODERN_PAGES:
-            item = self.query_one(f"#nav-{page_key}", Static)
+            item = self.query_one(f"#nav-{page_key}", FocusRow)
             item.set_class(page_key == active, "active")
             item.update(self._nav_label(page_key, shortcut, label))
 
@@ -722,6 +807,50 @@ class MarketRadarDashboardApp(App[int]):
         if page_key == "ipo":
             return f" [{_mapping(self.payload.get('ipo_s1')).get('count') or 0}]"
         return ""
+
+    def action_next_page(self) -> None:
+        self._move_page(1)
+
+    def action_previous_page(self) -> None:
+        self._move_page(-1)
+
+    def action_focus_command(self) -> None:
+        self.query_one("#command", Input).focus()
+
+    def _move_page(self, delta: int) -> None:
+        active = self.page.split(":", 1)[0]
+        page_keys = [page_key for page_key, _, _ in MODERN_PAGES]
+        try:
+            current = page_keys.index(active)
+        except ValueError:
+            current = 0
+        self.action_go(page_keys[(current + delta) % len(page_keys)])
+
+    def _legend_text(self) -> str:
+        return (
+            "[bold #58a6ff]LEGEND[/] "
+            ">> active page | [n] row count | green=value/state | blue=next/response | "
+            "dim=context | navigation/filters make 0 provider calls"
+        )
+
+    def _response_text(self) -> str:
+        response = self.status_message or "Ready. No command has run in this view."
+        return f"[bold #58a6ff]RESPONSE[/] {response}"
+
+    def _action_text(self) -> str:
+        page = self.page.split(":", 1)[0]
+        page_action = {
+            "run": "Review call budget, then type run execute only if intended.",
+            "candidates": "Click or focus a row and press Enter to open a candidate.",
+            "alerts": "Click or focus a row and press Enter to open an alert.",
+            "broker": "Use action, trigger, eval-triggers, or ticket for local broker artifacts.",
+            "help": "Use the help table as the command reference.",
+        }.get(page, "Use tabs, sidebar, or shortcuts to move; type a command below.")
+        return (
+            "[bold #7ee787]ACTION[/] "
+            "Tab/Shift+Tab focus | Enter activate | Ctrl+N/Ctrl+P page | Esc command. "
+            f"{page_action}"
+        )
 
     def _refresh_header(self) -> None:
         readiness = _mapping(self.payload.get("readiness"))
@@ -2127,8 +2256,7 @@ def _dashboard_count_lines(payload: Mapping[str, object], width: int) -> list[st
 
 def _metric_text(title: str, value: object, detail: object) -> str:
     return (
-        f"[dim]{title.upper()}[/dim]\n"
-        f"[bold #7ee787]{_text(value)}[/]\n"
+        f"[dim]{title.upper()}[/dim] [bold #7ee787]{_text(value)}[/]\n"
         f"[dim]{_text(detail)}[/dim]"
     )
 

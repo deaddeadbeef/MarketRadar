@@ -1,6 +1,6 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-17 13:53:19 +08:00
+Last updated: 2026-05-17 14:09:45 +08:00
 
 ## Current Objective
 
@@ -136,16 +136,19 @@ shortcuts, and a footer. The latest visual polish fixes the cropped sidebar
 button bug by using one-line clickable nav rows, adds visible NAV/OPS sidebar
 sections, surfaces candidate/alert/IPO counts in navigation, tightens the metric
 grid so all four cards fit, and uses a darker "ops console" style with clearer
-status values. `dashboard-tui --once` still uses the plain text renderer for
-deterministic smoke tests and low-fi logs. The TUI exposes the same useful
-dashboard data families: readiness, latest run, discovery snapshot, candidate
-rows, alerts, IPO/S-1 rows, themes, validation, costs, broker context, ops
-health, telemetry, telemetry coverage, live activation, call planning, and a
-feature inventory. Navigation/filtering/export are zero provider-call. The TUI
-also supports guarded manual radar runs (`run execute` after viewing the call
-plan), local opportunity actions, trigger creation/evaluation, blocked
-order-preview tickets, and alert feedback. Real order submission remains
-disabled.
+status values. The current usability polish adds a top tab strip, priority
+keyboard navigation with `Ctrl+N` / `Ctrl+P`, focusable sidebar/action rows
+that activate with `Enter`, an always-visible legend, and separate `ACTION` and
+`RESPONSE` strips so operator intent is distinct from dashboard feedback.
+`dashboard-tui --once` still uses the plain text renderer for deterministic
+smoke tests and low-fi logs. The TUI exposes the same useful dashboard data
+families: readiness, latest run, discovery snapshot, candidate rows, alerts,
+IPO/S-1 rows, themes, validation, costs, broker context, ops health, telemetry,
+telemetry coverage, live activation, call planning, and a feature inventory.
+Navigation/filtering/export are zero provider-call. The TUI also supports
+guarded manual radar runs (`run execute` after viewing the call plan), local
+opportunity actions, trigger creation/evaluation, blocked order-preview tickets,
+and alert feedback. Real order submission remains disabled.
 
 The current local bootstrap slice adds a repo-owned PowerShell launcher:
 
