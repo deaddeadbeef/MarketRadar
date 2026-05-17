@@ -70,6 +70,20 @@ foreach ($row in @($readiness.readiness_checklist)) {
     }
 }
 
+$usefulness = $readiness.market_radar_usefulness
+$discovery = $readiness.discovery_snapshot
+$freshness = $null
+if ($null -ne $discovery) {
+    $freshness = $discovery.freshness
+}
+$staleBarBlocker = $null
+foreach ($blocker in @($discovery.blockers)) {
+    if ($blocker.code -eq "stale_daily_bars") {
+        $staleBarBlocker = $blocker
+        break
+    }
+}
+
 if ($Json) {
     $payload | ConvertTo-Json -Depth 12
     return
@@ -91,6 +105,31 @@ if ($null -ne $readiness.operator_next_step) {
         $readiness.operator_next_step.priority,
         $readiness.operator_next_step.area
     )
+}
+if ($null -ne $usefulness) {
+    Write-Output (
+        "Usefulness: {0}; safe_decision={1}; ready_layers={2}/{3}; blocked={4}; research={5}" -f
+        $usefulness.status,
+        $usefulness.safe_to_make_investment_decision,
+        $usefulness.ready_layers,
+        $usefulness.total_layers,
+        $usefulness.blocked_layers,
+        $usefulness.research_layers
+    )
+    Write-Output (
+        "- useful means: research triage requires a complete required run path and labeled sources; manual investment review requires fresh market bars, live catalysts, a Decision Card, and no blockers."
+    )
+}
+if ($null -ne $freshness) {
+    Write-Output (
+        "Market freshness: stale={0}; latest_bar={1}; run_as_of={2}" -f
+        $(if ($null -ne $freshness.latest_bars_older_than_as_of) { $freshness.latest_bars_older_than_as_of } else { "n/a" }),
+        $(if ($freshness.latest_daily_bar_date) { $freshness.latest_daily_bar_date } else { "n/a" }),
+        $(if ($readiness.radar_run.as_of) { $readiness.radar_run.as_of } else { "n/a" })
+    )
+    if ($staleBarBlocker.next_action) {
+        Write-Output ("- market freshness: {0}" -f $staleBarBlocker.next_action)
+    }
 }
 if ($null -ne $portfolioContext) {
     Write-Output (

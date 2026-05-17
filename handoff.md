@@ -1,6 +1,6 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-17 00:02:19 +08:00
+Last updated: 2026-05-17 00:25:00 +08:00
 
 ## Current Objective
 
@@ -29,6 +29,27 @@ CATALYST_POLYGON_API_KEY=
 `CATALYST_SEC_USER_AGENT` is not a secret. It is a SEC-required identifying contact string for EDGAR requests, such as `MarketRadar user@example.com`. Do not paste the user's actual value into chat or checked-in docs.
 
 `CATALYST_POLYGON_API_KEY` must remain optional unless the operator explicitly switches `CATALYST_DAILY_MARKET_PROVIDER=polygon`.
+
+## Definition Of Useful
+
+Keep the usefulness bar explicit and small:
+
+- **Research-useful** means a capped run completes the required radar path, uses
+  clearly labeled sources, surfaces candidate research/briefs, shows the single
+  next operator action, and makes no hidden external calls.
+- **Decision-useful** means research-useful plus fresh market bars for the run
+  `as_of`, live catalyst input, no blocking run/readiness rows, a Decision Card
+  for a manual-review candidate, fresh read-only portfolio context, and order
+  submission still disabled.
+- **Not useful enough to act** includes stale bars, fixture/CSV market data that
+  is older than the run date, a thin universe, missing live credentials, blocked
+  run steps, or any unclear provider-call budget.
+
+Current state is **research-only**. The required run path and SEC catalyst path
+work, but daily bars are still local CSV and stale (`latest_bar=2026-05-08` vs.
+latest run `as_of=2026-05-16`), and the universe is intentionally tiny. The
+next small product slice should make the CSV/manual market refresh path obvious,
+not add a large new market-data framework.
 
 ## Current Repository State
 
