@@ -254,7 +254,7 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
         config=AppConfig.from_env(),
         dotenv_loaded=False,
         filters=DashboardFilters(),
-        initial_page="overview",
+        initial_page="tutorial",
     )
 
     async def run_app() -> None:
@@ -262,6 +262,17 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             await pilot.pause()
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert "MRDR // MARKET RADAR" in frame
+            assert "TUTORIAL" in frame
+            assert "Tutorial - your first 90 seconds" in frame
+            assert "Press 1 or click Start" in frame
+            assert "0  Tutorial" in frame
+            assert "LEARN" in frame
+            assert app.page == "tutorial"
+
+            await pilot.press("1")
+            await pilot.pause()
+            assert app.page == "overview"
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert "START HERE" in frame
             assert "Start here - answer these in order" in frame
             assert "Can I act on this?" in frame
@@ -270,15 +281,13 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert "FRESH BARS" in frame
             assert "No - research only" in frame
             assert "KEYS" in frame
-            assert "MAP" in frame
+            assert "MOUSE" in frame
             assert "NEXT ACTION" in frame
             assert "LAST RESPONSE" in frame
             assert "CORE" in frame
             assert "REVIEW" in frame
             assert "OPERATE" in frame
             assert "Up/Down on sidebar" in frame
-
-            assert app.page == "overview"
             assert await pilot.click("#nav-alerts")
             await pilot.pause()
             assert app.page == "alerts"

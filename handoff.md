@@ -1,6 +1,6 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-17 20:19:52 +08:00
+Last updated: 2026-05-17 21:13:13 +08:00
 
 ## Current Objective
 
@@ -138,11 +138,12 @@ button bug by using one-line clickable nav rows, groups the sidebar into
 in navigation, tightens the metric grid so all four cards fit, and uses a
 darker "ops console" style with clearer status values. The current usability
 polish removes the redundant top tab strip, makes the grouped sidebar the
-primary navigation surface, keeps shortcuts visible in a compact `KEYS` / `MAP`
-guide, supports `Ctrl+N` / `Ctrl+P` and sidebar `Up` / `Down` navigation, adds
-a first-screen `START HERE` guide that answers "can I act?", "why?", and "what
-should I click next?", and shows side-by-side `NEXT ACTION` and `LAST RESPONSE`
-cards so operator intent is distinct from dashboard feedback.
+primary navigation surface, keeps shortcuts visible in a compact `KEYS` /
+`MOUSE` guide, supports `Ctrl+N` / `Ctrl+P` and sidebar `Up` / `Down`
+navigation, adds a default `0 Tutorial` page for the first 90 seconds, keeps
+`1 Start` as the first real dashboard page that answers "can I act?", "why?",
+and "what should I click next?", and shows side-by-side `NEXT ACTION` and
+`LAST RESPONSE` cards so operator intent is distinct from dashboard feedback.
 `dashboard-tui --once` still uses the plain text renderer for deterministic
 smoke tests and low-fi logs. The TUI exposes the same useful dashboard data
 families: readiness, latest run, discovery snapshot, candidate rows, alerts,
@@ -166,7 +167,7 @@ user's PowerShell profile. The profile function calls
 editable `catalyst-radar` command when `pyproject.toml` changes, fast-forwards
 clean `main` to `origin/main`, and runs `dashboard-tui` without setting
 `PYTHONPATH` or mutating the caller's shell environment. The user can pass TUI
-arguments directly, for example `radar --once --page overview`. Use
+arguments directly, for example `radar --once --page tutorial`. Use
 `radar --no-update` to skip Git update and `radar --force-install` to refresh
 the editable install.
 
