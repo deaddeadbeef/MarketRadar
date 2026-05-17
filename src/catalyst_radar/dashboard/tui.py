@@ -142,6 +142,8 @@ PAGE_ALIASES: Mapping[str, str] = {
     "tutorial": "tutorial",
     "1": "overview",
     "home": "overview",
+    "insight": "overview",
+    "insights": "overview",
     "o": "overview",
     "overview": "overview",
     "start": "overview",
@@ -176,13 +178,13 @@ PAGE_ALIASES: Mapping[str, str] = {
 }
 
 NAVIGATION_TEXT = (
-    "0 Tutorial | 1 Start | 2 Readiness | 3 Run | 4 Candidates | 5 Alerts | "
+    "0 Tutorial | 1 Insights | 2 Readiness | 3 Run | 4 Candidates | 5 Alerts | "
     "6 IPO/S-1 | 7 Broker | 8 Ops | 9 Telemetry | features | help | q"
 )
 
 MODERN_PAGES: tuple[tuple[str, str, str], ...] = (
     ("tutorial", "0", "Tutorial"),
-    ("overview", "1", "Start"),
+    ("overview", "1", "Insights"),
     ("readiness", "2", "Readiness"),
     ("run", "3", "Run"),
     ("candidates", "4", "Candidates"),
@@ -330,7 +332,7 @@ def run_dashboard_tui(
     config: AppConfig,
     dotenv_loaded: bool,
     filters: DashboardFilters,
-    initial_page: str = "tutorial",
+    initial_page: str = "overview",
     input_fn: Callable[[str], str] = input,
     output_fn: Callable[[str], object] = print,
     clear_screen: bool = True,
@@ -367,7 +369,7 @@ def _run_dashboard_tui_legacy(
     config: AppConfig,
     dotenv_loaded: bool,
     filters: DashboardFilters,
-    initial_page: str = "tutorial",
+    initial_page: str = "overview",
     input_fn: Callable[[str], str] = input,
     output_fn: Callable[[str], object] = print,
     clear_screen: bool = True,
@@ -592,7 +594,7 @@ class MarketRadarDashboardApp(App[int]):
         ("q", "quit", "Quit"),
         ("r", "refresh", "Refresh"),
         Binding("0", "go('tutorial')", "Tutorial", priority=True),
-        Binding("1", "go('overview')", "Start", priority=True),
+        Binding("1", "go('overview')", "Insights", priority=True),
         Binding("2", "go('readiness')", "Readiness", priority=True),
         Binding("3", "go('run')", "Run", priority=True),
         Binding("4", "go('candidates')", "Candidates", priority=True),
@@ -678,6 +680,8 @@ class MarketRadarDashboardApp(App[int]):
         self.refresh_view()
         if self.page == "tutorial":
             self.query_one("#nav-tutorial", FocusRow).focus()
+        elif self.page == "overview":
+            self.query_one("#data-table", DataTable).focus()
         else:
             self.query_one("#command", Input).focus()
 
@@ -809,17 +813,25 @@ class MarketRadarDashboardApp(App[int]):
         return {}
 
     def _refresh_nav(self) -> None:
-        active = self.page.split(":", 1)[0]
+        active = self._active_nav_page()
         for page_key, shortcut, label in MODERN_PAGES:
             item = self.query_one(f"#nav-{page_key}", FocusRow)
             item.set_class(page_key == active, "active")
             item.update(self._nav_label(page_key, shortcut, label))
 
     def _nav_label(self, page_key: str, shortcut: str, label: str) -> str:
-        active = self.page.split(":", 1)[0] == page_key
+        active = self._active_nav_page() == page_key
         marker = ">>" if active else "  "
         counts = self._nav_count_suffix(page_key)
         return f"{marker} {shortcut:<2} {label}{counts}"
+
+    def _active_nav_page(self) -> str:
+        active = self.page.split(":", 1)[0]
+        if active == "candidate":
+            return "candidates"
+        if active == "alert":
+            return "alerts"
+        return active
 
     def _nav_count_suffix(self, page_key: str) -> str:
         if not self.payload:
@@ -842,7 +854,7 @@ class MarketRadarDashboardApp(App[int]):
         self.query_one("#command", Input).focus()
 
     def _move_page(self, delta: int) -> None:
-        active = self.page.split(":", 1)[0]
+        active = self._active_nav_page()
         page_keys = [page_key for page_key, _, _ in MODERN_PAGES]
         try:
             current = page_keys.index(active)
@@ -855,13 +867,13 @@ class MarketRadarDashboardApp(App[int]):
         focus_ids.extend(["action-refresh", "action-run-page"])
         focused_id = self.focused.id if self.focused else ""
         if focused_id not in focus_ids:
-            focused_id = f"nav-{self.page.split(':', 1)[0]}"
+            focused_id = f"nav-{self._active_nav_page()}"
         index = focus_ids.index(focused_id)
         self.query_one(f"#{focus_ids[(index + delta) % len(focus_ids)]}", FocusRow).focus()
 
     def _navigation_text(self) -> str:
         return (
-            "[bold #58a6ff]KEYS[/] 0 tutorial | 1 start | 2 readiness | 4 candidates | "
+            "[bold #58a6ff]KEYS[/] 1 insights | 4 candidates | 5 alerts | 0 tutorial | "
             "Ctrl+N/P page\n"
             "[bold #58a6ff]MOUSE[/] click sidebar or table rows | "
             "Tab focus | Up/Down on sidebar | Enter open | Esc command | q quit\n"
@@ -874,9 +886,10 @@ class MarketRadarDashboardApp(App[int]):
     def _action_text(self) -> str:
         page = self.page.split(":", 1)[0]
         page_action = {
-            "tutorial": "Follow the numbered rows. Press 1 when you are ready for the dashboard.",
+            "tutorial": "Follow the numbered rows. Press 1 when you are ready for insights.",
             "overview": (
-                "Choose a workflow row. Press Enter or click to open the next operational view."
+                "Select an insight row. Enter opens the exact candidate, alert, "
+                "blocker, or run plan."
             ),
             "run": "Review call budget, then type run execute only if intended.",
             "candidates": "Click or focus a row and press Enter to open a candidate.",
@@ -907,7 +920,7 @@ class MarketRadarDashboardApp(App[int]):
         page_title = (
             "TUTORIAL"
             if active_page == "tutorial"
-            else "START HERE"
+            else "INSIGHTS"
             if active_page == "overview"
             else self.page.upper()
         )
@@ -921,7 +934,7 @@ class MarketRadarDashboardApp(App[int]):
                             "This walkthrough teaches the controls. "
                             "It does not run providers, trade, or change data."
                         ),
-                        "[bold #58a6ff]Do next[/] Read the rows below, then press 1 for Start.",
+                        "[bold #58a6ff]Do next[/] Read the rows below, then press 1 for Insights.",
                     ]
                 )
             )
@@ -929,7 +942,7 @@ class MarketRadarDashboardApp(App[int]):
                 _metric_text("Step 1", "Learn controls", "mouse, keys, commands")
             )
             self.query_one("#metric-market", Static).update(
-                _metric_text("Step 2", "Open Start", "press 1")
+                _metric_text("Step 2", "Open Insights", "press 1")
             )
             self.query_one("#metric-calls", Static).update(
                 _metric_text("Safety", "0 calls", "tutorial is local")
@@ -1008,7 +1021,7 @@ class MarketRadarDashboardApp(App[int]):
             return "\n".join(
                 [
                     "[bold #7ee787]TUTORIAL[/]  Do these in order. Nothing external runs here.",
-                    "[bold]1.[/] Press 1 or click Start to see whether Market Radar is usable.",
+                    "[bold]1.[/] Press 1 or click Insights to see what needs attention.",
                     "[bold]2.[/] Press 2 to see blockers. Press 4 to inspect candidate research.",
                     (
                         "[bold]3.[/] Press 3 only to review the run plan; "
@@ -1019,14 +1032,18 @@ class MarketRadarDashboardApp(App[int]):
         if page == "overview":
             return "\n".join(
                 [
-                    "[bold #7ee787]COCKPIT[/]  Choose the job you want Market Radar to do now.",
-                    "[bold]Click or Enter on a workflow row.[/] It will open the right view.",
+                    "[bold #7ee787]INSIGHT QUEUE[/]  What matters now, why, and what you can do.",
+                    (
+                        "[bold]Click or Enter on a row.[/] Candidate and alert rows "
+                        "open their detail view."
+                    ),
                     (
                         f"[bold]Current boundary:[/] {can_act}; "
                         f"{blocked_layers or 0} useful layer(s) blocked."
                     ),
                     (
-                        "[bold]Safe rule:[/] browsing and workflow routing make 0 provider calls."
+                        "[bold]Safe rule:[/] browsing and opening insight rows make "
+                        "0 provider calls."
                     ),
                 ]
             )
@@ -1087,7 +1104,7 @@ class MarketRadarDashboardApp(App[int]):
                 [
                     "[bold #7ee787]USE THIS PAGE[/] Diagnose stale or broken data.",
                     "[bold]Look for:[/] unhealthy providers, stale market bars, database gaps.",
-                    "[bold]Do next:[/] refresh after fixing data, then return to Start.",
+                    "[bold]Do next:[/] refresh after fixing data, then return to Insights.",
                 ]
             )
         if page == "help":
@@ -1104,7 +1121,7 @@ class MarketRadarDashboardApp(App[int]):
         return "\n".join(
             [
                 "[bold #7ee787]USE THIS PAGE[/] Inspect this evidence before acting elsewhere.",
-                "[bold]Do next:[/] click rows when available, or return to Start with 1.",
+                "[bold]Do next:[/] click rows when available, or return to Insights with 1.",
                 "[bold]Reminder:[/] navigation and filtering make 0 provider calls.",
             ]
         )
@@ -1285,8 +1302,8 @@ class MarketRadarDashboardApp(App[int]):
         rows = [
             {
                 "step": "1",
-                "do": "Press 1 or click Start",
-                "result": "See the plain-language answer: can I act, why, and next click.",
+                "do": "Press 1 or click Insights",
+                "result": "See the current insight queue: ticker, signal, why, and action.",
             },
             {
                 "step": "2",
@@ -1320,17 +1337,17 @@ class MarketRadarDashboardApp(App[int]):
         self,
     ) -> tuple[str, Sequence[tuple[str, str, int]], list[Mapping[str, object]], str]:
         return (
-            "What do you want Market Radar to do right now?",
+            "Market insights - select a row to act",
             [
-                ("intent", "Intent", 30),
-                ("state", "State", 28),
-                ("why", "Why this matters", 52),
-                ("opens", "Opens", 14),
+                ("scope", "Scope", 10),
+                ("signal", "Signal", 28),
+                ("why_now", "Why now", 50),
+                ("next_action", "Next action", 44),
             ],
-            _workflow_rows(self.payload),
+            _market_insight_rows(self.payload),
             (
-                "Select a workflow row with mouse or Enter. "
-                "This cockpit routes existing dashboard pages; it makes 0 provider calls."
+                "Rows are local insight cards. Enter opens the relevant evidence or action page. "
+                "Browsing makes 0 provider calls."
             ),
         )
 
@@ -1372,8 +1389,8 @@ class MarketRadarDashboardApp(App[int]):
             {"command": "Click candidate/alert row", "meaning": "Open the selected detail view."},
             {"command": "0, 1..9, f, ?", "meaning": "Keyboard page shortcuts."},
             {
-                "command": "tutorial / start",
-                "meaning": "Open the tutorial or the first dashboard page.",
+                "command": "tutorial / insights / start",
+                "meaning": "Open the walkthrough or the market insight queue.",
             },
             {"command": "ticker <SYMBOL|all>", "meaning": "Filter ticker-aware pages."},
             {"command": "run execute", "meaning": "Start one guarded capped radar cycle."},
@@ -1402,7 +1419,7 @@ class MarketRadarDashboardApp(App[int]):
 def render_dashboard_tui(
     payload: Mapping[str, object],
     *,
-    page: str = "tutorial",
+    page: str = "overview",
     width: int | None = None,
 ) -> str:
     resolved_width = _resolve_width(width)
@@ -1864,8 +1881,8 @@ def _tutorial_lines(width: int) -> list[str]:
             [
                 {
                     "step": "1",
-                    "do": "Press 1 / click Start",
-                    "result": "See whether Market Radar is usable and what to do next.",
+                    "do": "Press 1 / click Insights",
+                    "result": "See ticker signals, why they matter, and the next action.",
                 },
                 {
                     "step": "2",
@@ -1911,107 +1928,139 @@ def _tutorial_lines(width: int) -> list[str]:
     return lines
 
 
-def _workflow_rows(payload: Mapping[str, object]) -> list[Mapping[str, object]]:
+def _market_insight_rows(payload: Mapping[str, object]) -> list[Mapping[str, object]]:
     readiness = _mapping(payload.get("readiness"))
     usefulness = _mapping(readiness.get("market_radar_usefulness"))
     freshness = _mapping(_mapping(readiness.get("discovery_snapshot")).get("freshness"))
     database = _mapping(_mapping(payload.get("ops_health")).get("database"))
     call_plan = _mapping(payload.get("call_plan"))
     can_act = _decision_label(readiness)
-    next_action = readiness.get("next_action") or "Open Readiness."
-    counts = _mapping(payload.get("candidates")).get("count") or 0
-    alerts = _mapping(payload.get("alerts")).get("count") or 0
+    rows: list[Mapping[str, object]] = []
+
+    for index, candidate in enumerate(_candidate_rows(payload), start=1):
+        ticker = str(candidate.get("ticker") or "").strip().upper()
+        if not ticker:
+            continue
+        state = _text(candidate.get("state") or candidate.get("decision_status") or "candidate")
+        score = candidate.get("score") or candidate.get("final_score")
+        setup = (
+            candidate.get("setup_type")
+            or candidate.get("candidate_theme")
+            or candidate.get("top_event_type")
+            or "candidate"
+        )
+        risk = (
+            candidate.get("risk_or_gap")
+            or candidate.get("hard_blocks")
+            or candidate.get("decision_status")
+            or "Review evidence"
+        )
+        score_text = f"score {_text(score)}" if score not in (None, "") else ""
+        why_now = _join_nonempty((score_text, _human_label(setup), risk), separator="; ")
+        rows.append(
+            {
+                "_row_key": f"candidate-{ticker}",
+                "scope": ticker,
+                "signal": f"{state} candidate",
+                "why_now": why_now,
+                "next_action": candidate.get("next_step")
+                or "Open candidate detail and decide watch, ready, or dismiss.",
+                "target_page": f"candidate:{ticker}",
+                "status_message": (
+                    f"Opened insight for {ticker}. Review evidence before any action."
+                ),
+            }
+        )
+        if index >= 5:
+            break
+
+    for index, alert in enumerate(_rows(_mapping(payload.get("alerts")).get("rows")), start=1):
+        alert_id = str(alert.get("id") or "").strip()
+        ticker = str(alert.get("ticker") or "ALERT").strip().upper()
+        if not alert_id:
+            continue
+        status = _join_nonempty(
+            (alert.get("status"), alert.get("route"), alert.get("priority")),
+            separator=" / ",
+        )
+        rows.append(
+            {
+                "_row_key": f"alert-{index}",
+                "scope": ticker,
+                "signal": "Planned alert",
+                "why_now": alert.get("summary") or alert.get("title") or status,
+                "next_action": "Open alert, then record useful/noisy/acted feedback.",
+                "target_page": f"alert:{alert_id}",
+                "status_message": f"Opened alert insight for {ticker}.",
+            }
+        )
+        if index >= 3:
+            break
+
+    readiness_reason = readiness.get("headline") or usefulness.get("headline")
+    if readiness_reason:
+        rows.append(
+            {
+                "_row_key": "readiness",
+                "scope": "ALL",
+                "signal": can_act,
+                "why_now": readiness_reason,
+                "next_action": readiness.get("next_action") or "Open Readiness.",
+                "target_page": "readiness",
+                "status_message": "Opened Readiness. Clear blockers before relying on output.",
+            }
+        )
+
     freshness_gap = (
         f"run coverage {freshness.get('active_security_with_as_of_bar_count')}/"
         f"{freshness.get('active_security_count')}; "
         f"latest bar {database.get('latest_daily_bar_date') or 'n/a'}"
     )
-    return [
-        {
-            "_row_key": "find",
-            "intent": "Find opportunities",
-            "state": f"{counts} candidate(s)",
-            "why": "Open the research queue and inspect evidence-backed ticker rows.",
-            "opens": "Candidates",
-            "target_page": "candidates",
-            "status_message": "Opened candidate queue. Pick one ticker to inspect.",
-        },
-        {
-            "_row_key": "review",
-            "intent": "Review candidates",
-            "state": can_act,
-            "why": readiness.get("headline") or usefulness.get("headline"),
-            "opens": "Readiness",
-            "target_page": "readiness",
-            "status_message": "Opened readiness blockers before candidate review.",
-        },
-        {
-            "_row_key": "actionable",
-            "intent": "Check actionable",
-            "state": can_act,
-            "why": "Verify freshness, blockers, and decision boundary first.",
-            "opens": "Readiness",
-            "target_page": "readiness",
-            "status_message": "Opened readiness. Do not act until blockers are clear.",
-        },
-        {
-            "_row_key": "fix",
-            "intent": "Fix blockers",
-            "state": freshness_gap,
-            "why": next_action,
-            "opens": "Ops",
-            "target_page": "ops",
-            "status_message": "Opened Ops. Fix data health before trusting output.",
-        },
-        {
-            "_row_key": "run",
-            "intent": "Run radar cycle",
-            "state": f"{call_plan.get('max_external_call_count')} max external calls",
-            "why": "Review the call plan before starting any provider-backed work.",
-            "opens": "Run plan",
-            "target_page": "run",
-            "status_message": "Opened call plan. Type run execute only if intended.",
-        },
-        {
-            "_row_key": "alerts",
-            "intent": "Review alerts",
-            "state": f"{alerts} alert(s)",
-            "why": "Decide whether alert output is useful, noisy, ignored, or acted.",
-            "opens": "Alerts",
-            "target_page": "alerts",
-            "status_message": "Opened alerts. Record feedback after review.",
-        },
-        {
-            "_row_key": "broker",
-            "intent": "Record decision",
-            "state": "orders disabled",
-            "why": "Save watch/ready/dismiss, trigger, or blocked ticket artifacts locally.",
-            "opens": "Broker",
-            "target_page": "broker",
-            "status_message": "Opened Broker. Local artifacts only; orders stay disabled.",
-        },
-    ]
+    rows.extend(
+        [
+            {
+                "_row_key": "ops",
+                "scope": "DATA",
+                "signal": "Data health",
+                "why_now": freshness_gap,
+                "next_action": "Open Ops to fix stale bars, providers, or jobs.",
+                "target_page": "ops",
+                "status_message": "Opened Ops. Fix data health before trusting output.",
+            },
+            {
+                "_row_key": "run",
+                "scope": "ALL",
+                "signal": "Refresh intelligence",
+                "why_now": call_plan.get("headline")
+                or "Run plan is available for a capped radar cycle.",
+                "next_action": "Open Run plan; execute only if the call budget is intentional.",
+                "target_page": "run",
+                "status_message": "Opened call plan. Type run execute only if intended.",
+            },
+        ]
+    )
+    return rows
 
 
 def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
-    lines = [_rule("What do you want Market Radar to do right now?", width)]
+    lines = [_rule("Market insights - select a row to act", width)]
     lines.extend(
         _table_lines(
-            _workflow_rows(payload),
+            _market_insight_rows(payload),
             [
-                ("intent", "Intent", 28),
-                ("state", "State", 28),
-                ("why", "Why this matters", 52),
-                ("opens", "Opens", 14),
+                ("scope", "Scope", 10),
+                ("signal", "Signal", 28),
+                ("why_now", "Why now", 50),
+                ("next_action", "Next action", 44),
             ],
             width=width,
-            limit=8,
+            limit=10,
         )
     )
     lines.append("")
     lines.append(
-        "Select the matching workflow in the interactive TUI. "
-        "This cockpit makes 0 provider calls while routing."
+        "Rows are local insight cards. Enter opens the relevant evidence or action page. "
+        "Browsing makes 0 provider calls."
     )
     return lines
 
@@ -2604,6 +2653,15 @@ def _candidate_rows(payload: Mapping[str, object]) -> list[Mapping[str, object]]
     if labeled:
         return labeled
     return _rows(_mapping(payload.get("candidates")).get("rows"))
+
+
+def _join_nonempty(values: Sequence[object], *, separator: str = " ") -> str:
+    parts = [_text(value) for value in values if value not in (None, "", [], {})]
+    return separator.join(part for part in parts if part != "n/a")
+
+
+def _human_label(value: object) -> str:
+    return _text(value).replace("_", " ").strip()
 
 
 def _indexed(rows: Sequence[Mapping[str, object]]) -> list[dict[str, object]]:

@@ -168,11 +168,11 @@ def test_dashboard_snapshot_cli_outputs_human_readable_zero_call_summary(
         "Page: overview",
         "DB:",
         "Ticker: ACME",
-        "What do you want Market Radar to do right now?",
-        "Find opportunities",
-        "Fix blockers",
-        "Run radar cycle",
-        "Select the matching workflow",
+        "Market insights - select a row to act",
+        "ACME",
+        "Warning candidate",
+        "score",
+        "Rows are local insight cards",
         "External calls made: 0",
     ):
         assert expected in output.out
@@ -263,7 +263,7 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert "MRDR // MARKET RADAR" in frame
             assert "TUTORIAL" in frame
             assert "Tutorial - your first 90 seconds" in frame
-            assert "Press 1 or click Start" in frame
+            assert "Press 1 or click Insights" in frame
             assert "0  Tutorial" in frame
             assert "LEARN" in frame
             assert app.page == "tutorial"
@@ -272,10 +272,11 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             await pilot.pause()
             assert app.page == "overview"
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
-            assert "START HERE" in frame
-            assert "What do you want Market Radar to do right now?" in frame
-            assert "Find opportunities" in frame
-            assert "Fix blockers" in frame
+            assert "INSIGHTS" in frame
+            assert "Market insights - select a row to act" in frame
+            assert "ACME" in frame
+            assert "Warning candidate" in frame
+            assert "Rows are local insight cards" in frame
             assert "Candidates [1]" in frame
             assert "FRESH BARS" in frame
             assert "No - research only" in frame
@@ -291,9 +292,10 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             app.query_one("#data-table").focus()
             await pilot.press("enter")
             await pilot.pause()
-            assert app.page == "candidates"
+            assert app.page == "candidate:ACME"
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
-            assert "Opened candidate queue" in frame
+            assert "Opened insight for ACME" in frame
+            assert ">> 4  Candidates [1]" in frame
 
             assert await pilot.click("#nav-alerts")
             await pilot.pause()
