@@ -107,6 +107,30 @@ dashboard at `http://127.0.0.1:8514`, loading `.env.local` through the app
 startup path. Docker Compose runs the same command-center entry point at
 `http://localhost:8501`.
 
+The primary operator dashboard can also run entirely in the terminal:
+
+```powershell
+catalyst-radar dashboard-tui
+catalyst-radar dashboard-tui --once --page features
+```
+
+The TUI is the operational replacement surface for the web dashboard. It loads
+the same command-center data helpers and provides pages for overview,
+readiness, run/call-plan, candidates, alerts, IPO/S-1, broker, ops, telemetry,
+themes, validation, costs, and current feature inventory. Inside the TUI, type
+page names or numbers to navigate, `open <#|ticker>` to drill into candidates,
+`ticker <SYMBOL|all>` and `available-at <ISO|latest>` to filter, `json` to
+print the redacted machine-readable snapshot, `refresh` to reload the local
+database, and `q` to quit. It makes 0 Polygon, SEC, Schwab, or OpenAI calls
+while rendering or navigating. From the run page, `run` explains the guarded
+execution path and `run execute` starts one capped scheduler cycle after the
+call plan is visible.
+The broker page also supports local operator writes that do not submit real
+orders: `action <ticker> <watch|ready|simulate_entry|dismiss> [notes]`,
+`trigger <ticker> <type> <op> <threshold> [notes]`, `eval-triggers [ticker]`,
+`ticket <ticker> <buy|sell> <entry> <stop> [risk_pct] [notes]`, and
+`feedback <alert-id|#> <label> [notes]`.
+
 For a zero-call local sitrep:
 
 ```powershell
@@ -122,6 +146,23 @@ bar on the latest daily-bar date and which active tickers are still missing
 latest bars. It also reports coverage for the latest run's `as_of` date, which
 is the date the manual template must satisfy before the run can become
 decision-useful. It makes 0 Polygon, SEC, Schwab, or OpenAI calls.
+
+For functional end-to-end tests of the same command-center data the dashboard
+renders:
+
+```powershell
+catalyst-radar dashboard-snapshot --json
+catalyst-radar dashboard-snapshot --ticker ACME --available-at 2026-05-10T21:06:00Z
+```
+
+The snapshot uses the dashboard data helpers for readiness, latest run,
+candidate rows, alerts, IPO/S-1 rows, themes, validation, costs, broker context,
+ops health, telemetry, telemetry coverage, live activation, and call planning.
+It is read-only, redacts restricted provider payloads, and makes 0 Polygon, SEC,
+Schwab, or OpenAI calls.
+
+See `docs/dashboard-feature-inventory.md` for the current dashboard feature
+inventory and TUI coverage.
 
 If the sitrep reports stale CSV market bars, import a manually prepared daily
 bar CSV with the same schema as `data/sample/daily_bars.csv`:
