@@ -131,11 +131,12 @@ powershell -ExecutionPolicy Bypass -File scripts/refresh-csv-market-data.ps1 -Da
 
 The template command writes a local ignored CSV scaffold for active tickers.
 Fill `open`, `high`, `low`, `close`, `volume`, and `vwap`, then preview with
-the second command. Preview validates required numeric fields and active-ticker
-coverage before any import. The `-Execute` command wraps the existing local
-`ingest-csv` path, records provider health, and makes 0 Polygon, SEC, Schwab,
-or OpenAI calls. After importing, rerun `scripts/market-radar-status.ps1`, then
-use the plan-only smoke before any capped live radar cycle.
+the second command. Preview reports all missing or invalid bar fields it finds
+and validates active-ticker coverage before any import. The `-Execute` command
+wraps the existing local `ingest-csv` path, records provider health, and makes
+0 Polygon, SEC, Schwab, or OpenAI calls. After importing, rerun
+`scripts/market-radar-status.ps1`, then use the plan-only smoke before any
+capped live radar cycle.
 
 For a redacted raw telemetry evidence snapshot:
 

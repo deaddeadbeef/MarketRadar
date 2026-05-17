@@ -130,35 +130,87 @@ function Assert-IntegerField {
 function Assert-DailyBarRows {
     param([object[]]$Rows)
 
+    $issues = [System.Collections.Generic.List[string]]::new()
+    $rowNumber = 1
     foreach ($row in $Rows) {
+        $rowNumber += 1
         $ticker = ([string]$row.ticker).Trim().ToUpperInvariant()
         $dateLabel = ([string]$row.date).Trim()
         $label = if ([string]::IsNullOrWhiteSpace($ticker)) {
-            "Daily bar row"
+            "Daily bar CSV row $rowNumber"
         }
         else {
             "Daily bar row $ticker $dateLabel"
         }
         if ([string]::IsNullOrWhiteSpace($ticker)) {
-            throw "$label is missing required ticker."
+            $issues.Add("$label is missing required ticker.")
         }
-        Convert-CsvDate -Value $row.date -Field "daily bar" | Out-Null
-        foreach ($field in @("open", "high", "low", "close", "vwap")) {
-            Assert-NumberField -Row $row -Field $field -Label $label
+        try {
+            Convert-CsvDate -Value $row.date -Field "daily bar" | Out-Null
         }
-        Assert-IntegerField -Row $row -Field "volume" -Label $label
-        Convert-CsvBool -Value $row.adjusted -Field "adjusted" | Out-Null
+        catch {
+            $issues.Add($_.Exception.Message)
+        }
+        foreach ($field in @("open", "high", "low", "close")) {
+            try {
+                Assert-NumberField -Row $row -Field $field -Label $label
+            }
+            catch {
+                $issues.Add($_.Exception.Message)
+            }
+        }
+        try {
+            Assert-IntegerField -Row $row -Field "volume" -Label $label
+        }
+        catch {
+            $issues.Add($_.Exception.Message)
+        }
+        try {
+            Assert-NumberField -Row $row -Field "vwap" -Label $label
+        }
+        catch {
+            $issues.Add($_.Exception.Message)
+        }
+        try {
+            Convert-CsvBool -Value $row.adjusted -Field "adjusted" | Out-Null
+        }
+        catch {
+            $issues.Add($_.Exception.Message)
+        }
         if ([string]::IsNullOrWhiteSpace(([string]$row.provider))) {
-            throw "$label is missing required provider."
+            $issues.Add("$label is missing required provider.")
         }
-        [datetime]::Parse(
-            [string]$row.source_ts,
-            [System.Globalization.CultureInfo]::InvariantCulture
-        ) | Out-Null
-        [datetime]::Parse(
-            [string]$row.available_at,
-            [System.Globalization.CultureInfo]::InvariantCulture
-        ) | Out-Null
+        try {
+            [datetime]::Parse(
+                [string]$row.source_ts,
+                [System.Globalization.CultureInfo]::InvariantCulture
+            ) | Out-Null
+        }
+        catch {
+            $issues.Add("$label has invalid source_ts: $($row.source_ts)")
+        }
+        try {
+            [datetime]::Parse(
+                [string]$row.available_at,
+                [System.Globalization.CultureInfo]::InvariantCulture
+            ) | Out-Null
+        }
+        catch {
+            $issues.Add("$label has invalid available_at: $($row.available_at)")
+        }
+    }
+
+    if ($issues.Count -gt 0) {
+        $issueLimit = 60
+        Write-Output "Daily bars CSV validation failed: $($issues.Count) issue(s)."
+        foreach ($issue in ($issues | Select-Object -First $issueLimit)) {
+            Write-Output "- $issue"
+        }
+        if ($issues.Count -gt $issueLimit) {
+            Write-Output "- plus $($issues.Count - $issueLimit) more issue(s)"
+        }
+        Write-Output "Fix the rows above, then preview again before importing."
+        throw "Daily bars CSV validation failed."
     }
 }
 
@@ -264,7 +316,13 @@ Assert-Columns -Row $barRows[0] -Label "Daily bars CSV" -Required @(
     "source_ts",
     "available_at"
 )
-Assert-DailyBarRows -Rows $barRows
+try {
+    Assert-DailyBarRows -Rows $barRows
+}
+catch {
+    Write-Output "External calls made: 0"
+    exit 2
+}
 
 $latestBarDate = $null
 foreach ($row in $barRows) {
