@@ -233,7 +233,9 @@ def test_refresh_csv_market_data_script_wraps_local_ingest_without_provider_call
         encoding="utf-8"
     )
     assert "Assert-DailyBarRows" in text
+    assert "Daily bars CSV validation failed:" in text
     assert "missing required numeric field" in text
+    assert "Fix the rows above, then preview again before importing." in text
     assert "Coverage check:" in text
     assert "Refusing to import incomplete bars" in text
     assert "Generate a template with -TemplateOut" in text

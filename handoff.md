@@ -1,6 +1,6 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-17 10:40:36 +08:00
+Last updated: 2026-05-17 10:46:57 +08:00
 
 ## Current Objective
 
@@ -61,18 +61,20 @@ powershell -ExecutionPolicy Bypass -File scripts\refresh-csv-market-data.ps1 -Da
 
 The first command writes an ignored local template for active tickers. Fill
 `open`, `high`, `low`, `close`, `volume`, and `vwap`, then use the second
-command as preview-only. Preview validates required numeric fields before any
-import, and it refuses a file that is missing expected-as-of bars for active
-tickers. `-Execute` wraps the existing `ingest-csv` CLI, records provider health
-through the existing CSV provider path, and makes zero Polygon, SEC, Schwab, or
-OpenAI calls.
+command as preview-only. Preview now reports all missing or invalid bar fields
+it finds before any import, and it refuses a file that is missing expected-as-of
+bars for active tickers. `-Execute` wraps the existing `ingest-csv` CLI, records
+provider health through the existing CSV provider path, and makes zero Polygon,
+SEC, Schwab, or OpenAI calls.
 
 The dashboard/API readiness wording now surfaces the same command from
 `operator_next_step`, stale market-data blockers, and candidate readiness gates
 instead of leaving the user with a generic "refresh CSV bars" instruction.
 The terminal sitrep also prints a template command that writes to ignored
 `data\local\manual-bars-<date>.csv`, plus active market-bar coverage from
-`/api/ops/health`.
+`/api/ops/health`. The latest local polish makes the preview failure more
+useful: an unfilled template reports every missing field it sees, then exits
+before any database write or provider call.
 
 ## Current Repository State
 
