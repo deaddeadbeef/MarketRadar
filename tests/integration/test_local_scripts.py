@@ -229,6 +229,9 @@ def test_refresh_csv_market_data_script_wraps_local_ingest_without_provider_call
     )
     assert "Assert-DailyBarRows" in text
     assert "missing required numeric field" in text
+    assert "Coverage check:" in text
+    assert "Refusing to import incomplete bars" in text
+    assert "Generate a template with -TemplateOut" in text
     assert "Import-Csv" in text
     assert "latest_bar=" in text
     assert "Freshness check:" in text

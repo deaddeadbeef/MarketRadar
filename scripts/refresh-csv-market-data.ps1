@@ -162,16 +162,12 @@ function Assert-DailyBarRows {
     }
 }
 
-function Write-DailyBarTemplate {
-    param(
-        [string]$Path,
-        [string]$SecuritiesPath,
-        [datetime]$AsOfDate
-    )
+function Get-ActiveSecurityTickers {
+    param([string]$Path)
 
-    $securityRows = @(Import-Csv -LiteralPath $SecuritiesPath)
+    $securityRows = @(Import-Csv -LiteralPath $Path)
     if ($securityRows.Count -eq 0) {
-        throw "Securities CSV contains no rows: $SecuritiesPath"
+        throw "Securities CSV contains no rows: $Path"
     }
     Assert-Columns -Row $securityRows[0] -Label "Securities CSV" -Required @(
         "ticker",
@@ -186,8 +182,19 @@ function Write-DailyBarTemplate {
             Sort-Object -Unique
     )
     if ($tickers.Count -eq 0) {
-        throw "No active tickers found in securities CSV: $SecuritiesPath"
+        throw "No active tickers found in securities CSV: $Path"
     }
+    return $tickers
+}
+
+function Write-DailyBarTemplate {
+    param(
+        [string]$Path,
+        [string]$SecuritiesPath,
+        [datetime]$AsOfDate
+    )
+
+    $tickers = @(Get-ActiveSecurityTickers -Path $SecuritiesPath)
 
     $parent = Split-Path -Parent $Path
     if (-not [string]::IsNullOrWhiteSpace($parent) -and -not (Test-Path -LiteralPath $parent)) {
@@ -211,6 +218,7 @@ if (-not [string]::IsNullOrWhiteSpace($ExpectedAsOf)) {
 }
 
 $resolvedSecurities = Resolve-InputPath -Path $Securities -Label "Securities"
+$activeTickers = @(Get-ActiveSecurityTickers -Path $resolvedSecurities)
 
 if (-not [string]::IsNullOrWhiteSpace($TemplateOut)) {
     if ($null -eq $expectedDate) {
@@ -273,8 +281,29 @@ $tickers = @(
 )
 
 $freshnessStatus = "not_checked"
+$expectedCoverage = $null
+$missingExpectedTickers = @()
 if ($null -ne $expectedDate) {
     $freshnessStatus = if ($latestBarDate -lt $expectedDate) { "stale" } else { "fresh_enough" }
+    $barTickersAtExpected = @(
+        $barRows |
+            Where-Object { (Convert-CsvDate -Value $_.date -Field "daily bar") -eq $expectedDate } |
+            ForEach-Object { ([string]$_.ticker).Trim().ToUpperInvariant() } |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+            Sort-Object -Unique
+    )
+    $barTickerSet = @{}
+    foreach ($ticker in $barTickersAtExpected) {
+        $barTickerSet[$ticker] = $true
+    }
+    $missingExpectedTickers = @(
+        $activeTickers | Where-Object { -not $barTickerSet.ContainsKey($_) }
+    )
+    $expectedCoverage = [ordered]@{
+        Active = $activeTickers.Count
+        WithBars = $barTickersAtExpected.Count
+        Missing = $missingExpectedTickers.Count
+    }
 }
 
 Write-Output "CSV market data refresh"
@@ -282,6 +311,12 @@ Write-Output ("Daily bars: {0}" -f $resolvedDailyBars)
 Write-Output ("Rows: {0}; tickers={1}; latest_bar={2}" -f $barRows.Count, $tickers.Count, $latestBarDate.ToString("yyyy-MM-dd"))
 if ($null -ne $expectedDate) {
     Write-Output ("Freshness check: {0}; expected_as_of={1}" -f $freshnessStatus, $expectedDate.ToString("yyyy-MM-dd"))
+    Write-Output (
+        "Coverage check: active={0}; bars_at_expected_as_of={1}; missing={2}" -f
+        $expectedCoverage.Active,
+        $expectedCoverage.WithBars,
+        $expectedCoverage.Missing
+    )
 }
 if ($null -eq $resolvedHoldings) {
     Write-Output "Holdings: skipped; optional holdings file was not found."
@@ -294,6 +329,15 @@ if ($freshnessStatus -eq "stale") {
     Write-Output "External calls made: 0"
     Write-Output "Refusing to import stale bars for the requested as-of date."
     Write-Output "Provide a CSV whose latest date is at least the ExpectedAsOf date, or omit -ExpectedAsOf for an explicit manual import."
+    exit 2
+}
+if ($missingExpectedTickers.Count -gt 0) {
+    $sampleMissing = ($missingExpectedTickers | Select-Object -First 12) -join ", "
+    $suffix = if ($missingExpectedTickers.Count -gt 12) { " plus $($missingExpectedTickers.Count - 12) more" } else { "" }
+    Write-Output "External calls made: 0"
+    Write-Output "Refusing to import incomplete bars for the requested as-of date."
+    Write-Output ("Missing expected-as-of bars for active tickers: {0}{1}" -f $sampleMissing, $suffix)
+    Write-Output "Generate a template with -TemplateOut, fill every active ticker row, then preview again."
     exit 2
 }
 

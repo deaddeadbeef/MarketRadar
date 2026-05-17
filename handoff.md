@@ -1,6 +1,6 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-17 10:30:40 +08:00
+Last updated: 2026-05-17 10:42:00 +08:00
 
 ## Current Objective
 
@@ -62,7 +62,8 @@ powershell -ExecutionPolicy Bypass -File scripts\refresh-csv-market-data.ps1 -Da
 The first command writes an ignored local template for active tickers. Fill
 `open`, `high`, `low`, `close`, `volume`, and `vwap`, then use the second
 command as preview-only. Preview validates required numeric fields before any
-import. `-Execute` wraps the existing `ingest-csv` CLI, records provider health
+import, and it refuses a file that is missing expected-as-of bars for active
+tickers. `-Execute` wraps the existing `ingest-csv` CLI, records provider health
 through the existing CSV provider path, and makes zero Polygon, SEC, Schwab, or
 OpenAI calls.
 
