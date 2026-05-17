@@ -293,6 +293,44 @@ def test_ops_health_reports_metrics_banners_incidents_drift_and_runbooks() -> No
     assert metrics["false_positive_rate"] == 0.25
 
 
+def test_ops_health_incident_payload_avoids_duplicate_case_keys() -> None:
+    engine = _engine()
+    now = datetime(2026, 5, 15, 21, 0, tzinfo=UTC)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(data_quality_incidents),
+            {
+                "id": "incident-polygon-case-keys",
+                "provider": "polygon",
+                "severity": "warning",
+                "kind": "schema_validation",
+                "affected_tickers": ["AAPL"],
+                "reason": "missing vwap",
+                "fail_closed_action": "drop bad record",
+                "payload": {
+                    "record": {
+                        "provider_payload": {
+                            "T": "AAPL",
+                            "t": 1778889600000,
+                            "c": 211.26,
+                        }
+                    }
+                },
+                "detected_at": now,
+                "source_ts": now,
+                "available_at": now,
+            },
+        )
+
+    health = load_ops_health(engine, now=now)
+    provider_payload = health["incidents"][0]["payload"]["record"]["provider_payload"]
+
+    assert provider_payload["T"] == "AAPL"
+    assert provider_payload["t_case_variant"] == 1778889600000
+    assert not _has_case_duplicate_keys(health)
+    json.dumps(health)
+
+
 def test_ops_health_reports_recent_telemetry_events() -> None:
     engine = _engine()
     now = datetime(2026, 5, 10, 12, 0, tzinfo=UTC)
@@ -818,3 +856,18 @@ def _budget_row(
         "payload": payload,
         "created_at": available_at,
     }
+
+
+def _has_case_duplicate_keys(value: object) -> bool:
+    if isinstance(value, dict):
+        seen: set[str] = set()
+        for key, item in value.items():
+            folded = str(key).casefold()
+            if folded in seen:
+                return True
+            seen.add(folded)
+            if _has_case_duplicate_keys(item):
+                return True
+    if isinstance(value, list):
+        return any(_has_case_duplicate_keys(item) for item in value)
+    return False

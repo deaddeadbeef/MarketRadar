@@ -298,10 +298,40 @@ def _json_safe(value: object) -> object:
     if isinstance(value, Enum):
         return value.value
     if isinstance(value, Mapping):
-        return {str(key): _json_safe(item) for key, item in value.items()}
+        result: dict[str, object] = {}
+        seen_casefolded: set[str] = set()
+        for key, item in value.items():
+            safe_key = _case_insensitive_safe_key(str(key), result, seen_casefolded)
+            result[safe_key] = _json_safe(item)
+        return result
     if isinstance(value, tuple | list):
         return [_json_safe(item) for item in value]
     return value
+
+
+def _case_insensitive_safe_key(
+    key: str,
+    existing: Mapping[str, object],
+    seen_casefolded: set[str],
+) -> str:
+    """Avoid duplicate-case keys in operator JSON consumed by PowerShell."""
+
+    folded = key.casefold()
+    if folded not in seen_casefolded:
+        seen_casefolded.add(folded)
+        return key
+
+    index = 1
+    while True:
+        suffix = "case_variant" if index == 1 else f"case_variant_{index}"
+        candidate = f"{key}_{suffix}"
+        candidate_folded = candidate.casefold()
+        if candidate_folded not in seen_casefolded and all(
+            existing_key.casefold() != candidate_folded for existing_key in existing
+        ):
+            seen_casefolded.add(candidate_folded)
+            return candidate
+        index += 1
 
 
 def _as_utc_datetime(value: datetime) -> datetime:

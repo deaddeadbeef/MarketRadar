@@ -200,7 +200,7 @@ class PolygonMarketDataConnector:
                 },
             )
             try:
-                _require_fields(record, ("T", "t", "o", "h", "l", "c", "v", "vw"))
+                _require_fields(record, ("T", "t", "o", "h", "l", "c", "v"))
                 source_ts = _timestamp_ms(record["t"], "t")
                 records.append(
                     RawRecord(
@@ -368,15 +368,17 @@ def _looks_like_placeholder_api_key(value: str) -> bool:
 def _normalize_grouped_daily_payload(record: Mapping[str, Any]) -> dict[str, Any]:
     source = _provider_payload(record)
     source_ts = _timestamp_ms(source["t"], "t")
+    close = float(source["c"])
+    vwap = _optional_grouped_daily_vwap(source, fallback=close)
     return {
         "ticker": str(record["ticker"]).upper(),
         "date": source_ts.date().isoformat(),
         "open": float(source["o"]),
         "high": float(source["h"]),
         "low": float(source["l"]),
-        "close": float(source["c"]),
+        "close": close,
         "volume": int(source["v"]),
-        "vwap": float(source["vw"]),
+        "vwap": vwap,
         "adjusted": True,
         "provider": POLYGON_PROVIDER_NAME,
         "source_ts": source_ts.isoformat(),
@@ -384,8 +386,16 @@ def _normalize_grouped_daily_payload(record: Mapping[str, Any]) -> dict[str, Any
         "metadata": {
             "provider_record": "grouped_daily",
             "availability_policy": record.get("availability_policy"),
+            "vwap_fallback": "close" if "vw" not in source or source["vw"] is None else None,
         },
     }
+
+
+def _optional_grouped_daily_vwap(source: Mapping[str, Any], *, fallback: float) -> float:
+    value = source.get("vw")
+    if value is None:
+        return fallback
+    return float(value)
 
 
 def _normalize_security_payload(record: Mapping[str, Any]) -> dict[str, Any]:

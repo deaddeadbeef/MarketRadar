@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -13,6 +14,7 @@ from catalyst_radar.core.models import JobStatus
 from catalyst_radar.storage.provider_repositories import ProviderRepository
 from catalyst_radar.storage.repositories import MarketRepository
 from catalyst_radar.storage.schema import (
+    daily_bars,
     data_quality_incidents,
     job_runs,
     normalized_provider_records,
@@ -135,6 +137,62 @@ def test_polygon_fixture_ingest_persists_raw_normalized_and_daily_bars(
     assert job.raw_count == 6
     assert job.normalized_count == 6
     assert len(market_repo.daily_bars("AAPL", end=date(2026, 5, 8), lookback=10)) == 1
+
+
+def test_polygon_grouped_daily_accepts_missing_optional_vwap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    fixture = tmp_path / "grouped_daily_missing_vwap.json"
+    fixture.write_text(
+        json.dumps(
+            {
+                "status": "OK",
+                "adjusted": True,
+                "results": [
+                    {
+                        "T": "AAPL",
+                        "v": 65_000_000,
+                        "o": 205.0,
+                        "c": 214.0,
+                        "h": 215.0,
+                        "l": 204.0,
+                        "t": 1778198400000,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_cli(
+        [
+            "ingest-polygon",
+            "grouped-daily",
+            "--date",
+            "2026-05-08",
+            "--fixture",
+            str(fixture),
+        ],
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        capsys=capsys,
+        env={"CATALYST_POLYGON_API_KEY": "fixture-key"},
+    )
+
+    assert result.exit_code == 0
+    assert "rejected=0" in result.stdout
+
+    engine = create_engine(result.database_url, future=True)
+    with engine.connect() as conn:
+        row = conn.execute(select(daily_bars).where(daily_bars.c.ticker == "AAPL")).one()
+        incident_count = conn.execute(
+            select(func.count()).select_from(data_quality_incidents)
+        ).scalar_one()
+
+    assert row.vwap == row.close
+    assert incident_count == 0
 
 
 def test_polygon_fixture_ingest_does_not_require_real_api_key(
