@@ -1,6 +1,6 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-17 21:13:13 +08:00
+Last updated: 2026-05-17 22:02:11 +08:00
 
 ## Current Objective
 
@@ -141,9 +141,10 @@ polish removes the redundant top tab strip, makes the grouped sidebar the
 primary navigation surface, keeps shortcuts visible in a compact `KEYS` /
 `MOUSE` guide, supports `Ctrl+N` / `Ctrl+P` and sidebar `Up` / `Down`
 navigation, adds a default `0 Tutorial` page for the first 90 seconds, keeps
-`1 Start` as the first real dashboard page that answers "can I act?", "why?",
-and "what should I click next?", and shows side-by-side `NEXT ACTION` and
-`LAST RESPONSE` cards so operator intent is distinct from dashboard feedback.
+`1 Start` as the operator cockpit where selectable workflow rows route to
+Candidates, Readiness, Ops, Run, Alerts, and Broker, and shows side-by-side
+`NEXT ACTION` and `LAST RESPONSE` cards so operator intent is distinct from
+dashboard feedback.
 `dashboard-tui --once` still uses the plain text renderer for deterministic
 smoke tests and low-fi logs. The TUI exposes the same useful dashboard data
 families: readiness, latest run, discovery snapshot, candidate rows, alerts,

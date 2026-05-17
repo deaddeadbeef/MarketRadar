@@ -531,7 +531,7 @@ class MarketRadarDashboardApp(App[int]):
     }
 
     #guide {
-        height: 8;
+        height: 4;
         border: round #315473;
         background: #0a151f;
         color: #d7dde8;
@@ -553,7 +553,7 @@ class MarketRadarDashboardApp(App[int]):
     }
 
     #detail {
-        height: 4;
+        height: 3;
         border: round #26384d;
         background: #0b141d;
         padding: 0 1;
@@ -779,7 +779,14 @@ class MarketRadarDashboardApp(App[int]):
         self.refresh_view()
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
-        if self.page == "candidates":
+        if self.page == "overview":
+            row = self._row_by_key(event.row_key.value)
+            target_page = str(row.get("target_page") or "").strip()
+            if target_page:
+                self.page = target_page
+                self.status_message = str(row.get("status_message") or "")
+                self.refresh_view()
+        elif self.page == "candidates":
             row = self._row_by_key(event.row_key.value)
             ticker = str(row.get("ticker") or "").upper()
             if ticker:
@@ -869,8 +876,7 @@ class MarketRadarDashboardApp(App[int]):
         page_action = {
             "tutorial": "Follow the numbered rows. Press 1 when you are ready for the dashboard.",
             "overview": (
-                "Start with the highlighted questions. If Can I act? says No, "
-                "open Readiness or Candidates before running anything."
+                "Choose a workflow row. Press Enter or click to open the next operational view."
             ),
             "run": "Review call budget, then type run execute only if intended.",
             "candidates": "Click or focus a row and press Enter to open a candidate.",
@@ -1013,15 +1019,14 @@ class MarketRadarDashboardApp(App[int]):
         if page == "overview":
             return "\n".join(
                 [
-                    "[bold #7ee787]START HERE[/]  This is a control desk, not investment advice.",
-                    f"[bold]1. Can I act?[/] {can_act}.",
+                    "[bold #7ee787]COCKPIT[/]  Choose the job you want Market Radar to do now.",
+                    "[bold]Click or Enter on a workflow row.[/] It will open the right view.",
                     (
-                        f"[bold]2. Why?[/] {blocked_layers or 0} useful layer(s) blocked. "
-                        "Readiness lists each blocker."
+                        f"[bold]Current boundary:[/] {can_act}; "
+                        f"{blocked_layers or 0} useful layer(s) blocked."
                     ),
                     (
-                        "[bold]3. Best next click:[/] "
-                        "2 Readiness for blockers, 4 Candidates for research, 3 Run for call plan."
+                        "[bold]Safe rule:[/] browsing and workflow routing make 0 provider calls."
                     ),
                 ]
             )
@@ -1314,76 +1319,18 @@ class MarketRadarDashboardApp(App[int]):
     def _overview_model(
         self,
     ) -> tuple[str, Sequence[tuple[str, str, int]], list[Mapping[str, object]], str]:
-        readiness = _mapping(self.payload.get("readiness"))
-        usefulness = _mapping(readiness.get("market_radar_usefulness"))
-        latest_run = _mapping(self.payload.get("latest_run"))
-        freshness = _mapping(_mapping(readiness.get("discovery_snapshot")).get("freshness"))
-        database = _mapping(_mapping(self.payload.get("ops_health")).get("database"))
-        call_plan = _mapping(self.payload.get("call_plan"))
-        can_act = _decision_label(readiness)
-        next_action = readiness.get("next_action") or "Open Readiness."
-        counts = _mapping(self.payload.get("candidates")).get("count") or 0
-        alerts = _mapping(self.payload.get("alerts")).get("count") or 0
-        rows = [
-            {
-                "question": "Can I act on this?",
-                "answer": can_act,
-                "do_this": (
-                    "Use it for research only."
-                    if readiness.get("safe_to_make_investment_decision") is not True
-                    else "Manual review is still required before any action."
-                ),
-            },
-            {
-                "question": "Why not?",
-                "answer": readiness.get("headline") or usefulness.get("headline"),
-                "do_this": next_action,
-            },
-            {
-                "question": "What should I click first?",
-                "answer": "Readiness or Candidates",
-                "do_this": f"Press 2 for blockers; press 4 to review {counts} candidate(s).",
-            },
-            {
-                "question": "What changed recently?",
-                "answer": (
-                    f"Run {latest_run.get('status') or 'unknown'}; "
-                    f"bars {database.get('latest_daily_bar_date') or 'n/a'}"
-                ),
-                "do_this": (
-                    f"Run coverage {freshness.get('active_security_with_as_of_bar_count')}/"
-                    f"{freshness.get('active_security_count')}; use Ops if this looks stale."
-                ),
-            },
-            {
-                "question": "Will this spend calls?",
-                "answer": "Not while browsing",
-                "do_this": (
-                    f"Run page shows: {call_plan.get('status') or 'unknown'}, "
-                    f"max {call_plan.get('max_external_call_count')} external calls."
-                ),
-            },
-            {
-                "question": "What else needs review?",
-                "answer": (
-                    f"{alerts} alert(s); "
-                    f"{usefulness.get('ready_layers')}/"
-                    f"{usefulness.get('total_layers')} layers ready"
-                ),
-                "do_this": "Press 5 for alerts or ? for the command reference.",
-            },
-        ]
         return (
-            "Start here - answer these in order",
+            "What do you want Market Radar to do right now?",
             [
-                ("question", "Question", 28),
-                ("answer", "Answer", 52),
-                ("do_this", "Do this", 60),
+                ("intent", "Intent", 30),
+                ("state", "State", 28),
+                ("why", "Why this matters", 52),
+                ("opens", "Opens", 14),
             ],
-            rows,
+            _workflow_rows(self.payload),
             (
-                "Beginner path: 2 Readiness -> 4 Candidates -> 3 Run plan. "
-                "Browsing and filtering make 0 provider calls."
+                "Select a workflow row with mouse or Enter. "
+                "This cockpit routes existing dashboard pages; it makes 0 provider calls."
             ),
         )
 
@@ -1964,70 +1911,108 @@ def _tutorial_lines(width: int) -> list[str]:
     return lines
 
 
-def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
+def _workflow_rows(payload: Mapping[str, object]) -> list[Mapping[str, object]]:
     readiness = _mapping(payload.get("readiness"))
     usefulness = _mapping(readiness.get("market_radar_usefulness"))
-    next_step = _mapping(payload.get("operator_next_step"))
-    latest_run = _mapping(payload.get("latest_run"))
     freshness = _mapping(_mapping(readiness.get("discovery_snapshot")).get("freshness"))
     database = _mapping(_mapping(payload.get("ops_health")).get("database"))
     call_plan = _mapping(payload.get("call_plan"))
-    lines = [_rule("Overview", width)]
+    can_act = _decision_label(readiness)
+    next_action = readiness.get("next_action") or "Open Readiness."
+    counts = _mapping(payload.get("candidates")).get("count") or 0
+    alerts = _mapping(payload.get("alerts")).get("count") or 0
+    freshness_gap = (
+        f"run coverage {freshness.get('active_security_with_as_of_bar_count')}/"
+        f"{freshness.get('active_security_count')}; "
+        f"latest bar {database.get('latest_daily_bar_date') or 'n/a'}"
+    )
+    return [
+        {
+            "_row_key": "find",
+            "intent": "Find opportunities",
+            "state": f"{counts} candidate(s)",
+            "why": "Open the research queue and inspect evidence-backed ticker rows.",
+            "opens": "Candidates",
+            "target_page": "candidates",
+            "status_message": "Opened candidate queue. Pick one ticker to inspect.",
+        },
+        {
+            "_row_key": "review",
+            "intent": "Review candidates",
+            "state": can_act,
+            "why": readiness.get("headline") or usefulness.get("headline"),
+            "opens": "Readiness",
+            "target_page": "readiness",
+            "status_message": "Opened readiness blockers before candidate review.",
+        },
+        {
+            "_row_key": "actionable",
+            "intent": "Check actionable",
+            "state": can_act,
+            "why": "Verify freshness, blockers, and decision boundary first.",
+            "opens": "Readiness",
+            "target_page": "readiness",
+            "status_message": "Opened readiness. Do not act until blockers are clear.",
+        },
+        {
+            "_row_key": "fix",
+            "intent": "Fix blockers",
+            "state": freshness_gap,
+            "why": next_action,
+            "opens": "Ops",
+            "target_page": "ops",
+            "status_message": "Opened Ops. Fix data health before trusting output.",
+        },
+        {
+            "_row_key": "run",
+            "intent": "Run radar cycle",
+            "state": f"{call_plan.get('max_external_call_count')} max external calls",
+            "why": "Review the call plan before starting any provider-backed work.",
+            "opens": "Run plan",
+            "target_page": "run",
+            "status_message": "Opened call plan. Type run execute only if intended.",
+        },
+        {
+            "_row_key": "alerts",
+            "intent": "Review alerts",
+            "state": f"{alerts} alert(s)",
+            "why": "Decide whether alert output is useful, noisy, ignored, or acted.",
+            "opens": "Alerts",
+            "target_page": "alerts",
+            "status_message": "Opened alerts. Record feedback after review.",
+        },
+        {
+            "_row_key": "broker",
+            "intent": "Record decision",
+            "state": "orders disabled",
+            "why": "Save watch/ready/dismiss, trigger, or blocked ticket artifacts locally.",
+            "opens": "Broker",
+            "target_page": "broker",
+            "status_message": "Opened Broker. Local artifacts only; orders stay disabled.",
+        },
+    ]
+
+
+def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
+    lines = [_rule("What do you want Market Radar to do right now?", width)]
     lines.extend(
-        _kv_lines(
-            (
-                ("Readiness", readiness.get("headline")),
-                ("Next", readiness.get("next_action")),
-                ("Usefulness", usefulness.get("headline")),
-                (
-                    "Useful layers",
-                    f"{usefulness.get('ready_layers')}/{usefulness.get('total_layers')}"
-                    f"; blocked={usefulness.get('blocked_layers')}"
-                    f"; research={usefulness.get('research_layers')}",
-                ),
-                (
-                    "Latest run",
-                    f"{latest_run.get('status') or 'unknown'}; "
-                    f"required={latest_run.get('required_completed_count')}/"
-                    f"{latest_run.get('required_step_count')}; "
-                    f"as_of={_nested(readiness, 'radar_run', 'as_of') or 'n/a'}",
-                ),
-                (
-                    "Market freshness",
-                    f"stale={freshness.get('latest_bars_older_than_as_of')}; "
-                    f"latest_bar={freshness.get('latest_daily_bar_date') or 'n/a'}; "
-                    f"run_as_of={_nested(readiness, 'radar_run', 'as_of') or 'n/a'}",
-                ),
-                (
-                    "Run as-of coverage",
-                    f"active={_text(freshness.get('active_security_count'))}; "
-                    f"with_as_of_bar="
-                    f"{_text(freshness.get('active_security_with_as_of_bar_count'))}; "
-                    f"missing={_text(freshness.get('missing_as_of_daily_bar_count'))}",
-                ),
-                (
-                    "Latest-bar coverage",
-                    f"active={_text(database.get('active_security_count'))}; "
-                    f"with_latest_bar="
-                    f"{_text(database.get('active_security_with_latest_daily_bar_count'))}; "
-                    f"latest_bar={database.get('latest_daily_bar_date') or 'n/a'}",
-                ),
-                (
-                    "Call plan",
-                    f"{call_plan.get('status') or 'unknown'}; "
-                    f"will_call_external={call_plan.get('will_call_external_providers')}; "
-                    f"max_external_calls={call_plan.get('max_external_call_count')}",
-                ),
-                (
-                    "Operator next",
-                    f"{next_step.get('priority') or 'n/a'}: "
-                    f"{next_step.get('action') or 'No operator action.'}",
-                ),
-            ),
+        _table_lines(
+            _workflow_rows(payload),
+            [
+                ("intent", "Intent", 28),
+                ("state", "State", 28),
+                ("why", "Why this matters", 52),
+                ("opens", "Opens", 14),
+            ],
             width=width,
+            limit=8,
         )
     )
-    lines.extend(_dashboard_count_lines(payload, width))
+    lines.append("")
+    lines.append(
+        "Select the matching workflow in the interactive TUI. "
+        "This cockpit makes 0 provider calls while routing."
+    )
     return lines
 
 
