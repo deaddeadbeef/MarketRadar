@@ -178,6 +178,80 @@ def test_dashboard_snapshot_cli_outputs_human_readable_zero_call_summary(
         assert expected in output.out
 
 
+def test_agent_brief_cli_outputs_zero_call_dry_run(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    cutoff = (DEMO_AVAILABLE_AT + timedelta(minutes=1)).isoformat()
+
+    assert main(["seed-dashboard-demo"]) == 0
+    capsys.readouterr()
+
+    assert (
+        main(
+            [
+                "agent-brief",
+                "--ticker",
+                "ACME",
+                "--available-at",
+                cutoff,
+                "--json",
+            ]
+        )
+        == 0
+    )
+    output = capsys.readouterr()
+    assert output.err == ""
+    payload = json.loads(output.out)
+
+    assert payload["schema_version"] == "market-radar-agent-brief-v1"
+    assert payload["mode"] == "dry_run"
+    assert payload["status"] == "dry_run"
+    assert payload["external_calls_made"] == {
+        "broker": 0,
+        "market_data": 0,
+        "openai": 0,
+    }
+    assert [agent["agent"] for agent in payload["agents"]] == [
+        "Data Sentinel",
+        "Catalyst Analyst",
+        "Risk Officer",
+        "Operator",
+    ]
+    assert payload["next_actions"]
+
+
+def test_agent_brief_cli_real_mode_blocks_without_explicit_gates(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("CATALYST_ENABLE_AGENT_SDK", "false")
+    monkeypatch.setenv("CATALYST_ENABLE_PREMIUM_LLM", "false")
+    monkeypatch.setenv("CATALYST_LLM_PROVIDER", "none")
+    monkeypatch.setenv("CATALYST_AGENT_SDK_MODEL", "")
+    monkeypatch.setenv("OPENAI_API_KEY", "")
+
+    assert main(["seed-dashboard-demo"]) == 0
+    capsys.readouterr()
+
+    assert main(["agent-brief", "--real", "--json"]) == 2
+    output = capsys.readouterr()
+    assert output.err == ""
+    payload = json.loads(output.out)
+    assert payload["mode"] == "blocked"
+    assert payload["status"] == "blocked"
+    assert payload["external_calls_made"]["openai"] == 0
+    assert "OpenAI real-mode gate" in {
+        item["name"] for item in payload["security_checks"]
+    }
+
+
 def test_dashboard_tui_supports_interactive_navigation_and_filters(
     tmp_path: Path,
     monkeypatch,

@@ -27,6 +27,7 @@ from catalyst_radar.agents.router import (
     LLMClientResult,
     LLMRouter,
 )
+from catalyst_radar.agents.sdk_orchestrator import run_market_radar_agents
 from catalyst_radar.agents.tasks import DEFAULT_TASKS
 from catalyst_radar.alerts.channels.base import DryRunAlertChannel
 from catalyst_radar.alerts.digest import build_alert_digest, digest_payload
@@ -344,6 +345,17 @@ def build_parser() -> argparse.ArgumentParser:
     dashboard_snapshot.add_argument("--page", default="overview")
     dashboard_snapshot.add_argument("--json", action="store_true")
 
+    agent_brief = subparsers.add_parser("agent-brief")
+    agent_brief.add_argument("--database-url")
+    agent_brief.add_argument("--ticker")
+    agent_brief.add_argument("--available-at", type=_parse_aware_datetime)
+    agent_brief.add_argument("--alert-status")
+    agent_brief.add_argument("--alert-route")
+    agent_brief.add_argument("--telemetry-limit", type=int, default=8)
+    agent_brief.add_argument("--goal")
+    agent_brief.add_argument("--real", action="store_true")
+    agent_brief.add_argument("--json", action="store_true")
+
     dashboard_tui = subparsers.add_parser("dashboard-tui")
     dashboard_tui.add_argument("--database-url")
     dashboard_tui.add_argument("--ticker")
@@ -611,6 +623,33 @@ def main(argv: list[str] | None = None) -> int:
         else:
             print(render_dashboard_tui(payload, page=args.page))
         return 0
+
+    if args.command == "agent-brief":
+        create_schema(engine)
+        filters = DashboardFilters(
+            ticker=args.ticker,
+            available_at=args.available_at,
+            alert_status=args.alert_status,
+            alert_route=args.alert_route,
+            telemetry_limit=args.telemetry_limit,
+        )
+        payload = dashboard_snapshot_payload(
+            engine=engine,
+            config=config,
+            dotenv_loaded=dotenv_loaded,
+            filters=filters,
+        )
+        brief = run_market_radar_agents(
+            payload,
+            config,
+            real=args.real,
+            operator_goal=args.goal,
+        )
+        if args.json:
+            print(json.dumps(brief, default=dashboard_json_default, sort_keys=True))
+        else:
+            _print_agent_brief(brief)
+        return 2 if args.real and brief.get("status") == "blocked" else 0
 
     if args.command == "dashboard-tui":
         create_schema(engine)
@@ -2324,6 +2363,42 @@ def _llm_ledger_payload(entry) -> dict[str, object]:
         "outcome_label": entry.outcome_label,
         "payload": redact_value(thaw_json_value(entry.payload)),
     }
+
+
+def _print_agent_brief(payload: Mapping[str, object]) -> None:
+    print(
+        "agent_brief "
+        f"mode={payload.get('mode')} "
+        f"status={payload.get('status')} "
+        f"boundary={payload.get('decision_boundary')}"
+    )
+    calls = payload.get("external_calls_made")
+    if isinstance(calls, Mapping):
+        print(
+            "external_calls "
+            f"openai={calls.get('openai', 0)} "
+            f"market_data={calls.get('market_data', 0)} "
+            f"broker={calls.get('broker', 0)}"
+        )
+    print("agents:")
+    for agent in payload.get("agents", []):
+        if not isinstance(agent, Mapping):
+            continue
+        print(
+            f"- {agent.get('agent')}: {agent.get('summary')} "
+            f"(confidence={agent.get('confidence')})"
+        )
+    print("insights:")
+    for insight in payload.get("insights", []):
+        print(f"- {insight}")
+    print("next_actions:")
+    for action in payload.get("next_actions", []):
+        print(f"- {action}")
+    print("security:")
+    for check in payload.get("security_checks", []):
+        if not isinstance(check, Mapping):
+            continue
+        print(f"- {check.get('name')}: {check.get('status')} - {check.get('detail')}")
 
 
 def _print_external_json(payload: Mapping[str, object]) -> int:

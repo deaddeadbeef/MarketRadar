@@ -31,3 +31,16 @@ def test_runtime_agent_stack_uses_openai_responses_client() -> None:
 
     assert "from openai import OpenAI" in source
     assert ".responses.create(" in source
+
+
+def test_runtime_agent_stack_declares_openai_agents_sdk() -> None:
+    pyproject = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text())
+    dependencies = pyproject["project"]["dependencies"]
+
+    assert any(item.startswith("openai-agents") for item in dependencies)
+
+    source = (
+        PROJECT_ROOT / "src" / "catalyst_radar" / "agents" / "sdk_orchestrator.py"
+    ).read_text(encoding="utf-8")
+    assert "from agents import Agent, Runner" in source
+    assert ".as_tool(" in source
