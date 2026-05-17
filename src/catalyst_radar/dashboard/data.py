@@ -3549,6 +3549,8 @@ def readiness_checklist_payload(
 ) -> list[dict[str, object]]:
     coverage_rows = data_source_coverage_payload(config, broker_summary=broker_summary)
     coverage = {str(row.get("layer") or ""): row for row in coverage_rows}
+    run_summary = _row_dict(radar_run_summary) if isinstance(radar_run_summary, Mapping) else {}
+    run_as_of = _parse_date(run_summary.get("as_of"))
     steps = _radar_steps_by_name(radar_run_summary)
     rows: list[dict[str, object]] = []
 
@@ -3590,10 +3592,7 @@ def readiness_checklist_payload(
                 "Live market scan",
                 "blocked",
                 "Market scan is using local CSV/fixture bars, not fresh market coverage.",
-                (
-                    "Use SEC-only results for research only; refresh CSV bars or configure "
-                    "a live market provider before acting."
-                ),
+                _csv_market_refresh_next_action(run_as_of),
                 _coverage_evidence(market),
             )
         )
@@ -6651,10 +6650,7 @@ def _discovery_blockers(
             _discovery_blocker(
                 "fixture_market_data",
                 "Market data is still local CSV/fixture-backed.",
-                (
-                    "Use SEC-only results for research only; refresh CSV bars or configure "
-                    "a live market provider before relying on broad discovery."
-                ),
+                _csv_market_refresh_discovery_action(as_of_date),
             )
         )
     elif market_mode in {"missing_credentials", "disabled"}:
@@ -6695,10 +6691,7 @@ def _discovery_blockers(
             _discovery_blocker(
                 "stale_daily_bars",
                 f"Latest daily bars are {latest_bar_date.isoformat()}, older than run as-of.",
-                (
-                    "Refresh CSV bars for the selected as-of date or configure a live "
-                    "market provider before acting."
-                ),
+                _csv_market_refresh_next_action(as_of_date),
             )
         )
     if int(run_path.get("blocking_count") or 0) > 0:
@@ -6960,6 +6953,31 @@ def _coverage_evidence(row: Mapping[str, object]) -> str:
         str(row.get("guardrail") or "").strip(),
     ]
     return "; ".join(part for part in parts if part) or "n/a"
+
+
+def _csv_market_refresh_command(as_of_date: date | None) -> str:
+    expected = f" -ExpectedAsOf {as_of_date.isoformat()}" if as_of_date else ""
+    return (
+        "powershell -ExecutionPolicy Bypass -File "
+        "scripts\\refresh-csv-market-data.ps1 -DailyBars <fresh-bars.csv>"
+        f"{expected} -Execute"
+    )
+
+
+def _csv_market_refresh_next_action(as_of_date: date | None) -> str:
+    return (
+        "Use SEC-only results for research only; import fresh CSV bars with "
+        f"`{_csv_market_refresh_command(as_of_date)}` or configure a live market "
+        "provider before acting."
+    )
+
+
+def _csv_market_refresh_discovery_action(as_of_date: date | None) -> str:
+    return (
+        "Use SEC-only results for research only; import fresh CSV bars with "
+        f"`{_csv_market_refresh_command(as_of_date)}` or configure a live market "
+        "provider before relying on broad discovery."
+    )
 
 
 def _market_data_detail(config: AppConfig, provider: str) -> str:

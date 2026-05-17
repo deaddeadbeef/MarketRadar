@@ -1,6 +1,6 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-17 10:18:51 +08:00
+Last updated: 2026-05-17 10:24:53 +08:00
 
 ## Current Objective
 
@@ -62,6 +62,10 @@ The first command is preview-only. `-Execute` wraps the existing `ingest-csv`
 CLI, records provider health through the existing CSV provider path, and makes
 zero Polygon, SEC, Schwab, or OpenAI calls.
 
+The dashboard/API readiness wording now surfaces the same command from
+`operator_next_step`, stale market-data blockers, and candidate readiness gates
+instead of leaving the user with a generic "refresh CSV bars" instruction.
+
 ## Current Repository State
 
 The SEC-only activation work was merged to `main` through PR #176 using rebase
@@ -113,6 +117,12 @@ Files changed by the manual CSV market-refresh slice:
 - `scripts/market-radar-status.ps1`
 - `tests/integration/test_local_scripts.py`
 - `README.md`
+- `handoff.md`
+
+Files changed by the API readiness refresh-command slice:
+
+- `src/catalyst_radar/dashboard/data.py`
+- `tests/integration/test_dashboard_data.py`
 - `handoff.md`
 
 ## What Changed In PR #176
@@ -418,9 +428,10 @@ Remaining limitations:
 
 ## Next Useful Product Slice
 
-CIK target coverage, operator wording, and the manual CSV import wrapper are
-done. The next change should stay small and focus on making the operator's
-manual bar refresh verifiable after import without assuming Polygon:
+CIK target coverage, operator wording, the manual CSV import wrapper, and the
+API/dashboard refresh-command wording are done. The next change should stay
+small and focus on making the operator's manual bar refresh verifiable after
+import without assuming Polygon:
 
 - Use `scripts\refresh-csv-market-data.ps1` with a fresh daily-bar CSV, rerun
   `scripts\market-radar-status.ps1`, then run the plan-only smoke before any
