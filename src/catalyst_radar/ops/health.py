@@ -41,6 +41,23 @@ def load_ops_health(
     resolved_now = _resolve_now(now)
     with engine.connect() as conn:
         providers = _latest_provider_rows(conn, available_at=resolved_now)
+        active_security_tickers = select(securities.c.ticker).where(
+            securities.c.is_active.is_(True)
+        )
+        latest_daily_bar_date = conn.scalar(
+            select(func.max(daily_bars.c.date)).where(
+                daily_bars.c.available_at <= resolved_now
+            )
+        )
+        active_with_latest_daily_bar_count = 0
+        if latest_daily_bar_date is not None:
+            active_with_latest_daily_bar_count = conn.scalar(
+                select(func.count(func.distinct(daily_bars.c.ticker))).where(
+                    daily_bars.c.available_at <= resolved_now,
+                    daily_bars.c.date == latest_daily_bar_date,
+                    daily_bars.c.ticker.in_(active_security_tickers),
+                )
+            )
         jobs = [
             _row_dict(row._mapping)
             for row in conn.execute(
@@ -67,18 +84,13 @@ def load_ops_health(
             "active_security_with_daily_bar_count": conn.scalar(
                 select(func.count(func.distinct(daily_bars.c.ticker))).where(
                     daily_bars.c.available_at <= resolved_now,
-                    daily_bars.c.ticker.in_(
-                        select(securities.c.ticker).where(
-                            securities.c.is_active.is_(True)
-                        )
-                    ),
+                    daily_bars.c.ticker.in_(active_security_tickers),
                 )
             ),
-            "latest_daily_bar_date": conn.scalar(
-                select(func.max(daily_bars.c.date)).where(
-                    daily_bars.c.available_at <= resolved_now
-                )
+            "active_security_with_latest_daily_bar_count": (
+                active_with_latest_daily_bar_count
             ),
+            "latest_daily_bar_date": latest_daily_bar_date,
             "candidate_state_count": conn.scalar(
                 select(func.count())
                 .select_from(candidate_states)

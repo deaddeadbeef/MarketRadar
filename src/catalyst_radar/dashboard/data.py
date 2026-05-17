@@ -939,6 +939,7 @@ def investment_readiness_payload(
             "events_disabled",
             "thin_universe",
             "stale_daily_bars",
+            "incomplete_daily_bar_coverage",
             "blocked_run_steps",
             "no_candidate_packets",
         }
@@ -6678,6 +6679,14 @@ def _discovery_blockers(
             )
         )
     active_count = int(_finite_float(database.get("active_security_count")))
+    latest_bar_coverage_count = int(
+        _finite_float(
+            database.get(
+                "active_security_with_latest_daily_bar_count",
+                database.get("active_security_with_daily_bar_count"),
+            )
+        )
+    )
     if active_count and active_count < 100:
         blockers.append(
             _discovery_blocker(
@@ -6691,6 +6700,22 @@ def _discovery_blockers(
             _discovery_blocker(
                 "stale_daily_bars",
                 f"Latest daily bars are {latest_bar_date.isoformat()}, older than run as-of.",
+                _csv_market_refresh_next_action(as_of_date),
+            )
+        )
+    if (
+        active_count
+        and latest_bar_date is not None
+        and latest_bar_coverage_count < active_count
+    ):
+        blockers.append(
+            _discovery_blocker(
+                "incomplete_daily_bar_coverage",
+                (
+                    f"{latest_bar_coverage_count} of {active_count} active "
+                    "securities have bars on the latest daily-bar date "
+                    f"{latest_bar_date.isoformat()}."
+                ),
                 _csv_market_refresh_next_action(as_of_date),
             )
         )

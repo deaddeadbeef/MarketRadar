@@ -367,6 +367,35 @@ def test_ops_health_reports_active_universe_coverage() -> None:
 
     assert health["database"]["active_security_count"] == 2
     assert health["database"]["active_security_with_daily_bar_count"] == 1
+    assert health["database"]["active_security_with_latest_daily_bar_count"] == 1
+    assert health["database"]["latest_daily_bar_date"] == now.date().isoformat()
+    json.dumps(health)
+
+
+def test_ops_health_reports_latest_bar_date_coverage() -> None:
+    engine = _engine()
+    now = datetime(2026, 5, 10, 12, 0, tzinfo=UTC)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(securities),
+            [
+                _security_row("AAA", active=True, updated_at=now),
+                _security_row("BBB", active=True, updated_at=now),
+            ],
+        )
+        conn.execute(
+            insert(daily_bars),
+            [
+                _daily_bar_row("AAA", now),
+                _daily_bar_row("BBB", now - timedelta(days=1)),
+            ],
+        )
+
+    health = load_ops_health(engine, now=now)
+
+    assert health["database"]["active_security_count"] == 2
+    assert health["database"]["active_security_with_daily_bar_count"] == 2
+    assert health["database"]["active_security_with_latest_daily_bar_count"] == 1
     assert health["database"]["latest_daily_bar_date"] == now.date().isoformat()
     json.dumps(health)
 
