@@ -221,6 +221,14 @@ def test_refresh_csv_market_data_script_wraps_local_ingest_without_provider_call
     assert "data/sample/securities.csv" in text
     assert "data/sample/daily_bars.csv" in text
     assert "ExpectedAsOf" in text
+    assert "TemplateOut" in text
+    assert "CSV market data template" in text
+    assert "Fill open, high, low, close, volume, and vwap before importing." in text
+    assert "data\\local\\manual-bars-" in Path("scripts/market-radar-status.ps1").read_text(
+        encoding="utf-8"
+    )
+    assert "Assert-DailyBarRows" in text
+    assert "missing required numeric field" in text
     assert "Import-Csv" in text
     assert "latest_bar=" in text
     assert "Freshness check:" in text

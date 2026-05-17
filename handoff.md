@@ -1,6 +1,6 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-17 10:24:53 +08:00
+Last updated: 2026-05-17 10:30:40 +08:00
 
 ## Current Objective
 
@@ -54,17 +54,23 @@ not add a large new market-data framework.
 The current small slice adds that operator path:
 
 ```powershell
+powershell -ExecutionPolicy Bypass -File scripts\refresh-csv-market-data.ps1 -TemplateOut data\local\manual-bars-2026-05-16.csv -ExpectedAsOf 2026-05-16
 powershell -ExecutionPolicy Bypass -File scripts\refresh-csv-market-data.ps1 -DailyBars <fresh-bars.csv> -ExpectedAsOf 2026-05-16
 powershell -ExecutionPolicy Bypass -File scripts\refresh-csv-market-data.ps1 -DailyBars <fresh-bars.csv> -ExpectedAsOf 2026-05-16 -Execute
 ```
 
-The first command is preview-only. `-Execute` wraps the existing `ingest-csv`
-CLI, records provider health through the existing CSV provider path, and makes
-zero Polygon, SEC, Schwab, or OpenAI calls.
+The first command writes an ignored local template for active tickers. Fill
+`open`, `high`, `low`, `close`, `volume`, and `vwap`, then use the second
+command as preview-only. Preview validates required numeric fields before any
+import. `-Execute` wraps the existing `ingest-csv` CLI, records provider health
+through the existing CSV provider path, and makes zero Polygon, SEC, Schwab, or
+OpenAI calls.
 
 The dashboard/API readiness wording now surfaces the same command from
 `operator_next_step`, stale market-data blockers, and candidate readiness gates
 instead of leaving the user with a generic "refresh CSV bars" instruction.
+The terminal sitrep also prints a template command that writes to ignored
+`data\local\manual-bars-<date>.csv`.
 
 ## Current Repository State
 

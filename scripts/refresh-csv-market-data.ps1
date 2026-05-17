@@ -3,6 +3,7 @@ param(
     [string]$DailyBars = "data/sample/daily_bars.csv",
     [string]$Holdings = "data/sample/holdings.csv",
     [string]$ExpectedAsOf,
+    [string]$TemplateOut,
     [switch]$Execute
 )
 
@@ -49,6 +50,22 @@ function Convert-CsvDate {
     }
 }
 
+function Convert-CsvBool {
+    param(
+        [object]$Value,
+        [string]$Field
+    )
+
+    $normalized = ([string]$Value).Trim().ToLowerInvariant()
+    if ($normalized -in @("1", "true", "yes", "on")) {
+        return $true
+    }
+    if ($normalized -in @("0", "false", "no", "off")) {
+        return $false
+    }
+    throw "Invalid $Field boolean value: $Value"
+}
+
 function Assert-Columns {
     param(
         [object]$Row,
@@ -64,7 +81,160 @@ function Assert-Columns {
     }
 }
 
+function Assert-NumberField {
+    param(
+        [object]$Row,
+        [string]$Field,
+        [string]$Label
+    )
+
+    $value = [string]$Row.PSObject.Properties[$Field].Value
+    if ([string]::IsNullOrWhiteSpace($value)) {
+        throw "$Label is missing required numeric field: $Field"
+    }
+    try {
+        [double]::Parse(
+            $value,
+            [System.Globalization.NumberStyles]::Float,
+            [System.Globalization.CultureInfo]::InvariantCulture
+        ) | Out-Null
+    }
+    catch {
+        throw "$Label has invalid numeric field $Field`: $value"
+    }
+}
+
+function Assert-IntegerField {
+    param(
+        [object]$Row,
+        [string]$Field,
+        [string]$Label
+    )
+
+    $value = [string]$Row.PSObject.Properties[$Field].Value
+    if ([string]::IsNullOrWhiteSpace($value)) {
+        throw "$Label is missing required integer field: $Field"
+    }
+    try {
+        [int64]::Parse(
+            $value,
+            [System.Globalization.NumberStyles]::Integer,
+            [System.Globalization.CultureInfo]::InvariantCulture
+        ) | Out-Null
+    }
+    catch {
+        throw "$Label has invalid integer field $Field`: $value"
+    }
+}
+
+function Assert-DailyBarRows {
+    param([object[]]$Rows)
+
+    foreach ($row in $Rows) {
+        $ticker = ([string]$row.ticker).Trim().ToUpperInvariant()
+        $dateLabel = ([string]$row.date).Trim()
+        $label = if ([string]::IsNullOrWhiteSpace($ticker)) {
+            "Daily bar row"
+        }
+        else {
+            "Daily bar row $ticker $dateLabel"
+        }
+        if ([string]::IsNullOrWhiteSpace($ticker)) {
+            throw "$label is missing required ticker."
+        }
+        Convert-CsvDate -Value $row.date -Field "daily bar" | Out-Null
+        foreach ($field in @("open", "high", "low", "close", "vwap")) {
+            Assert-NumberField -Row $row -Field $field -Label $label
+        }
+        Assert-IntegerField -Row $row -Field "volume" -Label $label
+        Convert-CsvBool -Value $row.adjusted -Field "adjusted" | Out-Null
+        if ([string]::IsNullOrWhiteSpace(([string]$row.provider))) {
+            throw "$label is missing required provider."
+        }
+        [datetime]::Parse(
+            [string]$row.source_ts,
+            [System.Globalization.CultureInfo]::InvariantCulture
+        ) | Out-Null
+        [datetime]::Parse(
+            [string]$row.available_at,
+            [System.Globalization.CultureInfo]::InvariantCulture
+        ) | Out-Null
+    }
+}
+
+function Write-DailyBarTemplate {
+    param(
+        [string]$Path,
+        [string]$SecuritiesPath,
+        [datetime]$AsOfDate
+    )
+
+    $securityRows = @(Import-Csv -LiteralPath $SecuritiesPath)
+    if ($securityRows.Count -eq 0) {
+        throw "Securities CSV contains no rows: $SecuritiesPath"
+    }
+    Assert-Columns -Row $securityRows[0] -Label "Securities CSV" -Required @(
+        "ticker",
+        "is_active"
+    )
+
+    $tickers = @(
+        $securityRows |
+            Where-Object { Convert-CsvBool -Value $_.is_active -Field "is_active" } |
+            ForEach-Object { ([string]$_.ticker).Trim().ToUpperInvariant() } |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+            Sort-Object -Unique
+    )
+    if ($tickers.Count -eq 0) {
+        throw "No active tickers found in securities CSV: $SecuritiesPath"
+    }
+
+    $parent = Split-Path -Parent $Path
+    if (-not [string]::IsNullOrWhiteSpace($parent) -and -not (Test-Path -LiteralPath $parent)) {
+        New-Item -ItemType Directory -Path $parent | Out-Null
+    }
+
+    $asOf = $AsOfDate.ToString("yyyy-MM-dd")
+    $stamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+    $lines = @("ticker,date,open,high,low,close,volume,vwap,adjusted,provider,source_ts,available_at")
+    foreach ($ticker in $tickers) {
+        $lines += (@($ticker, $asOf, "", "", "", "", "", "", "true", "manual_csv", $stamp, $stamp) -join ",")
+    }
+    Set-Content -LiteralPath $Path -Value $lines -Encoding UTF8
+
+    return $tickers.Count
+}
+
+$expectedDate = $null
+if (-not [string]::IsNullOrWhiteSpace($ExpectedAsOf)) {
+    $expectedDate = Convert-CsvDate -Value $ExpectedAsOf -Field "expected as-of"
+}
+
 $resolvedSecurities = Resolve-InputPath -Path $Securities -Label "Securities"
+
+if (-not [string]::IsNullOrWhiteSpace($TemplateOut)) {
+    if ($null -eq $expectedDate) {
+        throw "ExpectedAsOf is required when TemplateOut is set."
+    }
+
+    $templateRows = Write-DailyBarTemplate `
+        -Path $TemplateOut `
+        -SecuritiesPath $resolvedSecurities `
+        -AsOfDate $expectedDate
+    $resolvedTemplate = Resolve-Path -LiteralPath $TemplateOut
+    Write-Output "CSV market data template"
+    Write-Output ("Template: {0}" -f $resolvedTemplate.ProviderPath)
+    Write-Output ("Rows: {0}; expected_as_of={1}" -f $templateRows, $expectedDate.ToString("yyyy-MM-dd"))
+    Write-Output "Fill open, high, low, close, volume, and vwap before importing."
+    Write-Output (
+        "Import command: powershell -ExecutionPolicy Bypass -File scripts\refresh-csv-market-data.ps1 -DailyBars {0} -ExpectedAsOf {1} -Execute" -f
+        $TemplateOut,
+        $expectedDate.ToString("yyyy-MM-dd")
+    )
+    Write-Output "External calls made: 0"
+    return
+}
+
 $resolvedDailyBars = Resolve-InputPath -Path $DailyBars -Label "Daily bars"
 $resolvedHoldings = Resolve-InputPath -Path $Holdings -Label "Holdings" -Optional
 
@@ -86,6 +256,7 @@ Assert-Columns -Row $barRows[0] -Label "Daily bars CSV" -Required @(
     "source_ts",
     "available_at"
 )
+Assert-DailyBarRows -Rows $barRows
 
 $latestBarDate = $null
 foreach ($row in $barRows) {
@@ -100,11 +271,6 @@ $tickers = @(
         Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
         Sort-Object -Unique
 )
-
-$expectedDate = $null
-if (-not [string]::IsNullOrWhiteSpace($ExpectedAsOf)) {
-    $expectedDate = Convert-CsvDate -Value $ExpectedAsOf -Field "expected as-of"
-}
 
 $freshnessStatus = "not_checked"
 if ($null -ne $expectedDate) {

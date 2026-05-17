@@ -122,15 +122,18 @@ If the sitrep reports stale CSV market bars, import a manually prepared daily
 bar CSV with the same schema as `data/sample/daily_bars.csv`:
 
 ```powershell
+powershell -ExecutionPolicy Bypass -File scripts/refresh-csv-market-data.ps1 -TemplateOut data/local/manual-bars-2026-05-16.csv -ExpectedAsOf 2026-05-16
 powershell -ExecutionPolicy Bypass -File scripts/refresh-csv-market-data.ps1 -DailyBars <fresh-bars.csv> -ExpectedAsOf 2026-05-16
 powershell -ExecutionPolicy Bypass -File scripts/refresh-csv-market-data.ps1 -DailyBars <fresh-bars.csv> -ExpectedAsOf 2026-05-16 -Execute
 ```
 
-The first command is a preview and writes nothing. The `-Execute` command wraps
-the existing local `ingest-csv` path, records provider health, and makes 0
-Polygon, SEC, Schwab, or OpenAI calls. After importing, rerun
-`scripts/market-radar-status.ps1`, then use the plan-only smoke before any
-capped live radar cycle.
+The template command writes a local ignored CSV scaffold for active tickers.
+Fill `open`, `high`, `low`, `close`, `volume`, and `vwap`, then preview with
+the second command. Preview validates required numeric fields before any import.
+The `-Execute` command wraps the existing local `ingest-csv` path, records
+provider health, and makes 0 Polygon, SEC, Schwab, or OpenAI calls. After
+importing, rerun `scripts/market-radar-status.ps1`, then use the plan-only
+smoke before any capped live radar cycle.
 
 For a redacted raw telemetry evidence snapshot:
 
