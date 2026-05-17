@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import html
 import json
 from datetime import timedelta
 from pathlib import Path
@@ -259,12 +260,25 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
     async def run_app() -> None:
         async with app.run_test(size=(140, 42)) as pilot:
             await pilot.pause()
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            assert "MRDR // MARKET RADAR" in frame
+            assert "Overview" in frame
+            assert "Candidates [1]" in frame
+            assert "MARKET BARS" in frame
+            assert "Decision safe: False" in frame
+
             assert app.page == "overview"
             assert await pilot.click("#nav-candidates")
             await pilot.pause()
             assert app.page == "candidates"
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            assert ">> 4  Candidates [1]" in frame
+
             assert await pilot.click("#nav-help")
             await pilot.pause()
             assert app.page == "help"
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            assert ">> ?  Help" in frame
+            assert "Click sidebar" in frame
 
     asyncio.run(run_app())

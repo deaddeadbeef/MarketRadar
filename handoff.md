@@ -1,6 +1,6 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-17 13:32:46 +08:00
+Last updated: 2026-05-17 13:53:19 +08:00
 
 ## Current Objective
 
@@ -132,11 +132,15 @@ replacement surface for the command center, plus `dashboard-snapshot --json`
 for functional E2E assertions. The default interactive TUI uses Textual for a
 modern Windows Terminal-compatible interface with sidebar mouse navigation,
 status cards, selectable candidate/alert rows, a command input, keyboard
-shortcuts, and a footer. `dashboard-tui --once` still uses the plain text
-renderer for deterministic smoke tests and low-fi logs. The TUI exposes the
-same useful dashboard data families: readiness, latest run, discovery snapshot,
-candidate rows, alerts, IPO/S-1 rows, themes, validation, costs, broker context,
-ops health, telemetry, telemetry coverage, live activation, call planning, and a
+shortcuts, and a footer. The latest visual polish fixes the cropped sidebar
+button bug by using one-line clickable nav rows, adds visible NAV/OPS sidebar
+sections, surfaces candidate/alert/IPO counts in navigation, tightens the metric
+grid so all four cards fit, and uses a darker "ops console" style with clearer
+status values. `dashboard-tui --once` still uses the plain text renderer for
+deterministic smoke tests and low-fi logs. The TUI exposes the same useful
+dashboard data families: readiness, latest run, discovery snapshot, candidate
+rows, alerts, IPO/S-1 rows, themes, validation, costs, broker context, ops
+health, telemetry, telemetry coverage, live activation, call planning, and a
 feature inventory. Navigation/filtering/export are zero provider-call. The TUI
 also supports guarded manual radar runs (`run execute` after viewing the call
 plan), local opportunity actions, trigger creation/evaluation, blocked
