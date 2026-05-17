@@ -185,6 +185,7 @@ renders:
 ```powershell
 catalyst-radar dashboard-snapshot --json
 catalyst-radar dashboard-snapshot --ticker ACME --available-at 2026-05-10T21:06:00Z
+catalyst-radar agent-brief --json
 ```
 
 The snapshot uses the dashboard data helpers for readiness, latest run,
@@ -192,6 +193,23 @@ candidate rows, alerts, IPO/S-1 rows, themes, validation, costs, broker context,
 ops health, telemetry, telemetry coverage, live activation, and call planning.
 It is read-only, redacts restricted provider payloads, and makes 0 Polygon, SEC,
 Schwab, or OpenAI calls.
+
+`agent-brief` is the CLI surface for the OpenAI Agents SDK operator layer. By
+default it runs a deterministic dry-run brief from the same redacted dashboard
+snapshot, with four roles: Data Sentinel, Catalyst Analyst, Risk Officer, and
+Operator. It makes 0 Polygon, SEC, Schwab, or OpenAI calls in default mode.
+Real Agents SDK mode is opt-in:
+
+```powershell
+catalyst-radar agent-brief --real --json
+```
+
+Real mode fails closed unless all explicit gates are set:
+`CATALYST_ENABLE_AGENT_SDK=true`, `CATALYST_ENABLE_PREMIUM_LLM=true`,
+`CATALYST_LLM_PROVIDER=openai`, `CATALYST_AGENT_SDK_MODEL=<model>`, and
+`OPENAI_API_KEY=<secret>`. Even in real mode, the agent receives only an
+allowlisted redacted snapshot and has no Polygon/Massive, SEC, Schwab, shell,
+filesystem, web, or order-submission tools.
 
 See `docs/dashboard-feature-inventory.md` for the current dashboard feature
 inventory and TUI coverage.
@@ -286,7 +304,7 @@ worker cycle.
 
 No premium LLM calls are used or required in Phase 1.
 
-## Agent Review Provider Boundary
+## Agent Review And Agents SDK Boundary
 
 The agent-review loop is not connected to GitHub Copilot. Runtime dependencies
 do not include a Copilot SDK, and the source tree has a regression test that
@@ -295,6 +313,13 @@ gated behind `CATALYST_ENABLE_PREMIUM_LLM=true`,
 `CATALYST_LLM_PROVIDER=openai`, and `OPENAI_API_KEY`, then uses the official
 `openai` Python SDK `responses.create(...)` path through
 `OpenAIResponsesClient`. Dry-run and fake modes do not call OpenAI.
+
+The separate `agent-brief` command uses the `openai-agents` package for the
+new manager-style operator layer. It is disabled by default, requires
+`CATALYST_ENABLE_AGENT_SDK=true` plus the same OpenAI premium gates for real
+mode, and exposes only specialist agents as tools. It does not grant model
+access to market-data providers, Schwab, local files, shell, web browsing, or
+order submission.
 
 ## Verification commands
 

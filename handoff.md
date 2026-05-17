@@ -1,6 +1,6 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-17 22:31:51 +08:00
+Last updated: 2026-05-17 23:22:00 +08:00
 
 ## Current Objective
 
@@ -178,9 +178,44 @@ SDK dependency or source reference, and `tests/unit/test_agent_provider_boundary
 guards that boundary. The current real-provider path is the official `openai`
 Python SDK `responses.create(...)` call through `OpenAIResponsesClient`, gated
 behind `CATALYST_ENABLE_PREMIUM_LLM=true`, `CATALYST_LLM_PROVIDER=openai`, and
-`OPENAI_API_KEY`. Dry-run and fake review modes do not call OpenAI. This is not
-the separate OpenAI Agents SDK package today; migrating to that SDK should be a
-deliberate future slice if tool orchestration is needed.
+`OPENAI_API_KEY`. Dry-run and fake review modes do not call OpenAI.
+
+The current Agents SDK slice adds `catalyst-radar agent-brief` as the
+multi-agent operator brain. Default mode is deterministic and zero-call; it
+builds a structured brief from the same redacted dashboard snapshot using four
+roles: Data Sentinel, Catalyst Analyst, Risk Officer, and Operator. Real SDK
+mode is explicit-only:
+
+```powershell
+catalyst-radar agent-brief --real --json
+```
+
+It fails closed unless all gates are set:
+`CATALYST_ENABLE_AGENT_SDK=true`, `CATALYST_ENABLE_PREMIUM_LLM=true`,
+`CATALYST_LLM_PROVIDER=openai`, `CATALYST_AGENT_SDK_MODEL=<model>`, and
+`OPENAI_API_KEY=<secret>`. The real-mode SDK surface uses `openai-agents` with
+specialist agents exposed to a manager agent, but grants no Polygon/Massive,
+SEC, Schwab, shell, filesystem, web, or order-submission tools. Provider and
+broker actions remain separate human-triggered workflows.
+
+Verification for this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\unit -q
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_llm_cli.py tests\integration\test_dashboard_demo_seed_cli.py -q
+.\.venv\Scripts\python.exe -m ruff check src tests
+.\.venv\Scripts\python.exe -c "from agents import Agent, Runner; a=Agent(name='x'); print(hasattr(a, 'as_tool'), hasattr(Runner, 'run_sync'))"
+.\.venv\Scripts\catalyst-radar.exe agent-brief --json
+.\.venv\Scripts\catalyst-radar.exe agent-brief --real --json
+.\.venv\Scripts\catalyst-radar.exe dashboard-tui --once --page overview
+```
+
+Expected results: unit tests pass, the two integration files pass, ruff passes,
+Agents SDK imports with `as_tool` and `run_sync`, default `agent-brief` reports
+`mode=dry_run` with zero OpenAI/market/broker calls, `--real` exits 2 with
+`mode=blocked` until gates are set, and the TUI smoke renders the insight page.
+The full `pytest -q` run was attempted but exceeded the 300-second tool timeout,
+so do not count it as a passing full-suite run.
 
 ## Current Repository State
 
@@ -247,6 +282,20 @@ Files changed by the dashboard CLI snapshot slice:
 - `src/catalyst_radar/dashboard/tui.py`
 - `tests/integration/test_dashboard_demo_seed_cli.py`
 - `docs/dashboard-feature-inventory.md`
+- `README.md`
+- `handoff.md`
+
+Files changed by the Agents SDK operator slice:
+
+- `pyproject.toml`
+- `.env.example`
+- `src/catalyst_radar/agents/sdk_orchestrator.py`
+- `src/catalyst_radar/cli.py`
+- `src/catalyst_radar/core/config.py`
+- `tests/unit/test_agent_sdk_orchestrator.py`
+- `tests/unit/test_agent_provider_boundary.py`
+- `tests/unit/test_config.py`
+- `tests/integration/test_dashboard_demo_seed_cli.py`
 - `README.md`
 - `handoff.md`
 
