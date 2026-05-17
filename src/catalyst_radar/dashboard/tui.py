@@ -8,9 +8,10 @@ from datetime import UTC, date, datetime, timedelta
 from uuid import uuid4
 
 from sqlalchemy.engine import Engine
+from textual import events
 from textual.app import App, ComposeResult
-from textual.containers import Horizontal, Vertical
-from textual.widgets import Button, DataTable, Footer, Header, Input, Static
+from textual.containers import Grid, Horizontal, Vertical
+from textual.widgets import DataTable, Footer, Header, Input, Static
 
 from catalyst_radar.brokers.interactive import (
     create_blocked_order_ticket,
@@ -395,17 +396,17 @@ class MarketRadarDashboardApp(App[int]):
 
     CSS = """
     Screen {
-        background: #101418;
+        background: #070b10;
         color: #d7dde8;
     }
 
     Header {
-        background: #0b0f14;
+        background: #05080c;
         color: #f2f5f8;
     }
 
     Footer {
-        background: #0b0f14;
+        background: #05080c;
         color: #aeb8c6;
     }
 
@@ -414,10 +415,10 @@ class MarketRadarDashboardApp(App[int]):
     }
 
     #sidebar {
-        width: 25;
-        min-width: 22;
-        background: #0f1720;
-        border-right: solid #273445;
+        width: 30;
+        min-width: 28;
+        background: #08111a;
+        border-right: solid #1b3a52;
         padding: 1 1;
     }
 
@@ -425,29 +426,52 @@ class MarketRadarDashboardApp(App[int]):
         height: 3;
         content-align: center middle;
         text-style: bold;
-        color: #ffffff;
-        background: #162234;
-        border: round #31445b;
+        color: #7ee787;
+        background: #0c1a24;
+        border: round #25516f;
         margin-bottom: 1;
     }
 
-    Button.nav {
-        width: 100%;
+    .side-section {
         height: 1;
-        margin-bottom: 0;
-        text-align: left;
+        color: #58a6ff;
+        text-style: bold;
+        margin: 1 0 0 0;
     }
 
-    Button.nav.active {
-        background: #2364d8;
+    .nav-item {
+        width: 100%;
+        height: 1;
+        content-align: left middle;
+        padding: 0 1;
+        color: #b7c2d0;
+        background: #0b141d;
+    }
+
+    .nav-item:hover {
+        background: #12263a;
         color: #ffffff;
+    }
+
+    .nav-item.active {
+        background: #17466b;
+        color: #f2fdff;
         text-style: bold;
     }
 
     .side-action {
         width: 100%;
         height: 1;
-        margin-top: 1;
+        content-align: left middle;
+        padding: 0 1;
+        color: #7ee787;
+        background: #0d1f19;
+        margin-top: 0;
+    }
+
+    .side-action:hover {
+        background: #133c2d;
+        color: #ffffff;
     }
 
     #main {
@@ -457,31 +481,32 @@ class MarketRadarDashboardApp(App[int]):
 
     #hero {
         height: 5;
-        border: round #33465d;
-        background: #121a24;
-        padding: 1 2;
+        border: round #25516f;
+        background: #0c141d;
+        padding: 0 2;
         margin-bottom: 1;
     }
 
     #metric-row {
+        layout: grid;
+        grid-size: 4 1;
+        grid-gutter: 0 1;
         height: 5;
         margin-bottom: 1;
     }
 
     .metric {
-        width: 1fr;
         height: 5;
-        margin-right: 1;
-        border: round #26384d;
-        background: #111923;
-        padding: 1 2;
+        border: round #20394f;
+        background: #0b141d;
+        padding: 0 1;
     }
 
     #message {
         height: auto;
         max-height: 5;
         border: round #3b4e65;
-        background: #111923;
+        background: #0d1721;
         color: #d7dde8;
         padding: 0 1;
         margin-bottom: 1;
@@ -492,7 +517,7 @@ class MarketRadarDashboardApp(App[int]):
     }
 
     #section-title {
-        height: 3;
+        height: 2;
         content-align: left middle;
         text-style: bold;
         color: #ffffff;
@@ -500,15 +525,15 @@ class MarketRadarDashboardApp(App[int]):
 
     #data-table {
         height: 1fr;
-        border: round #33465d;
-        background: #0f151d;
+        border: round #25516f;
+        background: #080d13;
     }
 
     #detail {
         height: 6;
         border: round #26384d;
-        background: #111923;
-        padding: 1 2;
+        background: #0b141d;
+        padding: 0 1;
         margin-top: 1;
     }
 
@@ -556,19 +581,20 @@ class MarketRadarDashboardApp(App[int]):
         yield Header(show_clock=True)
         with Horizontal(id="workspace"):
             with Vertical(id="sidebar"):
-                yield Static("Market Radar", classes="brand")
+                yield Static("MRDR // MARKET RADAR", classes="brand")
+                yield Static("NAV", classes="side-section")
                 for page_key, shortcut, label in MODERN_PAGES:
-                    yield Button(
-                        f"{shortcut}  {label}",
+                    yield Static(
+                        self._nav_label(page_key, shortcut, label),
                         id=f"nav-{page_key}",
-                        classes="nav",
-                        variant="default",
+                        classes="nav-item",
                     )
-                yield Button("Refresh", id="action-refresh", classes="side-action")
-                yield Button("Run page", id="action-run-page", classes="side-action")
+                yield Static("OPS", classes="side-section")
+                yield Static("R  Refresh snapshot", id="action-refresh", classes="side-action")
+                yield Static("RUN Review call plan", id="action-run-page", classes="side-action")
             with Vertical(id="main"):
                 yield Static(id="hero")
-                with Horizontal(id="metric-row"):
+                with Grid(id="metric-row"):
                     yield Static(id="metric-readiness", classes="metric")
                     yield Static(id="metric-market", classes="metric")
                     yield Static(id="metric-calls", classes="metric")
@@ -614,15 +640,18 @@ class MarketRadarDashboardApp(App[int]):
         self.status_message = ""
         self.refresh_view()
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        button_id = event.button.id or ""
-        if button_id.startswith("nav-"):
-            self.action_go(button_id.removeprefix("nav-"))
+    def on_click(self, event: events.Click) -> None:
+        widget_id = event.widget.id if event.widget else ""
+        if widget_id.startswith("nav-"):
+            event.stop()
+            self.action_go(widget_id.removeprefix("nav-"))
             return
-        if button_id == "action-refresh":
+        if widget_id == "action-refresh":
+            event.stop()
             self.action_refresh()
             return
-        if button_id == "action-run-page":
+        if widget_id == "action-run-page":
+            event.stop()
             self.action_go("run")
             self.status_message = "Review the call plan, then type run execute if intended."
             self.refresh_view()
@@ -672,9 +701,27 @@ class MarketRadarDashboardApp(App[int]):
 
     def _refresh_nav(self) -> None:
         active = self.page.split(":", 1)[0]
-        for page_key, _, _ in MODERN_PAGES:
-            button = self.query_one(f"#nav-{page_key}", Button)
-            button.set_class(page_key == active, "active")
+        for page_key, shortcut, label in MODERN_PAGES:
+            item = self.query_one(f"#nav-{page_key}", Static)
+            item.set_class(page_key == active, "active")
+            item.update(self._nav_label(page_key, shortcut, label))
+
+    def _nav_label(self, page_key: str, shortcut: str, label: str) -> str:
+        active = self.page.split(":", 1)[0] == page_key
+        marker = ">>" if active else "  "
+        counts = self._nav_count_suffix(page_key)
+        return f"{marker} {shortcut:<2} {label}{counts}"
+
+    def _nav_count_suffix(self, page_key: str) -> str:
+        if not self.payload:
+            return ""
+        if page_key == "candidates":
+            return f" [{_mapping(self.payload.get('candidates')).get('count') or 0}]"
+        if page_key == "alerts":
+            return f" [{_mapping(self.payload.get('alerts')).get('count') or 0}]"
+        if page_key == "ipo":
+            return f" [{_mapping(self.payload.get('ipo_s1')).get('count') or 0}]"
+        return ""
 
     def _refresh_header(self) -> None:
         readiness = _mapping(self.payload.get("readiness"))
@@ -685,17 +732,23 @@ class MarketRadarDashboardApp(App[int]):
         runtime = _mapping(self.payload.get("runtime_context"))
         controls = _mapping(self.payload.get("controls"))
         next_step = _mapping(self.payload.get("operator_next_step"))
+        next_action = next_step.get("action") or readiness.get("next_action")
 
         self.query_one("#hero", Static).update(
             "\n".join(
                 [
-                    f"[b]Market Radar[/b]  [dim]{self.page}[/dim]",
+                    (
+                        f"[bold #7ee787]MRDR[/] // [b]{self.page.upper()}[/b]  "
+                        f"[dim]mode={readiness.get('status') or 'unknown'} "
+                        f"safe={readiness.get('safe_to_make_investment_decision')} "
+                        f"calls={self.payload.get('external_calls_made', 0)}[/dim]"
+                    ),
                     (
                         f"{readiness.get('headline') or 'No readiness headline.'} "
                         f"[dim]Build {(_nested(runtime, 'build', 'commit') or 'n/a')} | "
                         f"Ticker {controls.get('ticker') or 'all'}[/dim]"
                     ),
-                    f"[b]Next[/b] {next_step.get('action') or readiness.get('next_action')}",
+                    f"[bold #58a6ff]NEXT[/] {next_action or 'No operator action.'}",
                 ]
             )
         )
@@ -2073,7 +2126,11 @@ def _dashboard_count_lines(payload: Mapping[str, object], width: int) -> list[st
 
 
 def _metric_text(title: str, value: object, detail: object) -> str:
-    return f"[b]{title}[/b]\n{_text(value)}\n[dim]{_text(detail)}[/dim]"
+    return (
+        f"[dim]{title.upper()}[/dim]\n"
+        f"[bold #7ee787]{_text(value)}[/]\n"
+        f"[dim]{_text(detail)}[/dim]"
+    )
 
 
 def _ops_detail(payload: Mapping[str, object]) -> str:
