@@ -1,6 +1,6 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-17 14:15:46 +08:00
+Last updated: 2026-05-17 14:27:38 +08:00
 
 ## Current Objective
 
@@ -133,13 +133,15 @@ for functional E2E assertions. The default interactive TUI uses Textual for a
 modern Windows Terminal-compatible interface with sidebar mouse navigation,
 status cards, selectable candidate/alert rows, a command input, keyboard
 shortcuts, and a footer. The latest visual polish fixes the cropped sidebar
-button bug by using one-line clickable nav rows, adds visible NAV/OPS sidebar
-sections, surfaces candidate/alert/IPO counts in navigation, tightens the metric
-grid so all four cards fit, and uses a darker "ops console" style with clearer
-status values. The current usability polish adds a top tab strip, priority
-keyboard navigation with `Ctrl+N` / `Ctrl+P`, focusable sidebar/action rows
-that activate with `Enter`, an always-visible legend, and separate `ACTION` and
-`RESPONSE` strips so operator intent is distinct from dashboard feedback.
+button bug by using one-line clickable nav rows, groups the sidebar into
+`CORE`, `REVIEW`, `OPERATE`, and `SYSTEM`, surfaces candidate/alert/IPO counts
+in navigation, tightens the metric grid so all four cards fit, and uses a
+darker "ops console" style with clearer status values. The current usability
+polish removes the redundant top tab strip, makes the grouped sidebar the
+primary navigation surface, keeps shortcuts visible in a compact `KEYS` / `MAP`
+guide, supports `Ctrl+N` / `Ctrl+P` and sidebar `Up` / `Down` navigation, and
+shows side-by-side `NEXT ACTION` and `LAST RESPONSE` cards so operator intent is
+distinct from dashboard feedback.
 `dashboard-tui --once` still uses the plain text renderer for deterministic
 smoke tests and low-fi logs. The TUI exposes the same useful dashboard data
 families: readiness, latest run, discovery snapshot, candidate rows, alerts,

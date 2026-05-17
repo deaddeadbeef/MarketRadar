@@ -266,15 +266,17 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert "Candidates [1]" in frame
             assert "MARKET BARS" in frame
             assert "Decision safe: False" in frame
-            assert "LEGEND" in frame
-            assert "ACTION" in frame
-            assert "RESPONSE" in frame
-            assert "Tab/Shift+Tab focus" in frame
-            assert "Ctrl+N/Ctrl+P page" in frame
-            assert "1 Overview" in frame
+            assert "KEYS" in frame
+            assert "MAP" in frame
+            assert "NEXT ACTION" in frame
+            assert "LAST RESPONSE" in frame
+            assert "CORE" in frame
+            assert "REVIEW" in frame
+            assert "OPERATE" in frame
+            assert "Up/Down on sidebar" in frame
 
             assert app.page == "overview"
-            assert await pilot.click("#tab-alerts")
+            assert await pilot.click("#nav-alerts")
             await pilot.pause()
             assert app.page == "alerts"
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
@@ -291,6 +293,14 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert ">> 4  Candidates [1]" in frame
 
             app.query_one("#nav-help").focus()
+            await pilot.press("up")
+            await pilot.pause()
+            assert app.focused is not None
+            assert app.focused.id == "nav-features"
+            await pilot.press("down")
+            await pilot.pause()
+            assert app.focused is not None
+            assert app.focused.id == "nav-help"
             await pilot.press("enter")
             await pilot.pause()
             assert app.page == "help"
@@ -302,7 +312,7 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             await pilot.press("enter")
             await pilot.pause()
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
-            assert "RESPONSE" in frame
+            assert "LAST RESPONSE" in frame
             assert "Snapshot refreshed from the local database." in frame
 
     asyncio.run(run_app())
