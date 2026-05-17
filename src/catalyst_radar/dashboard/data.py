@@ -6687,6 +6687,11 @@ def _discovery_blockers(
             )
         )
     )
+    missing_latest_bar_tickers = [
+        str(ticker)
+        for ticker in _sequence_value(database.get("missing_latest_daily_bar_tickers"))
+        if str(ticker).strip()
+    ]
     if active_count and active_count < 100:
         blockers.append(
             _discovery_blocker(
@@ -6708,6 +6713,11 @@ def _discovery_blockers(
         and latest_bar_date is not None
         and latest_bar_coverage_count < active_count
     ):
+        missing_sample = (
+            f" Missing: {', '.join(missing_latest_bar_tickers[:6])}."
+            if missing_latest_bar_tickers
+            else ""
+        )
         blockers.append(
             _discovery_blocker(
                 "incomplete_daily_bar_coverage",
@@ -6715,6 +6725,7 @@ def _discovery_blockers(
                     f"{latest_bar_coverage_count} of {active_count} active "
                     "securities have bars on the latest daily-bar date "
                     f"{latest_bar_date.isoformat()}."
+                    f"{missing_sample}"
                 ),
                 _csv_market_refresh_next_action(as_of_date),
             )

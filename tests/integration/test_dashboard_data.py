@@ -4710,6 +4710,7 @@ def test_radar_discovery_snapshot_flags_incomplete_latest_bar_coverage(
                 "active_security_count": 500,
                 "active_security_with_daily_bar_count": 500,
                 "active_security_with_latest_daily_bar_count": 498,
+                "missing_latest_daily_bar_tickers": ["AAPL", "MSFT"],
                 "latest_daily_bar_date": AS_OF.date().isoformat(),
             }
         },
@@ -4725,6 +4726,7 @@ def test_radar_discovery_snapshot_flags_incomplete_latest_bar_coverage(
         if row["code"] == "incomplete_daily_bar_coverage"
     )
     assert "498 of 500 active securities" in str(coverage["finding"])
+    assert "Missing: AAPL, MSFT" in str(coverage["finding"])
     assert "scripts\\refresh-csv-market-data.ps1" in str(coverage["next_action"])
     assert "-ExpectedAsOf 2026-05-10" in str(coverage["next_action"])
 

@@ -171,6 +171,10 @@ if ($null -ne $databaseHealth) {
         [int]$databaseHealth.active_security_with_latest_daily_bar_count -lt [int]$databaseHealth.active_security_count
     ) {
         Write-Output "- latest-bar coverage: Fill every active ticker for the latest/as-of date before treating bars as fresh."
+        $missingLatest = @($databaseHealth.missing_latest_daily_bar_tickers)
+        if ($missingLatest.Count -gt 0) {
+            Write-Output ("- missing latest-bar tickers: {0}" -f (($missingLatest | Select-Object -First 12) -join ", "))
+        }
     }
 }
 if ($null -ne $portfolioContext) {

@@ -368,6 +368,7 @@ def test_ops_health_reports_active_universe_coverage() -> None:
     assert health["database"]["active_security_count"] == 2
     assert health["database"]["active_security_with_daily_bar_count"] == 1
     assert health["database"]["active_security_with_latest_daily_bar_count"] == 1
+    assert health["database"]["missing_latest_daily_bar_tickers"] == ["CCC"]
     assert health["database"]["latest_daily_bar_date"] == now.date().isoformat()
     json.dumps(health)
 
@@ -396,6 +397,7 @@ def test_ops_health_reports_latest_bar_date_coverage() -> None:
     assert health["database"]["active_security_count"] == 2
     assert health["database"]["active_security_with_daily_bar_count"] == 2
     assert health["database"]["active_security_with_latest_daily_bar_count"] == 1
+    assert health["database"]["missing_latest_daily_bar_tickers"] == ["BBB"]
     assert health["database"]["latest_daily_bar_date"] == now.date().isoformat()
     json.dumps(health)
 
