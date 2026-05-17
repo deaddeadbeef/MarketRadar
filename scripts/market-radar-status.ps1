@@ -130,6 +130,12 @@ if ($null -ne $freshness) {
     if ($staleBarBlocker.next_action) {
         Write-Output ("- market freshness: {0}" -f $staleBarBlocker.next_action)
     }
+    if ($readiness.radar_run.as_of) {
+        Write-Output (
+            "- refresh command: powershell -ExecutionPolicy Bypass -File scripts\refresh-csv-market-data.ps1 -DailyBars <fresh-bars.csv> -ExpectedAsOf {0} -Execute" -f
+            $readiness.radar_run.as_of
+        )
+    }
 }
 if ($null -ne $portfolioContext) {
     Write-Output (
