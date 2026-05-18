@@ -1202,6 +1202,13 @@ def test_get_radar_priced_in_queue_returns_cli_ready_rows(
         "catalyst_events",
     ]
 
+    response = client.get("/api/radar/priced-in?all_rows=true&limit=3&offset=6")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["filters"]["limit"] == 1_000_000
+    assert payload["filters"]["offset"] == 0
+
 
 def test_get_radar_priced_in_preflight_returns_zero_call_steps(
     tmp_path,

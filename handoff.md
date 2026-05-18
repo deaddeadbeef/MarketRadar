@@ -1,6 +1,54 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 19:20:01 +08:00
+Last updated: 2026-05-18 19:25:11 +08:00
+
+## Latest API Full-Scan Export Parity
+
+CLI had `priced-in-queue --full-scan --all --json`, but the API equivalent
+still capped `GET /api/radar/priced-in` at 200 rows. That was a CLI/API parity
+gap for E2E testing and external dashboard consumers.
+
+Changes in this slice:
+
+- `GET /api/radar/priced-in` now accepts:
+
+  ```text
+  all_rows=true
+  ```
+
+- With `all_rows=true`, the API uses the same explicit full-export behavior as
+  CLI `--all`: `limit=1000000`, `offset=0`, and no provider calls while reading.
+
+Live zero-provider-call verification through FastAPI `TestClient`:
+
+```powershell
+@'
+from fastapi.testclient import TestClient
+from apps.api.main import create_app
+client = TestClient(create_app())
+response = client.get('/api/radar/priced-in?all_rows=true')
+print(response.status_code)
+p=response.json()
+print(p['count'], p['total_count'], p['has_more'], p['filters']['limit'], p['filters']['offset'])
+'@ | .\.venv\Scripts\python.exe -
+```
+
+Observed:
+
+```text
+200
+12087 12087 False 1000000 0
+```
+
+Validation for this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_api_routes.py::test_get_radar_priced_in_queue_returns_cli_ready_rows -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\api\routes\radar.py tests\integration\test_api_routes.py
+git diff --check
+```
+
+All passed.
 
 ## Latest Full-Scan Source Batch Planner
 
