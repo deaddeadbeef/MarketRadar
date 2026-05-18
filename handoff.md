@@ -168,9 +168,11 @@ GET /api/radar/priced-in?limit=50&status=bullish_not_priced_in&min_gap=20
 This payload is `priced-in-queue-v1`, reports `external_calls_made=0`, includes
 the full-scan boundary (`universe_too_small`, `partial_scan`, or `ready`), and
 returns ranked rows with ticker, status, direction, emotion score, reaction
-score, gap, priced-in score, state, setup, source, reason, and next step. This
-keeps the CLI/API and dashboard aligned around the same useful thing instead of
-creating a second interpretation.
+score, gap, priced-in score, state, setup, source, data-source coverage, reason,
+and next step. Source coverage is explicit: `available`, `stale`, and `missing`
+groups over market bars, catalyst events, local text, options, theme/peer/sector
+context, and broker context. This keeps the CLI/API and dashboard aligned around
+the same useful thing instead of creating a second interpretation.
 
 Current state is **research-only**. The required run path and SEC catalyst path
 work, but daily bars are still local CSV and stale (`latest_bar=2026-05-08` vs.

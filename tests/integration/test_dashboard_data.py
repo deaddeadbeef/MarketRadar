@@ -1382,6 +1382,8 @@ def test_priced_in_queue_payload_surfaces_ranked_gap_rows(tmp_path: Path) -> Non
     assert payload["rows"][0]["ticker"] == "MSFT"
     assert payload["rows"][0]["priced_in_status"]
     assert "emotion_reaction_gap" in payload["rows"][0]
+    assert payload["rows"][0]["data_sources"]["available"]
+    assert "summary" in payload["rows"][0]["data_sources"]
     assert payload["rows"][0]["why_now"] == "MSFT guidance raised"
 
 

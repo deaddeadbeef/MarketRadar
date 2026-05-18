@@ -1209,8 +1209,9 @@ class MarketRadarDashboardApp(App[int]):
                     ("priced_in_status", "Priced-in", 20),
                     ("emotion_reaction_gap", "Gap", 8),
                     ("score", "Score", 8),
+                    ("data_coverage", "Data", 32),
                     ("why_now", "Why now", 50),
-                    ("next_step", "Next step", 48),
+                    ("next_step", "Next step", 36),
                 ],
                 rows,
                 (
@@ -2288,8 +2289,9 @@ def _candidates_lines(payload: Mapping[str, object], width: int) -> list[str]:
                 ("priced_in_status", "Priced-in", 20),
                 ("emotion_reaction_gap", "Gap", 8),
                 ("score", "Score", 8),
-                ("why_now", "Why Now", 48),
-                ("next_step", "Next Step", 42),
+                ("data_coverage", "Data", 32),
+                ("why_now", "Why Now", 42),
+                ("next_step", "Next Step", 34),
             ],
             width=width,
             limit=30,
@@ -2315,6 +2317,7 @@ def _candidate_table_row(row: Mapping[str, object], *, row_key: str) -> Mapping[
         **dict(row),
         "_row_key": row_key,
         "score": row.get("score") or row.get("final_score"),
+        "data_coverage": _data_coverage_summary(row),
         "why_now": (
             _priced_in_reason(row)
             or brief.get("why_now")
@@ -2324,6 +2327,15 @@ def _candidate_table_row(row: Mapping[str, object], *, row_key: str) -> Mapping[
         "next_step": next_step or "Open candidate detail and review the evidence.",
         "priced_in_status": row.get("priced_in_status") or "n/a",
     }
+
+
+def _data_coverage_summary(row: Mapping[str, object]) -> str:
+    data_sources = row.get("priced_in_data_sources") or row.get("data_sources")
+    if isinstance(data_sources, Mapping):
+        summary = str(data_sources.get("summary") or "").strip()
+        if summary:
+            return summary
+    return "n/a"
 
 
 def _candidate_detail_lines(
@@ -2351,6 +2363,7 @@ def _candidate_detail_lines(
                 ("Reaction score", row.get("reaction_score")),
                 ("Emotion minus reaction", row.get("emotion_reaction_gap")),
                 ("Priced-in reason", row.get("priced_in_reason")),
+                ("Data coverage", _data_coverage_summary(row)),
                 ("Setup", row.get("setup") or row.get("setup_type")),
                 ("Top catalyst", row.get("top_catalyst") or row.get("top_event_title")),
                 ("Risk / gap", row.get("risk_or_gap")),
