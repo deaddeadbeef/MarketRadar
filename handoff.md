@@ -1,6 +1,78 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 03:22:40 +08:00
+Last updated: 2026-05-19 04:06:00 +08:00
+
+## Latest Named-Universe Full-Scan Answer Correction
+
+The user pushed back again: "Why only these tickers? I want full scan." The
+right product answer is:
+
+- MarketRadar should scan the full selected universe, currently `liquid-us` in
+  the live local DB.
+- The dashboard/CLI can only show a page or a next safe batch at a time.
+- Those visible tickers are not the scan scope. They are a review window or a
+  rate-limited executor chunk.
+
+Root cause found in this slice:
+
+- The latest local run was a named-universe scan over 2,429 rows.
+- `_priced_in_scan_status()` still compared `scanned_securities` against raw
+  `active_security_count` from the securities table.
+- Raw active securities included many instruments outside the selected
+  `liquid-us` universe, so a completed universe scan was mislabeled
+  `partial_scan`.
+- Because `partial_scan` maps to answer `blocked`, the top-level answer looked
+  less ready than the data actually was.
+
+Changes in this slice:
+
+- `_priced_in_scan_status()` now detects `discovery.run.universe`.
+- For named-universe scans, the denominator is `requested_securities` or
+  `scanned_securities`, not raw active securities.
+- Raw active securities remain the fallback denominator only when no named
+  universe was requested.
+- When the priced-in answer is `decision_ready`, top-level `next_command` now
+  opens the full actionable mismatch queue:
+
+  ```powershell
+  catalyst-radar priced-in-queue --mismatches --usefulness decision_useful --limit 50
+  ```
+
+  It no longer jumps directly to a single ticker's decision card as the primary
+  next step. Individual cards remain available from the queue rows.
+
+Live zero-provider-call smoke after this correction:
+
+```text
+priced_in_answer status=decision_ready decision_ready=true investment_decision_ready=false total=2429 mismatches=4 research=0 blocked=58 external_calls=0
+scan_scope=Showing ranked rows 1-5 of 2429; the visible tickers are one page from the full scan, not the scan universe.
+full_scan_export=catalyst-radar priced-in-queue --full-scan --all --json
+decision_readiness=status=ready actionable=4 decision_ready=4 summary=4 not-priced-in row(s) are decision-ready.
+next_action=Review all decision-ready mismatch rows from the full scan.
+next_command=catalyst-radar priced-in-queue --mismatches --usefulness decision_useful --limit 50
+```
+
+Follow-up queue smoke:
+
+```text
+priced_in_queue status=ready count=4 total=4 offset=0 external_calls=0
+scan_scope=scanned=2429 requested=n/a filter=actionable ranked_after_filter=4 visible_page=4
+headline=Latest full scan found 4 actionable mismatch row(s); showing 1-4 of 4.
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_scan_status_uses_named_universe_denominator tests\integration\test_dashboard_data.py::test_priced_in_answer_payload_summarizes_current_scan tests\integration\test_dashboard_data.py::test_priced_in_answer_opens_full_scan_queue_when_decision_ready tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_answer_cli_outputs_current_scan_answer -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-answer | Select-String -Pattern "priced_in_answer|scan_scope|full_scan_export|decision_readiness|next_action|next_command"
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-queue --mismatches --usefulness decision_useful --limit 50 | Select-String -Pattern "priced_in_queue|headline|count=|ticker status|external_calls|scan_scope"
+```
+
+Observed: focused pytest passed, ruff passed, `git diff --check` passed, and
+live local DB smoke now reports the scan as `ready` / `decision_ready` over
+2,429 scanned universe rows.
 
 ## Latest Priced-In Answer Next-Command Alignment
 

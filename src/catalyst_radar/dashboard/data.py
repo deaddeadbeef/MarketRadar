@@ -1443,6 +1443,14 @@ def _priced_in_answer_next_step(
     plan_command = str(plan.get("next_command") or "").strip()
     if answer_status in {"blocked", "research_only"} and plan_action:
         return plan_action, plan_command or None
+    if answer_status == "decision_ready":
+        return (
+            "Review all decision-ready mismatch rows from the full scan.",
+            (
+                "catalyst-radar priced-in-queue --mismatches "
+                "--usefulness decision_useful --limit 50"
+            ),
+        )
     for row in top_rows:
         next_step = str(row.get("next_step") or "").strip()
         if next_step:
@@ -7706,12 +7714,17 @@ def _priced_in_decision_gap_matches(
 
 
 def _priced_in_scan_status(discovery: Mapping[str, object]) -> str:
+    run = _mapping_value(discovery, "run")
     scan_yield = _mapping_value(discovery, "yield")
     freshness = _mapping_value(discovery, "freshness")
     active_count = int(_finite_float(freshness.get("active_security_count")))
     requested = int(_finite_float(scan_yield.get("requested_securities")))
     scanned = int(_finite_float(scan_yield.get("scanned_securities")))
-    denominator = active_count or requested or scanned
+    has_named_universe = bool(str(run.get("universe") or "").strip())
+    if has_named_universe:
+        denominator = requested or scanned
+    else:
+        denominator = active_count or requested or scanned
     if denominator < 500:
         return "universe_too_small"
     if scanned and denominator and scanned < max(1, int(denominator * 0.9)):
