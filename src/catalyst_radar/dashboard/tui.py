@@ -813,6 +813,7 @@ class MarketRadarDashboardApp(App[int]):
         Binding("ctrl+a", "go('agent')", "Agent", priority=True),
         ("f", "go('features')", "Features"),
         ("?", "go('help')", "Help"),
+        ("d", "decision_ready_scan", "Decision-ready"),
         ("m", "toggle_scan_mode", "Scan mode"),
         Binding("ctrl+n", "next_page", "Next page", priority=True),
         Binding("ctrl+p", "previous_page", "Prev page", priority=True),
@@ -863,6 +864,11 @@ class MarketRadarDashboardApp(App[int]):
                 yield FocusRow("RUN Review call plan", id="action-run-page", classes="side-action")
                 yield Static("SCAN", classes="side-section")
                 yield FocusRow(
+                    "D  Decision-ready",
+                    id="action-scan-ready",
+                    classes="side-action",
+                )
+                yield FocusRow(
                     "M  Mismatches only",
                     id="action-scan-mismatches",
                     classes="side-action",
@@ -885,7 +891,7 @@ class MarketRadarDashboardApp(App[int]):
                     yield Static(id="operator-response")
                 yield Input(
                     placeholder=(
-                        "Type a command or click a row. Try: full, mismatches, "
+                        "Type a command or click a row. Try: ready, full, mismatches, "
                         "2, 4, run, refresh, help, q"
                     ),
                     id="command",
@@ -946,6 +952,10 @@ class MarketRadarDashboardApp(App[int]):
             self.status_message = "Review the call plan, then type run execute if intended."
             self.refresh_view()
             return
+        if widget_id == "action-scan-ready":
+            event.stop()
+            self.action_decision_ready_scan()
+            return
         if widget_id == "action-scan-mismatches":
             event.stop()
             self._set_scan_mode("actionable")
@@ -989,6 +999,10 @@ class MarketRadarDashboardApp(App[int]):
             self.status_message = "Review the call plan, then type run execute if intended."
             self.refresh_view()
             return
+        if focused_id == "action-scan-ready":
+            event.stop()
+            self.action_decision_ready_scan()
+            return
         if focused_id == "action-scan-mismatches":
             event.stop()
             self._set_scan_mode("actionable")
@@ -1001,11 +1015,27 @@ class MarketRadarDashboardApp(App[int]):
         current = _normalize_priced_in_status(self.filters.priced_in_status)
         self._set_scan_mode("all" if current == "actionable" else "actionable")
 
+    def action_decision_ready_scan(self) -> None:
+        self.filters = replace(
+            self.filters,
+            priced_in_status="actionable",
+            priced_in_usefulness="decision_useful",
+            priced_in_offset=0,
+        ).normalized()
+        self.page = "overview"
+        self.status_message = (
+            "Decision-ready view: showing not-priced-in rows that passed the "
+            "usefulness gate. Type full for the whole ranked universe."
+        )
+        self.reload_snapshot()
+        self.refresh_view()
+
     def _set_scan_mode(self, status: str) -> None:
         resolved = _normalize_priced_in_status(status)
         self.filters = replace(
             self.filters,
             priced_in_status=resolved,
+            priced_in_usefulness=None,
             priced_in_offset=0,
         ).normalized()
         self.page = "overview"
@@ -1076,11 +1106,19 @@ class MarketRadarDashboardApp(App[int]):
 
     def _refresh_scan_actions(self) -> None:
         status = _normalize_priced_in_status(self.filters.priced_in_status)
+        usefulness = _normalize_optional_filter(self.filters.priced_in_usefulness)
+        ready = self.query_one("#action-scan-ready", FocusRow)
         mismatch = self.query_one("#action-scan-mismatches", FocusRow)
         full = self.query_one("#action-scan-all", FocusRow)
-        mismatch.set_class(status == "actionable", "active")
+        ready_active = status == "actionable" and usefulness == "decision_useful"
+        ready.set_class(ready_active, "active")
+        mismatch.set_class(status == "actionable" and not ready_active, "active")
         full.set_class(status == "all", "active")
-        mismatch.update((">> " if status == "actionable" else "   ") + "M  Mismatches only")
+        ready.update((">> " if ready_active else "   ") + "D  Decision-ready")
+        mismatch.update(
+            (">> " if status == "actionable" and not ready_active else "   ")
+            + "M  Mismatches only"
+        )
         full.update((">> " if status == "all" else "   ") + "ALL Full scan rows")
 
     def _nav_label(self, page_key: str, shortcut: str, label: str) -> str:
@@ -1132,6 +1170,7 @@ class MarketRadarDashboardApp(App[int]):
             [
                 "action-refresh",
                 "action-run-page",
+                "action-scan-ready",
                 "action-scan-mismatches",
                 "action-scan-all",
             ]
@@ -1145,7 +1184,7 @@ class MarketRadarDashboardApp(App[int]):
     def _navigation_text(self) -> str:
         return (
             "[bold #58a6ff]KEYS[/] 1 insights | 4 candidates | 5 alerts | 0 tutorial | "
-            "M full/mismatch | next/prev scan rows | Ctrl+N/P page\n"
+            "D ready | M full/mismatch | next/prev scan rows | Ctrl+N/P page\n"
             "[bold #58a6ff]MOUSE[/] click sidebar or table rows | "
             "Tab focus | Up/Down on sidebar | Enter open | Esc command | q quit\n"
         )
@@ -1308,7 +1347,7 @@ class MarketRadarDashboardApp(App[int]):
                 [
                     "[bold #7ee787]TUTORIAL[/]  Do these in order. Nothing external runs here.",
                     "[bold]1.[/] Press 1 or click Insights to see what needs attention.",
-                    "[bold]2.[/] Press M in Insights to toggle full scan versus mismatches.",
+                    "[bold]2.[/] Press D for decision-ready rows, M for broader mismatches.",
                     (
                         "[bold]3.[/] Press 2 for blockers, 4 for candidates, "
                         "or 3 to review the run plan; "
@@ -1683,8 +1722,8 @@ class MarketRadarDashboardApp(App[int]):
             },
             {
                 "step": "3",
-                "do": "Press M or click SCAN",
-                "result": "Switch Insights between the short mismatch queue and full scan rows.",
+                "do": "Press D or click Decision-ready",
+                "result": "Show only not-priced-in rows that passed the usefulness gate.",
             },
             {
                 "step": "4",
@@ -1766,10 +1805,10 @@ class MarketRadarDashboardApp(App[int]):
                 "meaning": "Open the walkthrough or the market insight queue.",
             },
             {
-                "command": "full / mismatches / scan all",
+                "command": "ready / full / mismatches",
                 "meaning": (
-                    "Switch Insights between full universe rows and the smaller "
-                    "mismatch queue."
+                    "Switch Insights between decision-ready rows, full universe rows, "
+                    "and the broader mismatch queue."
                 ),
             },
             {
@@ -1904,9 +1943,24 @@ def _apply_command(
             filters=replace(
                 filters,
                 priced_in_status="all",
+                priced_in_usefulness=None,
                 priced_in_offset=0,
             ).normalized(),
             message="Full Scan mode: showing page 1 from the whole ranked universe.",
+        )
+    if command in {"d", "ready", "decision", "decision-ready", "decision_ready"}:
+        return _CommandUpdate(
+            page="overview",
+            filters=replace(
+                filters,
+                priced_in_status="actionable",
+                priced_in_usefulness="decision_useful",
+                priced_in_offset=0,
+            ).normalized(),
+            message=(
+                "Decision-ready view: showing not-priced-in rows that passed the "
+                "usefulness gate. Type full for the whole ranked universe."
+            ),
         )
     if command in {"m", "mismatch", "mismatches", "actionable"}:
         return _CommandUpdate(
@@ -1914,6 +1968,7 @@ def _apply_command(
             filters=replace(
                 filters,
                 priced_in_status="actionable",
+                priced_in_usefulness=None,
                 priced_in_offset=0,
             ).normalized(),
             message="Mismatches mode: showing only bullish/bearish not-priced-in rows.",
@@ -1925,6 +1980,7 @@ def _apply_command(
             filters=replace(
                 filters,
                 priced_in_status=scan_status,
+                priced_in_usefulness=None,
                 priced_in_offset=0,
             ).normalized(),
             message=(
@@ -3272,6 +3328,11 @@ def _overview_title(payload: Mapping[str, object]) -> str:
         usefulness = _usefulness_counts_summary(queue)
         suffix_parts = [part for part in (usefulness, source_gap, decision_gap) if part]
         suffix = f"; {'; '.join(suffix_parts)}" if suffix_parts else ""
+        if _is_decision_ready_filter(queue):
+            return (
+                "Decision-ready not-priced-in rows - showing rows "
+                f"{start}-{end} of {total}; scan {scan_total}{suffix}"
+            )
         return (
             f"Mismatches from full scan - showing rows {start}-{end} of {total}; "
             f"scan {scan_total}{suffix}"
@@ -3307,6 +3368,16 @@ def _overview_caption(payload: Mapping[str, object]) -> str:
         decision_gap = _decision_gap_filter_summary(queue)
         decision_gap_text = f" Active decision gap filter: {decision_gap}." if decision_gap else ""
         if total:
+            if _is_decision_ready_filter(queue):
+                return (
+                    f"This page shows rows {start}-{end}: {returned} decision-ready "
+                    "not-priced-in row(s) from "
+                    f"{scan_total or 'the'} latest-scan row(s). "
+                    "These are the actionable answers; type full to inspect the "
+                    "whole ranked universe or mismatches for blocked/research rows."
+                    f"{usefulness_text}{source_gap_text}{decision_gap_text} "
+                    "Browsing makes 0 provider calls."
+                )
             return (
                 f"This page shows rows {start}-{end}: {returned} bullish/bearish "
                 "not-priced-in mismatch "
@@ -3372,6 +3443,14 @@ def _priced_in_scan_total(queue: Mapping[str, object]) -> int:
 
 def _priced_in_status_filter(queue: Mapping[str, object]) -> str:
     return _normalize_priced_in_status(_mapping(queue.get("filters")).get("status"))
+
+
+def _is_decision_ready_filter(queue: Mapping[str, object]) -> bool:
+    usefulness = str(_mapping(queue.get("filters")).get("usefulness") or "")
+    return (
+        _priced_in_status_filter(queue) == "actionable"
+        and usefulness == "decision_useful"
+    )
 
 
 def _source_gap_filter_summary(queue: Mapping[str, object]) -> str:
@@ -4464,6 +4543,7 @@ def _help_lines(width: int) -> list[str]:
         ("open <#|alert-id>", "Open an alert from the alerts page."),
         ("ticker <SYMBOL|all>", "Filter candidate-adjacent pages by ticker where supported."),
         ("available-at <ISO|latest>", "Set or clear the point-in-time data cutoff."),
+        ("ready", "Show only decision-useful not-priced-in rows from the full scan."),
         ("usefulness <status|all>", "Filter Insights by usefulness verdict."),
         ("source-gap <source|all>", "Filter Insights by missing/stale data source."),
         ("batch <source>", "Plan full-scan source fill and show the next safe chunk."),
