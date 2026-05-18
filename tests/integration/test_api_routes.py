@@ -1101,6 +1101,12 @@ def test_get_radar_priced_in_queue_returns_cli_ready_rows(
                     "priced_in_status": "bullish_not_priced_in",
                     "emotion_reaction_gap": 42.0,
                     "why_now": "Emotion is ahead of price reaction.",
+                    "data_sources": {
+                        "available": ["market_bars", "catalyst_events"],
+                        "missing": ["options"],
+                        "stale": [],
+                        "summary": "available: market_bars, catalyst_events; missing: options",
+                    },
                     "next_step": "Open candidate detail.",
                 }
             ],
@@ -1121,6 +1127,10 @@ def test_get_radar_priced_in_queue_returns_cli_ready_rows(
         "min_gap": 10.0,
     }
     assert payload["rows"][0]["ticker"] == "MSFT"
+    assert payload["rows"][0]["data_sources"]["available"] == [
+        "market_bars",
+        "catalyst_events",
+    ]
 
 
 def test_post_radar_run_call_plan_returns_read_only_call_budget(

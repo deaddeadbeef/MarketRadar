@@ -34,7 +34,7 @@ also supports low-risk operator writes: `action <ticker> <action> [notes]`,
 | --- | --- | --- | --- |
 | Readiness | Investment readiness, usefulness score, and operator next step | `overview`, `readiness` | Know whether output is research-only or decision-useful. |
 | Full scan coverage | Active universe size, requested/scanned securities, candidate count, latest/run bar coverage | `overview`, `ops`, `run` | Confirm the queue came from a real broad-market pass rather than a tiny fixture universe. |
-| Priced-in mismatch | Emotion score, price-reaction score, emotion-minus-reaction gap, status, reason, next step | `overview`, `candidates`, `candidate:<ticker>`, `priced-in-queue`, `/api/radar/priced-in` | Find stocks where market emotion appears ahead of or behind price reaction. |
+| Priced-in mismatch | Emotion score, price-reaction score, emotion-minus-reaction gap, status, reason, source coverage, next step | `overview`, `candidates`, `candidate:<ticker>`, `priced-in-queue`, `/api/radar/priced-in` | Find stocks where market emotion appears ahead of or behind price reaction and see which data classes are missing. |
 | Market data | Run as-of coverage, latest bar coverage, stale-bar blockers | `overview`, `ops` | Verify fresh bars before relying on real market data. |
 | Radar run | Latest run path, required steps, optional gates, call plan | `overview`, `run` | Check what will call external providers before executing a cycle. |
 | Candidates | Candidate queue, decision labels, research gaps, card readiness | `candidates`, `candidate:<ticker>` | Work the research shortlist and manual-review queue. |

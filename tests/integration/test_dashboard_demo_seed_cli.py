@@ -247,6 +247,7 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
     assert payload["rows"][0]["ticker"] == "ACME"
     assert payload["rows"][0]["priced_in_status"] == "bullish_not_priced_in"
     assert payload["rows"][0]["emotion_reaction_gap"] == 49.0
+    assert "catalyst_events" in payload["rows"][0]["data_sources"]["available"]
 
 
 def test_agent_brief_cli_real_mode_blocks_without_explicit_gates(

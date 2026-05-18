@@ -4180,6 +4180,7 @@ def _candidate_row(row: Any) -> dict[str, object]:
         priced_in.get("next_step"),
         candidate_metadata.get("priced_in_next_step"),
     )
+    values["priced_in_data_sources"] = _priced_in_data_sources(values)
     packet_payload = (
         candidate_packet_payload if isinstance(candidate_packet_payload, dict) else {}
     )
@@ -4245,6 +4246,74 @@ def _priced_in_from_candidate_payload(
         hard_blocks=tuple(str(item) for item in hard_blocks if item not in (None, "")),
     )
     return result.as_payload()
+
+
+def _priced_in_data_sources(row: Mapping[str, object]) -> dict[str, object]:
+    available: list[str] = []
+    missing: list[str] = []
+    stale: list[str] = []
+
+    data_stale = str(row.get("priced_in_status") or "").lower() == "stale" or (
+        "data_stale" in _sequence_value(row.get("hard_blocks"))
+    )
+    if row.get("reaction_score") not in (None, ""):
+        if data_stale:
+            stale.append("market_bars")
+        else:
+            available.append("market_bars")
+    else:
+        missing.append("market_bars")
+
+    if _finite_float(row.get("material_event_count")) > 0 or row.get("top_event_title"):
+        available.append("catalyst_events")
+    else:
+        missing.append("catalyst_events")
+
+    if (
+        _finite_float(row.get("local_narrative_score")) > 0
+        or _finite_float(row.get("selected_snippet_count")) > 0
+    ):
+        available.append("local_text")
+    else:
+        missing.append("local_text")
+
+    if (
+        row.get("options_feature_version")
+        or _finite_float(row.get("options_flow_score")) > 0
+        or _finite_float(row.get("call_put_ratio")) > 0
+    ):
+        available.append("options")
+    else:
+        missing.append("options")
+
+    if (
+        row.get("candidate_theme")
+        or _finite_float(row.get("theme_velocity_score")) > 0
+        or _finite_float(row.get("peer_readthrough_score")) > 0
+        or _finite_float(row.get("sector_rotation_score")) > 0
+    ):
+        available.append("theme_peer_sector")
+    else:
+        missing.append("theme_peer_sector")
+
+    if str(row.get("schwab_context_status") or "").lower() == "available":
+        available.append("broker_context")
+    else:
+        missing.append("broker_context")
+
+    parts = []
+    if available:
+        parts.append(f"available: {', '.join(available)}")
+    if stale:
+        parts.append(f"stale: {', '.join(stale)}")
+    if missing:
+        parts.append(f"missing: {', '.join(missing)}")
+    return {
+        "available": available,
+        "stale": stale,
+        "missing": missing,
+        "summary": "; ".join(parts) if parts else "no source coverage",
+    }
 
 
 def _previous_candidate_state_row(
@@ -4883,6 +4952,9 @@ def _priced_in_queue_row(row: Mapping[str, object]) -> dict[str, object]:
         "setup": row.get("setup_type") or row.get("candidate_theme") or "n/a",
         "top_catalyst": brief.get("top_catalyst") or row.get("top_event_title"),
         "why_now": reason or "No priced-in reason is available.",
+        "data_sources": row.get("priced_in_data_sources")
+        if isinstance(row.get("priced_in_data_sources"), Mapping)
+        else _priced_in_data_sources(row),
         "next_step": (
             (_display_priced_in_reason(row) and row.get("priced_in_next_step"))
             or brief.get("next_step")

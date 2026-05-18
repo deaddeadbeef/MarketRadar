@@ -2437,7 +2437,7 @@ def _print_priced_in_queue(payload: Mapping[str, object]) -> None:
     if not isinstance(rows, list | tuple) or not rows:
         print("No priced-in rows.")
         return
-    print("ticker status direction gap emotion reaction priced score next_step")
+    print("ticker status direction gap emotion reaction priced score data next_step")
     for row in rows:
         if not isinstance(row, Mapping):
             continue
@@ -2450,8 +2450,18 @@ def _print_priced_in_queue(payload: Mapping[str, object]) -> None:
             f"{row.get('reaction_score')} "
             f"{row.get('priced_in_score')} "
             f"{row.get('score')} "
+            f"{_priced_in_data_summary(row)} "
             f"{row.get('next_step')}"
         )
+
+
+def _priced_in_data_summary(row: Mapping[str, object]) -> str:
+    data_sources = row.get("data_sources")
+    if isinstance(data_sources, Mapping):
+        summary = str(data_sources.get("summary") or "").strip()
+        if summary:
+            return summary.replace(" ", "_")
+    return "n/a"
 
 
 def _print_external_json(payload: Mapping[str, object]) -> int:
