@@ -431,14 +431,18 @@ def test_dashboard_batch_execute_runs_one_guarded_local_chunk(
     monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
     engine = create_engine(database_url, future=True)
     calls: dict[str, object] = {}
+    plan_calls = 0
 
     def fake_batches_payload(_engine, _config, **kwargs) -> dict[str, object]:
+        nonlocal plan_calls
+        plan_calls += 1
         assert kwargs["source"] == "local_text"
+        remaining_rows = max(0, 125 - (plan_calls * 2))
         return {
             "status": "ready",
             "source": "local_text",
-            "total_gap_rows": 123,
-            "plannable_gap_rows": 123,
+            "total_gap_rows": remaining_rows,
+            "plannable_gap_rows": remaining_rows,
             "batch_count": 25,
             "next_action": "Run local text.",
             "batches": [
@@ -488,7 +492,9 @@ def test_dashboard_batch_execute_runs_one_guarded_local_chunk(
     assert update.page == "ops"
     assert update.message == (
         "Executed local_text chunk 1 (rows 1-5): tickers=2 features=2 "
-        "snippets=4 external_calls=0. Refresh to see updated full-scan coverage."
+        "snippets=4 external_calls=0. Post-check: Full-scan local_text coverage "
+        "improved; 2 gap row(s) and 2 plannable row(s) cleared. Review the "
+        "updated next batch before executing another chunk."
     )
     assert calls == {
         "as_of": "2026-05-15T21:00:00+00:00",
@@ -1008,6 +1014,27 @@ def test_priced_in_source_batches_execute_next_cli_runs_one_batch(
                 "snippet_count": 2,
                 "external_calls_made": 0,
             },
+            "post_execution": {
+                "schema_version": "priced-in-source-batch-post-execution-v1",
+                "source": kwargs["source"],
+                "status": "improved",
+                "external_calls_made": 0,
+                "before_gap_rows": 123,
+                "after_gap_rows": 122,
+                "gap_rows_resolved": 1,
+                "before_plannable_rows": 123,
+                "after_plannable_rows": 122,
+                "plannable_rows_resolved": 1,
+                "before_batch_count": 25,
+                "after_batch_count": 25,
+                "next_action": (
+                    "Full-scan local_text coverage improved; review next batch."
+                ),
+                "all_batches_command": (
+                    "catalyst-radar priced-in-source-batches "
+                    "--source local_text --all --json"
+                ),
+            },
         }
 
     monkeypatch.setattr(
@@ -1036,6 +1063,11 @@ def test_priced_in_source_batches_execute_next_cli_runs_one_batch(
     )
     assert "summary=Executed local_text chunk 1 (rows 1-5)" in output.out
     assert "features=1 snippets=2 external_calls=0" in output.out
+    assert "post_execution=status=improved gap_rows=123->122" in output.out
+    assert (
+        "post_plan=catalyst-radar priced-in-source-batches "
+        "--source local_text --all --json"
+    ) in output.out
     assert captured["source"] == "local_text"
     assert captured["decision_gap"] == ["candidate_packet"]
 
