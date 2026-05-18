@@ -1,6 +1,43 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 12:24:00 +08:00
+Last updated: 2026-05-18 12:44:00 +08:00
+
+## Latest Usefulness Verdict
+
+The priced-in queue and candidate detail now carry an explicit usefulness
+verdict. This is the operator-facing answer to "can I use this signal right
+now?":
+
+- `research_useful`: core emotion-versus-reaction evidence is present, but at
+  least one decision-supporting input is missing.
+- `decision_useful`: no source gaps and a Decision Card is available; still
+  requires human review and real order submission remains disabled.
+- `blocked`: the priced-in mismatch exists but policy/portfolio blockers must
+  be cleared first.
+- `monitor_only`: no bullish or bearish not-priced-in mismatch is visible.
+- `not_useful`: core source data such as market bars, catalyst events, or local
+  text is missing or stale.
+
+The verdict is in:
+
+- `priced-in-queue` row field: `usefulness`
+- `priced_in_evidence_brief.usefulness`
+- CLI output for `priced-in-queue`
+- CLI output for `candidate-detail <ticker>`
+- TUI candidate detail row: `Usefulness`
+
+Current local smoke:
+
+```powershell
+catalyst-radar priced-in-queue --status actionable --limit 3
+catalyst-radar candidate-detail A
+catalyst-radar dashboard-tui --once --page candidate:A
+```
+
+Observed state: `A` and `MSFT` are `research_useful`; `AAA` is `blocked`.
+Candidate `A` is not `decision_ready` because options, broker context, and a
+Decision Card are missing. This is intentional: the scanner can surface a
+research-useful priced-in mismatch without pretending it is trade-ready.
 
 ## Latest Candidate Source-Gap Detail
 

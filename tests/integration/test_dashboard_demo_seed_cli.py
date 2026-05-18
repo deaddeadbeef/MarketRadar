@@ -339,6 +339,9 @@ def test_candidate_detail_cli_outputs_priced_in_evidence_brief(
     assert actions["options"]["next_action"] == (
         "Treat options as absent until an options feed or fixture is ingested."
     )
+    assert brief["usefulness"]["status"] == "research_useful"
+    assert brief["usefulness"]["decision_ready"] is False
+    assert "options" in brief["usefulness"]["missing_for_decision"]
     assert brief["evidence"]
     assert brief["next_step"]
 
@@ -350,6 +353,7 @@ def test_candidate_detail_cli_outputs_priced_in_evidence_brief(
     assert "status=bullish_not_priced_in" in output.out
     assert "why_now=" in output.out
     assert "emotion_vs_reaction=" in output.out
+    assert "usefulness=research_useful decision_ready=false" in output.out
     assert "source_actions:" in output.out
     assert "options status=missing" in output.out
     assert "evidence:" in output.out
@@ -454,6 +458,7 @@ def test_dashboard_tui_supports_interactive_navigation_and_filters(
     assert "Market Radar Terminal Dashboard" in rendered
     assert "Page: candidates" in rendered
     assert "Candidate ACME" in rendered
+    assert "Usefulness" in rendered
     assert "Source gaps" in rendered
     assert "Current Market Radar Features" in rendered
     assert '"schema_version": "dashboard-cli-snapshot-v1"' in rendered

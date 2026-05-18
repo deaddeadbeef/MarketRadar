@@ -5042,6 +5042,12 @@ def _priced_in_evidence_brief(
     blockers = _priced_in_row_blockers(candidate)
     data_sources = _priced_in_row_source_payload(candidate)
     source_actions = _priced_in_source_actions_from_payload(data_sources)
+    usefulness = _priced_in_usefulness_verdict(
+        candidate,
+        blockers=blockers,
+        data_sources=data_sources,
+        source_actions=source_actions,
+    )
     evidence = _priced_in_brief_evidence(
         candidate,
         events=events,
@@ -5068,6 +5074,7 @@ def _priced_in_evidence_brief(
         "source_url": candidate.get("top_event_source_url"),
         "data_sources": data_sources,
         "source_actions": source_actions,
+        "usefulness": usefulness,
         "evidence": evidence,
         "next_step": _priced_in_brief_next_step(candidate, blockers),
     }
@@ -5282,6 +5289,18 @@ def _priced_in_queue_row(row: Mapping[str, object]) -> dict[str, object]:
     brief = _mapping_value(row, "research_brief")
     status = str(row.get("priced_in_status") or "unknown").strip() or "unknown"
     blockers = _priced_in_row_blockers(row)
+    data_sources = (
+        row.get("priced_in_data_sources")
+        if isinstance(row.get("priced_in_data_sources"), Mapping)
+        else _priced_in_data_sources(row)
+    )
+    source_actions = _priced_in_source_actions_from_payload(data_sources)
+    usefulness = _priced_in_usefulness_verdict(
+        row,
+        blockers=blockers,
+        data_sources=data_sources,
+        source_actions=source_actions,
+    )
     reason = str(
         _display_priced_in_reason(row)
         or brief.get("why_now")
@@ -5310,9 +5329,8 @@ def _priced_in_queue_row(row: Mapping[str, object]) -> dict[str, object]:
         "setup": row.get("setup_type") or row.get("candidate_theme") or "n/a",
         "top_catalyst": brief.get("top_catalyst") or row.get("top_event_title"),
         "why_now": reason or "No priced-in reason is available.",
-        "data_sources": row.get("priced_in_data_sources")
-        if isinstance(row.get("priced_in_data_sources"), Mapping)
-        else _priced_in_data_sources(row),
+        "data_sources": data_sources,
+        "usefulness": usefulness,
         "next_step": next_step,
         "source": brief.get("source") or row.get("top_event_source"),
         "source_url": brief.get("source_url") or row.get("top_event_source_url"),
@@ -5395,6 +5413,85 @@ def _priced_in_source_actions_from_payload(
             "coverage_pct": 100.0 if is_available else 0.0,
         }
     return _priced_in_source_action_rows(source_rows, 1)
+
+
+def _priced_in_usefulness_verdict(
+    candidate: Mapping[str, object],
+    *,
+    blockers: Sequence[str],
+    data_sources: Mapping[str, object],
+    source_actions: Sequence[Mapping[str, object]],
+) -> dict[str, object]:
+    status = str(candidate.get("priced_in_status") or "").strip().lower()
+    available = {
+        str(item)
+        for item in _sequence_value(data_sources.get("available"))
+        if str(item).strip()
+    }
+    stale = {
+        str(item)
+        for item in _sequence_value(data_sources.get("stale"))
+        if str(item).strip()
+    }
+    core_sources = {"market_bars", "catalyst_events", "local_text"}
+    missing_core = sorted(source for source in core_sources if source not in available)
+    stale_core = sorted(source for source in core_sources if source in stale)
+    missing_for_decision = [
+        str(action.get("source"))
+        for action in source_actions
+        if str(action.get("status") or "") not in {"ready", "not_applicable"}
+    ]
+    decision_card_id = str(candidate.get("decision_card_id") or "").strip()
+    if not decision_card_id:
+        missing_for_decision.append("decision_card")
+    missing_for_decision = sorted(dict.fromkeys(missing_for_decision))
+    reasons: list[str] = []
+    if blockers:
+        verdict = "blocked"
+        label = "Blocked mismatch"
+        reasons.append("Policy or portfolio blockers must be cleared first.")
+        next_action = "Clear blockers before treating this mismatch as actionable."
+    elif status not in PRICED_IN_ACTIONABLE_STATUSES:
+        verdict = "monitor_only"
+        label = "Monitor only"
+        reasons.append("No bullish or bearish not-priced-in mismatch is visible.")
+        next_action = "Keep this in monitoring until the priced-in signal changes."
+    elif missing_core or stale_core:
+        verdict = "not_useful"
+        label = "Not useful yet"
+        if missing_core:
+            reasons.append(f"Missing core source(s): {', '.join(missing_core)}.")
+        if stale_core:
+            reasons.append(f"Stale core source(s): {', '.join(stale_core)}.")
+        next_action = "Refresh core market, catalyst, or text data before review."
+    elif missing_for_decision:
+        verdict = "research_useful"
+        label = "Research-useful mismatch"
+        reasons.append("Core emotion-versus-reaction evidence is available.")
+        reasons.append(
+            "Decision evidence still missing: "
+            f"{', '.join(missing_for_decision)}."
+        )
+        next_action = "Open candidate detail, verify evidence, then fill decision gaps."
+    else:
+        verdict = "decision_useful"
+        label = "Decision-useful mismatch"
+        reasons.append("Core and supporting evidence are available for manual review.")
+        next_action = "Review the Decision Card before any trade action."
+    return {
+        "schema_version": "priced-in-usefulness-verdict-v1",
+        "status": verdict,
+        "label": label,
+        "decision_ready": verdict == "decision_useful",
+        "reasons": reasons,
+        "missing_for_decision": missing_for_decision,
+        "next_action": next_action,
+        "action_boundary": (
+            "Research signal only until source gaps, blockers, and Decision Card are clear."
+        )
+        if verdict != "decision_useful"
+        else "Decision Card still requires human review; real order submission remains disabled.",
+    }
 
 
 def _priced_in_source_action_row(
