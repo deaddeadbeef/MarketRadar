@@ -5133,6 +5133,88 @@ def test_radar_discovery_snapshot_counts_run_candidates_when_cutoff_precedes_as_
     assert snapshot["top_discoveries"][0]["ticker"] == "MSFT"
 
 
+def test_radar_discovery_snapshot_uses_finished_at_for_run_bar_freshness(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    _insert_active_security_for_call_plan(engine, "AAPL", cik="0000320193")
+    _insert_active_security_for_call_plan(engine, "MSFT", cik="0000789019")
+    run_decision_at = AVAILABLE_AT
+    bar_available_at = run_decision_at + timedelta(seconds=2)
+    metadata = {
+        "as_of": AS_OF.date().isoformat(),
+        "decision_available_at": run_decision_at.isoformat(),
+        "outcome_available_at": None,
+        "provider": "polygon",
+        "universe": "liquid-us",
+        "tickers": [],
+    }
+    with engine.begin() as conn:
+        conn.execute(
+            insert(daily_bars),
+            [
+                {
+                    "ticker": ticker,
+                    "date": AS_OF.date(),
+                    "provider": "polygon",
+                    "open": 100.0,
+                    "high": 102.0,
+                    "low": 99.0,
+                    "close": 101.0,
+                    "volume": 1_000_000,
+                    "vwap": 100.5,
+                    "adjusted": True,
+                    "source_ts": SOURCE_TS,
+                    "available_at": bar_available_at,
+                }
+                for ticker in ("AAPL", "MSFT")
+            ],
+        )
+        conn.execute(
+            insert(job_runs),
+            [
+                _job_run_row(
+                    "finished-at-bars",
+                    job_type="daily_bar_ingest",
+                    status="success",
+                    started_at=run_decision_at + timedelta(seconds=1),
+                    metadata=metadata,
+                    requested_count=2,
+                    raw_count=2,
+                    normalized_count=2,
+                ),
+                _job_run_row(
+                    "finished-at-feature-scan",
+                    job_type="feature_scan",
+                    status="success",
+                    started_at=run_decision_at + timedelta(seconds=3),
+                    metadata=metadata,
+                    requested_count=2,
+                    raw_count=2,
+                    normalized_count=2,
+                ),
+            ],
+        )
+    summary = load_radar_run_summary(engine)
+
+    snapshot = radar_discovery_snapshot_payload(
+        engine,
+        AppConfig(
+            daily_market_provider="polygon",
+            polygon_api_key="fixture-key",
+            daily_event_provider="news_fixture",
+            scan_batch_size=500,
+        ),
+        radar_run_summary=summary,
+    )
+
+    assert snapshot["freshness"]["latest_daily_bar_date"] == AS_OF.date().isoformat()
+    assert snapshot["freshness"]["latest_bars_older_than_as_of"] is False
+    assert snapshot["freshness"]["active_security_with_as_of_bar_count"] == 2
+    assert snapshot["freshness"]["missing_as_of_daily_bar_count"] == 0
+
+
 def test_radar_discovery_snapshot_flags_stale_bars_and_empty_packets(
     tmp_path: Path,
 ) -> None:

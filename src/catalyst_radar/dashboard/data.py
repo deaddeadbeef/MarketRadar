@@ -4040,7 +4040,7 @@ def radar_discovery_snapshot_payload(
     health = (
         _row_dict(ops_health)
         if isinstance(ops_health, Mapping)
-        else load_ops_health(engine, now=cutoff)
+        else load_ops_health(engine, now=artifact_cutoff or cutoff)
     )
     if candidate_rows is not None:
         run_candidate_rows = [_row_dict(row) for row in candidate_rows]

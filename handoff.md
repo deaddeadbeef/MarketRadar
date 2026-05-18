@@ -1,6 +1,59 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 18:02:16 +08:00
+Last updated: 2026-05-18 18:13:51 +08:00
+
+## Latest Run Freshness Cutoff Fix
+
+The live full-scan queue had a contradictory freshness read:
+
+- preflight said run-as-of bars covered `12090/12613` securities for
+  `2026-05-15`;
+- the same queue payload's `scan.freshness` said
+  `latest_daily_bar_date=2026-05-08` and
+  `latest_bars_older_than_as_of=true`.
+
+Root cause: `radar_discovery_snapshot_payload()` loaded ops/database health at
+the run `decision_available_at` timestamp. In the real run, grouped bars and
+candidate artifacts were written seconds after that timestamp, so database
+health was looking too early. The discovery snapshot already had an
+`artifact_cutoff` (`finished_at` when present, else decision cutoff), and now
+uses that cutoff for `load_ops_health()`.
+
+This is important for the actual goal: the priced-in read compares market
+emotion to price reaction, so the dashboard must not claim stale bars when the
+latest run actually wrote valid run-as-of bars.
+
+Live zero-provider-call verification after the fix:
+
+```powershell
+.\.venv\Scripts\catalyst-radar.exe priced-in-queue --full-scan --limit 1 --json |
+  .\.venv\Scripts\python.exe -c "import json,sys; p=json.load(sys.stdin); print(p['scan']['freshness'])"
+```
+
+Observed:
+
+```text
+latest_daily_bar_date: 2026-05-15
+latest_bars_older_than_as_of: False
+active_security_with_as_of_bar_count: 12090
+missing_as_of_daily_bar_count: 523
+```
+
+Regression coverage added:
+
+```text
+test_radar_discovery_snapshot_uses_finished_at_for_run_bar_freshness
+```
+
+Validation for this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_radar_discovery_snapshot_uses_finished_at_for_run_bar_freshness tests\integration\test_dashboard_data.py::test_radar_discovery_snapshot_flags_stale_bars_and_empty_packets tests\integration\test_dashboard_data.py::test_radar_discovery_snapshot_flags_incomplete_latest_bar_coverage tests\integration\test_dashboard_data.py::test_priced_in_queue_payload_paginates_ranked_rows tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_queue_cli_outputs_same_zero_call_signal -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+```
+
+All passed.
 
 ## Latest Full-Scan vs Example-Ticker Clarification
 
