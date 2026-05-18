@@ -1584,6 +1584,38 @@ def test_priced_in_source_gap_batches_payload_plans_safe_sync_batches(
     )
 
 
+def test_priced_in_source_gap_batches_payload_can_return_full_scan_plan(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+
+    payload = priced_in_source_gap_batches_payload(
+        engine,
+        AppConfig(schwab_market_sync_max_tickers=1),
+        source="options",
+        batch_limit=1,
+        all_batches=True,
+    )
+
+    assert payload["schema_version"] == "priced-in-source-batches-v1"
+    assert payload["external_calls_made"] == 0
+    assert payload["total_gap_rows"] == 2
+    assert payload["batch_count"] == 2
+    assert payload["count"] == 2
+    assert payload["all_batches"] is True
+    assert payload["batch_offset"] == 0
+    assert payload["has_more"] is False
+    assert payload["next_batch_command"] is None
+    assert payload["all_batches_command"] == (
+        "catalyst-radar priced-in-source-batches --source options --all --json"
+    )
+    assert payload["all_batches_api"] == (
+        "GET /api/radar/priced-in/source-batches?source=options&all_batches=true"
+    )
+    assert [batch["tickers"] for batch in payload["batches"]] == [["MSFT"], ["AAPL"]]
+
+
 def test_priced_in_source_gap_batches_payload_plans_sec_event_batches(
     tmp_path: Path,
 ) -> None:
@@ -1715,8 +1747,12 @@ def test_priced_in_source_gap_batches_payload_plans_local_text_batches(
     assert payload["batches"][0]["command"] == (
         "catalyst-radar run-textint --as-of 2026-05-10 --ticker MSFT"
     )
-    assert payload["batches"][0]["api"] is None
-    assert payload["batches"][0]["api_payload"] is None
+    assert payload["batches"][0]["api"] == "POST /api/radar/text/features-batch"
+    assert payload["batches"][0]["api_payload"] == {
+        "as_of": "2026-05-10",
+        "available_at": payload["planned_at"],
+        "tickers": ["MSFT"],
+    }
     assert payload["batches"][0]["external_calls_required"] == 0
 
 

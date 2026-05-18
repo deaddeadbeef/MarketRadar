@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 from datetime import date as Date
 from math import ceil
 from typing import Any
@@ -34,6 +34,8 @@ from catalyst_radar.storage.event_repositories import EventRepository
 from catalyst_radar.storage.job_repositories import JobLockRepository
 from catalyst_radar.storage.provider_repositories import ProviderRepository
 from catalyst_radar.storage.repositories import MarketRepository
+from catalyst_radar.storage.text_repositories import TextRepository
+from catalyst_radar.textint.pipeline import run_text_pipeline
 from catalyst_radar.universe.seed import seed_polygon_tickers
 
 router = APIRouter(prefix="/api/radar", tags=["radar"])
@@ -96,6 +98,14 @@ class SecSubmissionsBatchRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     targets: list[SecSubmissionTargetRequest] = Field(default_factory=list)
+
+
+class TextFeaturesBatchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    as_of: Date
+    available_at: datetime | None = None
+    tickers: list[str] = Field(default_factory=list)
 
 
 def _candidate_api_scope(latest_run: object) -> dict[str, object]:
@@ -416,6 +426,7 @@ def radar_priced_in_source_batches(
     batch_limit: int = Query(default=5, ge=1, le=50),
     batch_offset: int = Query(default=0, ge=0),
     batch_size: int | None = Query(default=None, ge=1, le=50),
+    all_batches: bool = Query(default=False),
     available_at: datetime | None = None,
     status: str | None = Query(default=None),
     usefulness: str | None = Query(default=None),
@@ -431,6 +442,7 @@ def radar_priced_in_source_batches(
             batch_limit=batch_limit,
             batch_offset=batch_offset,
             batch_size=batch_size,
+            all_batches=all_batches,
             available_at=_parse_api_datetime(available_at),
             status=status,
             usefulness=usefulness,
@@ -465,6 +477,35 @@ def radar_sec_submissions_batch(
     except ProviderIngestError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     return redact_restricted_external_payload(result.as_payload())
+
+
+@router.post(
+    "/text/features-batch",
+    dependencies=[Depends(require_role(Role.ANALYST))],
+)
+def radar_text_features_batch(request: TextFeaturesBatchRequest) -> dict[str, object]:
+    tickers = _text_feature_batch_tickers(request)
+    available_at = _parse_api_datetime(request.available_at) or datetime.now(UTC)
+    engine = _engine()
+    result = run_text_pipeline(
+        EventRepository(engine),
+        TextRepository(engine),
+        as_of=datetime.combine(request.as_of, time(21), tzinfo=UTC),
+        available_at=available_at,
+        tickers=tickers,
+    )
+    return {
+        "schema_version": "text-features-batch-result-v1",
+        "provider": "local_text",
+        "endpoint": "features-batch",
+        "as_of": request.as_of.isoformat(),
+        "available_at": available_at.isoformat(),
+        "tickers": list(tickers),
+        "ticker_count": len(tickers),
+        "feature_count": result.feature_count,
+        "snippet_count": result.snippet_count,
+        "external_calls_made": 0,
+    }
 
 
 @router.post("/runs/call-plan", dependencies=[Depends(require_role(Role.VIEWER))])
@@ -509,6 +550,34 @@ def _sec_submission_targets_from_request(
         cik = raw_cik.zfill(10)
         targets.append(SecSubmissionTarget(ticker=ticker, cik=cik))
     return tuple(targets)
+
+
+def _text_feature_batch_tickers(
+    request: TextFeaturesBatchRequest,
+) -> tuple[str, ...]:
+    if not request.tickers:
+        raise HTTPException(
+            status_code=400,
+            detail="At least one local text ticker is required",
+        )
+    tickers = tuple(
+        dict.fromkeys(
+            ticker.strip().upper()
+            for ticker in request.tickers
+            if ticker.strip()
+        )
+    )
+    if not tickers:
+        raise HTTPException(
+            status_code=422,
+            detail="Local text tickers must not be blank",
+        )
+    if len(tickers) > 50:
+        raise HTTPException(
+            status_code=400,
+            detail="Too many local text tickers; maximum is 50",
+        )
+    return tickers
 
 
 def _redact_restricted_research_shortlist(

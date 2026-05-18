@@ -2083,25 +2083,26 @@ def _priced_in_source_batch_message(
     next_action = str(payload.get("next_action") or "").strip()
     diagnostic = _mapping(payload.get("diagnostic"))
     reason = str(diagnostic.get("reason") or "").strip()
-    command = str(payload.get("next_batch_command") or "").strip()
+    next_batch_command = str(payload.get("next_batch_command") or "").strip()
+    command = ""
+    all_batches_command = str(payload.get("all_batches_command") or "").strip()
     calls = ""
-    if not command:
-        batches = _rows(payload.get("batches"))
-        if batches:
-            command = str(batches[0].get("command") or "").strip()
-            api = str(batches[0].get("api") or "").strip()
-            api_suffix = f" API: {api}." if api else ""
-            call_count = int(_number_or_zero(batches[0].get("external_calls_required")))
-            breakdown = _mapping(batches[0].get("external_call_breakdown"))
-            if breakdown:
-                pieces = [
-                    f"{key}={int(_number_or_zero(value))}"
-                    for key, value in sorted(breakdown.items())
-                    if int(_number_or_zero(value)) > 0
-                ]
-                calls = f" Calls: {call_count} ({', '.join(pieces)})."
-            else:
-                calls = f" Calls: {call_count}."
+    batches = _rows(payload.get("batches"))
+    if batches:
+        command = str(batches[0].get("command") or "").strip()
+        api = str(batches[0].get("api") or "").strip()
+        api_suffix = f" API: {api}." if api else ""
+        call_count = int(_number_or_zero(batches[0].get("external_calls_required")))
+        breakdown = _mapping(batches[0].get("external_call_breakdown"))
+        if breakdown:
+            pieces = [
+                f"{key}={int(_number_or_zero(value))}"
+                for key, value in sorted(breakdown.items())
+                if int(_number_or_zero(value)) > 0
+            ]
+            calls = f" Calls: {call_count} ({', '.join(pieces)})."
+        else:
+            calls = f" Calls: {call_count}."
     else:
         api_suffix = ""
     prefix = (
@@ -2109,7 +2110,16 @@ def _priced_in_source_batch_message(
         f"{plannable_gap_rows} plannable, {batch_count} batch(es)."
     )
     if command:
-        return f"{prefix}{calls}{api_suffix} First batch command: {command}"
+        full_suffix = (
+            f" Full chunk list: {all_batches_command}."
+            if all_batches_command
+            else ""
+        )
+        next_suffix = f" Next chunk page: {next_batch_command}." if next_batch_command else ""
+        return (
+            f"{prefix}{calls}{api_suffix} First chunk only: {command}."
+            f"{full_suffix}{next_suffix}"
+        )
     detail = next_action or reason or "No runnable batch is available for this source."
     return f"{prefix} {detail}"
 

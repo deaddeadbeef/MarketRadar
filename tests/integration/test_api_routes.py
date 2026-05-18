@@ -1353,7 +1353,8 @@ def test_get_radar_priced_in_source_batches_returns_zero_call_plan(
     response = client.get(
         "/api/radar/priced-in/source-batches?source=options&batch_limit=2"
         "&batch_offset=1&batch_size=5&available_at=2026-05-18T16:00:00%2B00:00"
-        "&status=all&usefulness=research_useful&decision_gap=options&min_gap=12"
+        "&all_batches=true&status=all&usefulness=research_useful"
+        "&decision_gap=options&min_gap=12"
     )
 
     assert response.status_code == 200
@@ -1365,6 +1366,7 @@ def test_get_radar_priced_in_source_batches_returns_zero_call_plan(
     assert captured["batch_limit"] == 2
     assert captured["batch_offset"] == 1
     assert captured["batch_size"] == 5
+    assert captured["all_batches"] is True
     assert captured["available_at"].isoformat() == "2026-05-18T16:00:00+00:00"
     assert captured["status"] == "all"
     assert captured["usefulness"] == "research_useful"
@@ -1497,6 +1499,66 @@ def test_post_radar_sec_submissions_batch_rejects_blank_target_fields(
 
     assert response.status_code == 422
     assert "ticker and CIK" in response.json()["detail"]
+
+
+def test_post_radar_text_features_batch_runs_local_text_pipeline(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "radar-text-features-batch.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+    captured: dict[str, object] = {}
+
+    class FakeTextPipelineResult:
+        feature_count = 2
+        snippet_count = 4
+
+    def fake_run_text_pipeline(_event_repo, _text_repo, **kwargs):
+        captured.update(kwargs)
+        return FakeTextPipelineResult()
+
+    monkeypatch.setattr(radar_routes, "run_text_pipeline", fake_run_text_pipeline)
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/radar/text/features-batch",
+        json={
+            "as_of": "2026-05-15",
+            "available_at": "2026-05-18T16:00:00+00:00",
+            "tickers": ["msft", "MSFT", "aapl"],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["schema_version"] == "text-features-batch-result-v1"
+    assert payload["provider"] == "local_text"
+    assert payload["external_calls_made"] == 0
+    assert payload["feature_count"] == 2
+    assert payload["snippet_count"] == 4
+    assert payload["tickers"] == ["MSFT", "AAPL"]
+    assert captured["as_of"].isoformat() == "2026-05-15T21:00:00+00:00"
+    assert captured["available_at"].isoformat() == "2026-05-18T16:00:00+00:00"
+    assert captured["tickers"] == ("MSFT", "AAPL")
+
+
+def test_post_radar_text_features_batch_rejects_empty_tickers(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "radar-text-features-empty.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/radar/text/features-batch",
+        json={"as_of": "2026-05-15", "tickers": []},
+    )
+
+    assert response.status_code == 400
+    assert "At least one local text ticker" in response.json()["detail"]
 
 
 def test_post_radar_run_call_plan_returns_read_only_call_budget(

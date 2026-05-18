@@ -487,6 +487,15 @@ def build_parser() -> argparse.ArgumentParser:
     priced_in_batches.add_argument("--batch-limit", type=int, default=5)
     priced_in_batches.add_argument("--batch-offset", type=int, default=0)
     priced_in_batches.add_argument("--batch-size", type=int)
+    priced_in_batches.add_argument(
+        "--all",
+        dest="all_batches",
+        action="store_true",
+        help=(
+            "Return every planned source-fill batch for the current full-scan "
+            "filters. Planning makes no provider calls."
+        ),
+    )
     priced_in_batches.add_argument("--available-at", type=_parse_aware_datetime)
     priced_in_batches.add_argument("--status")
     priced_in_batches.add_argument(
@@ -974,6 +983,7 @@ def main(argv: list[str] | None = None) -> int:
                 batch_limit=args.batch_limit,
                 batch_offset=args.batch_offset,
                 batch_size=args.batch_size,
+                all_batches=args.all_batches,
                 available_at=args.available_at,
                 status=args.status,
                 usefulness=args.usefulness,
@@ -3054,6 +3064,7 @@ def _print_priced_in_source_batches(payload: Mapping[str, object]) -> None:
         f"batches={payload.get('count')} "
         f"total_batches={payload.get('batch_count')} "
         f"batch_offset={payload.get('batch_offset')} "
+        f"all_batches={payload.get('all_batches')} "
         f"external_calls={payload.get('external_calls_made')}"
     )
     print(f"headline={payload.get('headline')}")
@@ -3076,6 +3087,12 @@ def _print_priced_in_source_batches(payload: Mapping[str, object]) -> None:
     export_command = payload.get("export_rows_command")
     if export_command:
         print(f"export_rows={_compact_cli_text(export_command)}")
+    all_batches_command = payload.get("all_batches_command")
+    if all_batches_command:
+        print(f"all_batches={_compact_cli_text(all_batches_command)}")
+    all_batches_api = payload.get("all_batches_api")
+    if all_batches_api:
+        print(f"all_batches_api={_compact_cli_text(all_batches_api)}")
     batches = payload.get("batches")
     if not isinstance(batches, list | tuple) or not batches:
         return

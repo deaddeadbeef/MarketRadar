@@ -717,6 +717,7 @@ def priced_in_source_gap_batches_payload(
     batch_limit: int = 5,
     batch_offset: int = 0,
     batch_size: int | None = None,
+    all_batches: bool = False,
     available_at: datetime | None = None,
     status: str | None = None,
     usefulness: str | None = None,
@@ -729,8 +730,9 @@ def priced_in_source_gap_batches_payload(
         max_batch_size if batch_size is None else _positive_limit(batch_size)
     )
     resolved_batch_size = min(requested_batch_size, max_batch_size)
-    resolved_limit = _positive_limit(batch_limit)
-    resolved_offset = _positive_offset(batch_offset)
+    requested_limit = _positive_limit(batch_limit)
+    requested_offset = _positive_offset(batch_offset)
+    resolved_offset = 0 if all_batches else requested_offset
     queue = priced_in_queue_payload(
         engine,
         config,
@@ -760,9 +762,13 @@ def priced_in_source_gap_batches_payload(
     scan_as_of = _priced_in_batch_as_of(rows)
     planned_at = datetime.now(UTC).replace(microsecond=0)
     planned_available_at = planned_at.isoformat()
+    resolved_limit = max(batch_count, 1) if all_batches else requested_limit
     batches = []
     if batchable:
-        for index in range(resolved_offset, min(batch_count, resolved_offset + resolved_limit)):
+        for index in range(
+            resolved_offset,
+            min(batch_count, resolved_offset + resolved_limit),
+        ):
             row_start = index * resolved_batch_size
             row_end = min(row_start + resolved_batch_size, len(tickers))
             batch_tickers = tickers[row_start:row_end]
@@ -840,6 +846,9 @@ def priced_in_source_gap_batches_payload(
             "source_gap": [source_name],
             "batch_limit": resolved_limit,
             "batch_offset": resolved_offset,
+            "requested_batch_limit": requested_limit,
+            "requested_batch_offset": requested_offset,
+            "all_batches": all_batches,
             "batch_size": resolved_batch_size,
             "requested_batch_size": requested_batch_size,
             "max_batch_size": max_batch_size,
@@ -852,6 +861,7 @@ def priced_in_source_gap_batches_payload(
         "batch_count": batch_count,
         "batch_offset": resolved_offset,
         "batch_limit": resolved_limit,
+        "all_batches": all_batches,
         "count": len(batches),
         "has_more": resolved_offset + len(batches) < batch_count,
         "review_rows_command": (
@@ -860,11 +870,24 @@ def priced_in_source_gap_batches_payload(
         "export_rows_command": (
             f"catalyst-radar priced-in-queue --full-scan --source-gap {source_name} --all --json"
         ),
+        "all_batches_command": (
+            "catalyst-radar priced-in-source-batches "
+            f"--source {source_name} --all --json"
+            if batch_count > 0
+            else None
+        ),
+        "all_batches_api": (
+            "GET /api/radar/priced-in/source-batches"
+            f"?source={source_name}&all_batches=true"
+            if batch_count > 0
+            else None
+        ),
         "next_batch_command": _priced_in_source_next_batch_command(
             source_name=source_name,
             batch_limit=resolved_limit,
             batch_offset=resolved_offset + len(batches),
             batch_count=batch_count,
+            all_batches=all_batches,
         ),
         "batches": batches,
     }
@@ -6835,6 +6858,8 @@ def _priced_in_source_batch_api(source_name: str) -> str | None:
         return "POST /api/brokers/schwab/market-sync"
     if source_name == "catalyst_events":
         return "POST /api/radar/sec/submissions-batch"
+    if source_name == "local_text":
+        return "POST /api/radar/text/features-batch"
     return None
 
 
@@ -6859,6 +6884,12 @@ def _priced_in_source_batch_api_payload(
                 for target in targets
                 if target.get("ticker") and target.get("cik")
             ]
+        }
+    if source_name == "local_text":
+        return {
+            "as_of": scan_as_of,
+            "available_at": planned_available_at,
+            "tickers": list(tickers),
         }
     return None
 
@@ -7000,7 +7031,10 @@ def _priced_in_source_next_batch_command(
     batch_limit: int,
     batch_offset: int,
     batch_count: int,
+    all_batches: bool = False,
 ) -> str | None:
+    if all_batches:
+        return None
     if batch_offset >= batch_count:
         return None
     return (
