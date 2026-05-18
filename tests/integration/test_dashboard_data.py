@@ -1822,12 +1822,12 @@ def test_priced_in_source_gap_batches_payload_plans_safe_sync_batches(
     assert payload["batch_count"] == 2
     assert payload["count"] == 1
     assert payload["has_more"] is True
-    assert payload["batches"][0]["tickers"] == ["MSFT"]
+    assert payload["batches"][0]["tickers"] == ["AAPL"]
     assert payload["batches"][0]["command"] == (
-        "catalyst-radar schwab-market-sync --ticker MSFT"
+        "catalyst-radar schwab-market-sync --ticker AAPL"
     )
     assert payload["batches"][0]["api_payload"] == {
-        "tickers": ["MSFT"],
+        "tickers": ["AAPL"],
         "include_history": True,
         "include_options": True,
     }
@@ -1866,7 +1866,60 @@ def test_priced_in_source_gap_batches_payload_can_return_full_scan_plan(
     assert payload["all_batches_api"] == (
         "GET /api/radar/priced-in/source-batches?source=options&all_batches=true"
     )
-    assert [batch["tickers"] for batch in payload["batches"]] == [["MSFT"], ["AAPL"]]
+    assert [batch["tickers"] for batch in payload["batches"]] == [["AAPL"], ["MSFT"]]
+
+
+def test_priced_in_source_gap_batches_prioritizes_decision_useful_rows(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    queue = {
+        "filters": {"status": "all", "limit": 10, "offset": 0},
+        "rows": [
+            {
+                "ticker": "AAA",
+                "priced_in_status": "bullish_not_priced_in",
+                "emotion_reaction_gap": 64.0,
+                "usefulness": {"status": "blocked"},
+                "data_sources": {"missing": ["options"], "stale": []},
+            },
+            {
+                "ticker": "A",
+                "priced_in_status": "bullish_not_priced_in",
+                "emotion_reaction_gap": 65.9,
+                "usefulness": {"status": "decision_useful"},
+                "data_sources": {"missing": ["options"], "stale": []},
+            },
+            {
+                "ticker": "AA",
+                "priced_in_status": "bullish_not_priced_in",
+                "emotion_reaction_gap": 60.1,
+                "usefulness": {"status": "decision_useful"},
+                "data_sources": {"missing": ["options"], "stale": []},
+            },
+            {
+                "ticker": "ZZZ",
+                "priced_in_status": "neutral",
+                "emotion_reaction_gap": 0.0,
+                "usefulness": {"status": "monitor_only"},
+                "data_sources": {"missing": ["options"], "stale": []},
+            },
+        ],
+    }
+
+    payload = priced_in_source_gap_batches_payload(
+        engine,
+        AppConfig(schwab_market_sync_max_tickers=3),
+        source="options",
+        batch_limit=1,
+        queue=queue,
+    )
+
+    assert payload["total_gap_rows"] == 4
+    assert payload["batches"][0]["tickers"] == ["A", "AA", "AAA"]
+    assert payload["batches"][0]["command"] == (
+        "catalyst-radar schwab-market-sync --ticker A --ticker AA --ticker AAA"
+    )
 
 
 def test_priced_in_all_source_gap_batches_payload_summarizes_next_chunks(
@@ -1905,7 +1958,7 @@ def test_priced_in_all_source_gap_batches_payload_summarizes_next_chunks(
     assert rows["options"]["status"] == "ready"
     assert rows["options"]["total_gap_rows"] == 2
     assert rows["options"]["batch_count"] == 2
-    assert rows["options"]["first_batch"]["tickers"] == ["MSFT"]
+    assert rows["options"]["first_batch"]["tickers"] == ["AAPL"]
     assert rows["options"]["first_batch"]["external_calls_required"] == 1
     assert rows["options"]["execute_next_command"] == (
         "catalyst-radar priced-in-source-batches --source options --execute-next"

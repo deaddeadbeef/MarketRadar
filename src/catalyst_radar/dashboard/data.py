@@ -827,6 +827,7 @@ def priced_in_source_gap_batches_payload(
         source_name=source_name,
         rows=rows,
     )
+    plan_rows = sorted(plan_rows, key=_priced_in_source_row_priority_key)
     tickers = [str(row["ticker"]).strip().upper() for row in plan_rows]
     batch_count = ceil(len(tickers) / resolved_batch_size) if batchable and tickers else 0
     scan_as_of = _priced_in_batch_as_of(rows)
@@ -7566,6 +7567,32 @@ def _priced_in_source_plannable_rows(
         "eligible_rows": 0,
         "blocked_rows": len(rows),
     }
+
+
+def _priced_in_source_row_priority_key(row: Mapping[str, object]) -> tuple[int, float, str]:
+    usefulness = _mapping_value(row, "usefulness")
+    usefulness_status = str(usefulness.get("status") or "").strip().lower()
+    priced_status = str(row.get("priced_in_status") or "").strip().lower()
+    if usefulness_status == "decision_useful":
+        rank = 0
+    elif usefulness_status == "research_useful":
+        rank = 1
+    elif priced_status in PRICED_IN_ACTIONABLE_STATUSES:
+        rank = 2
+    elif usefulness_status == "monitor_only":
+        rank = 3
+    elif usefulness_status == "blocked":
+        rank = 4
+    else:
+        rank = 5
+    score = _finite_float(
+        _first_present(
+            row.get("emotion_reaction_gap"),
+            row.get("score"),
+            row.get("final_score"),
+        )
+    )
+    return (rank, -abs(score), str(row.get("ticker") or ""))
 
 
 def _security_cik_by_ticker(engine: Engine, tickers: Sequence[str]) -> dict[str, str]:
