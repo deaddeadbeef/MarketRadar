@@ -378,6 +378,7 @@ def radar_priced_in_queue(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     all_rows: bool = Query(default=False),
+    decision_ready: bool = Query(default=False),
     available_at: datetime | None = None,
     status: str | None = Query(default=None),
     usefulness: str | None = Query(default=None),
@@ -386,6 +387,8 @@ def radar_priced_in_queue(
     min_gap: float | None = Query(default=None, ge=0),
 ) -> dict[str, object]:
     priced_in_payload = _dashboard_helper("priced_in_queue_payload")
+    resolved_status = "actionable" if decision_ready else status
+    resolved_usefulness = "decision_useful" if decision_ready else usefulness
     return redact_restricted_external_payload(
         priced_in_payload(
             _engine(),
@@ -393,8 +396,8 @@ def radar_priced_in_queue(
             limit=1_000_000 if all_rows else limit,
             offset=0 if all_rows else offset,
             available_at=_parse_api_datetime(available_at),
-            status=status,
-            usefulness=usefulness,
+            status=resolved_status,
+            usefulness=resolved_usefulness,
             source_gap=source_gap,
             decision_gap=decision_gap,
             min_gap=min_gap,

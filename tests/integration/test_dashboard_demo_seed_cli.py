@@ -571,7 +571,8 @@ def test_dashboard_tui_once_can_show_full_scan_mode(
     output = capsys.readouterr()
 
     assert output.err == ""
-    assert "Priced-in:" in output.out
+    assert "View: Full scan" in output.out
+    assert "Answer:" in output.out
     assert "Trade status:" in output.out
     assert "Trade safe:" in output.out
     assert "Full-market priced-in queue - showing" in output.out

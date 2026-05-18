@@ -1307,6 +1307,14 @@ def test_get_radar_priced_in_queue_returns_cli_ready_rows(
     assert payload["filters"]["limit"] == 1_000_000
     assert payload["filters"]["offset"] == 0
 
+    response = client.get("/api/radar/priced-in?decision_ready=true&limit=5")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["filters"]["status"] == "actionable"
+    assert payload["filters"]["usefulness"] == "decision_useful"
+    assert payload["filters"]["limit"] == 5
+
 
 def test_get_radar_priced_in_preflight_returns_zero_call_steps(
     tmp_path,
