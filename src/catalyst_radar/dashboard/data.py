@@ -1004,17 +1004,18 @@ def priced_in_answer_payload(
         research_lead_count=research_lead_count,
         blocked_count=blocked_count,
     )
-    next_action, next_command = _priced_in_answer_next_step(
-        answer_status=answer_status,
-        preflight=resolved_preflight,
-        top_rows=top_rows,
-    )
     source_coverage = _mapping_value(resolved_queue, "source_coverage")
     decision_readiness = _priced_in_answer_decision_readiness(
         _mapping_value(resolved_queue, "decision_gap_counts"),
         source_coverage=source_coverage,
         decision_ready_count=decision_ready_count,
         scan_as_of=str(_mapping_value(resolved_queue, "latest_run").get("as_of") or ""),
+    )
+    next_action, next_command = _priced_in_answer_next_step(
+        answer_status=answer_status,
+        preflight=resolved_preflight,
+        top_rows=top_rows,
+        decision_readiness=decision_readiness,
     )
     decision_ready = decision_ready_count > 0
     investment_decision_boundary = (
@@ -1426,7 +1427,17 @@ def _priced_in_answer_next_step(
     answer_status: str,
     preflight: Mapping[str, object],
     top_rows: Sequence[Mapping[str, object]],
+    decision_readiness: Mapping[str, object] | None = None,
 ) -> tuple[str, str | None]:
+    recommended_gap = _mapping_value(decision_readiness or {}, "recommended_gap")
+    recommended_action = str(recommended_gap.get("next_action") or "").strip()
+    recommended_command = str(recommended_gap.get("command") or "").strip()
+    if (
+        answer_status in {"blocked", "research_only"}
+        and recommended_action
+        and recommended_command
+    ):
+        return recommended_action, recommended_command
     plan = _mapping_value(preflight, "evidence_plan")
     plan_action = str(plan.get("next_action") or "").strip()
     plan_command = str(plan.get("next_command") or "").strip()

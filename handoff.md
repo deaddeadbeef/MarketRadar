@@ -1,6 +1,49 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 03:16:48 +08:00
+Last updated: 2026-05-19 03:22:40 +08:00
+
+## Latest Priced-In Answer Next-Command Alignment
+
+After the source-batch CLI/API parity work, the live `priced-in-answer` output
+still had a confusing contradiction:
+
+- `decision_readiness.recommended_gap` correctly said `candidate_packet`.
+- Top-level `next_action` / `next_command` still came from the broad preflight
+  source-coverage plan and pointed to catalyst-event filling.
+
+That made the answer tell the operator to start with Candidate Packets while
+also printing a catalyst-event source-batch command as the primary next command.
+
+Changes in this slice:
+
+- `priced_in_answer_payload()` now computes `decision_readiness` before choosing
+  the answer-level next step.
+- `_priced_in_answer_next_step()` now prefers
+  `decision_readiness.recommended_gap.next_action` and `.command` for
+  blocked/research-only priced-in answers.
+- Broad source coverage remains visible under `source_coverage` and
+  `trust_blockers`, but it no longer overrides the local decision artifact step
+  when the current actionable mismatch rows need Candidate Packets or Decision
+  Cards first.
+
+Live smoke after this correction:
+
+```text
+recommended_gap=candidate_packet count=4 command=catalyst-radar build-packets --as-of 2026-05-15 --min-state ResearchOnly
+next_action=Build Candidate Packets for research-useful mismatch rows.
+next_command=catalyst-radar build-packets --as-of 2026-05-15 --min-state ResearchOnly
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_answer_prefers_local_artifact_gap_before_options tests\integration\test_dashboard_data.py::test_priced_in_answer_payload_summarizes_current_scan tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_answer_cli_outputs_current_scan_answer -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py tests\integration\test_dashboard_data.py
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-answer | Select-String -Pattern "recommended_gap|next_command|next_action"
+```
+
+Observed: focused tests passed, ruff passed, and the live smoke now shows the
+same Candidate Packet command for both `recommended_gap` and `next_command`.
 
 ## Latest CLI/API Source-Batch Execution Parity
 

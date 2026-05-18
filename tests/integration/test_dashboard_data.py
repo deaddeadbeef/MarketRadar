@@ -1518,6 +1518,8 @@ def test_priced_in_answer_prefers_local_artifact_gap_before_options(
     assert recommended["command"] == (
         "catalyst-radar build-packets --as-of 2026-05-15 --min-state ResearchOnly"
     )
+    assert payload["next_action"] == recommended["next_action"]
+    assert payload["next_command"] == recommended["command"]
     decision_card_gap = next(
         gap
         for gap in payload["decision_readiness"]["top_gaps"]
