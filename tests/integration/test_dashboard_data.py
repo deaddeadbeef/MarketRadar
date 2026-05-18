@@ -1554,6 +1554,24 @@ def test_priced_in_queue_payload_filters_source_gaps(tmp_path: Path) -> None:
         assert {"options", "broker_context"} <= missing | stale
 
 
+def test_priced_in_queue_payload_filters_decision_gaps(tmp_path: Path) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+
+    payload = priced_in_queue_payload(
+        engine,
+        AppConfig.from_env({}),
+        decision_gap="decision-card,options",
+        limit=10,
+    )
+
+    assert payload["filters"]["decision_gap"] == ["decision_card", "options"]
+    assert payload["count"] >= 1
+    for row in payload["rows"]:
+        missing = set(row["usefulness"]["missing_for_decision"])
+        assert {"decision_card", "options"} <= missing
+
+
 def test_priced_in_queue_payload_labels_blocked_mismatches(tmp_path: Path) -> None:
     engine = _engine(tmp_path)
     _insert_dashboard_fixture(engine)

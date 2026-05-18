@@ -333,6 +333,7 @@ def radar_priced_in_queue(
     status: str | None = Query(default=None),
     usefulness: str | None = Query(default=None),
     source_gap: str | None = Query(default=None),
+    decision_gap: str | None = Query(default=None),
     min_gap: float | None = Query(default=None, ge=0),
 ) -> dict[str, object]:
     priced_in_payload = _dashboard_helper("priced_in_queue_payload")
@@ -345,6 +346,7 @@ def radar_priced_in_queue(
             status=status,
             usefulness=usefulness,
             source_gap=source_gap,
+            decision_gap=decision_gap,
             min_gap=min_gap,
         )
     )

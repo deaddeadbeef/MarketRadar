@@ -46,6 +46,8 @@ class DashboardFilters:
     alert_status: str | None = None
     alert_route: str | None = None
     priced_in_status: str = "all"
+    priced_in_usefulness: str | None = None
+    priced_in_decision_gap: str | Sequence[str] | None = None
     telemetry_limit: int = 8
 
     def normalized(self) -> DashboardFilters:
@@ -53,12 +55,17 @@ class DashboardFilters:
         alert_status = (self.alert_status or "").strip() or None
         alert_route = (self.alert_route or "").strip() or None
         priced_in_status = _normalize_priced_in_status(self.priced_in_status)
+        priced_in_decision_gap = _normalize_decision_gap_filter(
+            self.priced_in_decision_gap
+        )
         return replace(
             self,
             ticker=ticker,
             alert_status=alert_status,
             alert_route=alert_route,
             priced_in_status=priced_in_status,
+            priced_in_usefulness=_normalize_optional_filter(self.priced_in_usefulness),
+            priced_in_decision_gap=priced_in_decision_gap,
             telemetry_limit=max(1, int(self.telemetry_limit)),
         )
 
@@ -90,6 +97,37 @@ def _normalize_priced_in_status(value: object) -> str:
         "conflicted",
     }
     return status if status in allowed else "all"
+
+
+def _normalize_decision_gap_filter(value: str | Sequence[str] | None) -> tuple[str, ...]:
+    if value is None:
+        raw_values: list[object] = []
+    elif isinstance(value, str):
+        raw_values = [value]
+    else:
+        raw_values = list(value)
+    aliases = {
+        "card": "decision_card",
+        "decision_cards": "decision_card",
+        "decision-card": "decision_card",
+        "broker": "broker_context",
+        "schwab": "broker_context",
+        "portfolio": "broker_context",
+        "options_flow": "options",
+    }
+    normalized: list[str] = []
+    for raw in raw_values:
+        for part in str(raw or "").replace(";", ",").split(","):
+            gap = part.strip().lower().replace("-", "_").replace(" ", "_")
+            if gap in {"", "all", "none"}:
+                continue
+            normalized.append(aliases.get(gap, gap))
+    return tuple(dict.fromkeys(normalized))
+
+
+def _normalize_optional_filter(value: object | None) -> str | None:
+    normalized = str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
+    return None if normalized in {"", "all", "any", "none"} else normalized
 
 
 DASHBOARD_FEATURES: tuple[dict[str, str], ...] = (
@@ -309,6 +347,8 @@ def dashboard_snapshot_payload(
         config,
         limit=50,
         status=filters.priced_in_status,
+        usefulness=filters.priced_in_usefulness,
+        decision_gap=filters.priced_in_decision_gap,
     )
     priced_in_source_coverage = (
         priced_in_queue.get("source_coverage")
@@ -331,6 +371,8 @@ def dashboard_snapshot_payload(
             "alert_status": filters.alert_status,
             "alert_route": filters.alert_route,
             "priced_in_status": filters.priced_in_status,
+            "priced_in_usefulness": filters.priced_in_usefulness,
+            "priced_in_decision_gap": list(filters.priced_in_decision_gap or ()),
             "telemetry_limit": filters.telemetry_limit,
         },
         "runtime_context": runtime_context,
@@ -1666,6 +1708,28 @@ def _apply_command(
                 else f"Scan filter updated: {scan_status}."
             ),
         )
+    if command in {"decision-gap", "decision_gaps", "gap"}:
+        decision_gaps = _normalize_decision_gap_filter(value)
+        return _CommandUpdate(
+            page="overview",
+            filters=replace(filters, priced_in_decision_gap=decision_gaps).normalized(),
+            message=(
+                "Decision-gap filter cleared."
+                if not decision_gaps
+                else f"Decision-gap filter: {', '.join(decision_gaps)}."
+            ),
+        )
+    if command in {"usefulness", "useful"}:
+        usefulness = _normalize_optional_filter(value)
+        return _CommandUpdate(
+            page="overview",
+            filters=replace(filters, priced_in_usefulness=usefulness).normalized(),
+            message=(
+                "Usefulness filter cleared."
+                if usefulness is None
+                else f"Usefulness filter: {usefulness}."
+            ),
+        )
     if command in {"j", "json"}:
         return _CommandUpdate(
             page=page,
@@ -2409,17 +2473,20 @@ def _overview_title(payload: Mapping[str, object]) -> str:
     returned = int(_number_or_zero(queue.get("returned_count") or queue.get("count")))
     scan_total = _priced_in_scan_total(queue)
     status_filter = _priced_in_status_filter(queue)
+    decision_gap = _decision_gap_filter_summary(queue)
     if status_filter == "actionable":
         usefulness = _usefulness_counts_summary(queue)
-        usefulness_suffix = f"; {usefulness}" if usefulness else ""
+        suffix_parts = [part for part in (usefulness, decision_gap) if part]
+        suffix = f"; {'; '.join(suffix_parts)}" if suffix_parts else ""
         return (
             f"Mismatches from full scan - showing {returned} of {total}; "
-            f"scan {scan_total}{usefulness_suffix}"
+            f"scan {scan_total}{suffix}"
         )
     if total:
         usefulness = _usefulness_counts_summary(queue)
-        usefulness_suffix = f"; {usefulness}" if usefulness else ""
-        return f"Full-market priced-in queue - showing {returned} of {total}{usefulness_suffix}"
+        suffix_parts = [part for part in (usefulness, decision_gap) if part]
+        suffix = f"; {'; '.join(suffix_parts)}" if suffix_parts else ""
+        return f"Full-market priced-in queue - showing {returned} of {total}{suffix}"
     return "Full-market priced-in queue - select a row to act"
 
 
@@ -2432,13 +2499,15 @@ def _overview_caption(payload: Mapping[str, object]) -> str:
     if status_filter == "actionable":
         usefulness = _usefulness_counts_summary(queue)
         usefulness_text = f" Usefulness mix: {usefulness}." if usefulness else ""
+        decision_gap = _decision_gap_filter_summary(queue)
+        decision_gap_text = f" Active decision gap filter: {decision_gap}." if decision_gap else ""
         if total:
             return (
                 f"This page shows {returned} bullish/bearish not-priced-in mismatch "
                 f"card(s) from {scan_total or 'the'} latest-scan row(s). "
                 "Press M or click SCAN -> Full Scan to inspect neutral, blocked, "
                 "stale, and fully-priced rows."
-                f"{usefulness_text} "
+                f"{usefulness_text}{decision_gap_text} "
                 "Browsing makes 0 provider calls."
             )
         return (
@@ -2450,11 +2519,14 @@ def _overview_caption(payload: Mapping[str, object]) -> str:
     if total and returned < total:
         usefulness = _usefulness_counts_summary(queue)
         usefulness_text = f" Usefulness mix: {usefulness}." if usefulness else ""
+        decision_gap = _decision_gap_filter_summary(queue)
+        decision_gap_text = f" Active decision gap filter: {decision_gap}." if decision_gap else ""
         return (
             f"This page shows {returned} visible rows from {total} latest-scan rows. "
             "Press M or click SCAN -> Mismatches to return to the smaller action queue. "
             "Use priced-in-queue --status all --limit/--offset or the API offset "
-            f"parameter to page deeper.{usefulness_text} Browsing makes 0 provider calls."
+            f"parameter to page deeper.{usefulness_text}{decision_gap_text} "
+            "Browsing makes 0 provider calls."
         )
     return (
         "First row is scan coverage; candidate rows are priced-in mismatch cards. "
@@ -2506,6 +2578,15 @@ def _usefulness_counts_summary(queue: Mapping[str, object]) -> str:
         if int(_number_or_zero(counts.get(key))) > 0
     ]
     return " / ".join(parts)
+
+
+def _decision_gap_filter_summary(queue: Mapping[str, object]) -> str:
+    raw_gaps = _mapping(queue.get("filters")).get("decision_gap")
+    gaps = raw_gaps if isinstance(raw_gaps, list | tuple) else ()
+    normalized = [str(gap) for gap in gaps if str(gap).strip()]
+    if not normalized:
+        return ""
+    return f"decision gaps {', '.join(normalized)}"
 
 
 def _readiness_lines(payload: Mapping[str, object], width: int) -> list[str]:
@@ -3163,6 +3244,8 @@ def _help_lines(width: int) -> list[str]:
         ("open <#|alert-id>", "Open an alert from the alerts page."),
         ("ticker <SYMBOL|all>", "Filter candidate-adjacent pages by ticker where supported."),
         ("available-at <ISO|latest>", "Set or clear the point-in-time data cutoff."),
+        ("usefulness <status|all>", "Filter Insights by usefulness verdict."),
+        ("decision-gap <gap|all>", "Filter Insights by missing decision evidence."),
         ("alert-status <status|all>", "Filter alerts by status."),
         ("alert-route <route|all>", "Filter alerts by route."),
         ("refresh", "Reload the local database snapshot."),
@@ -3180,7 +3263,7 @@ def _help_lines(width: int) -> list[str]:
     lines.extend(_table_lines([{"command": a, "meaning": b} for a, b in commands],
                               [("command", "Command", 28), ("meaning", "Meaning", 84)],
                               width=width,
-                              limit=20))
+                              limit=24))
     return lines
 
 

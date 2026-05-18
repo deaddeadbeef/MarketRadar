@@ -1,6 +1,53 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 14:26:56 +08:00
+Last updated: 2026-05-18 14:46:34 +08:00
+
+## Latest Decision-Gap Filter
+
+The priced-in queue now separates source availability gaps from decision
+readiness gaps. This answers "which research-useful rows still cannot become
+decision-useful, and why?" without opening every ticker.
+
+New CLI/API affordances:
+
+```powershell
+catalyst-radar priced-in-queue --usefulness research_useful --decision-gap decision_card
+catalyst-radar priced-in-queue --status actionable --decision-gap decision_card,options --json
+catalyst-radar dashboard-snapshot --usefulness research_useful --decision-gap decision_card --json
+```
+
+API equivalent:
+
+```text
+GET /api/radar/priced-in?usefulness=research_useful&decision_gap=decision_card
+GET /api/radar/priced-in?status=actionable&decision_gap=decision_card,options
+```
+
+Supported decision-gap names currently include:
+
+- `decision_card`
+- `options`
+- `broker_context`
+
+Aliases include `card`/`decision-cards` for `decision_card` and
+`broker`/`schwab`/`portfolio` for `broker_context`. Multiple decision gaps are
+ANDed. `decision_card,options` means the row is missing both.
+
+The TUI command box also supports:
+
+```text
+decision-gap decision_card
+usefulness research_useful
+decision-gap all
+```
+
+This is zero-call filtering over stored queue rows. It does not build a
+Decision Card, sync Schwab, call Polygon/Massive, call SEC, call OpenAI, or
+submit orders.
+
+Dashboard snapshots and the modern TUI also accept `--usefulness`, so the
+human surface can narrow from full scan to "research-useful rows missing a
+Decision Card" without dropping to the standalone queue command.
 
 ## Latest Full-Scan Default
 
