@@ -241,6 +241,11 @@ def build_parser() -> argparse.ArgumentParser:
     build_cards.add_argument("--as-of", type=date.fromisoformat, required=True)
     build_cards.add_argument("--available-at", type=_parse_aware_datetime)
     build_cards.add_argument("--ticker")
+    build_cards.add_argument(
+        "--min-state",
+        choices=[state.value for state in ActionState],
+        default=ActionState.WARNING.value,
+    )
 
     build_alerts = subparsers.add_parser("build-alerts")
     build_alerts.add_argument("--as-of", type=date.fromisoformat, required=True)
@@ -977,7 +982,7 @@ def main(argv: list[str] | None = None) -> int:
                 as_of=_scan_timestamp(args.as_of),
                 available_at=available_at,
                 ticker=args.ticker,
-                states=_states_at_or_above(ActionState.WARNING),
+                states=_states_at_or_above(ActionState(args.min_state)),
             )
             cards = []
             for packet in packets:
@@ -2679,6 +2684,8 @@ def _print_priced_in_queue(payload: Mapping[str, object]) -> None:
         usefulness = row.get("usefulness")
         if not isinstance(usefulness, Mapping):
             usefulness = {}
+        next_command = usefulness.get("next_command")
+        command_suffix = f" command={next_command}" if next_command else ""
         print(
             f"{row.get('ticker')} "
             f"{row.get('priced_in_status')} "
@@ -2692,6 +2699,7 @@ def _print_priced_in_queue(payload: Mapping[str, object]) -> None:
             f"{row.get('score')} "
             f"{_priced_in_data_summary(row)} "
             f"{row.get('next_step')}"
+            f"{command_suffix}"
         )
     if payload.get("has_more"):
         filters = payload.get("filters")

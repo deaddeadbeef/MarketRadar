@@ -1615,6 +1615,10 @@ def test_priced_in_queue_payload_filters_decision_gaps(tmp_path: Path) -> None:
             assert row["next_step"] == (
                 "Build a Candidate Packet before Decision Card review."
             )
+            assert row["usefulness"]["next_command"].startswith(
+                "catalyst-radar build-packets --as-of "
+            )
+            assert " --min-state AddToWatchlist" in row["usefulness"]["next_command"]
     assert saw_research_useful
 
 

@@ -180,7 +180,55 @@ def test_candidate_packet_cli_returns_nonzero_when_missing(
     assert captured.err == "candidate packet not found: MSFT\n"
 
 
-def _insert_warning_candidate(database_url: str) -> None:
+def test_build_decision_cards_accepts_add_to_watchlist_min_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'watchlist-card.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    assert main(["init-db"]) == 0
+    capsys.readouterr()
+    _insert_warning_candidate(database_url, state=ActionState.ADD_TO_WATCHLIST)
+
+    assert (
+        main(
+            [
+                "build-decision-cards",
+                "--as-of",
+                "2026-05-10",
+                "--available-at",
+                AVAILABLE_AT_TEXT,
+            ]
+        )
+        == 0
+    )
+    captured = capsys.readouterr()
+    assert captured.out == "built decision_cards=0\n"
+
+    assert (
+        main(
+            [
+                "build-decision-cards",
+                "--as-of",
+                "2026-05-10",
+                "--available-at",
+                AVAILABLE_AT_TEXT,
+                "--min-state",
+                "AddToWatchlist",
+            ]
+        )
+        == 0
+    )
+    captured = capsys.readouterr()
+    assert captured.out == "built decision_cards=1\n"
+
+
+def _insert_warning_candidate(
+    database_url: str,
+    *,
+    state: ActionState = ActionState.WARNING,
+) -> None:
     engine = create_engine(database_url, future=True)
     with engine.begin() as conn:
         conn.execute(
@@ -188,7 +236,7 @@ def _insert_warning_candidate(database_url: str) -> None:
                 id="state-msft",
                 ticker="MSFT",
                 as_of=AS_OF,
-                state=ActionState.WARNING.value,
+                state=state.value,
                 previous_state=None,
                 final_score=78.0,
                 score_delta_5d=4.0,
@@ -255,7 +303,7 @@ def _insert_warning_candidate(database_url: str) -> None:
                         },
                     },
                     "policy": {
-                        "state": ActionState.WARNING.value,
+                        "state": state.value,
                         "hard_blocks": [],
                         "reasons": ["score_requires_manual_review"],
                         "missing_trade_plan": [],

@@ -5518,11 +5518,13 @@ def _priced_in_usefulness_verdict(
         label = "Blocked mismatch"
         reasons.append("Policy or portfolio blockers must be cleared first.")
         next_action = "Clear blockers before treating this mismatch as actionable."
+        next_command = "catalyst-radar candidate-detail <TICKER>"
     elif status not in PRICED_IN_ACTIONABLE_STATUSES:
         verdict = "monitor_only"
         label = "Monitor only"
         reasons.append("No bullish or bearish not-priced-in mismatch is visible.")
         next_action = "Keep this in monitoring until the priced-in signal changes."
+        next_command = "catalyst-radar priced-in-queue --status all"
     elif missing_core or stale_core:
         verdict = "not_useful"
         label = "Not useful yet"
@@ -5531,6 +5533,7 @@ def _priced_in_usefulness_verdict(
         if stale_core:
             reasons.append(f"Stale core source(s): {', '.join(stale_core)}.")
         next_action = "Refresh core market, catalyst, or text data before review."
+        next_command = "catalyst-radar priced-in-preflight"
     elif missing_for_decision:
         verdict = "research_useful"
         label = "Research-useful mismatch"
@@ -5543,15 +5546,23 @@ def _priced_in_usefulness_verdict(
             next_action = (
                 "Build a Candidate Packet before Decision Card review."
             )
+            next_command = _priced_in_build_packet_command(candidate)
         elif "decision_card" in missing_for_decision:
             next_action = "Build or refresh the Decision Card before decision review."
+            next_command = _priced_in_build_decision_card_command(candidate)
         else:
             next_action = "Open candidate detail, verify evidence, then fill decision gaps."
+            next_command = f"catalyst-radar candidate-detail {_priced_in_command_ticker(candidate)}"
     else:
         verdict = "decision_useful"
         label = "Decision-useful mismatch"
         reasons.append("Core and supporting evidence are available for manual review.")
         next_action = "Review the Decision Card before any trade action."
+        next_command = (
+            "catalyst-radar decision-card "
+            f"--ticker {_priced_in_command_ticker(candidate)} "
+            f"--as-of {_priced_in_command_as_of(candidate)}"
+        )
     return {
         "schema_version": "priced-in-usefulness-verdict-v1",
         "status": verdict,
@@ -5560,12 +5571,42 @@ def _priced_in_usefulness_verdict(
         "reasons": reasons,
         "missing_for_decision": missing_for_decision,
         "next_action": next_action,
+        "next_command": next_command,
         "action_boundary": (
             "Research signal only until source gaps, blockers, and Decision Card are clear."
         )
         if verdict != "decision_useful"
         else "Decision Card still requires human review; real order submission remains disabled.",
     }
+
+
+def _priced_in_build_packet_command(candidate: Mapping[str, object]) -> str:
+    return (
+        "catalyst-radar build-packets "
+        f"--as-of {_priced_in_command_as_of(candidate)} "
+        f"--ticker {_priced_in_command_ticker(candidate)} "
+        "--min-state AddToWatchlist"
+    )
+
+
+def _priced_in_build_decision_card_command(candidate: Mapping[str, object]) -> str:
+    return (
+        "catalyst-radar build-decision-cards "
+        f"--as-of {_priced_in_command_as_of(candidate)} "
+        f"--ticker {_priced_in_command_ticker(candidate)} "
+        "--min-state AddToWatchlist"
+    )
+
+
+def _priced_in_command_ticker(candidate: Mapping[str, object]) -> str:
+    return str(candidate.get("ticker") or "<TICKER>").strip().upper() or "<TICKER>"
+
+
+def _priced_in_command_as_of(candidate: Mapping[str, object]) -> str:
+    as_of = _parse_utc_datetime(candidate.get("as_of"))
+    if as_of is None:
+        return "<LATEST_TRADING_DATE>"
+    return as_of.date().isoformat()
 
 
 def _priced_in_source_action_row(
