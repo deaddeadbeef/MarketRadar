@@ -95,8 +95,14 @@ def test_get_candidates_uses_latest_radar_run_scope(tmp_path, monkeypatch) -> No
         raising=False,
     )
 
-    def load_radar_run_candidate_rows(_engine, summary) -> list[dict[str, object]]:
+    def load_radar_run_candidate_rows(
+        _engine,
+        summary,
+        *,
+        include_post_run_artifacts: bool = False,
+    ) -> list[dict[str, object]]:
         captured["summary"] = summary
+        captured["include_post_run_artifacts"] = include_post_run_artifacts
         return [{"ticker": "RUN", "state": ActionState.WARNING.value}]
 
     monkeypatch.setattr(
@@ -117,6 +123,7 @@ def test_get_candidates_uses_latest_radar_run_scope(tmp_path, monkeypatch) -> No
 
     assert response.status_code == 200
     assert captured["summary"] == latest_run
+    assert captured["include_post_run_artifacts"] is True
     assert response.json()["scope"] == {
         "source": "latest_radar_run",
         "as_of": "2026-05-01",

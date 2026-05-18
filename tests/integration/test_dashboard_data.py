@@ -53,6 +53,7 @@ from catalyst_radar.dashboard.data import (
     load_cost_summary,
     load_ipo_s1_rows,
     load_ops_health,
+    load_radar_run_candidate_rows,
     load_radar_run_summary,
     load_theme_rows,
     load_ticker_detail,
@@ -1480,7 +1481,7 @@ def test_priced_in_answer_prefers_local_artifact_gap_before_options(
             },
             "sample_tickers": {
                 "candidate_packet": ["MSFT"],
-                "decision_card": ["MSFT", "AAPL"],
+                "decision_card": ["MSFT", "AAPL", "AA", "A", "AAA", "AAAU"],
                 "options": ["MSFT", "AAPL"],
             },
         },
@@ -1511,9 +1512,22 @@ def test_priced_in_answer_prefers_local_artifact_gap_before_options(
     recommended = payload["decision_readiness"]["recommended_gap"]
     assert recommended["gap"] == "candidate_packet"
     assert recommended["command"] == (
-        "catalyst-radar build-packets --as-of 2026-05-15 --ticker MSFT "
-        "--min-state AddToWatchlist"
+        "catalyst-radar build-packets --as-of 2026-05-15 --min-state ResearchOnly"
     )
+    decision_card_gap = next(
+        gap
+        for gap in payload["decision_readiness"]["top_gaps"]
+        if gap["gap"] == "decision_card"
+    )
+    assert decision_card_gap["sample_tickers"] == [
+        "MSFT",
+        "AAPL",
+        "AA",
+        "A",
+        "AAA",
+        "AAAU",
+    ]
+    assert "--ticker" not in decision_card_gap["command"]
 
 
 def test_priced_in_queue_payload_paginates_ranked_rows(tmp_path: Path) -> None:
@@ -1551,7 +1565,7 @@ def test_priced_in_queue_payload_paginates_ranked_rows(tmp_path: Path) -> None:
         "catalyst-radar priced-in-queue --full-scan --source-gap options --limit 50"
     )
     assert actions["options"]["batch_plan_command"] == (
-        "catalyst-radar priced-in-source-batches --source options --batch-limit 5"
+        "catalyst-radar priced-in-source-batches --source options --all --json"
     )
     assert actions["options"]["batch_plan_api"] == (
         "GET /api/radar/priced-in/source-batches?source=options"
@@ -1614,7 +1628,7 @@ def test_priced_in_queue_source_actions_use_full_scan_batch_plan_for_broad_gaps(
     assert options["gap_count"] == 7
     assert options["sample_tickers"]
     assert options["command"] == (
-        "catalyst-radar priced-in-source-batches --source options --batch-limit 5"
+        "catalyst-radar priced-in-source-batches --source options --all --json"
     )
     assert options["api"] == "GET /api/radar/priced-in/source-batches?source=options"
     assert options["sample_command"].startswith(
@@ -2101,7 +2115,7 @@ def test_priced_in_queue_payload_filters_decision_gaps(tmp_path: Path) -> None:
             assert row["usefulness"]["next_command"].startswith(
                 "catalyst-radar build-packets --as-of "
             )
-            assert " --min-state AddToWatchlist" in row["usefulness"]["next_command"]
+            assert " --min-state ResearchOnly" in row["usefulness"]["next_command"]
     assert saw_research_useful
 
 
@@ -4321,6 +4335,64 @@ def test_load_candidate_rows_respects_available_at_cutoff(tmp_path: Path) -> Non
     msft = next(row for row in rows if row["ticker"] == "MSFT")
     assert msft["id"] == "state-msft-latest"
     assert msft["candidate_packet_id"] == "packet-msft-latest"
+
+
+def test_radar_run_rows_can_include_post_run_local_artifacts(tmp_path: Path) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    post_run_at = AVAILABLE_AT + timedelta(hours=1)
+    metadata = {
+        "as_of": AS_OF.date().isoformat(),
+        "decision_available_at": AVAILABLE_AT.isoformat(),
+        "outcome_available_at": None,
+        "provider": "csv",
+        "universe": "liquid-us",
+        "tickers": [],
+    }
+    with engine.begin() as conn:
+        conn.execute(
+            update(decision_cards)
+            .where(decision_cards.c.id == "card-msft-latest")
+            .values(available_at=post_run_at, created_at=post_run_at)
+        )
+        conn.execute(
+            insert(job_runs),
+            [
+                _job_run_row(
+                    "post-run-feature-scan",
+                    job_type="feature_scan",
+                    status="success",
+                    started_at=AVAILABLE_AT,
+                    metadata=metadata,
+                    requested_count=2,
+                    raw_count=2,
+                    normalized_count=2,
+                ),
+                _job_run_row(
+                    "post-run-candidate-packets",
+                    job_type="candidate_packets",
+                    status="success",
+                    started_at=AVAILABLE_AT + timedelta(seconds=2),
+                    metadata=metadata,
+                    requested_count=2,
+                    raw_count=1,
+                    normalized_count=1,
+                ),
+            ],
+        )
+
+    summary = load_radar_run_summary(engine)
+    historical_rows = load_radar_run_candidate_rows(engine, summary)
+    current_rows = load_radar_run_candidate_rows(
+        engine,
+        summary,
+        include_post_run_artifacts=True,
+    )
+
+    historical_msft = next(row for row in historical_rows if row["ticker"] == "MSFT")
+    current_msft = next(row for row in current_rows if row["ticker"] == "MSFT")
+    assert historical_msft["decision_card_id"] is None
+    assert current_msft["decision_card_id"] == "card-msft-latest"
 
 
 def test_load_ticker_detail_returns_candidate_packet_card_events_and_validation(
