@@ -1403,7 +1403,10 @@ def test_priced_in_queue_payload_surfaces_ranked_gap_rows(tmp_path: Path) -> Non
         "monitor_only",
     }
     assert payload["rows"][0]["usefulness"]["decision_ready"] is False
-    assert "decision_card" in payload["rows"][0]["usefulness"]["missing_for_decision"]
+    assert "candidate_packet" not in (
+        payload["rows"][0]["usefulness"]["missing_for_decision"]
+    )
+    assert "decision_card" not in payload["rows"][0]["usefulness"]["missing_for_decision"]
     assert payload["rows"][0]["why_now"] == "MSFT guidance raised"
 
 
@@ -1467,7 +1470,6 @@ def test_priced_in_queue_payload_supports_actionable_status_alias(tmp_path: Path
             .where(signal_features.c.ticker == "MSFT", signal_features.c.as_of == AS_OF)
             .values(payload=payload)
         )
-
     payload = priced_in_queue_payload(
         engine,
         AppConfig.from_env({}),
@@ -1518,7 +1520,6 @@ def test_priced_in_queue_payload_filters_usefulness(tmp_path: Path) -> None:
             .where(signal_features.c.ticker == "MSFT", signal_features.c.as_of == AS_OF)
             .values(payload=payload)
         )
-
     payload = priced_in_queue_payload(
         engine,
         AppConfig.from_env({}),
@@ -1558,6 +1559,8 @@ def test_priced_in_queue_payload_filters_decision_gaps(tmp_path: Path) -> None:
     engine = _engine(tmp_path)
     _insert_dashboard_fixture(engine)
     with engine.begin() as conn:
+        conn.execute(candidate_packets.delete().where(candidate_packets.c.ticker == "MSFT"))
+        conn.execute(decision_cards.delete().where(decision_cards.c.ticker == "MSFT"))
         row = (
             conn.execute(
                 signal_features.select().where(
@@ -1613,6 +1616,58 @@ def test_priced_in_queue_payload_filters_decision_gaps(tmp_path: Path) -> None:
                 "Build a Candidate Packet before Decision Card review."
             )
     assert saw_research_useful
+
+
+def test_priced_in_queue_candidate_packet_gap_uses_artifacts(tmp_path: Path) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    with engine.begin() as conn:
+        for ticker in ("MSFT", "AAPL"):
+            row = (
+                conn.execute(
+                    signal_features.select().where(
+                        signal_features.c.ticker == ticker,
+                        signal_features.c.as_of == AS_OF,
+                    )
+                )
+                .mappings()
+                .one()
+            )
+            payload = dict(row["payload"])
+            candidate = dict(payload["candidate"])
+            metadata = dict(candidate["metadata"])
+            metadata["priced_in"] = {
+                "status": "bullish_not_priced_in",
+                "direction": "bullish",
+                "emotion_score": 80.0,
+                "reaction_score": 20.0,
+                "emotion_reaction_gap": 60.0,
+                "priced_in_score": 25.0,
+                "reason": "Bullish emotion is ahead of price reaction.",
+                "next_step": "Open candidate detail.",
+            }
+            metadata["local_narrative_score"] = 62.0
+            candidate["metadata"] = metadata
+            payload["candidate"] = candidate
+            conn.execute(
+                update(signal_features)
+                .where(signal_features.c.ticker == ticker, signal_features.c.as_of == AS_OF)
+                .values(payload=payload)
+            )
+
+    payload = priced_in_queue_payload(
+        engine,
+        AppConfig.from_env({}),
+        decision_gap="candidate_packet",
+        limit=10,
+    )
+    tickers = {row["ticker"] for row in payload["rows"]}
+
+    assert "AAPL" in tickers
+    assert "MSFT" not in tickers
+    assert payload["filters"]["decision_gap"] == ["candidate_packet"]
+    for row in payload["rows"]:
+        assert "candidate_packet" in row["usefulness"]["missing_for_decision"]
 
 
 def test_priced_in_queue_payload_labels_blocked_mismatches(tmp_path: Path) -> None:

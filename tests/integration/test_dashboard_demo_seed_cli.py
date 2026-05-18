@@ -369,13 +369,13 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
     assert gap_payload["filters"]["source_gap"] == ["options"]
     assert "options" in gap_payload["rows"][0]["data_sources"]["missing"]
 
-    assert main(["priced-in-queue", "--decision-gap", "decision_card", "--json"]) == 0
+    assert main(["priced-in-queue", "--decision-gap", "options", "--json"]) == 0
     output = capsys.readouterr()
     decision_gap_payload = json.loads(output.out)
 
     assert output.err == ""
-    assert decision_gap_payload["filters"]["decision_gap"] == ["decision_card"]
-    assert "decision_card" in (
+    assert decision_gap_payload["filters"]["decision_gap"] == ["options"]
+    assert "options" in (
         decision_gap_payload["rows"][0]["usefulness"]["missing_for_decision"]
     )
 
@@ -384,6 +384,8 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
 
     assert output.err == ""
     assert "usefulness_counts=research_useful:1" in output.out
+    assert "scan_scope=scanned=" in output.out
+    assert "visible_page=1" in output.out
     assert "source_actions:" in output.out
     assert "options status=missing" in output.out
     assert "broker_context status=missing" in output.out

@@ -1,6 +1,63 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 15:05:05 +08:00
+Last updated: 2026-05-18 15:30:02 +08:00
+
+## Latest Full-Scan Scope Clarification
+
+The user asked again: "Why only these tickers? I want full scan." The current
+local answer is:
+
+- Full scan is running over the local latest universe.
+- The queue/table is a ranked, paged view of that scan, not a claim that only
+  the visible tickers were scanned.
+- `status=actionable` intentionally narrows the full scan to bullish/bearish
+  not-priced-in mismatches.
+
+Current real local evidence:
+
+```powershell
+catalyst-radar priced-in-queue --status all --limit 10
+```
+
+prints:
+
+```text
+priced_in_queue status=ready count=10 total=12087 offset=0 external_calls=0
+scan_scope=scanned=12087 requested=12104 filter=all ranked_after_filter=12087 visible_page=10
+```
+
+The first visible tickers are `A,MSFT,AAA,AAAU,AAPL,AA,AAAC,BRK.A,NVR,ABLVW`
+because they are the top ranked page, not because the scanner only covered
+those tickers.
+
+The actionable filter:
+
+```powershell
+catalyst-radar priced-in-queue --status actionable --limit 20
+```
+
+prints:
+
+```text
+scan_scope=scanned=12087 requested=12104 filter=actionable ranked_after_filter=7 visible_page=7
+```
+
+and returns the short mismatch list `A,MSFT,AAA,AAAU,AAPL,AA,AAAC`.
+
+This slice also fixes a correctness gap in decision-gap filtering:
+`priced_in_queue_payload` now loads candidate rows with artifacts, so
+`--decision-gap candidate_packet` reflects real Candidate Packets. After a
+local zero-provider-call packet build for `A`, the candidate-packet gap no
+longer lists `A`; the current real local gap rows are `MSFT,AAAU,AAPL,AA`.
+
+Regression coverage:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_queue_payload_filters_decision_gaps tests\integration\test_dashboard_data.py::test_priced_in_queue_candidate_packet_gap_uses_artifacts tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_queue_cli_outputs_same_zero_call_signal -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\cli.py src\catalyst_radar\dashboard\data.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py
+```
+
+Both passed before the broader validation run.
 
 ## Latest Candidate-Packet Decision Gap
 

@@ -545,10 +545,10 @@ def priced_in_queue_payload(
             engine,
             latest_run,
             limit=None,
-            include_artifacts=False,
+            include_artifacts=True,
         )
         if latest_run
-        else load_candidate_rows(engine, limit=None, include_artifacts=False)
+        else load_candidate_rows(engine, limit=None, include_artifacts=True)
     )
     discovery = radar_discovery_snapshot_payload(
         engine,
