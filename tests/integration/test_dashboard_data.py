@@ -1429,6 +1429,7 @@ def test_priced_in_preflight_payload_reports_exact_next_steps(tmp_path: Path) ->
     assert payload["provider"]["latest_daily_bar_ticker_count"] >= 1001
     assert payload["provider"]["estimated_ticker_seed_pages"] == 2
     assert payload["commands"]["ingest_tickers"].endswith("--max-pages 2")
+    assert payload["commands"]["run_scan"].startswith("catalyst-radar run-daily")
     assert payload["commands"]["review_queue"] == "catalyst-radar priced-in-queue --json"
     by_area = {row["area"]: row for row in payload["rows"]}
     assert "universe" in by_area
