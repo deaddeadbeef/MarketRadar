@@ -346,7 +346,8 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
     actions = {row["source"]: row for row in payload["source_coverage"]["actions"]}
     assert actions["options"]["status"] == "missing"
     assert actions["options"]["external_call_boundary"] == (
-        "Current CLI options ingest is fixture/local; no live options call is hidden."
+        "CLI promotion reads stored Schwab snapshots only; live Schwab options "
+        "are explicit through market-sync and rate-limited."
     )
     assert actions["broker_context"]["next_action"] == (
         "Sync read-only broker context before sizing or portfolio review."
@@ -414,7 +415,7 @@ def test_candidate_detail_cli_outputs_priced_in_evidence_brief(
     actions = {row["source"]: row for row in brief["source_actions"]}
     assert actions["options"]["status"] == "missing"
     assert actions["options"]["next_action"] == (
-        "Treat options as absent until an options feed or fixture is ingested."
+        "Sync Schwab option-chain context or ingest an options fixture, then rerun the scan."
     )
     assert brief["usefulness"]["status"] == "research_useful"
     assert brief["usefulness"]["decision_ready"] is False

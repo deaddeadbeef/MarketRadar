@@ -18,6 +18,7 @@ from catalyst_radar.brokers.interactive import (
     record_opportunity_action,
     sync_market_context,
     trigger_payload,
+    upsert_schwab_option_features,
 )
 from catalyst_radar.brokers.models import (
     BrokerConnection,
@@ -59,6 +60,7 @@ from catalyst_radar.core.config import AppConfig
 from catalyst_radar.security.access import Role, require_role
 from catalyst_radar.storage.broker_repositories import BrokerRepository
 from catalyst_radar.storage.db import create_schema, engine_from_url
+from catalyst_radar.storage.feature_repositories import FeatureRepository
 from catalyst_radar.storage.repositories import MarketRepository
 
 router = APIRouter(tags=["brokers"])
@@ -325,7 +327,18 @@ def schwab_market_sync(payload: dict[str, Any] | None = None) -> dict[str, objec
         include_history=bool(body.get("include_history", True)),
         include_options=bool(body.get("include_options", True)),
     )
-    return {"items": [market_snapshot_payload(row) for row in snapshots]}
+    option_feature_count = (
+        upsert_schwab_option_features(
+            feature_repo=FeatureRepository(engine),
+            snapshots=snapshots,
+        )
+        if bool(body.get("include_options", True))
+        else 0
+    )
+    return {
+        "items": [market_snapshot_payload(row) for row in snapshots],
+        "option_features_upserted": option_feature_count,
+    }
 
 
 @router.get("/api/market/context", dependencies=[Depends(require_role(Role.VIEWER))])

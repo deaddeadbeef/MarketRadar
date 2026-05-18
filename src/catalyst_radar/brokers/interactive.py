@@ -25,6 +25,7 @@ from catalyst_radar.brokers.order_preview import (
 from catalyst_radar.brokers.portfolio_context import latest_broker_portfolio_context
 from catalyst_radar.brokers.schwab import SchwabClient
 from catalyst_radar.core.config import AppConfig
+from catalyst_radar.features.options import OptionFeatureInput
 from catalyst_radar.ops.telemetry import record_telemetry_event
 from catalyst_radar.security.redaction import redact_text, redact_value
 from catalyst_radar.storage.broker_repositories import BrokerRepository
@@ -338,6 +339,28 @@ def market_snapshot_payload(row: BrokerMarketSnapshot) -> dict[str, object]:
     }
 
 
+def schwab_option_features_from_market_snapshots(
+    snapshots: Sequence[BrokerMarketSnapshot],
+) -> list[OptionFeatureInput]:
+    features: list[OptionFeatureInput] = []
+    for snapshot in snapshots:
+        feature = _option_feature_from_market_snapshot(snapshot)
+        if feature is not None:
+            features.append(feature)
+    return features
+
+
+def upsert_schwab_option_features(
+    *,
+    feature_repo: Any,
+    snapshots: Sequence[BrokerMarketSnapshot],
+) -> int:
+    features = schwab_option_features_from_market_snapshots(snapshots)
+    if not features:
+        return 0
+    return int(feature_repo.upsert_option_features(features))
+
+
 def opportunity_action_payload(row: BrokerOpportunityAction) -> dict[str, object]:
     return {
         "id": row.id,
@@ -516,13 +539,87 @@ def _option_metrics(payload: Mapping[str, Any]) -> tuple[float | None, float | N
     return ratio, iv
 
 
+def _option_feature_from_market_snapshot(
+    snapshot: BrokerMarketSnapshot,
+) -> OptionFeatureInput | None:
+    raw = _mapping(snapshot.raw_payload)
+    options_payload = _mapping(raw.get("options"))
+    if not options_payload:
+        return None
+    calls = _option_side_feature_values(_mapping(options_payload.get("callExpDateMap")))
+    puts = _option_side_feature_values(_mapping(options_payload.get("putExpDateMap")))
+    call_volume = sum(calls["volume"])
+    put_volume = sum(puts["volume"])
+    call_open_interest = sum(calls["open_interest"])
+    put_open_interest = sum(puts["open_interest"])
+    if (
+        call_volume <= 0
+        and put_volume <= 0
+        and call_open_interest <= 0
+        and put_open_interest <= 0
+    ):
+        return None
+    call_iv = _average(calls["volatility"])
+    put_iv = _average(puts["volatility"])
+    iv_percentile = _normalize_iv_percentile(
+        _average([*calls["volatility"], *puts["volatility"]])
+    )
+    return OptionFeatureInput(
+        ticker=snapshot.ticker,
+        as_of=snapshot.as_of,
+        provider="schwab_option_chain",
+        call_volume=call_volume,
+        put_volume=put_volume,
+        call_open_interest=call_open_interest,
+        put_open_interest=put_open_interest,
+        iv_percentile=iv_percentile,
+        skew=_normalize_iv_percentile(put_iv) - _normalize_iv_percentile(call_iv),
+        source_ts=snapshot.as_of,
+        available_at=snapshot.created_at,
+        payload={
+            "source": "schwab_market_snapshot",
+            "market_snapshot_id": snapshot.id,
+            "call_contract_count": len(calls["volume"]),
+            "put_contract_count": len(puts["volume"]),
+            "option_call_put_ratio": snapshot.option_call_put_ratio,
+            "option_iv_percentile": snapshot.option_iv_percentile,
+        },
+    )
+
+
+def _option_side_feature_values(payload: Mapping[str, Any]) -> dict[str, list[float]]:
+    values = {"volume": [], "open_interest": [], "volatility": []}
+    for expirations in payload.values():
+        if not isinstance(expirations, Mapping):
+            continue
+        for contracts in expirations.values():
+            if not isinstance(contracts, list | tuple):
+                continue
+            for contract in contracts:
+                if not isinstance(contract, Mapping):
+                    continue
+                volume = _first_float(contract.get("totalVolume"), contract.get("volume"))
+                open_interest = _first_float(contract.get("openInterest"))
+                volatility = _first_float(
+                    contract.get("volatility"),
+                    contract.get("theoreticalVolatility"),
+                )
+                if volume is not None and volume > 0:
+                    values["volume"].append(volume)
+                if open_interest is not None and open_interest > 0:
+                    values["open_interest"].append(open_interest)
+                if volatility is not None and volatility >= 0:
+                    values["volatility"].append(volatility)
+    return values
+
+
 def _option_side_values(payload: Mapping[str, Any]) -> dict[str, list[float]]:
     values = {"activity": [], "volatility": []}
     for expirations in payload.values():
         if not isinstance(expirations, Mapping):
             continue
         for contracts in expirations.values():
-            if not isinstance(contracts, list):
+            if not isinstance(contracts, list | tuple):
                 continue
             for contract in contracts:
                 if not isinstance(contract, Mapping):
@@ -542,6 +639,20 @@ def _option_side_values(payload: Mapping[str, Any]) -> dict[str, list[float]]:
                 if volatility is not None:
                     values["volatility"].append(volatility)
     return values
+
+
+def _average(values: Sequence[float]) -> float:
+    finite = [value for value in values if value >= 0]
+    return (sum(finite) / len(finite)) if finite else 0.0
+
+
+def _normalize_iv_percentile(value: float | None) -> float:
+    number = _first_float(value)
+    if number is None:
+        return 0.0
+    if number > 1:
+        return number / 100.0
+    return number
 
 
 def _trigger_value(

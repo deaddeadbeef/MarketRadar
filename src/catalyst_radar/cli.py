@@ -33,6 +33,7 @@ from catalyst_radar.alerts.channels.base import DryRunAlertChannel
 from catalyst_radar.alerts.digest import build_alert_digest, digest_payload
 from catalyst_radar.alerts.models import AlertStatus
 from catalyst_radar.alerts.planner import plan_alerts
+from catalyst_radar.brokers.interactive import upsert_schwab_option_features
 from catalyst_radar.brokers.portfolio_context import latest_broker_portfolio_context
 from catalyst_radar.connectors.base import ConnectorRequest
 from catalyst_radar.connectors.earnings import EarningsCalendarConnector
@@ -96,6 +97,7 @@ from catalyst_radar.security.licenses import (
 from catalyst_radar.security.redaction import redact_text, redact_value
 from catalyst_radar.security.secrets import load_app_dotenv
 from catalyst_radar.storage.alert_repositories import AlertRepository
+from catalyst_radar.storage.broker_repositories import BrokerRepository
 from catalyst_radar.storage.budget_repositories import BudgetLedgerRepository
 from catalyst_radar.storage.candidate_packet_repositories import CandidatePacketRepository
 from catalyst_radar.storage.db import create_schema, engine_from_url
@@ -188,7 +190,13 @@ def build_parser() -> argparse.ArgumentParser:
     earnings.add_argument("--fixture", type=Path, required=True)
 
     options = subparsers.add_parser("ingest-options")
-    options.add_argument("--fixture", type=Path, required=True)
+    options.add_argument("--fixture", type=Path)
+    options.add_argument(
+        "--from-schwab-market",
+        action="store_true",
+        help="Promote stored Schwab market snapshots into aggregate option features.",
+    )
+    options.add_argument("--ticker", action="append")
 
     events = subparsers.add_parser("events")
     events.add_argument("--ticker", required=True)
@@ -627,9 +635,21 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "ingest-options":
         create_schema(engine)
+        feature_repo = FeatureRepository(engine)
+        if args.from_schwab_market:
+            return _ingest_schwab_market_options(
+                broker_repo=BrokerRepository(engine),
+                feature_repo=feature_repo,
+                tickers=args.ticker or [],
+            )
+        if args.fixture is None:
+            print(
+                "options ingest failed: provide --fixture or --from-schwab-market",
+                file=sys.stderr,
+            )
+            return 1
         market_repo = MarketRepository(engine)
         provider_repo = ProviderRepository(engine)
-        feature_repo = FeatureRepository(engine)
         return _ingest_options_provider(
             market_repo=market_repo,
             provider_repo=provider_repo,
@@ -1810,6 +1830,36 @@ def _ingest_options_provider(
         return 1
 
     _print_options_provider_result(result)
+    return 0
+
+
+def _ingest_schwab_market_options(
+    *,
+    broker_repo: BrokerRepository,
+    feature_repo: FeatureRepository,
+    tickers: Sequence[str],
+) -> int:
+    requested = sorted(
+        {
+            ticker.strip().upper()
+            for raw in tickers
+            for ticker in str(raw).split(",")
+            if ticker.strip()
+        }
+    )
+    snapshots = broker_repo.latest_market_snapshots(tickers=requested or None)
+    count = upsert_schwab_option_features(
+        feature_repo=feature_repo,
+        snapshots=snapshots,
+    )
+    print(
+        "ingested "
+        "provider=schwab_option_chain "
+        f"raw={len(snapshots)} "
+        f"normalized={count} "
+        f"option_features={count} "
+        f"rejected={max(0, len(snapshots) - count)}"
+    )
     return 0
 
 

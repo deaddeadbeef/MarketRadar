@@ -1,6 +1,51 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 15:30:02 +08:00
+Last updated: 2026-05-18 15:59:29 +08:00
+
+## Latest Schwab Options Evidence Bridge
+
+The current actionable priced-in queue still has an options evidence gap. The
+gap is now actionable instead of a dead end:
+
+- Schwab `/api/brokers/schwab/market-sync` already fetches quote, history, and
+  option-chain context when explicitly called.
+- The market-sync API now promotes aggregate Schwab option-chain metrics into
+  `option_features` via provider `schwab_option_chain`.
+- The zero-call CLI path can promote already stored Schwab market snapshots:
+
+```powershell
+catalyst-radar ingest-options --from-schwab-market --ticker A
+```
+
+Current local smoke:
+
+```text
+ingested provider=schwab_option_chain raw=0 normalized=0 option_features=0 rejected=0
+```
+
+That means no stored Schwab market snapshot exists for `A` yet; the command made
+no Schwab, Polygon, SEC, OpenAI, or broker-order call. To populate it for real,
+the operator must explicitly run the rate-limited Schwab market-sync endpoint
+for a small ticker batch, then rerun the scan so option features can enter the
+priced-in score.
+
+The priced-in source-gap guidance now says:
+
+```text
+Sync Schwab option-chain context or ingest an options fixture, then rerun the scan.
+command=catalyst-radar ingest-options --from-schwab-market --ticker <TICKER>
+api=POST /api/brokers/schwab/market-sync
+```
+
+Verification for this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_options_ingest.py tests\integration\test_broker_interactive_workflows.py tests\integration\test_broker_api_routes.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_api_routes.py -q
+.\.venv\Scripts\python.exe -m ruff check src tests
+git diff --check
+.\.venv\Scripts\catalyst-radar.exe ingest-options --from-schwab-market --ticker A
+.\.venv\Scripts\catalyst-radar.exe priced-in-queue --status actionable --source-gap options --limit 5
+```
 
 ## Latest Full-Scan Scope Clarification
 
