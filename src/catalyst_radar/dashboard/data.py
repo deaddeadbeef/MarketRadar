@@ -504,12 +504,19 @@ def priced_in_queue_payload(
     rows = sorted(rows, key=_priced_in_queue_sort_key)[: _positive_limit(limit)]
     status_counts = dict(Counter(str(row.get("priced_in_status") or "unknown") for row in rows))
     scan_status = _priced_in_scan_status(discovery)
+    preflight = priced_in_preflight_payload(
+        engine,
+        config,
+        latest_run=latest_run,
+        discovery_snapshot=discovery,
+    )
     return {
         "schema_version": "priced-in-queue-v1",
         "status": scan_status,
         "headline": _priced_in_queue_headline(scan_status, len(rows)),
         "next_action": _priced_in_queue_next_action(scan_status),
         "external_calls_made": 0,
+        "preflight": preflight,
         "latest_run": _row_dict(_mapping_value(discovery, "run")),
         "scan": {
             **_row_dict(_mapping_value(discovery, "yield")),
@@ -522,6 +529,68 @@ def priced_in_queue_payload(
         },
         "count": len(rows),
         "status_counts": status_counts,
+        "rows": rows,
+    }
+
+
+def priced_in_preflight_payload(
+    engine: Engine,
+    config: AppConfig,
+    *,
+    latest_run: Mapping[str, object] | None = None,
+    discovery_snapshot: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    run = (
+        _row_dict(latest_run)
+        if isinstance(latest_run, Mapping)
+        else load_radar_run_summary(engine)
+    )
+    discovery = (
+        _row_dict(discovery_snapshot)
+        if isinstance(discovery_snapshot, Mapping)
+        else radar_discovery_snapshot_payload(engine, config, radar_run_summary=run)
+    )
+    call_plan = radar_run_call_plan_payload(engine, config)
+    provider_rows = provider_preflight_payload(config, radar_run_summary=run)
+    commands = _priced_in_preflight_commands(config)
+    rows = _priced_in_preflight_rows(discovery, call_plan, provider_rows, commands, config)
+    blocked_rows = [row for row in rows if row["status"] == "blocked"]
+    attention_rows = [row for row in rows if row["status"] == "attention"]
+    if blocked_rows:
+        status = "blocked"
+        headline = f"{len(blocked_rows)} prerequisite(s) block a useful full-market scan."
+        next_action = str(blocked_rows[0]["next_action"])
+    elif attention_rows:
+        status = "attention"
+        headline = f"{len(attention_rows)} prerequisite(s) need attention before trusting output."
+        next_action = str(attention_rows[0]["next_action"])
+    else:
+        status = "ready"
+        headline = "Full-market priced-in scan prerequisites look ready."
+        next_action = "Run one capped radar cycle, then review priced-in gaps."
+    return {
+        "schema_version": "priced-in-preflight-v1",
+        "status": status,
+        "headline": headline,
+        "next_action": next_action,
+        "external_calls_made": 0,
+        "scan_status": _priced_in_scan_status(discovery),
+        "provider": {
+            "market_provider": _provider_name(config.daily_market_provider, default="csv"),
+            "ticker_seed_cap_pages": max(1, int(config.polygon_tickers_max_pages)),
+        },
+        "commands": commands,
+        "api": {
+            "seed_universe": "POST /api/radar/universe/seed",
+            "call_plan": "POST /api/radar/runs/call-plan",
+            "run": "POST /api/radar/runs",
+            "queue": "GET /api/radar/priced-in",
+        },
+        "call_plan": {
+            "status": call_plan.get("status"),
+            "max_external_call_count": call_plan.get("max_external_call_count"),
+            "next_action": call_plan.get("next_action"),
+        },
         "rows": rows,
     }
 
@@ -5022,6 +5091,165 @@ def _priced_in_queue_next_action(status: str) -> str:
     if status == "partial_scan":
         return "Open Ops/Run and fix missing bars before trusting the ranked queue."
     return "Review the largest emotion-versus-reaction gaps first."
+
+
+def _priced_in_preflight_rows(
+    discovery: Mapping[str, object],
+    call_plan: Mapping[str, object],
+    provider_rows: Sequence[Mapping[str, object]],
+    commands: Mapping[str, str],
+    config: AppConfig,
+) -> list[dict[str, object]]:
+    scan_yield = _mapping_value(discovery, "yield")
+    freshness = _mapping_value(discovery, "freshness")
+    active = int(_finite_float(freshness.get("active_security_count")))
+    requested = int(_finite_float(scan_yield.get("requested_securities")))
+    scanned = int(_finite_float(scan_yield.get("scanned_securities")))
+    latest_bars = int(_finite_float(freshness.get("active_security_with_as_of_bar_count")))
+    missing_bars = int(_finite_float(freshness.get("missing_as_of_daily_bar_count")))
+    provider = _provider_name(config.daily_market_provider, default="csv")
+    ticker_page_cap = max(1, int(config.polygon_tickers_max_pages))
+    rows: list[dict[str, object]] = []
+
+    if (active or requested or scanned) < 500:
+        cap_note = (
+            f"; Polygon/Massive ticker seed cap is {ticker_page_cap} page(s)"
+            if provider == "polygon"
+            else ""
+        )
+        seed_action = (
+            "Raise CATALYST_POLYGON_TICKERS_MAX_PAGES if needed, then seed tickers."
+            if provider == "polygon" and ticker_page_cap <= 1
+            else "Seed the ticker universe before calling this a full-market scan."
+        )
+        rows.append(
+            _priced_in_preflight_row(
+                "universe",
+                "blocked",
+                (
+                    "Only "
+                    f"{active or requested or scanned or 0} "
+                    f"active/requested securities are visible{cap_note}."
+                ),
+                seed_action,
+                commands.get("ingest_tickers"),
+                "POST /api/radar/universe/seed",
+            )
+        )
+    else:
+        rows.append(
+            _priced_in_preflight_row(
+                "universe",
+                "ready",
+                f"{active or requested or scanned} securities are available for scan scope.",
+                "Keep scanning without a ticker filter.",
+                "catalyst-radar scan --as-of <LATEST_TRADING_DATE>",
+                "POST /api/radar/runs",
+            )
+        )
+
+    if missing_bars or latest_bars == 0:
+        rows.append(
+            _priced_in_preflight_row(
+                "market_bars",
+                "blocked",
+                f"Run-as-of bar coverage is {latest_bars}/{active or 'n/a'}.",
+                "Ingest fresh grouped daily bars for the latest trading date.",
+                "catalyst-radar ingest-polygon grouped-daily --date <LATEST_TRADING_DATE>",
+                "POST /api/radar/runs/call-plan",
+            )
+        )
+    else:
+        rows.append(
+            _priced_in_preflight_row(
+                "market_bars",
+                "ready",
+                f"Run-as-of bars cover {latest_bars}/{active or latest_bars} securities.",
+                "Use the latest bars in the next scan.",
+                "catalyst-radar scan --as-of <LATEST_TRADING_DATE>",
+                "POST /api/radar/runs",
+            )
+        )
+
+    provider_by_layer = {str(row.get("layer") or ""): row for row in provider_rows}
+    for layer, area in (
+        ("News/events", "catalyst_events"),
+        ("Schwab portfolio", "broker_context"),
+        ("LLM review", "agent_review"),
+    ):
+        row = provider_by_layer.get(layer, {})
+        status = str(row.get("status") or "unknown")
+        if status == "blocked":
+            mapped_status = "blocked"
+        elif status in {"live_call_planned", "attention"}:
+            mapped_status = "attention"
+        else:
+            mapped_status = "ready"
+        rows.append(
+            _priced_in_preflight_row(
+                area,
+                mapped_status,
+                str(row.get("detail") or row.get("mode") or "not configured"),
+                str(row.get("next_action") or "Review provider settings."),
+                None,
+                None,
+            )
+        )
+
+    call_status = str(call_plan.get("status") or "unknown")
+    rows.append(
+        _priced_in_preflight_row(
+            "run_call_plan",
+            "blocked" if call_status == "blocked" else "ready",
+            (
+                f"{call_status}; max external calls "
+                f"{call_plan.get('max_external_call_count')}"
+            ),
+            str(call_plan.get("next_action") or "Review the run call plan."),
+            "catalyst-radar priced-in-queue --json",
+            "GET /api/radar/priced-in",
+        )
+    )
+    return rows
+
+
+def _priced_in_preflight_row(
+    area: str,
+    status: str,
+    finding: str,
+    next_action: str,
+    command: str | None,
+    api: str | None,
+) -> dict[str, object]:
+    return {
+        "area": area,
+        "status": status,
+        "finding": finding,
+        "next_action": next_action,
+        "command": command,
+        "api": api,
+    }
+
+
+def _priced_in_preflight_commands(config: AppConfig) -> dict[str, str]:
+    provider = _provider_name(config.daily_market_provider, default="csv")
+    if provider == "polygon":
+        page_cap = max(1, int(config.polygon_tickers_max_pages))
+        ingest_tickers = f"catalyst-radar ingest-polygon tickers --max-pages {page_cap}"
+        ingest_bars = "catalyst-radar ingest-polygon grouped-daily --date <LATEST_TRADING_DATE>"
+    else:
+        ingest_tickers = (
+            "catalyst-radar ingest-csv --securities <securities.csv> --daily-bars <bars.csv>"
+        )
+        ingest_bars = ingest_tickers
+    return {
+        "ingest_tickers": ingest_tickers,
+        "ingest_bars": ingest_bars,
+        "build_universe": "catalyst-radar build-universe --as-of <LATEST_TRADING_DATE>",
+        "review_call_plan": "catalyst-radar dashboard-tui --once --page run",
+        "run_scan": "catalyst-radar scan --as-of <LATEST_TRADING_DATE>",
+        "review_queue": "catalyst-radar priced-in-queue --json",
+    }
 
 
 def _research_shortlist_priority(row: Mapping[str, object]) -> str:

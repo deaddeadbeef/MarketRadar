@@ -13,6 +13,7 @@ while rendering, navigating, filtering, or exporting its local JSON snapshot.
 catalyst-radar dashboard-tui
 catalyst-radar dashboard-tui --once --page overview
 catalyst-radar dashboard-tui --once --page features
+catalyst-radar priced-in-preflight --json
 catalyst-radar priced-in-queue --json
 catalyst-radar dashboard-snapshot --json
 ```
@@ -33,7 +34,7 @@ also supports low-risk operator writes: `action <ticker> <action> [notes]`,
 | Area | Current dashboard feature | TUI page | Operational use |
 | --- | --- | --- | --- |
 | Readiness | Investment readiness, usefulness score, and operator next step | `overview`, `readiness` | Know whether output is research-only or decision-useful. |
-| Full scan coverage | Active universe size, requested/scanned securities, candidate count, latest/run bar coverage | `overview`, `ops`, `run` | Confirm the queue came from a real broad-market pass rather than a tiny fixture universe. |
+| Full scan coverage | Active universe size, requested/scanned securities, candidate count, latest/run bar coverage, zero-call preflight blockers | `overview`, `ops`, `run`, `priced-in-preflight`, `/api/radar/priced-in/preflight` | Confirm the queue came from a real broad-market pass rather than a tiny fixture universe, and get the exact next command when it did not. |
 | Priced-in mismatch | Emotion score, price-reaction score, emotion-minus-reaction gap, status, reason, source coverage, next step | `overview`, `candidates`, `candidate:<ticker>`, `priced-in-queue`, `/api/radar/priced-in` | Find stocks where market emotion appears ahead of or behind price reaction and see which data classes are missing. |
 | Market data | Run as-of coverage, latest bar coverage, stale-bar blockers | `overview`, `ops` | Verify fresh bars before relying on real market data. |
 | Radar run | Latest run path, required steps, optional gates, call plan | `overview`, `run` | Check what will call external providers before executing a cycle. |
@@ -55,9 +56,14 @@ action saves, trigger management, trigger evaluation, blocked order-preview
 ticket creation, and alert feedback. The `overview` page should be read as a
 priced-in mismatch queue, not as a complete ticker table: the first row states
 whether the active local universe is large enough to count as a full-market
-scan, and candidate rows are the ranked useful subset. These live-provider
-actions stay behind existing explicit guarded commands or API routes because
-they can call external services and require credentials:
+scan, and candidate rows are the ranked useful subset. If the universe is tiny,
+`priced-in-preflight --json` and `/api/radar/priced-in/preflight` provide the
+zero-call checklist for seeding tickers, ingesting bars, building the universe,
+reviewing the call plan, running the scan, and reviewing the queue. In
+Polygon/Massive mode that checklist includes the configured ticker-reference
+page cap so a one-page seed is not mistaken for the whole market. These
+live-provider actions stay behind existing explicit guarded commands or API
+routes because they can call external services and require credentials:
 
 - Trigger optional universe seeding only when Polygon is configured.
 - Refresh Schwab market context for a selected candidate.

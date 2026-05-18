@@ -57,7 +57,10 @@ from catalyst_radar.connectors.sec import SecSubmissionsConnector
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.core.immutability import thaw_json_value
 from catalyst_radar.core.models import ActionState
-from catalyst_radar.dashboard.data import priced_in_queue_payload
+from catalyst_radar.dashboard.data import (
+    priced_in_preflight_payload,
+    priced_in_queue_payload,
+)
 from catalyst_radar.dashboard.demo_seed import (
     default_sec_document_fixture_path,
     default_sec_fixture_path,
@@ -353,6 +356,10 @@ def build_parser() -> argparse.ArgumentParser:
     priced_in.add_argument("--min-gap", type=float)
     priced_in.add_argument("--json", action="store_true")
 
+    priced_in_preflight = subparsers.add_parser("priced-in-preflight")
+    priced_in_preflight.add_argument("--database-url")
+    priced_in_preflight.add_argument("--json", action="store_true")
+
     agent_brief = subparsers.add_parser("agent-brief")
     agent_brief.add_argument("--database-url")
     agent_brief.add_argument("--ticker")
@@ -645,6 +652,15 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
         else:
             _print_priced_in_queue(payload)
+        return 0
+
+    if args.command == "priced-in-preflight":
+        create_schema(engine)
+        payload = priced_in_preflight_payload(engine, config)
+        if args.json:
+            print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
+        else:
+            _print_priced_in_preflight(payload)
         return 0
 
     if args.command == "agent-brief":
@@ -2462,6 +2478,34 @@ def _priced_in_data_summary(row: Mapping[str, object]) -> str:
         if summary:
             return summary.replace(" ", "_")
     return "n/a"
+
+
+def _print_priced_in_preflight(payload: Mapping[str, object]) -> None:
+    print(
+        "priced_in_preflight "
+        f"status={payload.get('status')} "
+        f"scan_status={payload.get('scan_status')} "
+        f"external_calls={payload.get('external_calls_made')}"
+    )
+    print(f"headline={payload.get('headline')}")
+    print(f"next_action={payload.get('next_action')}")
+    print("area status finding next_action command api")
+    for row in payload.get("rows", []):
+        if not isinstance(row, Mapping):
+            continue
+        print(
+            f"{row.get('area')} "
+            f"{row.get('status')} "
+            f"{_compact_cli_text(row.get('finding'))} "
+            f"{_compact_cli_text(row.get('next_action'))} "
+            f"{_compact_cli_text(row.get('command'))} "
+            f"{_compact_cli_text(row.get('api'))}"
+        )
+
+
+def _compact_cli_text(value: object) -> str:
+    text = str(value or "n/a").strip()
+    return text.replace(" ", "_")
 
 
 def _print_external_json(payload: Mapping[str, object]) -> int:
