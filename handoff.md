@@ -1,6 +1,53 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 11:20:00 +08:00
+Last updated: 2026-05-18 11:45:00 +08:00
+
+## Latest Candidate Detail Correction
+
+The full-market scan queue is intentionally paged. The dashboard should not
+pretend the visible rows are the whole market. The current local queue is broad:
+`priced-in-queue --status actionable --limit 3 --json` reported
+`scanned_candidate_states=12087`, `total_count=7`, `returned_count=3`, and
+`has_more=true`. That means the scan covered the broad local universe, then the
+operator surface narrowed it to the ranked actionable mismatch queue.
+
+Use this zero-call sequence when the user asks "why only these tickers?":
+
+```powershell
+catalyst-radar priced-in-preflight --json
+catalyst-radar priced-in-queue --status actionable --limit 50 --offset 0 --json
+catalyst-radar priced-in-queue --status all --limit 50 --offset 50 --json
+```
+
+`priced-in-preflight` explains whether the latest run is broad enough.
+`priced-in-queue` is the paged queue. `status=actionable` shows only bullish or
+bearish not-priced-in mismatches. `status=all` inspects the full priced-in scan
+slice by slice.
+
+Candidate detail now has a concise evidence brief shared by API, CLI, and TUI:
+
+```powershell
+catalyst-radar candidate-detail A
+catalyst-radar candidate-detail A --json
+catalyst-radar dashboard-tui --once --page candidate:A
+```
+
+The API payload from `/api/radar/candidates/{ticker}` includes
+`priced_in_evidence_brief` with:
+
+- priced-in status, direction, emotion score, reaction score, gap, and
+  priced-in score;
+- the "why now" explanation;
+- top catalyst/source/source URL;
+- source coverage summary;
+- blockers, if any;
+- top evidence rows;
+- the single next operator step.
+
+The TUI candidate detail page now uses the same brief instead of a generic
+field dump. It should answer: what signal did the full scan find, why might it
+not be priced in, what evidence supports it, what data is missing, and what the
+operator should do next. Rendering and detail inspection remain zero-call.
 
 ## Latest Queue UX Correction
 

@@ -58,6 +58,7 @@ from catalyst_radar.core.config import AppConfig
 from catalyst_radar.core.immutability import thaw_json_value
 from catalyst_radar.core.models import ActionState
 from catalyst_radar.dashboard.data import (
+    load_ticker_detail,
     priced_in_preflight_payload,
     priced_in_queue_payload,
 )
@@ -361,6 +362,11 @@ def build_parser() -> argparse.ArgumentParser:
     priced_in_preflight.add_argument("--database-url")
     priced_in_preflight.add_argument("--json", action="store_true")
 
+    candidate_detail = subparsers.add_parser("candidate-detail")
+    candidate_detail.add_argument("ticker")
+    candidate_detail.add_argument("--database-url")
+    candidate_detail.add_argument("--json", action="store_true")
+
     agent_brief = subparsers.add_parser("agent-brief")
     agent_brief.add_argument("--database-url")
     agent_brief.add_argument("--ticker")
@@ -663,6 +669,18 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
         else:
             _print_priced_in_preflight(payload)
+        return 0
+
+    if args.command == "candidate-detail":
+        create_schema(engine)
+        payload = load_ticker_detail(engine, args.ticker.upper())
+        if payload is None:
+            print(f"candidate detail not found: {args.ticker.upper()}", file=sys.stderr)
+            return 1
+        if args.json:
+            print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
+        else:
+            _print_candidate_detail(payload)
         return 0
 
     if args.command == "agent-brief":
@@ -2539,6 +2557,50 @@ def _print_priced_in_preflight(payload: Mapping[str, object]) -> None:
             f"{_compact_cli_text(row.get('command'))} "
             f"{_compact_cli_text(row.get('api'))}"
         )
+
+
+def _print_candidate_detail(payload: Mapping[str, object]) -> None:
+    ticker = str(payload.get("ticker") or "").upper()
+    brief = payload.get("priced_in_evidence_brief")
+    latest = payload.get("latest_candidate")
+    if not isinstance(brief, Mapping):
+        brief = {}
+    if not isinstance(latest, Mapping):
+        latest = {}
+    print(
+        "candidate_detail "
+        f"ticker={ticker} "
+        f"status={brief.get('status') or latest.get('priced_in_status') or 'n/a'} "
+        f"blocked={str(bool(brief.get('blocked'))).lower()}"
+    )
+    print(f"why_now={_compact_cli_text(brief.get('why_now'))}")
+    print(
+        "emotion_vs_reaction="
+        f"emotion={brief.get('emotion_score')} "
+        f"reaction={brief.get('reaction_score')} "
+        f"gap={brief.get('emotion_reaction_gap')} "
+        f"priced={brief.get('priced_in_score')}"
+    )
+    print(f"data={_compact_cli_text(_detail_data_summary(brief))}")
+    blockers = brief.get("blockers")
+    if isinstance(blockers, list | tuple) and blockers:
+        print(f"blockers={','.join(str(item) for item in blockers)}")
+    evidence = brief.get("evidence")
+    if isinstance(evidence, list | tuple) and evidence:
+        print("evidence:")
+        for index, item in enumerate(evidence[:5], start=1):
+            if isinstance(item, Mapping):
+                title = _compact_cli_text(item.get("title"))
+                source = _compact_cli_text(item.get("source"))
+                print(f"{index}. {title} ({source})")
+    print(f"next_step={_compact_cli_text(brief.get('next_step'))}")
+
+
+def _detail_data_summary(brief: Mapping[str, object]) -> object:
+    data_sources = brief.get("data_sources")
+    if isinstance(data_sources, Mapping):
+        return data_sources.get("summary")
+    return None
 
 
 def _compact_cli_text(value: object) -> str:

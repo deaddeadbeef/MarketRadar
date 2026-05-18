@@ -256,6 +256,41 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
     assert "catalyst_events" in payload["rows"][0]["data_sources"]["available"]
 
 
+def test_candidate_detail_cli_outputs_priced_in_evidence_brief(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["seed-dashboard-demo"]) == 0
+    capsys.readouterr()
+
+    assert main(["candidate-detail", "ACME", "--json"]) == 0
+    output = capsys.readouterr()
+    payload = json.loads(output.out)
+
+    assert output.err == ""
+    brief = payload["priced_in_evidence_brief"]
+    assert brief["schema_version"] == "priced-in-evidence-brief-v1"
+    assert brief["ticker"] == "ACME"
+    assert brief["status"] == "bullish_not_priced_in"
+    assert brief["evidence"]
+    assert brief["next_step"]
+
+    assert main(["candidate-detail", "ACME"]) == 0
+    output = capsys.readouterr()
+
+    assert output.err == ""
+    assert "candidate_detail ticker=ACME" in output.out
+    assert "status=bullish_not_priced_in" in output.out
+    assert "why_now=" in output.out
+    assert "emotion_vs_reaction=" in output.out
+    assert "evidence:" in output.out
+    assert "next_step=" in output.out
+
+
 def test_priced_in_preflight_cli_outputs_zero_call_plan(
     tmp_path: Path,
     monkeypatch,

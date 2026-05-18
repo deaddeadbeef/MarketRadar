@@ -3625,6 +3625,14 @@ def test_load_ticker_detail_returns_candidate_packet_card_events_and_validation(
     assert detail["latest_candidate"]["id"] == "state-msft-latest"
     assert detail["latest_candidate"]["candidate_packet_id"] == "packet-msft-latest"
     assert detail["latest_candidate"]["decision_card_id"] == "card-msft-latest"
+    brief = detail["priced_in_evidence_brief"]
+    assert brief["schema_version"] == "priced-in-evidence-brief-v1"
+    assert brief["ticker"] == "MSFT"
+    assert brief["why_now"] == "MSFT guidance raised"
+    assert brief["top_catalyst"] == "MSFT guidance raised"
+    assert brief["data_sources"]["summary"]
+    assert brief["evidence"][0]["title"] == "MSFT guidance raised"
+    assert brief["next_step"] == "Monitor; no useful priced-in mismatch is visible yet."
     assert [row["id"] for row in detail["state_history"]] == [
         "state-msft-latest",
         "state-msft-earlier",
