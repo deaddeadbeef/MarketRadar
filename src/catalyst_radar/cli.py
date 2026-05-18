@@ -3181,7 +3181,9 @@ def _print_priced_in_answer(payload: Mapping[str, object]) -> None:
     print(
         "priced_in_answer "
         f"status={payload.get('status')} "
-        f"decision_ready={str(bool(payload.get('can_make_investment_decision'))).lower()} "
+        f"decision_ready={str(bool(payload.get('decision_ready'))).lower()} "
+        f"investment_decision_ready="
+        f"{str(bool(payload.get('can_make_investment_decision'))).lower()} "
         f"total={counts.get('total_rows')} "
         f"mismatches={counts.get('actionable_mismatch_rows')} "
         f"research={counts.get('research_lead_rows')} "
@@ -3191,6 +3193,9 @@ def _print_priced_in_answer(payload: Mapping[str, object]) -> None:
     print(f"question={payload.get('question')}")
     print(f"answer={payload.get('answer')}")
     print(f"headline={payload.get('headline')}")
+    boundary = payload.get("investment_decision_boundary")
+    if boundary:
+        print(f"investment_boundary={_compact_cli_text(boundary)}")
     scan_scope = payload.get("scan_scope")
     if isinstance(scan_scope, Mapping):
         print(f"scan_scope={_compact_cli_text(scan_scope.get('explanation'))}")

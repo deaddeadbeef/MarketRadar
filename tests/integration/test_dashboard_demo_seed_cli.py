@@ -385,6 +385,9 @@ def test_dashboard_tui_once_can_show_full_scan_mode(
     output = capsys.readouterr()
 
     assert output.err == ""
+    assert "Priced-in:" in output.out
+    assert "Trade status:" in output.out
+    assert "Trade safe:" in output.out
     assert "Full-market priced-in queue - showing" in output.out
     assert "Decision readiness:" in output.out
     assert "Data gaps" in output.out
@@ -748,6 +751,8 @@ def test_priced_in_answer_cli_outputs_current_scan_answer(
     assert "priced_in_answer status=" in output.out
     assert "question=Has price fully matched market expectations?" in output.out
     assert "answer=" in output.out
+    assert "investment_decision_ready=false" in output.out
+    assert "investment_boundary=Priced-in answer readiness is not trade approval" in output.out
     assert "decision_readiness=status=" in output.out
     assert "actionable_rows_sample=ranked actionable mismatches" in output.out
     assert (
@@ -762,6 +767,11 @@ def test_priced_in_answer_cli_outputs_current_scan_answer(
     assert payload["schema_version"] == "priced-in-answer-v1"
     assert payload["external_calls_made"] == 0
     assert payload["question"] == "Has price fully matched market expectations?"
+    assert payload["decision_ready"] is True
+    assert payload["priced_in_answer_ready"] is True
+    assert payload["can_make_investment_decision"] is False
+    assert payload["manual_investment_decision_ready"] is False
+    assert "not trade approval" in payload["investment_decision_boundary"]
     assert payload["decision_readiness"]["schema_version"] == (
         "priced-in-decision-readiness-v1"
     )
@@ -981,6 +991,9 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert "M  Mismatches only" in frame
             assert "ALL Full scan rows" in frame
             assert "Candidates [1]" in frame
+            assert "PRICE ANSWER" in frame
+            assert "Priced-in answer" in frame
+            assert "Trade safe?" in frame
             assert "FRESH BARS" in frame
             assert "No - research only" in frame
             assert "KEYS" in frame

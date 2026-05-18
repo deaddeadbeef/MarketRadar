@@ -1170,9 +1170,12 @@ class MarketRadarDashboardApp(App[int]):
         broker = _mapping(_mapping(self.payload.get("broker")).get("snapshot"))
         runtime = _mapping(self.payload.get("runtime_context"))
         controls = _mapping(self.payload.get("controls"))
+        answer = _mapping(self.payload.get("priced_in_answer"))
         next_step = _mapping(self.payload.get("operator_next_step"))
         next_action = next_step.get("action") or readiness.get("next_action")
         can_act = _decision_label(readiness)
+        answer_status = _human_label(answer.get("status") or "unknown")
+        answer_ready = "ready" if bool(answer.get("decision_ready")) else "not ready"
         active_page = self.page.split(":", 1)[0]
         page_title = (
             "TUTORIAL"
@@ -1214,12 +1217,13 @@ class MarketRadarDashboardApp(App[int]):
                 [
                     (
                         f"[bold #7ee787]MARKET RADAR[/] // [b]{page_title}[/b]  "
-                        f"[dim]{readiness.get('status') or 'unknown'} | "
-                        f"{can_act} | "
+                        f"[dim]priced-in {answer_status} ({answer_ready}) | "
+                        f"trade {readiness.get('status') or 'unknown'} | "
                         f"{self.payload.get('external_calls_made', 0)} calls while viewing[/dim]"
                     ),
                     (
-                        f"[bold]Can I act?[/] {can_act}. "
+                        f"[bold]Priced-in answer[/] {answer_status}; "
+                        f"[bold]Trade safe?[/] {can_act}. "
                         f"{readiness.get('headline') or 'No readiness headline.'} "
                         f"[dim]Build {(_nested(runtime, 'build', 'commit') or 'n/a')} | "
                         f"Ticker {controls.get('ticker') or 'all'}[/dim]"
@@ -1230,9 +1234,9 @@ class MarketRadarDashboardApp(App[int]):
         )
         self.query_one("#metric-readiness", Static).update(
             _metric_text(
-                "Can I act?",
-                can_act,
-                readiness.get("status"),
+                "Price answer",
+                answer_status,
+                f"{answer_ready}; trade {can_act}",
             )
         )
         self.query_one("#metric-market", Static).update(
@@ -2460,12 +2464,16 @@ def _header_lines(
     runtime = _mapping(payload.get("runtime_context"))
     controls = _mapping(payload.get("controls"))
     readiness = _mapping(payload.get("readiness"))
+    answer = _mapping(payload.get("priced_in_answer"))
+    answer_ready = "true" if bool(answer.get("decision_ready")) else "false"
     return [
         _rule("Market Radar Terminal Dashboard", width, char="="),
         (
             f"Page: {page} | "
-            f"Status: {_text(readiness.get('status'))} | "
-            f"Decision safe: {_text(readiness.get('safe_to_make_investment_decision'))} | "
+            f"Priced-in: {_human_label(answer.get('status') or 'unknown')} "
+            f"ready={answer_ready} | "
+            f"Trade status: {_human_label(readiness.get('status') or 'unknown')} | "
+            f"Trade safe: {_text(readiness.get('safe_to_make_investment_decision'))} | "
             f"External calls made: {_text(payload.get('external_calls_made', 0))}"
         ),
         (
