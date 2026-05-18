@@ -1,6 +1,53 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 03:10:00 +08:00
+Last updated: 2026-05-19 03:00:33 +08:00
+
+## Latest TUI Full-Scan Batch Clarification
+
+The user asked again: "Why only these tickers? I want full scan." The live
+database now shows the important distinction:
+
+- The current priced-in queue is a full ranked universe page: 2,429 rows in the
+  latest local smoke.
+- The 5 tickers shown by `priced-in-source-batches` or the TUI `batch <source>`
+  command are only the next safe executor chunk for a weak source, not the scan
+  universe.
+- Full evidence fill is therefore an iterative source-fill workflow over all
+  planned chunks, not one accidental "call every provider for every ticker"
+  action.
+
+Changes in this slice:
+
+- TUI help now documents both `batch <source>` and
+  `batch <source> execute`.
+- `batch <source>` remains plan-only and zero-call. Its message now says:
+  "This is a full-scan plan, not a watchlist" and labels the listed tickers as
+  the "next safe chunk only."
+- `batch <source> execute` and `batch execute <source>` now run exactly one
+  guarded source-fill chunk:
+  - `local_text` calls the local text pipeline over stored event text and makes
+    0 external calls.
+  - `catalyst_events` calls the existing SEC submissions batch executor and
+    preserves SEC live/user-agent guards.
+  - `options` and `broker_context` call the existing read-only Schwab market
+    sync route, preserving the Schwab connection/rate-limit/token guards.
+- The ops page wording now says examples are sample tickers only and tells the
+  operator to use `batch <source> execute` only for the next guarded chunk.
+- README and `docs/dashboard-feature-inventory.md` now explain the distinction
+  between the full ranked scan, the full source-fill plan, and one provider
+  chunk.
+
+Validation so far:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_batch_command_opens_full_scan_source_batch_plan tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_batch_execute_runs_one_guarded_local_chunk -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py
+```
+
+Observed: focused tests passed, ruff passed, `git diff --check` passed, and a
+static `dashboard-tui --once --page help | Select-String batch` smoke passed
+with a larger timeout. The static smoke takes about 70 seconds on the current
+large local dashboard payload.
 
 ## Latest Full-Scan Universe Scope Correction
 

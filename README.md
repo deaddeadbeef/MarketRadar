@@ -108,6 +108,11 @@ Press `M`, click the `SCAN` controls in the sidebar, or type `full` /
 `mismatches` in the command box to switch. For non-interactive checks, use
 `catalyst-radar dashboard-tui --once --page overview`; pass
 `--scan-mode mismatches` only when you intentionally want the smaller queue.
+Source-fill actions are deliberately chunked: `batch <source>` shows the
+full-scan source plan plus the next safe provider chunk, and
+`batch <source> execute` runs only that one guarded chunk. The few tickers in a
+chunk are not the scan universe; they are the next rate-limited fill batch for
+the broader ranked universe.
 
 Before any live provider call, run the activation checker and inspect the
 call plan:
@@ -208,6 +213,10 @@ to reload the local database, and `q` to quit. It makes 0 Polygon, SEC, Schwab,
 or OpenAI calls while rendering, clicking, filtering, or navigating. From the
 run page, `run` explains the guarded execution path and `run execute` starts
 one capped scheduler cycle after the call plan is visible.
+From the ops/source-gap view, `batch <source>` remains plan-only and zero-call;
+`batch <source> execute` is the explicit live/local action for one source-fill
+chunk. Use it repeatedly with refreshes when you intentionally want to fill the
+full scan under provider caps.
 The broker page also supports local operator writes that do not submit real
 orders: `action <ticker> <watch|ready|simulate_entry|dismiss> [notes]`,
 `trigger <ticker> <type> <op> <threshold> [notes]`, `eval-triggers [ticker]`,
