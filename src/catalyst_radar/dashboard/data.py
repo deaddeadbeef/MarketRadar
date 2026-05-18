@@ -957,6 +957,7 @@ def priced_in_answer_payload(
         _mapping_value(resolved_queue, "decision_gap_counts"),
         source_coverage=source_coverage,
         decision_ready_count=decision_ready_count,
+        scan_as_of=str(_mapping_value(resolved_queue, "latest_run").get("as_of") or ""),
     )
     decision_ready = decision_ready_count > 0
     return {
@@ -1108,6 +1109,7 @@ def _priced_in_answer_decision_readiness(
     *,
     source_coverage: Mapping[str, object],
     decision_ready_count: int,
+    scan_as_of: str = "",
 ) -> dict[str, object]:
     row_count = int(_finite_float(decision_gap_counts.get("row_count")))
     count_values = _mapping_value(decision_gap_counts, "counts")
@@ -1117,7 +1119,7 @@ def _priced_in_answer_decision_readiness(
         if isinstance(action, Mapping)
     }
     top_gaps = [
-        _priced_in_decision_gap_row(gap, count, actions=actions)
+        _priced_in_decision_gap_row(gap, count, actions=actions, scan_as_of=scan_as_of)
         for gap, count in sorted(
             count_values.items(),
             key=lambda item: (
@@ -1166,6 +1168,7 @@ def _priced_in_decision_gap_row(
     count: object,
     *,
     actions: Mapping[str, Mapping[str, object]],
+    scan_as_of: str = "",
 ) -> dict[str, object]:
     gap_name = str(gap or "").strip()
     count_value = int(_finite_float(count))
@@ -1179,15 +1182,17 @@ def _priced_in_decision_gap_row(
     ).strip()
     if gap_name == "candidate_packet":
         next_action = "Build Candidate Packets for research-useful mismatch rows."
-        command = (
-            "catalyst-radar priced-in-queue --usefulness research_useful "
-            "--decision-gap candidate_packet --limit 50"
+        command = _priced_in_local_artifact_command(
+            "build-packets",
+            scan_as_of=scan_as_of,
+            fallback_gap="candidate_packet",
         )
     elif gap_name == "decision_card":
         next_action = "Build Decision Cards after candidate packets exist."
-        command = (
-            "catalyst-radar priced-in-queue --usefulness research_useful "
-            "--decision-gap decision_card --limit 50"
+        command = _priced_in_local_artifact_command(
+            "build-decision-cards",
+            scan_as_of=scan_as_of,
+            fallback_gap="decision_card",
         )
     elif not next_action:
         next_action = "Review this decision gap before trusting not-priced-in output."
@@ -1197,6 +1202,23 @@ def _priced_in_decision_gap_row(
         "next_action": next_action,
         "command": command or None,
     }
+
+
+def _priced_in_local_artifact_command(
+    command: str,
+    *,
+    scan_as_of: str,
+    fallback_gap: str,
+) -> str:
+    if scan_as_of:
+        return (
+            f"catalyst-radar {command} --as-of {scan_as_of} "
+            "--min-state AddToWatchlist"
+        )
+    return (
+        "catalyst-radar priced-in-queue --usefulness research_useful "
+        f"--decision-gap {fallback_gap} --limit 50"
+    )
 
 
 def _priced_in_decision_gap_priority(gap: str) -> int:
