@@ -529,6 +529,7 @@ def priced_in_queue_payload(
     *,
     limit: int = 50,
     offset: int = 0,
+    available_at: datetime | None = None,
     status: str | None = None,
     usefulness: str | None = None,
     source_gap: str | Sequence[str] | None = None,
@@ -539,17 +540,29 @@ def priced_in_queue_payload(
 ) -> dict[str, object]:
     latest_run = load_radar_run_summary(engine)
     using_supplied_rows = candidate_rows is not None
-    queue_candidate_rows = (
-        [_row_dict(row) for row in candidate_rows]
-        if candidate_rows is not None
-        else load_radar_run_candidate_rows(
+    if candidate_rows is not None:
+        queue_candidate_rows = [_row_dict(row) for row in candidate_rows]
+    elif available_at is not None:
+        queue_candidate_rows = load_candidate_rows(
+            engine,
+            available_at=available_at,
+            as_of_date=_parse_date(latest_run.get("as_of")) if latest_run else None,
+            limit=None,
+            include_artifacts=True,
+        )
+    elif latest_run:
+        queue_candidate_rows = load_radar_run_candidate_rows(
             engine,
             latest_run,
             limit=None,
             include_artifacts=True,
         )
-        if latest_run
-        else load_candidate_rows(engine, limit=None, include_artifacts=True)
+    else:
+        queue_candidate_rows = load_candidate_rows(engine, limit=None, include_artifacts=True)
+    broker_summary = load_broker_summary(engine)
+    queue_candidate_rows = candidate_rows_with_market_context(
+        queue_candidate_rows,
+        _market_context_value(broker_summary),
     )
     discovery = radar_discovery_snapshot_payload(
         engine,
@@ -652,6 +665,7 @@ def priced_in_queue_payload(
             "min_gap": min_gap,
             "limit": resolved_limit,
             "offset": resolved_offset,
+            "available_at": available_at.isoformat() if available_at else None,
         },
         "count": len(page_rows),
         "returned_count": len(page_rows),
@@ -1390,7 +1404,7 @@ def radar_readiness_payload(
     broker_summary = load_broker_summary(engine)
     market_candidate_rows = candidate_rows_with_market_context(
         candidate_rows,
-        _mapping_value(broker_summary, "market_context"),
+        _market_context_value(broker_summary),
     )
     ops_health = load_ops_health(engine)
     discovery_snapshot = radar_discovery_snapshot_payload(
@@ -1494,7 +1508,7 @@ def radar_research_shortlist_payload(
     broker_summary = load_broker_summary(engine)
     market_candidate_rows = candidate_rows_with_market_context(
         candidate_rows,
-        _mapping_value(broker_summary, "market_context"),
+        _market_context_value(broker_summary),
     )
     discovery_snapshot = radar_discovery_snapshot_payload(
         engine,
@@ -1511,7 +1525,7 @@ def radar_research_shortlist_payload(
         market_candidate_rows,
         readiness,
         limit=limit,
-        market_context=_mapping_value(broker_summary, "market_context"),
+        market_context=_market_context_value(broker_summary),
     )
     return {
         **shortlist,
@@ -1671,6 +1685,10 @@ def load_ticker_detail(
             )
         ]
 
+    latest_candidate = candidate_rows_with_market_context(
+        [latest_candidate],
+        _market_context_value(load_broker_summary(engine)),
+    )[0]
     signal_payload = signal_row.get("payload") if signal_row is not None else None
     packet_payload = packet_row.get("payload") if packet_row is not None else None
     card_payload = card_row.get("payload") if card_row is not None else None
@@ -5369,11 +5387,7 @@ def _priced_in_queue_row(row: Mapping[str, object]) -> dict[str, object]:
     brief = _mapping_value(row, "research_brief")
     status = str(row.get("priced_in_status") or "unknown").strip() or "unknown"
     blockers = _priced_in_row_blockers(row)
-    data_sources = (
-        row.get("priced_in_data_sources")
-        if isinstance(row.get("priced_in_data_sources"), Mapping)
-        else _priced_in_data_sources(row)
-    )
+    data_sources = _priced_in_row_source_payload(row)
     source_actions = _priced_in_source_actions_from_payload(
         data_sources,
         ticker=_priced_in_action_ticker(row),
@@ -5441,8 +5455,48 @@ def _priced_in_row_source_payload(row: Mapping[str, object]) -> dict[str, object
     for key in ("data_sources", "priced_in_data_sources"):
         value = row.get(key)
         if isinstance(value, Mapping):
-            return _row_dict(value)
-    return _priced_in_data_sources(row)
+            return _priced_in_source_payload_with_runtime_context(row, _row_dict(value))
+    return _priced_in_source_payload_with_runtime_context(row, _priced_in_data_sources(row))
+
+
+def _priced_in_source_payload_with_runtime_context(
+    row: Mapping[str, object],
+    payload: Mapping[str, object],
+) -> dict[str, object]:
+    status = str(row.get("schwab_context_status") or "").strip().lower()
+    if status == "available":
+        return _priced_in_source_payload_set_source(payload, "broker_context", "available")
+    if status == "missing":
+        return _priced_in_source_payload_set_source(payload, "broker_context", "missing")
+    return _row_dict(payload)
+
+
+def _priced_in_source_payload_set_source(
+    payload: Mapping[str, object],
+    source: str,
+    target_status: str,
+) -> dict[str, object]:
+    statuses = ("available", "stale", "missing")
+    values = {
+        status: [
+            str(item)
+            for item in _sequence_value(payload.get(status))
+            if str(item).strip() and str(item) != source
+        ]
+        for status in statuses
+    }
+    if target_status in values:
+        values[target_status].append(source)
+    parts = []
+    for status in statuses:
+        if values[status]:
+            parts.append(f"{status}: {', '.join(values[status])}")
+    return {
+        "available": values["available"],
+        "stale": values["stale"],
+        "missing": values["missing"],
+        "summary": "; ".join(parts) if parts else "no source coverage",
+    }
 
 
 def _priced_in_source_coverage_summary_text(
@@ -6529,6 +6583,12 @@ def _mapping_value(source: object, key: str) -> dict[str, object]:
         return {}
     value = source.get(key)
     return _row_dict(value) if isinstance(value, Mapping) else {}
+
+
+def _market_context_value(source: object) -> tuple[object, ...]:
+    if not isinstance(source, Mapping):
+        return ()
+    return _sequence_value(source.get("market_context"))
 
 
 def _budget_ledger_history_row(entry: BudgetLedgerEntry) -> dict[str, object]:
