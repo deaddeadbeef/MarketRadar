@@ -766,6 +766,13 @@ def priced_in_source_gap_batches_payload(
             row_start = index * resolved_batch_size
             row_end = min(row_start + resolved_batch_size, len(tickers))
             batch_tickers = tickers[row_start:row_end]
+            call_budget = _priced_in_source_batch_call_budget(
+                engine,
+                config,
+                source_name=source_name,
+                tickers=batch_tickers,
+                scan_as_of=scan_as_of,
+            )
             batches.append(
                 {
                     "index": index,
@@ -786,10 +793,7 @@ def priced_in_source_gap_batches_payload(
                         scan_as_of=scan_as_of,
                         planned_available_at=planned_available_at,
                     ),
-                    "external_calls_required": _priced_in_source_batch_call_count(
-                        source_name,
-                        len(batch_tickers),
-                    ),
+                    **call_budget,
                 }
             )
     status_value = (
@@ -6570,14 +6574,73 @@ def _priced_in_source_batch_api_payload(
     return None
 
 
-def _priced_in_source_batch_call_count(source_name: str, ticker_count: int) -> int:
+def _priced_in_source_batch_call_budget(
+    engine: Engine,
+    config: AppConfig,
+    *,
+    source_name: str,
+    tickers: Sequence[str],
+    scan_as_of: str,
+) -> dict[str, object]:
     if source_name == "local_text":
-        return 0
+        return {
+            "external_calls_required": 0,
+            "external_call_breakdown": {},
+            "call_plan_status": "local_only",
+            "call_plan_headline": "Local text intelligence makes no provider calls.",
+        }
     if source_name == "catalyst_events":
-        return ticker_count
+        call_plan = radar_run_call_plan_payload(
+            engine,
+            config,
+            as_of=scan_as_of,
+            tickers=tickers,
+            run_llm=False,
+            llm_dry_run=True,
+            dry_run_alerts=True,
+        )
+        return {
+            "external_calls_required": int(
+                _finite_float(call_plan.get("max_external_call_count"))
+            ),
+            "external_call_breakdown": _call_plan_external_breakdown(call_plan),
+            "call_plan_status": call_plan.get("status"),
+            "call_plan_headline": call_plan.get("headline"),
+            "call_plan_next_action": call_plan.get("next_action"),
+        }
     if source_name in PRICED_IN_SCHWAB_BATCH_SOURCES:
-        return 1
-    return 0
+        return {
+            "external_calls_required": 1,
+            "external_call_breakdown": {"schwab": 1},
+            "call_plan_status": "live_calls_planned",
+            "call_plan_headline": "Read-only Schwab market sync may make one external call.",
+        }
+    return {
+        "external_calls_required": 0,
+        "external_call_breakdown": {},
+        "call_plan_status": "not_batchable",
+        "call_plan_headline": "This source is not filled by ticker batch sync.",
+    }
+
+
+def _call_plan_external_breakdown(call_plan: Mapping[str, object]) -> dict[str, int]:
+    keys = {
+        "Market data": "market_data",
+        "News/events": "catalyst_events",
+        "LLM review": "openai",
+        "Schwab": "schwab",
+    }
+    breakdown: dict[str, int] = {}
+    for row in _sequence_value(call_plan.get("rows")):
+        if not isinstance(row, Mapping):
+            continue
+        count = int(_finite_float(row.get("external_call_count_max")))
+        if count <= 0:
+            continue
+        key = keys.get(str(row.get("layer") or ""))
+        if key:
+            breakdown[key] = breakdown.get(key, 0) + count
+    return breakdown
 
 
 def _priced_in_source_batches_headline(

@@ -2068,16 +2068,28 @@ def _priced_in_source_batch_message(
     diagnostic = _mapping(payload.get("diagnostic"))
     reason = str(diagnostic.get("reason") or "").strip()
     command = str(payload.get("next_batch_command") or "").strip()
+    calls = ""
     if not command:
         batches = _rows(payload.get("batches"))
         if batches:
             command = str(batches[0].get("command") or "").strip()
+            call_count = int(_number_or_zero(batches[0].get("external_calls_required")))
+            breakdown = _mapping(batches[0].get("external_call_breakdown"))
+            if breakdown:
+                pieces = [
+                    f"{key}={int(_number_or_zero(value))}"
+                    for key, value in sorted(breakdown.items())
+                    if int(_number_or_zero(value)) > 0
+                ]
+                calls = f" Calls: {call_count} ({', '.join(pieces)})."
+            else:
+                calls = f" Calls: {call_count}."
     prefix = (
         f"{source_name}: {status}; {total_gap_rows} full-scan gap row(s), "
         f"{plannable_gap_rows} plannable, {batch_count} batch(es)."
     )
     if command:
-        return f"{prefix} First batch command: {command}"
+        return f"{prefix}{calls} First batch command: {command}"
     detail = next_action or reason or "No runnable batch is available for this source."
     return f"{prefix} {detail}"
 
