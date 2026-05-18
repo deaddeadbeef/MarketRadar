@@ -1,6 +1,37 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 12:08:00 +08:00
+Last updated: 2026-05-18 12:24:00 +08:00
+
+## Latest Candidate Source-Gap Detail
+
+Candidate detail now carries the same source-action contract as the priced-in
+queue. `priced_in_evidence_brief.source_actions` is a per-ticker list covering
+`market_bars`, `catalyst_events`, `local_text`, `options`,
+`theme_peer_sector`, and `broker_context`.
+
+Use these zero-call checks:
+
+```powershell
+catalyst-radar candidate-detail A
+catalyst-radar candidate-detail A --json
+catalyst-radar dashboard-tui --once --page candidate:A
+```
+
+The human CLI output now prints non-ready `source_actions:` directly under the
+candidate's data coverage. The TUI candidate page shows a `Source gaps` row.
+For the current local full-market queue, candidate `A` shows:
+
+- signal: `bullish_not_priced_in`
+- available sources: market bars, catalyst events, local text, theme/peer/sector
+- missing sources: options, broker context
+- options action: treat options as absent until an options feed or local fixture
+  is ingested
+- broker action: sync read-only Schwab context before sizing or portfolio
+  review
+
+This is intentionally candidate-specific. The queue-level `source_coverage`
+answers "what is weak across the visible queue?" Candidate detail answers "what
+is weak for this ticker before I act?"
 
 ## Latest Source-Coverage Action Plan
 

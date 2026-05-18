@@ -3631,6 +3631,11 @@ def test_load_ticker_detail_returns_candidate_packet_card_events_and_validation(
     assert brief["why_now"] == "MSFT guidance raised"
     assert brief["top_catalyst"] == "MSFT guidance raised"
     assert brief["data_sources"]["summary"]
+    actions = {row["source"]: row for row in brief["source_actions"]}
+    assert actions["options"]["status"] == "missing"
+    assert actions["broker_context"]["next_action"] == (
+        "Sync read-only broker context before sizing or portfolio review."
+    )
     assert brief["evidence"][0]["title"] == "MSFT guidance raised"
     assert brief["next_step"] == "Monitor; no useful priced-in mismatch is visible yet."
     assert [row["id"] for row in detail["state_history"]] == [
