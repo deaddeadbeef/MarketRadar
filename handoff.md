@@ -1,6 +1,61 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 16:17:45 +08:00
+Last updated: 2026-05-18 16:33:05 +08:00
+
+## Latest Full-Scan Clarity + Schwab Market CLI
+
+The user asked again: "Why only these tickers? I want full scan." The current
+implementation now makes the answer harder to miss:
+
+- The local backing scan is broad: `scanned=12087 requested=12104`.
+- `priced-in-queue --status all` is the full ranked scan view. It is paged for
+  human use; it does not dump all 12k rows on one screen.
+- `priced-in-queue --status actionable` is a filtered mismatch queue from the
+  same full scan.
+- Source coverage is now computed across the filtered scan result, not just the
+  visible page. In full mode the CLI now reports coverage like
+  `market_bars 12087/12087`, not `12/12`.
+- The filtered/actionable headline now says:
+  `Latest full scan found 7 actionable mismatch row(s); showing 1-7 of 7.`
+
+Current real local zero-provider-call evidence:
+
+```powershell
+.\.venv\Scripts\catalyst-radar.exe priced-in-queue --status all --limit 12
+.\.venv\Scripts\catalyst-radar.exe priced-in-queue --status actionable --limit 20
+```
+
+observed:
+
+```text
+scan_scope=scanned=12087 requested=12104 filter=all ranked_after_filter=12087 visible_page=12
+source_coverage=market_bars 12087/12087; ... options 0/12087 ... broker_context 0/12087 ...
+
+scan_scope=scanned=12087 requested=12104 filter=actionable ranked_after_filter=7 visible_page=7
+headline=Latest full scan found 7 actionable mismatch row(s); showing 1-7 of 7.
+```
+
+Schwab market context now has a first-class CLI replacement for the raw curl:
+
+```powershell
+catalyst-radar schwab-market-sync --ticker <TICKER>
+```
+
+The CLI calls the same read-only, rate-limited implementation as
+`POST /api/brokers/schwab/market-sync`, and promotes Schwab option-chain
+snapshots into `option_features` when options are included. Do not run it during
+tests unless an explicit live Schwab call is intended.
+
+Validation for this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_broker_api_routes.py::test_schwab_market_sync_cli_uses_read_only_market_sync tests\integration\test_broker_api_routes.py::test_schwab_market_sync_returns_429_on_repeated_attempt_without_second_schwab_call tests\integration\test_dashboard_data.py::test_priced_in_queue_payload_surfaces_ranked_gap_rows tests\integration\test_dashboard_data.py::test_priced_in_queue_payload_paginates_ranked_rows tests\integration\test_dashboard_data.py::test_priced_in_queue_payload_supports_actionable_status_alias tests\integration\test_dashboard_data.py::test_priced_in_queue_payload_filters_decision_gaps tests\integration\test_dashboard_data.py::test_priced_in_queue_candidate_packet_gap_uses_artifacts tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_snapshot_cli_outputs_dashboard_command_center_json tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_snapshot_ops_page_shows_priced_in_source_actions tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_queue_cli_outputs_same_zero_call_signal -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\cli.py src\catalyst_radar\dashboard\data.py tests\integration\test_broker_api_routes.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+.\.venv\Scripts\catalyst-radar.exe schwab-market-sync --help
+.\.venv\Scripts\catalyst-radar.exe priced-in-queue --status all --limit 12
+.\.venv\Scripts\catalyst-radar.exe priced-in-queue --status actionable --limit 20
+```
 
 ## Latest Broker-Context Guidance Fix
 

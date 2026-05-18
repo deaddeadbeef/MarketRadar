@@ -24,6 +24,7 @@ from catalyst_radar.brokers.models import (
     broker_token_id,
 )
 from catalyst_radar.brokers.tokens import TokenCipher
+from catalyst_radar.cli import main
 from catalyst_radar.security.audit import AuditLogRepository
 from catalyst_radar.storage.broker_repositories import BrokerRepository
 from catalyst_radar.storage.db import create_schema, engine_from_url
@@ -373,6 +374,77 @@ def test_schwab_market_sync_returns_429_on_repeated_attempt_without_second_schwa
     assert second.headers["retry-after"]
     assert second.json()["detail"]["operation"] == "market_context_sync"
     assert calls == ["market"]
+    option_feature = FeatureRepository(engine).latest_option_features_by_ticker(
+        ["GLW"],
+        as_of=datetime.now(UTC),
+        available_at=datetime.now(UTC),
+    )["GLW"]
+    assert option_feature.provider == "schwab_option_chain"
+
+
+def test_schwab_market_sync_cli_uses_read_only_market_sync(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'market-cli.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("BROKER_TOKEN_ENCRYPTION_KEY", "local-dev-key")
+    monkeypatch.setenv("SCHWAB_MARKET_SYNC_MIN_INTERVAL_SECONDS", "120")
+    engine = engine_from_url(database_url)
+    create_schema(engine)
+    _seed_broker_rows(engine)
+    _seed_valid_token(engine)
+    calls = []
+
+    def fake_market_sync(**kwargs):
+        calls.append(kwargs)
+        now = datetime.now(UTC)
+        return [
+            BrokerMarketSnapshot(
+                id=broker_market_snapshot_id("GLW", now),
+                ticker="GLW",
+                as_of=now,
+                last_price=95.0,
+                option_call_put_ratio=3.0,
+                option_iv_percentile=40.5,
+                raw_payload={
+                    "options": {
+                        "callExpDateMap": {
+                            "2026-06-19:38": {
+                                "95.0": [{"totalVolume": 900, "volatility": 42.0}]
+                            }
+                        },
+                        "putExpDateMap": {
+                            "2026-06-19:38": {
+                                "90.0": [{"totalVolume": 300, "volatility": 39.0}]
+                            }
+                        },
+                    }
+                },
+                created_at=now,
+            )
+        ]
+
+    monkeypatch.setattr(
+        "catalyst_radar.api.routes.brokers.sync_market_context",
+        fake_market_sync,
+    )
+
+    assert main(["schwab-market-sync", "--ticker", "GLW"]) == 0
+    captured = capsys.readouterr()
+
+    assert captured.err == ""
+    assert (
+        "schwab_market_sync tickers=1 snapshots=1 option_features=1 "
+        "include_history=true include_options=true "
+        "boundary=explicit_read_only_rate_limited"
+    ) in captured.out
+    assert "- GLW last=95.0" in captured.out
+    assert len(calls) == 1
+    assert calls[0]["tickers"] == ["GLW"]
+    assert calls[0]["include_history"] is True
+    assert calls[0]["include_options"] is True
     option_feature = FeatureRepository(engine).latest_option_features_by_ticker(
         ["GLW"],
         as_of=datetime.now(UTC),
