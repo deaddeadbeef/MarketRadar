@@ -1,6 +1,62 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 05:49:47 +08:00
+Last updated: 2026-05-19 06:02:54 +08:00
+
+## Latest Dashboard Snapshot Performance Fix
+
+After the dashboard source workflow was corrected, live Ops dashboard snapshots
+still took roughly 96 seconds before the performance work and about 82 seconds
+after the duplicate workflow-preflight cleanup. A timing pass showed the main
+remaining duplicate work was readiness:
+
+- `priced_in_queue_payload()` already builds the full-scan priced-in queue and
+  embeds a `priced_in_preflight` payload.
+- `dashboard_snapshot_payload()` separately rebuilt preflight before this
+  slice.
+- `radar_readiness_payload()` also reloaded current candidate rows, rebuilt
+  discovery, and called `candidate_delta_payload()` without passing the already
+  loaded candidate rows.
+
+Fix in this slice:
+
+- `dashboard_snapshot_payload()` now reuses `priced_in_queue["preflight"]`
+  instead of calling `priced_in_preflight_payload()` a second time.
+- `radar_readiness_payload()` accepts optional already-loaded
+  `radar_run_summary`, `candidate_rows`, `broker_summary`, `ops_health`, and
+  `discovery_snapshot`.
+- `radar_readiness_payload()` now passes the resolved candidate rows into
+  `candidate_delta_payload()`, avoiding another current-row load.
+- `dashboard_snapshot_payload()` passes the already-loaded dashboard context
+  into `radar_readiness_payload()`.
+
+Live timing:
+
+```text
+before this performance cleanup: dashboard-snapshot --page ops --json ~= 95.98s
+after preflight reuse only:       dashboard-snapshot --page ops --json ~= 82.45s
+after readiness reuse too:        dashboard-snapshot --page ops --json ~= 66.35s
+```
+
+Live smoke after the fix:
+
+```text
+Start with options; it fills context for 5 decision-ready row(s) in the visible ranked page. Type batch options to inspect the full-scan plan. Example: A, MSFT, AAAU, AAPL, AA.
+radar-readiness-v1
+priced-in-preflight-v1
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_snapshot_reuses_priced_in_queue_preflight tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_snapshot_cli_outputs_dashboard_command_center_json tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_snapshot_ops_page_shows_priced_in_source_actions tests\integration\test_dashboard_data.py::test_radar_readiness_candidate_delta_treats_candidates_without_run_as_context -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_dashboard_data.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-snapshot --page ops --json
+```
+
+Observed: focused pytest passed, ruff passed, `git diff --check` passed, live
+Ops snapshot still returns `radar-readiness-v1` and `priced-in-preflight-v1`,
+and the dashboard continues to recommend `options` first.
 
 ## Latest Dashboard Source Workflow Priority Fix
 

@@ -2965,21 +2965,44 @@ def radar_readiness_payload(
     config: AppConfig,
     *,
     candidate_limit: int = 25,
+    radar_run_summary: Mapping[str, object] | None = None,
+    candidate_rows: Sequence[Mapping[str, object]] | None = None,
+    broker_summary: Mapping[str, object] | None = None,
+    ops_health: Mapping[str, object] | None = None,
+    discovery_snapshot: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
-    radar_run_summary = load_radar_run_summary(engine)
+    radar_run_summary = (
+        _row_dict(radar_run_summary)
+        if isinstance(radar_run_summary, Mapping)
+        else load_radar_run_summary(engine)
+    )
     latest_run_cutoff = _parse_utc_datetime(radar_run_summary.get("decision_available_at"))
-    candidate_rows = load_radar_run_candidate_rows(engine, radar_run_summary)
-    broker_summary = load_broker_summary(engine)
+    candidate_rows = (
+        [_row_dict(row) for row in candidate_rows]
+        if candidate_rows is not None
+        else load_radar_run_candidate_rows(engine, radar_run_summary)
+    )
+    broker_summary = (
+        _row_dict(broker_summary)
+        if isinstance(broker_summary, Mapping)
+        else load_broker_summary(engine)
+    )
     market_candidate_rows = candidate_rows_with_market_context(
         candidate_rows,
         _market_context_value(broker_summary),
     )
-    ops_health = load_ops_health(engine)
-    discovery_snapshot = radar_discovery_snapshot_payload(
-        engine,
-        config,
-        radar_run_summary=radar_run_summary,
-        ops_health=ops_health,
+    ops_health = (
+        _row_dict(ops_health) if isinstance(ops_health, Mapping) else load_ops_health(engine)
+    )
+    discovery_snapshot = (
+        _row_dict(discovery_snapshot)
+        if isinstance(discovery_snapshot, Mapping)
+        else radar_discovery_snapshot_payload(
+            engine,
+            config,
+            radar_run_summary=radar_run_summary,
+            ops_health=ops_health,
+        )
     )
     actionability = actionability_breakdown_payload(market_candidate_rows)
     investment = investment_readiness_payload(
@@ -3014,6 +3037,7 @@ def radar_readiness_payload(
     candidate_delta = candidate_delta_payload(
         engine,
         radar_run_summary=radar_run_summary,
+        candidate_rows=market_candidate_rows,
     )
     operator_queue = operator_work_queue_payload(
         config,

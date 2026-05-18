@@ -25,6 +25,7 @@ from catalyst_radar.dashboard.tui import (
     DashboardFilters,
     MarketRadarDashboardApp,
     _apply_command,
+    dashboard_snapshot_payload,
     run_dashboard_tui,
 )
 
@@ -234,6 +235,44 @@ def test_dashboard_snapshot_cli_outputs_dashboard_command_center_json(
     assert payload["readiness"]["market_radar_usefulness"]["status"] == (
         direct_readiness["market_radar_usefulness"]["status"]
     )
+
+
+def test_dashboard_snapshot_reuses_priced_in_queue_preflight(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["seed-dashboard-demo"]) == 0
+    engine = create_engine(database_url, future=True)
+
+    from catalyst_radar.dashboard import tui as dashboard_tui
+
+    calls = 0
+    original_preflight = dashboard_tui.dashboard_data.priced_in_preflight_payload
+
+    def counted_preflight(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original_preflight(*args, **kwargs)
+
+    monkeypatch.setattr(
+        dashboard_tui.dashboard_data,
+        "priced_in_preflight_payload",
+        counted_preflight,
+    )
+
+    payload = dashboard_snapshot_payload(
+        engine=engine,
+        config=AppConfig.from_env(),
+        dotenv_loaded=True,
+        filters=DashboardFilters(),
+    )
+
+    assert calls == 1
+    assert payload["priced_in_preflight"]["schema_version"] == "priced-in-preflight-v1"
+    assert payload["priced_in_preflight"] == payload["priced_in_queue"]["preflight"]
 
 
 def test_dashboard_snapshot_cli_outputs_human_readable_zero_call_summary(

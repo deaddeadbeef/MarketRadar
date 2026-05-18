@@ -409,12 +409,6 @@ def dashboard_snapshot_payload(
         discovery_snapshot=discovery_snapshot,
         candidate_rows=candidate_rows,
     )
-    priced_in_preflight = dashboard_data.priced_in_preflight_payload(
-        engine,
-        config,
-        latest_run=latest_run,
-        discovery_snapshot=discovery_snapshot,
-    )
     priced_in_queue = dashboard_data.priced_in_queue_payload(
         engine,
         config,
@@ -431,6 +425,17 @@ def dashboard_snapshot_payload(
         if isinstance(priced_in_queue.get("source_coverage"), Mapping)
         else dashboard_data.priced_in_source_coverage_summary(candidate_rows)
     )
+    priced_in_preflight = (
+        dict(priced_in_queue["preflight"])
+        if isinstance(priced_in_queue.get("preflight"), Mapping)
+        else dashboard_data.priced_in_preflight_payload(
+            engine,
+            config,
+            latest_run=latest_run,
+            discovery_snapshot=discovery_snapshot,
+            source_coverage=priced_in_source_coverage,
+        )
+    )
     priced_in_source_workflow = _priced_in_source_workflow_payload(
         priced_in_preflight,
         priced_in_queue=priced_in_queue,
@@ -442,6 +447,15 @@ def dashboard_snapshot_payload(
         preflight=priced_in_preflight,
     )
     operator_next_step = dashboard_data.operator_next_step_payload(operator_work_queue)
+    readiness_payload = dashboard_data.radar_readiness_payload(
+        engine,
+        config,
+        radar_run_summary=latest_run,
+        candidate_rows=candidate_rows,
+        broker_summary=broker_summary,
+        ops_health=ops_health,
+        discovery_snapshot=discovery_snapshot,
+    )
     telemetry = dashboard_data.telemetry_tape_payload(
         ops_health,
         limit=filters.telemetry_limit,
@@ -465,7 +479,7 @@ def dashboard_snapshot_payload(
             "telemetry_limit": filters.telemetry_limit,
         },
         "runtime_context": runtime_context,
-        "readiness": dashboard_data.radar_readiness_payload(engine, config),
+        "readiness": readiness_payload,
         "radar_run_cooldown": dashboard_data.radar_run_cooldown_payload(engine, config),
         "latest_run": latest_run,
         "discovery_snapshot": discovery_snapshot,
