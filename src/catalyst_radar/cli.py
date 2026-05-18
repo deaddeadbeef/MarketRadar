@@ -2497,13 +2497,18 @@ def _print_priced_in_queue(payload: Mapping[str, object]) -> None:
     if not isinstance(rows, list | tuple) or not rows:
         print("No priced-in rows.")
         return
-    print("ticker status blocked direction gap emotion reaction priced score data next_step")
+    print("ticker status usefulness blocked direction gap emotion reaction priced score")
+    print("data next_step")
     for row in rows:
         if not isinstance(row, Mapping):
             continue
+        usefulness = row.get("usefulness")
+        if not isinstance(usefulness, Mapping):
+            usefulness = {}
         print(
             f"{row.get('ticker')} "
             f"{row.get('priced_in_status')} "
+            f"{usefulness.get('status') or 'n/a'} "
             f"{str(bool(row.get('blocked'))).lower()} "
             f"{row.get('priced_in_direction') or 'n/a'} "
             f"{row.get('emotion_reaction_gap')} "
@@ -2598,6 +2603,14 @@ def _print_candidate_detail(payload: Mapping[str, object]) -> None:
         f"priced={brief.get('priced_in_score')}"
     )
     print(f"data={_compact_cli_text(_detail_data_summary(brief))}")
+    usefulness = brief.get("usefulness")
+    if isinstance(usefulness, Mapping):
+        print(
+            "usefulness="
+            f"{usefulness.get('status')} "
+            f"decision_ready={str(bool(usefulness.get('decision_ready'))).lower()} "
+            f"next={_compact_cli_text(usefulness.get('next_action'))}"
+        )
     source_actions = brief.get("source_actions")
     if isinstance(source_actions, list | tuple) and source_actions:
         printed_header = False

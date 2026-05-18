@@ -1393,6 +1393,15 @@ def test_priced_in_queue_payload_surfaces_ranked_gap_rows(tmp_path: Path) -> Non
     assert "emotion_reaction_gap" in payload["rows"][0]
     assert payload["rows"][0]["data_sources"]["available"]
     assert "summary" in payload["rows"][0]["data_sources"]
+    assert payload["rows"][0]["usefulness"]["schema_version"] == (
+        "priced-in-usefulness-verdict-v1"
+    )
+    assert payload["rows"][0]["usefulness"]["status"] in {
+        "research_useful",
+        "monitor_only",
+    }
+    assert payload["rows"][0]["usefulness"]["decision_ready"] is False
+    assert "decision_card" in payload["rows"][0]["usefulness"]["missing_for_decision"]
     assert payload["rows"][0]["why_now"] == "MSFT guidance raised"
 
 
@@ -3636,6 +3645,9 @@ def test_load_ticker_detail_returns_candidate_packet_card_events_and_validation(
     assert actions["broker_context"]["next_action"] == (
         "Sync read-only broker context before sizing or portfolio review."
     )
+    assert brief["usefulness"]["schema_version"] == "priced-in-usefulness-verdict-v1"
+    assert brief["usefulness"]["status"] == "monitor_only"
+    assert brief["usefulness"]["decision_ready"] is False
     assert brief["evidence"][0]["title"] == "MSFT guidance raised"
     assert brief["next_step"] == "Monitor; no useful priced-in mismatch is visible yet."
     assert [row["id"] for row in detail["state_history"]] == [

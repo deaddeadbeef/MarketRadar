@@ -2505,6 +2505,7 @@ def _candidate_detail_kv_pairs(row: Mapping[str, object]) -> tuple[tuple[str, ob
         blockers = ", ".join(str(item) for item in _rows_or_values(brief.get("blockers")))
         return (
             ("Signal", _priced_in_signal(str(brief.get("status") or ""), fallback="Candidate")),
+            ("Usefulness", _candidate_usefulness_summary(brief)),
             ("Why now", brief.get("why_now")),
             ("Emotion vs reaction", _priced_in_mismatch_text(
                 brief.get("emotion_score"),
@@ -2571,6 +2572,19 @@ def _candidate_source_action_summary(brief: Mapping[str, object]) -> str:
             separator=": ",
         )
         for action in gaps[:3]
+    )
+
+
+def _candidate_usefulness_summary(brief: Mapping[str, object]) -> str:
+    usefulness = _mapping(brief.get("usefulness"))
+    if not usefulness:
+        return "n/a"
+    return _join_nonempty(
+        (
+            usefulness.get("label") or usefulness.get("status"),
+            usefulness.get("next_action"),
+        ),
+        separator=": ",
     )
 
 

@@ -1132,6 +1132,12 @@ def test_get_radar_priced_in_queue_returns_cli_ready_rows(
                         "stale": [],
                         "summary": "available: market_bars, catalyst_events; missing: options",
                     },
+                    "usefulness": {
+                        "schema_version": "priced-in-usefulness-verdict-v1",
+                        "status": "research_useful",
+                        "decision_ready": False,
+                        "missing_for_decision": ["decision_card", "options"],
+                    },
                     "next_step": "Open candidate detail.",
                 }
             ],
@@ -1160,6 +1166,7 @@ def test_get_radar_priced_in_queue_returns_cli_ready_rows(
     assert payload["source_coverage"]["actions"][0]["source"] == "options"
     assert payload["source_coverage"]["actions"][0]["status"] == "missing"
     assert payload["rows"][0]["ticker"] == "MSFT"
+    assert payload["rows"][0]["usefulness"]["status"] == "research_useful"
     assert payload["rows"][0]["data_sources"]["available"] == [
         "market_bars",
         "catalyst_events",
