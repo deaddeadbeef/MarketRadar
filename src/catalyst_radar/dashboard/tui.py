@@ -1613,12 +1613,15 @@ class MarketRadarDashboardApp(App[int]):
         return (
             _overview_title(self.payload),
             [
-                ("scope", "Scope", 10),
-                ("signal", "Signal", 28),
-                ("why_now", "Why now", 50),
-                ("next_action", "Next action", 44),
+                ("rank", "#", 3),
+                ("ticker", "Ticker", 6),
+                ("signal", "Signal", 19),
+                ("emotion_reaction_gap", "Gap", 5),
+                ("data_coverage", "Data gaps", 14),
+                ("why_now", "Why now", 27),
+                ("next_action", "Next action", 25),
             ],
-            _market_insight_rows(self.payload),
+            _priced_in_overview_rows(self.payload),
             _overview_caption(self.payload),
         )
 
@@ -2352,6 +2355,88 @@ def _tutorial_lines(width: int) -> list[str]:
     return lines
 
 
+def _priced_in_overview_rows(payload: Mapping[str, object]) -> list[Mapping[str, object]]:
+    priced_in_queue = _mapping(payload.get("priced_in_queue"))
+    queue_rows = _rows(priced_in_queue.get("rows"))
+    offset = int(_number_or_zero(priced_in_queue.get("offset")))
+    rows: list[Mapping[str, object]] = []
+    for index, candidate in enumerate(queue_rows, start=1):
+        ticker = str(candidate.get("ticker") or "").strip().upper()
+        if not ticker:
+            continue
+        usefulness = _mapping(candidate.get("usefulness"))
+        priced_status = str(candidate.get("priced_in_status") or "").strip()
+        emotion = candidate.get("emotion_score")
+        reaction = candidate.get("reaction_score")
+        gap = candidate.get("emotion_reaction_gap")
+        setup = (
+            candidate.get("setup_type")
+            or candidate.get("candidate_theme")
+            or candidate.get("top_event_type")
+            or "candidate"
+        )
+        why_now = _join_nonempty(
+            (
+                _priced_in_mismatch_text(emotion, reaction, gap),
+                _priced_in_reason(candidate),
+                _human_label(setup),
+                candidate.get("top_catalyst"),
+                candidate.get("why_now"),
+            ),
+            separator="; ",
+        )
+        row_number = offset + index
+        rows.append(
+            {
+                **dict(candidate),
+                "_row_key": f"scan-{row_number}-{ticker}",
+                "rank": row_number,
+                "ticker": ticker,
+                "signal": "Blocked mismatch"
+                if bool(candidate.get("blocked"))
+                else _priced_in_signal(priced_status, fallback="Candidate"),
+                "usefulness": usefulness.get("label")
+                or _human_label(usefulness.get("status") or "unknown"),
+                "data_coverage": _priced_in_gap_summary(candidate),
+                "why_now": why_now or "No priced-in explanation recorded.",
+                "next_action": usefulness.get("next_action")
+                or candidate.get("priced_in_next_step")
+                or candidate.get("next_step")
+                or "Open candidate detail and review the evidence.",
+                "target_page": f"candidate:{ticker}",
+                "status_message": (
+                    f"Opened full-scan row {row_number} for {ticker}. "
+                    "Review evidence before any action."
+                ),
+            }
+        )
+    return rows
+
+
+def _priced_in_gap_summary(row: Mapping[str, object]) -> str:
+    data_sources = row.get("data_sources") or row.get("priced_in_data_sources")
+    if not isinstance(data_sources, Mapping):
+        return "unknown"
+    missing = [
+        str(item)
+        for item in _rows_or_values(data_sources.get("missing"))
+        if str(item).strip()
+    ]
+    stale = [
+        str(item)
+        for item in _rows_or_values(data_sources.get("stale"))
+        if str(item).strip()
+    ]
+    parts: list[str] = []
+    if missing:
+        parts.append(f"missing {', '.join(missing[:3])}")
+    if stale:
+        parts.append(f"stale {', '.join(stale[:3])}")
+    if not parts:
+        return "none"
+    return "; ".join(parts)
+
+
 def _market_insight_rows(payload: Mapping[str, object]) -> list[Mapping[str, object]]:
     readiness = _mapping(payload.get("readiness"))
     usefulness = _mapping(readiness.get("market_radar_usefulness"))
@@ -2704,15 +2789,18 @@ def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
     lines = [_rule(_overview_title(payload), width)]
     lines.extend(
         _table_lines(
-            _market_insight_rows(payload),
+            _priced_in_overview_rows(payload),
             [
-                ("scope", "Scope", 10),
-                ("signal", "Signal", 28),
-                ("why_now", "Why now", 50),
-                ("next_action", "Next action", 44),
+                ("rank", "#", 3),
+                ("ticker", "Ticker", 6),
+                ("signal", "Signal", 19),
+                ("emotion_reaction_gap", "Gap", 5),
+                ("data_coverage", "Data gaps", 14),
+                ("why_now", "Why now", 27),
+                ("next_action", "Next action", 25),
             ],
             width=width,
-            limit=20,
+            limit=50,
         )
     )
     lines.append("")
@@ -2787,15 +2875,17 @@ def _overview_caption(payload: Mapping[str, object]) -> str:
         return (
             f"This page shows rows {start}-{end}: {returned} visible rows from "
             f"{total} latest-scan rows. "
+            "The ticker table is paged for human review, not reduced to a watchlist. "
             "Press M or click SCAN -> Mismatches to return to the smaller action queue. "
             "Use priced-in-queue --status all --limit/--offset or the API offset "
-            "parameter to page deeper; in the TUI type next, prev, offset <row>, "
+            "parameter to page deeper; use priced-in-queue --full-scan --all --json "
+            "for the full export. In the TUI type next, prev, offset <row>, "
             f"or limit <rows>.{usefulness_text}{source_gap_text}{decision_gap_text} "
             "Browsing makes 0 provider calls."
         )
     return (
-        "First row is scan coverage; candidate rows are priced-in mismatch cards. "
-        "Enter opens the relevant evidence or action page."
+        "The ticker rows are the current priced-in scan page, not a separate "
+        "watchlist. Enter opens the relevant evidence page."
         f"{source_gap_text} Browsing makes 0 provider calls."
     )
 
