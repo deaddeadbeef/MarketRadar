@@ -1422,6 +1422,56 @@ def test_priced_in_queue_payload_paginates_ranked_rows(tmp_path: Path) -> None:
     assert second_page["rows"][0]["ticker"] != first_page["rows"][0]["ticker"]
 
 
+def test_priced_in_queue_payload_supports_actionable_status_alias(tmp_path: Path) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    with engine.begin() as conn:
+        row = (
+            conn.execute(
+                signal_features.select().where(
+                    signal_features.c.ticker == "MSFT",
+                    signal_features.c.as_of == AS_OF,
+                )
+            )
+            .mappings()
+            .one()
+        )
+        payload = dict(row["payload"])
+        candidate = dict(payload["candidate"])
+        metadata = dict(candidate["metadata"])
+        metadata["priced_in"] = {
+            "status": "bullish_not_priced_in",
+            "direction": "bullish",
+            "emotion_score": 80.0,
+            "reaction_score": 20.0,
+            "emotion_reaction_gap": 60.0,
+            "priced_in_score": 25.0,
+            "reason": "Bullish emotion is ahead of price reaction.",
+            "next_step": "Open candidate detail.",
+        }
+        candidate["metadata"] = metadata
+        payload["candidate"] = candidate
+        conn.execute(
+            update(signal_features)
+            .where(signal_features.c.ticker == "MSFT", signal_features.c.as_of == AS_OF)
+            .values(payload=payload)
+        )
+
+    payload = priced_in_queue_payload(
+        engine,
+        AppConfig.from_env({}),
+        status="actionable",
+    )
+
+    assert payload["filters"]["status"] == "actionable"
+    assert payload["count"] >= 1
+    assert payload["total_count"] == payload["count"]
+    assert {
+        row["priced_in_status"]
+        for row in payload["rows"]
+    } <= {"bullish_not_priced_in", "bearish_not_priced_in"}
+
+
 def test_priced_in_preflight_payload_reports_exact_next_steps(tmp_path: Path) -> None:
     engine = _engine(tmp_path)
     _insert_dashboard_fixture(engine)

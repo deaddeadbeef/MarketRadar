@@ -172,13 +172,13 @@ def test_dashboard_snapshot_cli_outputs_human_readable_zero_call_summary(
         "Page: overview",
         "DB:",
         "Ticker: ACME",
-        "Full-market priced-in queue - showing",
+        "Actionable mismatches - showing",
         "UNIVERSE",
         "ACME",
         "Bullish not priced",
         "emotion",
         "reaction",
-        "candidate rows are priced-in mismatch cards",
+        "bullish/bearish not-priced-in mismatch",
         "External calls made: 0",
     ):
         assert expected in output.out
@@ -401,11 +401,11 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert app.page == "overview"
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert "INSIGHTS" in frame
-            assert "Full-market priced-in queue - showing" in frame
+            assert "Actionable mismatches - showing" in frame
             assert "UNIVERSE" in frame
             assert "ACME" in frame
             assert "Bullish not priced" in frame
-            assert "candidate rows are priced-in mismatch cards" in frame
+            assert "bullish/bearish not-priced-in mismatch" in frame
             assert "Candidates [1]" in frame
             assert "FRESH BARS" in frame
             assert "No - research only" in frame
