@@ -333,6 +333,14 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
     assert filtered_payload["filters"]["usefulness"] == "research_useful"
     assert filtered_payload["rows"][0]["usefulness"]["status"] == "research_useful"
 
+    assert main(["priced-in-queue", "--source-gap", "options", "--json"]) == 0
+    output = capsys.readouterr()
+    gap_payload = json.loads(output.out)
+
+    assert output.err == ""
+    assert gap_payload["filters"]["source_gap"] == ["options"]
+    assert "options" in gap_payload["rows"][0]["data_sources"]["missing"]
+
     assert main(["priced-in-queue"]) == 0
     output = capsys.readouterr()
 
