@@ -2020,6 +2020,9 @@ def test_priced_in_preflight_payload_reports_exact_next_steps(tmp_path: Path) ->
         "catalyst-radar priced-in-source-batches --source options"
     )
     assert by_area["local_text"]["status"] == "attention"
+    assert by_area["local_text"]["next_action"] == (
+        "Fill catalyst_events first, then run local_text batches for rows with event text."
+    )
     assert by_area["local_text"]["command"].startswith(
         "catalyst-radar priced-in-source-batches --source local_text"
     )

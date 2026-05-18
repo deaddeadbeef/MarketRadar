@@ -6987,6 +6987,14 @@ def _priced_in_preflight_rows(
     for area in ("local_text", "options"):
         source_action = source_actions.get(area)
         if source_action:
+            if area == "local_text" and source_actions.get("catalyst_events"):
+                source_action = {
+                    **_row_dict(source_action),
+                    "next_action": (
+                        "Fill catalyst_events first, then run local_text batches "
+                        "for rows with event text."
+                    ),
+                }
             rows.append(_priced_in_source_preflight_row(area, source_action))
 
     call_status = str(call_plan.get("status") or "unknown")
