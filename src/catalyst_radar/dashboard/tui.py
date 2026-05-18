@@ -48,6 +48,8 @@ class DashboardFilters:
     priced_in_status: str = "all"
     priced_in_usefulness: str | None = None
     priced_in_decision_gap: str | Sequence[str] | None = None
+    priced_in_limit: int = 50
+    priced_in_offset: int = 0
     telemetry_limit: int = 8
 
     def normalized(self) -> DashboardFilters:
@@ -66,6 +68,8 @@ class DashboardFilters:
             priced_in_status=priced_in_status,
             priced_in_usefulness=_normalize_optional_filter(self.priced_in_usefulness),
             priced_in_decision_gap=priced_in_decision_gap,
+            priced_in_limit=min(200, max(1, int(self.priced_in_limit))),
+            priced_in_offset=max(0, int(self.priced_in_offset)),
             telemetry_limit=max(1, int(self.telemetry_limit)),
         )
 
@@ -348,7 +352,8 @@ def dashboard_snapshot_payload(
     priced_in_queue = dashboard_data.priced_in_queue_payload(
         engine,
         config,
-        limit=50,
+        limit=filters.priced_in_limit,
+        offset=filters.priced_in_offset,
         available_at=filters.available_at,
         status=filters.priced_in_status,
         usefulness=filters.priced_in_usefulness,
@@ -377,6 +382,8 @@ def dashboard_snapshot_payload(
             "priced_in_status": filters.priced_in_status,
             "priced_in_usefulness": filters.priced_in_usefulness,
             "priced_in_decision_gap": list(filters.priced_in_decision_gap or ()),
+            "priced_in_limit": filters.priced_in_limit,
+            "priced_in_offset": filters.priced_in_offset,
             "telemetry_limit": filters.telemetry_limit,
         },
         "runtime_context": runtime_context,
@@ -900,10 +907,14 @@ class MarketRadarDashboardApp(App[int]):
 
     def _set_scan_mode(self, status: str) -> None:
         resolved = _normalize_priced_in_status(status)
-        self.filters = replace(self.filters, priced_in_status=resolved).normalized()
+        self.filters = replace(
+            self.filters,
+            priced_in_status=resolved,
+            priced_in_offset=0,
+        ).normalized()
         self.page = "overview"
         self.status_message = (
-            "Full Scan mode: showing the first ranked page from the whole universe."
+            "Full Scan mode: showing page 1 from the whole ranked universe."
             if resolved == "all"
             else "Mismatches mode: showing only bullish/bearish not-priced-in rows."
         )
@@ -1038,7 +1049,7 @@ class MarketRadarDashboardApp(App[int]):
     def _navigation_text(self) -> str:
         return (
             "[bold #58a6ff]KEYS[/] 1 insights | 4 candidates | 5 alerts | 0 tutorial | "
-            "M full/mismatch | Ctrl+N/P page\n"
+            "M full/mismatch | next/prev scan rows | Ctrl+N/P page\n"
             "[bold #58a6ff]MOUSE[/] click sidebar or table rows | "
             "Tab focus | Up/Down on sidebar | Enter open | Esc command | q quit\n"
         )
@@ -1049,11 +1060,21 @@ class MarketRadarDashboardApp(App[int]):
 
     def _action_text(self) -> str:
         page = self.page.split(":", 1)[0]
+        queue = _mapping(self.payload.get("priced_in_queue"))
+        offset = int(_number_or_zero(queue.get("offset")))
+        count = int(_number_or_zero(queue.get("count")))
+        total = int(_number_or_zero(queue.get("total_count")))
+        page_text = (
+            f" Visible rows {offset + 1}-{offset + count} of {total}; "
+            "type next, prev, offset <row>, or limit <rows>."
+            if total and count
+            else ""
+        )
         page_action = {
             "tutorial": "Follow the numbered rows. Press 1 when you are ready for insights.",
             "overview": (
                 "Select an insight row. Press M or click SCAN to switch between "
-                "Mismatches and Full Scan."
+                f"Mismatches and Full Scan.{page_text}"
             ),
             "run": "Review call budget, then type run execute only if intended.",
             "candidates": "Click or focus a row and press Enter to open a candidate.",
@@ -1200,11 +1221,21 @@ class MarketRadarDashboardApp(App[int]):
             queue = _mapping(self.payload.get("priced_in_queue"))
             status_filter = _priced_in_status_filter(queue)
             mode = "Full Scan" if status_filter == "all" else "Mismatches"
-            mode_help = (
-                "showing the first ranked page from the entire scan"
-                if status_filter == "all"
-                else "showing only bullish/bearish not-priced-in rows"
-            )
+            offset = int(_number_or_zero(queue.get("offset")))
+            count = int(_number_or_zero(queue.get("count")))
+            total = int(_number_or_zero(queue.get("total_count")))
+            if status_filter == "all":
+                mode_help = (
+                    "showing the first ranked page from the entire scan"
+                    if offset == 0
+                    else "showing a later ranked page from the entire scan"
+                )
+            else:
+                mode_help = (
+                    "showing only bullish/bearish not-priced-in rows"
+                    if offset == 0
+                    else "showing a later page of bullish/bearish not-priced-in rows"
+                )
             return "\n".join(
                 [
                     (
@@ -1219,7 +1250,11 @@ class MarketRadarDashboardApp(App[int]):
                     ),
                     (
                         "[bold]Switch view:[/] press M or click SCAN in the sidebar. "
-                        "Full Scan includes neutral and blocked rows."
+                        "Full Scan includes neutral, blocked, fully-priced, and stale rows."
+                    ),
+                    (
+                        f"[bold]Page:[/] showing rows {offset + 1}-{offset + count} "
+                        f"of {total}. Type next, prev, offset <row>, or limit <rows>."
                     ),
                     (
                         f"[bold]Current boundary:[/] {can_act}; "
@@ -1586,6 +1621,11 @@ class MarketRadarDashboardApp(App[int]):
                     "mismatch queue."
                 ),
             },
+            {
+                "command": "next / prev / offset <row>",
+                "meaning": "Page through the full ranked scan without provider calls.",
+            },
+            {"command": "limit <1-200>", "meaning": "Change visible scan rows per page."},
             {"command": "ticker <SYMBOL|all>", "meaning": "Filter ticker-aware pages."},
             {"command": "run execute", "meaning": "Start one guarded capped radar cycle."},
             {
@@ -1692,31 +1732,95 @@ def _apply_command(
     if command in {"all", "full", "full-scan"}:
         return _CommandUpdate(
             page="overview",
-            filters=replace(filters, priced_in_status="all").normalized(),
-            message="Full Scan mode: showing the first ranked page from the whole universe.",
+            filters=replace(
+                filters,
+                priced_in_status="all",
+                priced_in_offset=0,
+            ).normalized(),
+            message="Full Scan mode: showing page 1 from the whole ranked universe.",
         )
     if command in {"m", "mismatch", "mismatches", "actionable"}:
         return _CommandUpdate(
             page="overview",
-            filters=replace(filters, priced_in_status="actionable").normalized(),
+            filters=replace(
+                filters,
+                priced_in_status="actionable",
+                priced_in_offset=0,
+            ).normalized(),
             message="Mismatches mode: showing only bullish/bearish not-priced-in rows.",
         )
     if command == "scan":
         scan_status = _normalize_priced_in_status(value)
         return _CommandUpdate(
             page="overview",
-            filters=replace(filters, priced_in_status=scan_status).normalized(),
+            filters=replace(
+                filters,
+                priced_in_status=scan_status,
+                priced_in_offset=0,
+            ).normalized(),
             message=(
-                "Full Scan mode: showing the first ranked page from the whole universe."
+                "Full Scan mode: showing page 1 from the whole ranked universe."
                 if scan_status == "all"
                 else f"Scan filter updated: {scan_status}."
             ),
+        )
+    if command in {"next", "more"}:
+        queue = _mapping(payload.get("priced_in_queue"))
+        count = int(_number_or_zero(queue.get("count")))
+        limit = int(_number_or_zero(_mapping(queue.get("filters")).get("limit"))) or count
+        total = int(_number_or_zero(queue.get("total_count")))
+        offset = int(_number_or_zero(queue.get("offset")))
+        next_offset = offset + max(1, limit)
+        if total and next_offset >= total:
+            return _CommandUpdate(
+                page="overview",
+                filters=filters,
+                message="Already at the end of the current scan filter.",
+            )
+        return _CommandUpdate(
+            page="overview",
+            filters=replace(filters, priced_in_offset=next_offset).normalized(),
+            message=f"Showing full-scan rows starting at {next_offset + 1}.",
+        )
+    if command in {"prev", "previous", "back"}:
+        limit = max(1, filters.priced_in_limit)
+        offset = max(0, filters.priced_in_offset - limit)
+        return _CommandUpdate(
+            page="overview",
+            filters=replace(filters, priced_in_offset=offset).normalized(),
+            message=f"Showing full-scan rows starting at {offset + 1}.",
+        )
+    if command == "offset":
+        if not value.isdigit():
+            return _CommandUpdate(page=page, filters=filters, message="Usage: offset <row>")
+        offset = max(0, int(value) - 1)
+        return _CommandUpdate(
+            page="overview",
+            filters=replace(filters, priced_in_offset=offset).normalized(),
+            message=f"Showing full-scan rows starting at {offset + 1}.",
+        )
+    if command == "limit":
+        if not value.isdigit():
+            return _CommandUpdate(page=page, filters=filters, message="Usage: limit <1-200>")
+        limit = min(200, max(1, int(value)))
+        return _CommandUpdate(
+            page="overview",
+            filters=replace(
+                filters,
+                priced_in_limit=limit,
+                priced_in_offset=0,
+            ).normalized(),
+            message=f"Showing {limit} full-scan row(s) per page.",
         )
     if command in {"decision-gap", "decision_gaps", "gap"}:
         decision_gaps = _normalize_decision_gap_filter(value)
         return _CommandUpdate(
             page="overview",
-            filters=replace(filters, priced_in_decision_gap=decision_gaps).normalized(),
+            filters=replace(
+                filters,
+                priced_in_decision_gap=decision_gaps,
+                priced_in_offset=0,
+            ).normalized(),
             message=(
                 "Decision-gap filter cleared."
                 if not decision_gaps
@@ -1727,7 +1831,11 @@ def _apply_command(
         usefulness = _normalize_optional_filter(value)
         return _CommandUpdate(
             page="overview",
-            filters=replace(filters, priced_in_usefulness=usefulness).normalized(),
+            filters=replace(
+                filters,
+                priced_in_usefulness=usefulness,
+                priced_in_offset=0,
+            ).normalized(),
             message=(
                 "Usefulness filter cleared."
                 if usefulness is None
@@ -1788,18 +1896,25 @@ def _apply_command(
     if command in {"clear", "clear-filters", "reset"}:
         return _CommandUpdate(
             page=page,
-            filters=DashboardFilters(telemetry_limit=filters.telemetry_limit),
+            filters=DashboardFilters(
+                telemetry_limit=filters.telemetry_limit,
+                priced_in_limit=filters.priced_in_limit,
+            ),
             message="Filters cleared.",
         )
     if command in {"ticker", "tkr"}:
         ticker = value.upper()
-        next_filters = replace(filters, ticker=None if ticker in {"", "ALL", "NONE"} else ticker)
+        next_filters = replace(
+            filters,
+            ticker=None if ticker in {"", "ALL", "NONE"} else ticker,
+            priced_in_offset=0,
+        )
         return _CommandUpdate(page=page, filters=next_filters, message="Ticker filter updated.")
     if command in {"available-at", "cutoff"}:
         if value.lower() in {"", "latest", "all", "none"}:
             return _CommandUpdate(
                 page=page,
-                filters=replace(filters, available_at=None),
+                filters=replace(filters, available_at=None, priced_in_offset=0),
                 message="Available-at filter cleared.",
             )
         parsed = _datetime_or_none(value)
@@ -1807,7 +1922,7 @@ def _apply_command(
             return _CommandUpdate(page=page, filters=filters, message="Invalid timestamp.")
         return _CommandUpdate(
             page=page,
-            filters=replace(filters, available_at=parsed),
+            filters=replace(filters, available_at=parsed, priced_in_offset=0),
             message="Available-at filter updated.",
         )
     if command == "alert-status":
@@ -2401,8 +2516,8 @@ def _full_scan_coverage_row(
         "signal": signal,
         "why_now": why_now,
         "next_action": next_action,
-        "target_page": "ops" if signal != "Full scan coverage" else "candidates",
-        "status_message": "Opened the full-scan coverage context.",
+        "target_page": "ops",
+        "status_message": "Opened Ops coverage. Ranked full-scan rows stay on Insights.",
     }
 
 
@@ -2541,6 +2656,9 @@ def _overview_title(payload: Mapping[str, object]) -> str:
     queue = _mapping(payload.get("priced_in_queue"))
     total = int(_number_or_zero(queue.get("total_count")))
     returned = int(_number_or_zero(queue.get("returned_count") or queue.get("count")))
+    offset = int(_number_or_zero(queue.get("offset")))
+    start = offset + 1 if returned else 0
+    end = offset + returned
     scan_total = _priced_in_scan_total(queue)
     status_filter = _priced_in_status_filter(queue)
     decision_gap = _decision_gap_filter_summary(queue)
@@ -2549,14 +2667,14 @@ def _overview_title(payload: Mapping[str, object]) -> str:
         suffix_parts = [part for part in (usefulness, decision_gap) if part]
         suffix = f"; {'; '.join(suffix_parts)}" if suffix_parts else ""
         return (
-            f"Mismatches from full scan - showing {returned} of {total}; "
+            f"Mismatches from full scan - showing rows {start}-{end} of {total}; "
             f"scan {scan_total}{suffix}"
         )
     if total:
         usefulness = _usefulness_counts_summary(queue)
         suffix_parts = [part for part in (usefulness, decision_gap) if part]
         suffix = f"; {'; '.join(suffix_parts)}" if suffix_parts else ""
-        return f"Full-market priced-in queue - showing {returned} of {total}{suffix}"
+        return f"Full-market priced-in queue - showing rows {start}-{end} of {total}{suffix}"
     return "Full-market priced-in queue - select a row to act"
 
 
@@ -2564,6 +2682,9 @@ def _overview_caption(payload: Mapping[str, object]) -> str:
     queue = _mapping(payload.get("priced_in_queue"))
     total = int(_number_or_zero(queue.get("total_count")))
     returned = int(_number_or_zero(queue.get("returned_count") or queue.get("count")))
+    offset = int(_number_or_zero(queue.get("offset")))
+    start = offset + 1 if returned else 0
+    end = offset + returned
     scan_total = _priced_in_scan_total(queue)
     status_filter = _priced_in_status_filter(queue)
     if status_filter == "actionable":
@@ -2573,7 +2694,8 @@ def _overview_caption(payload: Mapping[str, object]) -> str:
         decision_gap_text = f" Active decision gap filter: {decision_gap}." if decision_gap else ""
         if total:
             return (
-                f"This page shows {returned} bullish/bearish not-priced-in mismatch "
+                f"This page shows rows {start}-{end}: {returned} bullish/bearish "
+                "not-priced-in mismatch "
                 f"card(s) from {scan_total or 'the'} latest-scan row(s). "
                 "Press M or click SCAN -> Full Scan to inspect neutral, blocked, "
                 "stale, and fully-priced rows."
@@ -2592,10 +2714,12 @@ def _overview_caption(payload: Mapping[str, object]) -> str:
         decision_gap = _decision_gap_filter_summary(queue)
         decision_gap_text = f" Active decision gap filter: {decision_gap}." if decision_gap else ""
         return (
-            f"This page shows {returned} visible rows from {total} latest-scan rows. "
+            f"This page shows rows {start}-{end}: {returned} visible rows from "
+            f"{total} latest-scan rows. "
             "Press M or click SCAN -> Mismatches to return to the smaller action queue. "
             "Use priced-in-queue --status all --limit/--offset or the API offset "
-            f"parameter to page deeper.{usefulness_text}{decision_gap_text} "
+            "parameter to page deeper; in the TUI type next, prev, offset <row>, "
+            f"or limit <rows>.{usefulness_text}{decision_gap_text} "
             "Browsing makes 0 provider calls."
         )
     return (
@@ -3339,6 +3463,9 @@ def _help_lines(width: int) -> list[str]:
         ("available-at <ISO|latest>", "Set or clear the point-in-time data cutoff."),
         ("usefulness <status|all>", "Filter Insights by usefulness verdict."),
         ("decision-gap <gap|all>", "Filter Insights by missing decision evidence."),
+        ("next / prev", "Page through the current Insights scan rows."),
+        ("offset <row>", "Jump to a 1-based full-scan row number."),
+        ("limit <1-200>", "Change Insights rows per page."),
         ("alert-status <status|all>", "Filter alerts by status."),
         ("alert-route <route|all>", "Filter alerts by route."),
         ("refresh", "Reload the local database snapshot."),
@@ -3356,7 +3483,7 @@ def _help_lines(width: int) -> list[str]:
     lines.extend(_table_lines([{"command": a, "meaning": b} for a, b in commands],
                               [("command", "Command", 28), ("meaning", "Meaning", 84)],
                               width=width,
-                              limit=24))
+                              limit=30))
     return lines
 
 

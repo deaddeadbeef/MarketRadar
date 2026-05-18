@@ -24,6 +24,7 @@ from catalyst_radar.dashboard.demo_seed import DEMO_AVAILABLE_AT
 from catalyst_radar.dashboard.tui import (
     DashboardFilters,
     MarketRadarDashboardApp,
+    _apply_command,
     run_dashboard_tui,
 )
 
@@ -162,6 +163,10 @@ def test_dashboard_snapshot_cli_outputs_dashboard_command_center_json(
                 "research_useful",
                 "--decision-gap",
                 "decision_card",
+                "--scan-limit",
+                "1",
+                "--scan-offset",
+                "1",
                 "--json",
             ]
         )
@@ -177,6 +182,10 @@ def test_dashboard_snapshot_cli_outputs_dashboard_command_center_json(
     assert gap_payload["priced_in_queue"]["filters"]["decision_gap"] == [
         "decision_card"
     ]
+    assert gap_payload["controls"]["priced_in_limit"] == 1
+    assert gap_payload["controls"]["priced_in_offset"] == 1
+    assert gap_payload["priced_in_queue"]["filters"]["limit"] == 1
+    assert gap_payload["priced_in_queue"]["filters"]["offset"] == 1
 
     engine = create_engine(database_url, future=True)
     direct_readiness = radar_readiness_payload(engine, AppConfig.from_env())
@@ -282,6 +291,65 @@ def test_dashboard_tui_once_can_show_full_scan_mode(
     assert "Full-market priced-in queue - showing" in output.out
     assert "Evidence gaps" in output.out
     assert "First row is scan coverage" in output.out
+
+
+def test_dashboard_scan_commands_page_full_scan_rows(tmp_path: Path, monkeypatch) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = create_engine(database_url, future=True)
+    config = AppConfig.from_env()
+    payload = {
+        "priced_in_queue": {
+            "count": 50,
+            "total_count": 120,
+            "offset": 0,
+            "filters": {"limit": 50},
+        }
+    }
+    filters = DashboardFilters(priced_in_limit=50, priced_in_offset=0)
+
+    next_update = _apply_command(
+        "next",
+        payload,
+        "overview",
+        filters,
+        engine=engine,
+        config=config,
+    )
+    assert next_update.page == "overview"
+    assert next_update.filters.priced_in_offset == 50
+    assert next_update.message == "Showing full-scan rows starting at 51."
+
+    prev_update = _apply_command(
+        "prev",
+        payload,
+        "overview",
+        DashboardFilters(priced_in_limit=50, priced_in_offset=50),
+        engine=engine,
+        config=config,
+    )
+    assert prev_update.filters.priced_in_offset == 0
+
+    offset_update = _apply_command(
+        "offset 101",
+        payload,
+        "overview",
+        filters,
+        engine=engine,
+        config=config,
+    )
+    assert offset_update.filters.priced_in_offset == 100
+
+    limit_update = _apply_command(
+        "limit 250",
+        payload,
+        "overview",
+        DashboardFilters(priced_in_limit=50, priced_in_offset=50),
+        engine=engine,
+        config=config,
+    )
+    assert limit_update.filters.priced_in_limit == 200
+    assert limit_update.filters.priced_in_offset == 0
 
 
 def test_agent_brief_cli_outputs_zero_call_dry_run(
@@ -672,6 +740,16 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert "Full-market priced-in queue - showing" in frame
 
             app.query_one("#data-table").focus()
+            await pilot.press("down")
+            await pilot.press("enter")
+            await pilot.pause()
+            assert app.page == "ops"
+
+            await pilot.press("1")
+            await pilot.pause()
+            assert app.page == "overview"
+            app.query_one("#data-table").focus()
+            await pilot.press("down")
             await pilot.press("down")
             await pilot.press("enter")
             await pilot.pause()
