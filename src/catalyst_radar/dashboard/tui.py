@@ -2480,7 +2480,7 @@ def _source_coverage_gap_text(source_coverage: Mapping[str, object]) -> str:
             if str(ticker).strip()
         ][:3]
         if samples:
-            detail += f" sample {','.join(samples)}"
+            detail += f" examples {','.join(samples)}"
         parts.append(detail)
     if parts:
         return "; ".join(parts)
@@ -3170,6 +3170,14 @@ def _source_action_sample_tickers(action: Mapping[str, object]) -> str:
     return ",".join(samples) if samples else "n/a"
 
 
+def _source_action_gap_count(action: Mapping[str, object]) -> str:
+    gap_count = int(
+        _number_or_zero(action.get("gap_count"))
+        or _number_or_zero(action.get("missing")) + _number_or_zero(action.get("stale"))
+    )
+    return str(gap_count)
+
+
 def _ops_lines(payload: Mapping[str, object], width: int) -> list[str]:
     ops = _mapping(payload.get("ops_health"))
     database = _mapping(ops.get("database"))
@@ -3192,7 +3200,8 @@ def _ops_lines(payload: Mapping[str, object], width: int) -> list[str]:
     source_actions = [
         {
             **action,
-            "sample": _source_action_sample_tickers(action),
+            "gap_rows": _source_action_gap_count(action),
+            "examples": _source_action_sample_tickers(action),
         }
         for action in _rows(_mapping(payload.get("priced_in_source_coverage")).get("actions"))
         if str(action.get("status") or "") not in {"ready", "not_applicable"}
@@ -3207,7 +3216,8 @@ def _ops_lines(payload: Mapping[str, object], width: int) -> list[str]:
                     ("source", "Source", 18),
                     ("status", "Status", 12),
                     ("coverage_pct", "Coverage", 10),
-                    ("sample", "Sample", 26),
+                    ("gap_rows", "Gap rows", 10),
+                    ("examples", "Examples", 26),
                     ("command", "Command", 58),
                 ],
                 width=width,

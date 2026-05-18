@@ -355,8 +355,17 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
     assert payload["rows"][0]["emotion_reaction_gap"] == 49.0
     assert payload["source_coverage"]["schema_version"] == "priced-in-source-coverage-v1"
     assert payload["source_coverage"]["row_count"] == 1
+    assert payload["source_coverage"]["options_gap_diagnostic"]["status"] == (
+        "no_stored_options"
+    )
     actions = {row["source"]: row for row in payload["source_coverage"]["actions"]}
     assert actions["options"]["status"] == "missing"
+    assert actions["options"]["gap_count"] == 1
+    assert actions["options"]["diagnostic"]["status"] == "no_stored_options"
+    assert actions["options"]["sample_scope"] == (
+        "These are all 1 missing/stale row(s) in the current filtered scan, "
+        "not a separate scan universe."
+    )
     assert actions["options"]["external_call_boundary"] == (
         "Live Schwab options are explicit, read-only, and rate-limited; "
         "current option chains must not be used as score input for older "
@@ -374,6 +383,20 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
     assert output.err == ""
     assert filtered_payload["filters"]["usefulness"] == "research_useful"
     assert filtered_payload["rows"][0]["usefulness"]["status"] == "research_useful"
+
+    assert main(["priced-in-queue", "--full-scan", "--json"]) == 0
+    output = capsys.readouterr()
+    full_scan_payload = json.loads(output.out)
+
+    assert output.err == ""
+    assert full_scan_payload["filters"]["status"] == "all"
+
+    assert main(["priced-in-queue", "--mismatches", "--json"]) == 0
+    output = capsys.readouterr()
+    mismatch_payload = json.loads(output.out)
+
+    assert output.err == ""
+    assert mismatch_payload["filters"]["status"] == "actionable"
 
     assert main(["priced-in-queue", "--available-at", cutoff, "--json"]) == 0
     output = capsys.readouterr()
@@ -409,7 +432,11 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
     assert "visible_page=1" in output.out
     assert "source_actions:" in output.out
     assert "options status=missing" in output.out
-    assert "sample=ACME" in output.out
+    assert "gap_rows=1" in output.out
+    assert "examples=ACME" in output.out
+    assert "sample_scope=These are all 1 missing/stale row(s)" in output.out
+    assert "full_scan_review=catalyst-radar priced-in-queue --full-scan" in output.out
+    assert "diagnostic=missing=1" in output.out
     assert "broker_context status=missing" in output.out
 
 

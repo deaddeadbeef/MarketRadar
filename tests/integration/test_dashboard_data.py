@@ -80,9 +80,11 @@ from catalyst_radar.dashboard.data import (
     universe_coverage_payload,
     worker_status_payload,
 )
+from catalyst_radar.features.options import OptionFeatureInput
 from catalyst_radar.storage.broker_repositories import BrokerRepository
 from catalyst_radar.storage.budget_repositories import BudgetLedgerRepository
 from catalyst_radar.storage.db import create_schema
+from catalyst_radar.storage.feature_repositories import FeatureRepository
 from catalyst_radar.storage.repositories import MarketRepository
 from catalyst_radar.storage.schema import (
     alert_suppressions,
@@ -1435,7 +1437,15 @@ def test_priced_in_queue_payload_paginates_ranked_rows(tmp_path: Path) -> None:
     actions = {
         row["source"]: row for row in first_page["source_coverage"]["actions"]
     }
+    assert actions["options"]["gap_count"] == 2
     assert actions["options"]["sample_tickers"] == ["MSFT", "AAPL"]
+    assert actions["options"]["sample_scope"] == (
+        "These are all 2 missing/stale row(s) in the current filtered scan, "
+        "not a separate scan universe."
+    )
+    assert actions["options"]["full_scan_gap_review_command"] == (
+        "catalyst-radar priced-in-queue --full-scan --source-gap options --limit 50"
+    )
     assert actions["options"]["command"] == (
         "catalyst-radar schwab-market-sync --ticker MSFT --ticker AAPL"
     )
@@ -1449,6 +1459,47 @@ def test_priced_in_queue_payload_paginates_ranked_rows(tmp_path: Path) -> None:
     assert second_page["has_more"] is False
     assert second_page["rows"][0]["ticker"] != first_page["rows"][0]["ticker"]
     assert cutoff_page["filters"]["available_at"] == AVAILABLE_AT.isoformat()
+
+
+def test_priced_in_queue_payload_diagnoses_options_after_scan_date(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    FeatureRepository(engine).upsert_option_features(
+        [
+            OptionFeatureInput(
+                ticker="MSFT",
+                as_of=FUTURE_AT,
+                provider="schwab_option_chain",
+                call_volume=1_000,
+                put_volume=500,
+                call_open_interest=5_000,
+                put_open_interest=3_000,
+                iv_percentile=0.6,
+                skew=0.2,
+                source_ts=FUTURE_AT,
+                available_at=FUTURE_AT,
+                payload={"source": "test"},
+            )
+        ]
+    )
+
+    payload = priced_in_queue_payload(
+        engine,
+        AppConfig.from_env({}),
+        source_gap="options",
+        limit=10,
+    )
+
+    diagnostic = payload["source_coverage"]["options_gap_diagnostic"]
+    assert diagnostic["status"] == "newer_than_scan"
+    assert diagnostic["newer_than_scan_count"] == 1
+    assert diagnostic["sample_newer_than_scan_tickers"] == ["MSFT"]
+    assert diagnostic["sample_no_stored_option_tickers"] == ["AAPL"]
+    actions = {row["source"]: row for row in payload["source_coverage"]["actions"]}
+    assert actions["options"]["diagnostic"]["status"] == "newer_than_scan"
+    assert "Stored options exist after this scan date" in actions["options"]["next_action"]
 
 
 def test_priced_in_queue_payload_uses_stored_schwab_market_context(

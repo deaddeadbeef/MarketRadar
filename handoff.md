@@ -1,6 +1,89 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 17:41:11 +08:00
+Last updated: 2026-05-18 18:02:16 +08:00
+
+## Latest Full-Scan vs Example-Ticker Clarification
+
+The user asked: "Why only these tickers? I want full scan."
+
+The answer is now visible in the CLI/API/TUI instead of living only in this
+handoff:
+
+- The priced-in queue is still backed by the full latest scan. Current live
+  local smoke:
+
+  ```text
+  scan_scope=scanned=12087 requested=12104 filter=all ranked_after_filter=12087 visible_page=3
+  headline=Latest full scan ranked 12087 priced-in row(s); showing 1-3 of 12087.
+  ```
+
+- `priced-in-queue --full-scan` is now an explicit alias for the full ranked
+  scan view.
+- `priced-in-queue --mismatches` / `--actionable` is now an explicit alias for
+  the actionable mismatch filter from that same full scan.
+- Source-gap ticker lists are no longer printed as ambiguous `sample=...`.
+  They now print as `examples=...`, include `gap_rows=<n>`, and include a
+  `sample_scope=...` explanation.
+- Every non-ready source action now includes a no-provider-call review command:
+
+  ```text
+  full_scan_review=catalyst-radar priced-in-queue --full-scan --source-gap options --limit 50
+  ```
+
+  This is for paging through full-scan source gaps. It is not a provider sync.
+
+- The TUI Ops page now labels those rows as `Gap rows` and `Examples`, not
+  `Sample`, so the table reads as full-scan coverage plus example tickers.
+- The Schwab example batch was capped to 5 tickers so the generated
+  `catalyst-radar schwab-market-sync ...` command matches the default
+  Schwab market-sync safety cap instead of producing a too-large command.
+
+Current live zero-provider-call smokes:
+
+```powershell
+.\.venv\Scripts\catalyst-radar.exe priced-in-queue --full-scan --limit 3
+.\.venv\Scripts\catalyst-radar.exe priced-in-queue --mismatches --limit 3
+.\.venv\Scripts\catalyst-radar.exe dashboard-snapshot --page ops
+```
+
+Observed:
+
+```text
+full scan:
+scan_scope=scanned=12087 requested=12104 filter=all ranked_after_filter=12087 visible_page=3
+source_actions:
+- options ... gap_rows=12087 ... examples=A,MSFT,AAA,AAAU,AAPL
+  sample_scope=These are the first 5 of 12087 missing/stale row(s) in the current filtered scan; use full_scan_gap_review_command to page through the full scan.
+  full_scan_review=catalyst-radar priced-in-queue --full-scan --source-gap options --limit 50
+
+mismatches:
+scan_scope=scanned=12087 requested=12104 filter=actionable ranked_after_filter=7 visible_page=3
+source_actions:
+- options ... gap_rows=7 ... examples=A,MSFT,AAA,AAAU,AAPL
+  sample_scope=These are the first 5 of 7 missing/stale row(s) in the current filtered scan; use full_scan_gap_review_command to page through the full scan.
+```
+
+Also added an options-gap diagnostic to the priced-in source coverage payload.
+This is still zero-call and only inspects stored `option_features`. It explains
+why options remain a gap:
+
+```text
+diagnostic=missing=12087; newer_than_scan=5; after_cutoff=0; no_stored_options=12082; eligible_but_missing=0
+```
+
+This matters because current Schwab option chains should not be silently used as
+Friday score input. The system can now distinguish "we have no stored options"
+from "we have options, but only after this scan date."
+
+Validation for this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_queue_payload_paginates_ranked_rows tests\integration\test_dashboard_data.py::test_priced_in_queue_payload_diagnoses_options_after_scan_date tests\integration\test_dashboard_data.py::test_priced_in_queue_payload_filters_source_gaps tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_snapshot_cli_outputs_dashboard_command_center_json tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_snapshot_ops_page_shows_priced_in_source_actions tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_queue_cli_outputs_same_zero_call_signal tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_tui_once_can_show_full_scan_mode -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+```
+
+All passed.
 
 ## Latest Point-In-Time Options Guidance
 

@@ -52,6 +52,7 @@ from catalyst_radar.storage.schema import (
     events,
     job_locks,
     job_runs,
+    option_features,
     paper_trades,
     securities,
     signal_features,
@@ -91,7 +92,7 @@ PRICED_IN_ACTIONABLE_FILTERS = frozenset(
         "not-priced-in",
     }
 )
-PRICED_IN_SOURCE_ACTION_TICKER_LIMIT = 10
+PRICED_IN_SOURCE_ACTION_TICKER_LIMIT = 5
 PRICED_IN_USEFULNESS_STATUSES = frozenset(
     {
         "research_useful",
@@ -624,6 +625,11 @@ def priced_in_queue_payload(
     resolved_offset = _positive_offset(offset)
     page_rows = rows[resolved_offset : resolved_offset + resolved_limit]
     source_coverage = priced_in_source_coverage_summary(rows)
+    source_coverage = _priced_in_source_coverage_with_option_diagnostic(
+        engine,
+        rows,
+        source_coverage,
+    )
     status_counts = dict(Counter(str(row.get("priced_in_status") or "unknown") for row in rows))
     scan_status = _priced_in_scan_status(discovery)
     preflight = priced_in_preflight_payload(
@@ -825,6 +831,212 @@ def priced_in_source_coverage_summary(
         "actions": _priced_in_source_action_rows(source_rows, row_count),
         "summary": _priced_in_source_coverage_summary_text(source_rows, row_count),
     }
+
+
+def _priced_in_source_coverage_with_option_diagnostic(
+    engine: Engine,
+    rows: Sequence[Mapping[str, object]],
+    source_coverage: Mapping[str, object],
+) -> dict[str, object]:
+    diagnostic = _priced_in_option_gap_diagnostic(engine, rows)
+    if not diagnostic:
+        return _row_dict(source_coverage)
+    updated = _row_dict(source_coverage)
+    updated["options_gap_diagnostic"] = diagnostic
+    updated_actions: list[dict[str, object]] = []
+    for action in _sequence_value(updated.get("actions")):
+        if not isinstance(action, Mapping):
+            continue
+        action_row = _row_dict(action)
+        if str(action_row.get("source") or "") == "options":
+            action_row["diagnostic"] = diagnostic
+            next_action = str(diagnostic.get("next_action") or "").strip()
+            if next_action:
+                action_row["next_action"] = next_action
+        updated_actions.append(action_row)
+    updated["actions"] = updated_actions
+    return updated
+
+
+def _priced_in_option_gap_diagnostic(
+    engine: Engine,
+    rows: Sequence[Mapping[str, object]],
+) -> dict[str, object]:
+    missing_rows = [
+        row
+        for row in rows
+        if isinstance(row, Mapping)
+        and "options"
+        in {
+            str(item)
+            for status in ("missing", "stale")
+            for item in _sequence_value(_priced_in_row_source_payload(row).get(status))
+        }
+    ]
+    if not missing_rows:
+        return {}
+    tickers = sorted(
+        {
+            str(row.get("ticker") or "").strip().upper()
+            for row in missing_rows
+            if str(row.get("ticker") or "").strip()
+        }
+    )
+    if not tickers:
+        return {}
+    features_by_ticker = _option_feature_rows_by_ticker(engine, tickers)
+    newer_than_scan: list[str] = []
+    after_cutoff: list[str] = []
+    no_stored_options: list[str] = []
+    eligible_but_missing: list[str] = []
+    scan_dates: list[str] = []
+    for row in missing_rows:
+        ticker = str(row.get("ticker") or "").strip().upper()
+        if not ticker:
+            continue
+        row_as_of = _parse_utc_datetime(row.get("as_of"))
+        row_cutoff = _parse_utc_datetime(row.get("available_at"))
+        if row_as_of is not None:
+            scan_dates.append(row_as_of.date().isoformat())
+        features = features_by_ticker.get(ticker, [])
+        if not features:
+            no_stored_options.append(ticker)
+            continue
+        eligible = [
+            feature
+            for feature in features
+            if (
+                _parse_utc_datetime(feature.get("as_of")) is not None
+                and row_as_of is not None
+                and _parse_utc_datetime(feature.get("as_of")) <= row_as_of
+                and (
+                    row_cutoff is None
+                    or (
+                        _parse_utc_datetime(feature.get("available_at")) is not None
+                        and _parse_utc_datetime(feature.get("available_at"))
+                        <= row_cutoff
+                    )
+                )
+            )
+        ]
+        if eligible:
+            eligible_but_missing.append(ticker)
+            continue
+        if row_as_of is not None and any(
+            _parse_utc_datetime(feature.get("as_of")) is not None
+            and _parse_utc_datetime(feature.get("as_of")) > row_as_of
+            for feature in features
+        ):
+            newer_than_scan.append(ticker)
+            continue
+        if row_cutoff is not None and any(
+            _parse_utc_datetime(feature.get("available_at")) is not None
+            and _parse_utc_datetime(feature.get("available_at")) > row_cutoff
+            for feature in features
+        ):
+            after_cutoff.append(ticker)
+            continue
+        no_stored_options.append(ticker)
+
+    status = "no_stored_options"
+    if newer_than_scan:
+        status = "newer_than_scan"
+    elif after_cutoff:
+        status = "after_decision_cutoff"
+    elif eligible_but_missing:
+        status = "eligible_but_not_scored"
+    next_action = _option_gap_next_action(
+        status=status,
+        sample_newer=_sample_tickers(newer_than_scan),
+        sample_missing=_sample_tickers(no_stored_options),
+    )
+    evidence = (
+        f"missing={len(missing_rows)}; "
+        f"newer_than_scan={len(set(newer_than_scan))}; "
+        f"after_cutoff={len(set(after_cutoff))}; "
+        f"no_stored_options={len(set(no_stored_options))}; "
+        f"eligible_but_missing={len(set(eligible_but_missing))}"
+    )
+    return {
+        "schema_version": "priced-in-options-gap-diagnostic-v1",
+        "status": status,
+        "missing_rows": len(missing_rows),
+        "scan_as_of_dates": sorted(set(scan_dates)),
+        "newer_than_scan_count": len(set(newer_than_scan)),
+        "after_cutoff_count": len(set(after_cutoff)),
+        "no_stored_options_count": len(set(no_stored_options)),
+        "eligible_but_missing_count": len(set(eligible_but_missing)),
+        "sample_newer_than_scan_tickers": _sample_tickers(newer_than_scan),
+        "sample_no_stored_option_tickers": _sample_tickers(no_stored_options),
+        "sample_after_cutoff_tickers": _sample_tickers(after_cutoff),
+        "sample_eligible_but_missing_tickers": _sample_tickers(eligible_but_missing),
+        "next_action": next_action,
+        "evidence": evidence,
+    }
+
+
+def _option_feature_rows_by_ticker(
+    engine: Engine,
+    tickers: Sequence[str],
+) -> dict[str, list[dict[str, object]]]:
+    if not tickers:
+        return {}
+    stmt = (
+        select(
+            option_features.c.ticker,
+            option_features.c.as_of,
+            option_features.c.available_at,
+            option_features.c.provider,
+        )
+        .where(option_features.c.ticker.in_(tickers))
+        .order_by(
+            option_features.c.ticker,
+            option_features.c.as_of.desc(),
+            option_features.c.available_at.desc(),
+            option_features.c.provider,
+        )
+    )
+    by_ticker: dict[str, list[dict[str, object]]] = defaultdict(list)
+    with engine.connect() as conn:
+        for row in conn.execute(stmt):
+            values = _row_dict(row._mapping)
+            ticker = str(values.get("ticker") or "").strip().upper()
+            if ticker:
+                by_ticker[ticker].append(values)
+    return by_ticker
+
+
+def _option_gap_next_action(
+    *,
+    status: str,
+    sample_newer: Sequence[str],
+    sample_missing: Sequence[str],
+) -> str:
+    if status == "newer_than_scan":
+        sample = f" for {', '.join(sample_newer)}" if sample_newer else ""
+        return (
+            f"Stored options exist after this scan date{sample}; rerun only with a "
+            "current scan date and current bars, or ingest point-in-time options for "
+            "the original scan date."
+        )
+    if status == "after_decision_cutoff":
+        return (
+            "Stored options were not available at the scan cutoff; rerun with an "
+            "appropriate cutoff or ingest point-in-time options available then."
+        )
+    if status == "eligible_but_not_scored":
+        return "Rerun the scan so eligible stored option features enter priced-in scoring."
+    sample = f" for {', '.join(sample_missing)}" if sample_missing else ""
+    return (
+        f"No stored option features exist{sample}; sync current Schwab options for a "
+        "current rerun or ingest a point-in-time options fixture for the scan date."
+    )
+
+
+def _sample_tickers(values: Sequence[str]) -> list[str]:
+    return list(dict.fromkeys(str(value).strip().upper() for value in values if value))[
+        :PRICED_IN_SOURCE_ACTION_TICKER_LIMIT
+    ]
 
 
 def operator_work_queue_payload(
@@ -5415,6 +5627,8 @@ def _priced_in_queue_row(row: Mapping[str, object]) -> dict[str, object]:
         next_step = str(usefulness.get("next_action") or next_step)
     return {
         "ticker": row.get("ticker"),
+        "as_of": row.get("as_of"),
+        "available_at": row.get("created_at"),
         "priced_in_status": status,
         "priced_in_direction": row.get("priced_in_direction"),
         "emotion_score": row.get("emotion_score"),
@@ -5717,6 +5931,7 @@ def _priced_in_source_action_row(
         for ticker in _sequence_value(values.get("sample_tickers"))
         if str(ticker).strip()
     ][:PRICED_IN_SOURCE_ACTION_TICKER_LIMIT]
+    gap_count = stale + missing
     if row_count <= 0:
         status = "not_applicable"
     elif available == row_count and stale == 0 and missing == 0:
@@ -5738,11 +5953,47 @@ def _priced_in_source_action_row(
         "available": available,
         "stale": stale,
         "missing": missing,
+        "gap_count": gap_count,
         "row_count": row_count,
         "coverage_pct": coverage_pct,
         "sample_tickers": sample_tickers,
+        "sample_scope": _priced_in_source_sample_scope(
+            sample_count=len(sample_tickers),
+            gap_count=gap_count,
+            row_count=row_count,
+        ),
+        "full_scan_gap_review_command": (
+            f"catalyst-radar priced-in-queue --full-scan --source-gap {source} --limit 50"
+            if gap_count > 0
+            else None
+        ),
         **guidance,
     }
+
+
+def _priced_in_source_sample_scope(
+    *,
+    sample_count: int,
+    gap_count: int,
+    row_count: int,
+) -> str | None:
+    if gap_count <= 0:
+        return None
+    if sample_count <= 0:
+        return (
+            f"No example tickers are attached; {gap_count} of {row_count} current "
+            "filtered scan row(s) still have this source gap."
+        )
+    if sample_count >= gap_count:
+        return (
+            f"These are all {gap_count} missing/stale row(s) in the current "
+            "filtered scan, not a separate scan universe."
+        )
+    return (
+        f"These are the first {sample_count} of {gap_count} missing/stale row(s) "
+        "in the current filtered scan; use full_scan_gap_review_command to page "
+        "through the full scan."
+    )
 
 
 def _priced_in_source_guidance_for_tickers(

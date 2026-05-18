@@ -398,6 +398,21 @@ def build_parser() -> argparse.ArgumentParser:
     priced_in.add_argument("--available-at", type=_parse_aware_datetime)
     priced_in.add_argument("--status")
     priced_in.add_argument(
+        "--full-scan",
+        action="store_const",
+        dest="status",
+        const="all",
+        help="Review the full ranked scan instead of only actionable mismatches.",
+    )
+    priced_in.add_argument(
+        "--mismatches",
+        "--actionable",
+        action="store_const",
+        dest="status",
+        const="actionable",
+        help="Review only bullish/bearish not-priced-in mismatches from the full scan.",
+    )
+    priced_in.add_argument(
         "--usefulness",
         help=(
             "Filter by usefulness verdict: useful, research_useful, "
@@ -2748,16 +2763,32 @@ def _print_priced_in_queue(payload: Mapping[str, object]) -> None:
                     if isinstance(sample, list | tuple) and sample
                     else ""
                 )
-                sample_suffix = f" sample={sample_text}" if sample_text else ""
+                sample_suffix = f" examples={sample_text}" if sample_text else ""
                 print(
                     "- "
                     f"{action.get('source')} "
                     f"status={action.get('status')} "
                     f"coverage={action.get('coverage_pct')} "
+                    f"gap_rows={_int_value(action.get('gap_count'))} "
                     f"next={_compact_cli_text(action.get('next_action'))} "
                     f"command={_compact_cli_text(action.get('command'))}"
                     f"{sample_suffix}"
                 )
+                sample_scope = action.get("sample_scope")
+                if sample_scope:
+                    print(f"  sample_scope={_compact_cli_text(sample_scope)}")
+                full_scan_command = action.get("full_scan_gap_review_command")
+                if full_scan_command:
+                    print(
+                        "  full_scan_review="
+                        f"{_compact_cli_text(full_scan_command)}"
+                    )
+                diagnostic = action.get("diagnostic")
+                if isinstance(diagnostic, Mapping) and diagnostic.get("evidence"):
+                    print(
+                        "  diagnostic="
+                        f"{_compact_cli_text(diagnostic.get('evidence'))}"
+                    )
     rows = payload.get("rows")
     if not isinstance(rows, list | tuple) or not rows:
         print("No priced-in rows.")
