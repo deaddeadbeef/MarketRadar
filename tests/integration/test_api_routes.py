@@ -1678,6 +1678,56 @@ def test_post_radar_sec_submissions_batch_calls_capped_sec_executor(
     assert targets[0].cik == "0000000789"
 
 
+def test_post_radar_sec_company_tickers_refreshes_cik_metadata(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "radar-sec-company-tickers.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+    called: dict[str, object] = {}
+
+    class FakeCikRefreshResult:
+        def as_payload(self) -> dict[str, object]:
+            return {
+                "schema_version": "sec-cik-metadata-refresh-v1",
+                "provider": "sec",
+                "endpoint": "company-tickers",
+                "live": True,
+                "external_calls_made": 1,
+                "active_security_count": 2,
+                "missing_before_count": 1,
+                "matched_missing_count": 1,
+                "updated_count": 1,
+                "missing_after_count": 0,
+                "updated_tickers": ["AAPL"],
+                "unmatched_tickers": [],
+                "next_action": "Recheck catalyst_events source batches.",
+            }
+
+    def fake_refresh_sec_cik_metadata(*args, **kwargs) -> FakeCikRefreshResult:
+        called["args"] = args
+        called["kwargs"] = kwargs
+        return FakeCikRefreshResult()
+
+    monkeypatch.setattr(
+        radar_routes,
+        "refresh_sec_cik_metadata",
+        fake_refresh_sec_cik_metadata,
+    )
+    client = TestClient(create_app())
+
+    response = client.post("/api/radar/sec/company-tickers")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["schema_version"] == "sec-cik-metadata-refresh-v1"
+    assert payload["updated_count"] == 1
+    assert payload["external_calls_made"] == 1
+    assert called["args"]
+    assert called["kwargs"] == {}
+
+
 def test_post_radar_sec_submissions_batch_rejects_too_many_targets(
     tmp_path,
     monkeypatch,

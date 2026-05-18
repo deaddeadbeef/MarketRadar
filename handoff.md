@@ -1,6 +1,70 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 07:26:04 +08:00
+Last updated: 2026-05-19 07:39:10 +08:00
+
+## Latest SEC CIK Metadata Refresh Slice
+
+The next full-scan blocker after clarifying chunk scope is CIK metadata.
+`catalyst_events` currently has 12,080 full-scan gaps. Of those, 10,462 are
+plannable SEC targets and 1,618 are blocked because the active security row does
+not have a CIK.
+
+Fix in this slice:
+
+- Added a guarded SEC company-tickers refresh path:
+
+  ```text
+  catalyst-radar ingest-sec company-tickers
+  POST /api/radar/sec/company-tickers
+  ```
+
+- Live mode uses the existing SEC safety boundary:
+
+  ```text
+  CATALYST_SEC_ENABLE_LIVE=1
+  CATALYST_SEC_USER_AGENT=<SEC-compliant contact string>
+  ```
+
+- Fixture mode is supported for tests and makes zero external calls:
+
+  ```text
+  catalyst-radar ingest-sec company-tickers --fixture tests\fixtures\sec\company_tickers.json
+  ```
+
+- The refresh only updates active securities that are missing CIK metadata. It
+  preserves existing CIKs, matches common share-class ticker separators such as
+  `BRK.A` against SEC `BRK-A`, and stores:
+
+  ```text
+  cik
+  sec_company_name
+  cik_source=sec_company_tickers
+  cik_updated_at
+  ```
+
+- `priced-in-source-batches --source catalyst_events` now points directly at
+  the metadata fix when blocked rows exist:
+
+  ```text
+  diagnostic_next=Add CIK metadata ... with catalyst-radar ingest-sec company-tickers ...
+  diagnostic_command=catalyst-radar ingest-sec company-tickers
+  diagnostic_api=POST /api/radar/sec/company-tickers
+  ```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_sec_cik_metadata.py tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_exposes_missing_cik_blockers tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_source_batches_cli_prints_blocked_source_samples tests\integration\test_api_routes.py::test_post_radar_sec_company_tickers_refreshes_cik_metadata -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\events\sec_cik.py src\catalyst_radar\cli.py src\catalyst_radar\api\routes\radar.py src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py tests\integration\test_sec_cik_metadata.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_api_routes.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli ingest-sec company-tickers --fixture tests\fixtures\sec\company_tickers.json
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source catalyst_events --limit 1
+```
+
+Observed: focused pytest passed, ruff passed after import ordering cleanup,
+`git diff --check` passed, fixture CLI smoke made zero external calls, and
+the live source-batch plan now exposes both the CIK refresh CLI command and API
+endpoint.
 
 ## Latest Full-Scan Chunk Clarity Fix
 

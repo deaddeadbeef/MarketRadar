@@ -1092,6 +1092,8 @@ def test_priced_in_source_batches_cli_prints_blocked_source_samples(
                 "reason": "SEC event batches require CIK metadata for each ticker.",
                 "sample_blocked_tickers": ["AAA", "BBB"],
                 "next_action": "Add CIK metadata for blocked tickers.",
+                "fix_command": "catalyst-radar ingest-sec company-tickers",
+                "fix_api": "POST /api/radar/sec/company-tickers",
             },
             "batches": [],
         }
@@ -1107,6 +1109,8 @@ def test_priced_in_source_batches_cli_prints_blocked_source_samples(
     assert output.err == ""
     assert "blocked_examples=AAA,BBB reason=missing_cik" in output.out
     assert "diagnostic_next=Add CIK metadata for blocked tickers." in output.out
+    assert "diagnostic_command=catalyst-radar ingest-sec company-tickers" in output.out
+    assert "diagnostic_api=POST /api/radar/sec/company-tickers" in output.out
 
 
 def test_priced_in_source_batches_execute_next_cli_runs_one_batch(

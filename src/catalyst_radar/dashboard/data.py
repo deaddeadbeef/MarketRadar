@@ -7674,10 +7674,15 @@ def _priced_in_source_plannable_rows(
             "sample_blocked_tickers": _sample_tickers(missing_cik),
             "next_action": (
                 "Add CIK metadata for blocked tickers or refresh security metadata "
-                "before expecting SEC catalyst coverage for those rows."
+                "with catalyst-radar ingest-sec company-tickers before expecting "
+                "SEC catalyst coverage for those rows."
             )
             if missing_cik
             else None,
+            "fix_command": "catalyst-radar ingest-sec company-tickers"
+            if missing_cik
+            else None,
+            "fix_api": "POST /api/radar/sec/company-tickers" if missing_cik else None,
         }
     if source_name == "local_text":
         eligible = [

@@ -80,6 +80,7 @@ from catalyst_radar.dashboard.tui import (
     run_dashboard_tui,
 )
 from catalyst_radar.decision_cards.builder import build_decision_card
+from catalyst_radar.events.sec_cik import refresh_sec_cik_metadata
 from catalyst_radar.events.sec_ingest import (
     ingest_sec_record,
     ingest_sec_submissions_batch,
@@ -197,6 +198,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="Ticker and CIK pair in TICKER:CIK form.",
     )
     submissions_batch.add_argument("--fixture", type=Path)
+    company_tickers = sec_sub.add_parser("company-tickers")
+    company_tickers.add_argument("--fixture", type=Path)
     ipo_s1 = sec_sub.add_parser("ipo-s1")
     ipo_s1.add_argument("--ticker", required=True)
     ipo_s1.add_argument("--cik", required=True)
@@ -806,6 +809,12 @@ def main(argv: list[str] | None = None) -> int:
         market_repo = MarketRepository(engine)
         provider_repo = ProviderRepository(engine)
         event_repo = EventRepository(engine)
+        if args.sec_command == "company-tickers":
+            return _refresh_sec_cik_metadata_cli(
+                engine=engine,
+                config=config,
+                fixture_path=args.fixture,
+            )
         if args.sec_command == "submissions-batch":
             return _ingest_sec_submissions_batch(
                 config=config,
@@ -1992,6 +2001,43 @@ def _ingest_sec_provider(
         return 1
 
     _print_provider_result(result)
+    return 0
+
+
+def _refresh_sec_cik_metadata_cli(
+    *,
+    engine: Engine,
+    config: AppConfig,
+    fixture_path: Path | None,
+) -> int:
+    try:
+        result = refresh_sec_cik_metadata(
+            engine,
+            config,
+            fixture_path=fixture_path,
+        )
+    except (RuntimeError, ValueError) as exc:
+        print(f"sec cik metadata refresh failed: {exc}", file=sys.stderr)
+        return 1
+    payload = result.as_payload()
+    print(
+        "refreshed_sec_cik_metadata "
+        f"provider=sec "
+        f"live={payload['live']} "
+        f"active={payload['active_security_count']} "
+        f"missing_before={payload['missing_before_count']} "
+        f"matched={payload['matched_missing_count']} "
+        f"updated={payload['updated_count']} "
+        f"missing_after={payload['missing_after_count']} "
+        f"external_calls={payload['external_calls_made']}"
+    )
+    updated = payload.get("updated_tickers")
+    if isinstance(updated, list | tuple) and updated:
+        print(f"updated_examples={','.join(str(ticker) for ticker in updated)}")
+    unmatched = payload.get("unmatched_tickers")
+    if isinstance(unmatched, list | tuple) and unmatched:
+        print(f"unmatched_examples={','.join(str(ticker) for ticker in unmatched)}")
+    print(f"next_action={payload['next_action']}")
     return 0
 
 
@@ -3268,6 +3314,12 @@ def _print_priced_in_source_batches(payload: Mapping[str, object]) -> None:
         diagnostic_next = diagnostic.get("next_action")
         if diagnostic_next:
             print(f"diagnostic_next={_compact_cli_text(diagnostic_next)}")
+        fix_command = diagnostic.get("fix_command")
+        if fix_command:
+            print(f"diagnostic_command={_compact_cli_text(fix_command)}")
+        fix_api = diagnostic.get("fix_api")
+        if fix_api:
+            print(f"diagnostic_api={_compact_cli_text(fix_api)}")
     review_command = payload.get("review_rows_command")
     if review_command:
         print(f"review_rows={_compact_cli_text(review_command)}")
