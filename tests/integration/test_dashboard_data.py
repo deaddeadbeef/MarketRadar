@@ -1557,19 +1557,62 @@ def test_priced_in_queue_payload_filters_source_gaps(tmp_path: Path) -> None:
 def test_priced_in_queue_payload_filters_decision_gaps(tmp_path: Path) -> None:
     engine = _engine(tmp_path)
     _insert_dashboard_fixture(engine)
+    with engine.begin() as conn:
+        row = (
+            conn.execute(
+                signal_features.select().where(
+                    signal_features.c.ticker == "MSFT",
+                    signal_features.c.as_of == AS_OF,
+                )
+            )
+            .mappings()
+            .one()
+        )
+        payload = dict(row["payload"])
+        candidate = dict(payload["candidate"])
+        metadata = dict(candidate["metadata"])
+        metadata["priced_in"] = {
+            "status": "bullish_not_priced_in",
+            "direction": "bullish",
+            "emotion_score": 80.0,
+            "reaction_score": 20.0,
+            "emotion_reaction_gap": 60.0,
+            "priced_in_score": 25.0,
+            "reason": "Bullish emotion is ahead of price reaction.",
+            "next_step": "Open candidate detail.",
+        }
+        metadata["local_narrative_score"] = 62.0
+        candidate["metadata"] = metadata
+        payload["candidate"] = candidate
+        conn.execute(
+            update(signal_features)
+            .where(signal_features.c.ticker == "MSFT", signal_features.c.as_of == AS_OF)
+            .values(payload=payload)
+        )
 
     payload = priced_in_queue_payload(
         engine,
         AppConfig.from_env({}),
-        decision_gap="decision-card,options",
+        decision_gap="candidate-packet,decision-card,options",
         limit=10,
     )
 
-    assert payload["filters"]["decision_gap"] == ["decision_card", "options"]
+    assert payload["filters"]["decision_gap"] == [
+        "candidate_packet",
+        "decision_card",
+        "options",
+    ]
     assert payload["count"] >= 1
+    saw_research_useful = False
     for row in payload["rows"]:
         missing = set(row["usefulness"]["missing_for_decision"])
-        assert {"decision_card", "options"} <= missing
+        assert {"candidate_packet", "decision_card", "options"} <= missing
+        if row["usefulness"]["status"] == "research_useful":
+            saw_research_useful = True
+            assert row["next_step"] == (
+                "Build a Candidate Packet before Decision Card review."
+            )
+    assert saw_research_useful
 
 
 def test_priced_in_queue_payload_labels_blocked_mismatches(tmp_path: Path) -> None:

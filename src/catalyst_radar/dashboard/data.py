@@ -5128,7 +5128,11 @@ def _priced_in_evidence_brief(
         "source_actions": source_actions,
         "usefulness": usefulness,
         "evidence": evidence,
-        "next_step": _priced_in_brief_next_step(candidate, blockers),
+        "next_step": _priced_in_brief_next_step(
+            candidate,
+            blockers,
+            usefulness=usefulness,
+        ),
     }
 
 
@@ -5191,9 +5195,15 @@ def _priced_in_brief_evidence(
 def _priced_in_brief_next_step(
     candidate: Mapping[str, object],
     blockers: Sequence[str],
+    *,
+    usefulness: Mapping[str, object],
 ) -> str:
     if blockers:
         return "Clear blockers before treating this mismatch as actionable."
+    if usefulness.get("status") in {"research_useful", "not_useful"}:
+        next_action = str(usefulness.get("next_action") or "").strip()
+        if next_action:
+            return next_action
     return str(
         candidate.get("priced_in_next_step")
         or _mapping_value(candidate, "research_brief").get("next_step")
@@ -5366,6 +5376,8 @@ def _priced_in_queue_row(row: Mapping[str, object]) -> dict[str, object]:
     )
     if blockers:
         next_step = "Clear blockers before treating this mismatch as actionable."
+    elif usefulness.get("status") in {"research_useful", "not_useful"}:
+        next_step = str(usefulness.get("next_action") or next_step)
     return {
         "ticker": row.get("ticker"),
         "priced_in_status": status,
@@ -5493,6 +5505,9 @@ def _priced_in_usefulness_verdict(
         for action in source_actions
         if str(action.get("status") or "") not in {"ready", "not_applicable"}
     ]
+    candidate_packet_id = str(candidate.get("candidate_packet_id") or "").strip()
+    if not candidate_packet_id:
+        missing_for_decision.append("candidate_packet")
     decision_card_id = str(candidate.get("decision_card_id") or "").strip()
     if not decision_card_id:
         missing_for_decision.append("decision_card")
@@ -5524,7 +5539,14 @@ def _priced_in_usefulness_verdict(
             "Decision evidence still missing: "
             f"{', '.join(missing_for_decision)}."
         )
-        next_action = "Open candidate detail, verify evidence, then fill decision gaps."
+        if "candidate_packet" in missing_for_decision:
+            next_action = (
+                "Build a Candidate Packet before Decision Card review."
+            )
+        elif "decision_card" in missing_for_decision:
+            next_action = "Build or refresh the Decision Card before decision review."
+        else:
+            next_action = "Open candidate detail, verify evidence, then fill decision gaps."
     else:
         verdict = "decision_useful"
         label = "Decision-useful mismatch"
@@ -5761,6 +5783,9 @@ def _priced_in_decision_gap_filter(value: str | Sequence[str] | None) -> tuple[s
     else:
         raw_values = list(value)
     aliases = {
+        "packet": "candidate_packet",
+        "candidate-packet": "candidate_packet",
+        "candidate_packets": "candidate_packet",
         "card": "decision_card",
         "decision_cards": "decision_card",
         "decision-card": "decision_card",

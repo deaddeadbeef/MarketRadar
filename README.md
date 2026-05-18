@@ -252,10 +252,11 @@ names worth human research, `--usefulness blocked` for mismatches blocked by
 policy/portfolio checks, or `--usefulness useful` for research- or
 decision-useful rows. Use `--source-gap options` or
 `--source-gap broker_context` to find rows where a required data layer is still
-missing or stale. Use `--usefulness research_useful --decision-gap decision_card`
-to list otherwise useful rows that still need a Decision Card before decision
-review, or combine it with `--decision-gap options` and
-`--decision-gap broker_context` to find rows whose supporting evidence is
+missing or stale. Use
+`--usefulness research_useful --decision-gap candidate_packet` to list otherwise
+useful rows that still need a Candidate Packet before Decision Card review.
+Then use `--decision-gap decision_card`, `--decision-gap options`, and
+`--decision-gap broker_context` to find rows whose decision evidence is still
 incomplete.
 The payload includes queue-level `source_coverage`, so the operator can see
 whether market bars, catalyst events, local text, options, theme/peer/sector

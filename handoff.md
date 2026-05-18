@@ -1,6 +1,33 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 14:46:34 +08:00
+Last updated: 2026-05-18 15:05:05 +08:00
+
+## Latest Candidate-Packet Decision Gap
+
+The top research-useful mismatches can be priced-in useful before they have a
+Candidate Packet. That made the old "missing Decision Card" guidance one step
+too late. The usefulness verdict now adds `candidate_packet` to
+`missing_for_decision` when no packet exists, and the row next action says:
+
+```text
+Build a Candidate Packet before Decision Card review.
+```
+
+Updated decision-gap workflow:
+
+```powershell
+catalyst-radar priced-in-queue --usefulness research_useful --decision-gap candidate_packet
+catalyst-radar priced-in-queue --usefulness research_useful --decision-gap candidate_packet,decision_card
+```
+
+Decision-gap aliases include `packet`, `candidate-packet`, and
+`candidate_packets` for `candidate_packet`.
+
+Current local evidence before this fix: top research-useful rows `A`, `MSFT`,
+`AAAU`, `AAPL`, and `AA` had candidate states but no candidate packets and no
+decision cards. Running `candidate-packet --ticker A --as-of 2026-05-15 --json`
+returned "candidate packet not found", so the dashboard needed to expose packet
+generation as the first missing decision artifact.
 
 ## Latest Decision-Gap Filter
 
@@ -25,13 +52,15 @@ GET /api/radar/priced-in?status=actionable&decision_gap=decision_card,options
 
 Supported decision-gap names currently include:
 
+- `candidate_packet`
 - `decision_card`
 - `options`
 - `broker_context`
 
-Aliases include `card`/`decision-cards` for `decision_card` and
-`broker`/`schwab`/`portfolio` for `broker_context`. Multiple decision gaps are
-ANDed. `decision_card,options` means the row is missing both.
+Aliases include `packet`/`candidate-packet` for `candidate_packet`,
+`card`/`decision-cards` for `decision_card`, and `broker`/`schwab`/`portfolio`
+for `broker_context`. Multiple decision gaps are ANDed.
+`decision_card,options` means the row is missing both.
 
 The TUI command box also supports:
 

@@ -366,7 +366,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         help=(
             "Filter Insights rows by missing decision evidence. Repeat or "
-            "comma-separate: decision_card,options,broker_context."
+            "comma-separate: candidate_packet,decision_card,options,broker_context."
         ),
     )
     dashboard_snapshot.add_argument("--page", default="overview")
@@ -397,7 +397,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         help=(
             "Filter rows missing decision evidence. Repeat or comma-separate: "
-            "decision_card,options,broker_context."
+            "candidate_packet,decision_card,options,broker_context."
         ),
     )
     priced_in.add_argument("--min-gap", type=float)
@@ -438,7 +438,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         help=(
             "Filter brief context by missing decision evidence. Repeat or "
-            "comma-separate: decision_card,options,broker_context."
+            "comma-separate: candidate_packet,decision_card,options,broker_context."
         ),
     )
     agent_brief.add_argument("--goal")
@@ -471,7 +471,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         help=(
             "Filter Insights rows by missing decision evidence. Repeat or "
-            "comma-separate: decision_card,options,broker_context."
+            "comma-separate: candidate_packet,decision_card,options,broker_context."
         ),
     )
     dashboard_tui.add_argument("--page", default="overview")
