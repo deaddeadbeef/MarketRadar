@@ -77,7 +77,9 @@ catalyst-radar scan --as-of <LATEST_TRADING_DATE>
 show a few tickers and returns the exact commands/API routes needed before the
 next scan can count as broad-market. In Polygon/Massive mode it also exposes
 the current `CATALYST_POLYGON_TICKERS_MAX_PAGES` cap, because one ticker page is
-not the whole market.
+not the whole market. When broad grouped-daily bars are already present, it
+estimates the ticker-reference page count from the latest daily-bar ticker
+count.
 
 The dashboard shows active universe size, requested/scanned securities, fresh
 bar coverage, and candidate count so a tiny local universe is not mistaken for a

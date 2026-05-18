@@ -1391,6 +1391,27 @@ def test_priced_in_queue_payload_surfaces_ranked_gap_rows(tmp_path: Path) -> Non
 def test_priced_in_preflight_payload_reports_exact_next_steps(tmp_path: Path) -> None:
     engine = _engine(tmp_path)
     _insert_dashboard_fixture(engine)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(daily_bars),
+            [
+                {
+                    "ticker": f"ZZZ{i:04d}",
+                    "date": AS_OF.date(),
+                    "provider": "polygon",
+                    "open": 10.0,
+                    "high": 11.0,
+                    "low": 9.0,
+                    "close": 10.5,
+                    "volume": 1_000_000,
+                    "vwap": 10.2,
+                    "adjusted": True,
+                    "source_ts": SOURCE_TS,
+                    "available_at": AVAILABLE_AT,
+                }
+                for i in range(1001)
+            ],
+        )
 
     payload = priced_in_preflight_payload(
         engine,
@@ -1401,10 +1422,13 @@ def test_priced_in_preflight_payload_reports_exact_next_steps(tmp_path: Path) ->
     assert payload["external_calls_made"] == 0
     assert payload["status"] in {"blocked", "attention", "ready"}
     assert payload["provider"]["ticker_seed_cap_pages"] == 1
-    assert payload["commands"]["ingest_tickers"].endswith("--max-pages 1")
+    assert payload["provider"]["latest_daily_bar_ticker_count"] >= 1001
+    assert payload["provider"]["estimated_ticker_seed_pages"] == 2
+    assert payload["commands"]["ingest_tickers"].endswith("--max-pages 2")
     assert payload["commands"]["review_queue"] == "catalyst-radar priced-in-queue --json"
     by_area = {row["area"]: row for row in payload["rows"]}
     assert "universe" in by_area
+    assert "at least 2" in by_area["universe"]["next_action"]
     assert "market_bars" in by_area
     assert payload["api"]["queue"] == "GET /api/radar/priced-in"
 

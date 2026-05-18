@@ -175,7 +175,12 @@ preflight follows the configured market provider, so Polygon/Massive mode
 returns Polygon commands and CSV mode returns CSV ingest commands. In
 Polygon/Massive mode it also reports the configured ticker-reference page cap;
 with `CATALYST_POLYGON_TICKERS_MAX_PAGES=1`, ticker seeding is deliberately
-capped and should not be described as the whole market.
+capped and should not be described as the whole market. If grouped-daily bars
+for a broad market date are already in the database, preflight estimates the
+needed ticker-reference page count from the latest daily-bar ticker count. In
+the current local database, that exposes the real blocker: latest bars contain
+about 12k tickers, active securities are still 8, and the estimated ticker
+reference seed is about 13 pages.
 
 This payload is `priced-in-queue-v1`, reports `external_calls_made=0`, includes
 the full-scan boundary (`universe_too_small`, `partial_scan`, or `ready`), and

@@ -550,10 +550,24 @@ def priced_in_preflight_payload(
         if isinstance(discovery_snapshot, Mapping)
         else radar_discovery_snapshot_payload(engine, config, radar_run_summary=run)
     )
+    bar_universe = _latest_daily_bar_universe_payload(
+        engine,
+        available_at=datetime.now(UTC),
+    )
     call_plan = radar_run_call_plan_payload(engine, config)
     provider_rows = provider_preflight_payload(config, radar_run_summary=run)
-    commands = _priced_in_preflight_commands(config)
-    rows = _priced_in_preflight_rows(discovery, call_plan, provider_rows, commands, config)
+    commands = _priced_in_preflight_commands(
+        config,
+        target_ticker_pages=_estimated_ticker_seed_pages(bar_universe),
+    )
+    rows = _priced_in_preflight_rows(
+        discovery,
+        call_plan,
+        provider_rows,
+        commands,
+        config,
+        bar_universe,
+    )
     blocked_rows = [row for row in rows if row["status"] == "blocked"]
     attention_rows = [row for row in rows if row["status"] == "attention"]
     if blocked_rows:
@@ -578,6 +592,7 @@ def priced_in_preflight_payload(
         "provider": {
             "market_provider": _provider_name(config.daily_market_provider, default="csv"),
             "ticker_seed_cap_pages": max(1, int(config.polygon_tickers_max_pages)),
+            **bar_universe,
         },
         "commands": commands,
         "api": {
@@ -5099,6 +5114,7 @@ def _priced_in_preflight_rows(
     provider_rows: Sequence[Mapping[str, object]],
     commands: Mapping[str, str],
     config: AppConfig,
+    bar_universe: Mapping[str, object],
 ) -> list[dict[str, object]]:
     scan_yield = _mapping_value(discovery, "yield")
     freshness = _mapping_value(discovery, "freshness")
@@ -5109,19 +5125,33 @@ def _priced_in_preflight_rows(
     missing_bars = int(_finite_float(freshness.get("missing_as_of_daily_bar_count")))
     provider = _provider_name(config.daily_market_provider, default="csv")
     ticker_page_cap = max(1, int(config.polygon_tickers_max_pages))
+    estimated_pages = _estimated_ticker_seed_pages(bar_universe)
+    latest_bar_ticker_count = int(
+        _finite_float(bar_universe.get("latest_daily_bar_ticker_count"))
+    )
     rows: list[dict[str, object]] = []
 
     if (active or requested or scanned) < 500:
-        cap_note = (
-            f"; Polygon/Massive ticker seed cap is {ticker_page_cap} page(s)"
-            if provider == "polygon"
-            else ""
-        )
-        seed_action = (
-            "Raise CATALYST_POLYGON_TICKERS_MAX_PAGES if needed, then seed tickers."
-            if provider == "polygon" and ticker_page_cap <= 1
-            else "Seed the ticker universe before calling this a full-market scan."
-        )
+        cap_note = ""
+        seed_action = "Seed the ticker universe before calling this a full-market scan."
+        if provider == "polygon":
+            if estimated_pages is not None and estimated_pages > ticker_page_cap:
+                cap_note = (
+                    f"; latest bars contain {latest_bar_ticker_count} tickers; "
+                    f"ticker seed cap is {ticker_page_cap}/{estimated_pages} "
+                    "estimated page(s)"
+                )
+                seed_action = (
+                    "Set CATALYST_POLYGON_TICKERS_MAX_PAGES to at least "
+                    f"{estimated_pages}, then seed tickers."
+                )
+            else:
+                cap_note = f"; Polygon/Massive ticker seed cap is {ticker_page_cap} page(s)"
+                if ticker_page_cap <= 1:
+                    seed_action = (
+                        "Raise CATALYST_POLYGON_TICKERS_MAX_PAGES if needed, "
+                        "then seed tickers."
+                    )
         rows.append(
             _priced_in_preflight_row(
                 "universe",
@@ -5231,11 +5261,16 @@ def _priced_in_preflight_row(
     }
 
 
-def _priced_in_preflight_commands(config: AppConfig) -> dict[str, str]:
+def _priced_in_preflight_commands(
+    config: AppConfig,
+    *,
+    target_ticker_pages: int | None = None,
+) -> dict[str, str]:
     provider = _provider_name(config.daily_market_provider, default="csv")
     if provider == "polygon":
         page_cap = max(1, int(config.polygon_tickers_max_pages))
-        ingest_tickers = f"catalyst-radar ingest-polygon tickers --max-pages {page_cap}"
+        target_pages = max(page_cap, target_ticker_pages or page_cap)
+        ingest_tickers = f"catalyst-radar ingest-polygon tickers --max-pages {target_pages}"
         ingest_bars = "catalyst-radar ingest-polygon grouped-daily --date <LATEST_TRADING_DATE>"
     else:
         ingest_tickers = (
@@ -5250,6 +5285,42 @@ def _priced_in_preflight_commands(config: AppConfig) -> dict[str, str]:
         "run_scan": "catalyst-radar scan --as-of <LATEST_TRADING_DATE>",
         "review_queue": "catalyst-radar priced-in-queue --json",
     }
+
+
+def _latest_daily_bar_universe_payload(
+    engine: Engine,
+    *,
+    available_at: datetime,
+) -> dict[str, object]:
+    with engine.connect() as conn:
+        latest_date = conn.scalar(
+            select(func.max(daily_bars.c.date)).where(daily_bars.c.available_at <= available_at)
+        )
+        latest_count = 0
+        if latest_date is not None:
+            latest_count = int(
+                conn.scalar(
+                    select(func.count(func.distinct(daily_bars.c.ticker))).where(
+                        daily_bars.c.available_at <= available_at,
+                        daily_bars.c.date == latest_date,
+                    )
+                )
+                or 0
+            )
+    estimated_pages = ceil(latest_count / 1000) if latest_count else None
+    return {
+        "latest_daily_bar_date": latest_date.isoformat() if latest_date is not None else None,
+        "latest_daily_bar_ticker_count": latest_count,
+        "estimated_ticker_seed_pages": estimated_pages,
+    }
+
+
+def _estimated_ticker_seed_pages(source: Mapping[str, object]) -> int | None:
+    value = source.get("estimated_ticker_seed_pages")
+    if value is None:
+        return None
+    pages = int(_finite_float(value))
+    return pages if pages > 0 else None
 
 
 def _research_shortlist_priority(row: Mapping[str, object]) -> str:
