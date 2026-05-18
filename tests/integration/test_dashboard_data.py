@@ -1380,6 +1380,9 @@ def test_priced_in_queue_payload_surfaces_ranked_gap_rows(tmp_path: Path) -> Non
     assert payload["external_calls_made"] == 0
     assert payload["status"] in {"universe_too_small", "partial_scan", "ready"}
     assert payload["count"] == 2
+    assert payload["source_coverage"]["schema_version"] == "priced-in-source-coverage-v1"
+    assert payload["source_coverage"]["row_count"] == 2
+    assert "market_bars" in payload["source_coverage"]["sources"]
     assert payload["rows"][0]["ticker"] == "MSFT"
     assert payload["rows"][0]["priced_in_status"]
     assert "emotion_reaction_gap" in payload["rows"][0]

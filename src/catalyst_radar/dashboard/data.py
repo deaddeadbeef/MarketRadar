@@ -69,6 +69,14 @@ from catalyst_radar.validation.reports import (
 
 RADAR_RUN_COOLDOWN_LOCK_NAME = "manual_radar_run_cooldown"
 DAILY_WORKER_LOCK_NAME = "daily-run"
+PRICED_IN_SOURCE_CLASSES = (
+    "market_bars",
+    "catalyst_events",
+    "local_text",
+    "options",
+    "theme_peer_sector",
+    "broker_context",
+)
 
 ALERT_SUPPRESSION_EXPLANATIONS = {
     "duplicate_trigger": "A prior alert already covers the same trigger.",
@@ -502,6 +510,7 @@ def priced_in_queue_payload(
             if abs(_finite_float(row.get("emotion_reaction_gap"))) >= threshold
         ]
     rows = sorted(rows, key=_priced_in_queue_sort_key)[: _positive_limit(limit)]
+    source_coverage = priced_in_source_coverage_summary(rows)
     status_counts = dict(Counter(str(row.get("priced_in_status") or "unknown") for row in rows))
     scan_status = _priced_in_scan_status(discovery)
     preflight = priced_in_preflight_payload(
@@ -529,6 +538,7 @@ def priced_in_queue_payload(
         },
         "count": len(rows),
         "status_counts": status_counts,
+        "source_coverage": source_coverage,
         "rows": rows,
     }
 
@@ -608,6 +618,69 @@ def priced_in_preflight_payload(
             "next_action": call_plan.get("next_action"),
         },
         "rows": rows,
+    }
+
+
+def priced_in_source_coverage_summary(
+    rows: Sequence[Mapping[str, object]],
+) -> dict[str, object]:
+    counts = {
+        source: {"available": 0, "stale": 0, "missing": 0}
+        for source in PRICED_IN_SOURCE_CLASSES
+    }
+    row_count = 0
+    for row in rows:
+        if not isinstance(row, Mapping):
+            continue
+        row_count += 1
+        sources = _priced_in_row_source_payload(row)
+        seen: set[str] = set()
+        for status in ("available", "stale", "missing"):
+            for source in _sequence_value(sources.get(status)):
+                normalized = str(source)
+                if normalized not in counts:
+                    continue
+                counts[normalized][status] += 1
+                seen.add(normalized)
+        for source in PRICED_IN_SOURCE_CLASSES:
+            if source not in seen:
+                counts[source]["missing"] += 1
+
+    source_rows: dict[str, dict[str, object]] = {}
+    for source, values in counts.items():
+        available = values["available"]
+        stale = values["stale"]
+        missing = values["missing"]
+        denominator = max(row_count, available + stale + missing)
+        source_rows[source] = {
+            "available": available,
+            "stale": stale,
+            "missing": missing,
+            "row_count": row_count,
+            "coverage_pct": round((available / denominator) * 100, 1)
+            if denominator
+            else 0.0,
+        }
+    weak_sources = [
+        source
+        for source, _values in sorted(
+            source_rows.items(),
+            key=lambda item: (
+                float(item[1]["coverage_pct"]),
+                -int(item[1]["stale"]) - int(item[1]["missing"]),
+                PRICED_IN_SOURCE_CLASSES.index(item[0])
+                if item[0] in PRICED_IN_SOURCE_CLASSES
+                else len(PRICED_IN_SOURCE_CLASSES),
+            ),
+        )
+        if row_count and float(_values["coverage_pct"]) < 100.0
+    ][:3]
+    return {
+        "schema_version": "priced-in-source-coverage-v1",
+        "row_count": row_count,
+        "sources": source_rows,
+        "weak_sources": weak_sources,
+        "summary": _priced_in_source_coverage_summary_text(source_rows, row_count),
     }
 
 
@@ -5051,6 +5124,38 @@ def _priced_in_queue_row(row: Mapping[str, object]) -> dict[str, object]:
             row.get("hard_blocks")
         ),
     }
+
+
+def _priced_in_row_source_payload(row: Mapping[str, object]) -> dict[str, object]:
+    for key in ("data_sources", "priced_in_data_sources"):
+        value = row.get(key)
+        if isinstance(value, Mapping):
+            return _row_dict(value)
+    return _priced_in_data_sources(row)
+
+
+def _priced_in_source_coverage_summary_text(
+    sources: Mapping[str, Mapping[str, object]],
+    row_count: int,
+) -> str:
+    if row_count <= 0:
+        return "no priced-in rows"
+    parts = []
+    for source in PRICED_IN_SOURCE_CLASSES:
+        values = sources.get(source, {})
+        available = int(_finite_float(values.get("available")))
+        stale = int(_finite_float(values.get("stale")))
+        missing = int(_finite_float(values.get("missing")))
+        detail = f"{source} {available}/{row_count}"
+        extras = []
+        if stale:
+            extras.append(f"{stale} stale")
+        if missing:
+            extras.append(f"{missing} missing")
+        if extras:
+            detail = f"{detail} ({', '.join(extras)})"
+        parts.append(detail)
+    return "; ".join(parts)
 
 
 def _priced_in_queue_sort_key(row: Mapping[str, object]) -> tuple[int, float, float, str]:

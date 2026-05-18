@@ -240,6 +240,9 @@ Schwab, or OpenAI calls.
 `priced-in-queue` is the scriptable replacement for the TUI insight table. It
 returns the same full-scan boundary and ranked emotion-vs-reaction rows used by
 the dashboard, with optional `--status`, `--min-gap`, `--limit`, and `--json`.
+The payload includes queue-level `source_coverage`, so the operator can see
+whether market bars, catalyst events, local text, options, theme/peer/sector
+context, and broker context are contributing across the visible queue.
 Each row also reports which source classes are available, stale, or missing:
 market bars, catalyst events, local text, options, theme/peer/sector context,
 and broker context. The API equivalent is `GET /api/radar/priced-in`.

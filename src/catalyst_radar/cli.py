@@ -2449,6 +2449,12 @@ def _print_priced_in_queue(payload: Mapping[str, object]) -> None:
     )
     print(f"headline={payload.get('headline')}")
     print(f"next_action={payload.get('next_action')}")
+    source_coverage = payload.get("source_coverage")
+    if isinstance(source_coverage, Mapping):
+        print(f"source_coverage={_compact_cli_text(source_coverage.get('summary'))}")
+        weak_sources = source_coverage.get("weak_sources")
+        if isinstance(weak_sources, list | tuple) and weak_sources:
+            print(f"weak_sources={','.join(str(item) for item in weak_sources)}")
     rows = payload.get("rows")
     if not isinstance(rows, list | tuple) or not rows:
         print("No priced-in rows.")
