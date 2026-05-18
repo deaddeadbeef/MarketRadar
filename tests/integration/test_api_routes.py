@@ -8,6 +8,7 @@ from sqlalchemy import func, insert, select
 import apps.api.main as api_main
 from apps.api.main import create_app
 from catalyst_radar.alerts.models import Alert, alert_id
+from catalyst_radar.api.routes import agents as agent_routes
 from catalyst_radar.api.routes import radar as radar_routes
 from catalyst_radar.core.models import ActionState
 from catalyst_radar.dashboard import data as dashboard_data
@@ -261,6 +262,90 @@ def test_get_agent_reviews_returns_budget_ledger_history(
     assert payload["rows"][0]["task"] == "mid_review"
     assert payload["rows"][0]["status"] == "dry_run"
     assert payload["rows"][0]["candidate_packet_id"] == "packet-MSFT"
+
+
+def test_get_agent_brief_returns_zero_call_market_radar_brief(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "agent-brief-api.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+    captured: dict[str, object] = {}
+
+    def fake_dashboard_snapshot_payload(**kwargs):
+        captured["snapshot_kwargs"] = kwargs
+        return {
+            "schema_version": "dashboard-cli-snapshot-v1",
+            "priced_in_answer": {
+                "schema_version": "priced-in-answer-v1",
+                "status": "research_only",
+                "answer": "Not fully priced yet.",
+                "external_calls_made": 0,
+            },
+        }
+
+    def fake_run_market_radar_agents(snapshot, _config, **kwargs):
+        captured["snapshot"] = snapshot
+        captured["agent_kwargs"] = kwargs
+        return {
+            "schema_version": "market-radar-agent-brief-v1",
+            "mode": "dry_run",
+            "status": "dry_run",
+            "insights": ["Priced-in answer is research_only."],
+            "external_calls_made": {"openai": 0, "market_data": 0, "broker": 0},
+        }
+
+    monkeypatch.setattr(
+        agent_routes,
+        "dashboard_snapshot_payload",
+        fake_dashboard_snapshot_payload,
+    )
+    monkeypatch.setattr(
+        agent_routes,
+        "run_market_radar_agents",
+        fake_run_market_radar_agents,
+    )
+    client = TestClient(create_app())
+
+    response = client.get(
+        "/api/agents/brief",
+        params={
+            "ticker": "msft",
+            "available_at": "2026-05-18T16:00:00+00:00",
+            "priced_in_status": "actionable",
+            "usefulness": "research_useful",
+            "source_gap": "options,local_text",
+            "decision_gap": "decision_card",
+            "scan_limit": 12,
+            "scan_offset": 24,
+            "telemetry_limit": 5,
+            "goal": "Find unpriced expectation gaps.",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["schema_version"] == "market-radar-agent-brief-v1"
+    assert payload["external_calls_made"] == {
+        "broker": 0,
+        "market_data": 0,
+        "openai": 0,
+    }
+    filters = captured["snapshot_kwargs"]["filters"].normalized()
+    assert filters.ticker == "MSFT"
+    assert filters.available_at.isoformat() == "2026-05-18T16:00:00+00:00"
+    assert filters.priced_in_status == "actionable"
+    assert filters.priced_in_usefulness == "research_useful"
+    assert filters.priced_in_source_gap == ("options", "local_text")
+    assert filters.priced_in_decision_gap == ("decision_card",)
+    assert filters.priced_in_limit == 12
+    assert filters.priced_in_offset == 24
+    assert filters.telemetry_limit == 5
+    assert captured["agent_kwargs"] == {
+        "real": False,
+        "operator_goal": "Find unpriced expectation gaps.",
+    }
 
 
 def test_post_agent_review_requires_analyst_when_auth_enabled(

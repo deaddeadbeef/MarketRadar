@@ -7,9 +7,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from catalyst_radar.agents.review_service import run_agent_review
+from catalyst_radar.agents.sdk_orchestrator import run_market_radar_agents
 from catalyst_radar.agents.tasks import DEFAULT_TASKS
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.dashboard import data as dashboard_data
+from catalyst_radar.dashboard.tui import DashboardFilters, dashboard_snapshot_payload
 from catalyst_radar.security.access import Role, require_role
 from catalyst_radar.storage.db import create_schema, engine_from_url
 
@@ -59,6 +61,49 @@ def review_candidate(request: AgentReviewRequest) -> dict[str, object]:
     if result.status_code >= 400:
         raise HTTPException(status_code=result.status_code, detail=result.payload)
     return result.payload
+
+
+@router.get("/brief", dependencies=[Depends(require_role(Role.VIEWER))])
+def agent_brief(
+    ticker: Annotated[str | None, Query(min_length=1, max_length=12)] = None,
+    available_at: datetime | None = None,
+    alert_status: str | None = None,
+    alert_route: str | None = None,
+    priced_in_status: str = "all",
+    usefulness: str | None = None,
+    source_gap: str | None = None,
+    decision_gap: str | None = None,
+    scan_limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    scan_offset: Annotated[int, Query(ge=0)] = 0,
+    telemetry_limit: Annotated[int, Query(ge=1, le=200)] = 8,
+    goal: str | None = None,
+) -> dict[str, object]:
+    config = AppConfig.from_env()
+    filters = DashboardFilters(
+        ticker=ticker,
+        available_at=available_at,
+        alert_status=alert_status,
+        alert_route=alert_route,
+        priced_in_status=priced_in_status,
+        priced_in_usefulness=usefulness,
+        priced_in_source_gap=source_gap,
+        priced_in_decision_gap=decision_gap,
+        priced_in_limit=scan_limit,
+        priced_in_offset=scan_offset,
+        telemetry_limit=telemetry_limit,
+    )
+    snapshot = dashboard_snapshot_payload(
+        engine=_engine(),
+        config=config,
+        dotenv_loaded=True,
+        filters=filters,
+    )
+    return run_market_radar_agents(
+        snapshot,
+        config,
+        real=False,
+        operator_goal=goal,
+    )
 
 
 @router.get("/reviews", dependencies=[Depends(require_role(Role.VIEWER))])
