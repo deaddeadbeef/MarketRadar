@@ -31,6 +31,7 @@ from catalyst_radar.connectors.csv_market import load_securities_csv
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.core.models import ActionState
 from catalyst_radar.dashboard.data import (
+    _priced_in_scan_status,
     actionability_breakdown_payload,
     activation_summary_payload,
     agent_review_ledger_rows_payload,
@@ -1420,6 +1421,19 @@ def test_priced_in_queue_payload_surfaces_ranked_gap_rows(tmp_path: Path) -> Non
     assert payload["rows"][0]["why_now"] == "MSFT guidance raised"
 
 
+def test_priced_in_scan_status_uses_named_universe_denominator() -> None:
+    discovery = {
+        "run": {"universe": "liquid-us"},
+        "freshness": {"active_security_count": 12_613},
+        "yield": {
+            "requested_securities": 0,
+            "scanned_securities": 2_429,
+        },
+    }
+
+    assert _priced_in_scan_status(discovery) == "ready"
+
+
 def test_priced_in_answer_payload_summarizes_current_scan(tmp_path: Path) -> None:
     engine = _engine(tmp_path)
     _insert_dashboard_fixture(engine)
@@ -1534,6 +1548,72 @@ def test_priced_in_answer_prefers_local_artifact_gap_before_options(
         "AAAU",
     ]
     assert "--ticker" not in decision_card_gap["command"]
+
+
+def test_priced_in_answer_opens_full_scan_queue_when_decision_ready(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    queue = {
+        "status": "ready",
+        "total_count": 2_429,
+        "count": 1,
+        "returned_count": 1,
+        "offset": 0,
+        "has_more": True,
+        "filters": {"status": "all", "limit": 5, "offset": 0},
+        "latest_run": {"as_of": "2026-05-15", "universe": "liquid-us"},
+        "status_counts": {"bullish_not_priced_in": 4},
+        "usefulness_counts": {"decision_useful": 4},
+        "decision_gap_counts": {
+            "schema_version": "priced-in-decision-gap-counts-v1",
+            "scope": "actionable_mismatch_rows",
+            "row_count": 4,
+            "counts": {},
+            "sample_tickers": {},
+            "top_gaps": [],
+        },
+        "source_coverage": {
+            "summary": "market_bars 2429/2429; options 0/2429",
+            "weak_sources": ["options"],
+            "actions": [],
+        },
+        "rows": [
+            {
+                "ticker": "A",
+                "priced_in_status": "bullish_not_priced_in",
+                "emotion_reaction_gap": 65.9,
+                "emotion_score": 65.9,
+                "reaction_score": 0.0,
+                "priced_in_score": 0.0,
+                "data_sources": {"missing": ["options"], "stale": []},
+                "usefulness": {
+                    "status": "decision_useful",
+                    "decision_ready": True,
+                    "next_command": (
+                        "catalyst-radar decision-card --ticker A --as-of 2026-05-15"
+                    ),
+                },
+                "next_step": "Review the priced-in evidence and optional source gaps.",
+            }
+        ],
+    }
+
+    payload = priced_in_answer_payload(
+        engine,
+        AppConfig.from_env({}),
+        queue=queue,
+        preflight={},
+    )
+
+    assert payload["status"] == "decision_ready"
+    assert payload["next_action"] == (
+        "Review all decision-ready mismatch rows from the full scan."
+    )
+    assert payload["next_command"] == (
+        "catalyst-radar priced-in-queue --mismatches "
+        "--usefulness decision_useful --limit 50"
+    )
 
 
 def test_priced_in_queue_payload_paginates_ranked_rows(tmp_path: Path) -> None:
