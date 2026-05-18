@@ -346,6 +346,13 @@ def build_parser() -> argparse.ArgumentParser:
     dashboard_snapshot.add_argument("--available-at", type=_parse_aware_datetime)
     dashboard_snapshot.add_argument("--alert-status")
     dashboard_snapshot.add_argument("--alert-route")
+    dashboard_snapshot.add_argument(
+        "--scan-mode",
+        "--priced-in-status",
+        dest="priced_in_status",
+        default="actionable",
+        help="Insights queue mode: actionable/mismatches or all/full.",
+    )
     dashboard_snapshot.add_argument("--telemetry-limit", type=int, default=8)
     dashboard_snapshot.add_argument("--page", default="overview")
     dashboard_snapshot.add_argument("--json", action="store_true")
@@ -373,6 +380,13 @@ def build_parser() -> argparse.ArgumentParser:
     agent_brief.add_argument("--available-at", type=_parse_aware_datetime)
     agent_brief.add_argument("--alert-status")
     agent_brief.add_argument("--alert-route")
+    agent_brief.add_argument(
+        "--scan-mode",
+        "--priced-in-status",
+        dest="priced_in_status",
+        default="actionable",
+        help="Insights queue mode used in the agent brief context.",
+    )
     agent_brief.add_argument("--telemetry-limit", type=int, default=8)
     agent_brief.add_argument("--goal")
     agent_brief.add_argument("--real", action="store_true")
@@ -384,6 +398,13 @@ def build_parser() -> argparse.ArgumentParser:
     dashboard_tui.add_argument("--available-at", type=_parse_aware_datetime)
     dashboard_tui.add_argument("--alert-status")
     dashboard_tui.add_argument("--alert-route")
+    dashboard_tui.add_argument(
+        "--scan-mode",
+        "--priced-in-status",
+        dest="priced_in_status",
+        default="actionable",
+        help="Insights queue mode: actionable/mismatches or all/full.",
+    )
     dashboard_tui.add_argument("--telemetry-limit", type=int, default=8)
     dashboard_tui.add_argument("--page", default="overview")
     dashboard_tui.add_argument("--once", action="store_true")
@@ -632,6 +653,7 @@ def main(argv: list[str] | None = None) -> int:
             available_at=args.available_at,
             alert_status=args.alert_status,
             alert_route=args.alert_route,
+            priced_in_status=args.priced_in_status,
             telemetry_limit=args.telemetry_limit,
         )
         payload = dashboard_snapshot_payload(
@@ -690,6 +712,7 @@ def main(argv: list[str] | None = None) -> int:
             available_at=args.available_at,
             alert_status=args.alert_status,
             alert_route=args.alert_route,
+            priced_in_status=args.priced_in_status,
             telemetry_limit=args.telemetry_limit,
         )
         payload = dashboard_snapshot_payload(
@@ -717,6 +740,7 @@ def main(argv: list[str] | None = None) -> int:
             available_at=args.available_at,
             alert_status=args.alert_status,
             alert_route=args.alert_route,
+            priced_in_status=args.priced_in_status,
             telemetry_limit=args.telemetry_limit,
         )
         if args.once:

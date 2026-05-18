@@ -180,7 +180,7 @@ def test_dashboard_snapshot_cli_outputs_human_readable_zero_call_summary(
         "Page: overview",
         "DB:",
         "Ticker: ACME",
-        "Actionable mismatches - showing",
+        "Mismatches from full scan - showing",
         "UNIVERSE",
         "ACME",
         "Bullish not priced",
@@ -224,6 +224,25 @@ def test_dashboard_snapshot_ops_page_shows_priced_in_source_actions(
     assert "Priced-in Source Gaps" in output.out
     assert "options" in output.out
     assert "ingest-options" in output.out
+
+
+def test_dashboard_tui_once_can_show_full_scan_mode(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["seed-dashboard-demo"]) == 0
+    capsys.readouterr()
+
+    assert main(["dashboard-tui", "--once", "--scan-mode", "all", "--page", "overview"]) == 0
+    output = capsys.readouterr()
+
+    assert output.err == ""
+    assert "Full-market priced-in queue - showing" in output.out
+    assert "First row is scan coverage" in output.out
 
 
 def test_agent_brief_cli_outputs_zero_call_dry_run(
@@ -507,11 +526,13 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert app.page == "overview"
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert "INSIGHTS" in frame
-            assert "Actionable mismatches - showing" in frame
+            assert "Mismatches from full scan - showing" in frame
             assert "UNIVERSE" in frame
             assert "ACME" in frame
             assert "Bullish not priced" in frame
             assert "bullish/bearish not-priced-in mismatch" in frame
+            assert "M  Mismatches only" in frame
+            assert "ALL Full scan rows" in frame
             assert "Candidates [1]" in frame
             assert "FRESH BARS" in frame
             assert "No - research only" in frame
@@ -523,6 +544,21 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert "REVIEW" in frame
             assert "OPERATE" in frame
             assert "Up/Down on sidebar" in frame
+
+            await pilot.press("m")
+            await pilot.pause()
+            assert app.page == "overview"
+            assert app.filters.priced_in_status == "all"
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            assert "Full-market priced-in queue - showing" in frame
+            assert "Full Scan mode" in frame
+
+            assert await pilot.click("#action-scan-mismatches")
+            await pilot.pause()
+            assert app.filters.priced_in_status == "actionable"
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            assert "Mismatches mode" in frame
+            assert "Mismatches from full scan - showing" in frame
 
             app.query_one("#data-table").focus()
             await pilot.press("down")
