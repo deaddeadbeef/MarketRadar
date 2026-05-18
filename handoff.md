@@ -74,8 +74,12 @@ market_bars -> catalyst_events -> local_text -> candidate_packet -> decision_car
 Live smoke after the priority correction:
 
 ```text
-recommended_gap={'gap': 'candidate_packet', 'count': 5, 'command': 'catalyst-radar priced-in-queue --usefulness research_useful --decision-gap candidate_packet --limit 50', ...}
+recommended_gap={'gap': 'candidate_packet', 'count': 5, 'command': 'catalyst-radar build-packets --as-of 2026-05-15 --min-state AddToWatchlist', ...}
 ```
+
+The candidate-packet and decision-card recommendations now use executable local
+artifact commands when the scan date is known. They fall back to the filtered
+queue command only if no scan date is available.
 
 ## Latest Full-Scan Scope UX
 

@@ -1466,6 +1466,7 @@ def test_priced_in_answer_prefers_local_artifact_gap_before_options(
         "offset": 0,
         "has_more": False,
         "filters": {"status": "all", "limit": 2, "offset": 0},
+        "latest_run": {"as_of": "2026-05-15"},
         "status_counts": {"bullish_not_priced_in": 2},
         "usefulness_counts": {"research_useful": 2},
         "decision_gap_counts": {
@@ -1505,8 +1506,8 @@ def test_priced_in_answer_prefers_local_artifact_gap_before_options(
     recommended = payload["decision_readiness"]["recommended_gap"]
     assert recommended["gap"] == "candidate_packet"
     assert recommended["command"] == (
-        "catalyst-radar priced-in-queue --usefulness research_useful "
-        "--decision-gap candidate_packet --limit 50"
+        "catalyst-radar build-packets --as-of 2026-05-15 "
+        "--min-state AddToWatchlist"
     )
 
 
