@@ -280,6 +280,7 @@ def test_dashboard_tui_once_can_show_full_scan_mode(
 
     assert output.err == ""
     assert "Full-market priced-in queue - showing" in output.out
+    assert "Evidence gaps" in output.out
     assert "First row is scan coverage" in output.out
 
 

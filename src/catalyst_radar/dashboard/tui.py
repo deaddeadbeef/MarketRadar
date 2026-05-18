@@ -2211,6 +2211,13 @@ def _market_insight_rows(payload: Mapping[str, object]) -> list[Mapping[str, obj
             actionable_count=_priced_in_actionable_count(priced_in_queue),
         )
     )
+    rows.append(
+        _source_coverage_row(
+            freshness=freshness,
+            database=database,
+            source_coverage=source_coverage,
+        )
+    )
 
     for candidate in queue_rows:
         ticker = str(candidate.get("ticker") or "").strip().upper()
@@ -2295,24 +2302,8 @@ def _market_insight_rows(payload: Mapping[str, object]) -> list[Mapping[str, obj
             }
         )
 
-    freshness_gap = (
-        f"run coverage {freshness.get('active_security_with_as_of_bar_count')}/"
-        f"{freshness.get('active_security_count')}; "
-        f"latest bar {database.get('latest_daily_bar_date') or 'n/a'}"
-    )
-    source_gap = str(source_coverage.get("summary") or "").strip()
-    source_next_action = _source_coverage_next_action(source_coverage)
     rows.extend(
         [
-            {
-                "_row_key": "ops",
-                "scope": "DATA",
-                "signal": "Source coverage",
-                "why_now": f"{freshness_gap}; {source_gap}" if source_gap else freshness_gap,
-                "next_action": source_next_action,
-                "target_page": "ops",
-                "status_message": "Opened Ops. Fix source coverage before trusting output.",
-            },
             {
                 "_row_key": "run",
                 "scope": "ALL",
@@ -2326,6 +2317,30 @@ def _market_insight_rows(payload: Mapping[str, object]) -> list[Mapping[str, obj
         ]
     )
     return rows
+
+
+def _source_coverage_row(
+    *,
+    freshness: Mapping[str, object],
+    database: Mapping[str, object],
+    source_coverage: Mapping[str, object],
+) -> Mapping[str, object]:
+    freshness_gap = (
+        f"bar coverage {freshness.get('active_security_with_as_of_bar_count')}/"
+        f"{freshness.get('active_security_count')}; "
+        f"latest bar {database.get('latest_daily_bar_date') or 'n/a'}"
+    )
+    source_gap = _source_coverage_gap_text(source_coverage)
+    why_now = f"{freshness_gap}; {source_gap}" if source_gap else freshness_gap
+    return {
+        "_row_key": "ops",
+        "scope": "DATA",
+        "signal": "Evidence gaps",
+        "why_now": why_now,
+        "next_action": _source_coverage_next_action(source_coverage),
+        "target_page": "ops",
+        "status_message": "Opened Ops. Fix source coverage before trusting output.",
+    }
 
 
 def _full_scan_coverage_row(
@@ -2392,17 +2407,31 @@ def _full_scan_coverage_row(
 
 
 def _source_coverage_next_action(source_coverage: Mapping[str, object]) -> str:
-    for action in _rows(source_coverage.get("actions")):
-        if str(action.get("status") or "") not in {"ready", "not_applicable"}:
-            next_action = str(action.get("next_action") or "").strip()
-            if next_action:
-                return next_action
+    by_source = {
+        str(action.get("source") or ""): action
+        for action in _rows(source_coverage.get("actions"))
+    }
     raw_sources = source_coverage.get("weak_sources")
     weak_sources = [
         str(item)
         for item in (raw_sources if isinstance(raw_sources, list | tuple) else ())
         if str(item).strip()
     ]
+    for source in weak_sources:
+        action = by_source.get(source)
+        if not action or str(action.get("status") or "") in {"ready", "not_applicable"}:
+            continue
+        next_action = str(action.get("next_action") or "").strip()
+        command = str(action.get("command") or "").strip()
+        if next_action and command:
+            return f"{next_action} Command: {command}"
+        if next_action:
+            return next_action
+    for action in _rows(source_coverage.get("actions")):
+        if str(action.get("status") or "") not in {"ready", "not_applicable"}:
+            next_action = str(action.get("next_action") or "").strip()
+            if next_action:
+                return next_action
     if not weak_sources:
         return "Open Ops to verify providers and jobs before trusting output."
     first = weak_sources[0]
@@ -2422,6 +2451,40 @@ def _source_coverage_next_action(source_coverage: Mapping[str, object]) -> str:
     if first == "broker_context":
         return "Sync read-only Schwab market context before sizing or trigger review."
     return "Open Ops to fix missing source coverage before trusting output."
+
+
+def _source_coverage_gap_text(source_coverage: Mapping[str, object]) -> str:
+    sources = _mapping(source_coverage.get("sources"))
+    raw_sources = source_coverage.get("weak_sources")
+    weak_sources = [
+        str(item)
+        for item in (raw_sources if isinstance(raw_sources, list | tuple) else ())
+        if str(item).strip()
+    ]
+    parts: list[str] = []
+    for source in weak_sources[:3]:
+        values = _mapping(sources.get(source))
+        missing = int(_number_or_zero(values.get("missing")))
+        stale = int(_number_or_zero(values.get("stale")))
+        row_count = int(_number_or_zero(values.get("row_count")))
+        if missing:
+            detail = f"{source} missing {missing}/{row_count or missing}"
+        elif stale:
+            detail = f"{source} stale {stale}/{row_count or stale}"
+        else:
+            detail = f"{source} coverage {_text(values.get('coverage_pct'))}%"
+        raw_samples = values.get("sample_tickers")
+        samples = [
+            str(ticker)
+            for ticker in (raw_samples if isinstance(raw_samples, list | tuple) else ())
+            if str(ticker).strip()
+        ][:3]
+        if samples:
+            detail += f" sample {','.join(samples)}"
+        parts.append(detail)
+    if parts:
+        return "; ".join(parts)
+    return str(source_coverage.get("summary") or "").strip()
 
 
 def _priced_in_signal(status: str, *, fallback: str) -> str:
