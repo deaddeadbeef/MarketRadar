@@ -336,6 +336,7 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
 ) -> None:
     database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
     monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    cutoff = (DEMO_AVAILABLE_AT + timedelta(minutes=1)).isoformat()
 
     assert main(["seed-dashboard-demo"]) == 0
     capsys.readouterr()
@@ -371,6 +372,13 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
     assert output.err == ""
     assert filtered_payload["filters"]["usefulness"] == "research_useful"
     assert filtered_payload["rows"][0]["usefulness"]["status"] == "research_useful"
+
+    assert main(["priced-in-queue", "--available-at", cutoff, "--json"]) == 0
+    output = capsys.readouterr()
+    cutoff_payload = json.loads(output.out)
+
+    assert output.err == ""
+    assert cutoff_payload["filters"]["available_at"] == cutoff
 
     assert main(["priced-in-queue", "--source-gap", "options", "--json"]) == 0
     output = capsys.readouterr()

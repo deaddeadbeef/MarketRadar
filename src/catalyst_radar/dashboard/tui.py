@@ -349,6 +349,7 @@ def dashboard_snapshot_payload(
         engine,
         config,
         limit=50,
+        available_at=filters.available_at,
         status=filters.priced_in_status,
         usefulness=filters.priced_in_usefulness,
         decision_gap=filters.priced_in_decision_gap,

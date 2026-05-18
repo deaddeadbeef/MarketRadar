@@ -1,6 +1,72 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 16:47:41 +08:00
+Last updated: 2026-05-18 17:22:44 +08:00
+
+## Latest Full-Scan Queue Clarification + Stored Schwab Context
+
+The latest user confusion was again: "Why only these tickers? I want full scan."
+The answer is now both product-visible and technically truer:
+
+- `priced-in-queue --status all` is the full ranked scan view. It reported
+  `scanned=12087 requested=12104 ranked_after_filter=12087 visible_page=5`.
+- `priced-in-queue --status actionable` is only the actionable mismatch filter
+  from that same full scan. It reported
+  `scanned=12087 requested=12104 ranked_after_filter=7 visible_page=7`.
+- Source-action sample tickers are not the scan universe. They are the first
+  missing-source examples for the current filtered queue so the operator can
+  run a safe batch action without dumping 12k tickers into Schwab.
+- The queue now accepts `--available-at <ISO>` so a fresh local candidate cutoff
+  can be inspected directly after read-only context sync or a rerun.
+- The API equivalent accepts `available_at=...` on
+  `GET /api/radar/priced-in`.
+- The TUI dashboard passes its `available-at` filter into the same queue helper.
+- Stored Schwab market snapshots are now used by both the priced-in queue and
+  ticker detail. The old queue path used persisted scan source fields and could
+  still say `broker_context` was missing even after `schwab-market-sync`
+  succeeded.
+- The market-context extraction bug was that `market_context` is a list, but
+  several dashboard paths were reading it through a mapping-only helper. Those
+  paths now use a list-aware accessor.
+
+Current real zero-provider-call smokes after this change:
+
+```powershell
+.\.venv\Scripts\catalyst-radar.exe priced-in-queue --status all --limit 5
+.\.venv\Scripts\catalyst-radar.exe priced-in-queue --status actionable --limit 20
+.\.venv\Scripts\catalyst-radar.exe priced-in-preflight --json
+.\.venv\Scripts\catalyst-radar.exe priced-in-queue --available-at 2026-05-18T09:02:26+00:00 --usefulness research_useful --source-gap broker_context --limit 10
+```
+
+Observed:
+
+```text
+status all:
+scan_scope=scanned=12087 requested=12104 filter=all ranked_after_filter=12087 visible_page=5
+source_coverage=market_bars 12087/12087; ... broker_context 5/12087 (12082 missing)
+
+status actionable:
+scan_scope=scanned=12087 requested=12104 filter=actionable ranked_after_filter=7 visible_page=7
+source_coverage=market_bars 7/7; catalyst_events 7/7; local_text 7/7; options 0/7 (7 missing); theme_peer_sector 7/7; broker_context 5/7 (2 missing)
+
+broker_context gap with fresh cutoff:
+count=0 total=0
+```
+
+The remaining actionable source gap is options. Do not blindly mark options
+ready from the 2026-05-18 Schwab sync for the 2026-05-15 scan, because
+`option_features` are point-in-time and filtered by scan `as_of`. Current
+Schwab option-chain context can be shown as broker context, but using it as
+Friday score input would be lookahead unless modeled as a separate current
+supplemental signal.
+
+Validation for this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_api_routes.py::test_get_radar_priced_in_queue_returns_cli_ready_rows tests\integration\test_dashboard_data.py::test_priced_in_queue_payload_paginates_ranked_rows tests\integration\test_dashboard_data.py::test_priced_in_queue_payload_uses_stored_schwab_market_context tests\integration\test_dashboard_data.py::test_load_ticker_detail_uses_stored_schwab_market_context tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_queue_cli_outputs_same_zero_call_signal -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\api\routes\radar.py src\catalyst_radar\cli.py src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py tests\integration\test_api_routes.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py
+```
+
+Both passed.
 
 ## Latest Executable Source-Gap Batch Actions
 

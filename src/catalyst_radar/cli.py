@@ -395,6 +395,7 @@ def build_parser() -> argparse.ArgumentParser:
     priced_in.add_argument("--database-url")
     priced_in.add_argument("--limit", type=int, default=20)
     priced_in.add_argument("--offset", type=int, default=0)
+    priced_in.add_argument("--available-at", type=_parse_aware_datetime)
     priced_in.add_argument("--status")
     priced_in.add_argument(
         "--usefulness",
@@ -779,6 +780,7 @@ def main(argv: list[str] | None = None) -> int:
             config,
             limit=args.limit,
             offset=args.offset,
+            available_at=args.available_at,
             status=args.status,
             usefulness=args.usefulness,
             source_gap=args.source_gap,
@@ -2807,6 +2809,9 @@ def _count_summary(counts: Mapping[object, object]) -> str:
 def _priced_in_more_command(filters: object, limit: int, next_offset: int) -> str:
     parts = ["catalyst-radar", "priced-in-queue"]
     if isinstance(filters, Mapping):
+        available_at = str(filters.get("available_at") or "").strip()
+        if available_at:
+            parts.extend(["--available-at", available_at])
         status = str(filters.get("status") or "").strip()
         if status and status != "all":
             parts.extend(["--status", status])

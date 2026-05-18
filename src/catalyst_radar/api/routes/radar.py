@@ -330,6 +330,7 @@ def radar_research_shortlist(
 def radar_priced_in_queue(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    available_at: datetime | None = None,
     status: str | None = Query(default=None),
     usefulness: str | None = Query(default=None),
     source_gap: str | None = Query(default=None),
@@ -343,6 +344,7 @@ def radar_priced_in_queue(
             AppConfig.from_env(),
             limit=limit,
             offset=offset,
+            available_at=_parse_api_datetime(available_at),
             status=status,
             usefulness=usefulness,
             source_gap=source_gap,

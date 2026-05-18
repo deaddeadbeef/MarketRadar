@@ -1421,6 +1421,12 @@ def test_priced_in_queue_payload_paginates_ranked_rows(tmp_path: Path) -> None:
         limit=1,
         offset=1,
     )
+    cutoff_page = priced_in_queue_payload(
+        engine,
+        AppConfig.from_env({}),
+        limit=1,
+        available_at=AVAILABLE_AT,
+    )
 
     assert first_page["count"] == 1
     assert first_page["total_count"] == 2
@@ -1442,6 +1448,48 @@ def test_priced_in_queue_payload_paginates_ranked_rows(tmp_path: Path) -> None:
     assert second_page["offset"] == 1
     assert second_page["has_more"] is False
     assert second_page["rows"][0]["ticker"] != first_page["rows"][0]["ticker"]
+    assert cutoff_page["filters"]["available_at"] == AVAILABLE_AT.isoformat()
+
+
+def test_priced_in_queue_payload_uses_stored_schwab_market_context(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    BrokerRepository(engine).upsert_market_snapshots(
+        [
+            BrokerMarketSnapshot(
+                id=broker_market_snapshot_id("MSFT", AVAILABLE_AT),
+                ticker="MSFT",
+                as_of=AVAILABLE_AT,
+                raw_payload={"source": "test"},
+                created_at=AVAILABLE_AT,
+                last_price=420.0,
+                day_change_percent=1.5,
+                relative_volume=1.2,
+            ),
+            BrokerMarketSnapshot(
+                id=broker_market_snapshot_id("AAPL", AVAILABLE_AT),
+                ticker="AAPL",
+                as_of=AVAILABLE_AT,
+                raw_payload={"source": "test"},
+                created_at=AVAILABLE_AT,
+                last_price=230.0,
+                day_change_percent=-0.4,
+                relative_volume=0.9,
+            ),
+        ]
+    )
+
+    payload = priced_in_queue_payload(engine, AppConfig.from_env({}), limit=2)
+
+    actions = {row["source"]: row for row in payload["source_coverage"]["actions"]}
+    assert actions["broker_context"]["status"] == "ready"
+    assert actions["broker_context"]["sample_tickers"] == []
+    assert all(
+        "broker_context" in row["data_sources"]["available"]
+        for row in payload["rows"]
+    )
 
 
 def test_priced_in_queue_payload_supports_actionable_status_alias(tmp_path: Path) -> None:
@@ -3875,6 +3923,34 @@ def test_load_ticker_detail_returns_candidate_packet_card_events_and_validation(
     }
     assert detail["paper_trades"][0]["id"] == "paper-msft"
     assert "paper-msft-future" not in {row["id"] for row in detail["paper_trades"]}
+
+
+def test_load_ticker_detail_uses_stored_schwab_market_context(tmp_path: Path) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    BrokerRepository(engine).upsert_market_snapshots(
+        [
+            BrokerMarketSnapshot(
+                id=broker_market_snapshot_id("MSFT", AVAILABLE_AT),
+                ticker="MSFT",
+                as_of=AVAILABLE_AT,
+                raw_payload={"source": "test"},
+                created_at=AVAILABLE_AT,
+                last_price=420.0,
+                day_change_percent=1.5,
+                relative_volume=1.2,
+            )
+        ]
+    )
+
+    detail = load_ticker_detail(engine, "MSFT")
+
+    assert detail is not None
+    assert detail["latest_candidate"]["schwab_context_status"] == "available"
+    brief = detail["priced_in_evidence_brief"]
+    assert "broker_context" in brief["data_sources"]["available"]
+    actions = {row["source"]: row for row in brief["source_actions"]}
+    assert actions["broker_context"]["status"] == "ready"
 
 
 def test_load_ticker_detail_respects_candidate_state_cutoff(tmp_path: Path) -> None:

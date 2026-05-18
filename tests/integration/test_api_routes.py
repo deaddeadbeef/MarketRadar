@@ -1095,6 +1095,7 @@ def test_get_radar_priced_in_queue_returns_cli_ready_rows(
         *,
         limit,
         offset,
+        available_at,
         status,
         usefulness,
         source_gap,
@@ -1113,6 +1114,7 @@ def test_get_radar_priced_in_queue_returns_cli_ready_rows(
                 "source_gap": [source_gap],
                 "decision_gap": [decision_gap],
                 "min_gap": min_gap,
+                "available_at": available_at.isoformat() if available_at else None,
             },
             "count": 1,
             "total_count": 25,
@@ -1166,7 +1168,9 @@ def test_get_radar_priced_in_queue_returns_cli_ready_rows(
     client = TestClient(create_app())
 
     response = client.get(
-        "/api/radar/priced-in?limit=3&offset=6&status=bullish_not_priced_in"
+        "/api/radar/priced-in?limit=3&offset=6"
+        "&available_at=2026-05-18T16:00:00%2B00:00"
+        "&status=bullish_not_priced_in"
         "&usefulness=research_useful&source_gap=options&decision_gap=decision_card"
         "&min_gap=10"
     )
@@ -1183,6 +1187,7 @@ def test_get_radar_priced_in_queue_returns_cli_ready_rows(
         "source_gap": ["options"],
         "decision_gap": ["decision_card"],
         "min_gap": 10.0,
+        "available_at": "2026-05-18T16:00:00+00:00",
     }
     assert payload["usefulness_counts"] == {"research_useful": 1}
     assert payload["total_count"] == 25
