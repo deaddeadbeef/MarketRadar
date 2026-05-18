@@ -3117,6 +3117,31 @@ def _print_priced_in_preflight(payload: Mapping[str, object]) -> None:
             f"{_compact_cli_text(row.get('command'))} "
             f"{_compact_cli_text(row.get('api'))}"
         )
+    evidence_plan = payload.get("evidence_plan")
+    if isinstance(evidence_plan, Mapping):
+        print(
+            "evidence_plan "
+            f"status={evidence_plan.get('status')} "
+            f"steps={len(_sequence_value(evidence_plan.get('steps')))} "
+            f"next={_compact_cli_text(evidence_plan.get('next_action'))}"
+        )
+        print("priority area status depends_on action command")
+        for step in _sequence_value(evidence_plan.get("steps")):
+            if not isinstance(step, Mapping):
+                continue
+            depends_on = step.get("depends_on")
+            if isinstance(depends_on, list | tuple):
+                depends_text = ",".join(str(item) for item in depends_on if str(item))
+            else:
+                depends_text = "none"
+            print(
+                f"{step.get('priority')} "
+                f"{step.get('area')} "
+                f"{step.get('status')} "
+                f"{depends_text or 'none'} "
+                f"{_compact_cli_text(step.get('action'))} "
+                f"{_compact_cli_text(step.get('command'))}"
+            )
 
 
 def _print_candidate_detail(payload: Mapping[str, object]) -> None:

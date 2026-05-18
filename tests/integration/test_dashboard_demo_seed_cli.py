@@ -310,6 +310,26 @@ def test_dashboard_batch_command_opens_full_scan_source_batch_plan(
     )
 
 
+def test_dashboard_run_page_shows_priced_in_evidence_plan(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["seed-dashboard-demo"]) == 0
+    capsys.readouterr()
+
+    assert main(["dashboard-tui", "--once", "--page", "run"]) == 0
+    output = capsys.readouterr()
+
+    assert output.err == ""
+    assert "Priced-in Evidence Plan" in output.out
+    assert "Evidence status" in output.out
+    assert "priced-in-source-" in output.out
+
+
 def test_dashboard_tui_once_can_show_full_scan_mode(
     tmp_path: Path,
     monkeypatch,
@@ -691,7 +711,15 @@ def test_priced_in_preflight_cli_outputs_zero_call_plan(
     assert payload["schema_version"] == "priced-in-preflight-v1"
     assert payload["external_calls_made"] == 0
     assert payload["rows"][0]["area"] == "universe"
+    assert payload["evidence_plan"]["schema_version"] == "priced-in-evidence-plan-v1"
+    assert payload["evidence_plan"]["external_calls_made"] == 0
     assert payload["commands"]["review_queue"] == "catalyst-radar priced-in-queue --json"
+
+    assert main(["priced-in-preflight"]) == 0
+    text_output = capsys.readouterr()
+    assert text_output.err == ""
+    assert "evidence_plan status=" in text_output.out
+    assert "priority area status depends_on action command" in text_output.out
 
 
 def test_agent_brief_cli_real_mode_blocks_without_explicit_gates(

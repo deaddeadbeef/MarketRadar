@@ -828,6 +828,12 @@ def test_get_latest_radar_run_redacts_restricted_discovery_snapshot(
                     },
                 }
             ],
+            "evidence_plan": {
+                "schema_version": "priced-in-evidence-plan-v1",
+                "status": "blocked",
+                "external_calls_made": 0,
+                "steps": [{"priority": 1, "area": "universe", "status": "blocked"}],
+            },
         },
         raising=False,
     )
@@ -1232,6 +1238,12 @@ def test_get_radar_priced_in_preflight_returns_zero_call_steps(
                     "next_action": "seed tickers",
                 }
             ],
+            "evidence_plan": {
+                "schema_version": "priced-in-evidence-plan-v1",
+                "status": "blocked",
+                "external_calls_made": 0,
+                "steps": [{"priority": 1, "area": "universe", "status": "blocked"}],
+            },
         },
         raising=False,
     )
@@ -1244,6 +1256,7 @@ def test_get_radar_priced_in_preflight_returns_zero_call_steps(
     assert payload["schema_version"] == "priced-in-preflight-v1"
     assert payload["external_calls_made"] == 0
     assert payload["rows"][0]["area"] == "universe"
+    assert payload["evidence_plan"]["schema_version"] == "priced-in-evidence-plan-v1"
 
 
 def test_get_radar_priced_in_source_batches_returns_zero_call_plan(
