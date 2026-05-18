@@ -879,6 +879,13 @@ def priced_in_source_gap_batches_payload(
                     **call_budget,
                 }
             )
+    returned_ticker_count = sum(
+        len(_sequence_value(batch.get("tickers")))
+        for batch in batches
+        if isinstance(batch, Mapping)
+    )
+    returned_batch_start = resolved_offset + 1 if batches else None
+    returned_batch_end = resolved_offset + len(batches) if batches else None
     status_value = (
         "ready"
         if batchable and tickers
@@ -898,6 +905,24 @@ def priced_in_source_gap_batches_payload(
             "Plan only. This command does not call providers; each listed batch command "
             "is an explicit read-only sync and remains rate-limited."
         ),
+        "scan_scope": {
+            "mode": "full_scan",
+            "source_gap": source_name,
+            "full_scan_gap_rows": len(all_gap_tickers),
+            "plannable_rows": len(tickers),
+            "planned_batches": batch_count,
+            "batch_size": resolved_batch_size,
+            "returned_batches": len(batches),
+            "returned_batch_start": returned_batch_start,
+            "returned_batch_end": returned_batch_end,
+            "returned_tickers": returned_ticker_count,
+            "tickers_are_batch_sample": returned_ticker_count < len(tickers),
+            "explanation": (
+                "The full scan covers every matching ranked row. The tickers shown "
+                "here are only the returned rate-limited source-fill batch(es); use "
+                "all_batches_command to list the complete full-scan batch plan."
+            ),
+        },
         "headline": _priced_in_source_batches_headline(
             source_name=source_name,
             batchable=batchable,
@@ -1085,6 +1110,7 @@ def _priced_in_all_source_batch_row(
         ),
         "batch_count": int(_finite_float(plan.get("batch_count"))),
         "batch_size": int(_finite_float(plan.get("batch_size"))),
+        "scan_scope": _row_dict(_mapping_value(plan, "scan_scope")),
         "first_batch": first_batch_payload,
         "all_batches_command": plan.get("all_batches_command"),
         "all_batches_api": plan.get("all_batches_api"),

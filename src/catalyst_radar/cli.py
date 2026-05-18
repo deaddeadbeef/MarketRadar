@@ -3192,6 +3192,21 @@ def _print_priced_in_source_batches(payload: Mapping[str, object]) -> None:
         f"external_calls={payload.get('external_calls_made')}"
     )
     print(f"headline={payload.get('headline')}")
+    scan_scope = payload.get("scan_scope")
+    if isinstance(scan_scope, Mapping):
+        print(
+            "scan_scope="
+            f"mode={scan_scope.get('mode')} "
+            f"gap_rows={scan_scope.get('full_scan_gap_rows')} "
+            f"plannable={scan_scope.get('plannable_rows')} "
+            f"returned_batches={scan_scope.get('returned_batches')} "
+            f"planned_batches={scan_scope.get('planned_batches')} "
+            f"returned_tickers={scan_scope.get('returned_tickers')} "
+            f"batch_sample={str(bool(scan_scope.get('tickers_are_batch_sample'))).lower()}"
+        )
+        explanation = scan_scope.get("explanation")
+        if explanation:
+            print(f"scope_note={_compact_cli_text(explanation)}")
     print(f"next_action={payload.get('next_action')}")
     boundary = payload.get("execution_boundary")
     if boundary:

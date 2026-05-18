@@ -2223,6 +2223,7 @@ def _priced_in_source_batch_message(
     diagnostic = _mapping(payload.get("diagnostic"))
     reason = str(diagnostic.get("reason") or "").strip()
     next_batch_command = str(payload.get("next_batch_command") or "").strip()
+    scan_scope = _mapping(payload.get("scan_scope"))
     command = ""
     all_batches_command = str(payload.get("all_batches_command") or "").strip()
     calls = ""
@@ -2249,6 +2250,20 @@ def _priced_in_source_batch_message(
         f"{plannable_gap_rows} plannable, {batch_count} batch(es)."
     )
     if command:
+        returned_tickers = int(_number_or_zero(scan_scope.get("returned_tickers")))
+        batch_start = scan_scope.get("returned_batch_start")
+        batch_end = scan_scope.get("returned_batch_end")
+        ticker_scope_note = (
+            "these are not the whole ticker list"
+            if bool(scan_scope.get("tickers_are_batch_sample"))
+            else "this includes every currently plannable ticker for this source"
+        )
+        chunk_scope = (
+            f" Showing batch {batch_start}-{batch_end} of {batch_count} "
+            f"({returned_tickers} ticker(s)); {ticker_scope_note}."
+            if batch_start and batch_end and batch_count
+            else " Showing the next provider chunk; this is not the whole ticker list."
+        )
         full_suffix = (
             f" Full chunk list: {all_batches_command}."
             if all_batches_command
@@ -2256,7 +2271,8 @@ def _priced_in_source_batch_message(
         )
         next_suffix = f" Next chunk page: {next_batch_command}." if next_batch_command else ""
         return (
-            f"{prefix} This is a full-scan plan, not a watchlist.{calls}{api_suffix} "
+            f"{prefix} This is a full-scan plan, not a watchlist.{chunk_scope}"
+            f"{calls}{api_suffix} "
             f"Next safe chunk only: {command}. Run from TUI with "
             f"`batch {source_name} execute` if intended.{full_suffix}{next_suffix}"
         )
@@ -2305,6 +2321,8 @@ def _priced_in_all_source_batch_message(
     next_action_text = f" Suggested first: {next_action}" if next_action else ""
     return (
         f"{payload.get('headline')} This is plan-only and makes no provider calls. "
+        "Full scan is already the ranked universe; source execution is split into "
+        "safe provider chunks. "
         f"{'; '.join(pieces)}.{next_action_text}{command}"
     )
 
@@ -4227,6 +4245,10 @@ def _source_workflow_lines(payload: Mapping[str, object], width: int) -> list[st
     lines.append(
         "`batch all` shows this source map without provider calls; "
         "`batch <source> execute` runs exactly one guarded chunk."
+    )
+    lines.append(
+        "Full scan = the whole ranked universe. Source-fill tickers = the next "
+        "rate-limited provider chunk, not the ticker universe."
     )
     return lines
 

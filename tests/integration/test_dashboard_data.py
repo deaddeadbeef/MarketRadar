@@ -1817,6 +1817,13 @@ def test_priced_in_source_gap_batches_payload_plans_safe_sync_batches(
     assert payload["status"] == "ready"
     assert payload["total_gap_rows"] == 2
     assert payload["batch_size"] == 1
+    assert payload["scan_scope"]["mode"] == "full_scan"
+    assert payload["scan_scope"]["full_scan_gap_rows"] == 2
+    assert payload["scan_scope"]["plannable_rows"] == 2
+    assert payload["scan_scope"]["planned_batches"] == 2
+    assert payload["scan_scope"]["returned_batches"] == 1
+    assert payload["scan_scope"]["returned_tickers"] == 1
+    assert payload["scan_scope"]["tickers_are_batch_sample"] is True
     assert payload["filters"]["requested_batch_size"] == 10
     assert payload["filters"]["max_batch_size"] == 1
     assert payload["batch_count"] == 2
@@ -1857,6 +1864,8 @@ def test_priced_in_source_gap_batches_payload_can_return_full_scan_plan(
     assert payload["batch_count"] == 2
     assert payload["count"] == 2
     assert payload["all_batches"] is True
+    assert payload["scan_scope"]["returned_tickers"] == 2
+    assert payload["scan_scope"]["tickers_are_batch_sample"] is False
     assert payload["batch_offset"] == 0
     assert payload["has_more"] is False
     assert payload["next_batch_command"] is None
@@ -1958,6 +1967,8 @@ def test_priced_in_all_source_gap_batches_payload_summarizes_next_chunks(
     assert rows["options"]["status"] == "ready"
     assert rows["options"]["total_gap_rows"] == 2
     assert rows["options"]["batch_count"] == 2
+    assert rows["options"]["scan_scope"]["planned_batches"] == 2
+    assert rows["options"]["scan_scope"]["returned_tickers"] == 1
     assert rows["options"]["first_batch"]["tickers"] == ["AAPL"]
     assert rows["options"]["first_batch"]["external_calls_required"] == 1
     assert rows["options"]["execute_next_command"] == (
