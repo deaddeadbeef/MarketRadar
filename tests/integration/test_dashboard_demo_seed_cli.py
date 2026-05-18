@@ -499,6 +499,16 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
     assert output.err == ""
     assert full_scan_payload["filters"]["status"] == "all"
 
+    assert main(["priced-in-queue", "--full-scan", "--all", "--json"]) == 0
+    output = capsys.readouterr()
+    full_scan_all_payload = json.loads(output.out)
+
+    assert output.err == ""
+    assert full_scan_all_payload["filters"]["status"] == "all"
+    assert full_scan_all_payload["filters"]["offset"] == 0
+    assert full_scan_all_payload["count"] == full_scan_all_payload["total_count"]
+    assert full_scan_all_payload["has_more"] is False
+
     assert main(["priced-in-queue", "--mismatches", "--json"]) == 0
     output = capsys.readouterr()
     mismatch_payload = json.loads(output.out)
@@ -544,6 +554,8 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
     assert "examples=ACME" in output.out
     assert "sample_scope=These are all 1 missing/stale row(s)" in output.out
     assert "full_scan_review=catalyst-radar priced-in-queue --full-scan" in output.out
+    assert "full_scan_export=catalyst-radar priced-in-queue --full-scan" in output.out
+    assert "--all --json" in output.out
     assert "diagnostic=missing=1" in output.out
     assert "broker_context status=missing" in output.out
 

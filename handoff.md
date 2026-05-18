@@ -1,6 +1,88 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 18:49:45 +08:00
+Last updated: 2026-05-18 19:05:32 +08:00
+
+## Latest Full-Scan Export Clarification
+
+The user asked again: "Why only these tickers? I want full scan."
+
+Live local evidence:
+
+- The priced-in backend is already backed by the latest full ranked universe:
+
+  ```text
+  priced-in count=12087 total=12087 has_more=false offset=0 limit=1000000
+  ```
+
+- The handful of tickers shown in source-gap actions are examples and safety-capped
+  Schwab batch suggestions, not the scan universe.
+- The dashboard remains paged because rendering 12k rows in a TUI is not useful
+  for human eyes.
+
+Changes in this slice:
+
+- `priced-in-queue` now accepts:
+
+  ```powershell
+  --all
+  ```
+
+  Use it with `--full-scan --json` to return every ranked row matching the
+  current filters in one CLI/API-test-friendly payload:
+
+  ```powershell
+  .\.venv\Scripts\catalyst-radar.exe priced-in-queue --full-scan --all --json
+  ```
+
+- Source-gap actions now include both:
+
+  ```text
+  full_scan_review=catalyst-radar priced-in-queue --full-scan --source-gap <source> --limit 50
+  full_scan_export=catalyst-radar priced-in-queue --full-scan --source-gap <source> --all --json
+  ```
+
+  This keeps the TUI human-sized while giving tests/automation an exact full-scan
+  replacement UI path.
+
+- The API route allowlist test was stale. It now explicitly includes the existing
+  read-only priced-in and ops telemetry routes:
+
+  ```text
+  GET /api/radar/priced-in
+  GET /api/radar/priced-in/preflight
+  GET /api/ops/telemetry
+  GET /api/ops/telemetry/coverage
+  GET /api/ops/telemetry/raw
+  ```
+
+Live zero-provider-call verification:
+
+```powershell
+.\.venv\Scripts\catalyst-radar.exe priced-in-queue --full-scan --all --json |
+  .\.venv\Scripts\python.exe -c "import json,sys; p=json.load(sys.stdin); print(p['count'], p['total_count'], p['has_more'], p['filters']['offset'], p['filters']['limit'])"
+.\.venv\Scripts\catalyst-radar.exe priced-in-queue --full-scan --source-gap options --limit 2 |
+  Select-String -Pattern 'priced_in_queue|scan_scope|source_actions|full_scan_export|ticker status|^A |^MSFT|more='
+```
+
+Observed:
+
+```text
+12087 12087 False 0 1000000
+priced_in_queue status=ready count=2 total=12087 offset=0 external_calls=0
+scan_scope=scanned=12087 requested=12104 filter=all ranked_after_filter=12087 visible_page=2
+full_scan_export=catalyst-radar priced-in-queue --full-scan --source-gap options --all --json
+more=catalyst-radar priced-in-queue --source-gap options --limit 2 --offset 2
+```
+
+Validation for this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_queue_cli_outputs_same_zero_call_signal tests\integration\test_security_boundaries.py::test_openapi_routes_are_allowlisted_and_broker_routes_are_explicit -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\cli.py src\catalyst_radar\dashboard\data.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_security_boundaries.py
+git diff --check
+```
+
+All passed.
 
 ## Latest Dashboard Source-Gap Filter
 

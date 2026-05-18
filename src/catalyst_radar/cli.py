@@ -416,6 +416,15 @@ def build_parser() -> argparse.ArgumentParser:
     priced_in.add_argument("--database-url")
     priced_in.add_argument("--limit", type=int, default=20)
     priced_in.add_argument("--offset", type=int, default=0)
+    priced_in.add_argument(
+        "--all",
+        dest="all_rows",
+        action="store_true",
+        help=(
+            "Return every ranked row that matches the current filters. "
+            "Best used with --json for full-scan export or tests."
+        ),
+    )
     priced_in.add_argument("--available-at", type=_parse_aware_datetime)
     priced_in.add_argument("--status")
     priced_in.add_argument(
@@ -859,8 +868,8 @@ def main(argv: list[str] | None = None) -> int:
         payload = priced_in_queue_payload(
             engine,
             config,
-            limit=args.limit,
-            offset=args.offset,
+            limit=1_000_000 if args.all_rows else args.limit,
+            offset=0 if args.all_rows else args.offset,
             available_at=args.available_at,
             status=args.status,
             usefulness=args.usefulness,
@@ -2854,6 +2863,12 @@ def _print_priced_in_queue(payload: Mapping[str, object]) -> None:
                     print(
                         "  full_scan_review="
                         f"{_compact_cli_text(full_scan_command)}"
+                    )
+                full_scan_export = action.get("full_scan_export_command")
+                if full_scan_export:
+                    print(
+                        "  full_scan_export="
+                        f"{_compact_cli_text(full_scan_export)}"
                     )
                 diagnostic = action.get("diagnostic")
                 if isinstance(diagnostic, Mapping) and diagnostic.get("evidence"):
