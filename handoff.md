@@ -1,6 +1,47 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 06:59:37 +08:00
+Last updated: 2026-05-19 07:10:10 +08:00
+
+## Latest Overview Source-Coverage Hint Fix
+
+After source recommendations were split into broad `coverage_first` and smaller
+`decision_shortcut` lanes, the Ops page was clear but the default Insights page
+still required the user to know to open Ops for the next data-layer move.
+
+Fix in this slice:
+
+- The overview guide/caption now includes a compact source hint:
+
+  ```text
+  Source coverage next: Coverage-first: catalyst_events. Decision shortcut: options (5 decision-ready row(s)).
+  ```
+
+- This keeps the first screen focused on the full scan while still exposing the
+  smaller decision-ready shortcut.
+- The hint is derived from the same `priced_in_source_workflow` payload already
+  used by Ops, so it makes zero provider calls.
+
+Live zero-call smoke after the fix:
+
+```text
+catalyst-radar dashboard-tui --once --page overview
+Page: overview | View: Full scan | Answer: decision ready ready=true | ...
+Full-market priced-in queue - showing rows 1-50 of 12087; decision 5 / blocked 7920 / monitor 4162
+Source coverage next: Coverage-first: catalyst_events. Decision shortcut: options (5 decision-ready row(s)).
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_tui_once_can_show_full_scan_mode -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page overview
+```
+
+Observed: focused pytest passed, ruff passed, `git diff --check` passed, and
+the live overview showed the full-scan row count plus compact coverage-first and
+decision-shortcut hints with zero provider calls.
 
 ## Latest Source Recommendation Split Fix
 

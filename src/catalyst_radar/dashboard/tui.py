@@ -1419,6 +1419,10 @@ class MarketRadarDashboardApp(App[int]):
                         f"{answer.get('answer') or 'Open Insights for current answer.'}"
                     ),
                     (
+                        f"[bold]Source coverage:[/] "
+                        f"{_overview_source_workflow_hint(self.payload)}"
+                    ),
+                    (
                         f"[bold]Controls:[/] M toggles view; next/prev pages rows; "
                         f"export full prints all ranked rows; these tickers are only "
                         f"the current page; {can_act}; "
@@ -3331,6 +3335,43 @@ def _decision_readiness_summary(payload: Mapping[str, object]) -> str:
     return summary
 
 
+def _overview_source_workflow_hint(payload: Mapping[str, object]) -> str:
+    workflow = _mapping(payload.get("priced_in_source_workflow"))
+    steps = _rows(workflow.get("steps"))
+    coverage_step = steps[0] if steps else {}
+    coverage_source = str(coverage_step.get("source") or "").strip()
+    coverage = str(
+        workflow.get("coverage_first_action") or workflow.get("next_action") or ""
+    ).strip()
+    decision_step = next(
+        (
+            step
+            for step in steps
+            if int(_number_or_zero(step.get("decision_useful_gap_rows"))) > 0
+        ),
+        {},
+    )
+    decision_source = str(decision_step.get("source") or "").strip()
+    decision_rows = int(_number_or_zero(decision_step.get("decision_useful_gap_rows")))
+    if coverage_source and decision_source:
+        decision_text = (
+            f"{decision_source} ({decision_rows} decision-ready row(s))"
+            if decision_rows
+            else decision_source
+        )
+        return (
+            f"Coverage-first: {coverage_source}. "
+            f"Decision shortcut: {decision_text}."
+        )
+    if coverage_source:
+        return f"Coverage-first: {coverage_source}."
+    if decision_source:
+        return f"Decision shortcut: {decision_source}."
+    if coverage:
+        return f"Coverage-first: {_clip(coverage, 140)}"
+    return "Open Ops or run batch all to inspect source gaps."
+
+
 def _overview_title(payload: Mapping[str, object]) -> str:
     queue = _mapping(payload.get("priced_in_queue"))
     total = int(_number_or_zero(queue.get("total_count")))
@@ -3381,6 +3422,8 @@ def _overview_caption(payload: Mapping[str, object]) -> str:
     status_filter = _priced_in_status_filter(queue)
     source_gap = _source_gap_filter_summary(queue)
     source_gap_text = f" Active source gap filter: {source_gap}." if source_gap else ""
+    source_hint = _overview_source_workflow_hint(payload)
+    source_hint_text = f" Source coverage next: {source_hint} " if source_hint else ""
     if status_filter == "actionable":
         usefulness = _usefulness_counts_summary(queue)
         usefulness_text = f" Usefulness mix: {usefulness}." if usefulness else ""
@@ -3394,7 +3437,8 @@ def _overview_caption(payload: Mapping[str, object]) -> str:
                     f"{scan_total or 'the'} latest-scan row(s). "
                     "These are the actionable answers; type full to inspect the "
                     "whole ranked universe or mismatches for blocked/research rows."
-                    f"{usefulness_text}{source_gap_text}{decision_gap_text} "
+                    f"{usefulness_text}{source_gap_text}{decision_gap_text}"
+                    f"{source_hint_text} "
                     "Browsing makes 0 provider calls."
                 )
             return (
@@ -3403,13 +3447,15 @@ def _overview_caption(payload: Mapping[str, object]) -> str:
                 f"card(s) from {scan_total or 'the'} latest-scan row(s). "
                 "Press M or click SCAN -> Full Scan to inspect neutral, blocked, "
                 "stale, and fully-priced rows."
-                f"{usefulness_text}{source_gap_text}{decision_gap_text} "
+                f"{usefulness_text}{source_gap_text}{decision_gap_text}"
+                f"{source_hint_text} "
                 "Browsing makes 0 provider calls."
             )
         return (
             f"No actionable not-priced-in mismatch is currently ranked from "
             f"{scan_total or 'the'} latest-scan row(s). Press M or click "
             "SCAN -> Full Scan to inspect neutral, blocked, stale, and fully-priced rows. "
+            f"{source_hint_text}"
             "Browsing makes 0 provider calls."
         )
     if total and returned < total:
@@ -3438,12 +3484,13 @@ def _overview_caption(payload: Mapping[str, object]) -> str:
             "parameter to page deeper; use priced-in-queue --full-scan --all --json "
             "for the full export. In the TUI type next, prev, offset <row>, "
             f"or limit <rows>.{usefulness_text}{source_gap_text}{decision_gap_text} "
+            f"{source_hint_text}"
             "Browsing makes 0 provider calls."
         )
     return (
         "The ticker rows are the current priced-in scan page, not a separate "
         "watchlist. Enter opens the relevant evidence page."
-        f"{source_gap_text} Browsing makes 0 provider calls."
+        f"{source_gap_text}{source_hint_text} Browsing makes 0 provider calls."
     )
 
 
