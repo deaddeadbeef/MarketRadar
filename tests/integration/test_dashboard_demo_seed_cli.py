@@ -607,7 +607,7 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
     assert "source_actions:" in output.out
     assert "options status=missing" in output.out
     assert "gap_rows=1" in output.out
-    assert "examples=ACME" in output.out
+    assert "example_tickers=ACME" in output.out
     assert "sample_scope=These are all 1 missing/stale row(s)" in output.out
     assert "full_scan_review=catalyst-radar priced-in-queue --full-scan" in output.out
     assert "full_scan_export=catalyst-radar priced-in-queue --full-scan" in output.out
