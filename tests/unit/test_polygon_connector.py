@@ -141,6 +141,41 @@ def test_ticker_pages_stop_at_request_page_cap() -> None:
     assert len(raw_records) == 2
 
 
+def test_ticker_pages_sleep_between_paginated_requests() -> None:
+    first_url = (
+        "https://api.polygon.io/v3/reference/tickers?"
+        "market=stocks&active=true&limit=1000&apiKey=fixture-key"
+    )
+    fixture_next_url = "https://api.polygon.io/v3/reference/tickers?cursor=page-2"
+    second_url = f"{fixture_next_url}&apiKey=fixture-key"
+    transport = FakeHttpTransport(
+        {
+            first_url: _response(first_url, _fixture("tickers_page_1.json")),
+            second_url: _response(second_url, _fixture("tickers_page_2.json")),
+        }
+    )
+    sleeps: list[float] = []
+    connector = PolygonMarketDataConnector(
+        api_key="fixture-key",
+        client=JsonHttpClient(transport=transport, timeout_seconds=3),
+        ticker_page_delay_seconds=12.5,
+        sleeper=sleeps.append,
+    )
+
+    raw_records = connector.fetch(
+        ConnectorRequest(
+            provider="polygon",
+            endpoint=PolygonEndpoint.TICKERS.value,
+            params={"market": "stocks", "active": True, "limit": 1000},
+            requested_at=datetime(2026, 5, 9, 12, tzinfo=UTC),
+        )
+    )
+
+    assert transport.requests == [first_url, second_url]
+    assert sleeps == [12.5]
+    assert len(raw_records) == 4
+
+
 def test_grouped_daily_contract_failure_is_abort_rejection() -> None:
     url = _grouped_daily_url()
     transport = FakeHttpTransport(

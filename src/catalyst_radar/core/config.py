@@ -145,6 +145,7 @@ class AppConfig:
     polygon_api_key: str | None = None
     polygon_base_url: str = "https://api.polygon.io"
     polygon_tickers_max_pages: int = 1
+    polygon_ticker_page_delay_seconds: float = 0.0
     polygon_ticker_seed_min_interval_seconds: int = 900
     radar_run_min_interval_seconds: int = 300
     sec_enable_live: bool = False
@@ -277,6 +278,9 @@ class AppConfig:
             ),
             polygon_tickers_max_pages=_positive_int(
                 source, "CATALYST_POLYGON_TICKERS_MAX_PAGES", 1
+            ),
+            polygon_ticker_page_delay_seconds=_nonnegative_float(
+                source, "CATALYST_POLYGON_TICKER_PAGE_DELAY_SECONDS", 0.0
             ),
             polygon_ticker_seed_min_interval_seconds=_positive_int(
                 source, "CATALYST_POLYGON_TICKER_SEED_MIN_INTERVAL_SECONDS", 900

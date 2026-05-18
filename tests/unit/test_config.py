@@ -206,12 +206,14 @@ def test_config_reads_polygon_ticker_page_cap_from_env() -> None:
     config = AppConfig.from_env(
         {
             "CATALYST_POLYGON_TICKERS_MAX_PAGES": "3",
+            "CATALYST_POLYGON_TICKER_PAGE_DELAY_SECONDS": "12.5",
             "CATALYST_POLYGON_TICKER_SEED_MIN_INTERVAL_SECONDS": "120",
             "CATALYST_RADAR_RUN_MIN_INTERVAL_SECONDS": "45",
         }
     )
 
     assert config.polygon_tickers_max_pages == 3
+    assert config.polygon_ticker_page_delay_seconds == 12.5
     assert config.polygon_ticker_seed_min_interval_seconds == 120
     assert config.radar_run_min_interval_seconds == 45
 
@@ -221,6 +223,7 @@ def test_config_reads_polygon_ticker_page_cap_from_env() -> None:
     [
         ("CATALYST_POLYGON_TICKERS_MAX_PAGES", "0"),
         ("CATALYST_POLYGON_TICKERS_MAX_PAGES", "-1"),
+        ("CATALYST_POLYGON_TICKER_PAGE_DELAY_SECONDS", "-1"),
         ("CATALYST_POLYGON_TICKER_SEED_MIN_INTERVAL_SECONDS", "0"),
         ("CATALYST_RADAR_RUN_MIN_INTERVAL_SECONDS", "0"),
     ],

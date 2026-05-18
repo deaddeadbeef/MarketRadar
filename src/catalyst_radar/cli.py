@@ -2495,6 +2495,7 @@ def _print_priced_in_preflight(payload: Mapping[str, object]) -> None:
             "provider "
             f"market={provider.get('market_provider')} "
             f"ticker_seed_cap_pages={provider.get('ticker_seed_cap_pages')} "
+            f"ticker_page_delay_seconds={provider.get('ticker_page_delay_seconds')} "
             f"latest_bar_date={provider.get('latest_daily_bar_date')} "
             f"latest_bar_tickers={provider.get('latest_daily_bar_ticker_count')} "
             f"estimated_ticker_seed_pages={provider.get('estimated_ticker_seed_pages')}"
@@ -2623,6 +2624,7 @@ def _build_polygon_ingest(
         ),
         base_url=config.polygon_base_url,
         availability_policy=config.provider_availability_policy,
+        ticker_page_delay_seconds=config.polygon_ticker_page_delay_seconds,
     )
     request = ConnectorRequest(
         provider="polygon",

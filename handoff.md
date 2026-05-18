@@ -180,7 +180,11 @@ for a broad market date are already in the database, preflight estimates the
 needed ticker-reference page count from the latest daily-bar ticker count. In
 the current local database, that exposes the real blocker: latest bars contain
 about 12k tickers, active securities are still 8, and the estimated ticker
-reference seed is about 13 pages.
+reference seed is about 13 pages. The active follow-up adds
+`CATALYST_POLYGON_TICKER_PAGE_DELAY_SECONDS`, a connector-level delay between
+Polygon/Massive ticker-reference pages. Leave it `0` on plans that allow fast
+pagination; set it before a large seed on rate-limited plans so the full scan
+path is explicit instead of accidentally hammering the provider.
 
 This payload is `priced-in-queue-v1`, reports `external_calls_made=0`, includes
 the full-scan boundary (`universe_too_small`, `partial_scan`, or `ready`), and

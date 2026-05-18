@@ -79,7 +79,9 @@ next scan can count as broad-market. In Polygon/Massive mode it also exposes
 the current `CATALYST_POLYGON_TICKERS_MAX_PAGES` cap, because one ticker page is
 not the whole market. When broad grouped-daily bars are already present, it
 estimates the ticker-reference page count from the latest daily-bar ticker
-count.
+count. If your Polygon/Massive plan is rate-limited, set
+`CATALYST_POLYGON_TICKER_PAGE_DELAY_SECONDS` before running a multi-page ticker
+seed so pagination is paced deliberately.
 
 The dashboard shows active universe size, requested/scanned securities, fresh
 bar coverage, and candidate count so a tiny local universe is not mistaken for a
