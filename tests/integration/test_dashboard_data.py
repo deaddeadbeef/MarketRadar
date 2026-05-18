@@ -1858,9 +1858,25 @@ def test_priced_in_source_gap_batches_payload_can_return_full_scan_plan(
 
 def test_priced_in_all_source_gap_batches_payload_summarizes_next_chunks(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     engine = _engine(tmp_path)
     _insert_dashboard_fixture(engine)
+    calls = 0
+    original_queue_payload = priced_in_all_source_gap_batches_payload.__globals__[
+        "priced_in_queue_payload"
+    ]
+
+    def counted_queue_payload(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original_queue_payload(*args, **kwargs)
+
+    monkeypatch.setitem(
+        priced_in_all_source_gap_batches_payload.__globals__,
+        "priced_in_queue_payload",
+        counted_queue_payload,
+    )
 
     payload = priced_in_all_source_gap_batches_payload(
         engine,
@@ -1868,6 +1884,7 @@ def test_priced_in_all_source_gap_batches_payload_summarizes_next_chunks(
     )
 
     assert payload["schema_version"] == "priced-in-source-batch-overview-v1"
+    assert calls == 1
     assert payload["external_calls_made"] == 0
     assert payload["source_count"] == 6
     rows = {row["source"]: row for row in payload["sources"]}
