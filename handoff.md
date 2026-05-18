@@ -1,6 +1,56 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 05:01:57 +08:00
+Last updated: 2026-05-19 05:09:25 +08:00
+
+## Latest All-Source Batch Performance Fix
+
+After the full-active 12k-row scan, the all-source source-fill overview exposed
+a performance bug:
+
+- `priced-in-source-batches --source all --limit 1 --json` timed out in an
+  earlier smoke and left a background reader process alive.
+- Even one source, `priced-in-source-batches --source catalyst_events --limit 1
+  --json`, took about 43 seconds.
+- Root cause: `priced_in_all_source_gap_batches_payload()` called
+  `priced_in_source_gap_batches_payload()` once per source, and each source
+  rebuilt the full priced-in queue from the DB.
+
+Fix in this slice:
+
+- `priced_in_all_source_gap_batches_payload()` now builds the full priced-in
+  queue once.
+- It passes that resolved queue to each per-source planner.
+- `priced_in_source_gap_batches_payload()` can now accept a precomputed queue
+  and filter rows in memory for the requested source.
+- Regression test asserts the all-source overview calls `priced_in_queue_payload`
+  exactly once.
+
+Live all-active smoke after the fix:
+
+```text
+elapsed=48.11 status=ready gap_rows=48329 ready=3 blocked=1 sources=6
+market_bars       no_gaps      0
+catalyst_events   ready    12080  plannable=10462 batches=2093
+local_text        blocked  12080  plannable=0
+options           ready    12087  plannable=12087 batches=2418
+theme_peer_sector no_gaps      0
+broker_context    ready    12082  plannable=12082 batches=2417
+```
+
+This is still bounded by one full 12k-row queue build, but it no longer repeats
+that queue build six times or leaves a timed-out helper process under the
+normal timeout used here.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_all_source_gap_batches_payload_summarizes_next_chunks tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_plans_safe_sync_batches tests\integration\test_api_routes.py::test_get_radar_priced_in_source_batches_can_return_all_source_overview -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py tests\integration\test_dashboard_data.py tests\integration\test_api_routes.py
+git diff --check
+```
+
+Observed: focused pytest passed, ruff passed, `git diff --check` passed, and
+the live all-source CLI smoke completed in about 48 seconds.
 
 ## Latest Narrow Artifact Command Fix
 

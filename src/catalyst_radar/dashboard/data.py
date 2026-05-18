@@ -781,6 +781,7 @@ def priced_in_source_gap_batches_payload(
     usefulness: str | None = None,
     decision_gap: str | Sequence[str] | None = None,
     min_gap: float | None = None,
+    queue: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     source_name = _single_priced_in_source(source)
     max_batch_size = _priced_in_source_max_batch_size(source_name, config)
@@ -791,23 +792,34 @@ def priced_in_source_gap_batches_payload(
     requested_limit = _positive_limit(batch_limit)
     requested_offset = _positive_offset(batch_offset)
     resolved_offset = 0 if all_batches else requested_offset
-    queue = priced_in_queue_payload(
-        engine,
-        config,
-        limit=1_000_000,
-        offset=0,
-        available_at=available_at,
-        status=status,
-        usefulness=usefulness,
-        source_gap=source_name,
-        decision_gap=decision_gap,
-        min_gap=min_gap,
+    using_supplied_queue = isinstance(queue, Mapping)
+    resolved_queue = (
+        _row_dict(queue)
+        if using_supplied_queue
+        else priced_in_queue_payload(
+            engine,
+            config,
+            limit=1_000_000,
+            offset=0,
+            available_at=available_at,
+            status=status,
+            usefulness=usefulness,
+            source_gap=source_name,
+            decision_gap=decision_gap,
+            min_gap=min_gap,
+        )
     )
     rows = [
         row
-        for row in queue.get("rows", [])
+        for row in resolved_queue.get("rows", [])
         if isinstance(row, Mapping) and str(row.get("ticker") or "").strip()
     ]
+    if using_supplied_queue:
+        rows = [
+            row
+            for row in rows
+            if _priced_in_source_gap_matches(row, (source_name,))
+        ]
     all_gap_tickers = [str(row["ticker"]).strip().upper() for row in rows]
     batchable = source_name in PRICED_IN_BATCHABLE_SOURCES
     plan_rows, diagnostic = _priced_in_source_plannable_rows(
@@ -900,7 +912,7 @@ def priced_in_source_gap_batches_payload(
             plannable_gap_rows=len(tickers),
         ),
         "filters": {
-            **_row_dict(_mapping_value(queue, "filters")),
+            **_row_dict(_mapping_value(resolved_queue, "filters")),
             "source_gap": [source_name],
             "batch_limit": resolved_limit,
             "batch_offset": resolved_offset,
@@ -962,6 +974,17 @@ def priced_in_all_source_gap_batches_payload(
     decision_gap: str | Sequence[str] | None = None,
     min_gap: float | None = None,
 ) -> dict[str, object]:
+    queue = priced_in_queue_payload(
+        engine,
+        config,
+        limit=1_000_000,
+        offset=0,
+        available_at=available_at,
+        status=status,
+        usefulness=usefulness,
+        decision_gap=decision_gap,
+        min_gap=min_gap,
+    )
     rows: list[dict[str, object]] = []
     for source in PRICED_IN_SOURCE_CLASSES:
         plan = priced_in_source_gap_batches_payload(
@@ -975,6 +998,7 @@ def priced_in_all_source_gap_batches_payload(
             usefulness=usefulness,
             decision_gap=decision_gap,
             min_gap=min_gap,
+            queue=queue,
         )
         rows.append(_priced_in_all_source_batch_row(plan))
     total_gap_rows = sum(int(_finite_float(row.get("total_gap_rows"))) for row in rows)
