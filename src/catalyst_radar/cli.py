@@ -2562,6 +2562,7 @@ def _print_agent_brief(payload: Mapping[str, object]) -> None:
 
 
 def _print_priced_in_queue(payload: Mapping[str, object]) -> None:
+    filters = payload.get("filters")
     print(
         "priced_in_queue "
         f"status={payload.get('status')} "
@@ -2570,6 +2571,25 @@ def _print_priced_in_queue(payload: Mapping[str, object]) -> None:
         f"offset={payload.get('offset')} "
         f"external_calls={payload.get('external_calls_made')}"
     )
+    scan = payload.get("scan")
+    if isinstance(scan, Mapping):
+        scan_total = 0
+        for key in ("scanned_candidate_states", "candidate_states", "scanned_securities"):
+            scan_total = _int_value(scan.get(key))
+            if scan_total:
+                break
+        requested = _int_value(scan.get("requested_securities"))
+        status_filter = (
+            str(filters.get("status") or "all") if isinstance(filters, Mapping) else "all"
+        )
+        print(
+            "scan_scope="
+            f"scanned={scan_total or 'n/a'} "
+            f"requested={requested or 'n/a'} "
+            f"filter={status_filter} "
+            f"ranked_after_filter={payload.get('total_count')} "
+            f"visible_page={payload.get('count')}"
+        )
     print(f"headline={payload.get('headline')}")
     print(f"next_action={payload.get('next_action')}")
     usefulness_counts = payload.get("usefulness_counts")
