@@ -272,6 +272,9 @@ def dashboard_snapshot_payload(
         latest_run=latest_run,
         discovery_snapshot=discovery_snapshot,
     )
+    priced_in_source_coverage = dashboard_data.priced_in_source_coverage_summary(
+        candidate_rows
+    )
     operator_next_step = dashboard_data.operator_next_step_payload(operator_work_queue)
     telemetry = dashboard_data.telemetry_tape_payload(
         ops_health,
@@ -299,6 +302,7 @@ def dashboard_snapshot_payload(
         "operator_work_queue": operator_work_queue,
         "operator_next_step": operator_next_step,
         "priced_in_preflight": priced_in_preflight,
+        "priced_in_source_coverage": priced_in_source_coverage,
         "candidates": {
             "count": len(candidate_rows),
             "rows": candidate_rows,
@@ -1960,6 +1964,7 @@ def _market_insight_rows(payload: Mapping[str, object]) -> list[Mapping[str, obj
     database = _mapping(_mapping(payload.get("ops_health")).get("database"))
     call_plan = _mapping(payload.get("call_plan"))
     preflight = _mapping(payload.get("priced_in_preflight"))
+    source_coverage = _mapping(payload.get("priced_in_source_coverage"))
     can_act = _decision_label(readiness)
     rows: list[Mapping[str, object]] = []
 
@@ -2055,16 +2060,18 @@ def _market_insight_rows(payload: Mapping[str, object]) -> list[Mapping[str, obj
         f"{freshness.get('active_security_count')}; "
         f"latest bar {database.get('latest_daily_bar_date') or 'n/a'}"
     )
+    source_gap = str(source_coverage.get("summary") or "").strip()
+    source_next_action = _source_coverage_next_action(source_coverage)
     rows.extend(
         [
             {
                 "_row_key": "ops",
                 "scope": "DATA",
-                "signal": "Data health",
-                "why_now": freshness_gap,
-                "next_action": "Open Ops to fix stale bars, providers, or jobs.",
+                "signal": "Source coverage",
+                "why_now": f"{freshness_gap}; {source_gap}" if source_gap else freshness_gap,
+                "next_action": source_next_action,
                 "target_page": "ops",
-                "status_message": "Opened Ops. Fix data health before trusting output.",
+                "status_message": "Opened Ops. Fix source coverage before trusting output.",
             },
             {
                 "_row_key": "run",
@@ -2139,6 +2146,31 @@ def _full_scan_coverage_row(
         "target_page": "ops" if signal != "Full scan coverage" else "candidates",
         "status_message": "Opened the full-scan coverage context.",
     }
+
+
+def _source_coverage_next_action(source_coverage: Mapping[str, object]) -> str:
+    raw_sources = source_coverage.get("weak_sources")
+    weak_sources = [
+        str(item)
+        for item in (raw_sources if isinstance(raw_sources, list | tuple) else ())
+        if str(item).strip()
+    ]
+    if not weak_sources:
+        return "Open Ops to verify providers and jobs before trusting output."
+    first = weak_sources[0]
+    if first == "market_bars":
+        return "Refresh market bars, then rerun the priced-in queue."
+    if first == "catalyst_events":
+        return "Enable or refresh catalyst event ingestion before trusting emotion."
+    if first == "local_text":
+        return "Run local text intelligence for candidate narratives."
+    if first == "options":
+        return "Treat options as missing until an options source is configured."
+    if first == "theme_peer_sector":
+        return "Review theme, peer, and sector context before acting."
+    if first == "broker_context":
+        return "Sync read-only broker context before sizing or portfolio review."
+    return "Open Ops to fix missing source coverage before trusting output."
 
 
 def _priced_in_signal(status: str, *, fallback: str) -> str:

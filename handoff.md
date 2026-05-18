@@ -204,6 +204,12 @@ and next step. Source coverage is explicit: `available`, `stale`, and `missing`
 groups over market bars, catalyst events, local text, options, theme/peer/sector
 context, and broker context. This keeps the CLI/API and dashboard aligned around
 the same useful thing instead of creating a second interpretation.
+The active follow-up adds queue-level `source_coverage` to the same payload and
+dashboard snapshot. It counts available/stale/missing source classes across the
+visible priced-in queue and exposes `weak_sources` in priority order, so the
+overview can tell the operator whether the next blocker is stale bars, missing
+catalyst events, missing local text, options, theme/peer/sector context, or
+broker context.
 
 Current state is **research-only**. The required run path and SEC catalyst path
 work, but daily bars are still local CSV and stale (`latest_bar=2026-05-08` vs.
