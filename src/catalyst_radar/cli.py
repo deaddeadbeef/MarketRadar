@@ -249,7 +249,7 @@ def build_parser() -> argparse.ArgumentParser:
     build_packets = subparsers.add_parser("build-packets")
     build_packets.add_argument("--as-of", type=date.fromisoformat, required=True)
     build_packets.add_argument("--available-at", type=_parse_aware_datetime)
-    build_packets.add_argument("--ticker")
+    build_packets.add_argument("--ticker", action="append")
     build_packets.add_argument(
         "--min-state",
         choices=[state.value for state in ActionState],
@@ -259,7 +259,7 @@ def build_parser() -> argparse.ArgumentParser:
     build_cards = subparsers.add_parser("build-decision-cards")
     build_cards.add_argument("--as-of", type=date.fromisoformat, required=True)
     build_cards.add_argument("--available-at", type=_parse_aware_datetime)
-    build_cards.add_argument("--ticker")
+    build_cards.add_argument("--ticker", action="append")
     build_cards.add_argument(
         "--min-state",
         choices=[state.value for state in ActionState],
@@ -3670,10 +3670,15 @@ def _build_candidate_packets(
     feature_repo: FeatureRepository,
     as_of: datetime,
     available_at: datetime,
-    ticker: str | None,
+    ticker: str | Sequence[str] | None,
     states: tuple[ActionState, ...],
 ):
-    tickers = [ticker.upper()] if ticker else None
+    if isinstance(ticker, str):
+        tickers = [ticker.upper()]
+    elif ticker:
+        tickers = [str(item).upper() for item in ticker if str(item).strip()]
+    else:
+        tickers = None
     inputs = packet_repo.list_candidate_inputs(
         as_of=as_of,
         available_at=available_at,

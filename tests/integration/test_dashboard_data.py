@@ -1478,6 +1478,11 @@ def test_priced_in_answer_prefers_local_artifact_gap_before_options(
                 "decision_card": 2,
                 "options": 2,
             },
+            "sample_tickers": {
+                "candidate_packet": ["MSFT"],
+                "decision_card": ["MSFT", "AAPL"],
+                "options": ["MSFT", "AAPL"],
+            },
         },
         "source_coverage": {
             "summary": "options 0/2",
@@ -1506,7 +1511,7 @@ def test_priced_in_answer_prefers_local_artifact_gap_before_options(
     recommended = payload["decision_readiness"]["recommended_gap"]
     assert recommended["gap"] == "candidate_packet"
     assert recommended["command"] == (
-        "catalyst-radar build-packets --as-of 2026-05-15 "
+        "catalyst-radar build-packets --as-of 2026-05-15 --ticker MSFT "
         "--min-state AddToWatchlist"
     )
 

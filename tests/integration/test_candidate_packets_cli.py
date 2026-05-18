@@ -224,17 +224,70 @@ def test_build_decision_cards_accepts_add_to_watchlist_min_state(
     assert captured.out == "built decision_cards=1\n"
 
 
+def test_build_packets_accepts_repeated_tickers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'packet-batch.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    assert main(["init-db"]) == 0
+    capsys.readouterr()
+    _insert_warning_candidate(database_url, ticker="MSFT")
+    _insert_warning_candidate(database_url, ticker="AAPL")
+
+    assert (
+        main(
+            [
+                "build-packets",
+                "--as-of",
+                "2026-05-10",
+                "--available-at",
+                AVAILABLE_AT_TEXT,
+                "--ticker",
+                "MSFT",
+                "--ticker",
+                "AAPL",
+            ]
+        )
+        == 0
+    )
+    captured = capsys.readouterr()
+    assert captured.out == "built candidate_packets=2\n"
+
+    assert (
+        main(
+            [
+                "build-decision-cards",
+                "--as-of",
+                "2026-05-10",
+                "--available-at",
+                AVAILABLE_AT_TEXT,
+                "--ticker",
+                "MSFT",
+                "--ticker",
+                "AAPL",
+            ]
+        )
+        == 0
+    )
+    captured = capsys.readouterr()
+    assert captured.out == "built decision_cards=2\n"
+
+
 def _insert_warning_candidate(
     database_url: str,
     *,
+    ticker: str = "MSFT",
     state: ActionState = ActionState.WARNING,
 ) -> None:
+    ticker = ticker.upper()
     engine = create_engine(database_url, future=True)
     with engine.begin() as conn:
         conn.execute(
             insert(candidate_states).values(
-                id="state-msft",
-                ticker="MSFT",
+                id=f"state-{ticker.lower()}",
+                ticker=ticker,
                 as_of=AS_OF,
                 state=state.value,
                 previous_state=None,
@@ -249,7 +302,7 @@ def _insert_warning_candidate(
         )
         conn.execute(
             insert(signal_features).values(
-                ticker="MSFT",
+                ticker=ticker,
                 as_of=AS_OF,
                 feature_version="score-v4-options-theme",
                 price_strength=82.0,
@@ -260,10 +313,10 @@ def _insert_warning_candidate(
                 final_score=78.0,
                 payload={
                     "candidate": {
-                        "ticker": "MSFT",
+                        "ticker": ticker,
                         "as_of": AS_OF.isoformat(),
                         "features": {
-                            "ticker": "MSFT",
+                            "ticker": ticker,
                             "as_of": AS_OF.isoformat(),
                             "feature_version": "score-v4-options-theme",
                         },
