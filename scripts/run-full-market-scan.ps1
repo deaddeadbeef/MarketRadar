@@ -10,6 +10,10 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")
 $dashboardExe = Join-Path $repoRoot ".venv\Scripts\catalyst-radar.exe"
+$hadTickerMaxPages = Test-Path Env:CATALYST_POLYGON_TICKERS_MAX_PAGES
+$previousTickerMaxPages = $env:CATALYST_POLYGON_TICKERS_MAX_PAGES
+$hadTickerPageDelay = Test-Path Env:CATALYST_POLYGON_TICKER_PAGE_DELAY_SECONDS
+$previousTickerPageDelay = $env:CATALYST_POLYGON_TICKER_PAGE_DELAY_SECONDS
 
 function Invoke-Checked {
     param(
@@ -79,9 +83,7 @@ try {
         Write-Output ('$env:CATALYST_POLYGON_TICKERS_MAX_PAGES="{0}"' -f $resolvedPages)
         Write-Output ('$env:CATALYST_POLYGON_TICKER_PAGE_DELAY_SECONDS="{0}"' -f $resolvedDelay)
         Write-Output ("catalyst-radar ingest-polygon tickers --max-pages {0}" -f $resolvedPages)
-        Write-Output ("catalyst-radar ingest-polygon grouped-daily --date {0}" -f $resolvedAsOf)
-        Write-Output ("catalyst-radar build-universe --as-of {0}" -f $resolvedAsOf)
-        Write-Output ("catalyst-radar scan --as-of {0}" -f $resolvedAsOf)
+        Write-Output ("catalyst-radar run-daily --as-of {0} --available-at <UTC-now> --json" -f $resolvedAsOf)
         Write-Output "catalyst-radar priced-in-queue --json"
         Write-Output "External calls made: 0"
         return
@@ -89,15 +91,26 @@ try {
 
     $env:CATALYST_POLYGON_TICKERS_MAX_PAGES = [string]$resolvedPages
     $env:CATALYST_POLYGON_TICKER_PAGE_DELAY_SECONDS = [string]$resolvedDelay
+    $availableAt = [DateTimeOffset]::UtcNow.ToString("o")
 
-    Write-Output "Executing full-market scan preparation. Provider calls are explicit below."
+    Write-Output "Executing full-market scheduled scan. Provider calls are explicit below."
     Invoke-Checked $dashboardExe @("ingest-polygon", "tickers", "--max-pages", [string]$resolvedPages)
-    Invoke-Checked $dashboardExe @("ingest-polygon", "grouped-daily", "--date", $resolvedAsOf)
-    Invoke-Checked $dashboardExe @("build-universe", "--as-of", $resolvedAsOf)
-    Invoke-Checked $dashboardExe @("scan", "--as-of", $resolvedAsOf)
+    Invoke-Checked $dashboardExe @("run-daily", "--as-of", $resolvedAsOf, "--available-at", $availableAt, "--json")
     Invoke-Checked $dashboardExe @("priced-in-queue", "--json")
     Write-Output ("External provider call budget requested: polygon_ticker_pages={0}; grouped_daily=1" -f $resolvedPages)
 }
 finally {
+    if ($hadTickerMaxPages) {
+        $env:CATALYST_POLYGON_TICKERS_MAX_PAGES = $previousTickerMaxPages
+    }
+    else {
+        Remove-Item Env:CATALYST_POLYGON_TICKERS_MAX_PAGES -ErrorAction SilentlyContinue
+    }
+    if ($hadTickerPageDelay) {
+        $env:CATALYST_POLYGON_TICKER_PAGE_DELAY_SECONDS = $previousTickerPageDelay
+    }
+    else {
+        Remove-Item Env:CATALYST_POLYGON_TICKER_PAGE_DELAY_SECONDS -ErrorAction SilentlyContinue
+    }
     Pop-Location
 }

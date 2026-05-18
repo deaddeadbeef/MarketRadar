@@ -9,6 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import create_engine, insert, inspect, select
+from sqlalchemy.exc import OperationalError
 
 from apps.worker import main as worker_main
 from catalyst_radar.brokers.models import (
@@ -30,6 +31,8 @@ from catalyst_radar.core.models import (
     MarketFeatures,
     PolicyResult,
 )
+from catalyst_radar.jobs import scheduler as job_scheduler
+from catalyst_radar.jobs import tasks as job_tasks
 from catalyst_radar.jobs.scheduler import (
     SchedulerConfig,
     SchedulerRunResult,
@@ -952,6 +955,53 @@ def test_daily_run_explains_threshold_packet_and_card_skips(monkeypatch):
     )
 
 
+def test_daily_run_scans_inputs_ingested_during_same_run(monkeypatch):
+    monkeypatch.setenv("CATALYST_DAILY_EVENT_PROVIDER", "none")
+    engine = _engine()
+    decision_available_at = datetime.now(UTC).replace(microsecond=0) - timedelta(seconds=5)
+    _insert_active_security(engine, decision_available_at)
+    seen: dict[str, datetime] = {}
+
+    def fake_daily_bar_ingest(context):
+        del context
+        return job_tasks._StepOutcome(
+            status="success",
+            requested_count=1,
+            raw_count=1,
+            normalized_count=1,
+            payload={
+                "same_run_available_at": (
+                    decision_available_at + timedelta(seconds=5)
+                ).isoformat(),
+            },
+        )
+
+    def fake_run_scan(*args, **kwargs):
+        del args
+        available_at = kwargs["available_at"]
+        seen["available_at"] = available_at
+        return [
+            _high_score_scan_result(
+                date(2026, 5, 9),
+                available_at=available_at,
+            )
+        ]
+
+    monkeypatch.setitem(job_tasks._STEP_HANDLERS, "daily_bar_ingest", fake_daily_bar_ingest)
+    monkeypatch.setattr(job_tasks, "run_scan", fake_run_scan)
+    spec = DailyRunSpec(
+        as_of=date(2026, 5, 9),
+        decision_available_at=decision_available_at,
+        run_llm=False,
+        dry_run_alerts=True,
+    )
+
+    result = run_daily(spec, engine=engine)
+
+    assert result.step("feature_scan").status == "success"
+    assert seen["available_at"] > decision_available_at
+
+
 def test_daily_run_decision_cards_include_broker_context(monkeypatch):
     engine = _engine()
     decision_available_at = datetime.now(UTC).replace(microsecond=0) + timedelta(minutes=1)
@@ -1286,6 +1336,40 @@ def test_scheduler_run_once_reports_lost_heartbeat(monkeypatch, tmp_path):
     assert result.daily_result.step("daily_bar_ingest").status == "failed"
 
 
+def test_scheduler_heartbeat_ignores_transient_sqlite_lock():
+    stop = threading.Event()
+    state = job_scheduler._HeartbeatState(failed=threading.Event())
+
+    class FlakyHeartbeatRepo:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def heartbeat(self, *args, **kwargs):
+            del args, kwargs
+            self.calls += 1
+            if self.calls == 1:
+                raise OperationalError(
+                    "UPDATE job_locks",
+                    {},
+                    Exception("database is locked"),
+                )
+            stop.set()
+            return True
+
+    repo = FlakyHeartbeatRepo()
+    config = SchedulerConfig(
+        owner="worker-a",
+        lock_name="daily-run",
+        lock_ttl=timedelta(milliseconds=50),
+    )
+
+    job_scheduler._heartbeat_loop(repo, config, stop, state)
+
+    assert repo.calls == 2
+    assert state.failed.is_set() is False
+    assert state.reason is None
+
+
 def test_scheduler_retries_near_lock_expiry_instead_of_full_interval():
     now = datetime(2026, 5, 10, 1, 0, tzinfo=UTC)
     result = SchedulerRunResult(
@@ -1382,6 +1466,8 @@ def test_worker_one_shot_returns_failure_for_partial_daily_result(monkeypatch, t
 def test_cli_run_daily_json_smoke(monkeypatch, tmp_path, capsys):
     database_url = f"sqlite:///{(tmp_path / 'scheduler-cli.db').as_posix()}"
     monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("CATALYST_DAILY_MARKET_PROVIDER", "csv")
+    monkeypatch.setenv("CATALYST_DAILY_EVENT_PROVIDER", "news_fixture")
 
     exit_code = cli_main(
         [

@@ -1,6 +1,52 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 00:45:00 +08:00
+Last updated: 2026-05-18 09:59:26 +08:00
+
+## Latest Correction
+
+The broad Polygon/Massive seed proved that the local database can hold the
+full-market scan scope: ticker seeding reached more than 12k active securities
+and raw scanning produced more than 12k candidate rows. The remaining bug was
+not "Polygon only returned three tickers"; it was that
+`scripts\run-full-market-scan.ps1` finished through the raw `scan` command.
+The dashboard, `priced-in-queue`, and readiness panels intentionally read the
+latest scheduled `run-daily` job metadata, so they kept showing the previous
+three-ticker scheduled run.
+
+The full-market helper should therefore seed Polygon/Massive tickers and then
+call:
+
+```powershell
+catalyst-radar run-daily --as-of <LATEST_TRADING_DATE> --available-at <UTC-now> --json
+```
+
+That path ingests the grouped daily bars for the selected trading date, runs the
+full active-security feature scan, records scheduler/job telemetry, and refreshes
+the dashboard/API queue from the same run. The raw `scan` command remains useful
+for local diagnostics, but it is not the operator path for a dashboard-visible
+full scan.
+
+Two runtime details matter for broad scans:
+
+- Live data fetched inside a scheduled run must be visible to later steps in
+  that same run. Use the run context's post-ingest available-at cutoff for
+  feature scanning, packet building, decision cards, and alert planning.
+- SQLite may briefly reject heartbeat writes during large candidate-state
+  batches. Treat transient `database is locked` heartbeat errors as retryable;
+  still fail closed if the heartbeat update returns `false` because the lock was
+  actually lost.
+
+Latest verified local full-market state after the fix:
+
+- Active securities: `12613`.
+- As-of bar coverage for `2026-05-15`: `12090/12613`; this is broad enough for
+  research and should be shown as attention, not a hard block.
+- Feature scan: `12087` scanned candidates.
+- Candidate states: `12087`.
+- Candidate packets: `7920`.
+- Planned alerts: `3876`.
+- `priced-in-queue` status: `ready`, with top rows including `A`, `MSFT`,
+  `AAAU`, `AAPL`, and `AA` as `bullish_not_priced_in`.
 
 ## Current Objective
 

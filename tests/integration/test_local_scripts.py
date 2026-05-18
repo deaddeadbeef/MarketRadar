@@ -326,9 +326,8 @@ def test_run_full_market_scan_script_is_plan_first_and_execute_gated() -> None:
     assert "CATALYST_POLYGON_TICKERS_MAX_PAGES" in text
     assert "CATALYST_POLYGON_TICKER_PAGE_DELAY_SECONDS" in text
     assert "ingest-polygon\", \"tickers\"" in text
-    assert "ingest-polygon\", \"grouped-daily\"" in text
-    assert "build-universe" in text
-    assert "scan" in text
+    assert "run-daily" in text
+    assert "scan\", \"--as-of\"" not in text
     assert "priced-in-queue" in text
     assert "External calls made: 0" in text
     assert "OPENAI_API_KEY=" not in text

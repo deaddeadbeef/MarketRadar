@@ -175,10 +175,22 @@ class _DailyRunContext:
     degraded_mode: Mapping[str, Any] | None = None
     planned_alerts: tuple[Any, ...] = ()
     alert_suppressions: tuple[Any, ...] = ()
+    input_available_at: datetime | None = None
 
     @property
     def as_of_datetime(self) -> datetime:
         return datetime.combine(self.spec.as_of, time(21), tzinfo=UTC)
+
+    @property
+    def available_at_cutoff(self) -> datetime:
+        if self.input_available_at is None:
+            return self.spec.decision_available_at
+        return max(self.spec.decision_available_at, self.input_available_at)
+
+    def mark_inputs_available(self, available_at: datetime) -> None:
+        cutoff = max(self.spec.decision_available_at, _aware_utc(available_at, "available_at"))
+        if self.input_available_at is None or cutoff > self.input_available_at:
+            self.input_available_at = cutoff
 
 
 _StepHandler = Callable[[_DailyRunContext], _StepOutcome]
@@ -310,6 +322,7 @@ def _run_step(
         payload=outcome.payload,
     )
     _record_step_finished(context, step_result)
+    _mark_step_inputs_available(context, step_name, step_result)
     return step_result
 
 
@@ -453,6 +466,7 @@ def _daily_polygon_bar_ingest(context: _DailyRunContext, provider: str) -> _Step
             "daily_bar_count": result.daily_bar_count,
             "holding_count": result.holding_count,
             "rejected_count": result.rejected_count,
+            "same_run_available_at": datetime.now(UTC).isoformat(),
         },
     )
 
@@ -621,6 +635,7 @@ def _daily_sec_event_ingest(context: _DailyRunContext, provider: str) -> _StepOu
             "job_ids": job_ids,
             "event_count": event_count,
             "rejected_count": rejected_count,
+            "same_run_available_at": datetime.now(UTC).isoformat(),
         },
     )
 
@@ -636,7 +651,7 @@ def _local_text_triage(context: _DailyRunContext) -> _StepOutcome:
         context.event_repo,
         context.text_repo,
         as_of=context.as_of_datetime,
-        available_at=context.spec.decision_available_at,
+        available_at=context.available_at_cutoff,
         tickers=context.spec.tickers or None,
     )
     if result.feature_count == 0 and result.snippet_count == 0:
@@ -669,7 +684,7 @@ def _feature_scan(context: _DailyRunContext) -> _StepOutcome:
         run_scan(
             context.market_repo,
             context.spec.as_of,
-            available_at=context.spec.decision_available_at,
+            available_at=context.available_at_cutoff,
             provider=_scan_provider(context),
             universe_tickers=set(context.spec.tickers) if context.spec.tickers else None,
             event_repo=context.event_repo,
@@ -722,7 +737,7 @@ def _candidate_packets(context: _DailyRunContext) -> _StepOutcome:
     if _degraded_mode_enabled(context):
         disabled_inputs = context.packet_repo.list_candidate_inputs(
             as_of=context.as_of_datetime,
-            available_at=context.spec.decision_available_at,
+            available_at=context.available_at_cutoff,
             tickers=context.spec.tickers or None,
             states=DISABLED_DEGRADED_STATES,
         )
@@ -735,7 +750,7 @@ def _candidate_packets(context: _DailyRunContext) -> _StepOutcome:
         return _skipped("no_current_scan_results")
     inputs = context.packet_repo.list_candidate_inputs(
         as_of=context.as_of_datetime,
-        available_at=context.spec.decision_available_at,
+        available_at=context.available_at_cutoff,
         tickers=context.spec.tickers or None,
         states=_states_at_or_above(ActionState.WARNING),
     )
@@ -753,12 +768,12 @@ def _candidate_packets(context: _DailyRunContext) -> _StepOutcome:
         text_features = context.text_repo.latest_text_features_by_ticker(
             [ticker],
             as_of=context.as_of_datetime,
-            available_at=context.spec.decision_available_at,
+            available_at=context.available_at_cutoff,
         )
         option_features = context.feature_repo.latest_option_features_by_ticker(
             [ticker],
             as_of=context.as_of_datetime,
-            available_at=context.spec.decision_available_at,
+            available_at=context.available_at_cutoff,
         )
         packet = build_candidate_packet(
             candidate_state=candidate_state,
@@ -766,16 +781,16 @@ def _candidate_packets(context: _DailyRunContext) -> _StepOutcome:
             events=context.event_repo.list_events_for_ticker(
                 ticker,
                 as_of=context.as_of_datetime,
-                available_at=context.spec.decision_available_at,
+                available_at=context.available_at_cutoff,
             ),
             snippets=context.text_repo.list_snippets_for_ticker(
                 ticker,
                 as_of=context.as_of_datetime,
-                available_at=context.spec.decision_available_at,
+                available_at=context.available_at_cutoff,
             ),
             text_features=text_features.get(ticker),
             option_features=option_features.get(ticker),
-            requested_available_at=context.spec.decision_available_at,
+            requested_available_at=context.available_at_cutoff,
         )
         context.packet_repo.upsert_candidate_packet(packet)
         packets.append(packet)
@@ -827,11 +842,11 @@ def _decision_cards(context: _DailyRunContext) -> _StepOutcome:
     for packet in eligible_packets:
         card = build_decision_card(
             packet,
-            available_at=context.spec.decision_available_at,
+            available_at=context.available_at_cutoff,
             broker_portfolio_context=latest_broker_portfolio_context(
                 context.engine,
                 ticker=packet.ticker,
-                available_at=context.spec.decision_available_at,
+                available_at=context.available_at_cutoff,
             ),
         )
         context.packet_repo.upsert_decision_card(card)
@@ -910,7 +925,7 @@ def _alert_planning(context: _DailyRunContext) -> _StepOutcome:
         result = plan_alerts(
             context.alert_repo,
             as_of=context.as_of_datetime,
-            available_at=context.spec.decision_available_at,
+            available_at=context.available_at_cutoff,
             ticker=ticker,
             limit=1,
         )
@@ -967,7 +982,7 @@ def _digest(context: _DailyRunContext) -> _StepOutcome:
     digest = build_alert_digest(
         digest_alerts,
         suppressions,
-        generated_at=context.spec.decision_available_at,
+        generated_at=context.available_at_cutoff,
     )
     payload = digest_payload(digest)
     return _StepOutcome(
@@ -1384,7 +1399,7 @@ def _scan_result_summary_payload(context: _DailyRunContext) -> dict[str, Any]:
 def _visible_event_count(context: _DailyRunContext) -> int:
     filters = [
         events.c.source_ts <= context.as_of_datetime,
-        events.c.available_at <= context.spec.decision_available_at,
+        events.c.available_at <= context.available_at_cutoff,
     ]
     if context.spec.tickers:
         filters.append(events.c.ticker.in_(context.spec.tickers))
@@ -1392,6 +1407,33 @@ def _visible_event_count(context: _DailyRunContext) -> int:
         return int(
             conn.scalar(select(func.count()).select_from(events).where(*filters)) or 0
         )
+
+
+def _mark_step_inputs_available(
+    context: _DailyRunContext,
+    step_name: str,
+    step: JobStepResult,
+) -> None:
+    if step_name not in _INPUT_PRODUCING_STEPS:
+        return
+    if step.status != JobStatus.SUCCESS.value:
+        return
+    if step.raw_count <= 0 and step.normalized_count <= 0:
+        return
+    available_at = _same_run_available_at(step.payload)
+    if available_at is None:
+        return
+    context.mark_inputs_available(available_at)
+
+
+def _same_run_available_at(payload: Mapping[str, Any]) -> datetime | None:
+    value = payload.get("same_run_available_at")
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(UTC)
+    except ValueError:
+        return None
 
 
 def _daily_status(steps: tuple[JobStepResult, ...]) -> str:
@@ -1451,6 +1493,14 @@ _STEP_DEPENDENCIES: Mapping[str, tuple[str, ...]] = {
     "digest": ("candidate_packets", "alert_planning"),
     "validation_update": ("candidate_packets",),
 }
+
+_INPUT_PRODUCING_STEPS = frozenset(
+    {
+        "daily_bar_ingest",
+        "event_ingest",
+        "local_text_triage",
+    }
+)
 
 
 __all__ = [

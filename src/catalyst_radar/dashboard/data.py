@@ -5285,20 +5285,35 @@ def _priced_in_preflight_rows(
                 "ready",
                 f"{active or requested or scanned} securities are available for scan scope.",
                 "Keep scanning without a ticker filter.",
-                "catalyst-radar scan --as-of <LATEST_TRADING_DATE>",
+                commands.get("run_scan"),
                 "POST /api/radar/runs",
             )
         )
 
-    if missing_bars or latest_bars == 0:
+    bar_coverage_ratio = (latest_bars / active) if active else 0.0
+    if latest_bars == 0 or (missing_bars and bar_coverage_ratio < 0.9):
         rows.append(
             _priced_in_preflight_row(
                 "market_bars",
                 "blocked",
                 f"Run-as-of bar coverage is {latest_bars}/{active or 'n/a'}.",
-                "Ingest fresh grouped daily bars for the latest trading date.",
-                "catalyst-radar ingest-polygon grouped-daily --date <LATEST_TRADING_DATE>",
+                (
+                    "Run the scheduled scan for the latest trading date; it ingests "
+                    "fresh grouped bars and refreshes the dashboard queue."
+                ),
+                commands.get("run_scan"),
                 "POST /api/radar/runs/call-plan",
+            )
+        )
+    elif missing_bars:
+        rows.append(
+            _priced_in_preflight_row(
+                "market_bars",
+                "attention",
+                f"Run-as-of bars cover {latest_bars}/{active} securities.",
+                "Coverage is broad enough for research; review missing tickers if they matter.",
+                commands.get("run_scan"),
+                "POST /api/radar/runs",
             )
         )
     else:
@@ -5308,7 +5323,7 @@ def _priced_in_preflight_rows(
                 "ready",
                 f"Run-as-of bars cover {latest_bars}/{active or latest_bars} securities.",
                 "Use the latest bars in the next scan.",
-                "catalyst-radar scan --as-of <LATEST_TRADING_DATE>",
+                commands.get("run_scan"),
                 "POST /api/radar/runs",
             )
         )
@@ -5394,7 +5409,10 @@ def _priced_in_preflight_commands(
         "ingest_bars": ingest_bars,
         "build_universe": "catalyst-radar build-universe --as-of <LATEST_TRADING_DATE>",
         "review_call_plan": "catalyst-radar dashboard-tui --once --page run",
-        "run_scan": "catalyst-radar scan --as-of <LATEST_TRADING_DATE>",
+        "run_scan": (
+            "catalyst-radar run-daily --as-of <LATEST_TRADING_DATE> "
+            "--available-at <UTC-now> --json"
+        ),
         "review_queue": "catalyst-radar priced-in-queue --json",
     }
 

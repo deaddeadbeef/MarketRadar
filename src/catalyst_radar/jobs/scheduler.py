@@ -11,6 +11,7 @@ from enum import Enum
 from typing import Any
 
 from sqlalchemy import Engine
+from sqlalchemy.exc import OperationalError
 
 from catalyst_radar.jobs.step_outcomes import classify_step_outcome
 from catalyst_radar.jobs.tasks import DailyRunResult, DailyRunSpec, JobStepResult, run_daily
@@ -290,6 +291,11 @@ def _heartbeat_loop(
             ):
                 state.mark_failed("lock_heartbeat_lost")
                 return
+        except OperationalError as exc:
+            if _is_transient_lock_error(exc):
+                continue
+            state.mark_failed("lock_heartbeat_error", exc)
+            return
         except Exception as exc:
             state.mark_failed("lock_heartbeat_error", exc)
             return
@@ -300,6 +306,11 @@ def _heartbeat_interval(ttl: timedelta) -> float:
     if ttl_seconds <= 0:
         return 1.0
     return max(0.05, min(30.0, ttl_seconds / 5.0))
+
+
+def _is_transient_lock_error(exc: OperationalError) -> bool:
+    text = str(exc).lower()
+    return "database is locked" in text or "database table is locked" in text
 
 
 def _optional_text(source: Mapping[str, str], key: str) -> str | None:
