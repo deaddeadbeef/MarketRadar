@@ -1,6 +1,36 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 23:10:17 +08:00
+Last updated: 2026-05-18 23:17:23 +08:00
+
+## Latest Agent Brief API
+
+The CLI had `agent-brief`, but the API did not expose the same multi-agent
+operator brief. That left the CLI/API surface uneven for the current goal.
+
+Changes in this slice:
+
+- Added read-only API:
+
+  ```text
+  GET /api/agents/brief
+  ```
+
+- The endpoint builds the same dashboard snapshot used by the CLI and runs
+  `run_market_radar_agents(..., real=False)`.
+- The API endpoint is viewer-readable and always dry-run. It makes no hidden
+  OpenAI, Polygon/Massive, SEC, Schwab, broker, shell, filesystem, or web calls.
+- It supports the same useful filters as the CLI brief path: ticker,
+  available-at, priced-in status/usefulness/source gap/decision gap, scan
+  limit/offset, telemetry limit, and operator goal.
+- The route is in the API allowlist and the dashboard feature inventory.
+
+Validation for this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_api_routes.py::test_get_agent_brief_returns_zero_call_market_radar_brief tests\integration\test_security_boundaries.py::test_openapi_routes_are_allowlisted_and_broker_routes_are_explicit -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\api\routes\agents.py tests\integration\test_api_routes.py tests\integration\test_security_boundaries.py
+git diff --check
+```
 
 ## Latest Agent Priced-In Answer Context
 

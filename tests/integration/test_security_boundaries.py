@@ -77,6 +77,10 @@ EXPECTED_API_ROUTES = {
     ): ("catalyst_radar.api.routes.agents", "review_candidate", ("agents",)),
     (
         "GET",
+        "/api/agents/brief",
+    ): ("catalyst_radar.api.routes.agents", "agent_brief", ("agents",)),
+    (
+        "GET",
         "/api/agents/reviews",
     ): ("catalyst_radar.api.routes.agents", "review_history", ("agents",)),
     ("GET", "/api/alerts"): ("catalyst_radar.api.routes.alerts", "alerts", ("alerts",)),
