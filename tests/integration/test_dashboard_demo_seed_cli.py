@@ -575,7 +575,7 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
     assert output.err == ""
     assert payload["schema_version"] == "priced-in-queue-v1"
     assert payload["external_calls_made"] == 0
-    assert payload["usefulness_counts"] == {"research_useful": 1}
+    assert payload["usefulness_counts"] == {"decision_useful": 1}
     assert payload["rows"][0]["ticker"] == "ACME"
     assert payload["rows"][0]["priced_in_status"] == "bullish_not_priced_in"
     assert payload["rows"][0]["emotion_reaction_gap"] == 49.0
@@ -605,13 +605,13 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
     )
     assert "catalyst_events" in payload["rows"][0]["data_sources"]["available"]
 
-    assert main(["priced-in-queue", "--usefulness", "research_useful", "--json"]) == 0
+    assert main(["priced-in-queue", "--usefulness", "decision_useful", "--json"]) == 0
     output = capsys.readouterr()
     filtered_payload = json.loads(output.out)
 
     assert output.err == ""
-    assert filtered_payload["filters"]["usefulness"] == "research_useful"
-    assert filtered_payload["rows"][0]["usefulness"]["status"] == "research_useful"
+    assert filtered_payload["filters"]["usefulness"] == "decision_useful"
+    assert filtered_payload["rows"][0]["usefulness"]["status"] == "decision_useful"
 
     assert main(["priced-in-queue", "--full-scan", "--json"]) == 0
     output = capsys.readouterr()
@@ -658,15 +658,13 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
 
     assert output.err == ""
     assert decision_gap_payload["filters"]["decision_gap"] == ["options"]
-    assert "options" in (
-        decision_gap_payload["rows"][0]["usefulness"]["missing_for_decision"]
-    )
+    assert decision_gap_payload["count"] == 0
 
     assert main(["priced-in-queue"]) == 0
     output = capsys.readouterr()
 
     assert output.err == ""
-    assert "usefulness_counts=research_useful:1" in output.out
+    assert "usefulness_counts=decision_useful:1" in output.out
     assert "scan_scope=scanned=" in output.out
     assert "visible_page=1" in output.out
     assert "source_actions:" in output.out
@@ -751,7 +749,11 @@ def test_priced_in_answer_cli_outputs_current_scan_answer(
     assert "question=Has price fully matched market expectations?" in output.out
     assert "answer=" in output.out
     assert "decision_readiness=status=" in output.out
-    assert "recommended_gap=" in output.out
+    assert "actionable_rows_sample=ranked actionable mismatches" in output.out
+    assert (
+        "full_scan_export=catalyst-radar priced-in-queue --full-scan --all --json"
+        in output.out
+    )
     assert "external_calls=0" in output.out
 
     assert main(["priced-in-answer", "--json"]) == 0
@@ -793,9 +795,10 @@ def test_candidate_detail_cli_outputs_priced_in_evidence_brief(
     )
     assert actions["options"]["command"].endswith("--ticker ACME")
     assert actions["options"]["sample_tickers"] == ["ACME"]
-    assert brief["usefulness"]["status"] == "research_useful"
-    assert brief["usefulness"]["decision_ready"] is False
-    assert "options" in brief["usefulness"]["missing_for_decision"]
+    assert brief["usefulness"]["status"] == "decision_useful"
+    assert brief["usefulness"]["decision_ready"] is True
+    assert "options" in brief["usefulness"]["optional_context_gaps"]
+    assert "options" not in brief["usefulness"]["missing_for_decision"]
     assert brief["evidence"]
     assert brief["next_step"]
 
@@ -807,10 +810,10 @@ def test_candidate_detail_cli_outputs_priced_in_evidence_brief(
     assert "status=bullish_not_priced_in" in output.out
     assert "why_now=" in output.out
     assert "emotion_vs_reaction=" in output.out
-    assert "usefulness=research_useful decision_ready=false" in output.out
+    assert "usefulness=decision_useful decision_ready=true" in output.out
+    assert "optional_context=broker_context,options" in output.out
     assert "source_actions:" in output.out
     assert "options status=missing" in output.out
-    assert "sample=ACME" in output.out
     assert "evidence:" in output.out
     assert "next_step=" in output.out
 

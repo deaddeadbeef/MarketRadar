@@ -3243,6 +3243,11 @@ def _print_priced_in_answer(payload: Mapping[str, object]) -> None:
     if not isinstance(rows, list | tuple) or not rows:
         print("No useful priced-in rows.")
         return
+    print(
+        "actionable_rows_sample="
+        "ranked actionable mismatches from the visible page; "
+        "the full scan is the queue/export above."
+    )
     print("ticker status usefulness decision_ready gap emotion reaction next_step")
     for row in rows:
         if not isinstance(row, Mapping):
@@ -3343,11 +3348,25 @@ def _print_candidate_detail(payload: Mapping[str, object]) -> None:
     print(f"data={_compact_cli_text(_detail_data_summary(brief))}")
     usefulness = brief.get("usefulness")
     if isinstance(usefulness, Mapping):
+        missing = ",".join(
+            str(item)
+            for item in _sequence_value(usefulness.get("missing_for_decision"))
+            if str(item)
+        )
+        optional = ",".join(
+            str(item)
+            for item in _sequence_value(usefulness.get("optional_context_gaps"))
+            if str(item)
+        )
+        missing_suffix = f" missing={missing}" if missing else ""
+        optional_suffix = f" optional_context={optional}" if optional else ""
         print(
             "usefulness="
             f"{usefulness.get('status')} "
             f"decision_ready={str(bool(usefulness.get('decision_ready'))).lower()} "
             f"next={_compact_cli_text(usefulness.get('next_action'))}"
+            f"{missing_suffix}"
+            f"{optional_suffix}"
         )
     source_actions = brief.get("source_actions")
     if isinstance(source_actions, list | tuple) and source_actions:

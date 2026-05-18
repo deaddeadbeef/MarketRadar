@@ -2093,20 +2093,20 @@ def test_priced_in_queue_payload_filters_decision_gaps(tmp_path: Path) -> None:
     payload = priced_in_queue_payload(
         engine,
         AppConfig.from_env({}),
-        decision_gap="candidate-packet,decision-card,options",
+        decision_gap="candidate-packet,decision-card",
         limit=10,
     )
 
     assert payload["filters"]["decision_gap"] == [
         "candidate_packet",
         "decision_card",
-        "options",
     ]
     assert payload["count"] >= 1
     saw_research_useful = False
     for row in payload["rows"]:
         missing = set(row["usefulness"]["missing_for_decision"])
-        assert {"candidate_packet", "decision_card", "options"} <= missing
+        assert {"candidate_packet", "decision_card"} <= missing
+        assert "options" in row["usefulness"]["optional_context_gaps"]
         if row["usefulness"]["status"] == "research_useful":
             saw_research_useful = True
             assert row["next_step"] == (
