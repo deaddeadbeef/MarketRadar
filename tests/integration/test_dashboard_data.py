@@ -1392,6 +1392,10 @@ def test_priced_in_queue_payload_surfaces_ranked_gap_rows(tmp_path: Path) -> Non
     assert payload["filters"]["usefulness"] == "all"
     assert payload["source_coverage"]["schema_version"] == "priced-in-source-coverage-v1"
     assert payload["source_coverage"]["row_count"] == 2
+    assert payload["decision_gap_counts"]["schema_version"] == (
+        "priced-in-decision-gap-counts-v1"
+    )
+    assert payload["decision_gap_counts"]["scope"] == "actionable_mismatch_rows"
     assert "market_bars" in payload["source_coverage"]["sources"]
     assert sum(payload["usefulness_counts"].values()) == payload["total_count"]
     assert payload["rows"][0]["ticker"] == "MSFT"
@@ -1434,6 +1438,13 @@ def test_priced_in_answer_payload_summarizes_current_scan(tmp_path: Path) -> Non
     assert payload["scan_scope"]["full_scan_export_command"] == (
         "catalyst-radar priced-in-queue --full-scan --all --json"
     )
+    assert payload["decision_readiness"]["schema_version"] == (
+        "priced-in-decision-readiness-v1"
+    )
+    assert payload["decision_readiness"]["decision_ready_rows"] == 0
+    assert payload["decision_readiness"]["summary"]
+    if payload["decision_readiness"]["recommended_gap"]:
+        assert payload["decision_readiness"]["recommended_gap"]["command"]
     assert "scanned row" in payload["headline"]
     assert payload["source_coverage"]["summary"]
     assert payload["next_action"]

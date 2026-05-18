@@ -3203,6 +3203,23 @@ def _print_priced_in_answer(payload: Mapping[str, object]) -> None:
         next_page = scan_scope.get("next_page_command")
         if next_page:
             print(f"next_page={_compact_cli_text(next_page)}")
+    decision_readiness = payload.get("decision_readiness")
+    if isinstance(decision_readiness, Mapping):
+        print(
+            "decision_readiness="
+            f"status={decision_readiness.get('status')} "
+            f"actionable={decision_readiness.get('actionable_mismatch_rows')} "
+            f"decision_ready={decision_readiness.get('decision_ready_rows')} "
+            f"summary={_compact_cli_text(decision_readiness.get('summary'))}"
+        )
+        recommended = decision_readiness.get("recommended_gap")
+        if isinstance(recommended, Mapping):
+            print(
+                "recommended_gap="
+                f"{recommended.get('gap')} "
+                f"count={recommended.get('count')} "
+                f"command={_compact_cli_text(recommended.get('command'))}"
+            )
     print(f"next_action={payload.get('next_action')}")
     if payload.get("next_command"):
         print(f"next_command={_compact_cli_text(payload.get('next_command'))}")

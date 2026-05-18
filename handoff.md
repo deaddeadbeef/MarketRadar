@@ -1,6 +1,61 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 23:53:40 +08:00
+Last updated: 2026-05-19 00:18:19 +08:00
+
+## Latest Decision-Readiness Gap Summary
+
+The full scan is broad, but the priced-in answer still says `research_only`.
+The missing product surface was a scan-level explanation for why
+`decision_ready_rows=0`. Source coverage alone was too broad because it mixed
+the entire 12k-row universe with the smaller actionable-mismatch set.
+
+Changes in this slice:
+
+- `priced_in_queue_payload()` now emits `decision_gap_counts`.
+- `decision_gap_counts` is scoped to actionable mismatch rows, not every neutral
+  or blocked scan row.
+- `priced_in_answer_payload()` now emits `decision_readiness` with:
+  - actionable mismatch row count;
+  - decision-ready row count;
+  - top decision gaps;
+  - recommended first gap;
+  - concrete command for the recommended gap.
+- `priced-in-answer` CLI now prints the decision readiness summary and
+  recommended gap command.
+- The TUI overview now shows `Decision readiness:` before the row table so the
+  operator does not have to infer why rows are not decision-ready.
+- The dry-run agent brief receives the same `decision_readiness` object and now
+  includes the recommended blocker in the priced-in insight.
+
+Live zero-provider-call smoke:
+
+```text
+priced_in_answer status=research_only decision_ready=false total=12087 mismatches=7 research=5 blocked=7920 external_calls=0
+decision_readiness=status=blocked actionable=7 decision_ready=0 summary=0 of 7 actionable mismatch row(s) are decision-ready; start with options (7 row(s)).
+recommended_gap=options count=7 command=catalyst-radar priced-in-source-batches --source options --batch-limit 5
+```
+
+TUI once smoke now shows, before ticker rows:
+
+```text
+Decision readiness: 0 of 7 actionable mismatch row(s) are decision-ready; start with options (7 row(s)). Command: catalyst-radar priced-in-source-batches --source options --batch-limit 5
+```
+
+Agent brief smoke now includes:
+
+```text
+Priced-in answer is research_only; decision_ready=false; ...; blocker=options; next=...
+```
+
+Validation for this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_queue_payload_surfaces_ranked_gap_rows tests\integration\test_dashboard_data.py::test_priced_in_answer_payload_summarizes_current_scan tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_answer_cli_outputs_current_scan_answer tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_tui_once_can_show_full_scan_mode tests\unit\test_agent_sdk_orchestrator.py::test_redacted_operator_snapshot_allowlists_dashboard_fields -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py src\catalyst_radar\agents\sdk_orchestrator.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py tests\unit\test_agent_sdk_orchestrator.py
+git diff --check
+```
+
+Observed: focused pytest passed, ruff passed, `git diff --check` passed.
 
 ## Latest Full-Scan Scope UX
 

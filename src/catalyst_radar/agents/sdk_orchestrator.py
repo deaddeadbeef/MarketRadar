@@ -595,6 +595,7 @@ def _priced_in_answer_context(answer: Mapping[str, object]) -> dict[str, object]
             ),
         ),
         "counts": _mapping(answer.get("counts")),
+        "decision_readiness": _safe_value(answer.get("decision_readiness") or {}),
         "trust_blockers": _safe_value(answer.get("trust_blockers") or []),
     }
 
@@ -942,11 +943,18 @@ def _priced_in_answer_insight(priced_in: Mapping[str, object]) -> str | None:
     status = _text(answer.get("status")) or "unknown"
     decision_ready = bool(answer.get("decision_ready"))
     answer_text = _text(answer.get("answer")) or _text(answer.get("headline"))
+    readiness = _mapping(answer.get("decision_readiness"))
+    recommended_gap = _mapping(readiness.get("recommended_gap"))
+    gap_piece = (
+        f"; blocker={_text(recommended_gap.get('gap'))}"
+        if recommended_gap.get("gap")
+        else ""
+    )
     next_action = _text(answer.get("next_action"))
     next_piece = f"; next={next_action}" if next_action else ""
     return (
         f"Priced-in answer is {status}; decision_ready={str(decision_ready).lower()}; "
-        f"{answer_text}{next_piece}."
+        f"{answer_text}{gap_piece}{next_piece}."
     )
 
 

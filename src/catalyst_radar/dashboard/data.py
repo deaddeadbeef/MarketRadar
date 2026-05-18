@@ -704,6 +704,7 @@ def priced_in_queue_payload(
         "has_more": resolved_offset + len(page_rows) < total_count,
         "status_counts": status_counts,
         "usefulness_counts": _priced_in_usefulness_counts(rows),
+        "decision_gap_counts": _priced_in_decision_gap_counts(rows),
         "source_coverage": source_coverage,
         "rows": page_rows,
     }
@@ -952,6 +953,11 @@ def priced_in_answer_payload(
         top_rows=top_rows,
     )
     source_coverage = _mapping_value(resolved_queue, "source_coverage")
+    decision_readiness = _priced_in_answer_decision_readiness(
+        _mapping_value(resolved_queue, "decision_gap_counts"),
+        source_coverage=source_coverage,
+        decision_ready_count=decision_ready_count,
+    )
     decision_ready = decision_ready_count > 0
     return {
         "schema_version": "priced-in-answer-v1",
@@ -984,6 +990,7 @@ def priced_in_answer_payload(
             "blocked_rows": blocked_count,
         },
         "scan_scope": _priced_in_answer_scan_scope(resolved_queue),
+        "decision_readiness": decision_readiness,
         "filters": _row_dict(_mapping_value(resolved_queue, "filters")),
         "source_coverage": {
             "summary": source_coverage.get("summary"),
@@ -1094,6 +1101,116 @@ def _priced_in_queue_command_from_filters(
         limit = int(_finite_float(filters.get("limit"))) or 50
         parts.extend(["--limit", str(limit), "--offset", str(offset or 0)])
     return " ".join(parts)
+
+
+def _priced_in_answer_decision_readiness(
+    decision_gap_counts: Mapping[str, object],
+    *,
+    source_coverage: Mapping[str, object],
+    decision_ready_count: int,
+) -> dict[str, object]:
+    row_count = int(_finite_float(decision_gap_counts.get("row_count")))
+    count_values = _mapping_value(decision_gap_counts, "counts")
+    actions = {
+        str(action.get("source") or ""): action
+        for action in _sequence_value(source_coverage.get("actions"))
+        if isinstance(action, Mapping)
+    }
+    top_gaps = [
+        _priced_in_decision_gap_row(gap, count, actions=actions)
+        for gap, count in sorted(
+            count_values.items(),
+            key=lambda item: (
+                _priced_in_decision_gap_priority(str(item[0])),
+                -int(_finite_float(item[1])),
+                str(item[0]),
+            ),
+        )
+        if int(_finite_float(count)) > 0
+    ]
+    recommended = top_gaps[0] if top_gaps else {}
+    if decision_ready_count > 0:
+        status = "ready"
+        summary = f"{decision_ready_count} not-priced-in row(s) are decision-ready."
+    elif row_count <= 0:
+        status = "no_actionable_rows"
+        summary = "No actionable mismatch rows are visible in the current scan filter."
+    elif top_gaps:
+        status = "blocked"
+        summary = (
+            f"0 of {row_count} actionable mismatch row(s) are decision-ready; "
+            f"start with {recommended.get('gap')} "
+            f"({recommended.get('count')} row(s))."
+        )
+    else:
+        status = "blocked"
+        summary = (
+            f"0 of {row_count} actionable mismatch row(s) are decision-ready; "
+            "open candidate detail for row-level blockers."
+        )
+    return {
+        "schema_version": "priced-in-decision-readiness-v1",
+        "status": status,
+        "scope": decision_gap_counts.get("scope") or "actionable_mismatch_rows",
+        "actionable_mismatch_rows": row_count,
+        "decision_ready_rows": decision_ready_count,
+        "summary": summary,
+        "recommended_gap": recommended or None,
+        "top_gaps": top_gaps[:8],
+        "counts": _row_dict(count_values),
+    }
+
+
+def _priced_in_decision_gap_row(
+    gap: object,
+    count: object,
+    *,
+    actions: Mapping[str, Mapping[str, object]],
+) -> dict[str, object]:
+    gap_name = str(gap or "").strip()
+    count_value = int(_finite_float(count))
+    action = actions.get(gap_name, {})
+    next_action = str(action.get("next_action") or "").strip()
+    command = str(
+        action.get("batch_plan_command")
+        or action.get("command")
+        or action.get("full_scan_gap_review_command")
+        or ""
+    ).strip()
+    if gap_name == "candidate_packet":
+        next_action = "Build Candidate Packets for research-useful mismatch rows."
+        command = (
+            "catalyst-radar priced-in-queue --usefulness research_useful "
+            "--decision-gap candidate_packet --limit 50"
+        )
+    elif gap_name == "decision_card":
+        next_action = "Build Decision Cards after candidate packets exist."
+        command = (
+            "catalyst-radar priced-in-queue --usefulness research_useful "
+            "--decision-gap decision_card --limit 50"
+        )
+    elif not next_action:
+        next_action = "Review this decision gap before trusting not-priced-in output."
+    return {
+        "gap": gap_name,
+        "count": count_value,
+        "next_action": next_action,
+        "command": command or None,
+    }
+
+
+def _priced_in_decision_gap_priority(gap: str) -> int:
+    order = {
+        "market_bars": 0,
+        "catalyst_events": 1,
+        "local_text": 2,
+        "options": 3,
+        "broker_context": 4,
+        "candidate_packet": 5,
+        "decision_card": 6,
+        "theme_peer_sector": 7,
+    }
+    return order.get(gap, 99)
 
 
 def _priced_in_answer_rows(rows: Sequence[object]) -> list[dict[str, object]]:
@@ -7320,6 +7437,37 @@ def _priced_in_usefulness_counts(
             for row in rows
         )
     )
+
+
+def _priced_in_decision_gap_counts(
+    rows: Sequence[Mapping[str, object]],
+) -> dict[str, object]:
+    actionable_rows = [
+        row
+        for row in rows
+        if str(row.get("priced_in_status") or "").strip().lower()
+        in PRICED_IN_ACTIONABLE_STATUSES
+    ]
+    counts: Counter[str] = Counter()
+    for row in actionable_rows:
+        usefulness = _mapping_value(row, "usefulness")
+        for gap in _sequence_value(usefulness.get("missing_for_decision")):
+            gap_name = str(gap or "").strip()
+            if gap_name:
+                counts[gap_name] += 1
+    return {
+        "schema_version": "priced-in-decision-gap-counts-v1",
+        "scope": "actionable_mismatch_rows",
+        "row_count": len(actionable_rows),
+        "counts": dict(sorted(counts.items())),
+        "top_gaps": [
+            {"gap": gap, "count": count}
+            for gap, count in sorted(
+                counts.items(),
+                key=lambda item: (-item[1], item[0]),
+            )
+        ],
+    }
 
 
 def _priced_in_source_gap_filter(value: str | Sequence[str] | None) -> tuple[str, ...]:
