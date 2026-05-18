@@ -1,6 +1,54 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 21:06:13 +08:00
+Last updated: 2026-05-18 21:13:47 +08:00
+
+## Latest Agent Evidence Plan Context
+
+The CLI/API/dashboard gained an ordered priced-in evidence plan, but the
+agent-safe snapshot still only exposed source coverage and top rows. That meant
+the deterministic and real Agents SDK path could miss the operator sequence that
+the human dashboard now shows.
+
+Changes in this slice:
+
+- The redacted operator snapshot now includes:
+
+  ```text
+  priced_in.evidence_plan
+  ```
+
+- The evidence plan context is allowlisted and limited to safe fields:
+  schema/status/headline/next action/next command/external-call count and up to
+  eight steps.
+- Deterministic `agent-brief` now emits a priced-in evidence-plan insight.
+- `agent-brief` next actions include the plan's first action and first command.
+- The default agent brief remains zero-call. It does not call OpenAI, market
+  data, Schwab, shell, filesystem, or order endpoints.
+
+Live zero-provider-call verification:
+
+```powershell
+.\.venv\Scripts\catalyst-radar.exe agent-brief --json |
+  .\.venv\Scripts\python.exe -c "import json,sys; p=json.load(sys.stdin); print([x for x in p['insights'] if 'evidence plan' in x.lower()][0]); print([a for a in p['next_actions'] if 'priced-in-source-batches' in a][:2]); print(p['external_calls_made'])"
+```
+
+Observed:
+
+```text
+Priced-in evidence plan is attention; steps=5; next=Review the run call plan and refresh event ingestion before trusting emotion.; command=catalyst-radar priced-in-source-batches --source catalyst_events --batch-limit 5.
+['catalyst-radar priced-in-source-batches --source catalyst_events --batch-limit 5']
+{'broker': 0, 'market_data': 0, 'openai': 0}
+```
+
+Validation for this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\unit\test_agent_sdk_orchestrator.py tests\integration\test_dashboard_demo_seed_cli.py::test_agent_brief_cli_outputs_zero_call_dry_run -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\agents\sdk_orchestrator.py tests\unit\test_agent_sdk_orchestrator.py
+git diff --check
+```
+
+All passed.
 
 ## Latest Priced-In Evidence Plan
 

@@ -33,6 +33,9 @@ def test_agent_sdk_dry_run_brief_is_multi_agent_and_zero_call() -> None:
     assert "order" in blocked
     assert "shell" in blocked
     assert any("Priced-in scan is ready" in insight for insight in brief["insights"])
+    assert any("Priced-in evidence plan is attention" in insight for insight in brief["insights"])
+    assert "Plan options batches." in brief["next_actions"]
+    assert "catalyst-radar priced-in-source-batches --source options" in brief["next_actions"]
     assert "Review full scan source batches." in brief["next_actions"]
 
 
@@ -97,6 +100,25 @@ def test_redacted_operator_snapshot_allowlists_dashboard_fields() -> None:
         "full_scan_export_command": (
             "catalyst-radar priced-in-queue --source-gap options --all --json"
         ),
+    }
+    assert snapshot["priced_in"]["evidence_plan"] == {
+        "schema_version": "priced-in-evidence-plan-v1",
+        "status": "attention",
+        "headline": "2 source steps need attention.",
+        "next_action": "Plan options batches.",
+        "next_command": "catalyst-radar priced-in-source-batches --source options",
+        "external_calls_made": 0,
+        "steps": [
+            {
+                "priority": 1,
+                "area": "options",
+                "status": "attention",
+                "depends_on": ["market_bars", "catalyst_events", "local_text"],
+                "action": "Plan options batches.",
+                "command": "catalyst-radar priced-in-source-batches --source options",
+                "api": "GET /api/radar/priced-in/source-batches?source=options",
+            }
+        ],
     }
     assert snapshot["alerts"]["rows"][0] == {
         "id": "alert-1",
@@ -249,6 +271,33 @@ def _dashboard_payload() -> dict[str, object]:
             "headline": "Source gaps need review.",
             "next_action": "Plan batches.",
             "scan_status": "ready",
+            "evidence_plan": {
+                "schema_version": "priced-in-evidence-plan-v1",
+                "status": "attention",
+                "headline": "2 source steps need attention.",
+                "next_action": "Plan options batches.",
+                "next_command": (
+                    "catalyst-radar priced-in-source-batches --source options"
+                ),
+                "external_calls_made": 0,
+                "steps": [
+                    {
+                        "priority": 1,
+                        "area": "options",
+                        "status": "attention",
+                        "depends_on": [
+                            "market_bars",
+                            "catalyst_events",
+                            "local_text",
+                        ],
+                        "action": "Plan options batches.",
+                        "command": (
+                            "catalyst-radar priced-in-source-batches --source options"
+                        ),
+                        "api": "GET /api/radar/priced-in/source-batches?source=options",
+                    }
+                ],
+            },
         },
         "candidates": {
             "count": 1,
