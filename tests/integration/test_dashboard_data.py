@@ -1570,7 +1570,13 @@ def test_priced_in_source_gap_batches_payload_plans_sec_event_batches(
 
     payload = priced_in_source_gap_batches_payload(
         engine,
-        AppConfig(sec_daily_max_tickers=1),
+        AppConfig(
+            daily_market_provider="csv",
+            daily_event_provider="sec",
+            sec_enable_live=True,
+            sec_user_agent="MarketRadar test@example.com",
+            sec_daily_max_tickers=1,
+        ),
         source="catalyst_events",
         batch_limit=1,
     )
@@ -1602,6 +1608,41 @@ def test_priced_in_source_gap_batches_payload_plans_sec_event_batches(
         "dry_run_alerts": True,
     }
     assert payload["batches"][0]["external_calls_required"] == 1
+    assert payload["batches"][0]["external_call_breakdown"] == {
+        "catalyst_events": 1
+    }
+    assert payload["batches"][0]["call_plan_status"] == "live_calls_planned"
+
+
+def test_priced_in_source_gap_batches_payload_counts_market_call_for_polygon_events(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    _insert_active_security_for_call_plan(engine, "AAPL", cik="0000320193")
+
+    payload = priced_in_source_gap_batches_payload(
+        engine,
+        AppConfig(
+            daily_market_provider="polygon",
+            polygon_api_key="fixture-key",
+            daily_event_provider="sec",
+            sec_enable_live=True,
+            sec_user_agent="MarketRadar test@example.com",
+            sec_daily_max_tickers=1,
+        ),
+        source="catalyst_events",
+        batch_limit=1,
+    )
+
+    batch = payload["batches"][0]
+    assert batch["tickers"] == ["AAPL"]
+    assert batch["external_calls_required"] == 2
+    assert batch["external_call_breakdown"] == {
+        "market_data": 1,
+        "catalyst_events": 1,
+    }
+    assert batch["call_plan_status"] == "live_calls_planned"
 
 
 def test_priced_in_source_gap_batches_payload_marks_text_rows_blocked_without_events(

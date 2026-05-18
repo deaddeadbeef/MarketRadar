@@ -1,6 +1,83 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 21:40:49 +08:00
+Last updated: 2026-05-18 21:50:13 +08:00
+
+## Latest Source-Batch Call Budget Fix
+
+The source-batch planner was safe but under-explained the actual execution
+budget for catalyst-event batches. In the current live config, market provider
+is Polygon and event provider is SEC. A catalyst-event batch executes
+`run-daily`, so the real batch budget is:
+
+- 1 Polygon grouped-daily market-data call;
+- N SEC submissions calls for the CIK-backed tickers in that batch.
+
+Before this slice, a five-ticker catalyst-event batch reported
+`external_calls_required=5`, which counted SEC submissions only. That was not
+safe enough for a broad full-scan workflow.
+
+Changes in this slice:
+
+- `priced_in_source_gap_batches_payload()` now derives catalyst-event batch
+  budgets from the existing `radar_run_call_plan_payload(...)` instead of using
+  a local ticker-count estimate.
+- Each batch now includes:
+
+  ```text
+  external_calls_required
+  external_call_breakdown
+  call_plan_status
+  call_plan_headline
+  call_plan_next_action
+  ```
+
+- Schwab-backed source batches expose `external_call_breakdown={"schwab": 1}`.
+- Local text batches expose zero provider calls with `call_plan_status=local_only`.
+- Human CLI output now has a `calls` column and prints the provider breakdown.
+- The TUI `batch <source>` response includes the call count and provider
+  breakdown before the first executable command.
+
+Current live zero-provider-call smoke:
+
+```powershell
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source catalyst_events --batch-limit 1 --json |
+  .\.venv\Scripts\python.exe -c "import json,sys; p=json.load(sys.stdin); b=p['batches'][0]; print('status', p['status'], 'batch_count', p['batch_count'], 'external', p['external_calls_made']); print('required', b['external_calls_required'], 'breakdown', b['external_call_breakdown'], 'plan', b['call_plan_status']); print(b['command'])"
+```
+
+Observed:
+
+```text
+status ready batch_count 2093 external 0
+required 6 breakdown {'catalyst_events': 5, 'market_data': 1} plan live_calls_planned
+catalyst-radar run-daily --as-of 2026-05-15 --available-at 2026-05-18T13:50:02+00:00 --ticker BRK.A --ticker NVR --ticker ABLVW --ticker DAICW --ticker DFSCW --json
+```
+
+Human CLI smoke:
+
+```powershell
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source catalyst_events --batch-limit 1 |
+  Select-String -Pattern 'priced_in_source_batches|batch calls|calls=|call_plan=|run-daily'
+```
+
+Observed:
+
+```text
+priced_in_source_batches source=catalyst_events status=ready gap_rows=12080 plannable=10462 planned_at=2026-05-18T13:50:02+00:00 batch_size=5 batches=1 total_batches=2093 batch_offset=0 external_calls=0
+batch calls row_start row_end tickers command
+1 6 1 5 BRK.A,NVR,ABLVW,DAICW,DFSCW catalyst-radar run-daily --as-of 2026-05-15 --available-at 2026-05-18T13:50:02+00:00 --ticker BRK.A --ticker NVR --ticker ABLVW --ticker DAICW --ticker DFSCW --json
+  calls=catalyst_events:5,market_data:1
+  call_plan=live_calls_planned
+```
+
+Validation:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_plans_sec_event_batches tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_counts_market_call_for_polygon_events tests\integration\test_dashboard_data.py::test_radar_run_call_plan_caps_polygon_and_sec_calls tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_batch_command_opens_full_scan_source_batch_plan -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\integration\test_dashboard_data.py
+git diff --check
+```
+
+All passed.
 
 ## Latest Full-Scan Source Action Wording
 

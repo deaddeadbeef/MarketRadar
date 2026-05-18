@@ -3021,7 +3021,7 @@ def _print_priced_in_source_batches(payload: Mapping[str, object]) -> None:
     batches = payload.get("batches")
     if not isinstance(batches, list | tuple) or not batches:
         return
-    print("batch row_start row_end tickers command")
+    print("batch calls row_start row_end tickers command")
     for batch in batches:
         if not isinstance(batch, Mapping):
             continue
@@ -3033,11 +3033,18 @@ def _print_priced_in_source_batches(payload: Mapping[str, object]) -> None:
         )
         print(
             f"{batch.get('number')} "
+            f"{batch.get('external_calls_required')} "
             f"{batch.get('row_start')} "
             f"{batch.get('row_end')} "
             f"{ticker_text} "
             f"{_compact_cli_text(batch.get('command'))}"
         )
+        breakdown = batch.get("external_call_breakdown")
+        if isinstance(breakdown, Mapping) and breakdown:
+            print(f"  calls={_count_summary(breakdown)}")
+        call_plan_status = batch.get("call_plan_status")
+        if call_plan_status:
+            print(f"  call_plan={_compact_cli_text(call_plan_status)}")
     next_command = payload.get("next_batch_command")
     if next_command:
         print(f"more={_compact_cli_text(next_command)}")
