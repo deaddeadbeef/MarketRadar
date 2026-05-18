@@ -1,6 +1,91 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 06:09:22 +08:00
+Last updated: 2026-05-19 06:18:30 +08:00
+
+## Latest Full-Scan Versus First-Batch Clarity Fix
+
+User confusion:
+
+- The live source-fill recommendation showed only:
+
+  ```text
+  A, MSFT, AAAU, AAPL, AA
+  ```
+
+- That looked like MarketRadar was scanning only five tickers.
+- In reality, the priced-in scan was already full-market:
+
+  ```text
+  full_scan active=12613 scanned=12087 ranked=12087
+  ```
+
+- The five tickers were only the first rate-limited provider sync chunk for the
+  `options` source gap.
+
+Fix in this slice:
+
+- `priced_in_source_gap_batches_payload()` now includes an explicit
+  `scan_scope` block:
+
+  ```text
+  mode=full_scan
+  full_scan_gap_rows=<all matching ranked rows with this source gap>
+  plannable_rows=<rows eligible for this source executor>
+  planned_batches=<total source-fill chunks>
+  returned_batches=<chunks returned by this CLI/API call>
+  returned_tickers=<ticker count shown in this page of the batch plan>
+  tickers_are_batch_sample=<true when returned tickers are only a chunk>
+  ```
+
+- CLI `priced-in-source-batches` now prints this scan-scope line plus a plain
+  `scope_note`.
+- TUI `batch <source>` now says:
+
+  ```text
+  Showing batch X-Y of N (... ticker(s)); these are not the whole ticker list.
+  ```
+
+  when the displayed tickers are only a chunk.
+
+- TUI `batch all` and the Ops Source Fill Workflow now explain:
+
+  ```text
+  Full scan = the whole ranked universe.
+  Source-fill tickers = the next rate-limited provider chunk, not the ticker universe.
+  ```
+
+Live zero-call smoke after the fix:
+
+```text
+priced_in_source_batches source=options status=ready gap_rows=12087 plannable=12087 ... batch_size=5 batches=1 total_batches=2418 ... external_calls=0
+scan_scope=mode=full_scan gap_rows=12087 plannable=12087 returned_batches=1 planned_batches=2418 returned_tickers=5 batch_sample=true
+scope_note=The full scan covers every matching ranked row. The tickers shown here are only the returned rate-limited source-fill batch(es); use all_batches_command to list the complete full-scan batch plan.
+batch ... tickers=A,MSFT,AAAU,AAPL,AA ...
+```
+
+Important operator meaning:
+
+- `priced-in-queue --full-scan --all --json` exports every ranked full-scan row.
+- `priced-in-source-batches --source options --all --json` lists every
+  rate-limited `options` fill chunk for the full scan.
+- `priced-in-source-batches --source options --execute-next` executes only one
+  explicit provider chunk. There is intentionally no accidental “call Schwab
+  for all 12k rows now” button.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_plans_safe_sync_batches tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_can_return_full_scan_plan tests\integration\test_dashboard_data.py::test_priced_in_all_source_gap_batches_payload_summarizes_next_chunks tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_batch_command_opens_full_scan_source_batch_plan tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_queue_cli_outputs_same_zero_call_signal -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source options --limit 1
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page ops
+```
+
+Observed: focused pytest passed, ruff passed, `git diff --check` passed, the
+live CLI source-batch plan made zero provider calls and reported the full-scan
+scope, and the live Ops dashboard now includes the full-scan/source-chunk
+legend.
 
 ## Latest Useful-First Source Batch Ordering Fix
 

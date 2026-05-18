@@ -387,6 +387,10 @@ def test_dashboard_batch_command_opens_full_scan_source_batch_plan(
     assert "plannable" in update.message
     assert "batch(es)" in update.message
     assert "This is a full-scan plan, not a watchlist." in update.message
+    assert (
+        "Showing batch 1-1 of 1 (1 ticker(s)); this includes every currently "
+        "plannable ticker for this source."
+    ) in update.message
     assert "Next safe chunk only: catalyst-radar schwab-market-sync --ticker ACME" in (
         update.message
     )
@@ -407,6 +411,7 @@ def test_dashboard_batch_command_opens_full_scan_source_batch_plan(
 
     assert overview.page == "ops"
     assert "plan-only and makes no provider calls" in overview.message
+    assert "source execution is split into safe provider chunks" in overview.message
     assert "Suggested first:" in overview.message
     assert "options=ready" in overview.message
     assert (
@@ -879,8 +884,32 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
     assert batch_payload["schema_version"] == "priced-in-source-batches-v1"
     assert batch_payload["external_calls_made"] == 0
     assert batch_payload["source"] == "options"
+    assert batch_payload["scan_scope"]["mode"] == "full_scan"
+    assert batch_payload["scan_scope"]["full_scan_gap_rows"] == 1
+    assert batch_payload["scan_scope"]["returned_tickers"] == 1
+    assert batch_payload["scan_scope"]["tickers_are_batch_sample"] is False
     assert batch_payload["count"] == 1
     assert batch_payload["batches"][0]["tickers"] == ["ACME"]
+
+    assert (
+        main(
+            [
+                "priced-in-source-batches",
+                "--source",
+                "options",
+                "--batch-size",
+                "1",
+                "--batch-limit",
+                "1",
+            ]
+        )
+        == 0
+    )
+    output = capsys.readouterr()
+
+    assert "scan_scope=mode=full_scan" in output.out
+    assert "returned_tickers=1" in output.out
+    assert "scope_note=The full scan covers every matching ranked row" in output.out
 
     assert (
         main(
