@@ -309,6 +309,7 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
     assert output.err == ""
     assert payload["schema_version"] == "priced-in-queue-v1"
     assert payload["external_calls_made"] == 0
+    assert payload["usefulness_counts"] == {"research_useful": 1}
     assert payload["rows"][0]["ticker"] == "ACME"
     assert payload["rows"][0]["priced_in_status"] == "bullish_not_priced_in"
     assert payload["rows"][0]["emotion_reaction_gap"] == 49.0
@@ -324,10 +325,19 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
     )
     assert "catalyst_events" in payload["rows"][0]["data_sources"]["available"]
 
+    assert main(["priced-in-queue", "--usefulness", "research_useful", "--json"]) == 0
+    output = capsys.readouterr()
+    filtered_payload = json.loads(output.out)
+
+    assert output.err == ""
+    assert filtered_payload["filters"]["usefulness"] == "research_useful"
+    assert filtered_payload["rows"][0]["usefulness"]["status"] == "research_useful"
+
     assert main(["priced-in-queue"]) == 0
     output = capsys.readouterr()
 
     assert output.err == ""
+    assert "usefulness_counts=research_useful:1" in output.out
     assert "source_actions:" in output.out
     assert "options status=missing" in output.out
     assert "broker_context status=missing" in output.out

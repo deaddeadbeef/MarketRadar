@@ -1385,9 +1385,11 @@ def test_priced_in_queue_payload_surfaces_ranked_gap_rows(tmp_path: Path) -> Non
     assert payload["offset"] == 0
     assert payload["has_more"] is False
     assert payload["filters"]["offset"] == 0
+    assert payload["filters"]["usefulness"] == "all"
     assert payload["source_coverage"]["schema_version"] == "priced-in-source-coverage-v1"
     assert payload["source_coverage"]["row_count"] == 2
     assert "market_bars" in payload["source_coverage"]["sources"]
+    assert sum(payload["usefulness_counts"].values()) == payload["total_count"]
     assert payload["rows"][0]["ticker"] == "MSFT"
     assert payload["rows"][0]["priced_in_status"]
     assert "emotion_reaction_gap" in payload["rows"][0]
@@ -1481,6 +1483,58 @@ def test_priced_in_queue_payload_supports_actionable_status_alias(tmp_path: Path
     } <= {"bullish_not_priced_in", "bearish_not_priced_in"}
 
 
+def test_priced_in_queue_payload_filters_usefulness(tmp_path: Path) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    with engine.begin() as conn:
+        row = (
+            conn.execute(
+                signal_features.select().where(
+                    signal_features.c.ticker == "MSFT",
+                    signal_features.c.as_of == AS_OF,
+                )
+            )
+            .mappings()
+            .one()
+        )
+        payload = dict(row["payload"])
+        candidate = dict(payload["candidate"])
+        metadata = dict(candidate["metadata"])
+        metadata["priced_in"] = {
+            "status": "bullish_not_priced_in",
+            "direction": "bullish",
+            "emotion_score": 80.0,
+            "reaction_score": 20.0,
+            "emotion_reaction_gap": 60.0,
+            "priced_in_score": 25.0,
+            "reason": "Bullish emotion is ahead of price reaction.",
+            "next_step": "Open candidate detail.",
+        }
+        metadata["local_narrative_score"] = 62.0
+        candidate["metadata"] = metadata
+        payload["candidate"] = candidate
+        conn.execute(
+            update(signal_features)
+            .where(signal_features.c.ticker == "MSFT", signal_features.c.as_of == AS_OF)
+            .values(payload=payload)
+        )
+
+    payload = priced_in_queue_payload(
+        engine,
+        AppConfig.from_env({}),
+        usefulness="useful",
+        limit=10,
+    )
+
+    assert payload["filters"]["usefulness"] == "useful"
+    assert payload["count"] >= 1
+    assert {
+        row["usefulness"]["status"]
+        for row in payload["rows"]
+    } <= {"research_useful", "decision_useful"}
+    assert sum(payload["usefulness_counts"].values()) == payload["total_count"]
+
+
 def test_priced_in_queue_payload_labels_blocked_mismatches(tmp_path: Path) -> None:
     engine = _engine(tmp_path)
     _insert_dashboard_fixture(engine)
@@ -1532,6 +1586,8 @@ def test_priced_in_queue_payload_labels_blocked_mismatches(tmp_path: Path) -> No
     assert row["blocked"] is True
     assert row["blockers"] == ["risk_hard_block"]
     assert row["next_step"] == "Clear blockers before treating this mismatch as actionable."
+    assert row["usefulness"]["status"] == "blocked"
+    assert payload["usefulness_counts"]["blocked"] == 1
 
 
 def test_priced_in_preflight_payload_reports_exact_next_steps(tmp_path: Path) -> None:

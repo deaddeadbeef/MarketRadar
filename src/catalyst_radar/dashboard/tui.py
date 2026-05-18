@@ -2410,12 +2410,16 @@ def _overview_title(payload: Mapping[str, object]) -> str:
     scan_total = _priced_in_scan_total(queue)
     status_filter = _priced_in_status_filter(queue)
     if status_filter == "actionable":
+        usefulness = _usefulness_counts_summary(queue)
+        usefulness_suffix = f"; {usefulness}" if usefulness else ""
         return (
             f"Mismatches from full scan - showing {returned} of {total}; "
-            f"scan {scan_total}"
+            f"scan {scan_total}{usefulness_suffix}"
         )
     if total:
-        return f"Full-market priced-in queue - showing {returned} of {total}"
+        usefulness = _usefulness_counts_summary(queue)
+        usefulness_suffix = f"; {usefulness}" if usefulness else ""
+        return f"Full-market priced-in queue - showing {returned} of {total}{usefulness_suffix}"
     return "Full-market priced-in queue - select a row to act"
 
 
@@ -2426,12 +2430,15 @@ def _overview_caption(payload: Mapping[str, object]) -> str:
     scan_total = _priced_in_scan_total(queue)
     status_filter = _priced_in_status_filter(queue)
     if status_filter == "actionable":
+        usefulness = _usefulness_counts_summary(queue)
+        usefulness_text = f" Usefulness mix: {usefulness}." if usefulness else ""
         if total:
             return (
                 f"This page shows {returned} bullish/bearish not-priced-in mismatch "
                 f"card(s) from {scan_total or 'the'} latest-scan row(s). "
                 "Press M or click SCAN -> Full Scan to inspect neutral, blocked, "
-                "stale, and fully-priced rows. "
+                "stale, and fully-priced rows."
+                f"{usefulness_text} "
                 "Browsing makes 0 provider calls."
             )
         return (
@@ -2441,11 +2448,13 @@ def _overview_caption(payload: Mapping[str, object]) -> str:
             "Browsing makes 0 provider calls."
         )
     if total and returned < total:
+        usefulness = _usefulness_counts_summary(queue)
+        usefulness_text = f" Usefulness mix: {usefulness}." if usefulness else ""
         return (
             f"This page shows {returned} visible rows from {total} latest-scan rows. "
             "Press M or click SCAN -> Mismatches to return to the smaller action queue. "
             "Use priced-in-queue --status all --limit/--offset or the API offset "
-            "parameter to page deeper. Browsing makes 0 provider calls."
+            f"parameter to page deeper.{usefulness_text} Browsing makes 0 provider calls."
         )
     return (
         "First row is scan coverage; candidate rows are priced-in mismatch cards. "
@@ -2480,6 +2489,23 @@ def _priced_in_actionable_count(queue: Mapping[str, object]) -> int:
     if _priced_in_status_filter(queue) == "actionable":
         return int(_number_or_zero(queue.get("total_count")))
     return 0
+
+
+def _usefulness_counts_summary(queue: Mapping[str, object]) -> str:
+    counts = _mapping(queue.get("usefulness_counts"))
+    labels = (
+        ("decision_useful", "decision"),
+        ("research_useful", "research"),
+        ("blocked", "blocked"),
+        ("not_useful", "not useful"),
+        ("monitor_only", "monitor"),
+    )
+    parts = [
+        f"{label} {int(_number_or_zero(counts.get(key)))}"
+        for key, label in labels
+        if int(_number_or_zero(counts.get(key))) > 0
+    ]
+    return " / ".join(parts)
 
 
 def _readiness_lines(payload: Mapping[str, object], width: int) -> list[str]:
