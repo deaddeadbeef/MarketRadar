@@ -5717,18 +5717,24 @@ def _priced_in_source_guidance(source: str, status: str) -> dict[str, object]:
     if source == "broker_context":
         return {
             "meaning": (
-                "Read-only portfolio context is for sizing and exposure, not signal "
-                "discovery."
+                "Read-only Schwab market context is for sizing, triggers, and "
+                "supporting option-chain evidence."
             ),
-            "next_action": "Use broker context only after signal evidence is reviewed."
+            "next_action": "Use Schwab market context only after signal evidence is reviewed."
             if ready
-            else "Sync read-only broker context before sizing or portfolio review.",
+            else "Sync read-only Schwab market context before sizing or trigger review.",
             "command": (
                 "curl.exe --insecure --fail --silent --show-error --request POST "
-                "https://127.0.0.1:8443/api/brokers/schwab/sync"
+                "https://127.0.0.1:8443/api/brokers/schwab/market-sync "
+                '--header "Content-Type: application/json" '
+                "--data '{\"tickers\":[\"<TICKER>\"],"
+                "\"include_history\":true,\"include_options\":true}'"
             ),
-            "api": "POST /api/brokers/schwab/sync",
-            "external_call_boundary": "Broker sync is explicit, read-only, and rate-limited.",
+            "api": "POST /api/brokers/schwab/market-sync",
+            "external_call_boundary": (
+                "Schwab market sync is explicit, read-only, rate-limited, and never "
+                "submits orders."
+            ),
         }
     return {
         "meaning": "Source contributes to priced-in review.",

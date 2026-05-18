@@ -3838,7 +3838,7 @@ def test_load_ticker_detail_returns_candidate_packet_card_events_and_validation(
     actions = {row["source"]: row for row in brief["source_actions"]}
     assert actions["options"]["status"] == "missing"
     assert actions["broker_context"]["next_action"] == (
-        "Sync read-only broker context before sizing or portfolio review."
+        "Sync read-only Schwab market context before sizing or trigger review."
     )
     assert brief["usefulness"]["schema_version"] == "priced-in-usefulness-verdict-v1"
     assert brief["usefulness"]["status"] == "monitor_only"

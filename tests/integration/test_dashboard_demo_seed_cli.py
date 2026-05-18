@@ -133,7 +133,9 @@ def test_dashboard_snapshot_cli_outputs_dashboard_command_center_json(
     assert source_actions["options"]["command"].startswith(
         "catalyst-radar ingest-options"
     )
-    assert source_actions["broker_context"]["api"] == "POST /api/brokers/schwab/sync"
+    assert source_actions["broker_context"]["api"] == (
+        "POST /api/brokers/schwab/market-sync"
+    )
     assert payload["telemetry_coverage"]["schema_version"] == (
         "ops-telemetry-coverage-v1"
     )
@@ -350,7 +352,7 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
         "are explicit through market-sync and rate-limited."
     )
     assert actions["broker_context"]["next_action"] == (
-        "Sync read-only broker context before sizing or portfolio review."
+        "Sync read-only Schwab market context before sizing or trigger review."
     )
     assert "catalyst_events" in payload["rows"][0]["data_sources"]["available"]
 
