@@ -115,6 +115,11 @@ def redacted_operator_snapshot(payload: Mapping[str, object]) -> dict[str, objec
             _mapping(source.get("operator_work_queue"))
         ),
         "call_plan": _call_plan_context(_mapping(source.get("call_plan"))),
+        "priced_in": _priced_in_context(
+            _mapping(source.get("priced_in_queue")),
+            _mapping(source.get("priced_in_source_coverage")),
+            _mapping(source.get("priced_in_preflight")),
+        ),
         "candidates": _candidates_context(_mapping(source.get("candidates"))),
         "alerts": _alerts_context(_mapping(source.get("alerts"))),
         "broker": _broker_context(_mapping(source.get("broker"))),
@@ -138,6 +143,7 @@ def deterministic_agent_brief(
     readiness = _mapping(snapshot.get("readiness"))
     call_plan = _mapping(snapshot.get("call_plan"))
     work_queue = _mapping(snapshot.get("operator_work_queue"))
+    priced_in = _mapping(snapshot.get("priced_in"))
     candidates = _rows(_mapping(snapshot.get("candidates")).get("rows"))
     alerts = _rows(_mapping(snapshot.get("alerts")).get("rows"))
     next_step = _mapping(snapshot.get("operator_next_step"))
@@ -174,6 +180,7 @@ def deterministic_agent_brief(
         [
             _status_insight(readiness),
             _call_plan_insight(call_plan),
+            _priced_in_insight(priced_in),
             _top_queue_insight(work_queue),
             *[_candidate_insight(row) for row in candidates[:3]],
             *[_alert_insight(row) for row in alerts[:2]],
@@ -183,6 +190,7 @@ def deterministic_agent_brief(
     next_actions = _dedupe(
         [
             _text(next_step.get("action")),
+            _text(priced_in.get("next_action")),
             _text(work_queue.get("next_action")),
             _text(call_plan.get("next_action")) if max_provider_calls else None,
             "Keep order submission disabled; use broker context as read-only evidence.",
@@ -479,6 +487,113 @@ def _call_plan_context(row: Mapping[str, object]) -> dict[str, object]:
     }
 
 
+def _priced_in_context(
+    queue: Mapping[str, object],
+    source_coverage: Mapping[str, object],
+    preflight: Mapping[str, object],
+) -> dict[str, object]:
+    coverage = source_coverage or _mapping(queue.get("source_coverage"))
+    return {
+        **_copy_keys(
+            queue,
+            (
+                "schema_version",
+                "status",
+                "headline",
+                "next_action",
+                "total_count",
+                "returned_count",
+                "count",
+                "has_more",
+                "offset",
+            ),
+        ),
+        "filters": _copy_keys(
+            _mapping(queue.get("filters")),
+            (
+                "status",
+                "usefulness",
+                "source_gap",
+                "decision_gap",
+                "limit",
+                "offset",
+                "available_at",
+            ),
+        ),
+        "scan": _copy_keys(
+            _mapping(queue.get("scan")),
+            (
+                "requested_securities",
+                "scanned_securities",
+                "scanned_candidate_states",
+                "candidate_states",
+                "candidate_packets",
+                "decision_cards",
+            ),
+        ),
+        "status_counts": _mapping(queue.get("status_counts")),
+        "usefulness_counts": _mapping(queue.get("usefulness_counts")),
+        "preflight": _copy_keys(
+            preflight,
+            ("status", "headline", "next_action", "scan_status"),
+        ),
+        "source_coverage": {
+            **_copy_keys(
+                coverage,
+                ("schema_version", "row_count", "summary", "weak_sources"),
+            ),
+            "actions": [
+                _copy_keys(
+                    item,
+                    (
+                        "source",
+                        "status",
+                        "coverage_pct",
+                        "gap_count",
+                        "next_action",
+                        "batch_plan_command",
+                        "full_scan_gap_review_command",
+                        "full_scan_export_command",
+                    ),
+                )
+                for item in _rows(coverage.get("actions"))
+                if _text(item.get("status")) not in {"ready", "not_applicable"}
+            ][:8],
+        },
+        "rows": [_priced_in_row_context(item) for item in _rows(queue.get("rows"))[:8]],
+    }
+
+
+def _priced_in_row_context(row: Mapping[str, object]) -> dict[str, object]:
+    usefulness = _mapping(row.get("usefulness"))
+    data_sources = _mapping(row.get("data_sources"))
+    return {
+        **_copy_keys(
+            row,
+            (
+                "ticker",
+                "priced_in_status",
+                "priced_in_direction",
+                "emotion_reaction_gap",
+                "emotion_score",
+                "reaction_score",
+                "priced_in_score",
+                "score",
+                "blocked",
+                "next_step",
+            ),
+        ),
+        "usefulness": _copy_keys(
+            usefulness,
+            ("status", "label", "decision_ready", "missing_for_decision", "next_action"),
+        ),
+        "data_sources": _copy_keys(
+            data_sources,
+            ("summary", "available", "missing", "stale"),
+        ),
+    }
+
+
 def _candidates_context(row: Mapping[str, object]) -> dict[str, object]:
     candidates: list[dict[str, object]] = []
     for item in _rows(row.get("rows"))[:8]:
@@ -730,6 +845,26 @@ def _call_plan_insight(call_plan: Mapping[str, object]) -> str:
     status = _text(call_plan.get("status")) or "unknown"
     max_calls = int(_number(call_plan.get("max_external_call_count")))
     return f"Run call plan is {status}; max provider calls shown by the plan is {max_calls}."
+
+
+def _priced_in_insight(priced_in: Mapping[str, object]) -> str | None:
+    if not priced_in:
+        return None
+    total = int(_number(priced_in.get("total_count")))
+    returned = int(_number(priced_in.get("returned_count") or priced_in.get("count")))
+    status = _text(priced_in.get("status")) or "unknown"
+    headline = _text(priced_in.get("headline"))
+    coverage = _mapping(priced_in.get("source_coverage"))
+    weak_sources = ", ".join(_texts(coverage.get("weak_sources"))) or "none"
+    if headline:
+        return (
+            f"Priced-in scan is {status}: {headline}; visible rows={returned}, "
+            f"total rows={total}, weak sources={weak_sources}."
+        )
+    return (
+        f"Priced-in scan is {status}; visible rows={returned}, "
+        f"total rows={total}, weak sources={weak_sources}."
+    )
 
 
 def _top_queue_insight(work_queue: Mapping[str, object]) -> str | None:

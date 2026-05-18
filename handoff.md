@@ -1,6 +1,53 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 19:25:11 +08:00
+Last updated: 2026-05-18 19:34:05 +08:00
+
+## Latest Agent Brief Priced-In Context
+
+The deterministic and real Agents SDK path used an allowlisted, redacted
+operator snapshot, but that snapshot did not include the full-market priced-in
+queue. That meant the agent brief could reason over readiness, candidates,
+alerts, broker state, and call plan, but not the core current goal: "which
+stocks look not fully priced in by market emotion versus price reaction?"
+
+Changes in this slice:
+
+- The agent-safe redacted snapshot now includes a `priced_in` section with:
+  - queue status/headline/next action/counts;
+  - scan totals;
+  - filters;
+  - status/usefulness counts;
+  - weak source coverage and source batch/export commands;
+  - top priced-in rows with ticker, status, direction, gap, score, usefulness,
+    and redacted source summaries.
+- The deterministic dry-run agent brief now emits a priced-in scan insight.
+- The same redacted snapshot is the input to real OpenAI Agents SDK mode, so
+  real mode sees the full-scan context without receiving raw provider payloads,
+  secrets, or tool access.
+
+Live zero-provider-call verification:
+
+```powershell
+.\.venv\Scripts\catalyst-radar.exe agent-brief --json |
+  .\.venv\Scripts\python.exe -c "import json,sys; p=json.load(sys.stdin); print(p['mode'], p['status'], p['external_calls_made']); print([x for x in p['insights'] if 'Priced-in' in x][0])"
+```
+
+Observed:
+
+```text
+dry_run dry_run {'broker': 0, 'market_data': 0, 'openai': 0}
+Priced-in scan is ready: Latest full scan ranked 12087 priced-in row(s); showing 1-50 of 12087.; visible rows=50, total rows=12087, weak sources=options, broker_context, catalyst_events.
+```
+
+Validation for this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\unit\test_agent_sdk_orchestrator.py tests\integration\test_dashboard_demo_seed_cli.py::test_agent_brief_cli_outputs_zero_call_dry_run -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\agents\sdk_orchestrator.py tests\unit\test_agent_sdk_orchestrator.py
+git diff --check
+```
+
+All passed.
 
 ## Latest API Full-Scan Export Parity
 

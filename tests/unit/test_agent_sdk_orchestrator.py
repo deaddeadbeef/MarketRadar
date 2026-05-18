@@ -32,6 +32,8 @@ def test_agent_sdk_dry_run_brief_is_multi_agent_and_zero_call() -> None:
     assert "Schwab" in blocked
     assert "order" in blocked
     assert "shell" in blocked
+    assert any("Priced-in scan is ready" in insight for insight in brief["insights"])
+    assert "Review full scan source batches." in brief["next_actions"]
 
 
 def test_agent_sdk_real_mode_gate_fails_closed_without_secret_leak() -> None:
@@ -80,6 +82,22 @@ def test_redacted_operator_snapshot_allowlists_dashboard_fields() -> None:
 
     serialized = json.dumps(snapshot, sort_keys=True)
     assert snapshot["schema_version"] == "market-radar-agent-snapshot-v1"
+    assert snapshot["priced_in"]["total_count"] == 12087
+    assert snapshot["priced_in"]["rows"][0]["ticker"] == "ACME"
+    assert snapshot["priced_in"]["source_coverage"]["actions"][0] == {
+        "source": "options",
+        "status": "missing",
+        "coverage_pct": 0.0,
+        "gap_count": 12080,
+        "next_action": "Plan source batches.",
+        "batch_plan_command": "catalyst-radar priced-in-source-batches --source options",
+        "full_scan_gap_review_command": (
+            "catalyst-radar priced-in-queue --source-gap options --limit 50"
+        ),
+        "full_scan_export_command": (
+            "catalyst-radar priced-in-queue --source-gap options --all --json"
+        ),
+    }
     assert snapshot["alerts"]["rows"][0] == {
         "id": "alert-1",
         "ticker": "ACME",
@@ -159,6 +177,78 @@ def _dashboard_payload() -> dict[str, object]:
                     "next_action": "Check provider health.",
                 }
             ],
+        },
+        "priced_in_queue": {
+            "schema_version": "priced-in-queue-v1",
+            "status": "ready",
+            "headline": "Latest full scan ranked 12087 priced-in row(s); showing 1-1.",
+            "next_action": "Review full scan source batches.",
+            "total_count": 12087,
+            "returned_count": 1,
+            "count": 1,
+            "has_more": True,
+            "offset": 0,
+            "filters": {"status": "all", "limit": 1, "offset": 0},
+            "scan": {"requested_securities": 12104, "scanned_securities": 12087},
+            "status_counts": {"bullish_not_priced_in": 5, "neutral": 12082},
+            "usefulness_counts": {"research_useful": 5, "monitor_only": 12082},
+            "rows": [
+                {
+                    "ticker": "ACME",
+                    "priced_in_status": "bullish_not_priced_in",
+                    "priced_in_direction": "bullish",
+                    "emotion_reaction_gap": 49.0,
+                    "emotion_score": 72.0,
+                    "reaction_score": 23.0,
+                    "priced_in_score": 36.36,
+                    "score": 80.0,
+                    "blocked": False,
+                    "next_step": "Build a candidate packet.",
+                    "usefulness": {
+                        "status": "research_useful",
+                        "label": "Research-useful mismatch",
+                        "decision_ready": False,
+                        "missing_for_decision": ["decision_card", "options"],
+                        "next_action": "Build a Candidate Packet.",
+                    },
+                    "data_sources": {
+                        "available": ["market_bars", "catalyst_events", "local_text"],
+                        "missing": ["options", "broker_context"],
+                        "summary": "available: market_bars; missing: options",
+                    },
+                }
+            ],
+        },
+        "priced_in_source_coverage": {
+            "schema_version": "priced-in-source-coverage-v1",
+            "row_count": 12087,
+            "summary": "options 0/12087",
+            "weak_sources": ["options"],
+            "actions": [
+                {
+                    "source": "options",
+                    "status": "missing",
+                    "coverage_pct": 0.0,
+                    "gap_count": 12080,
+                    "next_action": "Plan source batches.",
+                    "batch_plan_command": (
+                        "catalyst-radar priced-in-source-batches --source options"
+                    ),
+                    "full_scan_gap_review_command": (
+                        "catalyst-radar priced-in-queue --source-gap options --limit 50"
+                    ),
+                    "full_scan_export_command": (
+                        "catalyst-radar priced-in-queue --source-gap options --all --json"
+                    ),
+                    "api_payload": {"api_key": "secret-polygon"},
+                }
+            ],
+        },
+        "priced_in_preflight": {
+            "status": "attention",
+            "headline": "Source gaps need review.",
+            "next_action": "Plan batches.",
+            "scan_status": "ready",
         },
         "candidates": {
             "count": 1,
