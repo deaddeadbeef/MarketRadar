@@ -1,6 +1,62 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 19:05:32 +08:00
+Last updated: 2026-05-18 19:20:01 +08:00
+
+## Latest Full-Scan Source Batch Planner
+
+The scanner already ranks the full market, but the missing source actions still
+had a practical gap: they showed five example tickers and a giant full export,
+without a safe plan for filling the source gap across the full scan. That made
+full scan feel fake for options and broker context.
+
+Changes in this slice:
+
+- Added a zero-provider-call CLI/API batch planner:
+
+  ```powershell
+  .\.venv\Scripts\catalyst-radar.exe priced-in-source-batches --source options --batch-limit 2 --json
+  GET /api/radar/priced-in/source-batches?source=options&batch_limit=2
+  ```
+
+- The planner returns every matching full-scan source-gap row as Schwab-safe
+  batches capped by `SCHWAB_MARKET_SYNC_MAX_TICKERS` / config
+  `schwab_market_sync_max_tickers`.
+- Source action rows now include:
+
+  ```text
+  batch_plan=catalyst-radar priced-in-source-batches --source options --batch-limit 5
+  ```
+
+- The Ops dashboard source-gap table now shows `Batch plan` instead of implying
+  the five example tickers are the whole sync target.
+- The planner is read-only. It produces explicit commands; it does not call
+  Schwab, Polygon, SEC, OpenAI, or any provider while planning.
+
+Live zero-provider-call verification:
+
+```powershell
+.\.venv\Scripts\catalyst-radar.exe priced-in-source-batches --source options --batch-limit 2 --json |
+  .\.venv\Scripts\python.exe -c "import json,sys; p=json.load(sys.stdin); print(p['source'], p['total_gap_rows'], p['batch_count'], p['count'], p['batch_size'], p['batches'][0]['tickers'], p['batches'][0]['command'], p['has_more'])"
+.\.venv\Scripts\catalyst-radar.exe dashboard-tui --once --page ops --scan-limit 3 |
+  Select-String -Pattern 'Priced-in Source Gaps|Batch plan|priced-in-source-batches|options|broker_context'
+```
+
+Observed:
+
+```text
+options 12087 2418 2 5 ['A', 'MSFT', 'AAA', 'AAAU', 'AAPL'] catalyst-radar schwab-market-sync --ticker A --ticker MSFT --ticker AAA --ticker AAAU --ticker AAPL True
+Ops table shows Batch plan commands for options and broker_context.
+```
+
+Validation for this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_queue_payload_paginates_ranked_rows tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_plans_safe_sync_batches tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_queue_cli_outputs_same_zero_call_signal tests\integration\test_api_routes.py::test_get_radar_priced_in_source_batches_returns_zero_call_plan tests\integration\test_security_boundaries.py::test_openapi_routes_are_allowlisted_and_broker_routes_are_explicit -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py src\catalyst_radar\api\routes\radar.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_api_routes.py tests\integration\test_security_boundaries.py
+git diff --check
+```
+
+All passed.
 
 ## Latest Full-Scan Export Clarification
 

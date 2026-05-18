@@ -62,6 +62,7 @@ from catalyst_radar.dashboard.data import (
     load_ticker_detail,
     priced_in_preflight_payload,
     priced_in_queue_payload,
+    priced_in_source_gap_batches_payload,
 )
 from catalyst_radar.dashboard.demo_seed import (
     default_sec_document_fixture_path,
@@ -467,6 +468,32 @@ def build_parser() -> argparse.ArgumentParser:
     )
     priced_in.add_argument("--min-gap", type=float)
     priced_in.add_argument("--json", action="store_true")
+
+    priced_in_batches = subparsers.add_parser("priced-in-source-batches")
+    priced_in_batches.add_argument("--database-url")
+    priced_in_batches.add_argument("--source", required=True)
+    priced_in_batches.add_argument("--batch-limit", type=int, default=5)
+    priced_in_batches.add_argument("--batch-offset", type=int, default=0)
+    priced_in_batches.add_argument("--batch-size", type=int)
+    priced_in_batches.add_argument("--available-at", type=_parse_aware_datetime)
+    priced_in_batches.add_argument("--status")
+    priced_in_batches.add_argument(
+        "--usefulness",
+        help=(
+            "Filter by usefulness verdict before planning batches: useful, "
+            "research_useful, decision_useful, blocked, monitor_only, not_useful."
+        ),
+    )
+    priced_in_batches.add_argument(
+        "--decision-gap",
+        action="append",
+        help=(
+            "Filter rows missing decision evidence before planning batches. Repeat "
+            "or comma-separate: candidate_packet,decision_card,options,broker_context."
+        ),
+    )
+    priced_in_batches.add_argument("--min-gap", type=float)
+    priced_in_batches.add_argument("--json", action="store_true")
 
     priced_in_preflight = subparsers.add_parser("priced-in-preflight")
     priced_in_preflight.add_argument("--database-url")
@@ -881,6 +908,31 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
         else:
             _print_priced_in_queue(payload)
+        return 0
+
+    if args.command == "priced-in-source-batches":
+        create_schema(engine)
+        try:
+            payload = priced_in_source_gap_batches_payload(
+                engine,
+                config,
+                source=args.source,
+                batch_limit=args.batch_limit,
+                batch_offset=args.batch_offset,
+                batch_size=args.batch_size,
+                available_at=args.available_at,
+                status=args.status,
+                usefulness=args.usefulness,
+                decision_gap=args.decision_gap,
+                min_gap=args.min_gap,
+            )
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+        if args.json:
+            print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
+        else:
+            _print_priced_in_source_batches(payload)
         return 0
 
     if args.command == "priced-in-preflight":
@@ -2870,6 +2922,12 @@ def _print_priced_in_queue(payload: Mapping[str, object]) -> None:
                         "  full_scan_export="
                         f"{_compact_cli_text(full_scan_export)}"
                     )
+                batch_plan_command = action.get("batch_plan_command")
+                if batch_plan_command:
+                    print(
+                        "  batch_plan="
+                        f"{_compact_cli_text(batch_plan_command)}"
+                    )
                 diagnostic = action.get("diagnostic")
                 if isinstance(diagnostic, Mapping) and diagnostic.get("evidence"):
                     print(
@@ -2914,6 +2972,54 @@ def _print_priced_in_queue(payload: Mapping[str, object]) -> None:
             else _int_value(payload.get("count"))
         )
         print(f"more={_priced_in_more_command(filters, limit, next_offset)}")
+
+
+def _print_priced_in_source_batches(payload: Mapping[str, object]) -> None:
+    print(
+        "priced_in_source_batches "
+        f"source={payload.get('source')} "
+        f"status={payload.get('status')} "
+        f"gap_rows={payload.get('total_gap_rows')} "
+        f"batch_size={payload.get('batch_size')} "
+        f"batches={payload.get('count')} "
+        f"total_batches={payload.get('batch_count')} "
+        f"batch_offset={payload.get('batch_offset')} "
+        f"external_calls={payload.get('external_calls_made')}"
+    )
+    print(f"headline={payload.get('headline')}")
+    print(f"next_action={payload.get('next_action')}")
+    boundary = payload.get("execution_boundary")
+    if boundary:
+        print(f"boundary={_compact_cli_text(boundary)}")
+    review_command = payload.get("review_rows_command")
+    if review_command:
+        print(f"review_rows={_compact_cli_text(review_command)}")
+    export_command = payload.get("export_rows_command")
+    if export_command:
+        print(f"export_rows={_compact_cli_text(export_command)}")
+    batches = payload.get("batches")
+    if not isinstance(batches, list | tuple) or not batches:
+        return
+    print("batch row_start row_end tickers command")
+    for batch in batches:
+        if not isinstance(batch, Mapping):
+            continue
+        tickers = batch.get("tickers")
+        ticker_text = (
+            ",".join(str(ticker) for ticker in tickers)
+            if isinstance(tickers, list | tuple)
+            else ""
+        )
+        print(
+            f"{batch.get('number')} "
+            f"{batch.get('row_start')} "
+            f"{batch.get('row_end')} "
+            f"{ticker_text} "
+            f"{_compact_cli_text(batch.get('command'))}"
+        )
+    next_command = payload.get("next_batch_command")
+    if next_command:
+        print(f"more={_compact_cli_text(next_command)}")
 
 
 def _count_summary(counts: Mapping[object, object]) -> str:

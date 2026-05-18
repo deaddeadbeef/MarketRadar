@@ -63,6 +63,7 @@ from catalyst_radar.dashboard.data import (
     opportunity_focus_payload,
     priced_in_preflight_payload,
     priced_in_queue_payload,
+    priced_in_source_gap_batches_payload,
     provider_preflight_payload,
     radar_discovery_snapshot_payload,
     radar_readiness_payload,
@@ -1446,6 +1447,12 @@ def test_priced_in_queue_payload_paginates_ranked_rows(tmp_path: Path) -> None:
     assert actions["options"]["full_scan_gap_review_command"] == (
         "catalyst-radar priced-in-queue --full-scan --source-gap options --limit 50"
     )
+    assert actions["options"]["batch_plan_command"] == (
+        "catalyst-radar priced-in-source-batches --source options --batch-limit 5"
+    )
+    assert actions["options"]["batch_plan_api"] == (
+        "GET /api/radar/priced-in/source-batches?source=options"
+    )
     assert actions["options"]["command"] == (
         "catalyst-radar schwab-market-sync --ticker MSFT --ticker AAPL"
     )
@@ -1459,6 +1466,46 @@ def test_priced_in_queue_payload_paginates_ranked_rows(tmp_path: Path) -> None:
     assert second_page["has_more"] is False
     assert second_page["rows"][0]["ticker"] != first_page["rows"][0]["ticker"]
     assert cutoff_page["filters"]["available_at"] == AVAILABLE_AT.isoformat()
+
+
+def test_priced_in_source_gap_batches_payload_plans_safe_sync_batches(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+
+    payload = priced_in_source_gap_batches_payload(
+        engine,
+        AppConfig(schwab_market_sync_max_tickers=1),
+        source="options",
+        batch_limit=1,
+        batch_size=10,
+    )
+
+    assert payload["schema_version"] == "priced-in-source-batches-v1"
+    assert payload["external_calls_made"] == 0
+    assert payload["source"] == "options"
+    assert payload["status"] == "ready"
+    assert payload["total_gap_rows"] == 2
+    assert payload["batch_size"] == 1
+    assert payload["filters"]["requested_batch_size"] == 10
+    assert payload["filters"]["max_batch_size"] == 1
+    assert payload["batch_count"] == 2
+    assert payload["count"] == 1
+    assert payload["has_more"] is True
+    assert payload["batches"][0]["tickers"] == ["MSFT"]
+    assert payload["batches"][0]["command"] == (
+        "catalyst-radar schwab-market-sync --ticker MSFT"
+    )
+    assert payload["batches"][0]["api_payload"] == {
+        "tickers": ["MSFT"],
+        "include_history": True,
+        "include_options": True,
+    }
+    assert payload["next_batch_command"] == (
+        "catalyst-radar priced-in-source-batches --source options "
+        "--batch-limit 1 --batch-offset 1"
+    )
 
 
 def test_priced_in_queue_payload_diagnoses_options_after_scan_date(
