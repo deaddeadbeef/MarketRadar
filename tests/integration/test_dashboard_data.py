@@ -1585,7 +1585,8 @@ def test_priced_in_answer_prefers_local_artifact_gap_before_options(
     recommended = payload["decision_readiness"]["recommended_gap"]
     assert recommended["gap"] == "candidate_packet"
     assert recommended["command"] == (
-        "catalyst-radar build-packets --as-of 2026-05-15 --min-state ResearchOnly"
+        "catalyst-radar build-packets --as-of 2026-05-15 "
+        "--ticker MSFT --min-state ResearchOnly"
     )
     assert payload["next_action"] == recommended["next_action"]
     assert payload["next_command"] == recommended["command"]
@@ -1602,7 +1603,11 @@ def test_priced_in_answer_prefers_local_artifact_gap_before_options(
         "AAA",
         "AAAU",
     ]
-    assert "--ticker" not in decision_card_gap["command"]
+    assert decision_card_gap["command"] == (
+        "catalyst-radar build-decision-cards --as-of 2026-05-15 "
+        "--ticker MSFT --ticker AAPL --ticker AA --ticker A --ticker AAA "
+        "--ticker AAAU --min-state ResearchOnly"
+    )
 
 
 def test_priced_in_answer_opens_full_scan_queue_when_decision_ready(

@@ -1473,10 +1473,18 @@ def _priced_in_local_artifact_command(
     fallback_gap: str,
     tickers: Sequence[str] = (),
 ) -> str:
-    del tickers
+    ticker_args = " ".join(
+        f"--ticker {ticker}"
+        for ticker in dict.fromkeys(
+            str(ticker).strip().upper()
+            for ticker in tickers
+            if str(ticker).strip()
+        )
+    )
     if scan_as_of:
+        ticker_part = f" {ticker_args}" if ticker_args else ""
         return (
-            f"catalyst-radar {command} --as-of {scan_as_of} "
+            f"catalyst-radar {command} --as-of {scan_as_of}{ticker_part} "
             "--min-state ResearchOnly"
         )
     return (
