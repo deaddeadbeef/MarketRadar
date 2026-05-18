@@ -2602,7 +2602,10 @@ def _source_coverage_next_action(source_coverage: Mapping[str, object]) -> str:
         if not action or str(action.get("status") or "") in {"ready", "not_applicable"}:
             continue
         next_action = str(action.get("next_action") or "").strip()
+        batch_command = str(action.get("batch_plan_command") or "").strip()
         command = str(action.get("command") or "").strip()
+        if next_action and batch_command:
+            return f"{next_action} Batch plan: {batch_command}"
         if next_action and command:
             return f"{next_action} Command: {command}"
         if next_action:
@@ -3404,6 +3407,7 @@ def _ops_lines(payload: Mapping[str, object], width: int) -> list[str]:
             **action,
             "gap_rows": _source_action_gap_count(action),
             "examples": _source_action_sample_tickers(action),
+            "batch_plan": action.get("batch_plan_command") or action.get("command"),
         }
         for action in _rows(_mapping(payload.get("priced_in_source_coverage")).get("actions"))
         if str(action.get("status") or "") not in {"ready", "not_applicable"}
@@ -3419,8 +3423,8 @@ def _ops_lines(payload: Mapping[str, object], width: int) -> list[str]:
                     ("status", "Status", 12),
                     ("coverage_pct", "Coverage", 10),
                     ("gap_rows", "Gap rows", 10),
-                    ("examples", "Examples", 26),
-                    ("command", "Command", 58),
+                    ("examples", "Examples", 22),
+                    ("batch_plan", "Batch plan", 62),
                 ],
                 width=width,
                 limit=8,

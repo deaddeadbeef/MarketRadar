@@ -78,6 +78,25 @@ PRICED_IN_SOURCE_CLASSES = (
     "theme_peer_sector",
     "broker_context",
 )
+PRICED_IN_BATCHABLE_SOURCES = frozenset({"options", "broker_context"})
+PRICED_IN_SOURCE_ALIASES = {
+    "bars": "market_bars",
+    "market": "market_bars",
+    "market_data": "market_bars",
+    "events": "catalyst_events",
+    "filings": "catalyst_events",
+    "news": "catalyst_events",
+    "text": "local_text",
+    "textint": "local_text",
+    "options_flow": "options",
+    "schwab": "broker_context",
+    "broker": "broker_context",
+    "theme": "theme_peer_sector",
+    "themes": "theme_peer_sector",
+    "peer": "theme_peer_sector",
+    "peers": "theme_peer_sector",
+    "sector": "theme_peer_sector",
+}
 PRICED_IN_ACTIONABLE_STATUSES = frozenset(
     {
         "bullish_not_priced_in",
@@ -682,6 +701,131 @@ def priced_in_queue_payload(
         "usefulness_counts": _priced_in_usefulness_counts(rows),
         "source_coverage": source_coverage,
         "rows": page_rows,
+    }
+
+
+def priced_in_source_gap_batches_payload(
+    engine: Engine,
+    config: AppConfig,
+    *,
+    source: str,
+    batch_limit: int = 5,
+    batch_offset: int = 0,
+    batch_size: int | None = None,
+    available_at: datetime | None = None,
+    status: str | None = None,
+    usefulness: str | None = None,
+    decision_gap: str | Sequence[str] | None = None,
+    min_gap: float | None = None,
+) -> dict[str, object]:
+    source_name = _single_priced_in_source(source)
+    max_batch_size = max(1, int(config.schwab_market_sync_max_tickers))
+    requested_batch_size = (
+        max_batch_size if batch_size is None else _positive_limit(batch_size)
+    )
+    resolved_batch_size = min(requested_batch_size, max_batch_size)
+    resolved_limit = _positive_limit(batch_limit)
+    resolved_offset = _positive_offset(batch_offset)
+    queue = priced_in_queue_payload(
+        engine,
+        config,
+        limit=1_000_000,
+        offset=0,
+        available_at=available_at,
+        status=status,
+        usefulness=usefulness,
+        source_gap=source_name,
+        decision_gap=decision_gap,
+        min_gap=min_gap,
+    )
+    rows = [
+        row
+        for row in queue.get("rows", [])
+        if isinstance(row, Mapping) and str(row.get("ticker") or "").strip()
+    ]
+    tickers = [str(row["ticker"]).strip().upper() for row in rows]
+    batchable = source_name in PRICED_IN_BATCHABLE_SOURCES
+    batch_count = ceil(len(tickers) / resolved_batch_size) if batchable and tickers else 0
+    batches = []
+    if batchable:
+        for index in range(resolved_offset, min(batch_count, resolved_offset + resolved_limit)):
+            row_start = index * resolved_batch_size
+            row_end = min(row_start + resolved_batch_size, len(tickers))
+            batch_tickers = tickers[row_start:row_end]
+            batches.append(
+                {
+                    "index": index,
+                    "number": index + 1,
+                    "row_start": row_start + 1,
+                    "row_end": row_end,
+                    "tickers": batch_tickers,
+                    "command": _schwab_market_sync_command(batch_tickers),
+                    "api": "POST /api/brokers/schwab/market-sync",
+                    "api_payload": {
+                        "tickers": batch_tickers,
+                        "include_history": True,
+                        "include_options": True,
+                    },
+                    "external_calls_required": 1,
+                }
+            )
+    status_value = (
+        "ready"
+        if batchable and tickers
+        else "no_gaps"
+        if not tickers
+        else "not_batchable"
+    )
+    return {
+        "schema_version": "priced-in-source-batches-v1",
+        "status": status_value,
+        "source": source_name,
+        "external_calls_made": 0,
+        "execution_boundary": (
+            "Plan only. This command does not call providers; each listed batch command "
+            "is an explicit read-only sync and remains rate-limited."
+        ),
+        "headline": _priced_in_source_batches_headline(
+            source_name=source_name,
+            batchable=batchable,
+            total_gap_rows=len(tickers),
+            batch_count=batch_count,
+            batch_size=resolved_batch_size,
+        ),
+        "next_action": _priced_in_source_batches_next_action(
+            source_name=source_name,
+            batchable=batchable,
+            total_gap_rows=len(tickers),
+        ),
+        "filters": {
+            **_row_dict(_mapping_value(queue, "filters")),
+            "source_gap": [source_name],
+            "batch_limit": resolved_limit,
+            "batch_offset": resolved_offset,
+            "batch_size": resolved_batch_size,
+            "requested_batch_size": requested_batch_size,
+            "max_batch_size": max_batch_size,
+        },
+        "total_gap_rows": len(tickers),
+        "batch_size": resolved_batch_size,
+        "batch_count": batch_count,
+        "batch_offset": resolved_offset,
+        "batch_limit": resolved_limit,
+        "count": len(batches),
+        "has_more": resolved_offset + len(batches) < batch_count,
+        "review_rows_command": (
+            f"catalyst-radar priced-in-queue --full-scan --source-gap {source_name} --limit 50"
+        ),
+        "export_rows_command": (
+            f"catalyst-radar priced-in-queue --full-scan --source-gap {source_name} --all --json"
+        ),
+        "next_batch_command": _priced_in_source_next_batch_command(
+            source_name=source_name,
+            batch_limit=resolved_limit,
+            batch_offset=resolved_offset + len(batches),
+            batch_count=batch_count,
+        ),
+        "batches": batches,
     }
 
 
@@ -5972,6 +6116,14 @@ def _priced_in_source_action_row(
             if gap_count > 0
             else None
         ),
+        "batch_plan_command": (
+            _priced_in_source_batch_plan_command(source) if gap_count > 0 else None
+        ),
+        "batch_plan_api": (
+            f"GET /api/radar/priced-in/source-batches?source={source}"
+            if gap_count > 0 and source in PRICED_IN_BATCHABLE_SOURCES
+            else None
+        ),
         **guidance,
     }
 
@@ -6015,6 +6167,86 @@ def _priced_in_source_guidance_for_tickers(
             "include_options": True,
         }
     return updated
+
+
+def _single_priced_in_source(value: str) -> str:
+    sources = _priced_in_source_gap_filter(value)
+    if len(sources) != 1:
+        msg = (
+            "source must name exactly one priced-in source: "
+            f"{', '.join(PRICED_IN_SOURCE_CLASSES)}"
+        )
+        raise ValueError(msg)
+    source = sources[0]
+    if source not in PRICED_IN_SOURCE_CLASSES:
+        msg = (
+            "unsupported priced-in source "
+            f"{source!r}; expected one of {', '.join(PRICED_IN_SOURCE_CLASSES)}"
+        )
+        raise ValueError(msg)
+    return source
+
+
+def _priced_in_source_batches_headline(
+    *,
+    source_name: str,
+    batchable: bool,
+    total_gap_rows: int,
+    batch_count: int,
+    batch_size: int,
+) -> str:
+    if total_gap_rows <= 0:
+        return f"No full-scan rows currently have a {source_name} gap."
+    if not batchable:
+        return (
+            f"{total_gap_rows} full-scan row(s) have a {source_name} gap; "
+            "this source is not filled by ticker batch sync."
+        )
+    return (
+        f"{total_gap_rows} full-scan row(s) have a {source_name} gap; "
+        f"planned as {batch_count} read-only batch(es) of up to {batch_size} ticker(s)."
+    )
+
+
+def _priced_in_source_batches_next_action(
+    *,
+    source_name: str,
+    batchable: bool,
+    total_gap_rows: int,
+) -> str:
+    if total_gap_rows <= 0:
+        return "No batch action is needed for this source."
+    if batchable:
+        return (
+            "Review the first batch, then run one explicit read-only sync at a time "
+            "only if the source and scan date match your intent."
+        )
+    if source_name == "catalyst_events":
+        return "Use the Run page call plan; event ingestion is governed by provider caps."
+    if source_name == "local_text":
+        return "Run local text intelligence after event text exists for the scan date."
+    return "Review the source action on Ops; this source is not filled by ticker batch sync."
+
+
+def _priced_in_source_next_batch_command(
+    *,
+    source_name: str,
+    batch_limit: int,
+    batch_offset: int,
+    batch_count: int,
+) -> str | None:
+    if batch_offset >= batch_count:
+        return None
+    return (
+        "catalyst-radar priced-in-source-batches "
+        f"--source {source_name} --batch-limit {batch_limit} --batch-offset {batch_offset}"
+    )
+
+
+def _priced_in_source_batch_plan_command(source: str) -> str | None:
+    if source not in PRICED_IN_BATCHABLE_SOURCES:
+        return None
+    return f"catalyst-radar priced-in-source-batches --source {source} --batch-limit 5"
 
 
 def _schwab_market_sync_command(tickers: Sequence[str]) -> str:
@@ -6204,6 +6436,7 @@ def _priced_in_source_gap_filter(value: str | Sequence[str] | None) -> tuple[str
             source = part.strip().lower().replace("-", "_").replace(" ", "_")
             if source in {"", "all", "none"}:
                 continue
+            source = PRICED_IN_SOURCE_ALIASES.get(source, source)
             normalized.append(source)
     return tuple(dict.fromkeys(normalized))
 

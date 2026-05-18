@@ -470,6 +470,9 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
     assert actions["options"]["status"] == "missing"
     assert actions["options"]["gap_count"] == 1
     assert actions["options"]["diagnostic"]["status"] == "no_stored_options"
+    assert actions["options"]["batch_plan_command"] == (
+        "catalyst-radar priced-in-source-batches --source options --batch-limit 5"
+    )
     assert actions["options"]["sample_scope"] == (
         "These are all 1 missing/stale row(s) in the current filtered scan, "
         "not a separate scan universe."
@@ -556,8 +559,34 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
     assert "full_scan_review=catalyst-radar priced-in-queue --full-scan" in output.out
     assert "full_scan_export=catalyst-radar priced-in-queue --full-scan" in output.out
     assert "--all --json" in output.out
+    assert "batch_plan=catalyst-radar priced-in-source-batches --source options" in output.out
     assert "diagnostic=missing=1" in output.out
     assert "broker_context status=missing" in output.out
+
+    assert (
+        main(
+            [
+                "priced-in-source-batches",
+                "--source",
+                "options",
+                "--batch-size",
+                "1",
+                "--batch-limit",
+                "1",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    output = capsys.readouterr()
+    batch_payload = json.loads(output.out)
+
+    assert output.err == ""
+    assert batch_payload["schema_version"] == "priced-in-source-batches-v1"
+    assert batch_payload["external_calls_made"] == 0
+    assert batch_payload["source"] == "options"
+    assert batch_payload["count"] == 1
+    assert batch_payload["batches"][0]["tickers"] == ["ACME"]
 
 
 def test_candidate_detail_cli_outputs_priced_in_evidence_brief(

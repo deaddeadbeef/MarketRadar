@@ -1239,6 +1239,67 @@ def test_get_radar_priced_in_preflight_returns_zero_call_steps(
     assert payload["rows"][0]["area"] == "universe"
 
 
+def test_get_radar_priced_in_source_batches_returns_zero_call_plan(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "radar-priced-in-source-batches.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+    captured: dict[str, object] = {}
+
+    def fake_source_batches_payload(_engine, _config, **kwargs) -> dict[str, object]:
+        captured.update(kwargs)
+        return {
+            "schema_version": "priced-in-source-batches-v1",
+            "status": "ready",
+            "source": kwargs["source"],
+            "external_calls_made": 0,
+            "total_gap_rows": 2,
+            "batch_count": 1,
+            "count": 1,
+            "batches": [
+                {
+                    "number": 1,
+                    "tickers": ["MSFT", "AAPL"],
+                    "command": (
+                        "catalyst-radar schwab-market-sync "
+                        "--ticker MSFT --ticker AAPL"
+                    ),
+                }
+            ],
+        }
+
+    monkeypatch.setattr(
+        dashboard_data,
+        "priced_in_source_gap_batches_payload",
+        fake_source_batches_payload,
+        raising=False,
+    )
+    client = TestClient(create_app())
+
+    response = client.get(
+        "/api/radar/priced-in/source-batches?source=options&batch_limit=2"
+        "&batch_offset=1&batch_size=5&available_at=2026-05-18T16:00:00%2B00:00"
+        "&status=all&usefulness=research_useful&decision_gap=options&min_gap=12"
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["schema_version"] == "priced-in-source-batches-v1"
+    assert payload["external_calls_made"] == 0
+    assert payload["batches"][0]["tickers"] == ["MSFT", "AAPL"]
+    assert captured["source"] == "options"
+    assert captured["batch_limit"] == 2
+    assert captured["batch_offset"] == 1
+    assert captured["batch_size"] == 5
+    assert captured["available_at"].isoformat() == "2026-05-18T16:00:00+00:00"
+    assert captured["status"] == "all"
+    assert captured["usefulness"] == "research_useful"
+    assert captured["decision_gap"] == "options"
+    assert captured["min_gap"] == 12.0
+
+
 def test_post_radar_run_call_plan_returns_read_only_call_budget(
     tmp_path,
     monkeypatch,

@@ -362,6 +362,38 @@ def radar_priced_in_preflight() -> dict[str, object]:
     )
 
 
+@router.get("/priced-in/source-batches", dependencies=[Depends(require_role(Role.VIEWER))])
+def radar_priced_in_source_batches(
+    source: str = Query(...),
+    batch_limit: int = Query(default=5, ge=1, le=50),
+    batch_offset: int = Query(default=0, ge=0),
+    batch_size: int | None = Query(default=None, ge=1, le=50),
+    available_at: datetime | None = None,
+    status: str | None = Query(default=None),
+    usefulness: str | None = Query(default=None),
+    decision_gap: str | None = Query(default=None),
+    min_gap: float | None = Query(default=None, ge=0),
+) -> dict[str, object]:
+    batches_payload = _dashboard_helper("priced_in_source_gap_batches_payload")
+    try:
+        payload = batches_payload(
+            _engine(),
+            AppConfig.from_env(),
+            source=source,
+            batch_limit=batch_limit,
+            batch_offset=batch_offset,
+            batch_size=batch_size,
+            available_at=_parse_api_datetime(available_at),
+            status=status,
+            usefulness=usefulness,
+            decision_gap=decision_gap,
+            min_gap=min_gap,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return redact_restricted_external_payload(payload)
+
+
 @router.post("/runs/call-plan", dependencies=[Depends(require_role(Role.VIEWER))])
 def radar_run_call_plan(request: RadarRunRequest) -> dict[str, object]:
     call_plan_payload = _dashboard_helper("radar_run_call_plan_payload")
