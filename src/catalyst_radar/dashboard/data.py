@@ -6797,8 +6797,8 @@ def _priced_in_source_preflight_row(
     coverage = action.get("coverage_pct")
     command = (
         action.get("batch_plan_command")
-        or action.get("full_scan_gap_review_command")
         or action.get("command")
+        or action.get("full_scan_gap_review_command")
     )
     api = action.get("batch_plan_api") or action.get("api")
     return _priced_in_preflight_row(

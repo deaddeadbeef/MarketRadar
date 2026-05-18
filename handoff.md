@@ -1,6 +1,45 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 19:41:54 +08:00
+Last updated: 2026-05-18 19:46:27 +08:00
+
+## Latest Preflight Remediation Command Priority
+
+After aligning preflight with source coverage, the rows correctly showed source
+gaps but non-batchable sources still pointed to full-scan review commands before
+their remediation commands. That was not useful enough.
+
+Change in this slice:
+
+- Preflight source-gap command priority is now:
+  1. batch planner command, when available;
+  2. source remediation command;
+  3. full-scan review command.
+
+Live zero-provider-call verification:
+
+```powershell
+.\.venv\Scripts\catalyst-radar.exe priced-in-preflight --json |
+  .\.venv\Scripts\python.exe -c "import json,sys; p=json.load(sys.stdin); [print(r['area'], r.get('command')) for r in p['rows'] if r['area'] in {'catalyst_events','local_text','options','broker_context'}]"
+```
+
+Observed:
+
+```text
+catalyst_events catalyst-radar dashboard-tui --once --page run
+broker_context catalyst-radar priced-in-source-batches --source broker_context --batch-limit 5
+local_text catalyst-radar run-textint --as-of <LATEST_TRADING_DATE>
+options catalyst-radar priced-in-source-batches --source options --batch-limit 5
+```
+
+Validation for this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_preflight_payload_reports_exact_next_steps tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_preflight_cli_outputs_zero_call_plan -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py tests\integration\test_dashboard_data.py
+git diff --check
+```
+
+All passed.
 
 ## Latest Preflight Source-Coverage Alignment
 

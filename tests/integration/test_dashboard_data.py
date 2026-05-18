@@ -1935,6 +1935,12 @@ def test_priced_in_preflight_payload_reports_exact_next_steps(tmp_path: Path) ->
         "catalyst-radar priced-in-source-batches --source options"
     )
     assert by_area["local_text"]["status"] == "attention"
+    assert by_area["local_text"]["command"].startswith(
+        "catalyst-radar run-textint --as-of"
+    )
+    assert by_area["catalyst_events"]["command"] == (
+        "catalyst-radar dashboard-tui --once --page run"
+    )
     assert payload["api"]["queue"] == "GET /api/radar/priced-in"
 
 
