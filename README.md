@@ -97,12 +97,13 @@ seed, grouped-daily ingest, universe build, scan, and priced-in queue review.
 
 The dashboard shows active universe size, requested/scanned securities, fresh
 bar coverage, and candidate count so a tiny local universe is not mistaken for a
-full-market pass. In the TUI, the Insights page has two explicit modes:
-`Mismatches` shows only bullish/bearish not-priced-in rows, while `Full Scan`
-shows the first ranked page from the whole scanned universe. Press `M`, click
-the `SCAN` controls in the sidebar, or type `full` / `mismatches` in the
-command box to switch. For non-interactive checks, use
-`catalyst-radar dashboard-tui --once --scan-mode all --page overview`.
+full-market pass. In the TUI, the Insights page opens in `Full Scan` mode by
+default: it shows the first ranked page from the whole scanned universe.
+`Mismatches` is the narrower filter for bullish/bearish not-priced-in rows.
+Press `M`, click the `SCAN` controls in the sidebar, or type `full` /
+`mismatches` in the command box to switch. For non-interactive checks, use
+`catalyst-radar dashboard-tui --once --page overview`; pass
+`--scan-mode mismatches` only when you intentionally want the smaller queue.
 
 Before any live provider call, run the activation checker and inspect the
 call plan:
@@ -184,7 +185,7 @@ readiness, run/call-plan, candidates, alerts, IPO/S-1, broker, ops, telemetry,
 themes, validation, costs, and current feature inventory. `radar` opens on
 `1 Insights` by default, because the main job is to show market context you can
 act on. `0 Tutorial` remains available for the first 90-second walkthrough.
-The insights page is the full-market priced-in queue: the first row reports scan
+The insights page is the full-market priced-in queue by default: the first row reports scan
 coverage, then candidate rows show emotion score, price-reaction score,
 emotion-minus-reaction gap, priced-in status, why the mismatch matters, and the
 next action. Candidate rows open the candidate evidence detail, alert rows open

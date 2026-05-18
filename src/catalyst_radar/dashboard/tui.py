@@ -45,7 +45,7 @@ class DashboardFilters:
     available_at: datetime | None = None
     alert_status: str | None = None
     alert_route: str | None = None
-    priced_in_status: str = "actionable"
+    priced_in_status: str = "all"
     telemetry_limit: int = 8
 
     def normalized(self) -> DashboardFilters:
@@ -66,7 +66,7 @@ class DashboardFilters:
 def _normalize_priced_in_status(value: object) -> str:
     status = str(value or "").strip().lower().replace(" ", "_")
     aliases = {
-        "": "actionable",
+        "": "all",
         "m": "actionable",
         "mismatch": "actionable",
         "mismatches": "actionable",
@@ -89,7 +89,7 @@ def _normalize_priced_in_status(value: object) -> str:
         "overextended_hype",
         "conflicted",
     }
-    return status if status in allowed else "actionable"
+    return status if status in allowed else "all"
 
 
 DASHBOARD_FEATURES: tuple[dict[str, str], ...] = (

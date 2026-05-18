@@ -113,6 +113,8 @@ def test_dashboard_snapshot_cli_outputs_dashboard_command_center_json(
     assert payload["feature_inventory"]
     assert payload["external_calls_made"] == 0
     assert payload["controls"]["ticker"] == "ACME"
+    assert payload["controls"]["priced_in_status"] == "all"
+    assert payload["priced_in_queue"]["filters"]["status"] == "all"
     assert payload["readiness"]["schema_version"] == "radar-readiness-v1"
     assert payload["live_activation"]["schema_version"] == (
         "live-data-activation-contract-v1"
@@ -180,13 +182,13 @@ def test_dashboard_snapshot_cli_outputs_human_readable_zero_call_summary(
         "Page: overview",
         "DB:",
         "Ticker: ACME",
-        "Mismatches from full scan - showing",
+        "Full-market priced-in queue - showing",
         "UNIVERSE",
         "ACME",
         "Bullish not priced",
         "emotion",
         "reaction",
-        "bullish/bearish not-priced-in mismatch",
+        "candidate rows are priced-in mismatch cards",
         "External calls made: 0",
     ):
         assert expected in output.out
@@ -544,11 +546,11 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert app.page == "overview"
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert "INSIGHTS" in frame
-            assert "Mismatches from full scan - showing" in frame
+            assert "Full-market priced-in queue - showing" in frame
             assert "UNIVERSE" in frame
             assert "ACME" in frame
             assert "Bullish not priced" in frame
-            assert "bullish/bearish not-priced-in mismatch" in frame
+            assert "showing the first ranked page from the entire scan" in frame
             assert "M  Mismatches only" in frame
             assert "ALL Full scan rows" in frame
             assert "Candidates [1]" in frame
@@ -566,17 +568,17 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             await pilot.press("m")
             await pilot.pause()
             assert app.page == "overview"
-            assert app.filters.priced_in_status == "all"
-            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
-            assert "Full-market priced-in queue - showing" in frame
-            assert "Full Scan mode" in frame
-
-            assert await pilot.click("#action-scan-mismatches")
-            await pilot.pause()
             assert app.filters.priced_in_status == "actionable"
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
-            assert "Mismatches mode" in frame
             assert "Mismatches from full scan - showing" in frame
+            assert "Mismatches mode" in frame
+
+            assert await pilot.click("#action-scan-all")
+            await pilot.pause()
+            assert app.filters.priced_in_status == "all"
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            assert "Full Scan mode" in frame
+            assert "Full-market priced-in queue - showing" in frame
 
             app.query_one("#data-table").focus()
             await pilot.press("down")

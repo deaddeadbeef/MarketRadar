@@ -350,7 +350,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--scan-mode",
         "--priced-in-status",
         dest="priced_in_status",
-        default="actionable",
+        default="all",
         help="Insights queue mode: actionable/mismatches or all/full.",
     )
     dashboard_snapshot.add_argument("--telemetry-limit", type=int, default=8)
@@ -399,7 +399,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--scan-mode",
         "--priced-in-status",
         dest="priced_in_status",
-        default="actionable",
+        default="all",
         help="Insights queue mode used in the agent brief context.",
     )
     agent_brief.add_argument("--telemetry-limit", type=int, default=8)
@@ -417,7 +417,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--scan-mode",
         "--priced-in-status",
         dest="priced_in_status",
-        default="actionable",
+        default="all",
         help="Insights queue mode: actionable/mismatches or all/full.",
     )
     dashboard_tui.add_argument("--telemetry-limit", type=int, default=8)
