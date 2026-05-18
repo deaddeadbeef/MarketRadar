@@ -1,6 +1,56 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 20:49:28 +08:00
+Last updated: 2026-05-18 20:53:31 +08:00
+
+## Latest Preflight Source Dependency Order
+
+After the dashboard source-batch command landed, a live `priced-in-preflight`
+check showed a confusing dependency order:
+
+- `local_text` had a batch planner command;
+- but on the live DB, `local_text` is blocked until catalyst event text exists;
+- the row still said to run text intelligence directly.
+
+Change in this slice:
+
+- When both `catalyst_events` and `local_text` have priced-in source gaps,
+  preflight now tells the operator:
+
+  ```text
+  Fill catalyst_events first, then run local_text batches for rows with event text.
+  ```
+
+The command remains:
+
+```powershell
+catalyst-radar priced-in-source-batches --source local_text --batch-limit 5
+```
+
+That is intentional. The batch planner is still the right tool, but the preflight
+row now explains the dependency before the user expects local text to work.
+
+Live zero-provider-call verification:
+
+```powershell
+.\.venv\Scripts\catalyst-radar.exe priced-in-preflight |
+  Select-String -Pattern '^local_text|^catalyst_events'
+```
+
+Observed `local_text` next action:
+
+```text
+Fill catalyst_events first, then run local_text batches for rows with event text.
+```
+
+Validation for this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_preflight_payload_reports_exact_next_steps tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_preflight_cli_outputs_zero_call_plan -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py tests\integration\test_dashboard_data.py
+git diff --check
+```
+
+All passed.
 
 ## Latest Dashboard Source-Batch Command
 
