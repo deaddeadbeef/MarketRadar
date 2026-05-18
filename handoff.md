@@ -1,6 +1,66 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 06:02:54 +08:00
+Last updated: 2026-05-19 06:09:22 +08:00
+
+## Latest Useful-First Source Batch Ordering Fix
+
+After the dashboard and all-source overview started recommending `options`
+first, the executable `options` batch still used the original ranked queue
+order. In the live scan, that first batch was:
+
+```text
+A, MSFT, AAA, AAAU, AAPL
+```
+
+That included blocked ticker `AAA` and omitted decision-ready ticker `AA`, even
+though the all-source priority message correctly said the five decision-ready
+examples were:
+
+```text
+A, MSFT, AAAU, AAPL, AA
+```
+
+Root cause:
+
+- `priced_in_source_gap_batches_payload()` planned source batches in queue rank
+  order after filtering to the source gap.
+- Queue rank is useful for browsing, but source execution should fill the rows
+  that most improve the current priced-in answer first.
+
+Fix in this slice:
+
+- Source batch planning now sorts plannable rows by:
+
+  1. `decision_useful`
+  2. `research_useful`
+  3. actionable mismatch
+  4. monitor-only
+  5. blocked / other
+
+- Within each usefulness tier, rows remain ordered by absolute
+  emotion-reaction gap, then ticker.
+- The behavior applies to read-only Schwab batches, SEC catalyst-event batches,
+  and local text batches after source-specific eligibility filtering.
+
+Live options batch smoke after the fix:
+
+```text
+priced_in_source_batches source=options status=ready gap_rows=12087 plannable=12087 external_calls=0
+batch calls row_start row_end tickers command
+1 1 1 5 A,MSFT,AAAU,AAPL,AA catalyst-radar schwab-market-sync --ticker A --ticker MSFT --ticker AAAU --ticker AAPL --ticker AA
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_prioritizes_decision_useful_rows tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_plans_safe_sync_batches tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_can_return_full_scan_plan tests\integration\test_dashboard_data.py::test_priced_in_all_source_gap_batches_payload_summarizes_next_chunks -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py tests\integration\test_dashboard_data.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source options --limit 1
+```
+
+Observed: focused pytest passed, ruff passed, `git diff --check` passed, and
+the live first options batch now contains the five decision-ready tickers.
 
 ## Latest Dashboard Snapshot Performance Fix
 
