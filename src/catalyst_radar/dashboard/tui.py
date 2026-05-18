@@ -1386,16 +1386,13 @@ class MarketRadarDashboardApp(App[int]):
         ticker: str,
     ) -> tuple[str, Sequence[tuple[str, str, int]], list[Mapping[str, object]], str]:
         ticker = ticker.upper()
-        row = next(
-            (item for item in _candidate_rows(self.payload) if item.get("ticker") == ticker),
-            {},
-        )
-        rows = _mapping_items(_compact_detail(row))
+        row = _candidate_detail_row(self.payload, ticker)
+        rows = _candidate_detail_table_rows(row)
         return (
             f"Candidate {ticker}",
             [("key", "Field", 24), ("value", "Value", 110)],
             rows,
-            "Local commands can save watch actions, triggers, and blocked order-preview tickets.",
+            "Verify the evidence, then decide watch, trigger, ticket, or dismiss.",
         )
 
     def _alert_detail_model(
@@ -2468,48 +2465,102 @@ def _data_coverage_summary(row: Mapping[str, object]) -> str:
     return "n/a"
 
 
+def _candidate_detail_row(payload: Mapping[str, object], ticker: str) -> Mapping[str, object]:
+    ticker = ticker.strip().upper()
+    for candidate in _candidate_rows(payload):
+        if str(candidate.get("ticker") or "").strip().upper() == ticker:
+            return candidate
+    queue_rows = _rows(_mapping(payload.get("priced_in_queue")).get("rows"))
+    for candidate in queue_rows:
+        if str(candidate.get("ticker") or "").strip().upper() == ticker:
+            return candidate
+    return {}
+
+
+def _candidate_detail_table_rows(row: Mapping[str, object]) -> list[Mapping[str, object]]:
+    if not row:
+        return _mapping_items(_compact_detail(row))
+    return [{"key": key, "value": value} for key, value in _candidate_detail_kv_pairs(row)]
+
+
+def _candidate_detail_kv_pairs(row: Mapping[str, object]) -> tuple[tuple[str, object], ...]:
+    brief = _mapping(row.get("priced_in_evidence_brief"))
+    if brief:
+        evidence_rows = _rows(brief.get("evidence"))
+        evidence = "; ".join(
+            _join_nonempty(
+                (item.get("title"), item.get("source")),
+                separator=" / ",
+            )
+            for item in evidence_rows[:3]
+            if item.get("title")
+        )
+        blockers = ", ".join(str(item) for item in _rows_or_values(brief.get("blockers")))
+        return (
+            ("Signal", _priced_in_signal(str(brief.get("status") or ""), fallback="Candidate")),
+            ("Why now", brief.get("why_now")),
+            ("Emotion vs reaction", _priced_in_mismatch_text(
+                brief.get("emotion_score"),
+                brief.get("reaction_score"),
+                brief.get("emotion_reaction_gap"),
+            )),
+            ("Priced-in score", brief.get("priced_in_score")),
+            ("Top evidence", evidence or brief.get("top_catalyst")),
+            (
+                "Source",
+                _join_nonempty(
+                    (brief.get("source"), brief.get("source_url")),
+                    separator=" / ",
+                ),
+            ),
+            ("Data coverage", _data_coverage_summary(row)),
+            ("Blocked", "yes" if brief.get("blocked") else "no"),
+            ("Blockers", blockers),
+            ("Next step", brief.get("next_step")),
+            ("State", row.get("state")),
+            ("Decision card", row.get("decision_card_id") or row.get("card")),
+        )
+    return (
+        ("State", row.get("state")),
+        ("Decision", row.get("decision_status")),
+        ("Score", row.get("score") or row.get("final_score")),
+        ("Priced-in status", row.get("priced_in_status")),
+        ("Emotion score", row.get("emotion_score")),
+        ("Reaction score", row.get("reaction_score")),
+        ("Emotion minus reaction", row.get("emotion_reaction_gap")),
+        ("Priced-in reason", row.get("priced_in_reason")),
+        ("Data coverage", _data_coverage_summary(row)),
+        ("Setup", row.get("setup") or row.get("setup_type")),
+        ("Top catalyst", row.get("top_catalyst") or row.get("top_event_title")),
+        ("Risk / gap", row.get("risk_or_gap")),
+        (
+            "Next step",
+            row.get("priced_in_next_step") or row.get("next_step") or row.get("decision_next_step"),
+        ),
+        ("Readiness gate", row.get("readiness_gate") or row.get("decision_readiness_gate")),
+        ("Schwab context", row.get("schwab_context_status")),
+        ("Decision card", row.get("decision_card_id") or row.get("card")),
+    )
+
+
+def _rows_or_values(value: object) -> list[object]:
+    if isinstance(value, list | tuple):
+        return list(value)
+    return []
+
+
 def _candidate_detail_lines(
     payload: Mapping[str, object],
     ticker: str,
     width: int,
 ) -> list[str]:
     ticker = ticker.strip().upper()
-    row = next(
-        (candidate for candidate in _candidate_rows(payload) if candidate.get("ticker") == ticker),
-        {},
-    )
+    row = _candidate_detail_row(payload, ticker)
     lines = [_rule(f"Candidate {ticker or 'n/a'}", width)]
     if not row:
         lines.append("Candidate not found for the current filters.")
         return lines
-    lines.extend(
-        _kv_lines(
-            (
-                ("State", row.get("state")),
-                ("Decision", row.get("decision_status")),
-                ("Score", row.get("score") or row.get("final_score")),
-                ("Priced-in status", row.get("priced_in_status")),
-                ("Emotion score", row.get("emotion_score")),
-                ("Reaction score", row.get("reaction_score")),
-                ("Emotion minus reaction", row.get("emotion_reaction_gap")),
-                ("Priced-in reason", row.get("priced_in_reason")),
-                ("Data coverage", _data_coverage_summary(row)),
-                ("Setup", row.get("setup") or row.get("setup_type")),
-                ("Top catalyst", row.get("top_catalyst") or row.get("top_event_title")),
-                ("Risk / gap", row.get("risk_or_gap")),
-                (
-                    "Next step",
-                    row.get("priced_in_next_step")
-                    or row.get("next_step")
-                    or row.get("decision_next_step"),
-                ),
-                ("Readiness gate", row.get("readiness_gate") or row.get("decision_readiness_gate")),
-                ("Schwab context", row.get("schwab_context_status")),
-                ("Decision card", row.get("decision_card_id") or row.get("card")),
-            ),
-            width=width,
-        )
-    )
+    lines.extend(_kv_lines(_candidate_detail_kv_pairs(row), width=width))
     return lines
 
 

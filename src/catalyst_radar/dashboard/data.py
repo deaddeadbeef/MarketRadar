@@ -1612,6 +1612,12 @@ def load_ticker_detail(
     return {
         "ticker": symbol,
         "latest_candidate": latest_candidate,
+        "priced_in_evidence_brief": _priced_in_evidence_brief(
+            latest_candidate,
+            events=event_rows,
+            snippets=snippet_rows,
+            packet_payload=packet_payload,
+        ),
         "state_history": state_history,
         "features": _row_dict(signal_row) if signal_row is not None else None,
         "events": event_rows,
@@ -4425,6 +4431,10 @@ def _candidate_row(row: Any) -> dict[str, object]:
     )
     values["manual_review_disclaimer"] = card_payload.get("disclaimer")
     values["research_brief"] = _candidate_research_brief(values, packet_payload)
+    values["priced_in_evidence_brief"] = _priced_in_evidence_brief(
+        values,
+        packet_payload=packet_payload,
+    )
     return values
 
 
@@ -5018,6 +5028,115 @@ def _candidate_research_brief(
         ),
         "audit": _research_brief_audit(packet_payload),
     }
+
+
+def _priced_in_evidence_brief(
+    candidate: Mapping[str, object],
+    *,
+    events: Sequence[Mapping[str, object]] = (),
+    snippets: Sequence[Mapping[str, object]] = (),
+    packet_payload: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    packet = packet_payload if isinstance(packet_payload, Mapping) else {}
+    blockers = _priced_in_row_blockers(candidate)
+    data_sources = _priced_in_row_source_payload(candidate)
+    evidence = _priced_in_brief_evidence(
+        candidate,
+        events=events,
+        snippets=snippets,
+        packet_payload=packet,
+    )
+    status = str(candidate.get("priced_in_status") or "unknown").strip() or "unknown"
+    return {
+        "schema_version": "priced-in-evidence-brief-v1",
+        "ticker": candidate.get("ticker"),
+        "status": status,
+        "direction": candidate.get("priced_in_direction") or "n/a",
+        "emotion_score": candidate.get("emotion_score"),
+        "reaction_score": candidate.get("reaction_score"),
+        "emotion_reaction_gap": candidate.get("emotion_reaction_gap"),
+        "priced_in_score": candidate.get("priced_in_score"),
+        "blocked": bool(blockers),
+        "blockers": blockers,
+        "why_now": _display_priced_in_reason(candidate)
+        or _research_why_now(candidate, top_event=candidate.get("top_event_title")),
+        "top_catalyst": candidate.get("top_event_title")
+        or _mapping_value(candidate, "top_supporting_evidence").get("title"),
+        "source": candidate.get("top_event_source"),
+        "source_url": candidate.get("top_event_source_url"),
+        "data_sources": data_sources,
+        "evidence": evidence,
+        "next_step": _priced_in_brief_next_step(candidate, blockers),
+    }
+
+
+def _priced_in_brief_evidence(
+    candidate: Mapping[str, object],
+    *,
+    events: Sequence[Mapping[str, object]],
+    snippets: Sequence[Mapping[str, object]],
+    packet_payload: Mapping[str, object],
+) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for item in _sequence_value(packet_payload.get("supporting_evidence"))[:3]:
+        if isinstance(item, Mapping):
+            rows.append(
+                {
+                    "kind": item.get("kind") or "support",
+                    "title": item.get("title") or item.get("summary"),
+                    "source": item.get("source_id") or item.get("source"),
+                    "source_url": item.get("source_url"),
+                    "strength": item.get("strength"),
+                }
+            )
+    for event in events[:3]:
+        rows.append(
+            {
+                "kind": event.get("event_type") or "event",
+                "title": event.get("title"),
+                "source": event.get("source"),
+                "source_url": event.get("source_url"),
+                "strength": event.get("materiality"),
+            }
+        )
+    for snippet in snippets[:2]:
+        rows.append(
+            {
+                "kind": "local_text",
+                "title": snippet.get("text"),
+                "source": snippet.get("source"),
+                "source_url": snippet.get("source_url"),
+                "strength": snippet.get("materiality"),
+            }
+        )
+    if not rows:
+        support = _mapping_value(candidate, "top_supporting_evidence")
+        title = support.get("title") or candidate.get("top_event_title")
+        if title:
+            rows.append(
+                {
+                    "kind": support.get("kind") or candidate.get("top_event_type") or "signal",
+                    "title": title,
+                    "source": support.get("source_id") or candidate.get("top_event_source"),
+                    "source_url": support.get("source_url")
+                    or candidate.get("top_event_source_url"),
+                    "strength": support.get("strength"),
+                }
+            )
+    return [row for row in rows if row.get("title")][:5]
+
+
+def _priced_in_brief_next_step(
+    candidate: Mapping[str, object],
+    blockers: Sequence[str],
+) -> str:
+    if blockers:
+        return "Clear blockers before treating this mismatch as actionable."
+    return str(
+        candidate.get("priced_in_next_step")
+        or _mapping_value(candidate, "research_brief").get("next_step")
+        or "Open candidate detail and verify evidence before acting."
+    )
 
 
 def _research_focus(state: str) -> str:
