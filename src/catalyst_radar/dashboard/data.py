@@ -952,6 +952,7 @@ def priced_in_answer_payload(
         top_rows=top_rows,
     )
     source_coverage = _mapping_value(resolved_queue, "source_coverage")
+    decision_ready = decision_ready_count > 0
     return {
         "schema_version": "priced-in-answer-v1",
         "status": answer_status,
@@ -971,7 +972,8 @@ def priced_in_answer_payload(
             research_lead_count=research_lead_count,
             blocked_count=blocked_count,
         ),
-        "can_make_investment_decision": decision_ready_count > 0,
+        "decision_ready": decision_ready,
+        "can_make_investment_decision": decision_ready,
         "external_calls_made": 0,
         "counts": {
             "total_rows": int(_finite_float(resolved_queue.get("total_count"))),

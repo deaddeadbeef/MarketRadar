@@ -1360,6 +1360,7 @@ def test_get_radar_priced_in_answer_returns_current_scan_answer(
             "status": "research_only",
             "question": "Has price fully matched market expectations?",
             "answer": "Not fully priced for 1 research lead, but not decision-ready.",
+            "decision_ready": False,
             "can_make_investment_decision": False,
             "external_calls_made": 0,
             "counts": {"research_lead_rows": 1},
@@ -1385,6 +1386,8 @@ def test_get_radar_priced_in_answer_returns_current_scan_answer(
     payload = response.json()
     assert payload["schema_version"] == "priced-in-answer-v1"
     assert payload["status"] == "research_only"
+    assert payload["decision_ready"] is False
+    assert payload["can_make_investment_decision"] is False
     assert payload["external_calls_made"] == 0
     assert payload["top_rows"][0]["ticker"] == "MSFT"
     assert captured["limit"] == 3
