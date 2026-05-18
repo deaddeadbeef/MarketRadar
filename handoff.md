@@ -1,6 +1,72 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 05:38:14 +08:00
+Last updated: 2026-05-19 05:49:47 +08:00
+
+## Latest Dashboard Source Workflow Priority Fix
+
+After the useful source-gap priority fix, the CLI `priced-in-source-batches
+--source all` recommended `options` first, but the dashboard Ops page still
+used the older preflight evidence order and said to refresh catalyst events
+first.
+
+Root cause:
+
+- The TUI `priced_in_source_workflow` payload was derived only from
+  `priced_in_preflight.evidence_plan`.
+- That plan is useful for broad prerequisite coverage, but it does not know
+  which source gap helps the currently visible ranked priced-in rows first.
+- Running the expensive all-source source-batch planner during every dashboard
+  render would make the dashboard slower, so the fix could not simply call the
+  all-source planner from `dashboard_snapshot_payload()`.
+
+Fix in this slice:
+
+- `_priced_in_source_workflow_payload()` now accepts the already-loaded
+  `priced_in_queue`.
+- It computes lightweight priority counts over the visible ranked page:
+
+  ```text
+  decision_useful_gap_rows
+  research_useful_gap_rows
+  actionable_gap_rows
+  priority_sample_tickers
+  ```
+
+- The source workflow now sorts steps by useful priority before falling back to
+  the preflight/source order.
+- The workflow keeps `priority_scope=visible_priced_in_rows` so the operator
+  knows this is a dashboard guidance shortcut, while `batch all` remains the
+  full-scan source-batch plan.
+- The Ops rendered workflow table now includes a compact "Useful rows" column.
+
+Live dashboard smoke after the fix:
+
+```text
+Start with options; it fills context for 5 decision-ready row(s) in the visible ranked page. Type batch options to inspect the full-scan plan. Example: A, MSFT, AAAU, AAPL, AA.
+catalyst-radar priced-in-source-batches --source options --all --json
+[(1, 'options', 5, 0, 7, ['A', 'MSFT', 'AAAU', 'AAPL', 'AA']), (2, 'broker_context', 0, 0, 2, [])]
+```
+
+The live TUI Ops smoke showed:
+
+```text
+Source Fill Workflow
+Next action: Start with options; it fills context for 5 decision-ready row(s) in the visible ranked page.
+1 | options | ... | decision ... | ...
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_snapshot_cli_outputs_dashboard_command_center_json tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_snapshot_ops_page_shows_priced_in_source_actions tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_batch_command_opens_full_scan_source_batch_plan -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-snapshot --page ops --json
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page ops
+```
+
+Observed: focused pytest passed, ruff passed, `git diff --check` passed, and
+the live dashboard snapshot/TUI now recommend `options` first.
 
 ## Latest Useful Source-Gap Priority Fix
 

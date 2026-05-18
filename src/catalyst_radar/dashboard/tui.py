@@ -432,7 +432,8 @@ def dashboard_snapshot_payload(
         else dashboard_data.priced_in_source_coverage_summary(candidate_rows)
     )
     priced_in_source_workflow = _priced_in_source_workflow_payload(
-        priced_in_preflight
+        priced_in_preflight,
+        priced_in_queue=priced_in_queue,
     )
     priced_in_answer = dashboard_data.priced_in_answer_payload(
         engine,
@@ -3991,38 +3992,182 @@ def _source_action_gap_count(action: Mapping[str, object]) -> str:
 
 def _priced_in_source_workflow_payload(
     preflight: Mapping[str, object],
+    *,
+    priced_in_queue: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     plan = _mapping(preflight.get("evidence_plan"))
     source_names = set(dashboard_data.PRICED_IN_SOURCE_CLASSES)
+    priority_counts = _source_workflow_priority_counts(priced_in_queue or {})
     steps: list[dict[str, object]] = []
     for step in _rows(plan.get("steps")):
         source = str(step.get("area") or "").strip()
         command = str(step.get("command") or "").strip()
         if source not in source_names and "priced-in-source-batches" not in command:
             continue
+        priority = priority_counts.get(source, {})
         steps.append(
             {
-                "priority": int(_number_or_zero(step.get("priority"))),
+                "preflight_priority": int(_number_or_zero(step.get("priority"))),
                 "source": source,
                 "status": step.get("status"),
                 "depends_on": _texts(step.get("depends_on")),
                 "action": step.get("action") or step.get("next_action"),
                 "command": command or None,
                 "api": step.get("api"),
+                "decision_useful_gap_rows": int(
+                    _number_or_zero(priority.get("decision_useful_gap_rows"))
+                ),
+                "research_useful_gap_rows": int(
+                    _number_or_zero(priority.get("research_useful_gap_rows"))
+                ),
+                "actionable_gap_rows": int(
+                    _number_or_zero(priority.get("actionable_gap_rows"))
+                ),
+                "priority_sample_tickers": _texts(
+                    priority.get("priority_sample_tickers")
+                ),
             }
         )
+    steps = sorted(steps, key=_source_workflow_priority_key)
+    for index, step in enumerate(steps, start=1):
+        step["priority"] = index
+    suggested = next((step for step in steps if _source_workflow_has_priority(step)), None)
+    if suggested is not None:
+        next_action = _source_workflow_suggested_action(suggested)
+        next_command = suggested.get("command") or (
+            "catalyst-radar priced-in-source-batches "
+            f"--source {suggested.get('source')}"
+        )
+    else:
+        next_action = plan.get("next_action")
+        next_command = plan.get("next_command")
     return {
         "schema_version": "priced-in-source-workflow-v1",
         "status": plan.get("status") or "unknown",
         "headline": plan.get("headline"),
-        "next_action": plan.get("next_action"),
-        "next_command": plan.get("next_command"),
+        "next_action": next_action,
+        "next_command": next_command,
+        "priority_scope": "visible_priced_in_rows",
         "overview_command": "catalyst-radar priced-in-source-batches --source all",
         "overview_api": "GET /api/radar/priced-in/source-batches?source=all",
         "external_calls_made": 0,
         "steps": steps,
         "step_count": len(steps),
     }
+
+
+def _source_workflow_priority_counts(
+    priced_in_queue: Mapping[str, object],
+) -> dict[str, dict[str, object]]:
+    counts: dict[str, dict[str, object]] = {
+        source: {
+            "decision_useful_gap_rows": 0,
+            "research_useful_gap_rows": 0,
+            "actionable_gap_rows": 0,
+            "priority_sample_tickers": [],
+        }
+        for source in dashboard_data.PRICED_IN_SOURCE_CLASSES
+    }
+    actionable_statuses = {"bullish_not_priced_in", "bearish_not_priced_in"}
+    for row in _rows(priced_in_queue.get("rows")):
+        ticker = str(row.get("ticker") or "").strip().upper()
+        priced_status = str(row.get("priced_in_status") or "").strip().lower()
+        usefulness_status = str(
+            _mapping(row.get("usefulness")).get("status") or ""
+        ).strip().lower()
+        data_sources = _mapping(row.get("data_sources"))
+        gaps = {
+            source
+            for source in (
+                *_texts(data_sources.get("missing")),
+                *_texts(data_sources.get("stale")),
+            )
+            if source in counts
+        }
+        for source in gaps:
+            source_counts = counts[source]
+            if priced_status in actionable_statuses:
+                source_counts["actionable_gap_rows"] = int(
+                    _number_or_zero(source_counts.get("actionable_gap_rows"))
+                ) + 1
+            if usefulness_status == "decision_useful":
+                source_counts["decision_useful_gap_rows"] = int(
+                    _number_or_zero(source_counts.get("decision_useful_gap_rows"))
+                ) + 1
+                _append_source_workflow_sample(source_counts, ticker)
+            elif usefulness_status == "research_useful":
+                source_counts["research_useful_gap_rows"] = int(
+                    _number_or_zero(source_counts.get("research_useful_gap_rows"))
+                ) + 1
+                _append_source_workflow_sample(source_counts, ticker)
+    return counts
+
+
+def _append_source_workflow_sample(counts: dict[str, object], ticker: str) -> None:
+    if not ticker:
+        return
+    samples = counts.get("priority_sample_tickers")
+    if not isinstance(samples, list):
+        samples = []
+        counts["priority_sample_tickers"] = samples
+    if ticker not in samples and len(samples) < 5:
+        samples.append(ticker)
+
+
+def _source_workflow_priority_key(step: Mapping[str, object]) -> tuple[int, int, int, int]:
+    decision_rows = int(_number_or_zero(step.get("decision_useful_gap_rows")))
+    research_rows = int(_number_or_zero(step.get("research_useful_gap_rows")))
+    actionable_rows = int(_number_or_zero(step.get("actionable_gap_rows")))
+    source = str(step.get("source") or "")
+    try:
+        source_order = dashboard_data.PRICED_IN_SOURCE_CLASSES.index(source)
+    except ValueError:
+        source_order = len(dashboard_data.PRICED_IN_SOURCE_CLASSES)
+    preflight_priority = int(_number_or_zero(step.get("preflight_priority")))
+    if decision_rows:
+        return (0, -decision_rows, source_order, preflight_priority)
+    if research_rows:
+        return (1, -research_rows, source_order, preflight_priority)
+    if actionable_rows:
+        return (2, -actionable_rows, source_order, preflight_priority)
+    return (3, 0, source_order, preflight_priority)
+
+
+def _source_workflow_has_priority(step: Mapping[str, object]) -> bool:
+    return any(
+        int(_number_or_zero(step.get(key))) > 0
+        for key in (
+            "decision_useful_gap_rows",
+            "research_useful_gap_rows",
+            "actionable_gap_rows",
+        )
+    )
+
+
+def _source_workflow_suggested_action(step: Mapping[str, object]) -> str:
+    source = str(step.get("source") or "source")
+    samples = _texts(step.get("priority_sample_tickers"))
+    sample_text = f" Example: {', '.join(samples)}." if samples else ""
+    decision_rows = int(_number_or_zero(step.get("decision_useful_gap_rows")))
+    if decision_rows:
+        return (
+            f"Start with {source}; it fills context for {decision_rows} "
+            "decision-ready row(s) in the visible ranked page. "
+            f"Type batch {source} to inspect the full-scan plan.{sample_text}"
+        )
+    research_rows = int(_number_or_zero(step.get("research_useful_gap_rows")))
+    if research_rows:
+        return (
+            f"Start with {source}; it clears evidence for {research_rows} "
+            "research-useful row(s) in the visible ranked page. "
+            f"Type batch {source} to inspect the full-scan plan.{sample_text}"
+        )
+    actionable_rows = int(_number_or_zero(step.get("actionable_gap_rows")))
+    return (
+        f"Start with {source}; it covers {actionable_rows} actionable mismatch "
+        "row(s) in the visible ranked page. "
+        f"Type batch {source} to inspect the full-scan plan.{sample_text}"
+    )
 
 
 def _source_workflow_lines(payload: Mapping[str, object], width: int) -> list[str]:
@@ -4045,6 +4190,7 @@ def _source_workflow_lines(payload: Mapping[str, object], width: int) -> list[st
         {
             **step,
             "depends_on": ",".join(_texts(step.get("depends_on"))) or "none",
+            "useful_rows": _source_workflow_useful_rows(step),
         }
         for step in steps
     ]
@@ -4053,11 +4199,12 @@ def _source_workflow_lines(payload: Mapping[str, object], width: int) -> list[st
             table_rows,
             [
                 ("priority", "#", 4),
-                ("source", "Source", 18),
+                ("source", "Source", 14),
                 ("status", "Status", 12),
-                ("depends_on", "After", 22),
-                ("action", "Do this", 58),
-                ("command", "Plan command", 58),
+                ("useful_rows", "Useful rows", 18),
+                ("depends_on", "After", 18),
+                ("action", "Do this", 48),
+                ("command", "Plan command", 54),
             ],
             width=width,
             limit=8,
@@ -4068,6 +4215,20 @@ def _source_workflow_lines(payload: Mapping[str, object], width: int) -> list[st
         "`batch <source> execute` runs exactly one guarded chunk."
     )
     return lines
+
+
+def _source_workflow_useful_rows(step: Mapping[str, object]) -> str:
+    decision_rows = int(_number_or_zero(step.get("decision_useful_gap_rows")))
+    research_rows = int(_number_or_zero(step.get("research_useful_gap_rows")))
+    actionable_rows = int(_number_or_zero(step.get("actionable_gap_rows")))
+    parts = []
+    if decision_rows:
+        parts.append(f"decision {decision_rows}")
+    if research_rows:
+        parts.append(f"research {research_rows}")
+    if actionable_rows:
+        parts.append(f"action {actionable_rows}")
+    return ", ".join(parts) if parts else "none"
 
 
 def _ops_lines(payload: Mapping[str, object], width: int) -> list[str]:

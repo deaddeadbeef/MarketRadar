@@ -132,6 +132,19 @@ def test_dashboard_snapshot_cli_outputs_dashboard_command_center_json(
     )
     assert payload["priced_in_source_workflow"]["external_calls_made"] == 0
     assert payload["priced_in_source_workflow"]["steps"]
+    assert payload["priced_in_source_workflow"]["priority_scope"] == (
+        "visible_priced_in_rows"
+    )
+    assert payload["priced_in_source_workflow"]["next_action"].startswith(
+        "Start with options;"
+    )
+    assert payload["priced_in_source_workflow"]["steps"][0]["source"] == "options"
+    assert payload["priced_in_source_workflow"]["steps"][0][
+        "decision_useful_gap_rows"
+    ] == 1
+    assert payload["priced_in_source_workflow"]["steps"][0][
+        "priority_sample_tickers"
+    ] == ["ACME"]
     assert payload["priced_in_answer"]["schema_version"] == "priced-in-answer-v1"
     assert payload["priced_in_answer"]["external_calls_made"] == 0
     assert payload["priced_in_answer"]["question"] == (
@@ -297,6 +310,8 @@ def test_dashboard_snapshot_ops_page_shows_priced_in_source_actions(
     assert output.err == ""
     assert "Priced-in Source Gaps" in output.out
     assert "Source Fill Workflow" in output.out
+    assert "Start with options" in output.out
+    assert "decision-ready row(s)" in output.out
     assert "options" in output.out
     assert "priced-in-source-batches" in output.out
     assert "priced-in-source-batches --source all" in output.out
