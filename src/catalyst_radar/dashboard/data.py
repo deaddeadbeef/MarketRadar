@@ -1182,7 +1182,7 @@ def priced_in_answer_payload(
         top_rows=top_rows,
         decision_readiness=decision_readiness,
     )
-    decision_ready = decision_ready_count > 0
+    decision_ready = answer_status == "decision_ready"
     investment_decision_boundary = (
         "Priced-in answer readiness is not trade approval. Use the separate "
         "radar readiness/manual_buy_review gate before any investment decision."
@@ -1240,6 +1240,7 @@ def priced_in_answer_payload(
 
 def _priced_in_answer_scan_scope(queue: Mapping[str, object]) -> dict[str, object]:
     filters = _mapping_value(queue, "filters")
+    queue_status = str(queue.get("status") or "").strip().lower()
     status = str(filters.get("status") or "all").strip().lower()
     total = int(_finite_float(queue.get("total_count")))
     returned = int(
@@ -1251,9 +1252,23 @@ def _priced_in_answer_scan_scope(queue: Mapping[str, object]) -> dict[str, objec
     row_end = offset + returned
     has_more = bool(queue.get("has_more"))
     full_scan_mode = status in {"", "all"}
-    mode = "full_scan" if full_scan_mode else "filtered_scan"
+    mode = (
+        "selected_universe"
+        if queue_status == "selected_universe"
+        else ("full_scan" if full_scan_mode else "filtered_scan")
+    )
     if total <= 0:
         explanation = "No priced-in rows are visible in the current scan."
+    elif queue_status == "selected_universe":
+        latest_run = _mapping_value(queue, "latest_run")
+        scan = _mapping_value(queue, "scan")
+        freshness = _mapping_value(scan, "freshness")
+        active = int(_finite_float(freshness.get("active_security_count")))
+        universe = str(latest_run.get("universe") or "selected").strip()
+        explanation = (
+            f"Showing rows {row_start}-{row_end} of {total} from universe={universe}; "
+            f"the latest run did not scan all {active or 'active'} active securities."
+        )
     elif full_scan_mode:
         explanation = (
             f"Showing ranked rows {row_start}-{row_end} of {total}; "
@@ -1523,7 +1538,7 @@ def _priced_in_answer_status(
     research_lead_count: int,
     blocked_count: int,
 ) -> str:
-    if queue_status in {"universe_too_small", "partial_scan"}:
+    if queue_status in {"universe_too_small", "partial_scan", "selected_universe"}:
         return "blocked"
     if decision_ready_count > 0:
         return "decision_ready"
@@ -1772,6 +1787,7 @@ def _priced_in_evidence_plan(rows: Sequence[Mapping[str, object]]) -> dict[str, 
     by_area = {str(row.get("area") or ""): row for row in actionable_rows}
     blocked_order = (
         "universe",
+        "scan_scope",
         "market_bars",
         "run_call_plan",
         "catalyst_events",
@@ -1781,6 +1797,7 @@ def _priced_in_evidence_plan(rows: Sequence[Mapping[str, object]]) -> dict[str, 
         "agent_review",
     )
     attention_order = (
+        "scan_scope",
         "catalyst_events",
         "local_text",
         "options",
@@ -7886,10 +7903,18 @@ def _priced_in_scan_status(discovery: Mapping[str, object]) -> str:
     requested = int(_finite_float(scan_yield.get("requested_securities")))
     scanned = int(_finite_float(scan_yield.get("scanned_securities")))
     has_named_universe = bool(str(run.get("universe") or "").strip())
+    all_active_denominator = active_count or requested or scanned
     if has_named_universe:
-        denominator = requested or scanned
+        selected_denominator = requested or scanned
+        if (
+            all_active_denominator >= 500
+            and selected_denominator
+            and selected_denominator < max(1, int(all_active_denominator * 0.9))
+        ):
+            return "selected_universe"
+        denominator = selected_denominator
     else:
-        denominator = active_count or requested or scanned
+        denominator = all_active_denominator
     if denominator < 500:
         return "universe_too_small"
     if scanned and denominator and scanned < max(1, int(denominator * 0.9)):
@@ -7933,6 +7958,15 @@ def _priced_in_queue_headline(
             )
             return f"Latest scan is partial; {showing} {label} row(s)."
         return f"Latest scan is partial; {showing} priced-in row(s)."
+    if status == "selected_universe":
+        if filtered:
+            label = (
+                "actionable mismatch"
+                if status_filter in PRICED_IN_ACTIONABLE_FILTERS
+                else "filtered priced-in"
+            )
+            return f"Latest scan used a selected universe; {showing} {label} row(s)."
+        return f"Latest scan used a selected universe; {showing} priced-in row(s)."
     if filtered:
         if status_filter in PRICED_IN_ACTIONABLE_FILTERS:
             return (
@@ -7951,6 +7985,8 @@ def _priced_in_queue_next_action(status: str) -> str:
         )
     if status == "partial_scan":
         return "Open Ops/Run and fix missing bars before trusting the ranked queue."
+    if status == "selected_universe":
+        return "Run the radar without --universe to scan all active securities."
     return "Review the largest emotion-versus-reaction gaps first."
 
 
@@ -7970,6 +8006,8 @@ def _priced_in_preflight_rows(
     scanned = int(_finite_float(scan_yield.get("scanned_securities")))
     latest_bars = int(_finite_float(freshness.get("active_security_with_as_of_bar_count")))
     missing_bars = int(_finite_float(freshness.get("missing_as_of_daily_bar_count")))
+    run = _mapping_value(discovery, "run")
+    run_universe = str(run.get("universe") or "").strip()
     provider = _provider_name(config.daily_market_provider, default="csv")
     ticker_page_cap = max(1, int(config.polygon_tickers_max_pages))
     ticker_page_delay = config.polygon_ticker_page_delay_seconds
@@ -8027,6 +8065,27 @@ def _priced_in_preflight_rows(
                 "ready",
                 f"{active or requested or scanned} securities are available for scan scope.",
                 "Keep scanning without a ticker filter.",
+                commands.get("run_scan"),
+                "POST /api/radar/runs",
+            )
+        )
+
+    selected_scan_count = requested or scanned
+    if (
+        run_universe
+        and active >= 500
+        and selected_scan_count
+        and selected_scan_count < max(1, int(active * 0.9))
+    ):
+        rows.append(
+            _priced_in_preflight_row(
+                "scan_scope",
+                "attention",
+                (
+                    f"Latest run scanned {selected_scan_count}/{active} active "
+                    f"securities because it used universe={run_universe}."
+                ),
+                "Run the radar without --universe for an all-active full scan.",
                 commands.get("run_scan"),
                 "POST /api/radar/runs",
             )
@@ -8215,6 +8274,10 @@ def _priced_in_preflight_commands(
         ),
         "review_call_plan": "catalyst-radar dashboard-tui --once --page run",
         "run_scan": (
+            "catalyst-radar run-daily --as-of <LATEST_TRADING_DATE> "
+            f"--available-at <UTC-now> --provider {provider} --json"
+        ),
+        "run_selected_universe_scan": (
             "catalyst-radar run-daily --as-of <LATEST_TRADING_DATE> "
             f"--available-at <UTC-now> --provider {provider} "
             f"--universe {config.universe_name} --json"

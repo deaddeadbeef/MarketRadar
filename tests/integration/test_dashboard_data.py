@@ -1422,10 +1422,23 @@ def test_priced_in_queue_payload_surfaces_ranked_gap_rows(tmp_path: Path) -> Non
     assert payload["rows"][0]["why_now"] == "MSFT guidance raised"
 
 
-def test_priced_in_scan_status_uses_named_universe_denominator() -> None:
+def test_priced_in_scan_status_marks_small_named_universe_as_selected() -> None:
     discovery = {
         "run": {"universe": "liquid-us"},
         "freshness": {"active_security_count": 12_613},
+        "yield": {
+            "requested_securities": 0,
+            "scanned_securities": 2_429,
+        },
+    }
+
+    assert _priced_in_scan_status(discovery) == "selected_universe"
+
+
+def test_priced_in_scan_status_accepts_named_universe_when_it_covers_active_scope() -> None:
+    discovery = {
+        "run": {"universe": "all-active"},
+        "freshness": {"active_security_count": 2_429},
         "yield": {
             "requested_securities": 0,
             "scanned_securities": 2_429,
@@ -1472,6 +1485,47 @@ def test_priced_in_answer_payload_summarizes_current_scan(tmp_path: Path) -> Non
         assert payload["top_rows"][0]["ticker"] == "MSFT"
         assert payload["top_rows"][0]["decision_ready"] is False
         assert payload["top_rows"][0]["missing_sources"]
+
+
+def test_priced_in_answer_blocks_selected_universe_even_with_ready_rows(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    payload = priced_in_answer_payload(
+        engine,
+        AppConfig.from_env({}),
+        queue={
+            "status": "selected_universe",
+            "total_count": 2_429,
+            "count": 0,
+            "returned_count": 0,
+            "offset": 0,
+            "filters": {"status": "all", "limit": 5, "offset": 0},
+            "status_counts": {"bullish_not_priced_in": 4},
+            "usefulness_counts": {"decision_useful": 4},
+            "decision_gap_counts": {},
+            "rows": [],
+            "latest_run": {"as_of": "2026-05-15", "universe": "liquid-us"},
+            "scan": {"freshness": {"active_security_count": 12_613}},
+            "source_coverage": {"summary": "market_bars 2429/2429", "weak_sources": []},
+        },
+        preflight={
+            "evidence_plan": {
+                "next_action": "Run the radar without --universe.",
+                "next_command": "catalyst-radar run-daily --as-of <LATEST_TRADING_DATE>",
+                "steps": [],
+            }
+        },
+    )
+
+    assert payload["status"] == "blocked"
+    assert payload["decision_ready"] is False
+    assert payload["priced_in_answer_ready"] is False
+    assert payload["counts"]["decision_ready_rows"] == 4
+    assert payload["scan_scope"]["mode"] == "selected_universe"
+    assert "did not scan all 12613 active securities" in (
+        payload["scan_scope"]["explanation"]
+    )
 
 
 def test_priced_in_answer_prefers_local_artifact_gap_before_options(
@@ -2446,6 +2500,10 @@ def test_priced_in_preflight_payload_reports_exact_next_steps(tmp_path: Path) ->
     assert payload["provider"]["estimated_ticker_seed_pages"] == 2
     assert payload["commands"]["ingest_tickers"].endswith("--max-pages 2")
     assert payload["commands"]["run_scan"].startswith("catalyst-radar run-daily")
+    assert "--universe" not in payload["commands"]["run_scan"]
+    assert payload["commands"]["run_selected_universe_scan"].endswith(
+        "--universe liquid-us --json"
+    )
     assert payload["commands"]["review_queue"] == "catalyst-radar priced-in-queue --json"
     by_area = {row["area"]: row for row in payload["rows"]}
     assert "universe" in by_area
@@ -2477,6 +2535,36 @@ def test_priced_in_preflight_payload_reports_exact_next_steps(tmp_path: Path) ->
     assert plan_by_area["local_text"]["depends_on"] == ["catalyst_events"]
     assert evidence_plan["next_command"]
     assert payload["api"]["queue"] == "GET /api/radar/priced-in"
+
+
+def test_priced_in_preflight_warns_when_latest_run_is_selected_universe(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    payload = priced_in_preflight_payload(
+        engine,
+        AppConfig(daily_market_provider="polygon"),
+        latest_run={"universe": "liquid-us"},
+        discovery_snapshot={
+            "run": {"universe": "liquid-us"},
+            "freshness": {
+                "active_security_count": 12_613,
+                "active_security_with_as_of_bar_count": 12_090,
+                "missing_as_of_daily_bar_count": 523,
+            },
+            "yield": {
+                "requested_securities": 2_429,
+                "scanned_securities": 2_429,
+            },
+        },
+        source_coverage={"schema_version": "priced-in-source-coverage-v1", "actions": []},
+    )
+
+    by_area = {row["area"]: row for row in payload["rows"]}
+    assert payload["scan_status"] == "selected_universe"
+    assert by_area["scan_scope"]["status"] == "attention"
+    assert "liquid-us" in by_area["scan_scope"]["finding"]
+    assert "--universe" not in by_area["scan_scope"]["command"]
 
 
 def test_operator_work_queue_prioritizes_setup_blockers_and_candidate_context(

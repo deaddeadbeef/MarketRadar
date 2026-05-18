@@ -46,7 +46,7 @@ The TUI also supports low-risk operator writes: `action <ticker> <action> [notes
 | Area | Current dashboard feature | TUI page | Operational use |
 | --- | --- | --- | --- |
 | Readiness | Investment readiness, usefulness score, and operator next step | `overview`, `readiness` | Know whether output is research-only or decision-useful. |
-| Full scan coverage | Active universe size, requested/scanned securities, candidate count, latest/run bar coverage, zero-call preflight blockers | `overview`, `ops`, `run`, `priced-in-preflight`, `/api/radar/priced-in/preflight` | Confirm the queue came from a real broad-market pass rather than a tiny fixture universe, and get the exact next command when it did not. |
+| Full scan coverage | Active security count, requested/scanned securities, candidate count, latest/run bar coverage, zero-call preflight blockers, and selected-universe warnings | `overview`, `ops`, `run`, `priced-in-preflight`, `/api/radar/priced-in/preflight` | Confirm the queue came from a real all-active pass rather than a tiny fixture or `liquid-us` selected universe, and get the exact next command when it did not. |
 | Current priced-in answer | One zero-call answer to whether price has matched market expectations, with research/answer-ready counts, optional context gaps, next command, and explicit trade-readiness boundary | `overview`, `priced-in-answer`, `/api/radar/priced-in/answer`, `dashboard-snapshot --json` | Know whether the current scan can answer the priced-in question, while keeping trade approval tied to the separate readiness/manual-buy-review gate. |
 | Priced-in mismatch | Emotion score, price-reaction score, emotion-minus-reaction gap, status, reason, queue-level and row-level source coverage, next step | `overview`, `candidates`, `candidate:<ticker>`, `priced-in-queue`, `/api/radar/priced-in` | Find stocks where market emotion appears ahead of or behind price reaction, distinguish blocking local evidence gaps from optional options/broker context, and see whether each source is contributing. |
 | Source fill workflow | Prioritized zero-call workflow from priced-in preflight evidence-plan steps, including dependencies, next source action, and the all-source plan command | `ops`, `dashboard-snapshot --page ops --json`, `batch all` in TUI | Know the next data layer to inspect before running provider chunks; keep action distinct from response. |
@@ -77,9 +77,8 @@ priced-in mismatch queue, not as a complete ticker table: the first row states
 whether the active local universe is large enough to count as a full-market
 scan, and candidate rows are the ranked useful subset. If the universe is tiny,
 `priced-in-preflight --json` and `/api/radar/priced-in/preflight` provide the
-zero-call checklist for seeding tickers, ingesting bars, building the named
-liquid universe, reviewing the call plan, running the universe-scoped scan, and
-reviewing the queue. In
+zero-call checklist for seeding tickers, ingesting bars, reviewing the call
+plan, running the all-active scan, and reviewing the queue. In
 Polygon/Massive mode that checklist includes the configured ticker-reference
 page cap and, when latest grouped-daily bars are available, the estimated page
 count needed to seed a comparable ticker universe. The checklist also surfaces
@@ -89,8 +88,9 @@ behind existing explicit guarded commands or API routes because they can call
 external services and require credentials:
 
 When the latest run is universe-scoped, the priced-in queue is scoped to that
-same universe snapshot. Older same-date rows outside the latest run's universe
-are not shown as part of the current full scan.
+same universe snapshot so older same-date rows outside the latest run's universe
+are not mixed in. The queue is labeled as selected-universe output until the
+next run scans all active securities without `--universe`.
 
 - Trigger optional universe seeding only when Polygon is configured; use
   `scripts/run-full-market-scan.ps1` for the plan-first full-market sequence.

@@ -990,8 +990,8 @@ def test_priced_in_answer_cli_outputs_current_scan_answer(
     assert payload["schema_version"] == "priced-in-answer-v1"
     assert payload["external_calls_made"] == 0
     assert payload["question"] == "Has price fully matched market expectations?"
-    assert payload["decision_ready"] is True
-    assert payload["priced_in_answer_ready"] is True
+    assert payload["decision_ready"] is False
+    assert payload["priced_in_answer_ready"] is False
     assert payload["can_make_investment_decision"] is False
     assert payload["manual_investment_decision_ready"] is False
     assert "not trade approval" in payload["investment_decision_boundary"]

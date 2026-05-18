@@ -3194,6 +3194,7 @@ def _overview_title(payload: Mapping[str, object]) -> str:
     start = offset + 1 if returned else 0
     end = offset + returned
     scan_total = _priced_in_scan_total(queue)
+    scan_status = str(queue.get("status") or "").strip()
     status_filter = _priced_in_status_filter(queue)
     source_gap = _source_gap_filter_summary(queue)
     decision_gap = _decision_gap_filter_summary(queue)
@@ -3209,6 +3210,11 @@ def _overview_title(payload: Mapping[str, object]) -> str:
         usefulness = _usefulness_counts_summary(queue)
         suffix_parts = [part for part in (usefulness, source_gap, decision_gap) if part]
         suffix = f"; {'; '.join(suffix_parts)}" if suffix_parts else ""
+        if scan_status == "selected_universe":
+            return (
+                f"Selected-universe priced-in queue - showing rows "
+                f"{start}-{end} of {total}{suffix}"
+            )
         return f"Full-market priced-in queue - showing rows {start}-{end} of {total}{suffix}"
     return "Full-market priced-in queue - select a row to act"
 
@@ -3221,6 +3227,7 @@ def _overview_caption(payload: Mapping[str, object]) -> str:
     start = offset + 1 if returned else 0
     end = offset + returned
     scan_total = _priced_in_scan_total(queue)
+    scan_status = str(queue.get("status") or "").strip()
     status_filter = _priced_in_status_filter(queue)
     source_gap = _source_gap_filter_summary(queue)
     source_gap_text = f" Active source gap filter: {source_gap}." if source_gap else ""
@@ -3250,6 +3257,17 @@ def _overview_caption(payload: Mapping[str, object]) -> str:
         usefulness_text = f" Usefulness mix: {usefulness}." if usefulness else ""
         decision_gap = _decision_gap_filter_summary(queue)
         decision_gap_text = f" Active decision gap filter: {decision_gap}." if decision_gap else ""
+        if scan_status == "selected_universe":
+            latest_run = _mapping(queue.get("latest_run"))
+            universe = str(latest_run.get("universe") or "selected").strip()
+            return (
+                f"This page shows rows {start}-{end}: {returned} visible rows from "
+                f"{total} latest-scan rows in universe={universe}. "
+                "That is a selected universe, not the whole active market. "
+                "Run the radar without --universe to scan all active securities. "
+                f"{usefulness_text}{source_gap_text}{decision_gap_text} "
+                "Browsing makes 0 provider calls."
+            )
         return (
             f"This page shows rows {start}-{end}: {returned} visible rows from "
             f"{total} latest-scan rows. "
