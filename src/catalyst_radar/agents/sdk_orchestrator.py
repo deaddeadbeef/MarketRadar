@@ -119,6 +119,7 @@ def redacted_operator_snapshot(payload: Mapping[str, object]) -> dict[str, objec
             _mapping(source.get("priced_in_queue")),
             _mapping(source.get("priced_in_source_coverage")),
             _mapping(source.get("priced_in_preflight")),
+            _mapping(source.get("priced_in_answer")),
         ),
         "candidates": _candidates_context(_mapping(source.get("candidates"))),
         "alerts": _alerts_context(_mapping(source.get("alerts"))),
@@ -180,6 +181,7 @@ def deterministic_agent_brief(
         [
             _status_insight(readiness),
             _call_plan_insight(call_plan),
+            _priced_in_answer_insight(priced_in),
             _priced_in_insight(priced_in),
             _priced_in_evidence_plan_insight(priced_in),
             _top_queue_insight(work_queue),
@@ -191,6 +193,8 @@ def deterministic_agent_brief(
     next_actions = _dedupe(
         [
             _text(next_step.get("action")),
+            _text(_mapping(priced_in.get("answer")).get("next_action")),
+            _text(_mapping(priced_in.get("answer")).get("next_command")),
             _text(_mapping(priced_in.get("evidence_plan")).get("next_action")),
             _text(_mapping(priced_in.get("evidence_plan")).get("next_command")),
             _text(priced_in.get("next_action")),
@@ -494,6 +498,7 @@ def _priced_in_context(
     queue: Mapping[str, object],
     source_coverage: Mapping[str, object],
     preflight: Mapping[str, object],
+    answer: Mapping[str, object],
 ) -> dict[str, object]:
     coverage = source_coverage or _mapping(queue.get("source_coverage"))
     return {
@@ -540,6 +545,7 @@ def _priced_in_context(
             preflight,
             ("status", "headline", "next_action", "scan_status"),
         ),
+        "answer": _priced_in_answer_context(answer),
         "evidence_plan": _priced_in_evidence_plan_context(
             _mapping(preflight.get("evidence_plan"))
         ),
@@ -567,6 +573,29 @@ def _priced_in_context(
             ][:8],
         },
         "rows": [_priced_in_row_context(item) for item in _rows(queue.get("rows"))[:8]],
+    }
+
+
+def _priced_in_answer_context(answer: Mapping[str, object]) -> dict[str, object]:
+    if not answer:
+        return {}
+    return {
+        **_copy_keys(
+            answer,
+            (
+                "schema_version",
+                "status",
+                "decision_ready",
+                "question",
+                "answer",
+                "headline",
+                "next_action",
+                "next_command",
+                "external_calls_made",
+            ),
+        ),
+        "counts": _mapping(answer.get("counts")),
+        "trust_blockers": _safe_value(answer.get("trust_blockers") or []),
     }
 
 
@@ -903,6 +932,21 @@ def _priced_in_insight(priced_in: Mapping[str, object]) -> str | None:
     return (
         f"Priced-in scan is {status}; visible rows={returned}, "
         f"total rows={total}, weak sources={weak_sources}."
+    )
+
+
+def _priced_in_answer_insight(priced_in: Mapping[str, object]) -> str | None:
+    answer = _mapping(priced_in.get("answer"))
+    if not answer:
+        return None
+    status = _text(answer.get("status")) or "unknown"
+    decision_ready = bool(answer.get("decision_ready"))
+    answer_text = _text(answer.get("answer")) or _text(answer.get("headline"))
+    next_action = _text(answer.get("next_action"))
+    next_piece = f"; next={next_action}" if next_action else ""
+    return (
+        f"Priced-in answer is {status}; decision_ready={str(decision_ready).lower()}; "
+        f"{answer_text}{next_piece}."
     )
 
 
