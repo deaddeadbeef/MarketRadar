@@ -83,6 +83,7 @@ PRICED_IN_BATCHABLE_SOURCES = frozenset(
 )
 PRICED_IN_SCHWAB_BATCH_SOURCES = frozenset({"options", "broker_context"})
 PRICED_IN_LOCAL_BATCH_MAX_TICKERS = 50
+_ARTIFACT_CUTOFF_UNSET = object()
 PRICED_IN_SOURCE_ALIASES = {
     "bars": "market_bars",
     "market": "market_bars",
@@ -165,11 +166,17 @@ def load_candidate_rows(
     engine: Engine,
     *,
     available_at: datetime | None = None,
+    artifact_available_at: datetime | None | object = _ARTIFACT_CUTOFF_UNSET,
     as_of_date: date | None = None,
     limit: int | None = 200,
     include_artifacts: bool = True,
 ) -> list[dict[str, object]]:
     cutoff = _as_utc_datetime_or_none(available_at)
+    artifact_cutoff = (
+        cutoff
+        if artifact_available_at is _ARTIFACT_CUTOFF_UNSET
+        else _as_utc_datetime_or_none(artifact_available_at)
+    )
     run_date = _parse_date(as_of_date)
     ranked_state_stmt = select(
         candidate_states.c.id.label("candidate_state_id"),
@@ -242,9 +249,9 @@ def load_candidate_rows(
             )
             .where(candidate_packets.c.candidate_state_id.is_not(None))
         )
-        if cutoff is not None:
+        if artifact_cutoff is not None:
             ranked_packet_stmt = ranked_packet_stmt.where(
-                candidate_packets.c.available_at <= cutoff
+                candidate_packets.c.available_at <= artifact_cutoff
             )
         ranked_packets = ranked_packet_stmt.subquery()
 
@@ -265,9 +272,9 @@ def load_candidate_rows(
             )
             .label("card_rank"),
         )
-        if cutoff is not None:
+        if artifact_cutoff is not None:
             ranked_card_stmt = ranked_card_stmt.where(
-                decision_cards.c.available_at <= cutoff
+                decision_cards.c.available_at <= artifact_cutoff
             )
         ranked_cards = ranked_card_stmt.subquery()
 
@@ -311,6 +318,7 @@ def load_radar_run_candidate_rows(
     *,
     limit: int | None = 200,
     include_artifacts: bool = True,
+    include_post_run_artifacts: bool = False,
 ) -> list[dict[str, object]]:
     summary = _row_dict(radar_run_summary)
     cutoff = _parse_utc_datetime(summary.get("finished_at")) or _parse_utc_datetime(
@@ -319,6 +327,9 @@ def load_radar_run_candidate_rows(
     return load_candidate_rows(
         engine,
         available_at=cutoff,
+        artifact_available_at=None
+        if include_post_run_artifacts
+        else _ARTIFACT_CUTOFF_UNSET,
         as_of_date=_parse_date(summary.get("as_of")),
         limit=limit,
         include_artifacts=include_artifacts,
@@ -580,6 +591,7 @@ def priced_in_queue_payload(
             latest_run,
             limit=None,
             include_artifacts=True,
+            include_post_run_artifacts=True,
         )
     else:
         queue_candidate_rows = load_candidate_rows(engine, limit=None, include_artifacts=True)
@@ -1184,7 +1196,7 @@ def _priced_in_decision_gap_row(
         str(ticker).strip().upper()
         for ticker in sample_tickers
         if str(ticker).strip()
-    ][:PRICED_IN_SOURCE_ACTION_TICKER_LIMIT]
+    ][:PRICED_IN_LOCAL_BATCH_MAX_TICKERS]
     action = actions.get(gap_name, {})
     next_action = str(action.get("next_action") or "").strip()
     command = str(
@@ -1227,16 +1239,11 @@ def _priced_in_local_artifact_command(
     fallback_gap: str,
     tickers: Sequence[str] = (),
 ) -> str:
+    del tickers
     if scan_as_of:
-        ticker_args = " ".join(
-            f"--ticker {ticker}"
-            for ticker in tickers[:PRICED_IN_SOURCE_ACTION_TICKER_LIMIT]
-            if ticker
-        )
-        ticker_piece = f" {ticker_args}" if ticker_args else ""
         return (
-            f"catalyst-radar {command} --as-of {scan_as_of}{ticker_piece} "
-            "--min-state AddToWatchlist"
+            f"catalyst-radar {command} --as-of {scan_as_of} "
+            "--min-state ResearchOnly"
         )
     return (
         "catalyst-radar priced-in-queue --usefulness research_useful "
@@ -6773,7 +6780,7 @@ def _priced_in_build_packet_command(candidate: Mapping[str, object]) -> str:
         "catalyst-radar build-packets "
         f"--as-of {_priced_in_command_as_of(candidate)} "
         f"--ticker {_priced_in_command_ticker(candidate)} "
-        "--min-state AddToWatchlist"
+        "--min-state ResearchOnly"
     )
 
 
@@ -6782,7 +6789,7 @@ def _priced_in_build_decision_card_command(candidate: Mapping[str, object]) -> s
         "catalyst-radar build-decision-cards "
         f"--as-of {_priced_in_command_as_of(candidate)} "
         f"--ticker {_priced_in_command_ticker(candidate)} "
-        "--min-state AddToWatchlist"
+        "--min-state ResearchOnly"
     )
 
 
@@ -7308,7 +7315,7 @@ def _priced_in_source_next_batch_command(
 def _priced_in_source_batch_plan_command(source: str) -> str | None:
     if source not in PRICED_IN_BATCHABLE_SOURCES:
         return None
-    return f"catalyst-radar priced-in-source-batches --source {source} --batch-limit 5"
+    return f"catalyst-radar priced-in-source-batches --source {source} --all --json"
 
 
 def _schwab_market_sync_command(tickers: Sequence[str]) -> str:
@@ -7502,7 +7509,13 @@ def _priced_in_decision_gap_counts(
             gap_name = str(gap or "").strip()
             if gap_name:
                 counts[gap_name] += 1
-                _append_priced_in_action_ticker(sample_tickers[gap_name], ticker)
+                samples = sample_tickers[gap_name]
+                if (
+                    ticker
+                    and ticker not in samples
+                    and len(samples) < PRICED_IN_LOCAL_BATCH_MAX_TICKERS
+                ):
+                    samples.append(ticker)
     return {
         "schema_version": "priced-in-decision-gap-counts-v1",
         "scope": "actionable_mismatch_rows",

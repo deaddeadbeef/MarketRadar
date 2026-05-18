@@ -159,7 +159,11 @@ def candidates() -> dict[str, object]:
     load_candidate_rows = _dashboard_helper("load_candidate_rows")
     latest_run = load_radar_run_summary(engine)
     rows = (
-        load_radar_run_candidate_rows(engine, latest_run)
+        load_radar_run_candidate_rows(
+            engine,
+            latest_run,
+            include_post_run_artifacts=True,
+        )
         if isinstance(latest_run, Mapping) and latest_run
         else load_candidate_rows(engine)
     )

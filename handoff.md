@@ -1,6 +1,75 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 00:18:19 +08:00
+Last updated: 2026-05-19 01:27:44 +08:00
+
+## Latest Full-Scan Recommendation Correction
+
+The user pushed back on ticker-limited commands: "Why only these tickers? I want
+full scan." Root cause: the scan itself was full-universe, but the
+decision-readiness recommendation layer displayed optimized sample/exact-ticker
+repair commands. That made the product look like it was only scanning or acting
+on the visible ticker page.
+
+Changes in this slice:
+
+- Source-gap recommendations now use the full batch-plan command:
+
+  ```text
+  catalyst-radar priced-in-source-batches --source options --all --json
+  ```
+
+  This remains zero-call. It lists every executor chunk for the full current
+  gap; individual batch execution remains explicit and rate-limited.
+
+- Local artifact recommendations now use full scan-date commands instead of
+  ticker-sliced commands:
+
+  ```text
+  catalyst-radar build-packets --as-of 2026-05-15 --min-state ResearchOnly
+  catalyst-radar build-decision-cards --as-of 2026-05-15 --min-state ResearchOnly
+  ```
+
+- `load_radar_run_candidate_rows(..., include_post_run_artifacts=True)` was
+  added for current dashboard/API views. Historical cutoff behavior remains the
+  default, but the current dashboard can now show local Candidate Packets and
+  Decision Cards built after the radar scan.
+- The TUI snapshot and `GET /api/radar/candidates` use the current-artifact
+  mode when no explicit `available_at` cutoff is requested.
+
+Live zero-provider-call smoke after this correction:
+
+```text
+priced_in_answer status=research_only decision_ready=false total=12087 mismatches=7 research=5 blocked=7920 external_calls=0
+scan_scope=Showing ranked rows 1-5 of 12087; the visible tickers are one page from the full scan, not the scan universe.
+recommended_gap=options count=7 command=catalyst-radar priced-in-source-batches --source options --all --json
+```
+
+Full source-batch plan smoke:
+
+```text
+status ready total_gap_rows 12087 plannable 12087 batch_count 2418 count 2418 all_batches True external_calls 0
+all_batches_command catalyst-radar priced-in-source-batches --source options --all --json
+first_batch_size 5
+```
+
+Important interpretation:
+
+- `priced-in-answer` still reports `research_only` because options coverage is
+  the next blocker.
+- The `--all --json` command is a plan/export over the full current gap, not
+  provider execution.
+- A listed Schwab options batch is still the explicit read-only executor step
+  and should not be run blindly across 2418 batches.
+
+Validation for this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_radar_run_rows_can_include_post_run_local_artifacts tests\integration\test_dashboard_data.py::test_priced_in_answer_prefers_local_artifact_gap_before_options tests\integration\test_dashboard_data.py::test_priced_in_queue_payload_paginates_ranked_rows tests\integration\test_dashboard_data.py::test_priced_in_queue_source_actions_use_full_scan_batch_plan_for_broad_gaps tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_queue_cli_outputs_same_zero_call_signal tests\integration\test_api_routes.py::test_get_candidates_uses_latest_radar_run_scope -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\api\routes\radar.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_api_routes.py
+git diff --check
+```
+
+Observed: focused pytest passed, ruff passed, and `git diff --check` passed.
 
 ## Latest Decision-Readiness Gap Summary
 
@@ -81,17 +150,33 @@ The candidate-packet and decision-card recommendations now use executable local
 artifact commands when the scan date is known. They fall back to the filtered
 queue command only if no scan date is available.
 
-### Exact Local Artifact Batches
+### Local Artifact Command Correction
 
-Follow-up: `build-packets` and `build-decision-cards` now accept repeated
-`--ticker` arguments, so decision-readiness recommendations can target the
-actual missing local artifact rows instead of rebuilding the whole scan date.
+Follow-up: `build-packets` and `build-decision-cards` accept repeated
+`--ticker` arguments for targeted debugging, but decision-readiness
+recommendations intentionally use full scan-date commands so the product does
+not look ticker-limited.
 
 Live smoke now prints:
 
 ```text
-recommended_gap=candidate_packet count=5 command=catalyst-radar build-packets --as-of 2026-05-15 --ticker A --ticker MSFT --ticker AAAU --ticker AAPL --ticker AA --min-state AddToWatchlist
+recommended_gap=candidate_packet count=5 command=catalyst-radar build-packets --as-of 2026-05-15 --min-state ResearchOnly
 ```
+
+Important correction: actionable mismatch rows may still be in `ResearchOnly`,
+so local packet/card commands use `--min-state ResearchOnly`. The previous
+`AddToWatchlist` floor could return `built candidate_packets=0` even when the
+priced-in answer correctly reported missing packets.
+
+After running the corrected command locally:
+
+```text
+built candidate_packets=5
+candidate_packet_gap_total 0 rows []
+```
+
+The next blocker became `decision_card`. The dashboard now keeps sample tickers
+as examples, but the recommended command is full-scan-date by default.
 
 ## Latest Full-Scan Scope UX
 

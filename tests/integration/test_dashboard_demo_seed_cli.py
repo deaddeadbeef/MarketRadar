@@ -589,7 +589,7 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
     assert actions["options"]["gap_count"] == 1
     assert actions["options"]["diagnostic"]["status"] == "no_stored_options"
     assert actions["options"]["batch_plan_command"] == (
-        "catalyst-radar priced-in-source-batches --source options --batch-limit 5"
+        "catalyst-radar priced-in-source-batches --source options --all --json"
     )
     assert actions["options"]["sample_scope"] == (
         "These are all 1 missing/stale row(s) in the current filtered scan, "

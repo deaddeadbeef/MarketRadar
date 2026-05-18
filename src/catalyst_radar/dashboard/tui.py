@@ -351,7 +351,11 @@ def dashboard_snapshot_payload(
     )
     data_available_at = filters.available_at or latest_run_cutoff
     candidate_rows = (
-        dashboard_data.load_radar_run_candidate_rows(engine, latest_run)
+        dashboard_data.load_radar_run_candidate_rows(
+            engine,
+            latest_run,
+            include_post_run_artifacts=True,
+        )
         if filters.available_at is None and latest_run
         else dashboard_data.load_candidate_rows(engine, available_at=data_available_at)
     )
