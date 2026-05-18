@@ -1,6 +1,80 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 01:27:44 +08:00
+Last updated: 2026-05-19 01:45:00 +08:00
+
+## Latest Optional-Context Readiness Correction
+
+The previous full-scan correction exposed a deeper product issue: the scanner
+was treating missing options/broker context as a blocker for answering the core
+question, even when market bars, catalyst events, local text, Candidate Packet,
+and Decision Card were already present. That made the answer stay
+`research_only` until broad options coverage existed, which is not useful for
+ordinary equity priced-in analysis.
+
+Changes in this slice:
+
+- `options`, `broker_context`, and `theme_peer_sector` are now optional context
+  gaps for the priced-in answer.
+- Blocking decision gaps remain focused on local/actionable artifacts:
+  Candidate Packet and Decision Card, after core market/catalyst/text evidence
+  is present.
+- Row usefulness now reports `optional_context_gaps` separately from
+  `missing_for_decision`.
+- Text-mode `candidate-detail` prints optional context beside usefulness, e.g.:
+
+  ```text
+  usefulness=decision_useful decision_ready=true next=Review the priced-in evidence and optional source gaps. optional_context=options
+  ```
+
+- `priced-in-answer` no longer reports broad optional source gaps as
+  `trust_blockers` after the answer is decision-ready. Source coverage still
+  shows options/broker gaps for follow-up.
+- README, dashboard feature inventory, and radar-run runbook now distinguish
+  the priced-in answer from investment/manual-buy readiness.
+
+Live zero-provider-call smoke after this correction:
+
+```text
+status decision_ready
+decision_ready True
+counts {'actionable_mismatch_rows': 7, 'blocked_rows': 7920, 'decision_ready_rows': 5, 'research_lead_rows': 0, 'total_rows': 12087, 'visible_rows': 5}
+trust_blockers []
+top [('A', 'decision_useful', True, None, ['options']), ('MSFT', 'decision_useful', True, None, ['options']), ('AAA', 'blocked', False, None, ['options', 'broker_context']), ('AAAU', 'decision_useful', True, None, ['options']), ('AAPL', 'decision_useful', True, None, ['options'])]
+```
+
+Candidate detail smoke:
+
+```text
+candidate_detail ticker=A status=bullish_not_priced_in blocked=false
+usefulness=decision_useful decision_ready=true next=Review the priced-in evidence and optional source gaps. optional_context=options
+source_actions:
+- options status=missing ... command=catalyst-radar schwab-market-sync --ticker A example_tickers=A
+```
+
+Interpretation:
+
+- The latest local scan still covers the full available universe (`12087`
+  ranked rows in this smoke). The 5 tickers in `top` are only the default
+  answer display window for human review, not the scan universe.
+- To inspect/export every scanned ticker, use
+  `catalyst-radar priced-in-queue --full-scan --all --json`. To page through it
+  interactively, use the TUI Insights page, `next` / `prev`, or
+  `priced-in-queue --full-scan --limit <n> --offset <n>`.
+- MarketRadar can now answer the current full-scan priced-in question with zero
+  provider calls while still showing optional context gaps.
+- This does not mean automated trading or Schwab order submission is available.
+  Manual buy/investment readiness remains governed by the separate investment
+  readiness gate.
+
+Validation for this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_queue_payload_paginates_ranked_rows tests\integration\test_dashboard_data.py::test_priced_in_answer_payload_summarizes_current_scan tests\integration\test_dashboard_data.py::test_priced_in_queue_payload_filters_decision_gaps tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_queue_cli_outputs_same_zero_call_signal tests\integration\test_dashboard_demo_seed_cli.py::test_candidate_detail_cli_outputs_priced_in_evidence_brief tests\integration\test_api_routes.py::test_get_radar_priced_in_queue_returns_cli_ready_rows tests\unit\test_agent_sdk_orchestrator.py::test_redacted_operator_snapshot_allowlists_dashboard_fields -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+```
+
+Observed: focused pytest passed, ruff passed, and `git diff --check` passed.
 
 ## Latest Full-Scan Recommendation Correction
 
@@ -54,8 +128,8 @@ first_batch_size 5
 
 Important interpretation:
 
-- `priced-in-answer` still reports `research_only` because options coverage is
-  the next blocker.
+- `priced-in-answer` no longer reports `research_only` only because options
+  coverage is missing. Options remain visible as optional context.
 - The `--all --json` command is a plan/export over the full current gap, not
   provider execution.
 - A listed Schwab options batch is still the explicit read-only executor step

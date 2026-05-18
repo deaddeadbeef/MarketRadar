@@ -82,6 +82,9 @@ PRICED_IN_BATCHABLE_SOURCES = frozenset(
     {"catalyst_events", "local_text", "options", "broker_context"}
 )
 PRICED_IN_SCHWAB_BATCH_SOURCES = frozenset({"options", "broker_context"})
+PRICED_IN_OPTIONAL_CONTEXT_SOURCES = frozenset(
+    {"options", "theme_peer_sector", "broker_context"}
+)
 PRICED_IN_LOCAL_BATCH_MAX_TICKERS = 50
 _ARTIFACT_CUTOFF_UNSET = object()
 PRICED_IN_SOURCE_ALIASES = {
@@ -1011,6 +1014,7 @@ def priced_in_answer_payload(
         },
         "trust_blockers": _priced_in_answer_trust_blockers(
             resolved_preflight,
+            answer_status=answer_status,
             source_coverage=source_coverage,
         ),
         "next_action": next_action,
@@ -1393,8 +1397,11 @@ def _priced_in_answer_next_step(
 def _priced_in_answer_trust_blockers(
     preflight: Mapping[str, object],
     *,
+    answer_status: str,
     source_coverage: Mapping[str, object],
 ) -> list[dict[str, object]]:
+    if answer_status == "decision_ready":
+        return []
     rows: list[dict[str, object]] = []
     plan = _mapping_value(preflight, "evidence_plan")
     for step in _sequence_value(plan.get("steps")):
@@ -6510,7 +6517,11 @@ def _priced_in_queue_row(row: Mapping[str, object]) -> dict[str, object]:
     )
     if blockers:
         next_step = "Clear blockers before treating this mismatch as actionable."
-    elif usefulness.get("status") in {"research_useful", "not_useful"}:
+    elif usefulness.get("status") in {
+        "research_useful",
+        "decision_useful",
+        "not_useful",
+    }:
         next_step = str(usefulness.get("next_action") or next_step)
     return {
         "ticker": row.get("ticker"),
@@ -6695,10 +6706,20 @@ def _priced_in_usefulness_verdict(
     core_sources = {"market_bars", "catalyst_events", "local_text"}
     missing_core = sorted(source for source in core_sources if source not in available)
     stale_core = sorted(source for source in core_sources if source in stale)
-    missing_for_decision = [
+    source_gaps = [
         str(action.get("source"))
         for action in source_actions
         if str(action.get("status") or "") not in {"ready", "not_applicable"}
+    ]
+    optional_context_gaps = sorted(
+        dict.fromkeys(
+            source for source in source_gaps if source in PRICED_IN_OPTIONAL_CONTEXT_SOURCES
+        )
+    )
+    missing_for_decision = [
+        source
+        for source in source_gaps
+        if source not in PRICED_IN_OPTIONAL_CONTEXT_SOURCES
     ]
     candidate_packet_id = str(candidate.get("candidate_packet_id") or "").strip()
     if not candidate_packet_id:
@@ -6750,9 +6771,17 @@ def _priced_in_usefulness_verdict(
             next_command = f"catalyst-radar candidate-detail {_priced_in_command_ticker(candidate)}"
     else:
         verdict = "decision_useful"
-        label = "Decision-useful mismatch"
-        reasons.append("Core and supporting evidence are available for manual review.")
-        next_action = "Review the Decision Card before any trade action."
+        label = "Priced-in answer ready"
+        reasons.append(
+            "Core emotion-versus-reaction evidence and local review artifacts "
+            "are available."
+        )
+        if optional_context_gaps:
+            reasons.append(
+                "Optional context still missing: "
+                f"{', '.join(optional_context_gaps)}."
+            )
+        next_action = "Review the priced-in evidence and optional source gaps."
         next_command = (
             "catalyst-radar decision-card "
             f"--ticker {_priced_in_command_ticker(candidate)} "
@@ -6765,13 +6794,17 @@ def _priced_in_usefulness_verdict(
         "decision_ready": verdict == "decision_useful",
         "reasons": reasons,
         "missing_for_decision": missing_for_decision,
+        "optional_context_gaps": optional_context_gaps,
         "next_action": next_action,
         "next_command": next_command,
         "action_boundary": (
             "Research signal only until source gaps, blockers, and Decision Card are clear."
         )
         if verdict != "decision_useful"
-        else "Decision Card still requires human review; real order submission remains disabled.",
+        else (
+            "Priced-in answer is ready for human review; optional context gaps "
+            "may remain and real order submission remains disabled."
+        ),
     }
 
 

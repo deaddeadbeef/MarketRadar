@@ -146,6 +146,13 @@ demo candidates have high scores. The top **System Status** strip also surfaces
 `Bars Stale` so freshness cannot be missed when the run itself completed. Treat
 the queue as decision-ready only when that gate says `manual_buy_review`.
 
+The priced-in answer has a narrower job: determine whether market emotion looks
+fully reflected in price action. For ordinary equity rows, missing options or
+read-only broker context is shown as optional source context, not as a blocker
+for the priced-in answer. Those optional gaps still matter before sizing or
+trigger review, and real manual buy review remains governed by the Investment
+Decision Readiness gate above.
+
 The **Candidate Queue** repeats that decision mode per row. Its `Decision`
 column can show `manual_buy_review`, `research_only`, `missing_card`, `blocked`,
 `monitor`, or `not_ready`; use that label before interpreting a high score as

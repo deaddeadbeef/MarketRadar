@@ -247,17 +247,23 @@ Schwab, or OpenAI calls.
 returns the same full-scan boundary and ranked emotion-vs-reaction rows used by
 the dashboard, with optional `--status`, `--usefulness`, `--source-gap`,
 `--decision-gap`, `--min-gap`, `--limit`, and `--json`. Use
-`--usefulness research_useful` for
-names worth human research, `--usefulness blocked` for mismatches blocked by
+`--full-scan --all --json` when you want the complete latest scan export. The
+small ticker list printed by `priced-in-answer` is only the ranked actionable
+display window, not the scan universe; use `priced-in-queue --full-scan` to page
+through the universe and `priced-in-queue --full-scan --all --json` to export
+every scanned row.
+`--usefulness decision_useful` for names where the core priced-in answer is
+ready for human review, `--usefulness research_useful` for names that still
+need local review artifacts, `--usefulness blocked` for mismatches blocked by
 policy/portfolio checks, or `--usefulness useful` for research- or
 decision-useful rows. Use `--source-gap options` or
-`--source-gap broker_context` to find rows where a required data layer is still
+`--source-gap broker_context` to find rows where optional context is still
 missing or stale. Use
 `--usefulness research_useful --decision-gap candidate_packet` to list otherwise
 useful rows that still need a Candidate Packet before Decision Card review.
-Then use `--decision-gap decision_card`, `--decision-gap options`, and
-`--decision-gap broker_context` to find rows whose decision evidence is still
-incomplete.
+Then use `--decision-gap decision_card` to find rows whose local review artifact
+is still incomplete. Missing options and broker context remain visible as source
+gaps, but they do not block the ordinary equity priced-in answer.
 The payload includes queue-level `source_coverage`, so the operator can see
 whether market bars, catalyst events, local text, options, theme/peer/sector
 context, and broker context are contributing across the visible queue.
