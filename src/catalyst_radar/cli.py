@@ -354,6 +354,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="Insights queue mode: actionable/mismatches or all/full.",
     )
     dashboard_snapshot.add_argument("--telemetry-limit", type=int, default=8)
+    dashboard_snapshot.add_argument(
+        "--usefulness",
+        help=(
+            "Filter Insights rows by usefulness verdict: useful, research_useful, "
+            "decision_useful, blocked, monitor_only, not_useful."
+        ),
+    )
+    dashboard_snapshot.add_argument(
+        "--decision-gap",
+        action="append",
+        help=(
+            "Filter Insights rows by missing decision evidence. Repeat or "
+            "comma-separate: decision_card,options,broker_context."
+        ),
+    )
     dashboard_snapshot.add_argument("--page", default="overview")
     dashboard_snapshot.add_argument("--json", action="store_true")
 
@@ -375,6 +390,14 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Filter rows missing or stale for a source class. Repeat or comma-separate: "
             "market_bars,catalyst_events,local_text,options,theme_peer_sector,broker_context."
+        ),
+    )
+    priced_in.add_argument(
+        "--decision-gap",
+        action="append",
+        help=(
+            "Filter rows missing decision evidence. Repeat or comma-separate: "
+            "decision_card,options,broker_context."
         ),
     )
     priced_in.add_argument("--min-gap", type=float)
@@ -403,6 +426,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="Insights queue mode used in the agent brief context.",
     )
     agent_brief.add_argument("--telemetry-limit", type=int, default=8)
+    agent_brief.add_argument(
+        "--usefulness",
+        help=(
+            "Filter brief context by usefulness verdict: useful, research_useful, "
+            "decision_useful, blocked, monitor_only, not_useful."
+        ),
+    )
+    agent_brief.add_argument(
+        "--decision-gap",
+        action="append",
+        help=(
+            "Filter brief context by missing decision evidence. Repeat or "
+            "comma-separate: decision_card,options,broker_context."
+        ),
+    )
     agent_brief.add_argument("--goal")
     agent_brief.add_argument("--real", action="store_true")
     agent_brief.add_argument("--json", action="store_true")
@@ -421,6 +459,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="Insights queue mode: actionable/mismatches or all/full.",
     )
     dashboard_tui.add_argument("--telemetry-limit", type=int, default=8)
+    dashboard_tui.add_argument(
+        "--usefulness",
+        help=(
+            "Filter Insights rows by usefulness verdict: useful, research_useful, "
+            "decision_useful, blocked, monitor_only, not_useful."
+        ),
+    )
+    dashboard_tui.add_argument(
+        "--decision-gap",
+        action="append",
+        help=(
+            "Filter Insights rows by missing decision evidence. Repeat or "
+            "comma-separate: decision_card,options,broker_context."
+        ),
+    )
     dashboard_tui.add_argument("--page", default="overview")
     dashboard_tui.add_argument("--once", action="store_true")
     dashboard_tui.add_argument("--no-clear", action="store_true")
@@ -669,6 +722,8 @@ def main(argv: list[str] | None = None) -> int:
             alert_status=args.alert_status,
             alert_route=args.alert_route,
             priced_in_status=args.priced_in_status,
+            priced_in_usefulness=args.usefulness,
+            priced_in_decision_gap=args.decision_gap,
             telemetry_limit=args.telemetry_limit,
         )
         payload = dashboard_snapshot_payload(
@@ -693,6 +748,7 @@ def main(argv: list[str] | None = None) -> int:
             status=args.status,
             usefulness=args.usefulness,
             source_gap=args.source_gap,
+            decision_gap=args.decision_gap,
             min_gap=args.min_gap,
         )
         if args.json:
@@ -730,6 +786,8 @@ def main(argv: list[str] | None = None) -> int:
             alert_status=args.alert_status,
             alert_route=args.alert_route,
             priced_in_status=args.priced_in_status,
+            priced_in_usefulness=args.usefulness,
+            priced_in_decision_gap=args.decision_gap,
             telemetry_limit=args.telemetry_limit,
         )
         payload = dashboard_snapshot_payload(
@@ -758,6 +816,8 @@ def main(argv: list[str] | None = None) -> int:
             alert_status=args.alert_status,
             alert_route=args.alert_route,
             priced_in_status=args.priced_in_status,
+            priced_in_usefulness=args.usefulness,
+            priced_in_decision_gap=args.decision_gap,
             telemetry_limit=args.telemetry_limit,
         )
         if args.once:
@@ -2595,6 +2655,10 @@ def _priced_in_more_command(filters: object, limit: int, next_offset: int) -> st
         if isinstance(source_gap, list | tuple):
             for source in source_gap:
                 parts.extend(["--source-gap", str(source)])
+        decision_gap = filters.get("decision_gap")
+        if isinstance(decision_gap, list | tuple):
+            for gap in decision_gap:
+                parts.extend(["--decision-gap", str(gap)])
         min_gap = filters.get("min_gap")
         if min_gap is not None:
             parts.extend(["--min-gap", str(min_gap)])

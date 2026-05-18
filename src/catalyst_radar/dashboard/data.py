@@ -531,6 +531,7 @@ def priced_in_queue_payload(
     status: str | None = None,
     usefulness: str | None = None,
     source_gap: str | Sequence[str] | None = None,
+    decision_gap: str | Sequence[str] | None = None,
     min_gap: float | None = None,
     candidate_rows: Sequence[Mapping[str, object]] | None = None,
     total_count: int | None = None,
@@ -558,6 +559,7 @@ def priced_in_queue_payload(
     wanted_status = str(status or "").strip().lower()
     wanted_usefulness, usefulness_matches = _priced_in_usefulness_filter(usefulness)
     wanted_source_gaps = _priced_in_source_gap_filter(source_gap)
+    wanted_decision_gaps = _priced_in_decision_gap_filter(decision_gap)
     rows = [
         _priced_in_queue_row(row)
         for row in queue_candidate_rows
@@ -584,6 +586,12 @@ def priced_in_queue_payload(
             for row in rows
             if _priced_in_source_gap_matches(row, wanted_source_gaps)
         ]
+    if wanted_decision_gaps:
+        rows = [
+            row
+            for row in rows
+            if _priced_in_decision_gap_matches(row, wanted_decision_gaps)
+        ]
     rows = sorted(rows, key=_priced_in_queue_sort_key)
     loaded_total_count = len(rows)
     if (
@@ -591,6 +599,7 @@ def priced_in_queue_payload(
         and not wanted_status
         and wanted_usefulness == "all"
         and not wanted_source_gaps
+        and not wanted_decision_gaps
         and min_gap is None
         and total_count is not None
     ):
@@ -630,6 +639,7 @@ def priced_in_queue_payload(
             "status": wanted_status or "all",
             "usefulness": wanted_usefulness,
             "source_gap": list(wanted_source_gaps),
+            "decision_gap": list(wanted_decision_gaps),
             "min_gap": min_gap,
             "limit": resolved_limit,
             "offset": resolved_offset,
@@ -5742,6 +5752,33 @@ def _priced_in_source_gap_filter(value: str | Sequence[str] | None) -> tuple[str
     return tuple(dict.fromkeys(normalized))
 
 
+def _priced_in_decision_gap_filter(value: str | Sequence[str] | None) -> tuple[str, ...]:
+    raw_values: list[object]
+    if value is None:
+        raw_values = []
+    elif isinstance(value, str):
+        raw_values = [value]
+    else:
+        raw_values = list(value)
+    aliases = {
+        "card": "decision_card",
+        "decision_cards": "decision_card",
+        "decision-card": "decision_card",
+        "broker": "broker_context",
+        "schwab": "broker_context",
+        "portfolio": "broker_context",
+        "options_flow": "options",
+    }
+    normalized: list[str] = []
+    for raw in raw_values:
+        for part in str(raw or "").replace(";", ",").split(","):
+            gap = part.strip().lower().replace("-", "_").replace(" ", "_")
+            if gap in {"", "all", "none"}:
+                continue
+            normalized.append(aliases.get(gap, gap))
+    return tuple(dict.fromkeys(normalized))
+
+
 def _priced_in_source_gap_matches(
     row: Mapping[str, object],
     wanted_sources: Sequence[str],
@@ -5754,6 +5791,19 @@ def _priced_in_source_gap_matches(
         if str(item).strip()
     }
     return all(source in missing_or_stale for source in wanted_sources)
+
+
+def _priced_in_decision_gap_matches(
+    row: Mapping[str, object],
+    wanted_gaps: Sequence[str],
+) -> bool:
+    usefulness = _mapping_value(row, "usefulness")
+    missing = {
+        str(item).strip().lower()
+        for item in _sequence_value(usefulness.get("missing_for_decision"))
+        if str(item).strip()
+    }
+    return all(gap in missing for gap in wanted_gaps)
 
 
 def _priced_in_scan_status(discovery: Mapping[str, object]) -> str:

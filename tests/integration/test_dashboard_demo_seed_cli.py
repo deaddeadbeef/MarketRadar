@@ -115,6 +115,8 @@ def test_dashboard_snapshot_cli_outputs_dashboard_command_center_json(
     assert payload["controls"]["ticker"] == "ACME"
     assert payload["controls"]["priced_in_status"] == "all"
     assert payload["priced_in_queue"]["filters"]["status"] == "all"
+    assert payload["controls"]["priced_in_usefulness"] is None
+    assert payload["controls"]["priced_in_decision_gap"] == []
     assert payload["readiness"]["schema_version"] == "radar-readiness-v1"
     assert payload["live_activation"]["schema_version"] == (
         "live-data-activation-contract-v1"
@@ -142,6 +144,30 @@ def test_dashboard_snapshot_cli_outputs_dashboard_command_center_json(
     assert payload["validation"]["latest_run"]["id"] == "demo-validation-run-acme"
     assert payload["costs"]["attempt_count"] == 1
     assert payload["ops_health"]["database"]["candidate_state_count"] == 1
+
+    assert (
+        main(
+            [
+                "dashboard-snapshot",
+                "--usefulness",
+                "research_useful",
+                "--decision-gap",
+                "decision_card",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    output = capsys.readouterr()
+    gap_payload = json.loads(output.out)
+
+    assert output.err == ""
+    assert gap_payload["controls"]["priced_in_usefulness"] == "research_useful"
+    assert gap_payload["priced_in_queue"]["filters"]["usefulness"] == "research_useful"
+    assert gap_payload["controls"]["priced_in_decision_gap"] == ["decision_card"]
+    assert gap_payload["priced_in_queue"]["filters"]["decision_gap"] == [
+        "decision_card"
+    ]
 
     engine = create_engine(database_url, future=True)
     direct_readiness = radar_readiness_payload(engine, AppConfig.from_env())
@@ -342,6 +368,16 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
     assert output.err == ""
     assert gap_payload["filters"]["source_gap"] == ["options"]
     assert "options" in gap_payload["rows"][0]["data_sources"]["missing"]
+
+    assert main(["priced-in-queue", "--decision-gap", "decision_card", "--json"]) == 0
+    output = capsys.readouterr()
+    decision_gap_payload = json.loads(output.out)
+
+    assert output.err == ""
+    assert decision_gap_payload["filters"]["decision_gap"] == ["decision_card"]
+    assert "decision_card" in (
+        decision_gap_payload["rows"][0]["usefulness"]["missing_for_decision"]
+    )
 
     assert main(["priced-in-queue"]) == 0
     output = capsys.readouterr()
