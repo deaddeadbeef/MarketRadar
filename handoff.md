@@ -1,6 +1,56 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 23:17:23 +08:00
+Last updated: 2026-05-18 23:28:01 +08:00
+
+## Latest TUI Agent Brief Page
+
+The CLI/API had a dry-run multi-agent brief, but the terminal dashboard still
+had no page for it. That meant the operator had to leave the TUI to see the
+agent summary of the priced-in answer and safety checks.
+
+Changes in this slice:
+
+- Added an `agent` TUI page.
+- Added navigation aliases:
+
+  ```text
+  10
+  agent
+  agents
+  brief
+  Ctrl+A
+  ```
+
+- `dashboard_snapshot_payload()` now includes `agent_brief`, built with
+  `run_market_radar_agents(..., real=False)`.
+- The page shows:
+  - specialist agent summaries,
+  - priced-in answer insight,
+  - next actions,
+  - safety checks,
+  - OpenAI/market/broker call counts.
+- The page stays dry-run and makes no hidden provider, broker, shell,
+  filesystem, web, or OpenAI calls.
+
+Live zero-provider-call smoke:
+
+```text
+dashboard-tui --once --page agent
+Page: agent | Status: research_only | Decision safe: False | External calls made: 0
+Agent Brief
+Mode: dry_run | Status: dry_run | Calls: openai=0, market=0, broker=0
+Insight: Priced-in answer is research_only...
+```
+
+Validation for this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_snapshot_cli_outputs_dashboard_command_center_json tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_agent_page_shows_agent_brief tests\integration\test_dashboard_demo_seed_cli.py::test_modern_dashboard_tui_supports_mouse_navigation -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+```
+
+Observed: focused pytest passed, ruff passed, `git diff --check` passed.
 
 ## Latest Agent Brief API
 

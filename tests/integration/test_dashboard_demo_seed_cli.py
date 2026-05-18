@@ -130,6 +130,16 @@ def test_dashboard_snapshot_cli_outputs_dashboard_command_center_json(
         "Has price fully matched market expectations?"
     )
     assert payload["priced_in_answer"]["answer"]
+    assert payload["agent_brief"]["schema_version"] == "market-radar-agent-brief-v1"
+    assert payload["agent_brief"]["external_calls_made"] == {
+        "broker": 0,
+        "market_data": 0,
+        "openai": 0,
+    }
+    assert any(
+        insight.startswith("Priced-in answer is")
+        for insight in payload["agent_brief"]["insights"]
+    )
     assert payload["priced_in_source_coverage"]["schema_version"] == (
         "priced-in-source-coverage-v1"
     )
@@ -338,6 +348,26 @@ def test_dashboard_run_page_shows_priced_in_evidence_plan(
     assert "Priced-in Evidence Plan" in output.out
     assert "Evidence status" in output.out
     assert "priced-in-source-" in output.out
+
+
+def test_dashboard_agent_page_shows_agent_brief(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["seed-dashboard-demo"]) == 0
+    capsys.readouterr()
+
+    assert main(["dashboard-tui", "--once", "--page", "agent"]) == 0
+    output = capsys.readouterr()
+
+    assert output.err == ""
+    assert "Agent Brief" in output.out
+    assert "openai=0" in output.out
+    assert "Priced-in answer is" in output.out
 
 
 def test_dashboard_tui_once_can_show_full_scan_mode(

@@ -50,7 +50,7 @@ also supports low-risk operator writes: `action <ticker> <action> [notes]`,
 | Themes | Theme aggregation over candidate rows | `themes` | Spot clustered catalysts and repeated setup types. |
 | Validation | Validation run, useful-alert rate, false positives | `validation` | Track whether the radar is producing useful output. |
 | Costs | LLM budget ledger summary and cost per useful alert | `costs` | Keep optional agentic review bounded. |
-| Agent brief | Redacted multi-agent operator brief with the current priced-in answer, evidence plan, safety checks, and zero provider calls in dry-run mode | `agent-brief`, `agent-brief --json`, `/api/agents/brief` | Let the agent layer summarize whether price has matched expectations without leaking secrets or making hidden market, broker, shell, or OpenAI calls unless real mode is explicitly gated. |
+| Agent brief | Redacted multi-agent operator brief with the current priced-in answer, evidence plan, safety checks, and zero provider calls in dry-run mode | `agent` TUI page, `agent-brief`, `agent-brief --json`, `/api/agents/brief` | Let the agent layer summarize whether price has matched expectations without leaking secrets or making hidden market, broker, shell, or OpenAI calls unless real mode is explicitly gated. |
 | Broker | Read-only Schwab connection, balances, positions, order kill switch | `broker` | Use portfolio context without enabling real order submission. |
 | Ops | Provider health, database counts, jobs, degraded mode | `ops` | Diagnose stale data and provider failures. |
 | Telemetry | Audit tape and coverage over required operational events | `telemetry` | Verify operational evidence before trusting status. |
