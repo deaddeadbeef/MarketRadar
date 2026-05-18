@@ -77,6 +77,20 @@ PRICED_IN_SOURCE_CLASSES = (
     "theme_peer_sector",
     "broker_context",
 )
+PRICED_IN_ACTIONABLE_STATUSES = frozenset(
+    {
+        "bullish_not_priced_in",
+        "bearish_not_priced_in",
+    }
+)
+PRICED_IN_ACTIONABLE_FILTERS = frozenset(
+    {
+        "actionable",
+        "mismatch",
+        "not_priced_in",
+        "not-priced-in",
+    }
+)
 
 ALERT_SUPPRESSION_EXPLANATIONS = {
     "duplicate_trigger": "A prior alert already covers the same trigger.",
@@ -525,11 +539,7 @@ def priced_in_queue_payload(
         if isinstance(row, Mapping)
     ]
     if wanted_status and wanted_status != "all":
-        rows = [
-            row
-            for row in rows
-            if str(row.get("priced_in_status") or "").lower() == wanted_status
-        ]
+        rows = [row for row in rows if _priced_in_status_matches(row, wanted_status)]
     if min_gap is not None:
         threshold = abs(float(min_gap))
         rows = [
@@ -5234,6 +5244,13 @@ def _priced_in_queue_sort_key(row: Mapping[str, object]) -> tuple[int, float, fl
         -_finite_float(row.get("score")),
         str(row.get("ticker") or ""),
     )
+
+
+def _priced_in_status_matches(row: Mapping[str, object], wanted_status: str) -> bool:
+    status = str(row.get("priced_in_status") or "").strip().lower()
+    if wanted_status in PRICED_IN_ACTIONABLE_FILTERS:
+        return status in PRICED_IN_ACTIONABLE_STATUSES
+    return status == wanted_status
 
 
 def _priced_in_scan_status(discovery: Mapping[str, object]) -> str:

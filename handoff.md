@@ -29,6 +29,22 @@ to `priced-in-queue --limit/--offset` or `GET /api/radar/priced-in?...&offset=`.
 This is still zero-call browsing. Pagination, filtering, TUI rendering, and
 JSON export read the local database only.
 
+The latest dashboard focus correction keeps CLI/API full pagination intact, but
+changes the TUI overview to default to actionable priced-in mismatches only:
+
+```powershell
+catalyst-radar priced-in-queue --status actionable --limit 20 --json
+catalyst-radar priced-in-queue --status all --limit 50 --offset 50
+```
+
+`status=actionable` is an alias for `bullish_not_priced_in` and
+`bearish_not_priced_in`. The TUI overview title now reads like
+`Actionable mismatches - showing 7 of 7; scan 12087`, so the first screen is the
+human action queue while still proving the broad scan size. If no actionable
+mismatch exists, the TUI should not backfill neutral rows; it should say there
+are no actionable not-priced-in mismatches and point to `--status all` for full
+inspection.
+
 ## Latest Correction
 
 The broad Polygon/Massive seed proved that the local database can hold the

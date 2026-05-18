@@ -272,24 +272,11 @@ def dashboard_snapshot_payload(
         latest_run=latest_run,
         discovery_snapshot=discovery_snapshot,
     )
-    discovery_yield = (
-        discovery_snapshot.get("yield")
-        if isinstance(discovery_snapshot.get("yield"), Mapping)
-        else {}
-    )
     priced_in_queue = dashboard_data.priced_in_queue_payload(
         engine,
         config,
         limit=50,
-        candidate_rows=candidate_rows,
-        total_count=int(
-            _number_or_zero(
-                _first_value(
-                    discovery_yield.get("scanned_candidate_states"),
-                    discovery_yield.get("candidate_states"),
-                )
-            )
-        ),
+        status="actionable",
     )
     priced_in_source_coverage = dashboard_data.priced_in_source_coverage_summary(
         candidate_rows
@@ -1983,11 +1970,14 @@ def _market_insight_rows(payload: Mapping[str, object]) -> list[Mapping[str, obj
     priced_in_queue = _mapping(payload.get("priced_in_queue"))
     source_coverage = _mapping(payload.get("priced_in_source_coverage"))
     can_act = _decision_label(readiness)
-    queue_rows = _rows(priced_in_queue.get("rows")) or _candidate_rows(payload)
-    queue_total = int(
+    queue_rows = (
+        _rows(priced_in_queue.get("rows"))
+        if isinstance(priced_in_queue.get("rows"), list | tuple)
+        else _candidate_rows(payload)
+    )
+    scan_total = int(
         _number_or_zero(
             _first_value(
-                priced_in_queue.get("total_count"),
                 scan_yield.get("scanned_candidate_states"),
                 scan_yield.get("candidate_states"),
                 len(queue_rows),
@@ -2002,8 +1992,9 @@ def _market_insight_rows(payload: Mapping[str, object]) -> list[Mapping[str, obj
             database=database,
             scan_yield=scan_yield,
             preflight=preflight,
-            candidate_count=queue_total,
+            candidate_count=scan_total,
             displayed_count=len(queue_rows),
+            actionable_count=int(_number_or_zero(priced_in_queue.get("total_count"))),
         )
     )
 
@@ -2125,6 +2116,7 @@ def _full_scan_coverage_row(
     preflight: Mapping[str, object],
     candidate_count: int,
     displayed_count: int,
+    actionable_count: int,
 ) -> Mapping[str, object]:
     active_count = int(
         _number_or_zero(
@@ -2164,7 +2156,7 @@ def _full_scan_coverage_row(
     why_now = (
         f"active {active_count or 'n/a'}; requested {requested or 'n/a'}; "
         f"scanned {scanned or 'n/a'}; ranked {candidate_count}; "
-        f"showing {displayed_count}; "
+        f"actionable {actionable_count}; showing {displayed_count}; "
         f"latest bars {latest_with_bars or 'n/a'}/{active_count or 'n/a'}; "
         f"run bars {run_with_bars or 'n/a'}/{active_count or 'n/a'}"
     )
@@ -2258,6 +2250,10 @@ def _overview_title(payload: Mapping[str, object]) -> str:
     queue = _mapping(payload.get("priced_in_queue"))
     total = int(_number_or_zero(queue.get("total_count")))
     returned = int(_number_or_zero(queue.get("returned_count") or queue.get("count")))
+    scan_total = _priced_in_scan_total(queue)
+    status_filter = str(_mapping(queue.get("filters")).get("status") or "").lower()
+    if status_filter == "actionable":
+        return f"Actionable mismatches - showing {returned} of {total}; scan {scan_total}"
     if total:
         return f"Full-market priced-in queue - showing {returned} of {total}"
     return "Full-market priced-in queue - select a row to act"
@@ -2267,6 +2263,23 @@ def _overview_caption(payload: Mapping[str, object]) -> str:
     queue = _mapping(payload.get("priced_in_queue"))
     total = int(_number_or_zero(queue.get("total_count")))
     returned = int(_number_or_zero(queue.get("returned_count") or queue.get("count")))
+    scan_total = _priced_in_scan_total(queue)
+    status_filter = str(_mapping(queue.get("filters")).get("status") or "").lower()
+    if status_filter == "actionable":
+        if total:
+            return (
+                f"This page shows {returned} bullish/bearish not-priced-in mismatch "
+                f"card(s) from {scan_total or 'the'} latest-scan row(s). "
+                "Use priced-in-queue --status all --limit/--offset or the API "
+                "offset parameter to inspect the full ranked queue. "
+                "Browsing makes 0 provider calls."
+            )
+        return (
+            f"No actionable not-priced-in mismatch is currently ranked from "
+            f"{scan_total or 'the'} latest-scan row(s). Use priced-in-queue --status all "
+            "to inspect neutral, blocked, stale, and fully-priced rows. "
+            "Browsing makes 0 provider calls."
+        )
     if total and returned < total:
         return (
             f"This page shows {returned} visible ranked mismatch cards from {total} "
@@ -2276,6 +2289,19 @@ def _overview_caption(payload: Mapping[str, object]) -> str:
     return (
         "First row is scan coverage; candidate rows are priced-in mismatch cards. "
         "Enter opens the relevant evidence or action page. Browsing makes 0 provider calls."
+    )
+
+
+def _priced_in_scan_total(queue: Mapping[str, object]) -> int:
+    scan = _mapping(queue.get("scan"))
+    return int(
+        _number_or_zero(
+            _first_value(
+                scan.get("scanned_candidate_states"),
+                scan.get("candidate_states"),
+                scan.get("scanned_securities"),
+            )
+        )
     )
 
 
