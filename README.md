@@ -97,7 +97,12 @@ seed, grouped-daily ingest, universe build, scan, and priced-in queue review.
 
 The dashboard shows active universe size, requested/scanned securities, fresh
 bar coverage, and candidate count so a tiny local universe is not mistaken for a
-full-market pass.
+full-market pass. In the TUI, the Insights page has two explicit modes:
+`Mismatches` shows only bullish/bearish not-priced-in rows, while `Full Scan`
+shows the first ranked page from the whole scanned universe. Press `M`, click
+the `SCAN` controls in the sidebar, or type `full` / `mismatches` in the
+command box to switch. For non-interactive checks, use
+`catalyst-radar dashboard-tui --once --scan-mode all --page overview`.
 
 Before any live provider call, run the activation checker and inspect the
 call plan:

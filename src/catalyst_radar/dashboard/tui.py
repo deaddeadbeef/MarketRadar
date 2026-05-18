@@ -45,19 +45,51 @@ class DashboardFilters:
     available_at: datetime | None = None
     alert_status: str | None = None
     alert_route: str | None = None
+    priced_in_status: str = "actionable"
     telemetry_limit: int = 8
 
     def normalized(self) -> DashboardFilters:
         ticker = (self.ticker or "").strip().upper() or None
         alert_status = (self.alert_status or "").strip() or None
         alert_route = (self.alert_route or "").strip() or None
+        priced_in_status = _normalize_priced_in_status(self.priced_in_status)
         return replace(
             self,
             ticker=ticker,
             alert_status=alert_status,
             alert_route=alert_route,
+            priced_in_status=priced_in_status,
             telemetry_limit=max(1, int(self.telemetry_limit)),
         )
+
+
+def _normalize_priced_in_status(value: object) -> str:
+    status = str(value or "").strip().lower().replace(" ", "_")
+    aliases = {
+        "": "actionable",
+        "m": "actionable",
+        "mismatch": "actionable",
+        "mismatches": "actionable",
+        "not_priced_in": "actionable",
+        "not-priced-in": "actionable",
+        "full": "all",
+        "full_scan": "all",
+        "full-scan": "all",
+    }
+    status = aliases.get(status, status)
+    allowed = {
+        "all",
+        "actionable",
+        "bullish_not_priced_in",
+        "bearish_not_priced_in",
+        "blocked",
+        "neutral",
+        "stale",
+        "fully_priced",
+        "overextended_hype",
+        "conflicted",
+    }
+    return status if status in allowed else "actionable"
 
 
 DASHBOARD_FEATURES: tuple[dict[str, str], ...] = (
@@ -276,7 +308,7 @@ def dashboard_snapshot_payload(
         engine,
         config,
         limit=50,
-        status="actionable",
+        status=filters.priced_in_status,
     )
     priced_in_source_coverage = (
         priced_in_queue.get("source_coverage")
@@ -298,6 +330,7 @@ def dashboard_snapshot_payload(
             ),
             "alert_status": filters.alert_status,
             "alert_route": filters.alert_route,
+            "priced_in_status": filters.priced_in_status,
             "telemetry_limit": filters.telemetry_limit,
         },
         "runtime_context": runtime_context,
@@ -510,6 +543,12 @@ class MarketRadarDashboardApp(App[int]):
         color: #ffffff;
     }
 
+    .side-action.active {
+        background: #17466b;
+        color: #f2fdff;
+        text-style: bold;
+    }
+
     .nav-item:focus, .side-action:focus {
         background: #235a83;
         color: #ffffff;
@@ -625,6 +664,7 @@ class MarketRadarDashboardApp(App[int]):
         Binding("9", "go('telemetry')", "Telemetry", priority=True),
         ("f", "go('features')", "Features"),
         ("?", "go('help')", "Help"),
+        ("m", "toggle_scan_mode", "Scan mode"),
         Binding("ctrl+n", "next_page", "Next page", priority=True),
         Binding("ctrl+p", "previous_page", "Prev page", priority=True),
         ("escape", "focus_command", "Command"),
@@ -672,6 +712,13 @@ class MarketRadarDashboardApp(App[int]):
                 yield Static("OPS", classes="side-section")
                 yield FocusRow("R  Refresh snapshot", id="action-refresh", classes="side-action")
                 yield FocusRow("RUN Review call plan", id="action-run-page", classes="side-action")
+                yield Static("SCAN", classes="side-section")
+                yield FocusRow(
+                    "M  Mismatches only",
+                    id="action-scan-mismatches",
+                    classes="side-action",
+                )
+                yield FocusRow("ALL Full scan rows", id="action-scan-all", classes="side-action")
             with Vertical(id="main"):
                 yield Static(id="hero")
                 yield Static(id="nav-helpbar")
@@ -689,7 +736,8 @@ class MarketRadarDashboardApp(App[int]):
                     yield Static(id="operator-response")
                 yield Input(
                     placeholder=(
-                        "Type a command or click a row. Try: 2, 4, run, refresh, help, q"
+                        "Type a command or click a row. Try: full, mismatches, "
+                        "2, 4, run, refresh, help, q"
                     ),
                     id="command",
                 )
@@ -715,6 +763,7 @@ class MarketRadarDashboardApp(App[int]):
 
     def refresh_view(self) -> None:
         self._refresh_nav()
+        self._refresh_scan_actions()
         self._refresh_header()
         self._refresh_table()
         self.query_one("#nav-helpbar", Static).update(self._navigation_text())
@@ -747,6 +796,15 @@ class MarketRadarDashboardApp(App[int]):
             self.action_go("run")
             self.status_message = "Review the call plan, then type run execute if intended."
             self.refresh_view()
+            return
+        if widget_id == "action-scan-mismatches":
+            event.stop()
+            self._set_scan_mode("actionable")
+            return
+        if widget_id == "action-scan-all":
+            event.stop()
+            self._set_scan_mode("all")
+            return
 
     def on_key(self, event: events.Key) -> None:
         if event.key == "ctrl+n":
@@ -781,6 +839,30 @@ class MarketRadarDashboardApp(App[int]):
             self.action_go("run")
             self.status_message = "Review the call plan, then type run execute if intended."
             self.refresh_view()
+            return
+        if focused_id == "action-scan-mismatches":
+            event.stop()
+            self._set_scan_mode("actionable")
+            return
+        if focused_id == "action-scan-all":
+            event.stop()
+            self._set_scan_mode("all")
+
+    def action_toggle_scan_mode(self) -> None:
+        current = _normalize_priced_in_status(self.filters.priced_in_status)
+        self._set_scan_mode("all" if current == "actionable" else "actionable")
+
+    def _set_scan_mode(self, status: str) -> None:
+        resolved = _normalize_priced_in_status(status)
+        self.filters = replace(self.filters, priced_in_status=resolved).normalized()
+        self.page = "overview"
+        self.status_message = (
+            "Full Scan mode: showing the first ranked page from the whole universe."
+            if resolved == "all"
+            else "Mismatches mode: showing only bullish/bearish not-priced-in rows."
+        )
+        self.reload_snapshot()
+        self.refresh_view()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         raw = event.value.strip()
@@ -839,6 +921,15 @@ class MarketRadarDashboardApp(App[int]):
             item.set_class(page_key == active, "active")
             item.update(self._nav_label(page_key, shortcut, label))
 
+    def _refresh_scan_actions(self) -> None:
+        status = _normalize_priced_in_status(self.filters.priced_in_status)
+        mismatch = self.query_one("#action-scan-mismatches", FocusRow)
+        full = self.query_one("#action-scan-all", FocusRow)
+        mismatch.set_class(status == "actionable", "active")
+        full.set_class(status == "all", "active")
+        mismatch.update((">> " if status == "actionable" else "   ") + "M  Mismatches only")
+        full.update((">> " if status == "all" else "   ") + "ALL Full scan rows")
+
     def _nav_label(self, page_key: str, shortcut: str, label: str) -> str:
         active = self._active_nav_page() == page_key
         marker = ">>" if active else "  "
@@ -884,7 +975,14 @@ class MarketRadarDashboardApp(App[int]):
 
     def _move_sidebar_focus(self, delta: int) -> None:
         focus_ids = [f"nav-{page_key}" for page_key, _, _ in MODERN_PAGES]
-        focus_ids.extend(["action-refresh", "action-run-page"])
+        focus_ids.extend(
+            [
+                "action-refresh",
+                "action-run-page",
+                "action-scan-mismatches",
+                "action-scan-all",
+            ]
+        )
         focused_id = self.focused.id if self.focused else ""
         if focused_id not in focus_ids:
             focused_id = f"nav-{self._active_nav_page()}"
@@ -894,7 +992,7 @@ class MarketRadarDashboardApp(App[int]):
     def _navigation_text(self) -> str:
         return (
             "[bold #58a6ff]KEYS[/] 1 insights | 4 candidates | 5 alerts | 0 tutorial | "
-            "Ctrl+N/P page\n"
+            "M full/mismatch | Ctrl+N/P page\n"
             "[bold #58a6ff]MOUSE[/] click sidebar or table rows | "
             "Tab focus | Up/Down on sidebar | Enter open | Esc command | q quit\n"
         )
@@ -908,8 +1006,8 @@ class MarketRadarDashboardApp(App[int]):
         page_action = {
             "tutorial": "Follow the numbered rows. Press 1 when you are ready for insights.",
             "overview": (
-                "Select an insight row. Enter opens the exact candidate, alert, "
-                "blocker, or run plan."
+                "Select an insight row. Press M or click SCAN to switch between "
+                "Mismatches and Full Scan."
             ),
             "run": "Review call budget, then type run execute only if intended.",
             "candidates": "Click or focus a row and press Enter to open a candidate.",
@@ -1042,9 +1140,10 @@ class MarketRadarDashboardApp(App[int]):
                 [
                     "[bold #7ee787]TUTORIAL[/]  Do these in order. Nothing external runs here.",
                     "[bold]1.[/] Press 1 or click Insights to see what needs attention.",
-                    "[bold]2.[/] Press 2 to see blockers. Press 4 to inspect candidate research.",
+                    "[bold]2.[/] Press M in Insights to toggle full scan versus mismatches.",
                     (
-                        "[bold]3.[/] Press 3 only to review the run plan; "
+                        "[bold]3.[/] Press 2 for blockers, 4 for candidates, "
+                        "or 3 to review the run plan; "
                         "type run execute only by intent."
                     ),
                 ]
@@ -1052,11 +1151,19 @@ class MarketRadarDashboardApp(App[int]):
         if page == "overview":
             discovery = _mapping(self.payload.get("discovery_snapshot"))
             scan_yield = _mapping(discovery.get("yield"))
+            queue = _mapping(self.payload.get("priced_in_queue"))
+            status_filter = _priced_in_status_filter(queue)
+            mode = "Full Scan" if status_filter == "all" else "Mismatches"
+            mode_help = (
+                "showing the first ranked page from the entire scan"
+                if status_filter == "all"
+                else "showing only bullish/bearish not-priced-in rows"
+            )
             return "\n".join(
                 [
                     (
-                        "[bold #7ee787]FULL-SCAN QUEUE[/]  Market emotion versus price "
-                        "reaction, ranked for human review."
+                        f"[bold #7ee787]{mode.upper()}[/]  Market emotion versus price "
+                        f"reaction; {mode_help}."
                     ),
                     (
                         f"[bold]Coverage:[/] scanned "
@@ -1065,8 +1172,8 @@ class MarketRadarDashboardApp(App[int]):
                         f"securities; candidates {candidates.get('count') or 0}."
                     ),
                     (
-                        "[bold]Click or Enter on a row.[/] Candidate and alert rows "
-                        "open their detail view."
+                        "[bold]Switch view:[/] press M or click SCAN in the sidebar. "
+                        "Full Scan includes neutral and blocked rows."
                     ),
                     (
                         f"[bold]Current boundary:[/] {can_act}; "
@@ -1347,16 +1454,21 @@ class MarketRadarDashboardApp(App[int]):
             },
             {
                 "step": "3",
+                "do": "Press M or click SCAN",
+                "result": "Switch Insights between the short mismatch queue and full scan rows.",
+            },
+            {
+                "step": "4",
                 "do": "Press 4 or click Candidates",
                 "result": "Review companies. These are research rows, not trade signals.",
             },
             {
-                "step": "4",
+                "step": "5",
                 "do": "Press 3 or click Run",
                 "result": "Review external-call budget before running anything.",
             },
             {
-                "step": "5",
+                "step": "6",
                 "do": "Use the bottom command box",
                 "result": "Try ticker AAPL, refresh, help, or q. Esc focuses the box.",
             },
@@ -1420,6 +1532,13 @@ class MarketRadarDashboardApp(App[int]):
             {
                 "command": "tutorial / insights / start",
                 "meaning": "Open the walkthrough or the market insight queue.",
+            },
+            {
+                "command": "full / mismatches / scan all",
+                "meaning": (
+                    "Switch Insights between full universe rows and the smaller "
+                    "mismatch queue."
+                ),
             },
             {"command": "ticker <SYMBOL|all>", "meaning": "Filter ticker-aware pages."},
             {"command": "run execute", "meaning": "Start one guarded capped radar cycle."},
@@ -1524,6 +1643,29 @@ def _apply_command(
         return _CommandUpdate(page=page, filters=filters, exit_requested=True)
     if command in {"r", "refresh"}:
         return _CommandUpdate(page=page, filters=filters, message="Refreshed.")
+    if command in {"all", "full", "full-scan"}:
+        return _CommandUpdate(
+            page="overview",
+            filters=replace(filters, priced_in_status="all").normalized(),
+            message="Full Scan mode: showing the first ranked page from the whole universe.",
+        )
+    if command in {"m", "mismatch", "mismatches", "actionable"}:
+        return _CommandUpdate(
+            page="overview",
+            filters=replace(filters, priced_in_status="actionable").normalized(),
+            message="Mismatches mode: showing only bullish/bearish not-priced-in rows.",
+        )
+    if command == "scan":
+        scan_status = _normalize_priced_in_status(value)
+        return _CommandUpdate(
+            page="overview",
+            filters=replace(filters, priced_in_status=scan_status).normalized(),
+            message=(
+                "Full Scan mode: showing the first ranked page from the whole universe."
+                if scan_status == "all"
+                else f"Scan filter updated: {scan_status}."
+            ),
+        )
     if command in {"j", "json"}:
         return _CommandUpdate(
             page=page,
@@ -1920,16 +2062,21 @@ def _tutorial_lines(width: int) -> list[str]:
                 },
                 {
                     "step": "3",
+                    "do": "Press M / click SCAN",
+                    "result": "Toggle between mismatch shortlist and full scan rows.",
+                },
+                {
+                    "step": "4",
                     "do": "Press 4 / click Candidates",
                     "result": "Review company research rows.",
                 },
                 {
-                    "step": "4",
+                    "step": "5",
                     "do": "Press 3 / click Run",
                     "result": "Review the external-call plan before running anything.",
                 },
                 {
-                    "step": "5",
+                    "step": "6",
                     "do": "Use command box",
                     "result": "Try ticker AAPL, refresh, help, or q.",
                 },
@@ -1993,7 +2140,7 @@ def _market_insight_rows(payload: Mapping[str, object]) -> list[Mapping[str, obj
             preflight=preflight,
             candidate_count=scan_total,
             displayed_count=len(queue_rows),
-            actionable_count=int(_number_or_zero(priced_in_queue.get("total_count"))),
+            actionable_count=_priced_in_actionable_count(priced_in_queue),
         )
     )
 
@@ -2261,9 +2408,12 @@ def _overview_title(payload: Mapping[str, object]) -> str:
     total = int(_number_or_zero(queue.get("total_count")))
     returned = int(_number_or_zero(queue.get("returned_count") or queue.get("count")))
     scan_total = _priced_in_scan_total(queue)
-    status_filter = str(_mapping(queue.get("filters")).get("status") or "").lower()
+    status_filter = _priced_in_status_filter(queue)
     if status_filter == "actionable":
-        return f"Actionable mismatches - showing {returned} of {total}; scan {scan_total}"
+        return (
+            f"Mismatches from full scan - showing {returned} of {total}; "
+            f"scan {scan_total}"
+        )
     if total:
         return f"Full-market priced-in queue - showing {returned} of {total}"
     return "Full-market priced-in queue - select a row to act"
@@ -2274,27 +2424,28 @@ def _overview_caption(payload: Mapping[str, object]) -> str:
     total = int(_number_or_zero(queue.get("total_count")))
     returned = int(_number_or_zero(queue.get("returned_count") or queue.get("count")))
     scan_total = _priced_in_scan_total(queue)
-    status_filter = str(_mapping(queue.get("filters")).get("status") or "").lower()
+    status_filter = _priced_in_status_filter(queue)
     if status_filter == "actionable":
         if total:
             return (
                 f"This page shows {returned} bullish/bearish not-priced-in mismatch "
                 f"card(s) from {scan_total or 'the'} latest-scan row(s). "
-                "Use priced-in-queue --status all --limit/--offset or the API "
-                "offset parameter to inspect the full ranked queue. "
+                "Press M or click SCAN -> Full Scan to inspect neutral, blocked, "
+                "stale, and fully-priced rows. "
                 "Browsing makes 0 provider calls."
             )
         return (
             f"No actionable not-priced-in mismatch is currently ranked from "
-            f"{scan_total or 'the'} latest-scan row(s). Use priced-in-queue --status all "
-            "to inspect neutral, blocked, stale, and fully-priced rows. "
+            f"{scan_total or 'the'} latest-scan row(s). Press M or click "
+            "SCAN -> Full Scan to inspect neutral, blocked, stale, and fully-priced rows. "
             "Browsing makes 0 provider calls."
         )
     if total and returned < total:
         return (
-            f"This page shows {returned} visible ranked mismatch cards from {total} "
-            "latest-scan rows. Use priced-in-queue --limit/--offset or the API "
-            "offset parameter to page deeper. Browsing makes 0 provider calls."
+            f"This page shows {returned} visible rows from {total} latest-scan rows. "
+            "Press M or click SCAN -> Mismatches to return to the smaller action queue. "
+            "Use priced-in-queue --status all --limit/--offset or the API offset "
+            "parameter to page deeper. Browsing makes 0 provider calls."
         )
     return (
         "First row is scan coverage; candidate rows are priced-in mismatch cards. "
@@ -2313,6 +2464,22 @@ def _priced_in_scan_total(queue: Mapping[str, object]) -> int:
             )
         )
     )
+
+
+def _priced_in_status_filter(queue: Mapping[str, object]) -> str:
+    return _normalize_priced_in_status(_mapping(queue.get("filters")).get("status"))
+
+
+def _priced_in_actionable_count(queue: Mapping[str, object]) -> int:
+    counts = _mapping(queue.get("status_counts"))
+    total = int(_number_or_zero(counts.get("bullish_not_priced_in"))) + int(
+        _number_or_zero(counts.get("bearish_not_priced_in"))
+    )
+    if total:
+        return total
+    if _priced_in_status_filter(queue) == "actionable":
+        return int(_number_or_zero(queue.get("total_count")))
+    return 0
 
 
 def _readiness_lines(payload: Mapping[str, object], width: int) -> list[str]:

@@ -1,6 +1,85 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 12:44:00 +08:00
+Last updated: 2026-05-18 13:48:30 +08:00
+
+## Latest Full-Scan UI Correction
+
+The latest confusion was "why only these tickers?" The answer is now encoded in
+the dashboard itself:
+
+- the scan can be broad;
+- the default Insights page shows the smaller actionable mismatch queue;
+- `Full Scan` mode shows the first ranked page from the whole scanned universe.
+
+Current local state from fresh smoke:
+
+```powershell
+catalyst-radar dashboard-snapshot --scan-mode all --page overview --json
+```
+
+reported:
+
+- `controls.priced_in_status=all`
+- `priced_in_queue.total_count=12087`
+- `priced_in_queue.returned_count=50`
+- `priced_in_queue.scan.scanned_candidate_states=12087`
+- `priced_in_queue.status_counts.bullish_not_priced_in=7`
+
+The paired mismatch-mode smoke:
+
+```powershell
+catalyst-radar dashboard-snapshot --scan-mode mismatches --page overview --json
+```
+
+reported:
+
+- `controls.priced_in_status=actionable`
+- `priced_in_queue.total_count=7`
+- `priced_in_queue.returned_count=7`
+- `priced_in_queue.scan.scanned_candidate_states=12087`
+- `priced_in_queue.status_counts={"bullish_not_priced_in":7}`
+
+The TUI now has explicit `SCAN` sidebar controls:
+
+- `M  Mismatches only`: only bullish/bearish not-priced-in rows.
+- `ALL Full scan rows`: first ranked page of all scanned rows, including
+  neutral and blocked rows.
+
+Keyboard and command affordances:
+
+- Press `M` in the modern TUI to toggle Mismatches/Full Scan.
+- Type `full`, `all`, or `scan all` in the command box for full scan rows.
+- Type `mismatches`, `mismatch`, `actionable`, or `scan actionable` for the
+  short action queue.
+
+Non-interactive checks:
+
+```powershell
+catalyst-radar dashboard-tui --once --scan-mode all --page overview
+catalyst-radar dashboard-snapshot --scan-mode all --page overview --json
+```
+
+Important semantics:
+
+- A full scan does not mean "show 12k rows on the first screen." It means the
+  backing scan covered the broad local universe, and the UI can page/filter the
+  resulting ranked queue.
+- The actionable mismatch queue is intentionally small; it is the set of names
+  where market emotion appears ahead of price reaction.
+- The current real local full-scan page begins with the universe coverage row,
+  then A, MSFT, AAA, AAAU, AAPL, AA, AAAC, BRK.A, NVR, and ABLVW because those
+  are the top ranked rows after sorting, not because the scanner only looked at
+  those tickers.
+
+Verification run for this slice:
+
+```powershell
+python -m pytest tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_api_routes.py -q
+python -m ruff check src tests
+git diff --check
+```
+
+All three passed locally before commit.
 
 ## Latest Usefulness Verdict
 
