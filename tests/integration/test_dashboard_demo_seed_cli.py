@@ -231,12 +231,12 @@ def test_dashboard_snapshot_cli_outputs_human_readable_zero_call_summary(
         "DB:",
         "Ticker: ACME",
         "Full-market priced-in queue - showing",
-        "UNIVERSE",
+        "#",
         "ACME",
         "Bullish not priced",
         "emotion",
         "reaction",
-        "candidate rows are priced-in mismatch cards",
+        "ticker rows are the current priced-in scan page",
         "External calls made: 0",
     ):
         assert expected in output.out
@@ -273,7 +273,7 @@ def test_dashboard_snapshot_ops_page_shows_priced_in_source_actions(
     assert output.err == ""
     assert "Priced-in Source Gaps" in output.out
     assert "options" in output.out
-    assert "schwab-market-sync" in output.out
+    assert "priced-in-source-batches" in output.out
     assert "ACME" in output.out
 
 
@@ -293,8 +293,8 @@ def test_dashboard_tui_once_can_show_full_scan_mode(
 
     assert output.err == ""
     assert "Full-market priced-in queue - showing" in output.out
-    assert "Evidence gaps" in output.out
-    assert "First row is scan coverage" in output.out
+    assert "Data gaps" in output.out
+    assert "ticker rows are the current priced-in scan page" in output.out
 
     assert (
         main(
@@ -787,9 +787,9 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert "INSIGHTS" in frame
             assert "Full-market priced-in queue - showing" in frame
-            assert "UNIVERSE" in frame
             assert "ACME" in frame
             assert "Bullish not priced" in frame
+            assert "Data gaps" in frame
             assert "showing the first ranked page from the entire scan" in frame
             assert "M  Mismatches only" in frame
             assert "ALL Full scan rows" in frame
@@ -821,22 +821,21 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert "Full-market priced-in queue - showing" in frame
 
             app.query_one("#data-table").focus()
-            await pilot.press("down")
             await pilot.press("enter")
             await pilot.pause()
-            assert app.page == "ops"
+            assert app.page == "candidate:ACME"
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            assert "Opened full-scan row 1 for ACME" in frame
 
             await pilot.press("1")
             await pilot.pause()
             assert app.page == "overview"
             app.query_one("#data-table").focus()
-            await pilot.press("down")
-            await pilot.press("down")
             await pilot.press("enter")
             await pilot.pause()
             assert app.page == "candidate:ACME"
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
-            assert "Opened insight for ACME" in frame
+            assert "Opened full-scan row 1 for ACME" in frame
             assert ">> 4  Candidates [1]" in frame
 
             assert await pilot.click("#nav-alerts")

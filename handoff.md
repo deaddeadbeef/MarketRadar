@@ -1,6 +1,72 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 19:46:27 +08:00
+Last updated: 2026-05-18 20:08:33 +08:00
+
+## Latest Full-Scan Insights Table
+
+The user asked again: "Why only these tickers? I want full scan."
+
+Live verification showed the backend is already scanning the full latest ranked
+universe:
+
+```text
+priced_in_queue status=ready count=5 total=12087 offset=0 external_calls=0
+scan_scope=scanned=12087 requested=12104 filter=all ranked_after_filter=12087 visible_page=5
+headline=Latest full scan ranked 12087 priced-in row(s); showing 1-5 of 12087.
+```
+
+And the automation/export path returns every ranked row:
+
+```text
+12087 12087 False all 1000000 0
+```
+
+The remaining problem was dashboard UX. The Insights table mixed full-scan
+ticker rows with summary rows like `UNIVERSE`, `DATA`, alerts, readiness, and
+run-plan shortcuts. That made the first visible ticker page feel like a small
+watchlist even though it was only page 1 of the full scan.
+
+Changes in this slice:
+
+- The Insights page now renders a dedicated ranked scan table only:
+
+  ```text
+  # | Ticker | Signal | Gap | Data gaps | Why now | Next action
+  ```
+
+- The overview caption now says the ticker table is paged for human review, not
+  reduced to a watchlist.
+- The caption also names the full export command:
+
+  ```powershell
+  catalyst-radar priced-in-queue --full-scan --all --json
+  ```
+
+- Opening a row from Insights now opens that full-scan ticker row directly,
+  with a response like:
+
+  ```text
+  Opened full-scan row 1 for ACME. Review evidence before any action.
+  ```
+
+Live zero-provider-call verification:
+
+```powershell
+.\.venv\Scripts\catalyst-radar.exe dashboard-tui --once --page overview --scan-limit 5
+.\.venv\Scripts\catalyst-radar.exe priced-in-queue --status all --limit 5
+.\.venv\Scripts\catalyst-radar.exe priced-in-queue --full-scan --all --json |
+  .\.venv\Scripts\python.exe -c "import json,sys; p=json.load(sys.stdin); print(p['count'], p['total_count'], p['has_more'], p['filters']['status'], p['filters']['limit'], p['external_calls_made'])"
+```
+
+Validation for this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+```
+
+All passed.
 
 ## Latest Preflight Remediation Command Priority
 
