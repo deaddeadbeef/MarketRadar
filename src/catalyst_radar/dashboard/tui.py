@@ -278,8 +278,10 @@ def dashboard_snapshot_payload(
         limit=50,
         status="actionable",
     )
-    priced_in_source_coverage = dashboard_data.priced_in_source_coverage_summary(
-        candidate_rows
+    priced_in_source_coverage = (
+        priced_in_queue.get("source_coverage")
+        if isinstance(priced_in_queue.get("source_coverage"), Mapping)
+        else dashboard_data.priced_in_source_coverage_summary(candidate_rows)
     )
     operator_next_step = dashboard_data.operator_next_step_payload(operator_work_queue)
     telemetry = dashboard_data.telemetry_tape_payload(
@@ -2175,6 +2177,11 @@ def _full_scan_coverage_row(
 
 
 def _source_coverage_next_action(source_coverage: Mapping[str, object]) -> str:
+    for action in _rows(source_coverage.get("actions")):
+        if str(action.get("status") or "") not in {"ready", "not_applicable"}:
+            next_action = str(action.get("next_action") or "").strip()
+            if next_action:
+                return next_action
     raw_sources = source_coverage.get("weak_sources")
     weak_sources = [
         str(item)
@@ -2796,6 +2803,28 @@ def _ops_lines(payload: Mapping[str, object], width: int) -> list[str]:
             width=width,
         )
     )
+    source_actions = [
+        action
+        for action in _rows(_mapping(payload.get("priced_in_source_coverage")).get("actions"))
+        if str(action.get("status") or "") not in {"ready", "not_applicable"}
+    ]
+    if source_actions:
+        lines.append("")
+        lines.append(_rule("Priced-in Source Gaps", width))
+        lines.extend(
+            _table_lines(
+                source_actions,
+                [
+                    ("source", "Source", 18),
+                    ("status", "Status", 12),
+                    ("coverage_pct", "Coverage", 10),
+                    ("next_action", "Next Action", 58),
+                    ("command", "Command", 54),
+                ],
+                width=width,
+                limit=8,
+            )
+        )
     lines.append("")
     lines.extend(
         _table_lines(
