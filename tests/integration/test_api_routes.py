@@ -1469,6 +1469,61 @@ def test_get_radar_priced_in_source_batches_returns_zero_call_plan(
     assert captured["min_gap"] == 12.0
 
 
+def test_get_radar_priced_in_source_batches_can_return_all_source_overview(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "radar-priced-in-source-overview.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+    captured: dict[str, object] = {}
+
+    def fake_overview_payload(_engine, _config, **kwargs) -> dict[str, object]:
+        captured.update(kwargs)
+        return {
+            "schema_version": "priced-in-source-batch-overview-v1",
+            "status": "ready",
+            "external_calls_made": 0,
+            "source_count": 2,
+            "sources": [
+                {
+                    "source": "options",
+                    "status": "ready",
+                    "execute_next_command": (
+                        "catalyst-radar priced-in-source-batches "
+                        "--source options --execute-next"
+                    ),
+                }
+            ],
+        }
+
+    monkeypatch.setattr(
+        dashboard_data,
+        "priced_in_all_source_gap_batches_payload",
+        fake_overview_payload,
+        raising=False,
+    )
+    client = TestClient(create_app())
+
+    response = client.get(
+        "/api/radar/priced-in/source-batches?source=all&batch_size=5"
+        "&available_at=2026-05-18T16:00:00%2B00:00&status=all"
+        "&usefulness=decision_useful&decision_gap=options&min_gap=12"
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["schema_version"] == "priced-in-source-batch-overview-v1"
+    assert payload["external_calls_made"] == 0
+    assert payload["sources"][0]["source"] == "options"
+    assert captured["batch_size"] == 5
+    assert captured["available_at"].isoformat() == "2026-05-18T16:00:00+00:00"
+    assert captured["status"] == "all"
+    assert captured["usefulness"] == "decision_useful"
+    assert captured["decision_gap"] == "options"
+    assert captured["min_gap"] == 12.0
+
+
 def test_post_radar_priced_in_source_batch_execute_next_runs_one_chunk(
     tmp_path,
     monkeypatch,

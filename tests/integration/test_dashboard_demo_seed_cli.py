@@ -331,6 +331,26 @@ def test_dashboard_batch_command_opens_full_scan_source_batch_plan(
         "--source options --all --json"
     ) in update.message
 
+    overview = _apply_command(
+        "batch all",
+        {},
+        "overview",
+        DashboardFilters(),
+        engine=create_engine(database_url, future=True),
+        config=AppConfig.from_env(),
+    )
+
+    assert overview.page == "ops"
+    assert "plan-only and makes no provider calls" in overview.message
+    assert "options=ready" in overview.message
+    assert (
+        "First executable: catalyst-radar priced-in-source-batches "
+        "--source local_text --execute-next"
+    ) in overview.message or (
+        "First executable: catalyst-radar priced-in-source-batches "
+        "--source options --execute-next"
+    ) in overview.message
+
 
 def test_dashboard_batch_execute_runs_one_guarded_local_chunk(
     tmp_path: Path,
@@ -820,6 +840,37 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
     assert all_batch_payload["all_batches"] is True
     assert all_batch_payload["count"] == all_batch_payload["batch_count"]
     assert all_batch_payload["next_batch_command"] is None
+
+    assert (
+        main(
+            [
+                "priced-in-source-batches",
+                "--source",
+                "all",
+                "--limit",
+                "1",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    output = capsys.readouterr()
+    overview = json.loads(output.out)
+
+    assert output.err == ""
+    assert overview["schema_version"] == "priced-in-source-batch-overview-v1"
+    assert overview["external_calls_made"] == 0
+    source_rows = {row["source"]: row for row in overview["sources"]}
+    assert source_rows["options"]["execute_next_command"] == (
+        "catalyst-radar priced-in-source-batches --source options --execute-next"
+    )
+    assert source_rows["options"]["first_batch"]["tickers"] == ["ACME"]
+
+    assert (
+        main(["priced-in-source-batches", "--source", "all", "--execute-next"]) == 2
+    )
+    output = capsys.readouterr()
+    assert "source all is plan-only" in output.err
 
 
 def test_priced_in_source_batches_execute_next_cli_runs_one_batch(

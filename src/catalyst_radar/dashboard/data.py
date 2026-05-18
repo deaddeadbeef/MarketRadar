@@ -951,6 +951,171 @@ def priced_in_source_gap_batches_payload(
     }
 
 
+def priced_in_all_source_gap_batches_payload(
+    engine: Engine,
+    config: AppConfig,
+    *,
+    batch_size: int | None = None,
+    available_at: datetime | None = None,
+    status: str | None = None,
+    usefulness: str | None = None,
+    decision_gap: str | Sequence[str] | None = None,
+    min_gap: float | None = None,
+) -> dict[str, object]:
+    rows: list[dict[str, object]] = []
+    for source in PRICED_IN_SOURCE_CLASSES:
+        plan = priced_in_source_gap_batches_payload(
+            engine,
+            config,
+            source=source,
+            batch_limit=1,
+            batch_size=batch_size,
+            available_at=available_at,
+            status=status,
+            usefulness=usefulness,
+            decision_gap=decision_gap,
+            min_gap=min_gap,
+        )
+        rows.append(_priced_in_all_source_batch_row(plan))
+    total_gap_rows = sum(int(_finite_float(row.get("total_gap_rows"))) for row in rows)
+    ready_rows = [row for row in rows if str(row.get("status") or "") == "ready"]
+    blocked_rows = [
+        row
+        for row in rows
+        if int(_finite_float(row.get("total_gap_rows"))) > 0
+        and str(row.get("status") or "") != "ready"
+    ]
+    status_value = (
+        "ready"
+        if ready_rows
+        else "blocked"
+        if blocked_rows
+        else "complete"
+    )
+    return {
+        "schema_version": "priced-in-source-batch-overview-v1",
+        "status": status_value,
+        "headline": _priced_in_all_source_batches_headline(
+            source_count=len(rows),
+            ready_count=len(ready_rows),
+            blocked_count=len(blocked_rows),
+            total_gap_rows=total_gap_rows,
+        ),
+        "next_action": _priced_in_all_source_batches_next_action(
+            status=status_value,
+            ready_rows=ready_rows,
+            blocked_rows=blocked_rows,
+        ),
+        "external_calls_made": 0,
+        "execution_boundary": (
+            "Plan only. This overview makes no provider calls and never executes "
+            "every source. Pick one source and run its execute_next_command when "
+            "the call budget matches your intent."
+        ),
+        "source_count": len(rows),
+        "ready_source_count": len(ready_rows),
+        "blocked_source_count": len(blocked_rows),
+        "total_gap_rows": total_gap_rows,
+        "sources": rows,
+    }
+
+
+def _priced_in_all_source_batch_row(plan: Mapping[str, object]) -> dict[str, object]:
+    source = str(plan.get("source") or "").strip()
+    batches = _sequence_value(plan.get("batches"))
+    first_batch = next((batch for batch in batches if isinstance(batch, Mapping)), None)
+    first_batch_payload = _priced_in_first_source_batch_payload(first_batch)
+    status = str(plan.get("status") or "unknown")
+    executable = status == "ready" and first_batch is not None
+    return {
+        "source": source,
+        "status": status,
+        "headline": plan.get("headline"),
+        "next_action": plan.get("next_action"),
+        "total_gap_rows": int(_finite_float(plan.get("total_gap_rows"))),
+        "plannable_gap_rows": int(_finite_float(plan.get("plannable_gap_rows"))),
+        "unplannable_gap_rows": int(_finite_float(plan.get("unplannable_gap_rows"))),
+        "batch_count": int(_finite_float(plan.get("batch_count"))),
+        "batch_size": int(_finite_float(plan.get("batch_size"))),
+        "first_batch": first_batch_payload,
+        "all_batches_command": plan.get("all_batches_command"),
+        "all_batches_api": plan.get("all_batches_api"),
+        "review_rows_command": plan.get("review_rows_command"),
+        "export_rows_command": plan.get("export_rows_command"),
+        "execute_next_command": (
+            f"catalyst-radar priced-in-source-batches --source {source} --execute-next"
+            if executable
+            else None
+        ),
+        "execute_next_api": (
+            "POST /api/radar/priced-in/source-batches/execute-next"
+            if executable
+            else None
+        ),
+        "diagnostic": _row_dict(_mapping_value(plan, "diagnostic")),
+    }
+
+
+def _priced_in_first_source_batch_payload(
+    batch: Mapping[str, object] | None,
+) -> dict[str, object] | None:
+    if batch is None:
+        return None
+    return {
+        "number": batch.get("number"),
+        "row_start": batch.get("row_start"),
+        "row_end": batch.get("row_end"),
+        "tickers": list(_sequence_value(batch.get("tickers"))),
+        "external_calls_required": int(
+            _finite_float(batch.get("external_calls_required"))
+        ),
+        "external_call_breakdown": _row_dict(
+            _mapping_value(batch, "external_call_breakdown")
+        ),
+        "call_plan_status": batch.get("call_plan_status"),
+        "call_plan_headline": batch.get("call_plan_headline"),
+        "call_plan_next_action": batch.get("call_plan_next_action"),
+        "command": batch.get("command"),
+        "api": batch.get("api"),
+        "api_payload": _row_dict(_mapping_value(batch, "api_payload")),
+    }
+
+
+def _priced_in_all_source_batches_headline(
+    *,
+    source_count: int,
+    ready_count: int,
+    blocked_count: int,
+    total_gap_rows: int,
+) -> str:
+    if total_gap_rows <= 0:
+        return f"All {source_count} priced-in source classes are covered."
+    return (
+        f"{total_gap_rows} source gap row(s) remain across {source_count} "
+        f"source class(es); {ready_count} source(s) have a runnable next chunk "
+        f"and {blocked_count} source(s) are blocked."
+    )
+
+
+def _priced_in_all_source_batches_next_action(
+    *,
+    status: str,
+    ready_rows: Sequence[Mapping[str, object]],
+    blocked_rows: Sequence[Mapping[str, object]],
+) -> str:
+    if status == "complete":
+        return "No source batch action is needed."
+    if ready_rows:
+        first = ready_rows[0]
+        source = str(first.get("source") or "source")
+        return (
+            f"Start with {source}; inspect all_batches_command, then run "
+            "execute_next_command only if the provider budget is intentional."
+        )
+    first_blocked = blocked_rows[0] if blocked_rows else {}
+    return str(first_blocked.get("next_action") or "Resolve blocked source gaps first.")
+
+
 def priced_in_answer_payload(
     engine: Engine,
     config: AppConfig,

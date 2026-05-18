@@ -116,12 +116,18 @@ the broader ranked universe.
 The scriptable equivalent is:
 
 ```powershell
+catalyst-radar priced-in-source-batches --source all
 catalyst-radar priced-in-source-batches --source catalyst_events
 catalyst-radar priced-in-source-batches --source catalyst_events --execute-next
 ```
 
-The first command plans and makes 0 provider calls. The second command executes
-only the next planned chunk. The API equivalent is
+`--source all` gives a plan-only overview across market bars, catalyst events,
+local text, options, theme/peer context, and broker context. It makes 0
+provider calls and cannot be combined with `--execute-next`; choose one source
+before executing a chunk. The per-source planning command also makes 0 provider
+calls. The `--execute-next` command executes only the next planned chunk. The
+API equivalents are
+`GET /api/radar/priced-in/source-batches?source=all` and
 `POST /api/radar/priced-in/source-batches/execute-next`.
 
 Before any live provider call, run the activation checker and inspect the
@@ -226,7 +232,10 @@ one capped scheduler cycle after the call plan is visible.
 From the ops/source-gap view, `batch <source>` remains plan-only and zero-call;
 `batch <source> execute` is the explicit live/local action for one source-fill
 chunk. Use it repeatedly with refreshes when you intentionally want to fill the
-full scan under provider caps. CLI/API automation can use
+full scan under provider caps. Use `batch all` to see a zero-call overview of
+all source gaps and the first executable source before choosing one. CLI/API
+automation can use
+`priced-in-source-batches --source all`,
 `priced-in-source-batches --source <source> --execute-next` or
 `POST /api/radar/priced-in/source-batches/execute-next` for the same one-chunk
 operation.

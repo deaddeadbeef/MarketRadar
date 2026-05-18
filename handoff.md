@@ -1,6 +1,67 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 04:06:00 +08:00
+Last updated: 2026-05-19 03:58:05 +08:00
+
+## Latest All-Source Batch Overview
+
+The full-scan queue is now broad enough to answer the current priced-in question,
+but source coverage still shows large gaps:
+
+- `catalyst_events`: 2,425 / 2,429 missing.
+- `local_text`: 2,425 / 2,429 missing, blocked until event text exists.
+- `options`: 2,429 / 2,429 missing.
+- `broker_context`: 2,425 / 2,429 missing.
+
+The operator previously had to inspect one source at a time. This slice adds a
+plan-only overview across all priced-in source classes:
+
+```powershell
+catalyst-radar priced-in-source-batches --source all
+catalyst-radar priced-in-source-batches --source all --json
+```
+
+API and TUI parity:
+
+```text
+GET /api/radar/priced-in/source-batches?source=all
+batch all
+```
+
+Safety boundary:
+
+- `--source all` makes 0 provider calls.
+- `batch all` makes 0 provider calls.
+- `--source all --execute-next` is rejected; the operator must choose exactly
+  one source before execution.
+- Bulk all-source execution was intentionally not added.
+
+Live zero-provider-call smoke after this slice:
+
+```text
+priced_in_source_batch_overview status=ready sources=6 ready_sources=3 blocked_sources=1 gap_rows=9704 external_calls=0
+headline=9704 source gap row(s) remain across 6 source class(es); 3 source(s) have a runnable next chunk and 1 source(s) are blocked.
+next_action=Start with catalyst_events; inspect all_batches_command, then run execute_next_command only if the provider budget is intentional.
+boundary=Plan only. This overview makes no provider calls and never executes every source. Pick one source and run its execute_next_command when the call budget matches your intent.
+catalyst_events ready 2425 2425 485 5 catalyst-radar priced-in-source-batches --source catalyst_events --execute-next
+local_text blocked 2425 0 0 0 n/a
+options ready 2429 2429 486 1 catalyst-radar priced-in-source-batches --source options --execute-next
+broker_context ready 2425 2425 485 1 catalyst-radar priced-in-source-batches --source broker_context --execute-next
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_all_source_gap_batches_payload_summarizes_next_chunks tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_batch_command_opens_full_scan_source_batch_plan tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_queue_cli_outputs_same_zero_call_signal tests\integration\test_api_routes.py::test_get_radar_priced_in_source_batches_can_return_all_source_overview -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py src\catalyst_radar\api\routes\radar.py src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_api_routes.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source all --limit 1
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source all --limit 1 --json
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source all --execute-next
+```
+
+Observed: focused pytest passed, ruff passed, `git diff --check` passed, live
+CLI overview reported 6 source classes with 3 runnable next chunks, and the
+bulk execute attempt was rejected as plan-only.
 
 ## Latest Named-Universe Full-Scan Answer Correction
 
