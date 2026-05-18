@@ -1,6 +1,49 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 15:59:29 +08:00
+Last updated: 2026-05-18 16:06:59 +08:00
+
+## Latest Decision Artifact Command Hints
+
+The priced-in queue now turns missing decision artifacts into executable CLI
+next steps. This matters because the current research-useful queue has
+actionable signal evidence, but not every row has the Candidate Packet or
+Decision Card needed for a human decision review.
+
+Current local smoke for rows missing Candidate Packets:
+
+```powershell
+catalyst-radar priced-in-queue --usefulness research_useful --decision-gap candidate_packet --limit 4
+```
+
+prints rows such as:
+
+```text
+MSFT ... Build a Candidate Packet before Decision Card review. command=catalyst-radar build-packets --as-of 2026-05-15 --ticker MSFT --min-state AddToWatchlist
+```
+
+Current local smoke for rows missing Decision Cards:
+
+```powershell
+catalyst-radar priced-in-queue --usefulness research_useful --decision-gap decision_card --limit 4
+```
+
+prints:
+
+```text
+A ... Build or refresh the Decision Card before decision review. command=catalyst-radar build-decision-cards --as-of 2026-05-15 --ticker A --min-state AddToWatchlist
+```
+
+`build-decision-cards` now accepts `--min-state`, defaulting to `Warning` for
+the old behavior. Use `--min-state AddToWatchlist` only when intentionally
+building decision artifacts for research-useful watchlist rows.
+
+Verification for this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_candidate_packets_cli.py tests\integration\test_dashboard_data.py::test_priced_in_queue_payload_filters_decision_gaps tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_queue_cli_outputs_same_zero_call_signal -q
+.\.venv\Scripts\python.exe -m ruff check src tests
+git diff --check
+```
 
 ## Latest Schwab Options Evidence Bridge
 
