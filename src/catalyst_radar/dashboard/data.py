@@ -1118,8 +1118,15 @@ def _priced_in_answer_decision_readiness(
         for action in _sequence_value(source_coverage.get("actions"))
         if isinstance(action, Mapping)
     }
+    sample_tickers_by_gap = _mapping_value(decision_gap_counts, "sample_tickers")
     top_gaps = [
-        _priced_in_decision_gap_row(gap, count, actions=actions, scan_as_of=scan_as_of)
+        _priced_in_decision_gap_row(
+            gap,
+            count,
+            actions=actions,
+            scan_as_of=scan_as_of,
+            sample_tickers=_sequence_value(sample_tickers_by_gap.get(gap)),
+        )
         for gap, count in sorted(
             count_values.items(),
             key=lambda item: (
@@ -1169,9 +1176,15 @@ def _priced_in_decision_gap_row(
     *,
     actions: Mapping[str, Mapping[str, object]],
     scan_as_of: str = "",
+    sample_tickers: Sequence[object] = (),
 ) -> dict[str, object]:
     gap_name = str(gap or "").strip()
     count_value = int(_finite_float(count))
+    tickers = [
+        str(ticker).strip().upper()
+        for ticker in sample_tickers
+        if str(ticker).strip()
+    ][:PRICED_IN_SOURCE_ACTION_TICKER_LIMIT]
     action = actions.get(gap_name, {})
     next_action = str(action.get("next_action") or "").strip()
     command = str(
@@ -1186,6 +1199,7 @@ def _priced_in_decision_gap_row(
             "build-packets",
             scan_as_of=scan_as_of,
             fallback_gap="candidate_packet",
+            tickers=tickers,
         )
     elif gap_name == "decision_card":
         next_action = "Build Decision Cards after candidate packets exist."
@@ -1193,12 +1207,14 @@ def _priced_in_decision_gap_row(
             "build-decision-cards",
             scan_as_of=scan_as_of,
             fallback_gap="decision_card",
+            tickers=tickers,
         )
     elif not next_action:
         next_action = "Review this decision gap before trusting not-priced-in output."
     return {
         "gap": gap_name,
         "count": count_value,
+        "sample_tickers": tickers,
         "next_action": next_action,
         "command": command or None,
     }
@@ -1209,10 +1225,17 @@ def _priced_in_local_artifact_command(
     *,
     scan_as_of: str,
     fallback_gap: str,
+    tickers: Sequence[str] = (),
 ) -> str:
     if scan_as_of:
+        ticker_args = " ".join(
+            f"--ticker {ticker}"
+            for ticker in tickers[:PRICED_IN_SOURCE_ACTION_TICKER_LIMIT]
+            if ticker
+        )
+        ticker_piece = f" {ticker_args}" if ticker_args else ""
         return (
-            f"catalyst-radar {command} --as-of {scan_as_of} "
+            f"catalyst-radar {command} --as-of {scan_as_of}{ticker_piece} "
             "--min-state AddToWatchlist"
         )
     return (
@@ -7471,17 +7494,25 @@ def _priced_in_decision_gap_counts(
         in PRICED_IN_ACTIONABLE_STATUSES
     ]
     counts: Counter[str] = Counter()
+    sample_tickers: dict[str, list[str]] = defaultdict(list)
     for row in actionable_rows:
+        ticker = str(row.get("ticker") or "").strip().upper()
         usefulness = _mapping_value(row, "usefulness")
         for gap in _sequence_value(usefulness.get("missing_for_decision")):
             gap_name = str(gap or "").strip()
             if gap_name:
                 counts[gap_name] += 1
+                _append_priced_in_action_ticker(sample_tickers[gap_name], ticker)
     return {
         "schema_version": "priced-in-decision-gap-counts-v1",
         "scope": "actionable_mismatch_rows",
         "row_count": len(actionable_rows),
         "counts": dict(sorted(counts.items())),
+        "sample_tickers": {
+            gap: tickers
+            for gap, tickers in sorted(sample_tickers.items())
+            if tickers
+        },
         "top_gaps": [
             {"gap": gap, "count": count}
             for gap, count in sorted(

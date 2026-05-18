@@ -81,6 +81,18 @@ The candidate-packet and decision-card recommendations now use executable local
 artifact commands when the scan date is known. They fall back to the filtered
 queue command only if no scan date is available.
 
+### Exact Local Artifact Batches
+
+Follow-up: `build-packets` and `build-decision-cards` now accept repeated
+`--ticker` arguments, so decision-readiness recommendations can target the
+actual missing local artifact rows instead of rebuilding the whole scan date.
+
+Live smoke now prints:
+
+```text
+recommended_gap=candidate_packet count=5 command=catalyst-radar build-packets --as-of 2026-05-15 --ticker A --ticker MSFT --ticker AAAU --ticker AAPL --ticker AA --min-state AddToWatchlist
+```
+
 ## Latest Full-Scan Scope UX
 
 The live backend is scanning the broad local universe. A zero-provider-call
