@@ -1,6 +1,41 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 23:28:01 +08:00
+Last updated: 2026-05-18 23:37:59 +08:00
+
+## Latest Priced-In Answer Decision Flag
+
+The live `priced-in-answer` payload had `can_make_investment_decision`, while
+the agent snapshot and dashboard language used `decision_ready`. That made the
+same concept appear under different names across CLI/API/dashboard/agents.
+
+Changes in this slice:
+
+- `priced_in_answer_payload()` now emits both:
+
+  ```text
+  decision_ready
+  can_make_investment_decision
+  ```
+
+- Both fields are driven by the same `decision_ready_count > 0` value.
+- This keeps backward compatibility while giving agents and dashboards a stable
+  direct readiness flag.
+
+Live zero-provider-call smoke:
+
+```text
+priced-in-answer-v1 research_only decision_ready=False can_make_investment_decision=False external_calls_made=0
+```
+
+Validation for this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_answer_payload_summarizes_current_scan tests\integration\test_api_routes.py::test_get_radar_priced_in_answer_returns_current_scan_answer tests\unit\test_agent_sdk_orchestrator.py::test_redacted_operator_snapshot_allowlists_dashboard_fields -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py tests\integration\test_dashboard_data.py tests\integration\test_api_routes.py
+git diff --check
+```
+
+Observed: focused pytest passed, ruff passed, `git diff --check` passed.
 
 ## Latest TUI Agent Brief Page
 

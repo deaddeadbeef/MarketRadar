@@ -1424,6 +1424,7 @@ def test_priced_in_answer_payload_summarizes_current_scan(tmp_path: Path) -> Non
     assert payload["external_calls_made"] == 0
     assert payload["question"] == "Has price fully matched market expectations?"
     assert payload["status"] in {"blocked", "research_only", "none_visible"}
+    assert payload["decision_ready"] is False
     assert payload["can_make_investment_decision"] is False
     assert payload["counts"]["total_rows"] == 2
     assert payload["counts"]["visible_rows"] == 2
