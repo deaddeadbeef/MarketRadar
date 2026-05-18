@@ -181,6 +181,7 @@ CATALYST_DAILY_MARKET_PROVIDER=polygon
 CATALYST_DAILY_PROVIDER=polygon
 CATALYST_POLYGON_API_KEY=<your Polygon API key>
 CATALYST_POLYGON_TICKERS_MAX_PAGES=1
+CATALYST_POLYGON_TICKER_PAGE_DELAY_SECONDS=0
 CATALYST_RADAR_RUN_MIN_INTERVAL_SECONDS=300
 ```
 
@@ -190,6 +191,9 @@ request for the selected `as_of` date. Seed/refresh Polygon ticker reference dat
 separately with `ingest-polygon tickers` when the securities master is empty or
 stale. Ticker-reference pagination is capped by `CATALYST_POLYGON_TICKERS_MAX_PAGES`
 or `ingest-polygon tickers --max-pages`; start with `1` and raise it deliberately.
+For rate-limited plans, set `CATALYST_POLYGON_TICKER_PAGE_DELAY_SECONDS` before
+a multi-page seed so each ticker-reference page is paced instead of requested
+back-to-back.
 
 The dashboard **Seed Universe** control runs the same capped Polygon ticker-reference
 ingest path from the API. It is disabled until `CATALYST_POLYGON_API_KEY` is set.

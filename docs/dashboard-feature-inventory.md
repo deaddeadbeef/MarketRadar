@@ -62,9 +62,11 @@ zero-call checklist for seeding tickers, ingesting bars, building the universe,
 reviewing the call plan, running the scan, and reviewing the queue. In
 Polygon/Massive mode that checklist includes the configured ticker-reference
 page cap and, when latest grouped-daily bars are available, the estimated page
-count needed to seed a comparable ticker universe. These live-provider actions
-stay behind existing explicit guarded commands or API routes because they can
-call external services and require credentials:
+count needed to seed a comparable ticker universe. The checklist also surfaces
+`CATALYST_POLYGON_TICKER_PAGE_DELAY_SECONDS`, which paces paginated ticker
+reference requests for rate-limited plans. These live-provider actions stay
+behind existing explicit guarded commands or API routes because they can call
+external services and require credentials:
 
 - Trigger optional universe seeding only when Polygon is configured.
 - Refresh Schwab market context for a selected candidate.

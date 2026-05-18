@@ -592,6 +592,7 @@ def priced_in_preflight_payload(
         "provider": {
             "market_provider": _provider_name(config.daily_market_provider, default="csv"),
             "ticker_seed_cap_pages": max(1, int(config.polygon_tickers_max_pages)),
+            "ticker_page_delay_seconds": config.polygon_ticker_page_delay_seconds,
             **bar_universe,
         },
         "commands": commands,
@@ -5125,6 +5126,7 @@ def _priced_in_preflight_rows(
     missing_bars = int(_finite_float(freshness.get("missing_as_of_daily_bar_count")))
     provider = _provider_name(config.daily_market_provider, default="csv")
     ticker_page_cap = max(1, int(config.polygon_tickers_max_pages))
+    ticker_page_delay = config.polygon_ticker_page_delay_seconds
     estimated_pages = _estimated_ticker_seed_pages(bar_universe)
     latest_bar_ticker_count = int(
         _finite_float(bar_universe.get("latest_daily_bar_ticker_count"))
@@ -5145,6 +5147,11 @@ def _priced_in_preflight_rows(
                     "Set CATALYST_POLYGON_TICKERS_MAX_PAGES to at least "
                     f"{estimated_pages}, then seed tickers."
                 )
+                if estimated_pages > 5 and ticker_page_delay <= 0:
+                    seed_action = (
+                        f"{seed_action} Set CATALYST_POLYGON_TICKER_PAGE_DELAY_SECONDS "
+                        "if your plan is rate-limited."
+                    )
             else:
                 cap_note = f"; Polygon/Massive ticker seed cap is {ticker_page_cap} page(s)"
                 if ticker_page_cap <= 1:

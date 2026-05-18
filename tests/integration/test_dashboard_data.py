@@ -1422,6 +1422,7 @@ def test_priced_in_preflight_payload_reports_exact_next_steps(tmp_path: Path) ->
     assert payload["external_calls_made"] == 0
     assert payload["status"] in {"blocked", "attention", "ready"}
     assert payload["provider"]["ticker_seed_cap_pages"] == 1
+    assert payload["provider"]["ticker_page_delay_seconds"] == 0.0
     assert payload["provider"]["latest_daily_bar_ticker_count"] >= 1001
     assert payload["provider"]["estimated_ticker_seed_pages"] == 2
     assert payload["commands"]["ingest_tickers"].endswith("--max-pages 2")

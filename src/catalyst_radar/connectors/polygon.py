@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime, time, timedelta
 from enum import StrEnum
 from hashlib import sha256
+from time import sleep
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
@@ -44,7 +45,11 @@ class PolygonMarketDataConnector:
         availability_policy: str = "live_fetch",
         license_tag: str = POLYGON_LICENSE_TAG,
         retention_policy: str = POLYGON_RETENTION_POLICY,
+        ticker_page_delay_seconds: float = 0.0,
+        sleeper: Callable[[float], None] = sleep,
     ) -> None:
+        if ticker_page_delay_seconds < 0:
+            raise ValueError("ticker_page_delay_seconds must be greater than or equal to zero")
         self.api_key = _secret_value(api_key)
         self.client = client
         self.base_url = base_url.rstrip("/")
@@ -52,6 +57,8 @@ class PolygonMarketDataConnector:
         self.availability_policy = availability_policy
         self.license_tag = license_tag
         self.retention_policy = retention_policy
+        self.ticker_page_delay_seconds = ticker_page_delay_seconds
+        self.sleeper = sleeper
         self._rejected_payloads: list[RejectedPayload] = []
 
     @property
@@ -290,6 +297,8 @@ class PolygonMarketDataConnector:
             if max_pages is not None and page_count >= max_pages:
                 break
             next_url = page_payload.get("next_url")
+            if next_url and self.ticker_page_delay_seconds > 0:
+                self.sleeper(self.ticker_page_delay_seconds)
             url = self._next_url(str(next_url)) if next_url else ""
         return records
 

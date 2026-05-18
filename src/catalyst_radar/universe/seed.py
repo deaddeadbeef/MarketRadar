@@ -79,6 +79,7 @@ def seed_polygon_tickers(
         ),
         base_url=config.polygon_base_url,
         availability_policy=config.provider_availability_policy,
+        ticker_page_delay_seconds=config.polygon_ticker_page_delay_seconds,
     )
     request = ConnectorRequest(
         provider="polygon",
