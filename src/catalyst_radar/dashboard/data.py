@@ -797,6 +797,7 @@ def priced_in_source_gap_batches_payload(
                         batch_tickers,
                         scan_as_of=scan_as_of,
                         planned_available_at=planned_available_at,
+                        targets=batch_targets,
                     ),
                     **call_budget,
                 }
@@ -6559,6 +6560,8 @@ def _ticker_args(tickers: Sequence[str]) -> str:
 def _priced_in_source_batch_api(source_name: str) -> str | None:
     if source_name in PRICED_IN_SCHWAB_BATCH_SOURCES:
         return "POST /api/brokers/schwab/market-sync"
+    if source_name == "catalyst_events":
+        return "POST /api/radar/sec/submissions-batch"
     return None
 
 
@@ -6568,12 +6571,21 @@ def _priced_in_source_batch_api_payload(
     *,
     scan_as_of: str,
     planned_available_at: str,
+    targets: Sequence[Mapping[str, object]] = (),
 ) -> dict[str, object] | None:
     if source_name in PRICED_IN_SCHWAB_BATCH_SOURCES:
         return {
             "tickers": list(tickers),
             "include_history": True,
             "include_options": True,
+        }
+    if source_name == "catalyst_events":
+        return {
+            "targets": [
+                {"ticker": target.get("ticker"), "cik": target.get("cik")}
+                for target in targets
+                if target.get("ticker") and target.get("cik")
+            ]
         }
     return None
 

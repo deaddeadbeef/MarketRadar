@@ -149,6 +149,10 @@ EXPECTED_API_ROUTES = {
     ): ("catalyst_radar.api.routes.radar", "radar_priced_in_source_batches", ("radar",)),
     (
         "POST",
+        "/api/radar/sec/submissions-batch",
+    ): ("catalyst_radar.api.routes.radar", "radar_sec_submissions_batch", ("radar",)),
+    (
+        "POST",
         "/api/radar/runs/call-plan",
     ): ("catalyst_radar.api.routes.radar", "radar_run_call_plan", ("radar",)),
     (

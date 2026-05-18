@@ -1320,6 +1320,133 @@ def test_get_radar_priced_in_source_batches_returns_zero_call_plan(
     assert captured["min_gap"] == 12.0
 
 
+def test_post_radar_sec_submissions_batch_calls_capped_sec_executor(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "radar-sec-submissions-batch.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("CATALYST_SEC_DAILY_MAX_TICKERS", "2")
+    _create_database(database_url)
+    captured: dict[str, object] = {}
+
+    class FakeSecBatchResult:
+        def as_payload(self) -> dict[str, object]:
+            return {
+                "schema_version": "sec-submissions-batch-result-v1",
+                "provider": "sec",
+                "endpoint": "submissions-batch",
+                "live": True,
+                "target_count": 1,
+                "targets": [{"ticker": "MSFT", "cik": "0000000789"}],
+                "external_calls_made": 1,
+                "raw_count": 1,
+                "normalized_count": 1,
+                "security_count": 0,
+                "daily_bar_count": 0,
+                "holding_count": 0,
+                "event_count": 1,
+                "rejected_count": 0,
+                "job_ids": ["job-1"],
+            }
+
+    def fake_ingest_sec_submissions_batch(**kwargs) -> FakeSecBatchResult:
+        captured.update(kwargs)
+        return FakeSecBatchResult()
+
+    monkeypatch.setattr(
+        radar_routes,
+        "ingest_sec_submissions_batch",
+        fake_ingest_sec_submissions_batch,
+    )
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/radar/sec/submissions-batch",
+        json={"targets": [{"ticker": "msft", "cik": "789"}]},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["schema_version"] == "sec-submissions-batch-result-v1"
+    assert payload["provider"] == "sec"
+    assert payload["external_calls_made"] == 1
+    targets = captured["targets"]
+    assert len(targets) == 1
+    assert targets[0].ticker == "MSFT"
+    assert targets[0].cik == "0000000789"
+
+
+def test_post_radar_sec_submissions_batch_rejects_too_many_targets(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "radar-sec-submissions-too-many.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("CATALYST_SEC_DAILY_MAX_TICKERS", "1")
+    _create_database(database_url)
+    called = False
+
+    def fake_ingest_sec_submissions_batch(**_kwargs):
+        nonlocal called
+        called = True
+        raise AssertionError("ingest should not be called")
+
+    monkeypatch.setattr(
+        radar_routes,
+        "ingest_sec_submissions_batch",
+        fake_ingest_sec_submissions_batch,
+    )
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/radar/sec/submissions-batch",
+        json={
+            "targets": [
+                {"ticker": "MSFT", "cik": "0000789019"},
+                {"ticker": "AAPL", "cik": "0000320193"},
+            ]
+        },
+    )
+
+    assert response.status_code == 400
+    assert "maximum is 1" in response.json()["detail"]
+    assert called is False
+
+
+def test_post_radar_sec_submissions_batch_rejects_empty_targets(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "radar-sec-submissions-empty.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+    client = TestClient(create_app())
+
+    response = client.post("/api/radar/sec/submissions-batch", json={"targets": []})
+
+    assert response.status_code == 400
+    assert "At least one SEC target" in response.json()["detail"]
+
+
+def test_post_radar_sec_submissions_batch_rejects_blank_target_fields(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "radar-sec-submissions-blank.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/radar/sec/submissions-batch",
+        json={"targets": [{"ticker": "MSFT", "cik": "  "}]},
+    )
+
+    assert response.status_code == 422
+    assert "ticker and CIK" in response.json()["detail"]
+
+
 def test_post_radar_run_call_plan_returns_read_only_call_budget(
     tmp_path,
     monkeypatch,

@@ -1,6 +1,66 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 22:00:23 +08:00
+Last updated: 2026-05-18 22:20:14 +08:00
+
+## Latest SEC Source-Batch API Executor
+
+The user asked again: "Why only these tickers? I want full scan." The important
+product distinction is:
+
+- The priced-in scan is already full-market in the local ranked universe.
+- Source-fill actions are intentionally split into small provider batches.
+- The five tickers shown in a batch are batch 1, not the whole scan.
+
+Current live zero-provider-call planner proof:
+
+```text
+status ready batch_count 2093 external 0
+required 5 breakdown {'catalyst_events': 5} plan live_calls_planned
+api POST /api/radar/sec/submissions-batch payload {'targets': [{'cik': '0001067983', 'ticker': 'BRK.A'}, {'cik': '0000906163', 'ticker': 'NVR'}, {'cik': '0001957489', 'ticker': 'ABLVW'}, {'cik': '0002033770', 'ticker': 'DAICW'}, {'cik': '0001889823', 'ticker': 'DFSCW'}]}
+catalyst-radar ingest-sec submissions-batch --target BRK.A:0001067983 --target NVR:0000906163 --target ABLVW:0001957489 --target DAICW:0002033770 --target DFSCW:0001889823
+```
+
+This means there are 2,093 SEC event source-fill batches in the current full
+scan. The first batch happens to contain `BRK.A`, `NVR`, `ABLVW`, `DAICW`, and
+`DFSCW` because those are the first plannable source-gap rows after ranking and
+CIK filtering. The operator should not read that list as a watchlist or as the
+entire universe.
+
+Changes in this slice:
+
+- Added shared SEC ingest helpers in `src/catalyst_radar/events/sec_ingest.py`.
+  The CLI and API now call the same `ingest_sec_submissions_batch()` function.
+- Kept the CLI command:
+
+  ```text
+  catalyst-radar ingest-sec submissions-batch --target TICKER:CIK ...
+  ```
+
+- Added an API executor for the same batch:
+
+  ```text
+  POST /api/radar/sec/submissions-batch
+  {"targets":[{"ticker":"MSFT","cik":"0000789019"}]}
+  ```
+
+- The API route requires the analyst role, rejects empty target lists, caps
+  target count with `CATALYST_SEC_DAILY_MAX_TICKERS`, never accepts fixture
+  paths, and still fails closed unless SEC live mode and SEC user-agent are
+  configured.
+- `priced-in-source-batches --source catalyst_events` now advertises both:
+  - CLI executor: `catalyst-radar ingest-sec submissions-batch ...`
+  - API executor: `POST /api/radar/sec/submissions-batch`
+- The batch planner remains zero-call. Only executing a batch makes SEC calls.
+
+Validation for this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_plans_sec_event_batches tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_avoids_market_call_for_sec_batches tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_batch_command_opens_full_scan_source_batch_plan tests\integration\test_sec_ipo_cli.py tests\integration\test_api_routes.py::test_get_radar_priced_in_source_batches_returns_zero_call_plan tests\integration\test_api_routes.py::test_post_radar_sec_submissions_batch_calls_capped_sec_executor tests\integration\test_api_routes.py::test_post_radar_sec_submissions_batch_rejects_too_many_targets tests\integration\test_api_routes.py::test_post_radar_sec_submissions_batch_rejects_empty_targets tests\integration\test_api_routes.py::test_post_radar_sec_submissions_batch_rejects_blank_target_fields tests\integration\test_security_boundaries.py::test_openapi_routes_are_allowlisted_and_broker_routes_are_explicit -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\events\sec_ingest.py src\catalyst_radar\api\routes\radar.py src\catalyst_radar\cli.py src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py tests\integration\test_api_routes.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_security_boundaries.py tests\integration\test_sec_ipo_cli.py
+git diff --check
+```
+
+Observed: focused pytest passed, ruff passed, `git diff --check` passed.
 
 ## Latest SEC-Only Catalyst Source Batches
 
