@@ -393,6 +393,15 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     dashboard_snapshot.add_argument(
+        "--source-gap",
+        action="append",
+        help=(
+            "Filter Insights rows missing or stale for a source class. Repeat or "
+            "comma-separate: market_bars,catalyst_events,local_text,options,"
+            "theme_peer_sector,broker_context."
+        ),
+    )
+    dashboard_snapshot.add_argument(
         "--decision-gap",
         action="append",
         help=(
@@ -493,6 +502,15 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     agent_brief.add_argument(
+        "--source-gap",
+        action="append",
+        help=(
+            "Filter brief context by missing or stale source evidence. Repeat or "
+            "comma-separate: market_bars,catalyst_events,local_text,options,"
+            "theme_peer_sector,broker_context."
+        ),
+    )
+    agent_brief.add_argument(
         "--decision-gap",
         action="append",
         help=(
@@ -535,6 +553,15 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Filter Insights rows by usefulness verdict: useful, research_useful, "
             "decision_useful, blocked, monitor_only, not_useful."
+        ),
+    )
+    dashboard_tui.add_argument(
+        "--source-gap",
+        action="append",
+        help=(
+            "Filter Insights rows missing or stale for a source class. Repeat or "
+            "comma-separate: market_bars,catalyst_events,local_text,options,"
+            "theme_peer_sector,broker_context."
         ),
     )
     dashboard_tui.add_argument(
@@ -809,6 +836,7 @@ def main(argv: list[str] | None = None) -> int:
             alert_route=args.alert_route,
             priced_in_status=args.priced_in_status,
             priced_in_usefulness=args.usefulness,
+            priced_in_source_gap=args.source_gap,
             priced_in_decision_gap=args.decision_gap,
             priced_in_limit=args.scan_limit,
             priced_in_offset=args.scan_offset,
@@ -876,6 +904,7 @@ def main(argv: list[str] | None = None) -> int:
             alert_route=args.alert_route,
             priced_in_status=args.priced_in_status,
             priced_in_usefulness=args.usefulness,
+            priced_in_source_gap=args.source_gap,
             priced_in_decision_gap=args.decision_gap,
             priced_in_limit=args.scan_limit,
             priced_in_offset=args.scan_offset,
@@ -908,6 +937,7 @@ def main(argv: list[str] | None = None) -> int:
             alert_route=args.alert_route,
             priced_in_status=args.priced_in_status,
             priced_in_usefulness=args.usefulness,
+            priced_in_source_gap=args.source_gap,
             priced_in_decision_gap=args.decision_gap,
             priced_in_limit=args.scan_limit,
             priced_in_offset=args.scan_offset,

@@ -1,6 +1,70 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 18:36:37 +08:00
+Last updated: 2026-05-18 18:49:45 +08:00
+
+## Latest Dashboard Source-Gap Filter
+
+The full scan is visible and pageable, but the next practical obstacle is
+evidence coverage: current live local source coverage still has large gaps for
+options, broker context, catalyst events, and local text. The raw
+`priced-in-queue` command and API already supported `source_gap`, but the
+human dashboard and agent-brief context did not. That made it too hard to ask:
+"show me full-scan rows missing options/text/events/broker context."
+
+Changes in this slice:
+
+- Dashboard filters now carry `priced_in_source_gap`.
+- `dashboard-snapshot`, `dashboard-tui`, and `agent-brief` accept:
+
+  ```powershell
+  --source-gap <source>
+  ```
+
+  Repeat or comma-separate values. Aliases include `text -> local_text`,
+  `events -> catalyst_events`, `broker/schwab -> broker_context`, and
+  `options_flow -> options`.
+
+- The TUI command box now supports:
+
+  ```text
+  source-gap options
+  source-gap text,events
+  source-gap all
+  data-gap broker
+  ```
+
+- The overview title/caption now names active source-gap filters:
+
+  ```text
+  Full-market priced-in queue - showing rows 1-3 of 12087; ...; source gaps options
+  Active source gap filter: source gaps options.
+  ```
+
+Live zero-provider-call verification:
+
+```powershell
+.\.venv\Scripts\catalyst-radar.exe dashboard-snapshot --page overview --source-gap options --scan-limit 3 --json |
+  .\.venv\Scripts\python.exe -c "import json,sys; p=json.load(sys.stdin); print(p['controls']['priced_in_source_gap'], p['priced_in_queue']['filters']['source_gap'], p['priced_in_queue']['count'], p['priced_in_queue']['total_count'])"
+.\.venv\Scripts\catalyst-radar.exe dashboard-tui --once --page overview --source-gap options --scan-limit 3
+```
+
+Observed:
+
+```text
+['options'] ['options'] 3 12087
+dashboard title: Full-market priced-in queue - showing rows 1-3 of 12087; ...; source gaps options
+caption: Active source gap filter: source gaps options.
+```
+
+Validation for this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_snapshot_cli_outputs_dashboard_command_center_json tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_tui_once_can_show_full_scan_mode tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_scan_commands_page_full_scan_rows tests\integration\test_dashboard_demo_seed_cli.py::test_agent_brief_cli_outputs_zero_call_dry_run -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+```
+
+All passed.
 
 ## Latest Full-Scan Paging Clarification
 

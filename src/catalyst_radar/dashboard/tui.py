@@ -47,6 +47,7 @@ class DashboardFilters:
     alert_route: str | None = None
     priced_in_status: str = "all"
     priced_in_usefulness: str | None = None
+    priced_in_source_gap: str | Sequence[str] | None = None
     priced_in_decision_gap: str | Sequence[str] | None = None
     priced_in_limit: int = 50
     priced_in_offset: int = 0
@@ -57,6 +58,9 @@ class DashboardFilters:
         alert_status = (self.alert_status or "").strip() or None
         alert_route = (self.alert_route or "").strip() or None
         priced_in_status = _normalize_priced_in_status(self.priced_in_status)
+        priced_in_source_gap = _normalize_source_gap_filter(
+            self.priced_in_source_gap
+        )
         priced_in_decision_gap = _normalize_decision_gap_filter(
             self.priced_in_decision_gap
         )
@@ -67,6 +71,7 @@ class DashboardFilters:
             alert_route=alert_route,
             priced_in_status=priced_in_status,
             priced_in_usefulness=_normalize_optional_filter(self.priced_in_usefulness),
+            priced_in_source_gap=priced_in_source_gap,
             priced_in_decision_gap=priced_in_decision_gap,
             priced_in_limit=min(200, max(1, int(self.priced_in_limit))),
             priced_in_offset=max(0, int(self.priced_in_offset)),
@@ -135,6 +140,45 @@ def _normalize_decision_gap_filter(value: str | Sequence[str] | None) -> tuple[s
 def _normalize_optional_filter(value: object | None) -> str | None:
     normalized = str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
     return None if normalized in {"", "all", "any", "none"} else normalized
+
+
+def _normalize_source_gap_filter(value: str | Sequence[str] | None) -> tuple[str, ...]:
+    if value is None:
+        raw_values: list[object] = []
+    elif isinstance(value, str):
+        raw_values = [value]
+    else:
+        raw_values = list(value)
+    aliases = {
+        "bars": "market_bars",
+        "market": "market_bars",
+        "market_data": "market_bars",
+        "events": "catalyst_events",
+        "event": "catalyst_events",
+        "catalysts": "catalyst_events",
+        "catalyst": "catalyst_events",
+        "text": "local_text",
+        "local": "local_text",
+        "news": "local_text",
+        "narrative": "local_text",
+        "option": "options",
+        "options_flow": "options",
+        "theme": "theme_peer_sector",
+        "themes": "theme_peer_sector",
+        "peer": "theme_peer_sector",
+        "sector": "theme_peer_sector",
+        "broker": "broker_context",
+        "schwab": "broker_context",
+        "portfolio": "broker_context",
+    }
+    normalized: list[str] = []
+    for raw in raw_values:
+        for part in str(raw or "").replace(";", ",").split(","):
+            source = part.strip().lower().replace("-", "_").replace(" ", "_")
+            if source in {"", "all", "any", "none"}:
+                continue
+            normalized.append(aliases.get(source, source))
+    return tuple(dict.fromkeys(normalized))
 
 
 DASHBOARD_FEATURES: tuple[dict[str, str], ...] = (
@@ -357,6 +401,7 @@ def dashboard_snapshot_payload(
         available_at=filters.available_at,
         status=filters.priced_in_status,
         usefulness=filters.priced_in_usefulness,
+        source_gap=filters.priced_in_source_gap,
         decision_gap=filters.priced_in_decision_gap,
     )
     priced_in_source_coverage = (
@@ -381,6 +426,7 @@ def dashboard_snapshot_payload(
             "alert_route": filters.alert_route,
             "priced_in_status": filters.priced_in_status,
             "priced_in_usefulness": filters.priced_in_usefulness,
+            "priced_in_source_gap": list(filters.priced_in_source_gap or ()),
             "priced_in_decision_gap": list(filters.priced_in_decision_gap or ()),
             "priced_in_limit": filters.priced_in_limit,
             "priced_in_offset": filters.priced_in_offset,
@@ -1626,6 +1672,10 @@ class MarketRadarDashboardApp(App[int]):
                 "meaning": "Page through the full ranked scan without provider calls.",
             },
             {"command": "limit <1-200>", "meaning": "Change visible scan rows per page."},
+            {
+                "command": "source-gap <source|all>",
+                "meaning": "Show scan rows missing options, text, events, bars, or broker context.",
+            },
             {"command": "ticker <SYMBOL|all>", "meaning": "Filter ticker-aware pages."},
             {"command": "run execute", "meaning": "Start one guarded capped radar cycle."},
             {
@@ -1825,6 +1875,21 @@ def _apply_command(
                 "Decision-gap filter cleared."
                 if not decision_gaps
                 else f"Decision-gap filter: {', '.join(decision_gaps)}."
+            ),
+        )
+    if command in {"source-gap", "source_gaps", "data-gap", "data_gaps"}:
+        source_gaps = _normalize_source_gap_filter(value)
+        return _CommandUpdate(
+            page="overview",
+            filters=replace(
+                filters,
+                priced_in_source_gap=source_gaps,
+                priced_in_offset=0,
+            ).normalized(),
+            message=(
+                "Source-gap filter cleared."
+                if not source_gaps
+                else f"Source-gap filter: {', '.join(source_gaps)}."
             ),
         )
     if command in {"usefulness", "useful"}:
@@ -2661,10 +2726,11 @@ def _overview_title(payload: Mapping[str, object]) -> str:
     end = offset + returned
     scan_total = _priced_in_scan_total(queue)
     status_filter = _priced_in_status_filter(queue)
+    source_gap = _source_gap_filter_summary(queue)
     decision_gap = _decision_gap_filter_summary(queue)
     if status_filter == "actionable":
         usefulness = _usefulness_counts_summary(queue)
-        suffix_parts = [part for part in (usefulness, decision_gap) if part]
+        suffix_parts = [part for part in (usefulness, source_gap, decision_gap) if part]
         suffix = f"; {'; '.join(suffix_parts)}" if suffix_parts else ""
         return (
             f"Mismatches from full scan - showing rows {start}-{end} of {total}; "
@@ -2672,7 +2738,7 @@ def _overview_title(payload: Mapping[str, object]) -> str:
         )
     if total:
         usefulness = _usefulness_counts_summary(queue)
-        suffix_parts = [part for part in (usefulness, decision_gap) if part]
+        suffix_parts = [part for part in (usefulness, source_gap, decision_gap) if part]
         suffix = f"; {'; '.join(suffix_parts)}" if suffix_parts else ""
         return f"Full-market priced-in queue - showing rows {start}-{end} of {total}{suffix}"
     return "Full-market priced-in queue - select a row to act"
@@ -2687,6 +2753,8 @@ def _overview_caption(payload: Mapping[str, object]) -> str:
     end = offset + returned
     scan_total = _priced_in_scan_total(queue)
     status_filter = _priced_in_status_filter(queue)
+    source_gap = _source_gap_filter_summary(queue)
+    source_gap_text = f" Active source gap filter: {source_gap}." if source_gap else ""
     if status_filter == "actionable":
         usefulness = _usefulness_counts_summary(queue)
         usefulness_text = f" Usefulness mix: {usefulness}." if usefulness else ""
@@ -2699,7 +2767,7 @@ def _overview_caption(payload: Mapping[str, object]) -> str:
                 f"card(s) from {scan_total or 'the'} latest-scan row(s). "
                 "Press M or click SCAN -> Full Scan to inspect neutral, blocked, "
                 "stale, and fully-priced rows."
-                f"{usefulness_text}{decision_gap_text} "
+                f"{usefulness_text}{source_gap_text}{decision_gap_text} "
                 "Browsing makes 0 provider calls."
             )
         return (
@@ -2719,12 +2787,13 @@ def _overview_caption(payload: Mapping[str, object]) -> str:
             "Press M or click SCAN -> Mismatches to return to the smaller action queue. "
             "Use priced-in-queue --status all --limit/--offset or the API offset "
             "parameter to page deeper; in the TUI type next, prev, offset <row>, "
-            f"or limit <rows>.{usefulness_text}{decision_gap_text} "
+            f"or limit <rows>.{usefulness_text}{source_gap_text}{decision_gap_text} "
             "Browsing makes 0 provider calls."
         )
     return (
         "First row is scan coverage; candidate rows are priced-in mismatch cards. "
-        "Enter opens the relevant evidence or action page. Browsing makes 0 provider calls."
+        "Enter opens the relevant evidence or action page."
+        f"{source_gap_text} Browsing makes 0 provider calls."
     )
 
 
@@ -2743,6 +2812,15 @@ def _priced_in_scan_total(queue: Mapping[str, object]) -> int:
 
 def _priced_in_status_filter(queue: Mapping[str, object]) -> str:
     return _normalize_priced_in_status(_mapping(queue.get("filters")).get("status"))
+
+
+def _source_gap_filter_summary(queue: Mapping[str, object]) -> str:
+    raw_sources = _mapping(queue.get("filters")).get("source_gap")
+    sources = raw_sources if isinstance(raw_sources, list | tuple) else ()
+    normalized = [str(source) for source in sources if str(source).strip()]
+    if not normalized:
+        return ""
+    return f"source gaps {', '.join(normalized)}"
 
 
 def _priced_in_actionable_count(queue: Mapping[str, object]) -> int:
@@ -3462,6 +3540,7 @@ def _help_lines(width: int) -> list[str]:
         ("ticker <SYMBOL|all>", "Filter candidate-adjacent pages by ticker where supported."),
         ("available-at <ISO|latest>", "Set or clear the point-in-time data cutoff."),
         ("usefulness <status|all>", "Filter Insights by usefulness verdict."),
+        ("source-gap <source|all>", "Filter Insights by missing/stale data source."),
         ("decision-gap <gap|all>", "Filter Insights by missing decision evidence."),
         ("next / prev", "Page through the current Insights scan rows."),
         ("offset <row>", "Jump to a 1-based full-scan row number."),
