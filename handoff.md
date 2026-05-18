@@ -1,6 +1,45 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 14:19:38 +08:00
+Last updated: 2026-05-18 14:26:56 +08:00
+
+## Latest Full-Scan Default
+
+The dashboard now starts from the product goal: full-market scan first, then
+filters for narrower action queues.
+
+What changed:
+
+- `dashboard-tui`, `dashboard-snapshot`, and `agent-brief` default to
+  `--scan-mode all`.
+- `DashboardFilters()` defaults to `priced_in_status="all"`.
+- Blank/invalid scan-mode normalization now falls back to `all`.
+- The existing `M` key, sidebar `SCAN` controls, and commands still switch to
+  `Mismatches` when the operator wants only bullish/bearish not-priced-in rows.
+
+Current operator meaning:
+
+- The first Insights screen should show the first ranked page from the whole
+  latest priced-in scan.
+- The small mismatch queue is a deliberate filter, not the default dashboard.
+- Use `--scan-mode mismatches` only when intentionally narrowing to rows where
+  market emotion appears ahead of price reaction.
+
+Zero-call checks for this default:
+
+```powershell
+catalyst-radar dashboard-snapshot --json
+catalyst-radar dashboard-tui --once --page overview
+catalyst-radar dashboard-tui --once --scan-mode mismatches --page overview
+```
+
+Current local smoke after the change:
+
+- Default snapshot: `control=all`, `queue_status=all`,
+  `total=12087`, `returned=50`, `scan=12087`.
+- Default TUI overview title:
+  `Full-market priced-in queue - showing 50 of 12087; research 5 / blocked 7920 / monitor 4162`.
+- Explicit mismatch snapshot: `control=actionable`, `queue_status=actionable`,
+  `total=7`, `returned=7`, `scan=12087`.
 
 ## Latest Source-Gap Filter
 
