@@ -1306,6 +1306,7 @@ class MarketRadarDashboardApp(App[int]):
             scan_yield = _mapping(discovery.get("yield"))
             queue = _mapping(self.payload.get("priced_in_queue"))
             answer = _mapping(self.payload.get("priced_in_answer"))
+            full_scan = _mapping(answer.get("full_scan"))
             scan_scope = _mapping(answer.get("scan_scope"))
             status_filter = _priced_in_status_filter(queue)
             mode = "Full Scan" if status_filter == "all" else "Mismatches"
@@ -1328,6 +1329,16 @@ class MarketRadarDashboardApp(App[int]):
                 scan_scope.get("explanation")
                 or f"showing rows {offset + 1}-{offset + count} of {total}."
             )
+            scanned_rows = (
+                full_scan.get("scanned_rows")
+                or scan_yield.get("scanned_securities")
+                or "n/a"
+            )
+            active_rows = (
+                full_scan.get("active_securities")
+                or scan_yield.get("requested_securities")
+                or "n/a"
+            )
             return "\n".join(
                 [
                     (
@@ -1336,9 +1347,8 @@ class MarketRadarDashboardApp(App[int]):
                     ),
                     (
                         f"[bold]Coverage:[/] scanned "
-                        f"{scan_yield.get('scanned_securities') or 'n/a'} of "
-                        f"{scan_yield.get('requested_securities') or 'n/a'} requested "
-                        f"securities; candidates {candidates.get('count') or 0}."
+                        f"{scanned_rows} row(s) from {active_rows} "
+                        f"active securities; ranked {total}; visible page {count}."
                     ),
                     (
                         f"[bold]Scope:[/] {scope_text}"
@@ -1353,7 +1363,8 @@ class MarketRadarDashboardApp(App[int]):
                     ),
                     (
                         f"[bold]Controls:[/] M toggles view; next/prev pages rows; "
-                        f"export full prints all rows; {can_act}; "
+                        f"export full prints all ranked rows; these tickers are only "
+                        f"the current page; {can_act}; "
                         f"{blocked_layers or 0} useful layer(s) blocked."
                     ),
                 ]
@@ -3013,7 +3024,10 @@ def _full_scan_coverage_row(
         signal = "Full scan coverage"
         next_action = str(
             preflight.get("next_action")
-            or "Review ranked priced-in mismatches below, starting with the top candidate."
+            or (
+                "Use next/prev/offset to page the full scan; type export full "
+                "for all ranked rows, then work the largest mismatches first."
+            )
         )
     why_now = (
         f"active {active_count or 'n/a'}; requested {requested or 'n/a'}; "
@@ -3029,7 +3043,10 @@ def _full_scan_coverage_row(
         "why_now": why_now,
         "next_action": next_action,
         "target_page": "ops",
-        "status_message": "Opened Ops coverage. Ranked full-scan rows stay on Insights.",
+        "status_message": (
+            "Opened Ops coverage. The full ranked scan stays on Insights; "
+            "page it with next/prev/offset."
+        ),
     }
 
 
@@ -3271,7 +3288,8 @@ def _overview_caption(payload: Mapping[str, object]) -> str:
         return (
             f"This page shows rows {start}-{end}: {returned} visible rows from "
             f"{total} latest-scan rows. "
-            "The ticker table is paged for human review, not reduced to a watchlist. "
+            "These tickers are only the current page; the table is paged for "
+            "human review, not reduced to a watchlist. "
             "Press M or click SCAN -> Mismatches to return to the smaller action queue. "
             "Use priced-in-queue --status all --limit/--offset or the API offset "
             "parameter to page deeper; use priced-in-queue --full-scan --all --json "

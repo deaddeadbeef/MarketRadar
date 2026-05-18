@@ -3370,6 +3370,29 @@ def _print_priced_in_answer(payload: Mapping[str, object]) -> None:
         next_page = scan_scope.get("next_page_command")
         if next_page:
             print(f"next_page={_compact_cli_text(next_page)}")
+    full_scan = payload.get("full_scan")
+    if isinstance(full_scan, Mapping):
+        print(
+            "full_scan="
+            f"mode={full_scan.get('mode')} "
+            f"active={full_scan.get('active_securities') or 'n/a'} "
+            f"scanned={full_scan.get('scanned_rows') or 'n/a'} "
+            f"ranked={full_scan.get('ranked_rows')} "
+            f"visible={full_scan.get('visible_row_start')}-"
+            f"{full_scan.get('visible_row_end')} "
+            f"sample={str(bool(full_scan.get('visible_tickers_are_sample'))).lower()}"
+        )
+        sample_explanation = full_scan.get("sample_explanation")
+        if sample_explanation:
+            print(f"sample_explanation={_compact_cli_text(sample_explanation)}")
+        review_command = full_scan.get("review_command")
+        if review_command:
+            print(f"review_full_scan={_compact_cli_text(review_command)}")
+        export_command = full_scan.get("full_export_command") or full_scan.get(
+            "export_command"
+        )
+        if export_command:
+            print(f"export_full_scan={_compact_cli_text(export_command)}")
     decision_readiness = payload.get("decision_readiness")
     if isinstance(decision_readiness, Mapping):
         print(

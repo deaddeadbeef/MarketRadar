@@ -1471,6 +1471,15 @@ def test_priced_in_answer_payload_summarizes_current_scan(tmp_path: Path) -> Non
     assert payload["scan_scope"]["full_scan_export_command"] == (
         "catalyst-radar priced-in-queue --full-scan --all --json"
     )
+    assert payload["full_scan"]["schema_version"] == (
+        "priced-in-full-scan-summary-v1"
+    )
+    assert payload["full_scan"]["mode"] == "full_scan"
+    assert payload["full_scan"]["ranked_rows"] == 2
+    assert payload["full_scan"]["visible_tickers_are_sample"] is False
+    assert payload["full_scan"]["full_export_command"] == (
+        "catalyst-radar priced-in-queue --full-scan --all --json"
+    )
     assert payload["decision_readiness"]["schema_version"] == (
         "priced-in-decision-readiness-v1"
     )
@@ -1674,6 +1683,10 @@ def test_priced_in_answer_opens_full_scan_queue_when_decision_ready(
         "catalyst-radar priced-in-queue --mismatches "
         "--usefulness decision_useful --limit 50"
     )
+    assert payload["full_scan"]["ranked_rows"] == 2_429
+    assert payload["full_scan"]["visible_rows"] == 1
+    assert payload["full_scan"]["visible_tickers_are_sample"] is True
+    assert "not the full scan universe" in payload["full_scan"]["sample_explanation"]
 
 
 def test_priced_in_queue_payload_paginates_ranked_rows(tmp_path: Path) -> None:
