@@ -91,6 +91,7 @@ PRICED_IN_ACTIONABLE_FILTERS = frozenset(
         "not-priced-in",
     }
 )
+PRICED_IN_SOURCE_ACTION_TICKER_LIMIT = 10
 PRICED_IN_USEFULNESS_STATUSES = frozenset(
     {
         "research_useful",
@@ -749,11 +750,13 @@ def priced_in_source_coverage_summary(
         source: {"available": 0, "stale": 0, "missing": 0}
         for source in PRICED_IN_SOURCE_CLASSES
     }
+    sample_tickers: dict[str, list[str]] = {source: [] for source in PRICED_IN_SOURCE_CLASSES}
     row_count = 0
     for row in rows:
         if not isinstance(row, Mapping):
             continue
         row_count += 1
+        ticker = _priced_in_action_ticker(row)
         sources = _priced_in_row_source_payload(row)
         seen: set[str] = set()
         for status in ("available", "stale", "missing"):
@@ -763,9 +766,12 @@ def priced_in_source_coverage_summary(
                     continue
                 counts[normalized][status] += 1
                 seen.add(normalized)
+                if status in {"missing", "stale"}:
+                    _append_priced_in_action_ticker(sample_tickers[normalized], ticker)
         for source in PRICED_IN_SOURCE_CLASSES:
             if source not in seen:
                 counts[source]["missing"] += 1
+                _append_priced_in_action_ticker(sample_tickers[source], ticker)
 
     source_rows: dict[str, dict[str, object]] = {}
     for source, values in counts.items():
@@ -781,6 +787,7 @@ def priced_in_source_coverage_summary(
             "coverage_pct": round((available / denominator) * 100, 1)
             if denominator
             else 0.0,
+            "sample_tickers": sample_tickers[source],
         }
     weak_sources = [
         source
@@ -5101,7 +5108,10 @@ def _priced_in_evidence_brief(
     packet = packet_payload if isinstance(packet_payload, Mapping) else {}
     blockers = _priced_in_row_blockers(candidate)
     data_sources = _priced_in_row_source_payload(candidate)
-    source_actions = _priced_in_source_actions_from_payload(data_sources)
+    source_actions = _priced_in_source_actions_from_payload(
+        data_sources,
+        ticker=_priced_in_action_ticker(candidate),
+    )
     usefulness = _priced_in_usefulness_verdict(
         candidate,
         blockers=blockers,
@@ -5364,7 +5374,10 @@ def _priced_in_queue_row(row: Mapping[str, object]) -> dict[str, object]:
         if isinstance(row.get("priced_in_data_sources"), Mapping)
         else _priced_in_data_sources(row)
     )
-    source_actions = _priced_in_source_actions_from_payload(data_sources)
+    source_actions = _priced_in_source_actions_from_payload(
+        data_sources,
+        ticker=_priced_in_action_ticker(row),
+    )
     usefulness = _priced_in_usefulness_verdict(
         row,
         blockers=blockers,
@@ -5466,12 +5479,30 @@ def _priced_in_source_action_rows(
     ]
 
 
+def _append_priced_in_action_ticker(sample_tickers: list[str], ticker: str) -> None:
+    if (
+        not ticker
+        or ticker == "<TICKER>"
+        or ticker in sample_tickers
+        or len(sample_tickers) >= PRICED_IN_SOURCE_ACTION_TICKER_LIMIT
+    ):
+        return
+    sample_tickers.append(ticker)
+
+
+def _priced_in_action_ticker(candidate: Mapping[str, object]) -> str:
+    return str(candidate.get("ticker") or "").strip().upper()
+
+
 def _priced_in_source_actions_from_payload(
     data_sources: Mapping[str, object],
+    *,
+    ticker: str | None = None,
 ) -> list[dict[str, object]]:
     available = {str(item) for item in _sequence_value(data_sources.get("available"))}
     stale = {str(item) for item in _sequence_value(data_sources.get("stale"))}
     missing = {str(item) for item in _sequence_value(data_sources.get("missing"))}
+    ticker_samples = [ticker.strip().upper()] if ticker and ticker.strip() else []
     source_rows: dict[str, dict[str, object]] = {}
     for source in PRICED_IN_SOURCE_CLASSES:
         is_available = source in available
@@ -5483,6 +5514,7 @@ def _priced_in_source_actions_from_payload(
             "missing": 1 if is_missing else 0,
             "row_count": 1,
             "coverage_pct": 100.0 if is_available else 0.0,
+            "sample_tickers": ticker_samples if is_stale or is_missing else [],
         }
     return _priced_in_source_action_rows(source_rows, 1)
 
@@ -5626,6 +5658,11 @@ def _priced_in_source_action_row(
     stale = int(_finite_float(values.get("stale")))
     missing = int(_finite_float(values.get("missing")))
     coverage_pct = round(float(_finite_float(values.get("coverage_pct"))), 1)
+    sample_tickers = [
+        str(ticker).strip().upper()
+        for ticker in _sequence_value(values.get("sample_tickers"))
+        if str(ticker).strip()
+    ][:PRICED_IN_SOURCE_ACTION_TICKER_LIMIT]
     if row_count <= 0:
         status = "not_applicable"
     elif available == row_count and stale == 0 and missing == 0:
@@ -5635,6 +5672,12 @@ def _priced_in_source_action_row(
     else:
         status = "missing"
     guidance = _priced_in_source_guidance(source, status)
+    if status not in {"ready", "not_applicable"} and sample_tickers:
+        guidance = _priced_in_source_guidance_for_tickers(
+            source,
+            guidance,
+            sample_tickers,
+        )
     return {
         "source": source,
         "status": status,
@@ -5643,8 +5686,34 @@ def _priced_in_source_action_row(
         "missing": missing,
         "row_count": row_count,
         "coverage_pct": coverage_pct,
+        "sample_tickers": sample_tickers,
         **guidance,
     }
+
+
+def _priced_in_source_guidance_for_tickers(
+    source: str,
+    guidance: Mapping[str, object],
+    tickers: Sequence[str],
+) -> dict[str, object]:
+    updated = dict(guidance)
+    if source in {"options", "broker_context"}:
+        updated["command"] = _schwab_market_sync_command(tickers)
+        updated["api_payload"] = {
+            "tickers": list(tickers),
+            "include_history": True,
+            "include_options": True,
+        }
+    return updated
+
+
+def _schwab_market_sync_command(tickers: Sequence[str]) -> str:
+    ticker_args = " ".join(
+        f"--ticker {ticker}"
+        for ticker in tickers[:PRICED_IN_SOURCE_ACTION_TICKER_LIMIT]
+        if ticker
+    )
+    return f"catalyst-radar schwab-market-sync {ticker_args}".strip()
 
 
 def _priced_in_source_guidance(source: str, status: str) -> dict[str, object]:

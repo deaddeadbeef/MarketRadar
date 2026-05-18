@@ -3096,6 +3096,16 @@ def _broker_lines(payload: Mapping[str, object], width: int) -> list[str]:
     return lines
 
 
+def _source_action_sample_tickers(action: Mapping[str, object]) -> str:
+    raw_samples = action.get("sample_tickers")
+    samples = (
+        [str(ticker) for ticker in raw_samples if str(ticker).strip()]
+        if isinstance(raw_samples, list | tuple)
+        else []
+    )
+    return ",".join(samples) if samples else "n/a"
+
+
 def _ops_lines(payload: Mapping[str, object], width: int) -> list[str]:
     ops = _mapping(payload.get("ops_health"))
     database = _mapping(ops.get("database"))
@@ -3116,7 +3126,10 @@ def _ops_lines(payload: Mapping[str, object], width: int) -> list[str]:
         )
     )
     source_actions = [
-        action
+        {
+            **action,
+            "sample": _source_action_sample_tickers(action),
+        }
         for action in _rows(_mapping(payload.get("priced_in_source_coverage")).get("actions"))
         if str(action.get("status") or "") not in {"ready", "not_applicable"}
     ]
@@ -3130,8 +3143,8 @@ def _ops_lines(payload: Mapping[str, object], width: int) -> list[str]:
                     ("source", "Source", 18),
                     ("status", "Status", 12),
                     ("coverage_pct", "Coverage", 10),
-                    ("next_action", "Next Action", 58),
-                    ("command", "Command", 54),
+                    ("sample", "Sample", 26),
+                    ("command", "Command", 58),
                 ],
                 width=width,
                 limit=8,
