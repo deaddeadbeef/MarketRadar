@@ -2419,7 +2419,7 @@ def _source_coverage_next_action(source_coverage: Mapping[str, object]) -> str:
     if first == "theme_peer_sector":
         return "Review theme, peer, and sector context before acting."
     if first == "broker_context":
-        return "Sync read-only broker context before sizing or portfolio review."
+        return "Sync read-only Schwab market context before sizing or trigger review."
     return "Open Ops to fix missing source coverage before trusting output."
 
 

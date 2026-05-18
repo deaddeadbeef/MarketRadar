@@ -1,6 +1,41 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 16:06:59 +08:00
+Last updated: 2026-05-18 16:17:45 +08:00
+
+## Latest Broker-Context Guidance Fix
+
+The priced-in queue's `broker_context` source is based on stored Schwab market
+snapshots, not the portfolio-only Schwab sync. The source-gap action now points
+to the correct read-only market-sync endpoint:
+
+```text
+command=curl.exe --insecure --fail --silent --show-error --request POST https://127.0.0.1:8443/api/brokers/schwab/market-sync --header "Content-Type: application/json" --data '{"tickers":["<TICKER>"],"include_history":true,"include_options":true}'
+api=POST /api/brokers/schwab/market-sync
+```
+
+This endpoint is explicit, read-only, rate-limited, and does not submit orders.
+Because PR #230 promotes Schwab option-chain snapshots into `option_features`,
+this one market-sync path can now help close both `broker_context` and
+`options` source gaps after a rerun.
+
+Current local source-gap smoke:
+
+```powershell
+catalyst-radar priced-in-queue --usefulness research_useful --source-gap broker_context --limit 3
+```
+
+prints:
+
+```text
+broker_context status=missing ... command=.../api/brokers/schwab/market-sync ... "include_options":true
+```
+
+Verification:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_snapshot_cli_outputs_dashboard_command_center_json tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_queue_cli_outputs_same_zero_call_signal tests\integration\test_dashboard_demo_seed_cli.py::test_candidate_detail_cli_outputs_priced_in_evidence_brief tests\integration\test_dashboard_data.py::test_load_ticker_detail_returns_candidate_packet_card_events_and_validation -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_dashboard_data.py
+```
 
 ## Latest Decision Artifact Command Hints
 
