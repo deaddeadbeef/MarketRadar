@@ -1,6 +1,49 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 23:00:31 +08:00
+Last updated: 2026-05-18 23:10:17 +08:00
+
+## Latest Agent Priced-In Answer Context
+
+The dashboard and CLI already expose the direct answer to:
+
+```text
+Has price fully matched market expectations?
+```
+
+But the redacted agent snapshot only carried the priced-in queue, source
+coverage, and evidence plan. That meant the multi-agent layer could infer the
+answer, but did not receive the same explicit answer object the human dashboard
+uses.
+
+Changes in this slice:
+
+- `redacted_operator_snapshot()` now includes `priced_in.answer`.
+- The allowlisted answer context includes only safe fields:
+  schema/status, decision readiness, question, answer, headline, next action,
+  next command, counts, trust blockers, and zero-call count.
+- Deterministic `agent-brief` now adds a direct priced-in answer insight before
+  lower-level scan/evidence-plan insights.
+- Agent next actions now include the priced-in answer's next action and command.
+- The existing secret stripping still removes unsafe nested payload fields from
+  answer objects before any model input.
+
+Live zero-provider-call smoke:
+
+```text
+agent-brief status=dry_run external_calls={'broker': 0, 'market_data': 0, 'openai': 0}
+insight=Priced-in answer is research_only; decision_ready=false; Not fully priced for 5 research lead(s), but none are decision-ready yet.; next=Review the run call plan and refresh event ingestion before trusting emotion..
+next_action=catalyst-radar priced-in-source-batches --source catalyst_events --batch-limit 5
+```
+
+Validation for this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\unit\test_agent_sdk_orchestrator.py tests\integration\test_dashboard_demo_seed_cli.py::test_agent_brief_cli_outputs_zero_call_dry_run -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\agents\sdk_orchestrator.py tests\unit\test_agent_sdk_orchestrator.py
+git diff --check
+```
+
+Observed: focused pytest passed, ruff passed, `git diff --check` passed.
 
 ## Latest Full-Scan Batch Plan Control
 

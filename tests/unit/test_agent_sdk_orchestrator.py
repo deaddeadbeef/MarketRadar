@@ -32,8 +32,10 @@ def test_agent_sdk_dry_run_brief_is_multi_agent_and_zero_call() -> None:
     assert "Schwab" in blocked
     assert "order" in blocked
     assert "shell" in blocked
+    assert any("Priced-in answer is research_only" in insight for insight in brief["insights"])
     assert any("Priced-in scan is ready" in insight for insight in brief["insights"])
     assert any("Priced-in evidence plan is attention" in insight for insight in brief["insights"])
+    assert "Review the full-scan source batch plan." in brief["next_actions"]
     assert "Plan options batches." in brief["next_actions"]
     assert "catalyst-radar priced-in-source-batches --source options" in brief["next_actions"]
     assert "Review full scan source batches." in brief["next_actions"]
@@ -87,6 +89,25 @@ def test_redacted_operator_snapshot_allowlists_dashboard_fields() -> None:
     assert snapshot["schema_version"] == "market-radar-agent-snapshot-v1"
     assert snapshot["priced_in"]["total_count"] == 12087
     assert snapshot["priced_in"]["rows"][0]["ticker"] == "ACME"
+    assert snapshot["priced_in"]["answer"] == {
+        "schema_version": "priced-in-answer-v1",
+        "status": "research_only",
+        "decision_ready": False,
+        "question": "Has price fully matched market expectations?",
+        "answer": "Not fully priced for 5 research lead(s), but none are decision-ready yet.",
+        "headline": "5 research-useful not-priced-in lead(s), 12087 scanned row(s).",
+        "next_action": "Review the full-scan source batch plan.",
+        "next_command": (
+            "catalyst-radar priced-in-source-batches --source options --all --json"
+        ),
+        "external_calls_made": 0,
+        "counts": {
+            "total_rows": 12087,
+            "research_lead_rows": 5,
+            "decision_ready_rows": 0,
+        },
+        "trust_blockers": ["options coverage missing"],
+    }
     assert snapshot["priced_in"]["source_coverage"]["actions"][0] == {
         "source": "options",
         "status": "missing",
@@ -265,6 +286,29 @@ def _dashboard_payload() -> dict[str, object]:
                     "api_payload": {"api_key": "secret-polygon"},
                 }
             ],
+        },
+        "priced_in_answer": {
+            "schema_version": "priced-in-answer-v1",
+            "status": "research_only",
+            "decision_ready": False,
+            "question": "Has price fully matched market expectations?",
+            "answer": (
+                "Not fully priced for 5 research lead(s), but none are "
+                "decision-ready yet."
+            ),
+            "headline": "5 research-useful not-priced-in lead(s), 12087 scanned row(s).",
+            "next_action": "Review the full-scan source batch plan.",
+            "next_command": (
+                "catalyst-radar priced-in-source-batches --source options --all --json"
+            ),
+            "counts": {
+                "total_rows": 12087,
+                "research_lead_rows": 5,
+                "decision_ready_rows": 0,
+            },
+            "trust_blockers": ["options coverage missing"],
+            "external_calls_made": 0,
+            "payload": {"api_key": "secret-polygon"},
         },
         "priced_in_preflight": {
             "status": "attention",
