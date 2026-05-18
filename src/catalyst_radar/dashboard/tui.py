@@ -14,6 +14,7 @@ from textual.binding import Binding
 from textual.containers import Grid, Horizontal, Vertical
 from textual.widgets import DataTable, Footer, Header, Input, Static
 
+from catalyst_radar.agents.sdk_orchestrator import run_market_radar_agents
 from catalyst_radar.brokers.interactive import (
     create_blocked_order_ticket,
     create_trigger,
@@ -237,6 +238,12 @@ DASHBOARD_FEATURES: tuple[dict[str, str], ...] = (
         "use": "Keep optional agentic review bounded.",
     },
     {
+        "area": "Agent",
+        "feature": "Dry-run multi-agent brief over the priced-in answer and evidence plan",
+        "page": "agent",
+        "use": "Summarize what matters without hidden provider or broker calls.",
+    },
+    {
         "area": "Broker",
         "feature": "Read-only Schwab connection, balances, positions, order kill switch",
         "page": "broker",
@@ -291,6 +298,10 @@ PAGE_ALIASES: Mapping[str, str] = {
     "9": "telemetry",
     "t": "telemetry",
     "telemetry": "telemetry",
+    "10": "agent",
+    "agent": "agent",
+    "agents": "agent",
+    "brief": "agent",
     "themes": "themes",
     "validation": "validation",
     "costs": "costs",
@@ -300,7 +311,7 @@ PAGE_ALIASES: Mapping[str, str] = {
 
 NAVIGATION_TEXT = (
     "0 Tutorial | 1 Insights | 2 Readiness | 3 Run | 4 Candidates | 5 Alerts | "
-    "6 IPO/S-1 | 7 Broker | 8 Ops | 9 Telemetry | features | help | q"
+    "6 IPO/S-1 | 7 Broker | 8 Ops | 9 Telemetry | 10 Agent | features | help | q"
 )
 
 MODERN_PAGES: tuple[tuple[str, str, str], ...] = (
@@ -314,6 +325,7 @@ MODERN_PAGES: tuple[tuple[str, str, str], ...] = (
     ("broker", "7", "Broker"),
     ("ops", "8", "Ops"),
     ("telemetry", "9", "Telemetry"),
+    ("agent", "10", "Agent"),
     ("features", "F", "Features"),
     ("help", "?", "Help"),
 )
@@ -481,6 +493,7 @@ def dashboard_snapshot_payload(
         "telemetry_coverage": dashboard_data.telemetry_coverage_payload(engine),
         "external_calls_made": 0,
     }
+    payload["agent_brief"] = run_market_radar_agents(payload, config, real=False)
     redacted = redact_restricted_external_payload(payload)
     return redacted if isinstance(redacted, dict) else payload
 
@@ -768,6 +781,7 @@ class MarketRadarDashboardApp(App[int]):
         Binding("7", "go('broker')", "Broker", priority=True),
         Binding("8", "go('ops')", "Ops", priority=True),
         Binding("9", "go('telemetry')", "Telemetry", priority=True),
+        Binding("ctrl+a", "go('agent')", "Agent", priority=True),
         ("f", "go('features')", "Features"),
         ("?", "go('help')", "Help"),
         ("m", "toggle_scan_mode", "Scan mode"),
@@ -1132,6 +1146,7 @@ class MarketRadarDashboardApp(App[int]):
             "run": "Review call budget, then type run execute only if intended.",
             "candidates": "Click or focus a row and press Enter to open a candidate.",
             "alerts": "Click or focus a row and press Enter to open an alert.",
+            "agent": "Review the dry-run multi-agent brief; it makes zero provider calls.",
             "broker": "Use action, trigger, eval-triggers, or ticket for local broker artifacts.",
             "help": "Use the help table as the command reference.",
         }.get(
@@ -1372,6 +1387,21 @@ class MarketRadarDashboardApp(App[int]):
                     "[bold]Do next:[/] use feedback <#|id> useful|noisy|acted [notes].",
                 ]
             )
+        if page == "agent":
+            brief = _mapping(self.payload.get("agent_brief"))
+            calls = _mapping(brief.get("external_calls_made"))
+            return "\n".join(
+                [
+                    "[bold #7ee787]USE THIS PAGE[/] Read the multi-agent operator brief.",
+                    (
+                        f"[bold]Mode:[/] {brief.get('mode') or 'dry_run'}; "
+                        f"[bold]Status:[/] {brief.get('status') or 'unknown'}; "
+                        f"[bold]Calls:[/] OpenAI {calls.get('openai', 0)}, "
+                        f"market {calls.get('market_data', 0)}, broker {calls.get('broker', 0)}."
+                    ),
+                    "[bold]Do next:[/] follow the first Next Action row, then return to Insights.",
+                ]
+            )
         if page == "broker":
             return "\n".join(
                 [
@@ -1563,6 +1593,21 @@ class MarketRadarDashboardApp(App[int]):
                 _rows(telemetry.get("events")),
                 f"{telemetry.get('headline') or ''} Next: {telemetry.get('next_action') or ''}",
             )
+        if page == "agent":
+            brief = _mapping(self.payload.get("agent_brief"))
+            return (
+                "Agent brief - dry run, zero hidden provider calls",
+                [
+                    ("kind", "Kind", 12),
+                    ("item", "Item", 28),
+                    ("detail", "Detail", 98),
+                ],
+                _agent_brief_rows(brief),
+                (
+                    f"{brief.get('decision_boundary') or 'Manual research boundary.'} "
+                    "Real Agents SDK mode stays behind explicit CLI/API gates."
+                ),
+            )
         if page == "features":
             return (
                 "Feature inventory",
@@ -1674,7 +1719,7 @@ class MarketRadarDashboardApp(App[int]):
         rows = [
             {"command": "Click sidebar row", "meaning": "Switch pages with mouse support."},
             {"command": "Click candidate/alert row", "meaning": "Open the selected detail view."},
-            {"command": "0, 1..9, f, ?", "meaning": "Keyboard page shortcuts."},
+            {"command": "0, 1..10, Ctrl+A, f, ?", "meaning": "Keyboard page shortcuts."},
             {
                 "command": "tutorial / insights / start",
                 "meaning": "Open the walkthrough or the market insight queue.",
@@ -1762,6 +1807,8 @@ def render_dashboard_tui(
         lines.extend(_ops_lines(payload, resolved_width))
     elif page == "telemetry":
         lines.extend(_telemetry_lines(payload, resolved_width))
+    elif page == "agent":
+        lines.extend(_agent_lines(payload, resolved_width))
     elif page == "features":
         lines.extend(_feature_lines(payload, resolved_width))
     else:
@@ -3215,6 +3262,41 @@ def _evidence_plan_step_rows(
     return rows
 
 
+def _agent_brief_rows(brief: Mapping[str, object]) -> list[Mapping[str, object]]:
+    rows: list[Mapping[str, object]] = []
+    for agent in _rows(brief.get("agents")):
+        rows.append(
+            {
+                "kind": "Agent",
+                "item": agent.get("agent") or "agent",
+                "detail": agent.get("summary") or agent.get("role") or "",
+            }
+        )
+    for index, insight in enumerate(_texts(brief.get("insights")), start=1):
+        rows.append({"kind": "Insight", "item": str(index), "detail": insight})
+    for index, action in enumerate(_texts(brief.get("next_actions")), start=1):
+        rows.append({"kind": "Next", "item": str(index), "detail": action})
+    for check in _rows(brief.get("security_checks")):
+        name = str(check.get("name") or "check")
+        status = str(check.get("status") or "unknown")
+        rows.append(
+            {
+                "kind": "Safety",
+                "item": f"{name}: {status}",
+                "detail": check.get("detail") or "",
+            }
+        )
+    if not rows:
+        rows.append(
+            {
+                "kind": "Agent",
+                "item": "No brief",
+                "detail": "Refresh the dashboard snapshot to build the dry-run agent brief.",
+            }
+        )
+    return rows
+
+
 def _candidates_lines(payload: Mapping[str, object], width: int) -> list[str]:
     rows = [
         _candidate_table_row(row, row_key=str(index))
@@ -3796,10 +3878,38 @@ def _feature_lines(payload: Mapping[str, object], width: int) -> list[str]:
     return lines
 
 
+def _agent_lines(payload: Mapping[str, object], width: int) -> list[str]:
+    brief = _mapping(payload.get("agent_brief"))
+    calls = _mapping(brief.get("external_calls_made"))
+    lines = [_rule("Agent Brief", width)]
+    lines.append(
+        f"Mode: {brief.get('mode') or 'dry_run'} | "
+        f"Status: {brief.get('status') or 'unknown'} | "
+        f"Calls: openai={calls.get('openai', 0)}, "
+        f"market={calls.get('market_data', 0)}, broker={calls.get('broker', 0)}"
+    )
+    boundary = brief.get("decision_boundary")
+    if boundary:
+        lines.append(f"Boundary: {boundary}")
+    lines.extend(
+        _table_lines(
+            _agent_brief_rows(brief),
+            [
+                ("kind", "Kind", 10),
+                ("item", "Item", 24),
+                ("detail", "Detail", 82),
+            ],
+            width=width,
+            limit=18,
+        )
+    )
+    return lines
+
+
 def _help_lines(width: int) -> list[str]:
     lines = [_rule("Help", width)]
     commands = [
-        ("1..9 or page name", "Switch page."),
+        ("0..10 or page name", "Switch page."),
         ("features", "List current Market Radar features and where they live in the TUI."),
         ("open <#|ticker>", "Open a candidate from the candidates page."),
         ("open <#|alert-id>", "Open an alert from the alerts page."),
@@ -4017,6 +4127,12 @@ def _number_or_zero(value: object) -> float:
         return float(value)
     except (TypeError, ValueError):
         return 0.0
+
+
+def _texts(value: object) -> list[str]:
+    if not isinstance(value, list | tuple):
+        return []
+    return [str(item).strip() for item in value if str(item).strip()]
 
 
 def _nested(source: Mapping[str, object], *keys: str) -> object | None:
