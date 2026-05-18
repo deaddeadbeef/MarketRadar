@@ -985,6 +985,9 @@ def priced_in_all_source_gap_batches_payload(
         decision_gap=decision_gap,
         min_gap=min_gap,
     )
+    priority_counts = _priced_in_source_gap_priority_counts(
+        _sequence_value(queue.get("rows"))
+    )
     rows: list[dict[str, object]] = []
     for source in PRICED_IN_SOURCE_CLASSES:
         plan = priced_in_source_gap_batches_payload(
@@ -1000,7 +1003,12 @@ def priced_in_all_source_gap_batches_payload(
             min_gap=min_gap,
             queue=queue,
         )
-        rows.append(_priced_in_all_source_batch_row(plan))
+        rows.append(
+            _priced_in_all_source_batch_row(
+                plan,
+                priority_counts=priority_counts.get(source),
+            )
+        )
     total_gap_rows = sum(int(_finite_float(row.get("total_gap_rows"))) for row in rows)
     ready_rows = [row for row in rows if str(row.get("status") or "") == "ready"]
     blocked_rows = [
@@ -1044,13 +1052,18 @@ def priced_in_all_source_gap_batches_payload(
     }
 
 
-def _priced_in_all_source_batch_row(plan: Mapping[str, object]) -> dict[str, object]:
+def _priced_in_all_source_batch_row(
+    plan: Mapping[str, object],
+    *,
+    priority_counts: Mapping[str, object] | None = None,
+) -> dict[str, object]:
     source = str(plan.get("source") or "").strip()
     batches = _sequence_value(plan.get("batches"))
     first_batch = next((batch for batch in batches if isinstance(batch, Mapping)), None)
     first_batch_payload = _priced_in_first_source_batch_payload(first_batch)
     status = str(plan.get("status") or "unknown")
     executable = status == "ready" and first_batch is not None
+    priority = _row_dict(priority_counts or {})
     return {
         "source": source,
         "status": status,
@@ -1059,6 +1072,16 @@ def _priced_in_all_source_batch_row(plan: Mapping[str, object]) -> dict[str, obj
         "total_gap_rows": int(_finite_float(plan.get("total_gap_rows"))),
         "plannable_gap_rows": int(_finite_float(plan.get("plannable_gap_rows"))),
         "unplannable_gap_rows": int(_finite_float(plan.get("unplannable_gap_rows"))),
+        "decision_useful_gap_rows": int(
+            _finite_float(priority.get("decision_useful_gap_rows"))
+        ),
+        "research_useful_gap_rows": int(
+            _finite_float(priority.get("research_useful_gap_rows"))
+        ),
+        "actionable_gap_rows": int(_finite_float(priority.get("actionable_gap_rows"))),
+        "priority_sample_tickers": list(
+            _sequence_value(priority.get("priority_sample_tickers"))
+        ),
         "batch_count": int(_finite_float(plan.get("batch_count"))),
         "batch_size": int(_finite_float(plan.get("batch_size"))),
         "first_batch": first_batch_payload,
@@ -1105,6 +1128,61 @@ def _priced_in_first_source_batch_payload(
     }
 
 
+def _priced_in_source_gap_priority_counts(
+    rows: Sequence[object],
+) -> dict[str, dict[str, object]]:
+    counts: dict[str, dict[str, object]] = {
+        source: {
+            "decision_useful_gap_rows": 0,
+            "research_useful_gap_rows": 0,
+            "actionable_gap_rows": 0,
+            "priority_sample_tickers": [],
+        }
+        for source in PRICED_IN_SOURCE_CLASSES
+    }
+    for raw_row in rows:
+        if not isinstance(raw_row, Mapping):
+            continue
+        row = raw_row
+        ticker = str(row.get("ticker") or "").strip().upper()
+        priced_status = str(row.get("priced_in_status") or "").strip().lower()
+        usefulness = _mapping_value(row, "usefulness")
+        usefulness_status = str(usefulness.get("status") or "").strip().lower()
+        for source in PRICED_IN_SOURCE_CLASSES:
+            if not _priced_in_source_gap_matches(row, (source,)):
+                continue
+            source_counts = counts[source]
+            if priced_status in PRICED_IN_ACTIONABLE_STATUSES:
+                source_counts["actionable_gap_rows"] = int(
+                    _finite_float(source_counts.get("actionable_gap_rows"))
+                ) + 1
+            if usefulness_status == "decision_useful":
+                source_counts["decision_useful_gap_rows"] = int(
+                    _finite_float(source_counts.get("decision_useful_gap_rows"))
+                ) + 1
+                _append_priority_sample_ticker(source_counts, ticker)
+            elif usefulness_status == "research_useful":
+                source_counts["research_useful_gap_rows"] = int(
+                    _finite_float(source_counts.get("research_useful_gap_rows"))
+                ) + 1
+                _append_priority_sample_ticker(source_counts, ticker)
+    return counts
+
+
+def _append_priority_sample_ticker(
+    source_counts: dict[str, object],
+    ticker: str,
+) -> None:
+    if not ticker:
+        return
+    samples = source_counts.get("priority_sample_tickers")
+    if not isinstance(samples, list):
+        samples = []
+        source_counts["priority_sample_tickers"] = samples
+    if ticker not in samples and len(samples) < PRICED_IN_SOURCE_ACTION_TICKER_LIMIT:
+        samples.append(ticker)
+
+
 def _priced_in_all_source_batches_headline(
     *,
     source_count: int,
@@ -1130,14 +1208,61 @@ def _priced_in_all_source_batches_next_action(
     if status == "complete":
         return "No source batch action is needed."
     if ready_rows:
-        first = ready_rows[0]
+        first = sorted(ready_rows, key=_priced_in_source_batch_priority_key)[0]
         source = str(first.get("source") or "source")
+        decision_rows = int(_finite_float(first.get("decision_useful_gap_rows")))
+        research_rows = int(_finite_float(first.get("research_useful_gap_rows")))
+        actionable_rows = int(_finite_float(first.get("actionable_gap_rows")))
+        samples = [
+            str(ticker)
+            for ticker in _sequence_value(first.get("priority_sample_tickers"))
+            if str(ticker).strip()
+        ]
+        sample_text = f" Example: {', '.join(samples)}." if samples else ""
+        if decision_rows:
+            return (
+                f"Start with {source}; it fills context for {decision_rows} "
+                "decision-ready row(s). Inspect first_batch, then run "
+                f"execute_next_command only if the provider budget is intentional."
+                f"{sample_text}"
+            )
+        if research_rows:
+            return (
+                f"Start with {source}; it clears evidence for {research_rows} "
+                "research-useful mismatch row(s). Inspect first_batch, then run "
+                f"execute_next_command only if the provider budget is intentional."
+                f"{sample_text}"
+            )
+        if actionable_rows:
+            return (
+                f"Start with {source}; it covers {actionable_rows} actionable "
+                "mismatch row(s). Inspect first_batch, then run execute_next_command "
+                f"only if the provider budget is intentional.{sample_text}"
+            )
         return (
             f"Start with {source}; inspect all_batches_command, then run "
             "execute_next_command only if the provider budget is intentional."
         )
     first_blocked = blocked_rows[0] if blocked_rows else {}
     return str(first_blocked.get("next_action") or "Resolve blocked source gaps first.")
+
+
+def _priced_in_source_batch_priority_key(row: Mapping[str, object]) -> tuple[int, int, int]:
+    decision_rows = int(_finite_float(row.get("decision_useful_gap_rows")))
+    research_rows = int(_finite_float(row.get("research_useful_gap_rows")))
+    actionable_rows = int(_finite_float(row.get("actionable_gap_rows")))
+    source = str(row.get("source") or "")
+    try:
+        source_order = PRICED_IN_SOURCE_CLASSES.index(source)
+    except ValueError:
+        source_order = len(PRICED_IN_SOURCE_CLASSES)
+    if decision_rows:
+        return (0, -decision_rows, source_order)
+    if research_rows:
+        return (1, -research_rows, source_order)
+    if actionable_rows:
+        return (2, -actionable_rows, source_order)
+    return (3, 0, source_order)
 
 
 def priced_in_answer_payload(

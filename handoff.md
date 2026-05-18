@@ -1,6 +1,66 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 05:25:54 +08:00
+Last updated: 2026-05-19 05:38:14 +08:00
+
+## Latest Useful Source-Gap Priority Fix
+
+After full-scan scope was clear, the next usability problem was source-fill
+priority:
+
+- The full-scan source overview had the right raw counts, but its first
+  suggested runnable source came from source order.
+- In the live 12k-row scan, that meant `catalyst_events` was suggested first
+  even though the current decision-ready rows already had catalyst/local text
+  and mostly needed optional `options` context.
+- This was technically broad-market, but not human-useful enough for the
+  question "which missing evidence helps the current priced-in answer first?"
+
+Fix in this slice:
+
+- `priced_in_all_source_gap_batches_payload()` now computes priority counts
+  from the full ranked queue:
+
+  ```text
+  decision_useful_gap_rows
+  research_useful_gap_rows
+  actionable_gap_rows
+  priority_sample_tickers
+  ```
+
+- All-source `next_action` now chooses ready sources by:
+
+  1. Decision-useful gaps.
+  2. Research-useful gaps.
+  3. General actionable mismatch gaps.
+  4. Original source order only when no useful/actionable priority exists.
+
+- CLI all-source output now includes the priority counts and priority example
+  tickers.
+- The TUI `batch all` message now includes the same suggested-first wording and
+  uses the priority fields when choosing `First executable`.
+
+Live all-active smoke after the fix:
+
+```text
+next_action=Start with options; it fills context for 5 decision-ready row(s). Inspect first_batch, then run execute_next_command only if the provider budget is intentional. Example: A, MSFT, AAAU, AAPL, AA.
+source status gap_rows decision research actionable plannable batches first_calls next_command
+catalyst_events ready 12080 0 0 0 10462 2093 5 catalyst-radar priced-in-source-batches --source catalyst_events --execute-next
+options ready 12087 5 0 7 12087 2418 1 catalyst-radar priced-in-source-batches --source options --execute-next
+priority_examples=A,MSFT,AAAU,AAPL,AA
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_batch_command_opens_full_scan_source_batch_plan tests\integration\test_dashboard_data.py::test_priced_in_all_source_gap_batches_payload_summarizes_next_chunks tests\integration\test_dashboard_data.py::test_priced_in_all_source_gap_batches_prioritizes_decision_useful_gaps tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_plans_safe_sync_batches tests\integration\test_api_routes.py::test_get_radar_priced_in_source_batches_can_return_all_source_overview -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_api_routes.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source all --limit 1
+```
+
+Observed: focused pytest passed, ruff passed, `git diff --check` passed, and
+the live all-source CLI smoke now recommends `options` first for the five
+decision-ready rows instead of defaulting to broad `catalyst_events`.
 
 ## Latest Full-Scan Scope Clarity Fix
 
