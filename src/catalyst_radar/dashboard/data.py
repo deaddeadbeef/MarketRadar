@@ -1245,6 +1245,7 @@ def priced_in_answer_payload(
             "blocked_rows": blocked_count,
         },
         "scan_scope": _priced_in_answer_scan_scope(resolved_queue),
+        "full_scan": _priced_in_answer_full_scan_summary(resolved_queue),
         "decision_readiness": decision_readiness,
         "filters": _row_dict(_mapping_value(resolved_queue, "filters")),
         "source_coverage": {
@@ -1259,6 +1260,60 @@ def priced_in_answer_payload(
         "next_action": next_action,
         "next_command": next_command,
         "top_rows": top_rows[:resolved_limit],
+    }
+
+
+def _priced_in_answer_full_scan_summary(
+    queue: Mapping[str, object],
+) -> dict[str, object]:
+    scan_scope = _priced_in_answer_scan_scope(queue)
+    scan = _mapping_value(queue, "scan")
+    freshness = _mapping_value(scan, "freshness")
+    filters = _mapping_value(queue, "filters")
+    returned = int(
+        _finite_float(queue.get("returned_count"))
+        or _finite_float(queue.get("count"))
+    )
+    offset = int(_finite_float(queue.get("offset")))
+    total = int(_finite_float(queue.get("total_count")))
+    scan_total = int(
+        _finite_float(
+            _first_present(
+                scan.get("scanned_candidate_states"),
+                scan.get("candidate_states"),
+                scan.get("scanned_securities"),
+            )
+        )
+    )
+    active = int(_finite_float(freshness.get("active_security_count")))
+    start = offset + 1 if returned else 0
+    end = offset + returned
+    review_command = _priced_in_queue_command_from_filters(filters)
+    export_command = _priced_in_queue_command_from_filters(filters, all_rows=True)
+    mode = str(scan_scope.get("mode") or "full_scan")
+    sample_text = (
+        f"The tickers below are rows {start}-{end} from the current ranked page, "
+        f"not the full scan universe of {total} row(s)."
+        if total and returned and returned < total
+        else "The visible tickers cover the current filtered result set."
+    )
+    return {
+        "schema_version": "priced-in-full-scan-summary-v1",
+        "mode": mode,
+        "is_all_active_scan": mode == "full_scan",
+        "active_securities": active,
+        "scanned_rows": scan_total or total,
+        "ranked_rows": total,
+        "visible_row_start": start,
+        "visible_row_end": end,
+        "visible_rows": returned,
+        "has_more": bool(queue.get("has_more")),
+        "visible_tickers_are_sample": bool(total and returned < total),
+        "sample_explanation": sample_text,
+        "review_command": review_command,
+        "next_page_command": scan_scope.get("next_page_command"),
+        "export_command": export_command,
+        "full_export_command": "catalyst-radar priced-in-queue --full-scan --all --json",
     }
 
 

@@ -977,6 +977,13 @@ def test_priced_in_answer_cli_outputs_current_scan_answer(
     assert "investment_decision_ready=false" in output.out
     assert "investment_boundary=Priced-in answer readiness is not trade approval" in output.out
     assert "decision_readiness=status=" in output.out
+    assert "full_scan=mode=full_scan" in output.out
+    assert "sample=false" in output.out
+    assert "review_full_scan=catalyst-radar priced-in-queue --full-scan" in output.out
+    assert (
+        "export_full_scan=catalyst-radar priced-in-queue --full-scan --all --json"
+        in output.out
+    )
     assert "actionable_rows_sample=ranked actionable mismatches" in output.out
     assert (
         "full_scan_export=catalyst-radar priced-in-queue --full-scan --all --json"
@@ -997,6 +1004,9 @@ def test_priced_in_answer_cli_outputs_current_scan_answer(
     assert "not trade approval" in payload["investment_decision_boundary"]
     assert payload["decision_readiness"]["schema_version"] == (
         "priced-in-decision-readiness-v1"
+    )
+    assert payload["full_scan"]["schema_version"] == (
+        "priced-in-full-scan-summary-v1"
     )
 
 

@@ -1,6 +1,87 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 05:09:25 +08:00
+Last updated: 2026-05-19 05:25:54 +08:00
+
+## Latest Full-Scan Scope Clarity Fix
+
+The user asked again: "Why only these tickers? I want full scan."
+
+Current live evidence:
+
+- The latest priced-in scan is all-active/full-scan scoped, not a selected
+  watchlist.
+- `priced-in-answer` reports `total=12087`, `mismatches=7`,
+  `decision_ready_rows=5`, and `blocked=7920`.
+- The top tickers shown by `priced-in-answer` are only rows `1-5` from the
+  ranked page, not the scan universe.
+- The TUI overview shows rows `1-50` from `12087` latest-scan rows and can page
+  deeper with `next`, `prev`, `offset <row>`, or `limit <rows>`.
+
+Root cause:
+
+- The data layer already had a full-scan queue, but the answer surface centered
+  the small visible sample.
+- The CLI printed `scan_scope`, but it did not have a direct full-scan summary
+  line that a human could read quickly.
+- The TUI compact caption said the table was paged, but did not plainly say
+  "these tickers are only the current page."
+
+Fix in this slice:
+
+- `priced_in_answer_payload()` now includes:
+
+  ```text
+  full_scan.schema_version=priced-in-full-scan-summary-v1
+  full_scan.mode=full_scan
+  full_scan.active_securities=<active security count>
+  full_scan.scanned_rows=<current scan rows>
+  full_scan.ranked_rows=<ranked result rows>
+  full_scan.visible_tickers_are_sample=<true when page is smaller than result set>
+  full_scan.review_command=<current page command>
+  full_scan.full_export_command=catalyst-radar priced-in-queue --full-scan --all --json
+  ```
+
+- `priced-in-answer` CLI now prints a one-line full-scan summary plus a sample
+  explanation, review command, and export command.
+- The TUI overview guide now says the visible tickers are only the current page.
+- The TUI compact overview caption now says:
+
+  ```text
+  These tickers are only the current page; the table is paged for human review, not reduced to a watchlist.
+  ```
+
+Live smoke after the fix:
+
+```text
+priced_in_answer status=decision_ready decision_ready=true investment_decision_ready=false total=12087 mismatches=7 research=0 blocked=7920 external_calls=0
+scan_scope=Showing ranked rows 1-5 of 12087; the visible tickers are one page from the full scan, not the scan universe.
+full_scan=mode=full_scan active=12613 scanned=12087 ranked=12087 visible=1-5 sample=true
+sample_explanation=The tickers below are rows 1-5 from the current ranked page, not the full scan universe of 12087 row(s).
+review_full_scan=catalyst-radar priced-in-queue --full-scan --limit 5 --offset 0
+export_full_scan=catalyst-radar priced-in-queue --full-scan --all --json
+```
+
+TUI smoke showed:
+
+```text
+Full-market priced-in queue - showing rows 1-50 of 12087; decision 5 / blocked 7920 / monitor 4162
+This page shows rows 1-50: 50 visible rows from 12087 latest-scan rows. These tickers are only the current page; the table is paged for human review, not reduced to a watchlist.
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_answer_payload_summarizes_current_scan tests\integration\test_dashboard_data.py::test_priced_in_answer_opens_full_scan_queue_when_decision_ready tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_answer_cli_outputs_current_scan_answer tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_tui_once_can_show_full_scan_mode -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-answer
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --scan-mode all --page overview
+```
+
+Observed: focused pytest passed, ruff passed, `git diff --check` passed, the
+live `priced-in-answer` smoke reported `full_scan=mode=full_scan active=12613
+scanned=12087 ranked=12087 visible=1-5 sample=true`, and the live TUI smoke
+labeled the visible tickers as only the current page.
 
 ## Latest All-Source Batch Performance Fix
 
