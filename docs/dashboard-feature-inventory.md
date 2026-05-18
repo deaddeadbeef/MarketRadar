@@ -16,6 +16,7 @@ catalyst-radar dashboard-tui --once --page features
 catalyst-radar priced-in-answer
 catalyst-radar priced-in-preflight --json
 catalyst-radar priced-in-queue --json
+catalyst-radar priced-in-source-batches --source catalyst_events --all --json
 catalyst-radar dashboard-snapshot --json
 powershell -ExecutionPolicy Bypass -File scripts/run-full-market-scan.ps1
 ```
@@ -39,6 +40,8 @@ also supports low-risk operator writes: `action <ticker> <action> [notes]`,
 | Full scan coverage | Active universe size, requested/scanned securities, candidate count, latest/run bar coverage, zero-call preflight blockers | `overview`, `ops`, `run`, `priced-in-preflight`, `/api/radar/priced-in/preflight` | Confirm the queue came from a real broad-market pass rather than a tiny fixture universe, and get the exact next command when it did not. |
 | Current priced-in answer | One zero-call answer to whether price has matched market expectations, with research/decision-ready counts and next command | `overview`, `priced-in-answer`, `/api/radar/priced-in/answer`, `dashboard-snapshot --json` | Know whether the current scan is decision-ready, research-only, blocked, or quiet before drilling into rows. |
 | Priced-in mismatch | Emotion score, price-reaction score, emotion-minus-reaction gap, status, reason, queue-level and row-level source coverage, next step | `overview`, `candidates`, `candidate:<ticker>`, `priced-in-queue`, `/api/radar/priced-in` | Find stocks where market emotion appears ahead of or behind price reaction and see whether market bars, catalyst events, local text, options, themes, and broker context are actually contributing. |
+| Full-scan source batch plan | Every source-fill chunk for the current filtered full scan, with batch count, first command, all-batches command, API equivalent, and zero provider calls while planning | `priced-in-source-batches --source <source> --all --json`, `/api/radar/priced-in/source-batches?source=<source>&all_batches=true`, `batch <source>` in TUI | Avoid mistaking the first safe provider chunk for the whole scan; inspect the whole full-scan fill plan before running any explicit batch. |
+| Local text source fill | Deterministic narrative feature batches over stored event text | `priced-in-source-batches --source local_text`, `/api/radar/text/features-batch` | Turn ingested catalyst events into local emotion and theme evidence without external calls. |
 | Market data | Run as-of coverage, latest bar coverage, stale-bar blockers | `overview`, `ops` | Verify fresh bars before relying on real market data. |
 | Radar run | Latest run path, required steps, optional gates, call plan | `overview`, `run` | Check what will call external providers before executing a cycle. |
 | Candidates | Candidate queue, decision labels, research gaps, card readiness | `candidates`, `candidate:<ticker>` | Work the research shortlist and manual-review queue. |

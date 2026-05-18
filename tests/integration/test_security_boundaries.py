@@ -157,6 +157,10 @@ EXPECTED_API_ROUTES = {
     ): ("catalyst_radar.api.routes.radar", "radar_sec_submissions_batch", ("radar",)),
     (
         "POST",
+        "/api/radar/text/features-batch",
+    ): ("catalyst_radar.api.routes.radar", "radar_text_features_batch", ("radar",)),
+    (
+        "POST",
         "/api/radar/runs/call-plan",
     ): ("catalyst_radar.api.routes.radar", "radar_run_call_plan", ("radar",)),
     (

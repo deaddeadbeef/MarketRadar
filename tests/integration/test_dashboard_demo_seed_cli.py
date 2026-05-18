@@ -311,9 +311,13 @@ def test_dashboard_batch_command_opens_full_scan_source_batch_plan(
     assert "full-scan gap row" in update.message
     assert "plannable" in update.message
     assert "batch(es)" in update.message
-    assert "First batch command: catalyst-radar schwab-market-sync --ticker ACME" in (
+    assert "First chunk only: catalyst-radar schwab-market-sync --ticker ACME" in (
         update.message
     )
+    assert (
+        "Full chunk list: catalyst-radar priced-in-source-batches "
+        "--source options --all --json"
+    ) in update.message
 
 
 def test_dashboard_run_page_shows_priced_in_evidence_plan(
@@ -646,6 +650,31 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
     assert batch_payload["source"] == "options"
     assert batch_payload["count"] == 1
     assert batch_payload["batches"][0]["tickers"] == ["ACME"]
+
+    assert (
+        main(
+            [
+                "priced-in-source-batches",
+                "--source",
+                "options",
+                "--batch-size",
+                "1",
+                "--batch-limit",
+                "1",
+                "--all",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    output = capsys.readouterr()
+    all_batch_payload = json.loads(output.out)
+
+    assert output.err == ""
+    assert all_batch_payload["external_calls_made"] == 0
+    assert all_batch_payload["all_batches"] is True
+    assert all_batch_payload["count"] == all_batch_payload["batch_count"]
+    assert all_batch_payload["next_batch_command"] is None
 
 
 def test_priced_in_answer_cli_outputs_current_scan_answer(

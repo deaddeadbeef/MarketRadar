@@ -1,6 +1,94 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 22:41:57 +08:00
+Last updated: 2026-05-18 23:00:31 +08:00
+
+## Latest Full-Scan Batch Plan Control
+
+The user asked again: "Why only these tickers? I want full scan." The
+important correction is that a provider executor must still run in safe chunks,
+but the planner must let the operator see every chunk in the current full-scan
+source gap.
+
+Changes in this slice:
+
+- Added CLI full-plan mode:
+
+  ```powershell
+  catalyst-radar priced-in-source-batches --source <source> --all --json
+  ```
+
+- Added API full-plan mode:
+
+  ```text
+  GET /api/radar/priced-in/source-batches?source=<source>&all_batches=true
+  ```
+
+- `priced_in_source_gap_batches_payload()` now supports `all_batches=True`.
+  It resets the batch offset to `0`, returns every planned batch for the
+  current filtered full-scan gap, sets `has_more=false`, and keeps
+  `external_calls_made=0`.
+- The source-batch payload now includes `all_batches_command` and
+  `all_batches_api` so the TUI can show the full chunk list instead of making a
+  five-ticker first chunk look like the universe.
+- The TUI batch command now says `First chunk only` and shows the full chunk
+  list command. It also no longer accidentally uses the next-page command as
+  the displayed first executable chunk.
+
+Validation for this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_can_return_full_scan_plan tests\integration\test_api_routes.py::test_get_radar_priced_in_source_batches_returns_zero_call_plan tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_queue_cli_outputs_same_zero_call_signal tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_batch_command_opens_full_scan_source_batch_plan -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py src\catalyst_radar\api\routes\radar.py src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_data.py tests\integration\test_api_routes.py tests\integration\test_dashboard_demo_seed_cli.py
+```
+
+Observed: focused pytest passed and ruff passed.
+
+Live zero-provider-call smoke:
+
+```text
+catalyst-radar priced-in-source-batches --source catalyst_events --all --json
+status=ready total_gap_rows=12080 plannable_gap_rows=10462 batch_count=2093 count=2093 all_batches=True external_calls_made=0
+all_batches_command=catalyst-radar priced-in-source-batches --source catalyst_events --all --json
+first_batch_example=BRK.A,NVR,ABLVW
+```
+
+## Latest Local Text Batch API
+
+The current full-scan answer is research-only because catalyst-event coverage is
+thin and local text depends on event text. SEC source batches now have CLI/API
+execution, but local text batches only had the CLI command:
+
+```text
+catalyst-radar run-textint --as-of <DATE> --ticker ...
+```
+
+Changes in this slice:
+
+- Added API:
+
+  ```text
+  POST /api/radar/text/features-batch
+  {"as_of":"2026-05-15","available_at":"2026-05-18T16:00:00+00:00","tickers":["MSFT","AAPL"]}
+  ```
+
+- The API route is analyst-only, caps batches at 50 unique tickers, rejects
+  empty ticker lists, and makes no external provider calls. It runs the existing
+  local `run_text_pipeline()` over stored event rows.
+- `priced-in-source-batches --source local_text` now advertises:
+  - CLI executor: `catalyst-radar run-textint --as-of ... --ticker ...`
+  - API executor: `POST /api/radar/text/features-batch`
+- This does not unblock live local text by itself. The live DB currently still
+  needs catalyst event batches first; once events exist for a ticker, local text
+  batches have both CLI and API execution paths.
+
+Validation for this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_plans_local_text_batches tests\integration\test_api_routes.py::test_post_radar_text_features_batch_runs_local_text_pipeline tests\integration\test_api_routes.py::test_post_radar_text_features_batch_rejects_empty_tickers tests\integration\test_security_boundaries.py::test_openapi_routes_are_allowlisted_and_broker_routes_are_explicit -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\api\routes\radar.py src\catalyst_radar\dashboard\data.py tests\integration\test_api_routes.py tests\integration\test_dashboard_data.py tests\integration\test_security_boundaries.py
+```
+
+Observed: focused pytest passed and ruff passed.
 
 ## Latest Priced-In Answer Surface
 
