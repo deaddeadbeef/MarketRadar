@@ -118,6 +118,7 @@ def test_dashboard_snapshot_cli_outputs_dashboard_command_center_json(
         "live-data-activation-contract-v1"
     )
     assert payload["call_plan"]["schema_version"] == "radar-run-call-plan-v1"
+    assert payload["priced_in_preflight"]["schema_version"] == "priced-in-preflight-v1"
     assert payload["telemetry_coverage"]["schema_version"] == (
         "ops-telemetry-coverage-v1"
     )
@@ -248,6 +249,28 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
     assert payload["rows"][0]["priced_in_status"] == "bullish_not_priced_in"
     assert payload["rows"][0]["emotion_reaction_gap"] == 49.0
     assert "catalyst_events" in payload["rows"][0]["data_sources"]["available"]
+
+
+def test_priced_in_preflight_cli_outputs_zero_call_plan(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["seed-dashboard-demo"]) == 0
+    capsys.readouterr()
+
+    assert main(["priced-in-preflight", "--json"]) == 0
+    output = capsys.readouterr()
+    payload = json.loads(output.out)
+
+    assert output.err == ""
+    assert payload["schema_version"] == "priced-in-preflight-v1"
+    assert payload["external_calls_made"] == 0
+    assert payload["rows"][0]["area"] == "universe"
+    assert payload["commands"]["review_queue"] == "catalyst-radar priced-in-queue --json"
 
 
 def test_agent_brief_cli_real_mode_blocks_without_explicit_gates(

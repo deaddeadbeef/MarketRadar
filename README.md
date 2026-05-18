@@ -66,11 +66,18 @@ not create securities. To expand beyond fixtures, ingest the active ticker
 reference set, ingest fresh bars, then scan without a ticker filter:
 
 ```powershell
+catalyst-radar priced-in-preflight
 catalyst-radar ingest-polygon tickers
 catalyst-radar ingest-polygon grouped-daily --date <LATEST_TRADING_DATE>
 catalyst-radar build-universe --as-of <LATEST_TRADING_DATE>
 catalyst-radar scan --as-of <LATEST_TRADING_DATE>
 ```
+
+`priced-in-preflight` is zero-call. It explains why the current queue may only
+show a few tickers and returns the exact commands/API routes needed before the
+next scan can count as broad-market. In Polygon/Massive mode it also exposes
+the current `CATALYST_POLYGON_TICKERS_MAX_PAGES` cap, because one ticker page is
+not the whole market.
 
 The dashboard shows active universe size, requested/scanned securities, fresh
 bar coverage, and candidate count so a tiny local universe is not mistaken for a
@@ -203,6 +210,7 @@ renders:
 ```powershell
 catalyst-radar dashboard-snapshot --json
 catalyst-radar dashboard-snapshot --ticker ACME --available-at 2026-05-10T21:06:00Z
+catalyst-radar priced-in-preflight --json
 catalyst-radar priced-in-queue --json
 catalyst-radar agent-brief --json
 ```
@@ -219,6 +227,8 @@ the dashboard, with optional `--status`, `--min-gap`, `--limit`, and `--json`.
 Each row also reports which source classes are available, stale, or missing:
 market bars, catalyst events, local text, options, theme/peer/sector context,
 and broker context. The API equivalent is `GET /api/radar/priced-in`.
+Use `priced-in-preflight --json` first when the queue says `universe_too_small`
+or `partial_scan`; its API equivalent is `GET /api/radar/priced-in/preflight`.
 
 `agent-brief` is the CLI surface for the OpenAI Agents SDK operator layer. By
 default it runs a deterministic dry-run brief from the same redacted dashboard

@@ -266,6 +266,12 @@ def dashboard_snapshot_payload(
         discovery_snapshot=discovery_snapshot,
         candidate_rows=candidate_rows,
     )
+    priced_in_preflight = dashboard_data.priced_in_preflight_payload(
+        engine,
+        config,
+        latest_run=latest_run,
+        discovery_snapshot=discovery_snapshot,
+    )
     operator_next_step = dashboard_data.operator_next_step_payload(operator_work_queue)
     telemetry = dashboard_data.telemetry_tape_payload(
         ops_health,
@@ -292,6 +298,7 @@ def dashboard_snapshot_payload(
         "investment_readiness": investment_readiness,
         "operator_work_queue": operator_work_queue,
         "operator_next_step": operator_next_step,
+        "priced_in_preflight": priced_in_preflight,
         "candidates": {
             "count": len(candidate_rows),
             "rows": candidate_rows,
@@ -1952,6 +1959,7 @@ def _market_insight_rows(payload: Mapping[str, object]) -> list[Mapping[str, obj
     scan_yield = _mapping(discovery.get("yield"))
     database = _mapping(_mapping(payload.get("ops_health")).get("database"))
     call_plan = _mapping(payload.get("call_plan"))
+    preflight = _mapping(payload.get("priced_in_preflight"))
     can_act = _decision_label(readiness)
     rows: list[Mapping[str, object]] = []
 
@@ -1960,6 +1968,7 @@ def _market_insight_rows(payload: Mapping[str, object]) -> list[Mapping[str, obj
             freshness=freshness,
             database=database,
             scan_yield=scan_yield,
+            preflight=preflight,
             candidate_count=len(_candidate_rows(payload)),
         )
     )
@@ -2077,6 +2086,7 @@ def _full_scan_coverage_row(
     freshness: Mapping[str, object],
     database: Mapping[str, object],
     scan_yield: Mapping[str, object],
+    preflight: Mapping[str, object],
     candidate_count: int,
 ) -> Mapping[str, object]:
     active_count = int(
@@ -2101,15 +2111,19 @@ def _full_scan_coverage_row(
     denominator = active_count or requested or scanned
     if denominator < 500:
         signal = "Universe too small"
-        next_action = (
-            "Ingest Polygon/Massive tickers and bars, then run the radar without a ticker filter."
-        )
+        next_action = str(preflight.get("next_action") or "")
     elif scanned and denominator and scanned < max(1, int(denominator * 0.9)):
         signal = "Partial scan"
-        next_action = "Open Ops/Run and fix missing bars before trusting the ranked queue."
+        next_action = str(
+            preflight.get("next_action")
+            or "Open Ops/Run and fix missing bars before trusting the ranked queue."
+        )
     else:
         signal = "Full scan coverage"
-        next_action = "Review ranked priced-in mismatches below, starting with the top candidate."
+        next_action = str(
+            preflight.get("next_action")
+            or "Review ranked priced-in mismatches below, starting with the top candidate."
+        )
     why_now = (
         f"active {active_count or 'n/a'}; requested {requested or 'n/a'}; "
         f"scanned {scanned or 'n/a'}; candidates {candidate_count}; "

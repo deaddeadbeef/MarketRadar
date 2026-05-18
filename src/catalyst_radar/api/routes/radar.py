@@ -344,6 +344,14 @@ def radar_priced_in_queue(
     )
 
 
+@router.get("/priced-in/preflight", dependencies=[Depends(require_role(Role.VIEWER))])
+def radar_priced_in_preflight() -> dict[str, object]:
+    preflight_payload = _dashboard_helper("priced_in_preflight_payload")
+    return redact_restricted_external_payload(
+        preflight_payload(_engine(), AppConfig.from_env())
+    )
+
+
 @router.post("/runs/call-plan", dependencies=[Depends(require_role(Role.VIEWER))])
 def radar_run_call_plan(request: RadarRunRequest) -> dict[str, object]:
     call_plan_payload = _dashboard_helper("radar_run_call_plan_payload")

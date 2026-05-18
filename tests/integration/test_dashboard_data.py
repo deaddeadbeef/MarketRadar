@@ -61,6 +61,7 @@ from catalyst_radar.dashboard.data import (
     operator_next_step_payload,
     operator_work_queue_payload,
     opportunity_focus_payload,
+    priced_in_preflight_payload,
     priced_in_queue_payload,
     provider_preflight_payload,
     radar_discovery_snapshot_payload,
@@ -1385,6 +1386,27 @@ def test_priced_in_queue_payload_surfaces_ranked_gap_rows(tmp_path: Path) -> Non
     assert payload["rows"][0]["data_sources"]["available"]
     assert "summary" in payload["rows"][0]["data_sources"]
     assert payload["rows"][0]["why_now"] == "MSFT guidance raised"
+
+
+def test_priced_in_preflight_payload_reports_exact_next_steps(tmp_path: Path) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+
+    payload = priced_in_preflight_payload(
+        engine,
+        AppConfig(daily_market_provider="polygon", polygon_tickers_max_pages=1),
+    )
+
+    assert payload["schema_version"] == "priced-in-preflight-v1"
+    assert payload["external_calls_made"] == 0
+    assert payload["status"] in {"blocked", "attention", "ready"}
+    assert payload["provider"]["ticker_seed_cap_pages"] == 1
+    assert payload["commands"]["ingest_tickers"].endswith("--max-pages 1")
+    assert payload["commands"]["review_queue"] == "catalyst-radar priced-in-queue --json"
+    by_area = {row["area"]: row for row in payload["rows"]}
+    assert "universe" in by_area
+    assert "market_bars" in by_area
+    assert payload["api"]["queue"] == "GET /api/radar/priced-in"
 
 
 def test_operator_work_queue_prioritizes_setup_blockers_and_candidate_context(

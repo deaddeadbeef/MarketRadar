@@ -1133,6 +1133,42 @@ def test_get_radar_priced_in_queue_returns_cli_ready_rows(
     ]
 
 
+def test_get_radar_priced_in_preflight_returns_zero_call_steps(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "radar-priced-in-preflight.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+    monkeypatch.setattr(
+        dashboard_data,
+        "priced_in_preflight_payload",
+        lambda _engine, _config: {
+            "schema_version": "priced-in-preflight-v1",
+            "status": "blocked",
+            "external_calls_made": 0,
+            "rows": [
+                {
+                    "area": "universe",
+                    "status": "blocked",
+                    "finding": "tiny universe",
+                    "next_action": "seed tickers",
+                }
+            ],
+        },
+        raising=False,
+    )
+    client = TestClient(create_app())
+
+    response = client.get("/api/radar/priced-in/preflight")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["schema_version"] == "priced-in-preflight-v1"
+    assert payload["external_calls_made"] == 0
+    assert payload["rows"][0]["area"] == "universe"
+
+
 def test_post_radar_run_call_plan_returns_read_only_call_budget(
     tmp_path,
     monkeypatch,

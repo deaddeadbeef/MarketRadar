@@ -155,6 +155,7 @@ row should say "Universe too small" instead of implying full-market insight.
 The current CLI/API follow-up adds a scriptable version of that same queue:
 
 ```powershell
+catalyst-radar priced-in-preflight --json
 catalyst-radar priced-in-queue --json
 catalyst-radar priced-in-queue --status bullish_not_priced_in --min-gap 20 --limit 20
 ```
@@ -162,8 +163,19 @@ catalyst-radar priced-in-queue --status bullish_not_priced_in --min-gap 20 --lim
 API equivalent:
 
 ```text
+GET /api/radar/priced-in/preflight
 GET /api/radar/priced-in?limit=50&status=bullish_not_priced_in&min_gap=20
 ```
+
+`priced-in-preflight` is the zero-call answer to "why only these tickers?" It
+reports `priced-in-preflight-v1`, `external_calls_made=0`, current scan status,
+and exact commands/API routes for ticker seeding, daily-bar ingest,
+universe build, call-plan review, scan execution, and queue review. The
+preflight follows the configured market provider, so Polygon/Massive mode
+returns Polygon commands and CSV mode returns CSV ingest commands. In
+Polygon/Massive mode it also reports the configured ticker-reference page cap;
+with `CATALYST_POLYGON_TICKERS_MAX_PAGES=1`, ticker seeding is deliberately
+capped and should not be described as the whole market.
 
 This payload is `priced-in-queue-v1`, reports `external_calls_made=0`, includes
 the full-scan boundary (`universe_too_small`, `partial_scan`, or `ready`), and
