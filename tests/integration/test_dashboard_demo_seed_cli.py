@@ -321,13 +321,102 @@ def test_dashboard_batch_command_opens_full_scan_source_batch_plan(
     assert "full-scan gap row" in update.message
     assert "plannable" in update.message
     assert "batch(es)" in update.message
-    assert "First chunk only: catalyst-radar schwab-market-sync --ticker ACME" in (
+    assert "This is a full-scan plan, not a watchlist." in update.message
+    assert "Next safe chunk only: catalyst-radar schwab-market-sync --ticker ACME" in (
         update.message
     )
+    assert "`batch options execute`" in update.message
     assert (
         "Full chunk list: catalyst-radar priced-in-source-batches "
         "--source options --all --json"
     ) in update.message
+
+
+def test_dashboard_batch_execute_runs_one_guarded_local_chunk(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = create_engine(database_url, future=True)
+    calls: dict[str, object] = {}
+
+    def fake_batches_payload(_engine, _config, **kwargs) -> dict[str, object]:
+        assert kwargs["source"] == "local_text"
+        return {
+            "status": "ready",
+            "source": "local_text",
+            "total_gap_rows": 123,
+            "plannable_gap_rows": 123,
+            "batch_count": 25,
+            "next_action": "Run local text.",
+            "batches": [
+                {
+                    "number": 1,
+                    "row_start": 1,
+                    "row_end": 5,
+                    "tickers": ["ACME", "MSFT"],
+                    "call_plan_status": "local_only",
+                    "api_payload": {
+                        "as_of": "2026-05-15",
+                        "available_at": "2026-05-18T16:00:00+00:00",
+                        "tickers": ["ACME", "MSFT"],
+                    },
+                }
+            ],
+        }
+
+    class FakeTextResult:
+        feature_count = 2
+        snippet_count = 4
+
+    def fake_run_text_pipeline(_event_repo, _text_repo, **kwargs):
+        calls["as_of"] = kwargs["as_of"].isoformat()
+        calls["available_at"] = kwargs["available_at"].isoformat()
+        calls["tickers"] = tuple(kwargs["tickers"])
+        return FakeTextResult()
+
+    monkeypatch.setattr(
+        "catalyst_radar.dashboard.tui.dashboard_data.priced_in_source_gap_batches_payload",
+        fake_batches_payload,
+    )
+    monkeypatch.setattr(
+        "catalyst_radar.dashboard.tui.run_text_pipeline",
+        fake_run_text_pipeline,
+    )
+
+    update = _apply_command(
+        "batch local_text execute",
+        {},
+        "overview",
+        DashboardFilters(),
+        engine=engine,
+        config=AppConfig.from_env(),
+    )
+
+    assert update.page == "ops"
+    assert update.message == (
+        "Executed local_text chunk 1 (rows 1-5): tickers=2 features=2 "
+        "snippets=4 external_calls=0. Refresh to see updated full-scan coverage."
+    )
+    assert calls == {
+        "as_of": "2026-05-15T21:00:00+00:00",
+        "available_at": "2026-05-18T16:00:00+00:00",
+        "tickers": ("ACME", "MSFT"),
+    }
+    calls.clear()
+
+    alias_update = _apply_command(
+        "batch execute local_text",
+        {},
+        "overview",
+        DashboardFilters(),
+        engine=engine,
+        config=AppConfig.from_env(),
+    )
+
+    assert alias_update.message.startswith("Executed local_text chunk 1")
+    assert calls["tickers"] == ("ACME", "MSFT")
 
 
 def test_dashboard_run_page_shows_priced_in_evidence_plan(
