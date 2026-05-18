@@ -431,6 +431,9 @@ def dashboard_snapshot_payload(
         if isinstance(priced_in_queue.get("source_coverage"), Mapping)
         else dashboard_data.priced_in_source_coverage_summary(candidate_rows)
     )
+    priced_in_source_workflow = _priced_in_source_workflow_payload(
+        priced_in_preflight
+    )
     priced_in_answer = dashboard_data.priced_in_answer_payload(
         engine,
         config,
@@ -473,6 +476,7 @@ def dashboard_snapshot_payload(
         "priced_in_queue": priced_in_queue,
         "priced_in_answer": priced_in_answer,
         "priced_in_source_coverage": priced_in_source_coverage,
+        "priced_in_source_workflow": priced_in_source_workflow,
         "candidates": {
             "count": len(candidate_rows),
             "rows": candidate_rows,
@@ -3929,6 +3933,87 @@ def _source_action_gap_count(action: Mapping[str, object]) -> str:
     return str(gap_count)
 
 
+def _priced_in_source_workflow_payload(
+    preflight: Mapping[str, object],
+) -> dict[str, object]:
+    plan = _mapping(preflight.get("evidence_plan"))
+    source_names = set(dashboard_data.PRICED_IN_SOURCE_CLASSES)
+    steps: list[dict[str, object]] = []
+    for step in _rows(plan.get("steps")):
+        source = str(step.get("area") or "").strip()
+        command = str(step.get("command") or "").strip()
+        if source not in source_names and "priced-in-source-batches" not in command:
+            continue
+        steps.append(
+            {
+                "priority": int(_number_or_zero(step.get("priority"))),
+                "source": source,
+                "status": step.get("status"),
+                "depends_on": _texts(step.get("depends_on")),
+                "action": step.get("action") or step.get("next_action"),
+                "command": command or None,
+                "api": step.get("api"),
+            }
+        )
+    return {
+        "schema_version": "priced-in-source-workflow-v1",
+        "status": plan.get("status") or "unknown",
+        "headline": plan.get("headline"),
+        "next_action": plan.get("next_action"),
+        "next_command": plan.get("next_command"),
+        "overview_command": "catalyst-radar priced-in-source-batches --source all",
+        "overview_api": "GET /api/radar/priced-in/source-batches?source=all",
+        "external_calls_made": 0,
+        "steps": steps,
+        "step_count": len(steps),
+    }
+
+
+def _source_workflow_lines(payload: Mapping[str, object], width: int) -> list[str]:
+    workflow = _mapping(payload.get("priced_in_source_workflow"))
+    steps = _rows(workflow.get("steps"))
+    if not steps:
+        return []
+    lines = [_rule("Source Fill Workflow", width)]
+    lines.extend(
+        _kv_lines(
+            (
+                ("Status", workflow.get("status")),
+                ("Next action", workflow.get("next_action")),
+                ("All-source plan", workflow.get("overview_command")),
+            ),
+            width=width,
+        )
+    )
+    table_rows = [
+        {
+            **step,
+            "depends_on": ",".join(_texts(step.get("depends_on"))) or "none",
+        }
+        for step in steps
+    ]
+    lines.extend(
+        _table_lines(
+            table_rows,
+            [
+                ("priority", "#", 4),
+                ("source", "Source", 18),
+                ("status", "Status", 12),
+                ("depends_on", "After", 22),
+                ("action", "Do this", 58),
+                ("command", "Plan command", 58),
+            ],
+            width=width,
+            limit=8,
+        )
+    )
+    lines.append(
+        "`batch all` shows this source map without provider calls; "
+        "`batch <source> execute` runs exactly one guarded chunk."
+    )
+    return lines
+
+
 def _ops_lines(payload: Mapping[str, object], width: int) -> list[str]:
     ops = _mapping(payload.get("ops_health"))
     database = _mapping(ops.get("database"))
@@ -3981,6 +4066,10 @@ def _ops_lines(payload: Mapping[str, object], width: int) -> list[str]:
             "full-scan plan; type `batch <source> execute` to run only the next "
             "guarded chunk."
         )
+    workflow_lines = _source_workflow_lines(payload, width)
+    if workflow_lines:
+        lines.append("")
+        lines.extend(workflow_lines)
     lines.append("")
     lines.extend(
         _table_lines(

@@ -233,8 +233,10 @@ From the ops/source-gap view, `batch <source>` remains plan-only and zero-call;
 `batch <source> execute` is the explicit live/local action for one source-fill
 chunk. Use it repeatedly with refreshes when you intentionally want to fill the
 full scan under provider caps. Use `batch all` to see a zero-call overview of
-all source gaps and the first executable source before choosing one. CLI/API
-automation can use
+all source gaps and the first executable source before choosing one. The Ops
+page also shows a `Source Fill Workflow` section from the zero-call preflight
+plan so the next source to inspect is visible without remembering commands.
+CLI/API automation can use
 `priced-in-source-batches --source all`,
 `priced-in-source-batches --source <source> --execute-next` or
 `POST /api/radar/priced-in/source-batches/execute-next` for the same one-chunk

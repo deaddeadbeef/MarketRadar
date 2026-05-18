@@ -1,6 +1,61 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 03:58:05 +08:00
+Last updated: 2026-05-19 04:09:18 +08:00
+
+## Latest Dashboard Source-Fill Workflow
+
+The all-source batch overview made the workflow scriptable, but the TUI Ops
+page still required the operator to know `batch all`. This slice surfaces the
+same source-fill priority directly in the dashboard payload and Ops page without
+adding another expensive all-source batch scan to every render.
+
+Changes in this slice:
+
+- `dashboard_snapshot_payload()` now includes:
+
+  ```text
+  priced_in_source_workflow.schema_version=priced-in-source-workflow-v1
+  priced_in_source_workflow.overview_command=catalyst-radar priced-in-source-batches --source all
+  priced_in_source_workflow.external_calls_made=0
+  ```
+
+- The workflow is derived from the existing zero-call `priced_in_preflight`
+  evidence plan, so it reuses already-computed source dependency order.
+- The Ops page now renders a `Source Fill Workflow` section with:
+  - status;
+  - next action;
+  - all-source plan command;
+  - ordered source steps with dependencies and plan commands.
+- The Ops page explicitly tells the operator that `batch all` is plan-only and
+  `batch <source> execute` runs exactly one guarded chunk.
+
+Live zero-provider-call smoke:
+
+```text
+Source Fill Workflow
+All-source plan          : catalyst-radar priced-in-source-batches --source all
+batch all shows this source map without provider calls; batch <source> execute runs exactly one guarded chunk.
+```
+
+JSON smoke:
+
+```text
+priced-in-source-workflow-v1 attention 5 catalyst-radar priced-in-source-batches --source all 0
+[(1, 'catalyst_events', 'attention'), (2, 'local_text', 'attention'), (3, 'options', 'attention'), (4, 'broker_context', 'attention')]
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_snapshot_cli_outputs_dashboard_command_center_json tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_snapshot_ops_page_shows_priced_in_source_actions tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_batch_command_opens_full_scan_source_batch_plan -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-snapshot --page ops | Select-String -Pattern "Source Fill Workflow|All-source plan|priced-in-source-batches --source all|batch all|catalyst_events|local_text|options|broker_context"
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-snapshot --page ops --json | .\.venv\Scripts\python.exe -c "import json,sys; p=json.load(sys.stdin); w=p['priced_in_source_workflow']; print(w['schema_version'], w['status'], w['step_count'], w['overview_command'], w['external_calls_made']); print([(s['priority'], s['source'], s['status']) for s in w['steps'][:4]])"
+```
+
+Observed: focused pytest passed, ruff passed, `git diff --check` passed, and
+live Ops-page smoke shows the source-fill workflow without provider calls.
 
 ## Latest All-Source Batch Overview
 

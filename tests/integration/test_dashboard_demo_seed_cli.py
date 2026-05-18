@@ -124,6 +124,14 @@ def test_dashboard_snapshot_cli_outputs_dashboard_command_center_json(
     )
     assert payload["call_plan"]["schema_version"] == "radar-run-call-plan-v1"
     assert payload["priced_in_preflight"]["schema_version"] == "priced-in-preflight-v1"
+    assert payload["priced_in_source_workflow"]["schema_version"] == (
+        "priced-in-source-workflow-v1"
+    )
+    assert payload["priced_in_source_workflow"]["overview_command"] == (
+        "catalyst-radar priced-in-source-batches --source all"
+    )
+    assert payload["priced_in_source_workflow"]["external_calls_made"] == 0
+    assert payload["priced_in_source_workflow"]["steps"]
     assert payload["priced_in_answer"]["schema_version"] == "priced-in-answer-v1"
     assert payload["priced_in_answer"]["external_calls_made"] == 0
     assert payload["priced_in_answer"]["question"] == (
@@ -288,9 +296,12 @@ def test_dashboard_snapshot_ops_page_shows_priced_in_source_actions(
 
     assert output.err == ""
     assert "Priced-in Source Gaps" in output.out
+    assert "Source Fill Workflow" in output.out
     assert "options" in output.out
     assert "priced-in-source-batches" in output.out
+    assert "priced-in-source-batches --source all" in output.out
     assert "Examples are sample tickers only" in output.out
+    assert "`batch all` shows this source map without provider calls" in output.out
     assert "batch <source>" in output.out
     assert "ACME" in output.out
 
