@@ -374,6 +374,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     dashboard_snapshot.add_argument("--telemetry-limit", type=int, default=8)
     dashboard_snapshot.add_argument(
+        "--scan-limit",
+        type=int,
+        default=50,
+        help="Insights rows per page for full-scan/mismatch queue views.",
+    )
+    dashboard_snapshot.add_argument(
+        "--scan-offset",
+        type=int,
+        default=0,
+        help="Zero-based Insights row offset for paging through the scan.",
+    )
+    dashboard_snapshot.add_argument(
         "--usefulness",
         help=(
             "Filter Insights rows by usefulness verdict: useful, research_useful, "
@@ -462,6 +474,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     agent_brief.add_argument("--telemetry-limit", type=int, default=8)
     agent_brief.add_argument(
+        "--scan-limit",
+        type=int,
+        default=50,
+        help="Insights rows per page included in the agent brief context.",
+    )
+    agent_brief.add_argument(
+        "--scan-offset",
+        type=int,
+        default=0,
+        help="Zero-based Insights row offset included in the agent brief context.",
+    )
+    agent_brief.add_argument(
         "--usefulness",
         help=(
             "Filter brief context by usefulness verdict: useful, research_useful, "
@@ -494,6 +518,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Insights queue mode: actionable/mismatches or all/full.",
     )
     dashboard_tui.add_argument("--telemetry-limit", type=int, default=8)
+    dashboard_tui.add_argument(
+        "--scan-limit",
+        type=int,
+        default=50,
+        help="Insights rows per page for full-scan/mismatch queue views.",
+    )
+    dashboard_tui.add_argument(
+        "--scan-offset",
+        type=int,
+        default=0,
+        help="Zero-based Insights row offset for paging through the scan.",
+    )
     dashboard_tui.add_argument(
         "--usefulness",
         help=(
@@ -774,6 +810,8 @@ def main(argv: list[str] | None = None) -> int:
             priced_in_status=args.priced_in_status,
             priced_in_usefulness=args.usefulness,
             priced_in_decision_gap=args.decision_gap,
+            priced_in_limit=args.scan_limit,
+            priced_in_offset=args.scan_offset,
             telemetry_limit=args.telemetry_limit,
         )
         payload = dashboard_snapshot_payload(
@@ -839,6 +877,8 @@ def main(argv: list[str] | None = None) -> int:
             priced_in_status=args.priced_in_status,
             priced_in_usefulness=args.usefulness,
             priced_in_decision_gap=args.decision_gap,
+            priced_in_limit=args.scan_limit,
+            priced_in_offset=args.scan_offset,
             telemetry_limit=args.telemetry_limit,
         )
         payload = dashboard_snapshot_payload(
@@ -869,6 +909,8 @@ def main(argv: list[str] | None = None) -> int:
             priced_in_status=args.priced_in_status,
             priced_in_usefulness=args.usefulness,
             priced_in_decision_gap=args.decision_gap,
+            priced_in_limit=args.scan_limit,
+            priced_in_offset=args.scan_offset,
             telemetry_limit=args.telemetry_limit,
         )
         if args.once:

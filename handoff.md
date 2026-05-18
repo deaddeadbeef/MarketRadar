@@ -1,6 +1,71 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 18:13:51 +08:00
+Last updated: 2026-05-18 18:36:37 +08:00
+
+## Latest Full-Scan Paging Clarification
+
+The latest user complaint was still: "Why only these tickers? I want full
+scan." The root issue was no longer the scan backend. The full-scan queue was
+already backed by the latest full universe (`12087` ranked rows in the local
+Schwab-backed DB), but the dashboard only rendered the first page and did not
+make paging obvious enough.
+
+Changes in this slice:
+
+- Dashboard filters now carry `priced_in_limit` and `priced_in_offset`.
+- `dashboard-snapshot`, `dashboard-tui`, and `agent-brief` accept:
+
+  ```powershell
+  --scan-limit <1-200>
+  --scan-offset <zero-based-row-offset>
+  ```
+
+- The TUI command box now supports:
+
+  ```text
+  next
+  prev
+  offset <1-based-row>
+  limit <1-200>
+  ```
+
+- The overview title and caption now say row ranges, for example:
+
+  ```text
+  Full-market priced-in queue - showing rows 6-10 of 12087
+  This page shows rows 6-10: 5 visible rows from 12087 latest-scan rows.
+  ```
+
+- The full-scan coverage row now opens Ops coverage instead of the legacy
+  candidate-state table. The ranked full-scan rows stay on Insights. This
+  avoids implying that the `Candidates` page is the whole market scan.
+
+Live zero-provider-call verification:
+
+```powershell
+.\.venv\Scripts\catalyst-radar.exe dashboard-tui --once --page overview --scan-limit 5 --scan-offset 5
+.\.venv\Scripts\catalyst-radar.exe dashboard-snapshot --page overview --scan-limit 5 --scan-offset 5 --json |
+  .\.venv\Scripts\python.exe -c "import json,sys; p=json.load(sys.stdin); print(p['controls']['priced_in_limit'], p['controls']['priced_in_offset'], p['priced_in_queue']['filters']['limit'], p['priced_in_queue']['filters']['offset'], p['priced_in_queue']['count'], p['priced_in_queue']['total_count'])"
+.\.venv\Scripts\catalyst-radar.exe priced-in-queue --full-scan --limit 5 --offset 5
+```
+
+Observed:
+
+```text
+dashboard title: Full-market priced-in queue - showing rows 6-10 of 12087
+snapshot controls/filter/counts: 5 5 5 5 5 12087
+priced-in queue headline: Latest full scan ranked 12087 priced-in row(s); showing 6-10 of 12087.
+```
+
+Validation for this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_snapshot_cli_outputs_dashboard_command_center_json tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_snapshot_cli_outputs_human_readable_zero_call_summary tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_tui_once_can_show_full_scan_mode tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_scan_commands_page_full_scan_rows tests\integration\test_dashboard_demo_seed_cli.py::test_modern_dashboard_tui_supports_mouse_navigation -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+```
+
+All passed.
 
 ## Latest Run Freshness Cutoff Fix
 
