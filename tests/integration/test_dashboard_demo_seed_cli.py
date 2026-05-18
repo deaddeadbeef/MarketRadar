@@ -386,6 +386,7 @@ def test_dashboard_tui_once_can_show_full_scan_mode(
 
     assert output.err == ""
     assert "Full-market priced-in queue - showing" in output.out
+    assert "Decision readiness:" in output.out
     assert "Data gaps" in output.out
     assert "ticker rows are the current priced-in scan page" in output.out
 
@@ -749,6 +750,8 @@ def test_priced_in_answer_cli_outputs_current_scan_answer(
     assert "priced_in_answer status=" in output.out
     assert "question=Has price fully matched market expectations?" in output.out
     assert "answer=" in output.out
+    assert "decision_readiness=status=" in output.out
+    assert "recommended_gap=" in output.out
     assert "external_calls=0" in output.out
 
     assert main(["priced-in-answer", "--json"]) == 0
@@ -757,6 +760,9 @@ def test_priced_in_answer_cli_outputs_current_scan_answer(
     assert payload["schema_version"] == "priced-in-answer-v1"
     assert payload["external_calls_made"] == 0
     assert payload["question"] == "Has price fully matched market expectations?"
+    assert payload["decision_readiness"]["schema_version"] == (
+        "priced-in-decision-readiness-v1"
+    )
 
 
 def test_candidate_detail_cli_outputs_priced_in_evidence_brief(

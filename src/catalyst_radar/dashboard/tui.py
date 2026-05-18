@@ -1326,6 +1326,10 @@ class MarketRadarDashboardApp(App[int]):
                         f"[bold]Scope:[/] {scope_text}"
                     ),
                     (
+                        f"[bold]Decision blocker:[/] "
+                        f"{_decision_readiness_summary(self.payload)}"
+                    ),
+                    (
                         f"[bold]Priced-in answer:[/] "
                         f"{answer.get('answer') or 'Open Insights for current answer.'}"
                     ),
@@ -2657,6 +2661,24 @@ def _market_insight_rows(payload: Mapping[str, object]) -> list[Mapping[str, obj
                 "status_message": "Opened current priced-in answer context.",
             }
         )
+        decision_readiness = _mapping(priced_in_answer.get("decision_readiness"))
+        recommended_gap = _mapping(decision_readiness.get("recommended_gap"))
+        if decision_readiness:
+            rows.append(
+                {
+                    "_row_key": "decision-readiness",
+                    "scope": "READY",
+                    "signal": _human_label(
+                        decision_readiness.get("status") or "decision readiness"
+                    ),
+                    "why_now": decision_readiness.get("summary")
+                    or "Decision readiness is available.",
+                    "next_action": recommended_gap.get("next_action")
+                    or "Open Readiness or Ops to clear decision blockers.",
+                    "target_page": "ops",
+                    "status_message": "Opened Ops. Clear the recommended decision gap first.",
+                }
+            )
 
     rows.append(
         _full_scan_coverage_row(
@@ -2980,6 +3002,9 @@ def _priced_in_mismatch_text(emotion: object, reaction: object, gap: object) -> 
 
 def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
     lines = [_rule(_overview_title(payload), width)]
+    decision_summary = _decision_readiness_summary(payload)
+    if decision_summary:
+        lines.append(f"Decision readiness: {decision_summary}")
     lines.extend(
         _table_lines(
             _priced_in_overview_rows(payload),
@@ -2999,6 +3024,19 @@ def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
     lines.append("")
     lines.append(_overview_caption(payload))
     return lines
+
+
+def _decision_readiness_summary(payload: Mapping[str, object]) -> str:
+    answer = _mapping(payload.get("priced_in_answer"))
+    readiness = _mapping(answer.get("decision_readiness"))
+    if not readiness:
+        return ""
+    summary = str(readiness.get("summary") or "").strip()
+    recommended = _mapping(readiness.get("recommended_gap"))
+    command = str(recommended.get("command") or "").strip()
+    if command:
+        return f"{summary} Command: {command}"
+    return summary
 
 
 def _overview_title(payload: Mapping[str, object]) -> str:

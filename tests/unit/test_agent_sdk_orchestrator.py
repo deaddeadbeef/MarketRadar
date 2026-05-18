@@ -106,6 +106,7 @@ def test_redacted_operator_snapshot_allowlists_dashboard_fields() -> None:
             "research_lead_rows": 5,
             "decision_ready_rows": 0,
         },
+        "decision_readiness": {},
         "trust_blockers": ["options coverage missing"],
     }
     assert snapshot["priced_in"]["source_coverage"]["actions"][0] == {
