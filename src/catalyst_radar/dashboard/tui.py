@@ -1288,6 +1288,7 @@ class MarketRadarDashboardApp(App[int]):
             scan_yield = _mapping(discovery.get("yield"))
             queue = _mapping(self.payload.get("priced_in_queue"))
             answer = _mapping(self.payload.get("priced_in_answer"))
+            scan_scope = _mapping(answer.get("scan_scope"))
             status_filter = _priced_in_status_filter(queue)
             mode = "Full Scan" if status_filter == "all" else "Mismatches"
             offset = int(_number_or_zero(queue.get("offset")))
@@ -1305,6 +1306,10 @@ class MarketRadarDashboardApp(App[int]):
                     if offset == 0
                     else "showing a later page of bullish/bearish not-priced-in rows"
                 )
+            scope_text = str(
+                scan_scope.get("explanation")
+                or f"showing rows {offset + 1}-{offset + count} of {total}."
+            )
             return "\n".join(
                 [
                     (
@@ -1318,28 +1323,16 @@ class MarketRadarDashboardApp(App[int]):
                         f"securities; candidates {candidates.get('count') or 0}."
                     ),
                     (
-                        "[bold]Switch view:[/] press M or click SCAN in the sidebar. "
-                        "Full Scan includes neutral, blocked, fully-priced, and stale rows."
-                    ),
-                    (
-                        f"[bold]Page:[/] showing rows {offset + 1}-{offset + count} "
-                        f"of {total}. Type next, prev, offset <row>, or limit <rows>."
-                    ),
-                    (
-                        f"[bold]Current boundary:[/] {can_act}; "
-                        f"{blocked_layers or 0} useful layer(s) blocked."
+                        f"[bold]Scope:[/] {scope_text}"
                     ),
                     (
                         f"[bold]Priced-in answer:[/] "
                         f"{answer.get('answer') or 'Open Insights for current answer.'}"
                     ),
                     (
-                        f"[bold]Do next:[/] "
-                        f"{answer.get('next_action') or 'Review the largest gaps first.'}"
-                    ),
-                    (
-                        "[bold]Safe rule:[/] browsing and opening insight rows make "
-                        "0 provider calls."
+                        f"[bold]Controls:[/] M toggles view; next/prev pages rows; "
+                        f"export full prints all rows; {can_act}; "
+                        f"{blocked_layers or 0} useful layer(s) blocked."
                     ),
                 ]
             )
@@ -1735,6 +1728,10 @@ class MarketRadarDashboardApp(App[int]):
                 "command": "next / prev / offset <row>",
                 "meaning": "Page through the full ranked scan without provider calls.",
             },
+            {
+                "command": "export full",
+                "meaning": "Print the full-scan JSON export command.",
+            },
             {"command": "limit <1-200>", "meaning": "Change visible scan rows per page."},
             {
                 "command": "source-gap <source|all>",
@@ -1909,6 +1906,34 @@ def _apply_command(
             page="overview",
             filters=replace(filters, priced_in_offset=offset).normalized(),
             message=f"Showing full-scan rows starting at {offset + 1}.",
+        )
+    if command == "export":
+        answer = _mapping(payload.get("priced_in_answer"))
+        scan_scope = _mapping(answer.get("scan_scope"))
+        if value.lower() in {"", "full", "full-scan", "scan", "all"}:
+            export_command = str(
+                scan_scope.get("full_scan_export_command")
+                or "catalyst-radar priced-in-queue --full-scan --all --json"
+            )
+            return _CommandUpdate(
+                page="overview",
+                filters=filters,
+                message=f"Full-scan export command: {export_command}",
+            )
+        if value.lower() in {"current", "filter", "filtered"}:
+            export_command = str(
+                scan_scope.get("current_filter_export_command")
+                or "catalyst-radar priced-in-queue --all --json"
+            )
+            return _CommandUpdate(
+                page="overview",
+                filters=filters,
+                message=f"Current-filter export command: {export_command}",
+            )
+        return _CommandUpdate(
+            page=page,
+            filters=filters,
+            message="Usage: export full or export current.",
         )
     if command == "offset":
         if not value.isdigit():

@@ -1,6 +1,63 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 23:37:59 +08:00
+Last updated: 2026-05-18 23:53:40 +08:00
+
+## Latest Full-Scan Scope UX
+
+The live backend is scanning the broad local universe. A zero-provider-call
+check showed:
+
+```text
+status=ready
+headline=Latest full scan ranked 12087 priced-in row(s); showing 1-5 of 12087.
+scan.scanned_securities=12087
+scan.requested_securities=12104
+freshness.active_security_count=12613
+rows=A,MSFT,AAA,AAAU,AAPL
+```
+
+The problem was presentation: top rows and first pages looked like the only
+tickers being scanned. The change in this slice makes the answer explicit:
+
+- `priced_in_answer_payload()` now emits `scan_scope`.
+- `scan_scope` states whether the current view is `full_scan` or
+  `filtered_scan`, which rows are visible, total row count, whether more pages
+  exist, and the reason the visible tickers are only a page.
+- `scan_scope` includes:
+
+  ```text
+  current_page_command
+  next_page_command
+  current_filter_export_command
+  full_scan_export_command
+  ```
+
+- The CLI `priced-in-answer` now prints the scan-scope explanation and export
+  commands.
+- The TUI overview guide now says the visible tickers are one page from the
+  scan scope, and `export full` prints:
+
+  ```powershell
+  catalyst-radar priced-in-queue --full-scan --all --json
+  ```
+
+Live zero-provider-call smoke:
+
+```text
+priced_in_answer status=research_only decision_ready=false total=12087 mismatches=7 research=5 blocked=7920 external_calls=0
+scan_scope=Showing ranked rows 1-5 of 12087; the visible tickers are one page from the full scan, not the scan universe.
+full_scan_export=catalyst-radar priced-in-queue --full-scan --all --json
+next_page=catalyst-radar priced-in-queue --full-scan --limit 5 --offset 5
+```
+
+Validation for this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_answer_payload_summarizes_current_scan tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_scan_commands_page_full_scan_rows tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_tui_once_can_show_full_scan_mode tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_queue_cli_outputs_same_zero_call_signal -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py
+```
+
+Observed: focused pytest passed and ruff passed.
 
 ## Latest Priced-In Answer Decision Flag
 

@@ -3191,6 +3191,18 @@ def _print_priced_in_answer(payload: Mapping[str, object]) -> None:
     print(f"question={payload.get('question')}")
     print(f"answer={payload.get('answer')}")
     print(f"headline={payload.get('headline')}")
+    scan_scope = payload.get("scan_scope")
+    if isinstance(scan_scope, Mapping):
+        print(f"scan_scope={_compact_cli_text(scan_scope.get('explanation'))}")
+        current_filter_export = scan_scope.get("current_filter_export_command")
+        if current_filter_export:
+            print(f"current_filter_export={_compact_cli_text(current_filter_export)}")
+        full_scan_export = scan_scope.get("full_scan_export_command")
+        if full_scan_export:
+            print(f"full_scan_export={_compact_cli_text(full_scan_export)}")
+        next_page = scan_scope.get("next_page_command")
+        if next_page:
+            print(f"next_page={_compact_cli_text(next_page)}")
     print(f"next_action={payload.get('next_action')}")
     if payload.get("next_command"):
         print(f"next_command={_compact_cli_text(payload.get('next_command'))}")

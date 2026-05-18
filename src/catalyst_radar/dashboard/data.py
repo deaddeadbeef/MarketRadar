@@ -983,6 +983,7 @@ def priced_in_answer_payload(
             "research_lead_rows": research_lead_count,
             "blocked_rows": blocked_count,
         },
+        "scan_scope": _priced_in_answer_scan_scope(resolved_queue),
         "filters": _row_dict(_mapping_value(resolved_queue, "filters")),
         "source_coverage": {
             "summary": source_coverage.get("summary"),
@@ -996,6 +997,103 @@ def priced_in_answer_payload(
         "next_command": next_command,
         "top_rows": top_rows[:resolved_limit],
     }
+
+
+def _priced_in_answer_scan_scope(queue: Mapping[str, object]) -> dict[str, object]:
+    filters = _mapping_value(queue, "filters")
+    status = str(filters.get("status") or "all").strip().lower()
+    total = int(_finite_float(queue.get("total_count")))
+    returned = int(
+        _finite_float(queue.get("returned_count"))
+        or _finite_float(queue.get("count"))
+    )
+    offset = int(_finite_float(queue.get("offset")))
+    row_start = offset + 1 if returned else 0
+    row_end = offset + returned
+    has_more = bool(queue.get("has_more"))
+    full_scan_mode = status in {"", "all"}
+    mode = "full_scan" if full_scan_mode else "filtered_scan"
+    if total <= 0:
+        explanation = "No priced-in rows are visible in the current scan."
+    elif full_scan_mode:
+        explanation = (
+            f"Showing ranked rows {row_start}-{row_end} of {total}; "
+            "the visible tickers are one page from the full scan, not the scan universe."
+        )
+    else:
+        explanation = (
+            f"Showing filtered rows {row_start}-{row_end} of {total}; "
+            "switch to full scan to see neutral, blocked, stale, and fully-priced rows too."
+        )
+    next_offset = offset + max(1, int(_finite_float(filters.get("limit"))) or returned)
+    return {
+        "schema_version": "priced-in-scan-scope-v1",
+        "mode": mode,
+        "visible_row_start": row_start,
+        "visible_row_end": row_end,
+        "visible_rows": returned,
+        "total_rows": total,
+        "offset": offset,
+        "has_more": has_more,
+        "explanation": explanation,
+        "current_page_command": _priced_in_queue_command_from_filters(filters),
+        "next_page_command": _priced_in_queue_command_from_filters(
+            filters,
+            offset=next_offset,
+        )
+        if has_more
+        else None,
+        "current_filter_export_command": _priced_in_queue_command_from_filters(
+            filters,
+            all_rows=True,
+        ),
+        "full_scan_export_command": (
+            "catalyst-radar priced-in-queue --full-scan --all --json"
+        ),
+    }
+
+
+def _priced_in_queue_command_from_filters(
+    filters: Mapping[str, object],
+    *,
+    offset: int | None = None,
+    all_rows: bool = False,
+) -> str:
+    parts = ["catalyst-radar", "priced-in-queue"]
+    available_at = str(filters.get("available_at") or "").strip()
+    if available_at:
+        parts.extend(["--available-at", available_at])
+    status = str(filters.get("status") or "all").strip().lower()
+    if status in {"", "all"}:
+        parts.append("--full-scan")
+    elif status in PRICED_IN_ACTIONABLE_FILTERS:
+        parts.append("--mismatches")
+    else:
+        parts.extend(["--status", status])
+    usefulness = str(filters.get("usefulness") or "").strip()
+    if usefulness and usefulness != "all":
+        parts.extend(["--usefulness", usefulness])
+    source_gap = filters.get("source_gap")
+    if isinstance(source_gap, list | tuple):
+        for source in source_gap:
+            source_text = str(source or "").strip()
+            if source_text:
+                parts.extend(["--source-gap", source_text])
+    decision_gap = filters.get("decision_gap")
+    if isinstance(decision_gap, list | tuple):
+        for gap in decision_gap:
+            gap_text = str(gap or "").strip()
+            if gap_text:
+                parts.extend(["--decision-gap", gap_text])
+    min_gap = filters.get("min_gap")
+    if min_gap is not None:
+        parts.extend(["--min-gap", str(min_gap)])
+    if all_rows:
+        parts.extend(["--all", "--json"])
+    else:
+        limit = int(_finite_float(filters.get("limit"))) or 50
+        parts.extend(["--limit", str(limit), "--offset", str(offset or 0)])
+    return " ".join(parts)
 
 
 def _priced_in_answer_rows(rows: Sequence[object]) -> list[dict[str, object]]:

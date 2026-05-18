@@ -422,6 +422,16 @@ def test_dashboard_scan_commands_page_full_scan_rows(tmp_path: Path, monkeypatch
             "total_count": 120,
             "offset": 0,
             "filters": {"limit": 50},
+        },
+        "priced_in_answer": {
+            "scan_scope": {
+                "full_scan_export_command": (
+                    "catalyst-radar priced-in-queue --full-scan --all --json"
+                ),
+                "current_filter_export_command": (
+                    "catalyst-radar priced-in-queue --full-scan --all --json"
+                ),
+            },
         }
     }
     filters = DashboardFilters(priced_in_limit=50, priced_in_offset=0)
@@ -457,6 +467,20 @@ def test_dashboard_scan_commands_page_full_scan_rows(tmp_path: Path, monkeypatch
         config=config,
     )
     assert offset_update.filters.priced_in_offset == 100
+
+    export_update = _apply_command(
+        "export full",
+        payload,
+        "overview",
+        filters,
+        engine=engine,
+        config=config,
+    )
+    assert export_update.page == "overview"
+    assert export_update.message == (
+        "Full-scan export command: "
+        "catalyst-radar priced-in-queue --full-scan --all --json"
+    )
 
     limit_update = _apply_command(
         "limit 250",
