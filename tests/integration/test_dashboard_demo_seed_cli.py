@@ -358,8 +358,9 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
     actions = {row["source"]: row for row in payload["source_coverage"]["actions"]}
     assert actions["options"]["status"] == "missing"
     assert actions["options"]["external_call_boundary"] == (
-        "CLI promotion reads stored Schwab snapshots only; live Schwab options "
-        "are explicit through market-sync and rate-limited."
+        "Live Schwab options are explicit, read-only, and rate-limited; "
+        "current option chains must not be used as score input for older "
+        "scan dates."
     )
     assert actions["broker_context"]["next_action"] == (
         "Sync read-only Schwab market context before sizing or trigger review."
@@ -435,7 +436,8 @@ def test_candidate_detail_cli_outputs_priced_in_evidence_brief(
     actions = {row["source"]: row for row in brief["source_actions"]}
     assert actions["options"]["status"] == "missing"
     assert actions["options"]["next_action"] == (
-        "Sync Schwab option-chain context or ingest an options fixture, then rerun the scan."
+        "Use point-in-time options for the scan date; for a current scan, sync Schwab "
+        "option-chain context, then rerun."
     )
     assert actions["options"]["command"].endswith("--ticker ACME")
     assert actions["options"]["sample_tickers"] == ["ACME"]

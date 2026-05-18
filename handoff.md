@@ -1,6 +1,26 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 17:35:19 +08:00
+Last updated: 2026-05-18 17:41:11 +08:00
+
+## Latest Point-In-Time Options Guidance
+
+The options source-gap wording is now explicit about point-in-time boundaries.
+The previous text could imply that a current Schwab option-chain sync would fill
+the options score for an older scan date. The new guidance says:
+
+```text
+Use point-in-time options for the scan date; for a current scan, sync Schwab
+option-chain context, then rerun.
+```
+
+The source-action boundary also states that current option chains must not be
+used as score input for older scan dates. This affects the CLI/API source
+coverage payload, candidate detail source actions, and the dashboard evidence
+gap row because all three read the same guidance helpers.
+
+This does not change scoring. It prevents the next action from sending the
+operator into a live Schwab sync that cannot legitimately repair a prior
+point-in-time scan.
 
 ## Latest Dashboard Evidence-Gap First Row
 

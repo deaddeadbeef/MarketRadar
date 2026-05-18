@@ -5823,14 +5823,15 @@ def _priced_in_source_guidance(source: str, status: str) -> dict[str, object]:
             "next_action": "Use options as a supporting signal only."
             if ready
             else (
-                "Sync Schwab option-chain context or ingest an options fixture, "
-                "then rerun the scan."
+                "Use point-in-time options for the scan date; for a current scan, "
+                "sync Schwab option-chain context, then rerun."
             ),
             "command": "catalyst-radar schwab-market-sync --ticker <TICKER>",
             "api": "POST /api/brokers/schwab/market-sync",
             "external_call_boundary": (
-                "CLI promotion reads stored Schwab snapshots only; live Schwab options "
-                "are explicit through market-sync and rate-limited."
+                "Live Schwab options are explicit, read-only, and rate-limited; "
+                "current option chains must not be used as score input for older "
+                "scan dates."
             ),
         }
     if source == "theme_peer_sector":
