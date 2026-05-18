@@ -1977,6 +1977,11 @@ def test_priced_in_all_source_gap_batches_payload_summarizes_next_chunks(
     assert rows["local_text"]["all_batches_command"] == (
         "catalyst-radar priced-in-source-batches --source local_text --all --json"
     )
+    assert payload["coverage_first_recommendation"]["schema_version"] == (
+        "priced-in-source-recommendation-v1"
+    )
+    assert payload["coverage_first_recommendation"]["mode"] == "coverage_first"
+    assert payload["decision_shortcut_recommendation"]["mode"] == "decision_shortcut"
     assert "provider calls" in payload["execution_boundary"]
 
 
@@ -2075,8 +2080,15 @@ def test_priced_in_all_source_gap_batches_prioritizes_decision_useful_gaps(
     assert rows["options"]["decision_useful_gap_rows"] == 1
     assert rows["options"]["priority_sample_tickers"] == ["MSFT"]
     assert rows["catalyst_events"]["research_useful_gap_rows"] == 1
-    assert payload["next_action"].startswith("Start with options;")
-    assert "decision-ready row(s)" in payload["next_action"]
+    assert payload["next_action"].startswith(
+        "Start full-scan coverage with catalyst_events;"
+    )
+    assert payload["coverage_first_recommendation"]["source"] == "catalyst_events"
+    assert payload["coverage_first_recommendation"]["command"] == (
+        "catalyst-radar priced-in-source-batches --source catalyst_events --execute-next"
+    )
+    assert payload["decision_shortcut_recommendation"]["source"] == "options"
+    assert "decision-ready row(s)" in payload["decision_shortcut_recommendation"]["action"]
 
 
 def test_priced_in_source_gap_batches_payload_plans_sec_event_batches(

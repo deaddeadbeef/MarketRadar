@@ -1050,6 +1050,16 @@ def priced_in_all_source_gap_batches_payload(
         if blocked_rows
         else "complete"
     )
+    coverage_recommendation = _priced_in_all_source_coverage_recommendation(
+        status=status_value,
+        ready_rows=ready_rows,
+        blocked_rows=blocked_rows,
+    )
+    decision_recommendation = _priced_in_all_source_decision_recommendation(
+        status=status_value,
+        ready_rows=ready_rows,
+        blocked_rows=blocked_rows,
+    )
     return {
         "schema_version": "priced-in-source-batch-overview-v1",
         "status": status_value,
@@ -1059,11 +1069,9 @@ def priced_in_all_source_gap_batches_payload(
             blocked_count=len(blocked_rows),
             total_gap_rows=total_gap_rows,
         ),
-        "next_action": _priced_in_all_source_batches_next_action(
-            status=status_value,
-            ready_rows=ready_rows,
-            blocked_rows=blocked_rows,
-        ),
+        "next_action": coverage_recommendation.get("action"),
+        "coverage_first_recommendation": coverage_recommendation,
+        "decision_shortcut_recommendation": decision_recommendation,
         "external_calls_made": 0,
         "execution_boundary": (
             "Plan only. This overview makes no provider calls and never executes "
@@ -1272,6 +1280,117 @@ def _priced_in_all_source_batches_next_action(
         )
     first_blocked = blocked_rows[0] if blocked_rows else {}
     return str(first_blocked.get("next_action") or "Resolve blocked source gaps first.")
+
+
+def _priced_in_all_source_coverage_recommendation(
+    *,
+    status: str,
+    ready_rows: Sequence[Mapping[str, object]],
+    blocked_rows: Sequence[Mapping[str, object]],
+) -> dict[str, object]:
+    if status == "complete":
+        return {
+            "schema_version": "priced-in-source-recommendation-v1",
+            "mode": "coverage_first",
+            "source": None,
+            "action": "No source batch action is needed.",
+            "command": None,
+            "rationale": "Every tracked source class is covered for the current scan.",
+        }
+    if ready_rows:
+        first = sorted(ready_rows, key=_priced_in_source_batch_coverage_key)[0]
+        source = str(first.get("source") or "source")
+        gap_rows = int(_finite_float(first.get("total_gap_rows")))
+        return _priced_in_source_recommendation(
+            first,
+            mode="coverage_first",
+            action=(
+                f"Start full-scan coverage with {source}; it has {gap_rows} "
+                "remaining gap row(s). Inspect first_batch, then run "
+                "execute_next_command only if the provider budget is intentional."
+            ),
+            rationale="Prioritizes broad evidence coverage across the whole scan.",
+        )
+    first_blocked = blocked_rows[0] if blocked_rows else {}
+    return _priced_in_source_recommendation(
+        first_blocked,
+        mode="coverage_first",
+        action=str(
+            first_blocked.get("next_action") or "Resolve blocked source gaps first."
+        ),
+        rationale="No ready source chunk exists; clear the first blocked source.",
+    )
+
+
+def _priced_in_all_source_decision_recommendation(
+    *,
+    status: str,
+    ready_rows: Sequence[Mapping[str, object]],
+    blocked_rows: Sequence[Mapping[str, object]],
+) -> dict[str, object] | None:
+    if status == "complete":
+        return None
+    if ready_rows:
+        first = sorted(ready_rows, key=_priced_in_source_batch_priority_key)[0]
+        action = _priced_in_all_source_batches_next_action(
+            status=status,
+            ready_rows=[first],
+            blocked_rows=blocked_rows,
+        )
+        return _priced_in_source_recommendation(
+            first,
+            mode="decision_shortcut",
+            action=action,
+            rationale=(
+                "Prioritizes the currently decision-useful or actionable subset "
+                "inside the full scan."
+            ),
+        )
+    return None
+
+
+def _priced_in_source_recommendation(
+    row: Mapping[str, object],
+    *,
+    mode: str,
+    action: str,
+    rationale: str,
+) -> dict[str, object]:
+    first_batch = _mapping_value(row, "first_batch")
+    return {
+        "schema_version": "priced-in-source-recommendation-v1",
+        "mode": mode,
+        "source": row.get("source"),
+        "status": row.get("status"),
+        "action": action,
+        "rationale": rationale,
+        "command": row.get("execute_next_command") or row.get("all_batches_command"),
+        "api": row.get("execute_next_api") or row.get("all_batches_api"),
+        "total_gap_rows": int(_finite_float(row.get("total_gap_rows"))),
+        "decision_useful_gap_rows": int(
+            _finite_float(row.get("decision_useful_gap_rows"))
+        ),
+        "research_useful_gap_rows": int(
+            _finite_float(row.get("research_useful_gap_rows"))
+        ),
+        "actionable_gap_rows": int(_finite_float(row.get("actionable_gap_rows"))),
+        "sample_tickers": list(_sequence_value(row.get("priority_sample_tickers"))),
+        "first_batch_external_calls": int(
+            _finite_float(first_batch.get("external_calls_required"))
+        )
+        if first_batch
+        else 0,
+    }
+
+
+def _priced_in_source_batch_coverage_key(row: Mapping[str, object]) -> tuple[int, int]:
+    source = str(row.get("source") or "")
+    try:
+        source_order = PRICED_IN_SOURCE_CLASSES.index(source)
+    except ValueError:
+        source_order = len(PRICED_IN_SOURCE_CLASSES)
+    optional = 1 if source in PRICED_IN_OPTIONAL_CONTEXT_SOURCES else 0
+    return (optional, source_order)
 
 
 def _priced_in_source_batch_priority_key(row: Mapping[str, object]) -> tuple[int, int, int]:

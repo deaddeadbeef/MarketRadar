@@ -3145,6 +3145,32 @@ def _print_priced_in_all_source_batches(payload: Mapping[str, object]) -> None:
     )
     print(f"headline={payload.get('headline')}")
     print(f"next_action={payload.get('next_action')}")
+    coverage = payload.get("coverage_first_recommendation")
+    if isinstance(coverage, Mapping):
+        print(
+            "coverage_first="
+            f"source={coverage.get('source') or 'n/a'} "
+            f"gaps={coverage.get('total_gap_rows')} "
+            f"calls={coverage.get('first_batch_external_calls')} "
+            f"command={_compact_cli_text(coverage.get('command'))}"
+        )
+        print(f"  why={_compact_cli_text(coverage.get('rationale'))}")
+    decision = payload.get("decision_shortcut_recommendation")
+    if isinstance(decision, Mapping):
+        print(
+            "decision_shortcut="
+            f"source={decision.get('source') or 'n/a'} "
+            f"decision={decision.get('decision_useful_gap_rows')} "
+            f"actionable={decision.get('actionable_gap_rows')} "
+            f"calls={decision.get('first_batch_external_calls')} "
+            f"command={_compact_cli_text(decision.get('command'))}"
+        )
+        samples = decision.get("sample_tickers")
+        if isinstance(samples, list | tuple) and samples:
+            print(
+                "  examples="
+                f"{','.join(str(ticker) for ticker in samples if str(ticker).strip())}"
+            )
     boundary = payload.get("execution_boundary")
     if boundary:
         print(f"boundary={_compact_cli_text(boundary)}")

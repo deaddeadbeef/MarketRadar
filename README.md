@@ -114,6 +114,12 @@ full-scan source plan plus the next safe provider chunk, and
 `batch <source> execute` runs only that one guarded chunk. The few tickers in a
 chunk are not the scan universe; they are the next rate-limited fill batch for
 the broader ranked universe.
+`priced-in-source-batches --source all` reports two separate recommendations:
+`coverage_first` for filling broad full-scan evidence and `decision_shortcut`
+for the smaller set of currently decision-ready/actionable rows. Use the
+coverage-first source when your goal is improving the whole-market scan; use the
+decision shortcut only when you intentionally want to deepen the current top
+answer subset.
 The default is still the full scan. Use `ready`, press `D`, or run
 `catalyst-radar priced-in-queue --decision-ready` only when you intentionally
 want the small decision-useful subset from that full scan.
