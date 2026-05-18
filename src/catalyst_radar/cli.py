@@ -2489,6 +2489,16 @@ def _print_priced_in_preflight(payload: Mapping[str, object]) -> None:
     )
     print(f"headline={payload.get('headline')}")
     print(f"next_action={payload.get('next_action')}")
+    provider = payload.get("provider")
+    if isinstance(provider, Mapping):
+        print(
+            "provider "
+            f"market={provider.get('market_provider')} "
+            f"ticker_seed_cap_pages={provider.get('ticker_seed_cap_pages')} "
+            f"latest_bar_date={provider.get('latest_daily_bar_date')} "
+            f"latest_bar_tickers={provider.get('latest_daily_bar_ticker_count')} "
+            f"estimated_ticker_seed_pages={provider.get('estimated_ticker_seed_pages')}"
+        )
     print("area status finding next_action command api")
     for row in payload.get("rows", []):
         if not isinstance(row, Mapping):
@@ -2505,7 +2515,7 @@ def _print_priced_in_preflight(payload: Mapping[str, object]) -> None:
 
 def _compact_cli_text(value: object) -> str:
     text = str(value or "n/a").strip()
-    return text.replace(" ", "_")
+    return " ".join(text.split())
 
 
 def _print_external_json(payload: Mapping[str, object]) -> int:

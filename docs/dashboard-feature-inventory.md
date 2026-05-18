@@ -61,9 +61,10 @@ scan, and candidate rows are the ranked useful subset. If the universe is tiny,
 zero-call checklist for seeding tickers, ingesting bars, building the universe,
 reviewing the call plan, running the scan, and reviewing the queue. In
 Polygon/Massive mode that checklist includes the configured ticker-reference
-page cap so a one-page seed is not mistaken for the whole market. These
-live-provider actions stay behind existing explicit guarded commands or API
-routes because they can call external services and require credentials:
+page cap and, when latest grouped-daily bars are available, the estimated page
+count needed to seed a comparable ticker universe. These live-provider actions
+stay behind existing explicit guarded commands or API routes because they can
+call external services and require credentials:
 
 - Trigger optional universe seeding only when Polygon is configured.
 - Refresh Schwab market context for a selected candidate.
