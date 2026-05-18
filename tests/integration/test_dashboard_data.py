@@ -1468,6 +1468,59 @@ def test_priced_in_queue_payload_paginates_ranked_rows(tmp_path: Path) -> None:
     assert cutoff_page["filters"]["available_at"] == AVAILABLE_AT.isoformat()
 
 
+def test_priced_in_queue_source_actions_use_full_scan_batch_plan_for_broad_gaps(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    extra_tickers = ["BETA", "GAMMA", "DELTA", "EPSLN", "ZETA"]
+    with engine.begin() as conn:
+        conn.execute(
+            insert(candidate_states),
+            [
+                _candidate_state_row(
+                    id=f"state-{ticker.lower()}-latest",
+                    ticker=ticker,
+                    as_of=AS_OF,
+                    state=ActionState.WARNING.value,
+                    final_score=70.0 + index,
+                )
+                for index, ticker in enumerate(extra_tickers)
+            ],
+        )
+        conn.execute(
+            insert(signal_features),
+            [
+                _signal_feature_row(
+                    ticker=ticker,
+                    as_of=AS_OF,
+                    state=ActionState.WARNING.value,
+                    final_score=70.0 + index,
+                    theme="ai_infrastructure",
+                )
+                for index, ticker in enumerate(extra_tickers)
+            ],
+        )
+
+    payload = priced_in_queue_payload(engine, AppConfig.from_env({}), limit=1)
+
+    actions = {
+        row["source"]: row for row in payload["source_coverage"]["actions"]
+    }
+    options = actions["options"]
+    assert options["gap_count"] == 7
+    assert options["sample_tickers"]
+    assert options["command"] == (
+        "catalyst-radar priced-in-source-batches --source options --batch-limit 5"
+    )
+    assert options["api"] == "GET /api/radar/priced-in/source-batches?source=options"
+    assert options["sample_command"].startswith(
+        "catalyst-radar schwab-market-sync --ticker "
+    )
+    assert len(options["sample_api_payload"]["tickers"]) == 5
+    assert options["sample_scope"].startswith("These are the first 5 of 7")
+
+
 def test_priced_in_source_gap_batches_payload_plans_safe_sync_batches(
     tmp_path: Path,
 ) -> None:

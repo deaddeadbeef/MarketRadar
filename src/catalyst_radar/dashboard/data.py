@@ -1321,9 +1321,11 @@ def _option_gap_next_action(
     sample_missing: Sequence[str],
 ) -> str:
     if status == "newer_than_scan":
-        sample = f" for {', '.join(sample_newer)}" if sample_newer else ""
+        sample = (
+            f" Example tickers: {', '.join(sample_newer)}." if sample_newer else ""
+        )
         return (
-            f"Stored options exist after this scan date{sample}; rerun only with a "
+            f"Stored options exist after this scan date.{sample} Rerun only with a "
             "current scan date and current bars, or ingest point-in-time options for "
             "the original scan date."
         )
@@ -1334,9 +1336,11 @@ def _option_gap_next_action(
         )
     if status == "eligible_but_not_scored":
         return "Rerun the scan so eligible stored option features enter priced-in scoring."
-    sample = f" for {', '.join(sample_missing)}" if sample_missing else ""
+    sample = (
+        f" Example tickers: {', '.join(sample_missing)}." if sample_missing else ""
+    )
     return (
-        f"No stored option features exist{sample}; sync current Schwab options for a "
+        f"No stored option features exist.{sample} Sync current Schwab options for a "
         "current rerun or ingest a point-in-time options fixture for the scan date."
     )
 
@@ -6250,11 +6254,43 @@ def _priced_in_source_action_row(
         status = "missing"
     guidance = _priced_in_source_guidance(source, status)
     if status not in {"ready", "not_applicable"} and sample_tickers:
-        guidance = _priced_in_source_guidance_for_tickers(
+        ticker_guidance = _priced_in_source_guidance_for_tickers(
             source,
             guidance,
             sample_tickers,
         )
+        batch_plan_command = _priced_in_source_batch_plan_command(source)
+        if batch_plan_command and gap_count > len(sample_tickers):
+            sample_command = str(ticker_guidance.get("command") or "").strip()
+            guidance = {
+                **guidance,
+                "command": batch_plan_command,
+                "api": f"GET /api/radar/priced-in/source-batches?source={source}",
+                "external_call_boundary": (
+                    "Planning full-scan batches makes no provider calls; executing "
+                    "a listed batch remains explicit and rate-limited."
+                ),
+            }
+            if (
+                source in PRICED_IN_SCHWAB_BATCH_SOURCES
+                and sample_command
+                and sample_command != batch_plan_command
+            ):
+                guidance["sample_command"] = sample_command
+            if ticker_guidance.get("api_payload") is not None:
+                guidance["sample_api_payload"] = ticker_guidance.get("api_payload")
+        else:
+            guidance = ticker_guidance
+    batch_plan_command = (
+        _priced_in_source_batch_plan_command(source)
+        if gap_count > 0 and source in PRICED_IN_BATCHABLE_SOURCES
+        else None
+    )
+    batch_plan_api = (
+        f"GET /api/radar/priced-in/source-batches?source={source}"
+        if batch_plan_command
+        else None
+    )
     return {
         "source": source,
         "status": status,
@@ -6280,14 +6316,8 @@ def _priced_in_source_action_row(
             if gap_count > 0
             else None
         ),
-        "batch_plan_command": (
-            _priced_in_source_batch_plan_command(source) if gap_count > 0 else None
-        ),
-        "batch_plan_api": (
-            f"GET /api/radar/priced-in/source-batches?source={source}"
-            if gap_count > 0 and source in PRICED_IN_BATCHABLE_SOURCES
-            else None
-        ),
+        "batch_plan_command": batch_plan_command,
+        "batch_plan_api": batch_plan_api,
         **guidance,
     }
 

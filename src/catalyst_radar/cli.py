@@ -2898,7 +2898,9 @@ def _print_priced_in_queue(payload: Mapping[str, object]) -> None:
                     if isinstance(sample, list | tuple) and sample
                     else ""
                 )
-                sample_suffix = f" examples={sample_text}" if sample_text else ""
+                sample_suffix = (
+                    f" example_tickers={sample_text}" if sample_text else ""
+                )
                 print(
                     "- "
                     f"{action.get('source')} "
@@ -2929,6 +2931,12 @@ def _print_priced_in_queue(payload: Mapping[str, object]) -> None:
                     print(
                         "  batch_plan="
                         f"{_compact_cli_text(batch_plan_command)}"
+                    )
+                sample_command = action.get("sample_command")
+                if sample_command:
+                    print(
+                        "  sample_command="
+                        f"{_compact_cli_text(sample_command)}"
                     )
                 diagnostic = action.get("diagnostic")
                 if isinstance(diagnostic, Mapping) and diagnostic.get("evidence"):
@@ -3193,7 +3201,9 @@ def _print_candidate_detail(payload: Mapping[str, object]) -> None:
                 if isinstance(sample, list | tuple) and sample
                 else ""
             )
-            sample_suffix = f" sample={sample_text}" if sample_text else ""
+            sample_suffix = (
+                f" example_tickers={sample_text}" if sample_text else ""
+            )
             print(
                 "- "
                 f"{action.get('source')} "
@@ -3202,6 +3212,12 @@ def _print_candidate_detail(payload: Mapping[str, object]) -> None:
                 f" command={_compact_cli_text(action.get('command'))}"
                 f"{sample_suffix}"
             )
+            sample_command = action.get("sample_command")
+            if sample_command:
+                print(
+                    "  sample_command="
+                    f"{_compact_cli_text(sample_command)}"
+                )
     blockers = brief.get("blockers")
     if isinstance(blockers, list | tuple) and blockers:
         print(f"blockers={','.join(str(item) for item in blockers)}")

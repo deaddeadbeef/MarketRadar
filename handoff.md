@@ -1,6 +1,80 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 21:21:52 +08:00
+Last updated: 2026-05-18 21:40:49 +08:00
+
+## Latest Full-Scan Source Action Wording
+
+The user asked again: "Why only these tickers? I want full scan." The live
+backend already had the full scan:
+
+```text
+priced_in_queue status=ready count=3 total=12087 offset=0 external_calls=0
+scan_scope=scanned=12087 requested=12104 filter=all ranked_after_filter=12087 visible_page=3
+```
+
+Root cause of the confusion: source coverage actions for broad gaps showed a
+five-ticker provider command as the primary `command=...`, so the UI/CLI made a
+safe sample batch look like the entire scan universe.
+
+Change in this slice:
+
+- For batchable source gaps larger than the displayed example ticker set,
+  `source_coverage.actions[].command` now points to the full-scan batch planner:
+
+  ```text
+  catalyst-radar priced-in-source-batches --source <source> --batch-limit 5
+  ```
+
+- The source action `api` now points to the corresponding zero-call batch-plan
+  API:
+
+  ```text
+  GET /api/radar/priced-in/source-batches?source=<source>
+  ```
+
+- Direct five-ticker Schwab commands are still available, but only as
+  `sample_command`, with `sample_api_payload` next to it. They are examples for
+  a safe executable batch, not the full scan.
+- CLI source-action output now labels examples as `example_tickers=...`, not
+  `examples=...`.
+- Options diagnostics now say `Example tickers: ...` instead of wording that
+  could imply those names are the complete scope.
+- Small scans are unchanged: when all gap rows fit inside the example ticker
+  list, the direct command can still be the exact full set.
+
+Current live zero-provider-call smoke:
+
+```powershell
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-queue --status all --limit 3 |
+  Select-String -Pattern 'priced_in_queue|scan_scope|source_coverage|source_actions:|^- options|^- catalyst_events|^- local_text|^- broker_context|  sample_scope|  batch_plan|  sample_command|example_tickers'
+```
+
+Observed:
+
+```text
+priced_in_queue status=ready count=3 total=12087 offset=0 external_calls=0
+scan_scope=scanned=12087 requested=12104 filter=all ranked_after_filter=12087 visible_page=3
+source_coverage=market_bars 12087/12087; catalyst_events 7/12087 (12080 missing); local_text 7/12087 (12080 missing); options 0/12087 (12087 missing); theme_peer_sector 12087/12087; broker_context 5/12087 (12082 missing)
+- catalyst_events ... command=catalyst-radar priced-in-source-batches --source catalyst_events --batch-limit 5 example_tickers=BRK.A,NVR,ABLVW,DAICW,DFSCW
+  batch_plan=catalyst-radar priced-in-source-batches --source catalyst_events --batch-limit 5
+- local_text ... command=catalyst-radar priced-in-source-batches --source local_text --batch-limit 5 example_tickers=BRK.A,NVR,ABLVW,DAICW,DFSCW
+  batch_plan=catalyst-radar priced-in-source-batches --source local_text --batch-limit 5
+- options ... command=catalyst-radar priced-in-source-batches --source options --batch-limit 5 example_tickers=A,MSFT,AAA,AAAU,AAPL
+  batch_plan=catalyst-radar priced-in-source-batches --source options --batch-limit 5
+  sample_command=catalyst-radar schwab-market-sync --ticker A --ticker MSFT --ticker AAA --ticker AAAU --ticker AAPL
+- broker_context ... command=catalyst-radar priced-in-source-batches --source broker_context --batch-limit 5 example_tickers=AAA,AAAC,BRK.A,NVR,ABLVW
+  batch_plan=catalyst-radar priced-in-source-batches --source broker_context --batch-limit 5
+  sample_command=catalyst-radar schwab-market-sync --ticker AAA --ticker AAAC --ticker BRK.A --ticker NVR --ticker ABLVW
+```
+
+Validation:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_queue_payload_paginates_ranked_rows tests\integration\test_dashboard_data.py::test_priced_in_queue_source_actions_use_full_scan_batch_plan_for_broad_gaps tests\integration\test_dashboard_data.py::test_priced_in_queue_payload_diagnoses_options_after_scan_date tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_queue_cli_outputs_same_zero_call_signal -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py
+```
+
+Both passed.
 
 ## Latest Executable Source-Batch Timestamps
 
