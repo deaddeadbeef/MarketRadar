@@ -2983,6 +2983,7 @@ def _print_priced_in_source_batches(payload: Mapping[str, object]) -> None:
         f"status={payload.get('status')} "
         f"gap_rows={payload.get('total_gap_rows')} "
         f"plannable={payload.get('plannable_gap_rows')} "
+        f"planned_at={payload.get('planned_at')} "
         f"batch_size={payload.get('batch_size')} "
         f"batches={payload.get('count')} "
         f"total_batches={payload.get('batch_count')} "

@@ -1531,14 +1531,19 @@ def test_priced_in_source_gap_batches_payload_plans_sec_event_batches(
     assert payload["batch_size"] == 1
     assert payload["batch_count"] == 1
     assert payload["batches"][0]["tickers"] == ["AAPL"]
-    assert payload["batches"][0]["command"] == (
-        "catalyst-radar run-daily --as-of 2026-05-10 --available-at <UTC-now> "
-        "--ticker AAPL --json"
+    assert payload["planned_at"]
+    planned_at = datetime.fromisoformat(str(payload["planned_at"]))
+    assert planned_at.tzinfo is not None
+    command = str(payload["batches"][0]["command"])
+    assert "<UTC-now>" not in command
+    assert command == (
+        "catalyst-radar run-daily --as-of 2026-05-10 "
+        f"--available-at {planned_at.isoformat()} --ticker AAPL --json"
     )
     assert payload["batches"][0]["api"] == "POST /api/radar/runs"
     assert payload["batches"][0]["api_payload"] == {
         "as_of": "2026-05-10",
-        "available_at": "<UTC-now>",
+        "available_at": planned_at.isoformat(),
         "tickers": ["AAPL"],
         "run_llm": False,
         "dry_run_alerts": True,

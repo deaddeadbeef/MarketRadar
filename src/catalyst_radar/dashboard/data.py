@@ -758,6 +758,8 @@ def priced_in_source_gap_batches_payload(
     tickers = [str(row["ticker"]).strip().upper() for row in plan_rows]
     batch_count = ceil(len(tickers) / resolved_batch_size) if batchable and tickers else 0
     scan_as_of = _priced_in_batch_as_of(rows)
+    planned_at = datetime.now(UTC).replace(microsecond=0)
+    planned_available_at = planned_at.isoformat()
     batches = []
     if batchable:
         for index in range(resolved_offset, min(batch_count, resolved_offset + resolved_limit)):
@@ -775,12 +777,14 @@ def priced_in_source_gap_batches_payload(
                         source_name,
                         batch_tickers,
                         scan_as_of=scan_as_of,
+                        planned_available_at=planned_available_at,
                     ),
                     "api": _priced_in_source_batch_api(source_name),
                     "api_payload": _priced_in_source_batch_api_payload(
                         source_name,
                         batch_tickers,
                         scan_as_of=scan_as_of,
+                        planned_available_at=planned_available_at,
                     ),
                     "external_calls_required": _priced_in_source_batch_call_count(
                         source_name,
@@ -802,6 +806,7 @@ def priced_in_source_gap_batches_payload(
         "status": status_value,
         "source": source_name,
         "external_calls_made": 0,
+        "planned_at": planned_at.isoformat(),
         "execution_boundary": (
             "Plan only. This command does not call providers; each listed batch command "
             "is an explicit read-only sync and remains rate-limited."
@@ -6480,6 +6485,7 @@ def _priced_in_source_batch_command(
     tickers: Sequence[str],
     *,
     scan_as_of: str,
+    planned_available_at: str,
 ) -> str:
     if source_name in PRICED_IN_SCHWAB_BATCH_SOURCES:
         return _schwab_market_sync_command(tickers)
@@ -6487,7 +6493,7 @@ def _priced_in_source_batch_command(
     if source_name == "catalyst_events":
         return (
             "catalyst-radar run-daily "
-            f"--as-of {scan_as_of} --available-at <UTC-now> "
+            f"--as-of {scan_as_of} --available-at {planned_available_at} "
             f"{ticker_args} --json"
         ).strip()
     if source_name == "local_text":
@@ -6515,6 +6521,7 @@ def _priced_in_source_batch_api_payload(
     tickers: Sequence[str],
     *,
     scan_as_of: str,
+    planned_available_at: str,
 ) -> dict[str, object] | None:
     if source_name in PRICED_IN_SCHWAB_BATCH_SOURCES:
         return {
@@ -6525,7 +6532,7 @@ def _priced_in_source_batch_api_payload(
     if source_name == "catalyst_events":
         return {
             "as_of": scan_as_of,
-            "available_at": "<UTC-now>",
+            "available_at": planned_available_at,
             "tickers": list(tickers),
             "run_llm": False,
             "dry_run_alerts": True,

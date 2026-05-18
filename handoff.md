@@ -1,6 +1,62 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 21:13:47 +08:00
+Last updated: 2026-05-18 21:21:52 +08:00
+
+## Latest Executable Source-Batch Timestamps
+
+The full-scan event source batch planner previously emitted:
+
+```text
+--available-at <UTC-now>
+"available_at": "<UTC-now>"
+```
+
+That explained intent, but it was not directly executable from CLI/API.
+
+Changes in this slice:
+
+- `priced-in-source-batches --source catalyst_events` now includes a concrete
+  UTC `planned_at` timestamp.
+- Event batch CLI commands use that concrete timestamp in `--available-at`.
+- Event batch API payloads use the same concrete timestamp in `available_at`.
+- Human CLI output prints `planned_at=...`.
+- Planning still makes zero provider calls.
+
+Live zero-provider-call verification:
+
+```powershell
+.\.venv\Scripts\catalyst-radar.exe priced-in-source-batches --source catalyst_events --batch-limit 1 --json |
+  .\.venv\Scripts\python.exe -c "import json,sys,datetime; p=json.load(sys.stdin); b=p['batches'][0]; print(p['planned_at']); print(b['command']); print(b['api_payload']); datetime.datetime.fromisoformat(b['api_payload']['available_at']); print('<UTC-now>' in b['command'], p['external_calls_made'])"
+```
+
+Observed:
+
+```text
+2026-05-18T13:20:38+00:00
+catalyst-radar run-daily --as-of 2026-05-15 --available-at 2026-05-18T13:20:38+00:00 --ticker BRK.A --ticker NVR --ticker ABLVW --ticker DAICW --ticker DFSCW --json
+{'as_of': '2026-05-15', 'available_at': '2026-05-18T13:20:38+00:00', 'dry_run_alerts': True, 'run_llm': False, 'tickers': ['BRK.A', 'NVR', 'ABLVW', 'DAICW', 'DFSCW']}
+False 0
+```
+
+Human CLI smoke:
+
+```powershell
+.\.venv\Scripts\catalyst-radar.exe priced-in-source-batches --source catalyst_events --batch-limit 1 |
+  Select-String -Pattern 'planned_at|run-daily|<UTC-now>'
+```
+
+Observed `planned_at=...` and a concrete `run-daily --available-at ...` command;
+`<UTC-now>` was absent.
+
+Validation for this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_plans_sec_event_batches tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_plans_safe_sync_batches tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_batch_command_opens_full_scan_source_batch_plan -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py tests\integration\test_dashboard_data.py
+git diff --check
+```
+
+All passed.
 
 ## Latest Agent Evidence Plan Context
 
