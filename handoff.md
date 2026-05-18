@@ -1,6 +1,41 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 17:22:44 +08:00
+Last updated: 2026-05-18 17:35:19 +08:00
+
+## Latest Dashboard Evidence-Gap First Row
+
+The Insights dashboard already had a `DATA / Source coverage` row, but it was
+rendered after all candidate rows and hidden by the 20-row terminal limit. That
+made the dashboard look like a ticker list instead of a market-insight control
+surface.
+
+The dashboard now shows evidence coverage immediately after the full-scan row:
+
+```text
+UNIVERSE | Full scan coverage | ...
+DATA     | Evidence gaps      | bar coverage ...; options missing ...
+```
+
+The evidence row uses the existing priced-in source coverage payload and points
+the next action at the weakest source in `weak_sources`, so the current real
+dashboard points at options instead of burying that gap on Ops:
+
+```text
+DATA | Evidence gaps | ... | Sync Schwab option-chain context ...
+```
+
+This is a dashboard-only clarity slice. It makes 0 provider calls and does not
+change scoring or point-in-time option semantics.
+
+Validation:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_tui_once_can_show_full_scan_mode -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py
+.\.venv\Scripts\catalyst-radar.exe dashboard-tui --once --page overview
+```
+
+All passed. The real TUI smoke showed `DATA | Evidence gaps` as row 2.
 
 ## Latest Full-Scan Queue Clarification + Stored Schwab Context
 
