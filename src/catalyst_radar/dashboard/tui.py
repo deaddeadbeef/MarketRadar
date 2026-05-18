@@ -1679,6 +1679,10 @@ class MarketRadarDashboardApp(App[int]):
                 "command": "source-gap <source|all>",
                 "meaning": "Show scan rows missing options, text, events, bars, or broker context.",
             },
+            {
+                "command": "batch <source>",
+                "meaning": "Show the first runnable full-scan batch for a source gap.",
+            },
             {"command": "ticker <SYMBOL|all>", "meaning": "Filter ticker-aware pages."},
             {"command": "run execute", "meaning": "Start one guarded capped radar cycle."},
             {
@@ -1895,6 +1899,17 @@ def _apply_command(
                 else f"Source-gap filter: {', '.join(source_gaps)}."
             ),
         )
+    if command in {"batch", "batches", "source-batch", "source-batches"}:
+        return _CommandUpdate(
+            page="ops",
+            filters=filters,
+            message=_priced_in_source_batch_message(
+                engine,
+                config,
+                source=value,
+                filters=filters,
+            ),
+        )
     if command in {"usefulness", "useful"}:
         usefulness = _normalize_optional_filter(value)
         return _CommandUpdate(
@@ -2020,6 +2035,51 @@ def _apply_command(
         filters=filters,
         message=f"Unknown command: {raw}. Type help for commands.",
     )
+
+
+def _priced_in_source_batch_message(
+    engine: Engine,
+    config: AppConfig,
+    *,
+    source: str,
+    filters: DashboardFilters,
+) -> str:
+    if not source.strip():
+        return "Usage: batch <source>. Try: batch catalyst_events, batch local_text, batch options."
+    try:
+        payload = dashboard_data.priced_in_source_gap_batches_payload(
+            engine,
+            config,
+            source=source,
+            batch_limit=1,
+            available_at=filters.available_at,
+            status=filters.priced_in_status,
+            usefulness=filters.priced_in_usefulness,
+            decision_gap=filters.priced_in_decision_gap,
+        )
+    except ValueError as exc:
+        return str(exc)
+    source_name = str(payload.get("source") or source).strip()
+    status = str(payload.get("status") or "unknown")
+    total_gap_rows = int(_number_or_zero(payload.get("total_gap_rows")))
+    plannable_gap_rows = int(_number_or_zero(payload.get("plannable_gap_rows")))
+    batch_count = int(_number_or_zero(payload.get("batch_count")))
+    next_action = str(payload.get("next_action") or "").strip()
+    diagnostic = _mapping(payload.get("diagnostic"))
+    reason = str(diagnostic.get("reason") or "").strip()
+    command = str(payload.get("next_batch_command") or "").strip()
+    if not command:
+        batches = _rows(payload.get("batches"))
+        if batches:
+            command = str(batches[0].get("command") or "").strip()
+    prefix = (
+        f"{source_name}: {status}; {total_gap_rows} full-scan gap row(s), "
+        f"{plannable_gap_rows} plannable, {batch_count} batch(es)."
+    )
+    if command:
+        return f"{prefix} First batch command: {command}"
+    detail = next_action or reason or "No runnable batch is available for this source."
+    return f"{prefix} {detail}"
 
 
 def _execute_guarded_radar_run(
@@ -3520,6 +3580,10 @@ def _ops_lines(payload: Mapping[str, object], width: int) -> list[str]:
                 limit=8,
             )
         )
+        lines.append(
+            "Examples are sample tickers only. Type `batch <source>` to show the "
+            "first full-scan batch command and total batch count for that source."
+        )
     lines.append("")
     lines.extend(
         _table_lines(
@@ -3635,6 +3699,7 @@ def _help_lines(width: int) -> list[str]:
         ("available-at <ISO|latest>", "Set or clear the point-in-time data cutoff."),
         ("usefulness <status|all>", "Filter Insights by usefulness verdict."),
         ("source-gap <source|all>", "Filter Insights by missing/stale data source."),
+        ("batch <source>", "Show first runnable source-gap batch and total batch count."),
         ("decision-gap <gap|all>", "Filter Insights by missing decision evidence."),
         ("next / prev", "Page through the current Insights scan rows."),
         ("offset <row>", "Jump to a 1-based full-scan row number."),

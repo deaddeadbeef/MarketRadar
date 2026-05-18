@@ -1,6 +1,68 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 20:34:40 +08:00
+Last updated: 2026-05-18 20:49:28 +08:00
+
+## Latest Dashboard Source-Batch Command
+
+The CLI/API now proves full-scan source-gap batch planning, but the dashboard
+still made the Ops source-gap table feel like a small ticker list because it
+showed only examples plus a truncated batch-plan command.
+
+Changes in this slice:
+
+- The Ops source-gap table now states that examples are sample tickers only.
+- The TUI help page now documents:
+
+  ```text
+  batch <source>
+  ```
+
+- The interactive TUI command parser accepts:
+
+  ```text
+  batch catalyst_events
+  batch local_text
+  batch options
+  batch broker_context
+  ```
+
+- The command opens Ops and prints a one-line source-batch summary with:
+  - source status;
+  - full-scan gap rows;
+  - plannable rows;
+  - total batch count;
+  - first runnable batch command, when available.
+
+This keeps the dashboard human-sized while making the full-scan scope explicit.
+The source command is read-only while planning; it does not call Polygon/Massive,
+SEC, Schwab, OpenAI, or broker order endpoints.
+
+Live zero-provider-call verification:
+
+```powershell
+.\.venv\Scripts\catalyst-radar.exe dashboard-tui --once --page ops --scan-limit 3 |
+  Select-String -Pattern 'Priced-in Source Gaps|Examples are sample tickers|batch <source>|catalyst_events|local_text|options|broker_context'
+.\.venv\Scripts\catalyst-radar.exe dashboard-tui --once --page help |
+  Select-String -Pattern 'batch <source>|source-gap'
+```
+
+Observed:
+
+```text
+Examples are sample tickers only. Type `batch <source>` to show the first full-scan batch command and total batch count for that source.
+batch <source> | Show first runnable source-gap batch and total batch count.
+```
+
+Validation for this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_snapshot_ops_page_shows_priced_in_source_actions tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_batch_command_opens_full_scan_source_batch_plan tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_scan_commands_page_full_scan_rows -q
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_plans_safe_sync_batches tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_plans_sec_event_batches tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_plans_local_text_batches tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_marks_text_rows_blocked_without_events -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+```
+
+All passed.
 
 ## Latest Full-Scan Event/Text Batch Planning
 

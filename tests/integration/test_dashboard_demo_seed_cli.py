@@ -274,7 +274,40 @@ def test_dashboard_snapshot_ops_page_shows_priced_in_source_actions(
     assert "Priced-in Source Gaps" in output.out
     assert "options" in output.out
     assert "priced-in-source-batches" in output.out
+    assert "Examples are sample tickers only" in output.out
+    assert "batch <source>" in output.out
     assert "ACME" in output.out
+
+
+def test_dashboard_batch_command_opens_full_scan_source_batch_plan(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["seed-dashboard-demo"]) == 0
+    capsys.readouterr()
+
+    update = _apply_command(
+        "batch options",
+        {},
+        "overview",
+        DashboardFilters(),
+        engine=create_engine(database_url, future=True),
+        config=AppConfig.from_env(),
+    )
+
+    assert update.page == "ops"
+    assert update.filters == DashboardFilters()
+    assert "options: ready;" in update.message
+    assert "full-scan gap row" in update.message
+    assert "plannable" in update.message
+    assert "batch(es)" in update.message
+    assert "First batch command: catalyst-radar schwab-market-sync --ticker ACME" in (
+        update.message
+    )
 
 
 def test_dashboard_tui_once_can_show_full_scan_mode(
