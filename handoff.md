@@ -1,6 +1,75 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 04:09:18 +08:00
+Last updated: 2026-05-19 04:44:59 +08:00
+
+## Latest Full-Active Scan Scope Correction
+
+The user pushed back again: "Why only these tickers? I want full scan."
+
+Root cause:
+
+- The latest priced-in answer was based on the most recent radar run.
+- That run used `--universe liquid-us`, which scanned 2,429 liquidity-filtered
+  securities.
+- The local database actually has 12,613 active securities, with 12,087
+  successfully scanned from stored Polygon bars after a no-provider-call
+  all-active scan.
+- Calling a selected-universe run "full market" was misleading.
+
+Product behavior changed in this slice:
+
+- A named-universe run that covers materially less than the active local market
+  now reports `scan_status=selected_universe`.
+- `priced-in-answer` is blocked when the latest scan is selected-universe
+  scoped, even if that smaller run has decision-useful rows. The row count still
+  remains visible under `counts.decision_ready_rows`.
+- The answer scan scope now says exactly what happened, for example:
+
+  ```text
+  Showing rows 1-5 of 2429 from universe=liquid-us; the latest run did not scan all 12613 active securities.
+  ```
+
+- The top-level next action/command now points at the all-active run:
+
+  ```powershell
+  catalyst-radar run-daily --as-of <LATEST_TRADING_DATE> --available-at <UTC-now> --provider polygon --json
+  ```
+
+- `priced-in-preflight` now includes a `scan_scope` row when the latest run is
+  selected-universe scoped.
+- `scripts/run-full-market-scan.ps1` now defaults to all-active scanning. It
+  keeps selected-universe scans behind explicit `-UseUniverse`.
+- The script also tolerates `run-daily` returning `partial_success` after
+  `feature_scan` succeeds, so a useful all-active scan is not discarded just
+  because optional provider/downstream layers stayed gated.
+- The TUI overview title/caption now labels selected-universe queues as
+  selected-universe output, not full-market output.
+
+Live local evidence after running a stored-data all-active scan with scheduled
+provider ingest disabled for that invocation:
+
+```text
+feature_scan status=success requested_count=12613 normalized_count=12087 scan_scope=active_securities
+priced_in_answer status=research_only decision_ready=false total=12087 mismatches=7 research=5 blocked=7920 external_calls=0
+scan_scope=Showing ranked rows 1-5 of 12087; the visible tickers are one page from the full scan, not the scan universe.
+next_command=catalyst-radar build-packets --as-of 2026-05-15 --min-state ResearchOnly
+```
+
+Dashboard smoke:
+
+```text
+Full-market priced-in queue - showing rows 1-50 of 12087; research 5 / blocked 7920 / monitor 4162
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_scan_status_marks_small_named_universe_as_selected tests\integration\test_dashboard_data.py::test_priced_in_scan_status_accepts_named_universe_when_it_covers_active_scope tests\integration\test_dashboard_data.py::test_priced_in_preflight_payload_reports_exact_next_steps tests\integration\test_dashboard_data.py::test_priced_in_preflight_warns_when_latest_run_is_selected_universe tests\integration\test_dashboard_data.py::test_priced_in_answer_blocks_selected_universe_even_with_ready_rows tests\integration\test_dashboard_data.py::test_priced_in_answer_opens_full_scan_queue_when_decision_ready tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_answer_cli_outputs_current_scan_answer tests\integration\test_local_scripts.py::test_run_full_market_scan_script_is_plan_first_and_execute_gated -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_local_scripts.py
+git diff --check
+```
+
+Observed: focused pytest passed, ruff passed, and `git diff --check` passed.
 
 ## Latest Dashboard Source-Fill Workflow
 

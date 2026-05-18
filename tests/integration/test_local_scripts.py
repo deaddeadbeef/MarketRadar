@@ -321,8 +321,12 @@ def test_run_full_market_scan_script_is_plan_first_and_execute_gated() -> None:
     assert "priced-in-preflight" in text
     assert "--json" in text
     assert "Plan only: no provider calls or database writes were made." in text
+    assert "Invoke-DailyRunAcceptCompletedScan" in text
+    assert "feature_scan" in text
     assert "-Execute" in text
     assert "-AllowPartial" in text
+    assert "-UseUniverse" in text
+    assert "Scan scope: all active securities with available bars" in text
     assert "CATALYST_POLYGON_TICKERS_MAX_PAGES" in text
     assert "CATALYST_POLYGON_TICKER_PAGE_DELAY_SECONDS" in text
     assert "CATALYST_DAILY_MARKET_PROVIDER" in text
@@ -333,6 +337,10 @@ def test_run_full_market_scan_script_is_plan_first_and_execute_gated() -> None:
     assert "--available-at" in text
     assert "--provider\", \"polygon\"" in text
     assert "--universe" in text
+    assert (
+        '"run-daily", "--as-of", $resolvedAsOf, "--available-at", $availableAt, '
+        '"--provider", "polygon", "--json"'
+    ) in text
     assert "run-daily" in text
     assert "scan\", \"--as-of\"" not in text
     assert "priced-in-queue" in text

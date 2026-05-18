@@ -60,18 +60,17 @@ broad-market bars.
 `CATALYST_DAILY_PROVIDER` override keeps manual/default radar runs aligned with
 that scheduled provider.
 
-A full-market scan means "all active securities currently stored in the local
-universe," not the few demo tickers. Polygon/Massive grouped-daily bars alone do
-not create securities. To expand beyond fixtures, ingest the active ticker
-reference set, ingest fresh bars, build the liquid universe, then scan that
-universe:
+A full-market scan means all active securities currently stored locally, not the
+few demo tickers and not the smaller `liquid-us` liquidity filter. Polygon/Massive
+grouped-daily bars alone do not create securities. To expand beyond fixtures,
+ingest the active ticker reference set, ingest fresh bars, then run the radar
+without `--universe`:
 
 ```powershell
 catalyst-radar priced-in-preflight
 catalyst-radar ingest-polygon tickers
 catalyst-radar ingest-polygon grouped-daily --date <LATEST_TRADING_DATE>
-catalyst-radar build-universe --as-of <LATEST_TRADING_DATE> --available-at <UTC-now> --name liquid-us --provider polygon
-catalyst-radar scan --as-of <LATEST_TRADING_DATE> --provider polygon --universe liquid-us
+catalyst-radar run-daily --as-of <LATEST_TRADING_DATE> --available-at <UTC-now> --provider polygon --json
 ```
 
 `priced-in-preflight` is zero-call. It explains why the current queue may only
@@ -94,15 +93,17 @@ powershell -ExecutionPolicy Bypass -File scripts/run-full-market-scan.ps1 -Ticke
 Without `-Execute`, the script only reads local preflight state and prints the
 provider calls it would make. With `-Execute`, it sets the Polygon/Massive page
 cap and page delay only in the current PowerShell process, then runs ticker
-seed, grouped-daily ingest, `liquid-us` universe build, a universe-scoped daily
-radar run, and priced-in queue review.
+seed, grouped-daily ingest, an all-active daily radar run, and priced-in queue
+review. Add `-UseUniverse` only when you intentionally want the smaller
+`liquid-us`-style selected-universe scan.
 
-The dashboard shows active universe size, requested/scanned securities, fresh
-bar coverage, and candidate count so a tiny local universe is not mistaken for a
+The dashboard shows active security count, requested/scanned securities, fresh
+bar coverage, and candidate count so a selected universe is not mistaken for a
 full-market pass. In the TUI, the Insights page opens in `Full Scan` mode by
-default: it shows the first ranked page from the whole scanned universe. When
-the latest run used `--universe`, the queue is scoped to that same universe
-snapshot instead of older same-date rows outside the run.
+default: it shows the first ranked page from the latest scan. When the latest
+run used `--universe`, the queue is scoped to that same selected universe and
+the readiness status tells you to run without `--universe` for the all-active
+full-market pass.
 `Mismatches` is the narrower filter for bullish/bearish not-priced-in rows.
 Press `M`, click the `SCAN` controls in the sidebar, or type `full` /
 `mismatches` in the command box to switch. For non-interactive checks, use
