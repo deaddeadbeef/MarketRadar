@@ -609,7 +609,7 @@ def priced_in_queue_payload(
     resolved_limit = _positive_limit(limit)
     resolved_offset = _positive_offset(offset)
     page_rows = rows[resolved_offset : resolved_offset + resolved_limit]
-    source_coverage = priced_in_source_coverage_summary(page_rows)
+    source_coverage = priced_in_source_coverage_summary(rows)
     status_counts = dict(Counter(str(row.get("priced_in_status") or "unknown") for row in rows))
     scan_status = _priced_in_scan_status(discovery)
     preflight = priced_in_preflight_payload(
@@ -626,6 +626,14 @@ def priced_in_queue_payload(
             total_count=total_count,
             returned_count=len(page_rows),
             offset=resolved_offset,
+            status_filter=wanted_status or "all",
+            filtered=(
+                wanted_status not in {"", "all"}
+                or wanted_usefulness != "all"
+                or bool(wanted_source_gaps)
+                or bool(wanted_decision_gaps)
+                or min_gap is not None
+            ),
         ),
         "next_action": _priced_in_queue_next_action(scan_status),
         "external_calls_made": 0,
@@ -5695,7 +5703,7 @@ def _priced_in_source_guidance(source: str, status: str) -> dict[str, object]:
                 "Sync Schwab option-chain context or ingest an options fixture, "
                 "then rerun the scan."
             ),
-            "command": "catalyst-radar ingest-options --from-schwab-market --ticker <TICKER>",
+            "command": "catalyst-radar schwab-market-sync --ticker <TICKER>",
             "api": "POST /api/brokers/schwab/market-sync",
             "external_call_boundary": (
                 "CLI promotion reads stored Schwab snapshots only; live Schwab options "
@@ -5724,11 +5732,7 @@ def _priced_in_source_guidance(source: str, status: str) -> dict[str, object]:
             if ready
             else "Sync read-only Schwab market context before sizing or trigger review.",
             "command": (
-                "curl.exe --insecure --fail --silent --show-error --request POST "
-                "https://127.0.0.1:8443/api/brokers/schwab/market-sync "
-                '--header "Content-Type: application/json" '
-                "--data '{\"tickers\":[\"<TICKER>\"],"
-                "\"include_history\":true,\"include_options\":true}'"
+                "catalyst-radar schwab-market-sync --ticker <TICKER>"
             ),
             "api": "POST /api/brokers/schwab/market-sync",
             "external_call_boundary": (
@@ -5901,17 +5905,43 @@ def _priced_in_queue_headline(
     total_count: int,
     returned_count: int,
     offset: int,
+    status_filter: str,
+    filtered: bool,
 ) -> str:
     range_start = offset + 1 if returned_count else 0
     range_end = offset + returned_count
     showing = f"showing {range_start}-{range_end} of {total_count}"
     if status == "universe_too_small":
+        if filtered:
+            label = (
+                "actionable mismatch"
+                if status_filter in PRICED_IN_ACTIONABLE_FILTERS
+                else "filtered priced-in"
+            )
+            return (
+                "Local universe is too small for a full-market priced-in read; "
+                f"{showing} {label} row(s)."
+            )
         return (
             "Local universe is too small for a full-market priced-in read; "
             f"{showing} priced-in row(s)."
         )
     if status == "partial_scan":
+        if filtered:
+            label = (
+                "actionable mismatch"
+                if status_filter in PRICED_IN_ACTIONABLE_FILTERS
+                else "filtered priced-in"
+            )
+            return f"Latest scan is partial; {showing} {label} row(s)."
         return f"Latest scan is partial; {showing} priced-in row(s)."
+    if filtered:
+        if status_filter in PRICED_IN_ACTIONABLE_FILTERS:
+            return (
+                f"Latest full scan found {total_count} actionable mismatch row(s); "
+                f"{showing}."
+            )
+        return f"Latest full scan filtered to {total_count} priced-in row(s); {showing}."
     return f"Latest full scan ranked {total_count} priced-in row(s); {showing}."
 
 

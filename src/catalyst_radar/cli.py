@@ -198,6 +198,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     options.add_argument("--ticker", action="append")
 
+    schwab_market_sync = subparsers.add_parser("schwab-market-sync")
+    schwab_market_sync.add_argument("--ticker", action="append", required=True)
+    schwab_market_sync.add_argument("--skip-history", action="store_true")
+    schwab_market_sync.add_argument("--skip-options", action="store_true")
+    schwab_market_sync.add_argument("--json", action="store_true")
+
     events = subparsers.add_parser("events")
     events.add_argument("--ticker", required=True)
     events.add_argument("--as-of", type=date.fromisoformat, required=True)
@@ -661,6 +667,9 @@ def main(argv: list[str] | None = None) -> int:
             feature_repo=feature_repo,
             fixture_path=args.fixture,
         )
+
+    if args.command == "schwab-market-sync":
+        return _sync_schwab_market_context_cli(args)
 
     if args.command == "events":
         create_schema(engine)
@@ -1865,6 +1874,73 @@ def _ingest_schwab_market_options(
         f"option_features={count} "
         f"rejected={max(0, len(snapshots) - count)}"
     )
+    return 0
+
+
+def _sync_schwab_market_context_cli(args: argparse.Namespace) -> int:
+    tickers = sorted(
+        {
+            ticker.strip().upper()
+            for raw in args.ticker
+            for ticker in str(raw).split(",")
+            if ticker.strip()
+        }
+    )
+    payload = {
+        "tickers": tickers,
+        "include_history": not bool(args.skip_history),
+        "include_options": not bool(args.skip_options),
+    }
+    try:
+        from fastapi import HTTPException
+
+        from catalyst_radar.api.routes.brokers import schwab_market_sync
+
+        result = schwab_market_sync(payload)
+    except HTTPException as exc:
+        detail = exc.detail
+        if args.json:
+            print(
+                json.dumps(
+                    {
+                        "status": "failed",
+                        "status_code": exc.status_code,
+                        "detail": detail,
+                    },
+                    sort_keys=True,
+                )
+            )
+        else:
+            print(
+                f"schwab_market_sync failed status={exc.status_code} detail={detail}",
+                file=sys.stderr,
+            )
+        return 1
+    if args.json:
+        print(json.dumps(result, sort_keys=True))
+        return 0
+    items = result.get("items") if isinstance(result, Mapping) else []
+    option_count = result.get("option_features_upserted") if isinstance(result, Mapping) else 0
+    print(
+        "schwab_market_sync "
+        f"tickers={len(tickers)} "
+        f"snapshots={len(items) if isinstance(items, list | tuple) else 0} "
+        f"option_features={option_count} "
+        f"include_history={str(payload['include_history']).lower()} "
+        f"include_options={str(payload['include_options']).lower()} "
+        "boundary=explicit_read_only_rate_limited"
+    )
+    if isinstance(items, list | tuple):
+        for item in items:
+            if not isinstance(item, Mapping):
+                continue
+            print(
+                f"- {item.get('ticker')} "
+                f"last={item.get('last_price')} "
+                f"trend_5d={item.get('price_trend_5d_percent')} "
+                f"call_put={item.get('option_call_put_ratio')} "
+                f"iv={item.get('option_iv_percentile')}"
+            )
     return 0
 
 

@@ -131,7 +131,7 @@ def test_dashboard_snapshot_cli_outputs_dashboard_command_center_json(
     }
     assert source_actions["options"]["status"] == "missing"
     assert source_actions["options"]["command"].startswith(
-        "catalyst-radar ingest-options"
+        "catalyst-radar schwab-market-sync"
     )
     assert source_actions["broker_context"]["api"] == (
         "POST /api/brokers/schwab/market-sync"
@@ -253,7 +253,7 @@ def test_dashboard_snapshot_ops_page_shows_priced_in_source_actions(
     assert output.err == ""
     assert "Priced-in Source Gaps" in output.out
     assert "options" in output.out
-    assert "ingest-options" in output.out
+    assert "schwab-market-sync" in output.out
 
 
 def test_dashboard_tui_once_can_show_full_scan_mode(

@@ -1425,6 +1425,7 @@ def test_priced_in_queue_payload_paginates_ranked_rows(tmp_path: Path) -> None:
     assert first_page["count"] == 1
     assert first_page["total_count"] == 2
     assert first_page["has_more"] is True
+    assert first_page["source_coverage"]["row_count"] == 2
     assert first_page["headline"] == (
         "Local universe is too small for a full-market priced-in read; "
         "showing 1-1 of 2 priced-in row(s)."
@@ -1477,6 +1478,7 @@ def test_priced_in_queue_payload_supports_actionable_status_alias(tmp_path: Path
     )
 
     assert payload["filters"]["status"] == "actionable"
+    assert "actionable mismatch" in str(payload["headline"])
     assert payload["count"] >= 1
     assert payload["total_count"] == payload["count"]
     assert {
