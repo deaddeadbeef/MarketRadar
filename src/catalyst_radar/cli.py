@@ -39,9 +39,7 @@ from catalyst_radar.connectors.base import ConnectorRequest
 from catalyst_radar.connectors.earnings import EarningsCalendarConnector
 from catalyst_radar.connectors.http import (
     FakeHttpTransport,
-    HeaderInjectingTransport,
     HttpResponse,
-    HttpTransport,
     JsonHttpClient,
     UrlLibHttpTransport,
 )
@@ -54,7 +52,6 @@ from catalyst_radar.connectors.provider_ingest import (
     ProviderIngestResult,
     ingest_provider_records,
 )
-from catalyst_radar.connectors.sec import SecSubmissionsConnector
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.core.immutability import thaw_json_value
 from catalyst_radar.core.models import ActionState
@@ -77,6 +74,11 @@ from catalyst_radar.dashboard.tui import (
     run_dashboard_tui,
 )
 from catalyst_radar.decision_cards.builder import build_decision_card
+from catalyst_radar.events.sec_ingest import (
+    ingest_sec_record,
+    ingest_sec_submissions_batch,
+    parse_sec_submission_target,
+)
 from catalyst_radar.feedback.service import (
     FeedbackError,
     MissingArtifactError,
@@ -1831,7 +1833,7 @@ def _ingest_sec_provider(
     document_fixture_path: Path | None,
 ) -> int:
     try:
-        result = _run_sec_ingest(
+        result = ingest_sec_record(
             config=config,
             market_repo=market_repo,
             provider_repo=provider_repo,
@@ -1860,145 +1862,36 @@ def _ingest_sec_submissions_batch(
     fixture_path: Path | None,
 ) -> int:
     try:
-        parsed_targets = [_parse_sec_batch_target(target) for target in targets]
+        parsed_targets = [parse_sec_submission_target(target) for target in targets]
     except ValueError as exc:
         print(f"sec batch ingest failed: {exc}", file=sys.stderr)
         return 1
-
-    totals = {
-        "raw": 0,
-        "normalized": 0,
-        "securities": 0,
-        "daily_bars": 0,
-        "holdings": 0,
-        "events": 0,
-        "rejected": 0,
-    }
-    for ticker, cik in parsed_targets:
-        try:
-            result = _run_sec_ingest(
-                config=config,
-                market_repo=market_repo,
-                provider_repo=provider_repo,
-                event_repo=event_repo,
-                sec_command="submissions",
-                ticker=ticker,
-                cik=cik,
-                fixture_path=fixture_path,
-                document_fixture_path=None,
-            )
-        except (ProviderIngestError, ValueError) as exc:
-            print(
-                f"sec batch ingest failed for {ticker}: {exc}",
-                file=sys.stderr,
-            )
-            return 1
-        totals["raw"] += result.raw_count
-        totals["normalized"] += result.normalized_count
-        totals["securities"] += result.security_count
-        totals["daily_bars"] += result.daily_bar_count
-        totals["holdings"] += result.holding_count
-        totals["events"] += result.event_count
-        totals["rejected"] += result.rejected_count
+    try:
+        result = ingest_sec_submissions_batch(
+            config=config,
+            market_repo=market_repo,
+            provider_repo=provider_repo,
+            event_repo=event_repo,
+            targets=parsed_targets,
+            fixture_path=fixture_path,
+        )
+    except (ProviderIngestError, ValueError) as exc:
+        print(f"sec batch ingest failed: {exc}", file=sys.stderr)
+        return 1
+    payload = result.as_payload()
 
     print(
         "ingested_batch provider=sec "
-        f"targets={len(parsed_targets)} "
-        f"raw={totals['raw']} "
-        f"normalized={totals['normalized']} "
-        f"securities={totals['securities']} "
-        f"daily_bars={totals['daily_bars']} "
-        f"holdings={totals['holdings']} "
-        f"events={totals['events']} "
-        f"rejected={totals['rejected']}"
+        f"targets={payload['target_count']} "
+        f"raw={payload['raw_count']} "
+        f"normalized={payload['normalized_count']} "
+        f"securities={payload['security_count']} "
+        f"daily_bars={payload['daily_bar_count']} "
+        f"holdings={payload['holding_count']} "
+        f"events={payload['event_count']} "
+        f"rejected={payload['rejected_count']}"
     )
     return 0
-
-
-def _parse_sec_batch_target(value: str) -> tuple[str, str]:
-    raw = str(value or "").strip()
-    if ":" not in raw:
-        msg = f"--target must use TICKER:CIK form, got {value!r}"
-        raise ValueError(msg)
-    ticker, cik = (part.strip() for part in raw.split(":", 1))
-    if not ticker or not cik:
-        msg = f"--target must include both ticker and CIK, got {value!r}"
-        raise ValueError(msg)
-    return ticker.upper(), cik.zfill(10)
-
-
-def _run_sec_ingest(
-    *,
-    config: AppConfig,
-    market_repo: MarketRepository,
-    provider_repo: ProviderRepository,
-    event_repo: EventRepository,
-    sec_command: str,
-    ticker: str,
-    cik: str,
-    fixture_path: Path | None,
-    document_fixture_path: Path | None,
-):
-    if sec_command not in {"submissions", "ipo-s1"}:
-        msg = f"unsupported sec command: {sec_command}"
-        raise ValueError(msg)
-    if fixture_path is None and not config.sec_enable_live:
-        msg = "live SEC ingest requires CATALYST_SEC_ENABLE_LIVE=1"
-        raise ValueError(msg)
-    if fixture_path is None and not config.sec_user_agent_configured:
-        msg = "CATALYST_SEC_USER_AGENT is required for live SEC ingest"
-        raise ValueError(msg)
-
-    transport: HttpTransport | None = None
-    if fixture_path is None:
-        transport = HeaderInjectingTransport(
-            UrlLibHttpTransport(),
-            {"User-Agent": config.sec_user_agent or ""},
-        )
-    connector = SecSubmissionsConnector(
-        fixture_path=fixture_path,
-        document_fixture_path=document_fixture_path,
-        client=(
-            JsonHttpClient(
-                transport=transport,
-                timeout_seconds=config.http_timeout_seconds,
-            )
-            if transport is not None
-            else None
-        ),
-        document_transport=transport if sec_command == "ipo-s1" else None,
-        document_headers={"User-Agent": config.sec_user_agent or ""}
-        if transport is not None and sec_command == "ipo-s1"
-        else None,
-        document_timeout_seconds=config.http_timeout_seconds,
-        base_url=config.sec_base_url,
-    )
-    metadata = {
-        "provider": "sec",
-        "endpoint": sec_command,
-        "ticker": ticker.upper(),
-        "cik": cik,
-        "fixture": str(fixture_path) if fixture_path is not None else None,
-        "document_fixture": (
-            str(document_fixture_path) if document_fixture_path is not None else None
-        ),
-        "live": fixture_path is None,
-    }
-    request = ConnectorRequest(
-        provider="sec",
-        endpoint=sec_command,
-        params={"ticker": ticker.upper(), "cik": cik},
-        requested_at=datetime.now(UTC),
-    )
-    return ingest_provider_records(
-        connector=connector,
-        request=request,
-        market_repo=market_repo,
-        provider_repo=provider_repo,
-        job_type="sec_ipo_s1" if sec_command == "ipo-s1" else "sec_submissions",
-        metadata=metadata,
-        event_repo=event_repo,
-    )
 
 
 def _ingest_news_provider(

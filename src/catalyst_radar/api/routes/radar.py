@@ -10,8 +10,13 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
+from catalyst_radar.connectors.provider_ingest import ProviderIngestError
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.dashboard import data as dashboard_data
+from catalyst_radar.events.sec_ingest import (
+    SecSubmissionTarget,
+    ingest_sec_submissions_batch,
+)
 from catalyst_radar.jobs.scheduler import (
     SchedulerConfig,
     run_once,
@@ -25,7 +30,10 @@ from catalyst_radar.security.licenses import (
     redact_restricted_external_payload,
 )
 from catalyst_radar.storage.db import create_schema, engine_from_url
+from catalyst_radar.storage.event_repositories import EventRepository
 from catalyst_radar.storage.job_repositories import JobLockRepository
+from catalyst_radar.storage.provider_repositories import ProviderRepository
+from catalyst_radar.storage.repositories import MarketRepository
 from catalyst_radar.universe.seed import seed_polygon_tickers
 
 router = APIRouter(prefix="/api/radar", tags=["radar"])
@@ -75,6 +83,19 @@ class UniverseSeedRequest(BaseModel):
     provider: str = "polygon"
     date: Date | None = None
     max_pages: int | None = Field(default=None, ge=1)
+
+
+class SecSubmissionTargetRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    ticker: str
+    cik: str
+
+
+class SecSubmissionsBatchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    targets: list[SecSubmissionTargetRequest] = Field(default_factory=list)
 
 
 def _candidate_api_scope(latest_run: object) -> dict[str, object]:
@@ -395,6 +416,31 @@ def radar_priced_in_source_batches(
     return redact_restricted_external_payload(payload)
 
 
+@router.post(
+    "/sec/submissions-batch",
+    dependencies=[Depends(require_role(Role.ANALYST))],
+)
+def radar_sec_submissions_batch(
+    request: SecSubmissionsBatchRequest,
+) -> dict[str, object]:
+    config = AppConfig.from_env()
+    targets = _sec_submission_targets_from_request(request, config)
+    engine = _engine()
+    try:
+        result = ingest_sec_submissions_batch(
+            config=config,
+            market_repo=MarketRepository(engine),
+            provider_repo=ProviderRepository(engine),
+            event_repo=EventRepository(engine),
+            targets=targets,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ProviderIngestError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return redact_restricted_external_payload(result.as_payload())
+
+
 @router.post("/runs/call-plan", dependencies=[Depends(require_role(Role.VIEWER))])
 def radar_run_call_plan(request: RadarRunRequest) -> dict[str, object]:
     call_plan_payload = _dashboard_helper("radar_run_call_plan_payload")
@@ -409,6 +455,34 @@ def radar_run_call_plan(request: RadarRunRequest) -> dict[str, object]:
         llm_dry_run=request.llm_dry_run,
         dry_run_alerts=request.dry_run_alerts,
     )
+
+
+def _sec_submission_targets_from_request(
+    request: SecSubmissionsBatchRequest,
+    config: AppConfig,
+) -> tuple[SecSubmissionTarget, ...]:
+    if not request.targets:
+        raise HTTPException(status_code=400, detail="At least one SEC target is required")
+    if len(request.targets) > config.sec_daily_max_tickers:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Too many SEC submissions targets; maximum is "
+                f"{config.sec_daily_max_tickers}"
+            ),
+        )
+    targets = []
+    for item in request.targets:
+        ticker = item.ticker.strip().upper()
+        raw_cik = item.cik.strip()
+        if not ticker or not raw_cik:
+            raise HTTPException(
+                status_code=422,
+                detail="SEC targets must include both ticker and CIK",
+            )
+        cik = raw_cik.zfill(10)
+        targets.append(SecSubmissionTarget(ticker=ticker, cik=cik))
+    return tuple(targets)
 
 
 def _redact_restricted_research_shortlist(

@@ -1602,8 +1602,10 @@ def test_priced_in_source_gap_batches_payload_plans_sec_event_batches(
     assert payload["batches"][0]["targets"] == [
         {"ticker": "AAPL", "cik": "0000320193"}
     ]
-    assert payload["batches"][0]["api"] is None
-    assert payload["batches"][0]["api_payload"] is None
+    assert payload["batches"][0]["api"] == "POST /api/radar/sec/submissions-batch"
+    assert payload["batches"][0]["api_payload"] == {
+        "targets": [{"ticker": "AAPL", "cik": "0000320193"}]
+    }
     assert payload["batches"][0]["external_calls_required"] == 1
     assert payload["batches"][0]["external_call_breakdown"] == {
         "catalyst_events": 1
@@ -1637,6 +1639,10 @@ def test_priced_in_source_gap_batches_payload_avoids_market_call_for_sec_batches
     assert batch["command"] == (
         "catalyst-radar ingest-sec submissions-batch --target AAPL:0000320193"
     )
+    assert batch["api"] == "POST /api/radar/sec/submissions-batch"
+    assert batch["api_payload"] == {
+        "targets": [{"ticker": "AAPL", "cik": "0000320193"}]
+    }
     assert batch["external_calls_required"] == 1
     assert batch["external_call_breakdown"] == {
         "catalyst_events": 1,
