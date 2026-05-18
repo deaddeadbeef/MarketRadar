@@ -272,6 +272,25 @@ def dashboard_snapshot_payload(
         latest_run=latest_run,
         discovery_snapshot=discovery_snapshot,
     )
+    discovery_yield = (
+        discovery_snapshot.get("yield")
+        if isinstance(discovery_snapshot.get("yield"), Mapping)
+        else {}
+    )
+    priced_in_queue = dashboard_data.priced_in_queue_payload(
+        engine,
+        config,
+        limit=50,
+        candidate_rows=candidate_rows,
+        total_count=int(
+            _number_or_zero(
+                _first_value(
+                    discovery_yield.get("scanned_candidate_states"),
+                    discovery_yield.get("candidate_states"),
+                )
+            )
+        ),
+    )
     priced_in_source_coverage = dashboard_data.priced_in_source_coverage_summary(
         candidate_rows
     )
@@ -302,6 +321,7 @@ def dashboard_snapshot_payload(
         "operator_work_queue": operator_work_queue,
         "operator_next_step": operator_next_step,
         "priced_in_preflight": priced_in_preflight,
+        "priced_in_queue": priced_in_queue,
         "priced_in_source_coverage": priced_in_source_coverage,
         "candidates": {
             "count": len(candidate_rows),
@@ -1363,7 +1383,7 @@ class MarketRadarDashboardApp(App[int]):
         self,
     ) -> tuple[str, Sequence[tuple[str, str, int]], list[Mapping[str, object]], str]:
         return (
-            "Full-market priced-in queue - select a row to act",
+            _overview_title(self.payload),
             [
                 ("scope", "Scope", 10),
                 ("signal", "Signal", 28),
@@ -1371,11 +1391,7 @@ class MarketRadarDashboardApp(App[int]):
                 ("next_action", "Next action", 44),
             ],
             _market_insight_rows(self.payload),
-            (
-                "First row is scan coverage; candidate rows are priced-in mismatch cards. "
-                "Enter opens the relevant evidence or action page. "
-                "Browsing makes 0 provider calls."
-            ),
+            _overview_caption(self.payload),
         )
 
     def _candidate_detail_model(
@@ -1964,8 +1980,20 @@ def _market_insight_rows(payload: Mapping[str, object]) -> list[Mapping[str, obj
     database = _mapping(_mapping(payload.get("ops_health")).get("database"))
     call_plan = _mapping(payload.get("call_plan"))
     preflight = _mapping(payload.get("priced_in_preflight"))
+    priced_in_queue = _mapping(payload.get("priced_in_queue"))
     source_coverage = _mapping(payload.get("priced_in_source_coverage"))
     can_act = _decision_label(readiness)
+    queue_rows = _rows(priced_in_queue.get("rows")) or _candidate_rows(payload)
+    queue_total = int(
+        _number_or_zero(
+            _first_value(
+                priced_in_queue.get("total_count"),
+                scan_yield.get("scanned_candidate_states"),
+                scan_yield.get("candidate_states"),
+                len(queue_rows),
+            )
+        )
+    )
     rows: list[Mapping[str, object]] = []
 
     rows.append(
@@ -1974,11 +2002,12 @@ def _market_insight_rows(payload: Mapping[str, object]) -> list[Mapping[str, obj
             database=database,
             scan_yield=scan_yield,
             preflight=preflight,
-            candidate_count=len(_candidate_rows(payload)),
+            candidate_count=queue_total,
+            displayed_count=len(queue_rows),
         )
     )
 
-    for candidate in _candidate_rows(payload):
+    for candidate in queue_rows:
         ticker = str(candidate.get("ticker") or "").strip().upper()
         if not ticker:
             continue
@@ -2095,6 +2124,7 @@ def _full_scan_coverage_row(
     scan_yield: Mapping[str, object],
     preflight: Mapping[str, object],
     candidate_count: int,
+    displayed_count: int,
 ) -> Mapping[str, object]:
     active_count = int(
         _number_or_zero(
@@ -2133,7 +2163,8 @@ def _full_scan_coverage_row(
         )
     why_now = (
         f"active {active_count or 'n/a'}; requested {requested or 'n/a'}; "
-        f"scanned {scanned or 'n/a'}; candidates {candidate_count}; "
+        f"scanned {scanned or 'n/a'}; ranked {candidate_count}; "
+        f"showing {displayed_count}; "
         f"latest bars {latest_with_bars or 'n/a'}/{active_count or 'n/a'}; "
         f"run bars {run_with_bars or 'n/a'}/{active_count or 'n/a'}"
     )
@@ -2204,7 +2235,7 @@ def _priced_in_mismatch_text(emotion: object, reaction: object, gap: object) -> 
 
 
 def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
-    lines = [_rule("Full-market priced-in queue - select a row to act", width)]
+    lines = [_rule(_overview_title(payload), width)]
     lines.extend(
         _table_lines(
             _market_insight_rows(payload),
@@ -2219,12 +2250,33 @@ def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
         )
     )
     lines.append("")
-    lines.append(
-        "First row is scan coverage; candidate rows are priced-in mismatch cards. "
-        "Enter opens the relevant evidence or action page. "
-        "Browsing makes 0 provider calls."
-    )
+    lines.append(_overview_caption(payload))
     return lines
+
+
+def _overview_title(payload: Mapping[str, object]) -> str:
+    queue = _mapping(payload.get("priced_in_queue"))
+    total = int(_number_or_zero(queue.get("total_count")))
+    returned = int(_number_or_zero(queue.get("returned_count") or queue.get("count")))
+    if total:
+        return f"Full-market priced-in queue - showing {returned} of {total}"
+    return "Full-market priced-in queue - select a row to act"
+
+
+def _overview_caption(payload: Mapping[str, object]) -> str:
+    queue = _mapping(payload.get("priced_in_queue"))
+    total = int(_number_or_zero(queue.get("total_count")))
+    returned = int(_number_or_zero(queue.get("returned_count") or queue.get("count")))
+    if total and returned < total:
+        return (
+            f"This page shows {returned} visible ranked mismatch cards from {total} "
+            "latest-scan rows. Use priced-in-queue --limit/--offset or the API "
+            "offset parameter to page deeper. Browsing makes 0 provider calls."
+        )
+    return (
+        "First row is scan coverage; candidate rows are priced-in mismatch cards. "
+        "Enter opens the relevant evidence or action page. Browsing makes 0 provider calls."
+    )
 
 
 def _readiness_lines(payload: Mapping[str, object], width: int) -> list[str]:

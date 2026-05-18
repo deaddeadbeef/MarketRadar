@@ -172,7 +172,7 @@ def test_dashboard_snapshot_cli_outputs_human_readable_zero_call_summary(
         "Page: overview",
         "DB:",
         "Ticker: ACME",
-        "Full-market priced-in queue - select a row to act",
+        "Full-market priced-in queue - showing",
         "UNIVERSE",
         "ACME",
         "Bullish not priced",
@@ -401,7 +401,7 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert app.page == "overview"
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert "INSIGHTS" in frame
-            assert "Full-market priced-in queue - select a row to act" in frame
+            assert "Full-market priced-in queue - showing" in frame
             assert "UNIVERSE" in frame
             assert "ACME" in frame
             assert "Bullish not priced" in frame

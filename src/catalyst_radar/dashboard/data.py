@@ -106,6 +106,8 @@ def load_candidate_rows(
     *,
     available_at: datetime | None = None,
     as_of_date: date | None = None,
+    limit: int | None = 200,
+    include_artifacts: bool = True,
 ) -> list[dict[str, object]]:
     cutoff = _as_utc_datetime_or_none(available_at)
     run_date = _parse_date(as_of_date)
@@ -136,63 +138,10 @@ def load_candidate_rows(
         ranked_state_stmt = ranked_state_stmt.where(candidate_states.c.as_of <= cutoff)
     ranked_states = ranked_state_stmt.subquery()
 
-    ranked_packet_stmt = (
-        select(
-            candidate_packets.c.id,
-            candidate_packets.c.candidate_state_id,
-            candidate_packets.c.available_at,
-            candidate_packets.c.created_at,
-            candidate_packets.c.payload,
-            func.row_number()
-            .over(
-                partition_by=candidate_packets.c.candidate_state_id,
-                order_by=(
-                    candidate_packets.c.available_at.desc(),
-                    candidate_packets.c.created_at.desc(),
-                    candidate_packets.c.id.desc(),
-                ),
-            )
-            .label("packet_rank"),
-        )
-        .where(candidate_packets.c.candidate_state_id.is_not(None))
-    )
-    if cutoff is not None:
-        ranked_packet_stmt = ranked_packet_stmt.where(candidate_packets.c.available_at <= cutoff)
-    ranked_packets = ranked_packet_stmt.subquery()
-
-    ranked_card_stmt = select(
-        decision_cards.c.id,
-        decision_cards.c.candidate_packet_id,
-        decision_cards.c.available_at,
-        decision_cards.c.next_review_at,
-        decision_cards.c.payload,
-        func.row_number()
-        .over(
-            partition_by=decision_cards.c.candidate_packet_id,
-            order_by=(
-                decision_cards.c.available_at.desc(),
-                decision_cards.c.created_at.desc(),
-                decision_cards.c.id.desc(),
-            ),
-        )
-        .label("card_rank"),
-    )
-    if cutoff is not None:
-        ranked_card_stmt = ranked_card_stmt.where(decision_cards.c.available_at <= cutoff)
-    ranked_cards = ranked_card_stmt.subquery()
-
     stmt = (
         select(
             candidate_states,
             signal_features.c.payload.label("signal_payload"),
-            ranked_packets.c.id.label("candidate_packet_id"),
-            ranked_packets.c.available_at.label("candidate_packet_available_at"),
-            ranked_packets.c.created_at.label("candidate_packet_created_at"),
-            ranked_packets.c.payload.label("candidate_packet_payload"),
-            ranked_cards.c.id.label("decision_card_id"),
-            ranked_cards.c.available_at.label("decision_card_available_at"),
-            ranked_cards.c.next_review_at.label("next_review_at"),
-            ranked_cards.c.payload.label("decision_card_payload"),
         )
         .join(
             ranked_states,
@@ -210,25 +159,88 @@ def load_candidate_rows(
             ),
             isouter=True,
         )
-        .join(
-            ranked_packets,
-            and_(
-                ranked_packets.c.candidate_state_id == candidate_states.c.id,
-                ranked_packets.c.packet_rank == 1,
-            ),
-            isouter=True,
-        )
-        .join(
-            ranked_cards,
-            and_(
-                ranked_cards.c.candidate_packet_id == ranked_packets.c.id,
-                ranked_cards.c.card_rank == 1,
-            ),
-            isouter=True,
-        )
         .order_by(candidate_states.c.final_score.desc(), candidate_states.c.as_of.desc())
-        .limit(200)
     )
+    if include_artifacts:
+        ranked_packet_stmt = (
+            select(
+                candidate_packets.c.id,
+                candidate_packets.c.candidate_state_id,
+                candidate_packets.c.available_at,
+                candidate_packets.c.created_at,
+                candidate_packets.c.payload,
+                func.row_number()
+                .over(
+                    partition_by=candidate_packets.c.candidate_state_id,
+                    order_by=(
+                        candidate_packets.c.available_at.desc(),
+                        candidate_packets.c.created_at.desc(),
+                        candidate_packets.c.id.desc(),
+                    ),
+                )
+                .label("packet_rank"),
+            )
+            .where(candidate_packets.c.candidate_state_id.is_not(None))
+        )
+        if cutoff is not None:
+            ranked_packet_stmt = ranked_packet_stmt.where(
+                candidate_packets.c.available_at <= cutoff
+            )
+        ranked_packets = ranked_packet_stmt.subquery()
+
+        ranked_card_stmt = select(
+            decision_cards.c.id,
+            decision_cards.c.candidate_packet_id,
+            decision_cards.c.available_at,
+            decision_cards.c.next_review_at,
+            decision_cards.c.payload,
+            func.row_number()
+            .over(
+                partition_by=decision_cards.c.candidate_packet_id,
+                order_by=(
+                    decision_cards.c.available_at.desc(),
+                    decision_cards.c.created_at.desc(),
+                    decision_cards.c.id.desc(),
+                ),
+            )
+            .label("card_rank"),
+        )
+        if cutoff is not None:
+            ranked_card_stmt = ranked_card_stmt.where(
+                decision_cards.c.available_at <= cutoff
+            )
+        ranked_cards = ranked_card_stmt.subquery()
+
+        stmt = (
+            stmt.add_columns(
+                ranked_packets.c.id.label("candidate_packet_id"),
+                ranked_packets.c.available_at.label("candidate_packet_available_at"),
+                ranked_packets.c.created_at.label("candidate_packet_created_at"),
+                ranked_packets.c.payload.label("candidate_packet_payload"),
+                ranked_cards.c.id.label("decision_card_id"),
+                ranked_cards.c.available_at.label("decision_card_available_at"),
+                ranked_cards.c.next_review_at.label("next_review_at"),
+                ranked_cards.c.payload.label("decision_card_payload"),
+            )
+            .join(
+                ranked_packets,
+                and_(
+                    ranked_packets.c.candidate_state_id == candidate_states.c.id,
+                    ranked_packets.c.packet_rank == 1,
+                ),
+                isouter=True,
+            )
+            .join(
+                ranked_cards,
+                and_(
+                    ranked_cards.c.candidate_packet_id == ranked_packets.c.id,
+                    ranked_cards.c.card_rank == 1,
+                ),
+                isouter=True,
+            )
+        )
+    if limit is not None:
+        stmt = stmt.limit(_positive_limit(limit))
     with engine.connect() as conn:
         return [_candidate_row(row._mapping) for row in conn.execute(stmt)]
 
@@ -236,6 +248,9 @@ def load_candidate_rows(
 def load_radar_run_candidate_rows(
     engine: Engine,
     radar_run_summary: Mapping[str, object],
+    *,
+    limit: int | None = 200,
+    include_artifacts: bool = True,
 ) -> list[dict[str, object]]:
     summary = _row_dict(radar_run_summary)
     cutoff = _parse_utc_datetime(summary.get("finished_at")) or _parse_utc_datetime(
@@ -245,6 +260,8 @@ def load_radar_run_candidate_rows(
         engine,
         available_at=cutoff,
         as_of_date=_parse_date(summary.get("as_of")),
+        limit=limit,
+        include_artifacts=include_artifacts,
     )
 
 
@@ -475,25 +492,36 @@ def priced_in_queue_payload(
     config: AppConfig,
     *,
     limit: int = 50,
+    offset: int = 0,
     status: str | None = None,
     min_gap: float | None = None,
+    candidate_rows: Sequence[Mapping[str, object]] | None = None,
+    total_count: int | None = None,
 ) -> dict[str, object]:
     latest_run = load_radar_run_summary(engine)
-    candidate_rows = (
-        load_radar_run_candidate_rows(engine, latest_run)
+    using_supplied_rows = candidate_rows is not None
+    queue_candidate_rows = (
+        [_row_dict(row) for row in candidate_rows]
+        if candidate_rows is not None
+        else load_radar_run_candidate_rows(
+            engine,
+            latest_run,
+            limit=None,
+            include_artifacts=False,
+        )
         if latest_run
-        else load_candidate_rows(engine)
+        else load_candidate_rows(engine, limit=None, include_artifacts=False)
     )
     discovery = radar_discovery_snapshot_payload(
         engine,
         config,
         radar_run_summary=latest_run,
-        candidate_rows=candidate_rows,
+        candidate_rows=queue_candidate_rows,
     )
     wanted_status = str(status or "").strip().lower()
     rows = [
         _priced_in_queue_row(row)
-        for row in candidate_rows
+        for row in queue_candidate_rows
         if isinstance(row, Mapping)
     ]
     if wanted_status and wanted_status != "all":
@@ -509,8 +537,21 @@ def priced_in_queue_payload(
             for row in rows
             if abs(_finite_float(row.get("emotion_reaction_gap"))) >= threshold
         ]
-    rows = sorted(rows, key=_priced_in_queue_sort_key)[: _positive_limit(limit)]
-    source_coverage = priced_in_source_coverage_summary(rows)
+    rows = sorted(rows, key=_priced_in_queue_sort_key)
+    loaded_total_count = len(rows)
+    if (
+        using_supplied_rows
+        and not wanted_status
+        and min_gap is None
+        and total_count is not None
+    ):
+        total_count = max(_positive_offset(total_count), loaded_total_count)
+    else:
+        total_count = loaded_total_count
+    resolved_limit = _positive_limit(limit)
+    resolved_offset = _positive_offset(offset)
+    page_rows = rows[resolved_offset : resolved_offset + resolved_limit]
+    source_coverage = priced_in_source_coverage_summary(page_rows)
     status_counts = dict(Counter(str(row.get("priced_in_status") or "unknown") for row in rows))
     scan_status = _priced_in_scan_status(discovery)
     preflight = priced_in_preflight_payload(
@@ -522,7 +563,12 @@ def priced_in_queue_payload(
     return {
         "schema_version": "priced-in-queue-v1",
         "status": scan_status,
-        "headline": _priced_in_queue_headline(scan_status, len(rows)),
+        "headline": _priced_in_queue_headline(
+            scan_status,
+            total_count=total_count,
+            returned_count=len(page_rows),
+            offset=resolved_offset,
+        ),
         "next_action": _priced_in_queue_next_action(scan_status),
         "external_calls_made": 0,
         "preflight": preflight,
@@ -534,12 +580,17 @@ def priced_in_queue_payload(
         "filters": {
             "status": wanted_status or "all",
             "min_gap": min_gap,
-            "limit": _positive_limit(limit),
+            "limit": resolved_limit,
+            "offset": resolved_offset,
         },
-        "count": len(rows),
+        "count": len(page_rows),
+        "returned_count": len(page_rows),
+        "total_count": total_count,
+        "offset": resolved_offset,
+        "has_more": resolved_offset + len(page_rows) < total_count,
         "status_counts": status_counts,
         "source_coverage": source_coverage,
-        "rows": rows,
+        "rows": page_rows,
     }
 
 
@@ -3714,6 +3765,12 @@ def radar_discovery_snapshot_payload(
     latest_candidate_session_date = _date_iso_or_none(latest_candidate_at)
 
     candidate_count = len(candidates)
+    scanned_candidate_count = _step_metric(
+        steps,
+        "feature_scan",
+        "normalized_count",
+        default=candidate_count,
+    )
     packet_count = _step_metric(
         steps,
         "candidate_packets",
@@ -3832,6 +3889,7 @@ def radar_discovery_snapshot_payload(
             "requested_securities": requested_count,
             "scanned_securities": scanned_count,
             "candidate_states": candidate_count,
+            "scanned_candidate_states": scanned_candidate_count,
             "candidate_packets": packet_count,
             "decision_cards": card_count,
         },
@@ -5192,15 +5250,24 @@ def _priced_in_scan_status(discovery: Mapping[str, object]) -> str:
     return "ready"
 
 
-def _priced_in_queue_headline(status: str, count: int) -> str:
+def _priced_in_queue_headline(
+    status: str,
+    *,
+    total_count: int,
+    returned_count: int,
+    offset: int,
+) -> str:
+    range_start = offset + 1 if returned_count else 0
+    range_end = offset + returned_count
+    showing = f"showing {range_start}-{range_end} of {total_count}"
     if status == "universe_too_small":
         return (
             "Local universe is too small for a full-market priced-in read; "
-            f"{count} rows visible."
+            f"{showing} priced-in row(s)."
         )
     if status == "partial_scan":
-        return f"Latest scan is partial; {count} priced-in rows visible."
-    return f"{count} priced-in row(s) are ranked from the latest scan."
+        return f"Latest scan is partial; {showing} priced-in row(s)."
+    return f"Latest full scan ranked {total_count} priced-in row(s); {showing}."
 
 
 def _priced_in_queue_next_action(status: str) -> str:
@@ -8529,6 +8596,10 @@ def _string_int_mapping(value: object) -> dict[str, int]:
 
 def _positive_limit(value: int) -> int:
     return max(1, int(value))
+
+
+def _positive_offset(value: int) -> int:
+    return max(0, int(value))
 
 
 def _radar_run_key(row: Mapping[str, object]) -> tuple[object, ...]:

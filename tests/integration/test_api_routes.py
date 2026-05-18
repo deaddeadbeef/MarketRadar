@@ -303,6 +303,8 @@ def test_post_agent_review_requires_analyst_when_auth_enabled(
 def test_post_radar_run_builds_scheduler_config(tmp_path, monkeypatch) -> None:
     database_url = _database_url(tmp_path, "radar-run.db")
     monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("CATALYST_DAILY_MARKET_PROVIDER", "csv")
+    monkeypatch.setenv("CATALYST_DAILY_PROVIDER", "csv")
     engine = _create_database(database_url)
     captured: dict[str, object] = {}
 
@@ -1089,12 +1091,20 @@ def test_get_radar_priced_in_queue_returns_cli_ready_rows(
     monkeypatch.setattr(
         dashboard_data,
         "priced_in_queue_payload",
-        lambda _engine, _config, *, limit, status, min_gap: {
+        lambda _engine, _config, *, limit, offset, status, min_gap: {
             "schema_version": "priced-in-queue-v1",
             "status": "ready",
             "external_calls_made": 0,
-            "filters": {"limit": limit, "status": status, "min_gap": min_gap},
+            "filters": {
+                "limit": limit,
+                "offset": offset,
+                "status": status,
+                "min_gap": min_gap,
+            },
             "count": 1,
+            "total_count": 25,
+            "offset": offset,
+            "has_more": True,
             "rows": [
                 {
                     "ticker": "MSFT",
@@ -1115,7 +1125,9 @@ def test_get_radar_priced_in_queue_returns_cli_ready_rows(
     )
     client = TestClient(create_app())
 
-    response = client.get("/api/radar/priced-in?limit=3&status=bullish_not_priced_in&min_gap=10")
+    response = client.get(
+        "/api/radar/priced-in?limit=3&offset=6&status=bullish_not_priced_in&min_gap=10"
+    )
 
     assert response.status_code == 200
     payload = response.json()
@@ -1123,9 +1135,13 @@ def test_get_radar_priced_in_queue_returns_cli_ready_rows(
     assert payload["external_calls_made"] == 0
     assert payload["filters"] == {
         "limit": 3,
+        "offset": 6,
         "status": "bullish_not_priced_in",
         "min_gap": 10.0,
     }
+    assert payload["total_count"] == 25
+    assert payload["offset"] == 6
+    assert payload["has_more"] is True
     assert payload["rows"][0]["ticker"] == "MSFT"
     assert payload["rows"][0]["data_sources"]["available"] == [
         "market_bars",
