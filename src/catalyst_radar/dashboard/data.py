@@ -5967,6 +5967,11 @@ def _priced_in_source_action_row(
             if gap_count > 0
             else None
         ),
+        "full_scan_export_command": (
+            f"catalyst-radar priced-in-queue --full-scan --source-gap {source} --all --json"
+            if gap_count > 0
+            else None
+        ),
         **guidance,
     }
 

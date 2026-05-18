@@ -97,6 +97,18 @@ EXPECTED_API_ROUTES = {
     ("GET", "/api/ops/health"): ("catalyst_radar.api.routes.ops", "health", ("ops",)),
     (
         "GET",
+        "/api/ops/telemetry",
+    ): ("catalyst_radar.api.routes.ops", "telemetry", ("ops",)),
+    (
+        "GET",
+        "/api/ops/telemetry/coverage",
+    ): ("catalyst_radar.api.routes.ops", "telemetry_coverage", ("ops",)),
+    (
+        "GET",
+        "/api/ops/telemetry/raw",
+    ): ("catalyst_radar.api.routes.ops", "raw_telemetry", ("ops",)),
+    (
+        "GET",
         "/api/radar/candidates",
     ): ("catalyst_radar.api.routes.radar", "candidates", ("radar",)),
     (
@@ -123,6 +135,14 @@ EXPECTED_API_ROUTES = {
         "GET",
         "/api/radar/research-shortlist",
     ): ("catalyst_radar.api.routes.radar", "radar_research_shortlist", ("radar",)),
+    (
+        "GET",
+        "/api/radar/priced-in",
+    ): ("catalyst_radar.api.routes.radar", "radar_priced_in_queue", ("radar",)),
+    (
+        "GET",
+        "/api/radar/priced-in/preflight",
+    ): ("catalyst_radar.api.routes.radar", "radar_priced_in_preflight", ("radar",)),
     (
         "POST",
         "/api/radar/runs/call-plan",
