@@ -45,6 +45,11 @@ mismatch exists, the TUI should not backfill neutral rows; it should say there
 are no actionable not-priced-in mismatches and point to `--status all` for full
 inspection.
 
+Rows with a not-priced-in signal but a blocked policy state are still shown in
+the actionable queue, but they are labeled as `Blocked mismatch`. The CLI also
+prints a `blocked` column. The next action for those rows is to clear blockers
+before treating the mismatch as actionable; do not present them as ready ideas.
+
 ## Latest Correction
 
 The broad Polygon/Massive seed proved that the local database can hold the

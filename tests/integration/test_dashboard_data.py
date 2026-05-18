@@ -1472,6 +1472,59 @@ def test_priced_in_queue_payload_supports_actionable_status_alias(tmp_path: Path
     } <= {"bullish_not_priced_in", "bearish_not_priced_in"}
 
 
+def test_priced_in_queue_payload_labels_blocked_mismatches(tmp_path: Path) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    with engine.begin() as conn:
+        row = (
+            conn.execute(
+                signal_features.select().where(
+                    signal_features.c.ticker == "MSFT",
+                    signal_features.c.as_of == AS_OF,
+                )
+            )
+            .mappings()
+            .one()
+        )
+        payload = dict(row["payload"])
+        candidate = dict(payload["candidate"])
+        metadata = dict(candidate["metadata"])
+        metadata["priced_in"] = {
+            "status": "bullish_not_priced_in",
+            "direction": "bullish",
+            "emotion_score": 80.0,
+            "reaction_score": 20.0,
+            "emotion_reaction_gap": 60.0,
+            "priced_in_score": 25.0,
+            "reason": "Bullish emotion is ahead of price reaction.",
+            "next_step": "Open candidate detail.",
+        }
+        candidate["metadata"] = metadata
+        payload["candidate"] = candidate
+        conn.execute(
+            update(signal_features)
+            .where(signal_features.c.ticker == "MSFT", signal_features.c.as_of == AS_OF)
+            .values(payload=payload)
+        )
+        conn.execute(
+            update(candidate_states)
+            .where(candidate_states.c.id == "state-msft-latest")
+            .values(state=ActionState.BLOCKED.value, hard_blocks=["risk_hard_block"])
+        )
+
+    payload = priced_in_queue_payload(
+        engine,
+        AppConfig.from_env({}),
+        status="actionable",
+    )
+    row = payload["rows"][0]
+
+    assert row["ticker"] == "MSFT"
+    assert row["blocked"] is True
+    assert row["blockers"] == ["risk_hard_block"]
+    assert row["next_step"] == "Clear blockers before treating this mismatch as actionable."
+
+
 def test_priced_in_preflight_payload_reports_exact_next_steps(tmp_path: Path) -> None:
     engine = _engine(tmp_path)
     _insert_dashboard_fixture(engine)
