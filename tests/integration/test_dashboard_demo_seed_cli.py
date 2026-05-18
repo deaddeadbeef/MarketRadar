@@ -133,6 +133,13 @@ def test_dashboard_snapshot_cli_outputs_dashboard_command_center_json(
     assert source_actions["options"]["command"].startswith(
         "catalyst-radar schwab-market-sync"
     )
+    assert source_actions["options"]["command"].endswith("--ticker ACME")
+    assert source_actions["options"]["sample_tickers"] == ["ACME"]
+    assert source_actions["options"]["api_payload"] == {
+        "tickers": ["ACME"],
+        "include_history": True,
+        "include_options": True,
+    }
     assert source_actions["broker_context"]["api"] == (
         "POST /api/brokers/schwab/market-sync"
     )
@@ -254,6 +261,7 @@ def test_dashboard_snapshot_ops_page_shows_priced_in_source_actions(
     assert "Priced-in Source Gaps" in output.out
     assert "options" in output.out
     assert "schwab-market-sync" in output.out
+    assert "ACME" in output.out
 
 
 def test_dashboard_tui_once_can_show_full_scan_mode(
@@ -391,6 +399,7 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
     assert "visible_page=1" in output.out
     assert "source_actions:" in output.out
     assert "options status=missing" in output.out
+    assert "sample=ACME" in output.out
     assert "broker_context status=missing" in output.out
 
 
@@ -419,6 +428,8 @@ def test_candidate_detail_cli_outputs_priced_in_evidence_brief(
     assert actions["options"]["next_action"] == (
         "Sync Schwab option-chain context or ingest an options fixture, then rerun the scan."
     )
+    assert actions["options"]["command"].endswith("--ticker ACME")
+    assert actions["options"]["sample_tickers"] == ["ACME"]
     assert brief["usefulness"]["status"] == "research_useful"
     assert brief["usefulness"]["decision_ready"] is False
     assert "options" in brief["usefulness"]["missing_for_decision"]
@@ -436,6 +447,7 @@ def test_candidate_detail_cli_outputs_priced_in_evidence_brief(
     assert "usefulness=research_useful decision_ready=false" in output.out
     assert "source_actions:" in output.out
     assert "options status=missing" in output.out
+    assert "sample=ACME" in output.out
     assert "evidence:" in output.out
     assert "next_step=" in output.out
 

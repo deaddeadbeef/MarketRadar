@@ -2740,6 +2740,13 @@ def _print_priced_in_queue(payload: Mapping[str, object]) -> None:
                     continue
                 if str(action.get("status") or "") == "ready":
                     continue
+                sample = action.get("sample_tickers")
+                sample_text = (
+                    ",".join(str(item) for item in sample)
+                    if isinstance(sample, list | tuple) and sample
+                    else ""
+                )
+                sample_suffix = f" sample={sample_text}" if sample_text else ""
                 print(
                     "- "
                     f"{action.get('source')} "
@@ -2747,6 +2754,7 @@ def _print_priced_in_queue(payload: Mapping[str, object]) -> None:
                     f"coverage={action.get('coverage_pct')} "
                     f"next={_compact_cli_text(action.get('next_action'))} "
                     f"command={_compact_cli_text(action.get('command'))}"
+                    f"{sample_suffix}"
                 )
     rows = payload.get("rows")
     if not isinstance(rows, list | tuple) or not rows:
@@ -2912,11 +2920,20 @@ def _print_candidate_detail(payload: Mapping[str, object]) -> None:
             if not printed_header:
                 print("source_actions:")
                 printed_header = True
+            sample = action.get("sample_tickers")
+            sample_text = (
+                ",".join(str(item) for item in sample)
+                if isinstance(sample, list | tuple) and sample
+                else ""
+            )
+            sample_suffix = f" sample={sample_text}" if sample_text else ""
             print(
                 "- "
                 f"{action.get('source')} "
                 f"status={action.get('status')} "
                 f"next={_compact_cli_text(action.get('next_action'))}"
+                f" command={_compact_cli_text(action.get('command'))}"
+                f"{sample_suffix}"
             )
     blockers = brief.get("blockers")
     if isinstance(blockers, list | tuple) and blockers:

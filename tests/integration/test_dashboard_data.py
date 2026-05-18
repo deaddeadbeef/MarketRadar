@@ -1426,6 +1426,13 @@ def test_priced_in_queue_payload_paginates_ranked_rows(tmp_path: Path) -> None:
     assert first_page["total_count"] == 2
     assert first_page["has_more"] is True
     assert first_page["source_coverage"]["row_count"] == 2
+    actions = {
+        row["source"]: row for row in first_page["source_coverage"]["actions"]
+    }
+    assert actions["options"]["sample_tickers"] == ["MSFT", "AAPL"]
+    assert actions["options"]["command"] == (
+        "catalyst-radar schwab-market-sync --ticker MSFT --ticker AAPL"
+    )
     assert first_page["headline"] == (
         "Local universe is too small for a full-market priced-in read; "
         "showing 1-1 of 2 priced-in row(s)."

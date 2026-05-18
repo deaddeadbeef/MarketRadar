@@ -1,6 +1,44 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 16:33:05 +08:00
+Last updated: 2026-05-18 16:47:41 +08:00
+
+## Latest Executable Source-Gap Batch Actions
+
+The source-gap guidance no longer leaves the operator with only
+`--ticker <TICKER>` placeholders. Queue-level and candidate-level source actions
+now include sample tickers from the current ranked gap set. For Schwab-backed
+gaps (`options` and `broker_context`), the command is a directly runnable
+read-only market-sync batch.
+
+Current real local zero-provider-call smoke:
+
+```powershell
+.\.venv\Scripts\catalyst-radar.exe priced-in-queue --status actionable --limit 20
+```
+
+prints:
+
+```text
+external_calls=0
+scan_scope=scanned=12087 requested=12104 filter=actionable ranked_after_filter=7 visible_page=7
+source_actions:
+- options ... command=catalyst-radar schwab-market-sync --ticker A --ticker MSFT --ticker AAA --ticker AAAU --ticker AAPL --ticker AA --ticker AAAC sample=A,MSFT,AAA,AAAU,AAPL,AA,AAAC
+- broker_context ... command=catalyst-radar schwab-market-sync --ticker A --ticker MSFT --ticker AAA --ticker AAAU --ticker AAPL --ticker AA --ticker AAAC sample=A,MSFT,AAA,AAAU,AAPL,AA,AAAC
+```
+
+The Ops dashboard also shows a `Sample` column beside the command, so source-gap
+actions are visibly tied to real rows from the current filtered scan instead of
+generic placeholders.
+
+Validation for this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_queue_payload_paginates_ranked_rows tests\integration\test_dashboard_data.py::test_priced_in_queue_payload_supports_actionable_status_alias tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_snapshot_cli_outputs_dashboard_command_center_json tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_snapshot_ops_page_shows_priced_in_source_actions tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_queue_cli_outputs_same_zero_call_signal tests\integration\test_dashboard_demo_seed_cli.py::test_candidate_detail_cli_outputs_priced_in_evidence_brief -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\cli.py src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+.\.venv\Scripts\catalyst-radar.exe priced-in-queue --status actionable --limit 20
+.\.venv\Scripts\catalyst-radar.exe dashboard-snapshot --page ops
+```
 
 ## Latest Full-Scan Clarity + Schwab Market CLI
 
