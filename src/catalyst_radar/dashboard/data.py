@@ -462,6 +462,70 @@ def research_shortlist_payload(
     }
 
 
+def priced_in_queue_payload(
+    engine: Engine,
+    config: AppConfig,
+    *,
+    limit: int = 50,
+    status: str | None = None,
+    min_gap: float | None = None,
+) -> dict[str, object]:
+    latest_run = load_radar_run_summary(engine)
+    candidate_rows = (
+        load_radar_run_candidate_rows(engine, latest_run)
+        if latest_run
+        else load_candidate_rows(engine)
+    )
+    discovery = radar_discovery_snapshot_payload(
+        engine,
+        config,
+        radar_run_summary=latest_run,
+        candidate_rows=candidate_rows,
+    )
+    wanted_status = str(status or "").strip().lower()
+    rows = [
+        _priced_in_queue_row(row)
+        for row in candidate_rows
+        if isinstance(row, Mapping)
+    ]
+    if wanted_status and wanted_status != "all":
+        rows = [
+            row
+            for row in rows
+            if str(row.get("priced_in_status") or "").lower() == wanted_status
+        ]
+    if min_gap is not None:
+        threshold = abs(float(min_gap))
+        rows = [
+            row
+            for row in rows
+            if abs(_finite_float(row.get("emotion_reaction_gap"))) >= threshold
+        ]
+    rows = sorted(rows, key=_priced_in_queue_sort_key)[: _positive_limit(limit)]
+    status_counts = dict(Counter(str(row.get("priced_in_status") or "unknown") for row in rows))
+    scan_status = _priced_in_scan_status(discovery)
+    return {
+        "schema_version": "priced-in-queue-v1",
+        "status": scan_status,
+        "headline": _priced_in_queue_headline(scan_status, len(rows)),
+        "next_action": _priced_in_queue_next_action(scan_status),
+        "external_calls_made": 0,
+        "latest_run": _row_dict(_mapping_value(discovery, "run")),
+        "scan": {
+            **_row_dict(_mapping_value(discovery, "yield")),
+            "freshness": _row_dict(_mapping_value(discovery, "freshness")),
+        },
+        "filters": {
+            "status": wanted_status or "all",
+            "min_gap": min_gap,
+            "limit": _positive_limit(limit),
+        },
+        "count": len(rows),
+        "status_counts": status_counts,
+        "rows": rows,
+    }
+
+
 def operator_work_queue_payload(
     config: AppConfig,
     *,
@@ -4795,6 +4859,97 @@ def _research_shortlist_sort_key(row: Mapping[str, object]) -> tuple[int, float,
         -_finite_float(row.get("final_score")),
         str(row.get("ticker") or ""),
     )
+
+
+def _priced_in_queue_row(row: Mapping[str, object]) -> dict[str, object]:
+    brief = _mapping_value(row, "research_brief")
+    status = str(row.get("priced_in_status") or "unknown").strip() or "unknown"
+    reason = str(
+        _display_priced_in_reason(row)
+        or brief.get("why_now")
+        or row.get("top_event_title")
+        or ""
+    ).strip()
+    return {
+        "ticker": row.get("ticker"),
+        "priced_in_status": status,
+        "priced_in_direction": row.get("priced_in_direction"),
+        "emotion_score": row.get("emotion_score"),
+        "reaction_score": row.get("reaction_score"),
+        "emotion_reaction_gap": row.get("emotion_reaction_gap"),
+        "priced_in_score": row.get("priced_in_score"),
+        "state": row.get("state"),
+        "score": _finite_float(row.get("final_score")),
+        "setup": row.get("setup_type") or row.get("candidate_theme") or "n/a",
+        "top_catalyst": brief.get("top_catalyst") or row.get("top_event_title"),
+        "why_now": reason or "No priced-in reason is available.",
+        "next_step": (
+            (_display_priced_in_reason(row) and row.get("priced_in_next_step"))
+            or brief.get("next_step")
+            or "Open candidate detail and review the evidence."
+        ),
+        "source": brief.get("source") or row.get("top_event_source"),
+        "source_url": brief.get("source_url") or row.get("top_event_source_url"),
+        "data_stale": status.lower() == "stale" or "data_stale" in _sequence_value(
+            row.get("hard_blocks")
+        ),
+    }
+
+
+def _priced_in_queue_sort_key(row: Mapping[str, object]) -> tuple[int, float, float, str]:
+    status = str(row.get("priced_in_status") or "").lower()
+    priority = {
+        "bullish_not_priced_in": 0,
+        "bearish_not_priced_in": 0,
+        "overextended_hype": 1,
+        "conflicted": 2,
+        "fully_priced": 3,
+        "stale": 4,
+        "blocked": 5,
+        "neutral": 6,
+    }.get(status, 7)
+    return (
+        priority,
+        -abs(_finite_float(row.get("emotion_reaction_gap"))),
+        -_finite_float(row.get("score")),
+        str(row.get("ticker") or ""),
+    )
+
+
+def _priced_in_scan_status(discovery: Mapping[str, object]) -> str:
+    scan_yield = _mapping_value(discovery, "yield")
+    freshness = _mapping_value(discovery, "freshness")
+    active_count = int(_finite_float(freshness.get("active_security_count")))
+    requested = int(_finite_float(scan_yield.get("requested_securities")))
+    scanned = int(_finite_float(scan_yield.get("scanned_securities")))
+    denominator = active_count or requested or scanned
+    if denominator < 500:
+        return "universe_too_small"
+    if scanned and denominator and scanned < max(1, int(denominator * 0.9)):
+        return "partial_scan"
+    return "ready"
+
+
+def _priced_in_queue_headline(status: str, count: int) -> str:
+    if status == "universe_too_small":
+        return (
+            "Local universe is too small for a full-market priced-in read; "
+            f"{count} rows visible."
+        )
+    if status == "partial_scan":
+        return f"Latest scan is partial; {count} priced-in rows visible."
+    return f"{count} priced-in row(s) are ranked from the latest scan."
+
+
+def _priced_in_queue_next_action(status: str) -> str:
+    if status == "universe_too_small":
+        return (
+            "Ingest Polygon/Massive tickers and fresh bars, then run the radar "
+            "without a ticker filter."
+        )
+    if status == "partial_scan":
+        return "Open Ops/Run and fix missing bars before trusting the ranked queue."
+    return "Review the largest emotion-versus-reaction gaps first."
 
 
 def _research_shortlist_priority(row: Mapping[str, object]) -> str:

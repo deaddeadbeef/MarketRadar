@@ -1079,6 +1079,50 @@ def test_get_radar_research_shortlist_returns_redacted_rows(
     ]
 
 
+def test_get_radar_priced_in_queue_returns_cli_ready_rows(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "radar-priced-in.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+    monkeypatch.setattr(
+        dashboard_data,
+        "priced_in_queue_payload",
+        lambda _engine, _config, *, limit, status, min_gap: {
+            "schema_version": "priced-in-queue-v1",
+            "status": "ready",
+            "external_calls_made": 0,
+            "filters": {"limit": limit, "status": status, "min_gap": min_gap},
+            "count": 1,
+            "rows": [
+                {
+                    "ticker": "MSFT",
+                    "priced_in_status": "bullish_not_priced_in",
+                    "emotion_reaction_gap": 42.0,
+                    "why_now": "Emotion is ahead of price reaction.",
+                    "next_step": "Open candidate detail.",
+                }
+            ],
+        },
+        raising=False,
+    )
+    client = TestClient(create_app())
+
+    response = client.get("/api/radar/priced-in?limit=3&status=bullish_not_priced_in&min_gap=10")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["schema_version"] == "priced-in-queue-v1"
+    assert payload["external_calls_made"] == 0
+    assert payload["filters"] == {
+        "limit": 3,
+        "status": "bullish_not_priced_in",
+        "min_gap": 10.0,
+    }
+    assert payload["rows"][0]["ticker"] == "MSFT"
+
+
 def test_post_radar_run_call_plan_returns_read_only_call_budget(
     tmp_path,
     monkeypatch,

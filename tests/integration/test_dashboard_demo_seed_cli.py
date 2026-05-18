@@ -226,6 +226,29 @@ def test_agent_brief_cli_outputs_zero_call_dry_run(
     assert payload["next_actions"]
 
 
+def test_priced_in_queue_cli_outputs_same_zero_call_signal(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["seed-dashboard-demo"]) == 0
+    capsys.readouterr()
+
+    assert main(["priced-in-queue", "--json"]) == 0
+    output = capsys.readouterr()
+    payload = json.loads(output.out)
+
+    assert output.err == ""
+    assert payload["schema_version"] == "priced-in-queue-v1"
+    assert payload["external_calls_made"] == 0
+    assert payload["rows"][0]["ticker"] == "ACME"
+    assert payload["rows"][0]["priced_in_status"] == "bullish_not_priced_in"
+    assert payload["rows"][0]["emotion_reaction_gap"] == 49.0
+
+
 def test_agent_brief_cli_real_mode_blocks_without_explicit_gates(
     tmp_path: Path,
     monkeypatch,
