@@ -2203,6 +2203,10 @@ def test_priced_in_source_gap_batches_payload_exposes_missing_cik_blockers(
     assert payload["diagnostic"]["blocked_reason"] == "missing_cik"
     assert payload["diagnostic"]["sample_blocked_tickers"] == ["AAPL"]
     assert "Add CIK metadata" in payload["diagnostic"]["next_action"]
+    assert payload["diagnostic"]["fix_command"] == (
+        "catalyst-radar ingest-sec company-tickers"
+    )
+    assert payload["diagnostic"]["fix_api"] == "POST /api/radar/sec/company-tickers"
 
 
 def test_priced_in_source_gap_batches_payload_marks_text_rows_blocked_without_events(

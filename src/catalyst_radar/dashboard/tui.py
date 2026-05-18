@@ -2290,6 +2290,7 @@ def _priced_in_source_batch_message(
     diagnostic = _mapping(payload.get("diagnostic"))
     reason = str(diagnostic.get("reason") or "").strip()
     diagnostic_next = str(diagnostic.get("next_action") or "").strip()
+    diagnostic_command = str(diagnostic.get("fix_command") or "").strip()
     blocked_samples = _texts(diagnostic.get("sample_blocked_tickers"))
     next_batch_command = str(payload.get("next_batch_command") or "").strip()
     scan_scope = _mapping(payload.get("scan_scope"))
@@ -2358,12 +2359,17 @@ def _priced_in_source_batch_message(
             if diagnostic_next
             else ""
         )
+        command_suffix = (
+            f" Diagnostic command: {diagnostic_command}."
+            if diagnostic_command
+            else ""
+        )
         return (
             f"{prefix} This is a full-scan plan, not a watchlist.{chunk_scope}"
             f"{calls}{api_suffix} "
             f"First safe chunk: {command}. Run from TUI with "
             f"`batch {source_name} execute` if intended.{blocked_suffix}"
-            f"{diagnostic_suffix}{full_suffix}{next_suffix}"
+            f"{diagnostic_suffix}{command_suffix}{full_suffix}{next_suffix}"
         )
     blocked_suffix = (
         f" Blocked examples: {', '.join(blocked_samples)}."
@@ -2379,6 +2385,8 @@ def _priced_in_source_batch_message(
         or reason
         or "No runnable batch is available for this source."
     )
+    if diagnostic_command:
+        detail = f"{detail} Command: {diagnostic_command}."
     detail = f"{detail}{blocked_suffix}{diagnostic_suffix}"
     return f"{prefix} {detail}"
 

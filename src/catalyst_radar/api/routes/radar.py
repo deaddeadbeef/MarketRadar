@@ -14,6 +14,7 @@ from catalyst_radar.connectors.provider_ingest import ProviderIngestError
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.dashboard import data as dashboard_data
 from catalyst_radar.dashboard.source_batches import execute_priced_in_source_batch
+from catalyst_radar.events.sec_cik import refresh_sec_cik_metadata
 from catalyst_radar.events.sec_ingest import (
     SecSubmissionTarget,
     ingest_sec_submissions_batch,
@@ -532,6 +533,21 @@ def radar_sec_submissions_batch(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except ProviderIngestError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return redact_restricted_external_payload(result.as_payload())
+
+
+@router.post(
+    "/sec/company-tickers",
+    dependencies=[Depends(require_role(Role.ANALYST))],
+)
+def radar_sec_company_tickers() -> dict[str, object]:
+    config = AppConfig.from_env()
+    try:
+        result = refresh_sec_cik_metadata(_engine(), config)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     return redact_restricted_external_payload(result.as_payload())
 
