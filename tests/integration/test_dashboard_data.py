@@ -1596,17 +1596,14 @@ def test_priced_in_source_gap_batches_payload_plans_sec_event_batches(
     command = str(payload["batches"][0]["command"])
     assert "<UTC-now>" not in command
     assert command == (
-        "catalyst-radar run-daily --as-of 2026-05-10 "
-        f"--available-at {planned_at.isoformat()} --ticker AAPL --json"
+        "catalyst-radar ingest-sec submissions-batch "
+        "--target AAPL:0000320193"
     )
-    assert payload["batches"][0]["api"] == "POST /api/radar/runs"
-    assert payload["batches"][0]["api_payload"] == {
-        "as_of": "2026-05-10",
-        "available_at": planned_at.isoformat(),
-        "tickers": ["AAPL"],
-        "run_llm": False,
-        "dry_run_alerts": True,
-    }
+    assert payload["batches"][0]["targets"] == [
+        {"ticker": "AAPL", "cik": "0000320193"}
+    ]
+    assert payload["batches"][0]["api"] is None
+    assert payload["batches"][0]["api_payload"] is None
     assert payload["batches"][0]["external_calls_required"] == 1
     assert payload["batches"][0]["external_call_breakdown"] == {
         "catalyst_events": 1
@@ -1614,7 +1611,7 @@ def test_priced_in_source_gap_batches_payload_plans_sec_event_batches(
     assert payload["batches"][0]["call_plan_status"] == "live_calls_planned"
 
 
-def test_priced_in_source_gap_batches_payload_counts_market_call_for_polygon_events(
+def test_priced_in_source_gap_batches_payload_avoids_market_call_for_sec_batches(
     tmp_path: Path,
 ) -> None:
     engine = _engine(tmp_path)
@@ -1637,9 +1634,11 @@ def test_priced_in_source_gap_batches_payload_counts_market_call_for_polygon_eve
 
     batch = payload["batches"][0]
     assert batch["tickers"] == ["AAPL"]
-    assert batch["external_calls_required"] == 2
+    assert batch["command"] == (
+        "catalyst-radar ingest-sec submissions-batch --target AAPL:0000320193"
+    )
+    assert batch["external_calls_required"] == 1
     assert batch["external_call_breakdown"] == {
-        "market_data": 1,
         "catalyst_events": 1,
     }
     assert batch["call_plan_status"] == "live_calls_planned"

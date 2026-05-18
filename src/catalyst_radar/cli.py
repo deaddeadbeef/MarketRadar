@@ -179,6 +179,14 @@ def build_parser() -> argparse.ArgumentParser:
     submissions.add_argument("--ticker", required=True)
     submissions.add_argument("--cik", required=True)
     submissions.add_argument("--fixture", type=Path)
+    submissions_batch = sec_sub.add_parser("submissions-batch")
+    submissions_batch.add_argument(
+        "--target",
+        action="append",
+        required=True,
+        help="Ticker and CIK pair in TICKER:CIK form.",
+    )
+    submissions_batch.add_argument("--fixture", type=Path)
     ipo_s1 = sec_sub.add_parser("ipo-s1")
     ipo_s1.add_argument("--ticker", required=True)
     ipo_s1.add_argument("--cik", required=True)
@@ -725,6 +733,15 @@ def main(argv: list[str] | None = None) -> int:
         market_repo = MarketRepository(engine)
         provider_repo = ProviderRepository(engine)
         event_repo = EventRepository(engine)
+        if args.sec_command == "submissions-batch":
+            return _ingest_sec_submissions_batch(
+                config=config,
+                market_repo=market_repo,
+                provider_repo=provider_repo,
+                event_repo=event_repo,
+                targets=args.target,
+                fixture_path=args.fixture,
+            )
         return _ingest_sec_provider(
             config=config,
             market_repo=market_repo,
@@ -1813,21 +1830,124 @@ def _ingest_sec_provider(
     fixture_path: Path | None,
     document_fixture_path: Path | None,
 ) -> int:
+    try:
+        result = _run_sec_ingest(
+            config=config,
+            market_repo=market_repo,
+            provider_repo=provider_repo,
+            event_repo=event_repo,
+            sec_command=sec_command,
+            ticker=ticker,
+            cik=cik,
+            fixture_path=fixture_path,
+            document_fixture_path=document_fixture_path,
+        )
+    except (ProviderIngestError, ValueError) as exc:
+        print(f"sec ingest failed: {exc}", file=sys.stderr)
+        return 1
+
+    _print_provider_result(result)
+    return 0
+
+
+def _ingest_sec_submissions_batch(
+    *,
+    config: AppConfig,
+    market_repo: MarketRepository,
+    provider_repo: ProviderRepository,
+    event_repo: EventRepository,
+    targets: Sequence[str],
+    fixture_path: Path | None,
+) -> int:
+    try:
+        parsed_targets = [_parse_sec_batch_target(target) for target in targets]
+    except ValueError as exc:
+        print(f"sec batch ingest failed: {exc}", file=sys.stderr)
+        return 1
+
+    totals = {
+        "raw": 0,
+        "normalized": 0,
+        "securities": 0,
+        "daily_bars": 0,
+        "holdings": 0,
+        "events": 0,
+        "rejected": 0,
+    }
+    for ticker, cik in parsed_targets:
+        try:
+            result = _run_sec_ingest(
+                config=config,
+                market_repo=market_repo,
+                provider_repo=provider_repo,
+                event_repo=event_repo,
+                sec_command="submissions",
+                ticker=ticker,
+                cik=cik,
+                fixture_path=fixture_path,
+                document_fixture_path=None,
+            )
+        except (ProviderIngestError, ValueError) as exc:
+            print(
+                f"sec batch ingest failed for {ticker}: {exc}",
+                file=sys.stderr,
+            )
+            return 1
+        totals["raw"] += result.raw_count
+        totals["normalized"] += result.normalized_count
+        totals["securities"] += result.security_count
+        totals["daily_bars"] += result.daily_bar_count
+        totals["holdings"] += result.holding_count
+        totals["events"] += result.event_count
+        totals["rejected"] += result.rejected_count
+
+    print(
+        "ingested_batch provider=sec "
+        f"targets={len(parsed_targets)} "
+        f"raw={totals['raw']} "
+        f"normalized={totals['normalized']} "
+        f"securities={totals['securities']} "
+        f"daily_bars={totals['daily_bars']} "
+        f"holdings={totals['holdings']} "
+        f"events={totals['events']} "
+        f"rejected={totals['rejected']}"
+    )
+    return 0
+
+
+def _parse_sec_batch_target(value: str) -> tuple[str, str]:
+    raw = str(value or "").strip()
+    if ":" not in raw:
+        msg = f"--target must use TICKER:CIK form, got {value!r}"
+        raise ValueError(msg)
+    ticker, cik = (part.strip() for part in raw.split(":", 1))
+    if not ticker or not cik:
+        msg = f"--target must include both ticker and CIK, got {value!r}"
+        raise ValueError(msg)
+    return ticker.upper(), cik.zfill(10)
+
+
+def _run_sec_ingest(
+    *,
+    config: AppConfig,
+    market_repo: MarketRepository,
+    provider_repo: ProviderRepository,
+    event_repo: EventRepository,
+    sec_command: str,
+    ticker: str,
+    cik: str,
+    fixture_path: Path | None,
+    document_fixture_path: Path | None,
+):
     if sec_command not in {"submissions", "ipo-s1"}:
-        print(f"sec ingest failed: unsupported sec command: {sec_command}", file=sys.stderr)
-        return 1
+        msg = f"unsupported sec command: {sec_command}"
+        raise ValueError(msg)
     if fixture_path is None and not config.sec_enable_live:
-        print(
-            "sec ingest failed: live SEC ingest requires CATALYST_SEC_ENABLE_LIVE=1",
-            file=sys.stderr,
-        )
-        return 1
+        msg = "live SEC ingest requires CATALYST_SEC_ENABLE_LIVE=1"
+        raise ValueError(msg)
     if fixture_path is None and not config.sec_user_agent_configured:
-        print(
-            "sec ingest failed: CATALYST_SEC_USER_AGENT is required for live SEC ingest",
-            file=sys.stderr,
-        )
-        return 1
+        msg = "CATALYST_SEC_USER_AGENT is required for live SEC ingest"
+        raise ValueError(msg)
 
     transport: HttpTransport | None = None
     if fixture_path is None:
@@ -1870,22 +1990,15 @@ def _ingest_sec_provider(
         params={"ticker": ticker.upper(), "cik": cik},
         requested_at=datetime.now(UTC),
     )
-    try:
-        result = ingest_provider_records(
-            connector=connector,
-            request=request,
-            market_repo=market_repo,
-            provider_repo=provider_repo,
-            job_type="sec_ipo_s1" if sec_command == "ipo-s1" else "sec_submissions",
-            metadata=metadata,
-            event_repo=event_repo,
-        )
-    except ProviderIngestError as exc:
-        print(f"sec ingest failed: {exc}", file=sys.stderr)
-        return 1
-
-    _print_provider_result(result)
-    return 0
+    return ingest_provider_records(
+        connector=connector,
+        request=request,
+        market_repo=market_repo,
+        provider_repo=provider_repo,
+        job_type="sec_ipo_s1" if sec_command == "ipo-s1" else "sec_submissions",
+        metadata=metadata,
+        event_repo=event_repo,
+    )
 
 
 def _ingest_news_provider(

@@ -97,7 +97,7 @@ def test_ingest_sec_ipo_s1_live_mode_fails_closed_without_enable_flag(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setenv("CATALYST_DATABASE_URL", _database_url(tmp_path))
-    monkeypatch.delenv("CATALYST_SEC_ENABLE_LIVE", raising=False)
+    monkeypatch.setenv("CATALYST_SEC_ENABLE_LIVE", "0")
 
     exit_code = main(["ingest-sec", "ipo-s1", "--ticker", "ACME", "--cik", "0002000001"])
     captured = capsys.readouterr()
@@ -105,6 +105,62 @@ def test_ingest_sec_ipo_s1_live_mode_fails_closed_without_enable_flag(
     assert exit_code == 1
     assert captured.out == ""
     assert "CATALYST_SEC_ENABLE_LIVE=1" in captured.err
+
+
+def test_ingest_sec_submissions_batch_persists_events(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    database_url = _database_url(tmp_path)
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    exit_code = main(
+        [
+            "ingest-sec",
+            "submissions-batch",
+            "--target",
+            "MSFT:0000789019",
+            "--fixture",
+            "tests/fixtures/sec/submissions_msft.json",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert captured.out == (
+        "ingested_batch provider=sec targets=1 raw=2 normalized=2 "
+        "securities=0 daily_bars=0 holdings=0 events=2 rejected=0\n"
+    )
+    assert captured.err == ""
+
+    engine = create_engine(database_url, future=True)
+    with engine.connect() as conn:
+        assert conn.scalar(select(func.count()).select_from(events)) == 2
+
+
+def test_ingest_sec_submissions_batch_requires_ticker_cik_targets(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("CATALYST_DATABASE_URL", _database_url(tmp_path))
+
+    exit_code = main(
+        [
+            "ingest-sec",
+            "submissions-batch",
+            "--target",
+            "MSFT",
+            "--fixture",
+            "tests/fixtures/sec/submissions_msft.json",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 1
+    assert captured.out == ""
+    assert "TICKER:CIK" in captured.err
 
 
 def _database_url(tmp_path: Path) -> str:
