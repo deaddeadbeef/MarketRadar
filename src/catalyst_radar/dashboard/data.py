@@ -741,6 +741,7 @@ def priced_in_source_coverage_summary(
         "row_count": row_count,
         "sources": source_rows,
         "weak_sources": weak_sources,
+        "actions": _priced_in_source_action_rows(source_rows, row_count),
         "summary": _priced_in_source_coverage_summary_text(source_rows, row_count),
     }
 
@@ -5361,6 +5362,143 @@ def _priced_in_source_coverage_summary_text(
             detail = f"{detail} ({', '.join(extras)})"
         parts.append(detail)
     return "; ".join(parts)
+
+
+def _priced_in_source_action_rows(
+    sources: Mapping[str, Mapping[str, object]],
+    row_count: int,
+) -> list[dict[str, object]]:
+    return [
+        _priced_in_source_action_row(source, sources.get(source, {}), row_count)
+        for source in PRICED_IN_SOURCE_CLASSES
+    ]
+
+
+def _priced_in_source_action_row(
+    source: str,
+    values: Mapping[str, object],
+    row_count: int,
+) -> dict[str, object]:
+    available = int(_finite_float(values.get("available")))
+    stale = int(_finite_float(values.get("stale")))
+    missing = int(_finite_float(values.get("missing")))
+    coverage_pct = round(float(_finite_float(values.get("coverage_pct"))), 1)
+    if row_count <= 0:
+        status = "not_applicable"
+    elif available == row_count and stale == 0 and missing == 0:
+        status = "ready"
+    elif available > 0 or stale > 0:
+        status = "partial"
+    else:
+        status = "missing"
+    guidance = _priced_in_source_guidance(source, status)
+    return {
+        "source": source,
+        "status": status,
+        "available": available,
+        "stale": stale,
+        "missing": missing,
+        "row_count": row_count,
+        "coverage_pct": coverage_pct,
+        **guidance,
+    }
+
+
+def _priced_in_source_guidance(source: str, status: str) -> dict[str, object]:
+    ready = status == "ready"
+    if source == "market_bars":
+        return {
+            "meaning": "Price and volume reaction can be compared against emotion.",
+            "next_action": "Use current bars in priced-in scoring."
+            if ready
+            else "Refresh latest market bars, then rerun the full-market scan.",
+            "command": "catalyst-radar priced-in-preflight --json"
+            if not ready
+            else "catalyst-radar priced-in-queue --status actionable --json",
+            "api": "GET /api/radar/priced-in/preflight"
+            if not ready
+            else "GET /api/radar/priced-in?status=actionable",
+            "external_call_boundary": (
+                "No calls while inspecting; market refresh calls depend on "
+                "provider plan."
+            ),
+        }
+    if source == "catalyst_events":
+        return {
+            "meaning": "Filings, news, or earnings events explain what the market is reacting to.",
+            "next_action": "Use catalyst events in the emotion side of the mismatch."
+            if ready
+            else "Review the run call plan and refresh event ingestion before trusting emotion.",
+            "command": "catalyst-radar dashboard-tui --once --page run"
+            if not ready
+            else "catalyst-radar candidate-detail <TICKER>",
+            "api": "POST /api/radar/runs/call-plan"
+            if not ready
+            else "GET /api/radar/candidates/{ticker}",
+            "external_call_boundary": (
+                "Event refresh can call SEC/news providers only from an explicit run."
+            ),
+        }
+    if source == "local_text":
+        return {
+            "meaning": "Local text intelligence turns event text into narrative strength.",
+            "next_action": "Use local text features in candidate evidence."
+            if ready
+            else "Run text intelligence for the scan date before relying on narrative strength.",
+            "command": "catalyst-radar run-textint --as-of <LATEST_TRADING_DATE>",
+            "api": None,
+            "external_call_boundary": (
+                "Local text intelligence reads stored text and makes no provider calls."
+            ),
+        }
+    if source == "options":
+        return {
+            "meaning": "Options flow can confirm or contradict the market-emotion signal.",
+            "next_action": "Use options as a supporting signal only."
+            if ready
+            else "Treat options as absent until an options feed or fixture is ingested.",
+            "command": "catalyst-radar ingest-options --fixture <options-summary.json>",
+            "api": None,
+            "external_call_boundary": (
+                "Current CLI options ingest is fixture/local; no live options call is "
+                "hidden."
+            ),
+        }
+    if source == "theme_peer_sector":
+        return {
+            "meaning": "Theme, peer, and sector context shows whether the move is stock-specific.",
+            "next_action": "Use theme and peer context as supporting evidence."
+            if ready
+            else "Rerun the scan after market bars and universe metadata are current.",
+            "command": "catalyst-radar scan --as-of <LATEST_TRADING_DATE>",
+            "api": "POST /api/radar/runs",
+            "external_call_boundary": (
+                "Scan uses local stored data unless the explicit run plan calls providers."
+            ),
+        }
+    if source == "broker_context":
+        return {
+            "meaning": (
+                "Read-only portfolio context is for sizing and exposure, not signal "
+                "discovery."
+            ),
+            "next_action": "Use broker context only after signal evidence is reviewed."
+            if ready
+            else "Sync read-only broker context before sizing or portfolio review.",
+            "command": (
+                "curl.exe --insecure --fail --silent --show-error --request POST "
+                "https://127.0.0.1:8443/api/brokers/schwab/sync"
+            ),
+            "api": "POST /api/brokers/schwab/sync",
+            "external_call_boundary": "Broker sync is explicit, read-only, and rate-limited.",
+        }
+    return {
+        "meaning": "Source contributes to priced-in review.",
+        "next_action": "Open Ops to inspect source coverage.",
+        "command": "catalyst-radar dashboard-tui --once --page ops",
+        "api": None,
+        "external_call_boundary": "Inspection makes no provider calls.",
+    }
 
 
 def _priced_in_queue_sort_key(row: Mapping[str, object]) -> tuple[int, float, float, str]:

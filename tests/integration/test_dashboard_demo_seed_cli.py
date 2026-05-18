@@ -122,6 +122,14 @@ def test_dashboard_snapshot_cli_outputs_dashboard_command_center_json(
     assert payload["priced_in_source_coverage"]["schema_version"] == (
         "priced-in-source-coverage-v1"
     )
+    source_actions = {
+        row["source"]: row for row in payload["priced_in_source_coverage"]["actions"]
+    }
+    assert source_actions["options"]["status"] == "missing"
+    assert source_actions["options"]["command"].startswith(
+        "catalyst-radar ingest-options"
+    )
+    assert source_actions["broker_context"]["api"] == "POST /api/brokers/schwab/sync"
     assert payload["telemetry_coverage"]["schema_version"] == (
         "ops-telemetry-coverage-v1"
     )
@@ -182,6 +190,40 @@ def test_dashboard_snapshot_cli_outputs_human_readable_zero_call_summary(
         "External calls made: 0",
     ):
         assert expected in output.out
+
+
+def test_dashboard_snapshot_ops_page_shows_priced_in_source_actions(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    cutoff = (DEMO_AVAILABLE_AT + timedelta(minutes=1)).isoformat()
+
+    assert main(["seed-dashboard-demo"]) == 0
+    capsys.readouterr()
+
+    assert (
+        main(
+            [
+                "dashboard-snapshot",
+                "--ticker",
+                "ACME",
+                "--available-at",
+                cutoff,
+                "--page",
+                "ops",
+            ]
+        )
+        == 0
+    )
+    output = capsys.readouterr()
+
+    assert output.err == ""
+    assert "Priced-in Source Gaps" in output.out
+    assert "options" in output.out
+    assert "ingest-options" in output.out
 
 
 def test_agent_brief_cli_outputs_zero_call_dry_run(
@@ -253,7 +295,23 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
     assert payload["rows"][0]["emotion_reaction_gap"] == 49.0
     assert payload["source_coverage"]["schema_version"] == "priced-in-source-coverage-v1"
     assert payload["source_coverage"]["row_count"] == 1
+    actions = {row["source"]: row for row in payload["source_coverage"]["actions"]}
+    assert actions["options"]["status"] == "missing"
+    assert actions["options"]["external_call_boundary"] == (
+        "Current CLI options ingest is fixture/local; no live options call is hidden."
+    )
+    assert actions["broker_context"]["next_action"] == (
+        "Sync read-only broker context before sizing or portfolio review."
+    )
     assert "catalyst_events" in payload["rows"][0]["data_sources"]["available"]
+
+    assert main(["priced-in-queue"]) == 0
+    output = capsys.readouterr()
+
+    assert output.err == ""
+    assert "source_actions:" in output.out
+    assert "options status=missing" in output.out
+    assert "broker_context status=missing" in output.out
 
 
 def test_candidate_detail_cli_outputs_priced_in_evidence_brief(

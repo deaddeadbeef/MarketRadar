@@ -1105,6 +1105,21 @@ def test_get_radar_priced_in_queue_returns_cli_ready_rows(
             "total_count": 25,
             "offset": offset,
             "has_more": True,
+            "source_coverage": {
+                "schema_version": "priced-in-source-coverage-v1",
+                "row_count": 1,
+                "weak_sources": ["options"],
+                "summary": "options 0/1 (1 missing)",
+                "actions": [
+                    {
+                        "source": "options",
+                        "status": "missing",
+                        "coverage_pct": 0.0,
+                        "next_action": "Treat options as absent.",
+                        "command": "catalyst-radar ingest-options --fixture <options-summary.json>",
+                    }
+                ],
+            },
             "rows": [
                 {
                     "ticker": "MSFT",
@@ -1142,6 +1157,8 @@ def test_get_radar_priced_in_queue_returns_cli_ready_rows(
     assert payload["total_count"] == 25
     assert payload["offset"] == 6
     assert payload["has_more"] is True
+    assert payload["source_coverage"]["actions"][0]["source"] == "options"
+    assert payload["source_coverage"]["actions"][0]["status"] == "missing"
     assert payload["rows"][0]["ticker"] == "MSFT"
     assert payload["rows"][0]["data_sources"]["available"] == [
         "market_bars",

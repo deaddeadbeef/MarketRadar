@@ -1,6 +1,49 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 11:45:00 +08:00
+Last updated: 2026-05-18 12:08:00 +08:00
+
+## Latest Source-Coverage Action Plan
+
+The broad scan now makes missing "all kinds of data" explicit. The
+`source_coverage` payload on `priced-in-queue` includes `actions` for every
+priced-in source class:
+
+- `market_bars`
+- `catalyst_events`
+- `local_text`
+- `options`
+- `theme_peer_sector`
+- `broker_context`
+
+Each action row reports `source`, `status`, coverage counts, `coverage_pct`,
+`meaning`, `next_action`, `command`, `api`, and `external_call_boundary`. The
+CLI prints non-ready source actions under `source_actions:` and the Ops page
+shows them in a `Priced-in Source Gaps` table. This keeps the broad-market
+queue honest: it can say "these are the actionable mismatches we found" and
+"these sources are still missing before treating the evidence as complete."
+
+Current local zero-call smoke against the full-market queue:
+
+```powershell
+catalyst-radar priced-in-queue --status actionable --limit 3
+catalyst-radar dashboard-tui --once --page ops
+```
+
+Observed state:
+
+- Queue: `count=3`, `total=7`, `external_calls=0`, `has_more=true`.
+- Source coverage: market bars, catalyst events, local text, and
+  theme/peer/sector context are present for the visible queue.
+- Weak sources: `options`, `broker_context`.
+- Options action: ingest a local options fixture or add an options feed before
+  treating options as a supporting signal.
+- Broker action: sync read-only Schwab context only before sizing or portfolio
+  review; it is not part of signal discovery.
+
+Important distinction: missing broker context should not block discovery of a
+priced-in mismatch. It only blocks sizing/exposure confidence. Missing options
+means options confirmation is absent, not that the market-bar/event/text signal
+is invalid.
 
 ## Latest Candidate Detail Correction
 
