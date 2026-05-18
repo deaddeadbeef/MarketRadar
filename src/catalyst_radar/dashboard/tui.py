@@ -1240,6 +1240,7 @@ class MarketRadarDashboardApp(App[int]):
         can_act = _decision_label(readiness)
         answer_status = _human_label(answer.get("status") or "unknown")
         answer_ready = "ready" if bool(answer.get("decision_ready")) else "not ready"
+        view_label = _priced_in_view_label(self.payload)
         active_page = self.page.split(":", 1)[0]
         page_title = (
             "TUTORIAL"
@@ -1281,11 +1282,13 @@ class MarketRadarDashboardApp(App[int]):
                 [
                     (
                         f"[bold #7ee787]MARKET RADAR[/] // [b]{page_title}[/b]  "
-                        f"[dim]priced-in {answer_status} ({answer_ready}) | "
+                        f"[dim]view {view_label} | answer {answer_status} "
+                        f"({answer_ready}) | "
                         f"trade {readiness.get('status') or 'unknown'} | "
                         f"{self.payload.get('external_calls_made', 0)} calls while viewing[/dim]"
                     ),
                     (
+                        f"[bold]View[/] {view_label}; "
                         f"[bold]Priced-in answer[/] {answer_status}; "
                         f"[bold]Trade safe?[/] {can_act}. "
                         f"{readiness.get('headline') or 'No readiness headline.'} "
@@ -2721,11 +2724,13 @@ def _header_lines(
     readiness = _mapping(payload.get("readiness"))
     answer = _mapping(payload.get("priced_in_answer"))
     answer_ready = "true" if bool(answer.get("decision_ready")) else "false"
+    view_label = _priced_in_view_label(payload)
     return [
         _rule("Market Radar Terminal Dashboard", width, char="="),
         (
             f"Page: {page} | "
-            f"Priced-in: {_human_label(answer.get('status') or 'unknown')} "
+            f"View: {view_label} | "
+            f"Answer: {_human_label(answer.get('status') or 'unknown')} "
             f"ready={answer_ready} | "
             f"Trade status: {_human_label(readiness.get('status') or 'unknown')} | "
             f"Trade safe: {_text(readiness.get('safe_to_make_investment_decision'))} | "
@@ -2739,6 +2744,20 @@ def _header_lines(
         ),
         NAVIGATION_TEXT,
     ]
+
+
+def _priced_in_view_label(payload: Mapping[str, object]) -> str:
+    queue = _mapping(payload.get("priced_in_queue"))
+    filters = _mapping(queue.get("filters"))
+    status = str(filters.get("status") or "all").strip().lower()
+    usefulness = str(filters.get("usefulness") or "").strip().lower()
+    if status in {"", "all"}:
+        return "Full scan"
+    if status == "actionable" and usefulness == "decision_useful":
+        return "Decision-ready filter"
+    if status == "actionable":
+        return "Mismatches filter"
+    return f"{_human_label(status)} filter"
 
 
 def _tutorial_lines(width: int) -> list[str]:

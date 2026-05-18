@@ -114,6 +114,9 @@ full-scan source plan plus the next safe provider chunk, and
 `batch <source> execute` runs only that one guarded chunk. The few tickers in a
 chunk are not the scan universe; they are the next rate-limited fill batch for
 the broader ranked universe.
+The default is still the full scan. Use `ready`, press `D`, or run
+`catalyst-radar priced-in-queue --decision-ready` only when you intentionally
+want the small decision-useful subset from that full scan.
 The scriptable equivalent is:
 
 ```powershell
@@ -285,11 +288,12 @@ Schwab, or OpenAI calls.
 returns the same full-scan boundary and ranked emotion-vs-reaction rows used by
 the dashboard, with optional `--status`, `--usefulness`, `--source-gap`,
 `--decision-gap`, `--min-gap`, `--limit`, and `--json`. Use
-`--full-scan --all --json` when you want the complete latest scan export. The
-small ticker list printed by `priced-in-answer` is only the ranked actionable
-display window, not the scan universe; use `priced-in-queue --full-scan` to page
-through the universe and `priced-in-queue --full-scan --all --json` to export
-every scanned row.
+`--full-scan --all --json` when you want the complete latest scan export.
+`priced-in-answer` summarizes the current answer and points back to
+`priced-in-queue --full-scan`; any small ticker list it prints is only the
+current display page, not the scan universe. Use
+`priced-in-queue --full-scan` to page through the universe and
+`priced-in-queue --full-scan --all --json` to export every scanned row.
 `--usefulness decision_useful` for names where the core priced-in answer is
 ready for human review, `--usefulness research_useful` for names that still
 need local review artifacts, `--usefulness blocked` for mismatches blocked by
@@ -308,6 +312,8 @@ context, and broker context are contributing across the visible queue.
 Each row also reports which source classes are available, stale, or missing:
 market bars, catalyst events, local text, options, theme/peer/sector context,
 and broker context. The API equivalent is `GET /api/radar/priced-in`.
+Use `GET /api/radar/priced-in?decision_ready=true` for the API equivalent of
+the CLI/TUI decision-ready shortcut.
 Use `priced-in-preflight --json` first when the queue says `universe_too_small`
 or `partial_scan`; its API equivalent is `GET /api/radar/priced-in/preflight`.
 `priced-in-answer` and `GET /api/radar/priced-in/answer` answer the narrower

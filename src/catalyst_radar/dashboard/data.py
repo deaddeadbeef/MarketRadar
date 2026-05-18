@@ -1864,11 +1864,11 @@ def _priced_in_answer_next_step(
         return plan_action, plan_command or None
     if answer_status == "decision_ready":
         return (
-            "Review all decision-ready mismatch rows from the full scan.",
             (
-                "catalyst-radar priced-in-queue --mismatches "
-                "--usefulness decision_useful --limit 50"
+                "Review the full-market scan; decision-ready tickers are a "
+                "filtered subset, not the scan universe."
             ),
+            "catalyst-radar priced-in-queue --full-scan --limit 50",
         )
     for row in top_rows:
         next_step = str(row.get("next_step") or "").strip()

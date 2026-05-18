@@ -1677,11 +1677,11 @@ def test_priced_in_answer_opens_full_scan_queue_when_decision_ready(
 
     assert payload["status"] == "decision_ready"
     assert payload["next_action"] == (
-        "Review all decision-ready mismatch rows from the full scan."
+        "Review the full-market scan; decision-ready tickers are a filtered "
+        "subset, not the scan universe."
     )
     assert payload["next_command"] == (
-        "catalyst-radar priced-in-queue --mismatches "
-        "--usefulness decision_useful --limit 50"
+        "catalyst-radar priced-in-queue --full-scan --limit 50"
     )
     assert payload["full_scan"]["ranked_rows"] == 2_429
     assert payload["full_scan"]["visible_rows"] == 1

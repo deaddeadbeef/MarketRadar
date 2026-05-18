@@ -1,6 +1,93 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 06:36:04 +08:00
+Last updated: 2026-05-19 06:50:06 +08:00
+
+## Latest Full-Scan Primary UX Fix
+
+User clarification:
+
+- The product goal is a full-market scan first: MarketRadar should analyze the
+  whole active universe and then surface whether any stock's price has not
+  matched market expectations.
+- The five tickers (`A`, `MSFT`, `AAAU`, `AAPL`, `AA`) are useful as the current
+  decision-ready subset, but they are not the scan universe.
+- The previous answer path still made that subset feel primary because
+  `priced-in-answer` returned:
+
+  ```text
+  next_command=catalyst-radar priced-in-queue --decision-ready --limit 50
+  ```
+
+Fix in this slice:
+
+- `priced-in-answer` now keeps the decision-ready count in the answer, but its
+  next command returns to the full ranked scan:
+
+  ```text
+  next_action=Review the full-market scan; decision-ready tickers are a filtered subset, not the scan universe.
+  next_command=catalyst-radar priced-in-queue --full-scan --limit 50
+  ```
+
+- The TUI/plain dashboard header now separates scan scope from answer status:
+
+  ```text
+  View: Full scan | Answer: decision ready ready=true
+  ```
+
+  This prevents the header from implying the whole dashboard is narrowed to the
+  five decision-ready rows.
+
+- `GET /api/radar/priced-in?decision_ready=true` still exists as an explicit
+  shortcut for the small filtered subset, but the default CLI/TUI path remains
+  the full scan.
+
+Live zero-call smoke after the fix:
+
+```text
+catalyst-radar priced-in-answer
+priced_in_answer status=decision_ready ... total=12087 ... external_calls=0
+scan_scope=Showing ranked rows 1-5 of 12087; the visible tickers are one page from the full scan, not the scan universe.
+next_command=catalyst-radar priced-in-queue --full-scan --limit 50
+```
+
+```text
+catalyst-radar dashboard-tui --once --page overview
+Page: overview | View: Full scan | Answer: decision ready ready=true | ...
+Full-market priced-in queue - showing rows 1-50 of 12087; decision 5 / blocked 7920 / monitor 4162
+```
+
+```text
+catalyst-radar priced-in-queue --full-scan --limit 10
+priced_in_queue status=ready count=10 total=12087 offset=0 external_calls=0
+headline=Latest full scan ranked 12087 priced-in row(s); showing 1-10 of 12087.
+```
+
+```text
+catalyst-radar priced-in-queue --decision-ready --limit 10
+priced_in_queue status=ready count=5 total=5 offset=0 external_calls=0
+```
+
+Operator meaning:
+
+- Full scan means `priced-in-queue --full-scan` or the default Insights view.
+- Decision-ready means a useful subset from that full scan.
+- Source-fill batch tickers are still provider chunks, not the ticker universe.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_answer_opens_full_scan_queue_when_decision_ready tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_tui_once_can_show_full_scan_mode tests\integration\test_api_routes.py::test_get_radar_priced_in_queue_returns_cli_ready_rows -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\api\routes\radar.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_api_routes.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-answer
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page overview
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-queue --full-scan --limit 10
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-queue --decision-ready --limit 10
+```
+
+Observed: focused pytest passed, ruff passed, `git diff --check` passed, and
+the live CLI/TUI smokes made zero provider calls while clearly showing the
+12,087-row full scan as the primary view.
 
 ## Latest Decision-Ready Shortcut Fix
 
