@@ -16,6 +16,7 @@ catalyst-radar dashboard-tui --once --page features
 catalyst-radar priced-in-preflight --json
 catalyst-radar priced-in-queue --json
 catalyst-radar dashboard-snapshot --json
+powershell -ExecutionPolicy Bypass -File scripts/run-full-market-scan.ps1
 ```
 
 Inside `dashboard-tui`, use page numbers or names to navigate, `open <#|ticker>`
@@ -68,7 +69,8 @@ reference requests for rate-limited plans. These live-provider actions stay
 behind existing explicit guarded commands or API routes because they can call
 external services and require credentials:
 
-- Trigger optional universe seeding only when Polygon is configured.
+- Trigger optional universe seeding only when Polygon is configured; use
+  `scripts/run-full-market-scan.ps1` for the plan-first full-market sequence.
 - Refresh Schwab market context for a selected candidate.
 - Run candidate agent-review dry runs.
 
