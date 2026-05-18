@@ -3067,6 +3067,7 @@ def _run_lines(payload: Mapping[str, object], width: int) -> list[str]:
     call_plan = _mapping(payload.get("call_plan"))
     activation = _mapping(payload.get("live_activation"))
     cooldown = _mapping(payload.get("radar_run_cooldown"))
+    evidence_plan = _mapping(_mapping(payload.get("priced_in_preflight")).get("evidence_plan"))
     lines = [_rule("Radar Run And Call Plan", width)]
     lines.extend(
         _kv_lines(
@@ -3099,12 +3100,58 @@ def _run_lines(payload: Mapping[str, object], width: int) -> list[str]:
             limit=12,
         )
     )
+    if evidence_plan:
+        lines.append("")
+        lines.append(_rule("Priced-in Evidence Plan", width))
+        lines.extend(
+            _kv_lines(
+                (
+                    (
+                        "Evidence status",
+                        f"{evidence_plan.get('status')}; {evidence_plan.get('headline')}",
+                    ),
+                    ("Next evidence step", evidence_plan.get("next_action")),
+                ),
+                width=width,
+            )
+        )
+        lines.append("")
+        lines.extend(
+            _table_lines(
+                _evidence_plan_step_rows(evidence_plan),
+                [
+                    ("priority", "#", 4),
+                    ("area", "Area", 18),
+                    ("status", "Status", 12),
+                    ("depends_on", "Depends", 26),
+                    ("action", "Action", 52),
+                    ("command", "Command", 56),
+                ],
+                width=width,
+                limit=8,
+            )
+        )
     lines.append("")
     lines.append(
         "Operational note: execute live runs only after this call plan matches intent. "
         "Type `run execute` to start one capped cycle."
     )
     return lines
+
+
+def _evidence_plan_step_rows(
+    evidence_plan: Mapping[str, object],
+) -> list[Mapping[str, object]]:
+    rows = []
+    for step in _rows(evidence_plan.get("steps")):
+        depends_on = step.get("depends_on")
+        depends = (
+            ", ".join(str(item) for item in depends_on if str(item).strip())
+            if isinstance(depends_on, list | tuple)
+            else ""
+        )
+        rows.append({**step, "depends_on": depends or "none"})
+    return rows
 
 
 def _candidates_lines(payload: Mapping[str, object], width: int) -> list[str]:

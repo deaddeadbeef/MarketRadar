@@ -1,6 +1,80 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 20:53:31 +08:00
+Last updated: 2026-05-18 21:06:13 +08:00
+
+## Latest Priced-In Evidence Plan
+
+The source-gap commands were available, but the user still had to infer the
+operator sequence from separate preflight rows. That was not useful enough for
+the goal of moving from a full-market scan to a trustworthy priced-in read.
+
+Changes in this slice:
+
+- `priced_in_preflight_payload()` now includes:
+
+  ```text
+  evidence_plan.schema_version = priced-in-evidence-plan-v1
+  evidence_plan.status
+  evidence_plan.headline
+  evidence_plan.next_action
+  evidence_plan.next_command
+  evidence_plan.steps[]
+  ```
+
+- `catalyst-radar priced-in-preflight` now prints the evidence plan after the
+  raw preflight rows.
+- `GET /api/radar/priced-in/preflight` exposes the same `evidence_plan`.
+- The dashboard Run page now includes a `Priced-in Evidence Plan` section.
+- The plan keeps provider calls at zero while planning. It is a read-only
+  sequencing artifact, not an executor.
+
+The ordering is intentionally practical:
+
+1. hard blockers first, if any;
+2. `catalyst_events`;
+3. `local_text`, which depends on `catalyst_events`;
+4. `options`;
+5. `broker_context`;
+6. softer market-bar attention rows.
+
+Live zero-provider-call verification:
+
+```powershell
+.\.venv\Scripts\catalyst-radar.exe priced-in-preflight --json |
+  .\.venv\Scripts\python.exe -c "import json,sys; ep=json.load(sys.stdin)['evidence_plan']; print(ep['status'], ep['next_action'], ep['next_command']); print([s['area'] for s in ep['steps'][:5]])"
+```
+
+Observed:
+
+```text
+attention Review the run call plan and refresh event ingestion before trusting emotion. catalyst-radar priced-in-source-batches --source catalyst_events --batch-limit 5
+['catalyst_events', 'local_text', 'options', 'broker_context', 'market_bars']
+```
+
+API verification through FastAPI `TestClient`:
+
+```text
+200
+priced-in-evidence-plan-v1 attention 5 0
+catalyst_events catalyst-radar priced-in-source-batches --source catalyst_events --batch-limit 5
+```
+
+Dashboard verification:
+
+```powershell
+.\.venv\Scripts\catalyst-radar.exe dashboard-tui --once --page run |
+  Select-String -Pattern 'Priced-in Evidence Plan|Next evidence step|catalyst_events|local_text|options|broker_context|market_bars'
+```
+
+Validation for this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_preflight_payload_reports_exact_next_steps tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_preflight_cli_outputs_zero_call_plan tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_run_page_shows_priced_in_evidence_plan tests\integration\test_api_routes.py::test_get_radar_priced_in_preflight_returns_zero_call_steps -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_api_routes.py
+git diff --check
+```
+
+All passed.
 
 ## Latest Preflight Source Dependency Order
 

@@ -2029,6 +2029,15 @@ def test_priced_in_preflight_payload_reports_exact_next_steps(tmp_path: Path) ->
     assert by_area["catalyst_events"]["command"].startswith(
         "catalyst-radar priced-in-source-batches --source catalyst_events"
     )
+    evidence_plan = payload["evidence_plan"]
+    assert evidence_plan["schema_version"] == "priced-in-evidence-plan-v1"
+    assert evidence_plan["external_calls_made"] == 0
+    plan_by_area = {step["area"]: step for step in evidence_plan["steps"]}
+    assert list(plan_by_area).index("catalyst_events") < list(plan_by_area).index(
+        "local_text"
+    )
+    assert plan_by_area["local_text"]["depends_on"] == ["catalyst_events"]
+    assert evidence_plan["next_command"]
     assert payload["api"]["queue"] == "GET /api/radar/priced-in"
 
 

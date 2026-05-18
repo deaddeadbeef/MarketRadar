@@ -897,6 +897,7 @@ def priced_in_preflight_payload(
         bar_universe,
         resolved_source_coverage,
     )
+    evidence_plan = _priced_in_evidence_plan(rows)
     blocked_rows = [row for row in rows if row["status"] == "blocked"]
     attention_rows = [row for row in rows if row["status"] == "attention"]
     if blocked_rows:
@@ -936,9 +937,106 @@ def priced_in_preflight_payload(
             "max_external_call_count": call_plan.get("max_external_call_count"),
             "next_action": call_plan.get("next_action"),
         },
+        "evidence_plan": evidence_plan,
         "source_coverage": resolved_source_coverage,
         "rows": rows,
     }
+
+
+def _priced_in_evidence_plan(rows: Sequence[Mapping[str, object]]) -> dict[str, object]:
+    actionable_rows = [
+        _row_dict(row)
+        for row in rows
+        if str(row.get("status") or "") in {"blocked", "attention"}
+    ]
+    by_area = {str(row.get("area") or ""): row for row in actionable_rows}
+    blocked_order = (
+        "universe",
+        "market_bars",
+        "run_call_plan",
+        "catalyst_events",
+        "local_text",
+        "options",
+        "broker_context",
+        "agent_review",
+    )
+    attention_order = (
+        "catalyst_events",
+        "local_text",
+        "options",
+        "broker_context",
+        "market_bars",
+        "agent_review",
+        "run_call_plan",
+    )
+    steps: list[dict[str, object]] = []
+    added: set[str] = set()
+    for area in blocked_order:
+        row = by_area.get(area)
+        if row is None or str(row.get("status") or "") != "blocked":
+            continue
+        steps.append(_priced_in_evidence_plan_step(len(steps) + 1, row))
+        added.add(area)
+    for area in attention_order:
+        row = by_area.get(area)
+        if row is None or area in added or str(row.get("status") or "") != "attention":
+            continue
+        steps.append(_priced_in_evidence_plan_step(len(steps) + 1, row))
+        added.add(area)
+    for row in actionable_rows:
+        area = str(row.get("area") or "")
+        if area not in added:
+            steps.append(_priced_in_evidence_plan_step(len(steps) + 1, row))
+            added.add(area)
+    if steps:
+        status = "blocked" if any(step["status"] == "blocked" for step in steps) else "attention"
+        headline = (
+            f"{len(steps)} evidence step(s) need attention before priced-in output "
+            "is decision-useful."
+        )
+        next_action = str(steps[0].get("action") or "")
+        next_command = str(steps[0].get("command") or "")
+    else:
+        status = "ready"
+        headline = "Priced-in evidence plan is ready for review."
+        next_action = "Review the full-scan priced-in queue and candidate evidence."
+        next_command = "catalyst-radar priced-in-queue --full-scan --limit 50"
+    return {
+        "schema_version": "priced-in-evidence-plan-v1",
+        "status": status,
+        "headline": headline,
+        "next_action": next_action,
+        "next_command": next_command,
+        "external_calls_made": 0,
+        "steps": steps,
+    }
+
+
+def _priced_in_evidence_plan_step(
+    priority: int,
+    row: Mapping[str, object],
+) -> dict[str, object]:
+    area = str(row.get("area") or "")
+    return {
+        "priority": priority,
+        "area": area,
+        "status": row.get("status"),
+        "why": row.get("finding"),
+        "action": row.get("next_action"),
+        "command": row.get("command"),
+        "api": row.get("api"),
+        "depends_on": _priced_in_evidence_plan_dependencies(area),
+    }
+
+
+def _priced_in_evidence_plan_dependencies(area: str) -> list[str]:
+    if area == "local_text":
+        return ["catalyst_events"]
+    if area in {"options", "broker_context", "agent_review"}:
+        return ["market_bars", "catalyst_events", "local_text"]
+    if area == "run_call_plan":
+        return ["market_bars"]
+    return []
 
 
 def _priced_in_preflight_source_coverage(
