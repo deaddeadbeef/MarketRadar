@@ -353,6 +353,7 @@ def test_dashboard_batch_command_opens_full_scan_source_batch_plan(
 
     assert overview.page == "ops"
     assert "plan-only and makes no provider calls" in overview.message
+    assert "Suggested first:" in overview.message
     assert "options=ready" in overview.message
     assert (
         "First executable: catalyst-radar priced-in-source-batches "

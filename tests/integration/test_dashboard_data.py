@@ -1916,6 +1916,105 @@ def test_priced_in_all_source_gap_batches_payload_summarizes_next_chunks(
     assert "provider calls" in payload["execution_boundary"]
 
 
+def test_priced_in_all_source_gap_batches_prioritizes_decision_useful_gaps(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = _engine(tmp_path)
+
+    def fake_queue_payload(*args, **kwargs):
+        return {
+            "rows": [
+                {
+                    "ticker": "MSFT",
+                    "priced_in_status": "bullish_not_priced_in",
+                    "usefulness": {"status": "decision_useful"},
+                    "data_sources": {
+                        "available": [
+                            "market_bars",
+                            "catalyst_events",
+                            "local_text",
+                            "theme_peer_sector",
+                            "broker_context",
+                        ],
+                        "missing": ["options"],
+                        "stale": [],
+                    },
+                },
+                {
+                    "ticker": "BRK.A",
+                    "priced_in_status": "bullish_not_priced_in",
+                    "usefulness": {"status": "research_useful"},
+                    "data_sources": {
+                        "available": ["market_bars", "theme_peer_sector"],
+                        "missing": ["catalyst_events", "local_text"],
+                        "stale": [],
+                    },
+                },
+            ],
+        }
+
+    def fake_source_plan(*args, **kwargs):
+        source = str(kwargs["source"])
+        ready = source in {"catalyst_events", "options"}
+        gap_rows = 1 if source in {"catalyst_events", "local_text", "options"} else 0
+        return {
+            "source": source,
+            "status": "ready" if ready else "blocked" if gap_rows else "no_gaps",
+            "headline": f"{source} plan",
+            "next_action": f"fill {source}",
+            "total_gap_rows": gap_rows,
+            "plannable_gap_rows": 1 if ready else 0,
+            "unplannable_gap_rows": 0 if ready else gap_rows,
+            "batch_count": 1 if ready else 0,
+            "batch_size": 5,
+            "batches": [
+                {
+                    "number": 1,
+                    "row_start": 1,
+                    "row_end": 1,
+                    "tickers": ["MSFT" if source == "options" else "BRK.A"],
+                    "external_calls_required": 1,
+                    "external_call_breakdown": {source: 1},
+                    "command": f"run {source}",
+                    "api": f"POST /{source}",
+                    "api_payload": {},
+                }
+            ]
+            if ready
+            else [],
+            "all_batches_command": (
+                f"catalyst-radar priced-in-source-batches --source {source} --all --json"
+                if ready
+                else None
+            ),
+            "all_batches_api": None,
+            "review_rows_command": None,
+            "export_rows_command": None,
+            "diagnostic": {},
+        }
+
+    monkeypatch.setitem(
+        priced_in_all_source_gap_batches_payload.__globals__,
+        "priced_in_queue_payload",
+        fake_queue_payload,
+    )
+    monkeypatch.setitem(
+        priced_in_all_source_gap_batches_payload.__globals__,
+        "priced_in_source_gap_batches_payload",
+        fake_source_plan,
+    )
+
+    payload = priced_in_all_source_gap_batches_payload(engine, AppConfig.from_env({}))
+
+    rows = {row["source"]: row for row in payload["sources"]}
+    assert rows["options"]["decision_useful_gap_rows"] == 1
+    assert rows["options"]["priority_sample_tickers"] == ["MSFT"]
+    assert rows["catalyst_events"]["research_useful_gap_rows"] == 1
+    assert payload["next_action"].startswith("Start with options;")
+    assert "decision-ready row(s)" in payload["next_action"]
+
+
 def test_priced_in_source_gap_batches_payload_plans_sec_event_batches(
     tmp_path: Path,
 ) -> None:

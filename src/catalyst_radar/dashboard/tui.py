@@ -2272,24 +2272,44 @@ def _priced_in_all_source_batch_message(
         )
         for row in rows
     ]
-    first_ready = next(
-        (
-            row
-            for row in rows
-            if str(row.get("status") or "") == "ready"
-            and str(row.get("execute_next_command") or "").strip()
-        ),
-        None,
+    ready_rows = [
+        row
+        for row in rows
+        if str(row.get("status") or "") == "ready"
+        and str(row.get("execute_next_command") or "").strip()
+    ]
+    first_ready = (
+        sorted(ready_rows, key=_source_batch_priority_key)[0] if ready_rows else None
     )
     command = (
         f" First executable: {first_ready.get('execute_next_command')}."
         if first_ready
         else ""
     )
+    next_action = str(payload.get("next_action") or "").strip()
+    next_action_text = f" Suggested first: {next_action}" if next_action else ""
     return (
         f"{payload.get('headline')} This is plan-only and makes no provider calls. "
-        f"{'; '.join(pieces)}.{command}"
+        f"{'; '.join(pieces)}.{next_action_text}{command}"
     )
+
+
+def _source_batch_priority_key(row: Mapping[str, object]) -> tuple[int, int, int, str]:
+    decision_rows = int(_number_or_zero(row.get("decision_useful_gap_rows")))
+    research_rows = int(_number_or_zero(row.get("research_useful_gap_rows")))
+    actionable_rows = int(_number_or_zero(row.get("actionable_gap_rows")))
+    source = str(row.get("source") or "")
+    try:
+        source_order = dashboard_data.PRICED_IN_SOURCE_CLASSES.index(source)
+    except ValueError:
+        source_order = len(dashboard_data.PRICED_IN_SOURCE_CLASSES)
+    if decision_rows:
+        return (0, -decision_rows, source_order, source)
+    if research_rows:
+        return (1, -research_rows, source_order, source)
+    if actionable_rows:
+        return (2, -actionable_rows, source_order, source)
+    return (3, 0, source_order, source)
 
 
 def _parse_source_batch_command(value: str) -> tuple[str, bool]:

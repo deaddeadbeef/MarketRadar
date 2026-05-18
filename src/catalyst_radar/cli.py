@@ -3139,7 +3139,10 @@ def _print_priced_in_all_source_batches(payload: Mapping[str, object]) -> None:
     rows = payload.get("sources")
     if not isinstance(rows, list | tuple) or not rows:
         return
-    print("source status gap_rows plannable batches first_calls next_command")
+    print(
+        "source status gap_rows decision research actionable "
+        "plannable batches first_calls next_command"
+    )
     for row in rows:
         if not isinstance(row, Mapping):
             continue
@@ -3151,11 +3154,20 @@ def _print_priced_in_all_source_batches(payload: Mapping[str, object]) -> None:
             f"{row.get('source')} "
             f"{row.get('status')} "
             f"{row.get('total_gap_rows')} "
+            f"{row.get('decision_useful_gap_rows', 0)} "
+            f"{row.get('research_useful_gap_rows', 0)} "
+            f"{row.get('actionable_gap_rows', 0)} "
             f"{row.get('plannable_gap_rows')} "
             f"{row.get('batch_count')} "
             f"{first_calls} "
             f"{_compact_cli_text(row.get('execute_next_command'))}"
         )
+        samples = row.get("priority_sample_tickers")
+        if isinstance(samples, list | tuple) and samples:
+            print(
+                "  priority_examples="
+                f"{','.join(str(ticker) for ticker in samples)}"
+            )
         action = row.get("next_action")
         if action:
             print(f"  next={_compact_cli_text(action)}")
