@@ -1,6 +1,69 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 04:44:59 +08:00
+Last updated: 2026-05-19 05:01:57 +08:00
+
+## Latest Narrow Artifact Command Fix
+
+After the all-active scan, `priced-in-answer` reported:
+
+```text
+status=research_only
+total=12087
+mismatches=7
+research=5
+decision=0
+next=catalyst-radar build-packets --as-of 2026-05-15 --min-state ResearchOnly
+```
+
+The research-useful mismatch queue was only five rows:
+
+```text
+A, MSFT, AAAU, AAPL, AA
+missing_for_decision=['candidate_packet', 'decision_card']
+```
+
+Root cause:
+
+- `_priced_in_local_artifact_command()` explicitly discarded the sample tickers
+  from `decision_gap_counts`.
+- The generated command built all `ResearchOnly` packets for the scan date
+  instead of the relevant priced-in mismatch rows.
+- Running that broad command against the all-active local DB took too long and
+  held the SQLite DB lock. A stale background `priced-in-source-batches` helper
+  from a timed-out smoke was also found and stopped before retrying.
+
+Fix in this slice:
+
+- The local artifact command now includes de-duplicated ticker args from the
+  decision-gap sample:
+
+  ```powershell
+  catalyst-radar build-packets --as-of 2026-05-15 --ticker MSFT --min-state ResearchOnly
+  catalyst-radar build-decision-cards --as-of 2026-05-15 --ticker MSFT --ticker AAPL --ticker AA --ticker A --ticker AAA --ticker AAAU --min-state ResearchOnly
+  ```
+
+- The command remains bounded to the first local artifact batch exposed in the
+  answer payload, avoiding accidental broad state-slice builds from the
+  dashboard/API/CLI recommendation.
+
+Live state after the partial packet build completed enough local artifacts:
+
+```text
+priced_in_answer status=decision_ready decision_ready=true investment_decision_ready=false total=12087 mismatches=7 research=0 blocked=7920 external_calls=0
+decision_readiness=status=ready actionable=7 decision_ready=5 summary=5 not-priced-in row(s) are decision-ready.
+next_command=catalyst-radar priced-in-queue --mismatches --usefulness decision_useful --limit 50
+decision-useful rows: A, MSFT, AAAU, AAPL, AA
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_answer_prefers_local_artifact_gap_before_options tests\integration\test_dashboard_data.py::test_priced_in_answer_opens_full_scan_queue_when_decision_ready tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_answer_cli_outputs_current_scan_answer -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py tests\integration\test_dashboard_data.py
+git diff --check
+```
+
+Observed: focused pytest passed, ruff passed, and `git diff --check` passed.
 
 ## Latest Full-Active Scan Scope Correction
 
