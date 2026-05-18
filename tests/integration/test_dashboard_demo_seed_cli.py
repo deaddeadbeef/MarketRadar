@@ -161,6 +161,8 @@ def test_dashboard_snapshot_cli_outputs_dashboard_command_center_json(
                 "dashboard-snapshot",
                 "--usefulness",
                 "research_useful",
+                "--source-gap",
+                "options",
                 "--decision-gap",
                 "decision_card",
                 "--scan-limit",
@@ -178,6 +180,8 @@ def test_dashboard_snapshot_cli_outputs_dashboard_command_center_json(
     assert output.err == ""
     assert gap_payload["controls"]["priced_in_usefulness"] == "research_useful"
     assert gap_payload["priced_in_queue"]["filters"]["usefulness"] == "research_useful"
+    assert gap_payload["controls"]["priced_in_source_gap"] == ["options"]
+    assert gap_payload["priced_in_queue"]["filters"]["source_gap"] == ["options"]
     assert gap_payload["controls"]["priced_in_decision_gap"] == ["decision_card"]
     assert gap_payload["priced_in_queue"]["filters"]["decision_gap"] == [
         "decision_card"
@@ -292,6 +296,27 @@ def test_dashboard_tui_once_can_show_full_scan_mode(
     assert "Evidence gaps" in output.out
     assert "First row is scan coverage" in output.out
 
+    assert (
+        main(
+            [
+                "dashboard-tui",
+                "--once",
+                "--scan-mode",
+                "all",
+                "--source-gap",
+                "options",
+                "--page",
+                "overview",
+            ]
+        )
+        == 0
+    )
+    output = capsys.readouterr()
+
+    assert output.err == ""
+    assert "source gaps options" in output.out
+    assert "Active source gap filter: source gaps options." in output.out
+
 
 def test_dashboard_scan_commands_page_full_scan_rows(tmp_path: Path, monkeypatch) -> None:
     database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
@@ -350,6 +375,21 @@ def test_dashboard_scan_commands_page_full_scan_rows(tmp_path: Path, monkeypatch
     )
     assert limit_update.filters.priced_in_limit == 200
     assert limit_update.filters.priced_in_offset == 0
+
+    source_gap_update = _apply_command(
+        "source-gap options,text",
+        payload,
+        "overview",
+        DashboardFilters(priced_in_offset=50),
+        engine=engine,
+        config=config,
+    )
+    assert source_gap_update.filters.priced_in_source_gap == (
+        "options",
+        "local_text",
+    )
+    assert source_gap_update.filters.priced_in_offset == 0
+    assert source_gap_update.message == "Source-gap filter: options, local_text."
 
 
 def test_agent_brief_cli_outputs_zero_call_dry_run(
