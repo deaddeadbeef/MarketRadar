@@ -766,12 +766,15 @@ def priced_in_source_gap_batches_payload(
             row_start = index * resolved_batch_size
             row_end = min(row_start + resolved_batch_size, len(tickers))
             batch_tickers = tickers[row_start:row_end]
-            call_budget = _priced_in_source_batch_call_budget(
+            batch_targets = _priced_in_source_batch_targets(
                 engine,
-                config,
                 source_name=source_name,
                 tickers=batch_tickers,
-                scan_as_of=scan_as_of,
+            )
+            call_budget = _priced_in_source_batch_call_budget(
+                config,
+                source_name=source_name,
+                ticker_count=len(batch_tickers),
             )
             batches.append(
                 {
@@ -780,11 +783,13 @@ def priced_in_source_gap_batches_payload(
                     "row_start": row_start + 1,
                     "row_end": row_end,
                     "tickers": batch_tickers,
+                    "targets": batch_targets,
                     "command": _priced_in_source_batch_command(
                         source_name,
                         batch_tickers,
                         scan_as_of=scan_as_of,
                         planned_available_at=planned_available_at,
+                        targets=batch_targets,
                     ),
                     "api": _priced_in_source_batch_api(source_name),
                     "api_payload": _priced_in_source_batch_api_payload(
@@ -6520,17 +6525,26 @@ def _priced_in_source_batch_command(
     *,
     scan_as_of: str,
     planned_available_at: str,
+    targets: Sequence[Mapping[str, object]] = (),
 ) -> str:
     if source_name in PRICED_IN_SCHWAB_BATCH_SOURCES:
         return _schwab_market_sync_command(tickers)
-    ticker_args = _ticker_args(tickers)
     if source_name == "catalyst_events":
+        target_args = " ".join(
+            f"--target {target.get('ticker')}:{target.get('cik')}"
+            for target in targets
+            if target.get("ticker") and target.get("cik")
+        )
+        if target_args:
+            return f"catalyst-radar ingest-sec submissions-batch {target_args}"
+        ticker_args = _ticker_args(tickers)
         return (
             "catalyst-radar run-daily "
             f"--as-of {scan_as_of} --available-at {planned_available_at} "
             f"{ticker_args} --json"
         ).strip()
     if source_name == "local_text":
+        ticker_args = _ticker_args(tickers)
         return (
             "catalyst-radar run-textint "
             f"--as-of {scan_as_of} {ticker_args}"
@@ -6545,8 +6559,6 @@ def _ticker_args(tickers: Sequence[str]) -> str:
 def _priced_in_source_batch_api(source_name: str) -> str | None:
     if source_name in PRICED_IN_SCHWAB_BATCH_SOURCES:
         return "POST /api/brokers/schwab/market-sync"
-    if source_name == "catalyst_events":
-        return "POST /api/radar/runs"
     return None
 
 
@@ -6563,24 +6575,30 @@ def _priced_in_source_batch_api_payload(
             "include_history": True,
             "include_options": True,
         }
-    if source_name == "catalyst_events":
-        return {
-            "as_of": scan_as_of,
-            "available_at": planned_available_at,
-            "tickers": list(tickers),
-            "run_llm": False,
-            "dry_run_alerts": True,
-        }
     return None
 
 
-def _priced_in_source_batch_call_budget(
+def _priced_in_source_batch_targets(
     engine: Engine,
-    config: AppConfig,
     *,
     source_name: str,
     tickers: Sequence[str],
-    scan_as_of: str,
+) -> list[dict[str, str]]:
+    if source_name != "catalyst_events":
+        return []
+    cik_by_ticker = _security_cik_by_ticker(engine, tickers)
+    return [
+        {"ticker": ticker, "cik": cik_by_ticker[ticker]}
+        for ticker in tickers
+        if ticker in cik_by_ticker
+    ]
+
+
+def _priced_in_source_batch_call_budget(
+    config: AppConfig,
+    *,
+    source_name: str,
+    ticker_count: int,
 ) -> dict[str, object]:
     if source_name == "local_text":
         return {
@@ -6590,23 +6608,29 @@ def _priced_in_source_batch_call_budget(
             "call_plan_headline": "Local text intelligence makes no provider calls.",
         }
     if source_name == "catalyst_events":
-        call_plan = radar_run_call_plan_payload(
-            engine,
-            config,
-            as_of=scan_as_of,
-            tickers=tickers,
-            run_llm=False,
-            llm_dry_run=True,
-            dry_run_alerts=True,
-        )
+        missing = _sec_batch_missing_env(config)
+        if missing:
+            return {
+                "external_calls_required": 0,
+                "external_call_breakdown": {},
+                "call_plan_status": "blocked",
+                "call_plan_headline": (
+                    "SEC submissions batch is blocked by missing live SEC settings."
+                ),
+                "call_plan_next_action": (
+                    f"Set {' and '.join(missing)} before running SEC batches."
+                ),
+            }
         return {
-            "external_calls_required": int(
-                _finite_float(call_plan.get("max_external_call_count"))
+            "external_calls_required": ticker_count,
+            "external_call_breakdown": {"catalyst_events": ticker_count},
+            "call_plan_status": "live_calls_planned",
+            "call_plan_headline": (
+                f"SEC submissions batch may make {ticker_count} external call(s)."
             ),
-            "external_call_breakdown": _call_plan_external_breakdown(call_plan),
-            "call_plan_status": call_plan.get("status"),
-            "call_plan_headline": call_plan.get("headline"),
-            "call_plan_next_action": call_plan.get("next_action"),
+            "call_plan_next_action": (
+                "Run only when this target count matches your intended SEC budget."
+            ),
         }
     if source_name in PRICED_IN_SCHWAB_BATCH_SOURCES:
         return {
@@ -6623,24 +6647,13 @@ def _priced_in_source_batch_call_budget(
     }
 
 
-def _call_plan_external_breakdown(call_plan: Mapping[str, object]) -> dict[str, int]:
-    keys = {
-        "Market data": "market_data",
-        "News/events": "catalyst_events",
-        "LLM review": "openai",
-        "Schwab": "schwab",
-    }
-    breakdown: dict[str, int] = {}
-    for row in _sequence_value(call_plan.get("rows")):
-        if not isinstance(row, Mapping):
-            continue
-        count = int(_finite_float(row.get("external_call_count_max")))
-        if count <= 0:
-            continue
-        key = keys.get(str(row.get("layer") or ""))
-        if key:
-            breakdown[key] = breakdown.get(key, 0) + count
-    return breakdown
+def _sec_batch_missing_env(config: AppConfig) -> list[str]:
+    missing: list[str] = []
+    if not config.sec_enable_live:
+        missing.append("CATALYST_SEC_ENABLE_LIVE=1")
+    if not config.sec_user_agent_configured:
+        missing.append("CATALYST_SEC_USER_AGENT")
+    return missing
 
 
 def _priced_in_source_batches_headline(
