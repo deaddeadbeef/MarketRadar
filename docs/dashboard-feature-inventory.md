@@ -30,8 +30,10 @@ through the existing scheduler only after the call plan has been shown. The TUI
 also supports source-fill planning and execution: `batch <source>` is zero-call
 and shows the full-scan plan plus the next safe chunk, while
 `batch <source> execute` runs only that one guarded chunk. The tickers shown in
-one chunk are not the scan universe.
-also supports low-risk operator writes: `action <ticker> <action> [notes]`,
+one chunk are not the scan universe. CLI/API parity is available through
+`priced-in-source-batches --source <source> --execute-next` and
+`POST /api/radar/priced-in/source-batches/execute-next`.
+The TUI also supports low-risk operator writes: `action <ticker> <action> [notes]`,
 `trigger <ticker> <type> <op> <threshold> [notes]`, `eval-triggers [ticker]`,
 `ticket <ticker> <buy|sell> <entry> <stop> [risk_pct] [notes]`, and
 `feedback <alert-id|#> <label> [notes]`.
@@ -45,7 +47,7 @@ also supports low-risk operator writes: `action <ticker> <action> [notes]`,
 | Current priced-in answer | One zero-call answer to whether price has matched market expectations, with research/answer-ready counts, optional context gaps, next command, and explicit trade-readiness boundary | `overview`, `priced-in-answer`, `/api/radar/priced-in/answer`, `dashboard-snapshot --json` | Know whether the current scan can answer the priced-in question, while keeping trade approval tied to the separate readiness/manual-buy-review gate. |
 | Priced-in mismatch | Emotion score, price-reaction score, emotion-minus-reaction gap, status, reason, queue-level and row-level source coverage, next step | `overview`, `candidates`, `candidate:<ticker>`, `priced-in-queue`, `/api/radar/priced-in` | Find stocks where market emotion appears ahead of or behind price reaction, distinguish blocking local evidence gaps from optional options/broker context, and see whether each source is contributing. |
 | Full-scan source batch plan | Every source-fill chunk for the current filtered full scan, with batch count, next safe chunk, all-batches command, API equivalent, and zero provider calls while planning | `priced-in-source-batches --source <source> --all --json`, `/api/radar/priced-in/source-batches?source=<source>&all_batches=true`, `batch <source>` in TUI | Avoid mistaking the first safe provider chunk for the whole scan; inspect the whole full-scan fill plan before running any explicit batch. |
-| Guarded source batch execution | One explicit source-fill chunk at a time, using the existing SEC, local text, or read-only Schwab executors and provider caps | `batch <source> execute` in TUI, `/api/radar/sec/submissions-batch`, `/api/radar/text/features-batch`, `/api/brokers/schwab/market-sync` | Fill evidence for the full scan without adding an accidental all-market live-call button. |
+| Guarded source batch execution | One explicit source-fill chunk at a time, using the existing SEC, local text, or read-only Schwab executors and provider caps | `batch <source> execute` in TUI, `priced-in-source-batches --source <source> --execute-next`, `POST /api/radar/priced-in/source-batches/execute-next`, `/api/radar/sec/submissions-batch`, `/api/radar/text/features-batch`, `/api/brokers/schwab/market-sync` | Fill evidence for the full scan without adding an accidental all-market live-call button. |
 | Local text source fill | Deterministic narrative feature batches over stored event text | `priced-in-source-batches --source local_text`, `/api/radar/text/features-batch` | Turn ingested catalyst events into local emotion and theme evidence without external calls. |
 | Market data | Run as-of coverage, latest bar coverage, stale-bar blockers | `overview`, `ops` | Verify fresh bars before relying on real market data. |
 | Radar run | Latest run path, required steps, optional gates, call plan | `overview`, `run` | Check what will call external providers before executing a cycle. |

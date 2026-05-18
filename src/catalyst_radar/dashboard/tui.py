@@ -4,7 +4,7 @@ import json
 import shutil
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import UTC, date, datetime, timedelta
 from uuid import uuid4
 
 from sqlalchemy.engine import Engine
@@ -24,12 +24,13 @@ from catalyst_radar.brokers.interactive import (
     record_opportunity_action,
     trigger_payload,
 )
-from catalyst_radar.connectors.provider_ingest import ProviderIngestError
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.dashboard import data as dashboard_data
-from catalyst_radar.events.sec_ingest import (
-    SecSubmissionTarget,
-    ingest_sec_submissions_batch,
+from catalyst_radar.dashboard.source_batches import (
+    execute_priced_in_source_batch as execute_source_batch,
+)
+from catalyst_radar.dashboard.source_batches import (
+    source_batch_execution_summary,
 )
 from catalyst_radar.feedback.service import (
     FeedbackError,
@@ -40,12 +41,7 @@ from catalyst_radar.feedback.service import (
 from catalyst_radar.jobs.scheduler import SchedulerConfig, run_once, scheduler_run_payload
 from catalyst_radar.security.licenses import redact_restricted_external_payload
 from catalyst_radar.storage.broker_repositories import BrokerRepository
-from catalyst_radar.storage.event_repositories import EventRepository
 from catalyst_radar.storage.job_repositories import JobLockRepository
-from catalyst_radar.storage.provider_repositories import ProviderRepository
-from catalyst_radar.storage.repositories import MarketRepository
-from catalyst_radar.storage.text_repositories import TextRepository
-from catalyst_radar.textint.pipeline import run_text_pipeline
 
 RADAR_RUN_COOLDOWN_LOCK_NAME = "manual_radar_run_cooldown"
 
@@ -2274,171 +2270,19 @@ def _execute_priced_in_source_batch(
             "Usage: batch <source> execute. Try: batch catalyst_events execute, "
             "batch local_text execute, batch options execute."
         )
-    payload_or_error = _first_priced_in_source_batch_payload(
-        engine,
-        config,
-        source=source,
-        filters=filters,
-    )
-    if isinstance(payload_or_error, str):
-        return payload_or_error
-    payload = payload_or_error
-    source_name = str(payload.get("source") or source).strip()
-    status = str(payload.get("status") or "unknown")
-    batches = _rows(payload.get("batches"))
-    if status == "blocked":
-        diagnostic = _mapping(payload.get("diagnostic"))
-        return str(
-            payload.get("next_action")
-            or diagnostic.get("reason")
-            or f"{source_name} source batch is blocked."
-        )
-    if not batches:
-        detail = str(payload.get("next_action") or "").strip()
-        return detail or f"No runnable {source_name} source batch is available."
-    batch = batches[0]
-    call_plan_status = str(batch.get("call_plan_status") or "").strip()
-    if call_plan_status == "blocked":
-        return str(
-            batch.get("call_plan_next_action")
-            or batch.get("call_plan_headline")
-            or f"{source_name} source batch is blocked by call-plan guardrails."
-        )
-    if source_name == "local_text":
-        return _execute_local_text_source_batch(engine, batch)
-    if source_name == "catalyst_events":
-        return _execute_sec_source_batch(engine, config, batch)
-    if source_name in {"options", "broker_context"}:
-        return _execute_schwab_source_batch(source_name, batch)
-    return f"{source_name} is not executable from the TUI."
-
-
-def _execute_local_text_source_batch(
-    engine: Engine,
-    batch: Mapping[str, object],
-) -> str:
-    payload = _mapping(batch.get("api_payload"))
-    tickers = _batch_tickers(payload, batch)
-    if not tickers:
-        return "No local_text tickers are available in the next batch."
-    as_of = _date_or_none(payload.get("as_of"))
-    if as_of is None:
-        return "Local text batch is missing scan date."
-    available_at = _datetime_or_none(payload.get("available_at")) or datetime.now(UTC)
-    result = run_text_pipeline(
-        EventRepository(engine),
-        TextRepository(engine),
-        as_of=datetime.combine(as_of, time(21), tzinfo=UTC),
-        available_at=available_at,
-        tickers=tuple(tickers),
-    )
-    row_start = int(_number_or_zero(batch.get("row_start"))) or 1
-    row_end = int(_number_or_zero(batch.get("row_end"))) or row_start + len(tickers) - 1
-    return (
-        "Executed local_text chunk "
-        f"{int(_number_or_zero(batch.get('number'))) or 1} "
-        f"(rows {row_start}-{row_end}): tickers={len(tickers)} "
-        f"features={result.feature_count} snippets={result.snippet_count} "
-        "external_calls=0. Refresh to see updated full-scan coverage."
-    )
-
-
-def _execute_sec_source_batch(
-    engine: Engine,
-    config: AppConfig,
-    batch: Mapping[str, object],
-) -> str:
-    payload = _mapping(batch.get("api_payload"))
-    targets: list[SecSubmissionTarget] = []
-    for target in _rows(payload.get("targets")):
-        ticker = str(target.get("ticker") or "").strip().upper()
-        cik = str(target.get("cik") or "").strip().zfill(10)
-        if ticker and cik:
-            targets.append(SecSubmissionTarget(ticker=ticker, cik=cik))
-    if not targets:
-        return "No SEC targets with CIKs are available in the next batch."
     try:
-        result = ingest_sec_submissions_batch(
-            config=config,
-            market_repo=MarketRepository(engine),
-            provider_repo=ProviderRepository(engine),
-            event_repo=EventRepository(engine),
-            targets=tuple(targets),
+        payload = execute_source_batch(
+            engine,
+            config,
+            source=source,
+            available_at=filters.available_at,
+            status=filters.priced_in_status,
+            usefulness=filters.priced_in_usefulness,
+            decision_gap=filters.priced_in_decision_gap,
         )
     except ValueError as exc:
-        return f"SEC batch blocked: {exc}"
-    except ProviderIngestError as exc:
-        return f"SEC batch failed: {exc}"
-    result_payload = result.as_payload()
-    return (
-        "Executed catalyst_events chunk "
-        f"{int(_number_or_zero(batch.get('number'))) or 1}: "
-        f"targets={len(targets)} events={result_payload.get('event_count')} "
-        f"external_calls={result_payload.get('external_calls_made')}. "
-        "Refresh to see updated full-scan coverage."
-    )
-
-
-def _execute_schwab_source_batch(
-    source_name: str,
-    batch: Mapping[str, object],
-) -> str:
-    payload = _mapping(batch.get("api_payload"))
-    tickers = _batch_tickers(payload, batch)
-    if not tickers:
-        return f"No {source_name} tickers are available in the next batch."
-    try:
-        from fastapi import HTTPException
-
-        from catalyst_radar.api.routes.brokers import schwab_market_sync
-
-        result = schwab_market_sync(
-            {
-                "tickers": tickers,
-                "include_history": True,
-                "include_options": True,
-            }
-        )
-    except HTTPException as exc:
-        return f"Schwab {source_name} batch blocked: {exc.detail}"
-    item_count = len(_rows(result.get("items")))
-    option_count = int(_number_or_zero(result.get("option_features_upserted")))
-    return (
-        f"Executed {source_name} chunk "
-        f"{int(_number_or_zero(batch.get('number'))) or 1}: "
-        f"tickers={len(tickers)} snapshots={item_count} "
-        f"option_features={option_count} external_calls=1. "
-        "Refresh to see updated full-scan coverage."
-    )
-
-
-def _batch_tickers(
-    payload: Mapping[str, object],
-    batch: Mapping[str, object],
-) -> list[str]:
-    raw_tickers = payload.get("tickers") or batch.get("tickers") or []
-    if not isinstance(raw_tickers, list | tuple):
-        return []
-    return list(
-        dict.fromkeys(
-            str(ticker).strip().upper()
-            for ticker in raw_tickers
-            if str(ticker).strip()
-        )
-    )
-
-
-def _date_or_none(value: object) -> date | None:
-    if isinstance(value, datetime):
-        return value.date()
-    if isinstance(value, date):
-        return value
-    if isinstance(value, str) and value.strip():
-        try:
-            return date.fromisoformat(value.strip())
-        except ValueError:
-            return None
-    return None
+        return str(exc)
+    return source_batch_execution_summary(payload)
 
 
 def _execute_guarded_radar_run(

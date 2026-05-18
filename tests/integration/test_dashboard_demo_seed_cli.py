@@ -377,11 +377,11 @@ def test_dashboard_batch_execute_runs_one_guarded_local_chunk(
         return FakeTextResult()
 
     monkeypatch.setattr(
-        "catalyst_radar.dashboard.tui.dashboard_data.priced_in_source_gap_batches_payload",
+        "catalyst_radar.dashboard.source_batches.priced_in_source_gap_batches_payload",
         fake_batches_payload,
     )
     monkeypatch.setattr(
-        "catalyst_radar.dashboard.tui.run_text_pipeline",
+        "catalyst_radar.dashboard.source_batches.run_text_pipeline",
         fake_run_text_pipeline,
     )
 
@@ -820,6 +820,78 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
     assert all_batch_payload["all_batches"] is True
     assert all_batch_payload["count"] == all_batch_payload["batch_count"]
     assert all_batch_payload["next_batch_command"] is None
+
+
+def test_priced_in_source_batches_execute_next_cli_runs_one_batch(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    captured: dict[str, object] = {}
+
+    def fake_execute(_engine, _config, **kwargs) -> dict[str, object]:
+        captured.update(kwargs)
+        return {
+            "schema_version": "priced-in-source-batch-execution-v1",
+            "source": kwargs["source"],
+            "status": "executed",
+            "reason": None,
+            "external_calls_made": 0,
+            "plan": {
+                "status": "ready",
+                "total_gap_rows": 123,
+                "plannable_gap_rows": 123,
+                "batch_count": 25,
+                "batch_size": 5,
+            },
+            "batch": {
+                "number": 1,
+                "row_start": 1,
+                "row_end": 5,
+                "tickers": ["ACME"],
+                "call_plan_status": "local_only",
+                "api_payload": {"tickers": ["ACME"]},
+            },
+            "result": {
+                "provider": "local_text",
+                "endpoint": "features-batch",
+                "ticker_count": 1,
+                "feature_count": 1,
+                "snippet_count": 2,
+                "external_calls_made": 0,
+            },
+        }
+
+    monkeypatch.setattr(
+        "catalyst_radar.cli.execute_priced_in_source_batch",
+        fake_execute,
+    )
+
+    assert (
+        main(
+            [
+                "priced-in-source-batches",
+                "--source",
+                "local_text",
+                "--execute-next",
+                "--decision-gap",
+                "candidate_packet",
+            ]
+        )
+        == 0
+    )
+    output = capsys.readouterr()
+
+    assert output.err == ""
+    assert "priced_in_source_batch_execution source=local_text status=executed" in (
+        output.out
+    )
+    assert "summary=Executed local_text chunk 1 (rows 1-5)" in output.out
+    assert "features=1 snippets=2 external_calls=0" in output.out
+    assert captured["source"] == "local_text"
+    assert captured["decision_gap"] == ["candidate_packet"]
 
 
 def test_priced_in_answer_cli_outputs_current_scan_answer(

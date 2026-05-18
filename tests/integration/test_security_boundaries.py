@@ -157,6 +157,14 @@ EXPECTED_API_ROUTES = {
     ): ("catalyst_radar.api.routes.radar", "radar_priced_in_source_batches", ("radar",)),
     (
         "POST",
+        "/api/radar/priced-in/source-batches/execute-next",
+    ): (
+        "catalyst_radar.api.routes.radar",
+        "radar_priced_in_source_batch_execute_next",
+        ("radar",),
+    ),
+    (
+        "POST",
         "/api/radar/sec/submissions-batch",
     ): ("catalyst_radar.api.routes.radar", "radar_sec_submissions_batch", ("radar",)),
     (
@@ -259,6 +267,7 @@ ALLOWED_BROKER_ROUTE_TERMS = {
     ("POST", "/api/brokers/schwab/disconnect"),
     ("POST", "/api/brokers/schwab/sync"),
     ("POST", "/api/brokers/schwab/market-sync"),
+    ("POST", "/api/radar/priced-in/source-batches/execute-next"),
     ("GET", "/api/market/context"),
     ("POST", "/api/opportunities/actions"),
     ("GET", "/api/opportunities/actions"),

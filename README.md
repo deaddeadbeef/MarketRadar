@@ -113,6 +113,16 @@ full-scan source plan plus the next safe provider chunk, and
 `batch <source> execute` runs only that one guarded chunk. The few tickers in a
 chunk are not the scan universe; they are the next rate-limited fill batch for
 the broader ranked universe.
+The scriptable equivalent is:
+
+```powershell
+catalyst-radar priced-in-source-batches --source catalyst_events
+catalyst-radar priced-in-source-batches --source catalyst_events --execute-next
+```
+
+The first command plans and makes 0 provider calls. The second command executes
+only the next planned chunk. The API equivalent is
+`POST /api/radar/priced-in/source-batches/execute-next`.
 
 Before any live provider call, run the activation checker and inspect the
 call plan:
@@ -216,7 +226,10 @@ one capped scheduler cycle after the call plan is visible.
 From the ops/source-gap view, `batch <source>` remains plan-only and zero-call;
 `batch <source> execute` is the explicit live/local action for one source-fill
 chunk. Use it repeatedly with refreshes when you intentionally want to fill the
-full scan under provider caps.
+full scan under provider caps. CLI/API automation can use
+`priced-in-source-batches --source <source> --execute-next` or
+`POST /api/radar/priced-in/source-batches/execute-next` for the same one-chunk
+operation.
 The broker page also supports local operator writes that do not submit real
 orders: `action <ticker> <watch|ready|simulate_entry|dismiss> [notes]`,
 `trigger <ticker> <type> <op> <threshold> [notes]`, `eval-triggers [ticker]`,

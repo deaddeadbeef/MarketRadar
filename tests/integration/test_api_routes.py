@@ -1469,6 +1469,68 @@ def test_get_radar_priced_in_source_batches_returns_zero_call_plan(
     assert captured["min_gap"] == 12.0
 
 
+def test_post_radar_priced_in_source_batch_execute_next_runs_one_chunk(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "radar-priced-in-source-execute.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+    captured: dict[str, object] = {}
+
+    def fake_execute(_engine, _config, **kwargs) -> dict[str, object]:
+        captured.update(kwargs)
+        return {
+            "schema_version": "priced-in-source-batch-execution-v1",
+            "source": kwargs["source"],
+            "status": "executed",
+            "external_calls_made": 0,
+            "plan": {"status": "ready", "batch_count": 1},
+            "batch": {"number": 1, "tickers": ["MSFT"]},
+            "result": {
+                "provider": "local_text",
+                "endpoint": "features-batch",
+                "ticker_count": 1,
+                "feature_count": 1,
+                "snippet_count": 2,
+                "external_calls_made": 0,
+            },
+        }
+
+    monkeypatch.setattr(
+        radar_routes,
+        "execute_priced_in_source_batch",
+        fake_execute,
+        raising=False,
+    )
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/radar/priced-in/source-batches/execute-next",
+        json={
+            "source": "local_text",
+            "available_at": "2026-05-18T16:00:00+00:00",
+            "status": "all",
+            "usefulness": "research_useful",
+            "decision_gap": ["candidate_packet"],
+            "min_gap": 12,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["schema_version"] == "priced-in-source-batch-execution-v1"
+    assert payload["source"] == "local_text"
+    assert payload["status"] == "executed"
+    assert payload["external_calls_made"] == 0
+    assert captured["source"] == "local_text"
+    assert captured["available_at"].isoformat() == "2026-05-18T16:00:00+00:00"
+    assert captured["status"] == "all"
+    assert captured["usefulness"] == "research_useful"
+    assert captured["decision_gap"] == ["candidate_packet"]
+    assert captured["min_gap"] == 12.0
+
+
 def test_post_radar_sec_submissions_batch_calls_capped_sec_executor(
     tmp_path,
     monkeypatch,
