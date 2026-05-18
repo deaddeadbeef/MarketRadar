@@ -57,6 +57,26 @@ git diff --check
 
 Observed: focused pytest passed, ruff passed, `git diff --check` passed.
 
+### Priority Correction
+
+Follow-up inspection showed the first decision-readiness summary recommended
+`options` before local artifact work. That was too aggressive because current
+Schwab option-chain context can be explicit/read-only but is still live context,
+while Candidate Packet and Decision Card work is local and prerequisite to
+human decision review.
+
+The recommendation order is now:
+
+```text
+market_bars -> catalyst_events -> local_text -> candidate_packet -> decision_card -> options -> broker_context -> theme_peer_sector
+```
+
+Live smoke after the priority correction:
+
+```text
+recommended_gap={'gap': 'candidate_packet', 'count': 5, 'command': 'catalyst-radar priced-in-queue --usefulness research_useful --decision-gap candidate_packet --limit 50', ...}
+```
+
 ## Latest Full-Scan Scope UX
 
 The live backend is scanning the broad local universe. A zero-provider-call
