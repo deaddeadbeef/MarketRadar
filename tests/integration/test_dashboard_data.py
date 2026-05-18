@@ -2180,6 +2180,31 @@ def test_priced_in_source_gap_batches_payload_avoids_market_call_for_sec_batches
     assert batch["call_plan_status"] == "live_calls_planned"
 
 
+def test_priced_in_source_gap_batches_payload_exposes_missing_cik_blockers(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+
+    payload = priced_in_source_gap_batches_payload(
+        engine,
+        AppConfig(
+            daily_event_provider="sec",
+            sec_enable_live=True,
+            sec_user_agent="MarketRadar test@example.com",
+        ),
+        source="catalyst_events",
+        batch_limit=1,
+    )
+
+    assert payload["status"] == "blocked"
+    assert payload["total_gap_rows"] == 1
+    assert payload["plannable_gap_rows"] == 0
+    assert payload["diagnostic"]["blocked_reason"] == "missing_cik"
+    assert payload["diagnostic"]["sample_blocked_tickers"] == ["AAPL"]
+    assert "Add CIK metadata" in payload["diagnostic"]["next_action"]
+
+
 def test_priced_in_source_gap_batches_payload_marks_text_rows_blocked_without_events(
     tmp_path: Path,
 ) -> None:
@@ -2198,6 +2223,7 @@ def test_priced_in_source_gap_batches_payload_marks_text_rows_blocked_without_ev
     assert payload["plannable_gap_rows"] == 1
     assert payload["diagnostic"]["blocked_reason"] == "missing_catalyst_events"
     assert payload["diagnostic"]["sample_blocked_tickers"] == ["AAPL"]
+    assert "Fill catalyst_events first" in payload["diagnostic"]["next_action"]
     assert payload["batches"][0]["tickers"] == ["MSFT"]
 
 

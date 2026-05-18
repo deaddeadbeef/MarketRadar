@@ -7672,6 +7672,12 @@ def _priced_in_source_plannable_rows(
             "blocked_rows": len(missing_cik),
             "blocked_reason": "missing_cik" if missing_cik else None,
             "sample_blocked_tickers": _sample_tickers(missing_cik),
+            "next_action": (
+                "Add CIK metadata for blocked tickers or refresh security metadata "
+                "before expecting SEC catalyst coverage for those rows."
+            )
+            if missing_cik
+            else None,
         }
     if source_name == "local_text":
         eligible = [
@@ -7704,6 +7710,12 @@ def _priced_in_source_plannable_rows(
                     if row not in eligible
                 ]
             ),
+            "next_action": (
+                "Fill catalyst_events first; local text can only process rows "
+                "with stored event text."
+            )
+            if blocked
+            else None,
         }
     return [], {
         "schema_version": "priced-in-source-batch-diagnostic-v1",
@@ -7975,8 +7987,9 @@ def _priced_in_source_batches_next_action(
         if plannable_gap_rows <= 0 and source_name == "local_text":
             return "Fill catalyst events first; local text has no event text to process."
         return (
-            "Review the first batch, then run one explicit batch command at a time "
-            "only if the source, scan date, and call budget match your intent."
+            "Full scan is split into provider-safe chunks. Review the full batch "
+            "plan, then run one explicit chunk at a time only if the source, scan "
+            "date, and call budget match your intent."
         )
     if source_name == "catalyst_events":
         return "Use the Run page call plan; event ingestion is governed by provider caps."

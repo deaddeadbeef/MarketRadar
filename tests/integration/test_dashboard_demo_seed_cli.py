@@ -397,7 +397,8 @@ def test_dashboard_batch_command_opens_full_scan_source_batch_plan(
         "Showing batch 1-1 of 1 (1 ticker(s)); this includes every currently "
         "plannable ticker for this source."
     ) in update.message
-    assert "Next safe chunk only: catalyst-radar schwab-market-sync --ticker ACME" in (
+    assert "Add `all` to summarize every chunk for this source." in update.message
+    assert "First safe chunk: catalyst-radar schwab-market-sync --ticker ACME" in (
         update.message
     )
     assert "`batch options execute`" in update.message
@@ -427,6 +428,24 @@ def test_dashboard_batch_command_opens_full_scan_source_batch_plan(
         "First executable: catalyst-radar priced-in-source-batches "
         "--source options --execute-next"
     ) in overview.message
+
+    full_plan = _apply_command(
+        "batch options all",
+        {},
+        "overview",
+        DashboardFilters(),
+        engine=create_engine(database_url, future=True),
+        config=AppConfig.from_env(),
+    )
+
+    assert full_plan.page == "ops"
+    assert "options: ready;" in full_plan.message
+    assert "Full chunk plan requested" in full_plan.message
+    assert (
+        "this includes every currently plannable ticker for this source"
+        in full_plan.message
+    )
+    assert "First safe chunk:" in full_plan.message
 
 
 def test_dashboard_batch_execute_runs_one_guarded_local_chunk(
@@ -1037,6 +1056,57 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
     )
     output = capsys.readouterr()
     assert "source all is plan-only" in output.err
+
+
+def test_priced_in_source_batches_cli_prints_blocked_source_samples(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    def fake_payload(*_args, **_kwargs):
+        return {
+            "schema_version": "priced-in-source-batches-v1",
+            "source": "catalyst_events",
+            "status": "blocked",
+            "total_gap_rows": 2,
+            "plannable_gap_rows": 0,
+            "unplannable_gap_rows": 2,
+            "planned_at": "2026-05-18T16:00:00+00:00",
+            "batch_size": 5,
+            "count": 0,
+            "batch_count": 0,
+            "batch_offset": 0,
+            "all_batches": False,
+            "external_calls_made": 0,
+            "headline": "2 full-scan rows have a catalyst_events gap.",
+            "next_action": "Add CIK metadata.",
+            "execution_boundary": "Plan only.",
+            "diagnostic": {
+                "status": "blocked",
+                "eligible_rows": 0,
+                "blocked_rows": 2,
+                "blocked_reason": "missing_cik",
+                "reason": "SEC event batches require CIK metadata for each ticker.",
+                "sample_blocked_tickers": ["AAA", "BBB"],
+                "next_action": "Add CIK metadata for blocked tickers.",
+            },
+            "batches": [],
+        }
+
+    monkeypatch.setattr(
+        "catalyst_radar.cli.priced_in_source_gap_batches_payload",
+        fake_payload,
+    )
+
+    assert main(["priced-in-source-batches", "--source", "catalyst_events"]) == 0
+    output = capsys.readouterr()
+
+    assert output.err == ""
+    assert "blocked_examples=AAA,BBB reason=missing_cik" in output.out
+    assert "diagnostic_next=Add CIK metadata for blocked tickers." in output.out
 
 
 def test_priced_in_source_batches_execute_next_cli_runs_one_batch(

@@ -3258,6 +3258,16 @@ def _print_priced_in_source_batches(payload: Mapping[str, object]) -> None:
             f"blocked={diagnostic.get('blocked_rows')} "
             f"reason={_compact_cli_text(diagnostic.get('reason'))}"
         )
+        blocked_samples = diagnostic.get("sample_blocked_tickers")
+        if isinstance(blocked_samples, list | tuple) and blocked_samples:
+            print(
+                "blocked_examples="
+                f"{','.join(str(ticker) for ticker in blocked_samples)} "
+                f"reason={_compact_cli_text(diagnostic.get('blocked_reason'))}"
+            )
+        diagnostic_next = diagnostic.get("next_action")
+        if diagnostic_next:
+            print(f"diagnostic_next={_compact_cli_text(diagnostic_next)}")
     review_command = payload.get("review_rows_command")
     if review_command:
         print(f"review_rows={_compact_cli_text(review_command)}")
