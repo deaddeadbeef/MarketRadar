@@ -2598,6 +2598,23 @@ def _print_candidate_detail(payload: Mapping[str, object]) -> None:
         f"priced={brief.get('priced_in_score')}"
     )
     print(f"data={_compact_cli_text(_detail_data_summary(brief))}")
+    source_actions = brief.get("source_actions")
+    if isinstance(source_actions, list | tuple) and source_actions:
+        printed_header = False
+        for action in source_actions:
+            if not isinstance(action, Mapping):
+                continue
+            if str(action.get("status") or "") == "ready":
+                continue
+            if not printed_header:
+                print("source_actions:")
+                printed_header = True
+            print(
+                "- "
+                f"{action.get('source')} "
+                f"status={action.get('status')} "
+                f"next={_compact_cli_text(action.get('next_action'))}"
+            )
     blockers = brief.get("blockers")
     if isinstance(blockers, list | tuple) and blockers:
         print(f"blockers={','.join(str(item) for item in blockers)}")

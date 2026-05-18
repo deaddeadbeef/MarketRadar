@@ -5041,6 +5041,7 @@ def _priced_in_evidence_brief(
     packet = packet_payload if isinstance(packet_payload, Mapping) else {}
     blockers = _priced_in_row_blockers(candidate)
     data_sources = _priced_in_row_source_payload(candidate)
+    source_actions = _priced_in_source_actions_from_payload(data_sources)
     evidence = _priced_in_brief_evidence(
         candidate,
         events=events,
@@ -5066,6 +5067,7 @@ def _priced_in_evidence_brief(
         "source": candidate.get("top_event_source"),
         "source_url": candidate.get("top_event_source_url"),
         "data_sources": data_sources,
+        "source_actions": source_actions,
         "evidence": evidence,
         "next_step": _priced_in_brief_next_step(candidate, blockers),
     }
@@ -5372,6 +5374,27 @@ def _priced_in_source_action_rows(
         _priced_in_source_action_row(source, sources.get(source, {}), row_count)
         for source in PRICED_IN_SOURCE_CLASSES
     ]
+
+
+def _priced_in_source_actions_from_payload(
+    data_sources: Mapping[str, object],
+) -> list[dict[str, object]]:
+    available = {str(item) for item in _sequence_value(data_sources.get("available"))}
+    stale = {str(item) for item in _sequence_value(data_sources.get("stale"))}
+    missing = {str(item) for item in _sequence_value(data_sources.get("missing"))}
+    source_rows: dict[str, dict[str, object]] = {}
+    for source in PRICED_IN_SOURCE_CLASSES:
+        is_available = source in available
+        is_stale = source in stale
+        is_missing = source in missing or (not is_available and not is_stale)
+        source_rows[source] = {
+            "available": 1 if is_available else 0,
+            "stale": 1 if is_stale else 0,
+            "missing": 1 if is_missing else 0,
+            "row_count": 1,
+            "coverage_pct": 100.0 if is_available else 0.0,
+        }
+    return _priced_in_source_action_rows(source_rows, 1)
 
 
 def _priced_in_source_action_row(

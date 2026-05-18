@@ -2521,6 +2521,7 @@ def _candidate_detail_kv_pairs(row: Mapping[str, object]) -> tuple[tuple[str, ob
                 ),
             ),
             ("Data coverage", _data_coverage_summary(row)),
+            ("Source gaps", _candidate_source_action_summary(brief)),
             ("Blocked", "yes" if brief.get("blocked") else "no"),
             ("Blockers", blockers),
             ("Next step", brief.get("next_step")),
@@ -2554,6 +2555,23 @@ def _rows_or_values(value: object) -> list[object]:
     if isinstance(value, list | tuple):
         return list(value)
     return []
+
+
+def _candidate_source_action_summary(brief: Mapping[str, object]) -> str:
+    gaps = [
+        action
+        for action in _rows(brief.get("source_actions"))
+        if str(action.get("status") or "") not in {"ready", "not_applicable"}
+    ]
+    if not gaps:
+        return "none"
+    return "; ".join(
+        _join_nonempty(
+            (action.get("source"), action.get("next_action")),
+            separator=": ",
+        )
+        for action in gaps[:3]
+    )
 
 
 def _candidate_detail_lines(
