@@ -57,6 +57,7 @@ from catalyst_radar.core.immutability import thaw_json_value
 from catalyst_radar.core.models import ActionState
 from catalyst_radar.dashboard.data import (
     load_ticker_detail,
+    priced_in_all_source_gap_batches_payload,
     priced_in_answer_payload,
     priced_in_preflight_payload,
     priced_in_queue_payload,
@@ -489,9 +490,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     priced_in_batches = subparsers.add_parser("priced-in-source-batches")
     priced_in_batches.add_argument("--database-url")
-    priced_in_batches.add_argument("--source", required=True)
-    priced_in_batches.add_argument("--batch-limit", type=int, default=5)
-    priced_in_batches.add_argument("--batch-offset", type=int, default=0)
+    priced_in_batches.add_argument(
+        "--source",
+        required=True,
+        help="Source to plan, or 'all' for a plan-only overview across sources.",
+    )
+    priced_in_batches.add_argument("--batch-limit", "--limit", type=int, default=5)
+    priced_in_batches.add_argument("--batch-offset", "--offset", type=int, default=0)
     priced_in_batches.add_argument("--batch-size", type=int)
     priced_in_batches.add_argument(
         "--execute-next",
@@ -997,9 +1002,17 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 2
+        source_name = str(args.source or "").strip().lower()
+        if args.execute_next and source_name in {"all", "*"}:
+            print(
+                "priced-in-source-batches --source all is plan-only; choose one "
+                "source before using --execute-next",
+                file=sys.stderr,
+            )
+            return 2
         try:
-            payload = (
-                execute_priced_in_source_batch(
+            if args.execute_next:
+                payload = execute_priced_in_source_batch(
                     engine,
                     config,
                     source=args.source,
@@ -1009,8 +1022,19 @@ def main(argv: list[str] | None = None) -> int:
                     decision_gap=args.decision_gap,
                     min_gap=args.min_gap,
                 )
-                if args.execute_next
-                else priced_in_source_gap_batches_payload(
+            elif source_name in {"all", "*"}:
+                payload = priced_in_all_source_gap_batches_payload(
+                    engine,
+                    config,
+                    batch_size=args.batch_size,
+                    available_at=args.available_at,
+                    status=args.status,
+                    usefulness=args.usefulness,
+                    decision_gap=args.decision_gap,
+                    min_gap=args.min_gap,
+                )
+            else:
+                payload = priced_in_source_gap_batches_payload(
                     engine,
                     config,
                     source=args.source,
@@ -1024,7 +1048,6 @@ def main(argv: list[str] | None = None) -> int:
                     decision_gap=args.decision_gap,
                     min_gap=args.min_gap,
                 )
-            )
         except ValueError as exc:
             print(str(exc), file=sys.stderr)
             return 2
@@ -1032,6 +1055,10 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
         elif args.execute_next:
             _print_priced_in_source_batch_execution(payload)
+        elif str(payload.get("schema_version") or "") == (
+            "priced-in-source-batch-overview-v1"
+        ):
+            _print_priced_in_all_source_batches(payload)
         else:
             _print_priced_in_source_batches(payload)
         if args.execute_next:
@@ -3092,6 +3119,49 @@ def _print_priced_in_queue(payload: Mapping[str, object]) -> None:
             else _int_value(payload.get("count"))
         )
         print(f"more={_priced_in_more_command(filters, limit, next_offset)}")
+
+
+def _print_priced_in_all_source_batches(payload: Mapping[str, object]) -> None:
+    print(
+        "priced_in_source_batch_overview "
+        f"status={payload.get('status')} "
+        f"sources={payload.get('source_count')} "
+        f"ready_sources={payload.get('ready_source_count')} "
+        f"blocked_sources={payload.get('blocked_source_count')} "
+        f"gap_rows={payload.get('total_gap_rows')} "
+        f"external_calls={payload.get('external_calls_made')}"
+    )
+    print(f"headline={payload.get('headline')}")
+    print(f"next_action={payload.get('next_action')}")
+    boundary = payload.get("execution_boundary")
+    if boundary:
+        print(f"boundary={_compact_cli_text(boundary)}")
+    rows = payload.get("sources")
+    if not isinstance(rows, list | tuple) or not rows:
+        return
+    print("source status gap_rows plannable batches first_calls next_command")
+    for row in rows:
+        if not isinstance(row, Mapping):
+            continue
+        first_batch = row.get("first_batch")
+        first_calls = 0
+        if isinstance(first_batch, Mapping):
+            first_calls = _int_value(first_batch.get("external_calls_required"))
+        print(
+            f"{row.get('source')} "
+            f"{row.get('status')} "
+            f"{row.get('total_gap_rows')} "
+            f"{row.get('plannable_gap_rows')} "
+            f"{row.get('batch_count')} "
+            f"{first_calls} "
+            f"{_compact_cli_text(row.get('execute_next_command'))}"
+        )
+        action = row.get("next_action")
+        if action:
+            print(f"  next={_compact_cli_text(action)}")
+        plan_command = row.get("all_batches_command")
+        if plan_command:
+            print(f"  plan={_compact_cli_text(plan_command)}")
 
 
 def _print_priced_in_source_batches(payload: Mapping[str, object]) -> None:

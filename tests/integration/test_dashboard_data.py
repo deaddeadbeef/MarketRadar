@@ -63,6 +63,7 @@ from catalyst_radar.dashboard.data import (
     operator_next_step_payload,
     operator_work_queue_payload,
     opportunity_focus_payload,
+    priced_in_all_source_gap_batches_payload,
     priced_in_answer_payload,
     priced_in_preflight_payload,
     priced_in_queue_payload,
@@ -1794,6 +1795,36 @@ def test_priced_in_source_gap_batches_payload_can_return_full_scan_plan(
         "GET /api/radar/priced-in/source-batches?source=options&all_batches=true"
     )
     assert [batch["tickers"] for batch in payload["batches"]] == [["MSFT"], ["AAPL"]]
+
+
+def test_priced_in_all_source_gap_batches_payload_summarizes_next_chunks(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+
+    payload = priced_in_all_source_gap_batches_payload(
+        engine,
+        AppConfig(schwab_market_sync_max_tickers=1),
+    )
+
+    assert payload["schema_version"] == "priced-in-source-batch-overview-v1"
+    assert payload["external_calls_made"] == 0
+    assert payload["source_count"] == 6
+    rows = {row["source"]: row for row in payload["sources"]}
+    assert rows["market_bars"]["status"] == "no_gaps"
+    assert rows["options"]["status"] == "ready"
+    assert rows["options"]["total_gap_rows"] == 2
+    assert rows["options"]["batch_count"] == 2
+    assert rows["options"]["first_batch"]["tickers"] == ["MSFT"]
+    assert rows["options"]["first_batch"]["external_calls_required"] == 1
+    assert rows["options"]["execute_next_command"] == (
+        "catalyst-radar priced-in-source-batches --source options --execute-next"
+    )
+    assert rows["local_text"]["all_batches_command"] == (
+        "catalyst-radar priced-in-source-batches --source local_text --all --json"
+    )
+    assert "provider calls" in payload["execution_boundary"]
 
 
 def test_priced_in_source_gap_batches_payload_plans_sec_event_batches(

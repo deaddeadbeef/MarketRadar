@@ -2169,6 +2169,12 @@ def _priced_in_source_batch_message(
             "Usage: batch <source>. Try: batch catalyst_events, batch local_text, "
             "batch options. Add execute to run one guarded chunk."
         )
+    if source.strip().lower() in {"all", "*"}:
+        return _priced_in_all_source_batch_message(
+            engine,
+            config,
+            filters=filters,
+        )
     payload_or_error = _first_priced_in_source_batch_payload(
         engine,
         config,
@@ -2228,6 +2234,49 @@ def _priced_in_source_batch_message(
     return f"{prefix} {detail}"
 
 
+def _priced_in_all_source_batch_message(
+    engine: Engine,
+    config: AppConfig,
+    *,
+    filters: DashboardFilters,
+) -> str:
+    payload = dashboard_data.priced_in_all_source_gap_batches_payload(
+        engine,
+        config,
+        available_at=filters.available_at,
+        status=filters.priced_in_status,
+        usefulness=filters.priced_in_usefulness,
+        decision_gap=filters.priced_in_decision_gap,
+    )
+    rows = _rows(payload.get("sources"))
+    pieces = [
+        (
+            f"{row.get('source')}={row.get('status')} "
+            f"gaps={int(_number_or_zero(row.get('total_gap_rows')))} "
+            f"batches={int(_number_or_zero(row.get('batch_count')))}"
+        )
+        for row in rows
+    ]
+    first_ready = next(
+        (
+            row
+            for row in rows
+            if str(row.get("status") or "") == "ready"
+            and str(row.get("execute_next_command") or "").strip()
+        ),
+        None,
+    )
+    command = (
+        f" First executable: {first_ready.get('execute_next_command')}."
+        if first_ready
+        else ""
+    )
+    return (
+        f"{payload.get('headline')} This is plan-only and makes no provider calls. "
+        f"{'; '.join(pieces)}.{command}"
+    )
+
+
 def _parse_source_batch_command(value: str) -> tuple[str, bool]:
     parts = [part.strip() for part in value.split() if part.strip()]
     execute_words = {"execute", "exec", "run"}
@@ -2269,6 +2318,11 @@ def _execute_priced_in_source_batch(
         return (
             "Usage: batch <source> execute. Try: batch catalyst_events execute, "
             "batch local_text execute, batch options execute."
+        )
+    if source.strip().lower() in {"all", "*"}:
+        return (
+            "batch all is plan-only. Choose one source before running execute, "
+            "for example: batch catalyst_events execute."
         )
     try:
         payload = execute_source_batch(

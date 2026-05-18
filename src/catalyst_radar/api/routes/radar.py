@@ -449,6 +449,21 @@ def radar_priced_in_source_batches(
     decision_gap: str | None = Query(default=None),
     min_gap: float | None = Query(default=None, ge=0),
 ) -> dict[str, object]:
+    source_name = source.strip().lower()
+    if source_name in {"all", "*"}:
+        overview_payload = _dashboard_helper("priced_in_all_source_gap_batches_payload")
+        return redact_restricted_external_payload(
+            overview_payload(
+                _engine(),
+                AppConfig.from_env(),
+                batch_size=batch_size,
+                available_at=_parse_api_datetime(available_at),
+                status=status,
+                usefulness=usefulness,
+                decision_gap=decision_gap,
+                min_gap=min_gap,
+            )
+        )
     batches_payload = _dashboard_helper("priced_in_source_gap_batches_payload")
     try:
         payload = batches_payload(
