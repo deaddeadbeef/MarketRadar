@@ -409,6 +409,12 @@ def dashboard_snapshot_payload(
         if isinstance(priced_in_queue.get("source_coverage"), Mapping)
         else dashboard_data.priced_in_source_coverage_summary(candidate_rows)
     )
+    priced_in_answer = dashboard_data.priced_in_answer_payload(
+        engine,
+        config,
+        queue=priced_in_queue,
+        preflight=priced_in_preflight,
+    )
     operator_next_step = dashboard_data.operator_next_step_payload(operator_work_queue)
     telemetry = dashboard_data.telemetry_tape_payload(
         ops_health,
@@ -443,6 +449,7 @@ def dashboard_snapshot_payload(
         "operator_next_step": operator_next_step,
         "priced_in_preflight": priced_in_preflight,
         "priced_in_queue": priced_in_queue,
+        "priced_in_answer": priced_in_answer,
         "priced_in_source_coverage": priced_in_source_coverage,
         "candidates": {
             "count": len(candidate_rows),
@@ -1265,6 +1272,7 @@ class MarketRadarDashboardApp(App[int]):
             discovery = _mapping(self.payload.get("discovery_snapshot"))
             scan_yield = _mapping(discovery.get("yield"))
             queue = _mapping(self.payload.get("priced_in_queue"))
+            answer = _mapping(self.payload.get("priced_in_answer"))
             status_filter = _priced_in_status_filter(queue)
             mode = "Full Scan" if status_filter == "all" else "Mismatches"
             offset = int(_number_or_zero(queue.get("offset")))
@@ -1305,6 +1313,14 @@ class MarketRadarDashboardApp(App[int]):
                     (
                         f"[bold]Current boundary:[/] {can_act}; "
                         f"{blocked_layers or 0} useful layer(s) blocked."
+                    ),
+                    (
+                        f"[bold]Priced-in answer:[/] "
+                        f"{answer.get('answer') or 'Open Insights for current answer.'}"
+                    ),
+                    (
+                        f"[bold]Do next:[/] "
+                        f"{answer.get('next_action') or 'Review the largest gaps first.'}"
                     ),
                     (
                         "[bold]Safe rule:[/] browsing and opening insight rows make "
@@ -2523,6 +2539,7 @@ def _market_insight_rows(payload: Mapping[str, object]) -> list[Mapping[str, obj
     call_plan = _mapping(payload.get("call_plan"))
     preflight = _mapping(payload.get("priced_in_preflight"))
     priced_in_queue = _mapping(payload.get("priced_in_queue"))
+    priced_in_answer = _mapping(payload.get("priced_in_answer"))
     source_coverage = _mapping(payload.get("priced_in_source_coverage"))
     can_act = _decision_label(readiness)
     queue_rows = (
@@ -2540,6 +2557,24 @@ def _market_insight_rows(payload: Mapping[str, object]) -> list[Mapping[str, obj
         )
     )
     rows: list[Mapping[str, object]] = []
+
+    if priced_in_answer:
+        rows.append(
+            {
+                "_row_key": "priced-in-answer",
+                "scope": "ANSWER",
+                "signal": _human_label(priced_in_answer.get("status") or "priced-in answer"),
+                "why_now": priced_in_answer.get("answer")
+                or priced_in_answer.get("headline")
+                or "Current priced-in answer is available.",
+                "next_action": priced_in_answer.get("next_action")
+                or "Open the priced-in queue.",
+                "target_page": "run"
+                if priced_in_answer.get("next_command")
+                else "overview",
+                "status_message": "Opened current priced-in answer context.",
+            }
+        )
 
     rows.append(
         _full_scan_coverage_row(

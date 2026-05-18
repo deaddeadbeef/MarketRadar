@@ -61,6 +61,7 @@ from catalyst_radar.dashboard.data import (
     operator_next_step_payload,
     operator_work_queue_payload,
     opportunity_focus_payload,
+    priced_in_answer_payload,
     priced_in_preflight_payload,
     priced_in_queue_payload,
     priced_in_source_gap_batches_payload,
@@ -1411,6 +1412,28 @@ def test_priced_in_queue_payload_surfaces_ranked_gap_rows(tmp_path: Path) -> Non
     )
     assert "decision_card" not in payload["rows"][0]["usefulness"]["missing_for_decision"]
     assert payload["rows"][0]["why_now"] == "MSFT guidance raised"
+
+
+def test_priced_in_answer_payload_summarizes_current_scan(tmp_path: Path) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+
+    payload = priced_in_answer_payload(engine, AppConfig.from_env({}), limit=2)
+
+    assert payload["schema_version"] == "priced-in-answer-v1"
+    assert payload["external_calls_made"] == 0
+    assert payload["question"] == "Has price fully matched market expectations?"
+    assert payload["status"] in {"blocked", "research_only", "none_visible"}
+    assert payload["can_make_investment_decision"] is False
+    assert payload["counts"]["total_rows"] == 2
+    assert payload["counts"]["visible_rows"] == 2
+    assert "scanned row" in payload["headline"]
+    assert payload["source_coverage"]["summary"]
+    assert payload["next_action"]
+    if payload["top_rows"]:
+        assert payload["top_rows"][0]["ticker"] == "MSFT"
+        assert payload["top_rows"][0]["decision_ready"] is False
+        assert payload["top_rows"][0]["missing_sources"]
 
 
 def test_priced_in_queue_payload_paginates_ranked_rows(tmp_path: Path) -> None:

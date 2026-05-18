@@ -384,6 +384,32 @@ def radar_priced_in_preflight() -> dict[str, object]:
     )
 
 
+@router.get("/priced-in/answer", dependencies=[Depends(require_role(Role.VIEWER))])
+def radar_priced_in_answer(
+    limit: int = Query(default=5, ge=1, le=50),
+    available_at: datetime | None = None,
+    status: str | None = Query(default=None),
+    usefulness: str | None = Query(default=None),
+    source_gap: str | None = Query(default=None),
+    decision_gap: str | None = Query(default=None),
+    min_gap: float | None = Query(default=None, ge=0),
+) -> dict[str, object]:
+    answer_payload = _dashboard_helper("priced_in_answer_payload")
+    return redact_restricted_external_payload(
+        answer_payload(
+            _engine(),
+            AppConfig.from_env(),
+            limit=limit,
+            available_at=_parse_api_datetime(available_at),
+            status=status,
+            usefulness=usefulness,
+            source_gap=source_gap,
+            decision_gap=decision_gap,
+            min_gap=min_gap,
+        )
+    )
+
+
 @router.get("/priced-in/source-batches", dependencies=[Depends(require_role(Role.VIEWER))])
 def radar_priced_in_source_batches(
     source: str = Query(...),

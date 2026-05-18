@@ -870,6 +870,279 @@ def priced_in_source_gap_batches_payload(
     }
 
 
+def priced_in_answer_payload(
+    engine: Engine,
+    config: AppConfig,
+    *,
+    limit: int = 5,
+    available_at: datetime | None = None,
+    status: str | None = None,
+    usefulness: str | None = None,
+    source_gap: str | Sequence[str] | None = None,
+    decision_gap: str | Sequence[str] | None = None,
+    min_gap: float | None = None,
+    queue: Mapping[str, object] | None = None,
+    preflight: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    resolved_limit = _positive_limit(limit)
+    resolved_queue = (
+        _row_dict(queue)
+        if isinstance(queue, Mapping)
+        else priced_in_queue_payload(
+            engine,
+            config,
+            limit=resolved_limit,
+            offset=0,
+            available_at=available_at,
+            status=status or "all",
+            usefulness=usefulness,
+            source_gap=source_gap,
+            decision_gap=decision_gap,
+            min_gap=min_gap,
+        )
+    )
+    resolved_preflight = (
+        _row_dict(preflight)
+        if isinstance(preflight, Mapping)
+        else priced_in_preflight_payload(engine, config)
+    )
+    status_counts = _mapping_value(resolved_queue, "status_counts")
+    usefulness_counts = _mapping_value(resolved_queue, "usefulness_counts")
+    actionable_count = sum(
+        int(_finite_float(status_counts.get(item)))
+        for item in PRICED_IN_ACTIONABLE_STATUSES
+    )
+    decision_ready_count = int(_finite_float(usefulness_counts.get("decision_useful")))
+    research_lead_count = int(_finite_float(usefulness_counts.get("research_useful")))
+    blocked_count = int(_finite_float(usefulness_counts.get("blocked")))
+    top_rows = _priced_in_answer_rows(_sequence_value(resolved_queue.get("rows")))
+    answer_status = _priced_in_answer_status(
+        queue_status=str(resolved_queue.get("status") or "unknown"),
+        actionable_count=actionable_count,
+        decision_ready_count=decision_ready_count,
+        research_lead_count=research_lead_count,
+        blocked_count=blocked_count,
+    )
+    next_action, next_command = _priced_in_answer_next_step(
+        answer_status=answer_status,
+        preflight=resolved_preflight,
+        top_rows=top_rows,
+    )
+    source_coverage = _mapping_value(resolved_queue, "source_coverage")
+    return {
+        "schema_version": "priced-in-answer-v1",
+        "status": answer_status,
+        "question": "Has price fully matched market expectations?",
+        "answer": _priced_in_answer_text(
+            answer_status=answer_status,
+            actionable_count=actionable_count,
+            decision_ready_count=decision_ready_count,
+            research_lead_count=research_lead_count,
+            blocked_count=blocked_count,
+        ),
+        "headline": _priced_in_answer_headline(
+            answer_status=answer_status,
+            total_count=int(_finite_float(resolved_queue.get("total_count"))),
+            actionable_count=actionable_count,
+            decision_ready_count=decision_ready_count,
+            research_lead_count=research_lead_count,
+            blocked_count=blocked_count,
+        ),
+        "can_make_investment_decision": decision_ready_count > 0,
+        "external_calls_made": 0,
+        "counts": {
+            "total_rows": int(_finite_float(resolved_queue.get("total_count"))),
+            "visible_rows": int(_finite_float(resolved_queue.get("count"))),
+            "actionable_mismatch_rows": actionable_count,
+            "decision_ready_rows": decision_ready_count,
+            "research_lead_rows": research_lead_count,
+            "blocked_rows": blocked_count,
+        },
+        "filters": _row_dict(_mapping_value(resolved_queue, "filters")),
+        "source_coverage": {
+            "summary": source_coverage.get("summary"),
+            "weak_sources": list(_sequence_value(source_coverage.get("weak_sources"))),
+        },
+        "trust_blockers": _priced_in_answer_trust_blockers(
+            resolved_preflight,
+            source_coverage=source_coverage,
+        ),
+        "next_action": next_action,
+        "next_command": next_command,
+        "top_rows": top_rows[:resolved_limit],
+    }
+
+
+def _priced_in_answer_rows(rows: Sequence[object]) -> list[dict[str, object]]:
+    answer_rows: list[dict[str, object]] = []
+    for row in rows:
+        if not isinstance(row, Mapping):
+            continue
+        status = str(row.get("priced_in_status") or "").strip()
+        if status not in PRICED_IN_ACTIONABLE_STATUSES:
+            continue
+        usefulness = _mapping_value(row, "usefulness")
+        data_sources = _mapping_value(row, "data_sources")
+        answer_rows.append(
+            {
+                "ticker": row.get("ticker"),
+                "status": status,
+                "usefulness": usefulness.get("status"),
+                "decision_ready": bool(usefulness.get("decision_ready")),
+                "direction": row.get("priced_in_direction"),
+                "emotion_reaction_gap": row.get("emotion_reaction_gap"),
+                "emotion_score": row.get("emotion_score"),
+                "reaction_score": row.get("reaction_score"),
+                "priced_in_score": row.get("priced_in_score"),
+                "why_now": row.get("why_now") or row.get("priced_in_reason"),
+                "missing_sources": list(_sequence_value(data_sources.get("missing"))),
+                "stale_sources": list(_sequence_value(data_sources.get("stale"))),
+                "next_step": row.get("next_step"),
+                "next_command": usefulness.get("next_command"),
+            }
+        )
+    return answer_rows
+
+
+def _priced_in_answer_status(
+    *,
+    queue_status: str,
+    actionable_count: int,
+    decision_ready_count: int,
+    research_lead_count: int,
+    blocked_count: int,
+) -> str:
+    if queue_status in {"universe_too_small", "partial_scan"}:
+        return "blocked"
+    if decision_ready_count > 0:
+        return "decision_ready"
+    if research_lead_count > 0:
+        return "research_only"
+    if actionable_count > 0 or blocked_count > 0:
+        return "blocked"
+    return "none_visible"
+
+
+def _priced_in_answer_text(
+    *,
+    answer_status: str,
+    actionable_count: int,
+    decision_ready_count: int,
+    research_lead_count: int,
+    blocked_count: int,
+) -> str:
+    if answer_status == "decision_ready":
+        return (
+            f"Not fully priced for {decision_ready_count} decision-ready row(s); "
+            "review the top evidence before any action."
+        )
+    if answer_status == "research_only":
+        return (
+            f"Not fully priced for {research_lead_count} research lead(s), but "
+            "none are decision-ready yet."
+        )
+    if answer_status == "blocked":
+        return (
+            f"{actionable_count or blocked_count} possible mismatch row(s) are blocked "
+            "by missing evidence or scan readiness."
+        )
+    return "No useful not-priced-in mismatch is visible in the current scan."
+
+
+def _priced_in_answer_headline(
+    *,
+    answer_status: str,
+    total_count: int,
+    actionable_count: int,
+    decision_ready_count: int,
+    research_lead_count: int,
+    blocked_count: int,
+) -> str:
+    if answer_status == "decision_ready":
+        return (
+            f"{decision_ready_count} decision-ready not-priced-in row(s) from "
+            f"{total_count} scanned row(s)."
+        )
+    if answer_status == "research_only":
+        return (
+            f"{research_lead_count} research-useful not-priced-in lead(s), "
+            f"{actionable_count} actionable mismatch row(s), {total_count} scanned row(s)."
+        )
+    if answer_status == "blocked":
+        return (
+            f"{blocked_count or actionable_count} row(s) need evidence cleanup before "
+            f"the priced-in answer is trustworthy; {total_count} scanned row(s)."
+        )
+    return f"No useful mismatch among {total_count} scanned row(s)."
+
+
+def _priced_in_answer_next_step(
+    *,
+    answer_status: str,
+    preflight: Mapping[str, object],
+    top_rows: Sequence[Mapping[str, object]],
+) -> tuple[str, str | None]:
+    plan = _mapping_value(preflight, "evidence_plan")
+    plan_action = str(plan.get("next_action") or "").strip()
+    plan_command = str(plan.get("next_command") or "").strip()
+    if answer_status in {"blocked", "research_only"} and plan_action:
+        return plan_action, plan_command or None
+    for row in top_rows:
+        next_step = str(row.get("next_step") or "").strip()
+        if next_step:
+            command = str(row.get("next_command") or "").strip()
+            return next_step, command or None
+    return (
+        "Review the priced-in queue and source coverage.",
+        "catalyst-radar priced-in-queue --mismatches",
+    )
+
+
+def _priced_in_answer_trust_blockers(
+    preflight: Mapping[str, object],
+    *,
+    source_coverage: Mapping[str, object],
+) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    plan = _mapping_value(preflight, "evidence_plan")
+    for step in _sequence_value(plan.get("steps")):
+        if not isinstance(step, Mapping):
+            continue
+        status = str(step.get("status") or "").strip()
+        if status == "ready":
+            continue
+        rows.append(
+            {
+                "area": step.get("area"),
+                "status": status,
+                "depends_on": list(_sequence_value(step.get("depends_on"))),
+                "next_action": step.get("action") or step.get("next_action"),
+                "command": step.get("command"),
+            }
+        )
+        if len(rows) >= 5:
+            return rows
+    actions = _sequence_value(source_coverage.get("actions"))
+    for action in actions:
+        if not isinstance(action, Mapping):
+            continue
+        status = str(action.get("status") or "").strip()
+        if status in {"ready", "not_applicable"}:
+            continue
+        rows.append(
+            {
+                "area": action.get("source"),
+                "status": status,
+                "gap_count": int(_finite_float(action.get("gap_count"))),
+                "next_action": action.get("next_action"),
+                "command": action.get("batch_plan_command") or action.get("command"),
+            }
+        )
+        if len(rows) >= 5:
+            return rows
+    return rows
+
+
 def priced_in_preflight_payload(
     engine: Engine,
     config: AppConfig,
