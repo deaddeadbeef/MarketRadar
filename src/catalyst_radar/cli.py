@@ -3312,6 +3312,24 @@ def _print_priced_in_source_batch_execution(payload: Mapping[str, object]) -> No
             f"event_count={result.get('event_count')} "
             f"option_features={result.get('option_features_upserted')}"
         )
+    post_execution = payload.get("post_execution")
+    if isinstance(post_execution, Mapping) and post_execution:
+        print(
+            "post_execution="
+            f"status={post_execution.get('status')} "
+            f"gap_rows={post_execution.get('before_gap_rows')}->"
+            f"{post_execution.get('after_gap_rows')} "
+            f"resolved={post_execution.get('gap_rows_resolved')} "
+            f"plannable={post_execution.get('before_plannable_rows')}->"
+            f"{post_execution.get('after_plannable_rows')} "
+            f"external_calls={post_execution.get('external_calls_made')}"
+        )
+        next_action = post_execution.get("next_action")
+        if next_action:
+            print(f"post_next={_compact_cli_text(next_action)}")
+        next_plan = post_execution.get("all_batches_command")
+        if next_plan:
+            print(f"post_plan={_compact_cli_text(next_plan)}")
 
 
 def _count_summary(counts: Mapping[object, object]) -> str:

@@ -1,6 +1,72 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 06:18:30 +08:00
+Last updated: 2026-05-19 06:25:26 +08:00
+
+## Latest Source Batch Post-Execution Check Fix
+
+After the full-scan/source-chunk wording fix, the remaining operator gap was:
+
+- `batch <source> execute` ran exactly one guarded source-fill chunk.
+- The result ended with:
+
+  ```text
+  Refresh to see updated full-scan coverage.
+  ```
+
+- That forced the operator to manually refresh/re-plan to learn whether the
+  chunk actually improved the full-scan priced-in answer.
+
+Fix in this slice:
+
+- `execute_priced_in_source_batch()` now performs one zero-call post-execution
+  re-plan after a successful chunk.
+- The execution payload can include:
+
+  ```text
+  post_execution.schema_version=priced-in-source-batch-post-execution-v1
+  status=complete|improved|unchanged
+  before_gap_rows / after_gap_rows / gap_rows_resolved
+  before_plannable_rows / after_plannable_rows / plannable_rows_resolved
+  before_batch_count / after_batch_count
+  review_rows_command / all_batches_command
+  next_action
+  external_calls_made=0
+  ```
+
+- CLI `priced-in-source-batches --source <source> --execute-next` now prints:
+
+  ```text
+  post_execution=status=... gap_rows=before->after resolved=...
+  post_next=...
+  post_plan=...
+  ```
+
+- TUI `batch <source> execute` now summarizes the post-check directly instead
+  of telling the operator to refresh blindly.
+- The API execute-next response carries the same structured `post_execution`
+  block.
+
+Important operator meaning:
+
+- Execution still runs at most one guarded chunk.
+- The post-check is only a local re-plan and reports `external_calls_made=0`.
+- If status is `improved` or `complete`, the next useful action is to review the
+  updated source-batch plan before running another chunk.
+- If status is `unchanged`, do not keep hammering the provider; inspect the
+  updated plan/dashboard first.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_batch_execute_runs_one_guarded_local_chunk tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_source_batches_execute_next_cli_runs_one_batch tests\integration\test_api_routes.py::test_post_radar_priced_in_source_batch_execute_next_runs_one_chunk -q
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_plans_safe_sync_batches tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_can_return_full_scan_plan tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_prioritizes_decision_useful_rows tests\integration\test_dashboard_data.py::test_priced_in_all_source_gap_batches_payload_summarizes_next_chunks tests\integration\test_api_routes.py::test_get_radar_priced_in_source_batches_returns_zero_call_plan tests\integration\test_api_routes.py::test_get_radar_priced_in_source_batches_can_return_all_source_overview -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\source_batches.py src\catalyst_radar\cli.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_api_routes.py
+git diff --check
+```
+
+Observed: focused executor/API/TUI tests passed, surrounding source-batch
+planning/API tests passed, ruff passed, and `git diff --check` passed. No live
+provider execution was run for validation.
 
 ## Latest Full-Scan Versus First-Batch Clarity Fix
 

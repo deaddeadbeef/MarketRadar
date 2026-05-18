@@ -1550,6 +1550,21 @@ def test_post_radar_priced_in_source_batch_execute_next_runs_one_chunk(
                 "snippet_count": 2,
                 "external_calls_made": 0,
             },
+            "post_execution": {
+                "schema_version": "priced-in-source-batch-post-execution-v1",
+                "source": kwargs["source"],
+                "status": "improved",
+                "external_calls_made": 0,
+                "before_gap_rows": 10,
+                "after_gap_rows": 9,
+                "gap_rows_resolved": 1,
+                "before_plannable_rows": 10,
+                "after_plannable_rows": 9,
+                "plannable_rows_resolved": 1,
+                "before_batch_count": 2,
+                "after_batch_count": 2,
+                "next_action": "Review the updated next batch.",
+            },
         }
 
     monkeypatch.setattr(
@@ -1578,6 +1593,8 @@ def test_post_radar_priced_in_source_batch_execute_next_runs_one_chunk(
     assert payload["source"] == "local_text"
     assert payload["status"] == "executed"
     assert payload["external_calls_made"] == 0
+    assert payload["post_execution"]["status"] == "improved"
+    assert payload["post_execution"]["gap_rows_resolved"] == 1
     assert captured["source"] == "local_text"
     assert captured["available_at"].isoformat() == "2026-05-18T16:00:00+00:00"
     assert captured["status"] == "all"

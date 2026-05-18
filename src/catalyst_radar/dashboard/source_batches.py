@@ -107,6 +107,24 @@ def execute_priced_in_source_batch(
             reason=f"{source_name} is not executable by source batch.",
         )
     result_status = str(result.get("status") or "executed")
+    post_execution = None
+    if result_status == "executed":
+        post_plan = priced_in_source_gap_batches_payload(
+            engine,
+            config,
+            source=source,
+            batch_limit=1,
+            available_at=available_at,
+            status=status,
+            usefulness=usefulness,
+            decision_gap=decision_gap,
+            min_gap=min_gap,
+        )
+        post_execution = _post_execution_check_payload(
+            source_name=source_name,
+            before_plan=plan,
+            after_plan=post_plan,
+        )
     return _execution_payload(
         source_name=source_name,
         status=result_status,
@@ -115,6 +133,7 @@ def execute_priced_in_source_batch(
         result=result,
         reason=str(result.get("reason") or ""),
         external_calls_made=int(_number_or_zero(result.get("external_calls_made"))),
+        post_execution=post_execution,
     )
 
 
@@ -160,6 +179,13 @@ def source_batch_execution_summary(payload: Mapping[str, object]) -> str:
             ]
         )
     details.append(f"external_calls={payload.get('external_calls_made', 0)}")
+    post_execution = _mapping(payload.get("post_execution"))
+    if post_execution:
+        next_action = str(post_execution.get("next_action") or "").strip()
+        return (
+            " ".join(details)
+            + f". Post-check: {next_action or _post_execution_fallback(post_execution)}"
+        )
     return " ".join(details) + ". Refresh to see updated full-scan coverage."
 
 
@@ -311,8 +337,9 @@ def _execution_payload(
     batch: Mapping[str, object] | None = None,
     result: Mapping[str, object] | None = None,
     external_calls_made: int = 0,
+    post_execution: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
-    return {
+    payload = {
         "schema_version": "priced-in-source-batch-execution-v1",
         "source": source_name,
         "status": status,
@@ -334,6 +361,66 @@ def _execution_payload(
         "batch": dict(batch or {}),
         "result": dict(result or {}),
     }
+    if post_execution is not None:
+        payload["post_execution"] = dict(post_execution)
+    return payload
+
+
+def _post_execution_check_payload(
+    *,
+    source_name: str,
+    before_plan: Mapping[str, object],
+    after_plan: Mapping[str, object],
+) -> dict[str, object]:
+    before_gap_rows = int(_number_or_zero(before_plan.get("total_gap_rows")))
+    after_gap_rows = int(_number_or_zero(after_plan.get("total_gap_rows")))
+    before_plannable = int(_number_or_zero(before_plan.get("plannable_gap_rows")))
+    after_plannable = int(_number_or_zero(after_plan.get("plannable_gap_rows")))
+    before_batches = int(_number_or_zero(before_plan.get("batch_count")))
+    after_batches = int(_number_or_zero(after_plan.get("batch_count")))
+    gap_rows_resolved = before_gap_rows - after_gap_rows
+    plannable_rows_resolved = before_plannable - after_plannable
+    if after_gap_rows <= 0:
+        status = "complete"
+        next_action = f"No full-scan {source_name} source gaps remain."
+    elif gap_rows_resolved > 0 or plannable_rows_resolved > 0:
+        status = "improved"
+        next_action = (
+            f"Full-scan {source_name} coverage improved; "
+            f"{max(gap_rows_resolved, 0)} gap row(s) and "
+            f"{max(plannable_rows_resolved, 0)} plannable row(s) cleared. "
+            "Review the updated next batch before executing another chunk."
+        )
+    else:
+        status = "unchanged"
+        next_action = (
+            f"No full-scan {source_name} source-gap delta detected yet; "
+            "refresh the dashboard or inspect the updated batch plan before repeating."
+        )
+    return {
+        "schema_version": "priced-in-source-batch-post-execution-v1",
+        "source": source_name,
+        "status": status,
+        "external_calls_made": 0,
+        "before_gap_rows": before_gap_rows,
+        "after_gap_rows": after_gap_rows,
+        "gap_rows_resolved": gap_rows_resolved,
+        "before_plannable_rows": before_plannable,
+        "after_plannable_rows": after_plannable,
+        "plannable_rows_resolved": plannable_rows_resolved,
+        "before_batch_count": before_batches,
+        "after_batch_count": after_batches,
+        "review_rows_command": after_plan.get("review_rows_command"),
+        "all_batches_command": after_plan.get("all_batches_command"),
+        "next_action": next_action,
+    }
+
+
+def _post_execution_fallback(post_execution: Mapping[str, object]) -> str:
+    source = str(post_execution.get("source") or "source").strip()
+    before = int(_number_or_zero(post_execution.get("before_gap_rows")))
+    after = int(_number_or_zero(post_execution.get("after_gap_rows")))
+    return f"{source} full-scan source gaps moved {before}->{after}."
 
 
 def _plan_block_reason(plan: Mapping[str, object], fallback: str) -> str:
