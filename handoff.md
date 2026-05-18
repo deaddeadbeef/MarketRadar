@@ -1,6 +1,35 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 01:45:00 +08:00
+Last updated: 2026-05-19 02:20:00 +08:00
+
+## Latest Priced-In vs Trade-Readiness Boundary Correction
+
+The current full-scan answer can be ready for human priced-in review while the
+system is still not safe for manual trading. The API/CLI had one misleading
+field: `priced-in-answer` derived `can_make_investment_decision` from the
+priced-in answer's `decision_ready` flag. That blurred the product boundary and
+made a research answer look like trade approval.
+
+Changes in this slice:
+
+- `priced_in_answer_payload()` now keeps `decision_ready` /
+  `priced_in_answer_ready` for the emotion-vs-reaction answer only.
+- `can_make_investment_decision` and `manual_investment_decision_ready` stay
+  `false` in the priced-in answer payload. Trade readiness remains governed by
+  `GET /api/radar/readiness` and the `manual_buy_review` gate.
+- Text-mode `priced-in-answer` now prints both `decision_ready=<bool>` and
+  `investment_decision_ready=false`, plus an explicit investment boundary line.
+- Static and interactive TUI headers now separate priced-in answer status from
+  trade status, so the dashboard can say "priced-in decision_ready" while still
+  showing "trade safe false."
+- README and the radar-run runbook document the boundary.
+
+Expected live smoke shape after this correction:
+
+```text
+priced_in_answer status=decision_ready decision_ready=true investment_decision_ready=false total=12087 ...
+investment_boundary=Priced-in answer readiness is not trade approval...
+```
 
 ## Latest Optional-Context Readiness Correction
 

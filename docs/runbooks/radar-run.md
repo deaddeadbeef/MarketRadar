@@ -259,6 +259,12 @@ tape. Use `safe_to_make_investment_decision=false` as a hard stop; high scores
 remain research-only until this endpoint says the queue is ready for
 `manual_buy_review`.
 
+Do not use `GET /api/radar/priced-in/answer` as trade approval. That endpoint
+answers whether market emotion appears ahead of price reaction. Its
+`decision_ready=true` means the priced-in answer is reviewable, while
+`can_make_investment_decision` remains `false` by design. Manual buy readiness
+comes only from `GET /api/radar/readiness`.
+
 For a single local pass/fail gate that matches the dashboard readiness contract,
 run:
 

@@ -1430,7 +1430,10 @@ def test_priced_in_answer_payload_summarizes_current_scan(tmp_path: Path) -> Non
     assert payload["question"] == "Has price fully matched market expectations?"
     assert payload["status"] in {"blocked", "research_only", "none_visible"}
     assert payload["decision_ready"] is False
+    assert payload["priced_in_answer_ready"] is False
     assert payload["can_make_investment_decision"] is False
+    assert payload["manual_investment_decision_ready"] is False
+    assert "not trade approval" in payload["investment_decision_boundary"]
     assert payload["counts"]["total_rows"] == 2
     assert payload["counts"]["visible_rows"] == 2
     assert payload["scan_scope"]["schema_version"] == "priced-in-scan-scope-v1"

@@ -975,6 +975,10 @@ def priced_in_answer_payload(
         scan_as_of=str(_mapping_value(resolved_queue, "latest_run").get("as_of") or ""),
     )
     decision_ready = decision_ready_count > 0
+    investment_decision_boundary = (
+        "Priced-in answer readiness is not trade approval. Use the separate "
+        "radar readiness/manual_buy_review gate before any investment decision."
+    )
     return {
         "schema_version": "priced-in-answer-v1",
         "status": answer_status,
@@ -995,7 +999,10 @@ def priced_in_answer_payload(
             blocked_count=blocked_count,
         ),
         "decision_ready": decision_ready,
-        "can_make_investment_decision": decision_ready,
+        "priced_in_answer_ready": decision_ready,
+        "can_make_investment_decision": False,
+        "manual_investment_decision_ready": False,
+        "investment_decision_boundary": investment_decision_boundary,
         "external_calls_made": 0,
         "counts": {
             "total_rows": int(_finite_float(resolved_queue.get("total_count"))),

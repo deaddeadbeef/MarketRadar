@@ -272,6 +272,12 @@ market bars, catalyst events, local text, options, theme/peer/sector context,
 and broker context. The API equivalent is `GET /api/radar/priced-in`.
 Use `priced-in-preflight --json` first when the queue says `universe_too_small`
 or `partial_scan`; its API equivalent is `GET /api/radar/priced-in/preflight`.
+`priced-in-answer` and `GET /api/radar/priced-in/answer` answer the narrower
+question "Has price fully matched market expectations?" Their
+`decision_ready=true` / `priced_in_answer_ready=true` fields mean the
+emotion-vs-reaction answer is ready for human review. They deliberately keep
+`can_make_investment_decision=false`; trade safety still comes only from the
+separate readiness/manual-buy-review gate.
 
 `agent-brief` is the CLI surface for the OpenAI Agents SDK operator layer. By
 default it runs a deterministic dry-run brief from the same redacted dashboard
