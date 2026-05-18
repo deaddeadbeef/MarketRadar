@@ -6,11 +6,13 @@ from pathlib import Path
 import pytest
 from sqlalchemy import create_engine, func, select
 
+from catalyst_radar.brokers.models import BrokerMarketSnapshot, broker_market_snapshot_id
 from catalyst_radar.cli import main
 from catalyst_radar.connectors.base import ConnectorRecordKind, ConnectorRequest
 from catalyst_radar.connectors.options import OptionsAggregateConnector
 from catalyst_radar.connectors.provider_ingest import ProviderIngestError, ingest_provider_records
 from catalyst_radar.features.options import OptionFeatureInput
+from catalyst_radar.storage.broker_repositories import BrokerRepository
 from catalyst_radar.storage.db import create_schema
 from catalyst_radar.storage.feature_repositories import FeatureRepository
 from catalyst_radar.storage.provider_repositories import ProviderRepository
@@ -92,6 +94,71 @@ def test_ingest_options_cli_persists_option_feature(
         row = conn.execute(select(option_features)).one()
     assert row.ticker == "AAA"
     assert row.call_volume == 12_000
+
+
+def test_ingest_options_cli_promotes_stored_schwab_market_snapshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'schwab-options.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = create_engine(database_url, future=True)
+    create_schema(engine)
+    now = datetime(2026, 5, 12, 14, tzinfo=UTC)
+    BrokerRepository(engine).upsert_market_snapshots(
+        [
+            BrokerMarketSnapshot(
+                id=broker_market_snapshot_id("GLW", now),
+                ticker="GLW",
+                as_of=now,
+                raw_payload={
+                    "options": {
+                        "callExpDateMap": {
+                            "2026-06-19:38": {
+                                "12.5": [
+                                    {
+                                        "totalVolume": 900,
+                                        "openInterest": 1200,
+                                        "volatility": 42.0,
+                                    }
+                                ]
+                            }
+                        },
+                        "putExpDateMap": {
+                            "2026-06-19:38": {
+                                "10.0": [
+                                    {
+                                        "totalVolume": 300,
+                                        "openInterest": 800,
+                                        "volatility": 39.0,
+                                    }
+                                ]
+                            }
+                        },
+                    }
+                },
+                created_at=now,
+            )
+        ]
+    )
+
+    exit_code = main(["ingest-options", "--from-schwab-market", "--ticker", "GLW"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert captured.out == (
+        "ingested provider=schwab_option_chain raw=1 normalized=1 "
+        "option_features=1 rejected=0\n"
+    )
+    assert captured.err == ""
+    with engine.connect() as conn:
+        row = conn.execute(select(option_features)).one()
+    assert row.ticker == "GLW"
+    assert row.provider == "schwab_option_chain"
+    assert row.call_volume == 900
+    assert row.put_volume == 300
+    assert row.iv_percentile == 0.405
 
 
 def test_upsert_option_features_replaces_by_deterministic_id() -> None:

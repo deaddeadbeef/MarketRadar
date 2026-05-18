@@ -2412,7 +2412,10 @@ def _source_coverage_next_action(source_coverage: Mapping[str, object]) -> str:
     if first == "local_text":
         return "Run local text intelligence for candidate narratives."
     if first == "options":
-        return "Treat options as missing until an options source is configured."
+        return (
+            "Sync Schwab option context or promote stored Schwab snapshots into "
+            "options evidence."
+        )
     if first == "theme_peer_sector":
         return "Review theme, peer, and sector context before acting."
     if first == "broker_context":

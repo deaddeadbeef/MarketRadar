@@ -9,6 +9,7 @@ from catalyst_radar.brokers.interactive import (
     evaluate_triggers,
     record_opportunity_action,
     sync_market_context,
+    upsert_schwab_option_features,
 )
 from catalyst_radar.brokers.models import (
     BrokerAccount,
@@ -25,6 +26,7 @@ from catalyst_radar.core.config import AppConfig
 from catalyst_radar.security.audit import AuditLogRepository
 from catalyst_radar.storage.broker_repositories import BrokerRepository
 from catalyst_radar.storage.db import create_schema, engine_from_url
+from catalyst_radar.storage.feature_repositories import FeatureRepository
 
 
 def test_interactive_market_context_triggers_actions_and_blocked_ticket(
@@ -72,6 +74,10 @@ def test_interactive_market_context_triggers_actions_and_blocked_ticket(
     )
 
     snapshots = sync_market_context(client=client, repo=repo, tickers=["GLW"], now=now)
+    option_feature_count = upsert_schwab_option_features(
+        feature_repo=FeatureRepository(engine),
+        snapshots=snapshots,
+    )
     action = record_opportunity_action(
         repo=repo,
         ticker="GLW",
@@ -118,6 +124,16 @@ def test_interactive_market_context_triggers_actions_and_blocked_ticket(
     assert snapshots[0].last_price == 12.5
     assert snapshots[0].price_trend_5d_percent == 25.0
     assert snapshots[0].option_call_put_ratio == 3.0
+    assert option_feature_count == 1
+    option_feature = FeatureRepository(engine).latest_option_features_by_ticker(
+        ["GLW"],
+        as_of=now,
+        available_at=now,
+    )["GLW"]
+    assert option_feature.provider == "schwab_option_chain"
+    assert option_feature.call_volume == 900.0
+    assert option_feature.put_volume == 300.0
+    assert option_feature.iv_percentile == 0.405
     assert action.status == "active"
     assert trigger.status.value == "active"
     assert evaluated[0].status.value == "fired"

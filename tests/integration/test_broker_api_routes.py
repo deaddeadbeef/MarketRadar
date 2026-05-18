@@ -27,6 +27,7 @@ from catalyst_radar.brokers.tokens import TokenCipher
 from catalyst_radar.security.audit import AuditLogRepository
 from catalyst_radar.storage.broker_repositories import BrokerRepository
 from catalyst_radar.storage.db import create_schema, engine_from_url
+from catalyst_radar.storage.feature_repositories import FeatureRepository
 
 
 def test_schwab_status_and_connect_fail_cleanly_without_app_credentials(
@@ -328,7 +329,34 @@ def test_schwab_market_sync_returns_429_on_repeated_attempt_without_second_schwa
                 ticker="GLW",
                 as_of=now,
                 last_price=95.0,
-                raw_payload={},
+                option_call_put_ratio=3.0,
+                option_iv_percentile=40.5,
+                raw_payload={
+                    "options": {
+                        "callExpDateMap": {
+                            "2026-06-19:38": {
+                                "95.0": [
+                                    {
+                                        "totalVolume": 900,
+                                        "openInterest": 1200,
+                                        "volatility": 42.0,
+                                    }
+                                ]
+                            }
+                        },
+                        "putExpDateMap": {
+                            "2026-06-19:38": {
+                                "90.0": [
+                                    {
+                                        "totalVolume": 300,
+                                        "openInterest": 800,
+                                        "volatility": 39.0,
+                                    }
+                                ]
+                            }
+                        },
+                    }
+                },
                 created_at=now,
             )
         ]
@@ -340,10 +368,17 @@ def test_schwab_market_sync_returns_429_on_repeated_attempt_without_second_schwa
     second = client.post("/api/brokers/schwab/market-sync", json={"tickers": ["GLW"]})
 
     assert first.status_code == 200
+    assert first.json()["option_features_upserted"] == 1
     assert second.status_code == 429
     assert second.headers["retry-after"]
     assert second.json()["detail"]["operation"] == "market_context_sync"
     assert calls == ["market"]
+    option_feature = FeatureRepository(engine).latest_option_features_by_ticker(
+        ["GLW"],
+        as_of=datetime.now(UTC),
+        available_at=datetime.now(UTC),
+    )["GLW"]
+    assert option_feature.provider == "schwab_option_chain"
 
 
 def test_order_preview_is_never_submittable_even_when_flag_enabled(

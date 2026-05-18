@@ -5650,12 +5650,15 @@ def _priced_in_source_guidance(source: str, status: str) -> dict[str, object]:
             "meaning": "Options flow can confirm or contradict the market-emotion signal.",
             "next_action": "Use options as a supporting signal only."
             if ready
-            else "Treat options as absent until an options feed or fixture is ingested.",
-            "command": "catalyst-radar ingest-options --fixture <options-summary.json>",
-            "api": None,
+            else (
+                "Sync Schwab option-chain context or ingest an options fixture, "
+                "then rerun the scan."
+            ),
+            "command": "catalyst-radar ingest-options --from-schwab-market --ticker <TICKER>",
+            "api": "POST /api/brokers/schwab/market-sync",
             "external_call_boundary": (
-                "Current CLI options ingest is fixture/local; no live options call is "
-                "hidden."
+                "CLI promotion reads stored Schwab snapshots only; live Schwab options "
+                "are explicit through market-sync and rate-limited."
             ),
         }
     if source == "theme_peer_sector":
