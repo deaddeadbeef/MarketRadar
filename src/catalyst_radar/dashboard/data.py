@@ -656,6 +656,7 @@ def priced_in_queue_payload(
         config,
         latest_run=latest_run,
         discovery_snapshot=discovery,
+        source_coverage=source_coverage,
     )
     return {
         "schema_version": "priced-in-queue-v1",
@@ -835,6 +836,7 @@ def priced_in_preflight_payload(
     *,
     latest_run: Mapping[str, object] | None = None,
     discovery_snapshot: Mapping[str, object] | None = None,
+    source_coverage: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     run = (
         _row_dict(latest_run)
@@ -852,6 +854,11 @@ def priced_in_preflight_payload(
     )
     call_plan = radar_run_call_plan_payload(engine, config)
     provider_rows = provider_preflight_payload(config, radar_run_summary=run)
+    resolved_source_coverage = (
+        _row_dict(source_coverage)
+        if isinstance(source_coverage, Mapping)
+        else _priced_in_preflight_source_coverage(engine, run)
+    )
     commands = _priced_in_preflight_commands(
         config,
         target_ticker_pages=_estimated_ticker_seed_pages(bar_universe),
@@ -863,6 +870,7 @@ def priced_in_preflight_payload(
         commands,
         config,
         bar_universe,
+        resolved_source_coverage,
     )
     blocked_rows = [row for row in rows if row["status"] == "blocked"]
     attention_rows = [row for row in rows if row["status"] == "attention"]
@@ -903,8 +911,36 @@ def priced_in_preflight_payload(
             "max_external_call_count": call_plan.get("max_external_call_count"),
             "next_action": call_plan.get("next_action"),
         },
+        "source_coverage": resolved_source_coverage,
         "rows": rows,
     }
+
+
+def _priced_in_preflight_source_coverage(
+    engine: Engine,
+    latest_run: Mapping[str, object],
+) -> dict[str, object]:
+    if latest_run:
+        candidate_rows = load_radar_run_candidate_rows(
+            engine,
+            latest_run,
+            limit=None,
+            include_artifacts=True,
+        )
+    else:
+        candidate_rows = load_candidate_rows(engine, limit=None, include_artifacts=True)
+    broker_summary = load_broker_summary(engine)
+    candidate_rows = candidate_rows_with_market_context(
+        candidate_rows,
+        _market_context_value(broker_summary),
+    )
+    queue_rows = [
+        _priced_in_queue_row(row)
+        for row in candidate_rows
+        if isinstance(row, Mapping)
+    ]
+    coverage = priced_in_source_coverage_summary(queue_rows)
+    return _priced_in_source_coverage_with_option_diagnostic(engine, queue_rows, coverage)
 
 
 def priced_in_source_coverage_summary(
@@ -6576,6 +6612,7 @@ def _priced_in_preflight_rows(
     commands: Mapping[str, str],
     config: AppConfig,
     bar_universe: Mapping[str, object],
+    source_coverage: Mapping[str, object],
 ) -> list[dict[str, object]]:
     scan_yield = _mapping_value(discovery, "yield")
     freshness = _mapping_value(discovery, "freshness")
@@ -6592,6 +6629,7 @@ def _priced_in_preflight_rows(
         _finite_float(bar_universe.get("latest_daily_bar_ticker_count"))
     )
     rows: list[dict[str, object]] = []
+    source_actions = _priced_in_preflight_source_actions(source_coverage)
 
     if (active or requested or scanned) < 500:
         cap_note = ""
@@ -6690,6 +6728,10 @@ def _priced_in_preflight_rows(
         ("LLM review", "agent_review"),
     ):
         row = provider_by_layer.get(layer, {})
+        source_action = source_actions.get(area)
+        if source_action:
+            rows.append(_priced_in_source_preflight_row(area, source_action))
+            continue
         status = str(row.get("status") or "unknown")
         if status == "blocked":
             mapped_status = "blocked"
@@ -6708,6 +6750,11 @@ def _priced_in_preflight_rows(
             )
         )
 
+    for area in ("local_text", "options"):
+        source_action = source_actions.get(area)
+        if source_action:
+            rows.append(_priced_in_source_preflight_row(area, source_action))
+
     call_status = str(call_plan.get("status") or "unknown")
     rows.append(
         _priced_in_preflight_row(
@@ -6723,6 +6770,48 @@ def _priced_in_preflight_rows(
         )
     )
     return rows
+
+
+def _priced_in_preflight_source_actions(
+    source_coverage: Mapping[str, object],
+) -> dict[str, Mapping[str, object]]:
+    return {
+        str(action.get("source") or ""): action
+        for action in _sequence_value(source_coverage.get("actions"))
+        if isinstance(action, Mapping)
+        and str(action.get("status") or "") not in {"ready", "not_applicable"}
+    }
+
+
+def _priced_in_source_preflight_row(
+    area: str,
+    action: Mapping[str, object],
+) -> dict[str, object]:
+    status = str(action.get("status") or "unknown")
+    row_count = int(_finite_float(action.get("row_count")))
+    available = int(_finite_float(action.get("available")))
+    gap_count = int(
+        _finite_float(action.get("gap_count"))
+        or _finite_float(action.get("missing")) + _finite_float(action.get("stale"))
+    )
+    coverage = action.get("coverage_pct")
+    command = (
+        action.get("batch_plan_command")
+        or action.get("full_scan_gap_review_command")
+        or action.get("command")
+    )
+    api = action.get("batch_plan_api") or action.get("api")
+    return _priced_in_preflight_row(
+        area,
+        "attention" if status in {"partial", "missing", "stale"} else "blocked",
+        (
+            f"Priced-in source coverage is {available}/{row_count or 'n/a'} "
+            f"({coverage}%); gap rows={gap_count}."
+        ),
+        str(action.get("next_action") or "Review priced-in source coverage."),
+        str(command) if command else None,
+        str(api) if api else None,
+    )
 
 
 def _priced_in_preflight_row(

@@ -1,6 +1,56 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 19:34:05 +08:00
+Last updated: 2026-05-18 19:41:54 +08:00
+
+## Latest Preflight Source-Coverage Alignment
+
+`priced-in-preflight` had a misleading read: it reported catalyst events and
+broker context as ready/not configured from provider settings, while the actual
+priced-in source coverage had large gaps. That could make the dashboard sound
+safer than the scan really was.
+
+Changes in this slice:
+
+- `priced_in_preflight_payload()` now includes and consumes priced-in source
+  coverage.
+- Preflight rows now surface source gaps for:
+  - `catalyst_events`
+  - `local_text`
+  - `options`
+  - `broker_context`
+- Batchable sources use the batch planner command in preflight:
+
+  ```text
+  catalyst-radar priced-in-source-batches --source options --batch-limit 5
+  catalyst-radar priced-in-source-batches --source broker_context --batch-limit 5
+  ```
+
+Live zero-provider-call verification:
+
+```powershell
+.\.venv\Scripts\catalyst-radar.exe priced-in-preflight --json |
+  .\.venv\Scripts\python.exe -c "import json,sys; p=json.load(sys.stdin); print(p['status'], p['headline']); [print(r['area'], r['status'], r['finding'], r.get('command')) for r in p['rows'] if r['area'] in {'catalyst_events','local_text','options','broker_context'}]"
+```
+
+Observed:
+
+```text
+attention 5 prerequisite(s) need attention before trusting output.
+catalyst_events attention Priced-in source coverage is 7/12087 (0.1%); gap rows=12080. catalyst-radar priced-in-queue --full-scan --source-gap catalyst_events --limit 50
+broker_context attention Priced-in source coverage is 5/12087 (0.0%); gap rows=12082. catalyst-radar priced-in-source-batches --source broker_context --batch-limit 5
+local_text attention Priced-in source coverage is 7/12087 (0.1%); gap rows=12080. catalyst-radar priced-in-queue --full-scan --source-gap local_text --limit 50
+options attention Priced-in source coverage is 0/12087 (0.0%); gap rows=12087. catalyst-radar priced-in-source-batches --source options --batch-limit 5
+```
+
+Validation for this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_preflight_payload_reports_exact_next_steps tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_preflight_cli_outputs_zero_call_plan tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_snapshot_cli_outputs_dashboard_command_center_json -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py tests\integration\test_dashboard_data.py
+git diff --check
+```
+
+All passed.
 
 ## Latest Agent Brief Priced-In Context
 

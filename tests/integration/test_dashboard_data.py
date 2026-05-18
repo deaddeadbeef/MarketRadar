@@ -1928,6 +1928,13 @@ def test_priced_in_preflight_payload_reports_exact_next_steps(tmp_path: Path) ->
     assert "universe" in by_area
     assert "at least 2" in by_area["universe"]["next_action"]
     assert "market_bars" in by_area
+    assert payload["source_coverage"]["schema_version"] == "priced-in-source-coverage-v1"
+    assert by_area["options"]["status"] == "attention"
+    assert "gap rows=" in by_area["options"]["finding"]
+    assert by_area["options"]["command"].startswith(
+        "catalyst-radar priced-in-source-batches --source options"
+    )
+    assert by_area["local_text"]["status"] == "attention"
     assert payload["api"]["queue"] == "GET /api/radar/priced-in"
 
 
