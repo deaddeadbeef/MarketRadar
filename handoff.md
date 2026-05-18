@@ -1,6 +1,33 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 09:59:26 +08:00
+Last updated: 2026-05-18 11:20:00 +08:00
+
+## Latest Queue UX Correction
+
+After the full-market scheduled scan fix, the next source of confusion was the
+display layer: CLI/API/TUI surfaces showed a ranked slice of candidates, but
+did not make it obvious that the backing scan covered the full local universe.
+The priced-in queue now treats this as a first-class pagination contract:
+
+```powershell
+catalyst-radar priced-in-queue --limit 50 --offset 0 --json
+catalyst-radar priced-in-queue --limit 50 --offset 50
+```
+
+The CLI/API payload reports `total_count`, `returned_count`, `offset`,
+`has_more`, and `filters.offset` in addition to `count`. `count` is the number
+returned on the current page, not the whole scan. The dashboard overview now
+uses the same queue metadata and titles the operator surface as, for example,
+`Full-market priced-in queue - showing 50 of 12087`. The first coverage row
+uses the scheduled run's scan yield (`scanned_candidate_states=12087`) instead
+of the old 200-row dashboard display cap.
+
+The CLI/API queue is the exact pagination surface. The TUI overview remains the
+human first screen: it shows a fast visible slice and points deeper inspection
+to `priced-in-queue --limit/--offset` or `GET /api/radar/priced-in?...&offset=`.
+
+This is still zero-call browsing. Pagination, filtering, TUI rendering, and
+JSON export read the local database only.
 
 ## Latest Correction
 

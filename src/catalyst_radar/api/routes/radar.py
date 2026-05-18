@@ -329,6 +329,7 @@ def radar_research_shortlist(
 @router.get("/priced-in", dependencies=[Depends(require_role(Role.VIEWER))])
 def radar_priced_in_queue(
     limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     status: str | None = Query(default=None),
     min_gap: float | None = Query(default=None, ge=0),
 ) -> dict[str, object]:
@@ -338,6 +339,7 @@ def radar_priced_in_queue(
             _engine(),
             AppConfig.from_env(),
             limit=limit,
+            offset=offset,
             status=status,
             min_gap=min_gap,
         )

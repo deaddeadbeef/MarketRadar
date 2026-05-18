@@ -1380,6 +1380,11 @@ def test_priced_in_queue_payload_surfaces_ranked_gap_rows(tmp_path: Path) -> Non
     assert payload["external_calls_made"] == 0
     assert payload["status"] in {"universe_too_small", "partial_scan", "ready"}
     assert payload["count"] == 2
+    assert payload["returned_count"] == 2
+    assert payload["total_count"] == 2
+    assert payload["offset"] == 0
+    assert payload["has_more"] is False
+    assert payload["filters"]["offset"] == 0
     assert payload["source_coverage"]["schema_version"] == "priced-in-source-coverage-v1"
     assert payload["source_coverage"]["row_count"] == 2
     assert "market_bars" in payload["source_coverage"]["sources"]
@@ -1389,6 +1394,32 @@ def test_priced_in_queue_payload_surfaces_ranked_gap_rows(tmp_path: Path) -> Non
     assert payload["rows"][0]["data_sources"]["available"]
     assert "summary" in payload["rows"][0]["data_sources"]
     assert payload["rows"][0]["why_now"] == "MSFT guidance raised"
+
+
+def test_priced_in_queue_payload_paginates_ranked_rows(tmp_path: Path) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+
+    first_page = priced_in_queue_payload(engine, AppConfig.from_env({}), limit=1)
+    second_page = priced_in_queue_payload(
+        engine,
+        AppConfig.from_env({}),
+        limit=1,
+        offset=1,
+    )
+
+    assert first_page["count"] == 1
+    assert first_page["total_count"] == 2
+    assert first_page["has_more"] is True
+    assert first_page["headline"] == (
+        "Local universe is too small for a full-market priced-in read; "
+        "showing 1-1 of 2 priced-in row(s)."
+    )
+    assert second_page["count"] == 1
+    assert second_page["total_count"] == 2
+    assert second_page["offset"] == 1
+    assert second_page["has_more"] is False
+    assert second_page["rows"][0]["ticker"] != first_page["rows"][0]["ticker"]
 
 
 def test_priced_in_preflight_payload_reports_exact_next_steps(tmp_path: Path) -> None:
@@ -4524,6 +4555,7 @@ def test_radar_discovery_snapshot_labels_fixture_thin_run(
         "requested_securities": 6,
         "scanned_securities": 2,
         "candidate_states": 2,
+        "scanned_candidate_states": 2,
         "candidate_packets": 1,
         "decision_cards": 1,
     }
@@ -5792,6 +5824,15 @@ def _signal_feature_row(
                     "available_at": AVAILABLE_AT.isoformat(),
                     "setup_type": "breakout",
                     "candidate_theme": theme,
+                    **(
+                        {
+                            "top_event_title": "MSFT guidance raised",
+                            "top_event_source": "Reuters",
+                            "top_event_source_url": "https://news.example.com/msft",
+                        }
+                        if ticker == "MSFT"
+                        else {}
+                    ),
                     "theme_hits": [{"theme_id": theme, "count": 2}],
                     "portfolio_impact": {
                         "proposed_notional": 2080.0,

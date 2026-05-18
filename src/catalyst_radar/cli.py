@@ -352,6 +352,7 @@ def build_parser() -> argparse.ArgumentParser:
     priced_in = subparsers.add_parser("priced-in-queue")
     priced_in.add_argument("--database-url")
     priced_in.add_argument("--limit", type=int, default=20)
+    priced_in.add_argument("--offset", type=int, default=0)
     priced_in.add_argument("--status")
     priced_in.add_argument("--min-gap", type=float)
     priced_in.add_argument("--json", action="store_true")
@@ -645,6 +646,7 @@ def main(argv: list[str] | None = None) -> int:
             engine,
             config,
             limit=args.limit,
+            offset=args.offset,
             status=args.status,
             min_gap=args.min_gap,
         )
@@ -2445,6 +2447,8 @@ def _print_priced_in_queue(payload: Mapping[str, object]) -> None:
         "priced_in_queue "
         f"status={payload.get('status')} "
         f"count={payload.get('count')} "
+        f"total={payload.get('total_count')} "
+        f"offset={payload.get('offset')} "
         f"external_calls={payload.get('external_calls_made')}"
     )
     print(f"headline={payload.get('headline')}")
@@ -2475,6 +2479,22 @@ def _print_priced_in_queue(payload: Mapping[str, object]) -> None:
             f"{_priced_in_data_summary(row)} "
             f"{row.get('next_step')}"
         )
+    if payload.get("has_more"):
+        filters = payload.get("filters")
+        next_offset = _int_value(payload.get("offset")) + _int_value(payload.get("count"))
+        limit = (
+            _int_value(filters.get("limit"))
+            if isinstance(filters, Mapping)
+            else _int_value(payload.get("count"))
+        )
+        print(f"more=catalyst-radar priced-in-queue --limit {limit} --offset {next_offset}")
+
+
+def _int_value(value: object) -> int:
+    try:
+        return int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0
 
 
 def _priced_in_data_summary(row: Mapping[str, object]) -> str:
