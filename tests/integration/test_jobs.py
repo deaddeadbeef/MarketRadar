@@ -1476,6 +1476,10 @@ def test_cli_run_daily_json_smoke(monkeypatch, tmp_path, capsys):
             "2026-05-09",
             "--available-at",
             "2026-05-10T01:00:00+00:00",
+            "--ticker",
+            "AAPL",
+            "--ticker",
+            "MSFT",
             "--json",
         ]
     )
@@ -1485,6 +1489,7 @@ def test_cli_run_daily_json_smoke(monkeypatch, tmp_path, capsys):
     assert payload["acquired_lock"] is True
     assert payload["reason"] is None
     assert payload["daily_result"]["status"] == "success"
+    assert payload["daily_result"]["spec"]["tickers"] == ["AAPL", "MSFT"]
     assert payload["daily_result"]["steps"]["llm_review"]["status"] == "skipped"
 
 

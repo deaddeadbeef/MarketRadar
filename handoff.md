@@ -1,6 +1,96 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 20:08:33 +08:00
+Last updated: 2026-05-18 20:34:40 +08:00
+
+## Latest Full-Scan Event/Text Batch Planning
+
+The user asked again: "Why only these tickers? I want full scan."
+
+The answer is now explicit in CLI/API behavior:
+
+- `priced-in-queue --full-scan --all --json` exports every current ranked row.
+- `priced-in-source-batches` plans across every matching source-gap row, then
+  shows only the requested batch/page for safe execution.
+- The visible tickers in a batch are not the universe. They are batch `N` of the
+  full-scan gap set.
+
+Changes in this slice:
+
+- `catalyst-radar run-daily` now accepts repeatable `--ticker`, so the batch
+  planner can emit scoped SEC/event-ingest runs:
+
+  ```powershell
+  catalyst-radar run-daily --as-of 2026-05-15 --available-at <UTC-now> --ticker BRK.A --ticker NVR --json
+  ```
+
+- `catalyst-radar run-textint` now accepts repeatable `--ticker`, so local text
+  can be rerun for a full-scan batch of tickers after event text exists.
+- `priced-in-source-batches --source catalyst_events` now plans all eligible
+  event-gap rows, capped by `CATALYST_SEC_DAILY_MAX_TICKERS`.
+- `priced-in-source-batches --source local_text` now plans all eligible text-gap
+  rows with no provider calls, but blocks clearly when catalyst event text is
+  missing.
+- Batch payloads now include:
+
+  ```text
+  total_gap_rows
+  plannable_gap_rows
+  unplannable_gap_rows
+  diagnostic.status / reason / blocked_reason / sample_blocked_tickers
+  ```
+
+Live zero-provider-call verification:
+
+```powershell
+.\.venv\Scripts\catalyst-radar.exe priced-in-queue --full-scan --all --json |
+  .\.venv\Scripts\python.exe -c "import json,sys; p=json.load(sys.stdin); print(p['count'], p['total_count'], p['has_more'], p['filters']['status'], p['filters']['limit'], p['external_calls_made'])"
+```
+
+Observed:
+
+```text
+12087 12087 False all 1000000 0
+```
+
+```powershell
+.\.venv\Scripts\catalyst-radar.exe priced-in-source-batches --source catalyst_events --batch-limit 2 --json |
+  .\.venv\Scripts\python.exe -c "import json,sys; p=json.load(sys.stdin); print(p['status'], p['total_gap_rows'], p['plannable_gap_rows'], p['batch_count'], p['count'], p['diagnostic']['status'], p['external_calls_made']); print(p['batches'][0]['command'] if p['batches'] else 'no-batch')"
+```
+
+Observed:
+
+```text
+ready 12080 10462 2093 2 eligible 0
+catalyst-radar run-daily --as-of 2026-05-15 --available-at <UTC-now> --ticker BRK.A --ticker NVR --ticker ABLVW --ticker DAICW --ticker DFSCW --json
+```
+
+```powershell
+.\.venv\Scripts\catalyst-radar.exe priced-in-source-batches --source local_text --batch-limit 2 --json |
+  .\.venv\Scripts\python.exe -c "import json,sys; p=json.load(sys.stdin); print(p['status'], p['total_gap_rows'], p['plannable_gap_rows'], p['batch_count'], p['count'], p['diagnostic']['status'], p['external_calls_made']); print(p['batches'][0]['command'] if p['batches'] else 'no-batch')"
+```
+
+Observed:
+
+```text
+blocked 12080 0 0 0 blocked 0
+no-batch
+```
+
+That local-text result is expected: text analysis is a local processing step,
+but it needs catalyst event text first. The useful next action is to fill
+eligible `catalyst_events` batches first, then rerun `local_text` batches.
+
+Validation for this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_plans_safe_sync_batches tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_plans_sec_event_batches tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_marks_text_rows_blocked_without_events tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_plans_local_text_batches tests\integration\test_dashboard_data.py::test_priced_in_preflight_payload_reports_exact_next_steps tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_queue_cli_outputs_same_zero_call_signal tests\integration\test_api_routes.py::test_get_radar_priced_in_source_batches_returns_zero_call_plan tests\integration\test_security_boundaries.py::test_openapi_routes_are_allowlisted_and_broker_routes_are_explicit tests\integration\test_text_pipeline.py::test_textint_cli_processes_events_and_prints_features tests\integration\test_jobs.py::test_cli_run_daily_json_smoke -q
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_text_pipeline.py::test_textint_cli_processes_events_and_prints_features tests\integration\test_jobs.py::test_cli_run_daily_json_smoke tests\integration\test_jobs.py::test_cli_run_daily_rejects_unsupported_real_llm_and_delivery tests\integration\test_jobs.py::test_scheduler_config_passes_scan_scope_to_daily_spec -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py tests\integration\test_dashboard_data.py tests\integration\test_text_pipeline.py tests\integration\test_jobs.py
+git diff --check
+```
+
+All passed so far. Before creating the PR, rerun `git diff --check` after any
+last edits and include the PR/merge result here.
 
 ## Latest Full-Scan Insights Table
 
