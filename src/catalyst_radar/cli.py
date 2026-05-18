@@ -463,6 +463,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Review only bullish/bearish not-priced-in mismatches from the full scan.",
     )
     priced_in.add_argument(
+        "--decision-ready",
+        action="store_true",
+        help=(
+            "Shortcut for --mismatches --usefulness decision_useful: show rows "
+            "that answer the priced-in question without blocked/research-only noise."
+        ),
+    )
+    priced_in.add_argument(
         "--usefulness",
         help=(
             "Filter by usefulness verdict: useful, research_useful, "
@@ -976,14 +984,18 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "priced-in-queue":
         create_schema(engine)
+        priced_in_status = "actionable" if args.decision_ready else args.status
+        priced_in_usefulness = (
+            "decision_useful" if args.decision_ready else args.usefulness
+        )
         payload = priced_in_queue_payload(
             engine,
             config,
             limit=1_000_000 if args.all_rows else args.limit,
             offset=0 if args.all_rows else args.offset,
             available_at=args.available_at,
-            status=args.status,
-            usefulness=args.usefulness,
+            status=priced_in_status,
+            usefulness=priced_in_usefulness,
             source_gap=args.source_gap,
             decision_gap=args.decision_gap,
             min_gap=args.min_gap,

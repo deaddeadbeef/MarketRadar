@@ -600,6 +600,27 @@ def test_dashboard_tui_once_can_show_full_scan_mode(
     assert "source gaps options" in output.out
     assert "Active source gap filter: source gaps options." in output.out
 
+    assert (
+        main(
+            [
+                "dashboard-tui",
+                "--once",
+                "--scan-mode",
+                "actionable",
+                "--usefulness",
+                "decision_useful",
+                "--page",
+                "overview",
+            ]
+        )
+        == 0
+    )
+    output = capsys.readouterr()
+
+    assert output.err == ""
+    assert "Decision-ready not-priced-in rows - showing" in output.out
+    assert "These are the actionable answers" in output.out
+
 
 def test_dashboard_scan_commands_page_full_scan_rows(tmp_path: Path, monkeypatch) -> None:
     database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
@@ -697,6 +718,31 @@ def test_dashboard_scan_commands_page_full_scan_rows(tmp_path: Path, monkeypatch
     )
     assert source_gap_update.filters.priced_in_offset == 0
     assert source_gap_update.message == "Source-gap filter: options, local_text."
+
+    ready_update = _apply_command(
+        "ready",
+        payload,
+        "overview",
+        DashboardFilters(priced_in_status="all"),
+        engine=engine,
+        config=config,
+    )
+    assert ready_update.page == "overview"
+    assert ready_update.filters.priced_in_status == "actionable"
+    assert ready_update.filters.priced_in_usefulness == "decision_useful"
+    assert ready_update.filters.priced_in_offset == 0
+    assert "Decision-ready view" in ready_update.message
+
+    full_update = _apply_command(
+        "full",
+        payload,
+        "overview",
+        ready_update.filters,
+        engine=engine,
+        config=config,
+    )
+    assert full_update.filters.priced_in_status == "all"
+    assert full_update.filters.priced_in_usefulness is None
 
 
 def test_agent_brief_cli_outputs_zero_call_dry_run(
@@ -825,6 +871,16 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
 
     assert output.err == ""
     assert mismatch_payload["filters"]["status"] == "actionable"
+
+    assert main(["priced-in-queue", "--decision-ready", "--json"]) == 0
+    output = capsys.readouterr()
+    decision_ready_payload = json.loads(output.out)
+
+    assert output.err == ""
+    assert decision_ready_payload["filters"]["status"] == "actionable"
+    assert decision_ready_payload["filters"]["usefulness"] == "decision_useful"
+    assert decision_ready_payload["usefulness_counts"] == {"decision_useful": 1}
+    assert decision_ready_payload["rows"][0]["usefulness"]["decision_ready"] is True
 
     assert main(["priced-in-queue", "--available-at", cutoff, "--json"]) == 0
     output = capsys.readouterr()

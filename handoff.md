@@ -1,6 +1,83 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 06:25:26 +08:00
+Last updated: 2026-05-19 06:36:04 +08:00
+
+## Latest Decision-Ready Shortcut Fix
+
+After the full-scan labeling and source-batch post-check fixes, the next UX
+gap was that the dashboard answer said:
+
+```text
+5 decision-ready not-priced-in row(s)
+```
+
+but the default full-scan table immediately mixed those rows with thousands of
+blocked rows. The full scan must remain available, but the operator also needs
+one direct way to see the rows that actually answer the priced-in question.
+
+Fix in this slice:
+
+- CLI `priced-in-queue` now supports:
+
+  ```powershell
+  catalyst-radar priced-in-queue --decision-ready
+  ```
+
+- This is a shortcut for:
+
+  ```powershell
+  catalyst-radar priced-in-queue --mismatches --usefulness decision_useful
+  ```
+
+- TUI now supports:
+
+  ```text
+  ready
+  D
+  Click SCAN -> Decision-ready
+  ```
+
+- The TUI decision-ready filtered view is explicitly labeled:
+
+  ```text
+  Decision-ready not-priced-in rows - showing rows 1-5 of 5; scan 12087; decision 5
+  ```
+
+- Switching back to `full`, `mismatches`, or `scan all` clears the
+  decision-ready usefulness filter so the operator does not stay accidentally
+  narrowed.
+- `docs/dashboard-feature-inventory.md` now lists the decision-ready CLI/TUI
+  entry points and the source-batch post-execution delta.
+
+Live zero-call smoke after the fix:
+
+```text
+catalyst-radar priced-in-queue --decision-ready --limit 10
+priced_in_queue status=ready count=5 total=5 offset=0 external_calls=0
+scan_scope=scanned=12087 requested=n/a filter=actionable ranked_after_filter=5 visible_page=5
+usefulness_counts=decision_useful:5
+tickers=A,MSFT,AAAU,AAPL,AA
+```
+
+```text
+catalyst-radar dashboard-tui --once --scan-mode actionable --usefulness decision_useful --page overview
+Decision-ready not-priced-in rows - showing rows 1-5 of 5; scan 12087; decision 5
+This page shows rows 1-5: 5 decision-ready not-priced-in row(s) from 12087 latest-scan row(s).
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_scan_commands_page_full_scan_rows tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_tui_once_can_show_full_scan_mode tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_queue_cli_outputs_same_zero_call_signal -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\cli.py src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --scan-mode actionable --usefulness decision_useful --page overview
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-queue --decision-ready --limit 10
+```
+
+Observed: focused pytest passed, ruff passed, `git diff --check` passed, live
+CLI and TUI decision-ready views returned the 5 decision-useful rows from the
+12,087-row full scan with zero provider calls.
 
 ## Latest Source Batch Post-Execution Check Fix
 
