@@ -181,6 +181,7 @@ def deterministic_agent_brief(
             _status_insight(readiness),
             _call_plan_insight(call_plan),
             _priced_in_insight(priced_in),
+            _priced_in_evidence_plan_insight(priced_in),
             _top_queue_insight(work_queue),
             *[_candidate_insight(row) for row in candidates[:3]],
             *[_alert_insight(row) for row in alerts[:2]],
@@ -190,6 +191,8 @@ def deterministic_agent_brief(
     next_actions = _dedupe(
         [
             _text(next_step.get("action")),
+            _text(_mapping(priced_in.get("evidence_plan")).get("next_action")),
+            _text(_mapping(priced_in.get("evidence_plan")).get("next_command")),
             _text(priced_in.get("next_action")),
             _text(work_queue.get("next_action")),
             _text(call_plan.get("next_action")) if max_provider_calls else None,
@@ -537,6 +540,9 @@ def _priced_in_context(
             preflight,
             ("status", "headline", "next_action", "scan_status"),
         ),
+        "evidence_plan": _priced_in_evidence_plan_context(
+            _mapping(preflight.get("evidence_plan"))
+        ),
         "source_coverage": {
             **_copy_keys(
                 coverage,
@@ -561,6 +567,39 @@ def _priced_in_context(
             ][:8],
         },
         "rows": [_priced_in_row_context(item) for item in _rows(queue.get("rows"))[:8]],
+    }
+
+
+def _priced_in_evidence_plan_context(plan: Mapping[str, object]) -> dict[str, object]:
+    if not plan:
+        return {}
+    return {
+        **_copy_keys(
+            plan,
+            (
+                "schema_version",
+                "status",
+                "headline",
+                "next_action",
+                "next_command",
+                "external_calls_made",
+            ),
+        ),
+        "steps": [
+            _copy_keys(
+                step,
+                (
+                    "priority",
+                    "area",
+                    "status",
+                    "depends_on",
+                    "action",
+                    "command",
+                    "api",
+                ),
+            )
+            for step in _rows(plan.get("steps"))[:8]
+        ],
     }
 
 
@@ -864,6 +903,20 @@ def _priced_in_insight(priced_in: Mapping[str, object]) -> str | None:
     return (
         f"Priced-in scan is {status}; visible rows={returned}, "
         f"total rows={total}, weak sources={weak_sources}."
+    )
+
+
+def _priced_in_evidence_plan_insight(priced_in: Mapping[str, object]) -> str | None:
+    plan = _mapping(priced_in.get("evidence_plan"))
+    if not plan:
+        return None
+    steps = _rows(plan.get("steps"))
+    next_action = _text(plan.get("next_action")) or "review evidence plan"
+    next_command = _text(plan.get("next_command"))
+    command_text = f"; command={next_command}" if next_command else ""
+    return (
+        f"Priced-in evidence plan is {_text(plan.get('status')) or 'unknown'}; "
+        f"steps={len(steps)}; next={next_action}{command_text}."
     )
 
 
