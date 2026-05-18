@@ -155,6 +155,8 @@ def build_parser() -> argparse.ArgumentParser:
     run_daily.add_argument("--as-of", type=date.fromisoformat, required=True)
     run_daily.add_argument("--available-at", type=_parse_aware_datetime, required=True)
     run_daily.add_argument("--outcome-available-at", type=_parse_aware_datetime)
+    run_daily.add_argument("--provider")
+    run_daily.add_argument("--universe")
     run_daily.add_argument("--ticker", action="append")
     run_daily.add_argument("--run-llm", action="store_true")
     run_daily.add_argument("--real-llm", action="store_true")
@@ -726,6 +728,8 @@ def main(argv: list[str] | None = None) -> int:
             as_of=args.as_of,
             decision_available_at=args.available_at,
             outcome_available_at=args.outcome_available_at,
+            provider=args.provider,
+            universe=args.universe,
             tickers=tuple(args.ticker or ()),
             run_llm=args.run_llm,
             llm_dry_run=not args.real_llm,
@@ -1794,7 +1798,9 @@ def main(argv: list[str] | None = None) -> int:
                 include_adrs=config.universe_include_adrs,
             ),
             name=args.name or config.universe_name,
-            provider=args.provider or config.market_provider,
+            provider=(
+                args.provider or config.daily_market_provider or config.market_provider
+            ),
         )
         snapshot = builder.build(as_of=args.as_of, available_at=available_at)
         print(

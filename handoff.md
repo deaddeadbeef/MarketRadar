@@ -1,6 +1,103 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 02:20:00 +08:00
+Last updated: 2026-05-19 03:10:00 +08:00
+
+## Latest Full-Scan Universe Scope Correction
+
+The user pushed back again on limited visible tickers: "Why only these tickers?
+I want full scan." The important product rule is now explicit:
+
+- The small visible ticker list is only the human review window.
+- A real full scan must run against a named point-in-time liquid universe,
+  normally `liquid-us`.
+- The daily/scheduled path must not silently fall back to every active security
+  in the raw securities table when the operator intended a full market equity
+  scan. Raw active securities can include warrants, units, odd share classes,
+  and other instruments that are not the intended stock universe.
+
+Root cause found in this slice:
+
+- `scan --universe <name>` already honored universe snapshots.
+- `run-daily` accepted scheduler scope fields but the feature-scan step did not
+  load the named universe snapshot. If no explicit ticker list was supplied, it
+  scanned all active securities.
+- `scripts/run-full-market-scan.ps1` claimed the full-market sequence included a
+  universe build, but the execute path did not actually call `build-universe`
+  before `run-daily`.
+- The zero-call preflight command hints did not make the universe/provider pair
+  explicit enough.
+
+Changes in this slice:
+
+- `DailyRunSpec` / scheduler CLI now support `--provider` and `--universe` on
+  `run-daily`.
+- `run_daily()` now keeps a `ProviderRepository` in the daily context so the
+  feature-scan step can resolve universe snapshots.
+- `_feature_scan()` now scopes work in this order:
+  1. explicit `--ticker` list;
+  2. named `--universe` snapshot;
+  3. raw active securities only when neither ticker nor universe was requested.
+- If `run-daily --universe <name>` cannot find a point-in-time snapshot, the
+  feature scan fails closed with `reason=universe_not_found` and downstream
+  scoring/policy steps stay blocked.
+- Successful universe-scoped daily scans report `scan_scope`, `universe`,
+  `universe_snapshot_id`, and `universe_member_count` in the feature-scan
+  payload.
+- Dashboard priced-in queue reads now respect the latest run's named universe.
+  If an older same-date all-active scan exists in the database, those older
+  out-of-universe rows no longer leak back into the visible "full scan" queue.
+- `build-universe` now defaults to the configured scheduled market provider
+  (`CATALYST_DAILY_MARKET_PROVIDER`) before falling back to the older
+  `CATALYST_MARKET_PROVIDER`.
+- `priced-in-preflight` command hints now include
+  `build-universe --provider <provider>` and
+  `run-daily --provider <provider> --universe <name>`.
+- `scripts/run-full-market-scan.ps1` now plans and executes:
+  1. `ingest-polygon tickers --max-pages <n>`;
+  2. `ingest-polygon grouped-daily --date <as_of>`;
+  3. `build-universe --as-of <as_of> --available-at <cutoff> --name <universe> --provider polygon`;
+  4. `run-daily --provider polygon --universe <universe> --json`.
+- The script temporarily sets `CATALYST_DAILY_MARKET_PROVIDER=off` only for the
+  `run-daily` call after it has already ingested grouped bars explicitly. This
+  prevents a duplicate grouped-daily provider call while preserving the complete
+  daily radar pipeline. The original environment value is restored in `finally`.
+
+Expected operator behavior after this correction:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/run-full-market-scan.ps1
+```
+
+Plan-only output should show zero external calls and include this shape:
+
+```text
+catalyst-radar ingest-polygon tickers --max-pages <n>
+catalyst-radar ingest-polygon grouped-daily --date <LATEST_TRADING_DATE>
+catalyst-radar build-universe --as-of <LATEST_TRADING_DATE> --available-at <UTC-now> --name liquid-us --provider polygon
+catalyst-radar run-daily --as-of <LATEST_TRADING_DATE> --available-at <UTC-now> --provider polygon --universe liquid-us --json
+```
+
+`-Execute` is the credentialed path. It may call Polygon/Massive for ticker
+reference and grouped daily bars. It still does not enable Schwab order
+submission or real LLM execution.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_jobs.py::test_daily_run_feature_scan_uses_universe_snapshot tests\integration\test_jobs.py::test_daily_run_feature_scan_fails_closed_when_universe_missing tests\integration\test_jobs.py::test_scheduler_config_passes_scan_scope_to_daily_spec tests\integration\test_scan_universe_filter.py::test_build_universe_defaults_to_daily_market_provider tests\integration\test_local_scripts.py::test_run_full_market_scan_script_is_plan_first_and_execute_gated -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\jobs\tasks.py src\catalyst_radar\cli.py src\catalyst_radar\dashboard\data.py tests\integration\test_jobs.py tests\integration\test_scan_universe_filter.py tests\integration\test_local_scripts.py
+git diff --check
+```
+
+Observed: focused pytest passed, ruff passed, and `git diff --check` passed.
+Zero-call script plan printed the full sequence with `build-universe
+--available-at <UTC-now>` and `run-daily --provider polygon --universe
+liquid-us`. A local no-provider-call smoke built `liquid-us` from stored Polygon
+bars with 2,429 members, then `run-daily --provider polygon --universe
+liquid-us` completed the feature scan over 2,429 rows. The overall daily run
+remained `partial_success` because degraded-mode and source-coverage gates are
+still blocking downstream research steps, not because the full scan scope
+failed.
 
 ## Latest Priced-In vs Trade-Readiness Boundary Correction
 

@@ -325,7 +325,14 @@ def test_run_full_market_scan_script_is_plan_first_and_execute_gated() -> None:
     assert "-AllowPartial" in text
     assert "CATALYST_POLYGON_TICKERS_MAX_PAGES" in text
     assert "CATALYST_POLYGON_TICKER_PAGE_DELAY_SECONDS" in text
+    assert "CATALYST_DAILY_MARKET_PROVIDER" in text
+    assert "CATALYST_UNIVERSE_NAME" in text
     assert "ingest-polygon\", \"tickers\"" in text
+    assert "ingest-polygon\", \"grouped-daily\"" in text
+    assert "build-universe" in text
+    assert "--available-at" in text
+    assert "--provider\", \"polygon\"" in text
+    assert "--universe" in text
     assert "run-daily" in text
     assert "scan\", \"--as-of\"" not in text
     assert "priced-in-queue" in text
