@@ -57,6 +57,7 @@ from catalyst_radar.connectors.sec import SecSubmissionsConnector
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.core.immutability import thaw_json_value
 from catalyst_radar.core.models import ActionState
+from catalyst_radar.dashboard.data import priced_in_queue_payload
 from catalyst_radar.dashboard.demo_seed import (
     default_sec_document_fixture_path,
     default_sec_fixture_path,
@@ -345,6 +346,13 @@ def build_parser() -> argparse.ArgumentParser:
     dashboard_snapshot.add_argument("--page", default="overview")
     dashboard_snapshot.add_argument("--json", action="store_true")
 
+    priced_in = subparsers.add_parser("priced-in-queue")
+    priced_in.add_argument("--database-url")
+    priced_in.add_argument("--limit", type=int, default=20)
+    priced_in.add_argument("--status")
+    priced_in.add_argument("--min-gap", type=float)
+    priced_in.add_argument("--json", action="store_true")
+
     agent_brief = subparsers.add_parser("agent-brief")
     agent_brief.add_argument("--database-url")
     agent_brief.add_argument("--ticker")
@@ -622,6 +630,21 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
         else:
             print(render_dashboard_tui(payload, page=args.page))
+        return 0
+
+    if args.command == "priced-in-queue":
+        create_schema(engine)
+        payload = priced_in_queue_payload(
+            engine,
+            config,
+            limit=args.limit,
+            status=args.status,
+            min_gap=args.min_gap,
+        )
+        if args.json:
+            print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
+        else:
+            _print_priced_in_queue(payload)
         return 0
 
     if args.command == "agent-brief":
@@ -2399,6 +2422,36 @@ def _print_agent_brief(payload: Mapping[str, object]) -> None:
         if not isinstance(check, Mapping):
             continue
         print(f"- {check.get('name')}: {check.get('status')} - {check.get('detail')}")
+
+
+def _print_priced_in_queue(payload: Mapping[str, object]) -> None:
+    print(
+        "priced_in_queue "
+        f"status={payload.get('status')} "
+        f"count={payload.get('count')} "
+        f"external_calls={payload.get('external_calls_made')}"
+    )
+    print(f"headline={payload.get('headline')}")
+    print(f"next_action={payload.get('next_action')}")
+    rows = payload.get("rows")
+    if not isinstance(rows, list | tuple) or not rows:
+        print("No priced-in rows.")
+        return
+    print("ticker status direction gap emotion reaction priced score next_step")
+    for row in rows:
+        if not isinstance(row, Mapping):
+            continue
+        print(
+            f"{row.get('ticker')} "
+            f"{row.get('priced_in_status')} "
+            f"{row.get('priced_in_direction') or 'n/a'} "
+            f"{row.get('emotion_reaction_gap')} "
+            f"{row.get('emotion_score')} "
+            f"{row.get('reaction_score')} "
+            f"{row.get('priced_in_score')} "
+            f"{row.get('score')} "
+            f"{row.get('next_step')}"
+        )
 
 
 def _print_external_json(payload: Mapping[str, object]) -> int:

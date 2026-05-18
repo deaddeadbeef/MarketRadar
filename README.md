@@ -203,6 +203,7 @@ renders:
 ```powershell
 catalyst-radar dashboard-snapshot --json
 catalyst-radar dashboard-snapshot --ticker ACME --available-at 2026-05-10T21:06:00Z
+catalyst-radar priced-in-queue --json
 catalyst-radar agent-brief --json
 ```
 
@@ -211,6 +212,11 @@ candidate rows, alerts, IPO/S-1 rows, themes, validation, costs, broker context,
 ops health, telemetry, telemetry coverage, live activation, and call planning.
 It is read-only, redacts restricted provider payloads, and makes 0 Polygon, SEC,
 Schwab, or OpenAI calls.
+
+`priced-in-queue` is the scriptable replacement for the TUI insight table. It
+returns the same full-scan boundary and ranked emotion-vs-reaction rows used by
+the dashboard, with optional `--status`, `--min-gap`, `--limit`, and `--json`.
+The API equivalent is `GET /api/radar/priced-in`.
 
 `agent-brief` is the CLI surface for the OpenAI Agents SDK operator layer. By
 default it runs a deterministic dry-run brief from the same redacted dashboard

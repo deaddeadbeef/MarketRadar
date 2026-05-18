@@ -152,6 +152,26 @@ The TUI overview now needs to make this explicit: first row is scan coverage,
 then the priced-in candidate queue. If active security count is tiny, the first
 row should say "Universe too small" instead of implying full-market insight.
 
+The current CLI/API follow-up adds a scriptable version of that same queue:
+
+```powershell
+catalyst-radar priced-in-queue --json
+catalyst-radar priced-in-queue --status bullish_not_priced_in --min-gap 20 --limit 20
+```
+
+API equivalent:
+
+```text
+GET /api/radar/priced-in?limit=50&status=bullish_not_priced_in&min_gap=20
+```
+
+This payload is `priced-in-queue-v1`, reports `external_calls_made=0`, includes
+the full-scan boundary (`universe_too_small`, `partial_scan`, or `ready`), and
+returns ranked rows with ticker, status, direction, emotion score, reaction
+score, gap, priced-in score, state, setup, source, reason, and next step. This
+keeps the CLI/API and dashboard aligned around the same useful thing instead of
+creating a second interpretation.
+
 Current state is **research-only**. The required run path and SEC catalyst path
 work, but daily bars are still local CSV and stale (`latest_bar=2026-05-08` vs.
 latest run `as_of=2026-05-16`), and the universe is intentionally tiny. The

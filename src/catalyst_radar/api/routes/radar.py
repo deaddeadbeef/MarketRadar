@@ -326,6 +326,24 @@ def radar_research_shortlist(
     )
 
 
+@router.get("/priced-in", dependencies=[Depends(require_role(Role.VIEWER))])
+def radar_priced_in_queue(
+    limit: int = Query(default=50, ge=1, le=200),
+    status: str | None = Query(default=None),
+    min_gap: float | None = Query(default=None, ge=0),
+) -> dict[str, object]:
+    priced_in_payload = _dashboard_helper("priced_in_queue_payload")
+    return redact_restricted_external_payload(
+        priced_in_payload(
+            _engine(),
+            AppConfig.from_env(),
+            limit=limit,
+            status=status,
+            min_gap=min_gap,
+        )
+    )
+
+
 @router.post("/runs/call-plan", dependencies=[Depends(require_role(Role.VIEWER))])
 def radar_run_call_plan(request: RadarRunRequest) -> dict[str, object]:
     call_plan_payload = _dashboard_helper("radar_run_call_plan_payload")

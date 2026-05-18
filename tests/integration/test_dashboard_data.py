@@ -61,6 +61,7 @@ from catalyst_radar.dashboard.data import (
     operator_next_step_payload,
     operator_work_queue_payload,
     opportunity_focus_payload,
+    priced_in_queue_payload,
     provider_preflight_payload,
     radar_discovery_snapshot_payload,
     radar_readiness_payload,
@@ -1366,6 +1367,22 @@ def test_radar_research_shortlist_payload_uses_latest_candidates(
     assert payload["rows"][0]["ticker"] == "MSFT"
     assert payload["rows"][0]["why_now"] == "MSFT guidance raised"
     assert payload["rows"][0]["decision_status"] == "research_only"
+
+
+def test_priced_in_queue_payload_surfaces_ranked_gap_rows(tmp_path: Path) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+
+    payload = priced_in_queue_payload(engine, AppConfig.from_env({}), limit=2)
+
+    assert payload["schema_version"] == "priced-in-queue-v1"
+    assert payload["external_calls_made"] == 0
+    assert payload["status"] in {"universe_too_small", "partial_scan", "ready"}
+    assert payload["count"] == 2
+    assert payload["rows"][0]["ticker"] == "MSFT"
+    assert payload["rows"][0]["priced_in_status"]
+    assert "emotion_reaction_gap" in payload["rows"][0]
+    assert payload["rows"][0]["why_now"] == "MSFT guidance raised"
 
 
 def test_operator_work_queue_prioritizes_setup_blockers_and_candidate_context(
