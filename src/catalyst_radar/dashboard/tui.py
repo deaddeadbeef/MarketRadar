@@ -2103,7 +2103,7 @@ def _apply_command(
             ),
         )
     if command in {"batch", "batches", "source-batch", "source-batches"}:
-        source, execute_batch = _parse_source_batch_command(value)
+        source, execute_batch, all_batches = _parse_source_batch_command(value)
         return _CommandUpdate(
             page="ops",
             filters=filters,
@@ -2120,6 +2120,7 @@ def _apply_command(
                     config,
                     source=source,
                     filters=filters,
+                    all_batches=all_batches,
                 )
             ),
         )
@@ -2256,11 +2257,13 @@ def _priced_in_source_batch_message(
     *,
     source: str,
     filters: DashboardFilters,
+    all_batches: bool = False,
 ) -> str:
     if not source.strip():
         return (
             "Usage: batch <source>. Try: batch catalyst_events, batch local_text, "
-            "batch options. Add execute to run one guarded chunk."
+            "batch options. Add all to summarize the full chunk plan, or execute "
+            "to run one guarded chunk."
         )
     if source.strip().lower() in {"all", "*"}:
         return _priced_in_all_source_batch_message(
@@ -2273,6 +2276,7 @@ def _priced_in_source_batch_message(
         config,
         source=source,
         filters=filters,
+        all_batches=all_batches,
     )
     if isinstance(payload_or_error, str):
         return payload_or_error
@@ -2285,6 +2289,8 @@ def _priced_in_source_batch_message(
     next_action = str(payload.get("next_action") or "").strip()
     diagnostic = _mapping(payload.get("diagnostic"))
     reason = str(diagnostic.get("reason") or "").strip()
+    diagnostic_next = str(diagnostic.get("next_action") or "").strip()
+    blocked_samples = _texts(diagnostic.get("sample_blocked_tickers"))
     next_batch_command = str(payload.get("next_batch_command") or "").strip()
     scan_scope = _mapping(payload.get("scan_scope"))
     command = ""
@@ -2321,11 +2327,20 @@ def _priced_in_source_batch_message(
             if bool(scan_scope.get("tickers_are_batch_sample"))
             else "this includes every currently plannable ticker for this source"
         )
+        mode_note = (
+            " Full chunk plan requested; the TUI summarizes it instead of printing "
+            "every ticker."
+            if all_batches
+            else " Add `all` to summarize every chunk for this source."
+        )
         chunk_scope = (
             f" Showing batch {batch_start}-{batch_end} of {batch_count} "
-            f"({returned_tickers} ticker(s)); {ticker_scope_note}."
+            f"({returned_tickers} ticker(s)); {ticker_scope_note}.{mode_note}"
             if batch_start and batch_end and batch_count
-            else " Showing the next provider chunk; this is not the whole ticker list."
+            else (
+                " Showing the next provider chunk; this is not the whole ticker list. "
+                "Add `all` to summarize every chunk for this source."
+            )
         )
         full_suffix = (
             f" Full chunk list: {all_batches_command}."
@@ -2333,13 +2348,38 @@ def _priced_in_source_batch_message(
             else ""
         )
         next_suffix = f" Next chunk page: {next_batch_command}." if next_batch_command else ""
+        blocked_suffix = (
+            f" Blocked examples: {', '.join(blocked_samples)}."
+            if blocked_samples
+            else ""
+        )
+        diagnostic_suffix = (
+            f" Diagnostic next: {diagnostic_next}."
+            if diagnostic_next
+            else ""
+        )
         return (
             f"{prefix} This is a full-scan plan, not a watchlist.{chunk_scope}"
             f"{calls}{api_suffix} "
-            f"Next safe chunk only: {command}. Run from TUI with "
-            f"`batch {source_name} execute` if intended.{full_suffix}{next_suffix}"
+            f"First safe chunk: {command}. Run from TUI with "
+            f"`batch {source_name} execute` if intended.{blocked_suffix}"
+            f"{diagnostic_suffix}{full_suffix}{next_suffix}"
         )
-    detail = next_action or reason or "No runnable batch is available for this source."
+    blocked_suffix = (
+        f" Blocked examples: {', '.join(blocked_samples)}."
+        if blocked_samples
+        else ""
+    )
+    diagnostic_suffix = (
+        f" {diagnostic_next}" if diagnostic_next and diagnostic_next != next_action else ""
+    )
+    detail = (
+        next_action
+        or diagnostic_next
+        or reason
+        or "No runnable batch is available for this source."
+    )
+    detail = f"{detail}{blocked_suffix}{diagnostic_suffix}"
     return f"{prefix} {detail}"
 
 
@@ -2408,12 +2448,21 @@ def _source_batch_priority_key(row: Mapping[str, object]) -> tuple[int, int, int
     return (3, 0, source_order, source)
 
 
-def _parse_source_batch_command(value: str) -> tuple[str, bool]:
+def _parse_source_batch_command(value: str) -> tuple[str, bool, bool]:
     parts = [part.strip() for part in value.split() if part.strip()]
     execute_words = {"execute", "exec", "run"}
-    execute = any(part.lower() in execute_words for part in parts)
-    source_parts = [part for part in parts if part.lower() not in execute_words]
-    return " ".join(source_parts), execute
+    full_plan_words = {"all", "full", "full-scan", "fullscan", "plan"}
+    lowered = [part.lower() for part in parts]
+    if lowered == ["all"]:
+        return "all", False, False
+    execute = any(part in execute_words for part in lowered)
+    all_batches = any(part in full_plan_words for part in lowered)
+    source_parts = [
+        part
+        for part in parts
+        if part.lower() not in execute_words | full_plan_words
+    ]
+    return " ".join(source_parts), execute, all_batches
 
 
 def _first_priced_in_source_batch_payload(
@@ -2422,6 +2471,7 @@ def _first_priced_in_source_batch_payload(
     *,
     source: str,
     filters: DashboardFilters,
+    all_batches: bool = False,
 ) -> Mapping[str, object] | str:
     try:
         return dashboard_data.priced_in_source_gap_batches_payload(
@@ -2429,6 +2479,7 @@ def _first_priced_in_source_batch_payload(
             config,
             source=source,
             batch_limit=1,
+            all_batches=all_batches,
             available_at=filters.available_at,
             status=filters.priced_in_status,
             usefulness=filters.priced_in_usefulness,
@@ -4422,6 +4473,7 @@ def _source_workflow_lines(payload: Mapping[str, object], width: int) -> list[st
     )
     lines.append(
         "`batch all` shows this source map without provider calls; "
+        "`batch <source> all` summarizes the full chunk plan; "
         "`batch <source> execute` runs exactly one guarded chunk."
     )
     lines.append(

@@ -1,6 +1,81 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 07:10:10 +08:00
+Last updated: 2026-05-19 07:26:04 +08:00
+
+## Latest Full-Scan Chunk Clarity Fix
+
+User clarification:
+
+- They asked why only a few tickers were shown and reiterated that they want a
+  full scan.
+- The live database already has the full priced-in scan:
+
+  ```text
+  priced-in-queue --full-scan --limit 10
+  total=12087
+  ```
+
+- The confusing ticker list was not the scan universe. It was the first
+  rate-limited provider chunk for source filling.
+- For current SEC catalyst coverage, live zero-call planning shows:
+
+  ```text
+  catalyst_events gap_rows=12080 plannable=10462 batch_size=5 total_batches=2093
+  blocked=1618 reason=missing_cik
+  first_chunk=AAL,AAMI,AAOI,AAON,AAP
+  last_chunk=ZVIA,ZYBT
+  ```
+
+Fix in this slice:
+
+- Source-batch next action now says explicitly that the full scan is split into
+  provider-safe chunks, and that the operator should review the full batch plan
+  before running one chunk at a time.
+- TUI command parsing now supports:
+
+  ```text
+  batch <source> all
+  ```
+
+  This summarizes the full chunk plan for a source without provider calls.
+
+- TUI `batch <source>` now says:
+
+  ```text
+  Add `all` to summarize every chunk for this source.
+  First safe chunk: ...
+  ```
+
+  This prevents the first provider chunk from reading like the whole scan.
+
+- `batch <source> all` now reports that the full chunk plan was requested and
+  that the TUI is summarizing it instead of printing every ticker.
+
+The prior blocked-source diagnostic work in this branch remains in place:
+
+- CLI source-batch output prints:
+
+  ```text
+  blocked_examples=AMDD,BOXX,CAFX,CLIP,IQMM reason=missing_cik
+  diagnostic_next=Add CIK metadata for blocked tickers...
+  ```
+
+- Data payloads expose `diagnostic.next_action` for `missing_cik` and
+  `missing_catalyst_events`.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_batch_command_opens_full_scan_source_batch_plan tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_can_return_full_scan_plan tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_exposes_missing_cik_blockers tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_source_batches_cli_prints_blocked_source_samples -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source catalyst_events --limit 1
+```
+
+Observed: focused pytest passed, ruff passed, `git diff --check` passed, and
+the live source-batch smoke made zero provider calls while showing the full
+12,080-row catalyst gap, 10,462 eligible rows, 2,093 chunks, and the first
+five-ticker chunk as only the next safe provider batch.
 
 ## Latest Overview Source-Coverage Hint Fix
 
