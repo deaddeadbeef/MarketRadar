@@ -14,6 +14,8 @@ $hadTickerMaxPages = Test-Path Env:CATALYST_POLYGON_TICKERS_MAX_PAGES
 $previousTickerMaxPages = $env:CATALYST_POLYGON_TICKERS_MAX_PAGES
 $hadTickerPageDelay = Test-Path Env:CATALYST_POLYGON_TICKER_PAGE_DELAY_SECONDS
 $previousTickerPageDelay = $env:CATALYST_POLYGON_TICKER_PAGE_DELAY_SECONDS
+$hadDailyMarketProvider = Test-Path Env:CATALYST_DAILY_MARKET_PROVIDER
+$previousDailyMarketProvider = $env:CATALYST_DAILY_MARKET_PROVIDER
 
 function Invoke-Checked {
     param(
@@ -55,18 +57,21 @@ try {
     $resolvedPages = if ($TickerPages -gt 0) { $TickerPages } elseif ($estimatedPages -gt 0) { $estimatedPages } else { $configuredPages }
     $resolvedDelay = if ($TickerPageDelaySeconds -ge 0) { $TickerPageDelaySeconds } else { [double]$provider.ticker_page_delay_seconds }
     $resolvedAsOf = if (-not [string]::IsNullOrWhiteSpace($AsOf)) { $AsOf } else { [string]$provider.latest_daily_bar_date }
+    $marketProvider = [string]$provider.market_provider
+    $universeName = if (-not [string]::IsNullOrWhiteSpace($env:CATALYST_UNIVERSE_NAME)) { $env:CATALYST_UNIVERSE_NAME } else { "liquid-us" }
     if ([string]::IsNullOrWhiteSpace($resolvedAsOf)) {
         throw "No AsOf date was provided and preflight has no latest daily-bar date."
     }
 
     Write-Output ("Preflight: status={0}; scan_status={1}; external_calls={2}" -f $preflight.status, $preflight.scan_status, $preflight.external_calls_made)
-    Write-Output ("Market provider: {0}" -f $provider.market_provider)
+    Write-Output ("Market provider: {0}" -f $marketProvider)
+    Write-Output ("Universe: {0}" -f $universeName)
     Write-Output ("Latest bars: date={0}; tickers={1}" -f $provider.latest_daily_bar_date, $provider.latest_daily_bar_ticker_count)
     Write-Output ("Ticker seed pages: configured={0}; estimated={1}; selected={2}" -f $configuredPages, $estimatedPages, $resolvedPages)
     Write-Output ("Ticker page delay seconds: {0}" -f $resolvedDelay)
     Write-Output ("Scan as-of: {0}" -f $resolvedAsOf)
 
-    if ($provider.market_provider -ne "polygon") {
+    if ($marketProvider -ne "polygon") {
         Write-Output "External calls made: 0"
         throw "Full-market live scan script currently requires CATALYST_DAILY_MARKET_PROVIDER=polygon."
     }
@@ -83,7 +88,10 @@ try {
         Write-Output ('$env:CATALYST_POLYGON_TICKERS_MAX_PAGES="{0}"' -f $resolvedPages)
         Write-Output ('$env:CATALYST_POLYGON_TICKER_PAGE_DELAY_SECONDS="{0}"' -f $resolvedDelay)
         Write-Output ("catalyst-radar ingest-polygon tickers --max-pages {0}" -f $resolvedPages)
-        Write-Output ("catalyst-radar run-daily --as-of {0} --available-at <UTC-now> --json" -f $resolvedAsOf)
+        Write-Output ("catalyst-radar ingest-polygon grouped-daily --date {0}" -f $resolvedAsOf)
+        Write-Output ("catalyst-radar build-universe --as-of {0} --available-at <UTC-now> --name {1} --provider polygon" -f $resolvedAsOf, $universeName)
+        Write-Output '$env:CATALYST_DAILY_MARKET_PROVIDER="off"'
+        Write-Output ("catalyst-radar run-daily --as-of {0} --available-at <UTC-now> --provider polygon --universe {1} --json" -f $resolvedAsOf, $universeName)
         Write-Output "catalyst-radar priced-in-queue --json"
         Write-Output "External calls made: 0"
         return
@@ -91,11 +99,14 @@ try {
 
     $env:CATALYST_POLYGON_TICKERS_MAX_PAGES = [string]$resolvedPages
     $env:CATALYST_POLYGON_TICKER_PAGE_DELAY_SECONDS = [string]$resolvedDelay
-    $availableAt = [DateTimeOffset]::UtcNow.ToString("o")
 
     Write-Output "Executing full-market scheduled scan. Provider calls are explicit below."
     Invoke-Checked $dashboardExe @("ingest-polygon", "tickers", "--max-pages", [string]$resolvedPages)
-    Invoke-Checked $dashboardExe @("run-daily", "--as-of", $resolvedAsOf, "--available-at", $availableAt, "--json")
+    Invoke-Checked $dashboardExe @("ingest-polygon", "grouped-daily", "--date", $resolvedAsOf)
+    $availableAt = [DateTimeOffset]::UtcNow.ToString("o")
+    Invoke-Checked $dashboardExe @("build-universe", "--as-of", $resolvedAsOf, "--available-at", $availableAt, "--name", $universeName, "--provider", "polygon")
+    $env:CATALYST_DAILY_MARKET_PROVIDER = "off"
+    Invoke-Checked $dashboardExe @("run-daily", "--as-of", $resolvedAsOf, "--available-at", $availableAt, "--provider", "polygon", "--universe", $universeName, "--json")
     Invoke-Checked $dashboardExe @("priced-in-queue", "--json")
     Write-Output ("External provider call budget requested: polygon_ticker_pages={0}; grouped_daily=1" -f $resolvedPages)
 }
@@ -111,6 +122,12 @@ finally {
     }
     else {
         Remove-Item Env:CATALYST_POLYGON_TICKER_PAGE_DELAY_SECONDS -ErrorAction SilentlyContinue
+    }
+    if ($hadDailyMarketProvider) {
+        $env:CATALYST_DAILY_MARKET_PROVIDER = $previousDailyMarketProvider
+    }
+    else {
+        Remove-Item Env:CATALYST_DAILY_MARKET_PROVIDER -ErrorAction SilentlyContinue
     }
     Pop-Location
 }

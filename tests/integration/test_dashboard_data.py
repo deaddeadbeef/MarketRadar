@@ -88,6 +88,7 @@ from catalyst_radar.storage.broker_repositories import BrokerRepository
 from catalyst_radar.storage.budget_repositories import BudgetLedgerRepository
 from catalyst_radar.storage.db import create_schema
 from catalyst_radar.storage.feature_repositories import FeatureRepository
+from catalyst_radar.storage.provider_repositories import ProviderRepository
 from catalyst_radar.storage.repositories import MarketRepository
 from catalyst_radar.storage.schema import (
     alert_suppressions,
@@ -2227,6 +2228,70 @@ def test_priced_in_queue_payload_labels_blocked_mismatches(tmp_path: Path) -> No
     assert row["next_step"] == "Clear blockers before treating this mismatch as actionable."
     assert row["usefulness"]["status"] == "blocked"
     assert payload["usefulness_counts"]["blocked"] == 1
+
+
+def test_priced_in_queue_payload_respects_latest_run_universe_scope(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    ProviderRepository(engine).save_universe_snapshot(
+        name="liquid-us",
+        as_of=AS_OF,
+        provider="polygon",
+        source_ts=AS_OF,
+        available_at=AVAILABLE_AT,
+        members=[{"ticker": "MSFT", "reason": "eligible", "rank": 1}],
+    )
+    metadata = {
+        "as_of": AS_OF.date().isoformat(),
+        "decision_available_at": AVAILABLE_AT.isoformat(),
+        "outcome_available_at": None,
+        "provider": "polygon",
+        "universe": "liquid-us",
+        "tickers": [],
+    }
+    with engine.begin() as conn:
+        conn.execute(
+            update(candidate_states)
+            .where(candidate_states.c.id == "state-aapl-latest")
+            .values(final_score=99.0)
+        )
+        conn.execute(
+            insert(job_runs),
+            [
+                _job_run_row(
+                    "feature-scan-universe",
+                    job_type="feature_scan",
+                    status="success",
+                    started_at=AVAILABLE_AT,
+                    metadata={
+                        **metadata,
+                        "result_status": "success",
+                        "result_payload": {
+                            "scan_scope": "universe",
+                            "universe": "liquid-us",
+                            "universe_member_count": 1,
+                        },
+                    },
+                    requested_count=1,
+                    raw_count=1,
+                    normalized_count=1,
+                )
+            ],
+        )
+
+    payload = priced_in_queue_payload(engine, AppConfig.from_env({}), limit=10)
+    run_rows = load_radar_run_candidate_rows(
+        engine,
+        load_radar_run_summary(engine),
+        limit=1,
+    )
+
+    assert payload["latest_run"]["universe"] == "liquid-us"
+    assert payload["total_count"] == 1
+    assert [row["ticker"] for row in payload["rows"]] == ["MSFT"]
+    assert [row["ticker"] for row in run_rows] == ["MSFT"]
 
 
 def test_priced_in_preflight_payload_reports_exact_next_steps(tmp_path: Path) -> None:

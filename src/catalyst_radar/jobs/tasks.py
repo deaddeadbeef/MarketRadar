@@ -161,6 +161,7 @@ class _DailyRunContext:
     engine: Engine
     spec: DailyRunSpec
     market_repo: MarketRepository
+    provider_repo: ProviderRepository
     event_repo: EventRepository
     text_repo: TextRepository
     feature_repo: FeatureRepository
@@ -208,6 +209,7 @@ def run_daily(
         spec=spec,
         config=AppConfig.from_env(),
         market_repo=MarketRepository(engine),
+        provider_repo=provider_repo,
         event_repo=EventRepository(engine),
         text_repo=TextRepository(engine),
         feature_repo=FeatureRepository(engine),
@@ -668,15 +670,84 @@ def _local_text_triage(context: _DailyRunContext) -> _StepOutcome:
     )
 
 
+def _feature_scan_scope(context: _DailyRunContext) -> dict[str, Any]:
+    if context.spec.tickers:
+        tickers = set(context.spec.tickers)
+        return {
+            "status": "ready",
+            "scan_scope": "explicit_tickers",
+            "universe": None,
+            "universe_snapshot_id": None,
+            "universe_member_count": len(tickers),
+            "provider": None,
+            "universe_tickers": tickers,
+            "securities": context.market_repo.list_active_securities_by_tickers(
+                tuple(sorted(tickers))
+            ),
+        }
+    if context.spec.universe:
+        snapshot = context.provider_repo.latest_universe_snapshot(
+            name=context.spec.universe,
+            as_of=context.as_of_datetime,
+            available_at=context.available_at_cutoff,
+        )
+        if snapshot is None:
+            return {
+                "status": "missing_universe",
+                "scan_scope": "universe",
+                "universe": context.spec.universe,
+                "universe_snapshot_id": None,
+                "universe_member_count": 0,
+                "provider": None,
+                "universe_tickers": set(),
+                "securities": [],
+            }
+        member_rows = context.provider_repo.list_universe_member_rows(snapshot.id)
+        tickers = {row.ticker.upper() for row in member_rows}
+        return {
+            "status": "ready",
+            "scan_scope": "universe",
+            "universe": context.spec.universe,
+            "universe_snapshot_id": snapshot.id,
+            "universe_member_count": len(tickers),
+            "provider": snapshot.provider,
+            "universe_tickers": tickers,
+            "securities": context.market_repo.list_active_securities_by_tickers(
+                tuple(sorted(tickers))
+            )
+            if tickers
+            else [],
+        }
+    securities = context.market_repo.list_active_securities()
+    return {
+        "status": "ready",
+        "scan_scope": "active_securities",
+        "universe": None,
+        "universe_snapshot_id": None,
+        "universe_member_count": len(securities),
+        "provider": None,
+        "universe_tickers": None,
+        "securities": securities,
+    }
+
+
 def _feature_scan(context: _DailyRunContext) -> _StepOutcome:
     daily_ingest = context.step_results.get("daily_bar_ingest")
     if daily_ingest is not None and daily_ingest.status == JobStatus.FAILED.value:
         return _skipped("blocked_by_failed_dependency:daily_bar_ingest")
-    securities = (
-        context.market_repo.list_active_securities_by_tickers(context.spec.tickers)
-        if context.spec.tickers
-        else context.market_repo.list_active_securities()
-    )
+    scope = _feature_scan_scope(context)
+    if scope["status"] == "missing_universe":
+        return _StepOutcome(
+            status=JobStatus.FAILED.value,
+            reason="universe_not_found",
+            payload={
+                "scan_scope": "universe",
+                "universe": context.spec.universe,
+                "as_of": context.spec.as_of.isoformat(),
+                "available_at": context.available_at_cutoff.isoformat(),
+            },
+        )
+    securities = scope["securities"]
     if not securities:
         return _skipped("no_active_securities")
 
@@ -685,8 +756,8 @@ def _feature_scan(context: _DailyRunContext) -> _StepOutcome:
             context.market_repo,
             context.spec.as_of,
             available_at=context.available_at_cutoff,
-            provider=_scan_provider(context),
-            universe_tickers=set(context.spec.tickers) if context.spec.tickers else None,
+            provider=scope["provider"] or _scan_provider(context),
+            universe_tickers=scope["universe_tickers"],
             event_repo=context.event_repo,
             text_repo=context.text_repo,
             feature_repo=context.feature_repo,
@@ -707,6 +778,10 @@ def _feature_scan(context: _DailyRunContext) -> _StepOutcome:
         payload={
             "active_security_count": len(securities),
             "scan_result_count": len(results),
+            "scan_scope": scope["scan_scope"],
+            "universe": scope["universe"],
+            "universe_snapshot_id": scope["universe_snapshot_id"],
+            "universe_member_count": scope["universe_member_count"],
         },
     )
 

@@ -46,6 +46,7 @@ from catalyst_radar.storage.alert_repositories import AlertRepository
 from catalyst_radar.storage.broker_repositories import BrokerRepository
 from catalyst_radar.storage.db import create_schema
 from catalyst_radar.storage.job_repositories import JobLockRepository
+from catalyst_radar.storage.provider_repositories import ProviderRepository
 from catalyst_radar.storage.schema import (
     audit_events,
     candidate_states,
@@ -1434,6 +1435,76 @@ def test_scheduler_config_passes_scan_scope_to_daily_spec():
     assert spec.provider == "sample"
     assert spec.universe == "liquid-us"
     assert spec.tickers == ("MSFT", "NVDA")
+
+
+def test_daily_run_feature_scan_uses_universe_snapshot(monkeypatch):
+    engine = _engine()
+    available_at = datetime(2026, 5, 10, 1, 0, tzinfo=UTC)
+    as_of = date(2026, 5, 9)
+    _insert_active_security(engine, available_at, ticker="MSFT")
+    _insert_active_security(engine, available_at, ticker="AAPL")
+    snapshot_id = ProviderRepository(engine).save_universe_snapshot(
+        name="liquid-us",
+        as_of=datetime(2026, 5, 9, 21, tzinfo=UTC),
+        provider="csv",
+        source_ts=datetime(2026, 5, 9, 21, tzinfo=UTC),
+        available_at=available_at,
+        members=[{"ticker": "MSFT", "rank": 1, "reason": "eligible"}],
+    )
+    captured: dict[str, object] = {}
+
+    def fake_run_scan(_repo, run_as_of, **kwargs):
+        captured.update(kwargs)
+        return [_high_score_scan_result(run_as_of, available_at=available_at)]
+
+    monkeypatch.setattr(job_tasks, "run_scan", fake_run_scan)
+
+    result = run_daily(
+        DailyRunSpec(
+            as_of=as_of,
+            decision_available_at=available_at,
+            provider="csv",
+            universe="liquid-us",
+        ),
+        engine=engine,
+    )
+
+    feature_scan = result.step("feature_scan")
+    assert feature_scan.status == "success"
+    assert captured["universe_tickers"] == {"MSFT"}
+    assert captured["provider"] == "csv"
+    assert feature_scan.requested_count == 1
+    assert feature_scan.payload["scan_scope"] == "universe"
+    assert feature_scan.payload["universe"] == "liquid-us"
+    assert feature_scan.payload["universe_snapshot_id"] == snapshot_id
+    assert feature_scan.payload["universe_member_count"] == 1
+
+
+def test_daily_run_feature_scan_fails_closed_when_universe_missing(monkeypatch):
+    engine = _engine()
+    available_at = datetime(2026, 5, 10, 1, 0, tzinfo=UTC)
+
+    def fail_run_scan(*_args, **_kwargs):
+        raise AssertionError("run_scan should not execute without a universe snapshot")
+
+    monkeypatch.setattr(job_tasks, "run_scan", fail_run_scan)
+
+    result = run_daily(
+        DailyRunSpec(
+            as_of=date(2026, 5, 9),
+            decision_available_at=available_at,
+            provider="csv",
+            universe="missing-universe",
+        ),
+        engine=engine,
+    )
+
+    feature_scan = result.step("feature_scan")
+    assert feature_scan.status == "failed"
+    assert feature_scan.reason == "universe_not_found"
+    assert feature_scan.payload["scan_scope"] == "universe"
+    assert feature_scan.payload["universe"] == "missing-universe"
+    assert result.step("scoring_policy").reason == "blocked_by_failed_dependency:feature_scan"
 
 
 def test_scheduler_config_rejects_unsupported_real_llm_and_alert_delivery():

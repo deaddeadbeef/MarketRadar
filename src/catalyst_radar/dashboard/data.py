@@ -41,6 +41,7 @@ from catalyst_radar.jobs.tasks import DAILY_STEP_ORDER
 from catalyst_radar.scoring.priced_in import evaluate_priced_in
 from catalyst_radar.storage.broker_repositories import BrokerRepository
 from catalyst_radar.storage.budget_repositories import BudgetLedgerRepository
+from catalyst_radar.storage.provider_repositories import ProviderRepository
 from catalyst_radar.storage.schema import (
     alert_suppressions,
     alerts,
@@ -327,16 +328,57 @@ def load_radar_run_candidate_rows(
     cutoff = _parse_utc_datetime(summary.get("finished_at")) or _parse_utc_datetime(
         summary.get("decision_available_at")
     )
-    return load_candidate_rows(
+    run_has_universe = bool(str(summary.get("universe") or "").strip())
+    rows = load_candidate_rows(
         engine,
         available_at=cutoff,
         artifact_available_at=None
         if include_post_run_artifacts
         else _ARTIFACT_CUTOFF_UNSET,
         as_of_date=_parse_date(summary.get("as_of")),
-        limit=limit,
+        limit=None if run_has_universe else limit,
         include_artifacts=include_artifacts,
     )
+    filtered_rows = _filter_rows_to_run_universe(
+        engine,
+        rows,
+        radar_run_summary=summary,
+        cutoff=cutoff,
+    )
+    if limit is None:
+        return filtered_rows
+    return filtered_rows[: _positive_limit(limit)]
+
+
+def _filter_rows_to_run_universe(
+    engine: Engine,
+    rows: Sequence[Mapping[str, object]],
+    *,
+    radar_run_summary: Mapping[str, object],
+    cutoff: datetime | None,
+) -> list[dict[str, object]]:
+    universe = str(radar_run_summary.get("universe") or "").strip()
+    run_date = _parse_date(radar_run_summary.get("as_of"))
+    if not universe or run_date is None or cutoff is None:
+        return [_row_dict(row) for row in rows]
+    snapshot = ProviderRepository(engine).latest_universe_snapshot(
+        name=universe,
+        as_of=datetime(run_date.year, run_date.month, run_date.day, 21, tzinfo=UTC),
+        available_at=cutoff,
+    )
+    if snapshot is None:
+        return [_row_dict(row) for row in rows]
+    tickers = {
+        member.ticker.upper()
+        for member in ProviderRepository(engine).list_universe_member_rows(snapshot.id)
+    }
+    if not tickers:
+        return []
+    return [
+        _row_dict(row)
+        for row in rows
+        if str(row.get("ticker") or "").strip().upper() in tickers
+    ]
 
 
 def opportunity_focus_payload(
@@ -7977,11 +8019,16 @@ def _priced_in_preflight_commands(
     return {
         "ingest_tickers": ingest_tickers,
         "ingest_bars": ingest_bars,
-        "build_universe": "catalyst-radar build-universe --as-of <LATEST_TRADING_DATE>",
+        "build_universe": (
+            "catalyst-radar build-universe --as-of <LATEST_TRADING_DATE> "
+            f"--available-at <UTC-now> --name {config.universe_name} "
+            f"--provider {provider}"
+        ),
         "review_call_plan": "catalyst-radar dashboard-tui --once --page run",
         "run_scan": (
             "catalyst-radar run-daily --as-of <LATEST_TRADING_DATE> "
-            "--available-at <UTC-now> --json"
+            f"--available-at <UTC-now> --provider {provider} "
+            f"--universe {config.universe_name} --json"
         ),
         "review_queue": "catalyst-radar priced-in-queue --json",
     }

@@ -85,6 +85,32 @@ def test_build_universe_command_persists_snapshot(
     assert capsys.readouterr().out == "built universe=liquid-us members=2 excluded=4\n"
 
 
+def test_build_universe_defaults_to_daily_market_provider(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    database_url = _database_url(tmp_path)
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("CATALYST_DAILY_MARKET_PROVIDER", "sample")
+    monkeypatch.setenv("CATALYST_UNIVERSE_MIN_PRICE", "5")
+    monkeypatch.setenv("CATALYST_UNIVERSE_MIN_AVG_DOLLAR_VOLUME", "10000000")
+    _seed_fixture_market(database_url)
+
+    exit_code = main(
+        [
+            "build-universe",
+            "--name",
+            "liquid-us",
+            "--as-of",
+            "2026-05-08",
+        ]
+    )
+
+    assert exit_code == 0
+    assert capsys.readouterr().out == "built universe=liquid-us members=2 excluded=4\n"
+
+
 def test_scan_uses_selected_provider_when_duplicate_bars_exist(tmp_path: Path) -> None:
     database_url = _database_url(tmp_path)
     _seed_fixture_market(database_url)
