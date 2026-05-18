@@ -1493,6 +1493,14 @@ def test_get_radar_priced_in_source_batches_can_return_all_source_overview(
             "status": "ready",
             "external_calls_made": 0,
             "source_count": 2,
+            "coverage_first_recommendation": {
+                "source": "catalyst_events",
+                "mode": "coverage_first",
+            },
+            "decision_shortcut_recommendation": {
+                "source": "options",
+                "mode": "decision_shortcut",
+            },
             "sources": [
                 {
                     "source": "options",
@@ -1523,6 +1531,8 @@ def test_get_radar_priced_in_source_batches_can_return_all_source_overview(
     payload = response.json()
     assert payload["schema_version"] == "priced-in-source-batch-overview-v1"
     assert payload["external_calls_made"] == 0
+    assert payload["coverage_first_recommendation"]["source"] == "catalyst_events"
+    assert payload["decision_shortcut_recommendation"]["source"] == "options"
     assert payload["sources"][0]["source"] == "options"
     assert captured["batch_size"] == 5
     assert captured["available_at"].isoformat() == "2026-05-18T16:00:00+00:00"

@@ -1,6 +1,86 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 06:50:06 +08:00
+Last updated: 2026-05-19 06:59:37 +08:00
+
+## Latest Source Recommendation Split Fix
+
+After the full-scan-primary UX fix, the live evidence map exposed a second
+source-priority conflict:
+
+- `priced-in-preflight --json` correctly said broad full-scan evidence should
+  start with `catalyst_events`, because catalyst and local-text coverage was
+  only `7/12087`.
+- `priced-in-source-batches --source all` and the Ops Source Fill Workflow said
+  to start with `options`, because options improved the five current
+  decision-ready rows.
+- Both recommendations were valid, but they answered different operator goals.
+  The user's current goal is full-market scan quality first, so broad coverage
+  must be the primary recommendation and the decision-ready subset must be a
+  clearly labeled shortcut.
+
+Fix in this slice:
+
+- All-source source-batch overview now returns:
+
+  ```text
+  coverage_first_recommendation
+  decision_shortcut_recommendation
+  ```
+
+- `next_action` now follows the broad full-scan coverage recommendation.
+- CLI `priced-in-source-batches --source all` now prints both lanes:
+
+  ```text
+  next_action=Start full-scan coverage with catalyst_events; it has 12080 remaining gap row(s)...
+  coverage_first=source=catalyst_events gaps=12080 calls=5 command=catalyst-radar priced-in-source-batches --source catalyst_events --execute-next
+    why=Prioritizes broad evidence coverage across the whole scan.
+  decision_shortcut=source=options decision=5 actionable=7 calls=1 command=catalyst-radar priced-in-source-batches --source options --execute-next
+    examples=A,MSFT,AAAU,AAPL,AA
+  ```
+
+- The TUI Ops workflow now separates:
+
+  ```text
+  Coverage-first    : Review the run call plan and refresh event ingestion before trusting emotion.
+  Decision shortcut : Start with options; it fills context for 5 decision-ready row(s)...
+  ```
+
+- The workflow table order now follows full-scan coverage/preflight order first,
+  while still showing useful-row counts beside each source.
+- The API all-source endpoint returns the same new fields through:
+
+  ```text
+  GET /api/radar/priced-in/source-batches?source=all
+  ```
+
+Live zero-call smoke after the fix:
+
+```text
+catalyst-radar priced-in-source-batches --source all
+priced_in_source_batch_overview status=ready sources=6 ready_sources=3 blocked_sources=1 gap_rows=48329 external_calls=0
+coverage_first=source=catalyst_events gaps=12080 calls=5 ...
+decision_shortcut=source=options decision=5 actionable=7 calls=1 ...
+```
+
+```text
+catalyst-radar dashboard-tui --once --page ops
+Coverage-first    : Review the run call plan and refresh event ingestion before trusting emotion.
+Decision shortcut : Start with options; it fills context for 5 decision-ready row(s)...
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_all_source_gap_batches_payload_summarizes_next_chunks tests\integration\test_dashboard_data.py::test_priced_in_all_source_gap_batches_prioritizes_decision_useful_gaps tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_snapshot_cli_outputs_dashboard_command_center_json tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_snapshot_ops_page_shows_priced_in_source_actions -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source all
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page ops
+```
+
+Observed: focused pytest passed, ruff passed after one line-length cleanup,
+`git diff --check` passed, and live CLI/TUI smokes made zero provider calls
+while separating broad full-scan coverage from the decision-ready shortcut.
 
 ## Latest Full-Scan Primary UX Fix
 

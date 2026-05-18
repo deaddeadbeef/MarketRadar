@@ -4158,26 +4158,44 @@ def _priced_in_source_workflow_payload(
                 ),
             }
         )
-    steps = sorted(steps, key=_source_workflow_priority_key)
+    steps = sorted(steps, key=_source_workflow_coverage_key)
     for index, step in enumerate(steps, start=1):
         step["priority"] = index
-    suggested = next((step for step in steps if _source_workflow_has_priority(step)), None)
-    if suggested is not None:
-        next_action = _source_workflow_suggested_action(suggested)
-        next_command = suggested.get("command") or (
+    coverage_step = steps[0] if steps else {}
+    next_action = (
+        plan.get("next_action")
+        or coverage_step.get("action")
+        or "Review full-scan source coverage."
+    )
+    next_command = plan.get("next_command") or coverage_step.get("command")
+    decision_suggested = next(
+        (
+            step
+            for step in sorted(steps, key=_source_workflow_priority_key)
+            if _source_workflow_has_priority(step)
+        ),
+        None,
+    )
+    decision_shortcut_action = None
+    decision_shortcut_command = None
+    if decision_suggested is not None:
+        decision_shortcut_action = _source_workflow_suggested_action(decision_suggested)
+        decision_shortcut_command = decision_suggested.get("command") or (
             "catalyst-radar priced-in-source-batches "
-            f"--source {suggested.get('source')}"
+            f"--source {decision_suggested.get('source')}"
         )
-    else:
-        next_action = plan.get("next_action")
-        next_command = plan.get("next_command")
     return {
         "schema_version": "priced-in-source-workflow-v1",
         "status": plan.get("status") or "unknown",
         "headline": plan.get("headline"),
         "next_action": next_action,
         "next_command": next_command,
-        "priority_scope": "visible_priced_in_rows",
+        "coverage_first_action": next_action,
+        "coverage_first_command": next_command,
+        "decision_shortcut_action": decision_shortcut_action,
+        "decision_shortcut_command": decision_shortcut_command,
+        "priority_scope": "full_scan_coverage",
+        "decision_priority_scope": "visible_priced_in_rows",
         "overview_command": "catalyst-radar priced-in-source-batches --source all",
         "overview_api": "GET /api/radar/priced-in/source-batches?source=all",
         "external_calls_made": 0,
@@ -4263,6 +4281,16 @@ def _source_workflow_priority_key(step: Mapping[str, object]) -> tuple[int, int,
     return (3, 0, source_order, preflight_priority)
 
 
+def _source_workflow_coverage_key(step: Mapping[str, object]) -> tuple[int, int]:
+    preflight_priority = int(_number_or_zero(step.get("preflight_priority")))
+    source = str(step.get("source") or "")
+    try:
+        source_order = dashboard_data.PRICED_IN_SOURCE_CLASSES.index(source)
+    except ValueError:
+        source_order = len(dashboard_data.PRICED_IN_SOURCE_CLASSES)
+    return (preflight_priority or 99, source_order)
+
+
 def _source_workflow_has_priority(step: Mapping[str, object]) -> bool:
     return any(
         int(_number_or_zero(step.get(key))) > 0
@@ -4310,7 +4338,12 @@ def _source_workflow_lines(payload: Mapping[str, object], width: int) -> list[st
         _kv_lines(
             (
                 ("Status", workflow.get("status")),
-                ("Next action", workflow.get("next_action")),
+                (
+                    "Coverage-first",
+                    workflow.get("coverage_first_action")
+                    or workflow.get("next_action"),
+                ),
+                ("Decision shortcut", workflow.get("decision_shortcut_action")),
                 ("All-source plan", workflow.get("overview_command")),
             ),
             width=width,

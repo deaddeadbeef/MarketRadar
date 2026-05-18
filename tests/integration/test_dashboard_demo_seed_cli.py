@@ -134,18 +134,24 @@ def test_dashboard_snapshot_cli_outputs_dashboard_command_center_json(
     assert payload["priced_in_source_workflow"]["external_calls_made"] == 0
     assert payload["priced_in_source_workflow"]["steps"]
     assert payload["priced_in_source_workflow"]["priority_scope"] == (
+        "full_scan_coverage"
+    )
+    assert payload["priced_in_source_workflow"]["decision_priority_scope"] == (
         "visible_priced_in_rows"
     )
-    assert payload["priced_in_source_workflow"]["next_action"].startswith(
+    assert payload["priced_in_source_workflow"]["coverage_first_action"]
+    assert payload["priced_in_source_workflow"]["decision_shortcut_action"].startswith(
         "Start with options;"
     )
-    assert payload["priced_in_source_workflow"]["steps"][0]["source"] == "options"
-    assert payload["priced_in_source_workflow"]["steps"][0][
+    options_step = next(
+        step
+        for step in payload["priced_in_source_workflow"]["steps"]
+        if step["source"] == "options"
+    )
+    assert options_step[
         "decision_useful_gap_rows"
     ] == 1
-    assert payload["priced_in_source_workflow"]["steps"][0][
-        "priority_sample_tickers"
-    ] == ["ACME"]
+    assert options_step["priority_sample_tickers"] == ["ACME"]
     assert payload["priced_in_answer"]["schema_version"] == "priced-in-answer-v1"
     assert payload["priced_in_answer"]["external_calls_made"] == 0
     assert payload["priced_in_answer"]["question"] == (
