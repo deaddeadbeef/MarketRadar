@@ -1454,6 +1454,62 @@ def test_priced_in_answer_payload_summarizes_current_scan(tmp_path: Path) -> Non
         assert payload["top_rows"][0]["missing_sources"]
 
 
+def test_priced_in_answer_prefers_local_artifact_gap_before_options(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    queue = {
+        "status": "ready",
+        "total_count": 2,
+        "count": 2,
+        "returned_count": 2,
+        "offset": 0,
+        "has_more": False,
+        "filters": {"status": "all", "limit": 2, "offset": 0},
+        "status_counts": {"bullish_not_priced_in": 2},
+        "usefulness_counts": {"research_useful": 2},
+        "decision_gap_counts": {
+            "schema_version": "priced-in-decision-gap-counts-v1",
+            "scope": "actionable_mismatch_rows",
+            "row_count": 2,
+            "counts": {
+                "candidate_packet": 1,
+                "decision_card": 2,
+                "options": 2,
+            },
+        },
+        "source_coverage": {
+            "summary": "options 0/2",
+            "weak_sources": ["options"],
+            "actions": [
+                {
+                    "source": "options",
+                    "status": "missing",
+                    "next_action": "Plan option context.",
+                    "batch_plan_command": (
+                        "catalyst-radar priced-in-source-batches --source options"
+                    ),
+                }
+            ],
+        },
+        "rows": [],
+    }
+
+    payload = priced_in_answer_payload(
+        engine,
+        AppConfig.from_env({}),
+        queue=queue,
+        preflight={"evidence_plan": {"steps": []}},
+    )
+
+    recommended = payload["decision_readiness"]["recommended_gap"]
+    assert recommended["gap"] == "candidate_packet"
+    assert recommended["command"] == (
+        "catalyst-radar priced-in-queue --usefulness research_useful "
+        "--decision-gap candidate_packet --limit 50"
+    )
+
+
 def test_priced_in_queue_payload_paginates_ranked_rows(tmp_path: Path) -> None:
     engine = _engine(tmp_path)
     _insert_dashboard_fixture(engine)

@@ -1204,10 +1204,10 @@ def _priced_in_decision_gap_priority(gap: str) -> int:
         "market_bars": 0,
         "catalyst_events": 1,
         "local_text": 2,
-        "options": 3,
-        "broker_context": 4,
-        "candidate_packet": 5,
-        "decision_card": 6,
+        "candidate_packet": 3,
+        "decision_card": 4,
+        "options": 5,
+        "broker_context": 6,
         "theme_peer_sector": 7,
     }
     return order.get(gap, 99)
