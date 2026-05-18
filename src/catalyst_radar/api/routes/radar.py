@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from catalyst_radar.connectors.provider_ingest import ProviderIngestError
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.dashboard import data as dashboard_data
+from catalyst_radar.dashboard.source_batches import execute_priced_in_source_batch
 from catalyst_radar.events.sec_ingest import (
     SecSubmissionTarget,
     ingest_sec_submissions_batch,
@@ -106,6 +107,17 @@ class TextFeaturesBatchRequest(BaseModel):
     as_of: Date
     available_at: datetime | None = None
     tickers: list[str] = Field(default_factory=list)
+
+
+class SourceBatchExecuteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source: str
+    available_at: datetime | None = None
+    status: str | None = None
+    usefulness: str | None = None
+    decision_gap: list[str] = Field(default_factory=list)
+    min_gap: float | None = Field(default=None, ge=0)
 
 
 def _candidate_api_scope(latest_run: object) -> dict[str, object]:
@@ -452,6 +464,29 @@ def radar_priced_in_source_batches(
             usefulness=usefulness,
             decision_gap=decision_gap,
             min_gap=min_gap,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return redact_restricted_external_payload(payload)
+
+
+@router.post(
+    "/priced-in/source-batches/execute-next",
+    dependencies=[Depends(require_role(Role.ANALYST))],
+)
+def radar_priced_in_source_batch_execute_next(
+    request: SourceBatchExecuteRequest,
+) -> dict[str, object]:
+    try:
+        payload = execute_priced_in_source_batch(
+            _engine(),
+            AppConfig.from_env(),
+            source=request.source,
+            available_at=_parse_api_datetime(request.available_at),
+            status=request.status,
+            usefulness=request.usefulness,
+            decision_gap=request.decision_gap,
+            min_gap=request.min_gap,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

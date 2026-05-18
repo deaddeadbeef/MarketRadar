@@ -1,6 +1,61 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 03:00:33 +08:00
+Last updated: 2026-05-19 03:16:48 +08:00
+
+## Latest CLI/API Source-Batch Execution Parity
+
+The prior slice added `batch <source> execute` to the TUI so the operator can
+fill exactly one source chunk from the current full scan. This slice makes the
+same operation scriptable and API-accessible.
+
+Changes in this slice:
+
+- Added `src/catalyst_radar/dashboard/source_batches.py`, a shared executor for
+  one next source-fill chunk from `priced_in_source_gap_batches_payload()`.
+- The shared executor preserves the existing source boundaries:
+  - `local_text` runs stored-event text intelligence and makes 0 external
+    calls.
+  - `catalyst_events` runs the existing SEC submissions batch executor and
+    preserves SEC live/user-agent checks.
+  - `options` / `broker_context` run the read-only Schwab market-context sync
+    through the same token and rate-limit guards used by the broker route.
+- The TUI now calls the shared executor instead of keeping its own private
+  execution logic.
+- CLI now supports:
+
+  ```powershell
+  catalyst-radar priced-in-source-batches --source <source> --execute-next
+  ```
+
+  Without `--execute-next`, the command remains plan-only and makes 0 provider
+  calls. `--execute-next` cannot be combined with `--all`.
+- API now supports:
+
+  ```text
+  POST /api/radar/priced-in/source-batches/execute-next
+  ```
+
+  with body fields `source`, optional `available_at`, `status`, `usefulness`,
+  `decision_gap`, and `min_gap`.
+- The new route is explicitly allowlisted in the security-boundary test because
+  its path intentionally includes the word `execute` and can use read-only
+  Schwab for broker-context/options source fill.
+- README and `docs/dashboard-feature-inventory.md` now document the TUI,
+  CLI, and API one-chunk execution surfaces.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_batch_command_opens_full_scan_source_batch_plan tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_batch_execute_runs_one_guarded_local_chunk tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_source_batches_execute_next_cli_runs_one_batch tests\integration\test_api_routes.py::test_get_radar_priced_in_source_batches_returns_zero_call_plan tests\integration\test_api_routes.py::test_post_radar_priced_in_source_batch_execute_next_runs_one_chunk tests\integration\test_security_boundaries.py::test_openapi_routes_are_allowlisted_and_broker_routes_are_explicit -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\source_batches.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py src\catalyst_radar\api\routes\radar.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_api_routes.py tests\integration\test_security_boundaries.py
+git diff --check
+```
+
+Observed: focused tests passed, ruff passed, and `git diff --check` passed.
+A temp-database CLI smoke with `seed-dashboard-demo` followed by
+`priced-in-source-batches --source local_text --execute-next` returned
+`status=no_action`, `external_calls=0`, and the expected "No batch action is
+needed for this source" message.
 
 ## Latest TUI Full-Scan Batch Clarification
 
