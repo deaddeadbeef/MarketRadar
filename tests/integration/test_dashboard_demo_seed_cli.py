@@ -124,6 +124,12 @@ def test_dashboard_snapshot_cli_outputs_dashboard_command_center_json(
     )
     assert payload["call_plan"]["schema_version"] == "radar-run-call-plan-v1"
     assert payload["priced_in_preflight"]["schema_version"] == "priced-in-preflight-v1"
+    assert payload["priced_in_answer"]["schema_version"] == "priced-in-answer-v1"
+    assert payload["priced_in_answer"]["external_calls_made"] == 0
+    assert payload["priced_in_answer"]["question"] == (
+        "Has price fully matched market expectations?"
+    )
+    assert payload["priced_in_answer"]["answer"]
     assert payload["priced_in_source_coverage"]["schema_version"] == (
         "priced-in-source-coverage-v1"
     )
@@ -640,6 +646,34 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
     assert batch_payload["source"] == "options"
     assert batch_payload["count"] == 1
     assert batch_payload["batches"][0]["tickers"] == ["ACME"]
+
+
+def test_priced_in_answer_cli_outputs_current_scan_answer(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["seed-dashboard-demo"]) == 0
+    capsys.readouterr()
+
+    assert main(["priced-in-answer"]) == 0
+    output = capsys.readouterr()
+
+    assert output.err == ""
+    assert "priced_in_answer status=" in output.out
+    assert "question=Has price fully matched market expectations?" in output.out
+    assert "answer=" in output.out
+    assert "external_calls=0" in output.out
+
+    assert main(["priced-in-answer", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["schema_version"] == "priced-in-answer-v1"
+    assert payload["external_calls_made"] == 0
+    assert payload["question"] == "Has price fully matched market expectations?"
 
 
 def test_candidate_detail_cli_outputs_priced_in_evidence_brief(

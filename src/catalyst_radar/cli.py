@@ -57,6 +57,7 @@ from catalyst_radar.core.immutability import thaw_json_value
 from catalyst_radar.core.models import ActionState
 from catalyst_radar.dashboard.data import (
     load_ticker_detail,
+    priced_in_answer_payload,
     priced_in_preflight_payload,
     priced_in_queue_payload,
     priced_in_source_gap_batches_payload,
@@ -509,6 +510,38 @@ def build_parser() -> argparse.ArgumentParser:
     priced_in_preflight = subparsers.add_parser("priced-in-preflight")
     priced_in_preflight.add_argument("--database-url")
     priced_in_preflight.add_argument("--json", action="store_true")
+
+    priced_in_answer = subparsers.add_parser("priced-in-answer")
+    priced_in_answer.add_argument("--database-url")
+    priced_in_answer.add_argument("--limit", type=int, default=5)
+    priced_in_answer.add_argument("--available-at", type=_parse_aware_datetime)
+    priced_in_answer.add_argument("--status")
+    priced_in_answer.add_argument(
+        "--usefulness",
+        help=(
+            "Filter answer rows by usefulness verdict: useful, research_useful, "
+            "decision_useful, blocked, monitor_only, not_useful."
+        ),
+    )
+    priced_in_answer.add_argument(
+        "--source-gap",
+        action="append",
+        help=(
+            "Filter answer rows missing or stale for a source class. Repeat or "
+            "comma-separate: market_bars,catalyst_events,local_text,options,"
+            "theme_peer_sector,broker_context."
+        ),
+    )
+    priced_in_answer.add_argument(
+        "--decision-gap",
+        action="append",
+        help=(
+            "Filter answer rows missing decision evidence. Repeat or comma-separate: "
+            "candidate_packet,decision_card,options,broker_context."
+        ),
+    )
+    priced_in_answer.add_argument("--min-gap", type=float)
+    priced_in_answer.add_argument("--json", action="store_true")
 
     candidate_detail = subparsers.add_parser("candidate-detail")
     candidate_detail.add_argument("ticker")
@@ -963,6 +996,25 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
         else:
             _print_priced_in_preflight(payload)
+        return 0
+
+    if args.command == "priced-in-answer":
+        create_schema(engine)
+        payload = priced_in_answer_payload(
+            engine,
+            config,
+            limit=args.limit,
+            available_at=args.available_at,
+            status=args.status,
+            usefulness=args.usefulness,
+            source_gap=args.source_gap,
+            decision_gap=args.decision_gap,
+            min_gap=args.min_gap,
+        )
+        if args.json:
+            print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
+        else:
+            _print_priced_in_answer(payload)
         return 0
 
     if args.command == "candidate-detail":
@@ -3105,6 +3157,60 @@ def _priced_in_data_summary(row: Mapping[str, object]) -> str:
         if summary:
             return summary.replace(" ", "_")
     return "n/a"
+
+
+def _print_priced_in_answer(payload: Mapping[str, object]) -> None:
+    counts = payload.get("counts") if isinstance(payload.get("counts"), Mapping) else {}
+    print(
+        "priced_in_answer "
+        f"status={payload.get('status')} "
+        f"decision_ready={str(bool(payload.get('can_make_investment_decision'))).lower()} "
+        f"total={counts.get('total_rows')} "
+        f"mismatches={counts.get('actionable_mismatch_rows')} "
+        f"research={counts.get('research_lead_rows')} "
+        f"blocked={counts.get('blocked_rows')} "
+        f"external_calls={payload.get('external_calls_made')}"
+    )
+    print(f"question={payload.get('question')}")
+    print(f"answer={payload.get('answer')}")
+    print(f"headline={payload.get('headline')}")
+    print(f"next_action={payload.get('next_action')}")
+    if payload.get("next_command"):
+        print(f"next_command={_compact_cli_text(payload.get('next_command'))}")
+    source_coverage = payload.get("source_coverage")
+    if isinstance(source_coverage, Mapping):
+        print(f"source_coverage={_compact_cli_text(source_coverage.get('summary'))}")
+    blockers = payload.get("trust_blockers")
+    if isinstance(blockers, list | tuple) and blockers:
+        print("trust_blockers:")
+        for blocker in blockers:
+            if not isinstance(blocker, Mapping):
+                continue
+            print(
+                "- "
+                f"{blocker.get('area')} "
+                f"status={blocker.get('status')} "
+                f"next={_compact_cli_text(blocker.get('next_action'))} "
+                f"command={_compact_cli_text(blocker.get('command'))}"
+            )
+    rows = payload.get("top_rows")
+    if not isinstance(rows, list | tuple) or not rows:
+        print("No useful priced-in rows.")
+        return
+    print("ticker status usefulness decision_ready gap emotion reaction next_step")
+    for row in rows:
+        if not isinstance(row, Mapping):
+            continue
+        print(
+            f"{row.get('ticker')} "
+            f"{row.get('status')} "
+            f"{row.get('usefulness')} "
+            f"{str(bool(row.get('decision_ready'))).lower()} "
+            f"{row.get('emotion_reaction_gap')} "
+            f"{row.get('emotion_score')} "
+            f"{row.get('reaction_score')} "
+            f"{_compact_cli_text(row.get('next_step'))}"
+        )
 
 
 def _print_priced_in_preflight(payload: Mapping[str, object]) -> None:

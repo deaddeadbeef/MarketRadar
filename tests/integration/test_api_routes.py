@@ -1259,6 +1259,58 @@ def test_get_radar_priced_in_preflight_returns_zero_call_steps(
     assert payload["evidence_plan"]["schema_version"] == "priced-in-evidence-plan-v1"
 
 
+def test_get_radar_priced_in_answer_returns_current_scan_answer(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "radar-priced-in-answer.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+    captured: dict[str, object] = {}
+
+    def fake_priced_in_answer_payload(_engine, _config, **kwargs) -> dict[str, object]:
+        captured.update(kwargs)
+        return {
+            "schema_version": "priced-in-answer-v1",
+            "status": "research_only",
+            "question": "Has price fully matched market expectations?",
+            "answer": "Not fully priced for 1 research lead, but not decision-ready.",
+            "can_make_investment_decision": False,
+            "external_calls_made": 0,
+            "counts": {"research_lead_rows": 1},
+            "top_rows": [{"ticker": "MSFT", "usefulness": "research_useful"}],
+        }
+
+    monkeypatch.setattr(
+        dashboard_data,
+        "priced_in_answer_payload",
+        fake_priced_in_answer_payload,
+        raising=False,
+    )
+    client = TestClient(create_app())
+
+    response = client.get(
+        "/api/radar/priced-in/answer?limit=3"
+        "&available_at=2026-05-18T16:00:00%2B00:00"
+        "&status=actionable&usefulness=research_useful&source_gap=options"
+        "&decision_gap=decision_card&min_gap=10"
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["schema_version"] == "priced-in-answer-v1"
+    assert payload["status"] == "research_only"
+    assert payload["external_calls_made"] == 0
+    assert payload["top_rows"][0]["ticker"] == "MSFT"
+    assert captured["limit"] == 3
+    assert captured["available_at"].isoformat() == "2026-05-18T16:00:00+00:00"
+    assert captured["status"] == "actionable"
+    assert captured["usefulness"] == "research_useful"
+    assert captured["source_gap"] == "options"
+    assert captured["decision_gap"] == "decision_card"
+    assert captured["min_gap"] == 10.0
+
+
 def test_get_radar_priced_in_source_batches_returns_zero_call_plan(
     tmp_path,
     monkeypatch,

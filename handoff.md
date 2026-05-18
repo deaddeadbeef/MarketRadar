@@ -1,6 +1,63 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 22:20:14 +08:00
+Last updated: 2026-05-18 22:41:57 +08:00
+
+## Latest Priced-In Answer Surface
+
+The product gap after the SEC batch API was not another connector. The system
+could show full-scan queue rows and preflight blockers, but it still forced the
+operator to infer the answer to the core question:
+
+```text
+Has price fully matched market expectations?
+```
+
+Changes in this slice:
+
+- Added `priced_in_answer_payload()` as a thin zero-call aggregator over the
+  existing priced-in queue and preflight evidence plan.
+- Added CLI:
+
+  ```powershell
+  catalyst-radar priced-in-answer
+  catalyst-radar priced-in-answer --json
+  ```
+
+- Added API:
+
+  ```text
+  GET /api/radar/priced-in/answer
+  ```
+
+- Added `priced_in_answer` to `dashboard-snapshot --json`.
+- The TUI overview guide and first insight row now surface the current answer
+  before the operator has to inspect the full table.
+
+Live zero-provider-call smoke:
+
+```text
+priced_in_answer status=research_only decision_ready=false total=12087 mismatches=7 research=5 blocked=7920 external_calls=0
+question=Has price fully matched market expectations?
+answer=Not fully priced for 5 research lead(s), but none are decision-ready yet.
+headline=5 research-useful not-priced-in lead(s), 7 actionable mismatch row(s), 12087 scanned row(s).
+next_action=Review the run call plan and refresh event ingestion before trusting emotion.
+next_command=catalyst-radar priced-in-source-batches --source catalyst_events --batch-limit 5
+source_coverage=market_bars 12087/12087; catalyst_events 7/12087 (12080 missing); local_text 7/12087 (12080 missing); options 0/12087 (12087 missing); theme_peer_sector 12087/12087; broker_context 5/12087 (12082 missing)
+```
+
+Interpretation: the scan is broad enough to produce research leads, but the
+current answer is not decision-ready. The first useful next step remains filling
+catalyst-event source coverage. Browsing and rendering this answer makes zero
+Polygon/Massive, SEC, Schwab, OpenAI, or broker calls.
+
+Validation for this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_answer_payload_summarizes_current_scan tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_snapshot_cli_outputs_dashboard_command_center_json tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_answer_cli_outputs_current_scan_answer tests\integration\test_api_routes.py::test_get_radar_priced_in_answer_returns_current_scan_answer tests\integration\test_security_boundaries.py::test_openapi_routes_are_allowlisted_and_broker_routes_are_explicit -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py src\catalyst_radar\api\routes\radar.py src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_api_routes.py tests\integration\test_security_boundaries.py
+```
+
+Observed: focused pytest passed and ruff passed.
 
 ## Latest SEC Source-Batch API Executor
 
