@@ -107,6 +107,9 @@ def _normalize_decision_gap_filter(value: str | Sequence[str] | None) -> tuple[s
     else:
         raw_values = list(value)
     aliases = {
+        "packet": "candidate_packet",
+        "candidate-packet": "candidate_packet",
+        "candidate_packets": "candidate_packet",
         "card": "decision_card",
         "decision_cards": "decision_card",
         "decision-card": "decision_card",
