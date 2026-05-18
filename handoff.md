@@ -1,6 +1,85 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 13:48:30 +08:00
+Last updated: 2026-05-18 14:09:40 +08:00
+
+## Latest Usefulness Filter
+
+The priced-in queue usefulness verdict is now queryable instead of only visible
+row-by-row.
+
+New CLI/API affordances:
+
+```powershell
+catalyst-radar priced-in-queue --status actionable --usefulness research_useful --limit 3
+catalyst-radar priced-in-queue --status actionable --usefulness blocked --limit 3
+catalyst-radar priced-in-queue --status actionable --usefulness useful --json
+```
+
+API equivalent:
+
+```text
+GET /api/radar/priced-in?status=actionable&usefulness=research_useful
+GET /api/radar/priced-in?status=actionable&usefulness=blocked
+```
+
+Supported usefulness filters:
+
+- `useful`: `research_useful` or `decision_useful`
+- `research_useful`
+- `decision_useful`
+- `blocked`
+- `monitor_only`
+- `not_useful`
+
+The payload now includes:
+
+- `filters.usefulness`
+- `usefulness_counts`
+
+The human CLI prints `usefulness_counts=...`, and the `more=` continuation
+command preserves `--status`, `--usefulness`, and `--min-gap` filters.
+
+Current real local smoke:
+
+```powershell
+catalyst-radar priced-in-queue --status actionable --usefulness research_useful --limit 3
+```
+
+reported `total=5`, `count=3`, and `usefulness_counts=research_useful:5`.
+The first rows were A, MSFT, and AAAU. The `more=` command preserved
+`--status actionable --usefulness research_useful`.
+
+```powershell
+catalyst-radar priced-in-queue --status actionable --usefulness blocked --limit 3
+```
+
+reported `total=2`, `count=2`, and `usefulness_counts=blocked:2`.
+The rows were AAA and AAAC.
+
+```powershell
+catalyst-radar dashboard-tui --once --page overview
+```
+
+now titles the default insight page as:
+
+```text
+Mismatches from full scan - showing 7 of 7; scan 12087; research 5 / blocked 2
+```
+
+This is the current best operator split:
+
+- 5 research-useful mismatches need evidence review and missing decision inputs.
+- 2 blocked mismatches need policy/portfolio blockers cleared first.
+
+Verification run for this slice:
+
+```powershell
+python -m pytest tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_api_routes.py -q
+python -m ruff check src tests
+git diff --check
+```
+
+All three passed locally before commit.
 
 ## Latest Full-Scan UI Correction
 

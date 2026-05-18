@@ -362,6 +362,13 @@ def build_parser() -> argparse.ArgumentParser:
     priced_in.add_argument("--limit", type=int, default=20)
     priced_in.add_argument("--offset", type=int, default=0)
     priced_in.add_argument("--status")
+    priced_in.add_argument(
+        "--usefulness",
+        help=(
+            "Filter by usefulness verdict: useful, research_useful, "
+            "decision_useful, blocked, monitor_only, not_useful."
+        ),
+    )
     priced_in.add_argument("--min-gap", type=float)
     priced_in.add_argument("--json", action="store_true")
 
@@ -676,6 +683,7 @@ def main(argv: list[str] | None = None) -> int:
             limit=args.limit,
             offset=args.offset,
             status=args.status,
+            usefulness=args.usefulness,
             min_gap=args.min_gap,
         )
         if args.json:
@@ -2495,6 +2503,9 @@ def _print_priced_in_queue(payload: Mapping[str, object]) -> None:
     )
     print(f"headline={payload.get('headline')}")
     print(f"next_action={payload.get('next_action')}")
+    usefulness_counts = payload.get("usefulness_counts")
+    if isinstance(usefulness_counts, Mapping) and usefulness_counts:
+        print(f"usefulness_counts={_count_summary(usefulness_counts)}")
     source_coverage = payload.get("source_coverage")
     if isinstance(source_coverage, Mapping):
         print(f"source_coverage={_compact_cli_text(source_coverage.get('summary'))}")
@@ -2551,7 +2562,31 @@ def _print_priced_in_queue(payload: Mapping[str, object]) -> None:
             if isinstance(filters, Mapping)
             else _int_value(payload.get("count"))
         )
-        print(f"more=catalyst-radar priced-in-queue --limit {limit} --offset {next_offset}")
+        print(f"more={_priced_in_more_command(filters, limit, next_offset)}")
+
+
+def _count_summary(counts: Mapping[object, object]) -> str:
+    parts = [
+        f"{key}:{_int_value(value)}"
+        for key, value in sorted(counts.items(), key=lambda item: str(item[0]))
+    ]
+    return ",".join(parts)
+
+
+def _priced_in_more_command(filters: object, limit: int, next_offset: int) -> str:
+    parts = ["catalyst-radar", "priced-in-queue"]
+    if isinstance(filters, Mapping):
+        status = str(filters.get("status") or "").strip()
+        if status and status != "all":
+            parts.extend(["--status", status])
+        usefulness = str(filters.get("usefulness") or "").strip()
+        if usefulness and usefulness != "all":
+            parts.extend(["--usefulness", usefulness])
+        min_gap = filters.get("min_gap")
+        if min_gap is not None:
+            parts.extend(["--min-gap", str(min_gap)])
+    parts.extend(["--limit", str(limit), "--offset", str(next_offset)])
+    return " ".join(parts)
 
 
 def _int_value(value: object) -> int:

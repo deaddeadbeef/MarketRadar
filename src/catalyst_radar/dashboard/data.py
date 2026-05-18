@@ -91,6 +91,27 @@ PRICED_IN_ACTIONABLE_FILTERS = frozenset(
         "not-priced-in",
     }
 )
+PRICED_IN_USEFULNESS_STATUSES = frozenset(
+    {
+        "research_useful",
+        "decision_useful",
+        "blocked",
+        "monitor_only",
+        "not_useful",
+    }
+)
+PRICED_IN_USEFULNESS_FILTERS: Mapping[str, frozenset[str]] = {
+    "useful": frozenset({"research_useful", "decision_useful"}),
+    "research": frozenset({"research_useful"}),
+    "research_useful": frozenset({"research_useful"}),
+    "decision": frozenset({"decision_useful"}),
+    "ready": frozenset({"decision_useful"}),
+    "decision_useful": frozenset({"decision_useful"}),
+    "blocked": frozenset({"blocked"}),
+    "monitor": frozenset({"monitor_only"}),
+    "monitor_only": frozenset({"monitor_only"}),
+    "not_useful": frozenset({"not_useful"}),
+}
 
 ALERT_SUPPRESSION_EXPLANATIONS = {
     "duplicate_trigger": "A prior alert already covers the same trigger.",
@@ -508,6 +529,7 @@ def priced_in_queue_payload(
     limit: int = 50,
     offset: int = 0,
     status: str | None = None,
+    usefulness: str | None = None,
     min_gap: float | None = None,
     candidate_rows: Sequence[Mapping[str, object]] | None = None,
     total_count: int | None = None,
@@ -533,6 +555,7 @@ def priced_in_queue_payload(
         candidate_rows=queue_candidate_rows,
     )
     wanted_status = str(status or "").strip().lower()
+    wanted_usefulness, usefulness_matches = _priced_in_usefulness_filter(usefulness)
     rows = [
         _priced_in_queue_row(row)
         for row in queue_candidate_rows
@@ -547,11 +570,18 @@ def priced_in_queue_payload(
             for row in rows
             if abs(_finite_float(row.get("emotion_reaction_gap"))) >= threshold
         ]
+    if usefulness_matches:
+        rows = [
+            row
+            for row in rows
+            if _priced_in_usefulness_matches(row, usefulness_matches)
+        ]
     rows = sorted(rows, key=_priced_in_queue_sort_key)
     loaded_total_count = len(rows)
     if (
         using_supplied_rows
         and not wanted_status
+        and wanted_usefulness == "all"
         and min_gap is None
         and total_count is not None
     ):
@@ -589,6 +619,7 @@ def priced_in_queue_payload(
         },
         "filters": {
             "status": wanted_status or "all",
+            "usefulness": wanted_usefulness,
             "min_gap": min_gap,
             "limit": resolved_limit,
             "offset": resolved_offset,
@@ -599,6 +630,7 @@ def priced_in_queue_payload(
         "offset": resolved_offset,
         "has_more": resolved_offset + len(page_rows) < total_count,
         "status_counts": status_counts,
+        "usefulness_counts": _priced_in_usefulness_counts(rows),
         "source_coverage": source_coverage,
         "rows": page_rows,
     }
@@ -5646,6 +5678,40 @@ def _priced_in_status_matches(row: Mapping[str, object], wanted_status: str) -> 
     if wanted_status in PRICED_IN_ACTIONABLE_FILTERS:
         return status in PRICED_IN_ACTIONABLE_STATUSES
     return status == wanted_status
+
+
+def _priced_in_usefulness_filter(
+    value: object | None,
+) -> tuple[str, frozenset[str]]:
+    normalized = str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
+    if normalized in {"", "all", "any"}:
+        return "all", frozenset()
+    matches = PRICED_IN_USEFULNESS_FILTERS.get(normalized)
+    if matches is not None:
+        return normalized, matches
+    if normalized in PRICED_IN_USEFULNESS_STATUSES:
+        return normalized, frozenset({normalized})
+    return normalized, frozenset({normalized})
+
+
+def _priced_in_usefulness_matches(
+    row: Mapping[str, object],
+    wanted_statuses: frozenset[str],
+) -> bool:
+    usefulness = _mapping_value(row, "usefulness")
+    status = str(usefulness.get("status") or "").strip().lower()
+    return status in wanted_statuses
+
+
+def _priced_in_usefulness_counts(
+    rows: Sequence[Mapping[str, object]],
+) -> dict[str, int]:
+    return dict(
+        Counter(
+            str(_mapping_value(row, "usefulness").get("status") or "unknown")
+            for row in rows
+        )
+    )
 
 
 def _priced_in_scan_status(discovery: Mapping[str, object]) -> str:

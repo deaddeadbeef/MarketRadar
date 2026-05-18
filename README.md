@@ -244,7 +244,10 @@ Schwab, or OpenAI calls.
 
 `priced-in-queue` is the scriptable replacement for the TUI insight table. It
 returns the same full-scan boundary and ranked emotion-vs-reaction rows used by
-the dashboard, with optional `--status`, `--min-gap`, `--limit`, and `--json`.
+the dashboard, with optional `--status`, `--usefulness`, `--min-gap`, `--limit`,
+and `--json`. Use `--usefulness research_useful` for names worth human research,
+`--usefulness blocked` for mismatches blocked by policy/portfolio checks, or
+`--usefulness useful` for research- or decision-useful rows.
 The payload includes queue-level `source_coverage`, so the operator can see
 whether market bars, catalyst events, local text, options, theme/peer/sector
 context, and broker context are contributing across the visible queue.
