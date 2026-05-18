@@ -1091,7 +1091,7 @@ def test_get_radar_priced_in_queue_returns_cli_ready_rows(
     monkeypatch.setattr(
         dashboard_data,
         "priced_in_queue_payload",
-        lambda _engine, _config, *, limit, offset, status, usefulness, min_gap: {
+        lambda _engine, _config, *, limit, offset, status, usefulness, source_gap, min_gap: {
             "schema_version": "priced-in-queue-v1",
             "status": "ready",
             "external_calls_made": 0,
@@ -1100,6 +1100,7 @@ def test_get_radar_priced_in_queue_returns_cli_ready_rows(
                 "offset": offset,
                 "status": status,
                 "usefulness": usefulness,
+                "source_gap": [source_gap],
                 "min_gap": min_gap,
             },
             "count": 1,
@@ -1150,7 +1151,7 @@ def test_get_radar_priced_in_queue_returns_cli_ready_rows(
 
     response = client.get(
         "/api/radar/priced-in?limit=3&offset=6&status=bullish_not_priced_in"
-        "&usefulness=research_useful&min_gap=10"
+        "&usefulness=research_useful&source_gap=options&min_gap=10"
     )
 
     assert response.status_code == 200
@@ -1162,6 +1163,7 @@ def test_get_radar_priced_in_queue_returns_cli_ready_rows(
         "offset": 6,
         "status": "bullish_not_priced_in",
         "usefulness": "research_useful",
+        "source_gap": ["options"],
         "min_gap": 10.0,
     }
     assert payload["usefulness_counts"] == {"research_useful": 1}

@@ -1535,6 +1535,25 @@ def test_priced_in_queue_payload_filters_usefulness(tmp_path: Path) -> None:
     assert sum(payload["usefulness_counts"].values()) == payload["total_count"]
 
 
+def test_priced_in_queue_payload_filters_source_gaps(tmp_path: Path) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+
+    payload = priced_in_queue_payload(
+        engine,
+        AppConfig.from_env({}),
+        source_gap="options,broker_context",
+        limit=10,
+    )
+
+    assert payload["filters"]["source_gap"] == ["options", "broker_context"]
+    assert payload["count"] >= 1
+    for row in payload["rows"]:
+        missing = set(row["data_sources"]["missing"])
+        stale = set(row["data_sources"]["stale"])
+        assert {"options", "broker_context"} <= missing | stale
+
+
 def test_priced_in_queue_payload_labels_blocked_mismatches(tmp_path: Path) -> None:
     engine = _engine(tmp_path)
     _insert_dashboard_fixture(engine)

@@ -1,6 +1,69 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-18 14:09:40 +08:00
+Last updated: 2026-05-18 14:19:38 +08:00
+
+## Latest Source-Gap Filter
+
+The priced-in queue can now answer "which useful rows are missing which data
+layer?" directly.
+
+New CLI/API affordances:
+
+```powershell
+catalyst-radar priced-in-queue --status actionable --source-gap options --limit 3
+catalyst-radar priced-in-queue --status actionable --source-gap options,broker_context --usefulness research_useful --json
+```
+
+API equivalent:
+
+```text
+GET /api/radar/priced-in?status=actionable&source_gap=options
+GET /api/radar/priced-in?status=actionable&source_gap=options,broker_context&usefulness=research_useful
+```
+
+Supported source-gap names are the same priced-in source classes:
+
+- `market_bars`
+- `catalyst_events`
+- `local_text`
+- `options`
+- `theme_peer_sector`
+- `broker_context`
+
+Semantics:
+
+- `source_gap` matches rows where the named source is missing or stale.
+- Multiple source gaps are ANDed. `options,broker_context` means both are
+  unavailable for the row.
+- The human CLI `more=` continuation preserves `--status`, `--usefulness`,
+  `--source-gap`, and `--min-gap`.
+
+Current real local smoke:
+
+```powershell
+catalyst-radar priced-in-queue --status actionable --source-gap options --limit 3
+```
+
+reported `total=7`, `count=3`, and
+`usefulness_counts=blocked:2,research_useful:5`. The first rows were A, MSFT,
+and AAA, all missing options.
+
+```powershell
+catalyst-radar priced-in-queue --status actionable --source-gap options,broker_context --usefulness research_useful --limit 10 --json
+```
+
+reported `source_gap=options,broker_context`, `usefulness=research_useful`,
+`total=5`, and `usefulness_counts={"research_useful":5}`.
+
+Verification run for this slice:
+
+```powershell
+python -m pytest tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_api_routes.py -q
+python -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\api\routes\radar.py src\catalyst_radar\cli.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_api_routes.py
+git diff --check
+```
+
+All three passed locally before commit.
 
 ## Latest Usefulness Filter
 

@@ -369,6 +369,14 @@ def build_parser() -> argparse.ArgumentParser:
             "decision_useful, blocked, monitor_only, not_useful."
         ),
     )
+    priced_in.add_argument(
+        "--source-gap",
+        action="append",
+        help=(
+            "Filter rows missing or stale for a source class. Repeat or comma-separate: "
+            "market_bars,catalyst_events,local_text,options,theme_peer_sector,broker_context."
+        ),
+    )
     priced_in.add_argument("--min-gap", type=float)
     priced_in.add_argument("--json", action="store_true")
 
@@ -684,6 +692,7 @@ def main(argv: list[str] | None = None) -> int:
             offset=args.offset,
             status=args.status,
             usefulness=args.usefulness,
+            source_gap=args.source_gap,
             min_gap=args.min_gap,
         )
         if args.json:
@@ -2582,6 +2591,10 @@ def _priced_in_more_command(filters: object, limit: int, next_offset: int) -> st
         usefulness = str(filters.get("usefulness") or "").strip()
         if usefulness and usefulness != "all":
             parts.extend(["--usefulness", usefulness])
+        source_gap = filters.get("source_gap")
+        if isinstance(source_gap, list | tuple):
+            for source in source_gap:
+                parts.extend(["--source-gap", str(source)])
         min_gap = filters.get("min_gap")
         if min_gap is not None:
             parts.extend(["--min-gap", str(min_gap)])

@@ -530,6 +530,7 @@ def priced_in_queue_payload(
     offset: int = 0,
     status: str | None = None,
     usefulness: str | None = None,
+    source_gap: str | Sequence[str] | None = None,
     min_gap: float | None = None,
     candidate_rows: Sequence[Mapping[str, object]] | None = None,
     total_count: int | None = None,
@@ -556,6 +557,7 @@ def priced_in_queue_payload(
     )
     wanted_status = str(status or "").strip().lower()
     wanted_usefulness, usefulness_matches = _priced_in_usefulness_filter(usefulness)
+    wanted_source_gaps = _priced_in_source_gap_filter(source_gap)
     rows = [
         _priced_in_queue_row(row)
         for row in queue_candidate_rows
@@ -576,12 +578,19 @@ def priced_in_queue_payload(
             for row in rows
             if _priced_in_usefulness_matches(row, usefulness_matches)
         ]
+    if wanted_source_gaps:
+        rows = [
+            row
+            for row in rows
+            if _priced_in_source_gap_matches(row, wanted_source_gaps)
+        ]
     rows = sorted(rows, key=_priced_in_queue_sort_key)
     loaded_total_count = len(rows)
     if (
         using_supplied_rows
         and not wanted_status
         and wanted_usefulness == "all"
+        and not wanted_source_gaps
         and min_gap is None
         and total_count is not None
     ):
@@ -620,6 +629,7 @@ def priced_in_queue_payload(
         "filters": {
             "status": wanted_status or "all",
             "usefulness": wanted_usefulness,
+            "source_gap": list(wanted_source_gaps),
             "min_gap": min_gap,
             "limit": resolved_limit,
             "offset": resolved_offset,
@@ -5712,6 +5722,38 @@ def _priced_in_usefulness_counts(
             for row in rows
         )
     )
+
+
+def _priced_in_source_gap_filter(value: str | Sequence[str] | None) -> tuple[str, ...]:
+    raw_values: list[object]
+    if value is None:
+        raw_values = []
+    elif isinstance(value, str):
+        raw_values = [value]
+    else:
+        raw_values = list(value)
+    normalized: list[str] = []
+    for raw in raw_values:
+        for part in str(raw or "").replace(";", ",").split(","):
+            source = part.strip().lower().replace("-", "_").replace(" ", "_")
+            if source in {"", "all", "none"}:
+                continue
+            normalized.append(source)
+    return tuple(dict.fromkeys(normalized))
+
+
+def _priced_in_source_gap_matches(
+    row: Mapping[str, object],
+    wanted_sources: Sequence[str],
+) -> bool:
+    data_sources = _mapping_value(row, "data_sources")
+    missing_or_stale = {
+        str(item).strip().lower()
+        for key in ("missing", "stale")
+        for item in _sequence_value(data_sources.get(key))
+        if str(item).strip()
+    }
+    return all(source in missing_or_stale for source in wanted_sources)
 
 
 def _priced_in_scan_status(discovery: Mapping[str, object]) -> str:
