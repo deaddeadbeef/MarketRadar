@@ -5159,12 +5159,20 @@ def _research_shortlist_sort_key(row: Mapping[str, object]) -> tuple[int, float,
 def _priced_in_queue_row(row: Mapping[str, object]) -> dict[str, object]:
     brief = _mapping_value(row, "research_brief")
     status = str(row.get("priced_in_status") or "unknown").strip() or "unknown"
+    blockers = _priced_in_row_blockers(row)
     reason = str(
         _display_priced_in_reason(row)
         or brief.get("why_now")
         or row.get("top_event_title")
         or ""
     ).strip()
+    next_step = (
+        (_display_priced_in_reason(row) and row.get("priced_in_next_step"))
+        or brief.get("next_step")
+        or "Open candidate detail and review the evidence."
+    )
+    if blockers:
+        next_step = "Clear blockers before treating this mismatch as actionable."
     return {
         "ticker": row.get("ticker"),
         "priced_in_status": status,
@@ -5174,6 +5182,8 @@ def _priced_in_queue_row(row: Mapping[str, object]) -> dict[str, object]:
         "emotion_reaction_gap": row.get("emotion_reaction_gap"),
         "priced_in_score": row.get("priced_in_score"),
         "state": row.get("state"),
+        "blocked": bool(blockers),
+        "blockers": blockers,
         "score": _finite_float(row.get("final_score")),
         "setup": row.get("setup_type") or row.get("candidate_theme") or "n/a",
         "top_catalyst": brief.get("top_catalyst") or row.get("top_event_title"),
@@ -5181,17 +5191,25 @@ def _priced_in_queue_row(row: Mapping[str, object]) -> dict[str, object]:
         "data_sources": row.get("priced_in_data_sources")
         if isinstance(row.get("priced_in_data_sources"), Mapping)
         else _priced_in_data_sources(row),
-        "next_step": (
-            (_display_priced_in_reason(row) and row.get("priced_in_next_step"))
-            or brief.get("next_step")
-            or "Open candidate detail and review the evidence."
-        ),
+        "next_step": next_step,
         "source": brief.get("source") or row.get("top_event_source"),
         "source_url": brief.get("source_url") or row.get("top_event_source_url"),
         "data_stale": status.lower() == "stale" or "data_stale" in _sequence_value(
             row.get("hard_blocks")
         ),
     }
+
+
+def _priced_in_row_blockers(row: Mapping[str, object]) -> list[str]:
+    blockers = {
+        str(item).strip()
+        for key in ("hard_blocks", "portfolio_hard_blocks")
+        for item in _sequence_value(row.get(key))
+        if str(item).strip()
+    }
+    if str(row.get("state") or "").strip().lower() == "blocked" and not blockers:
+        blockers.add("policy_blocked")
+    return sorted(blockers)
 
 
 def _priced_in_row_source_payload(row: Mapping[str, object]) -> dict[str, object]:

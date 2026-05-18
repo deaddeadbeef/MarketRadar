@@ -2463,13 +2463,14 @@ def _print_priced_in_queue(payload: Mapping[str, object]) -> None:
     if not isinstance(rows, list | tuple) or not rows:
         print("No priced-in rows.")
         return
-    print("ticker status direction gap emotion reaction priced score data next_step")
+    print("ticker status blocked direction gap emotion reaction priced score data next_step")
     for row in rows:
         if not isinstance(row, Mapping):
             continue
         print(
             f"{row.get('ticker')} "
             f"{row.get('priced_in_status')} "
+            f"{str(bool(row.get('blocked'))).lower()} "
             f"{row.get('priced_in_direction') or 'n/a'} "
             f"{row.get('emotion_reaction_gap')} "
             f"{row.get('emotion_score')} "

@@ -2018,15 +2018,21 @@ def _market_insight_rows(payload: Mapping[str, object]) -> list[Mapping[str, obj
         risk = candidate.get("risk_or_gap") or candidate.get("hard_blocks") or "Review evidence"
         score_text = f"score {_text(score)}" if score not in (None, "") else ""
         mismatch_text = _priced_in_mismatch_text(emotion, reaction, gap)
+        blockers = candidate.get("blockers")
+        blocker_text = ""
+        if isinstance(blockers, list | tuple) and blockers:
+            blocker_text = "blocked: " + ", ".join(str(item) for item in blockers[:3])
         why_now = _join_nonempty(
-            (mismatch_text, priced_reason, score_text, _human_label(setup), risk),
+            (mismatch_text, priced_reason, score_text, _human_label(setup), blocker_text, risk),
             separator="; ",
         )
         rows.append(
             {
                 "_row_key": f"candidate-{ticker}",
                 "scope": ticker,
-                "signal": _priced_in_signal(priced_status, fallback=f"{state} candidate"),
+                "signal": "Blocked mismatch"
+                if bool(candidate.get("blocked"))
+                else _priced_in_signal(priced_status, fallback=f"{state} candidate"),
                 "why_now": why_now,
                 "next_action": candidate.get("priced_in_next_step")
                 or candidate.get("next_step")
