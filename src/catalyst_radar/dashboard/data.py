@@ -78,7 +78,11 @@ PRICED_IN_SOURCE_CLASSES = (
     "theme_peer_sector",
     "broker_context",
 )
-PRICED_IN_BATCHABLE_SOURCES = frozenset({"options", "broker_context"})
+PRICED_IN_BATCHABLE_SOURCES = frozenset(
+    {"catalyst_events", "local_text", "options", "broker_context"}
+)
+PRICED_IN_SCHWAB_BATCH_SOURCES = frozenset({"options", "broker_context"})
+PRICED_IN_LOCAL_BATCH_MAX_TICKERS = 50
 PRICED_IN_SOURCE_ALIASES = {
     "bars": "market_bars",
     "market": "market_bars",
@@ -720,7 +724,7 @@ def priced_in_source_gap_batches_payload(
     min_gap: float | None = None,
 ) -> dict[str, object]:
     source_name = _single_priced_in_source(source)
-    max_batch_size = max(1, int(config.schwab_market_sync_max_tickers))
+    max_batch_size = _priced_in_source_max_batch_size(source_name, config)
     requested_batch_size = (
         max_batch_size if batch_size is None else _positive_limit(batch_size)
     )
@@ -744,9 +748,16 @@ def priced_in_source_gap_batches_payload(
         for row in queue.get("rows", [])
         if isinstance(row, Mapping) and str(row.get("ticker") or "").strip()
     ]
-    tickers = [str(row["ticker"]).strip().upper() for row in rows]
+    all_gap_tickers = [str(row["ticker"]).strip().upper() for row in rows]
     batchable = source_name in PRICED_IN_BATCHABLE_SOURCES
+    plan_rows, diagnostic = _priced_in_source_plannable_rows(
+        engine,
+        source_name=source_name,
+        rows=rows,
+    )
+    tickers = [str(row["ticker"]).strip().upper() for row in plan_rows]
     batch_count = ceil(len(tickers) / resolved_batch_size) if batchable and tickers else 0
+    scan_as_of = _priced_in_batch_as_of(rows)
     batches = []
     if batchable:
         for index in range(resolved_offset, min(batch_count, resolved_offset + resolved_limit)):
@@ -760,21 +771,30 @@ def priced_in_source_gap_batches_payload(
                     "row_start": row_start + 1,
                     "row_end": row_end,
                     "tickers": batch_tickers,
-                    "command": _schwab_market_sync_command(batch_tickers),
-                    "api": "POST /api/brokers/schwab/market-sync",
-                    "api_payload": {
-                        "tickers": batch_tickers,
-                        "include_history": True,
-                        "include_options": True,
-                    },
-                    "external_calls_required": 1,
+                    "command": _priced_in_source_batch_command(
+                        source_name,
+                        batch_tickers,
+                        scan_as_of=scan_as_of,
+                    ),
+                    "api": _priced_in_source_batch_api(source_name),
+                    "api_payload": _priced_in_source_batch_api_payload(
+                        source_name,
+                        batch_tickers,
+                        scan_as_of=scan_as_of,
+                    ),
+                    "external_calls_required": _priced_in_source_batch_call_count(
+                        source_name,
+                        len(batch_tickers),
+                    ),
                 }
             )
     status_value = (
         "ready"
         if batchable and tickers
         else "no_gaps"
-        if not tickers
+        if not all_gap_tickers
+        else "blocked"
+        if batchable
         else "not_batchable"
     )
     return {
@@ -789,14 +809,16 @@ def priced_in_source_gap_batches_payload(
         "headline": _priced_in_source_batches_headline(
             source_name=source_name,
             batchable=batchable,
-            total_gap_rows=len(tickers),
+            total_gap_rows=len(all_gap_tickers),
+            plannable_gap_rows=len(tickers),
             batch_count=batch_count,
             batch_size=resolved_batch_size,
         ),
         "next_action": _priced_in_source_batches_next_action(
             source_name=source_name,
             batchable=batchable,
-            total_gap_rows=len(tickers),
+            total_gap_rows=len(all_gap_tickers),
+            plannable_gap_rows=len(tickers),
         ),
         "filters": {
             **_row_dict(_mapping_value(queue, "filters")),
@@ -807,7 +829,10 @@ def priced_in_source_gap_batches_payload(
             "requested_batch_size": requested_batch_size,
             "max_batch_size": max_batch_size,
         },
-        "total_gap_rows": len(tickers),
+        "total_gap_rows": len(all_gap_tickers),
+        "plannable_gap_rows": len(tickers),
+        "unplannable_gap_rows": max(0, len(all_gap_tickers) - len(tickers)),
+        "diagnostic": diagnostic,
         "batch_size": resolved_batch_size,
         "batch_count": batch_count,
         "batch_offset": resolved_offset,
@@ -6223,11 +6248,209 @@ def _single_priced_in_source(value: str) -> str:
     return source
 
 
+def _priced_in_source_max_batch_size(source_name: str, config: AppConfig) -> int:
+    if source_name in PRICED_IN_SCHWAB_BATCH_SOURCES:
+        return max(1, int(config.schwab_market_sync_max_tickers))
+    if source_name == "catalyst_events":
+        return max(1, int(config.sec_daily_max_tickers))
+    if source_name == "local_text":
+        return PRICED_IN_LOCAL_BATCH_MAX_TICKERS
+    return PRICED_IN_LOCAL_BATCH_MAX_TICKERS
+
+
+def _priced_in_source_plannable_rows(
+    engine: Engine,
+    *,
+    source_name: str,
+    rows: Sequence[Mapping[str, object]],
+) -> tuple[list[Mapping[str, object]], dict[str, object]]:
+    if source_name in PRICED_IN_SCHWAB_BATCH_SOURCES:
+        return list(rows), {
+            "schema_version": "priced-in-source-batch-diagnostic-v1",
+            "status": "eligible",
+            "reason": "Read-only Schwab market sync can be planned for these rows.",
+            "eligible_rows": len(rows),
+            "blocked_rows": 0,
+        }
+    if source_name == "catalyst_events":
+        tickers = [
+            str(row.get("ticker") or "").strip().upper()
+            for row in rows
+            if str(row.get("ticker") or "").strip()
+        ]
+        cik_by_ticker = _security_cik_by_ticker(engine, tickers)
+        eligible = [
+            row
+            for row in rows
+            if str(row.get("ticker") or "").strip().upper() in cik_by_ticker
+        ]
+        missing_cik = [
+            ticker for ticker in tickers if ticker and ticker not in cik_by_ticker
+        ]
+        return eligible, {
+            "schema_version": "priced-in-source-batch-diagnostic-v1",
+            "status": "eligible" if eligible else "blocked",
+            "reason": (
+                "SEC event batches require CIK metadata for each ticker."
+                if missing_cik
+                else "SEC event batches can be planned for these CIK-backed rows."
+            ),
+            "eligible_rows": len(eligible),
+            "blocked_rows": len(missing_cik),
+            "blocked_reason": "missing_cik" if missing_cik else None,
+            "sample_blocked_tickers": _sample_tickers(missing_cik),
+        }
+    if source_name == "local_text":
+        eligible = [
+            row
+            for row in rows
+            if "catalyst_events"
+            in {
+                str(item)
+                for item in _sequence_value(
+                    _priced_in_row_source_payload(row).get("available")
+                )
+            }
+        ]
+        blocked = max(0, len(rows) - len(eligible))
+        return eligible, {
+            "schema_version": "priced-in-source-batch-diagnostic-v1",
+            "status": "eligible" if eligible else "blocked",
+            "reason": (
+                "Local text can run only after catalyst event text exists for a ticker."
+                if blocked
+                else "Local text batches can be planned for rows with event text."
+            ),
+            "eligible_rows": len(eligible),
+            "blocked_rows": blocked,
+            "blocked_reason": "missing_catalyst_events" if blocked else None,
+            "sample_blocked_tickers": _sample_tickers(
+                [
+                    str(row.get("ticker") or "").strip().upper()
+                    for row in rows
+                    if row not in eligible
+                ]
+            ),
+        }
+    return [], {
+        "schema_version": "priced-in-source-batch-diagnostic-v1",
+        "status": "not_batchable",
+        "reason": f"{source_name} is not filled by ticker batch commands.",
+        "eligible_rows": 0,
+        "blocked_rows": len(rows),
+    }
+
+
+def _security_cik_by_ticker(engine: Engine, tickers: Sequence[str]) -> dict[str, str]:
+    normalized = sorted({str(ticker).strip().upper() for ticker in tickers if str(ticker).strip()})
+    if not normalized:
+        return {}
+    stmt = select(securities.c.ticker, securities.c.metadata).where(
+        securities.c.is_active.is_(True),
+        securities.c.ticker.in_(normalized),
+    )
+    cik_by_ticker: dict[str, str] = {}
+    with engine.connect() as conn:
+        for row in conn.execute(stmt):
+            metadata = row._mapping["metadata"] or {}
+            if not isinstance(metadata, Mapping):
+                continue
+            cik = _metadata_cik(metadata)
+            if cik:
+                cik_by_ticker[str(row.ticker).strip().upper()] = cik
+    return cik_by_ticker
+
+
+def _metadata_cik(metadata: Mapping[str, object]) -> str | None:
+    for key in ("cik", "cik_str", "central_index_key"):
+        value = metadata.get(key)
+        if value is not None and str(value).strip():
+            return str(value).strip().zfill(10)
+    return None
+
+
+def _priced_in_batch_as_of(rows: Sequence[Mapping[str, object]]) -> str:
+    for row in rows:
+        as_of = _parse_utc_datetime(row.get("as_of"))
+        if as_of is not None:
+            return as_of.date().isoformat()
+    return "<LATEST_TRADING_DATE>"
+
+
+def _priced_in_source_batch_command(
+    source_name: str,
+    tickers: Sequence[str],
+    *,
+    scan_as_of: str,
+) -> str:
+    if source_name in PRICED_IN_SCHWAB_BATCH_SOURCES:
+        return _schwab_market_sync_command(tickers)
+    ticker_args = _ticker_args(tickers)
+    if source_name == "catalyst_events":
+        return (
+            "catalyst-radar run-daily "
+            f"--as-of {scan_as_of} --available-at <UTC-now> "
+            f"{ticker_args} --json"
+        ).strip()
+    if source_name == "local_text":
+        return (
+            "catalyst-radar run-textint "
+            f"--as-of {scan_as_of} {ticker_args}"
+        ).strip()
+    return "catalyst-radar priced-in-preflight --json"
+
+
+def _ticker_args(tickers: Sequence[str]) -> str:
+    return " ".join(f"--ticker {ticker}" for ticker in tickers if ticker)
+
+
+def _priced_in_source_batch_api(source_name: str) -> str | None:
+    if source_name in PRICED_IN_SCHWAB_BATCH_SOURCES:
+        return "POST /api/brokers/schwab/market-sync"
+    if source_name == "catalyst_events":
+        return "POST /api/radar/runs"
+    return None
+
+
+def _priced_in_source_batch_api_payload(
+    source_name: str,
+    tickers: Sequence[str],
+    *,
+    scan_as_of: str,
+) -> dict[str, object] | None:
+    if source_name in PRICED_IN_SCHWAB_BATCH_SOURCES:
+        return {
+            "tickers": list(tickers),
+            "include_history": True,
+            "include_options": True,
+        }
+    if source_name == "catalyst_events":
+        return {
+            "as_of": scan_as_of,
+            "available_at": "<UTC-now>",
+            "tickers": list(tickers),
+            "run_llm": False,
+            "dry_run_alerts": True,
+        }
+    return None
+
+
+def _priced_in_source_batch_call_count(source_name: str, ticker_count: int) -> int:
+    if source_name == "local_text":
+        return 0
+    if source_name == "catalyst_events":
+        return ticker_count
+    if source_name in PRICED_IN_SCHWAB_BATCH_SOURCES:
+        return 1
+    return 0
+
+
 def _priced_in_source_batches_headline(
     *,
     source_name: str,
     batchable: bool,
     total_gap_rows: int,
+    plannable_gap_rows: int,
     batch_count: int,
     batch_size: int,
 ) -> str:
@@ -6238,9 +6461,15 @@ def _priced_in_source_batches_headline(
             f"{total_gap_rows} full-scan row(s) have a {source_name} gap; "
             "this source is not filled by ticker batch sync."
         )
+    if plannable_gap_rows <= 0:
+        return (
+            f"{total_gap_rows} full-scan row(s) have a {source_name} gap; "
+            "no ticker batch is currently runnable for this source."
+        )
     return (
         f"{total_gap_rows} full-scan row(s) have a {source_name} gap; "
-        f"planned as {batch_count} read-only batch(es) of up to {batch_size} ticker(s)."
+        f"{plannable_gap_rows} eligible row(s) planned as {batch_count} "
+        f"batch(es) of up to {batch_size} ticker(s)."
     )
 
 
@@ -6249,13 +6478,18 @@ def _priced_in_source_batches_next_action(
     source_name: str,
     batchable: bool,
     total_gap_rows: int,
+    plannable_gap_rows: int,
 ) -> str:
     if total_gap_rows <= 0:
         return "No batch action is needed for this source."
     if batchable:
+        if plannable_gap_rows <= 0 and source_name == "catalyst_events":
+            return "Add CIK metadata or use an event provider that covers these tickers."
+        if plannable_gap_rows <= 0 and source_name == "local_text":
+            return "Fill catalyst events first; local text has no event text to process."
         return (
-            "Review the first batch, then run one explicit read-only sync at a time "
-            "only if the source and scan date match your intent."
+            "Review the first batch, then run one explicit batch command at a time "
+            "only if the source, scan date, and call budget match your intent."
         )
     if source_name == "catalyst_events":
         return "Use the Run page call plan; event ingestion is governed by provider caps."

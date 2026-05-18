@@ -152,6 +152,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_daily.add_argument("--as-of", type=date.fromisoformat, required=True)
     run_daily.add_argument("--available-at", type=_parse_aware_datetime, required=True)
     run_daily.add_argument("--outcome-available-at", type=_parse_aware_datetime)
+    run_daily.add_argument("--ticker", action="append")
     run_daily.add_argument("--run-llm", action="store_true")
     run_daily.add_argument("--real-llm", action="store_true")
     run_daily.add_argument("--deliver-alerts", action="store_true")
@@ -221,7 +222,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_textint.add_argument("--as-of", type=date.fromisoformat, required=True)
     run_textint.add_argument("--available-at", type=_parse_aware_datetime)
     run_textint.add_argument("--ontology", type=Path, default=Path("config/themes.yaml"))
-    run_textint.add_argument("--ticker")
+    run_textint.add_argument("--ticker", action="append")
 
     text_features = subparsers.add_parser("text-features")
     text_features.add_argument("--ticker", required=True)
@@ -673,6 +674,7 @@ def main(argv: list[str] | None = None) -> int:
             as_of=args.as_of,
             decision_available_at=args.available_at,
             outcome_available_at=args.outcome_available_at,
+            tickers=tuple(args.ticker or ()),
             run_llm=args.run_llm,
             llm_dry_run=not args.real_llm,
             dry_run_alerts=not args.deliver_alerts,
@@ -1027,7 +1029,7 @@ def main(argv: list[str] | None = None) -> int:
         event_repo = EventRepository(engine)
         text_repo = TextRepository(engine)
         available_at = args.available_at or datetime.now(UTC)
-        tickers = [args.ticker] if args.ticker else None
+        tickers = args.ticker if args.ticker else None
         result = run_text_pipeline(
             event_repo,
             text_repo,
@@ -2980,6 +2982,7 @@ def _print_priced_in_source_batches(payload: Mapping[str, object]) -> None:
         f"source={payload.get('source')} "
         f"status={payload.get('status')} "
         f"gap_rows={payload.get('total_gap_rows')} "
+        f"plannable={payload.get('plannable_gap_rows')} "
         f"batch_size={payload.get('batch_size')} "
         f"batches={payload.get('count')} "
         f"total_batches={payload.get('batch_count')} "
@@ -2991,6 +2994,15 @@ def _print_priced_in_source_batches(payload: Mapping[str, object]) -> None:
     boundary = payload.get("execution_boundary")
     if boundary:
         print(f"boundary={_compact_cli_text(boundary)}")
+    diagnostic = payload.get("diagnostic")
+    if isinstance(diagnostic, Mapping):
+        print(
+            "diagnostic="
+            f"status={diagnostic.get('status')} "
+            f"eligible={diagnostic.get('eligible_rows')} "
+            f"blocked={diagnostic.get('blocked_rows')} "
+            f"reason={_compact_cli_text(diagnostic.get('reason'))}"
+        )
     review_command = payload.get("review_rows_command")
     if review_command:
         print(f"review_rows={_compact_cli_text(review_command)}")

@@ -1508,6 +1508,91 @@ def test_priced_in_source_gap_batches_payload_plans_safe_sync_batches(
     )
 
 
+def test_priced_in_source_gap_batches_payload_plans_sec_event_batches(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    _insert_active_security_for_call_plan(engine, "AAPL", cik="0000320193")
+
+    payload = priced_in_source_gap_batches_payload(
+        engine,
+        AppConfig(sec_daily_max_tickers=1),
+        source="catalyst_events",
+        batch_limit=1,
+    )
+
+    assert payload["schema_version"] == "priced-in-source-batches-v1"
+    assert payload["external_calls_made"] == 0
+    assert payload["source"] == "catalyst_events"
+    assert payload["status"] == "ready"
+    assert payload["total_gap_rows"] == 1
+    assert payload["plannable_gap_rows"] == 1
+    assert payload["batch_size"] == 1
+    assert payload["batch_count"] == 1
+    assert payload["batches"][0]["tickers"] == ["AAPL"]
+    assert payload["batches"][0]["command"] == (
+        "catalyst-radar run-daily --as-of 2026-05-10 --available-at <UTC-now> "
+        "--ticker AAPL --json"
+    )
+    assert payload["batches"][0]["api"] == "POST /api/radar/runs"
+    assert payload["batches"][0]["api_payload"] == {
+        "as_of": "2026-05-10",
+        "available_at": "<UTC-now>",
+        "tickers": ["AAPL"],
+        "run_llm": False,
+        "dry_run_alerts": True,
+    }
+    assert payload["batches"][0]["external_calls_required"] == 1
+
+
+def test_priced_in_source_gap_batches_payload_marks_text_rows_blocked_without_events(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+
+    payload = priced_in_source_gap_batches_payload(
+        engine,
+        AppConfig(),
+        source="local_text",
+        batch_limit=1,
+    )
+
+    assert payload["status"] == "ready"
+    assert payload["total_gap_rows"] == 2
+    assert payload["plannable_gap_rows"] == 1
+    assert payload["diagnostic"]["blocked_reason"] == "missing_catalyst_events"
+    assert payload["diagnostic"]["sample_blocked_tickers"] == ["AAPL"]
+    assert payload["batches"][0]["tickers"] == ["MSFT"]
+
+
+def test_priced_in_source_gap_batches_payload_plans_local_text_batches(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+
+    payload = priced_in_source_gap_batches_payload(
+        engine,
+        AppConfig(),
+        source="local_text",
+        batch_limit=2,
+        batch_size=1,
+    )
+
+    assert payload["status"] == "ready"
+    assert payload["total_gap_rows"] == 2
+    assert payload["plannable_gap_rows"] == 1
+    assert payload["batches"][0]["tickers"] == ["MSFT"]
+    assert payload["batches"][0]["command"] == (
+        "catalyst-radar run-textint --as-of 2026-05-10 --ticker MSFT"
+    )
+    assert payload["batches"][0]["api"] is None
+    assert payload["batches"][0]["api_payload"] is None
+    assert payload["batches"][0]["external_calls_required"] == 0
+
+
 def test_priced_in_queue_payload_diagnoses_options_after_scan_date(
     tmp_path: Path,
 ) -> None:
@@ -1936,10 +2021,10 @@ def test_priced_in_preflight_payload_reports_exact_next_steps(tmp_path: Path) ->
     )
     assert by_area["local_text"]["status"] == "attention"
     assert by_area["local_text"]["command"].startswith(
-        "catalyst-radar run-textint --as-of"
+        "catalyst-radar priced-in-source-batches --source local_text"
     )
-    assert by_area["catalyst_events"]["command"] == (
-        "catalyst-radar dashboard-tui --once --page run"
+    assert by_area["catalyst_events"]["command"].startswith(
+        "catalyst-radar priced-in-source-batches --source catalyst_events"
     )
     assert payload["api"]["queue"] == "GET /api/radar/priced-in"
 

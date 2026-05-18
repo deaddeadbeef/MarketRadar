@@ -215,6 +215,10 @@ def test_textint_cli_processes_events_and_prints_features(
             "2026-05-10T14:00:00Z",
             "--ontology",
             "config/themes.yaml",
+            "--ticker",
+            "MSFT",
+            "--ticker",
+            "AAPL",
         ]
     ) == 0
     assert capsys.readouterr().out == "processed text_features=1 snippets=1\n"
