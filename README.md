@@ -83,6 +83,18 @@ count. If your Polygon/Massive plan is rate-limited, set
 `CATALYST_POLYGON_TICKER_PAGE_DELAY_SECONDS` before running a multi-page ticker
 seed so pagination is paced deliberately.
 
+For the same path as a plan-first PowerShell workflow:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/run-full-market-scan.ps1
+powershell -ExecutionPolicy Bypass -File scripts/run-full-market-scan.ps1 -TickerPages 13 -TickerPageDelaySeconds 12 -Execute
+```
+
+Without `-Execute`, the script only reads local preflight state and prints the
+provider calls it would make. With `-Execute`, it sets the Polygon/Massive page
+cap and page delay only in the current PowerShell process, then runs ticker
+seed, grouped-daily ingest, universe build, scan, and priced-in queue review.
+
 The dashboard shows active universe size, requested/scanned securities, fresh
 bar coverage, and candidate count so a tiny local universe is not mistaken for a
 full-market pass.

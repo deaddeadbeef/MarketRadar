@@ -186,6 +186,16 @@ Polygon/Massive ticker-reference pages. Leave it `0` on plans that allow fast
 pagination; set it before a large seed on rate-limited plans so the full scan
 path is explicit instead of accidentally hammering the provider.
 
+The active script follow-up adds `scripts\run-full-market-scan.ps1`. It is
+plan-only unless `-Execute` is provided. Plan mode calls only local
+`priced-in-preflight --json`, prints the selected as-of date, estimated ticker
+pages, page delay, and exact command sequence, then exits with
+`External calls made: 0`. Execute mode sets
+`CATALYST_POLYGON_TICKERS_MAX_PAGES` and
+`CATALYST_POLYGON_TICKER_PAGE_DELAY_SECONDS` only in that PowerShell process,
+then runs ticker seed, grouped-daily ingest, universe build, scan, and
+`priced-in-queue --json`.
+
 This payload is `priced-in-queue-v1`, reports `external_calls_made=0`, includes
 the full-scan boundary (`universe_too_small`, `partial_scan`, or `ready`), and
 returns ranked rows with ticker, status, direction, emotion score, reaction

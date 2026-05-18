@@ -313,6 +313,29 @@ def test_check_live_activation_script_is_zero_external_call_status_check() -> No
     assert "SCHWAB_CLIENT_SECRET=" not in text
 
 
+def test_run_full_market_scan_script_is_plan_first_and_execute_gated() -> None:
+    script = Path("scripts/run-full-market-scan.ps1")
+    text = script.read_text(encoding="utf-8")
+
+    assert script.is_file()
+    assert "priced-in-preflight" in text
+    assert "--json" in text
+    assert "Plan only: no provider calls or database writes were made." in text
+    assert "-Execute" in text
+    assert "-AllowPartial" in text
+    assert "CATALYST_POLYGON_TICKERS_MAX_PAGES" in text
+    assert "CATALYST_POLYGON_TICKER_PAGE_DELAY_SECONDS" in text
+    assert "ingest-polygon\", \"tickers\"" in text
+    assert "ingest-polygon\", \"grouped-daily\"" in text
+    assert "build-universe" in text
+    assert "scan" in text
+    assert "priced-in-queue" in text
+    assert "External calls made: 0" in text
+    assert "OPENAI_API_KEY=" not in text
+    assert "CATALYST_POLYGON_API_KEY=" not in text
+    assert "SCHWAB_CLIENT_SECRET=" not in text
+
+
 def test_export_telemetry_script_writes_zero_call_raw_snapshot() -> None:
     script = Path("scripts/export-telemetry.ps1")
     text = script.read_text(encoding="utf-8")
