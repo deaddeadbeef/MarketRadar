@@ -1,6 +1,54 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 07:21:05 +08:00
+Last updated: 2026-05-20 07:38:29 +08:00
+
+## Latest Repair-Plan Field Checklist
+
+Goal alignment:
+
+- The active blocker is still the same: 131 stock-like tickers lack as-of bars
+  for the 2026-05-15 stock scan.
+- Quick status can now inspect the local template and show actual blank fields,
+  but the API/dashboard source-batch repair plan still only said to fill the
+  template.
+- This slice keeps the field checklist in the CLI/API/dashboard repair payloads
+  themselves, so the dashboard/source workflow can say exactly what a newly
+  generated missing-bar template requires. It makes 0 Polygon/Massive, SEC,
+  Schwab, OpenAI, broker, order, or DB-write calls.
+
+Fix in this slice:
+
+- `manual-market-bars-repair-plan-v1` now includes:
+  - `required_fill_fields`;
+  - `blank_required_field_counts_if_new_template`;
+  - `template_row_count`.
+- The stocks-only `market_bars` source-batch diagnostic now carries the same
+  field checklist.
+- The text source-batch CLI prints
+  `blank_required_fields_if_new_template=...` for market-bar blockers.
+
+Live zero-call observation:
+
+```text
+blank_required_fields_if_new_template=close:131,high:131,low:131,open:131,volume:131,vwap:131
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_provider_ingest_cli.py::test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_answer_uses_stock_scope_for_market_bar_coverage -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\market\manual_bars.py src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py tests\integration\test_provider_ingest_cli.py tests\integration\test_dashboard_demo_seed_cli.py
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source market_bars --stocks-only
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source all --stocks-only --limit 1
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source market_bars --stocks-only --json
+```
+
+Next useful product action after merge:
+
+- The toolchain is now honest and specific about the missing-bar blocker.
+- Further zero-call status/dashboard work is likely drift unless it directly
+  clears data coverage. The next meaningful move is to fill/import the 131 rows
+  or explicitly approve the one Polygon/Massive grouped-daily call.
 
 ## Latest Manual Bar Blank-Field Summary
 

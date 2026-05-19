@@ -4114,6 +4114,12 @@ def _print_priced_in_source_diagnostic(
     )
     if samples:
         print(f"{indent}blocked_examples={','.join(samples)}")
+    blank_fields = diagnostic.get("blank_required_field_counts_if_new_template")
+    if isinstance(blank_fields, Mapping) and blank_fields:
+        print(
+            f"{indent}blank_required_fields_if_new_template="
+            f"{_count_summary(blank_fields)}"
+        )
     for key, label in (
         ("fix_command", "refresh"),
         ("manual_template_command", "template"),
@@ -4216,6 +4222,12 @@ def _print_priced_in_source_batches(payload: Mapping[str, object]) -> None:
                 "blocked_examples="
                 f"{','.join(str(ticker) for ticker in blocked_samples)} "
                 f"reason={_compact_cli_text(diagnostic.get('blocked_reason'))}"
+            )
+        blank_fields = diagnostic.get("blank_required_field_counts_if_new_template")
+        if isinstance(blank_fields, Mapping) and blank_fields:
+            print(
+                "blank_required_fields_if_new_template="
+                f"{_count_summary(blank_fields)}"
             )
         type_counts = diagnostic.get("missing_cik_type_counts")
         if isinstance(type_counts, Mapping) and type_counts:
