@@ -4027,6 +4027,41 @@ def _print_priced_in_audit(payload: Mapping[str, object]) -> None:
             )
         if repair.get("write_boundary"):
             print(f"  boundary={_compact_cli_text(repair.get('write_boundary'))}")
+        diagnostic = repair.get("diagnostic")
+        if isinstance(diagnostic, Mapping) and diagnostic:
+            print(
+                "  missing_bar_diagnostic="
+                f"status={diagnostic.get('status')} "
+                f"company_like={_int_value(diagnostic.get('company_like_missing_count'))} "
+                f"fund_like={_int_value(diagnostic.get('fund_like_missing_count'))} "
+                f"wrappers={_int_value(diagnostic.get('wrapper_missing_count'))} "
+                f"unknown={_int_value(diagnostic.get('unknown_missing_count'))} "
+                f"external_calls={diagnostic.get('external_calls_made')}"
+            )
+            type_counts = diagnostic.get("type_counts")
+            if isinstance(type_counts, Mapping) and type_counts:
+                print(
+                    "    missing_bar_types="
+                    + ",".join(
+                        f"{key}:{_int_value(value)}"
+                        for key, value in sorted(type_counts.items())
+                    )
+                )
+            samples = []
+            for key in (
+                "sample_company_like_tickers",
+                "sample_fund_like_tickers",
+                "sample_wrapper_tickers",
+                "sample_unknown_tickers",
+            ):
+                values = _sequence_value(diagnostic.get(key))
+                if values:
+                    samples.append(f"{key}={','.join(str(value) for value in values)}")
+            if samples:
+                print("    " + " ".join(samples))
+            route_boundary = diagnostic.get("route_boundary")
+            if route_boundary:
+                print(f"    route_boundary={_compact_cli_text(route_boundary)}")
     print(
         "source_coverage="
         f"ready={coverage.get('ready_source_count')}/"

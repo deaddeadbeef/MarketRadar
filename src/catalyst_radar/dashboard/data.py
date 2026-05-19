@@ -2228,7 +2228,11 @@ def _priced_in_full_scan_audit_payload_uncached(
     decision_ready_count = int(_finite_float(usefulness_counts.get("decision_useful")))
     research_ready_count = int(_finite_float(usefulness_counts.get("research_useful")))
     blocked_count = int(_finite_float(usefulness_counts.get("blocked")))
-    market_bars = _priced_in_audit_market_bars(resolved_queue, resolved_preflight)
+    market_bars = _priced_in_audit_market_bars(
+        engine,
+        resolved_queue,
+        resolved_preflight,
+    )
     next_action, next_command = _priced_in_audit_next_step(
         resolved_preflight,
         source_rows,
@@ -2800,6 +2804,7 @@ def _priced_in_audit_answer(
 
 
 def _priced_in_audit_market_bars(
+    engine: Engine,
     queue: Mapping[str, object],
     preflight: Mapping[str, object],
 ) -> dict[str, object]:
@@ -2827,6 +2832,7 @@ def _priced_in_audit_market_bars(
         or _parse_date(freshness.get("latest_daily_bar_date"))
     )
     repair = _priced_in_audit_market_bar_repair(
+        engine=engine,
         active=active,
         with_as_of_bar=with_as_of_bar,
         missing=missing,
@@ -2854,6 +2860,7 @@ def _priced_in_audit_market_bars(
 
 def _priced_in_audit_market_bar_repair(
     *,
+    engine: Engine,
     active: int,
     with_as_of_bar: int,
     missing: int,
@@ -2869,6 +2876,11 @@ def _priced_in_audit_market_bar_repair(
     template_command = _csv_market_template_command(target_as_of)
     import_preview_command = _csv_market_refresh_command(target_as_of, execute=False)
     import_execute_command = _csv_market_refresh_command(target_as_of, execute=True)
+    diagnostic = _priced_in_market_bar_missing_diagnostic(
+        engine,
+        target_as_of=target_as_of,
+        missing_ticker_fallback=missing_sample,
+    )
     status = "ready" if missing <= 0 else str(market_row.get("status") or "attention")
     if missing <= 0:
         next_action = "As-of market bars cover the active universe."
@@ -2892,12 +2904,160 @@ def _priced_in_audit_market_bar_repair(
         "import_execute_command": import_execute_command,
         "template_api": "POST /api/radar/market-bars/template",
         "import_api": "POST /api/radar/market-bars/import",
+        "diagnostic": diagnostic,
         "external_calls_made": 0,
         "write_boundary": (
             "Template generation writes a local CSV. Import preview makes no DB "
             "writes. Import --execute writes local daily bars only; none of these "
             "commands call market providers."
         ),
+        "next_action": next_action,
+    }
+
+
+def _priced_in_market_bar_missing_diagnostic(
+    engine: Engine,
+    *,
+    target_as_of: date | None,
+    missing_ticker_fallback: Sequence[str],
+) -> dict[str, object]:
+    route_boundary = (
+        "Market bars are required for price-reaction scoring. Non-company "
+        "instruments can stay in a full active-universe scan only if their "
+        "own bars are present; otherwise route or exclude them from a "
+        "stocks-only answer."
+    )
+    if target_as_of is None:
+        fallback_rows = [
+            (str(ticker).strip().upper(), "UNKNOWN")
+            for ticker in missing_ticker_fallback
+            if str(ticker).strip()
+        ]
+        return _priced_in_market_bar_missing_diagnostic_payload(
+            target_as_of=None,
+            missing_rows=fallback_rows,
+            status="attention" if fallback_rows else "unknown_as_of",
+            route_boundary=route_boundary,
+            next_action=(
+                "Cannot classify missing bars by instrument type until the scan "
+                "or latest daily-bar date is known."
+            ),
+        )
+    try:
+        with engine.connect() as conn:
+            active_rows = conn.execute(
+                select(
+                    securities.c.ticker,
+                    securities.c.metadata,
+                ).where(securities.c.is_active.is_(True))
+            ).all()
+            covered = {
+                str(row._mapping["ticker"]).strip().upper()
+                for row in conn.execute(
+                    select(daily_bars.c.ticker).where(
+                        daily_bars.c.date == target_as_of
+                    )
+                )
+                if str(row._mapping["ticker"]).strip()
+            }
+    except SQLAlchemyError:
+        active_rows = []
+        covered = set()
+
+    missing_rows: list[tuple[str, str]] = []
+    for row in active_rows:
+        ticker = str(row._mapping["ticker"] or "").strip().upper()
+        if not ticker or ticker in covered:
+            continue
+        metadata = row._mapping["metadata"] or {}
+        if not isinstance(metadata, Mapping):
+            metadata = {}
+        security_type = str(metadata.get("type") or "").strip().upper() or "UNKNOWN"
+        missing_rows.append((ticker, security_type))
+    if not missing_rows and missing_ticker_fallback:
+        missing_rows = [
+            (str(ticker).strip().upper(), "UNKNOWN")
+            for ticker in missing_ticker_fallback
+            if str(ticker).strip()
+        ]
+    if not missing_rows:
+        return _priced_in_market_bar_missing_diagnostic_payload(
+            target_as_of=target_as_of,
+            missing_rows=[],
+            status="ready",
+            route_boundary=route_boundary,
+            next_action="No missing as-of bars to classify.",
+        )
+    next_action = (
+        "Fill company-like as-of bars first; then decide whether fund/wrapper/"
+        "unknown tickers belong in this full active-universe scan or should be "
+        "routed/excluded from a stocks-only scan."
+    )
+    return _priced_in_market_bar_missing_diagnostic_payload(
+        target_as_of=target_as_of,
+        missing_rows=missing_rows,
+        status="attention",
+        route_boundary=route_boundary,
+        next_action=next_action,
+    )
+
+
+def _priced_in_market_bar_missing_diagnostic_payload(
+    *,
+    target_as_of: date | None,
+    missing_rows: Sequence[tuple[str, str]],
+    status: str,
+    route_boundary: str,
+    next_action: str,
+) -> dict[str, object]:
+    normalized_rows = [
+        (str(ticker).strip().upper(), str(security_type).strip().upper() or "UNKNOWN")
+        for ticker, security_type in missing_rows
+        if str(ticker).strip()
+    ]
+    type_counts = Counter(security_type for _ticker, security_type in normalized_rows)
+
+    company_like = [
+        ticker
+        for ticker, security_type in normalized_rows
+        if _is_sec_company_like_type(security_type)
+    ]
+    fund_like = [
+        ticker
+        for ticker, security_type in normalized_rows
+        if security_type in PRICED_IN_FUND_LIKE_SECURITY_TYPES
+    ]
+    wrappers = [
+        ticker
+        for ticker, security_type in normalized_rows
+        if security_type in PRICED_IN_WRAPPER_SECURITY_TYPES
+    ]
+    unknown = [
+        ticker
+        for ticker, security_type in normalized_rows
+        if security_type == "UNKNOWN"
+    ]
+    if not company_like and (fund_like or wrappers):
+        next_action = (
+            "Missing bars are non-company instruments; fill their bars for a full "
+            "active-universe scan, or route/exclude them from a stocks-only scan."
+        )
+    return {
+        "schema_version": "priced-in-market-bar-missing-diagnostic-v1",
+        "status": status,
+        "target_as_of": _date_iso_or_none(target_as_of),
+        "missing_count": len(normalized_rows),
+        "type_counts": dict(sorted(type_counts.items())),
+        "company_like_missing_count": len(company_like),
+        "fund_like_missing_count": len(fund_like),
+        "wrapper_missing_count": len(wrappers),
+        "unknown_missing_count": len(unknown),
+        "sample_company_like_tickers": _sample_tickers(company_like),
+        "sample_fund_like_tickers": _sample_tickers(fund_like),
+        "sample_wrapper_tickers": _sample_tickers(wrappers),
+        "sample_unknown_tickers": _sample_tickers(unknown),
+        "route_boundary": route_boundary,
+        "external_calls_made": 0,
         "next_action": next_action,
     }
 

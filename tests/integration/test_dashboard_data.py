@@ -1630,6 +1630,13 @@ def test_priced_in_full_scan_audit_payload_consolidates_current_state(
     assert payload["market_bars"]["repair"]["template_api"] == (
         "POST /api/radar/market-bars/template"
     )
+    market_bar_diagnostic = payload["market_bars"]["repair"]["diagnostic"]
+    assert market_bar_diagnostic["schema_version"] == (
+        "priced-in-market-bar-missing-diagnostic-v1"
+    )
+    assert market_bar_diagnostic["external_calls_made"] == 0
+    assert "company_like_missing_count" in market_bar_diagnostic
+    assert "route_boundary" in market_bar_diagnostic
     assert payload["instrument_scope"]["schema_version"] == (
         "priced-in-instrument-scope-v1"
     )

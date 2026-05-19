@@ -2166,6 +2166,26 @@ def _show_priced_in_full_scan_panel(
                 or "Manual market-bar repair is local only."
             )
         )
+        diagnostic = _mapping(market_bar_repair.get("diagnostic"))
+        if diagnostic:
+            st.caption(
+                str(
+                    diagnostic.get("route_boundary")
+                    or "Missing bar diagnostics make no provider calls."
+                )
+            )
+            _show_status_badges(
+                [
+                    (
+                        "Company-like Missing",
+                        diagnostic.get("company_like_missing_count") or 0,
+                    ),
+                    ("Fund-like Missing", diagnostic.get("fund_like_missing_count") or 0),
+                    ("Wrapper Missing", diagnostic.get("wrapper_missing_count") or 0),
+                    ("Unknown Missing", diagnostic.get("unknown_missing_count") or 0),
+                ]
+            )
+            st.caption(str(diagnostic.get("next_action") or "Classify missing bars."))
         repair_commands = [
             command
             for command in (
