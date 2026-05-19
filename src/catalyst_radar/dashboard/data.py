@@ -1885,6 +1885,10 @@ def priced_in_full_scan_audit_payload(
         resolved_preflight,
         source_rows,
     )
+    recommended_source_gap = _priced_in_audit_recommended_source_gap(
+        source_rows,
+        available_at=available_at,
+    )
     status = _priced_in_audit_status(
         preflight_status=str(resolved_preflight.get("status") or ""),
         decision_ready_count=decision_ready_count,
@@ -1980,6 +1984,7 @@ def priced_in_full_scan_audit_payload(
         },
         "instrument_scope": instrument_scope,
         "sources": source_rows,
+        "recommended_source_gap": recommended_source_gap,
         "trust_blockers": trust_blockers,
         "evidence_plan": _row_dict(_mapping_value(resolved_preflight, "evidence_plan")),
         "next_action": next_action,
@@ -2320,6 +2325,69 @@ def _priced_in_audit_source_row(
         ),
         "next_action": action.get("next_action"),
         "command": action.get("batch_plan_command") or action.get("command"),
+    }
+
+
+def _priced_in_audit_recommended_source_gap(
+    source_rows: Sequence[Mapping[str, object]],
+    *,
+    available_at: datetime | None,
+) -> dict[str, object] | None:
+    candidates = [
+        row
+        for row in source_rows
+        if int(_finite_float(row.get("gap_count"))) > 0
+        and str(row.get("status") or "") != "ready"
+    ]
+    if not candidates:
+        return None
+    ranked = sorted(
+        candidates,
+        key=lambda row: (
+            -int(_finite_float(row.get("decision_useful_gap_rows"))),
+            -int(_finite_float(row.get("actionable_gap_rows"))),
+            -int(_finite_float(row.get("research_useful_gap_rows"))),
+            -int(_finite_float(row.get("gap_count"))),
+            str(row.get("source") or ""),
+        ),
+    )
+    top = ranked[0]
+    source = str(top.get("source") or "").strip()
+    decision_rows = int(_finite_float(top.get("decision_useful_gap_rows")))
+    actionable_rows = int(_finite_float(top.get("actionable_gap_rows")))
+    research_rows = int(_finite_float(top.get("research_useful_gap_rows")))
+    gap_rows = int(_finite_float(top.get("gap_count")))
+    next_action = str(top.get("next_action") or "Inspect this source gap.").strip()
+    review_command = _priced_in_audit_command(
+        limit=25,
+        offset=0,
+        available_at=available_at,
+        source_gap=[source] if source else [],
+    )
+    rationale = (
+        f"{source} has the highest current payoff: {decision_rows} "
+        f"decision-useful gap row(s), {actionable_rows} actionable gap row(s), "
+        f"{research_rows} research-useful gap row(s), and {gap_rows} total gap row(s)."
+    )
+    return {
+        "schema_version": "priced-in-recommended-source-gap-v1",
+        "source": source,
+        "status": top.get("status"),
+        "decision_useful_gap_rows": decision_rows,
+        "actionable_gap_rows": actionable_rows,
+        "research_useful_gap_rows": research_rows,
+        "gap_count": gap_rows,
+        "priority_sample_tickers": list(
+            _sequence_value(top.get("priority_sample_tickers"))
+        ),
+        "rationale": rationale,
+        "next_action": f"Inspect {source} first. {next_action}",
+        "review_command": review_command,
+        "plan_command": top.get("command"),
+        "execution_boundary": (
+            "Reviewing this recommendation makes 0 provider calls. Execute source "
+            "batches only after explicitly approving provider calls."
+        ),
     }
 
 

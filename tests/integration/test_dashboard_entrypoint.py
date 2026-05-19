@@ -548,6 +548,8 @@ def test_dashboard_wires_priced_in_full_scan_panel_after_usefulness() -> None:
     assert "all_rows" in helper_source
     assert "Download Full Scan Rows JSON" in helper_source
     assert "source_gap" in helper_source
+    assert "recommended_source_gap" in helper_source
+    assert "First source gap" in helper_source
     assert "Full Scan Rows" in helper_source
     assert "Full-scan Ranked Rows" in helper_source
     assert "Selected Source Gap Action" in helper_source

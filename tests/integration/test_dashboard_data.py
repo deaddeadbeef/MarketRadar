@@ -1595,6 +1595,16 @@ def test_priced_in_full_scan_audit_payload_consolidates_current_state(
     assert payload["source_coverage"]["trust_gap_count"] == len(
         payload["trust_blockers"]
     )
+    assert payload["recommended_source_gap"]["schema_version"] == (
+        "priced-in-recommended-source-gap-v1"
+    )
+    assert payload["recommended_source_gap"]["source"]
+    assert payload["recommended_source_gap"]["review_command"].startswith(
+        "catalyst-radar priced-in-audit --source-gap"
+    )
+    assert "0 provider calls" in payload["recommended_source_gap"][
+        "execution_boundary"
+    ]
     assert payload["trust_blockers"]
     assert any(row["area"] == "options" for row in payload["trust_blockers"])
     assert "actionable_mismatch_rows" in payload["counts"]

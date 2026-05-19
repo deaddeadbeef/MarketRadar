@@ -2085,6 +2085,44 @@ def _show_priced_in_full_scan_panel(
             or "Useful means source coverage is broad enough to trust the scan."
         )
     )
+    recommended_source_gap = _mapping(audit.get("recommended_source_gap"))
+    if recommended_source_gap:
+        st.info(
+            "First source gap: "
+            f"{recommended_source_gap.get('next_action') or 'Inspect source coverage.'} "
+            f"{recommended_source_gap.get('rationale') or ''}"
+        )
+        _show_status_badges(
+            [
+                ("Source", recommended_source_gap.get("source") or "n/a"),
+                (
+                    "Decision Useful",
+                    recommended_source_gap.get("decision_useful_gap_rows", 0),
+                ),
+                ("Actionable", recommended_source_gap.get("actionable_gap_rows", 0)),
+                ("Research Useful", recommended_source_gap.get("research_useful_gap_rows", 0)),
+                ("Gap Rows", recommended_source_gap.get("gap_count", 0)),
+            ]
+        )
+        st.caption(
+            str(
+                recommended_source_gap.get("execution_boundary")
+                or "Reviewing source gaps makes 0 provider calls."
+            )
+        )
+        recommended_commands = [
+            command
+            for command in (
+                recommended_source_gap.get("review_command"),
+                recommended_source_gap.get("plan_command"),
+            )
+            if str(command or "").strip()
+        ]
+        if recommended_commands:
+            st.code(
+                "\n".join(str(command) for command in recommended_commands),
+                language="powershell",
+            )
     review_command = str(scope.get("review_command") or "").strip()
     export_command = str(scope.get("export_command") or "").strip()
     source_command = str(_mapping(audit.get("commands")).get("source_overview") or "").strip()
