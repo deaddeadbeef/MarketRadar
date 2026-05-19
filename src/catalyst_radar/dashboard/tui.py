@@ -1123,6 +1123,18 @@ class MarketRadarDashboardApp(App[int]):
                 self.page = f"alert:{alert_id}"
                 self.status_message = f"Opened alert {alert_id}."
                 self.refresh_view()
+        elif self.page == "ops":
+            row = self._row_by_key(event.row_key.value)
+            source = str(row.get("source") or "").strip()
+            if source:
+                self.status_message = _priced_in_source_batch_message(
+                    self.engine,
+                    self.config,
+                    source=source,
+                    filters=self.filters,
+                )
+                self.reload_snapshot()
+                self.refresh_view()
 
     def _row_by_key(self, key: object) -> Mapping[str, object]:
         key_text = str(key)
@@ -1570,9 +1582,15 @@ class MarketRadarDashboardApp(App[int]):
         if page == "ops":
             return "\n".join(
                 [
-                    "[bold #7ee787]USE THIS PAGE[/] Diagnose stale or broken data.",
-                    "[bold]Look for:[/] unhealthy providers, stale market bars, database gaps.",
-                    "[bold]Do next:[/] refresh after fixing data, then return to Insights.",
+                    "[bold #7ee787]USE THIS PAGE[/] Fill source gaps for the full scan.",
+                    (
+                        "[bold]Click/Enter:[/] a source row to inspect its plan. "
+                        "This is plan-only and makes 0 provider calls."
+                    ),
+                    (
+                        "[bold]Execute:[/] type batch <source> execute only when "
+                        "the provider and call budget are intentional."
+                    ),
                 ]
             )
         if page == "help":
@@ -1728,16 +1746,21 @@ class MarketRadarDashboardApp(App[int]):
                 "Read-only Schwab context is allowed; real order submission remains disabled.",
             )
         if page == "ops":
+            rows = _source_coverage_workbench_rows(self.payload)
             return (
-                "Provider health",
+                "Source coverage workbench - Enter shows plan, not execution",
                 [
-                    ("provider", "Provider", 16),
+                    ("priority", "#", 4),
+                    ("source", "Source", 18),
                     ("status", "Status", 14),
-                    ("checked_at", "Checked", 24),
-                    ("reason", "Reason", 72),
+                    ("gap_rows", "Gaps", 8),
+                    ("useful_rows", "Useful rows", 18),
+                    ("examples", "Examples", 24),
+                    ("plan", "Plan", 22),
+                    ("next_action", "Next action", 46),
                 ],
-                _rows(_mapping(self.payload.get("ops_health")).get("providers")),
-                _ops_detail(self.payload),
+                rows,
+                _source_coverage_workbench_detail(self.payload, rows),
             )
         if page == "telemetry":
             telemetry = _mapping(self.payload.get("telemetry"))
@@ -4981,6 +5004,88 @@ def _source_workflow_useful_rows(step: Mapping[str, object]) -> str:
     if actionable_rows:
         parts.append(f"action {actionable_rows}")
     return ", ".join(parts) if parts else "none"
+
+
+def _source_coverage_workbench_rows(
+    payload: Mapping[str, object],
+) -> list[Mapping[str, object]]:
+    workflow = _mapping(payload.get("priced_in_source_workflow"))
+    coverage = _mapping(payload.get("priced_in_source_coverage"))
+    action_by_source = {
+        str(action.get("source") or "").strip(): action
+        for action in _rows(coverage.get("actions"))
+        if str(action.get("source") or "").strip()
+    }
+    rows: list[Mapping[str, object]] = []
+    for index, step in enumerate(_rows(workflow.get("steps")), start=1):
+        source = str(step.get("source") or "").strip()
+        if not source:
+            continue
+        action = _mapping(action_by_source.get(source))
+        examples = (
+            _source_action_sample_tickers(action)
+            if action
+            else ",".join(_texts(step.get("priority_sample_tickers"))) or "n/a"
+        )
+        rows.append(
+            {
+                "_row_key": f"source-{source}",
+                "priority": step.get("priority") or index,
+                "source": source,
+                "status": action.get("status") or step.get("status") or "unknown",
+                "gap_rows": _source_action_gap_count(action) if action else "n/a",
+                "useful_rows": _source_workflow_useful_rows(step),
+                "examples": examples,
+                "plan": f"batch {source}",
+                "next_action": step.get("action") or "Inspect the source plan.",
+            }
+        )
+    if rows:
+        return rows
+    for index, action in enumerate(_rows(coverage.get("actions")), start=1):
+        source = str(action.get("source") or "").strip()
+        if not source:
+            continue
+        rows.append(
+            {
+                "_row_key": f"source-{source}",
+                "priority": index,
+                "source": source,
+                "status": action.get("status") or "unknown",
+                "gap_rows": _source_action_gap_count(action),
+                "useful_rows": "n/a",
+                "examples": _source_action_sample_tickers(action),
+                "plan": f"batch {source}",
+                "next_action": action.get("next_action")
+                or action.get("action")
+                or "Inspect the source plan.",
+            }
+        )
+    return rows
+
+
+def _source_coverage_workbench_detail(
+    payload: Mapping[str, object],
+    rows: Sequence[Mapping[str, object]],
+) -> str:
+    workflow = _mapping(payload.get("priced_in_source_workflow"))
+    coverage_first = str(
+        workflow.get("coverage_first_action")
+        or workflow.get("next_action")
+        or "Review source gaps."
+    ).strip()
+    decision_shortcut = str(workflow.get("decision_shortcut_action") or "").strip()
+    row_count = len(rows)
+    shortcut_text = (
+        f" Decision shortcut: {decision_shortcut}"
+        if decision_shortcut
+        else " No decision shortcut is currently runnable."
+    )
+    return (
+        f"{row_count} source row(s). Coverage-first: {coverage_first}"
+        f"{shortcut_text} Enter/click is plan-only; execute requires "
+        "batch <source> execute."
+    )
 
 
 def _ops_lines(payload: Mapping[str, object], width: int) -> list[str]:
