@@ -1,6 +1,102 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 18:10:56 +08:00
+Last updated: 2026-05-19 18:26:10 +08:00
+
+## Latest Full-Scan Default UX
+
+Current problem:
+
+- The user saw a handful of tickers and reasonably asked why MarketRadar was
+  not doing a full scan.
+- The backend was already scanning the full active universe, but the default
+  dashboard display still opened as a page preview.
+- Recommended source gaps and source tables showed short ticker lists without
+  making it visually impossible to confuse those examples with the whole scan.
+
+Fix in this slice:
+
+- Streamlit **Priced-in Full Scan** now defaults to
+  **Display complete full scan**.
+- The old row controls were renamed to **Rows per page** and **Page offset** so
+  they read as page-preview controls, not scan-size controls.
+- The panel now states the full scan scope in plain text:
+  scanned rows, ranked rows, active securities, and whether the current table is
+  a complete full scan or a page preview.
+- The status badge now says **Display: complete full scan** or
+  **Display: page preview** instead of vague visible-ticker wording.
+- The first source-gap callout now includes a `sample_boundary`:
+  example tickers are only a priority preview, while the gap itself covers the
+  full-scan row count.
+- `recommended_source_gap` now includes `full_scan_command`, for example:
+  `catalyst-radar priced-in-audit --source-gap options --all --json`.
+- The dashboard shows that full source-gap command next to the smaller preview
+  command and source-batch plan command.
+- Dashboard source-gap tables now label short lists as
+  `priority_examples_preview`, `coverage_examples_preview`, and
+  `first_batch_preview`.
+- CLI `priced-in-audit` now prints `display=page_preview|complete`,
+  `full_source_gap_export=...`, `sample_boundary=...`, and
+  `priority_examples_preview=...`.
+- This remains zero-call browsing/export only.
+
+Current live zero-call observations from the branch:
+
+```text
+priced-in-audit --limit 5
+active=12613 scanned=12087 ranked=12087 decision=10 external_calls=0
+full_scan_rows=1-5/12087 display=page_preview sample=true all_rows=false
+sample_boundary=Example tickers are only a priority preview; the source gap itself covers 12087 full-scan row(s).
+full_source_gap_export=catalyst-radar priced-in-audit --source-gap options --all --json
+```
+
+```text
+GET /api/radar/priced-in/audit?all_rows=true
+api_all_rows=12087/12087 all=True external_calls=0
+```
+
+Browser verification on `http://127.0.0.1:8514`:
+
+- **Display complete full scan** rendered as the default full-scan control.
+- The panel rendered:
+  `Full scan scope: scanned 12087 row(s), ranked 12087 row(s), from 12613 active securities. Table display: complete full scan.`
+- The table caption rendered:
+  `Full scan rows: showing all 1-12087 of 12087.`
+- The first source-gap callout rendered the priority-preview boundary.
+- The dashboard exposed `Download Full Scan Rows JSON`.
+- The full source-gap export command was present with the latest-run
+  `--available-at` cutoff.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_payload_consolidates_current_state tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_audit_cli_outputs_full_scan_audit tests\integration\test_api_routes.py::test_get_radar_priced_in_audit_returns_zero_call_audit tests\integration\test_dashboard_entrypoint.py::test_dashboard_wires_priced_in_full_scan_panel_after_usefulness -q
+.\.venv\Scripts\python.exe -m ruff check apps\dashboard\Home.py src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_dashboard_entrypoint.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-audit --limit 5
+curl.exe --insecure --silent --show-error --fail "https://127.0.0.1:8443/api/radar/priced-in/audit?limit=5"
+curl.exe --insecure --silent --show-error --fail "https://127.0.0.1:8443/api/radar/priced-in/audit?all_rows=true"
+```
+
+Observed:
+
+- Focused four-test set passed (`4 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+- Live CLI/API checks showed the full universe is 12,087 ranked rows from
+  12,613 active securities and all browsing/export checks made
+  `external_calls=0`.
+- Local services were restarted on the branch:
+  - API health returned commit `e7b5bab60215` because these changes were not
+    committed yet at verification time;
+  - Streamlit health returned `ok`.
+
+Next useful product action:
+
+- Open and merge the PR for this branch, restart local services again so the
+  health build stamp reflects the merged commit, and re-check API/Streamlit
+  health.
+- Actual source-fill execution still requires explicit user approval because it
+  can call SEC/Schwab/market providers.
 
 ## Latest Payoff-Ranked Next Action
 

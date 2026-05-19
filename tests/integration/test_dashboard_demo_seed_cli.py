@@ -1893,6 +1893,8 @@ def test_priced_in_audit_cli_outputs_full_scan_audit(
     assert "source_coverage=ready=" in output.out
     assert "recommended_source_gap=source=" in output.out
     assert "boundary=Reviewing this recommendation makes 0 provider calls" in output.out
+    assert "full_source_gap_export=catalyst-radar priced-in-audit" in output.out
+    assert "sample_boundary=Example tickers are only a priority preview" in output.out
     assert "instrument_scope=rows=" in output.out
     assert "sec_catalyst_applicability=applicable=" in output.out
     assert "full_scan_rows=" in output.out
@@ -1915,6 +1917,10 @@ def test_priced_in_audit_cli_outputs_full_scan_audit(
     assert payload["preview"]["audit_page_command"] == (
         "catalyst-radar priced-in-audit --limit 25"
     )
+    assert payload["recommended_source_gap"]["full_scan_command"].startswith(
+        "catalyst-radar priced-in-audit --source-gap"
+    )
+    assert "--all --json" in payload["recommended_source_gap"]["full_scan_command"]
     assert payload["preview_rows"][0]["ticker"] == "ACME"
     assert payload["source_coverage"]["source_count"] == 6
     assert payload["instrument_scope"]["schema_version"] == (

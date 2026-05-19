@@ -2364,10 +2364,22 @@ def _priced_in_audit_recommended_source_gap(
         available_at=available_at,
         source_gap=[source] if source else [],
     )
+    full_scan_command = _priced_in_audit_command(
+        limit=25,
+        offset=0,
+        available_at=available_at,
+        source_gap=[source] if source else [],
+        all_rows=True,
+        json=True,
+    )
     rationale = (
         f"{source} has the highest current payoff: {decision_rows} "
         f"decision-useful gap row(s), {actionable_rows} actionable gap row(s), "
         f"{research_rows} research-useful gap row(s), and {gap_rows} total gap row(s)."
+    )
+    sample_boundary = (
+        "Example tickers are only a priority preview; the source gap itself covers "
+        f"{gap_rows} full-scan row(s)."
     )
     return {
         "schema_version": "priced-in-recommended-source-gap-v1",
@@ -2381,8 +2393,10 @@ def _priced_in_audit_recommended_source_gap(
             _sequence_value(top.get("priority_sample_tickers"))
         ),
         "rationale": rationale,
+        "sample_boundary": sample_boundary,
         "next_action": f"Inspect {source} first. {next_action}",
         "review_command": review_command,
+        "full_scan_command": full_scan_command,
         "plan_command": top.get("command"),
         "execution_boundary": (
             "Reviewing this recommendation makes 0 provider calls. Execute source "

@@ -1981,25 +1981,27 @@ def _show_priced_in_full_scan_panel(
     row_control_cols = st.columns([1, 1, 1, 1, 2])
     preview_limit = int(
         row_control_cols[0].selectbox(
-            "Full-scan rows",
+            "Rows per page",
             [25, 50, 100],
             index=0,
             key="priced_in_full_scan_preview_limit",
+            help="Used only when the table is in page-preview mode.",
         )
     )
     preview_offset = int(
         row_control_cols[1].number_input(
-            "Row offset",
+            "Page offset",
             min_value=0,
             value=0,
             step=preview_limit,
             key="priced_in_full_scan_preview_offset",
+            help="Used only when the table is in page-preview mode.",
         )
     )
     show_all_rows = bool(
         row_control_cols[2].checkbox(
-            "Show all rows",
-            value=False,
+            "Display complete full scan",
+            value=True,
             key="priced_in_full_scan_all_rows",
             help=(
                 "Load the complete ranked full-scan table from the local database. "
@@ -2016,8 +2018,9 @@ def _show_priced_in_full_scan_panel(
         )
     )
     row_control_cols[4].caption(
-        "Visible rows are a page unless Show all rows is on. All browsing and export "
-        "controls make 0 provider calls."
+        "MarketRadar scans the full active universe first. This control only changes "
+        "whether the table displays every ranked row or a page preview. All browsing "
+        "and export controls make 0 provider calls."
     )
     audit = _mapping(
         dashboard_data.priced_in_full_scan_audit_payload(
@@ -2064,12 +2067,24 @@ def _show_priced_in_full_scan_panel(
         f"{int(_metric_number(source_coverage.get('ready_source_count')))}/"
         f"{int(_metric_number(source_coverage.get('source_count')))}",
     )
+    st.caption(
+        "Full scan scope: "
+        f"scanned {int(_metric_number(scope.get('scanned_rows')))} row(s), "
+        f"ranked {int(_metric_number(scope.get('ranked_rows')))} row(s), "
+        f"from {int(_metric_number(scope.get('active_securities')))} active securities. "
+        "Table display: "
+        f"{'complete full scan' if scope.get('all_rows_requested') else 'page preview'}."
+    )
     _show_status_badges(
         [
             ("Mode", scope.get("mode") or "unknown"),
             (
-                "Visible Tickers",
-                "sample" if scope.get("visible_tickers_are_sample") else "all visible",
+                "Display",
+                (
+                    "complete full scan"
+                    if scope.get("all_rows_requested")
+                    else "page preview"
+                ),
             ),
             ("External Calls", audit.get("external_calls_made") or 0),
             (
@@ -2090,7 +2105,8 @@ def _show_priced_in_full_scan_panel(
         st.info(
             "First source gap: "
             f"{recommended_source_gap.get('next_action') or 'Inspect source coverage.'} "
-            f"{recommended_source_gap.get('rationale') or ''}"
+            f"{recommended_source_gap.get('rationale') or ''} "
+            f"{recommended_source_gap.get('sample_boundary') or ''}"
         )
         _show_status_badges(
             [
@@ -2114,6 +2130,7 @@ def _show_priced_in_full_scan_panel(
             command
             for command in (
                 recommended_source_gap.get("review_command"),
+                recommended_source_gap.get("full_scan_command"),
                 recommended_source_gap.get("plan_command"),
             )
             if str(command or "").strip()
@@ -2263,8 +2280,8 @@ def _priced_in_full_scan_source_rows(value: object) -> list[dict[str, object]]:
                 "actionable": row.get("actionable_gap_rows"),
                 "coverage_pct": row.get("coverage_pct"),
                 "gap_count": row.get("gap_count"),
-                "priority_examples": priority_samples,
-                "examples": samples,
+                "priority_examples_preview": priority_samples,
+                "coverage_examples_preview": samples,
                 "next_action": row.get("next_action"),
                 "command": row.get("command"),
             }
@@ -2294,7 +2311,7 @@ def _priced_in_full_scan_source_gap_action_rows(
                 "batch_status": row.get("batch_status"),
                 "full_scan_gap_rows": row.get("full_scan_gap_rows"),
                 "provider_batch_count": row.get("provider_batch_count"),
-                "first_provider_batch": _list_text(row.get("first_batch_tickers")),
+                "first_batch_preview": _list_text(row.get("first_batch_tickers")),
                 "first_batch_calls": row.get("first_batch_external_calls"),
                 "execute_next_command": row.get("execute_next_command"),
                 "blocked_reason": row.get("blocked_reason"),
