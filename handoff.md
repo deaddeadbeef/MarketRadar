@@ -1,6 +1,69 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 23:20:41 +08:00
+Last updated: 2026-05-19 23:40:02 +08:00
+
+## Latest Stocks-Only Priced-In Filter
+
+Goal alignment check:
+
+- The user asked for MarketRadar to identify whether any stock has not fully
+  matched market expectations.
+- The full active-universe scan intentionally includes non-stock instruments,
+  but the operator needs a direct stock-only lens over the same local ranked
+  scan.
+- This slice adds that lens without changing the underlying scan, without
+  shrinking the stored universe, and without making provider calls.
+
+Fix in this slice:
+
+- `priced_in_queue_payload` now accepts `stocks_only=True` and filters ranked
+  local rows to company-like instruments (`CS`, `ADRC`).
+- `priced_in_answer_payload` and `priced_in_full_scan_audit_payload` accept the
+  same flag and preserve it in commands, scope metadata, and export commands.
+- CLI:
+  - `catalyst-radar priced-in-queue --stocks-only`
+  - `catalyst-radar priced-in-answer --stocks-only`
+  - `catalyst-radar priced-in-audit --stocks-only`
+- API:
+  - `GET /api/radar/priced-in?stocks_only=true`
+  - `GET /api/radar/priced-in/answer?stocks_only=true`
+  - `GET /api/radar/priced-in/audit?stocks_only=true`
+- Streamlit **Priced-in Full Scan** now has a **Stocks only** checkbox.
+- TUI command mode now accepts `stocks`, `stock`, `stocks-only`, or
+  `stocks_only`; `full` returns to all instruments.
+- No Polygon/Massive, Schwab, SEC, OpenAI, or broker/order execution was run.
+
+Current live zero-call observation from local CLI:
+
+```text
+cli_stocks_only count=3 total=5521 calls=0 first=A,MSFT,AAMI
+audit_stocks_only scope=stocks_only ranked=5521 preview=1 command=catalyst-radar priced-in-audit --stocks-only --all --json calls=0
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_queue_payload_reports_full_scan_instrument_scope tests\integration\test_api_routes.py::test_get_radar_priced_in_queue_returns_cli_ready_rows tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_queue_cli_outputs_same_zero_call_signal tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_audit_cli_outputs_full_scan_audit tests\integration\test_dashboard_entrypoint.py::test_dashboard_wires_priced_in_full_scan_panel_after_usefulness -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py src\catalyst_radar\api\routes\radar.py src\catalyst_radar\dashboard\tui.py apps\dashboard\Home.py tests\integration\test_dashboard_data.py tests\integration\test_api_routes.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-queue --stocks-only --limit 3 --json
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-audit --stocks-only --limit 1 --json
+```
+
+Observed:
+
+- Focused test set passed (`5 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+- Local CLI stock-only queue and audit both reported `external_calls_made=0`.
+
+Next useful product action:
+
+- Use `priced-in-queue --stocks-only --all --json` or the dashboard **Stocks
+  only** checkbox to inspect the current stock-like ranked rows.
+- This does not remove the market-bar blocker: `131` stock-like bars for
+  `2026-05-15` are still missing before the stocks-only answer can be called
+  complete.
 
 ## Latest Stock-First Manual Market-Bar Template
 

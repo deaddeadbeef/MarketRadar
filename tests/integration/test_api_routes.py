@@ -1203,6 +1203,7 @@ def test_get_radar_priced_in_queue_returns_cli_ready_rows(
         source_gap,
         decision_gap,
         min_gap,
+        stocks_only,
     ) -> dict[str, object]:
         return {
             "schema_version": "priced-in-queue-v1",
@@ -1216,6 +1217,7 @@ def test_get_radar_priced_in_queue_returns_cli_ready_rows(
                 "source_gap": [source_gap],
                 "decision_gap": [decision_gap],
                 "min_gap": min_gap,
+                "stocks_only": stocks_only,
                 "available_at": available_at.isoformat() if available_at else None,
             },
             "count": 1,
@@ -1274,7 +1276,7 @@ def test_get_radar_priced_in_queue_returns_cli_ready_rows(
         "&available_at=2026-05-18T16:00:00%2B00:00"
         "&status=bullish_not_priced_in"
         "&usefulness=research_useful&source_gap=options&decision_gap=decision_card"
-        "&min_gap=10"
+        "&min_gap=10&stocks_only=true"
     )
 
     assert response.status_code == 200
@@ -1289,6 +1291,7 @@ def test_get_radar_priced_in_queue_returns_cli_ready_rows(
         "source_gap": ["options"],
         "decision_gap": ["decision_card"],
         "min_gap": 10.0,
+        "stocks_only": True,
         "available_at": "2026-05-18T16:00:00+00:00",
     }
     assert payload["usefulness_counts"] == {"research_useful": 1}

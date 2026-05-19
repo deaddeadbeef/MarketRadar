@@ -1978,7 +1978,7 @@ def _show_priced_in_full_scan_panel(
     radar_run_summary: Mapping[str, Any],
 ) -> None:
     st.subheader("Priced-in Full Scan")
-    row_control_cols = st.columns([1, 1, 1, 1, 2])
+    row_control_cols = st.columns([1, 1, 1, 1, 1, 2])
     preview_limit = int(
         row_control_cols[0].selectbox(
             "Rows per page",
@@ -2017,10 +2017,18 @@ def _show_priced_in_full_scan_panel(
             key="priced_in_full_scan_source_gap",
         )
     )
-    row_control_cols[4].caption(
+    stocks_only = bool(
+        row_control_cols[4].checkbox(
+            "Stocks only",
+            value=False,
+            key="priced_in_full_scan_stocks_only",
+            help="Show only common-stock and ADR rows from the local ranked scan.",
+        )
+    )
+    row_control_cols[5].caption(
         "MarketRadar scans the full active universe first. This control only changes "
-        "whether the table displays every ranked row or a page preview. All browsing "
-        "and export controls make 0 provider calls."
+        "whether the table displays every ranked row, stock-like rows, or a page "
+        "preview. All browsing and export controls make 0 provider calls."
     )
     audit = _mapping(
         dashboard_data.priced_in_full_scan_audit_payload(
@@ -2031,6 +2039,7 @@ def _show_priced_in_full_scan_panel(
             preview_limit=1_000_000 if show_all_rows else preview_limit,
             preview_offset=0 if show_all_rows else preview_offset,
             all_rows=show_all_rows,
+            stocks_only=stocks_only,
         )
     )
     status = str(audit.get("status") or "unknown")
