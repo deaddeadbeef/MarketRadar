@@ -1633,10 +1633,20 @@ def _priced_in_all_source_goal_alignment(
     decision_rows = int(
         _finite_float(decision_recommendation.get("decision_useful_gap_rows"))
     )
+    coverage_blocker_detail = str(
+        coverage_recommendation.get("blocker_detail") or ""
+    ).strip()
     current_blocker = (
-        f"{coverage_source} evidence has {coverage_gaps} gap row(s)."
-        if coverage_source
-        else "No source coverage blocker is currently runnable."
+        (
+            f"{coverage_source} evidence has {coverage_gaps} gap row(s); "
+            f"{coverage_blocker_detail}."
+        )
+        if coverage_source and coverage_blocker_detail
+        else (
+            f"{coverage_source} evidence has {coverage_gaps} gap row(s)."
+            if coverage_source
+            else "No source coverage blocker is currently runnable."
+        )
     )
     next_step = str(
         coverage_recommendation.get("action")
@@ -2137,6 +2147,7 @@ def _priced_in_source_recommendation(
     rationale: str,
 ) -> dict[str, object]:
     first_batch = _mapping_value(row, "first_batch")
+    diagnostic = _row_dict(_mapping_value(row, "diagnostic"))
     return {
         "schema_version": "priced-in-source-recommendation-v1",
         "mode": mode,
@@ -2156,12 +2167,45 @@ def _priced_in_source_recommendation(
         ),
         "actionable_gap_rows": int(_finite_float(row.get("actionable_gap_rows"))),
         "sample_tickers": list(_sequence_value(row.get("priority_sample_tickers"))),
+        "diagnostic": diagnostic,
+        "blocker_detail": _priced_in_source_blocker_detail(diagnostic),
+        "blocked_rows": int(_finite_float(diagnostic.get("blocked_rows"))),
+        "blocked_reason": diagnostic.get("blocked_reason"),
+        "sample_blocked_tickers": list(
+            _sequence_value(diagnostic.get("sample_blocked_tickers"))
+        ),
+        "fix_command": diagnostic.get("fix_command"),
+        "manual_fix_command": diagnostic.get("manual_fix_command"),
+        "manual_template_command": diagnostic.get("manual_template_command"),
         "first_batch_external_calls": int(
             _finite_float(first_batch.get("external_calls_required"))
         )
         if first_batch
         else 0,
     }
+
+
+def _priced_in_source_blocker_detail(
+    diagnostic: Mapping[str, object],
+) -> str | None:
+    blocked_rows = int(_finite_float(diagnostic.get("blocked_rows")))
+    eligible_rows = int(_finite_float(diagnostic.get("eligible_rows")))
+    blocked_reason = str(diagnostic.get("blocked_reason") or "").strip()
+    samples = [
+        str(ticker).strip().upper()
+        for ticker in _sequence_value(diagnostic.get("sample_blocked_tickers"))
+        if str(ticker).strip()
+    ]
+    if blocked_rows <= 0 and not blocked_reason and not samples:
+        return None
+    parts: list[str] = []
+    if eligible_rows or blocked_rows:
+        parts.append(f"{eligible_rows} eligible row(s), {blocked_rows} blocked row(s)")
+    if blocked_reason:
+        parts.append(f"blocked_reason={blocked_reason}")
+    if samples:
+        parts.append(f"examples={', '.join(samples)}")
+    return "; ".join(parts)
 
 
 def _priced_in_source_batch_coverage_key(row: Mapping[str, object]) -> tuple[int, int]:

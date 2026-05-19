@@ -2449,8 +2449,10 @@ def _priced_in_source_batch_message(
     point_in_time_import = str(
         diagnostic.get("point_in_time_import_command") or ""
     ).strip()
+    manual_fix_command = str(diagnostic.get("manual_fix_command") or "").strip()
     blocked_samples = _texts(diagnostic.get("sample_blocked_tickers"))
     missing_cik_suffix = _missing_cik_diagnostic_suffix(diagnostic)
+    blocker_suffix = _source_batch_diagnostic_summary(diagnostic)
     non_company_route_suffix = _non_company_route_suffix(diagnostic)
     next_batch_command = str(payload.get("next_batch_command") or "").strip()
     scan_scope = _mapping(payload.get("scan_scope"))
@@ -2552,17 +2554,23 @@ def _priced_in_source_batch_message(
             if point_in_time_import
             else ""
         )
+        manual_fix_suffix = (
+            f" CIK import: {manual_fix_command}."
+            if manual_fix_command
+            else ""
+        )
         return (
             f"first provider chunk only. {prefix} This is a full-scan plan, "
             f"not a watchlist.{chunk_scope}"
             f"{calls}{api_suffix} "
             f"Command: {command}. Run from TUI with "
             f"`batch {source_name} execute` if intended.{blocked_suffix}"
-            f"{missing_cik_suffix}{non_company_route_suffix}"
+            f"{blocker_suffix}{missing_cik_suffix}{non_company_route_suffix}"
             f"{diagnostic_suffix}{command_suffix}"
             f"{point_in_time_template_suffix}"
             f"{point_in_time_validate_suffix}"
             f"{point_in_time_suffix}"
+            f"{manual_fix_suffix}"
             f"{full_suffix}{row_review_suffix}{row_export_suffix}{next_suffix}"
         )
     blocked_suffix = (
@@ -2587,11 +2595,28 @@ def _priced_in_source_batch_message(
         detail = f"{detail} Validate: {point_in_time_validate}."
     if point_in_time_import:
         detail = f"{detail} Point-in-time import: {point_in_time_import}."
+    if manual_fix_command:
+        detail = f"{detail} CIK import: {manual_fix_command}."
     detail = (
-        f"{detail}{blocked_suffix}{missing_cik_suffix}"
+        f"{detail}{blocked_suffix}{blocker_suffix}{missing_cik_suffix}"
         f"{non_company_route_suffix}{diagnostic_suffix}"
     )
     return f"{prefix} {detail}"
+
+
+def _source_batch_diagnostic_summary(diagnostic: Mapping[str, object]) -> str:
+    blocked_rows = int(_number_or_zero(diagnostic.get("blocked_rows")))
+    eligible_rows = int(_number_or_zero(diagnostic.get("eligible_rows")))
+    reason = str(diagnostic.get("blocked_reason") or "").strip()
+    samples = _texts(diagnostic.get("sample_blocked_tickers"))
+    if blocked_rows <= 0 and not reason and not samples:
+        return ""
+    sample_text = f"; examples {', '.join(samples)}" if samples else ""
+    reason_text = f"; reason {reason}" if reason else ""
+    return (
+        f" Source blocker: {eligible_rows} eligible, "
+        f"{blocked_rows} blocked{reason_text}{sample_text}."
+    )
 
 
 def _missing_cik_diagnostic_suffix(diagnostic: Mapping[str, object]) -> str:
@@ -2723,6 +2748,7 @@ def _all_source_recommendation_detail(payload: Mapping[str, object]) -> str:
             f" {label} (first provider chunk only): {source} rows "
             f"{first_batch.get('row_start')}-{first_batch.get('row_end')}; "
             f"tickers {tickers}; calls {calls}; command {command}."
+            f"{_source_batch_diagnostic_summary(_mapping(row.get('diagnostic')))}"
         )
     return "".join(details)
 
@@ -4349,15 +4375,19 @@ def _run_lines(payload: Mapping[str, object], width: int) -> list[str]:
     if evidence_plan:
         lines.append("")
         lines.append(_rule("Priced-in Evidence Plan", width))
+        evidence_items: list[tuple[str, object]] = [
+            (
+                "Evidence status",
+                f"{evidence_plan.get('status')}; {evidence_plan.get('headline')}",
+            ),
+            ("Next evidence step", evidence_plan.get("next_action")),
+        ]
+        blocker_hint = _run_source_blocker_hint(evidence_plan)
+        if blocker_hint:
+            evidence_items.append(("Inspect source blocker", blocker_hint))
         lines.extend(
             _kv_lines(
-                (
-                    (
-                        "Evidence status",
-                        f"{evidence_plan.get('status')}; {evidence_plan.get('headline')}",
-                    ),
-                    ("Next evidence step", evidence_plan.get("next_action")),
-                ),
+                evidence_items,
                 width=width,
             )
         )
@@ -4383,6 +4413,17 @@ def _run_lines(payload: Mapping[str, object], width: int) -> list[str]:
         "Type `run execute` to start one capped cycle."
     )
     return lines
+
+
+def _run_source_blocker_hint(evidence_plan: Mapping[str, object]) -> str | None:
+    for step in _rows(evidence_plan.get("steps")):
+        source = str(step.get("area") or "").strip()
+        if source in dashboard_data.PRICED_IN_SOURCE_CLASSES:
+            return (
+                f"Type `batch {source}` for blockers, first provider chunk, "
+                f"and exact call budget; type `batch all` for the source map."
+            )
+    return None
 
 
 def _evidence_plan_step_rows(

@@ -2944,6 +2944,25 @@ def test_priced_in_all_source_gap_batches_prioritizes_decision_useful_gaps(
         source = str(kwargs["source"])
         ready = source in {"catalyst_events", "options"}
         gap_rows = 1 if source in {"catalyst_events", "local_text", "options"} else 0
+        diagnostic = (
+            {
+                "eligible_rows": 8,
+                "blocked_rows": 2,
+                "blocked_reason": "missing_cik",
+                "sample_blocked_tickers": ["FRBA", "SSBI"],
+                "fix_command": "catalyst-radar ingest-sec company-tickers",
+                "manual_fix_command": (
+                    "catalyst-radar ingest-sec cik-overrides "
+                    "--csv <cik-overrides.csv>"
+                ),
+                "manual_template_command": (
+                    "catalyst-radar ingest-sec cik-overrides-template "
+                    "--out data\\local\\cik-overrides-template.csv"
+                ),
+            }
+            if source == "catalyst_events"
+            else {}
+        )
         return {
             "source": source,
             "status": "ready" if ready else "blocked" if gap_rows else "no_gaps",
@@ -2987,7 +3006,7 @@ def test_priced_in_all_source_gap_batches_prioritizes_decision_useful_gaps(
             "all_batches_api": None,
             "review_rows_command": None,
             "export_rows_command": None,
-            "diagnostic": {},
+            "diagnostic": diagnostic,
         }
 
     monkeypatch.setitem(
@@ -3011,6 +3030,16 @@ def test_priced_in_all_source_gap_batches_prioritizes_decision_useful_gaps(
         "Start full-scan coverage with catalyst_events;"
     )
     assert payload["coverage_first_recommendation"]["source"] == "catalyst_events"
+    assert payload["coverage_first_recommendation"]["blocked_rows"] == 2
+    assert payload["coverage_first_recommendation"]["blocked_reason"] == "missing_cik"
+    assert payload["coverage_first_recommendation"]["sample_blocked_tickers"] == [
+        "FRBA",
+        "SSBI",
+    ]
+    assert "eligible row(s)" in payload["coverage_first_recommendation"][
+        "blocker_detail"
+    ]
+    assert "FRBA" in payload["goal_alignment"]["current_blocker"]
     assert payload["coverage_first_recommendation"]["command"] == (
         "catalyst-radar priced-in-source-batches --source catalyst_events --execute-next"
     )
