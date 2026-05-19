@@ -1,6 +1,6 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 18:26:10 +08:00
+Last updated: 2026-05-19 18:32:44 +08:00
 
 ## Latest Full-Scan Default UX
 
@@ -85,18 +85,31 @@ Observed:
 - Live CLI/API checks showed the full universe is 12,087 ranked rows from
   12,613 active securities and all browsing/export checks made
   `external_calls=0`.
-- Local services were restarted on the branch:
-  - API health returned commit `e7b5bab60215` because these changes were not
-    committed yet at verification time;
+- PR #340, `Default dashboard to full scan display`, merged by rebase as
+  `c7beb6e`.
+- Local services were restarted after merge:
+  - API health returned commit `c7beb6eed016`;
   - Streamlit health returned `ok`.
+- Post-merge API verification:
+  - `/api/radar/priced-in/audit?all_rows=true` returned
+    `12087/12087`, `all=True`, `external_calls=0`, and
+    `full_cmd=catalyst-radar priced-in-audit --source-gap options --all --json`.
+- Post-merge browser verification on `http://127.0.0.1:8514` confirmed:
+  - **Display complete full scan** is present;
+  - `Table display: complete full scan` is present;
+  - `Full scan rows: showing all 1-12087 of 12087` is present;
+  - the priority-preview boundary is present;
+  - the full source-gap export command is present;
+  - **Download Full Scan Rows JSON** is present;
+  - browser console check reported 0 errors.
 
 Next useful product action:
 
-- Open and merge the PR for this branch, restart local services again so the
-  health build stamp reflects the merged commit, and re-check API/Streamlit
-  health.
 - Actual source-fill execution still requires explicit user approval because it
   can call SEC/Schwab/market providers.
+- Next useful zero-call slice: reduce the 45-second full-audit build latency or
+  cache the audit payload after a scan, because full-scan display is now the
+  default human path.
 
 ## Latest Payoff-Ranked Next Action
 
