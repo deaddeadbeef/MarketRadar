@@ -2443,6 +2443,9 @@ def _priced_in_source_batch_message(
     point_in_time_template = str(
         diagnostic.get("point_in_time_template_command") or ""
     ).strip()
+    point_in_time_validate = str(
+        diagnostic.get("point_in_time_validate_command") or ""
+    ).strip()
     point_in_time_import = str(
         diagnostic.get("point_in_time_import_command") or ""
     ).strip()
@@ -2539,6 +2542,11 @@ def _priced_in_source_batch_message(
             if point_in_time_template
             else ""
         )
+        point_in_time_validate_suffix = (
+            f" Validate: {point_in_time_validate}."
+            if point_in_time_validate
+            else ""
+        )
         point_in_time_suffix = (
             f" Point-in-time import: {point_in_time_import}."
             if point_in_time_import
@@ -2553,6 +2561,7 @@ def _priced_in_source_batch_message(
             f"{missing_cik_suffix}{non_company_route_suffix}"
             f"{diagnostic_suffix}{command_suffix}"
             f"{point_in_time_template_suffix}"
+            f"{point_in_time_validate_suffix}"
             f"{point_in_time_suffix}"
             f"{full_suffix}{row_review_suffix}{row_export_suffix}{next_suffix}"
         )
@@ -2574,6 +2583,8 @@ def _priced_in_source_batch_message(
         detail = f"{detail} Command: {diagnostic_command}."
     if point_in_time_template:
         detail = f"{detail} Template: {point_in_time_template}."
+    if point_in_time_validate:
+        detail = f"{detail} Validate: {point_in_time_validate}."
     if point_in_time_import:
         detail = f"{detail} Point-in-time import: {point_in_time_import}."
     detail = (

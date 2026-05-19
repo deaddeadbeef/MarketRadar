@@ -1735,6 +1735,9 @@ def test_priced_in_full_scan_audit_payload_consolidates_current_state(
     assert sources["options"]["repair"][
         "point_in_time_template_command"
     ].startswith("catalyst-radar ingest-options --fixture-template")
+    assert sources["options"]["repair"][
+        "point_in_time_validate_command"
+    ].startswith("catalyst-radar ingest-options --fixture")
     assert sources["options"]["repair"]["point_in_time_import_command"].startswith(
         "catalyst-radar ingest-options --fixture"
     )
@@ -2087,6 +2090,9 @@ def test_priced_in_queue_payload_reports_full_scan_instrument_scope(
     stock_sources = {row["source"]: row for row in stock_audit["sources"]}
     assert "--stocks-only" in stock_sources["options"]["repair"][
         "point_in_time_template_command"
+    ]
+    assert "--validate-only --expected-as-of" in stock_sources["options"]["repair"][
+        "point_in_time_validate_command"
     ]
 
 
@@ -3438,6 +3444,12 @@ def test_options_fixture_template_payload_exports_point_in_time_skeleton(
         "catalyst-radar ingest-options --fixture "
         "data\\local\\point-in-time-options-2026-05-10.json"
     )
+    assert payload["validation_command"] == (
+        "catalyst-radar ingest-options --fixture "
+        "data\\local\\point-in-time-options-2026-05-10.json "
+        "--validate-only --expected-as-of 2026-05-10"
+    )
+    assert payload["validation_api"] == "POST /api/radar/options/fixture-validate"
     fixture = payload["fixture"]
     assert fixture["as_of"] == AS_OF.isoformat()
     assert fixture["provider"] == "options_fixture"

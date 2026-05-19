@@ -12,6 +12,7 @@ from catalyst_radar.cli import main
 from catalyst_radar.connectors.base import ConnectorRecordKind, ConnectorRequest
 from catalyst_radar.connectors.options import (
     OptionsAggregateConnector,
+    validate_options_fixture_json,
     write_options_fixture_template_json,
 )
 from catalyst_radar.connectors.provider_ingest import ProviderIngestError, ingest_provider_records
@@ -130,6 +131,124 @@ def test_write_options_fixture_template_json_writes_importable_shape(
     assert written["as_of"] == "2026-05-10T21:00:00+00:00"
     assert written["results"][0]["ticker"] == "MSFT"
     assert "call_volume" in written["results"][0]
+
+
+def test_validate_options_fixture_json_rejects_blank_template_rows(
+    tmp_path: Path,
+) -> None:
+    output_path = tmp_path / "point-in-time-options-2026-05-10.json"
+    write_options_fixture_template_json(
+        output_path,
+        {
+            "as_of": "2026-05-10T21:00:00+00:00",
+            "source_ts": "2026-05-10T21:00:00+00:00",
+            "available_at": "2026-05-10T21:00:00+00:00",
+            "provider": "options_fixture",
+            "results": [
+                {
+                    "ticker": "MSFT",
+                    "call_volume": "",
+                    "put_volume": "",
+                    "call_open_interest": "",
+                    "put_open_interest": "",
+                    "iv_percentile": "",
+                    "skew": "",
+                }
+            ],
+        },
+    )
+
+    result = validate_options_fixture_json(
+        output_path,
+        expected_as_of=datetime(2026, 5, 10, tzinfo=UTC).date(),
+    ).as_payload()
+
+    assert result["status"] == "invalid"
+    assert result["external_calls_made"] == 0
+    assert result["row_count"] == 1
+    assert result["valid_row_count"] == 0
+    assert result["blank_required_count"] == 6
+    assert result["import_command"] is None
+    assert "call_volume is blank" in result["errors"][0]
+
+
+def test_validate_options_fixture_json_accepts_filled_rows(tmp_path: Path) -> None:
+    output_path = tmp_path / "point-in-time-options-2026-05-10.json"
+    output_path.write_text(
+        json.dumps(
+            {
+                "as_of": "2026-05-10T21:00:00+00:00",
+                "source_ts": "2026-05-10T21:00:00+00:00",
+                "available_at": "2026-05-10T21:00:00+00:00",
+                "provider": "options_fixture",
+                "results": [
+                    {
+                        "ticker": "MSFT",
+                        "call_volume": 1200,
+                        "put_volume": 400,
+                        "call_open_interest": 5000,
+                        "put_open_interest": 3000,
+                        "iv_percentile": 0.62,
+                        "skew": 0.15,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = validate_options_fixture_json(
+        output_path,
+        expected_as_of=datetime(2026, 5, 10, tzinfo=UTC).date(),
+    ).as_payload()
+
+    assert result["status"] == "ready"
+    assert result["valid_row_count"] == 1
+    assert result["invalid_row_count"] == 0
+    assert result["import_command"] == (
+        f"catalyst-radar ingest-options --fixture {output_path}"
+    )
+
+
+def test_ingest_options_validate_only_cli_reports_invalid_fixture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'options-validate.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    output_path = tmp_path / "point-in-time-options-2026-05-10.json"
+    output_path.write_text(
+        json.dumps(
+            {
+                "as_of": "2026-05-10T21:00:00+00:00",
+                "source_ts": "2026-05-10T21:00:00+00:00",
+                "available_at": "2026-05-10T21:00:00+00:00",
+                "provider": "options_fixture",
+                "results": [{"ticker": "MSFT", "call_volume": ""}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    exit_code = main(
+        [
+            "ingest-options",
+            "--fixture",
+            str(output_path),
+            "--validate-only",
+            "--expected-as-of",
+            "2026-05-10",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 1
+    assert captured.err == ""
+    assert "options_fixture_validation status=invalid" in captured.out
+    assert "external_calls=0" in captured.out
+    assert "missing_fields=5" in captured.out
+    assert "next_action=Fix blank or invalid option fields" in captured.out
 
 
 def test_ingest_options_fixture_template_cli_writes_gap_template(

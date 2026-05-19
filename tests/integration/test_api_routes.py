@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import json
 from datetime import UTC, date, datetime
 from pathlib import Path
 
@@ -2030,6 +2031,52 @@ def test_get_radar_options_fixture_template_returns_zero_call_fixture(
     assert payload["stocks_only"] is True
     assert payload["fixture"]["results"][0]["ticker"] == "MSFT"
     assert captured["stocks_only"] is True
+
+
+def test_post_radar_options_fixture_validate_returns_zero_call_result(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "radar-options-validate.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+    fixture = tmp_path / "point-in-time-options.json"
+    fixture.write_text(
+        json.dumps(
+            {
+                "as_of": "2026-05-10T21:00:00+00:00",
+                "source_ts": "2026-05-10T21:00:00+00:00",
+                "available_at": "2026-05-10T21:00:00+00:00",
+                "provider": "options_fixture",
+                "results": [
+                    {
+                        "ticker": "MSFT",
+                        "call_volume": 100,
+                        "put_volume": 50,
+                        "call_open_interest": 1000,
+                        "put_open_interest": 700,
+                        "iv_percentile": 0.55,
+                        "skew": 0.1,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/radar/options/fixture-validate",
+        json={"fixture_path": str(fixture), "expected_as_of": "2026-05-10"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["schema_version"] == "options-fixture-validation-v1"
+    assert payload["status"] == "ready"
+    assert payload["row_count"] == 1
+    assert payload["external_calls_made"] == 0
+    assert payload["import_command"].endswith(str(fixture))
 
 
 def test_post_radar_sec_cik_overrides_imports_manual_metadata(

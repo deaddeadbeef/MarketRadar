@@ -1685,6 +1685,11 @@ def test_priced_in_source_batches_cli_prints_options_point_in_time_import(
                     "catalyst-radar ingest-options --fixture-template "
                     "--out data\\local\\point-in-time-options-2026-05-15.json"
                 ),
+                "point_in_time_validate_command": (
+                    "catalyst-radar ingest-options --fixture "
+                    "data\\local\\point-in-time-options-2026-05-15.json "
+                    "--validate-only --expected-as-of 2026-05-15"
+                ),
                 "point_in_time_import_command": (
                     "catalyst-radar ingest-options --fixture "
                     "<point-in-time-options-2026-05-15.json>"
@@ -1708,6 +1713,12 @@ def test_priced_in_source_batches_cli_prints_options_point_in_time_import(
         "diagnostic_point_in_time_template="
         "catalyst-radar ingest-options --fixture-template "
         "--out data\\local\\point-in-time-options-2026-05-15.json"
+    ) in output.out
+    assert (
+        "diagnostic_point_in_time_validate="
+        "catalyst-radar ingest-options --fixture "
+        "data\\local\\point-in-time-options-2026-05-15.json "
+        "--validate-only --expected-as-of 2026-05-15"
     ) in output.out
     assert (
         "diagnostic_point_in_time_import=catalyst-radar ingest-options --fixture "
@@ -1742,6 +1753,11 @@ def test_dashboard_batch_message_prints_options_point_in_time_import(
                     "catalyst-radar ingest-options --fixture-template "
                     "--out data\\local\\point-in-time-options-2026-05-15.json"
                 ),
+                "point_in_time_validate_command": (
+                    "catalyst-radar ingest-options --fixture "
+                    "data\\local\\point-in-time-options-2026-05-15.json "
+                    "--validate-only --expected-as-of 2026-05-15"
+                ),
                 "point_in_time_import_command": (
                     "catalyst-radar ingest-options --fixture "
                     "<point-in-time-options-2026-05-15.json>"
@@ -1771,6 +1787,11 @@ def test_dashboard_batch_message_prints_options_point_in_time_import(
     assert (
         "Template: catalyst-radar ingest-options --fixture-template "
         "--out data\\local\\point-in-time-options-2026-05-15.json."
+    ) in update.message
+    assert (
+        "Validate: catalyst-radar ingest-options --fixture "
+        "data\\local\\point-in-time-options-2026-05-15.json "
+        "--validate-only --expected-as-of 2026-05-15."
     ) in update.message
     assert (
         "Point-in-time import: catalyst-radar ingest-options --fixture "
