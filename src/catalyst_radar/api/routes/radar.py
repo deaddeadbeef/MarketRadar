@@ -123,6 +123,7 @@ class MarketBarsTemplateRequest(BaseModel):
     expected_as_of: Date
     output_path: str
     provider: str = "manual_csv"
+    missing_only: bool = False
 
 
 class MarketBarsImportRequest(BaseModel):
@@ -584,6 +585,7 @@ def radar_market_bars_template(
             output_path=request.output_path,
             expected_as_of=request.expected_as_of,
             provider=request.provider,
+            missing_only=request.missing_only,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

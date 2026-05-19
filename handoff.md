@@ -1,6 +1,82 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 22:11:50 +08:00
+Last updated: 2026-05-19 22:25:34 +08:00
+
+## Latest Missing-Only Market-Bar Repair Path
+
+Current problem:
+
+- The previous slice made the missing market-bar blocker visible and classified:
+  `523` missing as-of bars for `2026-05-15`.
+- The existing manual repair command generated a full active-universe template.
+  On the live DB that means `12613` rows, even though only `523` bars are
+  missing.
+- The import preview also expected the CSV itself to cover the full active
+  universe, so a practical missing-only CSV would still preview as incomplete
+  even when the local DB already held the other `12090` bars.
+- That was safe but not useful enough for the operator: resolving a 523-row gap
+  should not require editing or importing a 12613-row file.
+
+Fix in this slice:
+
+- `catalyst-radar market-bars template` now supports `--missing-only`.
+- The API request for `POST /api/radar/market-bars/template` now supports
+  `missing_only`.
+- Template payloads now report:
+  - `template_scope`;
+  - `row_count`;
+  - `active_security_count`;
+  - `existing_as_of_bar_count`;
+  - `missing_as_of_bar_count`;
+  - `missing_only`;
+  - `external_calls_made=0`.
+- Manual template CSVs now include helper columns:
+  - `security_type`;
+  - `template_reason`.
+- Manual import preview now validates expected coverage as:
+  - existing DB bars at `expected_as_of`;
+  - plus tickers present in the CSV for `expected_as_of`.
+- This allows a missing-only filled CSV to preview as ready when it completes
+  the local active-universe coverage.
+- No Polygon/Massive, Schwab, SEC, OpenAI, or broker/order execution was run.
+
+Current live zero-call observation from the branch:
+
+```text
+live_missing_template status=ready scope=missing_as_of_bars rows=523 active=12613 existing=12090 missing=523 calls=0 first=AACBR,AACBU,AACIW,AACO,AACOU
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_provider_ingest_cli.py::test_market_bars_template_uses_database_active_universe tests\integration\test_provider_ingest_cli.py::test_market_bars_import_requires_expected_full_active_coverage tests\integration\test_provider_ingest_cli.py::test_market_bars_missing_only_template_import_counts_existing_bars tests\integration\test_provider_ingest_cli.py::test_market_bars_import_executes_without_securities_csv tests\integration\test_api_routes.py::test_post_radar_market_bars_template_and_import_use_database_universe -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\market\manual_bars.py src\catalyst_radar\cli.py src\catalyst_radar\api\routes\radar.py tests\integration\test_provider_ingest_cli.py tests\integration\test_api_routes.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli market-bars template --expected-as-of 2026-05-15 --out <temp-csv> --missing-only --json
+```
+
+Observed:
+
+- Focused five-test set passed (`5 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+- Live missing-only template generation reported:
+  - `row_count=523`;
+  - `active_security_count=12613`;
+  - `existing_as_of_bar_count=12090`;
+  - `missing_as_of_bar_count=523`;
+  - `external_calls_made=0`.
+
+Next useful product action:
+
+- The missing-bar blocker now has a practical local repair file:
+  `catalyst-radar market-bars template --expected-as-of 2026-05-15 --out <file> --missing-only`.
+- Filling that CSV still requires a trusted market data source. Do not call
+  Polygon/Massive or another provider unless the operator explicitly approves.
+- After the CSV is filled, preview it with:
+  `catalyst-radar market-bars import --daily-bars <file> --expected-as-of 2026-05-15`.
+- Execute only after preview reports `missing=0`:
+  `catalyst-radar market-bars import --daily-bars <file> --expected-as-of 2026-05-15 --execute`.
 
 ## Latest Market-Bar Missing Diagnostics
 

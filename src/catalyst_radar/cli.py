@@ -196,6 +196,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     market_bars_template.add_argument("--out", type=Path, required=True)
     market_bars_template.add_argument("--provider", default="manual_csv")
+    market_bars_template.add_argument("--missing-only", action="store_true")
     market_bars_template.add_argument("--json", action="store_true")
     market_bars_import = market_bars_sub.add_parser("import")
     market_bars_import.add_argument("--database-url")
@@ -872,6 +873,7 @@ def main(argv: list[str] | None = None) -> int:
                     output_path=args.out,
                     expected_as_of=args.expected_as_of,
                     provider=args.provider,
+                    missing_only=args.missing_only,
                 )
                 payload = result.as_payload()
                 if args.json:
@@ -3202,9 +3204,17 @@ def _print_manual_market_bars_template(payload: Mapping[str, object]) -> None:
         "manual_market_bars_template "
         f"status={payload.get('status')} "
         f"rows={payload.get('row_count')} "
+        f"scope={payload.get('template_scope')} "
         f"expected_as_of={payload.get('expected_as_of')} "
         f"path={payload.get('output_path')} "
         f"external_calls={payload.get('external_calls_made')}"
+    )
+    print(
+        "coverage="
+        f"active={payload.get('active_security_count')} "
+        f"existing={payload.get('existing_as_of_bar_count')} "
+        f"missing={payload.get('missing_as_of_bar_count')} "
+        f"missing_only={str(bool(payload.get('missing_only'))).lower()}"
     )
     print(f"next_action={payload.get('next_action')}")
     print(f"import_command={payload.get('import_command')}")
@@ -3227,6 +3237,8 @@ def _print_manual_market_bars_import(payload: Mapping[str, object]) -> None:
         print(
             "coverage="
             f"bars_at_expected={payload.get('bars_at_expected_as_of')} "
+            f"existing={payload.get('existing_as_of_bar_count')} "
+            f"after_import={payload.get('coverage_after_import_count')} "
             f"missing={payload.get('missing_expected_count')}"
         )
     missing = payload.get("missing_expected_tickers")

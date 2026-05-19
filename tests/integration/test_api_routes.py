@@ -1759,6 +1759,7 @@ def test_post_radar_market_bars_template_and_import_use_database_universe(
         json={
             "expected_as_of": "2026-05-11",
             "output_path": str(template_path),
+            "missing_only": True,
         },
     )
 
@@ -1767,6 +1768,8 @@ def test_post_radar_market_bars_template_and_import_use_database_universe(
     assert template_payload["schema_version"] == "manual-market-bars-template-v1"
     assert template_payload["status"] == "ready"
     assert template_payload["row_count"] == 3
+    assert template_payload["template_scope"] == "missing_as_of_bars"
+    assert template_payload["missing_only"] is True
     assert template_payload["external_calls_made"] == 0
     assert [row["ticker"] for row in _read_csv_rows(template_path)] == [
         "AAA",
