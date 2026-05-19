@@ -1901,14 +1901,19 @@ def test_priced_in_audit_cli_outputs_full_scan_audit(
     assert "market_bars=status=" in output.out
     assert "source_coverage=ready=" in output.out
     assert "performance=cache=" in output.out
+    assert "primary_full_scan=scope=full_active_universe" in output.out
+    assert "boundary=The full scan is the ranked universe" in output.out
     assert "recommended_source_gap=source=" in output.out
     assert "boundary=Reviewing this recommendation makes 0 provider calls" in output.out
     assert "full_source_gap_export=catalyst-radar priced-in-audit" in output.out
     assert "sample_boundary=Example tickers are only a priority preview" in output.out
     assert "answer_shortlist=status=" in output.out
+    assert "selection=priority_lens_not_scan_universe" in output.out
     assert "ticker rank status decision_ready gap emotion reaction missing next_step" in (
         output.out
     )
+    assert "detail=catalyst-radar candidate-detail ACME" in output.out
+    assert "source_gap_action=options" in output.out
     assert "instrument_scope=rows=" in output.out
     assert "sec_catalyst_applicability=applicable=" in output.out
     assert "full_scan_rows=" in output.out
@@ -1927,6 +1932,10 @@ def test_priced_in_audit_cli_outputs_full_scan_audit(
     assert payload["schema_version"] == "priced-in-full-scan-audit-v1"
     assert payload["external_calls_made"] == 0
     assert payload["scope"]["mode"] == "full_scan"
+    assert payload["primary_scan"]["schema_version"] == (
+        "priced-in-primary-full-scan-v1"
+    )
+    assert payload["primary_scan"]["scope"] == "full_active_universe"
     assert payload["preview"]["schema_version"] == "priced-in-full-scan-preview-v1"
     assert payload["preview"]["audit_page_command"] == (
         "catalyst-radar priced-in-audit --limit 25"
@@ -1936,7 +1945,13 @@ def test_priced_in_audit_cli_outputs_full_scan_audit(
     )
     assert payload["answer_shortlist"]["external_calls_made"] == 0
     assert payload["answer_shortlist"]["focus"] == "full_scan"
+    assert payload["answer_shortlist"]["selection_scope"] == (
+        "priority_lens_not_scan_universe"
+    )
     assert payload["answer_shortlist"]["rows"][0]["ticker"] == "ACME"
+    assert payload["answer_shortlist"]["rows"][0]["drilldown"][
+        "detail_command"
+    ] == "catalyst-radar candidate-detail ACME"
     assert payload["recommended_source_gap"]["full_scan_command"].startswith(
         "catalyst-radar priced-in-audit --source-gap"
     )

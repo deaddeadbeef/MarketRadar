@@ -4014,6 +4014,29 @@ def _print_priced_in_audit(payload: Mapping[str, object]) -> None:
         if performance.get("cache_age_ms") is not None:
             perf_parts.append(f"age_ms={performance.get('cache_age_ms')}")
         print("performance=" + " ".join(perf_parts))
+    primary_scan = payload.get("primary_scan")
+    if isinstance(primary_scan, Mapping):
+        print(
+            "primary_full_scan="
+            f"scope={primary_scan.get('scope')} "
+            f"active={primary_scan.get('active_securities')} "
+            f"scanned={primary_scan.get('scanned_rows')} "
+            f"ranked={primary_scan.get('ranked_rows')} "
+            f"display={primary_scan.get('display_mode')} "
+            f"visible={primary_scan.get('visible_row_start')}-"
+            f"{primary_scan.get('visible_row_end')} "
+            f"external_calls={primary_scan.get('external_calls_made')}"
+        )
+        print(
+            "  boundary="
+            f"{_compact_cli_text(primary_scan.get('scope_boundary'))}"
+        )
+        visible_note = primary_scan.get("visible_rows_note")
+        if visible_note:
+            print(f"  visible_rows_note={_compact_cli_text(visible_note)}")
+        export_command = primary_scan.get("export_command")
+        if export_command:
+            print(f"  export_full_scan={_compact_cli_text(export_command)}")
     recommended_source = payload.get("recommended_source_gap")
     if isinstance(recommended_source, Mapping):
         print(
@@ -4052,12 +4075,20 @@ def _print_priced_in_audit(payload: Mapping[str, object]) -> None:
             f"actionable={shortlist.get('actionable_mismatch_rows')} "
             f"visible={shortlist.get('visible_rows')} "
             f"sample={str(bool(shortlist.get('visible_rows_are_sample'))).lower()} "
+            f"selection={shortlist.get('selection_scope')} "
+            f"full_scan_rows={shortlist.get('full_scan_rows')} "
             f"external_calls={shortlist.get('external_calls_made')}"
         )
         print(f"  summary={_compact_cli_text(shortlist.get('summary'))}")
+        selection_note = shortlist.get("selection_note")
+        if selection_note:
+            print(f"  selection_note={_compact_cli_text(selection_note)}")
         boundary = shortlist.get("investment_decision_boundary")
         if boundary:
             print(f"  boundary={_compact_cli_text(boundary)}")
+        shortlist_export = shortlist.get("full_scan_export_command")
+        if shortlist_export:
+            print(f"  full_scan_export={_compact_cli_text(shortlist_export)}")
         rows = shortlist.get("rows")
         if isinstance(rows, list | tuple) and rows:
             print("  ticker rank status decision_ready gap emotion reaction missing next_step")
@@ -4079,6 +4110,26 @@ def _print_priced_in_audit(payload: Mapping[str, object]) -> None:
                     f"{missing or '-'} "
                     f"{_compact_cli_text(row.get('next_step'))}"
                 )
+                drilldown = row.get("drilldown")
+                if isinstance(drilldown, Mapping):
+                    detail = drilldown.get("detail_command")
+                    if detail:
+                        print(f"    detail={_compact_cli_text(detail)}")
+                    gaps = drilldown.get("evidence_gap_summary")
+                    if gaps:
+                        print(f"    evidence_gaps={_compact_cli_text(gaps)}")
+                    for action in _sequence_value(
+                        drilldown.get("source_gap_actions")
+                    ):
+                        if not isinstance(action, Mapping):
+                            continue
+                        print(
+                            "    source_gap_action="
+                            f"{action.get('source')} "
+                            f"status={action.get('status')} "
+                            f"review={_compact_cli_text(action.get('review_command'))} "
+                            f"plan={_compact_cli_text(action.get('plan_command'))}"
+                        )
     _print_priced_in_instrument_scope(payload.get("instrument_scope"))
     preview = payload.get("preview")
     if isinstance(preview, Mapping):

@@ -553,9 +553,14 @@ def test_dashboard_wires_priced_in_full_scan_panel_after_usefulness() -> None:
     assert "Full Scan Rows" in helper_source
     assert "Audit performance" in helper_source
     assert "cache_status" in helper_source
-    assert "Market Expectation Shortlist" in helper_source
-    assert "Top Market Emotion Mismatches" in helper_source
+    assert "Full-Market Scan" in helper_source
+    assert "Priority Lens: Market Emotion Mismatches" in helper_source
+    assert "Top Priority Rows" in helper_source
+    assert "primary_scan" in helper_source
+    assert "selection_note" in helper_source
     assert "_priced_in_answer_shortlist_rows" in source
+    assert "candidate_detail" in source
+    assert "source_gap_actions" in source
     assert "Full-scan Ranked Rows" in helper_source
     assert "Selected Source Gap Action" in helper_source
     assert "_priced_in_full_scan_source_gap_action_rows" in helper_source

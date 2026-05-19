@@ -1584,11 +1584,25 @@ def test_priced_in_full_scan_audit_payload_consolidates_current_state(
     assert payload["preview_rows"][0]["ticker"] == "MSFT"
     assert payload["preview_rows"][0]["status"]
     assert "missing_sources" in payload["preview_rows"][0]
+    assert payload["primary_scan"]["schema_version"] == (
+        "priced-in-primary-full-scan-v1"
+    )
+    assert payload["primary_scan"]["scope"] == "full_active_universe"
+    assert payload["primary_scan"]["ranked_rows"] == 2
+    assert payload["primary_scan"]["shortlist_role"] == (
+        "priority_lens_not_scan_scope"
+    )
+    assert "Shortlists are priority lenses" in payload["primary_scan"][
+        "scope_boundary"
+    ]
     assert payload["answer_shortlist"]["schema_version"] == (
         "priced-in-answer-shortlist-v1"
     )
     assert payload["answer_shortlist"]["external_calls_made"] == 0
     assert payload["answer_shortlist"]["focus"] == "full_scan"
+    assert payload["answer_shortlist"]["selection_scope"] == (
+        "priority_lens_not_scan_universe"
+    )
     assert payload["answer_shortlist"]["full_scan_rows"] == 2
     assert "not trade approval" in payload["answer_shortlist"][
         "investment_decision_boundary"
@@ -1596,6 +1610,12 @@ def test_priced_in_full_scan_audit_payload_consolidates_current_state(
     if payload["answer_shortlist"]["rows"]:
         assert payload["answer_shortlist"]["rows"][0]["rank"] == 1
         assert payload["answer_shortlist"]["rows"][0]["ticker"] == "MSFT"
+        assert payload["answer_shortlist"]["rows"][0]["drilldown"][
+            "detail_command"
+        ] == "catalyst-radar candidate-detail MSFT"
+        assert payload["answer_shortlist"]["rows"][0]["drilldown"][
+            "external_calls_made"
+        ] == 0
     assert payload["market_bars"]["active_securities"] == 2
     assert payload["instrument_scope"]["schema_version"] == (
         "priced-in-instrument-scope-v1"
