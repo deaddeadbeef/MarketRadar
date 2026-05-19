@@ -1,6 +1,6 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 19:46:51 +08:00
+Last updated: 2026-05-19 19:50:18 +08:00
 
 ## Latest Market Expectation Shortlist
 
@@ -79,11 +79,18 @@ Observed:
 - `git diff --check` passed.
 - CLI and API checks both reported `external_calls=0`.
 - Local services were restarted from the branch for API/dashboard verification.
+- PR #348, `Add priced-in answer shortlist`, was merged by rebase as
+  `878f21438444`.
+- Local services were restarted after merge from `main`:
+  - API health returned commit `878f21438444`;
+  - Streamlit health returned `ok`.
+- Post-merge API verification:
+  - `/api/radar/priced-in/audit?limit=10` returned
+    `shortlist_status=decision_ready`, `focus=full_scan`,
+    `decision=10`, `visible=10`, `first=A`, and `calls=0`.
 
 Next useful product action:
 
-- Commit this slice, open a PR, rebase-merge it, restart services from `main`,
-  and run post-merge API/Streamlit health plus a zero-call shortlist check.
 - Continue improving the answer path, not just source-gap plumbing. A good next
   slice is to add row-level drill-down links/actions from each shortlist ticker
   into candidate detail and local evidence gaps.
