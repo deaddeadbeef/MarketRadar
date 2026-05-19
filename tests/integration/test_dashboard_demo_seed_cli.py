@@ -1898,6 +1898,9 @@ def test_priced_in_audit_cli_outputs_full_scan_audit(
     assert "ACME bullish_not_priced_in" in output.out
     assert "sources:" in output.out
     assert "- options status=" in output.out
+    assert "decision=" in output.out
+    assert "research=" in output.out
+    assert "actionable=" in output.out
     assert "commands:" in output.out
 
     assert main(["priced-in-audit", "--json"]) == 0

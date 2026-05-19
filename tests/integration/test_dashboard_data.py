@@ -1604,6 +1604,10 @@ def test_priced_in_full_scan_audit_payload_consolidates_current_state(
     )
     sources = {row["source"]: row for row in payload["sources"]}
     assert sources["options"]["gap_count"] >= 1
+    assert "decision_useful_gap_rows" in sources["options"]
+    assert "research_useful_gap_rows" in sources["options"]
+    assert "actionable_gap_rows" in sources["options"]
+    assert isinstance(sources["options"]["priority_sample_tickers"], list)
     assert sources["options"]["command"].startswith(
         "catalyst-radar priced-in-source-batches --source options"
     )

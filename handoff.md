@@ -1,6 +1,65 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 17:51:13 +08:00
+Last updated: 2026-05-19 17:57:51 +08:00
+
+## Latest Source-Gap Payoff Ranking
+
+Current problem:
+
+- The dashboard listed source gaps by source name and raw gap count, but did
+  not make the "what should I fix first?" payoff obvious.
+- The source overview payload already had decision/research/actionable gap
+  counts, but the main full-scan audit/dashboard source table did not.
+
+Fix in this slice:
+
+- `priced_in_full_scan_audit_payload` now keeps internal ranked
+  `planning_rows` for the audit, with no extra provider calls.
+- Audit source rows now include:
+  - `decision_useful_gap_rows`;
+  - `research_useful_gap_rows`;
+  - `actionable_gap_rows`;
+  - `priority_sample_tickers`.
+- CLI `priced-in-audit` now prints those payoff counts under `sources:`.
+- Streamlit **Priced-in Source Gaps** now shows decision-useful,
+  research-useful, actionable counts, priority examples, and sorts sources by
+  decision-useful impact first, then actionable, research-useful, and raw gap
+  count.
+- This remains zero-call analysis only.
+
+Current live zero-call observation from the branch:
+
+```text
+priced-in-audit --limit 5 --json
+source=options decision=10 research=0 actionable=12 gaps=12087 examples=A,MSFT,AAMI,AAOI,AAAU
+source=broker_context decision=5 research=0 actionable=7 gaps=12082 examples=AAMI,AAOI,AAL,AAON,AAP
+source=market_bars decision=0 research=0 actionable=0 gaps=0 examples=
+external_calls=0
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_payload_consolidates_current_state tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_audit_cli_outputs_full_scan_audit tests\integration\test_api_routes.py::test_get_radar_priced_in_audit_returns_zero_call_audit tests\integration\test_dashboard_entrypoint.py::test_dashboard_wires_priced_in_full_scan_panel_after_usefulness -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py apps\dashboard\Home.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_dashboard_entrypoint.py tests\integration\test_api_routes.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-audit --limit 5 --json
+```
+
+Observed so far:
+
+- Focused four-test set passed (`4 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+- Live branch CLI audit source rows showed options first by payoff
+  (`decision=10`, `actionable=12`), broker context second
+  (`decision=5`, `actionable=7`), and `external_calls=0`.
+
+Next useful product action:
+
+- Commit, open a PR, merge by rebase, restart local services, verify API and
+  Streamlit health, then run live API/dashboard checks for payoff-ranked source
+  gaps.
 
 ## Latest Source-Gap First-Batch Actions
 

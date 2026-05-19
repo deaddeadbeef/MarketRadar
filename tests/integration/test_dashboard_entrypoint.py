@@ -562,6 +562,9 @@ def test_dashboard_wires_priced_in_full_scan_panel_after_usefulness() -> None:
     assert "Priced-in Source Gaps" in helper_source
     assert "external_calls_made" in helper_source
     assert "trust_blockers" in helper_source
+    assert "decision_useful_gap_rows" in rows_source
+    assert "priority_sample_tickers" in rows_source
+    assert "priority_examples" in rows_source
     assert "missing_sources" in preview_rows_source
     assert "_list_text(row.get(\"first_batch_tickers\"))" in source
     assert "gap_count" in rows_source
