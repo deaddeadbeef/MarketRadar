@@ -3327,6 +3327,40 @@ def test_priced_in_preflight_recommends_manual_bar_template_for_missing_bars(
     )
 
 
+def test_priced_in_preflight_uses_manual_bar_template_for_partial_full_scan_bars(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    payload = priced_in_preflight_payload(
+        engine,
+        AppConfig(daily_market_provider="csv"),
+        latest_run={"universe": None, "as_of": "2026-05-15"},
+        discovery_snapshot={
+            "run": {"universe": None, "as_of": "2026-05-15"},
+            "freshness": {
+                "active_security_count": 12_613,
+                "active_security_with_as_of_bar_count": 12_090,
+                "missing_as_of_daily_bar_count": 523,
+            },
+            "yield": {
+                "requested_securities": 12_613,
+                "scanned_securities": 12_087,
+            },
+        },
+        source_coverage={"schema_version": "priced-in-source-coverage-v1", "actions": []},
+    )
+
+    by_area = {row["area"]: row for row in payload["rows"]}
+    market_bars = by_area["market_bars"]
+
+    assert market_bars["status"] == "attention"
+    assert "12090/12613" in str(market_bars["finding"])
+    assert "DB-backed active-universe bar template" in str(market_bars["next_action"])
+    assert market_bars["command"].startswith("catalyst-radar market-bars template")
+    assert market_bars["api"] == "POST /api/radar/market-bars/template"
+    assert "run-daily" not in str(market_bars["command"])
+
+
 def test_priced_in_preflight_warns_when_latest_run_is_selected_universe(
     tmp_path: Path,
 ) -> None:

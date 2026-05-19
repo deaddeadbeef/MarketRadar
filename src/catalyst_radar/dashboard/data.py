@@ -10052,9 +10052,13 @@ def _priced_in_preflight_rows(
                 "market_bars",
                 "attention",
                 f"Run-as-of bars cover {latest_bars}/{active} securities.",
-                "Coverage is broad enough for research; review missing tickers if they matter.",
-                commands.get("run_scan"),
-                "POST /api/radar/runs",
+                (
+                    "Coverage is broad enough for research; generate the "
+                    "DB-backed active-universe bar template if you want the "
+                    "full active universe covered before relying on the answer."
+                ),
+                commands.get("market_bars_template"),
+                "POST /api/radar/market-bars/template",
             )
         )
     else:
