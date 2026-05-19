@@ -536,6 +536,7 @@ def test_dashboard_wires_priced_in_full_scan_panel_after_usefulness() -> None:
     assert "_show_priced_in_full_scan_panel" in functions
     assert "_priced_in_full_scan_preview_rows" in functions
     assert "_priced_in_full_scan_source_rows" in functions
+    assert "_priced_in_full_scan_source_gap_action_rows" in functions
     assert "priced_in_full_scan_audit_payload" in helper_source
     assert "Priced-in Full Scan" in helper_source
     assert "Full-scan rows" in helper_source
@@ -550,6 +551,7 @@ def test_dashboard_wires_priced_in_full_scan_panel_after_usefulness() -> None:
     assert "Full Scan Rows" in helper_source
     assert "Full-scan Ranked Rows" in helper_source
     assert "Selected Source Gap Action" in helper_source
+    assert "_priced_in_full_scan_source_gap_action_rows" in helper_source
     assert "Full scan rows" in helper_source
     assert "st.dataframe" in helper_source
     assert "Active Securities" in helper_source
@@ -561,6 +563,7 @@ def test_dashboard_wires_priced_in_full_scan_panel_after_usefulness() -> None:
     assert "external_calls_made" in helper_source
     assert "trust_blockers" in helper_source
     assert "missing_sources" in preview_rows_source
+    assert "_list_text(row.get(\"first_batch_tickers\"))" in source
     assert "gap_count" in rows_source
     assert overview_source.index("_show_market_radar_usefulness") < overview_source.index(
         "_show_priced_in_full_scan_panel"

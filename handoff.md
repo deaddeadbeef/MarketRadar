@@ -1,6 +1,101 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 17:22:03 +08:00
+Last updated: 2026-05-19 17:43:55 +08:00
+
+## Latest Source-Gap First-Batch Actions
+
+Current problem:
+
+- Selected source-gap actions told the user which source was missing and which
+  plan command to inspect, but still did not show the first executable chunk.
+- Users could confuse a small ticker list with "the scan" instead of "the first
+  provider-safe batch."
+- A naive implementation that called the source-batch planner separately
+  reloaded the full scan and made selected source-gap audit views too slow.
+
+Fix in this slice:
+
+- `priced_in_full_scan_audit_payload(..., source_gap=...)` now includes
+  first-batch source-fill details in `preview.source_gap_actions`.
+- Added fields include:
+  - `batch_status`;
+  - `full_scan_gap_rows`;
+  - `plannable_gap_rows`;
+  - `unplannable_gap_rows`;
+  - `provider_batch_count`;
+  - `batch_size`;
+  - `first_batch_scope`;
+  - `first_batch_tickers`;
+  - `first_batch_external_calls`;
+  - `first_batch_command`;
+  - `execute_next_command`;
+  - `execute_batches_command`;
+  - `diagnostic_status`;
+  - `blocked_reason`;
+  - `diagnostic_next_action`;
+  - `batch_scope`.
+- CLI `priced-in-audit --source-gap <source>` now prints:
+  - `provider_batch_plan=...`;
+  - `first_provider_batch=...`;
+  - `execute_next=...` when a provider batch is executable;
+  - `blocked=...` when the source is blocked;
+  - `batch_scope=First provider batch only...`.
+- Streamlit **Selected Source Gap Action** now shows a curated row with first
+  provider batch tickers, call count, execute command, blocker reason, and
+  batch scope.
+- Performance guard: the audit path now asks `priced_in_queue_payload` to keep
+  internal `planning_rows`, filters the selected source-gap preview in memory,
+  and passes the same ranked rows into `priced_in_source_gap_batches_payload`.
+  This avoids a second full-scan queue build for selected source-gap views.
+- This remains zero-call planning only; no provider execution command is run.
+
+Current live zero-call observations from the branch:
+
+```text
+priced-in-audit --source-gap broker_context --limit 2 --json
+broker_status=ready gap=12082 batches=2417 first=AAMI,AAOI,AAL,AAON,AAP calls=1 execute=catalyst-radar priced-in-source-batches --source broker_context --execute-next external_calls=0 elapsed_s=47.3
+```
+
+```text
+priced-in-audit --source-gap options --limit 2 --json
+options_status=blocked gap=12087 batches=0 blocked=newer_than_scan first_count=0 execute= external_calls=0 elapsed_s=47.7
+```
+
+```text
+priced-in-audit --source-gap broker_context --limit 2
+selected_source_gap_actions:
+  provider_batch_plan=status=ready gap_rows=12082 plannable=12082 batches=2417
+  first_provider_batch=tickers=AAMI,AAOI,AAL,AAON,AAP calls=1 command=catalyst-radar schwab-market-sync --ticker AAMI --ticker AAOI --ticker AAL --ticker AAON --ticker AAP
+  execute_next=catalyst-radar priced-in-source-batches --source broker_context --execute-next
+  batch_scope=First provider batch only; full scan has 12082 gap row(s) and 2417 planned batch(es).
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_payload_consolidates_current_state tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_audit_cli_outputs_full_scan_audit tests\integration\test_api_routes.py::test_get_radar_priced_in_audit_returns_zero_call_audit tests\integration\test_dashboard_entrypoint.py::test_dashboard_wires_priced_in_full_scan_panel_after_usefulness -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py apps\dashboard\Home.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_dashboard_entrypoint.py tests\integration\test_api_routes.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-audit --source-gap broker_context --limit 2 --json
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-audit --source-gap options --limit 2 --json
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-audit --source-gap broker_context --limit 2
+```
+
+Observed so far:
+
+- Focused four-test set passed (`4 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+- Live branch broker-context selected action showed the first provider batch,
+  one required Schwab call, the execute-next command, and `external_calls=0`.
+- Live branch options selected action showed `blocked_reason=newer_than_scan`,
+  no executable batch, and `external_calls=0`.
+
+Next useful product action:
+
+- Commit, open a PR, merge by rebase, restart local services, verify API and
+  Streamlit health, then run live API/dashboard checks for selected source-gap
+  first-batch actions.
 
 ## Latest Full-Scan All-Rows UX
 

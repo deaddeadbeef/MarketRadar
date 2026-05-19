@@ -713,6 +713,7 @@ def priced_in_queue_payload(
     min_gap: float | None = None,
     candidate_rows: Sequence[Mapping[str, object]] | None = None,
     total_count: int | None = None,
+    include_planning_rows: bool = False,
 ) -> dict[str, object]:
     latest_run = load_radar_run_summary(engine)
     using_supplied_rows = candidate_rows is not None
@@ -856,7 +857,7 @@ def priced_in_queue_payload(
         discovery_snapshot=discovery,
         source_coverage=source_coverage,
     )
-    return {
+    payload = {
         "schema_version": "priced-in-queue-v1",
         "status": scan_status,
         "headline": _priced_in_queue_headline(
@@ -904,6 +905,9 @@ def priced_in_queue_payload(
         "instrument_scope": instrument_scope,
         "rows": page_rows,
     }
+    if include_planning_rows:
+        payload["planning_rows"] = rows
+    return payload
 
 
 def priced_in_source_gap_batches_payload(
@@ -948,9 +952,15 @@ def priced_in_source_gap_batches_payload(
             min_gap=min_gap,
         )
     )
+    planning_rows = (
+        resolved_queue.get("planning_rows")
+        if using_supplied_queue
+        and isinstance(resolved_queue.get("planning_rows"), list | tuple)
+        else resolved_queue.get("rows", [])
+    )
     rows = [
         row
-        for row in resolved_queue.get("rows", [])
+        for row in planning_rows
         if isinstance(row, Mapping) and str(row.get("ticker") or "").strip()
     ]
     if using_supplied_queue:
@@ -1785,6 +1795,7 @@ def priced_in_full_scan_audit_payload(
             offset=resolved_preview_offset,
             available_at=available_at,
             status="all",
+            include_planning_rows=bool(wanted_source_gaps),
         )
     )
     resolved_preflight = (
@@ -1795,8 +1806,14 @@ def priced_in_full_scan_audit_payload(
     if not resolved_preflight:
         resolved_preflight = priced_in_preflight_payload(engine, config)
     full_scan = _priced_in_answer_full_scan_summary(resolved_queue)
-    preview_queue = (
-        priced_in_queue_payload(
+    preview_queue = resolved_queue
+    if wanted_source_gaps:
+        preview_queue = _priced_in_audit_preview_queue_from_planning_rows(
+            resolved_queue,
+            source_gaps=wanted_source_gaps,
+            limit=resolved_preview_limit,
+            offset=resolved_preview_offset,
+        ) or priced_in_queue_payload(
             engine,
             config,
             limit=resolved_preview_limit,
@@ -1805,9 +1822,6 @@ def priced_in_full_scan_audit_payload(
             status="all",
             source_gap=wanted_source_gaps,
         )
-        if wanted_source_gaps
-        else resolved_queue
-    )
     preview_scan = _priced_in_answer_full_scan_summary(preview_queue)
     preview_rows = _priced_in_full_scan_preview_rows(
         _sequence_value(preview_queue.get("rows"))
@@ -1840,8 +1854,12 @@ def priced_in_full_scan_audit_payload(
         if isinstance(row, Mapping)
     ]
     source_gap_actions = _priced_in_audit_source_gap_actions(
+        engine,
+        config,
         source_rows,
         wanted_source_gaps,
+        available_at=available_at,
+        queue=resolved_queue,
     )
     status_counts = _mapping_value(resolved_queue, "status_counts")
     usefulness_counts = _mapping_value(resolved_queue, "usefulness_counts")
@@ -1974,8 +1992,12 @@ def priced_in_full_scan_audit_payload(
 
 
 def _priced_in_audit_source_gap_actions(
+    engine: Engine,
+    config: AppConfig,
     source_rows: Sequence[Mapping[str, object]],
     source_gaps: Sequence[str],
+    available_at: datetime | None,
+    queue: Mapping[str, object] | None,
 ) -> list[dict[str, object]]:
     if not source_gaps:
         return []
@@ -1985,6 +2007,15 @@ def _priced_in_audit_source_gap_actions(
         source = str(row.get("source") or "").strip()
         if source not in selected:
             continue
+        plan = priced_in_source_gap_batches_payload(
+            engine,
+            config,
+            source=source,
+            batch_limit=1,
+            available_at=available_at,
+            status="all",
+            queue=queue,
+        )
         actions.append(
             {
                 "source": source,
@@ -1993,6 +2024,7 @@ def _priced_in_audit_source_gap_actions(
                 "coverage_pct": row.get("coverage_pct"),
                 "next_action": row.get("next_action"),
                 "plan_command": row.get("command"),
+                **_priced_in_audit_source_gap_batch_action(plan),
                 "execution_boundary": (
                     "Planning and browsing make 0 provider calls; execute source "
                     "batches only after approving provider calls."
@@ -2000,6 +2032,94 @@ def _priced_in_audit_source_gap_actions(
             }
         )
     return actions
+
+
+def _priced_in_audit_preview_queue_from_planning_rows(
+    queue: Mapping[str, object],
+    *,
+    source_gaps: Sequence[str],
+    limit: int,
+    offset: int,
+) -> dict[str, object] | None:
+    planning_rows = queue.get("planning_rows")
+    if not isinstance(planning_rows, list | tuple):
+        return None
+    filtered_rows = [
+        row
+        for row in planning_rows
+        if isinstance(row, Mapping) and _priced_in_source_gap_matches(row, source_gaps)
+    ]
+    resolved_limit = _positive_limit(limit)
+    resolved_offset = _positive_offset(offset)
+    page_rows = filtered_rows[resolved_offset : resolved_offset + resolved_limit]
+    filters = {
+        **_row_dict(_mapping_value(queue, "filters")),
+        "status": "all",
+        "source_gap": list(source_gaps),
+        "limit": resolved_limit,
+        "offset": resolved_offset,
+    }
+    return {
+        **_row_dict(queue),
+        "filters": filters,
+        "count": len(page_rows),
+        "returned_count": len(page_rows),
+        "total_count": len(filtered_rows),
+        "offset": resolved_offset,
+        "has_more": resolved_offset + len(page_rows) < len(filtered_rows),
+        "rows": page_rows,
+    }
+
+
+def _priced_in_audit_source_gap_batch_action(
+    plan: Mapping[str, object],
+) -> dict[str, object]:
+    batches = _sequence_value(plan.get("batches"))
+    first_batch = next((batch for batch in batches if isinstance(batch, Mapping)), None)
+    first_batch_payload = _priced_in_first_source_batch_payload(first_batch)
+    diagnostic = _mapping_value(plan, "diagnostic")
+    scan_scope = _mapping_value(plan, "scan_scope")
+    first_batch_tickers = (
+        list(_sequence_value(first_batch_payload.get("tickers")))
+        if isinstance(first_batch_payload, Mapping)
+        else []
+    )
+    first_batch_external_calls = (
+        int(_finite_float(first_batch_payload.get("external_calls_required")))
+        if isinstance(first_batch_payload, Mapping)
+        else None
+    )
+    first_batch_command = (
+        first_batch_payload.get("command")
+        if isinstance(first_batch_payload, Mapping)
+        else None
+    )
+    batch_count = int(_finite_float(plan.get("batch_count")))
+    total_gap_rows = int(_finite_float(plan.get("total_gap_rows")))
+    batch_scope = (
+        f"First provider batch only; full scan has {total_gap_rows} "
+        f"gap row(s) and {batch_count} planned batch(es)."
+        if first_batch_tickers
+        else str(scan_scope.get("explanation") or "").strip()
+    )
+    return {
+        "batch_status": plan.get("status"),
+        "full_scan_gap_rows": total_gap_rows,
+        "plannable_gap_rows": int(_finite_float(plan.get("plannable_gap_rows"))),
+        "unplannable_gap_rows": int(_finite_float(plan.get("unplannable_gap_rows"))),
+        "provider_batch_count": batch_count,
+        "batch_size": int(_finite_float(plan.get("batch_size"))),
+        "first_batch_scope": "first_provider_batch" if first_batch_tickers else None,
+        "first_batch_tickers": first_batch_tickers,
+        "first_batch_external_calls": first_batch_external_calls,
+        "first_batch_command": first_batch_command,
+        "execute_next_command": plan.get("execute_next_command"),
+        "execute_batches_command": plan.get("execute_batches_command"),
+        "diagnostic_status": diagnostic.get("status"),
+        "blocked_reason": diagnostic.get("blocked_reason"),
+        "diagnostic_next_action": diagnostic.get("next_action"),
+        "batch_scope": batch_scope,
+    }
 
 
 def _priced_in_audit_command(

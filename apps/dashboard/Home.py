@@ -2140,7 +2140,7 @@ def _show_priced_in_full_scan_panel(
         if source_gap_actions:
             _show_records(
                 "Selected Source Gap Action",
-                source_gap_actions,
+                _priced_in_full_scan_source_gap_action_rows(source_gap_actions),
                 empty="No selected source gap action.",
             )
         if preview.get("all_rows"):
@@ -2233,6 +2233,30 @@ def _priced_in_full_scan_source_rows(value: object) -> list[dict[str, object]]:
             str(row.get("source") or ""),
         ),
     )
+
+
+def _priced_in_full_scan_source_gap_action_rows(
+    value: object,
+) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for row in _records(value):
+        rows.append(
+            {
+                "source": row.get("source"),
+                "status": row.get("status"),
+                "gap_count": row.get("gap_count"),
+                "batch_status": row.get("batch_status"),
+                "full_scan_gap_rows": row.get("full_scan_gap_rows"),
+                "provider_batch_count": row.get("provider_batch_count"),
+                "first_provider_batch": _list_text(row.get("first_batch_tickers")),
+                "first_batch_calls": row.get("first_batch_external_calls"),
+                "execute_next_command": row.get("execute_next_command"),
+                "blocked_reason": row.get("blocked_reason"),
+                "next_action": row.get("next_action"),
+                "batch_scope": row.get("batch_scope"),
+            }
+        )
+    return rows
 
 
 def _visible_operator_queue_rows(value: object) -> list[dict[str, object]]:
