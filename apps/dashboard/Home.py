@@ -1978,7 +1978,7 @@ def _show_priced_in_full_scan_panel(
     radar_run_summary: Mapping[str, Any],
 ) -> None:
     st.subheader("Priced-in Full Scan")
-    row_control_cols = st.columns([1, 1, 1, 2])
+    row_control_cols = st.columns([1, 1, 1, 1, 2])
     preview_limit = int(
         row_control_cols[0].selectbox(
             "Full-scan rows",
@@ -1996,17 +1996,28 @@ def _show_priced_in_full_scan_panel(
             key="priced_in_full_scan_preview_offset",
         )
     )
+    show_all_rows = bool(
+        row_control_cols[2].checkbox(
+            "Show all rows",
+            value=False,
+            key="priced_in_full_scan_all_rows",
+            help=(
+                "Load the complete ranked full-scan table from the local database. "
+                "This makes 0 provider calls but can render more slowly."
+            ),
+        )
+    )
     source_gap_filter = str(
-        row_control_cols[2].selectbox(
+        row_control_cols[3].selectbox(
             "Source gap",
             PRICED_IN_SOURCE_GAP_OPTIONS,
             index=0,
             key="priced_in_full_scan_source_gap",
         )
     )
-    row_control_cols[3].caption(
-        "Browsing full-scan rows makes 0 provider calls. Source-fill chunks remain "
-        "separate explicit actions."
+    row_control_cols[4].caption(
+        "Visible rows are a page unless Show all rows is on. All browsing and export "
+        "controls make 0 provider calls."
     )
     audit = _mapping(
         dashboard_data.priced_in_full_scan_audit_payload(
@@ -2014,8 +2025,9 @@ def _show_priced_in_full_scan_panel(
             config,
             available_at=_radar_summary_cutoff(radar_run_summary),
             source_gap=None if source_gap_filter == "All" else source_gap_filter,
-            preview_limit=preview_limit,
-            preview_offset=preview_offset,
+            preview_limit=1_000_000 if show_all_rows else preview_limit,
+            preview_offset=0 if show_all_rows else preview_offset,
+            all_rows=show_all_rows,
         )
     )
     status = str(audit.get("status") or "unknown")
@@ -2076,9 +2088,16 @@ def _show_priced_in_full_scan_panel(
     review_command = str(scope.get("review_command") or "").strip()
     export_command = str(scope.get("export_command") or "").strip()
     source_command = str(_mapping(audit.get("commands")).get("source_overview") or "").strip()
+    audit_full_command = str(scope.get("audit_full_export_command") or "").strip()
     commands = [
         command
-        for command in (review_command, export_command, source_command, audit.get("next_command"))
+        for command in (
+            review_command,
+            export_command,
+            audit_full_command,
+            source_command,
+            audit.get("next_command"),
+        )
         if str(command or "").strip()
     ]
     if commands:
@@ -2091,10 +2110,32 @@ def _show_priced_in_full_scan_panel(
         row_end = preview.get("row_end") or 0
         total_rows = preview.get("total_rows") or scope.get("ranked_rows") or 0
         st.caption(
-            "Full scan row page: "
-            f"showing rows {row_start}-{row_end} of {total_rows}. "
+            "Full scan rows: "
+            f"showing {'all' if preview.get('all_rows') else 'page'} "
+            f"{row_start}-{row_end} of {total_rows}. "
             f"{preview.get('sample_explanation') or ''}".strip()
         )
+        if preview.get("all_rows"):
+            st.download_button(
+                "Download Full Scan Rows JSON",
+                data=json.dumps(
+                    {
+                        "schema_version": "priced-in-full-scan-rows-export-v1",
+                        "external_calls_made": audit.get("external_calls_made"),
+                        "scope": _json_ready(scope),
+                        "preview": _json_ready(preview),
+                        "rows": _json_ready(audit.get("preview_rows")),
+                    },
+                    indent=2,
+                    sort_keys=True,
+                ),
+                file_name="market-radar-full-scan-rows.json",
+                mime="application/json",
+                help=(
+                    "Download the complete ranked full-scan rows currently loaded "
+                    "from the local database. This does not call external providers."
+                ),
+            )
         source_gap_actions = _records(preview.get("source_gap_actions"))
         if source_gap_actions:
             _show_records(
@@ -2102,11 +2143,20 @@ def _show_priced_in_full_scan_panel(
                 source_gap_actions,
                 empty="No selected source gap action.",
             )
-        _show_records(
-            "Full-scan Ranked Rows",
-            preview_rows,
-            empty="No full-scan rows are visible.",
-        )
+        if preview.get("all_rows"):
+            st.subheader("Full-scan Ranked Rows")
+            st.dataframe(
+                pd.DataFrame(preview_rows),
+                hide_index=True,
+                use_container_width=True,
+                height=520,
+            )
+        else:
+            _show_records(
+                "Full-scan Ranked Rows",
+                preview_rows,
+                empty="No full-scan rows are visible.",
+            )
     trust_rows = _priced_in_full_scan_trust_rows(audit.get("trust_blockers"))
     if trust_rows:
         _show_records(

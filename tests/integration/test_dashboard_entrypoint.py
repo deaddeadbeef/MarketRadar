@@ -540,14 +540,18 @@ def test_dashboard_wires_priced_in_full_scan_panel_after_usefulness() -> None:
     assert "Priced-in Full Scan" in helper_source
     assert "Full-scan rows" in helper_source
     assert "Row offset" in helper_source
+    assert "Show all rows" in helper_source
     assert "Source gap" in helper_source
     assert "preview_limit" in helper_source
     assert "preview_offset" in helper_source
+    assert "all_rows" in helper_source
+    assert "Download Full Scan Rows JSON" in helper_source
     assert "source_gap" in helper_source
     assert "Full Scan Rows" in helper_source
     assert "Full-scan Ranked Rows" in helper_source
     assert "Selected Source Gap Action" in helper_source
-    assert "Full scan row page" in helper_source
+    assert "Full scan rows" in helper_source
+    assert "st.dataframe" in helper_source
     assert "Active Securities" in helper_source
     assert "Decision-ready" in helper_source
     assert "Trust Gaps" in helper_source

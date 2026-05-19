@@ -1762,15 +1762,18 @@ def priced_in_full_scan_audit_payload(
     preflight: Mapping[str, object] | None = None,
     preview_limit: int = PRICED_IN_FULL_SCAN_PREVIEW_LIMIT,
     preview_offset: int = 0,
+    all_rows: bool = False,
 ) -> dict[str, object]:
-    resolved_preview_limit = _positive_limit(preview_limit)
-    resolved_preview_offset = _positive_offset(preview_offset)
+    resolved_all_rows = bool(all_rows)
+    resolved_preview_limit = 1_000_000 if resolved_all_rows else _positive_limit(preview_limit)
+    resolved_preview_offset = 0 if resolved_all_rows else _positive_offset(preview_offset)
     wanted_source_gaps = _priced_in_source_gap_filter(source_gap)
     audit_page_command = _priced_in_audit_command(
         limit=resolved_preview_limit,
         offset=resolved_preview_offset,
         available_at=available_at,
         source_gap=wanted_source_gaps,
+        all_rows=resolved_all_rows,
     )
     resolved_queue = (
         _row_dict(queue)
@@ -1816,9 +1819,18 @@ def priced_in_full_scan_audit_payload(
             offset=resolved_preview_offset + max(1, resolved_preview_limit),
             available_at=available_at,
             source_gap=wanted_source_gaps,
+            all_rows=False,
         )
         if has_more
         else None
+    )
+    audit_full_export_command = _priced_in_audit_command(
+        limit=resolved_preview_limit,
+        offset=0,
+        available_at=available_at,
+        source_gap=wanted_source_gaps,
+        all_rows=True,
+        json=True,
     )
     source_coverage = _mapping_value(resolved_queue, "source_coverage")
     instrument_scope = _mapping_value(resolved_queue, "instrument_scope")
@@ -1892,8 +1904,10 @@ def priced_in_full_scan_audit_payload(
             "export_command": full_scan.get("full_export_command")
             or full_scan.get("export_command"),
             "sample_explanation": full_scan.get("sample_explanation"),
+            "all_rows_requested": resolved_all_rows,
             "audit_page_command": audit_page_command,
             "audit_next_page_command": next_audit_page_command,
+            "audit_full_export_command": audit_full_export_command,
         },
         "preview": {
             "schema_version": "priced-in-full-scan-preview-v1",
@@ -1902,6 +1916,7 @@ def priced_in_full_scan_audit_payload(
             "visible_rows": preview_scan.get("visible_rows"),
             "total_rows": preview_scan.get("ranked_rows"),
             "has_more": preview_scan.get("has_more"),
+            "all_rows": resolved_all_rows,
             "sample_explanation": _priced_in_audit_preview_note(
                 preview_scan.get("sample_explanation"),
                 source_gaps=wanted_source_gaps,
@@ -1916,6 +1931,7 @@ def priced_in_full_scan_audit_payload(
             or preview_scan.get("export_command"),
             "audit_page_command": audit_page_command,
             "audit_next_page_command": next_audit_page_command,
+            "audit_full_export_command": audit_full_export_command,
         },
         "preview_rows": preview_rows,
         "counts": {
@@ -1952,6 +1968,7 @@ def priced_in_full_scan_audit_payload(
             "preflight": "catalyst-radar priced-in-preflight",
             "source_overview": "catalyst-radar priced-in-source-batches --source all",
             "export_full_scan": "catalyst-radar priced-in-queue --full-scan --all --json",
+            "audit_full_scan": audit_full_export_command,
         },
     }
 
@@ -1991,16 +2008,23 @@ def _priced_in_audit_command(
     offset: int,
     available_at: datetime | None,
     source_gap: Sequence[str],
+    all_rows: bool = False,
+    json: bool = False,
 ) -> str:
     parts = ["catalyst-radar", "priced-in-audit"]
     if available_at is not None:
         parts.extend(["--available-at", available_at.isoformat()])
     for source in source_gap:
         parts.extend(["--source-gap", str(source)])
-    parts.extend(["--limit", str(_positive_limit(limit))])
-    offset_value = _positive_offset(offset)
-    if offset_value:
-        parts.extend(["--offset", str(offset_value)])
+    if all_rows:
+        parts.append("--all")
+    else:
+        parts.extend(["--limit", str(_positive_limit(limit))])
+        offset_value = _positive_offset(offset)
+        if offset_value:
+            parts.extend(["--offset", str(offset_value)])
+    if json:
+        parts.append("--json")
     return " ".join(parts)
 
 

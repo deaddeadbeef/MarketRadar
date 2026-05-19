@@ -1,6 +1,85 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 16:59:02 +08:00
+Last updated: 2026-05-19 17:14:59 +08:00
+
+## Latest Full-Scan All-Rows UX
+
+Current problem:
+
+- Users could see only a small ticker page in the audit/dashboard and reasonably
+  ask "why only these tickers?"
+- The engine already scanned the full active universe, but the human-facing
+  surfaces did not make the distinction between "visible page" and "full scan"
+  strong enough.
+- The CLI already had a separate full-scan queue export, but the audit command,
+  API route, and dashboard did not expose a first-class all-rows audit mode.
+
+Fix in this slice:
+
+- `priced_in_full_scan_audit_payload` now accepts `all_rows=True`.
+- CLI `priced-in-audit` now accepts `--all`.
+- API `GET /api/radar/priced-in/audit` now accepts `all_rows=true`.
+- Dashboard **Priced-in Full Scan** now has a **Show all rows** checkbox.
+- When **Show all rows** is on, the dashboard requests the complete ranked
+  full-scan row set from the local database, resets offset to 0, renders it in
+  a Streamlit dataframe instead of a giant custom HTML table, and exposes a
+  **Download Full Scan Rows JSON** button.
+- The audit payload now reports:
+  - `scope.all_rows_requested`;
+  - `scope.audit_full_export_command`;
+  - `preview.all_rows`;
+  - `preview.audit_full_export_command`;
+  - `commands.audit_full_scan`.
+- CLI text output now prints `all_rows=true|false` beside the row range, so a
+  small ticker list is clearly a page, not the scan universe.
+- This remains zero-call browsing/export only.
+
+Current live zero-call observations from the branch:
+
+```text
+priced-in-audit --all --json
+audit_all_rows=12087/12087 all=True external_calls=0 command=catalyst-radar priced-in-audit --all
+```
+
+```text
+priced-in-queue --full-scan --all --json
+queue_all_rows=12087/12087 external_calls=0
+```
+
+```text
+priced-in-audit --limit 5
+full_scan_rows=1-5/12087 sample=true all_rows=false export=catalyst-radar priced-in-queue --full-scan --all --json
+full_scan_row_note=The tickers below are rows 1-5 from the current ranked page, not the full scan universe of 12087 row(s).
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_payload_consolidates_current_state tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_audit_cli_outputs_full_scan_audit tests\integration\test_api_routes.py::test_get_radar_priced_in_audit_returns_zero_call_audit tests\integration\test_dashboard_entrypoint.py::test_dashboard_wires_priced_in_full_scan_panel_after_usefulness -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py src\catalyst_radar\api\routes\radar.py apps\dashboard\Home.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_api_routes.py tests\integration\test_dashboard_entrypoint.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-audit --all --json
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-queue --full-scan --all --json
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-audit --limit 5
+```
+
+Observed so far:
+
+- Focused four-test set passed (`4 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+- Live branch CLI audit all-rows export returned all `12087/12087` rows with
+  `external_calls=0`.
+- Live branch full-scan queue export returned all `12087/12087` rows with
+  `external_calls=0`.
+- Live branch audit preview still shows only the selected row page, but now
+  prints `all_rows=false` and the row note explicitly says the visible tickers
+  are not the full scan universe.
+
+Next useful product action:
+
+- Commit, open a PR, merge by rebase, restart local services, verify API and
+  Streamlit health, and run live API/dashboard checks for the new all-rows mode.
 
 ## Latest Selected Source-Gap Action
 
