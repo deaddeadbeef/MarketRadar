@@ -3640,6 +3640,17 @@ def _print_manual_market_bars_import(payload: Mapping[str, object]) -> None:
         more = int(payload.get("missing_expected_more") or 0)
         suffix = f" plus {more} more" if more else ""
         print(f"missing_expected_tickers={sample}{suffix}")
+    invalid_count = int(payload.get("invalid_row_count") or 0)
+    if invalid_count:
+        print(
+            "invalid="
+            f"rows={invalid_count} "
+            f"blank_required={payload.get('blank_required_count')} "
+            f"invalid_numeric={payload.get('invalid_numeric_count')}"
+        )
+        examples = payload.get("invalid_examples")
+        if isinstance(examples, list | tuple) and examples:
+            print("invalid_examples=" + " | ".join(str(item) for item in examples))
     if payload.get("status") == "ready":
         print("Plan only: no database writes were made.")
     print(f"next_action={payload.get('next_action')}")
