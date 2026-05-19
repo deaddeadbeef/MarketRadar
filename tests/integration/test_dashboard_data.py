@@ -1584,6 +1584,18 @@ def test_priced_in_full_scan_audit_payload_consolidates_current_state(
     assert payload["preview_rows"][0]["ticker"] == "MSFT"
     assert payload["preview_rows"][0]["status"]
     assert "missing_sources" in payload["preview_rows"][0]
+    assert payload["answer_shortlist"]["schema_version"] == (
+        "priced-in-answer-shortlist-v1"
+    )
+    assert payload["answer_shortlist"]["external_calls_made"] == 0
+    assert payload["answer_shortlist"]["focus"] == "full_scan"
+    assert payload["answer_shortlist"]["full_scan_rows"] == 2
+    assert "not trade approval" in payload["answer_shortlist"][
+        "investment_decision_boundary"
+    ]
+    if payload["answer_shortlist"]["rows"]:
+        assert payload["answer_shortlist"]["rows"][0]["rank"] == 1
+        assert payload["answer_shortlist"]["rows"][0]["ticker"] == "MSFT"
     assert payload["market_bars"]["active_securities"] == 2
     assert payload["instrument_scope"]["schema_version"] == (
         "priced-in-instrument-scope-v1"
@@ -1710,6 +1722,8 @@ def test_priced_in_full_scan_audit_payload_consolidates_current_state(
     assert source_filtered["preview"]["source_gap_actions"][0][
         "approval_checklist"
     ]["schema_version"] == "priced-in-source-batch-approval-checklist-v1"
+    assert source_filtered["answer_shortlist"]["focus"] == "source_gap:options"
+    assert source_filtered["answer_shortlist"]["source_gap_filter"] == ["options"]
     assert source_filtered["preview"]["source_gap_actions"][0][
         "export_rows_command"
     ] == "catalyst-radar priced-in-queue --full-scan --source-gap options --all --json"

@@ -2110,6 +2110,48 @@ def _show_priced_in_full_scan_panel(
             f"age_ms={performance.get('cache_age_ms') or 'n/a'}, "
             f"ttl_s={performance.get('cache_ttl_seconds') or 'n/a'}."
         )
+    answer_shortlist = _mapping(audit.get("answer_shortlist"))
+    if answer_shortlist:
+        st.subheader("Market Expectation Shortlist")
+        shortlist_message = (
+            f"{answer_shortlist.get('summary') or 'No shortlist summary.'} "
+            f"{answer_shortlist.get('scope') or ''}"
+        ).strip()
+        if str(answer_shortlist.get("status") or "") == "decision_ready":
+            st.success(shortlist_message)
+        elif str(answer_shortlist.get("status") or "") == "needs_evidence":
+            st.info(shortlist_message)
+        else:
+            st.caption(shortlist_message)
+        _show_status_badges(
+            [
+                ("Focus", answer_shortlist.get("focus") or "full_scan"),
+                (
+                    "Decision Ready",
+                    int(_metric_number(answer_shortlist.get("decision_ready_rows"))),
+                ),
+                (
+                    "Actionable",
+                    int(_metric_number(answer_shortlist.get("actionable_mismatch_rows"))),
+                ),
+                (
+                    "Needs Evidence",
+                    int(_metric_number(answer_shortlist.get("needs_evidence_rows"))),
+                ),
+                ("External Calls", answer_shortlist.get("external_calls_made") or 0),
+            ]
+        )
+        st.caption(
+            str(
+                answer_shortlist.get("investment_decision_boundary")
+                or "This shortlist is not trade approval."
+            )
+        )
+        _show_records(
+            "Top Market Emotion Mismatches",
+            _priced_in_answer_shortlist_rows(answer_shortlist.get("rows")),
+            empty="No market expectation mismatch rows.",
+        )
     recommended_source_gap = _mapping(audit.get("recommended_source_gap"))
     if recommended_source_gap:
         st.info(
@@ -2279,6 +2321,28 @@ def _priced_in_full_scan_preview_rows(value: object) -> list[dict[str, object]]:
                 "priced_in": row.get("priced_in_score"),
                 "missing": missing,
                 "stale": stale,
+                "why_now": row.get("why_now"),
+                "next_step": row.get("next_step"),
+            }
+        )
+    return rows
+
+
+def _priced_in_answer_shortlist_rows(value: object) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for row in _records(value):
+        rows.append(
+            {
+                "rank": row.get("rank"),
+                "ticker": row.get("ticker"),
+                "status": row.get("status"),
+                "decision_ready": "yes" if row.get("decision_ready") else "no",
+                "gap": row.get("emotion_reaction_gap"),
+                "emotion": row.get("emotion_score"),
+                "reaction": row.get("reaction_score"),
+                "priced_in": row.get("priced_in_score"),
+                "missing": _list_text(row.get("missing_sources")),
+                "stale": _list_text(row.get("stale_sources")),
                 "why_now": row.get("why_now"),
                 "next_step": row.get("next_step"),
             }

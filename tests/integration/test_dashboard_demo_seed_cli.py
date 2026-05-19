@@ -1905,6 +1905,10 @@ def test_priced_in_audit_cli_outputs_full_scan_audit(
     assert "boundary=Reviewing this recommendation makes 0 provider calls" in output.out
     assert "full_source_gap_export=catalyst-radar priced-in-audit" in output.out
     assert "sample_boundary=Example tickers are only a priority preview" in output.out
+    assert "answer_shortlist=status=" in output.out
+    assert "ticker rank status decision_ready gap emotion reaction missing next_step" in (
+        output.out
+    )
     assert "instrument_scope=rows=" in output.out
     assert "sec_catalyst_applicability=applicable=" in output.out
     assert "full_scan_rows=" in output.out
@@ -1927,6 +1931,12 @@ def test_priced_in_audit_cli_outputs_full_scan_audit(
     assert payload["preview"]["audit_page_command"] == (
         "catalyst-radar priced-in-audit --limit 25"
     )
+    assert payload["answer_shortlist"]["schema_version"] == (
+        "priced-in-answer-shortlist-v1"
+    )
+    assert payload["answer_shortlist"]["external_calls_made"] == 0
+    assert payload["answer_shortlist"]["focus"] == "full_scan"
+    assert payload["answer_shortlist"]["rows"][0]["ticker"] == "ACME"
     assert payload["recommended_source_gap"]["full_scan_command"].startswith(
         "catalyst-radar priced-in-audit --source-gap"
     )

@@ -2244,6 +2244,21 @@ def _priced_in_full_scan_audit_payload_uncached(
     )
     ranked_rows = int(_finite_float(full_scan.get("ranked_rows")))
     active = int(_finite_float(full_scan.get("active_securities"))) or ranked_rows
+    answer_rows = [
+        row
+        for row in planning_rows
+        if isinstance(row, Mapping)
+        and (
+            not wanted_source_gaps
+            or _priced_in_source_gap_matches(row, wanted_source_gaps)
+        )
+    ]
+    answer_shortlist = _priced_in_audit_answer_shortlist(
+        answer_rows,
+        source_gaps=wanted_source_gaps,
+        full_scan_rows=ranked_rows,
+        limit=10,
+    )
     trust_blockers = _priced_in_answer_trust_blockers(
         resolved_preflight,
         answer_status=status,
@@ -2314,6 +2329,7 @@ def _priced_in_full_scan_audit_payload_uncached(
             "audit_full_export_command": audit_full_export_command,
         },
         "preview_rows": preview_rows,
+        "answer_shortlist": answer_shortlist,
         "counts": {
             "actionable_mismatch_rows": actionable_count,
             "research_lead_rows": research_ready_count,
@@ -2351,6 +2367,74 @@ def _priced_in_full_scan_audit_payload_uncached(
             "export_full_scan": "catalyst-radar priced-in-queue --full-scan --all --json",
             "audit_full_scan": audit_full_export_command,
         },
+}
+
+
+def _priced_in_audit_answer_shortlist(
+    rows: Sequence[object],
+    *,
+    source_gaps: Sequence[str] = (),
+    full_scan_rows: int = 0,
+    limit: int = 10,
+) -> dict[str, object]:
+    answer_rows = _priced_in_answer_rows(rows)
+    decision_rows = [row for row in answer_rows if bool(row.get("decision_ready"))]
+    selected = decision_rows or answer_rows
+    resolved_limit = _positive_limit(limit)
+    visible_rows = [
+        {
+            "rank": index,
+            **_row_dict(row),
+        }
+        for index, row in enumerate(selected[:resolved_limit], start=1)
+    ]
+    decision_count = len(decision_rows)
+    actionable_count = len(answer_rows)
+    blocked_count = max(0, actionable_count - decision_count)
+    focus = (
+        f"source_gap:{','.join(source_gaps)}"
+        if source_gaps
+        else "full_scan"
+    )
+    if decision_count > 0:
+        status = "decision_ready"
+        summary = (
+            f"Showing {len(visible_rows)} of {decision_count} decision-ready "
+            "not-priced-in row(s)."
+        )
+    elif actionable_count > 0:
+        status = "needs_evidence"
+        summary = (
+            f"No decision-ready not-priced-in rows in this focus; showing "
+            f"{len(visible_rows)} actionable row(s) that still need evidence."
+        )
+    else:
+        status = "none_visible"
+        summary = "No actionable not-priced-in rows are visible in this focus."
+    scope_text = (
+        f"Filtered to source gap(s): {', '.join(source_gaps)}."
+        if source_gaps
+        else "Full active-universe ranked scan."
+    )
+    return {
+        "schema_version": "priced-in-answer-shortlist-v1",
+        "status": status,
+        "focus": focus,
+        "source_gap_filter": list(source_gaps),
+        "summary": summary,
+        "scope": scope_text,
+        "full_scan_rows": full_scan_rows,
+        "actionable_mismatch_rows": actionable_count,
+        "decision_ready_rows": decision_count,
+        "needs_evidence_rows": blocked_count,
+        "visible_rows": len(visible_rows),
+        "visible_rows_are_sample": len(visible_rows) < len(selected),
+        "external_calls_made": 0,
+        "investment_decision_boundary": (
+            "This shortlist ranks market-expectation mismatch evidence only; it is "
+            "not trade approval."
+        ),
+        "rows": visible_rows,
     }
 
 
