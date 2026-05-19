@@ -2939,6 +2939,8 @@ def _priced_in_audit_source_gap_repair(
     source = str(action.get("source") or "").strip()
     if source == "catalyst_events":
         return _priced_in_audit_catalyst_gap_repair(action)
+    if source == "local_text":
+        return _priced_in_audit_local_text_gap_repair(action)
     if source != "options":
         return None
     gap_count = int(_finite_float(action.get("gap_count")))
@@ -3002,6 +3004,56 @@ def _priced_in_audit_source_gap_repair(
             "Options are supporting market-emotion evidence. This gap does not shrink "
             "the full-scan universe, but it lowers trust in decision-useful mismatch "
             "rows until point-in-time options are present or intentionally skipped."
+        ),
+    }
+
+
+def _priced_in_audit_local_text_gap_repair(
+    action: Mapping[str, object],
+) -> dict[str, object] | None:
+    gap_count = int(_finite_float(action.get("gap_count")))
+    if gap_count <= 0:
+        return None
+    sample_tickers = [
+        str(ticker).strip().upper()
+        for ticker in _sequence_value(action.get("sample_tickers"))
+        if str(ticker).strip()
+    ][:PRICED_IN_SOURCE_ACTION_TICKER_LIMIT]
+    next_action = (
+        "Fill catalyst_events first; local text can only process rows with stored "
+        "event text."
+    )
+    return {
+        "schema_version": "priced-in-source-gap-repair-v1",
+        "source": "local_text",
+        "status": "blocked",
+        "diagnostic_status": "missing_catalyst_events",
+        "gap_count": gap_count,
+        "sample_tickers": sample_tickers,
+        "provider_batch_allowed": False,
+        "prerequisite_source": "catalyst_events",
+        "prerequisite_command": (
+            "catalyst-radar priced-in-source-batches --source catalyst_events "
+            "--all --json"
+        ),
+        "review_rows_command": action.get("full_scan_gap_review_command"),
+        "export_rows_command": action.get("full_scan_export_command"),
+        "batch_plan_command": action.get("batch_plan_command"),
+        "current_context_boundary": (
+            "Local text intelligence reads stored event text only. It cannot score "
+            "market emotion for rows whose catalyst_events evidence has not been "
+            "filled or routed yet."
+        ),
+        "write_boundary": (
+            "Review/export/plan commands make 0 provider calls. Local text batches "
+            "write local text features only after catalyst event text exists."
+        ),
+        "external_calls_made": 0,
+        "next_action": next_action,
+        "usefulness_impact": (
+            "Local text turns catalyst documents into narrative strength. Until it "
+            "runs, the scan can rank price reaction but has weak stored evidence for "
+            "what the market is emotionally pricing."
         ),
     }
 

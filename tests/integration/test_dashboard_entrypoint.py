@@ -588,6 +588,7 @@ def test_dashboard_wires_priced_in_full_scan_panel_after_usefulness() -> None:
     assert "repair_status" in rows_source
     assert "repair_company_like_gaps" in rows_source
     assert "repair_routed_non_company" in rows_source
+    assert "repair_prerequisite" in rows_source
     assert "repair_next_action" in rows_source
     assert "missing_sources" in preview_rows_source
     assert "first_batch_tickers" in source

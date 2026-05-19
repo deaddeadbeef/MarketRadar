@@ -1984,6 +1984,15 @@ def test_priced_in_audit_cli_outputs_full_scan_audit(
         )
         assert catalyst_source["repair"]["source"] == "catalyst_events"
         assert catalyst_source["repair"]["external_calls_made"] == 0
+    local_text_source = next(
+        row for row in payload["sources"] if row["source"] == "local_text"
+    )
+    if local_text_source.get("repair"):
+        assert local_text_source["repair"]["schema_version"] == (
+            "priced-in-source-gap-repair-v1"
+        )
+        assert local_text_source["repair"]["source"] == "local_text"
+        assert local_text_source["repair"]["external_calls_made"] == 0
     assert payload["instrument_scope"]["schema_version"] == (
         "priced-in-instrument-scope-v1"
     )

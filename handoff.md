@@ -1,6 +1,109 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 21:33:24 +08:00
+Last updated: 2026-05-19 21:42:09 +08:00
+
+## Latest Local Text Repair Surface
+
+Current problem:
+
+- Local text intelligence remains sparse and is not independently runnable for
+  most full-scan rows.
+- The source-batch plan already knew local text was blocked by missing
+  catalyst event text, but the main priced-in audit/dashboard only showed a
+  generic "run text intelligence" action.
+- That was misleading because local text cannot score rows whose
+  `catalyst_events` evidence has not been filled or routed.
+- Current local zero-call state observed before this slice:
+  - `local_text` source coverage: `12/12087`;
+  - local text gap rows: `12075`;
+  - local text plannable rows: `0`;
+  - diagnostic: `missing_catalyst_events`;
+  - prerequisite source: `catalyst_events`;
+  - external calls while inspecting: `0`.
+
+Fix in this slice:
+
+- `priced_in_full_scan_audit_payload.sources[]` now carries a local-text
+  `repair` object when local text rows have missing/stale evidence.
+- The repair schema reuses `priced-in-source-gap-repair-v1` and includes:
+  - source;
+  - blocked status;
+  - diagnostic status `missing_catalyst_events`;
+  - full-scan gap count;
+  - sample tickers;
+  - `provider_batch_allowed=false`;
+  - prerequisite source `catalyst_events`;
+  - prerequisite batch-plan command;
+  - zero-call review/export commands;
+  - local-text batch-plan command;
+  - current-context boundary;
+  - write/provider-call boundary;
+  - `external_calls_made=0`;
+  - usefulness impact.
+- CLI `priced-in-audit` now prints local-text source repair details under the
+  `local_text` source row, including:
+  - `diagnostic=missing_catalyst_events`;
+  - `provider_batch_allowed=false`;
+  - prerequisite catalyst-events batch-plan command;
+  - zero-call planning/local-write boundary.
+- Streamlit **Priced-in Source Gaps** rows now include the local-text
+  prerequisite source and blocked repair status.
+- No SEC, Schwab, Polygon/Massive, OpenAI, or broker/order execution was run.
+
+Current live zero-call observations from the branch:
+
+```text
+local_text_repair source=local_text status=blocked diagnostic=missing_catalyst_events prereq=catalyst_events allowed=False calls=0
+```
+
+```text
+- local_text status=partial coverage=12/12087 gap_rows=12075 decision=0 research=0 actionable=0 next=Run text intelligence for the scan date before relying on narrative strength.
+  repair=status=blocked diagnostic=missing_catalyst_events provider_batch_allowed=false next=Fill catalyst_events first; local text can only process rows with stored event text.
+    prerequisite=catalyst-radar priced-in-source-batches --source catalyst_events --all --json
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_payload_consolidates_current_state tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_audit_cli_outputs_full_scan_audit tests\integration\test_dashboard_entrypoint.py::test_dashboard_wires_priced_in_full_scan_panel_after_usefulness tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_plans_local_text_batches -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py apps\dashboard\Home.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_dashboard_entrypoint.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-audit --limit 1
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-audit --limit 1 --json
+```
+
+Observed:
+
+- Focused four-test set passed (`4 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+- CLI and JSON checks reported local-text repair with `external_calls_made=0`.
+- Local services were restarted from the branch for API/dashboard verification.
+- API `GET /api/radar/priced-in/audit?limit=1` reported:
+  - `source=local_text`;
+  - `status=blocked`;
+  - `diagnostic=missing_catalyst_events`;
+  - `prereq=catalyst_events`;
+  - `allowed=False`;
+  - `calls=0`.
+- Browser verification on `http://127.0.0.1:8514` confirmed the dashboard text
+  included:
+  - `missing_catalyst_events`;
+  - `local_text`;
+  - `catalyst_events`;
+  - **Fill catalyst_events first**.
+- Browser console check reported 0 current errors.
+
+Next useful product action:
+
+- This slice explains why local text is blocked; it does not execute catalyst or
+  local-text batches.
+- The first hard trust blocker remains market-bar coverage:
+  - `523` active tickers are missing as-of bars for `2026-05-15`.
+- The scan can rank price reaction, but the emotion evidence path still needs:
+  - complete market bars;
+  - catalyst event fill/routing;
+  - then local text intelligence over stored event text.
 
 ## Latest Catalyst Evidence Repair Surface
 

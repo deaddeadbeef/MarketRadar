@@ -4119,6 +4119,9 @@ def _print_priced_in_audit(payload: Mapping[str, object]) -> None:
                     "    non_company_route="
                     f"{_compact_cli_text(non_company_route)}"
                 )
+            prerequisite = repair.get("prerequisite_command")
+            if prerequisite:
+                print(f"    prerequisite={_compact_cli_text(prerequisite)}")
             batch_plan = repair.get("batch_plan_command")
             if batch_plan:
                 print(f"    batch_plan={_compact_cli_text(batch_plan)}")
@@ -4349,6 +4352,9 @@ def _print_priced_in_audit(payload: Mapping[str, object]) -> None:
                     "    non_company_route="
                     f"{_compact_cli_text(non_company_route)}"
                 )
+            prerequisite = repair.get("prerequisite_command")
+            if prerequisite:
+                print(f"    prerequisite={_compact_cli_text(prerequisite)}")
             batch_plan = repair.get("batch_plan_command")
             if batch_plan:
                 print(f"    batch_plan={_compact_cli_text(batch_plan)}")
