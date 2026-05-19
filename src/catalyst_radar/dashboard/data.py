@@ -2320,6 +2320,11 @@ def priced_in_answer_payload(
         preflight=resolved_preflight,
         top_rows=top_rows,
         decision_readiness=decision_readiness,
+        stocks_only=stocks_only,
+    )
+    full_scan_summary = _priced_in_answer_full_scan_summary(
+        resolved_queue,
+        market_bars=market_bars,
     )
     decision_ready = answer_status == "decision_ready"
     investment_decision_boundary = (
@@ -2360,7 +2365,7 @@ def priced_in_answer_payload(
             "blocked_rows": blocked_count,
         },
         "scan_scope": _priced_in_answer_scan_scope(resolved_queue),
-        "full_scan": _priced_in_answer_full_scan_summary(resolved_queue),
+        "full_scan": full_scan_summary,
         "decision_readiness": decision_readiness,
         "filters": _row_dict(_mapping_value(resolved_queue, "filters")),
         "source_coverage": {
@@ -4139,6 +4144,8 @@ def _priced_in_audit_next_step(
 
 def _priced_in_answer_full_scan_summary(
     queue: Mapping[str, object],
+    *,
+    market_bars: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     scan_scope = _priced_in_answer_scan_scope(queue)
     scan = _mapping_value(queue, "scan")
@@ -4160,15 +4167,33 @@ def _priced_in_answer_full_scan_summary(
         )
     )
     active = int(_finite_float(freshness.get("active_security_count")))
+    stocks_only = bool(filters.get("stocks_only"))
+    scan_scope_basis = "active_universe"
+    unscanned_rows = max(0, active - (scan_total or total))
+    if stocks_only and isinstance(market_bars, Mapping):
+        stock_scope = _mapping_value(
+            _mapping_value(market_bars, "repair"),
+            "stock_scope",
+        )
+        stock_like_active = int(_finite_float(stock_scope.get("stock_like_active")))
+        stock_like_with_bar = int(
+            _finite_float(stock_scope.get("stock_like_with_as_of_bar"))
+        )
+        if stock_like_active > 0:
+            active = stock_like_active
+            scan_total = stock_like_with_bar or total
+            scan_scope_basis = "stock_like_active_as_of_bars"
+            unscanned_rows = max(0, active - scan_total)
     start = offset + 1 if returned else 0
     end = offset + returned
     review_command = _priced_in_queue_command_from_filters(filters)
     export_command = _priced_in_queue_command_from_filters(filters, all_rows=True)
     mode = str(scan_scope.get("mode") or "full_scan")
-    stocks_only = bool(filters.get("stocks_only"))
     sample_text = (
         f"The tickers below are rows {start}-{end} from the current ranked page, "
-        f"not the {'stocks-only ' if stocks_only else ''}scan universe of {total} row(s)."
+        "not the "
+        f"{'stocks-only active universe' if stocks_only else 'scan universe'} "
+        f"of {active or total} row(s)."
         if total and returned and returned < total
         else "The visible tickers cover the current filtered result set."
     )
@@ -4180,6 +4205,8 @@ def _priced_in_answer_full_scan_summary(
         "is_all_active_scan": mode == "full_scan",
         "active_securities": active,
         "scanned_rows": scan_total or total,
+        "unscanned_rows": unscanned_rows,
+        "scan_scope_basis": scan_scope_basis,
         "ranked_rows": total,
         "visible_row_start": start,
         "visible_row_end": end,
@@ -4265,8 +4292,9 @@ def _priced_in_answer_scan_scope(queue: Mapping[str, object]) -> dict[str, objec
             filters,
             all_rows=True,
         ),
-        "full_scan_export_command": (
-            "catalyst-radar priced-in-queue --full-scan --all --json"
+        "full_scan_export_command": _priced_in_queue_full_scan_command(
+            stocks_only=stocks_only,
+            all_rows=True,
         ),
     }
 
@@ -4703,6 +4731,7 @@ def _priced_in_answer_next_step(
     preflight: Mapping[str, object],
     top_rows: Sequence[Mapping[str, object]],
     decision_readiness: Mapping[str, object] | None = None,
+    stocks_only: bool = False,
 ) -> tuple[str, str | None]:
     recommended_gap = _mapping_value(decision_readiness or {}, "recommended_gap")
     recommended_action = str(recommended_gap.get("next_action") or "").strip()
@@ -4719,12 +4748,14 @@ def _priced_in_answer_next_step(
     if answer_status in {"blocked", "research_only"} and plan_action:
         return plan_action, plan_command or None
     if answer_status == "decision_ready":
+        scope_label = "stocks-only full scan" if stocks_only else "full-market scan"
+        stocks_flag = " --stocks-only" if stocks_only else ""
         return (
             (
-                "Review the full-market scan; decision-ready tickers are a "
+                f"Review the {scope_label}; decision-ready tickers are a "
                 "filtered subset, not the scan universe."
             ),
-            "catalyst-radar priced-in-queue --full-scan --limit 50",
+            f"catalyst-radar priced-in-queue{stocks_flag} --full-scan --limit 50",
         )
     for row in top_rows:
         next_step = str(row.get("next_step") or "").strip()

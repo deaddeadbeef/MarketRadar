@@ -2204,6 +2204,13 @@ def test_priced_in_answer_uses_stock_scope_for_market_bar_coverage(
     )
 
     assert "market_bars 1/2 (1 missing)" in payload["source_coverage"]["summary"]
+    assert payload["full_scan"]["active_securities"] == 2
+    assert payload["full_scan"]["scanned_rows"] == 1
+    assert payload["full_scan"]["unscanned_rows"] == 1
+    assert payload["full_scan"]["scan_scope_basis"] == "stock_like_active_as_of_bars"
+    assert payload["scan_scope"]["full_scan_export_command"] == (
+        "catalyst-radar priced-in-queue --stocks-only --full-scan --all --json"
+    )
     market_bar_blockers = [
         row for row in payload["trust_blockers"] if row["area"] == "market_bars"
     ]
