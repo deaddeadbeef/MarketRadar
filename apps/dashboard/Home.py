@@ -2507,6 +2507,7 @@ def _priced_in_full_scan_source_rows(value: object) -> list[dict[str, object]]:
                 "repair_routed_non_company": repair.get(
                     "routed_non_company_gap_rows"
                 ),
+                "repair_prerequisite": repair.get("prerequisite_source"),
                 "repair_next_action": repair.get("next_action"),
             }
         )

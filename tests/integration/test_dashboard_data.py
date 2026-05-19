@@ -1677,6 +1677,18 @@ def test_priced_in_full_scan_audit_payload_consolidates_current_state(
     assert "Local text intelligence stays blocked" in sources["catalyst_events"][
         "repair"
     ]["usefulness_impact"]
+    assert sources["local_text"]["repair"]["schema_version"] == (
+        "priced-in-source-gap-repair-v1"
+    )
+    assert sources["local_text"]["repair"]["source"] == "local_text"
+    assert sources["local_text"]["repair"]["diagnostic_status"] == (
+        "missing_catalyst_events"
+    )
+    assert sources["local_text"]["repair"]["provider_batch_allowed"] is False
+    assert sources["local_text"]["repair"]["prerequisite_source"] == (
+        "catalyst_events"
+    )
+    assert "0 provider calls" in sources["local_text"]["repair"]["write_boundary"]
     assert sources["options"]["gap_count"] >= 1
     assert "decision_useful_gap_rows" in sources["options"]
     assert "research_useful_gap_rows" in sources["options"]
