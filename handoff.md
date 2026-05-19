@@ -1,6 +1,84 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 12:11:49 +08:00
+Last updated: 2026-05-19 12:31:47 +08:00
+
+## Latest Full-Scan Instrument Scope Correction
+
+User-facing problem:
+
+- The dashboard/CLI showed only the current candidate page or one provider batch,
+  which made it look like MarketRadar was scanning only a handful of tickers.
+- The full scan was actually still broad:
+
+  ```text
+  active=12613
+  scanned=12087
+  ranked=12087
+  visible_page=1..50 by default
+  ```
+
+- The confusing part was evidence routing. SEC company filings apply to
+  operating-company rows, not every active market instrument. ETF/fund/wrapper
+  rows must stay in the full scan, but they need fund, underlying, theme, or
+  flow evidence instead of operating-company SEC filings.
+
+Fix in this slice:
+
+- Added `instrument_scope` to the priced-in queue and full-scan audit payloads.
+- The scope classifies every ranked full-scan row by security metadata type and
+  exposes:
+  - `company_like_rows`
+  - `non_company_rows`
+  - `unknown_type_rows`
+  - `type_counts`
+  - `sec_catalyst_applicability`
+- CLI `priced-in-audit` and `priced-in-queue` now print the instrument scope,
+  including the SEC applicability boundary.
+- TUI overview now includes a human-readable `Instrument scope:` line so the
+  operator can see that visible tickers are only a page, not the scan universe.
+
+Current live zero-call observation after the change:
+
+```text
+priced_in_audit status=attention active=12613 scanned=12087 ranked=12087 research=10 decision=0 external_calls=0
+instrument_scope=rows=12087 company_like=5521 non_company=6566 unknown=0 types=ADRC:370,CS:5151,ETF:4987,ETN:49,ETS:106,ETV:85,FUND:337,PFD:412,RIGHT:52,SP:150,UNIT:100,WARRANT:288
+sec_catalyst_applicability=applicable=5521 non_applicable=6566 unknown=0
+```
+
+Important interpretation:
+
+- This is still a full-market scan, not a watchlist scan.
+- The visible table is just a page through the ranked scan.
+- SEC catalyst coverage should be filled for the `5521` company-like rows.
+- The `6566` ETF/fund/wrapper rows need a separate non-company evidence route.
+- Current status remains `attention` / research-only: the system is not yet
+  decision-useful.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_answer_payload_summarizes_current_scan tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_payload_consolidates_current_state tests\integration\test_dashboard_data.py::test_priced_in_queue_payload_reports_full_scan_instrument_scope tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_classifies_non_company_cik_gaps tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_audit_cli_outputs_full_scan_audit tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_snapshot_cli_outputs_dashboard_command_center_json tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_tui_once_can_show_full_scan_mode tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_batch_command_explains_non_company_cik_gaps -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-audit
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page overview
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-queue --full-scan --limit 1
+```
+
+Observed:
+
+- Focused integration pass passed (`8 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+- Live CLI/TUI smokes made `0` provider calls.
+
+Next useful product action:
+
+- Implement the non-company evidence route so ETF/fund/wrapper rows can be
+  evaluated through underlying/theme/fund-flow evidence instead of being blocked
+  behind SEC company filings.
+- Continue capped SEC catalyst batches only for company-like rows when the SEC
+  call budget is intentional.
 
 ## Latest SEC CIK Diagnostic Correction
 

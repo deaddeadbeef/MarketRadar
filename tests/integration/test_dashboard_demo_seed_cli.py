@@ -774,6 +774,7 @@ def test_dashboard_tui_once_can_show_full_scan_mode(
     assert "Trade safe:" in output.out
     assert "Full-market priced-in queue - showing" in output.out
     assert "Full scan audit:" in output.out
+    assert "Instrument scope:" in output.out
     assert "Decision readiness:" in output.out
     assert "Data gaps" in output.out
     assert "Next data step:" in output.out
@@ -1650,6 +1651,8 @@ def test_priced_in_audit_cli_outputs_full_scan_audit(
     )
     assert "market_bars=status=" in output.out
     assert "source_coverage=ready=" in output.out
+    assert "instrument_scope=rows=" in output.out
+    assert "sec_catalyst_applicability=applicable=" in output.out
     assert "sources:" in output.out
     assert "- options status=" in output.out
     assert "commands:" in output.out
@@ -1661,6 +1664,9 @@ def test_priced_in_audit_cli_outputs_full_scan_audit(
     assert payload["external_calls_made"] == 0
     assert payload["scope"]["mode"] == "full_scan"
     assert payload["source_coverage"]["source_count"] == 6
+    assert payload["instrument_scope"]["schema_version"] == (
+        "priced-in-instrument-scope-v1"
+    )
 
 
 def test_candidate_detail_cli_outputs_priced_in_evidence_brief(

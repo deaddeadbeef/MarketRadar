@@ -88,6 +88,12 @@ PRICED_IN_OPTIONAL_CONTEXT_SOURCES = frozenset(
     {"options", "theme_peer_sector", "broker_context"}
 )
 PRICED_IN_LOCAL_BATCH_MAX_TICKERS = 50
+PRICED_IN_COMPANY_LIKE_SECURITY_TYPES = frozenset({"CS", "ADRC"})
+PRICED_IN_FUND_LIKE_SECURITY_TYPES = frozenset({"ETF", "ETN", "ETS", "ETV", "FUND"})
+PRICED_IN_WRAPPER_SECURITY_TYPES = frozenset({"WARRANT", "RIGHT", "UNIT", "PFD", "SP"})
+PRICED_IN_NON_COMPANY_SECURITY_TYPES = (
+    PRICED_IN_FUND_LIKE_SECURITY_TYPES | PRICED_IN_WRAPPER_SECURITY_TYPES
+)
 _ARTIFACT_CUTOFF_UNSET = object()
 PRICED_IN_SOURCE_ALIASES = {
     "bars": "market_bars",
@@ -813,6 +819,7 @@ def priced_in_queue_payload(
         rows,
         source_coverage,
     )
+    instrument_scope = _priced_in_instrument_scope_payload(engine, rows)
     status_counts = dict(Counter(str(row.get("priced_in_status") or "unknown") for row in rows))
     scan_status = _priced_in_scan_status(discovery)
     if scan_selection_mode == "previous_useful_scan":
@@ -875,6 +882,7 @@ def priced_in_queue_payload(
         "usefulness_counts": _priced_in_usefulness_counts(rows),
         "decision_gap_counts": _priced_in_decision_gap_counts(rows),
         "source_coverage": source_coverage,
+        "instrument_scope": instrument_scope,
         "rows": page_rows,
     }
 
@@ -1747,6 +1755,7 @@ def priced_in_full_scan_audit_payload(
         resolved_preflight = priced_in_preflight_payload(engine, config)
     full_scan = _priced_in_answer_full_scan_summary(resolved_queue)
     source_coverage = _mapping_value(resolved_queue, "source_coverage")
+    instrument_scope = _mapping_value(resolved_queue, "instrument_scope")
     source_rows = [
         _priced_in_audit_source_row(row)
         for row in _sequence_value(source_coverage.get("actions"))
@@ -1819,6 +1828,7 @@ def priced_in_full_scan_audit_payload(
             ),
             "source_count": len(source_rows),
         },
+        "instrument_scope": instrument_scope,
         "sources": source_rows,
         "evidence_plan": _row_dict(_mapping_value(resolved_preflight, "evidence_plan")),
         "next_action": next_action,
@@ -8359,6 +8369,102 @@ def _security_metadata_by_ticker(
     return rows
 
 
+def _priced_in_instrument_scope_payload(
+    engine: Engine,
+    rows: Sequence[Mapping[str, object]],
+) -> dict[str, object]:
+    tickers: list[str] = []
+    seen: set[str] = set()
+    for row in rows:
+        ticker = _priced_in_action_ticker(row)
+        if not ticker or ticker in seen:
+            continue
+        seen.add(ticker)
+        tickers.append(ticker)
+    security_meta = _security_metadata_by_ticker(engine, tickers)
+    type_counts: dict[str, int] = {}
+    company_like: list[str] = []
+    non_company: list[str] = []
+    unknown_type: list[str] = []
+    for ticker in tickers:
+        security_type = _security_type_for_scope(security_meta.get(ticker))
+        type_counts[security_type] = type_counts.get(security_type, 0) + 1
+        if _is_sec_company_like_type(security_type):
+            company_like.append(ticker)
+        elif security_type == "UNKNOWN":
+            unknown_type.append(ticker)
+        else:
+            non_company.append(ticker)
+    row_count = len(tickers)
+    sec_scope = {
+        "schema_version": "priced-in-sec-catalyst-applicability-v1",
+        "applicable_rows": len(company_like),
+        "non_applicable_rows": len(non_company),
+        "unknown_type_rows": len(unknown_type),
+        "explanation": (
+            "SEC company filings apply to operating-company rows. ETF, ETN, "
+            "fund, right, warrant, and other wrapper rows stay in the full scan "
+            "but need fund, underlying, theme, or flow evidence instead."
+        ),
+        "next_action": _instrument_scope_next_action(
+            company_like_count=len(company_like),
+            non_company_count=len(non_company),
+            unknown_count=len(unknown_type),
+        ),
+    }
+    return {
+        "schema_version": "priced-in-instrument-scope-v1",
+        "row_count": row_count,
+        "company_like_rows": len(company_like),
+        "non_company_rows": len(non_company),
+        "unknown_type_rows": len(unknown_type),
+        "type_counts": dict(sorted(type_counts.items())),
+        "sample_company_like_tickers": _sample_tickers(company_like),
+        "sample_non_company_tickers": _sample_tickers(non_company),
+        "sample_unknown_type_tickers": _sample_tickers(unknown_type),
+        "sec_catalyst_applicability": sec_scope,
+        "explanation": (
+            "The priced-in queue is still the full ranked universe. Instrument "
+            "scope only explains which evidence route applies to each ticker."
+        ),
+    }
+
+
+def _security_type_for_scope(row: Mapping[str, object] | None) -> str:
+    metadata = _mapping_value(row, "metadata")
+    security_type = str(metadata.get("type") or "").strip().upper()
+    if not security_type:
+        return "UNKNOWN"
+    return security_type
+
+
+def _instrument_scope_next_action(
+    *,
+    company_like_count: int,
+    non_company_count: int,
+    unknown_count: int,
+) -> str:
+    if non_company_count and company_like_count:
+        return (
+            "Keep scanning all tickers, but fill SEC catalysts for company-like "
+            "rows and route ETF/fund/wrapper rows to fund, underlying, theme, or "
+            "flow evidence."
+        )
+    if non_company_count:
+        return (
+            "Keep these rows in the full scan, but do not wait on SEC company "
+            "filings; use fund, underlying, theme, or flow evidence."
+        )
+    if unknown_count:
+        return (
+            "Classify unknown instrument types before deciding whether SEC company "
+            "filings or a non-company evidence route applies."
+        )
+    if company_like_count:
+        return "SEC company catalyst evidence applies to this scan scope."
+    return "No priced-in rows are available to classify."
+
+
 def _missing_cik_breakdown(
     tickers: Sequence[str],
     *,
@@ -8390,7 +8496,7 @@ def _missing_cik_breakdown(
 
 
 def _is_sec_company_like_type(security_type: str) -> bool:
-    return str(security_type).strip().upper() in {"CS", "ADRC"}
+    return str(security_type).strip().upper() in PRICED_IN_COMPANY_LIKE_SECURITY_TYPES
 
 
 def _missing_cik_breakdown_can_refresh(breakdown: Mapping[str, object]) -> bool:
