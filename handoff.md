@@ -1,6 +1,6 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 15:36:13 +08:00
+Last updated: 2026-05-19 15:40:40 +08:00
 
 ## Latest Web Dashboard Full-Scan Panel
 
@@ -44,11 +44,16 @@ Observed:
 - `git diff --check` passed.
 - A broader `tests\integration\test_dashboard_entrypoint.py` run exceeded a
   4-minute timeout in this environment, so do not record it as passing.
+- PR #321 merged as `054d2d3`.
+- Post-merge local services restarted successfully:
+  - API health returned `commit=054d2d3d72ac`.
+  - Streamlit health returned `ok`.
+- Browser verification on `http://127.0.0.1:8514` showed **Priced-in Full Scan**
+  in the Overview tab, after **Market Radar Usefulness** and before
+  **Operator Work Queue**, with the **Priced-in Source Gaps** table visible.
 
 Next useful product action:
 
-- After merge, restart local services and visually verify the Streamlit
-  dashboard shows the new **Priced-in Full Scan** section.
 - Actual source-fill execution still requires explicit user approval because
   it can call SEC/Schwab/market providers.
 
