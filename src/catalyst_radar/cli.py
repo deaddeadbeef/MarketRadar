@@ -4074,8 +4074,17 @@ def _print_priced_in_audit(payload: Mapping[str, object]) -> None:
             f"status={row.get('status')} "
             f"coverage={row.get('available')}/{row.get('row_count')} "
             f"gap_rows={row.get('gap_count')} "
+            f"decision={row.get('decision_useful_gap_rows', 0)} "
+            f"research={row.get('research_useful_gap_rows', 0)} "
+            f"actionable={row.get('actionable_gap_rows', 0)} "
             f"next={_compact_cli_text(row.get('next_action'))}"
         )
+        samples = row.get("priority_sample_tickers")
+        if isinstance(samples, list | tuple) and samples:
+            print(
+                "  priority_examples="
+                f"{','.join(str(ticker) for ticker in samples)}"
+            )
     commands = payload.get("commands")
     if isinstance(commands, Mapping):
         print("commands:")

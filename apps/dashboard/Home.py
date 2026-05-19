@@ -2215,12 +2215,17 @@ def _priced_in_full_scan_source_rows(value: object) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     for row in _records(value):
         samples = _list_text(row.get("sample_tickers"))
+        priority_samples = _list_text(row.get("priority_sample_tickers"))
         rows.append(
             {
                 "source": row.get("source"),
                 "status": row.get("status"),
+                "decision_useful": row.get("decision_useful_gap_rows"),
+                "research_useful": row.get("research_useful_gap_rows"),
+                "actionable": row.get("actionable_gap_rows"),
                 "coverage_pct": row.get("coverage_pct"),
                 "gap_count": row.get("gap_count"),
+                "priority_examples": priority_samples,
                 "examples": samples,
                 "next_action": row.get("next_action"),
                 "command": row.get("command"),
@@ -2229,7 +2234,10 @@ def _priced_in_full_scan_source_rows(value: object) -> list[dict[str, object]]:
     return sorted(
         rows,
         key=lambda row: (
-            1 if int(_metric_number(row.get("gap_count"))) <= 0 else 0,
+            -int(_metric_number(row.get("decision_useful"))),
+            -int(_metric_number(row.get("actionable"))),
+            -int(_metric_number(row.get("research_useful"))),
+            -int(_metric_number(row.get("gap_count"))),
             str(row.get("source") or ""),
         ),
     )

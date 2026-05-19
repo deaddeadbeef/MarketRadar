@@ -1795,7 +1795,7 @@ def priced_in_full_scan_audit_payload(
             offset=resolved_preview_offset,
             available_at=available_at,
             status="all",
-            include_planning_rows=bool(wanted_source_gaps),
+            include_planning_rows=True,
         )
     )
     resolved_preflight = (
@@ -1848,11 +1848,21 @@ def priced_in_full_scan_audit_payload(
     )
     source_coverage = _mapping_value(resolved_queue, "source_coverage")
     instrument_scope = _mapping_value(resolved_queue, "instrument_scope")
-    source_rows = [
-        _priced_in_audit_source_row(row)
-        for row in _sequence_value(source_coverage.get("actions"))
-        if isinstance(row, Mapping)
-    ]
+    planning_rows = _sequence_value(resolved_queue.get("planning_rows"))
+    if not planning_rows:
+        planning_rows = _sequence_value(resolved_queue.get("rows"))
+    priority_counts = _priced_in_source_gap_priority_counts(planning_rows)
+    source_rows = []
+    for row in _sequence_value(source_coverage.get("actions")):
+        if not isinstance(row, Mapping):
+            continue
+        source = str(row.get("source") or "").strip()
+        source_rows.append(
+            _priced_in_audit_source_row(
+                row,
+                priority_counts=priority_counts.get(source),
+            )
+        )
     source_gap_actions = _priced_in_audit_source_gap_actions(
         engine,
         config,
@@ -2284,7 +2294,12 @@ def _priced_in_audit_market_bars(
     }
 
 
-def _priced_in_audit_source_row(action: Mapping[str, object]) -> dict[str, object]:
+def _priced_in_audit_source_row(
+    action: Mapping[str, object],
+    *,
+    priority_counts: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    priority = _row_dict(priority_counts or {})
     return {
         "source": action.get("source"),
         "status": action.get("status"),
@@ -2293,6 +2308,16 @@ def _priced_in_audit_source_row(action: Mapping[str, object]) -> dict[str, objec
         "gap_count": int(_finite_float(action.get("gap_count"))),
         "coverage_pct": action.get("coverage_pct"),
         "sample_tickers": list(_sequence_value(action.get("sample_tickers"))),
+        "decision_useful_gap_rows": int(
+            _finite_float(priority.get("decision_useful_gap_rows"))
+        ),
+        "research_useful_gap_rows": int(
+            _finite_float(priority.get("research_useful_gap_rows"))
+        ),
+        "actionable_gap_rows": int(_finite_float(priority.get("actionable_gap_rows"))),
+        "priority_sample_tickers": list(
+            _sequence_value(priority.get("priority_sample_tickers"))
+        ),
         "next_action": action.get("next_action"),
         "command": action.get("batch_plan_command") or action.get("command"),
     }
