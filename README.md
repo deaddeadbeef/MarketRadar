@@ -263,6 +263,12 @@ For a zero-call local sitrep:
 powershell -ExecutionPolicy Bypass -File scripts/market-radar-status.ps1
 ```
 
+For the faster "what blocks the stock scan right now?" view:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/market-radar-status.ps1 -Quick
+```
+
 This reads local API health, readiness, latest run, live activation, recent
 ops health, telemetry, and telemetry coverage. The readiness payload includes
 `operator_next_step`, the canonical zero-call next action for the dashboard and
@@ -272,6 +278,8 @@ bar on the latest daily-bar date and which active tickers are still missing
 latest bars. It also reports coverage for the latest run's `as_of` date, which
 is the date the manual template must satisfy before the run can become
 decision-useful. It makes 0 Polygon, SEC, Schwab, or OpenAI calls.
+Quick mode limits the output to health, readiness, the stock-like market-bar
+repair plan, and any local manual-bar template preview.
 
 For functional end-to-end tests of the same command-center data the dashboard
 renders:
