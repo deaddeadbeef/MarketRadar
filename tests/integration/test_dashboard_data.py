@@ -1650,6 +1650,20 @@ def test_priced_in_queue_payload_reports_full_scan_instrument_scope(
     assert sec_scope["non_applicable_rows"] == 1
     assert "stay in the full scan" in sec_scope["explanation"]
     assert "route ETF/fund/wrapper rows" in sec_scope["next_action"]
+    catalyst = payload["source_coverage"]["sources"]["catalyst_events"]
+    assert catalyst["row_count"] == 1
+    assert catalyst["available"] == 1
+    assert catalyst["missing"] == 0
+    assert catalyst["routed_non_company_gap_rows"] == 1
+    assert catalyst["applicability"]["applicable_rows"] == 1
+    assert catalyst["applicability"]["non_applicable_rows"] == 1
+    assert catalyst["applicability"]["non_applicable_gap_rows"] == 1
+    actions = {row["source"]: row for row in payload["source_coverage"]["actions"]}
+    assert actions["catalyst_events"]["status"] == "ready"
+    assert actions["catalyst_events"]["routed_non_company_gap_rows"] == 1
+    assert "Routed ETF/fund/wrapper rows" in (
+        actions["catalyst_events"]["external_call_boundary"]
+    )
 
 
 def test_priced_in_answer_blocks_selected_universe_even_with_ready_rows(
@@ -2405,14 +2419,18 @@ def test_priced_in_source_gap_batches_payload_classifies_non_company_cik_gaps(
     )
 
     diagnostic = payload["diagnostic"]
-    assert payload["status"] == "blocked"
-    assert diagnostic["blocked_reason"] == "missing_cik"
-    assert diagnostic["missing_cik_type_counts"] == {"ETF": 1}
+    assert payload["status"] == "routed"
+    assert payload["plannable_gap_rows"] == 0
+    assert payload["routed_gap_rows"] == 1
+    assert diagnostic["status"] == "routed"
+    assert diagnostic["blocked_reason"] is None
+    assert diagnostic["missing_cik_type_counts"] == {}
     assert diagnostic["missing_cik_company_like_rows"] == 0
-    assert diagnostic["missing_cik_non_company_rows"] == 1
-    assert diagnostic["sample_non_company_missing_cik_tickers"] == ["AAPL"]
-    assert "non-company instruments" in diagnostic["reason"]
-    assert "Do not expect SEC company-tickers refresh" in diagnostic["next_action"]
+    assert diagnostic["missing_cik_non_company_rows"] == 0
+    assert diagnostic["routed_non_company_rows"] == 1
+    assert diagnostic["sample_routed_non_company_tickers"] == ["AAPL"]
+    assert "routed away from SEC company filing batches" in diagnostic["reason"]
+    assert "fund, underlying, theme" in diagnostic["next_action"]
     assert diagnostic["fix_command"] is None
     assert diagnostic["fix_api"] is None
 

@@ -813,13 +813,18 @@ def priced_in_queue_payload(
     resolved_limit = _positive_limit(limit)
     resolved_offset = _positive_offset(offset)
     page_rows = rows[resolved_offset : resolved_offset + resolved_limit]
+    instrument_scope = _priced_in_instrument_scope_payload(engine, rows)
     source_coverage = priced_in_source_coverage_summary(rows)
+    source_coverage = _priced_in_source_coverage_with_instrument_routes(
+        engine,
+        rows,
+        source_coverage,
+    )
     source_coverage = _priced_in_source_coverage_with_option_diagnostic(
         engine,
         rows,
         source_coverage,
     )
-    instrument_scope = _priced_in_instrument_scope_payload(engine, rows)
     status_counts = dict(Counter(str(row.get("priced_in_status") or "unknown") for row in rows))
     scan_status = _priced_in_scan_status(discovery)
     if scan_selection_mode == "previous_useful_scan":
@@ -1011,6 +1016,11 @@ def priced_in_source_gap_batches_payload(
         if batchable and tickers
         else "no_gaps"
         if not all_gap_tickers
+        else "routed"
+        if (
+            source_name == "catalyst_events"
+            and str(diagnostic.get("status") or "") == "routed"
+        )
         else "blocked"
         if batchable
         else "not_batchable"
@@ -1021,7 +1031,7 @@ def priced_in_source_gap_batches_payload(
         total_gap_rows=len(all_gap_tickers),
         plannable_gap_rows=len(tickers),
     )
-    if status_value == "blocked":
+    if status_value in {"blocked", "routed"}:
         diagnostic_action = str(diagnostic.get("next_action") or "").strip()
         if diagnostic_action:
             next_action = diagnostic_action
@@ -1077,6 +1087,7 @@ def priced_in_source_gap_batches_payload(
         "total_gap_rows": len(all_gap_tickers),
         "plannable_gap_rows": len(tickers),
         "unplannable_gap_rows": max(0, len(all_gap_tickers) - len(tickers)),
+        "routed_gap_rows": int(_finite_float(diagnostic.get("routed_non_company_rows"))),
         "diagnostic": diagnostic,
         "batch_size": resolved_batch_size,
         "batch_count": batch_count,
@@ -1292,6 +1303,7 @@ def _priced_in_all_source_batch_row(
         "total_gap_rows": int(_finite_float(plan.get("total_gap_rows"))),
         "plannable_gap_rows": int(_finite_float(plan.get("plannable_gap_rows"))),
         "unplannable_gap_rows": int(_finite_float(plan.get("unplannable_gap_rows"))),
+        "routed_gap_rows": int(_finite_float(plan.get("routed_gap_rows"))),
         "decision_useful_gap_rows": int(
             _finite_float(priority.get("decision_useful_gap_rows"))
         ),
@@ -2829,6 +2841,82 @@ def _priced_in_source_coverage_with_option_diagnostic(
         updated_actions.append(action_row)
     updated["actions"] = updated_actions
     return updated
+
+
+def _priced_in_source_coverage_with_instrument_routes(
+    engine: Engine,
+    rows: Sequence[Mapping[str, object]],
+    source_coverage: Mapping[str, object],
+) -> dict[str, object]:
+    applicability = _catalyst_event_applicability_payload(engine, rows)
+    if not applicability:
+        return _row_dict(source_coverage)
+    updated = _row_dict(source_coverage)
+    source_rows = {
+        str(source): _row_dict(values)
+        for source, values in _mapping_value(updated, "sources").items()
+        if isinstance(values, Mapping)
+    }
+    catalyst = source_rows.get("catalyst_events")
+    if catalyst is None:
+        return updated
+    catalyst = {
+        **catalyst,
+        "raw_row_count": catalyst.get("row_count"),
+        "raw_available": catalyst.get("available"),
+        "raw_stale": catalyst.get("stale"),
+        "raw_missing": catalyst.get("missing"),
+        "available": applicability.get("applicable_available"),
+        "stale": applicability.get("applicable_stale"),
+        "missing": applicability.get("applicable_missing"),
+        "row_count": applicability.get("applicable_rows"),
+        "coverage_pct": _source_coverage_pct(
+            available=int(_finite_float(applicability.get("applicable_available"))),
+            stale=int(_finite_float(applicability.get("applicable_stale"))),
+            missing=int(_finite_float(applicability.get("applicable_missing"))),
+        ),
+        "sample_tickers": list(
+            _sequence_value(applicability.get("sample_applicable_gap_tickers"))
+        ),
+        "applicability": applicability,
+        "non_applicable_rows": applicability.get("non_applicable_rows"),
+        "routed_non_company_gap_rows": applicability.get(
+            "non_applicable_gap_rows"
+        ),
+    }
+    source_rows["catalyst_events"] = catalyst
+    row_count = int(_finite_float(updated.get("row_count")))
+    updated["sources"] = source_rows
+    updated["weak_sources"] = _priced_in_source_coverage_weak_sources(source_rows)
+    updated["actions"] = _priced_in_source_action_rows(source_rows, row_count)
+    updated["summary"] = _priced_in_source_coverage_summary_text(source_rows, row_count)
+    return updated
+
+
+def _source_coverage_pct(*, available: int, stale: int, missing: int) -> float:
+    denominator = max(available + stale + missing, 0)
+    return round((available / denominator) * 100, 1) if denominator else 0.0
+
+
+def _priced_in_source_coverage_weak_sources(
+    source_rows: Mapping[str, Mapping[str, object]],
+) -> list[str]:
+    return [
+        source
+        for source, _values in sorted(
+            source_rows.items(),
+            key=lambda item: (
+                float(_finite_float(item[1].get("coverage_pct"))),
+                -int(_finite_float(item[1].get("stale")))
+                - int(_finite_float(item[1].get("missing"))),
+                PRICED_IN_SOURCE_CLASSES.index(item[0])
+                if item[0] in PRICED_IN_SOURCE_CLASSES
+                else len(PRICED_IN_SOURCE_CLASSES),
+            ),
+        )
+        if int(_finite_float(_values.get("row_count"))) > 0
+        and float(_finite_float(_values.get("coverage_pct"))) < 100.0
+    ][:3]
 
 
 def _priced_in_option_gap_diagnostic(
@@ -7771,12 +7859,16 @@ def _priced_in_source_coverage_summary_text(
         available = int(_finite_float(values.get("available")))
         stale = int(_finite_float(values.get("stale")))
         missing = int(_finite_float(values.get("missing")))
-        detail = f"{source} {available}/{row_count}"
+        denominator = int(_finite_float(values.get("row_count"))) or row_count
+        detail = f"{source} {available}/{denominator}"
         extras = []
         if stale:
             extras.append(f"{stale} stale")
         if missing:
             extras.append(f"{missing} missing")
+        routed = int(_finite_float(values.get("routed_non_company_gap_rows")))
+        if routed:
+            extras.append(f"{routed} non-company routed")
         if extras:
             detail = f"{detail} ({', '.join(extras)})"
         parts.append(detail)
@@ -7993,6 +8085,7 @@ def _priced_in_source_action_row(
     available = int(_finite_float(values.get("available")))
     stale = int(_finite_float(values.get("stale")))
     missing = int(_finite_float(values.get("missing")))
+    source_row_count = int(_finite_float(values.get("row_count"))) or row_count
     coverage_pct = round(float(_finite_float(values.get("coverage_pct"))), 1)
     sample_tickers = [
         str(ticker).strip().upper()
@@ -8000,15 +8093,22 @@ def _priced_in_source_action_row(
         if str(ticker).strip()
     ][:PRICED_IN_SOURCE_ACTION_TICKER_LIMIT]
     gap_count = stale + missing
-    if row_count <= 0:
+    if source_row_count <= 0:
         status = "not_applicable"
-    elif available == row_count and stale == 0 and missing == 0:
+    elif available == source_row_count and stale == 0 and missing == 0:
         status = "ready"
     elif available > 0 or stale > 0:
         status = "partial"
     else:
         status = "missing"
     guidance = _priced_in_source_guidance(source, status)
+    applicability = _row_dict(_mapping_value(values, "applicability"))
+    if source == "catalyst_events" and applicability:
+        guidance = _priced_in_catalyst_guidance_with_applicability(
+            guidance,
+            applicability,
+            status=status,
+        )
     if status not in {"ready", "not_applicable"} and sample_tickers:
         ticker_guidance = _priced_in_source_guidance_for_tickers(
             source,
@@ -8054,7 +8154,10 @@ def _priced_in_source_action_row(
         "stale": stale,
         "missing": missing,
         "gap_count": gap_count,
-        "row_count": row_count,
+        "row_count": source_row_count,
+        "raw_row_count": values.get("raw_row_count"),
+        "routed_non_company_gap_rows": values.get("routed_non_company_gap_rows"),
+        "applicability": applicability,
         "coverage_pct": coverage_pct,
         "sample_tickers": sample_tickers,
         "sample_scope": _priced_in_source_sample_scope(
@@ -8101,6 +8204,40 @@ def _priced_in_source_sample_scope(
         "in the current filtered scan; use full_scan_gap_review_command to page "
         "through the full scan."
     )
+
+
+def _priced_in_catalyst_guidance_with_applicability(
+    guidance: Mapping[str, object],
+    applicability: Mapping[str, object],
+    *,
+    status: str,
+) -> dict[str, object]:
+    updated = dict(guidance)
+    routed = int(_finite_float(applicability.get("non_applicable_gap_rows")))
+    applicable_gap = int(_finite_float(applicability.get("applicable_gap_rows")))
+    if routed:
+        if applicable_gap:
+            updated["next_action"] = (
+                "Fill SEC catalyst events for company-like rows; route "
+                "ETF/fund/wrapper rows to underlying, theme, fund-flow, or "
+                "similar non-company evidence."
+            )
+        else:
+            updated["next_action"] = (
+                "No SEC company-event batch is needed for the routed "
+                "non-company rows; use underlying, theme, fund-flow, or "
+                "similar evidence instead."
+            )
+        updated["external_call_boundary"] = (
+            "SEC catalyst batches are only for company-like or unknown-type "
+            "rows. Routed ETF/fund/wrapper rows make no SEC company-filing calls."
+        )
+    if status == "ready" and routed:
+        updated["meaning"] = (
+            "SEC catalyst coverage is ready for applicable company rows; "
+            "non-company instruments use a separate evidence route."
+        )
+    return updated
 
 
 def _priced_in_source_guidance_for_tickers(
@@ -8195,16 +8332,30 @@ def _priced_in_source_plannable_rows(
             "blocked_rows": 0,
         }
     if source_name == "catalyst_events":
-        tickers = [
+        raw_tickers = [
             str(row.get("ticker") or "").strip().upper()
             for row in rows
             if str(row.get("ticker") or "").strip()
         ]
+        security_meta = _security_metadata_by_ticker(engine, raw_tickers)
+        sec_rows: list[Mapping[str, object]] = []
+        routed_rows: list[Mapping[str, object]] = []
+        for row in rows:
+            ticker = str(row.get("ticker") or "").strip().upper()
+            security_type = _security_type_for_scope(security_meta.get(ticker))
+            if _is_non_company_instrument_type(security_type):
+                routed_rows.append(row)
+            else:
+                sec_rows.append(row)
+        tickers = [
+            str(row.get("ticker") or "").strip().upper()
+            for row in sec_rows
+            if str(row.get("ticker") or "").strip()
+        ]
         cik_by_ticker = _security_cik_by_ticker(engine, tickers)
-        security_meta = _security_metadata_by_ticker(engine, tickers)
         eligible = [
             row
-            for row in rows
+            for row in sec_rows
             if str(row.get("ticker") or "").strip().upper() in cik_by_ticker
         ]
         missing_cik = [
@@ -8214,20 +8365,54 @@ def _priced_in_source_plannable_rows(
             missing_cik,
             security_meta=security_meta,
         )
+        routed_tickers = [
+            str(row.get("ticker") or "").strip().upper()
+            for row in routed_rows
+            if str(row.get("ticker") or "").strip()
+        ]
+        routed_payload = {
+            "routed_non_company_rows": len(routed_rows),
+            "sample_routed_non_company_tickers": _sample_tickers(routed_tickers),
+            "non_company_evidence_route": (
+                "Use fund, underlying, theme, sector, flow, or constituent evidence "
+                "instead of SEC company filing batches."
+            )
+            if routed_rows
+            else None,
+        }
+        diagnostic_status = (
+            "eligible"
+            if eligible
+            else "blocked"
+            if missing_cik
+            else "routed"
+            if routed_rows
+            else "blocked"
+        )
         return eligible, {
             "schema_version": "priced-in-source-batch-diagnostic-v1",
-            "status": "eligible" if eligible else "blocked",
+            "status": diagnostic_status,
             "reason": _missing_cik_reason(missing_breakdown)
             if missing_cik
-            else "SEC event batches can be planned for these CIK-backed rows.",
+            else (
+                "Non-company instruments are routed away from SEC company filing "
+                "batches."
+                if routed_rows and not eligible
+                else "SEC event batches can be planned for these CIK-backed rows."
+            ),
             "eligible_rows": len(eligible),
             "blocked_rows": len(missing_cik),
             "blocked_reason": "missing_cik" if missing_cik else None,
             "sample_blocked_tickers": _sample_tickers(missing_cik),
             **missing_breakdown,
+            **routed_payload,
             "next_action": _missing_cik_next_action(missing_breakdown)
             if missing_cik
-            else None,
+            else (
+                routed_payload["non_company_evidence_route"]
+                if routed_rows and not eligible
+                else None
+            ),
             "fix_command": "catalyst-radar ingest-sec company-tickers"
             if _missing_cik_breakdown_can_refresh(missing_breakdown)
             else None,
@@ -8430,12 +8615,99 @@ def _priced_in_instrument_scope_payload(
     }
 
 
+def _catalyst_event_applicability_payload(
+    engine: Engine,
+    rows: Sequence[Mapping[str, object]],
+) -> dict[str, object]:
+    row_list = [row for row in rows if isinstance(row, Mapping)]
+    tickers = [_priced_in_action_ticker(row) for row in row_list]
+    security_meta = _security_metadata_by_ticker(engine, tickers)
+    counters = {
+        "applicable_available": 0,
+        "applicable_stale": 0,
+        "applicable_missing": 0,
+        "non_applicable_available": 0,
+        "non_applicable_stale": 0,
+        "non_applicable_missing": 0,
+        "unknown_type_rows": 0,
+    }
+    applicable_rows = 0
+    non_applicable_rows = 0
+    applicable_gap_tickers: list[str] = []
+    non_applicable_gap_tickers: list[str] = []
+    for row in row_list:
+        ticker = _priced_in_action_ticker(row)
+        security_type = _security_type_for_scope(security_meta.get(ticker))
+        source_status = _priced_in_row_source_status(row, "catalyst_events")
+        if _is_non_company_instrument_type(security_type):
+            non_applicable_rows += 1
+            counters[f"non_applicable_{source_status}"] += 1
+            if source_status != "available":
+                _append_priced_in_action_ticker(non_applicable_gap_tickers, ticker)
+            continue
+        applicable_rows += 1
+        if security_type == "UNKNOWN":
+            counters["unknown_type_rows"] += 1
+        counters[f"applicable_{source_status}"] += 1
+        if source_status != "available":
+            _append_priced_in_action_ticker(applicable_gap_tickers, ticker)
+    return {
+        "schema_version": "priced-in-catalyst-applicability-v1",
+        "applicable_rows": applicable_rows,
+        "non_applicable_rows": non_applicable_rows,
+        "unknown_type_rows": counters["unknown_type_rows"],
+        "applicable_available": counters["applicable_available"],
+        "applicable_stale": counters["applicable_stale"],
+        "applicable_missing": counters["applicable_missing"],
+        "applicable_gap_rows": counters["applicable_stale"]
+        + counters["applicable_missing"],
+        "non_applicable_available": counters["non_applicable_available"],
+        "non_applicable_stale": counters["non_applicable_stale"],
+        "non_applicable_missing": counters["non_applicable_missing"],
+        "non_applicable_gap_rows": counters["non_applicable_stale"]
+        + counters["non_applicable_missing"],
+        "sample_applicable_gap_tickers": applicable_gap_tickers,
+        "sample_non_applicable_gap_tickers": non_applicable_gap_tickers,
+        "route": "sec_company_filings_for_company_like_rows",
+        "non_company_route": "fund_underlying_theme_or_flow_evidence",
+        "explanation": (
+            "SEC company catalyst batches apply only to company-like or "
+            "unknown-type rows. ETF, fund, ETN, right, warrant, and wrapper "
+            "rows stay in the full scan but are routed away from SEC company "
+            "filing batches."
+        ),
+        "next_action": (
+            "Fill SEC catalyst events for company-like rows; route ETF/fund/"
+            "wrapper rows to underlying, theme, fund-flow, or similar "
+            "non-company evidence."
+        ),
+    }
+
+
+def _priced_in_row_source_status(row: Mapping[str, object], source: str) -> str:
+    sources = _priced_in_row_source_payload(row)
+    if source in {str(item) for item in _sequence_value(sources.get("available"))}:
+        return "available"
+    if source in {str(item) for item in _sequence_value(sources.get("stale"))}:
+        return "stale"
+    return "missing"
+
+
 def _security_type_for_scope(row: Mapping[str, object] | None) -> str:
     metadata = _mapping_value(row, "metadata")
     security_type = str(metadata.get("type") or "").strip().upper()
     if not security_type:
         return "UNKNOWN"
     return security_type
+
+
+def _is_non_company_instrument_type(security_type: str) -> bool:
+    normalized = str(security_type).strip().upper()
+    return bool(
+        normalized
+        and normalized != "UNKNOWN"
+        and not _is_sec_company_like_type(normalized)
+    )
 
 
 def _instrument_scope_next_action(

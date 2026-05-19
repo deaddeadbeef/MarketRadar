@@ -1,6 +1,76 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 12:31:47 +08:00
+Last updated: 2026-05-19 12:52:14 +08:00
+
+## Latest Non-Company Catalyst Route Correction
+
+Current problem:
+
+- After instrument scope was added, MarketRadar could explain that the full scan
+  contained both operating companies and non-company instruments.
+- But `catalyst_events` planning still treated ETF/fund/wrapper rows as if they
+  belonged in SEC company filing batches whenever those rows had a catalyst gap.
+- That was still misleading for the user goal. Full scan must remain broad, but
+  SEC company filing calls must not be planned for non-company instruments.
+
+Fix in this slice:
+
+- `catalyst_events` source coverage is now instrument-aware:
+  - company-like/unknown rows remain SEC-catalyst applicable;
+  - ETF/fund/ETN/right/warrant/wrapper rows are routed to non-company evidence;
+  - source coverage summary prints routed non-company rows separately.
+- `priced-in-source-batches --source catalyst_events` now plans SEC submission
+  batches only for company-like/unknown rows with CIKs.
+- Non-company source-gap rows are reported as `routed`, not as missing-CIK
+  blockers.
+- CLI/TUI batch summaries now show `routed` counts and route examples.
+
+Current live zero-call observation after the change:
+
+```text
+priced_in_queue source_coverage=market_bars 12087/12087; catalyst_events 9/5521 (5512 missing, 6563 non-company routed); local_text 12/12087 (12075 missing); options 0/12087 (12087 missing); theme_peer_sector 12087/12087; broker_context 5/12087 (12082 missing)
+
+priced_in_source_batches source=catalyst_events status=ready gap_rows=12075 plannable=5510 routed=6563 external_calls=0
+diagnostic=status=eligible eligible=5510 blocked=2 reason=SEC event batches require CIK metadata for each ticker.
+blocked_examples=FRBA,SSBI reason=missing_cik
+non_company_route=routed=6563 examples=ABLVW,DAICW,DFSCW,FGIWW,GIPRW route=Use fund, underlying, theme, sector, flow, or constituent evidence instead of SEC company filing batches.
+```
+
+Important interpretation:
+
+- This is still a full-market scan.
+- SEC catalyst batches now target only the applicable company-like side of the
+  universe.
+- The remaining SEC-specific blocker is small and concrete: `FRBA` and `SSBI`
+  are company-like rows still missing CIK metadata.
+- The non-company route is now explicit, but the actual fund/underlying/flow
+  evidence ingestion path is still the next missing product slice.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_answer_payload_summarizes_current_scan tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_payload_consolidates_current_state tests\integration\test_dashboard_data.py::test_priced_in_queue_payload_reports_full_scan_instrument_scope tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_classifies_non_company_cik_gaps tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_batch_command_explains_non_company_cik_gaps tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_source_batches_cli_prints_non_company_route tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_audit_cli_outputs_full_scan_audit tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_tui_once_can_show_full_scan_mode -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-audit
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source catalyst_events --limit 1
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-queue --full-scan --limit 1
+```
+
+Observed:
+
+- Focused integration pass passed (`8 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+- Live CLI smokes made `0` provider calls.
+
+Next useful product action:
+
+- Build the actual non-company evidence source for ETF/fund/wrapper rows:
+  underlying or constituent context, fund/theme description, sector exposure,
+  flow/volume confirmation, and local text where available.
+- Then update usefulness scoring so non-company rows are judged against that
+  evidence route rather than the company catalyst/local-text path.
 
 ## Latest Full-Scan Instrument Scope Correction
 

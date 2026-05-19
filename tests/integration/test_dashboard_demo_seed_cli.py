@@ -532,20 +532,24 @@ def test_dashboard_batch_command_explains_non_company_cik_gaps(
 
     def fake_payload(_engine, _config, **kwargs) -> dict[str, object]:
         return {
-            "status": "blocked",
+            "status": "routed",
             "source": kwargs["source"],
             "total_gap_rows": 2,
             "plannable_gap_rows": 0,
+            "routed_gap_rows": 2,
             "batch_count": 0,
             "next_action": "Use fund evidence.",
             "diagnostic": {
-                "reason": "SEC event batches require CIK metadata.",
+                "reason": "Non-company instruments are routed.",
                 "next_action": "Use ETF evidence instead.",
-                "sample_blocked_tickers": ["AAA", "BBB"],
-                "missing_cik_type_counts": {"ETF": 2},
+                "sample_blocked_tickers": [],
+                "missing_cik_type_counts": {},
                 "missing_cik_company_like_rows": 0,
-                "missing_cik_non_company_rows": 2,
+                "missing_cik_non_company_rows": 0,
                 "missing_cik_unknown_type_rows": 0,
+                "routed_non_company_rows": 2,
+                "sample_routed_non_company_tickers": ["AAA", "BBB"],
+                "non_company_evidence_route": "Use fund evidence.",
             },
             "batches": [],
         }
@@ -565,11 +569,9 @@ def test_dashboard_batch_command_explains_non_company_cik_gaps(
     )
 
     assert update.page == "ops"
-    assert "Blocked examples: AAA, BBB." in update.message
-    assert (
-        "Missing CIK types: ETF:2; company-like 0, non-company 2, unknown 0."
-        in update.message
-    )
+    assert "Non-company routed: 2." in update.message
+    assert "Examples: AAA, BBB." in update.message
+    assert "Route: Use fund evidence." in update.message
     assert "Use ETF evidence instead." in update.message
 
 
@@ -1247,7 +1249,7 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
     assert "source all is plan-only" in output.err
 
 
-def test_priced_in_source_batches_cli_prints_blocked_source_samples(
+def test_priced_in_source_batches_cli_prints_non_company_route(
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -1259,10 +1261,11 @@ def test_priced_in_source_batches_cli_prints_blocked_source_samples(
         return {
             "schema_version": "priced-in-source-batches-v1",
             "source": "catalyst_events",
-            "status": "blocked",
+            "status": "routed",
             "total_gap_rows": 2,
             "plannable_gap_rows": 0,
             "unplannable_gap_rows": 2,
+            "routed_gap_rows": 2,
             "planned_at": "2026-05-18T16:00:00+00:00",
             "batch_size": 5,
             "count": 0,
@@ -1271,23 +1274,25 @@ def test_priced_in_source_batches_cli_prints_blocked_source_samples(
             "all_batches": False,
             "external_calls_made": 0,
             "headline": "2 full-scan rows have a catalyst_events gap.",
-            "next_action": "Add CIK metadata.",
+            "next_action": "Use fund evidence.",
             "execution_boundary": "Plan only.",
             "diagnostic": {
-                "status": "blocked",
+                "status": "routed",
                 "eligible_rows": 0,
-                "blocked_rows": 2,
-                "blocked_reason": "missing_cik",
-                "reason": "SEC event batches require CIK metadata for each ticker.",
-                "sample_blocked_tickers": ["AAA", "BBB"],
-                "missing_cik_type_counts": {"ETF": 2},
+                "blocked_rows": 0,
+                "blocked_reason": None,
+                "reason": "Non-company instruments are routed.",
+                "sample_blocked_tickers": [],
+                "missing_cik_type_counts": {},
                 "missing_cik_company_like_rows": 0,
-                "missing_cik_non_company_rows": 2,
+                "missing_cik_non_company_rows": 0,
                 "missing_cik_unknown_type_rows": 0,
-                "sample_non_company_missing_cik_tickers": ["AAA", "BBB"],
-                "next_action": "Add CIK metadata for blocked tickers.",
-                "fix_command": "catalyst-radar ingest-sec company-tickers",
-                "fix_api": "POST /api/radar/sec/company-tickers",
+                "routed_non_company_rows": 2,
+                "sample_routed_non_company_tickers": ["AAA", "BBB"],
+                "non_company_evidence_route": "Use fund evidence.",
+                "next_action": "Use fund evidence.",
+                "fix_command": None,
+                "fix_api": None,
             },
             "batches": [],
         }
@@ -1301,14 +1306,11 @@ def test_priced_in_source_batches_cli_prints_blocked_source_samples(
     output = capsys.readouterr()
 
     assert output.err == ""
-    assert "blocked_examples=AAA,BBB reason=missing_cik" in output.out
-    assert "missing_cik_types=ETF:2 company_like=0 non_company=2 unknown=0" in (
+    assert "status=routed" in output.out
+    assert "non_company_route=routed=2 examples=AAA,BBB route=Use fund evidence." in (
         output.out
     )
-    assert "non_company_cik_examples=AAA,BBB" in output.out
-    assert "diagnostic_next=Add CIK metadata for blocked tickers." in output.out
-    assert "diagnostic_command=catalyst-radar ingest-sec company-tickers" in output.out
-    assert "diagnostic_api=POST /api/radar/sec/company-tickers" in output.out
+    assert "diagnostic_next=Use fund evidence." in output.out
 
 
 def test_priced_in_source_batches_execute_next_cli_runs_one_batch(
