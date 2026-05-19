@@ -1,6 +1,6 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 17:14:59 +08:00
+Last updated: 2026-05-19 17:22:03 +08:00
 
 ## Latest Full-Scan All-Rows UX
 
@@ -63,7 +63,7 @@ git diff --check
 .\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-audit --limit 5
 ```
 
-Observed so far:
+Observed:
 
 - Focused four-test set passed (`4 passed`).
 - Ruff passed.
@@ -75,11 +75,28 @@ Observed so far:
 - Live branch audit preview still shows only the selected row page, but now
   prints `all_rows=false` and the row note explicitly says the visible tickers
   are not the full scan universe.
+- PR #333 merged as `c478540`.
+- Post-merge local services were restarted:
+  - API health returned commit `c47854007ba2`;
+  - Streamlit health returned `ok`.
+- Live API verification:
+  - `/api/radar/priced-in/audit?all_rows=true`
+  - returned `api_all_rows=12087/12087`, `all=True`,
+    `external_calls=0`, and command
+    `catalyst-radar priced-in-audit --all`.
+- Browser verification on `http://127.0.0.1:8514`:
+  - **Priced-in Full Scan** rendered **Show all rows**.
+  - Checking **Show all rows** loaded the complete local row set and showed:
+    `Full scan rows: showing all 1-12087 of 12087`.
+  - The dashboard exposed **Download Full Scan Rows JSON**.
 
 Next useful product action:
 
-- Commit, open a PR, merge by rebase, restart local services, verify API and
-  Streamlit health, and run live API/dashboard checks for the new all-rows mode.
+- Actual source-fill execution still requires explicit user approval because it
+  can call SEC/Schwab/market providers.
+- The next zero-call UX improvement would be to make selected source-gap action
+  rows show the first executable provider chunk and clearly label that chunk as
+  a provider batch, not the full scan universe.
 
 ## Latest Selected Source-Gap Action
 
