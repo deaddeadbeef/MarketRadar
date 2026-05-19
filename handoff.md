@@ -1,6 +1,66 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 05:56:53 +08:00
+Last updated: 2026-05-20 06:09:34 +08:00
+
+## Latest Priced-In Answer Stock-Bar Scope Fix
+
+Goal alignment check:
+
+- The live `priced-in-answer --stocks-only` command could still report
+  `market_bars 5521/5521` because it used ranked-row source coverage, even
+  though the stock-like active scope was still `5521/5652` with `131` missing
+  as-of bars.
+- That is directly goal-relevant drift: the main answer surface must not imply
+  the stock scan's market-bar layer is complete when active stock-like rows are
+  missing bars.
+- This slice keeps the answer useful but honest: there are still 9
+  decision-ready not-priced-in rows, but market-bar coverage now shows the full
+  stocks-only scope and the correct repair command.
+- No Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or DB-write execution
+  was run.
+
+Fix in this slice:
+
+- `priced_in_answer_payload(...)` now applies the same market-bar scope
+  correction used by the full audit.
+- `trust_blockers` now overlays source-coverage action details onto preflight
+  steps, so stocks-only answer blockers inherit the stocks-only command.
+- Added a regression test where a second active common stock has no as-of bar;
+  the answer must report `market_bars 1/2 (1 missing)` rather than the ranked
+  row's `1/1`.
+
+Live zero-call answer observation:
+
+```text
+priced_in_answer status=decision_ready decision_ready=true investment_decision_ready=false total=5521 mismatches=9 research=0 blocked=2674 external_calls=0
+source_coverage=market_bars 5521/5652 (131 missing); catalyst_events 9/5521 (5512 missing); local_text 9/5521 (5512 missing); options 0/5521 (5521 missing); theme_peer_sector 5521/5521; broker_context 4/5521 (5517 missing)
+trust_blockers:
+- market_bars status=attention next=Fill stock-like missing as-of bars first; then rerun the stocks-only priced-in scan. command=catalyst-radar market-bars template --expected-as-of 2026-05-15 --out data\local\manual-stock-bars-2026-05-15.csv --missing-only --stocks-only
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_answer_uses_stock_scope_for_market_bar_coverage tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_answer_cli_outputs_current_scan_answer -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py tests\integration\test_dashboard_demo_seed_cli.py
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-answer --stocks-only
+git diff --check
+```
+
+Observed:
+
+- Focused tests passed (`2 passed`).
+- Ruff passed.
+- Live answer reports `market_bars 5521/5652 (131 missing)`.
+- `git diff --check` passed.
+
+Next useful product action:
+
+- Merge and restart so the normal CLI/API/dashboard answer surface uses the
+  corrected stock-bar scope.
+- The real data blocker remains the same: fill/import
+  `data\local\manual-stock-bars-2026-05-15.csv`, or explicitly approve the one
+  Polygon/Massive grouped-daily call.
 
 ## Latest Quick Operator Status
 

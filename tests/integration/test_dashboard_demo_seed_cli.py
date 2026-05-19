@@ -10,6 +10,7 @@ from sqlalchemy import create_engine
 
 from catalyst_radar.cli import main
 from catalyst_radar.core.config import AppConfig
+from catalyst_radar.core.models import DailyBar, Security
 from catalyst_radar.dashboard import source_batches as source_batch_module
 from catalyst_radar.dashboard.data import (
     load_alert_rows,
@@ -19,6 +20,8 @@ from catalyst_radar.dashboard.data import (
     load_ops_health,
     load_ticker_detail,
     load_validation_summary,
+    priced_in_answer_payload,
+    priced_in_queue_payload,
     radar_readiness_payload,
 )
 from catalyst_radar.dashboard.demo_seed import DEMO_AVAILABLE_AT
@@ -34,6 +37,7 @@ from catalyst_radar.dashboard.tui import (
     render_dashboard_tui,
     run_dashboard_tui,
 )
+from catalyst_radar.storage.repositories import MarketRepository
 
 
 def test_seed_dashboard_demo_populates_command_center_layers(
@@ -2119,6 +2123,94 @@ def test_priced_in_answer_cli_outputs_current_scan_answer(
     assert payload["full_scan"]["schema_version"] == (
         "priced-in-full-scan-summary-v1"
     )
+
+
+def test_priced_in_answer_uses_stock_scope_for_market_bar_coverage(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["seed-dashboard-demo"]) == 0
+    capsys.readouterr()
+    engine = create_engine(database_url, future=True)
+    config = AppConfig.from_env({"CATALYST_DATABASE_URL": database_url})
+    market_repo = MarketRepository(engine)
+    market_repo.upsert_securities(
+        [
+            Security(
+                ticker="ACME",
+                name="Acme Corp",
+                exchange="NASDAQ",
+                sector="Technology",
+                industry="Software",
+                market_cap=1_000_000_000,
+                avg_dollar_volume_20d=20_000_000,
+                has_options=True,
+                is_active=True,
+                updated_at=DEMO_AVAILABLE_AT,
+                metadata={"type": "CS"},
+            )
+        ]
+    )
+    market_repo.upsert_daily_bars(
+        [
+            DailyBar(
+                ticker="ACME",
+                date=DEMO_AVAILABLE_AT.date(),
+                open=100,
+                high=101,
+                low=99,
+                close=100,
+                volume=1_000_000,
+                vwap=100,
+                adjusted=True,
+                provider="manual_csv",
+                source_ts=DEMO_AVAILABLE_AT,
+                available_at=DEMO_AVAILABLE_AT,
+            )
+        ]
+    )
+    queue = priced_in_queue_payload(engine, config, stocks_only=True)
+    queue["latest_run"] = {
+        **dict(queue.get("latest_run") or {}),
+        "as_of": DEMO_AVAILABLE_AT.date().isoformat(),
+    }
+    market_repo.upsert_securities(
+        [
+            Security(
+                ticker="ZZZZ",
+                name="Missing Bar Stock",
+                exchange="NASDAQ",
+                sector="Technology",
+                industry="Software",
+                market_cap=1_000_000_000,
+                avg_dollar_volume_20d=20_000_000,
+                has_options=True,
+                is_active=True,
+                updated_at=DEMO_AVAILABLE_AT,
+                metadata={"type": "CS"},
+            )
+        ]
+    )
+
+    payload = priced_in_answer_payload(
+        engine,
+        config,
+        stocks_only=True,
+        queue=queue,
+    )
+
+    assert "market_bars 1/2 (1 missing)" in payload["source_coverage"]["summary"]
+    market_bar_blockers = [
+        row for row in payload["trust_blockers"] if row["area"] == "market_bars"
+    ]
+    assert market_bar_blockers
+    assert "market-bars template" in market_bar_blockers[0]["command"]
+    assert "--stocks-only" in market_bar_blockers[0]["command"]
+    assert "market_bars" in payload["source_coverage"]["weak_sources"]
 
 
 def test_priced_in_audit_cli_outputs_full_scan_audit(

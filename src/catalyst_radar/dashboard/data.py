@@ -2299,6 +2299,16 @@ def priced_in_answer_payload(
         blocked_count=blocked_count,
     )
     source_coverage = _mapping_value(resolved_queue, "source_coverage")
+    market_bars = _priced_in_audit_market_bars(
+        engine,
+        config,
+        resolved_queue,
+        resolved_preflight,
+    )
+    source_coverage = _priced_in_source_coverage_with_market_bar_scope(
+        source_coverage,
+        market_bars,
+    )
     decision_readiness = _priced_in_answer_decision_readiness(
         _mapping_value(resolved_queue, "decision_gap_counts"),
         source_coverage=source_coverage,
@@ -4734,6 +4744,12 @@ def _priced_in_answer_trust_blockers(
     source_coverage: Mapping[str, object],
 ) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
+    actions = _sequence_value(source_coverage.get("actions"))
+    actions_by_source = {
+        str(action.get("source") or ""): action
+        for action in actions
+        if isinstance(action, Mapping)
+    }
     plan = _mapping_value(preflight, "evidence_plan")
     for step in _sequence_value(plan.get("steps")):
         if not isinstance(step, Mapping):
@@ -4741,18 +4757,24 @@ def _priced_in_answer_trust_blockers(
         status = str(step.get("status") or "").strip()
         if status == "ready":
             continue
+        area = str(step.get("area") or "").strip()
+        source_action = _row_dict(actions_by_source.get(area, {}))
         rows.append(
             {
                 "area": step.get("area"),
                 "status": status,
+                "gap_count": int(_finite_float(source_action.get("gap_count"))),
                 "depends_on": list(_sequence_value(step.get("depends_on"))),
-                "next_action": step.get("action") or step.get("next_action"),
-                "command": step.get("command"),
+                "next_action": source_action.get("next_action")
+                or step.get("action")
+                or step.get("next_action"),
+                "command": source_action.get("batch_plan_command")
+                or source_action.get("command")
+                or step.get("command"),
             }
         )
         if len(rows) >= 5:
             return rows
-    actions = _sequence_value(source_coverage.get("actions"))
     for action in actions:
         if not isinstance(action, Mapping):
             continue
