@@ -1,6 +1,126 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 09:22:43 +08:00
+Last updated: 2026-05-19 09:39:49 +08:00
+
+## Latest Full-Scan Target Date Fix
+
+User clarification:
+
+- They asked why the dashboard only shows a few tickers and said they want a
+  full scan.
+- Product meaning is now explicitly:
+
+  ```text
+  Full scan target:
+    Every active security in the local database for the current run-as-of date.
+
+  Review rows:
+    A paged, human-reviewable result set from the last useful scan. A small
+    visible page is not the scan universe.
+
+  Provider/source chunks:
+    Rate-safe fetch or enrichment batches. These chunks are execution units,
+    not the product scope.
+  ```
+
+Root cause fixed in this slice:
+
+- `scripts\run-full-market-scan.ps1` said it would scan all active securities,
+  but when `-AsOf` was omitted it defaulted to:
+
+  ```powershell
+  $provider.latest_daily_bar_date
+  ```
+
+- In the current live database that was `2026-05-15`, while the dashboard
+  blocker is the latest run-as-of date, `2026-05-18`, with:
+
+  ```text
+  active=12613; with_as_of_bar=0; missing=12613
+  ```
+
+- That meant the helper could refresh and run the wrong date without clearing
+  the fresh full-scan blocker.
+
+Fix in this slice:
+
+- `priced_in_preflight_payload()` now exposes:
+
+  ```text
+  target_as_of
+  target_as_of_source
+  latest_run_as_of
+  ```
+
+- Target selection is deliberately simple:
+
+  ```text
+  latest run as_of first, otherwise latest stored daily-bar date.
+  ```
+
+- The `priced-in-preflight` CLI line now prints the target date and source.
+- `scripts\run-full-market-scan.ps1` now resolves scan date in this order:
+
+  ```text
+  explicit -AsOf argument
+  preflight target_as_of
+  provider latest_daily_bar_date fallback
+  ```
+
+- Plan output now shows:
+
+  ```text
+  Scan as-of: 2026-05-18; source=run_as_of
+  ```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_preflight_payload_reports_exact_next_steps tests\integration\test_dashboard_data.py::test_priced_in_preflight_recommends_manual_bar_template_for_missing_bars tests\integration\test_dashboard_data.py::test_priced_in_preflight_warns_when_latest_run_is_selected_universe tests\integration\test_local_scripts.py::test_run_full_market_scan_script_is_plan_first_and_execute_gated -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py tests\integration\test_dashboard_data.py tests\integration\test_local_scripts.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-preflight
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-preflight --json
+powershell -ExecutionPolicy Bypass -File scripts\run-full-market-scan.ps1
+```
+
+Observed:
+
+- Focused pytest passed.
+- Ruff passed.
+- `git diff --check` passed.
+- `priced-in-preflight` made 0 external calls and reported:
+
+  ```text
+  target_as_of=2026-05-18 target_source=run_as_of
+  latest_bar_date=2026-05-15
+  ```
+
+- `scripts\run-full-market-scan.ps1` plan mode made 0 external calls and now
+  plans:
+
+  ```text
+  catalyst-radar ingest-polygon grouped-daily --date 2026-05-18
+  catalyst-radar run-daily --as-of 2026-05-18 ...
+  ```
+
+Current answer to "why only these tickers?":
+
+- The visible ticker rows are only the last useful review page.
+- The live full-scan universe is 12,613 active securities.
+- The current blocker is not the ticker universe; it is missing 2026-05-18
+  daily bars for all 12,613 active securities.
+- Do not run source-provider chunks or Schwab/LLM work before the run-as-of
+  market bars are filled, unless intentionally doing a separate enrichment
+  slice.
+
+Next useful product slice:
+
+- Either import a complete `2026-05-18` daily-bar file for all 12,613 active
+  securities, or explicitly execute the Polygon/Massive full-market helper after
+  reviewing the plan and external-call budget.
+- After bars are complete, rerun `priced-in-preflight`; only then run the full
+  priced-in scan and review whether market emotion has outrun price reaction.
 
 ## Latest Local Restart Python Fix
 

@@ -2216,11 +2216,26 @@ def priced_in_preflight_payload(
         status = "ready"
         headline = "Full-market priced-in scan prerequisites look ready."
         next_action = "Run one capped radar cycle, then review priced-in gaps."
+    discovery_run = _mapping_value(discovery, "run")
+    run_as_of = _date_iso_or_none(
+        _parse_date(run.get("as_of"))
+    ) or _date_iso_or_none(_parse_date(discovery_run.get("as_of")))
+    latest_bar_as_of = str(bar_universe.get("latest_daily_bar_date") or "").strip()
+    target_as_of = run_as_of or latest_bar_as_of or None
+    if run_as_of:
+        target_as_of_source = "run_as_of"
+    elif latest_bar_as_of:
+        target_as_of_source = "latest_daily_bar"
+    else:
+        target_as_of_source = None
     return {
         "schema_version": "priced-in-preflight-v1",
         "status": status,
         "headline": headline,
         "next_action": next_action,
+        "target_as_of": target_as_of,
+        "target_as_of_source": target_as_of_source,
+        "latest_run_as_of": run_as_of,
         "external_calls_made": 0,
         "scan_status": _priced_in_scan_status(discovery),
         "provider": {

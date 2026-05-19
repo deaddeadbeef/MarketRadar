@@ -80,7 +80,20 @@ try {
     $configuredPages = [int]$provider.ticker_seed_cap_pages
     $resolvedPages = if ($TickerPages -gt 0) { $TickerPages } elseif ($estimatedPages -gt 0) { $estimatedPages } else { $configuredPages }
     $resolvedDelay = if ($TickerPageDelaySeconds -ge 0) { $TickerPageDelaySeconds } else { [double]$provider.ticker_page_delay_seconds }
-    $resolvedAsOf = if (-not [string]::IsNullOrWhiteSpace($AsOf)) { $AsOf } else { [string]$provider.latest_daily_bar_date }
+    $preflightTargetAsOf = [string]$preflight.target_as_of
+    $latestDailyBarDate = [string]$provider.latest_daily_bar_date
+    if (-not [string]::IsNullOrWhiteSpace($AsOf)) {
+        $resolvedAsOf = $AsOf
+        $resolvedAsOfSource = "argument"
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($preflightTargetAsOf)) {
+        $resolvedAsOf = $preflightTargetAsOf
+        $resolvedAsOfSource = [string]$preflight.target_as_of_source
+    }
+    else {
+        $resolvedAsOf = $latestDailyBarDate
+        $resolvedAsOfSource = "latest_daily_bar"
+    }
     $marketProvider = [string]$provider.market_provider
     $resolvedUniverseName = if (-not [string]::IsNullOrWhiteSpace($UniverseName)) {
         $UniverseName
@@ -92,7 +105,7 @@ try {
         "liquid-us"
     }
     if ([string]::IsNullOrWhiteSpace($resolvedAsOf)) {
-        throw "No AsOf date was provided and preflight has no latest daily-bar date."
+        throw "No AsOf date was provided and preflight has no target or latest daily-bar date."
     }
 
     Write-Output ("Preflight: status={0}; scan_status={1}; external_calls={2}" -f $preflight.status, $preflight.scan_status, $preflight.external_calls_made)
@@ -106,7 +119,7 @@ try {
     Write-Output ("Latest bars: date={0}; tickers={1}" -f $provider.latest_daily_bar_date, $provider.latest_daily_bar_ticker_count)
     Write-Output ("Ticker seed pages: configured={0}; estimated={1}; selected={2}" -f $configuredPages, $estimatedPages, $resolvedPages)
     Write-Output ("Ticker page delay seconds: {0}" -f $resolvedDelay)
-    Write-Output ("Scan as-of: {0}" -f $resolvedAsOf)
+    Write-Output ("Scan as-of: {0}; source={1}" -f $resolvedAsOf, $resolvedAsOfSource)
 
     if ($marketProvider -ne "polygon") {
         Write-Output "External calls made: 0"
