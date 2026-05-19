@@ -77,6 +77,7 @@ from catalyst_radar.dashboard.source_batches import (
 )
 from catalyst_radar.dashboard.tui import (
     DashboardFilters,
+    dashboard_filters_for_page,
     dashboard_json_default,
     dashboard_snapshot_payload,
     render_dashboard_tui,
@@ -1297,6 +1298,7 @@ def main(argv: list[str] | None = None) -> int:
             priced_in_offset=args.scan_offset,
             telemetry_limit=args.telemetry_limit,
         )
+        filters = dashboard_filters_for_page(filters, args.page)
         if args.once:
             payload = dashboard_snapshot_payload(
                 engine=engine,

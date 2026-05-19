@@ -1,6 +1,103 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 14:05:23 +08:00
+Last updated: 2026-05-19 14:26:23 +08:00
+
+## Latest TUI Full Scan vs Decision Review Clarification
+
+User question that triggered this slice:
+
+- "Why only these tickers? I want full scan."
+
+Important product interpretation:
+
+- MarketRadar already has a full stored priced-in scan in the local DB:
+  - `12087` ranked rows from the latest scan page;
+  - `12613` active securities in the current active-universe audit;
+  - dashboard browsing and rendering still make `0` provider calls.
+- The small ticker list is not the scan universe. It is the filtered
+  decision-ready review subset:
+  - `10` rows are not-priced-in and have enough local artifacts for human
+    priced-in review;
+  - those rows are still not trade approval;
+  - optional context remains missing, especially `options` for 10 rows and
+    `broker_context` for 5 rows.
+
+Fix in this slice:
+
+- Added a dedicated `review` / `decision-ready` TUI page:
+  - page aliases: `11`, `d`, `decision`, `decision-ready`, `review`;
+  - sidebar entry: `11 Decision Review`;
+  - command `ready` now opens the review page instead of silently narrowing
+    the Insights page.
+- Added `dashboard_filters_for_page(...)`:
+  - `review` forces `priced_in_status=actionable`,
+    `priced_in_usefulness=decision_useful`, `priced_in_offset=0`;
+  - normal Insights/overview keeps full scan defaults unless the user chooses
+    a scan filter.
+- Fixed the in-progress review-row logic:
+  - `_priced_in_overview_rows(...)` now preserves the structured
+    `usefulness` object instead of replacing it with display text;
+  - `_priced_in_review_rows(...)` can now reliably identify
+    `decision_useful` / `decision_ready` rows.
+- Added open-row support for the review page:
+  - `open 1`, Enter, or clicking a review row opens `candidate:<ticker>`;
+  - the status message states that decision-ready is still not trade approval.
+- `dashboard-tui --once --page review` now applies the same review filters as
+  the interactive TUI, so CLI testing and human dashboard behavior match.
+
+Current live zero-call observations after the fix:
+
+```text
+dashboard-tui --once --page overview --scan-mode all
+Page: overview | View: Full scan | External calls made: 0
+Full-market priced-in queue - showing rows 1-50 of 12087
+Decision readiness: 10 not-priced-in row(s) are decision-ready.
+```
+
+```text
+dashboard-tui --once --page review
+Page: review | View: Decision-ready filter | External calls made: 0
+Decision Review - priced-in answer, not trade approval
+Remaining optional context: broker_context missing on 5; options missing on 10
+```
+
+```text
+priced-in-answer
+status=decision_ready decision_ready=true investment_decision_ready=false
+total=12087 mismatches=12 blocked=7920 external_calls=0
+scan_scope=Showing ranked rows 1-5 of 12087; the visible tickers are one page
+from the full scan, not the scan universe.
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\integration\test_dashboard_demo_seed_cli.py
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page overview --scan-mode all
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page review
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-answer
+```
+
+Observed:
+
+- Dashboard integration file passed (`30 passed`).
+- Ruff passed.
+- Full scan overview shows the paged full universe (`1-50 of 12087`), not a
+  hardcoded watchlist.
+- Decision Review shows the smaller human-review subset (`10` rows).
+- All read/render commands reported `External calls made: 0`.
+
+Next useful product action:
+
+- Keep the dashboard centered on the full-market question:
+  "Has price fully matched market expectations?"
+- Improve full-scan navigation and source-gap workflows next:
+  - make paging/export controls even more obvious in the TUI;
+  - give the user one clear action to fill missing broad coverage;
+  - avoid expanding Decision Cards for all 12k rows unless a later design
+    proves that useful. The useful pattern is broad cheap scan, then deep
+    review only for ranked rows that survive the evidence gates.
 
 ## Latest Local Candidate Packet / Decision Card Refresh
 

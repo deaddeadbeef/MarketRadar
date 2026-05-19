@@ -294,6 +294,13 @@ PAGE_ALIASES: Mapping[str, str] = {
     "4": "candidates",
     "c": "candidates",
     "candidates": "candidates",
+    "11": "review",
+    "d": "review",
+    "decision": "review",
+    "decisions": "review",
+    "decision-ready": "review",
+    "decision_ready": "review",
+    "review": "review",
     "5": "alerts",
     "a": "alerts",
     "alerts": "alerts",
@@ -321,7 +328,8 @@ PAGE_ALIASES: Mapping[str, str] = {
 
 NAVIGATION_TEXT = (
     "0 Tutorial | 1 Insights | 2 Readiness | 3 Run | 4 Candidates | 5 Alerts | "
-    "6 IPO/S-1 | 7 Broker | 8 Ops | 9 Telemetry | 10 Agent | features | help | q"
+    "6 IPO/S-1 | 7 Broker | 8 Ops | 9 Telemetry | 10 Agent | 11 Review | "
+    "features | help | q"
 )
 
 MODERN_PAGES: tuple[tuple[str, str, str], ...] = (
@@ -330,6 +338,7 @@ MODERN_PAGES: tuple[tuple[str, str, str], ...] = (
     ("readiness", "2", "Readiness"),
     ("run", "3", "Run"),
     ("candidates", "4", "Candidates"),
+    ("review", "11", "Decision Review"),
     ("alerts", "5", "Alerts"),
     ("ipo", "6", "IPO/S-1"),
     ("broker", "7", "Broker"),
@@ -339,6 +348,22 @@ MODERN_PAGES: tuple[tuple[str, str, str], ...] = (
     ("features", "F", "Features"),
     ("help", "?", "Help"),
 )
+
+
+def dashboard_filters_for_page(
+    filters: DashboardFilters,
+    page: str,
+) -> DashboardFilters:
+    resolved_page = _normalize_page(page)
+    normalized = filters.normalized()
+    if resolved_page != "review":
+        return normalized
+    return replace(
+        normalized,
+        priced_in_status="actionable",
+        priced_in_usefulness="decision_useful",
+        priced_in_offset=0,
+    ).normalized()
 
 
 class FocusRow(Static):
@@ -844,8 +869,8 @@ class MarketRadarDashboardApp(App[int]):
         self.engine = engine
         self.config = config
         self.dotenv_loaded = dotenv_loaded
-        self.filters = filters.normalized()
         self.page = _normalize_page(initial_page)
+        self.filters = dashboard_filters_for_page(filters, self.page)
         self.payload: Mapping[str, object] = {}
         self.status_message = ""
 
@@ -944,7 +969,9 @@ class MarketRadarDashboardApp(App[int]):
 
     def action_go(self, page: str) -> None:
         self.page = _normalize_page(page)
+        self.filters = dashboard_filters_for_page(self.filters, self.page)
         self.status_message = ""
+        self.reload_snapshot()
         self.refresh_view()
 
     def on_click(self, event: events.Click) -> None:
@@ -1027,16 +1054,12 @@ class MarketRadarDashboardApp(App[int]):
         self._set_scan_mode("all" if current == "actionable" else "actionable")
 
     def action_decision_ready_scan(self) -> None:
-        self.filters = replace(
-            self.filters,
-            priced_in_status="actionable",
-            priced_in_usefulness="decision_useful",
-            priced_in_offset=0,
-        ).normalized()
-        self.page = "overview"
+        self.page = "review"
+        self.filters = dashboard_filters_for_page(self.filters, self.page)
         self.status_message = (
             "Decision-ready view: showing not-priced-in rows that passed the "
-            "usefulness gate. Type full for the whole ranked universe."
+            "usefulness gate. Press Enter to open a row; type full for the whole "
+            "ranked universe."
         )
         self.reload_snapshot()
         self.refresh_view()
@@ -1079,7 +1102,7 @@ class MarketRadarDashboardApp(App[int]):
         self.refresh_view()
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
-        if self.page == "overview":
+        if self.page in {"overview", "review"}:
             row = self._row_by_key(event.row_key.value)
             target_page = str(row.get("target_page") or "").strip()
             if target_page:
@@ -1195,7 +1218,7 @@ class MarketRadarDashboardApp(App[int]):
     def _navigation_text(self) -> str:
         return (
             "[bold #58a6ff]KEYS[/] 1 insights | 4 candidates | D ready | "
-            "M full/mismatch | next/prev rows | Ctrl+N/P page\n"
+            "11 review | M full/mismatch | next/prev rows | Ctrl+N/P page\n"
             "[bold #58a6ff]MOUSE[/] click sidebar/table | Tab focus | "
             "Up/Down on sidebar | Enter open | Esc command | q quit\n"
         )
@@ -1221,6 +1244,10 @@ class MarketRadarDashboardApp(App[int]):
             "overview": (
                 "Select an insight row. Press M or click SCAN to switch between "
                 f"Mismatches and Full Scan.{page_text}"
+            ),
+            "review": (
+                "Review decision-ready priced-in rows. Press Enter to open the "
+                f"candidate and Decision Card context.{page_text}"
             ),
             "run": "Review call budget, then type run execute only if intended.",
             "candidates": "Click or focus a row and press Enter to open a candidate.",
@@ -1442,6 +1469,37 @@ class MarketRadarDashboardApp(App[int]):
                     ),
                 ]
             )
+        if page == "review":
+            answer = _mapping(self.payload.get("priced_in_answer"))
+            queue = _mapping(self.payload.get("priced_in_queue"))
+            readiness = _mapping(self.payload.get("readiness"))
+            count = int(_number_or_zero(queue.get("count")))
+            total = int(_number_or_zero(queue.get("total_count")))
+            return "\n".join(
+                [
+                    (
+                        "[bold #7ee787]DECISION REVIEW[/]  "
+                        "These rows passed the priced-in usefulness gate."
+                    ),
+                    (
+                        f"[bold]Answer:[/] {answer.get('answer') or 'No priced-in answer.'} "
+                        f"[bold]Visible:[/] {count}/{total} decision-ready row(s)."
+                    ),
+                    (
+                        f"[bold]Boundary:[/] "
+                        f"{answer.get('investment_boundary') or 'Not trade approval.'} "
+                        f"Trade safe? {_decision_label(readiness)}."
+                    ),
+                    (
+                        f"[bold]Remaining context:[/] "
+                        f"{_decision_review_optional_summary(_priced_in_review_rows(self.payload))}"
+                    ),
+                    (
+                        "[bold]Do next:[/] press Enter/click a ticker to inspect evidence; "
+                        "use Broker only for local watch/trigger/ticket artifacts."
+                    ),
+                ]
+            )
         if page == "readiness":
             return "\n".join(
                 [
@@ -1570,6 +1628,8 @@ class MarketRadarDashboardApp(App[int]):
             return self._tutorial_model()
         if page == "overview":
             return self._overview_model()
+        if page == "review":
+            return self._review_model()
         if page == "readiness":
             return (
                 "Readiness checklist",
@@ -1785,6 +1845,25 @@ class MarketRadarDashboardApp(App[int]):
             _overview_caption(self.payload),
         )
 
+    def _review_model(
+        self,
+    ) -> tuple[str, Sequence[tuple[str, str, int]], list[Mapping[str, object]], str]:
+        rows = _priced_in_review_rows(self.payload)
+        return (
+            "Decision Review - priced-in answer, not trade approval",
+            [
+                ("rank", "#", 3),
+                ("ticker", "Ticker", 6),
+                ("signal", "Signal", 19),
+                ("emotion_reaction_gap", "Gap", 6),
+                ("optional_gaps", "Optional gaps", 22),
+                ("top_evidence", "Top evidence", 30),
+                ("next_action", "Next action", 34),
+            ],
+            rows,
+            _decision_review_caption(self.payload, rows),
+        )
+
     def _candidate_detail_model(
         self,
         ticker: str,
@@ -1892,6 +1971,8 @@ def render_dashboard_tui(
         lines.extend(_tutorial_lines(resolved_width))
     elif page == "overview":
         lines.extend(_overview_lines(payload, resolved_width))
+    elif page == "review":
+        lines.extend(_review_lines(payload, resolved_width))
     elif page == "readiness":
         lines.extend(_readiness_lines(payload, resolved_width))
     elif page == "run":
@@ -1973,7 +2054,7 @@ def _apply_command(
         )
     if command in {"d", "ready", "decision", "decision-ready", "decision_ready"}:
         return _CommandUpdate(
-            page="overview",
+            page="review",
             filters=replace(
                 filters,
                 priced_in_status="actionable",
@@ -2262,7 +2343,10 @@ def _apply_command(
         return _CommandUpdate(page=next_page, filters=filters)
     next_page = _normalize_page(raw)
     if next_page != "help" or raw.lower() in PAGE_ALIASES:
-        return _CommandUpdate(page=next_page, filters=filters)
+        return _CommandUpdate(
+            page=next_page,
+            filters=dashboard_filters_for_page(filters, next_page),
+        )
     return _CommandUpdate(
         page=page,
         filters=filters,
@@ -2826,6 +2910,15 @@ def _open_target_page(
     page: str,
     value: str,
 ) -> str | None:
+    if page in {"overview", "review"}:
+        rows = (
+            _priced_in_review_rows(payload)
+            if page == "review"
+            else _priced_in_overview_rows(payload)
+        )
+        row = _row_by_index_or_key(rows, value, key="ticker")
+        ticker = str(row.get("ticker") or "").strip().upper() if row else ""
+        return f"candidate:{ticker}" if ticker else None
     if page == "candidates":
         rows = _candidate_rows(payload)
         row = _row_by_index_or_key(rows, value, key="ticker")
@@ -3003,7 +3096,8 @@ def _priced_in_overview_rows(payload: Mapping[str, object]) -> list[Mapping[str,
                 "signal": "Blocked mismatch"
                 if bool(candidate.get("blocked"))
                 else _priced_in_signal(priced_status, fallback="Candidate"),
-                "usefulness": usefulness.get("label")
+                "usefulness": usefulness,
+                "usefulness_label": usefulness.get("label")
                 or _human_label(usefulness.get("status") or "unknown"),
                 "data_coverage": _priced_in_gap_summary(candidate),
                 "why_now": why_now or "No priced-in explanation recorded.",
@@ -3520,6 +3614,150 @@ def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
     lines.append("")
     lines.append(_overview_caption(payload))
     return lines
+
+
+def _review_lines(payload: Mapping[str, object], width: int) -> list[str]:
+    rows = _priced_in_review_rows(payload)
+    answer = _mapping(payload.get("priced_in_answer"))
+    readiness = _mapping(payload.get("readiness"))
+    lines = [_rule("Decision Review - priced-in answer, not trade approval", width)]
+    lines.append(
+        "Answer: "
+        f"{answer.get('answer') or 'No priced-in answer.'} "
+        f"Trade safe? {_decision_label(readiness)}."
+    )
+    boundary = str(answer.get("investment_boundary") or "").strip()
+    if boundary:
+        lines.append(f"Boundary: {boundary}")
+    lines.append(f"Remaining optional context: {_decision_review_optional_summary(rows)}")
+    lines.extend(
+        _table_lines(
+            rows,
+            [
+                ("rank", "#", 3),
+                ("ticker", "Ticker", 6),
+                ("signal", "Signal", 19),
+                ("emotion_reaction_gap", "Gap", 6),
+                ("optional_gaps", "Optional gaps", 22),
+                ("top_evidence", "Top evidence", 30),
+                ("next_action", "Next action", 34),
+            ],
+            width=width,
+            limit=50,
+        )
+    )
+    lines.append("")
+    lines.append(_decision_review_caption(payload, rows))
+    return lines
+
+
+def _priced_in_review_rows(payload: Mapping[str, object]) -> list[Mapping[str, object]]:
+    rows: list[Mapping[str, object]] = []
+    for row in _priced_in_overview_rows(payload):
+        if not _decision_review_row_is_ready(row):
+            continue
+        ticker = str(row.get("ticker") or "").strip().upper()
+        if not ticker:
+            continue
+        optional_gaps = _decision_review_optional_gaps(row)
+        rows.append(
+            {
+                **dict(row),
+                "_row_key": f"review-{row.get('rank')}-{ticker}",
+                "optional_gaps": optional_gaps,
+                "top_evidence": _decision_review_top_evidence(row),
+                "next_action": (
+                    "Open Decision Card; verify optional gaps before trading."
+                    if optional_gaps != "none"
+                    else "Open Decision Card and verify the thesis."
+                ),
+                "target_page": f"candidate:{ticker}",
+                "status_message": (
+                    f"Opened decision-ready priced-in row for {ticker}. "
+                    "This is still not trade approval."
+                ),
+            }
+        )
+    return rows
+
+
+def _decision_review_row_is_ready(row: Mapping[str, object]) -> bool:
+    usefulness = _mapping(row.get("usefulness"))
+    return bool(usefulness.get("decision_ready")) or (
+        str(usefulness.get("status") or "").strip() == "decision_useful"
+    )
+
+
+def _decision_review_optional_gaps(row: Mapping[str, object]) -> str:
+    usefulness = _mapping(row.get("usefulness"))
+    gaps = [
+        str(item)
+        for item in _rows_or_values(usefulness.get("optional_context_gaps"))
+        if str(item).strip()
+    ]
+    if not gaps:
+        data_sources = row.get("data_sources") or row.get("priced_in_data_sources")
+        if isinstance(data_sources, Mapping):
+            missing_for_decision = {
+                str(item)
+                for item in _rows_or_values(usefulness.get("missing_for_decision"))
+                if str(item).strip()
+            }
+            gaps = [
+                str(item)
+                for item in _rows_or_values(data_sources.get("missing"))
+                if str(item).strip() and str(item) not in missing_for_decision
+            ]
+    if not gaps:
+        return "none"
+    return ", ".join(dict.fromkeys(gaps))
+
+
+def _decision_review_top_evidence(row: Mapping[str, object]) -> str:
+    brief = _mapping(row.get("priced_in_evidence_brief"))
+    evidence_rows = _rows(brief.get("evidence"))
+    if evidence_rows:
+        first = evidence_rows[0]
+        title = str(first.get("title") or "").strip()
+        source = str(first.get("source") or "").strip()
+        if title and source:
+            return f"{title} / {source}"
+        if title:
+            return title
+    top_support = _mapping(row.get("top_supporting_evidence"))
+    title = str(top_support.get("title") or "").strip()
+    if title:
+        return title
+    return str(row.get("top_catalyst") or row.get("source") or "local evidence")
+
+
+def _decision_review_optional_summary(rows: Sequence[Mapping[str, object]]) -> str:
+    counts: dict[str, int] = {}
+    for row in rows:
+        for gap in _decision_review_optional_gaps(row).split(","):
+            gap = gap.strip()
+            if not gap or gap == "none":
+                continue
+            counts[gap] = counts.get(gap, 0) + 1
+    if not counts:
+        return "none across visible decision-ready rows"
+    return "; ".join(f"{gap} missing on {count}" for gap, count in sorted(counts.items()))
+
+
+def _decision_review_caption(
+    payload: Mapping[str, object],
+    rows: Sequence[Mapping[str, object]],
+) -> str:
+    answer = _mapping(payload.get("priced_in_answer"))
+    queue = _mapping(payload.get("priced_in_queue"))
+    scan_total = _priced_in_scan_total(queue)
+    return (
+        f"This page shows {len(rows)} decision-ready priced-in row(s) from "
+        f"{scan_total or 'the'} latest scan. Decision-ready means the price/emotion "
+        "answer can be reviewed by a human; trade safety remains a separate "
+        "readiness gate. Press Enter/click a row to inspect the Decision Card "
+        f"context. {answer.get('investment_boundary') or ''} Browsing makes 0 provider calls."
+    )
 
 
 def _full_scan_audit_summary(payload: Mapping[str, object]) -> str:

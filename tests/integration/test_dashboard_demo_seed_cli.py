@@ -27,8 +27,11 @@ from catalyst_radar.dashboard.tui import (
     MarketRadarDashboardApp,
     _apply_command,
     _priced_in_overview_rows,
+    _priced_in_review_rows,
     _priced_in_source_workflow_payload,
+    dashboard_filters_for_page,
     dashboard_snapshot_payload,
+    render_dashboard_tui,
     run_dashboard_tui,
 )
 
@@ -827,6 +830,106 @@ def test_dashboard_tui_once_can_show_full_scan_mode(
     assert "These are the actionable answers" in output.out
 
 
+def test_dashboard_review_page_is_distinct_from_full_scan() -> None:
+    review_filters = dashboard_filters_for_page(DashboardFilters(), "review")
+    assert review_filters.priced_in_status == "actionable"
+    assert review_filters.priced_in_usefulness == "decision_useful"
+    assert review_filters.priced_in_offset == 0
+
+    overview_filters = dashboard_filters_for_page(DashboardFilters(), "overview")
+    assert overview_filters.priced_in_status == "all"
+    assert overview_filters.priced_in_usefulness is None
+
+    payload = {
+        "runtime_context": {
+            "database": {"name": "demo.db"},
+            "build": {"commit": "test"},
+        },
+        "controls": {"ticker": None, "available_at": None},
+        "external_calls_made": 0,
+        "readiness": {
+            "status": "research_only",
+            "safe_to_make_investment_decision": False,
+            "headline": "Current rows are research only.",
+        },
+        "priced_in_answer": {
+            "status": "decision_ready",
+            "decision_ready": True,
+            "answer": "Not fully priced for 1 decision-ready row.",
+            "investment_boundary": "Not trade approval.",
+        },
+        "priced_in_queue": {
+            "status": "ready",
+            "count": 2,
+            "returned_count": 2,
+            "total_count": 2,
+            "offset": 0,
+            "filters": {"status": "all", "usefulness": None, "limit": 50},
+            "scan": {"scanned_candidate_states": 2},
+            "rows": [
+                {
+                    "ticker": "ACME",
+                    "priced_in_status": "bullish_not_priced_in",
+                    "emotion_score": 80,
+                    "reaction_score": 25,
+                    "emotion_reaction_gap": 55,
+                    "candidate_theme": "margin_inflection",
+                    "data_sources": {
+                        "available": ["market_bars", "catalyst_events", "local_text"],
+                        "missing": ["options", "broker_context"],
+                        "stale": [],
+                    },
+                    "usefulness": {
+                        "status": "decision_useful",
+                        "decision_ready": True,
+                        "optional_context_gaps": ["options", "broker_context"],
+                        "missing_for_decision": [],
+                    },
+                    "priced_in_evidence_brief": {
+                        "evidence": [
+                            {"title": "Margins inflecting", "source": "local_text"}
+                        ]
+                    },
+                },
+                {
+                    "ticker": "BETA",
+                    "priced_in_status": "bullish_not_priced_in",
+                    "emotion_score": 70,
+                    "reaction_score": 20,
+                    "emotion_reaction_gap": 50,
+                    "candidate_theme": "product_launch",
+                    "data_sources": {
+                        "available": ["market_bars"],
+                        "missing": ["candidate_packet", "decision_card"],
+                        "stale": [],
+                    },
+                    "usefulness": {
+                        "status": "research_useful",
+                        "decision_ready": False,
+                    },
+                },
+            ],
+        },
+    }
+
+    review_rows = _priced_in_review_rows(payload)
+    assert [row["ticker"] for row in review_rows] == ["ACME"]
+    assert review_rows[0]["optional_gaps"] == "options, broker_context"
+
+    review = render_dashboard_tui(payload, page="review", width=140)
+    assert "Decision Review" in review
+    assert "not trade approval" in review
+    assert "ACME" in review
+    assert "options" in review
+    assert "broker" in review
+    assert "BETA" not in review
+
+    overview = render_dashboard_tui(payload, page="overview", width=140)
+    assert "Full-market priced-in queue" in overview
+    assert "ACME" in overview
+    assert "BETA" in overview
+
+
 def test_dashboard_scan_commands_page_full_scan_rows(tmp_path: Path, monkeypatch) -> None:
     database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
     monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
@@ -932,7 +1035,7 @@ def test_dashboard_scan_commands_page_full_scan_rows(tmp_path: Path, monkeypatch
         engine=engine,
         config=config,
     )
-    assert ready_update.page == "overview"
+    assert ready_update.page == "review"
     assert ready_update.filters.priced_in_status == "actionable"
     assert ready_update.filters.priced_in_usefulness == "decision_useful"
     assert ready_update.filters.priced_in_offset == 0
@@ -2048,7 +2151,9 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
 
             await pilot.press("ctrl+p")
             await pilot.pause()
-            assert app.page == "candidates"
+            assert app.page == "review"
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            assert "Decision Review" in frame
 
             assert await pilot.click("#nav-candidates")
             await pilot.pause()
