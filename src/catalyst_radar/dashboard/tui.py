@@ -3037,6 +3037,7 @@ def _market_insight_rows(payload: Mapping[str, object]) -> list[Mapping[str, obj
     preflight = _mapping(payload.get("priced_in_preflight"))
     priced_in_queue = _mapping(payload.get("priced_in_queue"))
     priced_in_answer = _mapping(payload.get("priced_in_answer"))
+    priced_in_audit = _mapping(payload.get("priced_in_audit"))
     source_coverage = _mapping(payload.get("priced_in_source_coverage"))
     can_act = _decision_label(readiness)
     queue_rows = (
@@ -3102,6 +3103,11 @@ def _market_insight_rows(payload: Mapping[str, object]) -> list[Mapping[str, obj
             actionable_count=_priced_in_actionable_count(priced_in_queue),
         )
     )
+    instrument_scope = _mapping(priced_in_audit.get("instrument_scope"))
+    if not instrument_scope:
+        instrument_scope = _mapping(priced_in_queue.get("instrument_scope"))
+    if instrument_scope:
+        rows.append(_instrument_scope_row(instrument_scope))
     rows.append(
         _source_coverage_row(
             freshness=freshness,
@@ -3303,6 +3309,32 @@ def _full_scan_coverage_row(
     }
 
 
+def _instrument_scope_row(instrument_scope: Mapping[str, object]) -> Mapping[str, object]:
+    sec_scope = _mapping(instrument_scope.get("sec_catalyst_applicability"))
+    row_count = int(_number_or_zero(instrument_scope.get("row_count")))
+    company_like = int(_number_or_zero(instrument_scope.get("company_like_rows")))
+    non_company = int(_number_or_zero(instrument_scope.get("non_company_rows")))
+    unknown = int(_number_or_zero(instrument_scope.get("unknown_type_rows")))
+    why_now = (
+        f"full scan rows {row_count}; operating-company rows {company_like}; "
+        f"ETF/fund/wrapper rows {non_company}; unknown type {unknown}. "
+        "Non-company rows stay in the scan, but SEC company filings are not "
+        "their evidence route."
+    )
+    return {
+        "_row_key": "instrument-scope",
+        "scope": "SCOPE",
+        "signal": "Instrument routing",
+        "why_now": why_now,
+        "next_action": sec_scope.get("next_action")
+        or "Open Ops to choose the right evidence route for each instrument type.",
+        "target_page": "ops",
+        "status_message": (
+            "Opened Ops. Full scan stays broad; evidence routes differ by instrument."
+        ),
+    }
+
+
 def _source_coverage_next_action(source_coverage: Mapping[str, object]) -> str:
     by_source = {
         str(action.get("source") or ""): action
@@ -3422,6 +3454,9 @@ def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
     audit_summary = _full_scan_audit_summary(payload)
     if audit_summary:
         lines.append(f"Full scan audit: {audit_summary}")
+    instrument_summary = _full_scan_instrument_scope_summary(payload)
+    if instrument_summary:
+        lines.append(f"Instrument scope: {instrument_summary}")
     decision_summary = _decision_readiness_summary(payload)
     if decision_summary:
         lines.append(f"Decision readiness: {decision_summary}")
@@ -3464,6 +3499,31 @@ def _full_scan_audit_summary(payload: Mapping[str, object]) -> str:
         f"ranked {ranked}/{active}",
         f"bars {with_bars}/{active}",
         f"sources {ready_sources}/{source_count}",
+    ]
+    if next_action:
+        parts.append(f"next {next_action}")
+    return "; ".join(parts)
+
+
+def _full_scan_instrument_scope_summary(payload: Mapping[str, object]) -> str:
+    audit = _mapping(payload.get("priced_in_audit"))
+    queue = _mapping(payload.get("priced_in_queue"))
+    instrument = _mapping(audit.get("instrument_scope"))
+    if not instrument:
+        instrument = _mapping(queue.get("instrument_scope"))
+    if not instrument:
+        return ""
+    row_count = int(_number_or_zero(instrument.get("row_count")))
+    company_like = int(_number_or_zero(instrument.get("company_like_rows")))
+    non_company = int(_number_or_zero(instrument.get("non_company_rows")))
+    unknown = int(_number_or_zero(instrument.get("unknown_type_rows")))
+    sec_scope = _mapping(instrument.get("sec_catalyst_applicability"))
+    next_action = _clip(str(sec_scope.get("next_action") or "").strip(), 90)
+    parts = [
+        f"rows {row_count}",
+        f"companies {company_like}",
+        f"fund/wrapper {non_company}",
+        f"unknown {unknown}",
     ]
     if next_action:
         parts.append(f"next {next_action}")

@@ -3316,6 +3316,7 @@ def _print_priced_in_queue(payload: Mapping[str, object]) -> None:
                         "  diagnostic="
                         f"{_compact_cli_text(diagnostic.get('evidence'))}"
                     )
+    _print_priced_in_instrument_scope(payload.get("instrument_scope"))
     rows = payload.get("rows")
     if not isinstance(rows, list | tuple) or not rows:
         print("No priced-in rows.")
@@ -3709,6 +3710,34 @@ def _count_summary(counts: Mapping[object, object]) -> str:
     return ",".join(parts)
 
 
+def _print_priced_in_instrument_scope(value: object) -> None:
+    if not isinstance(value, Mapping) or not value:
+        return
+    type_counts = value.get("type_counts")
+    type_summary = (
+        _count_summary({str(key): item for key, item in type_counts.items()})
+        if isinstance(type_counts, Mapping) and type_counts
+        else "n/a"
+    )
+    print(
+        "instrument_scope="
+        f"rows={value.get('row_count')} "
+        f"company_like={value.get('company_like_rows')} "
+        f"non_company={value.get('non_company_rows')} "
+        f"unknown={value.get('unknown_type_rows')} "
+        f"types={type_summary}"
+    )
+    sec_scope = value.get("sec_catalyst_applicability")
+    if isinstance(sec_scope, Mapping):
+        print(
+            "sec_catalyst_applicability="
+            f"applicable={sec_scope.get('applicable_rows')} "
+            f"non_applicable={sec_scope.get('non_applicable_rows')} "
+            f"unknown={sec_scope.get('unknown_type_rows')} "
+            f"next={_compact_cli_text(sec_scope.get('next_action'))}"
+        )
+
+
 def _priced_in_more_command(filters: object, limit: int, next_offset: int) -> str:
     parts = ["catalyst-radar", "priced-in-queue"]
     if isinstance(filters, Mapping):
@@ -3792,6 +3821,7 @@ def _print_priced_in_audit(payload: Mapping[str, object]) -> None:
         f"{coverage.get('source_count')} "
         f"weak={','.join(str(item) for item in _sequence_value(coverage.get('weak_sources')))}"
     )
+    _print_priced_in_instrument_scope(payload.get("instrument_scope"))
     next_action = payload.get("next_action")
     if next_action:
         print(f"next_action={_compact_cli_text(next_action)}")

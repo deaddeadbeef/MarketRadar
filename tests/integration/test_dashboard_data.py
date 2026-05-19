@@ -1574,6 +1574,14 @@ def test_priced_in_full_scan_audit_payload_consolidates_current_state(
     assert payload["scope"]["active_securities"] == 2
     assert payload["scope"]["ranked_rows"] == 2
     assert payload["market_bars"]["active_securities"] == 2
+    assert payload["instrument_scope"]["schema_version"] == (
+        "priced-in-instrument-scope-v1"
+    )
+    assert payload["instrument_scope"]["row_count"] == 2
+    assert payload["instrument_scope"]["unknown_type_rows"] == 2
+    assert payload["instrument_scope"]["sec_catalyst_applicability"][
+        "unknown_type_rows"
+    ] == 2
     assert payload["source_coverage"]["source_count"] == 6
     assert "actionable_mismatch_rows" in payload["counts"]
     assert payload["next_action"]
@@ -1585,6 +1593,63 @@ def test_priced_in_full_scan_audit_payload_consolidates_current_state(
     assert sources["options"]["command"].startswith(
         "catalyst-radar priced-in-source-batches --source options"
     )
+
+
+def test_priced_in_queue_payload_reports_full_scan_instrument_scope(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(securities),
+            [
+                {
+                    "ticker": "MSFT",
+                    "name": "Microsoft Corporation",
+                    "exchange": "NASDAQ",
+                    "sector": "Technology",
+                    "industry": "Software",
+                    "market_cap": 3_000_000_000_000.0,
+                    "avg_dollar_volume_20d": 5_000_000_000.0,
+                    "has_options": True,
+                    "is_active": True,
+                    "updated_at": AVAILABLE_AT,
+                    "metadata": {"type": "CS", "cik": "789019"},
+                },
+                {
+                    "ticker": "AAPL",
+                    "name": "AAPL Strategy ETF",
+                    "exchange": "BATS",
+                    "sector": "Unknown",
+                    "industry": "Unknown",
+                    "market_cap": 1_000_000_000.0,
+                    "avg_dollar_volume_20d": 25_000_000.0,
+                    "has_options": True,
+                    "is_active": True,
+                    "updated_at": AVAILABLE_AT,
+                    "metadata": {"type": "ETF"},
+                },
+            ],
+        )
+
+    payload = priced_in_queue_payload(engine, AppConfig.from_env({}), limit=1)
+
+    assert payload["count"] == 1
+    assert payload["total_count"] == 2
+    scope = payload["instrument_scope"]
+    assert scope["row_count"] == 2
+    assert scope["company_like_rows"] == 1
+    assert scope["non_company_rows"] == 1
+    assert scope["unknown_type_rows"] == 0
+    assert scope["type_counts"] == {"CS": 1, "ETF": 1}
+    assert scope["sample_company_like_tickers"] == ["MSFT"]
+    assert scope["sample_non_company_tickers"] == ["AAPL"]
+    sec_scope = scope["sec_catalyst_applicability"]
+    assert sec_scope["applicable_rows"] == 1
+    assert sec_scope["non_applicable_rows"] == 1
+    assert "stay in the full scan" in sec_scope["explanation"]
+    assert "route ETF/fund/wrapper rows" in sec_scope["next_action"]
 
 
 def test_priced_in_answer_blocks_selected_universe_even_with_ready_rows(
