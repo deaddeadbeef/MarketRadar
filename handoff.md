@@ -1,6 +1,6 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 17:43:55 +08:00
+Last updated: 2026-05-19 17:51:13 +08:00
 
 ## Latest Source-Gap First-Batch Actions
 
@@ -81,7 +81,7 @@ git diff --check
 .\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-audit --source-gap broker_context --limit 2
 ```
 
-Observed so far:
+Observed:
 
 - Focused four-test set passed (`4 passed`).
 - Ruff passed.
@@ -90,12 +90,33 @@ Observed so far:
   one required Schwab call, the execute-next command, and `external_calls=0`.
 - Live branch options selected action showed `blocked_reason=newer_than_scan`,
   no executable batch, and `external_calls=0`.
+- PR #335 merged as `0e57669`.
+- Post-merge local services were restarted:
+  - API health returned commit `0e57669fdddf`;
+  - Streamlit health returned `ok`.
+- Live API verification:
+  - `/api/radar/priced-in/audit?source_gap=broker_context&limit=2`
+  - returned `api_batch_status=ready`, `gap=12082`, `batches=2417`,
+    first batch `AAMI,AAOI,AAL,AAON,AAP`, `calls=1`,
+    execute command
+    `catalyst-radar priced-in-source-batches --source broker_context --execute-next`,
+    and `external_calls=0`.
+- Browser verification on `http://127.0.0.1:8514`:
+  - selecting **Source gap** = `broker_context` rendered
+    **Selected Source Gap Action**;
+  - the table showed `BATCH STATUS=ready`, `FULL SCAN GAP ROWS=12082`,
+    `PROVIDER BATCH COUNT=2417`, first provider batch
+    `AAMI, AAOI, AAL, AAON, AAP`, `FIRST BATCH CALLS=1`, the execute-next
+    command, and `First provider batch only; full scan has 12082 gap row(s)
+    and 2417 planned batch(es).`
 
 Next useful product action:
 
-- Commit, open a PR, merge by rebase, restart local services, verify API and
-  Streamlit health, then run live API/dashboard checks for selected source-gap
-  first-batch actions.
+- Actual source-fill execution still requires explicit user approval because it
+  can call SEC/Schwab/market providers.
+- Next useful zero-call product slice: make the dashboard's "what should I do
+  now?" path prioritize coverage actions by payoff, for example showing
+  source-fill candidates that unblock the most decision-useful rows first.
 
 ## Latest Full-Scan All-Rows UX
 
