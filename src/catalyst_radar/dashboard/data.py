@@ -11308,27 +11308,40 @@ def _coverage_evidence(row: Mapping[str, object]) -> str:
 
 
 def _csv_market_refresh_command(as_of_date: date | None) -> str:
-    expected = f" -ExpectedAsOf {as_of_date.isoformat()}" if as_of_date else ""
+    expected = f" --expected-as-of {as_of_date.isoformat()}" if as_of_date else ""
     return (
-        "powershell -ExecutionPolicy Bypass -File "
-        "scripts\\refresh-csv-market-data.ps1 -DailyBars <fresh-bars.csv>"
-        f"{expected} -Execute"
+        "catalyst-radar market-bars import --daily-bars <fresh-bars.csv>"
+        f"{expected} --execute"
+    )
+
+
+def _csv_market_template_command(as_of_date: date | None) -> str:
+    expected = (
+        as_of_date.isoformat()
+        if as_of_date is not None
+        else "<LATEST_TRADING_DATE>"
+    )
+    return (
+        "catalyst-radar market-bars template "
+        f"--expected-as-of {expected} --out data\\local\\manual-bars-{expected}.csv"
     )
 
 
 def _csv_market_refresh_next_action(as_of_date: date | None) -> str:
     return (
-        "Use SEC-only results for research only; import fresh CSV bars with "
-        f"`{_csv_market_refresh_command(as_of_date)}` or configure a live market "
-        "provider before acting."
+        "Use SEC-only results for research only; generate a DB-backed active-universe "
+        f"bar template with `{_csv_market_template_command(as_of_date)}`, then "
+        f"import filled bars with `{_csv_market_refresh_command(as_of_date)}` or "
+        "configure a live market provider before acting."
     )
 
 
 def _csv_market_refresh_discovery_action(as_of_date: date | None) -> str:
     return (
-        "Use SEC-only results for research only; import fresh CSV bars with "
-        f"`{_csv_market_refresh_command(as_of_date)}` or configure a live market "
-        "provider before relying on broad discovery."
+        "Use SEC-only results for research only; generate a DB-backed active-universe "
+        f"bar template with `{_csv_market_template_command(as_of_date)}`, then "
+        f"import filled bars with `{_csv_market_refresh_command(as_of_date)}` or "
+        "configure a live market provider before relying on broad discovery."
     )
 
 

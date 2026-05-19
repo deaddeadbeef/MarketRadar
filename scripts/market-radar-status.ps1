@@ -147,11 +147,11 @@ if ($null -ne $freshness) {
     }
     if ($readiness.radar_run.as_of) {
         Write-Output (
-            "- template command: powershell -ExecutionPolicy Bypass -File scripts\refresh-csv-market-data.ps1 -TemplateOut data\local\manual-bars-{0}.csv -ExpectedAsOf {0}" -f
+            "- template command: catalyst-radar market-bars template --expected-as-of {0} --out data\local\manual-bars-{0}.csv" -f
             $readiness.radar_run.as_of
         )
         Write-Output (
-            "- refresh command: powershell -ExecutionPolicy Bypass -File scripts\refresh-csv-market-data.ps1 -DailyBars <fresh-bars.csv> -ExpectedAsOf {0} -Execute" -f
+            "- refresh command: catalyst-radar market-bars import --daily-bars <fresh-bars.csv> --expected-as-of {0} --execute" -f
             $readiness.radar_run.as_of
         )
     }

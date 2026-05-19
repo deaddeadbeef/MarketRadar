@@ -97,6 +97,10 @@ from catalyst_radar.jobs.scheduler import (
     run_once,
     scheduler_run_payload,
 )
+from catalyst_radar.market.manual_bars import (
+    import_manual_market_bars,
+    write_manual_market_bars_template,
+)
 from catalyst_radar.pipeline.candidate_packet import build_candidate_packet
 from catalyst_radar.pipeline.scan import run_scan
 from catalyst_radar.security.audit import AuditLogRepository
@@ -173,6 +177,28 @@ def build_parser() -> argparse.ArgumentParser:
     ingest.add_argument("--securities", type=Path, required=True)
     ingest.add_argument("--daily-bars", type=Path, required=True)
     ingest.add_argument("--holdings", type=Path)
+
+    market_bars = subparsers.add_parser("market-bars")
+    market_bars_sub = market_bars.add_subparsers(
+        dest="market_bars_command",
+        required=True,
+    )
+    market_bars_template = market_bars_sub.add_parser("template")
+    market_bars_template.add_argument("--database-url")
+    market_bars_template.add_argument(
+        "--expected-as-of",
+        type=date.fromisoformat,
+        required=True,
+    )
+    market_bars_template.add_argument("--out", type=Path, required=True)
+    market_bars_template.add_argument("--provider", default="manual_csv")
+    market_bars_template.add_argument("--json", action="store_true")
+    market_bars_import = market_bars_sub.add_parser("import")
+    market_bars_import.add_argument("--database-url")
+    market_bars_import.add_argument("--daily-bars", type=Path, required=True)
+    market_bars_import.add_argument("--expected-as-of", type=date.fromisoformat)
+    market_bars_import.add_argument("--execute", action="store_true")
+    market_bars_import.add_argument("--json", action="store_true")
 
     polygon = subparsers.add_parser("ingest-polygon")
     polygon_sub = polygon.add_subparsers(dest="polygon_command", required=True)
@@ -789,6 +815,39 @@ def main(argv: list[str] | None = None) -> int:
             daily_bars_path=args.daily_bars,
             holdings_path=args.holdings,
         )
+
+    if args.command == "market-bars":
+        create_schema(engine)
+        try:
+            if args.market_bars_command == "template":
+                result = write_manual_market_bars_template(
+                    engine,
+                    output_path=args.out,
+                    expected_as_of=args.expected_as_of,
+                    provider=args.provider,
+                )
+                payload = result.as_payload()
+                if args.json:
+                    print(json.dumps(payload, sort_keys=True))
+                else:
+                    _print_manual_market_bars_template(payload)
+                return 0
+            if args.market_bars_command == "import":
+                result = import_manual_market_bars(
+                    engine,
+                    daily_bars_path=args.daily_bars,
+                    expected_as_of=args.expected_as_of,
+                    execute=args.execute,
+                )
+                payload = result.as_payload()
+                if args.json:
+                    print(json.dumps(payload, sort_keys=True))
+                else:
+                    _print_manual_market_bars_import(payload)
+                return 0 if result.status in {"ready", "imported"} else 2
+        except (FileNotFoundError, KeyError, ValueError) as exc:
+            print(f"manual market bars failed: {exc}", file=sys.stderr)
+            return 1
 
     if args.command == "ingest-polygon":
         create_schema(engine)
@@ -3037,6 +3096,50 @@ def _print_agent_brief(payload: Mapping[str, object]) -> None:
         if not isinstance(check, Mapping):
             continue
         print(f"- {check.get('name')}: {check.get('status')} - {check.get('detail')}")
+
+
+def _print_manual_market_bars_template(payload: Mapping[str, object]) -> None:
+    print(
+        "manual_market_bars_template "
+        f"status={payload.get('status')} "
+        f"rows={payload.get('row_count')} "
+        f"expected_as_of={payload.get('expected_as_of')} "
+        f"path={payload.get('output_path')} "
+        f"external_calls={payload.get('external_calls_made')}"
+    )
+    print(f"next_action={payload.get('next_action')}")
+    print(f"import_command={payload.get('import_command')}")
+    print(f"execute_command={payload.get('execute_command')}")
+
+
+def _print_manual_market_bars_import(payload: Mapping[str, object]) -> None:
+    print(
+        "manual_market_bars_import "
+        f"status={payload.get('status')} "
+        f"rows={payload.get('row_count')} "
+        f"tickers={payload.get('ticker_count')} "
+        f"active={payload.get('active_security_count')} "
+        f"latest_bar={payload.get('latest_bar_date') or 'n/a'} "
+        f"expected_as_of={payload.get('expected_as_of') or 'n/a'} "
+        f"executed={str(bool(payload.get('executed'))).lower()} "
+        f"external_calls={payload.get('external_calls_made')}"
+    )
+    if payload.get("bars_at_expected_as_of") is not None:
+        print(
+            "coverage="
+            f"bars_at_expected={payload.get('bars_at_expected_as_of')} "
+            f"missing={payload.get('missing_expected_count')}"
+        )
+    missing = payload.get("missing_expected_tickers")
+    if isinstance(missing, list | tuple) and missing:
+        sample = ",".join(str(ticker) for ticker in missing)
+        more = int(payload.get("missing_expected_more") or 0)
+        suffix = f" plus {more} more" if more else ""
+        print(f"missing_expected_tickers={sample}{suffix}")
+    if payload.get("status") == "ready":
+        print("Plan only: no database writes were made.")
+    print(f"next_action={payload.get('next_action')}")
+    print(f"execute_command={payload.get('execute_command')}")
 
 
 def _print_priced_in_queue(payload: Mapping[str, object]) -> None:
