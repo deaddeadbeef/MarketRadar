@@ -535,9 +535,12 @@ def test_dashboard_wires_priced_in_full_scan_panel_after_usefulness() -> None:
     assert "Full Scan Rows" in helper_source
     assert "Active Securities" in helper_source
     assert "Decision-ready" in helper_source
+    assert "Trust Gaps" in helper_source
+    assert "Full-scan Trust Gaps" in helper_source
     assert "Full-scan commands" in helper_source
     assert "Priced-in Source Gaps" in helper_source
     assert "external_calls_made" in helper_source
+    assert "trust_blockers" in helper_source
     assert "gap_count" in rows_source
     assert overview_source.index("_show_market_radar_usefulness") < overview_source.index(
         "_show_priced_in_full_scan_panel"

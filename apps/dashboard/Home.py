@@ -2018,6 +2018,10 @@ def _show_priced_in_full_scan_panel(
                 "sample" if scope.get("visible_tickers_are_sample") else "all visible",
             ),
             ("External Calls", audit.get("external_calls_made") or 0),
+            (
+                "Trust Gaps",
+                int(_metric_number(source_coverage.get("trust_gap_count"))),
+            ),
             ("Question", audit.get("question") or "priced-in"),
         ]
     )
@@ -2038,12 +2042,34 @@ def _show_priced_in_full_scan_panel(
     if commands:
         with st.expander("Full-scan commands", expanded=False):
             st.code("\n".join(str(command) for command in commands), language="powershell")
+    trust_rows = _priced_in_full_scan_trust_rows(audit.get("trust_blockers"))
+    if trust_rows:
+        _show_records(
+            "Full-scan Trust Gaps",
+            trust_rows,
+            empty="No full-scan trust gaps.",
+        )
     source_rows = _priced_in_full_scan_source_rows(audit.get("sources"))
     _show_records(
         "Priced-in Source Gaps",
         source_rows,
         empty="No priced-in source gap rows.",
     )
+
+
+def _priced_in_full_scan_trust_rows(value: object) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for row in _records(value):
+        rows.append(
+            {
+                "area": row.get("area"),
+                "status": row.get("status"),
+                "gap_count": row.get("gap_count"),
+                "next_action": row.get("next_action"),
+                "command": row.get("command"),
+            }
+        )
+    return rows
 
 
 def _priced_in_full_scan_source_rows(value: object) -> list[dict[str, object]]:

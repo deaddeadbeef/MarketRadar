@@ -1583,6 +1583,11 @@ def test_priced_in_full_scan_audit_payload_consolidates_current_state(
         "unknown_type_rows"
     ] == 2
     assert payload["source_coverage"]["source_count"] == 6
+    assert payload["source_coverage"]["trust_gap_count"] == len(
+        payload["trust_blockers"]
+    )
+    assert payload["trust_blockers"]
+    assert any(row["area"] == "options" for row in payload["trust_blockers"])
     assert "actionable_mismatch_rows" in payload["counts"]
     assert payload["next_action"]
     assert payload["commands"]["source_overview"] == (
