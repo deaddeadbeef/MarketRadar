@@ -6775,6 +6775,9 @@ def _candidate_row(row: Any) -> dict[str, object]:
     candidate_payload = (
         signal_payload.get("candidate", {}) if isinstance(signal_payload, dict) else {}
     )
+    features_payload = candidate_payload.get("features", {})
+    if not isinstance(features_payload, dict):
+        features_payload = {}
     candidate_metadata = candidate_payload.get("metadata", {})
     if not isinstance(candidate_metadata, dict):
         candidate_metadata = {}
@@ -6815,6 +6818,17 @@ def _candidate_row(row: Any) -> dict[str, object]:
     values["candidate_theme"] = candidate_metadata.get("candidate_theme")
     values["theme_feature_version"] = candidate_metadata.get("theme_feature_version")
     values["options_feature_version"] = candidate_metadata.get("options_feature_version")
+    for feature_key in (
+        "ret_5d",
+        "ret_20d",
+        "rs_20_sector",
+        "rs_60_spy",
+        "rel_volume_5d",
+        "dollar_volume_z",
+        "extension_20d",
+        "liquidity_score",
+    ):
+        values[feature_key] = features_payload.get(feature_key)
     priced_in = candidate_metadata.get("priced_in")
     if not isinstance(priced_in, Mapping):
         priced_in = _priced_in_from_candidate_payload(
@@ -7485,6 +7499,11 @@ def _priced_in_evidence_brief(
     blockers = _priced_in_row_blockers(candidate)
     data_sources = _priced_in_row_source_payload(candidate)
     instrument = _priced_in_row_instrument_payload(security_metadata)
+    non_company_evidence = _priced_in_non_company_evidence_payload(
+        candidate,
+        instrument=instrument,
+        security_metadata=security_metadata,
+    )
     source_actions = _priced_in_source_actions_from_payload(
         data_sources,
         ticker=_priced_in_action_ticker(candidate),
@@ -7521,6 +7540,11 @@ def _priced_in_evidence_brief(
         "source": candidate.get("top_event_source"),
         "source_url": candidate.get("top_event_source_url"),
         "instrument": instrument,
+        **(
+            {"non_company_evidence": non_company_evidence}
+            if non_company_evidence
+            else {}
+        ),
         "data_sources": data_sources,
         "source_actions": source_actions,
         "usefulness": usefulness,
@@ -7754,6 +7778,11 @@ def _priced_in_queue_row(
     blockers = _priced_in_row_blockers(row)
     data_sources = _priced_in_row_source_payload(row)
     instrument = _priced_in_row_instrument_payload(security_metadata)
+    non_company_evidence = _priced_in_non_company_evidence_payload(
+        row,
+        instrument=instrument,
+        security_metadata=security_metadata,
+    )
     source_actions = _priced_in_source_actions_from_payload(
         data_sources,
         ticker=_priced_in_action_ticker(row),
@@ -7802,6 +7831,11 @@ def _priced_in_queue_row(
         "top_catalyst": brief.get("top_catalyst") or row.get("top_event_title"),
         "why_now": reason or "No priced-in reason is available.",
         "instrument": instrument,
+        **(
+            {"non_company_evidence": non_company_evidence}
+            if non_company_evidence
+            else {}
+        ),
         "data_sources": data_sources,
         "usefulness": usefulness,
         "next_step": next_step,
@@ -7896,6 +7930,280 @@ def _priced_in_row_instrument_payload(
         "evidence_route": evidence_route,
         "sec_catalyst_applicable": sec_catalyst_applicable,
     }
+
+
+def _priced_in_non_company_evidence_payload(
+    row: Mapping[str, object],
+    *,
+    instrument: Mapping[str, object],
+    security_metadata: Mapping[str, object] | None,
+) -> dict[str, object]:
+    if str(instrument.get("category") or "").strip().lower() != "non_company":
+        return {}
+    security = _row_dict(security_metadata) if isinstance(security_metadata, Mapping) else {}
+    metadata = _mapping_value(security, "metadata")
+    security_type = str(instrument.get("security_type") or "UNKNOWN").strip().upper()
+    name = str(security.get("name") or row.get("ticker") or "").strip()
+    ticker = _priced_in_action_ticker(row)
+    checkpoints = [
+        _non_company_instrument_identity_evidence(
+            ticker=ticker,
+            name=name,
+            security_type=security_type,
+            security=security,
+            metadata=metadata,
+        ),
+        _non_company_market_reaction_evidence(row),
+        _non_company_theme_sector_evidence(row, security),
+        _non_company_flow_volume_evidence(row),
+    ]
+    wrapper_hint = _non_company_underlying_or_objective_evidence(
+        name=name,
+        security_type=security_type,
+        metadata=metadata,
+    )
+    if wrapper_hint:
+        checkpoints.append(wrapper_hint)
+    missing_required = [
+        str(item.get("kind"))
+        for item in checkpoints
+        if bool(item.get("required")) and item.get("status") == "missing"
+    ]
+    available_count = sum(
+        1
+        for item in checkpoints
+        if str(item.get("status") or "") in {"available", "inferred"}
+    )
+    status = (
+        "available"
+        if not missing_required
+        else "partial"
+        if available_count
+        else "missing"
+    )
+    return {
+        "schema_version": "priced-in-non-company-evidence-v1",
+        "status": status,
+        "route": "market_theme_fund_or_flow",
+        "instrument_type": security_type,
+        "name": name or ticker,
+        "summary": _non_company_evidence_summary(checkpoints),
+        "missing_required": missing_required,
+        "checkpoints": checkpoints,
+        "external_calls_made": 0,
+    }
+
+
+def _non_company_instrument_identity_evidence(
+    *,
+    ticker: str,
+    name: str,
+    security_type: str,
+    security: Mapping[str, object],
+    metadata: Mapping[str, object],
+) -> dict[str, object]:
+    exchange = str(security.get("exchange") or "").strip()
+    figi = str(metadata.get("composite_figi") or "").strip()
+    title = f"{ticker} is {security_type}"
+    if name:
+        title = f"{ticker}: {name}"
+    detail = (
+        f"Instrument type {security_type}; use non-company evidence rather than "
+        "SEC operating-company catalysts."
+    )
+    return {
+        "kind": "instrument_identity",
+        "status": "available" if name or security_type != "UNKNOWN" else "missing",
+        "required": True,
+        "title": title,
+        "detail": detail,
+        "exchange": exchange or None,
+        "figi": figi or None,
+    }
+
+
+def _non_company_market_reaction_evidence(
+    row: Mapping[str, object],
+) -> dict[str, object]:
+    has_reaction = row.get("reaction_score") not in (None, "")
+    gap = _finite_float(row.get("emotion_reaction_gap"))
+    emotion = _finite_float(row.get("emotion_score"))
+    reaction = _finite_float(row.get("reaction_score"))
+    return {
+        "kind": "market_reaction",
+        "status": "available" if has_reaction else "missing",
+        "required": True,
+        "title": f"emotion {emotion:g} vs reaction {reaction:g}",
+        "detail": (
+            f"Gap {gap:g}; positive means market emotion is ahead of observed "
+            "price reaction."
+        )
+        if has_reaction
+        else "Market reaction score is not stored for this row.",
+        "emotion_score": emotion if has_reaction else None,
+        "reaction_score": reaction if has_reaction else None,
+        "emotion_reaction_gap": gap if has_reaction else None,
+    }
+
+
+def _non_company_theme_sector_evidence(
+    row: Mapping[str, object],
+    security: Mapping[str, object],
+) -> dict[str, object]:
+    theme = _meaningful_text(row.get("candidate_theme"))
+    sector = str(security.get("sector") or "").strip()
+    industry = str(security.get("industry") or "").strip()
+    metrics = {
+        "theme_velocity_score": _finite_float(row.get("theme_velocity_score")),
+        "peer_readthrough_score": _finite_float(row.get("peer_readthrough_score")),
+        "sector_rotation_score": _finite_float(row.get("sector_rotation_score")),
+    }
+    useful_sector = [
+        value
+        for value in (sector, industry)
+        if value and value.strip().lower() not in {"unknown", "n/a", "none"}
+    ]
+    has_metric = any(value != 0.0 for value in metrics.values())
+    available = bool(theme or useful_sector or has_metric)
+    detail_parts = []
+    if theme:
+        detail_parts.append(f"theme={theme}")
+    if useful_sector:
+        detail_parts.append(" / ".join(useful_sector))
+    if has_metric:
+        detail_parts.append(
+            "theme/peer/sector scores="
+            f"{metrics['theme_velocity_score']:g}/"
+            f"{metrics['peer_readthrough_score']:g}/"
+            f"{metrics['sector_rotation_score']:g}"
+        )
+    return {
+        "kind": "theme_sector_context",
+        "status": "available" if available else "missing",
+        "required": True,
+        "title": "theme/sector context",
+        "detail": "; ".join(detail_parts)
+        if detail_parts
+        else "No theme, sector, or peer context is stored for this row.",
+        "candidate_theme": theme or None,
+        "sector": sector or None,
+        "industry": industry or None,
+        **metrics,
+    }
+
+
+def _non_company_flow_volume_evidence(
+    row: Mapping[str, object],
+) -> dict[str, object]:
+    metrics = {
+        "rel_volume_5d": _nullable_float(row.get("rel_volume_5d")),
+        "dollar_volume_z": _nullable_float(row.get("dollar_volume_z")),
+        "ret_5d": _nullable_float(row.get("ret_5d")),
+        "ret_20d": _nullable_float(row.get("ret_20d")),
+        "rs_20_sector": _nullable_float(row.get("rs_20_sector")),
+    }
+    available_metrics = {
+        key: value for key, value in metrics.items() if value is not None
+    }
+    return {
+        "kind": "flow_volume_context",
+        "status": "available" if available_metrics else "missing",
+        "required": False,
+        "title": "flow/volume context",
+        "detail": (
+            ", ".join(f"{key}={value:g}" for key, value in available_metrics.items())
+            if available_metrics
+            else "No stored flow/volume feature snapshot is available."
+        ),
+        **metrics,
+    }
+
+
+def _non_company_underlying_or_objective_evidence(
+    *,
+    name: str,
+    security_type: str,
+    metadata: Mapping[str, object],
+) -> dict[str, object]:
+    description = str(
+        _first_present(
+            metadata.get("description"),
+            metadata.get("objective"),
+            metadata.get("fund_description"),
+        )
+        or ""
+    ).strip()
+    if description:
+        return {
+            "kind": "fund_objective",
+            "status": "available",
+            "required": False,
+            "title": "stored fund objective",
+            "detail": description,
+        }
+    if security_type in PRICED_IN_WRAPPER_SECURITY_TYPES and name:
+        return {
+            "kind": "underlying_hint",
+            "status": "inferred",
+            "required": False,
+            "title": "underlying hint from instrument name",
+            "detail": _non_company_underlying_hint_from_name(name),
+        }
+    if security_type in PRICED_IN_FUND_LIKE_SECURITY_TYPES and name:
+        return {
+            "kind": "fund_objective",
+            "status": "inferred",
+            "required": False,
+            "title": "fund objective hint from instrument name",
+            "detail": name,
+        }
+    return {}
+
+
+def _non_company_underlying_hint_from_name(name: str) -> str:
+    cleaned = name
+    for suffix in (
+        "Warrants",
+        "Warrant",
+        "Rights",
+        "Right",
+        "Units",
+        "Unit",
+        "Preferred",
+    ):
+        cleaned = cleaned.replace(suffix, "").strip(" -,.")
+    return cleaned or name
+
+
+def _non_company_evidence_summary(
+    checkpoints: Sequence[Mapping[str, object]],
+) -> str:
+    parts = []
+    for item in checkpoints:
+        if str(item.get("status") or "") == "missing":
+            continue
+        title = str(item.get("title") or "").strip()
+        detail = str(item.get("detail") or "").strip()
+        if title and detail:
+            parts.append(f"{title}: {detail}")
+        elif title:
+            parts.append(title)
+        if len(parts) >= 3:
+            break
+    return "; ".join(parts) if parts else "No non-company evidence is available."
+
+
+def _nullable_float(value: object) -> float | None:
+    if value in (None, ""):
+        return None
+    return _finite_float(value)
+
+
+def _meaningful_text(value: object) -> str:
+    text = str(value or "").strip()
+    if text.lower() in {"", "unknown", "n/a", "none", "null"}:
+        return ""
+    return text
 
 
 def _priced_in_source_coverage_summary_text(
@@ -8648,9 +8956,22 @@ def _security_metadata_by_ticker(
     )
     if not normalized:
         return {}
-    stmt = select(securities.c.ticker, securities.c.name, securities.c.metadata).where(
-        securities.c.is_active.is_(True),
-        securities.c.ticker.in_(normalized),
+    stmt = (
+        select(
+            securities.c.ticker,
+            securities.c.name,
+            securities.c.exchange,
+            securities.c.sector,
+            securities.c.industry,
+            securities.c.market_cap,
+            securities.c.avg_dollar_volume_20d,
+            securities.c.has_options,
+            securities.c.metadata,
+        )
+        .where(
+            securities.c.is_active.is_(True),
+            securities.c.ticker.in_(normalized),
+        )
     )
     rows: dict[str, dict[str, object]] = {}
     with engine.connect() as conn:
@@ -8658,6 +8979,12 @@ def _security_metadata_by_ticker(
             metadata = row._mapping["metadata"] or {}
             rows[str(row.ticker).strip().upper()] = {
                 "name": str(row._mapping["name"] or ""),
+                "exchange": str(row._mapping["exchange"] or ""),
+                "sector": str(row._mapping["sector"] or ""),
+                "industry": str(row._mapping["industry"] or ""),
+                "market_cap": row._mapping["market_cap"],
+                "avg_dollar_volume_20d": row._mapping["avg_dollar_volume_20d"],
+                "has_options": bool(row._mapping["has_options"]),
                 "metadata": metadata if isinstance(metadata, Mapping) else {},
             }
     return rows

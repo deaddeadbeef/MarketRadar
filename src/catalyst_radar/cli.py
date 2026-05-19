@@ -3346,6 +3346,14 @@ def _print_priced_in_queue(payload: Mapping[str, object]) -> None:
             f"{row.get('next_step')}"
             f"{command_suffix}"
         )
+        evidence = row.get("non_company_evidence")
+        if isinstance(evidence, Mapping):
+            print(
+                "  non_company_evidence="
+                f"status={evidence.get('status')} "
+                f"route={evidence.get('route')} "
+                f"summary={_compact_cli_text(evidence.get('summary'))}"
+            )
     if payload.get("has_more"):
         filters = payload.get("filters")
         next_offset = _int_value(payload.get("offset")) + _int_value(payload.get("count"))
@@ -4097,6 +4105,14 @@ def _print_candidate_detail(payload: Mapping[str, object]) -> None:
         f"priced={brief.get('priced_in_score')}"
     )
     print(f"data={_compact_cli_text(_detail_data_summary(brief))}")
+    evidence_route = brief.get("non_company_evidence")
+    if isinstance(evidence_route, Mapping):
+        print(
+            "non_company_evidence="
+            f"status={evidence_route.get('status')} "
+            f"route={evidence_route.get('route')} "
+            f"summary={_compact_cli_text(evidence_route.get('summary'))}"
+        )
     usefulness = brief.get("usefulness")
     if isinstance(usefulness, Mapping):
         missing = ",".join(
