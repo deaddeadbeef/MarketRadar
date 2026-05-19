@@ -1893,6 +1893,9 @@ def test_priced_in_audit_cli_outputs_full_scan_audit(
     assert "source_coverage=ready=" in output.out
     assert "instrument_scope=rows=" in output.out
     assert "sec_catalyst_applicability=applicable=" in output.out
+    assert "full_scan_rows=" in output.out
+    assert "full_scan_preview:" in output.out
+    assert "ACME bullish_not_priced_in" in output.out
     assert "sources:" in output.out
     assert "- options status=" in output.out
     assert "commands:" in output.out
@@ -1903,6 +1906,8 @@ def test_priced_in_audit_cli_outputs_full_scan_audit(
     assert payload["schema_version"] == "priced-in-full-scan-audit-v1"
     assert payload["external_calls_made"] == 0
     assert payload["scope"]["mode"] == "full_scan"
+    assert payload["preview"]["schema_version"] == "priced-in-full-scan-preview-v1"
+    assert payload["preview_rows"][0]["ticker"] == "ACME"
     assert payload["source_coverage"]["source_count"] == 6
     assert payload["instrument_scope"]["schema_version"] == (
         "priced-in-instrument-scope-v1"

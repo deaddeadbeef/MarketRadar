@@ -1,6 +1,68 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 15:56:13 +08:00
+Last updated: 2026-05-19 16:08:16 +08:00
+
+## Latest Full-Scan Row Visibility
+
+Current problem:
+
+- The user asked again: "Why only these tickers? I want full scan."
+- The stored priced-in result is already a full-scan ranked universe, but the
+  web full-scan panel still showed counts and source-gap examples without the
+  actual row page.
+- That made first provider chunks or example tickers look like the scan itself.
+
+Fix in this slice:
+
+- `priced_in_full_scan_audit_payload` now returns a zero-call
+  `preview` object and `preview_rows` page for the full ranked scan.
+- The preview defaults to the first 25 ranked rows and carries:
+  row range, total ranked rows, next-page/export commands, sample explanation,
+  ticker, priced-in status, usefulness, decision-ready flag, gap scores,
+  missing/stale sources, and next step.
+- The Streamlit **Priced-in Full Scan** panel now shows
+  **Full-scan Ranked Rows** before trust/source gaps.
+- The CLI `priced-in-audit` now prints the same full-scan row page before
+  source rows.
+- This does not run providers and does not add a bulk source-fill button.
+
+Current live zero-call observation:
+
+```text
+priced-in-audit
+priced_in_audit status=attention active=12613 scanned=12087 ranked=12087 ... external_calls=0
+full_scan_rows=1-25/12087 sample=true export=catalyst-radar priced-in-queue --full-scan --all --json
+full_scan_row_note=The tickers below are rows 1-25 from the current ranked page, not the full scan universe of 12087 row(s).
+full_scan_preview:
+A bullish_not_priced_in decision_useful true ...
+MSFT bullish_not_priced_in decision_useful true ...
+...
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_payload_consolidates_current_state tests\integration\test_dashboard_entrypoint.py::test_dashboard_wires_priced_in_full_scan_panel_after_usefulness tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_audit_cli_outputs_full_scan_audit -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py apps\dashboard\Home.py src\catalyst_radar\cli.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_entrypoint.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-audit
+$json = .\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-audit --json | ConvertFrom-Json; "preview_rows=$($json.preview_rows.Count) range=$($json.preview.row_start)-$($json.preview.row_end)/$($json.preview.total_rows) external_calls=$($json.external_calls_made) first=$($json.preview_rows[0].ticker)"
+```
+
+Observed:
+
+- Focused three-test set passed (`3 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+- Live audit reported `preview_rows=25`, `range=1-25/12087`,
+  `external_calls=0`, and first preview ticker `A`.
+
+Next useful product action:
+
+- Merge this slice, restart local services, and visually verify that the
+  Streamlit panel shows **Full-scan Ranked Rows**.
+- Actual source-fill execution still requires explicit user approval because it
+  can call SEC/Schwab/market providers.
 
 ## Latest Web Full-Scan Trust Gaps
 
@@ -48,11 +110,15 @@ Observed:
 - `git diff --check` passed.
 - Live audit JSON reported `external_calls=0`, `trust_gap_count=5`, and
   `trust_blockers=5`.
+- PR #324 merged as `42484b2`.
+- Post-merge local services were restarted:
+  - API health returned commit `42484b283034`.
+  - Streamlit health returned `ok`.
+- Browser verification on `http://127.0.0.1:8514` showed
+  **Full-scan Trust Gaps** before **Priced-in Source Gaps** in the Overview tab.
 
 Next useful product action:
 
-- After merge, restart local services and visually verify the Streamlit panel
-  shows **Full-scan Trust Gaps**.
 - Actual source-fill execution still requires explicit user approval because
   it can call SEC/Schwab/market providers.
 

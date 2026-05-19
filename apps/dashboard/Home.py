@@ -2042,6 +2042,22 @@ def _show_priced_in_full_scan_panel(
     if commands:
         with st.expander("Full-scan commands", expanded=False):
             st.code("\n".join(str(command) for command in commands), language="powershell")
+    preview = _mapping(audit.get("preview"))
+    preview_rows = _priced_in_full_scan_preview_rows(audit.get("preview_rows"))
+    if preview_rows:
+        row_start = preview.get("row_start") or 0
+        row_end = preview.get("row_end") or 0
+        total_rows = preview.get("total_rows") or scope.get("ranked_rows") or 0
+        st.caption(
+            "Full scan row page: "
+            f"showing rows {row_start}-{row_end} of {total_rows}. "
+            f"{preview.get('sample_explanation') or ''}".strip()
+        )
+        _show_records(
+            "Full-scan Ranked Rows",
+            preview_rows,
+            empty="No full-scan rows are visible.",
+        )
     trust_rows = _priced_in_full_scan_trust_rows(audit.get("trust_blockers"))
     if trust_rows:
         _show_records(
@@ -2067,6 +2083,30 @@ def _priced_in_full_scan_trust_rows(value: object) -> list[dict[str, object]]:
                 "gap_count": row.get("gap_count"),
                 "next_action": row.get("next_action"),
                 "command": row.get("command"),
+            }
+        )
+    return rows
+
+
+def _priced_in_full_scan_preview_rows(value: object) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for row in _records(value):
+        missing = _list_text(row.get("missing_sources"))
+        stale = _list_text(row.get("stale_sources"))
+        rows.append(
+            {
+                "ticker": row.get("ticker"),
+                "status": row.get("status"),
+                "usefulness": row.get("usefulness"),
+                "decision_ready": "yes" if row.get("decision_ready") else "no",
+                "gap": row.get("emotion_reaction_gap"),
+                "emotion": row.get("emotion_score"),
+                "reaction": row.get("reaction_score"),
+                "priced_in": row.get("priced_in_score"),
+                "missing": missing,
+                "stale": stale,
+                "why_now": row.get("why_now"),
+                "next_step": row.get("next_step"),
             }
         )
     return rows

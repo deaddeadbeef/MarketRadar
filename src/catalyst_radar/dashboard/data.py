@@ -128,6 +128,7 @@ PRICED_IN_ACTIONABLE_FILTERS = frozenset(
     }
 )
 PRICED_IN_SOURCE_ACTION_TICKER_LIMIT = 5
+PRICED_IN_FULL_SCAN_PREVIEW_LIMIT = 25
 PRICED_IN_USEFULNESS_STATUSES = frozenset(
     {
         "research_useful",
@@ -1758,15 +1759,19 @@ def priced_in_full_scan_audit_payload(
     available_at: datetime | None = None,
     queue: Mapping[str, object] | None = None,
     preflight: Mapping[str, object] | None = None,
+    preview_limit: int = PRICED_IN_FULL_SCAN_PREVIEW_LIMIT,
+    preview_offset: int = 0,
 ) -> dict[str, object]:
+    resolved_preview_limit = _positive_limit(preview_limit)
+    resolved_preview_offset = _positive_offset(preview_offset)
     resolved_queue = (
         _row_dict(queue)
         if isinstance(queue, Mapping)
         else priced_in_queue_payload(
             engine,
             config,
-            limit=1,
-            offset=0,
+            limit=resolved_preview_limit,
+            offset=resolved_preview_offset,
             available_at=available_at,
             status="all",
         )
@@ -1779,6 +1784,9 @@ def priced_in_full_scan_audit_payload(
     if not resolved_preflight:
         resolved_preflight = priced_in_preflight_payload(engine, config)
     full_scan = _priced_in_answer_full_scan_summary(resolved_queue)
+    preview_rows = _priced_in_full_scan_preview_rows(
+        _sequence_value(resolved_queue.get("rows"))
+    )
     source_coverage = _mapping_value(resolved_queue, "source_coverage")
     instrument_scope = _mapping_value(resolved_queue, "instrument_scope")
     source_rows = [
@@ -1835,14 +1843,33 @@ def priced_in_full_scan_audit_payload(
             "active_securities": active,
             "scanned_rows": full_scan.get("scanned_rows"),
             "ranked_rows": ranked_rows,
+            "visible_row_start": full_scan.get("visible_row_start"),
+            "visible_row_end": full_scan.get("visible_row_end"),
             "visible_rows": full_scan.get("visible_rows"),
+            "has_more": full_scan.get("has_more"),
             "visible_tickers_are_sample": full_scan.get(
                 "visible_tickers_are_sample"
             ),
             "review_command": full_scan.get("review_command"),
+            "next_page_command": full_scan.get("next_page_command"),
+            "export_command": full_scan.get("full_export_command")
+            or full_scan.get("export_command"),
+            "sample_explanation": full_scan.get("sample_explanation"),
+        },
+        "preview": {
+            "schema_version": "priced-in-full-scan-preview-v1",
+            "row_start": full_scan.get("visible_row_start"),
+            "row_end": full_scan.get("visible_row_end"),
+            "visible_rows": full_scan.get("visible_rows"),
+            "total_rows": ranked_rows,
+            "has_more": full_scan.get("has_more"),
+            "sample_explanation": full_scan.get("sample_explanation"),
+            "review_command": full_scan.get("review_command"),
+            "next_page_command": full_scan.get("next_page_command"),
             "export_command": full_scan.get("full_export_command")
             or full_scan.get("export_command"),
         },
+        "preview_rows": preview_rows,
         "counts": {
             "actionable_mismatch_rows": actionable_count,
             "research_lead_rows": research_ready_count,
@@ -1879,6 +1906,43 @@ def priced_in_full_scan_audit_payload(
             "export_full_scan": "catalyst-radar priced-in-queue --full-scan --all --json",
         },
     }
+
+
+def _priced_in_full_scan_preview_rows(rows: Sequence[object]) -> list[dict[str, object]]:
+    preview: list[dict[str, object]] = []
+    for row in rows:
+        if not isinstance(row, Mapping):
+            continue
+        usefulness = _mapping_value(row, "usefulness")
+        data_sources = _mapping_value(row, "data_sources")
+        missing_sources = [
+            str(item)
+            for item in _sequence_value(data_sources.get("missing"))
+            if str(item).strip()
+        ]
+        stale_sources = [
+            str(item)
+            for item in _sequence_value(data_sources.get("stale"))
+            if str(item).strip()
+        ]
+        preview.append(
+            {
+                "ticker": row.get("ticker"),
+                "status": row.get("priced_in_status"),
+                "usefulness": usefulness.get("status"),
+                "decision_ready": bool(usefulness.get("decision_ready")),
+                "direction": row.get("priced_in_direction"),
+                "emotion_reaction_gap": row.get("emotion_reaction_gap"),
+                "emotion_score": row.get("emotion_score"),
+                "reaction_score": row.get("reaction_score"),
+                "priced_in_score": row.get("priced_in_score"),
+                "missing_sources": missing_sources,
+                "stale_sources": stale_sources,
+                "why_now": row.get("why_now") or row.get("top_catalyst"),
+                "next_step": row.get("next_step"),
+            }
+        )
+    return preview
 
 
 def _priced_in_audit_status(

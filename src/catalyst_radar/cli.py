@@ -3934,6 +3934,46 @@ def _print_priced_in_audit(payload: Mapping[str, object]) -> None:
         f"weak={','.join(str(item) for item in _sequence_value(coverage.get('weak_sources')))}"
     )
     _print_priced_in_instrument_scope(payload.get("instrument_scope"))
+    preview = payload.get("preview")
+    if isinstance(preview, Mapping):
+        print(
+            "full_scan_rows="
+            f"{preview.get('row_start')}-{preview.get('row_end')}/"
+            f"{preview.get('total_rows')} "
+            f"sample={str(bool(preview.get('has_more'))).lower()} "
+            f"export={_compact_cli_text(preview.get('export_command'))}"
+        )
+        explanation = preview.get("sample_explanation")
+        if explanation:
+            print(f"full_scan_row_note={_compact_cli_text(explanation)}")
+    rows = payload.get("preview_rows")
+    if isinstance(rows, list | tuple) and rows:
+        print("full_scan_preview:")
+        print("ticker status usefulness decision_ready gap emotion reaction priced")
+        print("data next_step")
+        for row in rows:
+            if not isinstance(row, Mapping):
+                continue
+            missing = ",".join(str(item) for item in _sequence_value(row.get("missing_sources")))
+            stale = ",".join(str(item) for item in _sequence_value(row.get("stale_sources")))
+            data_parts = []
+            if missing:
+                data_parts.append(f"missing:{missing}")
+            if stale:
+                data_parts.append(f"stale:{stale}")
+            data_text = ";".join(data_parts) if data_parts else "covered"
+            print(
+                f"{row.get('ticker')} "
+                f"{row.get('status')} "
+                f"{row.get('usefulness') or 'n/a'} "
+                f"{str(bool(row.get('decision_ready'))).lower()} "
+                f"{row.get('emotion_reaction_gap')} "
+                f"{row.get('emotion_score')} "
+                f"{row.get('reaction_score')} "
+                f"{row.get('priced_in_score')} "
+                f"{data_text} "
+                f"{_compact_cli_text(row.get('next_step'))}"
+            )
     next_action = payload.get("next_action")
     if next_action:
         print(f"next_action={_compact_cli_text(next_action)}")
