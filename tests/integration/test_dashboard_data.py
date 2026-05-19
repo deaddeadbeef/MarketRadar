@@ -660,10 +660,11 @@ def test_investment_readiness_payload_blocks_fixture_candidates() -> None:
                     "finding": "Market data is still local CSV/fixture-backed.",
                     "next_action": (
                         "Use SEC-only results for research only; generate a "
-                        "DB-backed active-universe bar template with "
+                        "DB-backed missing-bar template with "
                         "`catalyst-radar market-bars template --expected-as-of "
                         "<LATEST_TRADING_DATE> --out "
-                        "data\\local\\manual-bars-<LATEST_TRADING_DATE>.csv`, "
+                        "data\\local\\manual-bars-<LATEST_TRADING_DATE>.csv "
+                        "--missing-only`, "
                         "then import filled bars with `catalyst-radar market-bars "
                         "import --daily-bars <fresh-bars.csv> --execute` or "
                         "configure a live market provider before relying on broad "
@@ -753,9 +754,10 @@ def test_investment_readiness_payload_blocks_partial_latest_bar_coverage() -> No
                     ),
                     "next_action": (
                         "Use SEC-only results for research only; generate a "
-                        "DB-backed active-universe bar template with "
+                        "DB-backed missing-bar template with "
                         "`catalyst-radar market-bars template --expected-as-of "
-                        "2026-05-16 --out data\\local\\manual-bars-2026-05-16.csv`, "
+                        "2026-05-16 --out data\\local\\manual-bars-2026-05-16.csv "
+                        "--missing-only`, "
                         "then import filled bars with `catalyst-radar market-bars "
                         "import --daily-bars <fresh-bars.csv> --expected-as-of "
                         "2026-05-16 --execute` or configure a live market "
@@ -1001,9 +1003,10 @@ def test_market_radar_usefulness_payload_blocks_live_scan_until_full_bars() -> N
                     "code": "stale_daily_bars",
                     "finding": "As-of coverage: 0/12613 active securities.",
                     "next_action": (
-                        "Generate a DB-backed active-universe bar template with "
+                        "Generate a DB-backed missing-bar template with "
                         "`catalyst-radar market-bars template --expected-as-of "
-                        "2026-05-18 --out data\\local\\manual-bars-2026-05-18.csv`."
+                        "2026-05-18 --out data\\local\\manual-bars-2026-05-18.csv "
+                        "--missing-only`."
                     ),
                 }
             ],
@@ -4173,8 +4176,9 @@ def test_priced_in_preflight_uses_manual_bar_template_for_partial_full_scan_bars
 
     assert market_bars["status"] == "attention"
     assert "12090/12613" in str(market_bars["finding"])
-    assert "DB-backed active-universe bar template" in str(market_bars["next_action"])
+    assert "DB-backed missing-bar template" in str(market_bars["next_action"])
     assert market_bars["command"].startswith("catalyst-radar market-bars template")
+    assert "--missing-only" in str(market_bars["command"])
     assert market_bars["api"] == "POST /api/radar/market-bars/template"
     assert "run-daily" not in str(market_bars["command"])
 
@@ -4262,10 +4266,10 @@ def test_operator_work_queue_prioritizes_full_scan_market_bar_root_cause() -> No
         sec_user_agent="MarketRadar test@example.com",
     )
     full_scan_action = (
-        "Generate a DB-backed active-universe bar template with "
+        "Generate a DB-backed missing-bar template with "
         "`catalyst-radar market-bars template --expected-as-of 2026-05-18 "
-        "--out data\\local\\manual-bars-2026-05-18.csv`, fill every active "
-        "ticker, import it, then rerun the full-market scan."
+        "--out data\\local\\manual-bars-2026-05-18.csv --missing-only`, fill "
+        "only missing ticker rows, import it, then rerun the full-market scan."
     )
 
     payload = operator_work_queue_payload(

@@ -3355,8 +3355,8 @@ def _priced_in_audit_market_bar_repair(
         next_action = "As-of market bars cover the active universe."
     else:
         next_action = (
-            "Generate the DB-backed active-universe bar template, fill every "
-            "missing ticker for the scan date, preview the import, then execute "
+            "Generate the DB-backed missing-bar template, fill only the missing "
+            "ticker rows for the scan date, preview the import, then execute "
             "the local DB import only when coverage is complete."
         )
     return {
@@ -12480,8 +12480,8 @@ def _priced_in_preflight_rows(
             "the provider plan before rerunning."
             if provider_reason
             else (
-                "Generate a DB-backed active-universe bar template, fill every "
-                "active ticker, import it, then rerun the full-market scan. "
+                "Generate a DB-backed missing-bar template, fill only the "
+                "missing ticker rows, import it, then rerun the full-market scan. "
                 "Use the provider run only if its call plan and plan limits "
                 "match your intent."
             )
@@ -12504,8 +12504,8 @@ def _priced_in_preflight_rows(
                 f"Run-as-of bars cover {latest_bars}/{active} securities.",
                 (
                     "Coverage is broad enough for research; generate the "
-                    "DB-backed active-universe bar template if you want the "
-                    "full active universe covered before relying on the answer."
+                    "DB-backed missing-bar template if you want the full active "
+                    "universe covered before relying on the answer."
                 ),
                 commands.get("market_bars_template"),
                 "POST /api/radar/market-bars/template",
@@ -12672,7 +12672,7 @@ def _priced_in_preflight_commands(
             f"--available-at <UTC-now> --name {config.universe_name} "
             f"--provider {provider}"
         ),
-        "market_bars_template": _csv_market_template_command(None),
+        "market_bars_template": _csv_market_template_command(None, missing_only=True),
         "market_bars_import_preview": _csv_market_refresh_command(
             None,
             execute=False,
@@ -15265,18 +15265,20 @@ def _csv_market_template_command(
 
 
 def _csv_market_refresh_next_action(as_of_date: date | None) -> str:
+    template_command = _csv_market_template_command(as_of_date, missing_only=True)
     return (
-        "Use SEC-only results for research only; generate a DB-backed active-universe "
-        f"bar template with `{_csv_market_template_command(as_of_date)}`, then "
+        "Use SEC-only results for research only; generate a DB-backed missing-bar "
+        f"template with `{template_command}`, then "
         f"import filled bars with `{_csv_market_refresh_command(as_of_date)}` or "
         "configure a live market provider before acting."
     )
 
 
 def _csv_market_refresh_discovery_action(as_of_date: date | None) -> str:
+    template_command = _csv_market_template_command(as_of_date, missing_only=True)
     return (
-        "Use SEC-only results for research only; generate a DB-backed active-universe "
-        f"bar template with `{_csv_market_template_command(as_of_date)}`, then "
+        "Use SEC-only results for research only; generate a DB-backed missing-bar "
+        f"template with `{template_command}`, then "
         f"import filled bars with `{_csv_market_refresh_command(as_of_date)}` or "
         "configure a live market provider before relying on broad discovery."
     )
