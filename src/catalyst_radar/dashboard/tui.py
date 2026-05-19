@@ -2605,6 +2605,7 @@ def _priced_in_all_source_batch_message(
         status=filters.priced_in_status,
         usefulness=filters.priced_in_usefulness,
         decision_gap=filters.priced_in_decision_gap,
+        stocks_only=filters.priced_in_stocks_only,
     )
     rows = _rows(payload.get("sources"))
     pieces = [
@@ -2757,6 +2758,7 @@ def _first_priced_in_source_batch_payload(
             status=filters.priced_in_status,
             usefulness=filters.priced_in_usefulness,
             decision_gap=filters.priced_in_decision_gap,
+            stocks_only=filters.priced_in_stocks_only,
         )
     except ValueError as exc:
         return str(exc)
@@ -2792,6 +2794,7 @@ def _execute_priced_in_source_batch(
                 status=filters.priced_in_status,
                 usefulness=filters.priced_in_usefulness,
                 decision_gap=filters.priced_in_decision_gap,
+                stocks_only=filters.priced_in_stocks_only,
             )
             return source_batch_run_summary(payload)
         payload = execute_source_batch(
@@ -2802,6 +2805,7 @@ def _execute_priced_in_source_batch(
             status=filters.priced_in_status,
             usefulness=filters.priced_in_usefulness,
             decision_gap=filters.priced_in_decision_gap,
+            stocks_only=filters.priced_in_stocks_only,
         )
     except ValueError as exc:
         return str(exc)
@@ -4814,6 +4818,8 @@ def _priced_in_source_workflow_payload(
     priced_in_queue: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     plan = _mapping(preflight.get("evidence_plan"))
+    queue_filters = _mapping(_mapping(priced_in_queue or {}).get("filters"))
+    stocks_only = bool(queue_filters.get("stocks_only"))
     source_names = set(dashboard_data.PRICED_IN_SOURCE_CLASSES)
     priority_counts = _source_workflow_priority_counts(priced_in_queue or {})
     steps: list[dict[str, object]] = []
@@ -4885,8 +4891,14 @@ def _priced_in_source_workflow_payload(
         "decision_shortcut_command": decision_shortcut_command,
         "priority_scope": "full_scan_coverage",
         "decision_priority_scope": "visible_priced_in_rows",
-        "overview_command": "catalyst-radar priced-in-source-batches --source all",
-        "overview_api": "GET /api/radar/priced-in/source-batches?source=all",
+        "overview_command": (
+            "catalyst-radar priced-in-source-batches --source all"
+            + (" --stocks-only" if stocks_only else "")
+        ),
+        "overview_api": (
+            "GET /api/radar/priced-in/source-batches?source=all"
+            + ("&stocks_only=true" if stocks_only else "")
+        ),
         "external_calls_made": 0,
         "steps": steps,
         "step_count": len(steps),

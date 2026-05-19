@@ -590,6 +590,14 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     priced_in_batches.add_argument("--min-gap", type=float)
+    priced_in_batches.add_argument(
+        "--stocks-only",
+        action="store_true",
+        help=(
+            "Plan source-fill batches only for stock-like rows "
+            "(common stocks and ADRs) from the ranked scan."
+        ),
+    )
     priced_in_batches.add_argument("--json", action="store_true")
 
     priced_in_preflight = subparsers.add_parser("priced-in-preflight")
@@ -1186,6 +1194,7 @@ def main(argv: list[str] | None = None) -> int:
                     usefulness=args.usefulness,
                     decision_gap=args.decision_gap,
                     min_gap=args.min_gap,
+                    stocks_only=args.stocks_only,
                 )
             elif execute_batches:
                 payload = execute_priced_in_source_batches(
@@ -1198,6 +1207,7 @@ def main(argv: list[str] | None = None) -> int:
                     usefulness=args.usefulness,
                     decision_gap=args.decision_gap,
                     min_gap=args.min_gap,
+                    stocks_only=args.stocks_only,
                 )
             elif source_name in {"all", "*"}:
                 payload = priced_in_all_source_gap_batches_payload(
@@ -1209,6 +1219,7 @@ def main(argv: list[str] | None = None) -> int:
                     usefulness=args.usefulness,
                     decision_gap=args.decision_gap,
                     min_gap=args.min_gap,
+                    stocks_only=args.stocks_only,
                 )
             else:
                 payload = priced_in_source_gap_batches_payload(
@@ -1224,6 +1235,7 @@ def main(argv: list[str] | None = None) -> int:
                     usefulness=args.usefulness,
                     decision_gap=args.decision_gap,
                     min_gap=args.min_gap,
+                    stocks_only=args.stocks_only,
                 )
         except ValueError as exc:
             print(str(exc), file=sys.stderr)
@@ -3467,6 +3479,7 @@ def _print_priced_in_all_source_batches(payload: Mapping[str, object]) -> None:
             f"active={scan_scope.get('active_securities')} "
             f"scanned={scan_scope.get('scanned_rows')} "
             f"ranked={scan_scope.get('ranked_rows')} "
+            f"stocks_only={str(bool(scan_scope.get('stocks_only'))).lower()} "
             f"source_gap_rows={scan_scope.get('source_gap_rows')} "
             f"examples_are_samples={str(bool(scan_scope.get('examples_are_samples'))).lower()}"
         )
@@ -3660,6 +3673,7 @@ def _print_priced_in_source_batches(payload: Mapping[str, object]) -> None:
         print(
             "scan_scope="
             f"mode={scan_scope.get('mode')} "
+            f"stocks_only={str(bool(scan_scope.get('stocks_only'))).lower()} "
             f"gap_rows={scan_scope.get('full_scan_gap_rows')} "
             f"plannable={scan_scope.get('plannable_rows')} "
             f"returned_batches={scan_scope.get('returned_batches')} "

@@ -1519,7 +1519,7 @@ def test_get_radar_priced_in_source_batches_returns_zero_call_plan(
         "/api/radar/priced-in/source-batches?source=options&batch_limit=2"
         "&batch_offset=1&batch_size=5&available_at=2026-05-18T16:00:00%2B00:00"
         "&all_batches=true&status=all&usefulness=research_useful"
-        "&decision_gap=options&min_gap=12"
+        "&decision_gap=options&min_gap=12&stocks_only=true"
     )
 
     assert response.status_code == 200
@@ -1537,6 +1537,7 @@ def test_get_radar_priced_in_source_batches_returns_zero_call_plan(
     assert captured["usefulness"] == "research_useful"
     assert captured["decision_gap"] == "options"
     assert captured["min_gap"] == 12.0
+    assert captured["stocks_only"] is True
 
 
 def test_get_radar_priced_in_source_batches_can_return_all_source_overview(
@@ -1587,6 +1588,7 @@ def test_get_radar_priced_in_source_batches_can_return_all_source_overview(
         "/api/radar/priced-in/source-batches?source=all&batch_size=5"
         "&available_at=2026-05-18T16:00:00%2B00:00&status=all"
         "&usefulness=decision_useful&decision_gap=options&min_gap=12"
+        "&stocks_only=true"
     )
 
     assert response.status_code == 200
@@ -1602,6 +1604,7 @@ def test_get_radar_priced_in_source_batches_can_return_all_source_overview(
     assert captured["usefulness"] == "decision_useful"
     assert captured["decision_gap"] == "options"
     assert captured["min_gap"] == 12.0
+    assert captured["stocks_only"] is True
 
 
 def test_post_radar_priced_in_source_batch_execute_next_runs_one_chunk(
@@ -1664,6 +1667,7 @@ def test_post_radar_priced_in_source_batch_execute_next_runs_one_chunk(
             "usefulness": "research_useful",
             "decision_gap": ["candidate_packet"],
             "min_gap": 12,
+            "stocks_only": True,
         },
     )
 
@@ -1681,6 +1685,7 @@ def test_post_radar_priced_in_source_batch_execute_next_runs_one_chunk(
     assert captured["usefulness"] == "research_useful"
     assert captured["decision_gap"] == ["candidate_packet"]
     assert captured["min_gap"] == 12.0
+    assert captured["stocks_only"] is True
 
 
 def test_post_radar_priced_in_source_batch_execute_next_can_run_capped_batches(
@@ -1726,6 +1731,7 @@ def test_post_radar_priced_in_source_batch_execute_next_can_run_capped_batches(
             "usefulness": "research_useful",
             "decision_gap": ["candidate_packet"],
             "min_gap": 12,
+            "stocks_only": True,
             "max_batches": 3,
         },
     )
@@ -1743,6 +1749,7 @@ def test_post_radar_priced_in_source_batch_execute_next_can_run_capped_batches(
     assert captured["usefulness"] == "research_useful"
     assert captured["decision_gap"] == ["candidate_packet"]
     assert captured["min_gap"] == 12.0
+    assert captured["stocks_only"] is True
 
 
 def test_post_radar_market_bars_template_and_import_use_database_universe(

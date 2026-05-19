@@ -840,7 +840,7 @@ def priced_in_queue_payload(
     resolved_offset = _positive_offset(offset)
     page_rows = rows[resolved_offset : resolved_offset + resolved_limit]
     instrument_scope = _priced_in_instrument_scope_payload(engine, rows)
-    source_coverage = priced_in_source_coverage_summary(rows)
+    source_coverage = priced_in_source_coverage_summary(rows, stocks_only=stocks_only)
     source_coverage = _priced_in_source_coverage_with_instrument_routes(
         engine,
         rows,
@@ -936,6 +936,7 @@ def priced_in_source_gap_batches_payload(
     usefulness: str | None = None,
     decision_gap: str | Sequence[str] | None = None,
     min_gap: float | None = None,
+    stocks_only: bool = False,
     queue: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     source_name = _single_priced_in_source(source)
@@ -962,8 +963,11 @@ def priced_in_source_gap_batches_payload(
             source_gap=source_name,
             decision_gap=decision_gap,
             min_gap=min_gap,
+            stocks_only=stocks_only,
         )
     )
+    resolved_filters = _mapping_value(resolved_queue, "filters")
+    resolved_stocks_only = bool(stocks_only or resolved_filters.get("stocks_only"))
     planning_rows = (
         resolved_queue.get("planning_rows")
         if using_supplied_queue
@@ -1071,41 +1075,61 @@ def priced_in_source_gap_batches_payload(
         diagnostic_action = str(diagnostic.get("next_action") or "").strip()
         if diagnostic_action:
             next_action = diagnostic_action
-    review_rows_command = (
-        f"catalyst-radar priced-in-queue --full-scan --source-gap {source_name} --limit 50"
+    review_rows_command = _priced_in_queue_source_gap_command(
+        source_name,
+        stocks_only=resolved_stocks_only,
+        limit=50,
     )
-    export_rows_command = (
-        f"catalyst-radar priced-in-queue --full-scan --source-gap {source_name} --all --json"
+    export_rows_command = _priced_in_queue_source_gap_command(
+        source_name,
+        stocks_only=resolved_stocks_only,
+        all_rows=True,
     )
     all_batches_command = (
-        "catalyst-radar priced-in-source-batches "
-        f"--source {source_name} --all --json"
+        _priced_in_source_batches_command(
+            source_name,
+            stocks_only=resolved_stocks_only,
+            all_batches=True,
+            json=True,
+        )
         if batch_count > 0
         else None
     )
     execute_next_command = (
-        "catalyst-radar priced-in-source-batches "
-        f"--source {source_name} --execute-next"
+        _priced_in_source_batches_command(
+            source_name,
+            stocks_only=resolved_stocks_only,
+            execute_next=True,
+        )
         if batches
         else None
     )
     execute_batches_command = (
-        "catalyst-radar priced-in-source-batches "
-        f"--source {source_name} --execute-batches 3"
+        _priced_in_source_batches_command(
+            source_name,
+            stocks_only=resolved_stocks_only,
+            execute_batches=3,
+        )
         if batches
         else None
     )
     execute_batches_api = (
-        "POST /api/radar/priced-in/source-batches/execute-next "
-        '{"source":"'
-        f'{source_name}","max_batches":3'
-        "}"
+        (
+            "POST /api/radar/priced-in/source-batches/execute-next "
+            '{"source":"'
+            f'{source_name}","max_batches":3'
+        )
+        + (',"stocks_only":true' if resolved_stocks_only else "")
+        + "}"
         if batches
         else None
     )
     all_batches_api = (
-        "GET /api/radar/priced-in/source-batches"
-        f"?source={source_name}&all_batches=true"
+        _priced_in_source_batches_api(
+            source_name,
+            stocks_only=resolved_stocks_only,
+            all_batches=True,
+        )
         if batch_count > 0
         else None
     )
@@ -1148,6 +1172,10 @@ def priced_in_source_gap_batches_payload(
         "scan_scope": {
             "mode": "full_scan",
             "source_gap": source_name,
+            "stocks_only": resolved_stocks_only,
+            "instrument_filter": (
+                "stocks_only" if resolved_stocks_only else "all_instruments"
+            ),
             "full_scan_gap_rows": len(all_gap_tickers),
             "plannable_rows": len(tickers),
             "planned_batches": batch_count,
@@ -1212,6 +1240,7 @@ def priced_in_source_gap_batches_payload(
         "all_batches_api": all_batches_api,
         "next_batch_command": _priced_in_source_next_batch_command(
             source_name=source_name,
+            stocks_only=resolved_stocks_only,
             batch_limit=resolved_limit,
             batch_offset=resolved_offset + len(batches),
             batch_count=batch_count,
@@ -1231,6 +1260,7 @@ def priced_in_all_source_gap_batches_payload(
     usefulness: str | None = None,
     decision_gap: str | Sequence[str] | None = None,
     min_gap: float | None = None,
+    stocks_only: bool = False,
 ) -> dict[str, object]:
     queue = priced_in_queue_payload(
         engine,
@@ -1242,6 +1272,7 @@ def priced_in_all_source_gap_batches_payload(
         usefulness=usefulness,
         decision_gap=decision_gap,
         min_gap=min_gap,
+        stocks_only=stocks_only,
     )
     priority_counts = _priced_in_source_gap_priority_counts(
         _sequence_value(queue.get("rows"))
@@ -1259,6 +1290,7 @@ def priced_in_all_source_gap_batches_payload(
             usefulness=usefulness,
             decision_gap=decision_gap,
             min_gap=min_gap,
+            stocks_only=stocks_only,
             queue=queue,
         )
         rows.append(
@@ -1306,6 +1338,7 @@ def priced_in_all_source_gap_batches_payload(
             queue,
             source_count=len(rows),
             total_gap_rows=total_gap_rows,
+            stocks_only=stocks_only,
         ),
         "coverage_first_recommendation": coverage_recommendation,
         "decision_shortcut_recommendation": decision_recommendation,
@@ -1328,6 +1361,7 @@ def _priced_in_all_source_overview_scan_scope(
     *,
     source_count: int,
     total_gap_rows: int,
+    stocks_only: bool = False,
 ) -> dict[str, object]:
     full_scan = _priced_in_answer_full_scan_summary(queue)
     active = int(_finite_float(full_scan.get("active_securities")))
@@ -1339,6 +1373,8 @@ def _priced_in_all_source_overview_scan_scope(
         "schema_version": "priced-in-source-overview-scan-scope-v1",
         "mode": mode,
         "is_all_active_scan": bool(full_scan.get("is_all_active_scan")),
+        "stocks_only": bool(stocks_only),
+        "instrument_filter": "stocks_only" if stocks_only else "all_instruments",
         "active_securities": active,
         "scanned_rows": scanned,
         "ranked_rows": ranked,
@@ -1350,11 +1386,13 @@ def _priced_in_all_source_overview_scan_scope(
             "first batches, and example tickers are coverage summaries or "
             "provider-safe chunks, not the scan universe."
         ),
-        "review_full_scan_command": (
-            "catalyst-radar priced-in-queue --full-scan --limit 50"
+        "review_full_scan_command": _priced_in_queue_full_scan_command(
+            stocks_only=stocks_only,
+            limit=50,
         ),
-        "export_full_scan_command": (
-            "catalyst-radar priced-in-queue --full-scan --all --json"
+        "export_full_scan_command": _priced_in_queue_full_scan_command(
+            stocks_only=stocks_only,
+            all_rows=True,
         ),
     }
 
@@ -1402,12 +1440,12 @@ def _priced_in_all_source_batch_row(
         "review_rows_command": plan.get("review_rows_command"),
         "export_rows_command": plan.get("export_rows_command"),
         "execute_next_command": (
-            f"catalyst-radar priced-in-source-batches --source {source} --execute-next"
+            plan.get("execute_next_command")
             if executable
             else None
         ),
         "execute_batches_command": (
-            f"catalyst-radar priced-in-source-batches --source {source} --execute-batches 3"
+            plan.get("execute_batches_command")
             if executable
             else None
         ),
@@ -1880,7 +1918,10 @@ def priced_in_answer_payload(
     decision_ready_count = int(_finite_float(usefulness_counts.get("decision_useful")))
     research_lead_count = int(_finite_float(usefulness_counts.get("research_useful")))
     blocked_count = int(_finite_float(usefulness_counts.get("blocked")))
-    top_rows = _priced_in_answer_rows(_sequence_value(resolved_queue.get("rows")))
+    top_rows = _priced_in_answer_rows(
+        _sequence_value(resolved_queue.get("rows")),
+        stocks_only=stocks_only,
+    )
     answer_status = _priced_in_answer_status(
         queue_status=str(resolved_queue.get("status") or "unknown"),
         actionable_count=actionable_count,
@@ -2003,6 +2044,7 @@ def priced_in_full_scan_audit_payload(
             preview_limit=preview_limit,
             preview_offset=preview_offset,
             all_rows=all_rows,
+            stocks_only=stocks_only,
         )
 
     cache_key = (
@@ -2234,6 +2276,7 @@ def _priced_in_full_scan_audit_payload_uncached(
         wanted_source_gaps,
         available_at=available_at,
         queue=resolved_queue,
+        stocks_only=stocks_only,
     )
     status_counts = _mapping_value(resolved_queue, "status_counts")
     usefulness_counts = _mapping_value(resolved_queue, "usefulness_counts")
@@ -2282,6 +2325,7 @@ def _priced_in_full_scan_audit_payload_uncached(
         limit=10,
         full_scan_review_command=audit_page_command,
         full_scan_export_command=audit_full_export_command,
+        stocks_only=stocks_only,
     )
     primary_scan = _priced_in_audit_primary_full_scan(
         full_scan,
@@ -2293,6 +2337,7 @@ def _priced_in_full_scan_audit_payload_uncached(
         audit_page_command=audit_page_command,
         audit_next_page_command=next_audit_page_command,
         audit_full_export_command=audit_full_export_command,
+        stocks_only=stocks_only,
     )
     trust_blockers = _priced_in_answer_trust_blockers(
         resolved_preflight,
@@ -2399,11 +2444,21 @@ def _priced_in_full_scan_audit_payload_uncached(
             "or explicitly labeled supporting evidence."
         ),
         "commands": {
-            "answer": "catalyst-radar priced-in-answer",
-            "queue": "catalyst-radar priced-in-queue --full-scan --limit 50",
+            "answer": "catalyst-radar priced-in-answer"
+            + (" --stocks-only" if stocks_only else ""),
+            "queue": _priced_in_queue_full_scan_command(
+                stocks_only=stocks_only,
+                limit=50,
+            ),
             "preflight": "catalyst-radar priced-in-preflight",
-            "source_overview": "catalyst-radar priced-in-source-batches --source all",
-            "export_full_scan": "catalyst-radar priced-in-queue --full-scan --all --json",
+            "source_overview": _priced_in_source_batches_command(
+                "all",
+                stocks_only=stocks_only,
+            ),
+            "export_full_scan": _priced_in_queue_full_scan_command(
+                stocks_only=stocks_only,
+                all_rows=True,
+            ),
             "audit_full_scan": audit_full_export_command,
         },
     }
@@ -2420,6 +2475,7 @@ def _priced_in_audit_primary_full_scan(
     audit_page_command: str,
     audit_next_page_command: str | None,
     audit_full_export_command: str,
+    stocks_only: bool = False,
 ) -> dict[str, object]:
     visible_rows = int(_finite_float(preview_scan.get("visible_rows")))
     row_start = int(_finite_float(preview_scan.get("visible_row_start")))
@@ -2442,7 +2498,9 @@ def _priced_in_audit_primary_full_scan(
     )
     return {
         "schema_version": "priced-in-primary-full-scan-v1",
-        "scope": "full_active_universe",
+        "scope": "stocks_only" if stocks_only else "full_active_universe",
+        "stocks_only": bool(stocks_only),
+        "instrument_filter": "stocks_only" if stocks_only else "all_instruments",
         "focus": focus,
         "mode": full_scan.get("mode") or "full_scan",
         "active_securities": active_securities,
@@ -2470,7 +2528,10 @@ def _priced_in_audit_primary_full_scan(
         "review_command": audit_page_command,
         "next_page_command": audit_next_page_command,
         "export_command": audit_full_export_command,
-        "queue_export_command": "catalyst-radar priced-in-queue --full-scan --all --json",
+        "queue_export_command": _priced_in_queue_full_scan_command(
+            stocks_only=stocks_only,
+            all_rows=True,
+        ),
         "external_calls_made": 0,
     }
 
@@ -2483,8 +2544,9 @@ def _priced_in_audit_answer_shortlist(
     limit: int = 10,
     full_scan_review_command: str | None = None,
     full_scan_export_command: str | None = None,
+    stocks_only: bool = False,
 ) -> dict[str, object]:
-    answer_rows = _priced_in_answer_rows(rows)
+    answer_rows = _priced_in_answer_rows(rows, stocks_only=stocks_only)
     decision_rows = [row for row in answer_rows if bool(row.get("decision_ready"))]
     selected = decision_rows or answer_rows
     resolved_limit = _positive_limit(limit)
@@ -2565,6 +2627,7 @@ def _priced_in_audit_source_gap_actions(
     source_gaps: Sequence[str],
     available_at: datetime | None,
     queue: Mapping[str, object] | None,
+    stocks_only: bool = False,
 ) -> list[dict[str, object]]:
     if not source_gaps:
         return []
@@ -2581,6 +2644,7 @@ def _priced_in_audit_source_gap_actions(
             batch_limit=1,
             available_at=available_at,
             status="all",
+            stocks_only=stocks_only,
             queue=queue,
         )
         actions.append(
@@ -3969,7 +4033,11 @@ def _priced_in_decision_gap_priority(gap: str) -> int:
     return order.get(gap, 99)
 
 
-def _priced_in_answer_rows(rows: Sequence[object]) -> list[dict[str, object]]:
+def _priced_in_answer_rows(
+    rows: Sequence[object],
+    *,
+    stocks_only: bool = False,
+) -> list[dict[str, object]]:
     answer_rows: list[dict[str, object]] = []
     for row in rows:
         if not isinstance(row, Mapping):
@@ -4001,6 +4069,7 @@ def _priced_in_answer_rows(rows: Sequence[object]) -> list[dict[str, object]]:
                     row,
                     data_sources=data_sources,
                     usefulness=usefulness,
+                    stocks_only=stocks_only,
                 ),
             }
         )
@@ -4012,6 +4081,7 @@ def _priced_in_answer_row_drilldown(
     *,
     data_sources: Mapping[str, object],
     usefulness: Mapping[str, object],
+    stocks_only: bool = False,
 ) -> dict[str, object]:
     ticker = _priced_in_action_ticker(row)
     missing_sources = [
@@ -4038,6 +4108,7 @@ def _priced_in_answer_row_drilldown(
         _priced_in_answer_source_gap_drilldown(
             source=source,
             status="missing",
+            stocks_only=stocks_only,
         )
         for source in missing_sources
     ]
@@ -4045,6 +4116,7 @@ def _priced_in_answer_row_drilldown(
         _priced_in_answer_source_gap_drilldown(
             source=source,
             status="stale",
+            stocks_only=stocks_only,
         )
         for source in stale_sources
     )
@@ -4082,20 +4154,30 @@ def _priced_in_answer_source_gap_drilldown(
     *,
     source: str,
     status: str,
+    stocks_only: bool = False,
 ) -> dict[str, object]:
     source_name = str(source or "").strip()
-    plan_command = _priced_in_source_batch_plan_command(source_name)
+    plan_command = _priced_in_source_batch_plan_command(
+        source_name,
+        stocks_only=stocks_only,
+    )
     return {
         "source": source_name,
         "status": status,
-        "review_command": (
-            "catalyst-radar priced-in-audit "
-            f"--source-gap {source_name} --limit 25"
+        "review_command": _priced_in_audit_command(
+            limit=25,
+            offset=0,
+            available_at=None,
+            source_gap=[source_name],
+            stocks_only=stocks_only,
         ),
-        "review_api": f"GET /api/radar/priced-in/audit?source_gap={source_name}&limit=25",
+        "review_api": (
+            f"GET /api/radar/priced-in/audit?source_gap={source_name}&limit=25"
+            + ("&stocks_only=true" if stocks_only else "")
+        ),
         "plan_command": plan_command,
         "plan_api": (
-            f"GET /api/radar/priced-in/source-batches?source={source_name}"
+            _priced_in_source_batches_api(source_name, stocks_only=stocks_only)
             if plan_command
             else None
         ),
@@ -4511,6 +4593,8 @@ def _priced_in_preflight_source_coverage(
 
 def priced_in_source_coverage_summary(
     rows: Sequence[Mapping[str, object]],
+    *,
+    stocks_only: bool = False,
 ) -> dict[str, object]:
     counts = {
         source: {"available": 0, "stale": 0, "missing": 0}
@@ -4572,9 +4656,15 @@ def priced_in_source_coverage_summary(
     return {
         "schema_version": "priced-in-source-coverage-v1",
         "row_count": row_count,
+        "stocks_only": bool(stocks_only),
+        "instrument_filter": "stocks_only" if stocks_only else "all_instruments",
         "sources": source_rows,
         "weak_sources": weak_sources,
-        "actions": _priced_in_source_action_rows(source_rows, row_count),
+        "actions": _priced_in_source_action_rows(
+            source_rows,
+            row_count,
+            stocks_only=stocks_only,
+        ),
         "summary": _priced_in_source_coverage_summary_text(source_rows, row_count),
     }
 
@@ -4649,7 +4739,11 @@ def _priced_in_source_coverage_with_instrument_routes(
     row_count = int(_finite_float(updated.get("row_count")))
     updated["sources"] = source_rows
     updated["weak_sources"] = _priced_in_source_coverage_weak_sources(source_rows)
-    updated["actions"] = _priced_in_source_action_rows(source_rows, row_count)
+    updated["actions"] = _priced_in_source_action_rows(
+        source_rows,
+        row_count,
+        stocks_only=bool(updated.get("stocks_only")),
+    )
     updated["summary"] = _priced_in_source_coverage_summary_text(source_rows, row_count)
     return updated
 
@@ -9991,9 +10085,16 @@ def _priced_in_source_coverage_summary_text(
 def _priced_in_source_action_rows(
     sources: Mapping[str, Mapping[str, object]],
     row_count: int,
+    *,
+    stocks_only: bool = False,
 ) -> list[dict[str, object]]:
     return [
-        _priced_in_source_action_row(source, sources.get(source, {}), row_count)
+        _priced_in_source_action_row(
+            source,
+            sources.get(source, {}),
+            row_count,
+            stocks_only=stocks_only,
+        )
         for source in PRICED_IN_SOURCE_CLASSES
     ]
 
@@ -10252,6 +10353,8 @@ def _priced_in_source_action_row(
     source: str,
     values: Mapping[str, object],
     row_count: int,
+    *,
+    stocks_only: bool = False,
 ) -> dict[str, object]:
     available = int(_finite_float(values.get("available")))
     stale = int(_finite_float(values.get("stale")))
@@ -10286,13 +10389,19 @@ def _priced_in_source_action_row(
             guidance,
             sample_tickers,
         )
-        batch_plan_command = _priced_in_source_batch_plan_command(source)
+        batch_plan_command = _priced_in_source_batch_plan_command(
+            source,
+            stocks_only=stocks_only,
+        )
         if batch_plan_command and gap_count > len(sample_tickers):
             sample_command = str(ticker_guidance.get("command") or "").strip()
             guidance = {
                 **guidance,
                 "command": batch_plan_command,
-                "api": f"GET /api/radar/priced-in/source-batches?source={source}",
+                "api": _priced_in_source_batches_api(
+                    source,
+                    stocks_only=stocks_only,
+                ),
                 "external_call_boundary": (
                     "Planning full-scan batches makes no provider calls; executing "
                     "a listed batch remains explicit and rate-limited."
@@ -10309,12 +10418,12 @@ def _priced_in_source_action_row(
         else:
             guidance = ticker_guidance
     batch_plan_command = (
-        _priced_in_source_batch_plan_command(source)
+        _priced_in_source_batch_plan_command(source, stocks_only=stocks_only)
         if gap_count > 0 and source in PRICED_IN_BATCHABLE_SOURCES
         else None
     )
     batch_plan_api = (
-        f"GET /api/radar/priced-in/source-batches?source={source}"
+        _priced_in_source_batches_api(source, stocks_only=stocks_only)
         if batch_plan_command
         else None
     )
@@ -10337,12 +10446,20 @@ def _priced_in_source_action_row(
             row_count=row_count,
         ),
         "full_scan_gap_review_command": (
-            f"catalyst-radar priced-in-queue --full-scan --source-gap {source} --limit 50"
+            _priced_in_queue_source_gap_command(
+                source,
+                stocks_only=stocks_only,
+                limit=50,
+            )
             if gap_count > 0
             else None
         ),
         "full_scan_export_command": (
-            f"catalyst-radar priced-in-queue --full-scan --source-gap {source} --all --json"
+            _priced_in_queue_source_gap_command(
+                source,
+                stocks_only=stocks_only,
+                all_rows=True,
+            )
             if gap_count > 0
             else None
         ),
@@ -11072,6 +11189,84 @@ def _priced_in_source_batch_api(source_name: str) -> str | None:
     return None
 
 
+def _priced_in_queue_source_gap_command(
+    source_name: str,
+    *,
+    stocks_only: bool = False,
+    limit: int = 50,
+    all_rows: bool = False,
+) -> str:
+    parts = ["catalyst-radar", "priced-in-queue"]
+    if stocks_only:
+        parts.append("--stocks-only")
+    parts.extend(["--full-scan", "--source-gap", source_name])
+    if all_rows:
+        parts.extend(["--all", "--json"])
+    else:
+        parts.extend(["--limit", str(_positive_limit(limit))])
+    return " ".join(parts)
+
+
+def _priced_in_queue_full_scan_command(
+    *,
+    stocks_only: bool = False,
+    limit: int = 50,
+    all_rows: bool = False,
+) -> str:
+    parts = ["catalyst-radar", "priced-in-queue"]
+    if stocks_only:
+        parts.append("--stocks-only")
+    parts.append("--full-scan")
+    if all_rows:
+        parts.extend(["--all", "--json"])
+    else:
+        parts.extend(["--limit", str(_positive_limit(limit))])
+    return " ".join(parts)
+
+
+def _priced_in_source_batches_command(
+    source_name: str,
+    *,
+    stocks_only: bool = False,
+    all_batches: bool = False,
+    json: bool = False,
+    execute_next: bool = False,
+    execute_batches: int | None = None,
+    batch_limit: int | None = None,
+    batch_offset: int | None = None,
+) -> str:
+    parts = ["catalyst-radar", "priced-in-source-batches", "--source", source_name]
+    if stocks_only:
+        parts.append("--stocks-only")
+    if batch_limit is not None:
+        parts.extend(["--batch-limit", str(_positive_limit(batch_limit))])
+    if batch_offset is not None:
+        parts.extend(["--batch-offset", str(_positive_offset(batch_offset))])
+    if all_batches:
+        parts.append("--all")
+    if execute_next:
+        parts.append("--execute-next")
+    if execute_batches is not None:
+        parts.extend(["--execute-batches", str(_positive_limit(execute_batches))])
+    if json:
+        parts.append("--json")
+    return " ".join(parts)
+
+
+def _priced_in_source_batches_api(
+    source_name: str,
+    *,
+    stocks_only: bool = False,
+    all_batches: bool = False,
+) -> str:
+    params = [f"source={source_name}"]
+    if all_batches:
+        params.append("all_batches=true")
+    if stocks_only:
+        params.append("stocks_only=true")
+    return "GET /api/radar/priced-in/source-batches?" + "&".join(params)
+
+
 def _priced_in_source_batch_api_payload(
     source_name: str,
     tickers: Sequence[str],
@@ -11238,6 +11433,7 @@ def _priced_in_source_batches_next_action(
 def _priced_in_source_next_batch_command(
     *,
     source_name: str,
+    stocks_only: bool = False,
     batch_limit: int,
     batch_offset: int,
     batch_count: int,
@@ -11247,16 +11443,27 @@ def _priced_in_source_next_batch_command(
         return None
     if batch_offset >= batch_count:
         return None
-    return (
-        "catalyst-radar priced-in-source-batches "
-        f"--source {source_name} --batch-limit {batch_limit} --batch-offset {batch_offset}"
+    return _priced_in_source_batches_command(
+        source_name,
+        stocks_only=stocks_only,
+        batch_limit=batch_limit,
+        batch_offset=batch_offset,
     )
 
 
-def _priced_in_source_batch_plan_command(source: str) -> str | None:
+def _priced_in_source_batch_plan_command(
+    source: str,
+    *,
+    stocks_only: bool = False,
+) -> str | None:
     if source not in PRICED_IN_BATCHABLE_SOURCES:
         return None
-    return f"catalyst-radar priced-in-source-batches --source {source} --all --json"
+    return _priced_in_source_batches_command(
+        source,
+        stocks_only=stocks_only,
+        all_batches=True,
+        json=True,
+    )
 
 
 def _schwab_market_sync_command(tickers: Sequence[str]) -> str:

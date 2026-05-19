@@ -2658,6 +2658,73 @@ def test_priced_in_source_gap_batches_payload_plans_safe_sync_batches(
         "--batch-limit 1 --batch-offset 1"
     )
 
+    with engine.begin() as conn:
+        conn.execute(
+            insert(securities),
+            [
+                {
+                    "ticker": "AAPL",
+                    "name": "Apple Inc.",
+                    "exchange": "NASDAQ",
+                    "sector": "Technology",
+                    "industry": "Consumer Electronics",
+                    "market_cap": 2_000_000_000_000.0,
+                    "avg_dollar_volume_20d": 5_000_000_000.0,
+                    "has_options": True,
+                    "is_active": True,
+                    "updated_at": AVAILABLE_AT,
+                    "metadata": {"type": "CS"},
+                },
+                {
+                    "ticker": "MSFT",
+                    "name": "Microsoft Corporation",
+                    "exchange": "NASDAQ",
+                    "sector": "Technology",
+                    "industry": "Software",
+                    "market_cap": 2_500_000_000_000.0,
+                    "avg_dollar_volume_20d": 4_000_000_000.0,
+                    "has_options": True,
+                    "is_active": True,
+                    "updated_at": AVAILABLE_AT,
+                    "metadata": {"type": "CS"},
+                },
+            ],
+        )
+
+    stock_payload = priced_in_source_gap_batches_payload(
+        engine,
+        AppConfig(schwab_market_sync_max_tickers=1),
+        source="options",
+        batch_limit=1,
+        batch_size=10,
+        stocks_only=True,
+    )
+
+    assert stock_payload["filters"]["stocks_only"] is True
+    assert stock_payload["scan_scope"]["stocks_only"] is True
+    assert stock_payload["scan_scope"]["instrument_filter"] == "stocks_only"
+    assert stock_payload["total_gap_rows"] == 2
+    assert stock_payload["all_batches_command"] == (
+        "catalyst-radar priced-in-source-batches --source options "
+        "--stocks-only --all --json"
+    )
+    assert stock_payload["execute_next_command"] == (
+        "catalyst-radar priced-in-source-batches --source options "
+        "--stocks-only --execute-next"
+    )
+    assert stock_payload["review_rows_command"] == (
+        "catalyst-radar priced-in-queue --stocks-only --full-scan "
+        "--source-gap options --limit 50"
+    )
+    assert stock_payload["export_rows_command"] == (
+        "catalyst-radar priced-in-queue --stocks-only --full-scan "
+        "--source-gap options --all --json"
+    )
+    assert stock_payload["approval_checklist"]["execute_next_command"] == (
+        "catalyst-radar priced-in-source-batches --source options "
+        "--stocks-only --execute-next"
+    )
+
 
 def test_priced_in_source_gap_batches_payload_can_return_full_scan_plan(
     tmp_path: Path,
