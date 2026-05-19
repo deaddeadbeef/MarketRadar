@@ -1,6 +1,57 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 08:28:23 +08:00
+Last updated: 2026-05-19 08:40:45 +08:00
+
+## Latest Priced-In Preflight Manual-Bar Guidance Fix
+
+Follow-up after the DB-backed manual bar work:
+
+- `priced-in-preflight` still told the operator to run the Polygon scheduled
+  scan as the first fix for missing run-as-of market bars.
+- That was technically available, but it was the wrong default for the user's
+  current "full scan, no surprise provider calls" workflow.
+
+Fix in this slice:
+
+- The market-bar preflight blocker now points first at the zero-call
+  DB-backed active-universe template:
+
+  ```powershell
+  catalyst-radar market-bars template --expected-as-of <LATEST_TRADING_DATE> --out data\local\manual-bars-<LATEST_TRADING_DATE>.csv
+  ```
+
+- The preflight command map now also exposes:
+
+  ```text
+  market_bars_import_preview=catalyst-radar market-bars import --daily-bars <fresh-bars.csv> --expected-as-of <LATEST_TRADING_DATE>
+  market_bars_import_execute=catalyst-radar market-bars import --daily-bars <fresh-bars.csv> --expected-as-of <LATEST_TRADING_DATE> --execute
+  ```
+
+- The Polygon/Massive `run_scan` command remains available in the same command
+  map, but the first blocked evidence step says to use the provider run only if
+  the call plan and plan limits match intent.
+- The TUI Run page now shows the same manual-bar evidence step instead of
+  making Polygon look like the only way to unblock a fresh full scan.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_preflight_payload_reports_exact_next_steps tests\integration\test_dashboard_data.py::test_priced_in_preflight_recommends_manual_bar_template_for_missing_bars tests\integration\test_dashboard_data.py::test_priced_in_preflight_warns_when_latest_run_is_selected_universe tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_preflight_cli_outputs_zero_call_plan -q
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-preflight
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page run
+```
+
+Observed:
+
+- Ruff passed.
+- Focused pytest passed.
+- `git diff --check` passed.
+- `priced-in-preflight` made 0 external calls and showed
+  `market_bars blocked Run-as-of bar coverage is 0/12613` with
+  `catalyst-radar market-bars template ...` as the first command.
+- The TUI Run page showed the same first evidence step.
 
 ## Latest DB-Backed Manual Market Bar Full-Scan Fix
 

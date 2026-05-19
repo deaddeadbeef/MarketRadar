@@ -2802,6 +2802,15 @@ def test_priced_in_preflight_payload_reports_exact_next_steps(tmp_path: Path) ->
     assert payload["provider"]["latest_daily_bar_ticker_count"] >= 1001
     assert payload["provider"]["estimated_ticker_seed_pages"] == 2
     assert payload["commands"]["ingest_tickers"].endswith("--max-pages 2")
+    assert payload["commands"]["market_bars_template"].startswith(
+        "catalyst-radar market-bars template"
+    )
+    assert payload["commands"]["market_bars_import_execute"].startswith(
+        "catalyst-radar market-bars import"
+    )
+    assert "--expected-as-of <LATEST_TRADING_DATE>" in payload["commands"][
+        "market_bars_import_preview"
+    ]
     assert payload["commands"]["run_scan"].startswith("catalyst-radar run-daily")
     assert "--universe" not in payload["commands"]["run_scan"]
     assert payload["commands"]["run_selected_universe_scan"].endswith(
@@ -2838,6 +2847,45 @@ def test_priced_in_preflight_payload_reports_exact_next_steps(tmp_path: Path) ->
     assert plan_by_area["local_text"]["depends_on"] == ["catalyst_events"]
     assert evidence_plan["next_command"]
     assert payload["api"]["queue"] == "GET /api/radar/priced-in"
+
+
+def test_priced_in_preflight_recommends_manual_bar_template_for_missing_bars(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+
+    payload = priced_in_preflight_payload(
+        engine,
+        AppConfig(daily_market_provider="polygon", polygon_api_key="fixture-key"),
+        latest_run={"universe": None},
+        discovery_snapshot={
+            "run": {"universe": None},
+            "freshness": {
+                "active_security_count": 12_613,
+                "active_security_with_as_of_bar_count": 0,
+                "missing_as_of_daily_bar_count": 12_613,
+            },
+            "yield": {
+                "requested_securities": 12_613,
+                "scanned_securities": 0,
+            },
+        },
+        source_coverage={"schema_version": "priced-in-source-coverage-v1", "actions": []},
+    )
+
+    by_area = {row["area"]: row for row in payload["rows"]}
+    market_bars = by_area["market_bars"]
+    assert market_bars["status"] == "blocked"
+    assert "DB-backed active-universe" in str(market_bars["next_action"])
+    assert market_bars["command"].startswith("catalyst-radar market-bars template")
+    assert market_bars["api"] == "POST /api/radar/market-bars/template"
+    assert payload["commands"]["run_scan"].startswith(
+        "catalyst-radar run-daily"
+    )
+    assert payload["evidence_plan"]["steps"][0]["area"] == "market_bars"
+    assert payload["evidence_plan"]["next_command"].startswith(
+        "catalyst-radar market-bars template"
+    )
 
 
 def test_priced_in_preflight_warns_when_latest_run_is_selected_universe(
