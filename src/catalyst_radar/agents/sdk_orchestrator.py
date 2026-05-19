@@ -118,6 +118,7 @@ def redacted_operator_snapshot(payload: Mapping[str, object]) -> dict[str, objec
         "priced_in": _priced_in_context(
             _mapping(source.get("priced_in_queue")),
             _mapping(source.get("priced_in_source_coverage")),
+            _mapping(source.get("priced_in_source_workflow")),
             _mapping(source.get("priced_in_preflight")),
             _mapping(source.get("priced_in_answer")),
         ),
@@ -184,6 +185,7 @@ def deterministic_agent_brief(
             _priced_in_answer_insight(priced_in),
             _priced_in_insight(priced_in),
             _priced_in_evidence_plan_insight(priced_in),
+            _priced_in_source_workflow_insight(priced_in),
             _top_queue_insight(work_queue),
             *[_candidate_insight(row) for row in candidates[:3]],
             *[_alert_insight(row) for row in alerts[:2]],
@@ -197,6 +199,10 @@ def deterministic_agent_brief(
             _text(_mapping(priced_in.get("answer")).get("next_command")),
             _text(_mapping(priced_in.get("evidence_plan")).get("next_action")),
             _text(_mapping(priced_in.get("evidence_plan")).get("next_command")),
+            _text(_mapping(priced_in.get("source_workflow")).get("coverage_first_action")),
+            _text(_mapping(priced_in.get("source_workflow")).get("coverage_first_command")),
+            _text(_mapping(priced_in.get("source_workflow")).get("decision_shortcut_action")),
+            _text(_mapping(priced_in.get("source_workflow")).get("decision_shortcut_command")),
             _text(priced_in.get("next_action")),
             _text(work_queue.get("next_action")),
             _text(call_plan.get("next_action")) if max_provider_calls else None,
@@ -497,6 +503,7 @@ def _call_plan_context(row: Mapping[str, object]) -> dict[str, object]:
 def _priced_in_context(
     queue: Mapping[str, object],
     source_coverage: Mapping[str, object],
+    source_workflow: Mapping[str, object],
     preflight: Mapping[str, object],
     answer: Mapping[str, object],
 ) -> dict[str, object]:
@@ -549,6 +556,7 @@ def _priced_in_context(
         "evidence_plan": _priced_in_evidence_plan_context(
             _mapping(preflight.get("evidence_plan"))
         ),
+        "source_workflow": _priced_in_source_workflow_context(source_workflow),
         "source_coverage": {
             **_copy_keys(
                 coverage,
@@ -573,6 +581,50 @@ def _priced_in_context(
             ][:8],
         },
         "rows": [_priced_in_row_context(item) for item in _rows(queue.get("rows"))[:8]],
+    }
+
+
+def _priced_in_source_workflow_context(workflow: Mapping[str, object]) -> dict[str, object]:
+    if not workflow:
+        return {}
+    return {
+        **_copy_keys(
+            workflow,
+            (
+                "schema_version",
+                "status",
+                "headline",
+                "next_action",
+                "next_command",
+                "coverage_first_action",
+                "coverage_first_command",
+                "decision_shortcut_action",
+                "decision_shortcut_command",
+                "priority_scope",
+                "decision_priority_scope",
+                "overview_command",
+                "overview_api",
+                "external_calls_made",
+            ),
+        ),
+        "steps": [
+            _copy_keys(
+                step,
+                (
+                    "priority",
+                    "source",
+                    "status",
+                    "action",
+                    "command",
+                    "api",
+                    "decision_useful_gap_rows",
+                    "research_useful_gap_rows",
+                    "actionable_gap_rows",
+                    "priority_sample_tickers",
+                ),
+            )
+            for step in _rows(workflow.get("steps"))[:8]
+        ],
     }
 
 
@@ -969,6 +1021,31 @@ def _priced_in_evidence_plan_insight(priced_in: Mapping[str, object]) -> str | N
     return (
         f"Priced-in evidence plan is {_text(plan.get('status')) or 'unknown'}; "
         f"steps={len(steps)}; next={next_action}{command_text}."
+    )
+
+
+def _priced_in_source_workflow_insight(priced_in: Mapping[str, object]) -> str | None:
+    workflow = _mapping(priced_in.get("source_workflow"))
+    if not workflow:
+        return None
+    coverage_action = _text(workflow.get("coverage_first_action"))
+    coverage_command = _text(workflow.get("coverage_first_command"))
+    decision_action = _text(workflow.get("decision_shortcut_action"))
+    decision_command = _text(workflow.get("decision_shortcut_command"))
+    pieces = []
+    if coverage_action:
+        pieces.append(f"coverage-first={coverage_action}")
+    if coverage_command:
+        pieces.append(f"coverage-command={coverage_command}")
+    if decision_action:
+        pieces.append(f"decision-shortcut={decision_action}")
+    if decision_command:
+        pieces.append(f"decision-command={decision_command}")
+    if not pieces:
+        pieces.append(_text(workflow.get("next_action")) or "review source workflow")
+    return (
+        f"Priced-in source workflow is {_text(workflow.get('status')) or 'unknown'}; "
+        f"{'; '.join(pieces)}."
     )
 
 

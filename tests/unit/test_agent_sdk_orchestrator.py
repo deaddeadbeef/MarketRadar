@@ -35,9 +35,15 @@ def test_agent_sdk_dry_run_brief_is_multi_agent_and_zero_call() -> None:
     assert any("Priced-in answer is research_only" in insight for insight in brief["insights"])
     assert any("Priced-in scan is ready" in insight for insight in brief["insights"])
     assert any("Priced-in evidence plan is attention" in insight for insight in brief["insights"])
+    assert any("Priced-in source workflow is attention" in insight for insight in brief["insights"])
     assert "Review the full-scan source batch plan." in brief["next_actions"]
     assert "Plan options batches." in brief["next_actions"]
     assert "catalyst-radar priced-in-source-batches --source options" in brief["next_actions"]
+    assert "Start with options; inspect the first safe chunk." in brief["next_actions"]
+    assert (
+        "catalyst-radar priced-in-source-batches --source options --execute-next"
+        in brief["next_actions"]
+    )
     assert "Review full scan source batches." in brief["next_actions"]
 
 
@@ -139,6 +145,38 @@ def test_redacted_operator_snapshot_allowlists_dashboard_fields() -> None:
                 "action": "Plan options batches.",
                 "command": "catalyst-radar priced-in-source-batches --source options",
                 "api": "GET /api/radar/priced-in/source-batches?source=options",
+            }
+        ],
+    }
+    assert snapshot["priced_in"]["source_workflow"] == {
+        "schema_version": "priced-in-source-workflow-v1",
+        "status": "attention",
+        "coverage_first_action": "Plan options batches.",
+        "coverage_first_command": (
+            "catalyst-radar priced-in-source-batches --source options --all --json"
+        ),
+        "decision_shortcut_action": "Start with options; inspect the first safe chunk.",
+        "decision_shortcut_command": (
+            "catalyst-radar priced-in-source-batches --source options --execute-next"
+        ),
+        "priority_scope": "full_scan_coverage",
+        "decision_priority_scope": "visible_priced_in_rows",
+        "overview_command": "catalyst-radar priced-in-source-batches --source all",
+        "overview_api": "GET /api/radar/priced-in/source-batches?source=all",
+        "external_calls_made": 0,
+        "steps": [
+            {
+                "priority": 1,
+                "source": "options",
+                "status": "attention",
+                "action": "Plan options batches.",
+                "command": (
+                    "catalyst-radar priced-in-source-batches --source options --all --json"
+                ),
+                "api": "GET /api/radar/priced-in/source-batches?source=options",
+                "decision_useful_gap_rows": 1,
+                "actionable_gap_rows": 1,
+                "priority_sample_tickers": ["ACME"],
             }
         ],
     }
@@ -343,6 +381,42 @@ def _dashboard_payload() -> dict[str, object]:
                     }
                 ],
             },
+        },
+        "priced_in_source_workflow": {
+            "schema_version": "priced-in-source-workflow-v1",
+            "status": "attention",
+            "coverage_first_action": "Plan options batches.",
+            "coverage_first_command": (
+                "catalyst-radar priced-in-source-batches --source options --all --json"
+            ),
+            "decision_shortcut_action": (
+                "Start with options; inspect the first safe chunk."
+            ),
+            "decision_shortcut_command": (
+                "catalyst-radar priced-in-source-batches --source options --execute-next"
+            ),
+            "priority_scope": "full_scan_coverage",
+            "decision_priority_scope": "visible_priced_in_rows",
+            "overview_command": "catalyst-radar priced-in-source-batches --source all",
+            "overview_api": "GET /api/radar/priced-in/source-batches?source=all",
+            "external_calls_made": 0,
+            "steps": [
+                {
+                    "priority": 1,
+                    "source": "options",
+                    "status": "attention",
+                    "action": "Plan options batches.",
+                    "command": (
+                        "catalyst-radar priced-in-source-batches "
+                        "--source options --all --json"
+                    ),
+                    "api": "GET /api/radar/priced-in/source-batches?source=options",
+                    "decision_useful_gap_rows": 1,
+                    "actionable_gap_rows": 1,
+                    "priority_sample_tickers": ["ACME"],
+                    "payload": {"api_key": "secret-polygon"},
+                }
+            ],
         },
         "candidates": {
             "count": 1,
