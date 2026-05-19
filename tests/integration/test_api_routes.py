@@ -28,6 +28,7 @@ from catalyst_radar.storage.schema import (
     candidate_packets,
     candidate_states,
     decision_cards,
+    securities,
     signal_features,
     useful_alert_labels,
     user_feedback,
@@ -1929,6 +1930,48 @@ def test_post_radar_sec_company_tickers_refreshes_cik_metadata(
     assert payload["external_calls_made"] == 1
     assert called["args"]
     assert called["kwargs"] == {}
+
+
+def test_post_radar_sec_cik_overrides_imports_manual_metadata(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "radar-sec-cik-overrides.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = _create_database(database_url)
+    _insert_active_securities(engine, ["AAPL", "MSFT"])
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/radar/sec/cik-overrides",
+        json={
+            "overrides": [
+                {"ticker": "AAPL", "cik": "320193", "sec_company_name": "Apple Inc."},
+                {"ticker": "MSFT", "cik": "789019"},
+                {"ticker": "MISS", "cik": "123456"},
+            ]
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["schema_version"] == "sec-cik-override-import-v1"
+    assert payload["external_calls_made"] == 0
+    assert payload["requested_count"] == 3
+    assert payload["updated_count"] == 2
+    assert payload["unmatched_count"] == 1
+    assert payload["updated_tickers"] == ["AAPL", "MSFT"]
+    assert payload["unmatched_tickers"] == ["MISS"]
+
+    with engine.connect() as conn:
+        rows = {
+            str(row.ticker): dict(row._mapping["metadata"] or {})
+            for row in conn.execute(select(securities.c.ticker, securities.c.metadata))
+        }
+    assert rows["AAPL"]["cik"] == "0000320193"
+    assert rows["AAPL"]["sec_company_name"] == "Apple Inc."
+    assert rows["AAPL"]["cik_source"] == "manual_cik_override"
+    assert rows["MSFT"]["cik"] == "0000789019"
 
 
 def test_post_radar_sec_submissions_batch_rejects_too_many_targets(

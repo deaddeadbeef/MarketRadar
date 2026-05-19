@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -65,6 +66,133 @@ class SecCikMetadataRefreshResult:
                 "preferred/share-class symbols, or unavailable in SEC company tickers."
             )
         return "All active securities already have SEC CIK metadata."
+
+
+@dataclass(frozen=True)
+class SecCikOverrideResult:
+    requested_count: int
+    updated_count: int
+    skipped_count: int
+    unmatched_count: int
+    invalid_count: int
+    updated_tickers: tuple[str, ...]
+    skipped_tickers: tuple[str, ...]
+    unmatched_tickers: tuple[str, ...]
+    invalid_rows: tuple[str, ...]
+    applied_at: datetime
+
+    def as_payload(self) -> dict[str, object]:
+        return {
+            "schema_version": "sec-cik-override-import-v1",
+            "provider": "manual",
+            "live": False,
+            "external_calls_made": 0,
+            "requested_count": self.requested_count,
+            "updated_count": self.updated_count,
+            "skipped_count": self.skipped_count,
+            "unmatched_count": self.unmatched_count,
+            "invalid_count": self.invalid_count,
+            "updated_tickers": list(self.updated_tickers),
+            "skipped_tickers": list(self.skipped_tickers),
+            "unmatched_tickers": list(self.unmatched_tickers),
+            "invalid_rows": list(self.invalid_rows),
+            "applied_at": self.applied_at.isoformat(),
+            "next_action": self._next_action(),
+        }
+
+    def _next_action(self) -> str:
+        if self.updated_count:
+            return (
+                "Recheck catalyst_events source batches; manually CIK-backed rows "
+                "can now be planned for SEC ingestion."
+            )
+        if self.invalid_count:
+            return "Fix invalid ticker/CIK rows in the override CSV and import again."
+        if self.unmatched_count:
+            return "Override tickers were not active securities in the local database."
+        return "No CIK metadata changed."
+
+
+def apply_sec_cik_overrides_csv(
+    engine: Engine,
+    path: Path,
+    *,
+    source: str = "manual_cik_override",
+) -> SecCikOverrideResult:
+    records = _read_cik_override_csv(path)
+    return apply_sec_cik_overrides(engine, records, source=source)
+
+
+def apply_sec_cik_overrides(
+    engine: Engine,
+    records: Sequence[Mapping[str, object]],
+    *,
+    source: str = "manual_cik_override",
+) -> SecCikOverrideResult:
+    applied_at = datetime.now(UTC).replace(microsecond=0)
+    requested_count = len(records)
+    parsed: list[dict[str, str]] = []
+    invalid_rows: list[str] = []
+    for index, record in enumerate(records, start=1):
+        ticker = str(record.get("ticker") or "").strip().upper()
+        cik = _normalize_cik(record.get("cik") or record.get("cik_str"))
+        if not ticker or cik is None:
+            invalid_rows.append(f"row {index}")
+            continue
+        company_name = str(
+            record.get("sec_company_name")
+            or record.get("company_name")
+            or record.get("name")
+            or ""
+        ).strip()
+        parsed.append({"ticker": ticker, "cik": cik, "company_name": company_name})
+
+    updated: list[str] = []
+    skipped: list[str] = []
+    unmatched: list[str] = []
+    with engine.begin() as conn:
+        for record in parsed:
+            row = conn.execute(
+                select(securities.c.ticker, securities.c.metadata).where(
+                    securities.c.is_active.is_(True),
+                    securities.c.ticker == record["ticker"],
+                )
+            ).first()
+            if row is None:
+                unmatched.append(record["ticker"])
+                continue
+            metadata = dict(_as_mapping(row._mapping["metadata"]))
+            if _metadata_cik(metadata) == record["cik"]:
+                skipped.append(record["ticker"])
+                continue
+            metadata.update(
+                {
+                    "cik": record["cik"],
+                    "cik_source": source,
+                    "cik_updated_at": applied_at.isoformat(),
+                }
+            )
+            if record["company_name"]:
+                metadata["sec_company_name"] = record["company_name"]
+            conn.execute(
+                update(securities)
+                .where(securities.c.ticker == record["ticker"])
+                .values(metadata=thaw_json_value(metadata))
+            )
+            updated.append(record["ticker"])
+
+    return SecCikOverrideResult(
+        requested_count=requested_count,
+        updated_count=len(updated),
+        skipped_count=len(skipped),
+        unmatched_count=len(unmatched),
+        invalid_count=len(invalid_rows),
+        updated_tickers=tuple(updated[:10]),
+        skipped_tickers=tuple(skipped[:10]),
+        unmatched_tickers=tuple(unmatched[:10]),
+        invalid_rows=tuple(invalid_rows[:10]),
+        applied_at=applied_at,
+    )
 
 
 def refresh_sec_cik_metadata(
@@ -214,12 +342,37 @@ def _metadata_cik(metadata: Mapping[str, object]) -> str | None:
     return None
 
 
+def _normalize_cik(value: object) -> str | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    if not raw.isdigit():
+        return None
+    return raw.zfill(10)
+
+
+def _read_cik_override_csv(path: Path) -> list[dict[str, object]]:
+    with path.open(newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        if reader.fieldnames is None:
+            msg = "CIK override CSV must include ticker and cik columns"
+            raise ValueError(msg)
+        fieldnames = {field.strip().lower() for field in reader.fieldnames}
+        if "ticker" not in fieldnames or not {"cik", "cik_str"} & fieldnames:
+            msg = "CIK override CSV must include ticker and cik columns"
+            raise ValueError(msg)
+        return [dict(row) for row in reader]
+
+
 def _as_mapping(value: Any) -> Mapping[str, object]:
     return value if isinstance(value, Mapping) else {}
 
 
 __all__ = [
     "SEC_COMPANY_TICKERS_URL",
+    "SecCikOverrideResult",
     "SecCikMetadataRefreshResult",
+    "apply_sec_cik_overrides",
+    "apply_sec_cik_overrides_csv",
     "refresh_sec_cik_metadata",
 ]

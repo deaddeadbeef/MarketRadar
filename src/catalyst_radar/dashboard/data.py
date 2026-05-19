@@ -10781,6 +10781,14 @@ def _priced_in_source_plannable_rows(
             "fix_command": "catalyst-radar ingest-sec company-tickers"
             if _missing_cik_breakdown_can_refresh(missing_breakdown)
             else None,
+            "manual_fix_command": (
+                "catalyst-radar ingest-sec cik-overrides --csv <cik-overrides.csv>"
+                if _missing_cik_breakdown_can_refresh(missing_breakdown)
+                else None
+            ),
+            "manual_fix_api": "POST /api/radar/sec/cik-overrides"
+            if _missing_cik_breakdown_can_refresh(missing_breakdown)
+            else None,
             "fix_api": "POST /api/radar/sec/company-tickers"
             if _missing_cik_breakdown_can_refresh(missing_breakdown)
             else None,

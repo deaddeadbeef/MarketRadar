@@ -153,6 +153,10 @@ EXPECTED_API_ROUTES = {
     ): ("catalyst_radar.api.routes.radar", "radar_priced_in_answer", ("radar",)),
     (
         "GET",
+        "/api/radar/priced-in/audit",
+    ): ("catalyst_radar.api.routes.radar", "radar_priced_in_audit", ("radar",)),
+    (
+        "GET",
         "/api/radar/priced-in/source-batches",
     ): ("catalyst_radar.api.routes.radar", "radar_priced_in_source_batches", ("radar",)),
     (
@@ -167,6 +171,22 @@ EXPECTED_API_ROUTES = {
         "POST",
         "/api/radar/sec/submissions-batch",
     ): ("catalyst_radar.api.routes.radar", "radar_sec_submissions_batch", ("radar",)),
+    (
+        "POST",
+        "/api/radar/sec/company-tickers",
+    ): ("catalyst_radar.api.routes.radar", "radar_sec_company_tickers", ("radar",)),
+    (
+        "POST",
+        "/api/radar/sec/cik-overrides",
+    ): ("catalyst_radar.api.routes.radar", "radar_sec_cik_overrides", ("radar",)),
+    (
+        "POST",
+        "/api/radar/market-bars/template",
+    ): ("catalyst_radar.api.routes.radar", "radar_market_bars_template", ("radar",)),
+    (
+        "POST",
+        "/api/radar/market-bars/import",
+    ): ("catalyst_radar.api.routes.radar", "radar_market_bars_import", ("radar",)),
     (
         "POST",
         "/api/radar/text/features-batch",
