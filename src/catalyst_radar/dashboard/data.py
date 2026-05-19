@@ -2933,7 +2933,8 @@ def _priced_in_market_bar_provider_fill_plan(
 ) -> dict[str, object]:
     target_value = _date_iso_or_none(target_as_of)
     provider_command = (
-        f"catalyst-radar ingest-polygon grouped-daily --date {target_value}"
+        "catalyst-radar ingest-polygon grouped-daily "
+        f"--date {target_value} --confirm-external-call"
         if target_value
         else None
     )
@@ -7662,7 +7663,8 @@ def universe_coverage_payload(
         "next_action": (
             "Seed or refresh the universe with "
             f"`python -m catalyst_radar.cli ingest-polygon tickers --max-pages "
-            f"{config.polygon_tickers_max_pages}` before relying on broad discovery."
+            f"{config.polygon_tickers_max_pages} --confirm-external-call` "
+            "before relying on broad discovery."
             if status in {"blocked", "thin", "partial"}
             else "Monitor daily-bar coverage and rejected provider records after each run."
         ),
@@ -11778,8 +11780,14 @@ def _priced_in_preflight_commands(
     if provider == "polygon":
         page_cap = max(1, int(config.polygon_tickers_max_pages))
         target_pages = max(page_cap, target_ticker_pages or page_cap)
-        ingest_tickers = f"catalyst-radar ingest-polygon tickers --max-pages {target_pages}"
-        ingest_bars = "catalyst-radar ingest-polygon grouped-daily --date <LATEST_TRADING_DATE>"
+        ingest_tickers = (
+            "catalyst-radar ingest-polygon tickers "
+            f"--max-pages {target_pages} --confirm-external-call"
+        )
+        ingest_bars = (
+            "catalyst-radar ingest-polygon grouped-daily "
+            "--date <LATEST_TRADING_DATE> --confirm-external-call"
+        )
     else:
         ingest_tickers = (
             "catalyst-radar ingest-csv --securities <securities.csv> --daily-bars <bars.csv>"

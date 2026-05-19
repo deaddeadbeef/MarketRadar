@@ -68,8 +68,8 @@ without `--universe`:
 
 ```powershell
 catalyst-radar priced-in-preflight
-catalyst-radar ingest-polygon tickers
-catalyst-radar ingest-polygon grouped-daily --date <LATEST_TRADING_DATE>
+catalyst-radar ingest-polygon tickers --confirm-external-call
+catalyst-radar ingest-polygon grouped-daily --date <LATEST_TRADING_DATE> --confirm-external-call
 catalyst-radar run-daily --as-of <LATEST_TRADING_DATE> --available-at <UTC-now> --provider polygon --json
 ```
 

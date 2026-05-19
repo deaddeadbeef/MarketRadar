@@ -195,9 +195,9 @@ CATALYST_RADAR_RUN_MIN_INTERVAL_SECONDS=300
 The daily Polygon path fails closed before making a request when
 `CATALYST_POLYGON_API_KEY` is missing. A guarded run makes one grouped-daily
 request for the selected `as_of` date. Seed/refresh Polygon ticker reference data
-separately with `ingest-polygon tickers` when the securities master is empty or
+separately with `ingest-polygon tickers --confirm-external-call` when the securities master is empty or
 stale. Ticker-reference pagination is capped by `CATALYST_POLYGON_TICKERS_MAX_PAGES`
-or `ingest-polygon tickers --max-pages`; start with `1` and raise it deliberately.
+or `ingest-polygon tickers --max-pages <N> --confirm-external-call`; start with `1` and raise it deliberately.
 For rate-limited plans, set `CATALYST_POLYGON_TICKER_PAGE_DELAY_SECONDS` before
 a multi-page seed so each ticker-reference page is paced instead of requested
 back-to-back.
@@ -237,7 +237,7 @@ The scheduled SEC path fails closed before making a request when live mode or a
 User-Agent is missing. The ticker cap bounds SEC submissions calls per radar run.
 When using CSV market data, make sure the securities CSV has CIK metadata for
 the names you want SEC to poll. When using Polygon as the market provider, run
-`ingest-polygon tickers` first so active securities include CIK metadata.
+`ingest-polygon tickers --confirm-external-call` first so active securities include CIK metadata.
 
 To inspect the last persisted daily radar pass without starting a new one:
 

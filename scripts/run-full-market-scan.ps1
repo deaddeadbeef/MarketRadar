@@ -153,12 +153,12 @@ try {
         if ($shouldSeedTickers) {
             Write-Output ('$env:CATALYST_POLYGON_TICKERS_MAX_PAGES="{0}"' -f $resolvedPages)
             Write-Output ('$env:CATALYST_POLYGON_TICKER_PAGE_DELAY_SECONDS="{0}"' -f $resolvedDelay)
-            Write-Output ("catalyst-radar ingest-polygon tickers --max-pages {0}" -f $resolvedPages)
+            Write-Output ("catalyst-radar ingest-polygon tickers --max-pages {0} --confirm-external-call" -f $resolvedPages)
         }
         else {
             Write-Output "catalyst-radar ingest-polygon tickers skipped; active universe is already seeded. Add -RefreshTickers to reseed."
         }
-        Write-Output ("catalyst-radar ingest-polygon grouped-daily --date {0}" -f $resolvedAsOf)
+        Write-Output ("catalyst-radar ingest-polygon grouped-daily --date {0} --confirm-external-call" -f $resolvedAsOf)
         Write-Output '$env:CATALYST_DAILY_MARKET_PROVIDER="off"'
         if ($UseUniverse) {
             Write-Output ("catalyst-radar build-universe --as-of {0} --available-at <UTC-now> --name {1} --provider polygon" -f $resolvedAsOf, $resolvedUniverseName)
@@ -176,12 +176,12 @@ try {
     if ($shouldSeedTickers) {
         $env:CATALYST_POLYGON_TICKERS_MAX_PAGES = [string]$resolvedPages
         $env:CATALYST_POLYGON_TICKER_PAGE_DELAY_SECONDS = [string]$resolvedDelay
-        Invoke-Checked $dashboardExe @("ingest-polygon", "tickers", "--max-pages", [string]$resolvedPages)
+        Invoke-Checked $dashboardExe @("ingest-polygon", "tickers", "--max-pages", [string]$resolvedPages, "--confirm-external-call")
     }
     else {
         Write-Output "Skipping Polygon ticker seed; active universe is already seeded."
     }
-    Invoke-Checked $dashboardExe @("ingest-polygon", "grouped-daily", "--date", $resolvedAsOf)
+    Invoke-Checked $dashboardExe @("ingest-polygon", "grouped-daily", "--date", $resolvedAsOf, "--confirm-external-call")
     $availableAt = [DateTimeOffset]::UtcNow.ToString("o")
     $env:CATALYST_DAILY_MARKET_PROVIDER = "off"
     if ($UseUniverse) {

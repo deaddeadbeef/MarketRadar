@@ -1,6 +1,74 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 22:38:54 +08:00
+Last updated: 2026-05-19 22:54:53 +08:00
+
+## Latest Polygon/Massive Confirmation Guard
+
+Goal alignment check:
+
+- The product goal is not a pretty dashboard by itself. The goal is a
+  full-market priced-in scan: find stocks where price has not yet matched
+  market expectations.
+- The current hard blocker remains daily market-bar coverage for the full active
+  universe. The latest zero-call audit still plans a one-call Polygon/Massive
+  grouped-daily fill for `2026-05-15`.
+- The dashboard/CLI work in this slice is useful only because it makes the
+  market-data fill path explicit and prevents accidental live provider calls.
+
+Problem fixed in this slice:
+
+- The provider fill plan previously surfaced a copy/paste command that could
+  call Polygon/Massive immediately:
+  `catalyst-radar ingest-polygon grouped-daily --date 2026-05-15`.
+- That violated the no-surprise-provider-call boundary. A live operator command
+  should fail unless the operator adds an explicit confirmation flag.
+
+Fix in this slice:
+
+- `catalyst-radar ingest-polygon grouped-daily` and
+  `catalyst-radar ingest-polygon tickers` now accept
+  `--confirm-external-call`.
+- If a real Polygon/Massive key is configured and no `--fixture` is provided,
+  the CLI exits with code `2` unless `--confirm-external-call` is present.
+- Fixture ingests remain unchanged and do not require the confirmation flag.
+- Missing or placeholder Polygon/Massive keys still use the existing fail-closed
+  provider job path before any network request is possible.
+- `priced_in_full_scan_audit_payload.market_bars.repair.provider_fill_plan`
+  now surfaces the guarded command:
+  `catalyst-radar ingest-polygon grouped-daily --date 2026-05-15 --confirm-external-call`.
+- `priced-in-preflight`, universe coverage guidance, README examples,
+  `scripts/run-full-market-scan.ps1`, and the radar runbook now show guarded
+  Polygon/Massive commands.
+- No Polygon/Massive, Schwab, SEC, OpenAI, or broker/order execution was run.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_polygon_ingest_cli.py::test_polygon_ingest_requires_api_key tests\integration\test_polygon_ingest_cli.py::test_polygon_ingest_rejects_placeholder_api_key tests\integration\test_polygon_ingest_cli.py::test_polygon_live_ingest_requires_explicit_confirmation tests\integration\test_polygon_ingest_cli.py::test_polygon_fixture_ingest_persists_raw_normalized_and_daily_bars tests\integration\test_polygon_ingest_cli.py::test_polygon_fixture_ingest_does_not_require_real_api_key tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_payload_consolidates_current_state tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_audit_cli_outputs_full_scan_audit tests\integration\test_local_scripts.py -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\cli.py src\catalyst_radar\dashboard\data.py tests\integration\test_polygon_ingest_cli.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli ingest-polygon grouped-daily --date 2026-05-15
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-audit --limit 1 --json
+```
+
+Observed:
+
+- Focused test set passed (`22 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+- Live unconfirmed Polygon/Massive command exited `2` and printed:
+  `polygon ingest requires --confirm-external-call for live provider requests`.
+- The zero-call audit still reports `external_calls=0` and now returns:
+  `provider_command=catalyst-radar ingest-polygon grouped-daily --date 2026-05-15 --confirm-external-call`.
+
+Next useful product action:
+
+- If the operator explicitly approves one market-data provider call, run:
+  `catalyst-radar ingest-polygon grouped-daily --date 2026-05-15 --confirm-external-call`.
+- After the provider fill, rerun the priced-in full-scan audit and ranking from
+  updated local bars. The old audit is not automatically revalidated.
+- If live provider execution is not approved, use the missing-only manual CSV
+  repair path from the previous section.
 
 ## Latest Market-Bar Provider Fill Plan
 
