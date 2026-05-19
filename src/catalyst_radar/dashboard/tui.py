@@ -2601,12 +2601,49 @@ def _priced_in_all_source_batch_message(
     )
     next_action = str(payload.get("next_action") or "").strip()
     next_action_text = f" Suggested first: {next_action}" if next_action else ""
+    recommendation_text = _all_source_recommendation_detail(payload)
     return (
         f"{payload.get('headline')} This is plan-only and makes no provider calls. "
         "Full scan is already the ranked universe; source execution is split into "
         "safe provider chunks. "
-        f"{'; '.join(pieces)}.{next_action_text}{command}{capped_command}"
+        f"{'; '.join(pieces)}.{next_action_text}{recommendation_text}"
+        f"{command}{capped_command}"
     )
+
+
+def _all_source_recommendation_detail(payload: Mapping[str, object]) -> str:
+    details: list[str] = []
+    for key, label in (
+        ("coverage_first_recommendation", "Coverage-first chunk"),
+        ("decision_shortcut_recommendation", "Decision shortcut chunk"),
+    ):
+        recommendation = _mapping(payload.get(key))
+        source = str(recommendation.get("source") or "").strip()
+        if not source:
+            continue
+        row = _source_plan_row(payload, source)
+        first_batch = _mapping(row.get("first_batch")) if row else {}
+        if not first_batch:
+            continue
+        tickers = ", ".join(_texts(first_batch.get("tickers"))) or "n/a"
+        calls = int(_number_or_zero(first_batch.get("external_calls_required")))
+        command = str(first_batch.get("command") or recommendation.get("command") or "")
+        details.append(
+            f" {label}: {source} rows {first_batch.get('row_start')}-"
+            f"{first_batch.get('row_end')}; tickers {tickers}; calls {calls}; "
+            f"command {command}."
+        )
+    return "".join(details)
+
+
+def _source_plan_row(
+    payload: Mapping[str, object],
+    source: str,
+) -> Mapping[str, object]:
+    for row in _rows(payload.get("sources")):
+        if str(row.get("source") or "").strip() == source:
+            return row
+    return {}
 
 
 def _source_batch_priority_key(row: Mapping[str, object]) -> tuple[int, int, int, str]:
