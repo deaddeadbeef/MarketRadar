@@ -499,6 +499,10 @@ def test_dashboard_batch_command_opens_full_scan_source_batch_plan(
     assert "plan-only and makes no provider calls" in overview.message
     assert "source execution is split into safe provider chunks" in overview.message
     assert "Suggested first:" in overview.message
+    assert "Coverage-first chunk:" in overview.message
+    assert "Decision shortcut chunk:" in overview.message
+    assert "tickers ACME" in overview.message
+    assert "calls 1" in overview.message
     assert "options=ready" in overview.message
     assert (
         "First executable: catalyst-radar priced-in-source-batches "

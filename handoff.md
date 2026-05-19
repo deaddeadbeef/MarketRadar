@@ -1,6 +1,46 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 14:47:16 +08:00
+Last updated: 2026-05-19 14:54:07 +08:00
+
+## Latest TUI `batch all` First Chunks
+
+Current problem:
+
+- The CLI all-source plan now printed first safe chunks, but the TUI dashboard
+  command `batch all` still summarized source statuses without the concrete
+  first chunk details.
+- Computing the all-source plan on every dashboard render would make normal
+  browsing slower, so this was added only to the explicit on-demand command.
+
+Fix in this slice:
+
+- `batch all` in the TUI response now includes:
+  - `Coverage-first chunk: <source> rows <start>-<end>; tickers ...; calls ...; command ...`
+  - `Decision shortcut chunk: <source> rows <start>-<end>; tickers ...; calls ...; command ...`
+- This is plan-only and still makes no provider calls.
+- Actual execution still requires `batch <source> execute` or
+  `batch <source> execute <N>`.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+```
+
+Observed:
+
+- Dashboard integration file passed (`30 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+
+Next useful product action:
+
+- The remaining practical gap is not another plan display. It is the actual
+  external source fill, which should only run after explicit user approval:
+  - `catalyst-radar priced-in-source-batches --source catalyst_events --execute-next`
+  - `catalyst-radar priced-in-source-batches --source broker_context --execute-next`
 
 ## Latest CLI Source Plan First Chunk
 
