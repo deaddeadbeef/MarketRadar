@@ -1802,6 +1802,8 @@ def test_post_radar_market_bars_template_and_import_use_database_universe(
     assert invalid_preview["status"] == "invalid"
     assert invalid_preview["invalid_row_count"] == 3
     assert invalid_preview["blank_required_count"] > 0
+    assert invalid_preview["blank_required_field_counts"]["open"] == 3
+    assert invalid_preview["blank_required_field_counts"]["vwap"] == 3
     assert invalid_preview["external_calls_made"] == 0
     assert invalid_preview["executed"] is False
 
@@ -1959,6 +1961,23 @@ def test_post_radar_market_bars_template_and_import_can_scope_to_stocks(
     assert repair_payload["manual_template_command"].endswith(
         "--missing-only --stocks-only"
     )
+    assert repair_payload["required_fill_fields"] == [
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "vwap",
+    ]
+    assert repair_payload["blank_required_field_counts_if_new_template"] == {
+        "open": 1,
+        "high": 1,
+        "low": 1,
+        "close": 1,
+        "volume": 1,
+        "vwap": 1,
+    }
+    assert repair_payload["template_row_count"] == 1
     assert repair_payload["provider_fill_status"] == "ready_for_approval"
     assert repair_payload["provider_fill_external_call_count"] == 1
     assert repair_payload["provider_key_configured"] is True

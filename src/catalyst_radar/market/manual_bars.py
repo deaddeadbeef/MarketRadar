@@ -30,6 +30,7 @@ MANUAL_BAR_COLUMNS = (
     "source_ts",
     "available_at",
 )
+MANUAL_BAR_REQUIRED_FILL_FIELDS = ("open", "high", "low", "close", "volume", "vwap")
 MANUAL_BAR_COMPANY_LIKE_TYPES = frozenset({"ADRC", "CS"})
 MANUAL_BAR_NON_STOCK_TYPES = frozenset(
     {"ETF", "ETN", "ETS", "ETV", "FUND", "PFD", "RIGHT", "SP", "UNIT", "WARRANT"}
@@ -260,6 +261,13 @@ class ManualBarsRepairPlanResult:
             "manual_import_execute_command": import_execute_command,
             "manual_template_api": "POST /api/radar/market-bars/template",
             "manual_import_api": "POST /api/radar/market-bars/import",
+            "required_fill_fields": list(MANUAL_BAR_REQUIRED_FILL_FIELDS),
+            "blank_required_field_counts_if_new_template": {
+                field_name: missing for field_name in MANUAL_BAR_REQUIRED_FILL_FIELDS
+            }
+            if missing
+            else {},
+            "template_row_count": missing,
             "provider_fill_status": provider_fill_status,
             "provider": "polygon",
             "provider_label": "Polygon/Massive grouped daily",

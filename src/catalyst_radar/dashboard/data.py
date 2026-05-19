@@ -42,6 +42,7 @@ from catalyst_radar.jobs.step_outcomes import (
     classify_step_outcome,
 )
 from catalyst_radar.jobs.tasks import DAILY_STEP_ORDER
+from catalyst_radar.market.manual_bars import MANUAL_BAR_REQUIRED_FILL_FIELDS
 from catalyst_radar.scoring.priced_in import evaluate_priced_in
 from catalyst_radar.security.redaction import redact_text
 from catalyst_radar.storage.broker_repositories import BrokerRepository
@@ -1358,6 +1359,13 @@ def _priced_in_stock_market_bar_source_gap_plan(
         "manual_template_command": template_command if missing else None,
         "manual_validate_command": preview_command if missing else None,
         "manual_fix_command": import_command if missing else None,
+        "required_fill_fields": list(MANUAL_BAR_REQUIRED_FILL_FIELDS),
+        "blank_required_field_counts_if_new_template": {
+            field_name: missing for field_name in MANUAL_BAR_REQUIRED_FILL_FIELDS
+        }
+        if missing
+        else {},
+        "template_row_count": missing,
         "provider_fill_command": provider_plan.get("provider_call_command"),
         "provider_fill_status": provider_plan.get("status"),
         "provider_fill_external_call_count": provider_plan.get(
@@ -3733,6 +3741,14 @@ def _priced_in_audit_market_bar_repair(
         "template_command": template_command,
         "import_preview_command": import_preview_command,
         "import_execute_command": import_execute_command,
+        "required_fill_fields": list(MANUAL_BAR_REQUIRED_FILL_FIELDS),
+        "blank_required_field_counts_if_new_template": {
+            field_name: effective_missing
+            for field_name in MANUAL_BAR_REQUIRED_FILL_FIELDS
+        }
+        if effective_missing > 0
+        else {},
+        "template_row_count": effective_missing,
         "template_api": "POST /api/radar/market-bars/template",
         "import_api": "POST /api/radar/market-bars/import",
         "diagnostic": diagnostic,

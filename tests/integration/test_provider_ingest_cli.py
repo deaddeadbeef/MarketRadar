@@ -441,6 +441,23 @@ def test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths(
     assert payload["manual_import_execute_command"].endswith(
         "--stocks-only --execute"
     )
+    assert payload["required_fill_fields"] == [
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "vwap",
+    ]
+    assert payload["blank_required_field_counts_if_new_template"] == {
+        "open": 1,
+        "high": 1,
+        "low": 1,
+        "close": 1,
+        "volume": 1,
+        "vwap": 1,
+    }
+    assert payload["template_row_count"] == 1
     assert payload["provider_fill_status"] == "ready_for_approval"
     assert payload["provider_fill_external_call_count"] == 1
     assert payload["provider_key_configured"] is True

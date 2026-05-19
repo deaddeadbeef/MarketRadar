@@ -2238,6 +2238,17 @@ def test_priced_in_answer_uses_stock_scope_for_market_bar_coverage(
     assert source_rows["market_bars"]["diagnostic"]["blocked_reason"] == (
         "missing_stock_like_as_of_bars"
     )
+    assert source_rows["market_bars"]["diagnostic"][
+        "blank_required_field_counts_if_new_template"
+    ] == {
+        "open": 1,
+        "high": 1,
+        "low": 1,
+        "close": 1,
+        "volume": 1,
+        "vwap": 1,
+    }
+    assert source_rows["market_bars"]["diagnostic"]["template_row_count"] == 1
     assert "--stocks-only" in source_rows["market_bars"]["diagnostic"][
         "manual_template_command"
     ]
