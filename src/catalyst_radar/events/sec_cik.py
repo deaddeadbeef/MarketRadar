@@ -22,6 +22,13 @@ from catalyst_radar.core.immutability import thaw_json_value
 from catalyst_radar.storage.schema import securities
 
 SEC_COMPANY_TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
+SEC_CIK_OVERRIDE_TEMPLATE_COLUMNS = (
+    "ticker",
+    "cik",
+    "sec_company_name",
+    "security_type",
+    "template_reason",
+)
 
 
 @dataclass(frozen=True)
@@ -111,6 +118,63 @@ class SecCikOverrideResult:
         if self.unmatched_count:
             return "Override tickers were not active securities in the local database."
         return "No CIK metadata changed."
+
+
+@dataclass(frozen=True)
+class SecCikOverrideTemplateWriteResult:
+    output_path: Path
+    row_count: int
+    generated_at: datetime
+
+    def as_payload(self) -> dict[str, object]:
+        return {
+            "schema_version": "sec-cik-override-template-write-v1",
+            "status": "ready",
+            "provider": "manual",
+            "live": False,
+            "external_calls_made": 0,
+            "output_path": str(self.output_path),
+            "row_count": self.row_count,
+            "columns": list(SEC_CIK_OVERRIDE_TEMPLATE_COLUMNS),
+            "generated_at": self.generated_at.isoformat(),
+            "import_command": (
+                "catalyst-radar ingest-sec cik-overrides "
+                f"--csv {self.output_path}"
+            ),
+            "next_action": (
+                "Fill cik and optional sec_company_name for each row, then import "
+                "the completed CSV."
+            ),
+        }
+
+
+def write_sec_cik_override_template_csv(
+    output_path: str | Path,
+    rows: Sequence[Mapping[str, object]],
+    *,
+    generated_at: datetime | None = None,
+) -> SecCikOverrideTemplateWriteResult:
+    path = Path(output_path)
+    resolved_at = (generated_at or datetime.now(UTC)).astimezone(UTC).replace(
+        microsecond=0
+    )
+    if path.parent != Path(""):
+        path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=SEC_CIK_OVERRIDE_TEMPLATE_COLUMNS)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(
+                {
+                    column: str(row.get(column) or "")
+                    for column in SEC_CIK_OVERRIDE_TEMPLATE_COLUMNS
+                }
+            )
+    return SecCikOverrideTemplateWriteResult(
+        output_path=path,
+        row_count=len(rows),
+        generated_at=resolved_at,
+    )
 
 
 def apply_sec_cik_overrides_csv(
@@ -370,9 +434,12 @@ def _as_mapping(value: Any) -> Mapping[str, object]:
 
 __all__ = [
     "SEC_COMPANY_TICKERS_URL",
+    "SEC_CIK_OVERRIDE_TEMPLATE_COLUMNS",
     "SecCikOverrideResult",
+    "SecCikOverrideTemplateWriteResult",
     "SecCikMetadataRefreshResult",
     "apply_sec_cik_overrides",
     "apply_sec_cik_overrides_csv",
     "refresh_sec_cik_metadata",
+    "write_sec_cik_override_template_csv",
 ]

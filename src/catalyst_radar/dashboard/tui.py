@@ -2574,10 +2574,12 @@ def _missing_cik_diagnostic_suffix(diagnostic: Mapping[str, object]) -> str:
     company_like = int(_number_or_zero(diagnostic.get("missing_cik_company_like_rows")))
     non_company = int(_number_or_zero(diagnostic.get("missing_cik_non_company_rows")))
     unknown = int(_number_or_zero(diagnostic.get("missing_cik_unknown_type_rows")))
+    template = str(diagnostic.get("manual_template_command") or "").strip()
+    template_text = f" Template: {template}." if template else ""
     return (
         " Missing CIK types: "
         f"{counts}; company-like {company_like}, non-company {non_company}, "
-        f"unknown {unknown}."
+        f"unknown {unknown}.{template_text}"
     )
 
 

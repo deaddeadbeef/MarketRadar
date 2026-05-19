@@ -1133,6 +1133,19 @@ def priced_in_source_gap_batches_payload(
         if batch_count > 0
         else None
     )
+    if source_name == "catalyst_events" and diagnostic.get("manual_fix_command"):
+        diagnostic = {
+            **diagnostic,
+            "manual_template_command": (
+                "catalyst-radar ingest-sec cik-overrides-template "
+                "--out data\\local\\cik-overrides-template.csv"
+                + (" --stocks-only" if resolved_stocks_only else "")
+            ),
+            "manual_template_api": (
+                "GET /api/radar/sec/cik-overrides-template"
+                + ("?stocks_only=true" if resolved_stocks_only else "")
+            ),
+        }
     first_batch = next((batch for batch in batches if isinstance(batch, Mapping)), None)
     returned_tickers_are_batch_sample = returned_ticker_count < len(tickers)
     batch_preview_note = (
@@ -1247,6 +1260,127 @@ def priced_in_source_gap_batches_payload(
             all_batches=all_batches,
         ),
         "batches": batches,
+    }
+
+
+def sec_cik_override_template_payload(
+    engine: Engine,
+    config: AppConfig,
+    *,
+    available_at: datetime | None = None,
+    status: str | None = None,
+    usefulness: str | None = None,
+    decision_gap: str | Sequence[str] | None = None,
+    min_gap: float | None = None,
+    stocks_only: bool = False,
+) -> dict[str, object]:
+    source_name = "catalyst_events"
+    queue = priced_in_queue_payload(
+        engine,
+        config,
+        limit=1_000_000,
+        offset=0,
+        available_at=available_at,
+        status=status,
+        usefulness=usefulness,
+        source_gap=source_name,
+        decision_gap=decision_gap,
+        min_gap=min_gap,
+        stocks_only=stocks_only,
+    )
+    rows = [
+        row
+        for row in _sequence_value(queue.get("rows"))
+        if isinstance(row, Mapping)
+        and str(row.get("ticker") or "").strip()
+        and _priced_in_source_gap_matches(row, (source_name,))
+    ]
+    rows = sorted(rows, key=_priced_in_source_row_priority_key)
+    tickers = [
+        str(row.get("ticker") or "").strip().upper()
+        for row in rows
+        if str(row.get("ticker") or "").strip()
+    ]
+    security_meta = _security_metadata_by_ticker(engine, tickers)
+    cik_by_ticker = _security_cik_by_ticker(engine, tickers)
+    template_rows: list[dict[str, object]] = []
+    skipped_with_cik: list[str] = []
+    routed_non_company: list[str] = []
+    unknown_type: list[str] = []
+    for ticker in dict.fromkeys(tickers):
+        security_type = _security_type_for_scope(security_meta.get(ticker))
+        if ticker in cik_by_ticker:
+            skipped_with_cik.append(ticker)
+            continue
+        if _is_non_company_instrument_type(security_type):
+            routed_non_company.append(ticker)
+            continue
+        if security_type == "UNKNOWN":
+            unknown_type.append(ticker)
+        template_rows.append(
+            {
+                "ticker": ticker,
+                "cik": "",
+                "sec_company_name": "",
+                "security_type": security_type,
+                "template_reason": (
+                    "missing_sec_cik_for_catalyst_events_source_gap"
+                ),
+            }
+        )
+    row_count = len(template_rows)
+    status_value = "ready" if row_count else "empty"
+    command = (
+        "catalyst-radar ingest-sec cik-overrides-template "
+        "--out data\\local\\cik-overrides-template.csv"
+        + (" --stocks-only" if stocks_only else "")
+    )
+    api = "GET /api/radar/sec/cik-overrides-template" + (
+        "?stocks_only=true" if stocks_only else ""
+    )
+    return {
+        "schema_version": "sec-cik-override-template-v1",
+        "status": status_value,
+        "provider": "manual",
+        "live": False,
+        "external_calls_made": 0,
+        "source": source_name,
+        "stocks_only": bool(stocks_only),
+        "source_gap_rows": len(rows),
+        "row_count": row_count,
+        "columns": [
+            "ticker",
+            "cik",
+            "sec_company_name",
+            "security_type",
+            "template_reason",
+        ],
+        "rows": template_rows,
+        "sample_tickers": _sample_tickers(
+            [str(row.get("ticker") or "") for row in template_rows]
+        ),
+        "skipped_with_cik_count": len(skipped_with_cik),
+        "sample_skipped_with_cik_tickers": _sample_tickers(skipped_with_cik),
+        "routed_non_company_count": len(routed_non_company),
+        "sample_routed_non_company_tickers": _sample_tickers(routed_non_company),
+        "unknown_type_count": len(unknown_type),
+        "sample_unknown_type_tickers": _sample_tickers(unknown_type),
+        "command": command,
+        "api": api,
+        "import_command": (
+            "catalyst-radar ingest-sec cik-overrides "
+            "--csv data\\local\\cik-overrides-template.csv"
+        ),
+        "next_action": (
+            "Fill cik and optional sec_company_name for each row, then import "
+            "the completed CSV before replanning catalyst_events."
+            if row_count
+            else "No missing company-like SEC CIK blockers need a manual template."
+        ),
+        "boundary": (
+            "Template/export is zero-call. Do not guess CIKs; use exact SEC CIKs "
+            "or an explicitly approved SEC company-tickers refresh."
+        ),
     }
 
 

@@ -81,6 +81,7 @@ from catalyst_radar.dashboard.data import (
     readiness_checklist_payload,
     research_shortlist_payload,
     runtime_context_payload,
+    sec_cik_override_template_payload,
     telemetry_coverage_payload,
     telemetry_tape_payload,
     universe_coverage_payload,
@@ -3126,7 +3127,68 @@ def test_priced_in_source_gap_batches_payload_exposes_missing_cik_blockers(
         "catalyst-radar ingest-sec cik-overrides --csv <cik-overrides.csv>"
     )
     assert payload["diagnostic"]["manual_fix_api"] == "POST /api/radar/sec/cik-overrides"
+    assert payload["diagnostic"]["manual_template_command"] == (
+        "catalyst-radar ingest-sec cik-overrides-template "
+        "--out data\\local\\cik-overrides-template.csv"
+    )
+    assert payload["diagnostic"]["manual_template_api"] == (
+        "GET /api/radar/sec/cik-overrides-template"
+    )
     assert payload["diagnostic"]["fix_api"] == "POST /api/radar/sec/company-tickers"
+
+
+def test_sec_cik_override_template_payload_exports_missing_company_like_rows(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(securities).values(
+                ticker="AAPL",
+                name="Apple Inc.",
+                exchange="NASDAQ",
+                sector="Technology",
+                industry="Consumer Electronics",
+                market_cap=2_000_000_000_000.0,
+                avg_dollar_volume_20d=5_000_000_000.0,
+                has_options=True,
+                is_active=True,
+                updated_at=AVAILABLE_AT,
+                metadata={"type": "CS"},
+            )
+        )
+
+    payload = sec_cik_override_template_payload(
+        engine,
+        AppConfig(),
+        stocks_only=True,
+    )
+
+    assert payload["schema_version"] == "sec-cik-override-template-v1"
+    assert payload["status"] == "ready"
+    assert payload["source"] == "catalyst_events"
+    assert payload["stocks_only"] is True
+    assert payload["external_calls_made"] == 0
+    assert payload["source_gap_rows"] == 1
+    assert payload["row_count"] == 1
+    assert payload["sample_tickers"] == ["AAPL"]
+    assert payload["rows"] == [
+        {
+            "ticker": "AAPL",
+            "cik": "",
+            "sec_company_name": "",
+            "security_type": "CS",
+            "template_reason": "missing_sec_cik_for_catalyst_events_source_gap",
+        }
+    ]
+    assert payload["command"].endswith("--stocks-only")
+    assert payload["api"] == "GET /api/radar/sec/cik-overrides-template?stocks_only=true"
+    assert payload["import_command"] == (
+        "catalyst-radar ingest-sec cik-overrides "
+        "--csv data\\local\\cik-overrides-template.csv"
+    )
+    assert "zero-call" in payload["boundary"]
 
 
 def test_priced_in_source_gap_batches_payload_classifies_non_company_cik_gaps(

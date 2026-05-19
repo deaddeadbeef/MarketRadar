@@ -63,6 +63,7 @@ from catalyst_radar.dashboard.data import (
     priced_in_preflight_payload,
     priced_in_queue_payload,
     priced_in_source_gap_batches_payload,
+    sec_cik_override_template_payload,
 )
 from catalyst_radar.dashboard.demo_seed import (
     default_sec_document_fixture_path,
@@ -87,6 +88,7 @@ from catalyst_radar.decision_cards.builder import build_decision_card
 from catalyst_radar.events.sec_cik import (
     apply_sec_cik_overrides_csv,
     refresh_sec_cik_metadata,
+    write_sec_cik_override_template_csv,
 )
 from catalyst_radar.events.sec_ingest import (
     ingest_sec_record,
@@ -243,6 +245,19 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         help="CSV with ticker,cik[,sec_company_name] columns. Makes no external calls.",
     )
+    cik_overrides_template = sec_sub.add_parser("cik-overrides-template")
+    cik_overrides_template.add_argument(
+        "--out",
+        type=Path,
+        required=True,
+        help="Output CSV template for catalyst_events rows missing SEC CIK metadata.",
+    )
+    cik_overrides_template.add_argument(
+        "--stocks-only",
+        action="store_true",
+        help="Restrict the template to stock-like priced-in scan rows.",
+    )
+    cik_overrides_template.add_argument("--json", action="store_true")
     ipo_s1 = sec_sub.add_parser("ipo-s1")
     ipo_s1.add_argument("--ticker", required=True)
     ipo_s1.add_argument("--cik", required=True)
@@ -978,6 +993,14 @@ def main(argv: list[str] | None = None) -> int:
             return _apply_sec_cik_overrides_cli(
                 engine=engine,
                 csv_path=args.csv,
+            )
+        if args.sec_command == "cik-overrides-template":
+            return _write_sec_cik_override_template_cli(
+                engine=engine,
+                config=config,
+                output_path=args.out,
+                stocks_only=args.stocks_only,
+                as_json=args.json,
             )
         if args.sec_command == "submissions-batch":
             return _ingest_sec_submissions_batch(
@@ -2315,6 +2338,68 @@ def _apply_sec_cik_overrides_cli(
         print(f"invalid_rows={','.join(str(row) for row in invalid)}")
     print(f"next_action={payload['next_action']}")
     return 1 if payload["invalid_count"] else 0
+
+
+def _write_sec_cik_override_template_cli(
+    *,
+    engine: Engine,
+    config: AppConfig,
+    output_path: Path,
+    stocks_only: bool,
+    as_json: bool,
+) -> int:
+    payload = sec_cik_override_template_payload(
+        engine,
+        config,
+        stocks_only=stocks_only,
+    )
+    try:
+        write_result = write_sec_cik_override_template_csv(
+            output_path,
+            _sequence_value(payload.get("rows")),
+        )
+    except OSError as exc:
+        print(f"sec cik override template failed: {exc}", file=sys.stderr)
+        return 1
+    write_payload = write_result.as_payload()
+    payload = {
+        **payload,
+        "output_path": write_payload["output_path"],
+        "write_schema_version": write_payload["schema_version"],
+        "generated_at": write_payload["generated_at"],
+        "import_command": write_payload["import_command"],
+    }
+    if as_json:
+        print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
+        return 0
+    print(
+        "sec_cik_override_template "
+        f"status={payload.get('status')} "
+        f"source={payload.get('source')} "
+        f"stocks_only={str(bool(payload.get('stocks_only'))).lower()} "
+        f"source_gap_rows={payload.get('source_gap_rows')} "
+        f"rows={payload.get('row_count')} "
+        f"output={payload.get('output_path')} "
+        f"external_calls={payload.get('external_calls_made')}"
+    )
+    samples = payload.get("sample_tickers")
+    if isinstance(samples, list | tuple) and samples:
+        print(f"missing_cik_examples={','.join(str(ticker) for ticker in samples)}")
+    routed_count = _int_value(payload.get("routed_non_company_count"))
+    if routed_count:
+        routed_samples = payload.get("sample_routed_non_company_tickers")
+        routed_text = (
+            ",".join(str(ticker) for ticker in routed_samples)
+            if isinstance(routed_samples, list | tuple)
+            else ""
+        )
+        print(f"routed_non_company={routed_count} examples={routed_text}")
+    print(f"columns={','.join(str(column) for column in payload.get('columns', []))}")
+    print(f"import_command={_compact_cli_text(payload.get('import_command'))}")
+    print(f"api={_compact_cli_text(payload.get('api'))}")
+    print(f"boundary={_compact_cli_text(payload.get('boundary'))}")
+    print(f"next_action={_compact_cli_text(payload.get('next_action'))}")
+    return 0
 
 
 def _ingest_sec_submissions_batch(
@@ -3858,6 +3943,18 @@ def _print_priced_in_source_batches(payload: Mapping[str, object]) -> None:
         manual_fix_api = diagnostic.get("manual_fix_api")
         if manual_fix_api:
             print(f"diagnostic_manual_api={_compact_cli_text(manual_fix_api)}")
+        manual_template_command = diagnostic.get("manual_template_command")
+        if manual_template_command:
+            print(
+                "diagnostic_manual_template_command="
+                f"{_compact_cli_text(manual_template_command)}"
+            )
+        manual_template_api = diagnostic.get("manual_template_api")
+        if manual_template_api:
+            print(
+                "diagnostic_manual_template_api="
+                f"{_compact_cli_text(manual_template_api)}"
+            )
         fix_api = diagnostic.get("fix_api")
         if fix_api:
             print(f"diagnostic_api={_compact_cli_text(fix_api)}")

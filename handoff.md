@@ -1,6 +1,120 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 01:02:17 +08:00
+Last updated: 2026-05-20 01:20:58 +08:00
+
+## Latest Missing-CIK Template Export
+
+Goal alignment check:
+
+- The active product goal is still the stock full-scan question: find stocks
+  where market emotion has not yet been matched by price reaction.
+- The current stock scan already has a zero-call source plan, but
+  `catalyst_events` still has `5512` stock-row gaps. `5510` rows are plannable
+  SEC targets; `2` company-like rows (`FRBA`, `SSBI`) are blocked only because
+  their local security metadata has no SEC CIK.
+- Running the first SEC source chunk remains approval-gated, so this slice did
+  not make a provider call. It made the current local CIK blocker exportable as
+  a human-fillable CSV template instead.
+
+Fix in this slice:
+
+- Added a zero-provider template payload for current `catalyst_events`
+  missing-CIK blockers:
+  - schema: `sec-cik-override-template-v1`
+  - source: `catalyst_events`
+  - rows: current source-gap tickers with missing CIK metadata, excluding
+    rows that already have CIKs and routing non-company instruments away from
+    SEC company filing batches.
+- Added CLI:
+
+  ```powershell
+  catalyst-radar ingest-sec cik-overrides-template --out <cik-overrides-template.csv> --stocks-only
+  ```
+
+- The generated CSV columns are:
+
+  ```csv
+  ticker,cik,sec_company_name,security_type,template_reason
+  ```
+
+- Added read-only API parity:
+
+  ```text
+  GET /api/radar/sec/cik-overrides-template?stocks_only=true
+  ```
+
+- Existing `priced-in-source-batches --source catalyst_events --stocks-only`
+  diagnostics now print the template command/API alongside the existing manual
+  import path:
+
+  ```text
+  diagnostic_manual_template_command=catalyst-radar ingest-sec cik-overrides-template --out data\local\cik-overrides-template.csv --stocks-only
+  diagnostic_manual_template_api=GET /api/radar/sec/cik-overrides-template?stocks_only=true
+  ```
+
+- The TUI missing-CIK diagnostic suffix also includes the template command.
+- No Polygon/Massive, Schwab, SEC, OpenAI, or broker/order execution was run.
+
+Current live zero-call observation from local CLI:
+
+```text
+sec_cik_override_template status=ready source=catalyst_events stocks_only=true source_gap_rows=5512 rows=2 output=C:\Users\fpan1\AppData\Local\Temp\market-radar-cik-overrides-template.csv external_calls=0
+missing_cik_examples=FRBA,SSBI
+columns=ticker,cik,sec_company_name,security_type,template_reason
+import_command=catalyst-radar ingest-sec cik-overrides --csv C:\Users\fpan1\AppData\Local\Temp\market-radar-cik-overrides-template.csv
+api=GET /api/radar/sec/cik-overrides-template?stocks_only=true
+```
+
+Generated temp CSV preview:
+
+```csv
+ticker,cik,sec_company_name,security_type,template_reason
+FRBA,,,CS,missing_sec_cik_for_catalyst_events_source_gap
+SSBI,,,CS,missing_sec_cik_for_catalyst_events_source_gap
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_sec_cik_metadata.py tests\integration\test_dashboard_data.py::test_sec_cik_override_template_payload_exports_missing_company_like_rows tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_exposes_missing_cik_blockers tests\integration\test_api_routes.py::test_get_radar_sec_cik_overrides_template_returns_zero_call_rows tests\integration\test_api_routes.py::test_post_radar_sec_cik_overrides_imports_manual_metadata tests\integration\test_security_boundaries.py::test_openapi_routes_are_allowlisted_and_broker_routes_are_explicit -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\events\sec_cik.py src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py src\catalyst_radar\api\routes\radar.py src\catalyst_radar\dashboard\tui.py tests\integration\test_sec_cik_metadata.py tests\integration\test_dashboard_data.py tests\integration\test_api_routes.py tests\integration\test_security_boundaries.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli ingest-sec cik-overrides-template --out $env:TEMP\market-radar-cik-overrides-template.csv --stocks-only
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source catalyst_events --stocks-only --batch-limit 1
+```
+
+Observed:
+
+- Focused test set passed (`12 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+- Template generation made `external_calls=0` and produced two blank-CIK rows:
+  `FRBA` and `SSBI`.
+- Source-batch planning remained `external_calls=0` and still shows the first
+  approval-gated SEC chunk as `AAT`, `AAUC`, `AB`, `ABAT`, `ABBV`.
+
+Next useful product action:
+
+- If exact SEC CIKs for `FRBA` and `SSBI` are known, fill the generated CSV and
+  import it:
+
+  ```powershell
+  catalyst-radar ingest-sec cik-overrides --csv <completed-cik-overrides-template.csv>
+  ```
+
+- This import makes `0` external calls and should reduce the
+  `catalyst_events` unplannable stock rows from `2` to `0`.
+- Do not guess CIK values. If using SEC company-tickers instead, treat that as
+  a SEC provider call and get explicit approval first.
+- After the two CIK blockers are cleared, the next meaningful source-coverage
+  step is still the approval-gated SEC batch:
+
+  ```powershell
+  catalyst-radar priced-in-source-batches --source catalyst_events --stocks-only --execute-next
+  ```
+
+  That is a `5` SEC-call read-only source fill; do not run it without explicit
+  approval.
 
 ## Latest Manual SEC CIK Override Path
 

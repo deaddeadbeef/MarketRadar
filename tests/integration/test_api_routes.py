@@ -1932,6 +1932,58 @@ def test_post_radar_sec_company_tickers_refreshes_cik_metadata(
     assert called["kwargs"] == {}
 
 
+def test_get_radar_sec_cik_overrides_template_returns_zero_call_rows(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "radar-sec-cik-template.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+    captured: dict[str, object] = {}
+
+    def fake_template_payload(_engine, _config, *, stocks_only):
+        captured["stocks_only"] = stocks_only
+        return {
+            "schema_version": "sec-cik-override-template-v1",
+            "status": "ready",
+            "provider": "manual",
+            "live": False,
+            "external_calls_made": 0,
+            "source": "catalyst_events",
+            "stocks_only": stocks_only,
+            "row_count": 1,
+            "rows": [
+                {
+                    "ticker": "FRBA",
+                    "cik": "",
+                    "sec_company_name": "",
+                    "security_type": "CS",
+                    "template_reason": (
+                        "missing_sec_cik_for_catalyst_events_source_gap"
+                    ),
+                }
+            ],
+        }
+
+    monkeypatch.setattr(
+        dashboard_data,
+        "sec_cik_override_template_payload",
+        fake_template_payload,
+        raising=False,
+    )
+    client = TestClient(create_app())
+
+    response = client.get("/api/radar/sec/cik-overrides-template?stocks_only=true")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["schema_version"] == "sec-cik-override-template-v1"
+    assert payload["external_calls_made"] == 0
+    assert payload["stocks_only"] is True
+    assert payload["rows"][0]["ticker"] == "FRBA"
+    assert captured["stocks_only"] is True
+
+
 def test_post_radar_sec_cik_overrides_imports_manual_metadata(
     tmp_path,
     monkeypatch,

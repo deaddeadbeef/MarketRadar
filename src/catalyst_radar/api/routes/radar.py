@@ -680,6 +680,21 @@ def radar_sec_company_tickers() -> dict[str, object]:
     return redact_restricted_external_payload(result.as_payload())
 
 
+@router.get(
+    "/sec/cik-overrides-template",
+    dependencies=[Depends(require_role(Role.VIEWER))],
+)
+def radar_sec_cik_overrides_template(
+    stocks_only: bool = Query(default=False),
+) -> dict[str, object]:
+    payload = dashboard_data.sec_cik_override_template_payload(
+        _engine(),
+        AppConfig.from_env(),
+        stocks_only=stocks_only,
+    )
+    return redact_restricted_external_payload(payload)
+
+
 @router.post(
     "/sec/cik-overrides",
     dependencies=[Depends(require_role(Role.ANALYST))],
