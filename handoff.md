@@ -1,6 +1,82 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 18:32:44 +08:00
+Last updated: 2026-05-19 18:44:06 +08:00
+
+## Latest Full-Audit Cache
+
+Current problem:
+
+- Full-scan display is now the default dashboard path, but a cold full-audit
+  payload build currently takes roughly 43-45 seconds on the local database.
+- Repeating the same dashboard/API view immediately rebuilt the same zero-call
+  audit, making the human dashboard feel sluggish.
+
+Fix in this slice:
+
+- `priced_in_full_scan_audit_payload` now has a small in-process cache.
+- The cache is used only when `queue` and `preflight` are not supplied by the
+  caller, so tests and internal composed flows that pass explicit inputs keep
+  their exact behavior.
+- The cache key includes:
+  - database URL;
+  - `available_at`;
+  - source-gap filter;
+  - preview limit/offset;
+  - all-rows flag;
+  - a database state token.
+- The database state token is built from cheap count/max checks across the
+  priced-in data dependencies: securities, bars, features, candidate states,
+  packets, decision cards, events, text snippets/features, options, broker
+  market snapshots, and job runs.
+- Cache entries are copied on read/write so callers cannot mutate shared cached
+  payloads.
+- Cache TTL is 180 seconds with a small max size of 12 entries.
+- This does not cache or execute provider calls; it only caches local zero-call
+  audit payloads.
+
+Current live zero-call observations from the branch:
+
+```text
+direct helper call=1 elapsed_s=42.939 rows=12087/12087 external_calls=0
+direct helper call=2 elapsed_s=0.312 rows=12087/12087 external_calls=0
+```
+
+```text
+API /api/radar/priced-in/audit?all_rows=true call=1 elapsed_s=44.975 rows=12087/12087 external_calls=0
+API /api/radar/priced-in/audit?all_rows=true call=2 elapsed_s=0.719 rows=12087/12087 external_calls=0
+```
+
+Browser verification on `http://127.0.0.1:8514`:
+
+- **Table display: complete full scan** rendered.
+- `Full scan rows: showing all 1-12087 of 12087` rendered.
+- **Download Full Scan Rows JSON** rendered.
+- The priority-preview boundary rendered.
+- Browser console check reported 0 errors.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_payload_reuses_cached_zero_call_audit tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_payload_consolidates_current_state tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_audit_cli_outputs_full_scan_audit tests\integration\test_api_routes.py::test_get_radar_priced_in_audit_returns_zero_call_audit tests\integration\test_dashboard_entrypoint.py::test_dashboard_wires_priced_in_full_scan_panel_after_usefulness -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py tests\integration\test_dashboard_data.py
+git diff --check
+```
+
+Observed:
+
+- Focused five-test set passed (`5 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+- The cache regression test proved the second same-filter audit does not call
+  `priced_in_queue_payload` again and that cached payloads are copied before
+  returning.
+
+Next useful product action:
+
+- Open and merge the PR for this branch, restart local services, then re-check
+  API/Streamlit health from the merged commit.
+- Actual source-fill execution still requires explicit user approval because it
+  can call SEC/Schwab/market providers.
 
 ## Latest Full-Scan Default UX
 

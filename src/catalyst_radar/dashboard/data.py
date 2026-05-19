@@ -2,15 +2,18 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
+from copy import deepcopy
 from dataclasses import fields, is_dataclass
 from datetime import UTC, date, datetime, timedelta
 from enum import Enum
 from hashlib import sha256
 from math import ceil, isfinite
 from pathlib import Path
+from time import monotonic
 from typing import Any
 
 from sqlalchemy import Engine, and_, func, select
+from sqlalchemy.exc import SQLAlchemyError
 
 from catalyst_radar.agents.models import BudgetLedgerEntry
 from catalyst_radar.brokers.interactive import (
@@ -47,6 +50,7 @@ from catalyst_radar.storage.schema import (
     alert_suppressions,
     alerts,
     audit_events,
+    broker_market_snapshots,
     candidate_packets,
     candidate_states,
     daily_bars,
@@ -58,6 +62,7 @@ from catalyst_radar.storage.schema import (
     paper_trades,
     securities,
     signal_features,
+    text_features,
     text_snippets,
     user_feedback,
     validation_results,
@@ -95,6 +100,9 @@ PRICED_IN_NON_COMPANY_SECURITY_TYPES = (
     PRICED_IN_FUND_LIKE_SECURITY_TYPES | PRICED_IN_WRAPPER_SECURITY_TYPES
 )
 _ARTIFACT_CUTOFF_UNSET = object()
+_PRICED_IN_AUDIT_CACHE_TTL_SECONDS = 180.0
+_PRICED_IN_AUDIT_CACHE_MAX_ITEMS = 12
+_PRICED_IN_AUDIT_CACHE: dict[tuple[object, ...], tuple[float, dict[str, object]]] = {}
 PRICED_IN_SOURCE_ALIASES = {
     "bars": "market_bars",
     "market": "market_bars",
@@ -1763,6 +1771,130 @@ def priced_in_answer_payload(
 
 
 def priced_in_full_scan_audit_payload(
+    engine: Engine,
+    config: AppConfig,
+    *,
+    available_at: datetime | None = None,
+    source_gap: str | Sequence[str] | None = None,
+    queue: Mapping[str, object] | None = None,
+    preflight: Mapping[str, object] | None = None,
+    preview_limit: int = PRICED_IN_FULL_SCAN_PREVIEW_LIMIT,
+    preview_offset: int = 0,
+    all_rows: bool = False,
+) -> dict[str, object]:
+    if queue is not None or preflight is not None:
+        return _priced_in_full_scan_audit_payload_uncached(
+            engine,
+            config,
+            available_at=available_at,
+            source_gap=source_gap,
+            queue=queue,
+            preflight=preflight,
+            preview_limit=preview_limit,
+            preview_offset=preview_offset,
+            all_rows=all_rows,
+        )
+
+    resolved_all_rows = bool(all_rows)
+    resolved_preview_limit = 1_000_000 if resolved_all_rows else _positive_limit(
+        preview_limit
+    )
+    resolved_preview_offset = 0 if resolved_all_rows else _positive_offset(
+        preview_offset
+    )
+    wanted_source_gaps = tuple(_priced_in_source_gap_filter(source_gap))
+    state_token = _priced_in_audit_cache_state_token(engine)
+    if state_token is None:
+        return _priced_in_full_scan_audit_payload_uncached(
+            engine,
+            config,
+            available_at=available_at,
+            source_gap=source_gap,
+            preview_limit=preview_limit,
+            preview_offset=preview_offset,
+            all_rows=all_rows,
+        )
+
+    cache_key = (
+        str(engine.url),
+        available_at.isoformat() if available_at is not None else "",
+        wanted_source_gaps,
+        resolved_preview_limit,
+        resolved_preview_offset,
+        resolved_all_rows,
+        state_token,
+    )
+    now = monotonic()
+    cached = _PRICED_IN_AUDIT_CACHE.get(cache_key)
+    if cached is not None and now - cached[0] <= _PRICED_IN_AUDIT_CACHE_TTL_SECONDS:
+        return deepcopy(cached[1])
+    if cached is not None:
+        _PRICED_IN_AUDIT_CACHE.pop(cache_key, None)
+
+    payload = _priced_in_full_scan_audit_payload_uncached(
+        engine,
+        config,
+        available_at=available_at,
+        source_gap=source_gap,
+        preview_limit=preview_limit,
+        preview_offset=preview_offset,
+        all_rows=all_rows,
+    )
+    _priced_in_audit_cache_store(cache_key, payload)
+    return payload
+
+
+def _priced_in_audit_cache_state_token(engine: Engine) -> tuple[object, ...] | None:
+    tables = (
+        (securities, securities.c.updated_at),
+        (daily_bars, daily_bars.c.available_at),
+        (signal_features, signal_features.c.as_of),
+        (candidate_states, candidate_states.c.created_at),
+        (candidate_packets, candidate_packets.c.created_at),
+        (decision_cards, decision_cards.c.created_at),
+        (events, events.c.created_at),
+        (text_snippets, text_snippets.c.created_at),
+        (text_features, text_features.c.created_at),
+        (option_features, option_features.c.created_at),
+        (broker_market_snapshots, broker_market_snapshots.c.created_at),
+        (job_runs, job_runs.c.finished_at),
+    )
+    try:
+        with engine.connect() as conn:
+            token_parts = []
+            for table, freshness_column in tables:
+                row = conn.execute(
+                    select(
+                        func.count().label("row_count"),
+                        func.max(freshness_column).label("latest_value"),
+                    ).select_from(table)
+                ).one()
+                token_parts.append(
+                    (
+                        table.name,
+                        int(row[0] or 0),
+                        str(row[1] or ""),
+                    )
+                )
+    except SQLAlchemyError:
+        return None
+    return tuple(token_parts)
+
+
+def _priced_in_audit_cache_store(
+    cache_key: tuple[object, ...],
+    payload: Mapping[str, object],
+) -> None:
+    if len(_PRICED_IN_AUDIT_CACHE) >= _PRICED_IN_AUDIT_CACHE_MAX_ITEMS:
+        oldest_key = min(
+            _PRICED_IN_AUDIT_CACHE,
+            key=lambda key: _PRICED_IN_AUDIT_CACHE[key][0],
+        )
+        _PRICED_IN_AUDIT_CACHE.pop(oldest_key, None)
+    _PRICED_IN_AUDIT_CACHE[cache_key] = (monotonic(), deepcopy(dict(payload)))
+
+
+def _priced_in_full_scan_audit_payload_uncached(
     engine: Engine,
     config: AppConfig,
     *,
