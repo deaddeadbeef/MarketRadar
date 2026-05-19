@@ -79,6 +79,15 @@ $usefulness = $readiness.market_radar_usefulness
 $stockScope = $pricedInStockAudit.scope
 $stockAnswer = $pricedInStockAudit.answer_shortlist
 $stockEvidence = $pricedInStockAudit.evidence_plan
+$stockCoverageStep = $null
+if ($null -ne $stockEvidence) {
+    foreach ($step in @($stockEvidence.steps)) {
+        if ($step.status -ne "ready") {
+            $stockCoverageStep = $step
+            break
+        }
+    }
+}
 $stockRecommendedSource = $pricedInStockAudit.recommended_source_gap
 $stockRecommendedRepair = $null
 if ($null -ne $stockRecommendedSource) {
@@ -156,28 +165,33 @@ if ($null -ne $stockScope) {
             $stockAnswer.investment_decision_boundary
         )
     }
+    if ($null -ne $stockCoverageStep) {
+        Write-Output (
+            "- stock coverage-first gap: {0}; {1} Next: {2}" -f
+            $stockCoverageStep.area,
+            $stockCoverageStep.why,
+            $stockCoverageStep.action
+        )
+    }
+    if ($null -ne $stockCoverageStep -and $stockCoverageStep.command) {
+        Write-Output ("- stock coverage command: {0}" -f $stockCoverageStep.command)
+    }
     if ($null -ne $stockRecommendedSource) {
         Write-Output (
-            "- stock decision gap: {0}; gaps={1}; {2}" -f
+            "- stock decision-context gap: {0}; gaps={1}; {2}" -f
             $stockRecommendedSource.source,
             $stockRecommendedSource.gap_count,
             $stockRecommendedSource.next_action
         )
         if ($null -ne $stockRecommendedRepair -and $stockRecommendedRepair.point_in_time_template_command) {
-            Write-Output ("- stock gap template: {0}" -f $stockRecommendedRepair.point_in_time_template_command)
+            Write-Output ("- stock point-in-time template: {0}" -f $stockRecommendedRepair.point_in_time_template_command)
         }
         if ($null -ne $stockRecommendedRepair -and $stockRecommendedRepair.point_in_time_validate_command) {
-            Write-Output ("- stock gap validate: {0}" -f $stockRecommendedRepair.point_in_time_validate_command)
+            Write-Output ("- stock point-in-time validate: {0}" -f $stockRecommendedRepair.point_in_time_validate_command)
         }
         if ($null -ne $stockRecommendedRepair -and $stockRecommendedRepair.point_in_time_import_command) {
-            Write-Output ("- stock gap import: {0}" -f $stockRecommendedRepair.point_in_time_import_command)
+            Write-Output ("- stock point-in-time import: {0}" -f $stockRecommendedRepair.point_in_time_import_command)
         }
-    }
-    if ($null -ne $stockEvidence -and $stockEvidence.next_action) {
-        Write-Output ("- stock evidence plan: {0}" -f $stockEvidence.next_action)
-    }
-    if ($null -ne $stockEvidence -and $stockEvidence.next_command) {
-        Write-Output ("- stock evidence command: {0}" -f $stockEvidence.next_command)
     }
 }
 if ($null -ne $freshness) {
