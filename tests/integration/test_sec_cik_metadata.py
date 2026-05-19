@@ -12,6 +12,7 @@ from catalyst_radar.core.models import Security
 from catalyst_radar.events.sec_cik import (
     apply_sec_cik_overrides,
     refresh_sec_cik_metadata,
+    write_sec_cik_override_template_csv,
 )
 from catalyst_radar.storage.db import create_schema
 from catalyst_radar.storage.repositories import MarketRepository
@@ -176,6 +177,106 @@ def test_ingest_sec_cik_overrides_cli_imports_local_csv(
     assert "skipped_examples=MSFT" in captured.out
     assert "unmatched_examples=MISS" in captured.out
     assert _security_metadata(engine)["AAPL"]["cik"] == "0000320193"
+
+
+def test_write_sec_cik_override_template_csv_writes_blank_cik_rows(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "cik-template.csv"
+
+    result = write_sec_cik_override_template_csv(
+        output,
+        [
+            {
+                "ticker": "FRBA",
+                "cik": "",
+                "sec_company_name": "",
+                "security_type": "CS",
+                "template_reason": "missing_sec_cik_for_catalyst_events_source_gap",
+            }
+        ],
+    )
+    payload = result.as_payload()
+
+    assert payload["schema_version"] == "sec-cik-override-template-write-v1"
+    assert payload["external_calls_made"] == 0
+    assert payload["row_count"] == 1
+    assert output.read_text(encoding="utf-8").splitlines() == [
+        "ticker,cik,sec_company_name,security_type,template_reason",
+        "FRBA,,,CS,missing_sec_cik_for_catalyst_events_source_gap",
+    ]
+
+
+def test_ingest_sec_cik_overrides_template_cli_writes_current_blockers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'sec-cik-template.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    def fake_template_payload(*_args, **_kwargs):
+        return {
+            "schema_version": "sec-cik-override-template-v1",
+            "status": "ready",
+            "provider": "manual",
+            "live": False,
+            "external_calls_made": 0,
+            "source": "catalyst_events",
+            "stocks_only": True,
+            "source_gap_rows": 2,
+            "row_count": 1,
+            "columns": [
+                "ticker",
+                "cik",
+                "sec_company_name",
+                "security_type",
+                "template_reason",
+            ],
+            "rows": [
+                {
+                    "ticker": "FRBA",
+                    "cik": "",
+                    "sec_company_name": "",
+                    "security_type": "CS",
+                    "template_reason": (
+                        "missing_sec_cik_for_catalyst_events_source_gap"
+                    ),
+                }
+            ],
+            "sample_tickers": ["FRBA"],
+            "routed_non_company_count": 0,
+            "command": "catalyst-radar ingest-sec cik-overrides-template",
+            "api": "GET /api/radar/sec/cik-overrides-template?stocks_only=true",
+            "boundary": "Template/export is zero-call.",
+            "next_action": "Fill cik and import.",
+        }
+
+    monkeypatch.setattr(
+        "catalyst_radar.cli.sec_cik_override_template_payload",
+        fake_template_payload,
+    )
+    output = tmp_path / "cik-template.csv"
+
+    exit_code = main(
+        [
+            "ingest-sec",
+            "cik-overrides-template",
+            "--out",
+            str(output),
+            "--stocks-only",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert captured.err == ""
+    assert "sec_cik_override_template status=ready" in captured.out
+    assert "stocks_only=true" in captured.out
+    assert "rows=1" in captured.out
+    assert "external_calls=0" in captured.out
+    assert "missing_cik_examples=FRBA" in captured.out
+    assert output.read_text(encoding="utf-8").splitlines()[1].startswith("FRBA,,,CS")
 
 
 def _engine(tmp_path: Path):
