@@ -1418,6 +1418,47 @@ def test_get_radar_priced_in_answer_returns_current_scan_answer(
     assert captured["min_gap"] == 10.0
 
 
+def test_get_radar_priced_in_audit_returns_zero_call_audit(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "radar-priced-in-audit.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+    captured: dict[str, object] = {}
+
+    def fake_priced_in_audit_payload(_engine, _config, **kwargs) -> dict[str, object]:
+        captured.update(kwargs)
+        return {
+            "schema_version": "priced-in-full-scan-audit-v1",
+            "status": "attention",
+            "question": "Can MarketRadar answer whether price matches market expectations?",
+            "answer": "Partially.",
+            "external_calls_made": 0,
+            "scope": {"mode": "full_scan", "ranked_rows": 12_087},
+            "sources": [],
+        }
+
+    monkeypatch.setattr(
+        dashboard_data,
+        "priced_in_full_scan_audit_payload",
+        fake_priced_in_audit_payload,
+        raising=False,
+    )
+    client = TestClient(create_app())
+
+    response = client.get(
+        "/api/radar/priced-in/audit?available_at=2026-05-18T16:00:00%2B00:00"
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["schema_version"] == "priced-in-full-scan-audit-v1"
+    assert payload["external_calls_made"] == 0
+    assert payload["scope"]["mode"] == "full_scan"
+    assert captured["available_at"].isoformat() == "2026-05-18T16:00:00+00:00"
+
+
 def test_get_radar_priced_in_source_batches_returns_zero_call_plan(
     tmp_path,
     monkeypatch,

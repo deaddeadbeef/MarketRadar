@@ -65,6 +65,7 @@ from catalyst_radar.dashboard.data import (
     opportunity_focus_payload,
     priced_in_all_source_gap_batches_payload,
     priced_in_answer_payload,
+    priced_in_full_scan_audit_payload,
     priced_in_preflight_payload,
     priced_in_queue_payload,
     priced_in_source_gap_batches_payload,
@@ -1557,6 +1558,33 @@ def test_priced_in_answer_payload_summarizes_current_scan(tmp_path: Path) -> Non
         assert payload["top_rows"][0]["ticker"] == "MSFT"
         assert payload["top_rows"][0]["decision_ready"] is False
         assert payload["top_rows"][0]["missing_sources"]
+
+
+def test_priced_in_full_scan_audit_payload_consolidates_current_state(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+
+    payload = priced_in_full_scan_audit_payload(engine, AppConfig.from_env({}))
+
+    assert payload["schema_version"] == "priced-in-full-scan-audit-v1"
+    assert payload["external_calls_made"] == 0
+    assert payload["scope"]["mode"] == "full_scan"
+    assert payload["scope"]["active_securities"] == 2
+    assert payload["scope"]["ranked_rows"] == 2
+    assert payload["market_bars"]["active_securities"] == 2
+    assert payload["source_coverage"]["source_count"] == 6
+    assert "actionable_mismatch_rows" in payload["counts"]
+    assert payload["next_action"]
+    assert payload["commands"]["source_overview"] == (
+        "catalyst-radar priced-in-source-batches --source all"
+    )
+    sources = {row["source"]: row for row in payload["sources"]}
+    assert sources["options"]["gap_count"] >= 1
+    assert sources["options"]["command"].startswith(
+        "catalyst-radar priced-in-source-batches --source options"
+    )
 
 
 def test_priced_in_answer_blocks_selected_universe_even_with_ready_rows(
