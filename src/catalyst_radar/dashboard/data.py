@@ -2258,6 +2258,19 @@ def _priced_in_full_scan_audit_payload_uncached(
         source_gaps=wanted_source_gaps,
         full_scan_rows=ranked_rows,
         limit=10,
+        full_scan_review_command=audit_page_command,
+        full_scan_export_command=audit_full_export_command,
+    )
+    primary_scan = _priced_in_audit_primary_full_scan(
+        full_scan,
+        preview_scan=preview_scan,
+        ranked_rows=ranked_rows,
+        active_securities=active,
+        all_rows_requested=resolved_all_rows,
+        source_gaps=wanted_source_gaps,
+        audit_page_command=audit_page_command,
+        audit_next_page_command=next_audit_page_command,
+        audit_full_export_command=audit_full_export_command,
     )
     trust_blockers = _priced_in_answer_trust_blockers(
         resolved_preflight,
@@ -2329,6 +2342,7 @@ def _priced_in_full_scan_audit_payload_uncached(
             "audit_full_export_command": audit_full_export_command,
         },
         "preview_rows": preview_rows,
+        "primary_scan": primary_scan,
         "answer_shortlist": answer_shortlist,
         "counts": {
             "actionable_mismatch_rows": actionable_count,
@@ -2367,7 +2381,73 @@ def _priced_in_full_scan_audit_payload_uncached(
             "export_full_scan": "catalyst-radar priced-in-queue --full-scan --all --json",
             "audit_full_scan": audit_full_export_command,
         },
-}
+    }
+
+
+def _priced_in_audit_primary_full_scan(
+    full_scan: Mapping[str, object],
+    *,
+    preview_scan: Mapping[str, object],
+    ranked_rows: int,
+    active_securities: int,
+    all_rows_requested: bool,
+    source_gaps: Sequence[str],
+    audit_page_command: str,
+    audit_next_page_command: str | None,
+    audit_full_export_command: str,
+) -> dict[str, object]:
+    visible_rows = int(_finite_float(preview_scan.get("visible_rows")))
+    row_start = int(_finite_float(preview_scan.get("visible_row_start")))
+    row_end = int(_finite_float(preview_scan.get("visible_row_end")))
+    display_mode = "complete_full_scan" if all_rows_requested else "page_preview"
+    source_gap_text = ", ".join(source_gaps)
+    focus = (
+        f"full scan rows with source gap(s): {source_gap_text}"
+        if source_gaps
+        else "full active-universe scan"
+    )
+    visible_note = (
+        f"Visible rows cover all {ranked_rows} ranked full-scan row(s)."
+        if all_rows_requested
+        else (
+            f"Visible rows {row_start}-{row_end} are one page from "
+            f"{ranked_rows} ranked full-scan row(s). Use export_command for "
+            "the complete local scan."
+        )
+    )
+    return {
+        "schema_version": "priced-in-primary-full-scan-v1",
+        "scope": "full_active_universe",
+        "focus": focus,
+        "mode": full_scan.get("mode") or "full_scan",
+        "active_securities": active_securities,
+        "scanned_rows": full_scan.get("scanned_rows") or ranked_rows,
+        "ranked_rows": ranked_rows,
+        "visible_row_start": row_start,
+        "visible_row_end": row_end,
+        "visible_rows": visible_rows,
+        "display_mode": display_mode,
+        "all_rows_requested": bool(all_rows_requested),
+        "visible_rows_are_full_scan": bool(all_rows_requested),
+        "visible_rows_are_page": not bool(all_rows_requested),
+        "source_gap_filter": list(source_gaps),
+        "shortlist_role": "priority_lens_not_scan_scope",
+        "source_batch_role": "provider_fill_logistics_not_scan_scope",
+        "summary": (
+            f"MarketRadar scanned and ranked {ranked_rows} row(s) from "
+            f"{active_securities} active securities."
+        ),
+        "visible_rows_note": visible_note,
+        "scope_boundary": (
+            "The full scan is the ranked universe. Shortlists are priority lenses; "
+            "provider batches are evidence-fill chunks."
+        ),
+        "review_command": audit_page_command,
+        "next_page_command": audit_next_page_command,
+        "export_command": audit_full_export_command,
+        "queue_export_command": "catalyst-radar priced-in-queue --full-scan --all --json",
+        "external_calls_made": 0,
+    }
 
 
 def _priced_in_audit_answer_shortlist(
@@ -2376,6 +2456,8 @@ def _priced_in_audit_answer_shortlist(
     source_gaps: Sequence[str] = (),
     full_scan_rows: int = 0,
     limit: int = 10,
+    full_scan_review_command: str | None = None,
+    full_scan_export_command: str | None = None,
 ) -> dict[str, object]:
     answer_rows = _priced_in_answer_rows(rows)
     decision_rows = [row for row in answer_rows if bool(row.get("decision_ready"))]
@@ -2416,19 +2498,32 @@ def _priced_in_audit_answer_shortlist(
         if source_gaps
         else "Full active-universe ranked scan."
     )
+    selected_count = len(selected)
+    selection_note = (
+        f"These {len(visible_rows)} visible row(s) are a priority lens over "
+        f"{full_scan_rows} ranked full-scan row(s), not the scan universe."
+        if full_scan_rows
+        else "These visible rows are a priority lens, not the scan universe."
+    )
     return {
         "schema_version": "priced-in-answer-shortlist-v1",
         "status": status,
+        "lens": "market_expectation_priority_lens",
         "focus": focus,
         "source_gap_filter": list(source_gaps),
         "summary": summary,
         "scope": scope_text,
+        "selection_scope": "priority_lens_not_scan_universe",
+        "selection_note": selection_note,
         "full_scan_rows": full_scan_rows,
         "actionable_mismatch_rows": actionable_count,
         "decision_ready_rows": decision_count,
         "needs_evidence_rows": blocked_count,
         "visible_rows": len(visible_rows),
-        "visible_rows_are_sample": len(visible_rows) < len(selected),
+        "selected_priority_rows": selected_count,
+        "visible_rows_are_sample": len(visible_rows) < selected_count,
+        "full_scan_review_command": full_scan_review_command,
+        "full_scan_export_command": full_scan_export_command,
         "external_calls_made": 0,
         "investment_decision_boundary": (
             "This shortlist ranks market-expectation mismatch evidence only; it is "
@@ -3203,6 +3298,8 @@ def _priced_in_answer_rows(rows: Sequence[object]) -> list[dict[str, object]]:
             continue
         usefulness = _mapping_value(row, "usefulness")
         data_sources = _mapping_value(row, "data_sources")
+        if not data_sources:
+            data_sources = _priced_in_row_source_payload(row)
         answer_rows.append(
             {
                 "ticker": row.get("ticker"),
@@ -3219,9 +3316,110 @@ def _priced_in_answer_rows(rows: Sequence[object]) -> list[dict[str, object]]:
                 "stale_sources": list(_sequence_value(data_sources.get("stale"))),
                 "next_step": row.get("next_step"),
                 "next_command": usefulness.get("next_command"),
+                "drilldown": _priced_in_answer_row_drilldown(
+                    row,
+                    data_sources=data_sources,
+                    usefulness=usefulness,
+                ),
             }
         )
     return answer_rows
+
+
+def _priced_in_answer_row_drilldown(
+    row: Mapping[str, object],
+    *,
+    data_sources: Mapping[str, object],
+    usefulness: Mapping[str, object],
+) -> dict[str, object]:
+    ticker = _priced_in_action_ticker(row)
+    missing_sources = [
+        str(source)
+        for source in _sequence_value(data_sources.get("missing"))
+        if str(source).strip()
+    ]
+    stale_sources = [
+        str(source)
+        for source in _sequence_value(data_sources.get("stale"))
+        if str(source).strip()
+    ]
+    local_gaps = [
+        str(gap)
+        for gap in _sequence_value(usefulness.get("missing_for_decision"))
+        if str(gap).strip()
+    ]
+    optional_gaps = [
+        str(gap)
+        for gap in _sequence_value(usefulness.get("optional_context_gaps"))
+        if str(gap).strip()
+    ]
+    source_actions = [
+        _priced_in_answer_source_gap_drilldown(
+            source=source,
+            status="missing",
+        )
+        for source in missing_sources
+    ]
+    source_actions.extend(
+        _priced_in_answer_source_gap_drilldown(
+            source=source,
+            status="stale",
+        )
+        for source in stale_sources
+    )
+    gap_labels = []
+    if missing_sources:
+        gap_labels.append(f"missing sources: {', '.join(missing_sources)}")
+    if stale_sources:
+        gap_labels.append(f"stale sources: {', '.join(stale_sources)}")
+    if local_gaps:
+        gap_labels.append(f"local evidence gaps: {', '.join(local_gaps)}")
+    if optional_gaps:
+        gap_labels.append(f"optional context gaps: {', '.join(optional_gaps)}")
+    return {
+        "schema_version": "priced-in-answer-row-drilldown-v1",
+        "ticker": ticker,
+        "detail_command": f"catalyst-radar candidate-detail {ticker}",
+        "detail_api": f"GET /api/radar/candidates/{ticker}",
+        "source_gap_actions": source_actions,
+        "missing_sources": missing_sources,
+        "stale_sources": stale_sources,
+        "local_evidence_gaps": local_gaps,
+        "optional_context_gaps": optional_gaps,
+        "evidence_gap_summary": (
+            "; ".join(gap_labels) if gap_labels else "no row-level evidence gaps"
+        ),
+        "external_calls_made": 0,
+        "action_boundary": (
+            "Candidate detail and source-gap planning are zero-call review paths; "
+            "provider execution still requires the separate approval checklist."
+        ),
+    }
+
+
+def _priced_in_answer_source_gap_drilldown(
+    *,
+    source: str,
+    status: str,
+) -> dict[str, object]:
+    source_name = str(source or "").strip()
+    plan_command = _priced_in_source_batch_plan_command(source_name)
+    return {
+        "source": source_name,
+        "status": status,
+        "review_command": (
+            "catalyst-radar priced-in-audit "
+            f"--source-gap {source_name} --limit 25"
+        ),
+        "review_api": f"GET /api/radar/priced-in/audit?source_gap={source_name}&limit=25",
+        "plan_command": plan_command,
+        "plan_api": (
+            f"GET /api/radar/priced-in/source-batches?source={source_name}"
+            if plan_command
+            else None
+        ),
+        "external_calls_made": 0,
+    }
 
 
 def _priced_in_answer_status(

@@ -2110,9 +2110,84 @@ def _show_priced_in_full_scan_panel(
             f"age_ms={performance.get('cache_age_ms') or 'n/a'}, "
             f"ttl_s={performance.get('cache_ttl_seconds') or 'n/a'}."
         )
+    primary_scan = _mapping(audit.get("primary_scan"))
+    if primary_scan:
+        st.subheader("Full-Market Scan")
+        st.success(
+            str(
+                primary_scan.get("summary")
+                or "MarketRadar loaded the ranked full-market scan."
+            )
+        )
+        _show_status_badges(
+            [
+                ("Scope", primary_scan.get("scope") or "full_active_universe"),
+                ("Display", primary_scan.get("display_mode") or "page_preview"),
+                ("Scanned", primary_scan.get("scanned_rows") or 0),
+                ("Ranked", primary_scan.get("ranked_rows") or 0),
+                ("External Calls", primary_scan.get("external_calls_made") or 0),
+            ]
+        )
+        st.caption(
+            str(
+                primary_scan.get("scope_boundary")
+                or "The full scan is primary; shortlists are only priority lenses."
+            )
+        )
+        st.caption(str(primary_scan.get("visible_rows_note") or ""))
+        export_command = str(primary_scan.get("export_command") or "").strip()
+        if export_command:
+            st.code(export_command, language="powershell")
+    preview = _mapping(audit.get("preview"))
+    preview_rows = _priced_in_full_scan_preview_rows(audit.get("preview_rows"))
+    if preview_rows:
+        row_start = preview.get("row_start") or 0
+        row_end = preview.get("row_end") or 0
+        total_rows = preview.get("total_rows") or scope.get("ranked_rows") or 0
+        st.caption(
+            "Full scan rows: "
+            f"showing {'all' if preview.get('all_rows') else 'page'} "
+            f"{row_start}-{row_end} of {total_rows}. "
+            f"{preview.get('sample_explanation') or ''}".strip()
+        )
+        if preview.get("all_rows"):
+            st.download_button(
+                "Download Full Scan Rows JSON",
+                data=json.dumps(
+                    {
+                        "schema_version": "priced-in-full-scan-rows-export-v1",
+                        "external_calls_made": audit.get("external_calls_made"),
+                        "scope": _json_ready(scope),
+                        "preview": _json_ready(preview),
+                        "rows": _json_ready(audit.get("preview_rows")),
+                    },
+                    indent=2,
+                    sort_keys=True,
+                ),
+                file_name="market-radar-full-scan-rows.json",
+                mime="application/json",
+                help=(
+                    "Download the complete ranked full-scan rows currently loaded "
+                    "from the local database. This does not call external providers."
+                ),
+            )
+        if preview.get("all_rows"):
+            st.subheader("Full-scan Ranked Rows")
+            st.dataframe(
+                pd.DataFrame(preview_rows),
+                hide_index=True,
+                use_container_width=True,
+                height=520,
+            )
+        else:
+            _show_records(
+                "Full-scan Ranked Rows",
+                preview_rows,
+                empty="No full-scan rows are visible.",
+            )
     answer_shortlist = _mapping(audit.get("answer_shortlist"))
     if answer_shortlist:
-        st.subheader("Market Expectation Shortlist")
+        st.subheader("Priority Lens: Market Emotion Mismatches")
         shortlist_message = (
             f"{answer_shortlist.get('summary') or 'No shortlist summary.'} "
             f"{answer_shortlist.get('scope') or ''}"
@@ -2143,12 +2218,18 @@ def _show_priced_in_full_scan_panel(
         )
         st.caption(
             str(
+                answer_shortlist.get("selection_note")
+                or "This is a priority lens over the full scan, not the scan universe."
+            )
+        )
+        st.caption(
+            str(
                 answer_shortlist.get("investment_decision_boundary")
                 or "This shortlist is not trade approval."
             )
         )
         _show_records(
-            "Top Market Emotion Mismatches",
+            "Top Priority Rows",
             _priced_in_answer_shortlist_rows(answer_shortlist.get("rows")),
             empty="No market expectation mismatch rows.",
         )
@@ -2210,65 +2291,18 @@ def _show_priced_in_full_scan_panel(
     if commands:
         with st.expander("Full-scan commands", expanded=False):
             st.code("\n".join(str(command) for command in commands), language="powershell")
-    preview = _mapping(audit.get("preview"))
-    preview_rows = _priced_in_full_scan_preview_rows(audit.get("preview_rows"))
-    if preview_rows:
-        row_start = preview.get("row_start") or 0
-        row_end = preview.get("row_end") or 0
-        total_rows = preview.get("total_rows") or scope.get("ranked_rows") or 0
+    source_gap_actions = _records(preview.get("source_gap_actions"))
+    if source_gap_actions:
         st.caption(
-            "Full scan rows: "
-            f"showing {'all' if preview.get('all_rows') else 'page'} "
-            f"{row_start}-{row_end} of {total_rows}. "
-            f"{preview.get('sample_explanation') or ''}".strip()
+            "Selected source-gap actions are full-scan decisions. Any ticker list "
+            "shown here is only the next capped provider-fill batch, not the scan "
+            "universe."
         )
-        if preview.get("all_rows"):
-            st.download_button(
-                "Download Full Scan Rows JSON",
-                data=json.dumps(
-                    {
-                        "schema_version": "priced-in-full-scan-rows-export-v1",
-                        "external_calls_made": audit.get("external_calls_made"),
-                        "scope": _json_ready(scope),
-                        "preview": _json_ready(preview),
-                        "rows": _json_ready(audit.get("preview_rows")),
-                    },
-                    indent=2,
-                    sort_keys=True,
-                ),
-                file_name="market-radar-full-scan-rows.json",
-                mime="application/json",
-                help=(
-                    "Download the complete ranked full-scan rows currently loaded "
-                    "from the local database. This does not call external providers."
-                ),
-            )
-        source_gap_actions = _records(preview.get("source_gap_actions"))
-        if source_gap_actions:
-            st.caption(
-                "Selected source-gap actions are full-scan decisions. Any ticker list "
-                "shown here is only the next capped provider-fill batch, not the scan "
-                "universe."
-            )
-            _show_records(
-                "Selected Source Gap Action",
-                _priced_in_full_scan_source_gap_action_rows(source_gap_actions),
-                empty="No selected source gap action.",
-            )
-        if preview.get("all_rows"):
-            st.subheader("Full-scan Ranked Rows")
-            st.dataframe(
-                pd.DataFrame(preview_rows),
-                hide_index=True,
-                use_container_width=True,
-                height=520,
-            )
-        else:
-            _show_records(
-                "Full-scan Ranked Rows",
-                preview_rows,
-                empty="No full-scan rows are visible.",
-            )
+        _show_records(
+            "Selected Source Gap Action",
+            _priced_in_full_scan_source_gap_action_rows(source_gap_actions),
+            empty="No selected source gap action.",
+        )
     trust_rows = _priced_in_full_scan_trust_rows(audit.get("trust_blockers"))
     if trust_rows:
         _show_records(
@@ -2331,6 +2365,8 @@ def _priced_in_full_scan_preview_rows(value: object) -> list[dict[str, object]]:
 def _priced_in_answer_shortlist_rows(value: object) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     for row in _records(value):
+        drilldown = _mapping(row.get("drilldown"))
+        source_actions = _records(drilldown.get("source_gap_actions"))
         rows.append(
             {
                 "rank": row.get("rank"),
@@ -2345,6 +2381,15 @@ def _priced_in_answer_shortlist_rows(value: object) -> list[dict[str, object]]:
                 "stale": _list_text(row.get("stale_sources")),
                 "why_now": row.get("why_now"),
                 "next_step": row.get("next_step"),
+                "candidate_detail": drilldown.get("detail_command"),
+                "evidence_gaps": drilldown.get("evidence_gap_summary"),
+                "source_gap_actions": _list_text(
+                    [
+                        f"{action.get('source')}: {action.get('review_command')}"
+                        for action in source_actions
+                    ]
+                ),
+                "drilldown_boundary": drilldown.get("action_boundary"),
             }
         )
     return rows

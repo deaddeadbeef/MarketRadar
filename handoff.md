@@ -1,6 +1,113 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 19:50:18 +08:00
+Last updated: 2026-05-19 20:14:04 +08:00
+
+## Latest Goal-Drift Check And Full-Scan Primary UX
+
+Current goal:
+
+- MarketRadar should scan the full market and rank whether market emotion for
+  any stock has not yet been matched by price reaction.
+- Dashboard/CLI/API are tools to expose that answer and the missing evidence,
+  not separate goals.
+
+Drift check:
+
+- The backend already had a full-market priced-in scan, but the UI and CLI made
+  the 10-row answer shortlist and next provider-batch previews too prominent.
+- That made it look like MarketRadar was only looking at a few tickers.
+- The corrected product rule is:
+  - **full scan first**;
+  - shortlist = priority lens over the scan;
+  - provider batches = evidence-fill logistics, not scan scope.
+
+Fix in this slice:
+
+- `priced_in_full_scan_audit_payload` now includes `primary_scan`.
+- `primary_scan` schema is `priced-in-primary-full-scan-v1` and explicitly
+  reports:
+  - full active-universe scope;
+  - active securities;
+  - scanned/ranked rows;
+  - visible row range and display mode;
+  - whether the visible rows are the complete full scan or a page;
+  - `shortlist_role=priority_lens_not_scan_scope`;
+  - `source_batch_role=provider_fill_logistics_not_scan_scope`;
+  - zero external calls;
+  - full-scan review/export commands.
+- `answer_shortlist` remains backward-compatible but now labels itself as a
+  priority lens, not the scan universe:
+  - `lens=market_expectation_priority_lens`;
+  - `selection_scope=priority_lens_not_scan_universe`;
+  - `selection_note=... not the scan universe`;
+  - full-scan review/export commands.
+- Each shortlist row now includes a zero-call `drilldown` block:
+  - `detail_command`, e.g. `catalyst-radar candidate-detail AAPL`;
+  - `detail_api`;
+  - evidence gap summary;
+  - per-source review/plan commands;
+  - explicit boundary that review/planning are zero-call and provider execution
+    still requires separate approval.
+- CLI `priced-in-audit` now prints `primary_full_scan=...` before the
+  recommendation/shortlist output.
+- Streamlit **Priced-in Full Scan** now shows **Full-Market Scan** and
+  **Full-scan Ranked Rows** before the priority lens. The old
+  **Market Expectation Shortlist** label was replaced by
+  **Priority Lens: Market Emotion Mismatches**.
+- No provider/source execution was run.
+
+Current live zero-call observations from the branch:
+
+```text
+primary_full_scan=scope=full_active_universe active=12613 scanned=12087 ranked=12087 display=page_preview visible=1-10 external_calls=0
+boundary=The full scan is the ranked universe. Shortlists are priority lenses; provider batches are evidence-fill chunks.
+answer_shortlist=... selection=priority_lens_not_scan_universe full_scan_rows=12087 external_calls=0
+selection_note=These 10 visible row(s) are a priority lens over 12087 ranked full-scan row(s), not the scan universe.
+```
+
+```text
+GET /api/radar/priced-in/audit?limit=10
+api_primary=full_active_universe ranked=12087 display=page_preview shortlist=priority_lens_not_scan_universe calls=0
+```
+
+Browser verification on `http://127.0.0.1:8514`:
+
+- **Full-Market Scan** rendered.
+- **Full-scan Ranked Rows** rendered.
+- **Priority Lens: Market Emotion Mismatches** rendered after the full scan.
+- **Top Priority Rows** rendered.
+- **Download Full Scan Rows JSON** rendered.
+- The page text included `12087` and `priority lens over`.
+- Browser console check reported 0 current errors.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_payload_consolidates_current_state tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_audit_cli_outputs_full_scan_audit tests\integration\test_dashboard_entrypoint.py::test_dashboard_wires_priced_in_full_scan_panel_after_usefulness -q
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_api_routes.py::test_get_radar_priced_in_audit_returns_zero_call_audit tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_payload_reuses_cached_zero_call_audit -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py apps\dashboard\Home.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_dashboard_entrypoint.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-audit --limit 10
+curl.exe --insecure --silent --show-error --fail "https://127.0.0.1:8443/api/radar/priced-in/audit?limit=10"
+```
+
+Observed:
+
+- Focused three-test set passed (`3 passed`).
+- API/cache two-test set passed (`2 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+- CLI and API checks both reported `external_calls=0`.
+- Local services were restarted from the branch for API/dashboard verification.
+
+Next useful product action:
+
+- Keep the main answer path full-scan-first. Any future shortlist, table page,
+  source-gap sample, or provider batch must be labeled as a lens/chunk over the
+  full scan.
+- Do not spend another slice on UI polish unless it helps answer:
+  "Which full-market rows show emotion not matched by price, and what evidence
+  is missing before I can trust that?"
 
 ## Latest Market Expectation Shortlist
 
