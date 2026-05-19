@@ -468,16 +468,17 @@ def dashboard_snapshot_payload(
             source_coverage=priced_in_source_coverage,
         )
     )
-    priced_in_source_workflow = _priced_in_source_workflow_payload(
-        priced_in_preflight,
-        priced_in_queue=priced_in_queue,
-    )
     priced_in_answer = dashboard_data.priced_in_answer_payload(
         engine,
         config,
         queue=priced_in_queue,
         preflight=priced_in_preflight,
         stocks_only=filters.priced_in_stocks_only,
+    )
+    priced_in_source_workflow = _priced_in_source_workflow_payload(
+        priced_in_preflight,
+        priced_in_queue=priced_in_queue,
+        priced_in_answer=priced_in_answer,
     )
     priced_in_audit = dashboard_data.priced_in_full_scan_audit_payload(
         engine,
@@ -5050,12 +5051,14 @@ def _priced_in_source_workflow_payload(
     preflight: Mapping[str, object],
     *,
     priced_in_queue: Mapping[str, object] | None = None,
+    priced_in_answer: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     plan = _mapping(preflight.get("evidence_plan"))
     queue_filters = _mapping(_mapping(priced_in_queue or {}).get("filters"))
     stocks_only = bool(queue_filters.get("stocks_only"))
     source_names = set(dashboard_data.PRICED_IN_SOURCE_CLASSES)
     priority_counts = _source_workflow_priority_counts(priced_in_queue or {})
+    answer_blockers = _source_workflow_answer_blockers(priced_in_answer or {})
     steps: list[dict[str, object]] = []
     for step in _rows(plan.get("steps")):
         source = str(step.get("area") or "").strip()
@@ -5063,15 +5066,27 @@ def _priced_in_source_workflow_payload(
         if source not in source_names and "priced-in-source-batches" not in command:
             continue
         priority = priority_counts.get(source, {})
+        blocker = answer_blockers.get(source, {})
+        blocker_gap_count = int(_number_or_zero(blocker.get("gap_count")))
+        blocker_action = str(blocker.get("next_action") or "").strip()
+        blocker_command = str(blocker.get("command") or "").strip()
+        promoted_market_bar_blocker = bool(
+            stocks_only and source == "market_bars" and blocker_gap_count > 0
+        )
         steps.append(
             {
-                "preflight_priority": int(_number_or_zero(step.get("priority"))),
+                "preflight_priority": (
+                    -1
+                    if promoted_market_bar_blocker
+                    else int(_number_or_zero(step.get("priority")))
+                ),
                 "source": source,
-                "status": step.get("status"),
+                "status": blocker.get("status") or step.get("status"),
                 "depends_on": _texts(step.get("depends_on")),
-                "action": step.get("action") or step.get("next_action"),
-                "command": command or None,
+                "action": blocker_action or step.get("action") or step.get("next_action"),
+                "command": blocker_command or command or None,
                 "api": step.get("api"),
+                "gap_rows": blocker_gap_count or None,
                 "decision_useful_gap_rows": int(
                     _number_or_zero(priority.get("decision_useful_gap_rows"))
                 ),
@@ -5090,12 +5105,23 @@ def _priced_in_source_workflow_payload(
     for index, step in enumerate(steps, start=1):
         step["priority"] = index
     coverage_step = steps[0] if steps else {}
+    use_coverage_step = bool(
+        stocks_only
+        and coverage_step.get("source") == "market_bars"
+        and int(_number_or_zero(coverage_step.get("gap_rows"))) > 0
+    )
     next_action = (
-        plan.get("next_action")
+        coverage_step.get("action")
+        if use_coverage_step
+        else plan.get("next_action")
         or coverage_step.get("action")
         or "Review full-scan source coverage."
     )
-    next_command = plan.get("next_command") or coverage_step.get("command")
+    next_command = (
+        coverage_step.get("command")
+        if use_coverage_step
+        else plan.get("next_command") or coverage_step.get("command")
+    )
     decision_suggested = next(
         (
             step
@@ -5147,6 +5173,16 @@ def _priced_in_source_workflow_payload(
     }
 
 
+def _source_workflow_answer_blockers(
+    priced_in_answer: Mapping[str, object],
+) -> dict[str, dict[str, object]]:
+    return {
+        str(blocker.get("area") or "").strip(): dict(blocker)
+        for blocker in _rows(priced_in_answer.get("trust_blockers"))
+        if str(blocker.get("area") or "").strip()
+    }
+
+
 def _source_workflow_goal_alignment(
     priced_in_queue: Mapping[str, object],
     *,
@@ -5170,11 +5206,29 @@ def _source_workflow_goal_alignment(
         if source
         else "No source coverage step is currently visible."
     )
-    source_next_step = (
-        f"Type batch {source} to inspect the full-scan source plan; run "
-        f"batch {source} execute only if the provider budget is intentional."
-        if source
-        else None
+    market_bar_blocker = bool(
+        source == "market_bars"
+        and int(_number_or_zero(coverage_step.get("gap_rows"))) > 0
+    )
+    source_next_step = None
+    if market_bar_blocker:
+        source_next_step = str(
+            next_action
+            or "Create the missing stock-bar template and preview the import."
+        )
+    elif source:
+        source_next_step = (
+            f"Type batch {source} to inspect the full-scan source plan; run "
+            f"batch {source} execute only if the provider budget is intentional."
+        )
+    provider_boundary = (
+        "Template generation and import preview are zero-call. Provider fills "
+        "or source-batch execution require explicit approval."
+        if market_bar_blocker
+        else (
+            "Browsing, clicking, filtering, and refresh are zero-call. Only "
+            "batch <source> execute runs a reviewed provider chunk."
+        )
     )
     return {
         "schema_version": "priced-in-goal-alignment-v1",
@@ -5200,11 +5254,14 @@ def _source_workflow_goal_alignment(
             or next_action
             or "Review source coverage before adding more data."
         ),
-        "next_command": f"batch {source}" if source else next_command,
-        "provider_boundary": (
-            "Browsing, clicking, filtering, and refresh are zero-call. Only "
-            "batch <source> execute runs a reviewed provider chunk."
+        "next_command": (
+            next_command
+            if market_bar_blocker
+            else f"batch {source}"
+            if source
+            else next_command
         ),
+        "provider_boundary": provider_boundary,
     }
 
 

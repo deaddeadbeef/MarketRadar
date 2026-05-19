@@ -2247,6 +2247,24 @@ def test_priced_in_answer_uses_stock_scope_for_market_bar_coverage(
     ]
     assert "--stocks-only" in overview["coverage_first_recommendation"]["command"]
 
+    snapshot = dashboard_snapshot_payload(
+        engine=engine,
+        config=config,
+        dotenv_loaded=False,
+        filters=DashboardFilters(priced_in_stocks_only=True),
+    )
+    workflow = snapshot["priced_in_source_workflow"]
+    assert workflow["coverage_first_command"].startswith(
+        "catalyst-radar market-bars template"
+    )
+    assert "--stocks-only" in workflow["coverage_first_command"]
+    assert workflow["goal_alignment"]["next_command"].startswith(
+        "catalyst-radar market-bars template"
+    )
+    assert "Template generation and import preview are zero-call" in workflow[
+        "goal_alignment"
+    ]["provider_boundary"]
+
 
 def test_priced_in_audit_cli_outputs_full_scan_audit(
     tmp_path: Path,
