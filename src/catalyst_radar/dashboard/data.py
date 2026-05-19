@@ -1807,6 +1807,11 @@ def priced_in_full_scan_audit_payload(
     )
     ranked_rows = int(_finite_float(full_scan.get("ranked_rows")))
     active = int(_finite_float(full_scan.get("active_securities"))) or ranked_rows
+    trust_blockers = _priced_in_answer_trust_blockers(
+        resolved_preflight,
+        answer_status=status,
+        source_coverage=source_coverage,
+    )
     return {
         "schema_version": "priced-in-full-scan-audit-v1",
         "status": status,
@@ -1852,9 +1857,11 @@ def priced_in_full_scan_audit_payload(
                 1 for row in source_rows if str(row.get("status")) == "ready"
             ),
             "source_count": len(source_rows),
+            "trust_gap_count": len(trust_blockers),
         },
         "instrument_scope": instrument_scope,
         "sources": source_rows,
+        "trust_blockers": trust_blockers,
         "evidence_plan": _row_dict(_mapping_value(resolved_preflight, "evidence_plan")),
         "next_action": next_action,
         "next_command": next_command,

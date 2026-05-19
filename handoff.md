@@ -1,6 +1,60 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 15:50:27 +08:00
+Last updated: 2026-05-19 15:56:13 +08:00
+
+## Latest Web Full-Scan Trust Gaps
+
+Current problem:
+
+- The CLI/API `priced-in-answer` now keeps trust gaps visible when decision-ready
+  rows exist, but the Streamlit **Priced-in Full Scan** panel did not show the
+  same trust-gap distinction.
+- Browser users could see decision-ready counts and source gaps, but not the
+  explicit "full-scan trust gaps remain" table.
+
+Fix in this slice:
+
+- `priced_in_full_scan_audit_payload` now includes:
+  - `trust_blockers`;
+  - `source_coverage.trust_gap_count`.
+- The Streamlit **Priced-in Full Scan** panel now shows:
+  - a `Trust Gaps` badge;
+  - a **Full-scan Trust Gaps** table before **Priced-in Source Gaps**.
+- This reuses the existing zero-call trust-blocker logic. It does not add a
+  provider call or a new planner.
+
+Current live zero-call observation:
+
+```text
+priced-in-audit --json
+status=attention external_calls=0 trust_gap_count=5 trust_blockers=5
+first=catalyst_events
+command=catalyst-radar priced-in-source-batches --source catalyst_events --all --json
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_payload_consolidates_current_state tests\integration\test_dashboard_entrypoint.py::test_dashboard_wires_priced_in_full_scan_panel_after_usefulness -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py apps\dashboard\Home.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_entrypoint.py
+git diff --check
+$json = .\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-audit --json | ConvertFrom-Json; ...
+```
+
+Observed:
+
+- Focused two-test set passed (`2 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+- Live audit JSON reported `external_calls=0`, `trust_gap_count=5`, and
+  `trust_blockers=5`.
+
+Next useful product action:
+
+- After merge, restart local services and visually verify the Streamlit panel
+  shows **Full-scan Trust Gaps**.
+- Actual source-fill execution still requires explicit user approval because
+  it can call SEC/Schwab/market providers.
 
 ## Latest Priced-in Answer Trust Gaps
 
