@@ -3791,9 +3791,27 @@ def _int_value(value: object) -> int:
 def _priced_in_data_summary(row: Mapping[str, object]) -> str:
     data_sources = row.get("data_sources")
     if isinstance(data_sources, Mapping):
-        summary = str(data_sources.get("summary") or "").strip()
-        if summary:
-            return summary.replace(" ", "_")
+        usefulness = row.get("usefulness")
+        if not isinstance(usefulness, Mapping):
+            usefulness = {}
+        routed = {
+            str(item)
+            for item in _sequence_value(usefulness.get("routed_optional_sources"))
+            if str(item).strip()
+        }
+        parts: list[str] = []
+        for label in ("available", "stale", "missing"):
+            values = [
+                str(item)
+                for item in _sequence_value(data_sources.get(label))
+                if str(item).strip() and str(item) not in routed
+            ]
+            if values:
+                parts.append(f"{label}: {', '.join(values)}")
+        if routed:
+            parts.append(f"routed: {', '.join(sorted(routed))}")
+        if parts:
+            return "; ".join(parts).replace(" ", "_")
     return "n/a"
 
 

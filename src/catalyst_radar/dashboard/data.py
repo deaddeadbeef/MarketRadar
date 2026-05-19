@@ -764,8 +764,21 @@ def priced_in_queue_payload(
     wanted_usefulness, usefulness_matches = _priced_in_usefulness_filter(usefulness)
     wanted_source_gaps = _priced_in_source_gap_filter(source_gap)
     wanted_decision_gaps = _priced_in_decision_gap_filter(decision_gap)
+    security_meta = _security_metadata_by_ticker(
+        engine,
+        [
+            str(row.get("ticker") or "").strip().upper()
+            for row in queue_candidate_rows
+            if isinstance(row, Mapping)
+        ],
+    )
     rows = [
-        _priced_in_queue_row(row)
+        _priced_in_queue_row(
+            row,
+            security_metadata=security_meta.get(
+                str(row.get("ticker") or "").strip().upper()
+            ),
+        )
         for row in queue_candidate_rows
         if isinstance(row, Mapping)
     ]
@@ -4031,6 +4044,7 @@ def load_ticker_detail(
         [latest_candidate],
         _market_context_value(load_broker_summary(engine)),
     )[0]
+    security_metadata = _security_metadata_by_ticker(engine, [symbol]).get(symbol)
     signal_payload = signal_row.get("payload") if signal_row is not None else None
     packet_payload = packet_row.get("payload") if packet_row is not None else None
     card_payload = card_row.get("payload") if card_row is not None else None
@@ -4045,6 +4059,7 @@ def load_ticker_detail(
             events=event_rows,
             snippets=snippet_rows,
             packet_payload=packet_payload,
+            security_metadata=security_metadata,
         ),
         "state_history": state_history,
         "features": _row_dict(signal_row) if signal_row is not None else None,
@@ -7464,10 +7479,12 @@ def _priced_in_evidence_brief(
     events: Sequence[Mapping[str, object]] = (),
     snippets: Sequence[Mapping[str, object]] = (),
     packet_payload: Mapping[str, object] | None = None,
+    security_metadata: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     packet = packet_payload if isinstance(packet_payload, Mapping) else {}
     blockers = _priced_in_row_blockers(candidate)
     data_sources = _priced_in_row_source_payload(candidate)
+    instrument = _priced_in_row_instrument_payload(security_metadata)
     source_actions = _priced_in_source_actions_from_payload(
         data_sources,
         ticker=_priced_in_action_ticker(candidate),
@@ -7477,6 +7494,7 @@ def _priced_in_evidence_brief(
         blockers=blockers,
         data_sources=data_sources,
         source_actions=source_actions,
+        instrument=instrument,
     )
     evidence = _priced_in_brief_evidence(
         candidate,
@@ -7502,6 +7520,7 @@ def _priced_in_evidence_brief(
         or _mapping_value(candidate, "top_supporting_evidence").get("title"),
         "source": candidate.get("top_event_source"),
         "source_url": candidate.get("top_event_source_url"),
+        "instrument": instrument,
         "data_sources": data_sources,
         "source_actions": source_actions,
         "usefulness": usefulness,
@@ -7725,11 +7744,16 @@ def _research_shortlist_sort_key(row: Mapping[str, object]) -> tuple[int, float,
     )
 
 
-def _priced_in_queue_row(row: Mapping[str, object]) -> dict[str, object]:
+def _priced_in_queue_row(
+    row: Mapping[str, object],
+    *,
+    security_metadata: Mapping[str, object] | None = None,
+) -> dict[str, object]:
     brief = _mapping_value(row, "research_brief")
     status = str(row.get("priced_in_status") or "unknown").strip() or "unknown"
     blockers = _priced_in_row_blockers(row)
     data_sources = _priced_in_row_source_payload(row)
+    instrument = _priced_in_row_instrument_payload(security_metadata)
     source_actions = _priced_in_source_actions_from_payload(
         data_sources,
         ticker=_priced_in_action_ticker(row),
@@ -7739,6 +7763,7 @@ def _priced_in_queue_row(row: Mapping[str, object]) -> dict[str, object]:
         blockers=blockers,
         data_sources=data_sources,
         source_actions=source_actions,
+        instrument=instrument,
     )
     reason = str(
         _display_priced_in_reason(row)
@@ -7776,6 +7801,7 @@ def _priced_in_queue_row(row: Mapping[str, object]) -> dict[str, object]:
         "setup": row.get("setup_type") or row.get("candidate_theme") or "n/a",
         "top_catalyst": brief.get("top_catalyst") or row.get("top_event_title"),
         "why_now": reason or "No priced-in reason is available.",
+        "instrument": instrument,
         "data_sources": data_sources,
         "usefulness": usefulness,
         "next_step": next_step,
@@ -7844,6 +7870,31 @@ def _priced_in_source_payload_set_source(
         "stale": values["stale"],
         "missing": values["missing"],
         "summary": "; ".join(parts) if parts else "no source coverage",
+    }
+
+
+def _priced_in_row_instrument_payload(
+    security_metadata: Mapping[str, object] | None,
+) -> dict[str, object]:
+    security_type = _security_type_for_scope(security_metadata)
+    if _is_sec_company_like_type(security_type):
+        category = "company_like"
+        evidence_route = "company_catalyst_text"
+        sec_catalyst_applicable = True
+    elif security_type == "UNKNOWN":
+        category = "unknown"
+        evidence_route = "company_catalyst_text"
+        sec_catalyst_applicable = True
+    else:
+        category = "non_company"
+        evidence_route = "market_theme_fund_or_flow"
+        sec_catalyst_applicable = False
+    return {
+        "schema_version": "priced-in-row-instrument-v1",
+        "security_type": security_type,
+        "category": category,
+        "evidence_route": evidence_route,
+        "sec_catalyst_applicable": sec_catalyst_applicable,
     }
 
 
@@ -7925,14 +7976,37 @@ def _priced_in_source_actions_from_payload(
     return _priced_in_source_action_rows(source_rows, 1)
 
 
+def _priced_in_core_sources_for_instrument(
+    instrument: Mapping[str, object],
+) -> set[str]:
+    if str(instrument.get("category") or "").strip().lower() == "non_company":
+        return {"market_bars", "theme_peer_sector"}
+    return {"market_bars", "catalyst_events", "local_text"}
+
+
+def _priced_in_optional_context_sources_for_instrument(
+    instrument: Mapping[str, object],
+) -> set[str]:
+    optional_sources = set(PRICED_IN_OPTIONAL_CONTEXT_SOURCES)
+    if str(instrument.get("category") or "").strip().lower() == "non_company":
+        optional_sources.update({"catalyst_events", "local_text"})
+    return optional_sources
+
+
 def _priced_in_usefulness_verdict(
     candidate: Mapping[str, object],
     *,
     blockers: Sequence[str],
     data_sources: Mapping[str, object],
     source_actions: Sequence[Mapping[str, object]],
+    instrument: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     status = str(candidate.get("priced_in_status") or "").strip().lower()
+    instrument_payload = _row_dict(instrument) if isinstance(instrument, Mapping) else {}
+    non_company_route = (
+        str(instrument_payload.get("category") or "").strip().lower()
+        == "non_company"
+    )
     available = {
         str(item)
         for item in _sequence_value(data_sources.get("available"))
@@ -7943,7 +8017,10 @@ def _priced_in_usefulness_verdict(
         for item in _sequence_value(data_sources.get("stale"))
         if str(item).strip()
     }
-    core_sources = {"market_bars", "catalyst_events", "local_text"}
+    core_sources = _priced_in_core_sources_for_instrument(instrument_payload)
+    optional_context_sources = _priced_in_optional_context_sources_for_instrument(
+        instrument_payload
+    )
     missing_core = sorted(source for source in core_sources if source not in available)
     stale_core = sorted(source for source in core_sources if source in stale)
     source_gaps = [
@@ -7953,13 +8030,13 @@ def _priced_in_usefulness_verdict(
     ]
     optional_context_gaps = sorted(
         dict.fromkeys(
-            source for source in source_gaps if source in PRICED_IN_OPTIONAL_CONTEXT_SOURCES
+            source for source in source_gaps if source in optional_context_sources
         )
     )
     missing_for_decision = [
         source
         for source in source_gaps
-        if source not in PRICED_IN_OPTIONAL_CONTEXT_SOURCES
+        if source not in optional_context_sources
     ]
     candidate_packet_id = str(candidate.get("candidate_packet_id") or "").strip()
     if not candidate_packet_id:
@@ -7985,15 +8062,35 @@ def _priced_in_usefulness_verdict(
         verdict = "not_useful"
         label = "Not useful yet"
         if missing_core:
-            reasons.append(f"Missing core source(s): {', '.join(missing_core)}.")
+            if non_company_route:
+                reasons.append(
+                    "Missing non-company route source(s): "
+                    f"{', '.join(missing_core)}."
+                )
+            else:
+                reasons.append(f"Missing core source(s): {', '.join(missing_core)}.")
         if stale_core:
-            reasons.append(f"Stale core source(s): {', '.join(stale_core)}.")
-        next_action = "Refresh core market, catalyst, or text data before review."
+            if non_company_route:
+                reasons.append(
+                    "Stale non-company route source(s): "
+                    f"{', '.join(stale_core)}."
+                )
+            else:
+                reasons.append(f"Stale core source(s): {', '.join(stale_core)}.")
+        next_action = (
+            "Add market bars plus theme, underlying, fund, or flow evidence before review."
+            if non_company_route
+            else "Refresh core market, catalyst, or text data before review."
+        )
         next_command = "catalyst-radar priced-in-preflight"
     elif missing_for_decision:
         verdict = "research_useful"
         label = "Research-useful mismatch"
-        reasons.append("Core emotion-versus-reaction evidence is available.")
+        reasons.append(
+            "Non-company market and theme evidence route is available."
+            if non_company_route
+            else "Core emotion-versus-reaction evidence is available."
+        )
         reasons.append(
             "Decision evidence still missing: "
             f"{', '.join(missing_for_decision)}."
@@ -8013,8 +8110,12 @@ def _priced_in_usefulness_verdict(
         verdict = "decision_useful"
         label = "Priced-in answer ready"
         reasons.append(
-            "Core emotion-versus-reaction evidence and local review artifacts "
-            "are available."
+            "Non-company market/theme route and local review artifacts are available."
+            if non_company_route
+            else (
+                "Core emotion-versus-reaction evidence and local review artifacts "
+                "are available."
+            )
         )
         if optional_context_gaps:
             reasons.append(
@@ -8035,6 +8136,14 @@ def _priced_in_usefulness_verdict(
         "reasons": reasons,
         "missing_for_decision": missing_for_decision,
         "optional_context_gaps": optional_context_gaps,
+        "core_sources": sorted(core_sources),
+        "evidence_route": instrument_payload.get("evidence_route")
+        or "company_catalyst_text",
+        "routed_optional_sources": sorted(
+            source
+            for source in optional_context_gaps
+            if non_company_route and source in {"catalyst_events", "local_text"}
+        ),
         "next_action": next_action,
         "next_command": next_command,
         "action_boundary": (
