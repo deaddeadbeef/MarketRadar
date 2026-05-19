@@ -1780,16 +1780,23 @@ def priced_in_all_source_gap_batches_payload(
         ready_rows=ready_rows,
         blocked_rows=blocked_rows,
     )
-    decision_recommendation = _priced_in_all_source_decision_recommendation(
-        status=status_value,
-        ready_rows=ready_rows,
-        blocked_rows=blocked_rows,
+    decision_shortcut_blocker = _priced_in_decision_shortcut_blocker(
+        coverage_recommendation
+    )
+    decision_recommendation = (
+        None
+        if decision_shortcut_blocker
+        else _priced_in_all_source_decision_recommendation(
+            status=status_value,
+            ready_rows=ready_rows,
+            blocked_rows=blocked_rows,
+        )
     )
     goal_alignment = _priced_in_all_source_goal_alignment(
         queue,
         total_gap_rows=total_gap_rows,
         coverage_recommendation=coverage_recommendation,
-        decision_recommendation=decision_recommendation,
+        decision_recommendation=decision_recommendation or {},
         stocks_only=stocks_only,
         market_bars=market_bars_for_scope,
     )
@@ -1813,6 +1820,7 @@ def priced_in_all_source_gap_batches_payload(
         "goal_alignment": goal_alignment,
         "coverage_first_recommendation": coverage_recommendation,
         "decision_shortcut_recommendation": decision_recommendation,
+        "decision_shortcut_blocker": decision_shortcut_blocker,
         "external_calls_made": 0,
         "execution_boundary": (
             "Plan only. This overview makes no provider calls and never executes "
@@ -2445,6 +2453,27 @@ def _priced_in_all_source_decision_recommendation(
             ),
         )
     return None
+
+
+def _priced_in_decision_shortcut_blocker(
+    coverage_recommendation: Mapping[str, object],
+) -> dict[str, object] | None:
+    source = str(coverage_recommendation.get("source") or "").strip()
+    gaps = int(_finite_float(coverage_recommendation.get("total_gap_rows")))
+    if source != "market_bars" or gaps <= 0:
+        return None
+    return {
+        "schema_version": "priced-in-decision-shortcut-blocker-v1",
+        "status": "blocked",
+        "blocked_by": "market_bars",
+        "blocked_gap_rows": gaps,
+        "action": (
+            "Clear market_bars first; decision shortcuts are hidden until every "
+            "stock-like row has scan-date price reaction."
+        ),
+        "command": coverage_recommendation.get("command"),
+        "external_calls_required": 0,
+    }
 
 
 def _priced_in_source_recommendation(

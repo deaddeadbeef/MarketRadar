@@ -5122,17 +5122,31 @@ def _priced_in_source_workflow_payload(
         if use_coverage_step
         else plan.get("next_command") or coverage_step.get("command")
     )
-    decision_suggested = next(
-        (
-            step
-            for step in sorted(steps, key=_source_workflow_priority_key)
-            if _source_workflow_has_priority(step)
-            and not _source_workflow_priority_blocked(step)
-        ),
-        None,
-    )
+    decision_suggested = None
+    if not use_coverage_step:
+        decision_suggested = next(
+            (
+                step
+                for step in sorted(steps, key=_source_workflow_priority_key)
+                if _source_workflow_has_priority(step)
+                and not _source_workflow_priority_blocked(step)
+            ),
+            None,
+        )
     decision_shortcut_action = None
     decision_shortcut_command = None
+    decision_shortcut_blocker = None
+    if use_coverage_step:
+        decision_shortcut_blocker = {
+            "blocked_by": "market_bars",
+            "blocked_gap_rows": int(_number_or_zero(coverage_step.get("gap_rows"))),
+            "action": (
+                "Clear market_bars first; decision shortcuts are hidden until "
+                "every stock-like row has scan-date price reaction."
+            ),
+            "command": next_command,
+            "external_calls_required": 0,
+        }
     if decision_suggested is not None:
         decision_shortcut_action = _source_workflow_suggested_action(decision_suggested)
         decision_shortcut_command = decision_suggested.get("command") or (
@@ -5156,6 +5170,7 @@ def _priced_in_source_workflow_payload(
         "coverage_first_command": next_command,
         "decision_shortcut_action": decision_shortcut_action,
         "decision_shortcut_command": decision_shortcut_command,
+        "decision_shortcut_blocker": decision_shortcut_blocker,
         "priority_scope": "full_scan_coverage",
         "decision_priority_scope": "visible_priced_in_rows",
         "goal_alignment": goal_alignment,

@@ -1,6 +1,50 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 07:38:29 +08:00
+Last updated: 2026-05-20 07:51:04 +08:00
+
+## Latest Decision Shortcut Suppression
+
+Goal alignment:
+
+- The stocks-only source-batch overview still showed a Schwab
+  `decision_shortcut` while the scan universe itself had an unresolved
+  `market_bars` blocker.
+- That could pull the operator into spending provider calls on broker context
+  before every stock-like row has scan-date price reaction.
+- This slice keeps the source table visible, but suppresses the promoted
+  decision shortcut until the market-bar coverage blocker is cleared. It makes
+  0 Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or DB-write calls.
+
+Fix in this slice:
+
+- `priced-in-source-batches --source all --stocks-only` now emits
+  `decision_shortcut_recommendation=null` when `market_bars` is the
+  coverage-first blocker.
+- The payload includes `decision_shortcut_blocker` explaining that
+  `market_bars` must be cleared first.
+- The dashboard source workflow now sets `decision_shortcut_action=None` and
+  carries the same blocker when `market_bars` is coverage-first.
+- The text CLI prints:
+
+  ```text
+  decision_shortcut_blocked=blocked_by=market_bars gaps=131 calls=0 command=catalyst-radar market-bars template --expected-as-of 2026-05-15 --out data\local\manual-stock-bars-2026-05-15.csv --missing-only --stocks-only
+  ```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_answer_uses_stock_scope_for_market_bar_coverage -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\integration\test_dashboard_demo_seed_cli.py
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source all --stocks-only --limit 1
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-snapshot --stocks-only --json
+```
+
+Next useful product action after merge:
+
+- The recommendation surface no longer encourages side quests while market bars
+  are incomplete.
+- The only meaningful next product move remains data completion: fill/import
+  the 131 rows or explicitly approve the one Polygon/Massive grouped-daily call.
 
 ## Latest Repair-Plan Field Checklist
 

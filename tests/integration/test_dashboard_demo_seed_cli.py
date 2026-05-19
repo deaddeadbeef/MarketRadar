@@ -2257,6 +2257,9 @@ def test_priced_in_answer_uses_stock_scope_for_market_bar_coverage(
         "command"
     ]
     assert "--stocks-only" in overview["coverage_first_recommendation"]["command"]
+    assert overview["decision_shortcut_recommendation"] is None
+    assert overview["decision_shortcut_blocker"]["blocked_by"] == "market_bars"
+    assert overview["decision_shortcut_blocker"]["external_calls_required"] == 0
 
     snapshot = dashboard_snapshot_payload(
         engine=engine,
@@ -2272,6 +2275,8 @@ def test_priced_in_answer_uses_stock_scope_for_market_bar_coverage(
     assert workflow["goal_alignment"]["next_command"].startswith(
         "catalyst-radar market-bars template"
     )
+    assert workflow["decision_shortcut_action"] is None
+    assert workflow["decision_shortcut_blocker"]["blocked_by"] == "market_bars"
     assert "Template generation and import preview are zero-call" in workflow[
         "goal_alignment"
     ]["provider_boundary"]
