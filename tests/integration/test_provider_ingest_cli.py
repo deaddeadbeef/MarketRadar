@@ -5,7 +5,7 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
-from sqlalchemy import create_engine, func, select
+from sqlalchemy import create_engine, delete, func, select
 
 from catalyst_radar.cli import main
 from catalyst_radar.connectors.base import ConnectorHealthStatus
@@ -14,6 +14,7 @@ from catalyst_radar.market.manual_bars import MANUAL_BAR_COLUMNS
 from catalyst_radar.storage.provider_repositories import ProviderRepository
 from catalyst_radar.storage.repositories import MarketRepository
 from catalyst_radar.storage.schema import (
+    daily_bars,
     data_quality_incidents,
     job_runs,
     normalized_provider_records,
@@ -169,9 +170,80 @@ def test_market_bars_import_requires_expected_full_active_coverage(
     captured = capsys.readouterr()
     assert exit_code == 2
     assert "manual_market_bars_import status=incomplete" in captured.out
-    assert "coverage=bars_at_expected=1 missing=5" in captured.out
+    assert "coverage=bars_at_expected=1 existing=0 after_import=1 missing=5" in (
+        captured.out
+    )
     assert "missing_expected_tickers=" in captured.out
     assert "external_calls=0" in captured.out
+
+
+def test_market_bars_missing_only_template_import_counts_existing_bars(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    database_url = _database_url(tmp_path)
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _seed_csv_market(capsys)
+    engine = create_engine(database_url, future=True)
+    missing_tickers = ["AAA", "XLK"]
+    with engine.begin() as conn:
+        conn.execute(
+            delete(daily_bars).where(
+                daily_bars.c.date == date(2026, 5, 8),
+                daily_bars.c.ticker.in_(missing_tickers),
+            )
+        )
+    template_path = tmp_path / "missing-bars.csv"
+
+    assert (
+        main(
+            [
+                "market-bars",
+                "template",
+                "--expected-as-of",
+                "2026-05-08",
+                "--out",
+                str(template_path),
+                "--missing-only",
+            ]
+        )
+        == 0
+    )
+
+    template_output = capsys.readouterr()
+    assert "manual_market_bars_template status=ready rows=2" in template_output.out
+    assert "scope=missing_as_of_bars" in template_output.out
+    assert "coverage=active=6 existing=4 missing=2 missing_only=true" in (
+        template_output.out
+    )
+    template_rows = _read_csv_rows(template_path)
+    assert [row["ticker"] for row in template_rows] == missing_tickers
+    assert {row["template_reason"] for row in template_rows} == {"missing_as_of_bar"}
+
+    filled_path = tmp_path / "filled-missing-bars.csv"
+    _write_manual_bars(filled_path, missing_tickers, as_of="2026-05-08")
+
+    assert (
+        main(
+            [
+                "market-bars",
+                "import",
+                "--daily-bars",
+                str(filled_path),
+                "--expected-as-of",
+                "2026-05-08",
+            ]
+        )
+        == 0
+    )
+
+    import_output = capsys.readouterr()
+    assert "manual_market_bars_import status=ready" in import_output.out
+    assert "coverage=bars_at_expected=2 existing=4 after_import=6 missing=0" in (
+        import_output.out
+    )
+    assert "external_calls=0" in import_output.out
 
 
 def test_market_bars_import_rejects_blank_numeric_fields(

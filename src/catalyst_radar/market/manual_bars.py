@@ -6,15 +6,19 @@ from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from pathlib import Path
 
+from sqlalchemy import select
 from sqlalchemy.engine import Engine
 
 from catalyst_radar.connectors.csv_market import load_daily_bars_csv
 from catalyst_radar.core.models import DailyBar
 from catalyst_radar.storage.repositories import MarketRepository
+from catalyst_radar.storage.schema import daily_bars, securities
 
 MANUAL_BAR_COLUMNS = (
     "ticker",
     "date",
+    "security_type",
+    "template_reason",
     "open",
     "high",
     "low",
@@ -33,6 +37,10 @@ class ManualBarsTemplateResult:
     output_path: Path
     expected_as_of: date
     active_security_count: int
+    row_count: int
+    existing_as_of_bar_count: int
+    missing_as_of_bar_count: int
+    missing_only: bool
     provider: str
     generated_at: datetime
 
@@ -43,7 +51,11 @@ class ManualBarsTemplateResult:
             "output_path": str(self.output_path),
             "expected_as_of": self.expected_as_of.isoformat(),
             "active_security_count": self.active_security_count,
-            "row_count": self.active_security_count,
+            "row_count": self.row_count,
+            "existing_as_of_bar_count": self.existing_as_of_bar_count,
+            "missing_as_of_bar_count": self.missing_as_of_bar_count,
+            "missing_only": self.missing_only,
+            "template_scope": "missing_as_of_bars" if self.missing_only else "active_universe",
             "provider": self.provider,
             "generated_at": self.generated_at.isoformat(),
             "external_calls_made": 0,
@@ -73,6 +85,8 @@ class ManualBarsImportResult:
     ticker_count: int
     latest_bar_date: date | None
     active_security_count: int
+    existing_as_of_bar_count: int | None
+    coverage_after_import_count: int | None
     bars_at_expected_as_of: int | None
     missing_expected_tickers: tuple[str, ...] = ()
     executed: bool = False
@@ -107,6 +121,8 @@ class ManualBarsImportResult:
                 else None
             ),
             "active_security_count": self.active_security_count,
+            "existing_as_of_bar_count": self.existing_as_of_bar_count,
+            "coverage_after_import_count": self.coverage_after_import_count,
             "bars_at_expected_as_of": self.bars_at_expected_as_of,
             "missing_expected_count": len(self.missing_expected_tickers),
             "missing_expected_tickers": missing_sample,
@@ -137,11 +153,19 @@ def write_manual_market_bars_template(
     expected_as_of: date,
     provider: str = "manual_csv",
     generated_at: datetime | None = None,
+    missing_only: bool = False,
 ) -> ManualBarsTemplateResult:
-    tickers = _active_tickers(engine)
-    if not tickers:
+    active_rows = _active_security_rows(engine)
+    if not active_rows:
         msg = "cannot build manual market-bar template: no active securities in database"
         raise ValueError(msg)
+    active_tickers = tuple(row[0] for row in active_rows)
+    existing = _bar_tickers_for_date(engine, expected_as_of)
+    template_rows = [
+        row
+        for row in active_rows
+        if not missing_only or row[0] not in existing
+    ]
     resolved_at = _as_utc(generated_at or datetime.now(UTC))
     path = Path(output_path)
     if path.parent != Path(""):
@@ -149,11 +173,15 @@ def write_manual_market_bars_template(
     with path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=MANUAL_BAR_COLUMNS)
         writer.writeheader()
-        for ticker in tickers:
+        for ticker, security_type in template_rows:
             writer.writerow(
                 {
                     "ticker": ticker,
                     "date": expected_as_of.isoformat(),
+                    "security_type": security_type,
+                    "template_reason": (
+                        "missing_as_of_bar" if ticker not in existing else "active_universe"
+                    ),
                     "open": "",
                     "high": "",
                     "low": "",
@@ -169,7 +197,11 @@ def write_manual_market_bars_template(
     return ManualBarsTemplateResult(
         output_path=path,
         expected_as_of=expected_as_of,
-        active_security_count=len(tickers),
+        active_security_count=len(active_tickers),
+        row_count=len(template_rows),
+        existing_as_of_bar_count=len(existing & set(active_tickers)),
+        missing_as_of_bar_count=len(set(active_tickers) - existing),
+        missing_only=missing_only,
         provider=provider,
         generated_at=resolved_at,
     )
@@ -194,6 +226,8 @@ def preview_manual_market_bars_import(
     latest = max(bar.date for bar in bars)
     tickers = {bar.ticker.upper() for bar in bars}
     bars_at_expected: int | None = None
+    existing_at_expected: set[str] | None = None
+    coverage_after_import: int | None = None
     missing: tuple[str, ...] = ()
     status = "ready"
     if expected_as_of is not None:
@@ -203,7 +237,10 @@ def preview_manual_market_bars_import(
             bar.ticker.upper() for bar in bars if bar.date == expected_as_of
         }
         bars_at_expected = len(expected_tickers)
-        missing = tuple(sorted(active - expected_tickers))
+        existing_at_expected = _bar_tickers_for_date(engine, expected_as_of) & active
+        coverage_after = existing_at_expected | (expected_tickers & active)
+        coverage_after_import = len(coverage_after)
+        missing = tuple(sorted(active - coverage_after))
         if missing and status == "ready":
             status = "incomplete"
     return ManualBarsImportResult(
@@ -214,6 +251,10 @@ def preview_manual_market_bars_import(
         ticker_count=len(tickers),
         latest_bar_date=latest,
         active_security_count=len(active),
+        existing_as_of_bar_count=(
+            len(existing_at_expected) if existing_at_expected is not None else None
+        ),
+        coverage_after_import_count=coverage_after_import,
         bars_at_expected_as_of=bars_at_expected,
         missing_expected_tickers=missing,
         bars=bars,
@@ -245,6 +286,8 @@ def import_manual_market_bars(
         ticker_count=preview.ticker_count,
         latest_bar_date=preview.latest_bar_date,
         active_security_count=preview.active_security_count,
+        existing_as_of_bar_count=preview.existing_as_of_bar_count,
+        coverage_after_import_count=preview.coverage_after_import_count,
         bars_at_expected_as_of=preview.bars_at_expected_as_of,
         missing_expected_tickers=preview.missing_expected_tickers,
         executed=True,
@@ -257,6 +300,35 @@ def _active_tickers(engine: Engine) -> tuple[str, ...]:
         security.ticker.upper()
         for security in MarketRepository(engine).list_active_securities()
     )
+
+
+def _active_security_rows(engine: Engine) -> tuple[tuple[str, str], ...]:
+    with engine.connect() as conn:
+        rows = conn.execute(
+            select(securities.c.ticker, securities.c.metadata)
+            .where(securities.c.is_active.is_(True))
+            .order_by(securities.c.ticker)
+        ).all()
+    values: list[tuple[str, str]] = []
+    for row in rows:
+        ticker = str(row._mapping["ticker"] or "").strip().upper()
+        metadata = row._mapping["metadata"]
+        if not isinstance(metadata, dict):
+            metadata = {}
+        security_type = str(metadata.get("type") or "").strip().upper()
+        values.append((ticker, security_type))
+    return tuple(values)
+
+
+def _bar_tickers_for_date(engine: Engine, as_of_date: date) -> set[str]:
+    with engine.connect() as conn:
+        return {
+            str(row._mapping["ticker"]).strip().upper()
+            for row in conn.execute(
+                select(daily_bars.c.ticker).where(daily_bars.c.date == as_of_date)
+            )
+            if str(row._mapping["ticker"]).strip()
+        }
 
 
 def _validate_manual_bars(bars: tuple[DailyBar, ...]) -> None:
