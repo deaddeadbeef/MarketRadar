@@ -210,10 +210,12 @@ def build_parser() -> argparse.ArgumentParser:
     grouped = polygon_sub.add_parser("grouped-daily")
     grouped.add_argument("--date", type=date.fromisoformat, required=True)
     grouped.add_argument("--fixture", type=Path)
+    grouped.add_argument("--confirm-external-call", action="store_true")
     tickers = polygon_sub.add_parser("tickers")
     tickers.add_argument("--fixture", type=Path)
     tickers.add_argument("--date", type=date.fromisoformat)
     tickers.add_argument("--max-pages", type=int)
+    tickers.add_argument("--confirm-external-call", action="store_true")
 
     sec = subparsers.add_parser("ingest-sec")
     sec_sub = sec.add_subparsers(dest="sec_command", required=True)
@@ -910,6 +912,7 @@ def main(argv: list[str] | None = None) -> int:
             date_value=args.date if hasattr(args, "date") else None,
             fixture_path=args.fixture,
             max_pages=getattr(args, "max_pages", None),
+            confirm_external_call=getattr(args, "confirm_external_call", False),
         )
 
     if args.command == "ingest-sec":
@@ -2107,6 +2110,7 @@ def _ingest_polygon_provider(
     date_value: date | None,
     fixture_path: Path | None,
     max_pages: int | None,
+    confirm_external_call: bool,
 ) -> int:
     try:
         connector, request, metadata, job_type = _build_polygon_ingest(
@@ -2116,6 +2120,17 @@ def _ingest_polygon_provider(
             fixture_path=fixture_path,
             max_pages=max_pages,
         )
+        if (
+            fixture_path is None
+            and config.polygon_api_key_configured
+            and not confirm_external_call
+        ):
+            print(
+                "polygon ingest requires --confirm-external-call "
+                "for live provider requests",
+                file=sys.stderr,
+            )
+            return 2
         result = ingest_provider_records(
             connector=connector,
             request=request,

@@ -81,6 +81,38 @@ def test_polygon_ingest_rejects_placeholder_api_key(
     assert "missing CATALYST_POLYGON_API_KEY" in result.stderr
 
 
+def test_polygon_live_ingest_requires_explicit_confirmation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    result = run_cli(
+        ["ingest-polygon", "grouped-daily", "--date", "2026-05-08"],
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        capsys=capsys,
+        env={"CATALYST_POLYGON_API_KEY": "test-real-looking-polygon-key"},
+    )
+
+    assert result.exit_code == 2
+    assert result.stdout == ""
+    assert "requires --confirm-external-call" in result.stderr
+
+    engine = create_engine(result.database_url, future=True)
+    with engine.connect() as conn:
+        job_count = conn.execute(
+            select(func.count())
+            .select_from(job_runs)
+            .where(job_runs.c.job_type == "polygon_grouped_daily")
+        ).scalar_one()
+        raw_count = conn.execute(
+            select(func.count()).select_from(raw_provider_records)
+        ).scalar_one()
+
+    assert job_count == 0
+    assert raw_count == 0
+
+
 def test_polygon_fixture_ingest_persists_raw_normalized_and_daily_bars(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

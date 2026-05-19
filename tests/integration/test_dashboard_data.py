@@ -1646,6 +1646,9 @@ def test_priced_in_full_scan_audit_payload_consolidates_current_state(
     assert "explicit operator approval" in market_bar_provider_plan[
         "approval_boundary"
     ]
+    provider_call_command = market_bar_provider_plan["provider_call_command"]
+    if provider_call_command is not None:
+        assert provider_call_command.endswith("--confirm-external-call")
     assert market_bar_provider_plan["manual_template_command"].endswith(
         "--missing-only"
     )
