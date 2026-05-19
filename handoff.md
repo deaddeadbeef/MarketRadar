@@ -1,6 +1,112 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 21:42:09 +08:00
+Last updated: 2026-05-19 22:11:50 +08:00
+
+## Latest Market-Bar Missing Diagnostics
+
+Current problem:
+
+- MarketRadar's stated goal is a full-market priced-in scan: determine whether
+  a stock's price has caught up with market expectations.
+- Price-reaction scoring depends on point-in-time daily bars for the scan date.
+- The full active-universe audit currently sees broad but incomplete market-bar
+  coverage:
+  - active securities: `12613`;
+  - scanned/ranked rows: `12087`;
+  - target as-of date: `2026-05-15`;
+  - active tickers missing as-of bars: `523`;
+  - external calls while inspecting: `0`.
+- Before this slice, the repair path showed a missing ticker sample and manual
+  template/import commands, but it did not explain which missing rows are actual
+  stock/company rows versus funds, preferreds, rights, units, or warrants.
+- That made the next action too vague: a human operator could not tell whether
+  the missing bars should be filled as companies, handled as non-company
+  instruments, or excluded from a stocks-only answer.
+
+Fix in this slice:
+
+- `priced_in_full_scan_audit_payload.market_bars.repair` now includes a
+  `diagnostic` object with schema
+  `priced-in-market-bar-missing-diagnostic-v1`.
+- The diagnostic is zero-call and classifies missing as-of bars from local
+  `securities.metadata.type` plus local `daily_bars` coverage.
+- The diagnostic schema is stable even when the scan/as-of date is unavailable
+  or no missing rows exist; this keeps CLI/API/dashboard consumers from special
+  casing a `null` diagnostic.
+- CLI `priced-in-audit` now prints:
+  - diagnostic status;
+  - company-like/fund-like/wrapper/unknown missing counts;
+  - security-type counts;
+  - sample tickers by category;
+  - the route boundary that explains full active-universe versus stocks-only
+    behavior.
+- Streamlit **Priced-in Full Scan** now surfaces the same diagnostic in the
+  market-bar repair area with human labels such as **Company-like Missing** and
+  **Wrapper Missing**.
+- No Polygon/Massive, Schwab, SEC, OpenAI, or broker/order execution was run.
+
+Current live zero-call observations from the branch:
+
+```text
+missing_bar_diagnostic=status=attention company_like=131 fund_like=4 wrappers=388 unknown=0 external_calls=0
+  missing_bar_types=ADRC:8,CS:123,ETF:1,ETV:1,FUND:2,PFD:14,RIGHT:47,SP:6,UNIT:176,WARRANT:145
+  sample_company_like_tickers=AACO,ADAC,ADXN,AEAQ,AGM.A sample_fund_like_tickers=CTWO,GRF,MXE,ZTAX sample_wrapper_tickers=AACBR,AACBU,AACIW,AACOU,AACOW
+  route_boundary=Market bars are required for price-reaction scoring. Non-company instruments can stay in a full active-universe scan only if their own bars are present; otherwise route or exclude them from a stocks-only answer.
+```
+
+```text
+cli_json_market_bar_diagnostic status=attention missing=523 company_like=131 fund_like=4 wrappers=388 unknown=0 calls=0 schema=priced-in-market-bar-missing-diagnostic-v1
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_payload_consolidates_current_state tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_audit_cli_outputs_full_scan_audit tests\integration\test_dashboard_entrypoint.py::test_dashboard_wires_priced_in_full_scan_panel_after_usefulness -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py apps\dashboard\Home.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_dashboard_entrypoint.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-audit --limit 1
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-audit --limit 1 --json
+```
+
+Observed:
+
+- Focused three-test set passed (`3 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+- CLI text and JSON checks reported the market-bar diagnostic with
+  `external_calls_made=0`.
+- Local services were restarted from the branch for API/dashboard verification.
+- API health returned commit `d99502a378c5`.
+- Streamlit health returned `ok`.
+- API `GET /api/radar/priced-in/audit?limit=1` reported:
+  - `status=attention`;
+  - `missing=523`;
+  - `company_like=131`;
+  - `fund_like=4`;
+  - `wrappers=388`;
+  - `unknown=0`;
+  - `calls=0`;
+  - schema `priced-in-market-bar-missing-diagnostic-v1`.
+- Browser verification on `http://127.0.0.1:8514` confirmed the dashboard text
+  included:
+  - `Company-like Missing`;
+  - `Wrapper Missing`;
+  - `Market bars are required for price-reaction scoring`;
+  - `523`;
+  - `131`;
+  - `388`.
+- Browser console check reported 0 current errors.
+
+Next useful product action:
+
+- This slice makes the market-bar blocker actionable; it does not fill bars.
+- The next non-drift action is to resolve market-bar coverage before trusting
+  the full scan as a price-reaction answer:
+  - generate a local missing-bar template for `2026-05-15`;
+  - fill/import all 523 missing bars from a user-approved source; or
+  - explicitly route/exclude non-company instruments for a stocks-only answer.
+- Provider calls remain a separate operator decision. Do not run Polygon/Massive
+  or other live market-data calls without explicit approval.
 
 ## Latest Local Text Repair Surface
 
