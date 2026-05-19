@@ -1,6 +1,69 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 14:54:07 +08:00
+Last updated: 2026-05-19 15:04:31 +08:00
+
+## Latest Agent Brief Source Workflow Alignment
+
+Current problem:
+
+- The dry-run multi-agent brief used the older priced-in evidence-plan fields,
+  but it ignored the newer `priced_in_source_workflow` dashboard payload.
+- That meant the agent brief could drift from the dashboard's current
+  coverage-first and decision-shortcut guidance.
+
+Fix in this slice:
+
+- The redacted agent snapshot now includes an allowlisted
+  `priced_in.source_workflow` object:
+  - status/headline/next action;
+  - coverage-first action and command;
+  - decision-shortcut action and command;
+  - priority scope metadata;
+  - sanitized source steps and sample tickers.
+- The deterministic multi-agent brief now:
+  - adds a `Priced-in source workflow...` insight;
+  - includes coverage-first and decision-shortcut actions/commands in
+    `next_actions`;
+  - still makes zero OpenAI, market-data, and broker calls.
+- Raw payload-like fields are still excluded by the redaction allowlist.
+
+Current live zero-call observation:
+
+```text
+agent-brief --json
+mode=dry_run status=dry_run calls={'broker': 0, 'market_data': 0, 'openai': 0}
+Priced-in source workflow is attention; coverage-first=Fill SEC catalyst events...
+NEXT:
+catalyst-radar priced-in-source-batches --source catalyst_events --all --json
+Start with broker_context...
+catalyst-radar priced-in-source-batches --source broker_context --all --json
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\unit\test_agent_sdk_orchestrator.py -q
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_agent_brief_cli_outputs_zero_call_dry_run tests\integration\test_dashboard_demo_seed_cli.py::test_agent_brief_cli_real_mode_blocks_without_explicit_gates -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\agents\sdk_orchestrator.py tests\unit\test_agent_sdk_orchestrator.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli agent-brief --json
+```
+
+Observed:
+
+- Agent SDK unit tests passed (`3 passed`).
+- Focused agent CLI integration tests passed (`2 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+- Live dry-run brief reported `openai=0`, `market_data=0`, `broker=0`.
+
+Next useful product action:
+
+- The useful agent path is now aligned with the dashboard source workflow.
+- Do not enable real OpenAI Agents SDK mode until the user explicitly chooses
+  it and the gates are set:
+  `CATALYST_ENABLE_AGENT_SDK=true`, `CATALYST_ENABLE_PREMIUM_LLM=true`,
+  `CATALYST_LLM_PROVIDER=openai`, `CATALYST_AGENT_SDK_MODEL`, `OPENAI_API_KEY`.
 
 ## Latest TUI `batch all` First Chunks
 
