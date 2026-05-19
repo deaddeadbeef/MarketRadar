@@ -803,6 +803,9 @@ def test_dashboard_run_page_shows_priced_in_evidence_plan(
     assert output.err == ""
     assert "Priced-in Evidence Plan" in output.out
     assert "Evidence status" in output.out
+    assert "Inspect source blocker" in output.out
+    assert "Type `batch" in output.out
+    assert "exact call budget" in output.out
     assert "priced-in-source-" in output.out
 
 

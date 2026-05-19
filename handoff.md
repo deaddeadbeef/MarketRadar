@@ -1,6 +1,70 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 02:58:52 +08:00
+Last updated: 2026-05-20 03:21:26 +08:00
+
+## Latest Dashboard Source Blocker Diagnostics
+
+Goal alignment check:
+
+- The active goal is still full-market priced-in mismatch detection: scan stock
+  rows, gather enough market-emotion evidence, and compare that evidence with
+  price reaction.
+- The prior slice made `market-radar-status.ps1` show the CIK blocker. This
+  slice keeps CLI/API/dashboard aligned by pushing the same diagnostic into the
+  zero-call source-batch overview and TUI guidance.
+- This is dashboard/operator clarity, not a new provider path.
+
+Fix in this slice:
+
+- `priced-in-source-batches --source all --stocks-only` now carries CIK blocker
+  details through the coverage-first recommendation and goal-alignment blocker:
+  eligible row count, blocked row count, blocked reason, sample blocked tickers,
+  and repair commands.
+- The CLI all-source overview now prints source diagnostics when a source has
+  blocked rows or blocker examples.
+- The TUI run page now tells the operator to use `batch <source>` for blockers,
+  first provider chunk, and exact call budget instead of leaving the evidence
+  plan as a generic table.
+- TUI batch messages now include a concise source blocker summary and CIK import
+  command when present.
+- No SEC/Massive/Polygon, Schwab, OpenAI, broker/order execution, or database
+  write was run.
+
+Live zero-call observation before PR:
+
+```text
+priced_in_source_batch_overview ... external_calls=0
+blocker=catalyst_events evidence has 5512 gap row(s); 5510 eligible row(s), 2 blocked row(s); blocked_reason=missing_cik; examples=FRBA, SSBI.
+coverage_first=source=catalyst_events ... calls=5 ...
+diagnostic=eligible=5510 blocked=2 reason=missing_cik
+blocked_examples=FRBA,SSBI
+template=catalyst-radar ingest-sec cik-overrides-template --out data\local\cik-overrides-template.csv --stocks-only
+import=catalyst-radar ingest-sec cik-overrides --csv <cik-overrides.csv>
+```
+
+TUI run-page smoke:
+
+```text
+Priced-in Evidence Plan
+Inspect source blocker : Type `batch catalyst_events` for blockers, first provider chunk, and exact call budget; type `batch all` for the source map.
+External calls made: 0
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_all_source_gap_batches_prioritizes_decision_useful_gaps tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_run_page_shows_priced_in_evidence_plan -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_batch_command_opens_full_scan_source_batch_plan tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_batch_command_explains_non_company_cik_gaps tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_source_batches_cli_prints_non_company_route tests\integration\test_dashboard_data.py::test_priced_in_all_source_gap_batches_payload_summarizes_next_chunks tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_plans_safe_sync_batches tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_exposes_missing_cik_blockers -q
+git diff --check
+```
+
+Observed:
+
+- Focused tests passed (`2 passed`).
+- Existing source-batch/dashboard focused tests passed (`6 passed`).
+- Ruff passed.
+- `git diff --check` passed.
 
 ## Latest Status CIK Blocker Surface
 

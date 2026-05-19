@@ -3823,6 +3823,9 @@ def _print_priced_in_all_source_batches(payload: Mapping[str, object]) -> None:
             f"command={_compact_cli_text(coverage.get('command'))}"
         )
         print(f"  why={_compact_cli_text(coverage.get('rationale'))}")
+        blocker_detail = coverage.get("blocker_detail")
+        if blocker_detail:
+            print(f"  blocker={_compact_cli_text(blocker_detail)}")
         _print_priced_in_recommendation_first_batch(
             payload,
             coverage,
@@ -3894,6 +3897,7 @@ def _print_priced_in_all_source_batches(payload: Mapping[str, object]) -> None:
         capped_command = row.get("execute_batches_command")
         if capped_command:
             print(f"  capped_execute={_compact_cli_text(capped_command)}")
+        _print_priced_in_source_diagnostic(row.get("diagnostic"), indent="  ")
         approval = row.get("approval_checklist")
         if isinstance(approval, Mapping):
             _print_priced_in_approval_checklist(approval, indent="  ")
@@ -3943,6 +3947,40 @@ def _source_row(
         if str(row.get("source") or "").strip() == source:
             return row
     return None
+
+
+def _print_priced_in_source_diagnostic(
+    diagnostic: object,
+    *,
+    indent: str = "",
+) -> None:
+    if not isinstance(diagnostic, Mapping):
+        return
+    blocked_rows = _int_value(diagnostic.get("blocked_rows"))
+    eligible_rows = _int_value(diagnostic.get("eligible_rows"))
+    reason = str(diagnostic.get("blocked_reason") or "").strip()
+    samples = [
+        str(ticker).strip().upper()
+        for ticker in _sequence_value(diagnostic.get("sample_blocked_tickers"))
+        if str(ticker).strip()
+    ]
+    if blocked_rows <= 0 and not reason and not samples:
+        return
+    print(
+        f"{indent}diagnostic="
+        f"eligible={eligible_rows} blocked={blocked_rows} "
+        f"reason={reason or 'n/a'}"
+    )
+    if samples:
+        print(f"{indent}blocked_examples={','.join(samples)}")
+    for key, label in (
+        ("fix_command", "refresh"),
+        ("manual_template_command", "template"),
+        ("manual_fix_command", "import"),
+    ):
+        command = diagnostic.get(key)
+        if command:
+            print(f"{indent}{label}={_compact_cli_text(command)}")
 
 
 def _print_priced_in_approval_checklist(
