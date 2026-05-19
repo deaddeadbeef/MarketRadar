@@ -3689,6 +3689,12 @@ def _print_manual_market_bars_import(payload: Mapping[str, object]) -> None:
             f"blank_required={payload.get('blank_required_count')} "
             f"invalid_numeric={payload.get('invalid_numeric_count')}"
         )
+        blank_fields = payload.get("blank_required_field_counts")
+        if isinstance(blank_fields, dict) and blank_fields:
+            summary = ",".join(
+                f"{field}={count}" for field, count in blank_fields.items()
+            )
+            print(f"blank_required_fields={summary}")
         examples = payload.get("invalid_examples")
         if isinstance(examples, list | tuple) and examples:
             print("invalid_examples=" + " | ".join(str(item) for item in examples))

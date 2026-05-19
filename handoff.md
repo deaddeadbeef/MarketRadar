@@ -1,6 +1,68 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 07:13:18 +08:00
+Last updated: 2026-05-20 07:21:05 +08:00
+
+## Latest Manual Bar Blank-Field Summary
+
+Goal alignment:
+
+- The active full-stock scan remains blocked by 131 stock-like tickers missing
+  as-of market bars for 2026-05-15.
+- The local manual template preview said `blank_required=786`, but the human
+  still had to infer which fields were blank.
+- This slice keeps the scope narrow and useful: expose the blank-field counts
+  needed to fill the template correctly. It makes 0 Polygon/Massive, SEC,
+  Schwab, OpenAI, broker, order, or DB-write calls.
+
+Fix in this slice:
+
+- `market-bars import --json` now includes `blank_required_field_counts`.
+- The text CLI prints `blank_required_fields=...` when an import preview is
+  invalid due to blank required fields.
+- `scripts\market-radar-status.ps1 -Quick` now prints the local template blank
+  field summary.
+
+Live zero-call observation:
+
+```text
+- local template blank fields: close=131, high=131, low=131, open=131, volume=131, vwap=131
+```
+
+Live JSON preview observation:
+
+```json
+"blank_required_field_counts": {
+  "close": 131,
+  "high": 131,
+  "low": 131,
+  "open": 131,
+  "volume": 131,
+  "vwap": 131
+}
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_provider_ingest_cli.py::test_market_bars_import_rejects_blank_numeric_fields tests\integration\test_local_scripts.py::test_market_radar_status_script_is_zero_external_call_sitrep -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\market\manual_bars.py src\catalyst_radar\cli.py tests\integration\test_provider_ingest_cli.py tests\integration\test_local_scripts.py
+powershell -NoProfile -Command '& { $null = [scriptblock]::Create((Get-Content -Raw .\scripts\market-radar-status.ps1)); "powershell syntax ok" }'
+powershell -ExecutionPolicy Bypass -File .\scripts\market-radar-status.ps1 -Quick
+.\.venv\Scripts\python.exe -m catalyst_radar.cli market-bars import --daily-bars data\local\manual-stock-bars-2026-05-15.csv --expected-as-of 2026-05-15 --stocks-only --json
+```
+
+Expected note:
+
+- The live import preview command returns a non-zero exit code while status is
+  `invalid`; that is correct. Its JSON output is still the evidence source.
+
+Next useful product action after merge:
+
+- Clear the blocker by filling/importing
+  `data\local\manual-stock-bars-2026-05-15.csv`, or explicitly approve the one
+  Polygon/Massive grouped-daily call.
+- Do not spend more slices on dashboard/status polish until the bar coverage
+  blocker is cleared or the user explicitly redirects.
 
 ## Latest Quick Status Invalid Row Examples
 

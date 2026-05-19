@@ -112,6 +112,7 @@ class ManualBarsImportResult:
     executed: bool = False
     invalid_row_count: int = 0
     blank_required_count: int = 0
+    blank_required_field_counts: tuple[tuple[str, int], ...] = ()
     invalid_numeric_count: int = 0
     invalid_examples: tuple[str, ...] = ()
     bars: tuple[DailyBar, ...] = field(default=(), repr=False)
@@ -164,6 +165,10 @@ class ManualBarsImportResult:
             "executed": self.executed,
             "invalid_row_count": self.invalid_row_count,
             "blank_required_count": self.blank_required_count,
+            "blank_required_field_counts": {
+                field_name: count
+                for field_name, count in self.blank_required_field_counts
+            },
             "invalid_numeric_count": self.invalid_numeric_count,
             "invalid_examples": list(self.invalid_examples[:6]),
             "invalid_more": max(0, len(self.invalid_examples) - 6),
@@ -431,6 +436,7 @@ def preview_manual_market_bars_import(
             missing_expected_tickers=missing,
             invalid_row_count=validation.invalid_row_count,
             blank_required_count=validation.blank_required_count,
+            blank_required_field_counts=validation.blank_required_field_counts,
             invalid_numeric_count=validation.invalid_numeric_count,
             invalid_examples=validation.invalid_examples,
         )
@@ -653,6 +659,7 @@ class _ManualBarsCsvValidation:
     expected_as_of_tickers: frozenset[str]
     invalid_row_count: int
     blank_required_count: int
+    blank_required_field_counts: tuple[tuple[str, int], ...]
     invalid_numeric_count: int
     invalid_examples: tuple[str, ...]
 
@@ -693,6 +700,7 @@ def _inspect_manual_bars_csv(
         expected_date_tickers: set[str] = set()
         invalid_rows: set[int] = set()
         blank_required_count = 0
+        blank_required_field_counts: dict[str, int] = {}
         invalid_numeric_count = 0
         examples: list[str] = []
         for row_number, row in enumerate(reader, start=2):
@@ -728,6 +736,10 @@ def _inspect_manual_bars_csv(
             if blank_fields:
                 invalid_rows.add(row_number)
                 blank_required_count += len(blank_fields)
+                for field in blank_fields:
+                    blank_required_field_counts[field] = (
+                        blank_required_field_counts.get(field, 0) + 1
+                    )
                 _append_invalid_example(
                     examples,
                     row_number,
@@ -781,6 +793,11 @@ def _inspect_manual_bars_csv(
         expected_as_of_tickers=frozenset(expected_date_tickers),
         invalid_row_count=len(invalid_rows),
         blank_required_count=blank_required_count,
+        blank_required_field_counts=tuple(
+            (field, blank_required_field_counts[field])
+            for field in MANUAL_BAR_COLUMNS
+            if blank_required_field_counts.get(field, 0)
+        ),
         invalid_numeric_count=invalid_numeric_count,
         invalid_examples=tuple(examples),
     )

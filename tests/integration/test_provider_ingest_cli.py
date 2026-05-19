@@ -484,6 +484,7 @@ def test_market_bars_import_rejects_blank_numeric_fields(
     assert "manual_market_bars_import status=invalid" in captured.out
     assert "invalid=rows=6" in captured.out
     assert "blank_required=6" in captured.out
+    assert "blank_required_fields=open=6" in captured.out
     assert "invalid_examples=row" in captured.out
     assert "Plan only: no database writes were made." not in captured.out
     assert "external_calls=0" in captured.out
