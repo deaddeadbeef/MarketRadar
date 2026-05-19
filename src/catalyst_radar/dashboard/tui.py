@@ -4000,8 +4000,24 @@ def _overview_source_workflow_hint(payload: Mapping[str, object]) -> str:
 
     workflow = _mapping(payload.get("priced_in_source_workflow"))
     steps = _rows(workflow.get("steps"))
+    source_coverage = _mapping(payload.get("priced_in_source_coverage"))
+    action_by_source = {
+        str(action.get("source") or "").strip(): action
+        for action in _rows(source_coverage.get("actions"))
+        if str(action.get("source") or "").strip()
+    }
     coverage_step = steps[0] if steps else {}
     coverage_source = str(coverage_step.get("source") or "").strip()
+    coverage_gap_count = int(
+        _number_or_zero(
+            _source_action_gap_count(_mapping(action_by_source.get(coverage_source)))
+        )
+    )
+    coverage_text = (
+        f"{coverage_source} ({coverage_gap_count} full-scan gap row(s))"
+        if coverage_source and coverage_gap_count
+        else coverage_source
+    )
     coverage = str(
         workflow.get("coverage_first_action") or workflow.get("next_action") or ""
     ).strip()
@@ -4022,15 +4038,15 @@ def _overview_source_workflow_hint(payload: Mapping[str, object]) -> str:
             else decision_source
         )
         return (
-            f"Coverage-first: {coverage_source}. "
-            f"Decision shortcut: {decision_text}."
+            f"Full-scan coverage: {coverage_text}. "
+            f"Shortlist context: {decision_text}."
         )
     if coverage_source:
-        return f"Coverage-first: {coverage_source}."
+        return f"Full-scan coverage: {coverage_text}."
     if decision_source:
-        return f"Decision shortcut: {decision_source}."
+        return f"Shortlist context: {decision_source}."
     if coverage:
-        return f"Coverage-first: {_clip(coverage, 140)}"
+        return f"Full-scan coverage: {_clip(coverage, 140)}"
     return "Open Ops or run batch all to inspect source gaps."
 
 

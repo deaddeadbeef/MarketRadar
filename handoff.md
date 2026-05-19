@@ -1,6 +1,27 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 02:38:09 +08:00
+Last updated: 2026-05-20 02:43:59 +08:00
+
+## Latest TUI Full-Scan Next-Step Copy
+
+Goal alignment check:
+
+- The CLI/status surface now separates full-scan coverage work from the current
+  decision-shortlist repair path.
+- The terminal dashboard overview still compressed that into
+  `Coverage-first` / `Decision shortcut`, which was technically true but less
+  clear for a human operator trying to keep the full-market goal in mind.
+
+Fix in this slice:
+
+- The TUI overview/source hint now says:
+  - `Full-scan coverage: <source> (<gap count> full-scan gap row(s))`;
+  - `Shortlist context: <source> (<decision-ready row count> decision-ready row(s))`.
+- This keeps the dashboard aligned with the goal:
+  - full-scan coverage is the market-wide evidence-fill path;
+  - shortlist context is only for the currently visible decision-ready mismatch
+    rows.
+- No provider, broker, OpenAI, order, or database-write action was run.
 
 ## Latest Full-Scan Status Wording
 
