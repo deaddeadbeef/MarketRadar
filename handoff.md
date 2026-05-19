@@ -1,6 +1,118 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 01:42:26 +08:00
+Last updated: 2026-05-20 02:03:33 +08:00
+
+## Latest Options Fixture Template Export
+
+Goal alignment check:
+
+- The active product goal is still the full stock priced-in scan: identify
+  stocks where market emotion has not yet been matched by price reaction.
+- The largest decision-useful evidence gap is still `options`: `5521` current
+  stock rows have missing point-in-time options context.
+- The prior slice surfaced the import command, but the operator still had to
+  invent the fixture file shape. This slice keeps the scope small and makes the
+  repair path directly usable without running Schwab or any provider.
+
+Fix in this slice:
+
+- Added a zero-call options fixture template writer:
+
+  ```powershell
+  catalyst-radar ingest-options --fixture-template --out data\local\point-in-time-options-2026-05-15.json --stocks-only
+  ```
+
+- The template is the exact JSON shape accepted by the existing
+  `ingest-options --fixture` command:
+
+  ```json
+  {
+    "as_of": "2026-05-15T21:00:00+00:00",
+    "source_ts": "2026-05-15T21:00:00+00:00",
+    "available_at": "2026-05-15T21:00:00+00:00",
+    "provider": "options_fixture",
+    "results": [
+      {
+        "ticker": "A",
+        "call_volume": "",
+        "put_volume": "",
+        "call_open_interest": "",
+        "put_open_interest": "",
+        "iv_percentile": "",
+        "skew": ""
+      }
+    ]
+  }
+  ```
+
+- Added API parity:
+
+  ```text
+  GET /api/radar/options/fixture-template?stocks_only=true
+  ```
+
+- Blocked `options` source-batch diagnostics now print both:
+  - `diagnostic_point_in_time_template=... --fixture-template ...`
+  - `diagnostic_point_in_time_import=... --fixture ...`
+- TUI `batch options` messages now show the template command before the import
+  command, so the terminal dashboard does not leave the user guessing the file
+  format.
+- No Polygon/Massive, Schwab, SEC, OpenAI, or broker/order execution was run.
+
+Current live zero-call observation from local CLI:
+
+```text
+options_fixture_template status=ready source=options stocks_only=true target_as_of=2026-05-15T21:00:00+00:00 source_gap_rows=5521 rows=5521 output=C:\Users\fpan1\AppData\Local\Temp\market-radar-point-in-time-options-template.json external_calls=0
+template_examples=A,AAMI,AAOI,MSFT,AAPL
+columns=ticker,call_volume,put_volume,call_open_interest,put_open_interest,iv_percentile,skew
+import_command=catalyst-radar ingest-options --fixture C:\Users\fpan1\AppData\Local\Temp\market-radar-point-in-time-options-template.json
+api=GET /api/radar/options/fixture-template?stocks_only=true
+boundary=Template/export is zero-call. Values must describe option context available at the scan date; do not backfill current chains into an older scan.
+```
+
+`priced-in-source-batches --source options --stocks-only --batch-limit 1` now
+prints:
+
+```text
+diagnostic_point_in_time_template=catalyst-radar ingest-options --fixture-template --out data\local\point-in-time-options-2026-05-15.json --stocks-only
+diagnostic_point_in_time_import=catalyst-radar ingest-options --fixture <point-in-time-options-2026-05-15.json>
+external_calls=0
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_options_ingest.py::test_write_options_fixture_template_json_writes_importable_shape tests\integration\test_options_ingest.py::test_ingest_options_fixture_template_cli_writes_gap_template tests\integration\test_dashboard_data.py::test_options_fixture_template_payload_exports_point_in_time_skeleton tests\integration\test_dashboard_data.py::test_priced_in_all_source_gap_batches_blocks_options_shortcut_when_not_point_in_time tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_source_batches_cli_prints_options_point_in_time_import tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_batch_message_prints_options_point_in_time_import tests\integration\test_api_routes.py::test_get_radar_options_fixture_template_returns_zero_call_fixture tests\integration\test_security_boundaries.py::test_openapi_routes_are_allowlisted_and_broker_routes_are_explicit -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\connectors\options.py src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\api\routes\radar.py tests\integration\test_options_ingest.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_api_routes.py tests\integration\test_security_boundaries.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli ingest-options --fixture-template --out $env:TEMP\market-radar-point-in-time-options-template.json --stocks-only
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source options --stocks-only --batch-limit 1
+Get-Content -Path $env:TEMP\market-radar-point-in-time-options-template.json -TotalCount 22
+```
+
+Observed:
+
+- Focused test set passed (`8 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+- Template export produced `5521` stock rows for scan date `2026-05-15` and
+  stayed `external_calls=0`.
+- The generated JSON has the exact header and aggregate fields accepted by
+  `ingest-options --fixture`.
+
+Next useful product action:
+
+- If point-in-time options aggregates are available for `2026-05-15`, fill the
+  template and import it:
+
+  ```powershell
+  catalyst-radar ingest-options --fixture data\local\point-in-time-options-2026-05-15.json
+  ```
+
+- If only current Schwab chains are available, use them only for a current
+  rerun with a current scan date and current bars. Do not backfill current
+  chains into the older `2026-05-15` scan.
+- Provider/source execution remains approval-gated.
 
 ## Latest Options Point-In-Time Repair Command
 

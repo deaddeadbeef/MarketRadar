@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -9,7 +10,10 @@ from sqlalchemy import create_engine, func, select
 from catalyst_radar.brokers.models import BrokerMarketSnapshot, broker_market_snapshot_id
 from catalyst_radar.cli import main
 from catalyst_radar.connectors.base import ConnectorRecordKind, ConnectorRequest
-from catalyst_radar.connectors.options import OptionsAggregateConnector
+from catalyst_radar.connectors.options import (
+    OptionsAggregateConnector,
+    write_options_fixture_template_json,
+)
 from catalyst_radar.connectors.provider_ingest import ProviderIngestError, ingest_provider_records
 from catalyst_radar.features.options import OptionFeatureInput
 from catalyst_radar.storage.broker_repositories import BrokerRepository
@@ -94,6 +98,120 @@ def test_ingest_options_cli_persists_option_feature(
         row = conn.execute(select(option_features)).one()
     assert row.ticker == "AAA"
     assert row.call_volume == 12_000
+
+
+def test_write_options_fixture_template_json_writes_importable_shape(
+    tmp_path: Path,
+) -> None:
+    output_path = tmp_path / "point-in-time-options-2026-05-10.json"
+    fixture = {
+        "as_of": "2026-05-10T21:00:00+00:00",
+        "source_ts": "2026-05-10T21:00:00+00:00",
+        "available_at": "2026-05-10T21:00:00+00:00",
+        "provider": "options_fixture",
+        "results": [
+            {
+                "ticker": "MSFT",
+                "call_volume": "",
+                "put_volume": "",
+                "call_open_interest": "",
+                "put_open_interest": "",
+                "iv_percentile": "",
+                "skew": "",
+            }
+        ],
+    }
+
+    result = write_options_fixture_template_json(output_path, fixture)
+
+    written = json.loads(output_path.read_text(encoding="utf-8"))
+    assert result.row_count == 1
+    assert result.as_payload()["external_calls_made"] == 0
+    assert written["as_of"] == "2026-05-10T21:00:00+00:00"
+    assert written["results"][0]["ticker"] == "MSFT"
+    assert "call_volume" in written["results"][0]
+
+
+def test_ingest_options_fixture_template_cli_writes_gap_template(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'options-template.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    output_path = tmp_path / "point-in-time-options-2026-05-10.json"
+
+    def fake_payload(*_args, **kwargs):
+        assert kwargs["stocks_only"] is True
+        return {
+            "schema_version": "options-fixture-template-v1",
+            "status": "ready",
+            "provider": "manual",
+            "live": False,
+            "external_calls_made": 0,
+            "source": "options",
+            "stocks_only": True,
+            "source_gap_rows": 1,
+            "row_count": 1,
+            "target_as_of": "2026-05-10T21:00:00+00:00",
+            "target_date": "2026-05-10",
+            "columns": [
+                "ticker",
+                "call_volume",
+                "put_volume",
+                "call_open_interest",
+                "put_open_interest",
+                "iv_percentile",
+                "skew",
+            ],
+            "fixture": {
+                "as_of": "2026-05-10T21:00:00+00:00",
+                "source_ts": "2026-05-10T21:00:00+00:00",
+                "available_at": "2026-05-10T21:00:00+00:00",
+                "provider": "options_fixture",
+                "results": [
+                    {
+                        "ticker": "MSFT",
+                        "call_volume": "",
+                        "put_volume": "",
+                        "call_open_interest": "",
+                        "put_open_interest": "",
+                        "iv_percentile": "",
+                        "skew": "",
+                    }
+                ],
+            },
+            "sample_tickers": ["MSFT"],
+            "api": "GET /api/radar/options/fixture-template?stocks_only=true",
+            "boundary": "Template/export is zero-call.",
+            "next_action": "Fill the aggregate option fields.",
+        }
+
+    monkeypatch.setattr(
+        "catalyst_radar.cli.options_fixture_template_payload",
+        fake_payload,
+    )
+
+    exit_code = main(
+        [
+            "ingest-options",
+            "--fixture-template",
+            "--out",
+            str(output_path),
+            "--stocks-only",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert captured.err == ""
+    assert "options_fixture_template status=ready" in captured.out
+    assert "external_calls=0" in captured.out
+    assert f"import_command=catalyst-radar ingest-options --fixture {output_path}" in (
+        captured.out
+    )
+    written = json.loads(output_path.read_text(encoding="utf-8"))
+    assert written["results"][0]["ticker"] == "MSFT"
 
 
 def test_ingest_options_cli_promotes_stored_schwab_market_snapshot(
