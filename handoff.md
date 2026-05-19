@@ -1,6 +1,6 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 19:28:24 +08:00
+Last updated: 2026-05-19 19:33:22 +08:00
 
 ## Latest Full-Scan Versus Provider-Batch Boundary
 
@@ -97,11 +97,23 @@ Observed:
 - `git diff --check` passed.
 - CLI and API checks both reported `external_calls=0`.
 - Local services were restarted from the branch for dashboard verification.
+- PR #346, `Clarify full scan batch boundaries`, was merged by rebase as
+  `38ba587c9e5a`.
+- Local services were restarted after merge from `main`:
+  - API health returned commit `38ba587c9e5a`;
+  - Streamlit health returned `ok`.
+- Post-merge API verification:
+  - `/api/radar/priced-in/source-batches?source=broker_context&batch_limit=1`
+    returned `scope=next_provider_batch_preview`,
+    `full_gap_rows=12082`, `returned_tickers=5`,
+    `calls=0`, and the explicit "This is not the scan universe" note.
 
 Next useful product action:
 
-- Commit this slice, open a PR, rebase-merge it, restart services from `main`,
-  and run the same zero-call source-batch/API health checks post-merge.
+- Keep the main operator path centered on the full-scan answer:
+  "which stocks have market emotion not yet matched by price?"
+- Source-fill execution still requires explicit user approval because it can
+  call SEC/Schwab/market providers.
 - Do not run any `--execute-next`, `--execute-batches`, SEC, Schwab, Polygon, or
   order-submission command unless the user explicitly approves the provider
   calls after reviewing the checklist.
