@@ -1,6 +1,56 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 06:41:53 +08:00
+Last updated: 2026-05-20 07:01:57 +08:00
+
+## Latest Dashboard Source Workflow Stock-Bar Fix
+
+Goal alignment:
+
+- After the source-batch CLI/API fix, the stocks-only dashboard snapshot still
+  told the human to start with `catalyst_events`.
+- That was dashboard drift: the human-facing workflow must start with the same
+  blocker as the corrected CLI/API surface, because a stock without an as-of
+  bar cannot be judged for price reaction.
+- This slice changes only dashboard snapshot/TUI planning metadata and makes 0
+  Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or DB-write calls.
+
+Fix in this slice:
+
+- `dashboard_snapshot_payload(... priced_in_stocks_only=True)` now builds the
+  priced-in answer before the source workflow, then lets the workflow use
+  answer `trust_blockers`.
+- When the answer has a stocks-only `market_bars` blocker, the dashboard source
+  workflow promotes `market_bars` to the first coverage step.
+- The dashboard goal panel now uses the actual zero-call manual template command
+  instead of telling the user to run `batch market_bars execute`.
+
+Live zero-call dashboard observation:
+
+```text
+external=0
+workflow_next=Fill stock-like missing as-of bars first; then rerun the stocks-only priced-in scan.
+coverage_cmd=catalyst-radar market-bars template --expected-as-of 2026-05-15 --out data\local\manual-stock-bars-2026-05-15.csv --missing-only --stocks-only
+goal_next=Fill stock-like missing as-of bars first; then rerun the stocks-only priced-in scan.
+goal_cmd=catalyst-radar market-bars template --expected-as-of 2026-05-15 --out data\local\manual-stock-bars-2026-05-15.csv --missing-only --stocks-only
+boundary=Template generation and import preview are zero-call. Provider fills or source-batch execution require explicit approval.
+first_step=market_bars:131
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_answer_uses_stock_scope_for_market_bar_coverage tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_snapshot_cli_outputs_dashboard_command_center_json -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-snapshot --stocks-only --json
+git diff --check
+```
+
+Next useful product action after merge:
+
+- The CLI/API and dashboard now agree on the next blocker.
+- The actual blocker remains: fill/import
+  `data\local\manual-stock-bars-2026-05-15.csv`, or explicitly approve the one
+  Polygon/Massive grouped-daily call.
 
 ## Latest Source-Batch Stock-Bar Scope Fix
 
