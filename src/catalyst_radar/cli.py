@@ -3970,6 +3970,23 @@ def _print_priced_in_audit(payload: Mapping[str, object]) -> None:
         explanation = preview.get("sample_explanation")
         if explanation:
             print(f"full_scan_row_note={_compact_cli_text(explanation)}")
+        source_actions = preview.get("source_gap_actions")
+        if isinstance(source_actions, list | tuple) and source_actions:
+            print("selected_source_gap_actions:")
+            for action in source_actions:
+                if not isinstance(action, Mapping):
+                    continue
+                print(
+                    "- "
+                    f"{action.get('source')} "
+                    f"status={action.get('status')} "
+                    f"gap_rows={_int_value(action.get('gap_count'))} "
+                    f"next={_compact_cli_text(action.get('next_action'))} "
+                    f"plan={_compact_cli_text(action.get('plan_command'))}"
+                )
+                boundary = action.get("execution_boundary")
+                if boundary:
+                    print(f"  boundary={_compact_cli_text(boundary)}")
         audit_next = preview.get("audit_next_page_command")
         if audit_next:
             print(f"more={_compact_cli_text(audit_next)}")

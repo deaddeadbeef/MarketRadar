@@ -1636,6 +1636,13 @@ def test_priced_in_full_scan_audit_payload_consolidates_current_state(
     assert source_filtered["preview"]["audit_page_command"] == (
         "catalyst-radar priced-in-audit --source-gap options --limit 1"
     )
+    assert source_filtered["preview"]["source_gap_actions"][0]["source"] == "options"
+    assert source_filtered["preview"]["source_gap_actions"][0]["plan_command"] == (
+        "catalyst-radar priced-in-source-batches --source options --all --json"
+    )
+    assert "0 provider calls" in (
+        source_filtered["preview"]["source_gap_actions"][0]["execution_boundary"]
+    )
     assert "filtered to rows missing or stale for options" in (
         source_filtered["preview"]["sample_explanation"]
     )

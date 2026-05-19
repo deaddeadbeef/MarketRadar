@@ -546,6 +546,7 @@ def test_dashboard_wires_priced_in_full_scan_panel_after_usefulness() -> None:
     assert "source_gap" in helper_source
     assert "Full Scan Rows" in helper_source
     assert "Full-scan Ranked Rows" in helper_source
+    assert "Selected Source Gap Action" in helper_source
     assert "Full scan row page" in helper_source
     assert "Active Securities" in helper_source
     assert "Decision-ready" in helper_source

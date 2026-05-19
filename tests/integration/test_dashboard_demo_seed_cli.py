@@ -1935,7 +1935,22 @@ def test_priced_in_audit_cli_outputs_full_scan_audit(
     assert source_gap_payload["preview"]["audit_page_command"] == (
         "catalyst-radar priced-in-audit --source-gap options --limit 1"
     )
+    assert source_gap_payload["preview"]["source_gap_actions"][0]["source"] == "options"
+    assert source_gap_payload["preview"]["source_gap_actions"][0]["plan_command"] == (
+        "catalyst-radar priced-in-source-batches --source options --all --json"
+    )
     assert "options" in source_gap_payload["preview_rows"][0]["missing_sources"]
+
+    assert main(["priced-in-audit", "--source-gap", "options", "--limit", "1"]) == 0
+    source_gap_output = capsys.readouterr()
+
+    assert "selected_source_gap_actions:" in source_gap_output.out
+    assert "plan=catalyst-radar priced-in-source-batches --source options" in (
+        source_gap_output.out
+    )
+    assert "boundary=Planning and browsing make 0 provider calls" in (
+        source_gap_output.out
+    )
 
 
 def test_candidate_detail_cli_outputs_priced_in_evidence_brief(

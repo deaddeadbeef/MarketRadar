@@ -1,6 +1,79 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 16:43:19 +08:00
+Last updated: 2026-05-19 16:51:52 +08:00
+
+## Latest Selected Source-Gap Action
+
+Current problem:
+
+- Full-scan audit row filtering could show rows missing a selected source, but
+  the source's plan command and provider-call boundary were buried in the
+  general source coverage table.
+- A user inspecting `--source-gap options` still had to connect the filtered
+  rows to the separate source-batch plan command manually.
+
+Fix in this slice:
+
+- `preview.source_gap_actions` is now included when the audit preview has a
+  selected source-gap filter.
+- Each selected source action includes:
+  - source;
+  - status;
+  - gap count;
+  - coverage percent;
+  - next action;
+  - plan command;
+  - execution boundary explaining browsing/planning makes 0 provider calls and
+    execution is separate.
+- CLI `priced-in-audit --source-gap <source>` now prints
+  `selected_source_gap_actions:` before the row preview.
+- Streamlit **Priced-in Full Scan** now shows **Selected Source Gap Action**
+  above **Full-scan Ranked Rows** when a source-gap filter is selected.
+- No provider calls are added.
+
+Current live zero-call observations from the branch:
+
+```text
+priced-in-audit --source-gap options --limit 3
+selected_source_gap_actions:
+- options status=missing gap_rows=12087 ... plan=catalyst-radar priced-in-source-batches --source options --all --json
+  boundary=Planning and browsing make 0 provider calls; execute source batches only after approving provider calls.
+external_calls=0
+```
+
+JSON observation:
+
+```text
+action=broker_context plan=catalyst-radar priced-in-source-batches --source broker_context --all --json boundary=Planning and browsing make 0 provider calls; execute source batches only after approving provider calls. external_calls=0
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_payload_consolidates_current_state tests\integration\test_api_routes.py::test_get_radar_priced_in_audit_returns_zero_call_audit tests\integration\test_dashboard_entrypoint.py::test_dashboard_wires_priced_in_full_scan_panel_after_usefulness tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_audit_cli_outputs_full_scan_audit -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py apps\dashboard\Home.py src\catalyst_radar\cli.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_entrypoint.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-audit --source-gap options --limit 3
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-audit --source-gap broker_context --limit 2 --json
+```
+
+Observed:
+
+- Focused four-test set passed (`4 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+- Live branch CLI source-gap action output reported `external_calls=0`.
+
+Next useful product action:
+
+- Merge this slice, restart local services, then verify:
+  - API health reports the merge commit.
+  - Streamlit health is `ok`.
+  - Live CLI/API source-gap audit output includes `source_gap_actions`.
+  - Browser dashboard shows **Selected Source Gap Action** after choosing a
+    source-gap filter.
+- Actual source-fill execution still requires explicit user approval because it
+  can call SEC/Schwab/market providers.
 
 ## Latest Full-Scan Source-Gap Row Filter
 
