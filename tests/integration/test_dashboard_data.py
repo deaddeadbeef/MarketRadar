@@ -1623,6 +1623,27 @@ def test_priced_in_full_scan_audit_payload_consolidates_current_state(
     )
     assert len(paged["preview_rows"]) == 1
 
+    all_rows = priced_in_full_scan_audit_payload(
+        engine,
+        AppConfig.from_env({}),
+        preview_limit=1,
+        all_rows=True,
+    )
+
+    assert all_rows["preview"]["all_rows"] is True
+    assert all_rows["preview"]["visible_rows"] == 2
+    assert all_rows["preview"]["has_more"] is False
+    assert len(all_rows["preview_rows"]) == 2
+    assert all_rows["preview"]["audit_page_command"] == (
+        "catalyst-radar priced-in-audit --all"
+    )
+    assert all_rows["preview"]["audit_full_export_command"] == (
+        "catalyst-radar priced-in-audit --all --json"
+    )
+    assert all_rows["commands"]["audit_full_scan"] == (
+        "catalyst-radar priced-in-audit --all --json"
+    )
+
     source_filtered = priced_in_full_scan_audit_payload(
         engine,
         AppConfig.from_env({}),

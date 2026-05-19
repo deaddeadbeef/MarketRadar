@@ -1924,6 +1924,25 @@ def test_priced_in_audit_cli_outputs_full_scan_audit(
         "catalyst-radar priced-in-audit --limit 1"
     )
 
+    assert main(["priced-in-audit", "--all", "--json"]) == 0
+    all_rows_payload = json.loads(capsys.readouterr().out)
+
+    assert all_rows_payload["preview"]["all_rows"] is True
+    assert all_rows_payload["preview"]["visible_rows"] == (
+        all_rows_payload["preview"]["total_rows"]
+    )
+    assert all_rows_payload["preview"]["audit_page_command"] == (
+        "catalyst-radar priced-in-audit --all"
+    )
+    assert all_rows_payload["commands"]["audit_full_scan"] == (
+        "catalyst-radar priced-in-audit --all --json"
+    )
+
+    assert main(["priced-in-audit", "--all"]) == 0
+    all_rows_output = capsys.readouterr()
+
+    assert "all_rows=true" in all_rows_output.out
+
     assert (
         main(["priced-in-audit", "--source-gap", "options", "--limit", "1", "--json"])
         == 0

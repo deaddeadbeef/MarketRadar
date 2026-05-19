@@ -1462,6 +1462,15 @@ def test_get_radar_priced_in_audit_returns_zero_call_audit(
     assert captured["source_gap"] == "options"
     assert captured["preview_limit"] == 7
     assert captured["preview_offset"] == 11
+    assert captured["all_rows"] is False
+
+    captured.clear()
+    response = client.get("/api/radar/priced-in/audit?limit=7&offset=11&all_rows=true")
+
+    assert response.status_code == 200
+    assert captured["preview_limit"] == 1_000_000
+    assert captured["preview_offset"] == 0
+    assert captured["all_rows"] is True
 
 
 def test_get_radar_priced_in_source_batches_returns_zero_call_plan(

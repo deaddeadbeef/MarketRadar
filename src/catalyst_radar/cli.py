@@ -636,6 +636,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Zero-based full-scan audit preview row offset.",
     )
     priced_in_audit.add_argument(
+        "--all",
+        dest="all_rows",
+        action="store_true",
+        help=(
+            "Return every ranked full-scan audit row. Best used with --json for "
+            "full-universe export or functional tests."
+        ),
+    )
+    priced_in_audit.add_argument(
         "--source-gap",
         action="append",
         help=(
@@ -1253,8 +1262,9 @@ def main(argv: list[str] | None = None) -> int:
             config,
             available_at=args.available_at,
             source_gap=args.source_gap,
-            preview_limit=args.limit,
-            preview_offset=args.offset,
+            preview_limit=1_000_000 if args.all_rows else args.limit,
+            preview_offset=0 if args.all_rows else args.offset,
+            all_rows=args.all_rows,
         )
         if args.json:
             print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
@@ -3965,6 +3975,7 @@ def _print_priced_in_audit(payload: Mapping[str, object]) -> None:
             f"{preview.get('row_start')}-{preview.get('row_end')}/"
             f"{preview.get('total_rows')} "
             f"sample={str(bool(preview.get('has_more'))).lower()} "
+            f"all_rows={str(bool(preview.get('all_rows'))).lower()} "
             f"export={_compact_cli_text(preview.get('export_command'))}"
         )
         explanation = preview.get("sample_explanation")
