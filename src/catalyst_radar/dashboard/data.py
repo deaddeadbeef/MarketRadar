@@ -1827,10 +1827,17 @@ def priced_in_full_scan_audit_payload(
     now = monotonic()
     cached = _PRICED_IN_AUDIT_CACHE.get(cache_key)
     if cached is not None and now - cached[0] <= _PRICED_IN_AUDIT_CACHE_TTL_SECONDS:
-        return deepcopy(cached[1])
+        payload = deepcopy(cached[1])
+        _priced_in_audit_cache_performance(
+            payload,
+            cache_status="hit",
+            cache_age_ms=(now - cached[0]) * 1000,
+        )
+        return payload
     if cached is not None:
         _PRICED_IN_AUDIT_CACHE.pop(cache_key, None)
 
+    build_started = monotonic()
     payload = _priced_in_full_scan_audit_payload_uncached(
         engine,
         config,
@@ -1839,6 +1846,11 @@ def priced_in_full_scan_audit_payload(
         preview_limit=preview_limit,
         preview_offset=preview_offset,
         all_rows=all_rows,
+    )
+    _priced_in_audit_cache_performance(
+        payload,
+        cache_status="miss",
+        build_elapsed_ms=(monotonic() - build_started) * 1000,
     )
     _priced_in_audit_cache_store(cache_key, payload)
     return payload
@@ -1892,6 +1904,28 @@ def _priced_in_audit_cache_store(
         )
         _PRICED_IN_AUDIT_CACHE.pop(oldest_key, None)
     _PRICED_IN_AUDIT_CACHE[cache_key] = (monotonic(), deepcopy(dict(payload)))
+
+
+def _priced_in_audit_cache_performance(
+    payload: dict[str, object],
+    *,
+    cache_status: str,
+    build_elapsed_ms: float | None = None,
+    cache_age_ms: float | None = None,
+) -> None:
+    performance = _row_dict(payload.get("performance"))
+    performance.update(
+        {
+            "cache_status": cache_status,
+            "cache_ttl_seconds": int(_PRICED_IN_AUDIT_CACHE_TTL_SECONDS),
+            "cache_key_scope": "database_state_and_audit_filters",
+        }
+    )
+    if build_elapsed_ms is not None:
+        performance["build_elapsed_ms"] = round(build_elapsed_ms, 1)
+    if cache_age_ms is not None:
+        performance["cache_age_ms"] = round(cache_age_ms, 1)
+    payload["performance"] = performance
 
 
 def _priced_in_full_scan_audit_payload_uncached(

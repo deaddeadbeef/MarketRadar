@@ -2048,6 +2048,7 @@ def _show_priced_in_full_scan_panel(
     scope = _mapping(audit.get("scope"))
     counts = _mapping(audit.get("counts"))
     source_coverage = _mapping(audit.get("source_coverage"))
+    performance = _mapping(audit.get("performance"))
     metric_cols = st.columns(5)
     metric_cols[0].metric("Full Scan Rows", int(_metric_number(scope.get("ranked_rows"))))
     metric_cols[1].metric(
@@ -2087,6 +2088,7 @@ def _show_priced_in_full_scan_panel(
                 ),
             ),
             ("External Calls", audit.get("external_calls_made") or 0),
+            ("Cache", performance.get("cache_status") or "n/a"),
             (
                 "Trust Gaps",
                 int(_metric_number(source_coverage.get("trust_gap_count"))),
@@ -2100,6 +2102,14 @@ def _show_priced_in_full_scan_panel(
             or "Useful means source coverage is broad enough to trust the scan."
         )
     )
+    if performance:
+        st.caption(
+            "Audit performance: "
+            f"cache={performance.get('cache_status') or 'n/a'}, "
+            f"build_ms={performance.get('build_elapsed_ms') or 'n/a'}, "
+            f"age_ms={performance.get('cache_age_ms') or 'n/a'}, "
+            f"ttl_s={performance.get('cache_ttl_seconds') or 'n/a'}."
+        )
     recommended_source_gap = _mapping(audit.get("recommended_source_gap"))
     if recommended_source_gap:
         st.info(

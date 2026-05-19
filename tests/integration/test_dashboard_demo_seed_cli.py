@@ -1891,6 +1891,7 @@ def test_priced_in_audit_cli_outputs_full_scan_audit(
     )
     assert "market_bars=status=" in output.out
     assert "source_coverage=ready=" in output.out
+    assert "performance=cache=" in output.out
     assert "recommended_source_gap=source=" in output.out
     assert "boundary=Reviewing this recommendation makes 0 provider calls" in output.out
     assert "full_source_gap_export=catalyst-radar priced-in-audit" in output.out

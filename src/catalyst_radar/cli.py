@@ -3967,6 +3967,17 @@ def _print_priced_in_audit(payload: Mapping[str, object]) -> None:
         f"{coverage.get('source_count')} "
         f"weak={','.join(str(item) for item in _sequence_value(coverage.get('weak_sources')))}"
     )
+    performance = payload.get("performance")
+    if isinstance(performance, Mapping):
+        perf_parts = [
+            f"cache={performance.get('cache_status')}",
+            f"ttl_s={performance.get('cache_ttl_seconds')}",
+        ]
+        if performance.get("build_elapsed_ms") is not None:
+            perf_parts.append(f"build_ms={performance.get('build_elapsed_ms')}")
+        if performance.get("cache_age_ms") is not None:
+            perf_parts.append(f"age_ms={performance.get('cache_age_ms')}")
+        print("performance=" + " ".join(perf_parts))
     recommended_source = payload.get("recommended_source_gap")
     if isinstance(recommended_source, Mapping):
         print(
