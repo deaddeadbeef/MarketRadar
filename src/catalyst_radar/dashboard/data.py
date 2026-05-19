@@ -1827,6 +1827,10 @@ def priced_in_full_scan_audit_payload(
         for row in _sequence_value(source_coverage.get("actions"))
         if isinstance(row, Mapping)
     ]
+    source_gap_actions = _priced_in_audit_source_gap_actions(
+        source_rows,
+        wanted_source_gaps,
+    )
     status_counts = _mapping_value(resolved_queue, "status_counts")
     usefulness_counts = _mapping_value(resolved_queue, "usefulness_counts")
     actionable_count = sum(
@@ -1905,6 +1909,7 @@ def priced_in_full_scan_audit_payload(
             "filter": {
                 "source_gap": list(wanted_source_gaps),
             },
+            "source_gap_actions": source_gap_actions,
             "review_command": preview_scan.get("review_command"),
             "next_page_command": preview_scan.get("next_page_command"),
             "export_command": preview_scan.get("full_export_command")
@@ -1949,6 +1954,35 @@ def priced_in_full_scan_audit_payload(
             "export_full_scan": "catalyst-radar priced-in-queue --full-scan --all --json",
         },
     }
+
+
+def _priced_in_audit_source_gap_actions(
+    source_rows: Sequence[Mapping[str, object]],
+    source_gaps: Sequence[str],
+) -> list[dict[str, object]]:
+    if not source_gaps:
+        return []
+    selected = set(source_gaps)
+    actions: list[dict[str, object]] = []
+    for row in source_rows:
+        source = str(row.get("source") or "").strip()
+        if source not in selected:
+            continue
+        actions.append(
+            {
+                "source": source,
+                "status": row.get("status"),
+                "gap_count": int(_finite_float(row.get("gap_count"))),
+                "coverage_pct": row.get("coverage_pct"),
+                "next_action": row.get("next_action"),
+                "plan_command": row.get("command"),
+                "execution_boundary": (
+                    "Planning and browsing make 0 provider calls; execute source "
+                    "batches only after approving provider calls."
+                ),
+            }
+        )
+    return actions
 
 
 def _priced_in_audit_command(

@@ -2095,6 +2095,13 @@ def _show_priced_in_full_scan_panel(
             f"showing rows {row_start}-{row_end} of {total_rows}. "
             f"{preview.get('sample_explanation') or ''}".strip()
         )
+        source_gap_actions = _records(preview.get("source_gap_actions"))
+        if source_gap_actions:
+            _show_records(
+                "Selected Source Gap Action",
+                source_gap_actions,
+                empty="No selected source gap action.",
+            )
         _show_records(
             "Full-scan Ranked Rows",
             preview_rows,
