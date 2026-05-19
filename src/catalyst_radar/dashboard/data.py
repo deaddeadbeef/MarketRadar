@@ -969,6 +969,18 @@ def priced_in_source_gap_batches_payload(
     )
     resolved_filters = _mapping_value(resolved_queue, "filters")
     resolved_stocks_only = bool(stocks_only or resolved_filters.get("stocks_only"))
+    if source_name == "market_bars" and resolved_stocks_only:
+        return _priced_in_stock_market_bar_source_gap_plan(
+            engine,
+            config,
+            queue=resolved_queue,
+            batch_limit=requested_limit,
+            batch_offset=requested_offset,
+            batch_size=resolved_batch_size,
+            requested_batch_size=requested_batch_size,
+            max_batch_size=max_batch_size,
+            all_batches=all_batches,
+        )
     planning_rows = (
         resolved_queue.get("planning_rows")
         if using_supplied_queue
@@ -1265,6 +1277,191 @@ def priced_in_source_gap_batches_payload(
     }
 
 
+def _priced_in_stock_market_bar_source_gap_plan(
+    engine: Engine,
+    config: AppConfig,
+    *,
+    queue: Mapping[str, object],
+    batch_limit: int,
+    batch_offset: int,
+    batch_size: int,
+    requested_batch_size: int,
+    max_batch_size: int,
+    all_batches: bool,
+) -> dict[str, object]:
+    source_name = "market_bars"
+    latest_run = _mapping_value(queue, "latest_run")
+    freshness = _mapping_value(_mapping_value(queue, "scan"), "freshness")
+    target_as_of = (
+        _parse_date(latest_run.get("as_of"))
+        or _parse_date(freshness.get("latest_candidate_session_date"))
+        or _parse_date(freshness.get("latest_daily_bar_date"))
+    )
+    planned_at = datetime.now(UTC).replace(microsecond=0)
+    stock_scope = _priced_in_market_bar_stock_scope(
+        engine,
+        target_as_of=target_as_of,
+    )
+    active = int(_finite_float(stock_scope.get("stock_like_active")))
+    available = int(_finite_float(stock_scope.get("stock_like_with_as_of_bar")))
+    missing = int(_finite_float(stock_scope.get("stock_like_missing_as_of_bar")))
+    sample_tickers = [
+        str(ticker).strip().upper()
+        for ticker in _sequence_value(stock_scope.get("sample_missing_stock_like_tickers"))
+        if str(ticker).strip()
+    ]
+    provider_plan = _priced_in_market_bar_provider_fill_plan(
+        config,
+        target_as_of=target_as_of,
+        missing=missing,
+    )
+    template_command = _csv_market_template_command(
+        target_as_of,
+        missing_only=True,
+        stocks_only=True,
+    )
+    preview_command = _csv_market_refresh_command(
+        target_as_of,
+        execute=False,
+        stocks_only=True,
+    )
+    import_command = _csv_market_refresh_command(
+        target_as_of,
+        execute=True,
+        stocks_only=True,
+    )
+    status_value = (
+        "no_gaps"
+        if missing <= 0 and active > 0
+        else "blocked"
+        if target_as_of is None or active <= 0
+        else "attention"
+    )
+    next_action = (
+        str(stock_scope.get("next_action") or "").strip()
+        or "Fill stock-like missing as-of bars before trusting the stocks-only scan."
+    )
+    diagnostic = {
+        "schema_version": "priced-in-market-bar-source-gap-diagnostic-v1",
+        "status": status_value,
+        "eligible_rows": 0,
+        "blocked_rows": missing,
+        "blocked_reason": "missing_stock_like_as_of_bars" if missing else None,
+        "reason": (
+            f"{available}/{active} stock-like active row(s) have an as-of "
+            "market bar for the scan date."
+            if active
+            else "No stock-like active universe is available for market-bar planning."
+        ),
+        "sample_blocked_tickers": sample_tickers,
+        "fix_command": template_command if missing else None,
+        "manual_template_command": template_command if missing else None,
+        "manual_validate_command": preview_command if missing else None,
+        "manual_fix_command": import_command if missing else None,
+        "provider_fill_command": provider_plan.get("provider_call_command"),
+        "provider_fill_status": provider_plan.get("status"),
+        "provider_fill_external_call_count": provider_plan.get(
+            "execute_external_call_count"
+        ),
+        "external_calls_made": 0,
+    }
+    approval_checklist = _priced_in_source_batch_approval_checklist(
+        source_name=source_name,
+        status=status_value,
+        total_gap_rows=missing,
+        batch_count=0,
+        batch_size=batch_size,
+        first_batch=None,
+        review_rows_command=template_command,
+        all_batches_command=None,
+        execute_next_command=None,
+        execute_batches_command=None,
+    )
+    return {
+        "schema_version": "priced-in-source-batches-v1",
+        "status": status_value,
+        "source": source_name,
+        "external_calls_made": 0,
+        "planned_at": planned_at.isoformat(),
+        "execution_boundary": (
+            "Plan only. This market-bar source plan makes no provider calls. "
+            "Template generation writes a local CSV; import preview makes no DB "
+            "writes; import --execute writes local daily bars only."
+        ),
+        "scan_scope": {
+            "mode": "full_scan",
+            "source_gap": source_name,
+            "stocks_only": True,
+            "instrument_filter": "stocks_only",
+            "full_scan_gap_rows": missing,
+            "plannable_rows": 0,
+            "planned_batches": 0,
+            "batch_size": batch_size,
+            "returned_batches": 0,
+            "returned_batch_start": None,
+            "returned_batch_end": None,
+            "returned_tickers": 0,
+            "tickers_are_batch_sample": False,
+            "returned_ticker_scope": "manual_repair_template",
+            "stock_like_active": active,
+            "stock_like_with_as_of_bar": available,
+            "stock_like_missing_as_of_bar": missing,
+            "coverage_basis": "stock_like_active_as_of_bars",
+            "batch_preview_note": (
+                "Market-bar gaps are missing scan-universe rows, not provider "
+                "source-fill batches."
+            ),
+            "explanation": (
+                "The stocks-only full scan requires an as-of market bar for each "
+                "active common stock or ADR before the source-batch overview can "
+                "claim complete price-reaction coverage."
+            ),
+        },
+        "headline": (
+            "Stock-like market bars are complete for the stocks-only scan."
+            if missing <= 0
+            else (
+                f"{missing} stock-like active row(s) are missing as-of market bars."
+            )
+        ),
+        "next_action": next_action,
+        "filters": {
+            **_row_dict(_mapping_value(queue, "filters")),
+            "source_gap": [source_name],
+            "batch_limit": batch_limit,
+            "batch_offset": batch_offset,
+            "requested_batch_limit": batch_limit,
+            "requested_batch_offset": batch_offset,
+            "all_batches": all_batches,
+            "batch_size": batch_size,
+            "requested_batch_size": requested_batch_size,
+            "max_batch_size": max_batch_size,
+        },
+        "total_gap_rows": missing,
+        "plannable_gap_rows": 0,
+        "unplannable_gap_rows": missing,
+        "routed_gap_rows": 0,
+        "diagnostic": diagnostic,
+        "batch_size": batch_size,
+        "batch_count": 0,
+        "batch_offset": batch_offset,
+        "batch_limit": batch_limit,
+        "all_batches": all_batches,
+        "approval_checklist": approval_checklist,
+        "count": 0,
+        "has_more": False,
+        "review_rows_command": template_command if missing else None,
+        "export_rows_command": template_command if missing else None,
+        "all_batches_command": None,
+        "execute_next_command": None,
+        "execute_batches_command": None,
+        "execute_batches_api": None,
+        "all_batches_api": None,
+        "next_batch_command": None,
+        "batches": [],
+    }
+
+
 def sec_cik_override_template_payload(
     engine: Engine,
     config: AppConfig,
@@ -1547,6 +1744,7 @@ def priced_in_all_source_gap_batches_payload(
                 priority_counts=priority_counts.get(source),
             )
         )
+    market_bars_for_scope = _priced_in_market_bars_scope_from_source_rows(rows)
     total_gap_rows = sum(int(_finite_float(row.get("total_gap_rows"))) for row in rows)
     ready_rows = [row for row in rows if str(row.get("status") or "") == "ready"]
     blocked_rows = [
@@ -1555,8 +1753,15 @@ def priced_in_all_source_gap_batches_payload(
         if int(_finite_float(row.get("total_gap_rows"))) > 0
         and str(row.get("status") or "") != "ready"
     ]
+    has_market_bar_blocker = any(
+        str(row.get("source") or "") == "market_bars"
+        and int(_finite_float(row.get("total_gap_rows"))) > 0
+        for row in blocked_rows
+    )
     status_value = (
-        "ready"
+        "attention"
+        if has_market_bar_blocker
+        else "ready"
         if ready_rows
         else "blocked"
         if blocked_rows
@@ -1578,6 +1783,7 @@ def priced_in_all_source_gap_batches_payload(
         coverage_recommendation=coverage_recommendation,
         decision_recommendation=decision_recommendation,
         stocks_only=stocks_only,
+        market_bars=market_bars_for_scope,
     )
     return {
         "schema_version": "priced-in-source-batch-overview-v1",
@@ -1594,6 +1800,7 @@ def priced_in_all_source_gap_batches_payload(
             source_count=len(rows),
             total_gap_rows=total_gap_rows,
             stocks_only=stocks_only,
+            market_bars=market_bars_for_scope,
         ),
         "goal_alignment": goal_alignment,
         "coverage_first_recommendation": coverage_recommendation,
@@ -1619,8 +1826,9 @@ def _priced_in_all_source_goal_alignment(
     coverage_recommendation: Mapping[str, object],
     decision_recommendation: Mapping[str, object],
     stocks_only: bool,
+    market_bars: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
-    full_scan = _priced_in_answer_full_scan_summary(queue)
+    full_scan = _priced_in_answer_full_scan_summary(queue, market_bars=market_bars)
     ranked_rows = int(_finite_float(full_scan.get("ranked_rows")))
     scanned_rows = int(_finite_float(full_scan.get("scanned_rows")))
     active_rows = int(_finite_float(full_scan.get("active_securities")))
@@ -1656,6 +1864,17 @@ def _priced_in_all_source_goal_alignment(
         coverage_recommendation.get("action")
         or "Review the source coverage plan before adding more data."
     )
+    if stocks_only and active_rows:
+        current_state = (
+            f"The current {scan_name} has {scanned_rows}/{active_rows} "
+            f"stock-like active row(s) with as-of price reaction and "
+            f"{total_gap_rows} source evidence gap row(s)."
+        )
+    else:
+        current_state = (
+            f"The current {scan_name} covers {denominator} ranked row(s) and "
+            f"has {total_gap_rows} source evidence gap row(s)."
+        )
     return {
         "schema_version": "priced-in-goal-alignment-v1",
         "status": "aligned",
@@ -1673,10 +1892,7 @@ def _priced_in_all_source_goal_alignment(
         "scanned_rows": scanned_rows,
         "active_securities": active_rows,
         "source_gap_rows": total_gap_rows,
-        "current_state": (
-            f"The current {scan_name} covers {denominator} ranked row(s) and "
-            f"has {total_gap_rows} source evidence gap row(s)."
-        ),
+        "current_state": current_state,
         "current_blocker": current_blocker,
         "next_useful_step": next_step,
         "next_source": coverage_source or None,
@@ -1691,19 +1907,79 @@ def _priced_in_all_source_goal_alignment(
     }
 
 
+def _priced_in_market_bars_scope_from_source_rows(
+    rows: Sequence[Mapping[str, object]],
+) -> dict[str, object] | None:
+    market_row = next(
+        (
+            row
+            for row in rows
+            if str(row.get("source") or "").strip() == "market_bars"
+        ),
+        None,
+    )
+    if not market_row:
+        return None
+    scope = _mapping_value(market_row, "scan_scope")
+    active = int(_finite_float(scope.get("stock_like_active")))
+    if active <= 0:
+        return None
+    stock_scope = {
+        "schema_version": "priced-in-market-bar-stock-scope-v1",
+        "status": market_row.get("status"),
+        "target_as_of": _parse_date(_mapping_value(scope, "target").get("as_of")),
+        "stock_like_active": active,
+        "stock_like_with_as_of_bar": int(
+            _finite_float(scope.get("stock_like_with_as_of_bar"))
+        ),
+        "stock_like_missing_as_of_bar": int(
+            _finite_float(scope.get("stock_like_missing_as_of_bar"))
+        ),
+        "sample_missing_stock_like_tickers": list(
+            _sequence_value(
+                _mapping_value(market_row, "diagnostic").get(
+                    "sample_blocked_tickers"
+                )
+            )
+        ),
+    }
+    return {
+        "repair": {
+            "stocks_only": True,
+            "stock_scope": stock_scope,
+        }
+    }
+
+
 def _priced_in_all_source_overview_scan_scope(
     queue: Mapping[str, object],
     *,
     source_count: int,
     total_gap_rows: int,
     stocks_only: bool = False,
+    market_bars: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
-    full_scan = _priced_in_answer_full_scan_summary(queue)
+    full_scan = _priced_in_answer_full_scan_summary(queue, market_bars=market_bars)
     active = int(_finite_float(full_scan.get("active_securities")))
     scanned = int(_finite_float(full_scan.get("scanned_rows")))
+    unscanned = int(_finite_float(full_scan.get("unscanned_rows")))
     ranked = int(_finite_float(full_scan.get("ranked_rows")))
     mode = str(full_scan.get("mode") or "full_scan")
     denominator = ranked or scanned or active
+    explanation = (
+        (
+            f"The stocks-only full scan has as-of price reaction for "
+            f"{scanned}/{active} stock-like active row(s). Source rows, first "
+            "batches, and example tickers are coverage summaries or "
+            "provider-safe chunks, not the scan universe."
+        )
+        if stocks_only and active
+        else (
+            f"The full scan covers {denominator} ranked row(s). Source rows, "
+            "first batches, and example tickers are coverage summaries or "
+            "provider-safe chunks, not the scan universe."
+        )
+    )
     return {
         "schema_version": "priced-in-source-overview-scan-scope-v1",
         "mode": mode,
@@ -1712,15 +1988,13 @@ def _priced_in_all_source_overview_scan_scope(
         "instrument_filter": "stocks_only" if stocks_only else "all_instruments",
         "active_securities": active,
         "scanned_rows": scanned,
+        "unscanned_rows": unscanned,
         "ranked_rows": ranked,
+        "scan_scope_basis": full_scan.get("scan_scope_basis"),
         "source_classes": source_count,
         "source_gap_rows": total_gap_rows,
         "examples_are_samples": True,
-        "explanation": (
-            f"The full scan covers {denominator} ranked row(s). Source rows, "
-            "first batches, and example tickers are coverage summaries or "
-            "provider-safe chunks, not the scan universe."
-        ),
+        "explanation": explanation,
         "review_full_scan_command": _priced_in_queue_full_scan_command(
             stocks_only=stocks_only,
             limit=50,
@@ -2091,6 +2365,28 @@ def _priced_in_all_source_coverage_recommendation(
             "command": None,
             "rationale": "Every tracked source class is covered for the current scan.",
         }
+    market_bar_blocker = next(
+        (
+            row
+            for row in blocked_rows
+            if str(row.get("source") or "") == "market_bars"
+            and int(_finite_float(row.get("total_gap_rows"))) > 0
+        ),
+        None,
+    )
+    if market_bar_blocker:
+        return _priced_in_source_recommendation(
+            market_bar_blocker,
+            mode="coverage_first",
+            action=str(
+                market_bar_blocker.get("next_action")
+                or "Fill missing market bars before expanding source coverage."
+            ),
+            rationale=(
+                "Fresh price reaction defines the scan universe; clear stock-like "
+                "market-bar gaps before claiming full-stock coverage."
+            ),
+        )
     if ready_rows:
         first = sorted(ready_rows, key=_priced_in_source_batch_coverage_key)[0]
         source = str(first.get("source") or "source")
@@ -2152,6 +2448,11 @@ def _priced_in_source_recommendation(
 ) -> dict[str, object]:
     first_batch = _mapping_value(row, "first_batch")
     diagnostic = _row_dict(_mapping_value(row, "diagnostic"))
+    repair_command = (
+        diagnostic.get("fix_command")
+        or diagnostic.get("manual_template_command")
+        or diagnostic.get("manual_fix_command")
+    )
     return {
         "schema_version": "priced-in-source-recommendation-v1",
         "mode": mode,
@@ -2159,7 +2460,11 @@ def _priced_in_source_recommendation(
         "status": row.get("status"),
         "action": action,
         "rationale": rationale,
-        "command": row.get("execute_next_command") or row.get("all_batches_command"),
+        "command": (
+            row.get("execute_next_command")
+            or row.get("all_batches_command")
+            or repair_command
+        ),
         "capped_command": row.get("execute_batches_command"),
         "api": row.get("execute_next_api") or row.get("all_batches_api"),
         "total_gap_rows": int(_finite_float(row.get("total_gap_rows"))),

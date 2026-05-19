@@ -1,6 +1,78 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 06:22:58 +08:00
+Last updated: 2026-05-20 06:41:53 +08:00
+
+## Latest Source-Batch Stock-Bar Scope Fix
+
+Goal alignment:
+
+- After the stocks-only answer fix, another surface still drifted:
+  `priced-in-source-batches --source all --stocks-only` reported
+  `market_bars no_gaps` because source batches looked only at already ranked
+  rows.
+- That was wrong for the product goal. A full stock scan cannot claim complete
+  price-reaction coverage while 131 active stock-like rows have no as-of bar.
+- This slice keeps the source-batch operator view aligned with the answer
+  surface and still makes 0 Polygon/Massive, SEC, Schwab, OpenAI, broker, or
+  order calls.
+
+Fix in this slice:
+
+- `priced_in_source_gap_batches_payload(..., source="market_bars",
+  stocks_only=True)` now uses stock-like active market-bar scope instead of
+  ranked-row source gaps.
+- `priced-in-source-batches --source all --stocks-only` now reports:
+  - overview `status=attention`;
+  - `market_bars attention 131`;
+  - stock scope `active=5652 scanned=5521 unscanned=131`;
+  - coverage-first recommendation `source=market_bars`;
+  - next command:
+
+    ```text
+    catalyst-radar market-bars template --expected-as-of 2026-05-15 --out data\local\manual-stock-bars-2026-05-15.csv --missing-only --stocks-only
+    ```
+
+- The source-batch overview still shows runnable SEC/Schwab source chunks, but
+  the first coverage recommendation is now the market-bar blocker because fresh
+  price reaction defines the scan universe.
+
+Live zero-call observation:
+
+```text
+priced_in_source_batch_overview status=attention sources=6 ready_sources=2 blocked_sources=3 gap_rows=22193 external_calls=0
+full_scan=mode=full_scan active=5652 scanned=5521 ranked=5521 stocks_only=true source_gap_rows=22193 examples_are_samples=true
+scope_note=The stocks-only full scan has as-of price reaction for 5521/5652 stock-like active row(s).
+coverage_first=source=market_bars gaps=131 calls=0 command=catalyst-radar market-bars template --expected-as-of 2026-05-15 --out data\local\manual-stock-bars-2026-05-15.csv --missing-only --stocks-only
+market_bars attention 131 ... next_command=n/a
+```
+
+Direct market-bar source-batch observation:
+
+```text
+status=attention
+gaps=131
+blocked_reason=missing_stock_like_as_of_bars
+template=catalyst-radar market-bars template --expected-as-of 2026-05-15 --out data\local\manual-stock-bars-2026-05-15.csv --missing-only --stocks-only
+external=0
+```
+
+Validation run so far:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_answer_uses_stock_scope_for_market_bar_coverage -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py tests\integration\test_dashboard_demo_seed_cli.py
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source all --stocks-only --limit 1
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source market_bars --stocks-only --json
+git diff --check
+```
+
+Next useful product action after merge:
+
+- The blocker is unchanged but now consistently surfaced:
+  fill/import `data\local\manual-stock-bars-2026-05-15.csv`, or explicitly
+  approve the one Polygon/Massive grouped-daily call.
+- Do not execute provider/source-fill commands without explicit operator
+  approval.
 
 ## Latest Goal Drift Check
 
