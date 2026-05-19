@@ -1,6 +1,61 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 14:37:52 +08:00
+Last updated: 2026-05-19 14:47:16 +08:00
+
+## Latest CLI Source Plan First Chunk
+
+Current problem:
+
+- `priced-in-source-batches --source all --all` already reported the
+  coverage-first and decision-shortcut recommendations, but the human still had
+  to run another plan command to see the first safe chunk tickers and command.
+- That was unnecessary friction for the full-scan source-fill loop.
+
+Fix in this slice:
+
+- The all-source CLI printer now includes first-batch details for executable
+  recommendations:
+  - `coverage_first_batch=rows=... tickers=... calls=... command=...`
+  - `decision_shortcut_batch=rows=... tickers=... calls=... command=...`
+- This reuses fields already present in the existing API payload; no new route
+  or duplicate planner was added.
+- It remains plan-only and reports `external_calls=0`.
+
+Current live zero-call observation:
+
+```text
+priced-in-source-batches --source all --all
+coverage_first=source=catalyst_events gaps=12075 calls=5 command=catalyst-radar priced-in-source-batches --source catalyst_events --execute-next
+  coverage_first_batch=rows=1-5 tickers=AAT,AAUC,AB,ABAT,ABBV calls=5 command=catalyst-radar ingest-sec submissions-batch --target ...
+decision_shortcut=source=broker_context decision=5 actionable=7 calls=1 command=catalyst-radar priced-in-source-batches --source broker_context --execute-next
+  decision_shortcut_batch=rows=1-5 tickers=AAMI,AAOI,AAL,AAON,AAP calls=1 command=catalyst-radar schwab-market-sync --ticker ...
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\cli.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source all --all
+```
+
+Observed:
+
+- Dashboard integration file passed (`30 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+- Live command reported `external_calls=0` and printed both first-chunk lines.
+
+Next useful product action:
+
+- Do not run those chunks automatically.
+- If the user approves external calls, the next guarded source-fill commands
+  are:
+  - coverage-first: `catalyst-radar priced-in-source-batches --source catalyst_events --execute-next`
+  - decision shortcut: `catalyst-radar priced-in-source-batches --source broker_context --execute-next`
+  - capped coverage: `catalyst-radar priced-in-source-batches --source catalyst_events --execute-batches 3`
+  - capped broker context: `catalyst-radar priced-in-source-batches --source broker_context --execute-batches 3`
 
 ## Latest TUI Source Coverage Workbench
 

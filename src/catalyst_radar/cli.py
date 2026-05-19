@@ -3403,6 +3403,11 @@ def _print_priced_in_all_source_batches(payload: Mapping[str, object]) -> None:
             f"command={_compact_cli_text(coverage.get('command'))}"
         )
         print(f"  why={_compact_cli_text(coverage.get('rationale'))}")
+        _print_priced_in_recommendation_first_batch(
+            payload,
+            coverage,
+            label="coverage_first",
+        )
     decision = payload.get("decision_shortcut_recommendation")
     if isinstance(decision, Mapping):
         print(
@@ -3419,6 +3424,11 @@ def _print_priced_in_all_source_batches(payload: Mapping[str, object]) -> None:
                 "  examples="
                 f"{','.join(str(ticker) for ticker in samples if str(ticker).strip())}"
             )
+        _print_priced_in_recommendation_first_batch(
+            payload,
+            decision,
+            label="decision_shortcut",
+        )
     boundary = payload.get("execution_boundary")
     if boundary:
         print(f"boundary={_compact_cli_text(boundary)}")
@@ -3464,6 +3474,51 @@ def _print_priced_in_all_source_batches(payload: Mapping[str, object]) -> None:
         capped_command = row.get("execute_batches_command")
         if capped_command:
             print(f"  capped_execute={_compact_cli_text(capped_command)}")
+
+
+def _print_priced_in_recommendation_first_batch(
+    payload: Mapping[str, object],
+    recommendation: Mapping[str, object],
+    *,
+    label: str,
+) -> None:
+    source = str(recommendation.get("source") or "").strip()
+    if not source:
+        return
+    source_row = _source_row(payload, source)
+    first_batch = source_row.get("first_batch") if source_row else None
+    if not isinstance(first_batch, Mapping):
+        return
+    raw_tickers = first_batch.get("tickers")
+    tickers = (
+        [str(ticker) for ticker in raw_tickers if str(ticker).strip()]
+        if isinstance(raw_tickers, list | tuple)
+        else []
+    )
+    ticker_text = ",".join(tickers) if tickers else "n/a"
+    row_start = first_batch.get("row_start")
+    row_end = first_batch.get("row_end")
+    calls = _int_value(first_batch.get("external_calls_required"))
+    command = first_batch.get("command") or recommendation.get("command")
+    print(
+        f"  {label}_batch="
+        f"rows={row_start}-{row_end} "
+        f"tickers={ticker_text} "
+        f"calls={calls} "
+        f"command={_compact_cli_text(command)}"
+    )
+
+
+def _source_row(
+    payload: Mapping[str, object],
+    source: str,
+) -> Mapping[str, object] | None:
+    for row in payload.get("sources", []):
+        if not isinstance(row, Mapping):
+            continue
+        if str(row.get("source") or "").strip() == source:
+            return row
+    return None
 
 
 def _print_priced_in_source_batches(payload: Mapping[str, object]) -> None:
