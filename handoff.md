@@ -1,6 +1,6 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 16:37:18 +08:00
+Last updated: 2026-05-19 16:43:19 +08:00
 
 ## Latest Full-Scan Source-Gap Row Filter
 
@@ -58,15 +58,20 @@ Observed:
 - Ruff passed.
 - `git diff --check` passed.
 - Live branch CLI source-gap audit browsing reported `external_calls=0`.
+- PR #329 merged as `66e21b8`.
+- Post-merge local services were restarted:
+  - API health returned commit `66e21b8cceb9`.
+  - Streamlit health returned `ok`.
+- Live API verification:
+  - `/api/radar/priced-in/audit?source_gap=options&limit=4`
+  - returned `api_filter=options`, `range=1-4/12087`, `rows=4`,
+    `external_calls=0`, and first row `missing_sources=options`.
+- Browser verification on `http://127.0.0.1:8514` showed the Overview tab
+  rendering **Full-scan rows**, **Row offset**, and **Source gap** controls
+  before **Full-scan Ranked Rows** and **Full-scan Trust Gaps**.
 
 Next useful product action:
 
-- Merge this slice, restart local services, then verify:
-  - API health reports the merge commit.
-  - Streamlit health is `ok`.
-  - Live API `/api/radar/priced-in/audit?source_gap=options&limit=4` returns
-    a filtered preview with `external_calls=0`.
-  - Browser dashboard shows **Source gap** beside the full-scan row controls.
 - Actual source-fill execution still requires explicit user approval because it
   can call SEC/Schwab/market providers.
 
