@@ -1571,6 +1571,8 @@ def test_priced_in_full_scan_audit_payload_consolidates_current_state(
 
     assert payload["schema_version"] == "priced-in-full-scan-audit-v1"
     assert payload["external_calls_made"] == 0
+    assert payload["performance"]["cache_status"] == "miss"
+    assert payload["performance"]["build_elapsed_ms"] >= 0
     assert payload["scope"]["mode"] == "full_scan"
     assert payload["scope"]["active_securities"] == 2
     assert payload["scope"]["ranked_rows"] == 2
@@ -1756,7 +1758,10 @@ def test_priced_in_full_scan_audit_payload_reuses_cached_zero_call_audit(
     )
 
     assert queue_calls == 1
-    assert second == first
+    assert second["preview"] == first["preview"]
+    assert second["preview_rows"] == first["preview_rows"]
+    assert second["performance"]["cache_status"] == "hit"
+    assert second["performance"]["cache_age_ms"] >= 0
 
     first["preview"]["visible_rows"] = 999
     third = priced_in_full_scan_audit_payload(
@@ -1767,6 +1772,7 @@ def test_priced_in_full_scan_audit_payload_reuses_cached_zero_call_audit(
 
     assert queue_calls == 1
     assert third["preview"]["visible_rows"] == 1
+    assert third["performance"]["cache_status"] == "hit"
 
 
 def test_priced_in_queue_payload_reports_full_scan_instrument_scope(

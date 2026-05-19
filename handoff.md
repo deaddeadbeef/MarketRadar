@@ -1,6 +1,67 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 18:48:05 +08:00
+Last updated: 2026-05-19 18:55:27 +08:00
+
+## Latest Audit Cache Status UX
+
+Current problem:
+
+- The audit cache made repeated full-scan views much faster, but the operator
+  could not tell whether a dashboard/API response was a cold rebuild or a cache
+  hit.
+
+Fix in this slice:
+
+- `priced_in_full_scan_audit_payload` now returns a `performance` object for
+  cached zero-call audit paths.
+- On cold builds, `performance` includes:
+  - `cache_status=miss`;
+  - `build_elapsed_ms`;
+  - cache TTL and key-scope description.
+- On cache hits, `performance` includes:
+  - `cache_status=hit`;
+  - original `build_elapsed_ms`;
+  - `cache_age_ms`;
+  - cache TTL and key-scope description.
+- CLI `priced-in-audit` now prints `performance=cache=...`.
+- Streamlit **Priced-in Full Scan** now shows a **Cache** status badge and an
+  `Audit performance: cache=..., build_ms=..., age_ms=..., ttl_s=...` caption.
+- This remains zero-call observability only.
+
+Current live zero-call observations from the branch:
+
+```text
+API /api/radar/priced-in/audit?all_rows=true call=1 elapsed_s=45.181 cache=miss build_ms=44407 rows=12087/12087 external_calls=0
+API /api/radar/priced-in/audit?all_rows=true call=2 elapsed_s=0.746 cache=hit build_ms=44407 age_ms=1343 rows=12087/12087 external_calls=0
+```
+
+Browser verification on `http://127.0.0.1:8514`:
+
+- Cache badge rendered as hit or miss.
+- `Audit performance: cache=...` rendered.
+- `Full scan rows: showing all 1-12087 of 12087` still rendered.
+- Browser console check reported 0 errors.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_payload_reuses_cached_zero_call_audit tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_payload_consolidates_current_state tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_audit_cli_outputs_full_scan_audit tests\integration\test_api_routes.py::test_get_radar_priced_in_audit_returns_zero_call_audit tests\integration\test_dashboard_entrypoint.py::test_dashboard_wires_priced_in_full_scan_panel_after_usefulness -q
+.\.venv\Scripts\python.exe -m ruff check apps\dashboard\Home.py src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_dashboard_entrypoint.py
+git diff --check
+```
+
+Observed:
+
+- Focused five-test set passed (`5 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+
+Next useful product action:
+
+- Open and merge the PR for this branch, restart local services, then re-check
+  API/Streamlit health from the merged commit.
+- Actual source-fill execution still requires explicit user approval because it
+  can call SEC/Schwab/market providers.
 
 ## Latest Full-Audit Cache
 
