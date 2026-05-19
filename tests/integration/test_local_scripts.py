@@ -176,6 +176,8 @@ def test_market_radar_status_script_is_zero_external_call_sitrep() -> None:
     assert "/api/health" in text
     assert "/api/radar/readiness" in text
     assert "/api/radar/priced-in/audit?stocks_only=true&limit=1" in text
+    assert "[int]$TimeoutSeconds = 15" in text
+    assert "-TimeoutSeconds 90" in text
     assert "/api/radar/runs/latest" in text
     assert "/api/radar/live-activation" in text
     assert "/api/radar/runs/call-plan" in text

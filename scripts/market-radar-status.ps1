@@ -12,7 +12,8 @@ function Invoke-ApiJson {
     param(
         [string]$Path,
         [string]$Method = "GET",
-        [string]$Body = $null
+        [string]$Body = $null,
+        [int]$TimeoutSeconds = 15
     )
 
     $args = @(
@@ -21,7 +22,7 @@ function Invoke-ApiJson {
         "--show-error",
         "--fail",
         "--max-time",
-        "15",
+        ([string]$TimeoutSeconds),
         "--request",
         $Method,
         "$baseUrl$Path"
@@ -43,7 +44,7 @@ function Invoke-ApiJson {
 
 $health = Invoke-ApiJson -Path "/api/health"
 $readiness = Invoke-ApiJson -Path "/api/radar/readiness"
-$pricedInStockAudit = Invoke-ApiJson -Path "/api/radar/priced-in/audit?stocks_only=true&limit=1"
+$pricedInStockAudit = Invoke-ApiJson -Path "/api/radar/priced-in/audit?stocks_only=true&limit=1" -TimeoutSeconds 90
 $latestRun = Invoke-ApiJson -Path "/api/radar/runs/latest"
 $activation = Invoke-ApiJson -Path "/api/radar/live-activation"
 $callPlan = Invoke-ApiJson -Method "POST" -Path "/api/radar/runs/call-plan" -Body "{}"
