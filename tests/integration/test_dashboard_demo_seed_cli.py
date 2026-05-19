@@ -122,6 +122,7 @@ def test_dashboard_snapshot_cli_outputs_dashboard_command_center_json(
     assert payload["external_calls_made"] == 0
     assert payload["controls"]["ticker"] == "ACME"
     assert payload["controls"]["priced_in_status"] == "all"
+    assert payload["controls"]["priced_in_stocks_only"] is False
     assert payload["priced_in_queue"]["filters"]["status"] == "all"
     assert payload["controls"]["priced_in_usefulness"] is None
     assert payload["controls"]["priced_in_decision_gap"] == []
@@ -145,6 +146,12 @@ def test_dashboard_snapshot_cli_outputs_dashboard_command_center_json(
     assert payload["priced_in_source_workflow"]["decision_priority_scope"] == (
         "visible_priced_in_rows"
     )
+    assert payload["priced_in_source_workflow"]["goal_alignment"][
+        "schema_version"
+    ] == "priced-in-goal-alignment-v1"
+    assert "market emotion" in payload["priced_in_source_workflow"]["goal_alignment"][
+        "goal"
+    ]
     assert payload["priced_in_source_workflow"]["coverage_first_action"]
     assert payload["priced_in_source_workflow"]["decision_shortcut_action"].startswith(
         "Start with broker_context;"
@@ -168,6 +175,32 @@ def test_dashboard_snapshot_cli_outputs_dashboard_command_center_json(
     assert payload["priced_in_answer"]["question"] == (
         "Has price fully matched market expectations?"
     )
+
+    assert (
+        main(
+            [
+                "dashboard-snapshot",
+                "--ticker",
+                "ACME",
+                "--available-at",
+                cutoff,
+                "--stocks-only",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    output = capsys.readouterr()
+    stock_payload = json.loads(output.out)
+    assert output.err == ""
+    assert stock_payload["controls"]["priced_in_stocks_only"] is True
+    assert stock_payload["priced_in_queue"]["filters"]["stocks_only"] is True
+    assert stock_payload["priced_in_source_workflow"]["overview_command"] == (
+        "catalyst-radar priced-in-source-batches --source all --stocks-only"
+    )
+    assert stock_payload["priced_in_source_workflow"]["goal_alignment"][
+        "stocks_only"
+    ] is True
     assert payload["priced_in_answer"]["answer"]
     assert payload["agent_brief"]["schema_version"] == "market-radar-agent-brief-v1"
     assert payload["agent_brief"]["external_calls_made"] == {
@@ -443,6 +476,30 @@ def test_dashboard_snapshot_ops_page_shows_priced_in_source_actions(
     assert "batch <source>" in output.out
     assert "batch <source> execute 3" in output.out
     assert "ACME" in output.out
+
+    assert (
+        main(
+            [
+                "dashboard-snapshot",
+                "--ticker",
+                "ACME",
+                "--available-at",
+                cutoff,
+                "--stocks-only",
+                "--page",
+                "ops",
+            ]
+        )
+        == 0
+    )
+    output = capsys.readouterr()
+
+    assert output.err == ""
+    assert "Goal" in output.out
+    assert "Useful" in output.out
+    assert "market emotion has not yet been matched" in output.out
+    assert "stock rows" in output.out
+    assert "priced-in-source-batches --source all --stocks-only" in output.out
 
 
 def test_dashboard_batch_command_opens_full_scan_source_batch_plan(
@@ -838,6 +895,27 @@ def test_dashboard_tui_once_can_show_full_scan_mode(
     assert output.err == ""
     assert "Decision-ready not-priced-in rows - showing" in output.out
     assert "These are the actionable answers" in output.out
+
+    assert (
+        main(
+            [
+                "dashboard-tui",
+                "--once",
+                "--stocks-only",
+                "--scan-mode",
+                "all",
+                "--page",
+                "ops",
+            ]
+        )
+        == 0
+    )
+    output = capsys.readouterr()
+
+    assert output.err == ""
+    assert "Source Fill Workflow" in output.out
+    assert "stock rows" in output.out
+    assert "priced-in-source-batches --source all --stocks-only" in output.out
 
 
 def test_dashboard_review_page_is_distinct_from_full_scan() -> None:
@@ -1355,6 +1433,11 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
     )
     assert overview["scan_scope"]["mode"] == "full_scan"
     assert overview["scan_scope"]["examples_are_samples"] is True
+    assert overview["goal_alignment"]["schema_version"] == (
+        "priced-in-goal-alignment-v1"
+    )
+    assert "market emotion" in overview["goal_alignment"]["goal"]
+    assert "fresh price reaction" in overview["goal_alignment"]["useful_definition"]
     source_rows = {row["source"]: row for row in overview["sources"]}
     assert source_rows["options"]["execute_next_command"] == (
         "catalyst-radar priced-in-source-batches --source options --execute-next"
@@ -1371,6 +1454,9 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
     assert "full_scan=mode=full_scan" in output.out
     assert "examples_are_samples=true" in output.out
     assert "scope_note=The full scan covers" in output.out
+    assert "goal_alignment=status=aligned" in output.out
+    assert "goal=Find stocks where market emotion" in output.out
+    assert "next_useful_step=" in output.out
     assert "approval_checklist=required=true provider=schwab" in output.out
     assert "full_scan_review=catalyst-radar priced-in-queue --full-scan --limit 50" in output.out
     assert (

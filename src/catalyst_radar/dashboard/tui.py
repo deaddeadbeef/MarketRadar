@@ -4879,6 +4879,13 @@ def _priced_in_source_workflow_payload(
             "catalyst-radar priced-in-source-batches "
             f"--source {decision_suggested.get('source')}"
         )
+    goal_alignment = _source_workflow_goal_alignment(
+        priced_in_queue or {},
+        steps=steps,
+        stocks_only=stocks_only,
+        next_action=next_action,
+        next_command=next_command,
+    )
     return {
         "schema_version": "priced-in-source-workflow-v1",
         "status": plan.get("status") or "unknown",
@@ -4891,6 +4898,7 @@ def _priced_in_source_workflow_payload(
         "decision_shortcut_command": decision_shortcut_command,
         "priority_scope": "full_scan_coverage",
         "decision_priority_scope": "visible_priced_in_rows",
+        "goal_alignment": goal_alignment,
         "overview_command": (
             "catalyst-radar priced-in-source-batches --source all"
             + (" --stocks-only" if stocks_only else "")
@@ -4902,6 +4910,67 @@ def _priced_in_source_workflow_payload(
         "external_calls_made": 0,
         "steps": steps,
         "step_count": len(steps),
+    }
+
+
+def _source_workflow_goal_alignment(
+    priced_in_queue: Mapping[str, object],
+    *,
+    steps: Sequence[Mapping[str, object]],
+    stocks_only: bool,
+    next_action: object,
+    next_command: object,
+) -> dict[str, object]:
+    total = int(_number_or_zero(priced_in_queue.get("total_count")))
+    returned = int(
+        _number_or_zero(priced_in_queue.get("returned_count"))
+        or _number_or_zero(priced_in_queue.get("count"))
+    )
+    coverage_step = steps[0] if steps else {}
+    source = str(coverage_step.get("source") or "").strip()
+    useful_rows = _source_workflow_useful_rows(coverage_step)
+    current_scope = "stock rows" if stocks_only else "ranked rows"
+    current_blocker = (
+        f"{source} is the first source coverage step"
+        + (f"; useful rows: {useful_rows}." if useful_rows != "none" else ".")
+        if source
+        else "No source coverage step is currently visible."
+    )
+    source_next_step = (
+        f"Type batch {source} to inspect the full-scan source plan; run "
+        f"batch {source} execute only if the provider budget is intentional."
+        if source
+        else None
+    )
+    return {
+        "schema_version": "priced-in-goal-alignment-v1",
+        "status": "aligned",
+        "goal": (
+            "Find stocks where market emotion has not yet been matched by "
+            "price reaction."
+        ),
+        "useful_definition": (
+            "Useful means a ranked stock row has fresh price reaction plus "
+            "enough catalyst/context evidence to judge the emotion-price gap."
+        ),
+        "stocks_only": bool(stocks_only),
+        "instrument_filter": "stocks_only" if stocks_only else "all_instruments",
+        "ranked_rows": total,
+        "visible_rows": returned,
+        "current_state": (
+            f"This view is showing {returned} of {total} {current_scope}."
+        ),
+        "current_blocker": current_blocker,
+        "next_useful_step": str(
+            source_next_step
+            or next_action
+            or "Review source coverage before adding more data."
+        ),
+        "next_command": f"batch {source}" if source else next_command,
+        "provider_boundary": (
+            "Browsing, clicking, filtering, and refresh are zero-call. Only "
+            "batch <source> execute runs a reviewed provider chunk."
+        ),
     }
 
 
@@ -5051,6 +5120,22 @@ def _source_workflow_lines(payload: Mapping[str, object], width: int) -> list[st
     if not steps:
         return []
     lines = [_rule("Source Fill Workflow", width)]
+    goal = _mapping(workflow.get("goal_alignment"))
+    if goal:
+        lines.extend(
+            _kv_lines(
+                (
+                    ("Goal", goal.get("goal")),
+                    ("Useful", goal.get("useful_definition")),
+                    ("Now", goal.get("current_state")),
+                    ("Blocker", goal.get("current_blocker")),
+                    ("Next", goal.get("next_useful_step")),
+                    ("Safety", goal.get("provider_boundary")),
+                ),
+                width=width,
+            )
+        )
+        lines.append("")
     lines.extend(
         _kv_lines(
             (

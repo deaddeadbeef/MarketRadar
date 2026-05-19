@@ -465,6 +465,11 @@ def build_parser() -> argparse.ArgumentParser:
             "comma-separate: candidate_packet,decision_card,options,broker_context."
         ),
     )
+    dashboard_snapshot.add_argument(
+        "--stocks-only",
+        action="store_true",
+        help="Show only common-stock and ADR rows from the ranked priced-in scan.",
+    )
     dashboard_snapshot.add_argument("--page", default="overview")
     dashboard_snapshot.add_argument("--json", action="store_true")
 
@@ -736,6 +741,11 @@ def build_parser() -> argparse.ArgumentParser:
             "comma-separate: candidate_packet,decision_card,options,broker_context."
         ),
     )
+    agent_brief.add_argument(
+        "--stocks-only",
+        action="store_true",
+        help="Brief only common-stock and ADR rows from the ranked priced-in scan.",
+    )
     agent_brief.add_argument("--goal")
     agent_brief.add_argument("--real", action="store_true")
     agent_brief.add_argument("--json", action="store_true")
@@ -789,6 +799,11 @@ def build_parser() -> argparse.ArgumentParser:
             "Filter Insights rows by missing decision evidence. Repeat or "
             "comma-separate: candidate_packet,decision_card,options,broker_context."
         ),
+    )
+    dashboard_tui.add_argument(
+        "--stocks-only",
+        action="store_true",
+        help="Start the terminal dashboard in stock-only priced-in scan scope.",
     )
     dashboard_tui.add_argument("--page", default="overview")
     dashboard_tui.add_argument("--once", action="store_true")
@@ -1109,6 +1124,7 @@ def main(argv: list[str] | None = None) -> int:
             priced_in_usefulness=args.usefulness,
             priced_in_source_gap=args.source_gap,
             priced_in_decision_gap=args.decision_gap,
+            priced_in_stocks_only=args.stocks_only,
             priced_in_limit=args.scan_limit,
             priced_in_offset=args.scan_offset,
             telemetry_limit=args.telemetry_limit,
@@ -1330,6 +1346,7 @@ def main(argv: list[str] | None = None) -> int:
             priced_in_usefulness=args.usefulness,
             priced_in_source_gap=args.source_gap,
             priced_in_decision_gap=args.decision_gap,
+            priced_in_stocks_only=args.stocks_only,
             priced_in_limit=args.scan_limit,
             priced_in_offset=args.scan_offset,
             telemetry_limit=args.telemetry_limit,
@@ -1363,6 +1380,7 @@ def main(argv: list[str] | None = None) -> int:
             priced_in_usefulness=args.usefulness,
             priced_in_source_gap=args.source_gap,
             priced_in_decision_gap=args.decision_gap,
+            priced_in_stocks_only=args.stocks_only,
             priced_in_limit=args.scan_limit,
             priced_in_offset=args.scan_offset,
             telemetry_limit=args.telemetry_limit,
@@ -3492,6 +3510,29 @@ def _print_priced_in_all_source_batches(payload: Mapping[str, object]) -> None:
         export_command = scan_scope.get("export_full_scan_command")
         if export_command:
             print(f"full_scan_export={_compact_cli_text(export_command)}")
+    alignment = payload.get("goal_alignment")
+    if isinstance(alignment, Mapping):
+        print(
+            "goal_alignment="
+            f"status={alignment.get('status')} "
+            f"stocks_only={str(bool(alignment.get('stocks_only'))).lower()} "
+            f"ranked={alignment.get('ranked_rows')} "
+            f"source_gap_rows={alignment.get('source_gap_rows')} "
+            f"useful={_compact_cli_text(alignment.get('useful_definition'))}"
+        )
+        print(f"  goal={_compact_cli_text(alignment.get('goal'))}")
+        print(f"  current={_compact_cli_text(alignment.get('current_state'))}")
+        print(f"  blocker={_compact_cli_text(alignment.get('current_blocker'))}")
+        print(
+            "  next_useful_step="
+            f"{_compact_cli_text(alignment.get('next_useful_step'))}"
+        )
+        print(
+            "  next_useful_command="
+            f"{_compact_cli_text(alignment.get('next_command'))} "
+            f"calls={_int_value(alignment.get('next_external_calls_required'))}"
+        )
+        print(f"  boundary={_compact_cli_text(alignment.get('provider_boundary'))}")
     print(f"next_action={payload.get('next_action')}")
     coverage = payload.get("coverage_first_recommendation")
     if isinstance(coverage, Mapping):

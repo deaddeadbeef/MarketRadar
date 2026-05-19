@@ -2865,6 +2865,17 @@ def test_priced_in_all_source_gap_batches_payload_summarizes_next_chunks(
     assert payload["scan_scope"]["mode"] == "full_scan"
     assert payload["scan_scope"]["ranked_rows"] == 2
     assert "not the scan universe" in payload["scan_scope"]["explanation"]
+    assert payload["goal_alignment"]["schema_version"] == (
+        "priced-in-goal-alignment-v1"
+    )
+    assert payload["goal_alignment"]["status"] == "aligned"
+    assert "market emotion" in payload["goal_alignment"]["goal"]
+    assert "fresh price reaction" in payload["goal_alignment"]["useful_definition"]
+    assert payload["goal_alignment"]["ranked_rows"] == 2
+    assert payload["goal_alignment"]["source_gap_rows"] == payload["total_gap_rows"]
+    assert payload["goal_alignment"]["provider_boundary"].startswith(
+        "This is a zero-call plan"
+    )
     assert rows["local_text"]["all_batches_command"] == (
         "catalyst-radar priced-in-source-batches --source local_text --all --json"
     )
@@ -2948,6 +2959,16 @@ def test_priced_in_all_source_gap_batches_prioritizes_decision_useful_gaps(
                 if ready
                 else None
             ),
+            "execute_next_command": (
+                f"catalyst-radar priced-in-source-batches --source {source} --execute-next"
+                if ready
+                else None
+            ),
+            "execute_batches_command": (
+                f"catalyst-radar priced-in-source-batches --source {source} --execute-batches 3"
+                if ready
+                else None
+            ),
             "all_batches_api": None,
             "review_rows_command": None,
             "export_rows_command": None,
@@ -2976,6 +2997,10 @@ def test_priced_in_all_source_gap_batches_prioritizes_decision_useful_gaps(
     )
     assert payload["coverage_first_recommendation"]["source"] == "catalyst_events"
     assert payload["coverage_first_recommendation"]["command"] == (
+        "catalyst-radar priced-in-source-batches --source catalyst_events --execute-next"
+    )
+    assert payload["goal_alignment"]["next_source"] == "catalyst_events"
+    assert payload["goal_alignment"]["next_command"] == (
         "catalyst-radar priced-in-source-batches --source catalyst_events --execute-next"
     )
     assert payload["decision_shortcut_recommendation"]["source"] == "options"
