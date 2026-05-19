@@ -1984,6 +1984,54 @@ def test_get_radar_sec_cik_overrides_template_returns_zero_call_rows(
     assert captured["stocks_only"] is True
 
 
+def test_get_radar_options_fixture_template_returns_zero_call_fixture(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "radar-options-template.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+    captured: dict[str, object] = {}
+
+    def fake_template_payload(_engine, _config, *, stocks_only):
+        captured["stocks_only"] = stocks_only
+        return {
+            "schema_version": "options-fixture-template-v1",
+            "status": "ready",
+            "provider": "manual",
+            "live": False,
+            "external_calls_made": 0,
+            "source": "options",
+            "stocks_only": stocks_only,
+            "row_count": 1,
+            "fixture": {
+                "as_of": "2026-05-10T21:00:00+00:00",
+                "source_ts": "2026-05-10T21:00:00+00:00",
+                "available_at": "2026-05-10T21:00:00+00:00",
+                "provider": "options_fixture",
+                "results": [{"ticker": "MSFT", "call_volume": ""}],
+            },
+        }
+
+    monkeypatch.setattr(
+        dashboard_data,
+        "options_fixture_template_payload",
+        fake_template_payload,
+        raising=False,
+    )
+    client = TestClient(create_app())
+
+    response = client.get("/api/radar/options/fixture-template?stocks_only=true")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["schema_version"] == "options-fixture-template-v1"
+    assert payload["external_calls_made"] == 0
+    assert payload["stocks_only"] is True
+    assert payload["fixture"]["results"][0]["ticker"] == "MSFT"
+    assert captured["stocks_only"] is True
+
+
 def test_post_radar_sec_cik_overrides_imports_manual_metadata(
     tmp_path,
     monkeypatch,

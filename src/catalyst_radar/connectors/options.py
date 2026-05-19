@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
@@ -21,6 +22,67 @@ from catalyst_radar.core.immutability import thaw_json_value
 OPTIONS_PROVIDER_NAME = "options_fixture"
 OPTIONS_LICENSE_TAG = "options-fixture"
 OPTIONS_RETENTION_POLICY = "local-fixture-retain"
+OPTIONS_FIXTURE_TEMPLATE_RESULT_FIELDS = (
+    "ticker",
+    "call_volume",
+    "put_volume",
+    "call_open_interest",
+    "put_open_interest",
+    "iv_percentile",
+    "skew",
+)
+
+
+@dataclass(frozen=True)
+class OptionsFixtureTemplateWriteResult:
+    output_path: Path
+    row_count: int
+    generated_at: datetime
+
+    def as_payload(self) -> dict[str, object]:
+        return {
+            "schema_version": "options-fixture-template-write-v1",
+            "status": "ready",
+            "provider": "manual",
+            "live": False,
+            "external_calls_made": 0,
+            "output_path": str(self.output_path),
+            "row_count": self.row_count,
+            "generated_at": self.generated_at.isoformat(),
+            "import_command": f"catalyst-radar ingest-options --fixture {self.output_path}",
+            "next_action": (
+                "Fill the aggregate option fields for each ticker, then import "
+                "the completed point-in-time fixture."
+            ),
+        }
+
+
+def write_options_fixture_template_json(
+    output_path: str | Path,
+    fixture: Mapping[str, object],
+    *,
+    generated_at: datetime | None = None,
+) -> OptionsFixtureTemplateWriteResult:
+    payload = dict(_mapping(fixture, "fixture"))
+    results = payload.get("results")
+    if not isinstance(results, list):
+        msg = "options fixture template results must be a list"
+        raise ValueError(msg)
+
+    path = Path(output_path)
+    resolved_at = (generated_at or datetime.now(UTC)).astimezone(UTC).replace(
+        microsecond=0
+    )
+    if path.parent != Path(""):
+        path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2)
+        handle.write("\n")
+    return OptionsFixtureTemplateWriteResult(
+        output_path=path,
+        row_count=len(results),
+        generated_at=resolved_at,
+    )
 
 
 class OptionsAggregateConnector:
@@ -196,7 +258,10 @@ def _hash_payload(payload: Mapping[str, Any]) -> str:
 
 __all__ = [
     "OPTIONS_LICENSE_TAG",
+    "OPTIONS_FIXTURE_TEMPLATE_RESULT_FIELDS",
     "OPTIONS_PROVIDER_NAME",
     "OPTIONS_RETENTION_POLICY",
+    "OptionsFixtureTemplateWriteResult",
     "OptionsAggregateConnector",
+    "write_options_fixture_template_json",
 ]

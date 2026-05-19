@@ -33,6 +33,7 @@ from catalyst_radar.brokers.rate_limit import (
     schwab_rate_limit_config_payload,
     schwab_rate_limit_status,
 )
+from catalyst_radar.connectors.options import OPTIONS_FIXTURE_TEMPLATE_RESULT_FIELDS
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.core.models import ActionState, MarketFeatures
 from catalyst_radar.core.runtime import build_info
@@ -991,6 +992,7 @@ def priced_in_source_gap_batches_payload(
         engine,
         source_name=source_name,
         rows=rows,
+        stocks_only=resolved_stocks_only,
     )
     plan_rows = sorted(plan_rows, key=_priced_in_source_row_priority_key)
     tickers = [str(row["ticker"]).strip().upper() for row in plan_rows]
@@ -1380,6 +1382,109 @@ def sec_cik_override_template_payload(
         "boundary": (
             "Template/export is zero-call. Do not guess CIKs; use exact SEC CIKs "
             "or an explicitly approved SEC company-tickers refresh."
+        ),
+    }
+
+
+def options_fixture_template_payload(
+    engine: Engine,
+    config: AppConfig,
+    *,
+    available_at: datetime | None = None,
+    status: str | None = None,
+    usefulness: str | None = None,
+    decision_gap: str | Sequence[str] | None = None,
+    min_gap: float | None = None,
+    stocks_only: bool = False,
+) -> dict[str, object]:
+    source_name = "options"
+    queue = priced_in_queue_payload(
+        engine,
+        config,
+        limit=1_000_000,
+        offset=0,
+        available_at=available_at,
+        status=status,
+        usefulness=usefulness,
+        source_gap=source_name,
+        decision_gap=decision_gap,
+        min_gap=min_gap,
+        stocks_only=stocks_only,
+    )
+    rows = [
+        row
+        for row in _sequence_value(queue.get("rows"))
+        if isinstance(row, Mapping)
+        and str(row.get("ticker") or "").strip()
+        and _priced_in_source_gap_matches(row, (source_name,))
+    ]
+    rows = sorted(rows, key=_priced_in_source_row_priority_key)
+    unique_rows = list(
+        {
+            str(row.get("ticker") or "").strip().upper(): row
+            for row in rows
+            if str(row.get("ticker") or "").strip()
+        }.items()
+    )
+    coverage = _mapping_value(queue, "source_coverage")
+    diagnostic = _mapping_value(coverage, "options_gap_diagnostic")
+    if not diagnostic and rows:
+        diagnostic = _priced_in_option_gap_diagnostic(engine, rows)
+    target_as_of = _options_fixture_template_target_as_of(rows, diagnostic)
+    target_date = _options_fixture_template_target_date(target_as_of, diagnostic)
+    default_path = f"data\\local\\point-in-time-options-{target_date}.json"
+    result_rows = [
+        {
+            "ticker": ticker,
+            "call_volume": "",
+            "put_volume": "",
+            "call_open_interest": "",
+            "put_open_interest": "",
+            "iv_percentile": "",
+            "skew": "",
+        }
+        for ticker, _row in unique_rows
+    ]
+    fixture = {
+        "as_of": target_as_of,
+        "source_ts": target_as_of,
+        "available_at": target_as_of,
+        "provider": "options_fixture",
+        "results": result_rows,
+    }
+    row_count = len(result_rows)
+    query = "?stocks_only=true" if stocks_only else ""
+    return {
+        "schema_version": "options-fixture-template-v1",
+        "status": "ready" if row_count else "empty",
+        "provider": "manual",
+        "live": False,
+        "external_calls_made": 0,
+        "source": source_name,
+        "stocks_only": bool(stocks_only),
+        "source_gap_rows": len(rows),
+        "row_count": row_count,
+        "target_as_of": target_as_of,
+        "target_date": target_date,
+        "columns": list(OPTIONS_FIXTURE_TEMPLATE_RESULT_FIELDS),
+        "fixture": fixture,
+        "sample_tickers": _sample_tickers([ticker for ticker, _row in unique_rows]),
+        "command": _options_point_in_time_template_command(
+            diagnostic,
+            stocks_only=stocks_only,
+        ),
+        "api": f"GET /api/radar/options/fixture-template{query}",
+        "import_command": f"catalyst-radar ingest-options --fixture {default_path}",
+        "next_action": (
+            "Fill the aggregate option fields for each ticker, then import the "
+            "completed point-in-time fixture before replanning options."
+            if row_count
+            else "No options source-gap rows need a point-in-time fixture template."
+        ),
+        "boundary": (
+            "Template/export is zero-call. Values must describe option context "
+            "available at the scan date; do not backfill current chains into an "
+            "older scan."
         ),
     }
 
@@ -3626,6 +3731,9 @@ def _priced_in_audit_source_gap_repair(
         if str(value).strip()
     ]
     point_in_time_import_command = _options_point_in_time_import_command(diagnostic)
+    point_in_time_template_command = _options_point_in_time_template_command(
+        diagnostic
+    )
     sample_tickers = _option_gap_diagnostic_samples(diagnostic)
     if not sample_tickers:
         sample_tickers = [
@@ -3651,6 +3759,7 @@ def _priced_in_audit_source_gap_repair(
         "review_rows_command": action.get("full_scan_gap_review_command"),
         "export_rows_command": action.get("full_scan_export_command"),
         "batch_plan_command": action.get("batch_plan_command"),
+        "point_in_time_template_command": point_in_time_template_command,
         "point_in_time_import_command": point_in_time_import_command,
         "current_context_boundary": (
             "Current Schwab option chains can support a current rerun, but must not "
@@ -10785,6 +10894,7 @@ def _priced_in_source_plannable_rows(
     *,
     source_name: str,
     rows: Sequence[Mapping[str, object]],
+    stocks_only: bool = False,
 ) -> tuple[list[Mapping[str, object]], dict[str, object]]:
     if source_name in PRICED_IN_SCHWAB_BATCH_SOURCES:
         if source_name == "options":
@@ -10798,6 +10908,12 @@ def _priced_in_source_plannable_rows(
             if diagnostic_status in blocking_statuses:
                 point_in_time_import_command = _options_point_in_time_import_command(
                     diagnostic
+                )
+                point_in_time_template_command = (
+                    _options_point_in_time_template_command(
+                        diagnostic,
+                        stocks_only=stocks_only,
+                    )
                 )
                 return [], {
                     "schema_version": "priced-in-source-batch-diagnostic-v1",
@@ -10813,6 +10929,7 @@ def _priced_in_source_plannable_rows(
                         diagnostic
                     ),
                     "next_action": diagnostic.get("next_action"),
+                    "point_in_time_template_command": point_in_time_template_command,
                     "point_in_time_import_command": point_in_time_import_command,
                     "option_gap_diagnostic": diagnostic,
                 }
@@ -10995,16 +11112,68 @@ def _option_gap_diagnostic_samples(diagnostic: Mapping[str, object]) -> list[str
 def _options_point_in_time_import_command(
     diagnostic: Mapping[str, object],
 ) -> str:
+    target = _options_point_in_time_target_date(diagnostic)
+    return (
+        "catalyst-radar ingest-options --fixture "
+        f"<point-in-time-options-{target}.json>"
+    )
+
+
+def _options_point_in_time_template_command(
+    diagnostic: Mapping[str, object],
+    *,
+    stocks_only: bool = False,
+) -> str:
+    target = _options_point_in_time_target_date(diagnostic)
+    return (
+        "catalyst-radar ingest-options --fixture-template "
+        f"--out data\\local\\point-in-time-options-{target}.json"
+        + (" --stocks-only" if stocks_only else "")
+    )
+
+
+def _options_point_in_time_target_date(
+    diagnostic: Mapping[str, object],
+) -> str:
     scan_dates = [
         str(value).strip()
         for value in _sequence_value(diagnostic.get("scan_as_of_dates"))
         if str(value).strip()
     ]
-    target = scan_dates[0] if len(scan_dates) == 1 else "<SCAN_DATE>"
-    return (
-        "catalyst-radar ingest-options --fixture "
-        f"<point-in-time-options-{target}.json>"
-    )
+    return scan_dates[0] if len(scan_dates) == 1 else "<SCAN_DATE>"
+
+
+def _options_fixture_template_target_as_of(
+    rows: Sequence[Mapping[str, object]],
+    diagnostic: Mapping[str, object],
+) -> str:
+    as_of_values = [
+        _options_fixture_template_datetime_text(row.get("as_of"))
+        for row in rows
+        if str(row.get("as_of") or "").strip()
+    ]
+    unique_as_of = list(dict.fromkeys(as_of_values))
+    if len(unique_as_of) == 1:
+        return unique_as_of[0]
+    target_date = _options_point_in_time_target_date(diagnostic)
+    if target_date != "<SCAN_DATE>":
+        return f"{target_date}T21:00:00+00:00"
+    return "<SCAN_DATE>T21:00:00+00:00"
+
+
+def _options_fixture_template_datetime_text(value: object) -> str:
+    if isinstance(value, datetime):
+        return value.astimezone(UTC).isoformat()
+    return str(value or "").strip()
+
+
+def _options_fixture_template_target_date(
+    target_as_of: str,
+    diagnostic: Mapping[str, object],
+) -> str:
+    if len(target_as_of) >= 10 and target_as_of[4:5] == "-" and target_as_of[7:8] == "-":
+        return target_as_of[:10]
+    return _options_point_in_time_target_date(diagnostic)
 
 
 def _priced_in_source_row_priority_key(row: Mapping[str, object]) -> tuple[int, float, str]:

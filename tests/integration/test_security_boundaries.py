@@ -177,6 +177,14 @@ EXPECTED_API_ROUTES = {
     ): ("catalyst_radar.api.routes.radar", "radar_sec_company_tickers", ("radar",)),
     (
         "GET",
+        "/api/radar/options/fixture-template",
+    ): (
+        "catalyst_radar.api.routes.radar",
+        "radar_options_fixture_template",
+        ("radar",),
+    ),
+    (
+        "GET",
         "/api/radar/sec/cik-overrides-template",
     ): (
         "catalyst_radar.api.routes.radar",

@@ -45,7 +45,10 @@ from catalyst_radar.connectors.http import (
 )
 from catalyst_radar.connectors.market_data import CsvMarketDataConnector
 from catalyst_radar.connectors.news import NewsJsonConnector
-from catalyst_radar.connectors.options import OptionsAggregateConnector
+from catalyst_radar.connectors.options import (
+    OptionsAggregateConnector,
+    write_options_fixture_template_json,
+)
 from catalyst_radar.connectors.polygon import PolygonEndpoint, PolygonMarketDataConnector
 from catalyst_radar.connectors.provider_ingest import (
     ProviderIngestError,
@@ -57,6 +60,7 @@ from catalyst_radar.core.immutability import thaw_json_value
 from catalyst_radar.core.models import ActionState
 from catalyst_radar.dashboard.data import (
     load_ticker_detail,
+    options_fixture_template_payload,
     priced_in_all_source_gap_batches_payload,
     priced_in_answer_payload,
     priced_in_full_scan_audit_payload,
@@ -273,11 +277,23 @@ def build_parser() -> argparse.ArgumentParser:
     options = subparsers.add_parser("ingest-options")
     options.add_argument("--fixture", type=Path)
     options.add_argument(
+        "--fixture-template",
+        action="store_true",
+        help="Write a zero-call point-in-time options fixture template.",
+    )
+    options.add_argument("--out", type=Path)
+    options.add_argument(
+        "--stocks-only",
+        action="store_true",
+        help="Restrict the fixture template to stock-like priced-in scan rows.",
+    )
+    options.add_argument(
         "--from-schwab-market",
         action="store_true",
         help="Promote stored Schwab market snapshots into aggregate option features.",
     )
     options.add_argument("--ticker", action="append")
+    options.add_argument("--json", action="store_true")
 
     schwab_market_sync = subparsers.add_parser("schwab-market-sync")
     schwab_market_sync.add_argument("--ticker", action="append", required=True)
@@ -1049,6 +1065,20 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "ingest-options":
         create_schema(engine)
+        if args.fixture_template:
+            if args.out is None:
+                print(
+                    "options fixture template failed: provide --out",
+                    file=sys.stderr,
+                )
+                return 1
+            return _write_options_fixture_template_cli(
+                engine=engine,
+                config=config,
+                output_path=args.out,
+                stocks_only=args.stocks_only,
+                as_json=args.json,
+            )
         feature_repo = FeatureRepository(engine)
         if args.from_schwab_market:
             return _ingest_schwab_market_options(
@@ -2394,6 +2424,60 @@ def _write_sec_cik_override_template_cli(
             else ""
         )
         print(f"routed_non_company={routed_count} examples={routed_text}")
+    print(f"columns={','.join(str(column) for column in payload.get('columns', []))}")
+    print(f"import_command={_compact_cli_text(payload.get('import_command'))}")
+    print(f"api={_compact_cli_text(payload.get('api'))}")
+    print(f"boundary={_compact_cli_text(payload.get('boundary'))}")
+    print(f"next_action={_compact_cli_text(payload.get('next_action'))}")
+    return 0
+
+
+def _write_options_fixture_template_cli(
+    *,
+    engine: Engine,
+    config: AppConfig,
+    output_path: Path,
+    stocks_only: bool,
+    as_json: bool,
+) -> int:
+    payload = options_fixture_template_payload(
+        engine,
+        config,
+        stocks_only=stocks_only,
+    )
+    try:
+        write_result = write_options_fixture_template_json(
+            output_path,
+            _mapping_value(payload.get("fixture")),
+        )
+    except (OSError, ValueError) as exc:
+        print(f"options fixture template failed: {exc}", file=sys.stderr)
+        return 1
+    write_payload = write_result.as_payload()
+    payload = {
+        **payload,
+        "output_path": write_payload["output_path"],
+        "write_schema_version": write_payload["schema_version"],
+        "generated_at": write_payload["generated_at"],
+        "import_command": write_payload["import_command"],
+    }
+    if as_json:
+        print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
+        return 0
+    print(
+        "options_fixture_template "
+        f"status={payload.get('status')} "
+        f"source={payload.get('source')} "
+        f"stocks_only={str(bool(payload.get('stocks_only'))).lower()} "
+        f"target_as_of={payload.get('target_as_of')} "
+        f"source_gap_rows={payload.get('source_gap_rows')} "
+        f"rows={payload.get('row_count')} "
+        f"output={payload.get('output_path')} "
+        f"external_calls={payload.get('external_calls_made')}"
+    )
+    samples = payload.get("sample_tickers")
+    if isinstance(samples, list | tuple) and samples:
+        print(f"template_examples={','.join(str(ticker) for ticker in samples)}")
     print(f"columns={','.join(str(column) for column in payload.get('columns', []))}")
     print(f"import_command={_compact_cli_text(payload.get('import_command'))}")
     print(f"api={_compact_cli_text(payload.get('api'))}")
@@ -3934,6 +4018,12 @@ def _print_priced_in_source_batches(payload: Mapping[str, object]) -> None:
         diagnostic_next = diagnostic.get("next_action")
         if diagnostic_next:
             print(f"diagnostic_next={_compact_cli_text(diagnostic_next)}")
+        point_in_time_template = diagnostic.get("point_in_time_template_command")
+        if point_in_time_template:
+            print(
+                "diagnostic_point_in_time_template="
+                f"{_compact_cli_text(point_in_time_template)}"
+            )
         point_in_time_import = diagnostic.get("point_in_time_import_command")
         if point_in_time_import:
             print(

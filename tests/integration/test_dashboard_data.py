@@ -63,6 +63,7 @@ from catalyst_radar.dashboard.data import (
     operator_next_step_payload,
     operator_work_queue_payload,
     opportunity_focus_payload,
+    options_fixture_template_payload,
     priced_in_all_source_gap_batches_payload,
     priced_in_answer_payload,
     priced_in_full_scan_audit_payload,
@@ -3368,6 +3369,10 @@ def test_priced_in_all_source_gap_batches_blocks_options_shortcut_when_not_point
     assert rows["options"]["execute_next_command"] is None
     assert rows["options"]["diagnostic"]["status"] == "blocked"
     assert rows["options"]["diagnostic"]["blocked_reason"] == "newer_than_scan"
+    assert rows["options"]["diagnostic"]["point_in_time_template_command"] == (
+        "catalyst-radar ingest-options --fixture-template "
+        "--out data\\local\\point-in-time-options-2026-05-10.json"
+    )
     assert rows["options"]["diagnostic"]["point_in_time_import_command"] == (
         "catalyst-radar ingest-options --fixture "
         "<point-in-time-options-2026-05-10.json>"
@@ -3379,6 +3384,60 @@ def test_priced_in_all_source_gap_batches_blocks_options_shortcut_when_not_point
     assert "Stored options exist after this scan date" in rows["options"]["next_action"]
     recommendation = payload["decision_shortcut_recommendation"]
     assert recommendation is None or recommendation["source"] != "options"
+
+
+def test_options_fixture_template_payload_exports_point_in_time_skeleton(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    FeatureRepository(engine).upsert_option_features(
+        [
+            OptionFeatureInput(
+                ticker="MSFT",
+                as_of=FUTURE_AT,
+                provider="schwab_option_chain",
+                call_volume=1_000,
+                put_volume=500,
+                call_open_interest=5_000,
+                put_open_interest=3_000,
+                iv_percentile=0.6,
+                skew=0.2,
+                source_ts=FUTURE_AT,
+                available_at=FUTURE_AT,
+                payload={"source": "test"},
+            )
+        ]
+    )
+
+    payload = options_fixture_template_payload(
+        engine,
+        AppConfig.from_env({}),
+        stocks_only=False,
+    )
+
+    assert payload["schema_version"] == "options-fixture-template-v1"
+    assert payload["status"] == "ready"
+    assert payload["external_calls_made"] == 0
+    assert payload["source_gap_rows"] == 2
+    assert payload["row_count"] == 2
+    assert payload["target_as_of"] == AS_OF.isoformat()
+    assert payload["command"] == (
+        "catalyst-radar ingest-options --fixture-template "
+        "--out data\\local\\point-in-time-options-2026-05-10.json"
+    )
+    assert payload["api"] == "GET /api/radar/options/fixture-template"
+    assert payload["import_command"] == (
+        "catalyst-radar ingest-options --fixture "
+        "data\\local\\point-in-time-options-2026-05-10.json"
+    )
+    fixture = payload["fixture"]
+    assert fixture["as_of"] == AS_OF.isoformat()
+    assert fixture["provider"] == "options_fixture"
+    rows = {row["ticker"]: row for row in fixture["results"]}
+    assert set(rows) == {"MSFT", "AAPL"}
+    assert rows["MSFT"]["call_volume"] == ""
+    assert rows["AAPL"]["skew"] == ""
 
 
 def test_priced_in_queue_payload_uses_stored_schwab_market_context(

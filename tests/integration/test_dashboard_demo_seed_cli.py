@@ -1681,6 +1681,10 @@ def test_priced_in_source_batches_cli_prints_options_point_in_time_import(
                 "reason": "Stored options are newer than the scan.",
                 "sample_blocked_tickers": ["AAPL"],
                 "next_action": "Ingest point-in-time options.",
+                "point_in_time_template_command": (
+                    "catalyst-radar ingest-options --fixture-template "
+                    "--out data\\local\\point-in-time-options-2026-05-15.json"
+                ),
                 "point_in_time_import_command": (
                     "catalyst-radar ingest-options --fixture "
                     "<point-in-time-options-2026-05-15.json>"
@@ -1700,6 +1704,11 @@ def test_priced_in_source_batches_cli_prints_options_point_in_time_import(
     assert output.err == ""
     assert "status=blocked" in output.out
     assert "blocked_examples=AAPL reason=newer_than_scan" in output.out
+    assert (
+        "diagnostic_point_in_time_template="
+        "catalyst-radar ingest-options --fixture-template "
+        "--out data\\local\\point-in-time-options-2026-05-15.json"
+    ) in output.out
     assert (
         "diagnostic_point_in_time_import=catalyst-radar ingest-options --fixture "
         "<point-in-time-options-2026-05-15.json>"
@@ -1729,6 +1738,10 @@ def test_dashboard_batch_message_prints_options_point_in_time_import(
                 "sample_blocked_tickers": ["AAPL"],
                 "blocked_reason": "newer_than_scan",
                 "next_action": "Ingest point-in-time options.",
+                "point_in_time_template_command": (
+                    "catalyst-radar ingest-options --fixture-template "
+                    "--out data\\local\\point-in-time-options-2026-05-15.json"
+                ),
                 "point_in_time_import_command": (
                     "catalyst-radar ingest-options --fixture "
                     "<point-in-time-options-2026-05-15.json>"
@@ -1755,6 +1768,10 @@ def test_dashboard_batch_message_prints_options_point_in_time_import(
     assert update.page == "ops"
     assert "options: blocked;" in update.message
     assert "Blocked examples: AAPL." in update.message
+    assert (
+        "Template: catalyst-radar ingest-options --fixture-template "
+        "--out data\\local\\point-in-time-options-2026-05-15.json."
+    ) in update.message
     assert (
         "Point-in-time import: catalyst-radar ingest-options --fixture "
         "<point-in-time-options-2026-05-15.json>."
