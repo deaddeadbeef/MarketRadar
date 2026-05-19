@@ -1,6 +1,67 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 05:07:32 +08:00
+Last updated: 2026-05-20 05:17:02 +08:00
+
+## Latest TUI Full-Scan Blocker Correction
+
+Goal alignment check:
+
+- After the API/CLI audit was corrected, the TUI run page still used the older
+  preflight evidence plan. It could show `Answer: decision ready ready=true`
+  while the full-stock audit still had missing market bars.
+- That is a dashboard-side drift from the user's actual goal. The dashboard is
+  for human eyes, so it must make the first full-scan blocker obvious before
+  encouraging a run or provider batch.
+
+Fix in this slice:
+
+- The TUI header now uses the full-scan audit status when present. If the audit
+  is `attention` or `blocked`, the header shows `ready=false` even when a
+  short-list row has enough local evidence to be decision-useful.
+- The run page now prefers audit-backed source rows over the older preflight
+  evidence-plan rows.
+- The first visible blocker is selected from the source coverage order, so
+  market bars appear before catalyst/options/broker gaps when market bars are
+  incomplete.
+- The run page now shows the corrected market-bar coverage and the exact
+  missing-bar template command.
+- No provider, broker, OpenAI, order, or DB-write execution was run.
+
+Live zero-call TUI observations:
+
+```text
+dashboard-tui --once --page run
+Answer: attention ready=false
+Source coverage: market_bars 12090/12613 (523 missing); ...
+market_bars | partial | 12090/12613 | 523 | Fill missing as-of bars for the active universe; then rerun the full priced-in scan.
+```
+
+```text
+dashboard-tui --once --page run --stocks-only
+Answer: attention ready=false
+Source coverage: market_bars 5521/5652 (131 missing); ...
+market_bars | partial | 5521/5652 | 131 | Fill stock-like missing as-of bars first; then rerun the stocks-only priced-in scan.
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_run_page_shows_priced_in_evidence_plan tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_tui_once_can_show_full_scan_mode tests\integration\test_dashboard_demo_seed_cli.py::test_modern_dashboard_tui_supports_mouse_navigation -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+```
+
+Observed:
+
+- Focused TUI tests passed (`3 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+
+Next useful product action:
+
+- The dashboard now points the user at the real first blocker. To progress the
+  scan itself, fill/import the missing-bar template or explicitly approve the
+  one-call Polygon/Massive grouped-daily provider fill.
 
 ## Latest Full-Scan Market-Bar Scope Correction
 

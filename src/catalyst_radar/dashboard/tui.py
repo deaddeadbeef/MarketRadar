@@ -1291,11 +1291,20 @@ class MarketRadarDashboardApp(App[int]):
         runtime = _mapping(self.payload.get("runtime_context"))
         controls = _mapping(self.payload.get("controls"))
         answer = _mapping(self.payload.get("priced_in_answer"))
+        audit = _mapping(self.payload.get("priced_in_audit"))
         next_step = _mapping(self.payload.get("operator_next_step"))
         next_action = next_step.get("action") or readiness.get("next_action")
         can_act = _decision_label(readiness)
-        answer_status = _human_label(answer.get("status") or "unknown")
-        answer_ready = "ready" if bool(answer.get("decision_ready")) else "not ready"
+        audit_status = str(audit.get("status") or "").strip().lower()
+        answer_status = _human_label(
+            audit_status or str(answer.get("status") or "unknown")
+        )
+        answer_ready = (
+            "ready"
+            if bool(answer.get("decision_ready"))
+            and audit_status not in {"blocked", "attention"}
+            else "not ready"
+        )
         view_label = _priced_in_view_label(self.payload)
         active_page = self.page.split(":", 1)[0]
         page_title = (
@@ -3150,14 +3159,22 @@ def _header_lines(
     controls = _mapping(payload.get("controls"))
     readiness = _mapping(payload.get("readiness"))
     answer = _mapping(payload.get("priced_in_answer"))
-    answer_ready = "true" if bool(answer.get("decision_ready")) else "false"
+    audit = _mapping(payload.get("priced_in_audit"))
+    audit_status = str(audit.get("status") or "").strip().lower()
+    answer_status = audit_status or str(answer.get("status") or "unknown")
+    answer_ready = (
+        "true"
+        if bool(answer.get("decision_ready"))
+        and audit_status not in {"blocked", "attention"}
+        else "false"
+    )
     view_label = _priced_in_view_label(payload)
     return [
         _rule("Market Radar Terminal Dashboard", width, char="="),
         (
             f"Page: {page} | "
             f"View: {view_label} | "
-            f"Answer: {_human_label(answer.get('status') or 'unknown')} "
+            f"Answer: {_human_label(answer_status)} "
             f"ready={answer_ready} | "
             f"Trade status: {_human_label(readiness.get('status') or 'unknown')} | "
             f"Trade safe: {_text(readiness.get('safe_to_make_investment_decision'))} | "
@@ -4350,6 +4367,8 @@ def _run_lines(payload: Mapping[str, object], width: int) -> list[str]:
     call_plan = _mapping(payload.get("call_plan"))
     activation = _mapping(payload.get("live_activation"))
     cooldown = _mapping(payload.get("radar_run_cooldown"))
+    audit = _mapping(payload.get("priced_in_audit"))
+    audit_sources = _rows(audit.get("sources"))
     evidence_plan = _mapping(_mapping(payload.get("priced_in_preflight")).get("evidence_plan"))
     lines = [_rule("Radar Run And Call Plan", width)]
     lines.extend(
@@ -4383,7 +4402,43 @@ def _run_lines(payload: Mapping[str, object], width: int) -> list[str]:
             limit=12,
         )
     )
-    if evidence_plan:
+    if audit_sources:
+        lines.append("")
+        lines.append(_rule("Priced-in Evidence Plan", width))
+        blocker = _run_first_audit_source_blocker(audit_sources)
+        coverage = _mapping(audit.get("source_coverage"))
+        evidence_items: list[tuple[str, object]] = [
+            (
+                "Evidence status",
+                f"{audit.get('status')}; {audit.get('answer')}",
+            ),
+            (
+                "Next evidence step",
+                blocker.get("next_action") if blocker else audit.get("next_action"),
+            ),
+            ("Source coverage", coverage.get("summary")),
+        ]
+        blocker_hint = _run_audit_source_blocker_hint(blocker)
+        if blocker_hint:
+            evidence_items.append(("Inspect source blocker", blocker_hint))
+        lines.extend(_kv_lines(evidence_items, width=width))
+        lines.append("")
+        lines.extend(
+            _table_lines(
+                _run_audit_source_rows(audit_sources),
+                [
+                    ("source", "Source", 18),
+                    ("status", "Status", 12),
+                    ("coverage", "Coverage", 16),
+                    ("gap_count", "Gaps", 8),
+                    ("next_action", "Next Action", 58),
+                    ("command", "Command", 56),
+                ],
+                width=width,
+                limit=8,
+            )
+        )
+    elif evidence_plan:
         lines.append("")
         lines.append(_rule("Priced-in Evidence Plan", width))
         evidence_items: list[tuple[str, object]] = [
@@ -4424,6 +4479,66 @@ def _run_lines(payload: Mapping[str, object], width: int) -> list[str]:
         "Type `run execute` to start one capped cycle."
     )
     return lines
+
+
+def _run_first_audit_source_blocker(
+    sources: Sequence[Mapping[str, object]],
+) -> Mapping[str, object] | None:
+    priority = {
+        source: index
+        for index, source in enumerate(dashboard_data.PRICED_IN_SOURCE_CLASSES)
+    }
+    blockers = [
+        row
+        for row in sources
+        if str(row.get("status") or "").strip() not in {"ready", "not_applicable"}
+    ]
+    if not blockers:
+        return None
+    return sorted(
+        blockers,
+        key=lambda row: priority.get(
+            str(row.get("source") or ""),
+            len(priority),
+        ),
+    )[0]
+
+
+def _run_audit_source_blocker_hint(blocker: Mapping[str, object] | None) -> str | None:
+    if not blocker:
+        return None
+    source = str(blocker.get("source") or "").strip()
+    if not source:
+        return None
+    command = str(blocker.get("command") or "").strip()
+    if source == "market_bars" and command:
+        return f"Run `{command}` to create the missing-bar template; preview before import."
+    if source in dashboard_data.PRICED_IN_SOURCE_CLASSES:
+        return (
+            f"Type `batch {source}` for blockers, first provider chunk, "
+            f"and exact call budget; type `batch all` for the source map."
+        )
+    return None
+
+
+def _run_audit_source_rows(
+    sources: Sequence[Mapping[str, object]],
+) -> list[Mapping[str, object]]:
+    rows: list[Mapping[str, object]] = []
+    for source in sources:
+        available = int(_number_or_zero(source.get("available")))
+        row_count = int(_number_or_zero(source.get("row_count")))
+        rows.append(
+            {
+                "source": source.get("source"),
+                "status": source.get("status"),
+                "coverage": f"{available}/{row_count}" if row_count else "n/a",
+                "gap_count": int(_number_or_zero(source.get("gap_count"))),
+                "next_action": source.get("next_action"),
+                "command": source.get("command"),
+            }
+        )
+    return rows
 
 
 def _run_source_blocker_hint(evidence_plan: Mapping[str, object]) -> str | None:
