@@ -2885,6 +2885,10 @@ def _priced_in_audit_market_bar_repair(
         target_as_of=target_as_of,
         missing_ticker_fallback=missing_sample,
     )
+    stock_scope = _priced_in_market_bar_stock_scope(
+        engine,
+        target_as_of=target_as_of,
+    )
     provider_fill_plan = _priced_in_market_bar_provider_fill_plan(
         config,
         target_as_of=target_as_of,
@@ -2914,6 +2918,7 @@ def _priced_in_audit_market_bar_repair(
         "template_api": "POST /api/radar/market-bars/template",
         "import_api": "POST /api/radar/market-bars/import",
         "diagnostic": diagnostic,
+        "stock_scope": stock_scope,
         "provider_fill_plan": provider_fill_plan,
         "external_calls_made": 0,
         "write_boundary": (
@@ -2921,6 +2926,132 @@ def _priced_in_audit_market_bar_repair(
             "writes. Import --execute writes local daily bars only; none of these "
             "commands call market providers."
         ),
+        "next_action": next_action,
+    }
+
+
+def _priced_in_market_bar_stock_scope(
+    engine: Engine,
+    *,
+    target_as_of: date | None,
+) -> dict[str, object]:
+    answer_boundary = (
+        "This is the market-bar boundary for a stocks-only priced-in answer. "
+        "It does not make the full active-universe answer complete; funds, "
+        "wrappers, preferreds, rights, warrants, and unknown instruments still "
+        "need their own bars or an explicit route."
+    )
+    if target_as_of is None:
+        return {
+            "schema_version": "priced-in-market-bar-stock-scope-v1",
+            "status": "unknown_as_of",
+            "target_as_of": None,
+            "stock_like_security_types": sorted(PRICED_IN_COMPANY_LIKE_SECURITY_TYPES),
+            "stock_like_active": 0,
+            "stock_like_with_as_of_bar": 0,
+            "stock_like_missing_as_of_bar": 0,
+            "stock_like_coverage_pct": 0.0,
+            "non_stock_active": 0,
+            "non_stock_missing_as_of_bar": 0,
+            "unknown_type_active": 0,
+            "unknown_type_missing_as_of_bar": 0,
+            "sample_missing_stock_like_tickers": [],
+            "external_calls_made": 0,
+            "answer_boundary": answer_boundary,
+            "next_action": "Resolve the scan date before judging stock-only coverage.",
+        }
+
+    try:
+        with engine.connect() as conn:
+            active_rows = conn.execute(
+                select(
+                    securities.c.ticker,
+                    securities.c.metadata,
+                ).where(securities.c.is_active.is_(True))
+            ).all()
+            covered = {
+                str(row._mapping["ticker"]).strip().upper()
+                for row in conn.execute(
+                    select(daily_bars.c.ticker).where(
+                        daily_bars.c.date == target_as_of
+                    )
+                )
+                if str(row._mapping["ticker"]).strip()
+            }
+    except SQLAlchemyError:
+        active_rows = []
+        covered = set()
+
+    stock_like_active = 0
+    stock_like_with_bar = 0
+    missing_stock_like: list[str] = []
+    non_stock_active = 0
+    non_stock_missing = 0
+    unknown_active = 0
+    unknown_missing = 0
+    for row in active_rows:
+        ticker = str(row._mapping["ticker"] or "").strip().upper()
+        if not ticker:
+            continue
+        metadata = row._mapping["metadata"] or {}
+        if not isinstance(metadata, Mapping):
+            metadata = {}
+        security_type = str(metadata.get("type") or "").strip().upper() or "UNKNOWN"
+        has_bar = ticker in covered
+        if _is_sec_company_like_type(security_type):
+            stock_like_active += 1
+            if has_bar:
+                stock_like_with_bar += 1
+            else:
+                missing_stock_like.append(ticker)
+            continue
+        if security_type == "UNKNOWN":
+            unknown_active += 1
+            if not has_bar:
+                unknown_missing += 1
+            continue
+        non_stock_active += 1
+        if not has_bar:
+            non_stock_missing += 1
+
+    stock_like_missing = len(missing_stock_like)
+    if stock_like_active <= 0:
+        status = "blocked"
+        next_action = "Seed or classify active securities before claiming a stock scan."
+    elif stock_like_missing <= 0:
+        status = "ready"
+        next_action = (
+            "Stock-like rows have as-of bars. A stocks-only priced-in answer can "
+            "be separated while full active-universe repair continues for "
+            "fund/wrapper/unknown rows."
+        )
+    else:
+        status = "attention"
+        next_action = (
+            "Fill stock-like missing as-of bars first; they are required before "
+            "the system can claim a complete stocks-only priced-in answer."
+        )
+
+    return {
+        "schema_version": "priced-in-market-bar-stock-scope-v1",
+        "status": status,
+        "target_as_of": _date_iso_or_none(target_as_of),
+        "stock_like_security_types": sorted(PRICED_IN_COMPANY_LIKE_SECURITY_TYPES),
+        "stock_like_active": stock_like_active,
+        "stock_like_with_as_of_bar": stock_like_with_bar,
+        "stock_like_missing_as_of_bar": stock_like_missing,
+        "stock_like_coverage_pct": _source_coverage_pct(
+            available=stock_like_with_bar,
+            stale=0,
+            missing=stock_like_missing,
+        ),
+        "non_stock_active": non_stock_active,
+        "non_stock_missing_as_of_bar": non_stock_missing,
+        "unknown_type_active": unknown_active,
+        "unknown_type_missing_as_of_bar": unknown_missing,
+        "sample_missing_stock_like_tickers": _sample_tickers(missing_stock_like),
+        "external_calls_made": 0,
+        "answer_boundary": answer_boundary,
         "next_action": next_action,
     }
 

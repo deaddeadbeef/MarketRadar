@@ -1,6 +1,77 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 22:54:53 +08:00
+Last updated: 2026-05-19 23:10:36 +08:00
+
+## Latest Stocks-Only Market-Bar Scope
+
+Goal alignment check:
+
+- The user's goal is specifically to find stocks whose price has not yet
+  matched market expectations.
+- The full active-universe scan also contains ETFs/funds/wrappers/rights/
+  warrants/preferreds. Blocking a stock answer on every non-stock wrapper row is
+  too vague for the operator.
+- This slice keeps the full active-universe answer honest while adding a
+  separate stocks-only market-bar coverage boundary.
+
+Fix in this slice:
+
+- `priced_in_full_scan_audit_payload.market_bars.repair` now includes
+  `stock_scope` with schema `priced-in-market-bar-stock-scope-v1`.
+- The stock scope reports:
+  - company-like security types used for the stocks-only boundary (`ADRC`, `CS`);
+  - stock-like active count;
+  - stock-like bars present for the scan date;
+  - stock-like missing as-of bars;
+  - stock-like coverage percentage;
+  - non-stock and unknown missing bar counts;
+  - missing stock-like samples;
+  - `external_calls_made=0`;
+  - an explicit answer boundary explaining that this does not complete the full
+    active-universe answer.
+- CLI `priced-in-audit` now prints `stock_bar_scope`.
+- Streamlit **Priced-in Full Scan** now shows **Stocks-only bar coverage** inside
+  the market-bar repair panel.
+- TUI full-scan audit summary now includes stock-bar coverage when the audit
+  payload provides it.
+- The prior `priced-in-preflight` test expectation was updated for the guarded
+  Polygon/Massive `--confirm-external-call` command.
+- No Polygon/Massive, Schwab, SEC, OpenAI, or broker/order execution was run.
+
+Current live zero-call observation from local DB:
+
+```text
+missing_bar_diagnostic=status=attention company_like=131 fund_like=4 wrappers=388 unknown=0 external_calls=0
+stock_bar_scope=status=attention coverage=5521/5652 missing=131 non_stock_missing=392 unknown_missing=0 external_calls=0
+provider_command=catalyst-radar ingest-polygon grouped-daily --date 2026-05-15 --confirm-external-call
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_payload_consolidates_current_state tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_reports_stock_only_bar_coverage tests\integration\test_dashboard_data.py::test_priced_in_preflight_payload_reports_exact_next_steps tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_audit_cli_outputs_full_scan_audit tests\integration\test_dashboard_entrypoint.py::test_dashboard_wires_priced_in_full_scan_panel_after_usefulness -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py src\catalyst_radar\dashboard\tui.py apps\dashboard\Home.py tests\integration\test_dashboard_data.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-audit --limit 1
+```
+
+Observed:
+
+- Focused test set passed (`5 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+- Live zero-call CLI audit printed the stock-bar scope above.
+
+Next useful product action:
+
+- For a stocks-only answer, the first concrete data blocker is now the `131`
+  missing stock-like bars for `2026-05-15`.
+- If the operator explicitly approves one provider call, the guarded
+  Polygon/Massive command should fill both stock and non-stock missing bars for
+  the scan date:
+  `catalyst-radar ingest-polygon grouped-daily --date 2026-05-15 --confirm-external-call`.
+- Without live provider approval, use the missing-only manual CSV template and
+  prioritize the `sample_missing_stock_like_tickers` stock-like rows first.
 
 ## Latest Polygon/Massive Confirmation Guard
 

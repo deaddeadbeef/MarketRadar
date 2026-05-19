@@ -4089,6 +4089,29 @@ def _print_priced_in_audit(payload: Mapping[str, object]) -> None:
             route_boundary = diagnostic.get("route_boundary")
             if route_boundary:
                 print(f"    route_boundary={_compact_cli_text(route_boundary)}")
+        stock_scope = repair.get("stock_scope")
+        if isinstance(stock_scope, Mapping) and stock_scope:
+            print(
+                "  stock_bar_scope="
+                f"status={stock_scope.get('status')} "
+                f"coverage={_int_value(stock_scope.get('stock_like_with_as_of_bar'))}/"
+                f"{_int_value(stock_scope.get('stock_like_active'))} "
+                f"missing={_int_value(stock_scope.get('stock_like_missing_as_of_bar'))} "
+                f"non_stock_missing={_int_value(stock_scope.get('non_stock_missing_as_of_bar'))} "
+                f"unknown_missing={_int_value(stock_scope.get('unknown_type_missing_as_of_bar'))} "
+                f"external_calls={stock_scope.get('external_calls_made')}"
+            )
+            missing_stocks = _sequence_value(
+                stock_scope.get("sample_missing_stock_like_tickers")
+            )
+            if missing_stocks:
+                print(
+                    "    sample_missing_stock_like_tickers="
+                    f"{','.join(str(ticker) for ticker in missing_stocks)}"
+                )
+            answer_boundary = stock_scope.get("answer_boundary")
+            if answer_boundary:
+                print(f"    answer_boundary={_compact_cli_text(answer_boundary)}")
         provider_plan = repair.get("provider_fill_plan")
         if isinstance(provider_plan, Mapping) and provider_plan:
             print(

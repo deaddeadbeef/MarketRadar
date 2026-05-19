@@ -1637,6 +1637,12 @@ def test_priced_in_full_scan_audit_payload_consolidates_current_state(
     assert market_bar_diagnostic["external_calls_made"] == 0
     assert "company_like_missing_count" in market_bar_diagnostic
     assert "route_boundary" in market_bar_diagnostic
+    market_bar_stock_scope = payload["market_bars"]["repair"]["stock_scope"]
+    assert market_bar_stock_scope["schema_version"] == (
+        "priced-in-market-bar-stock-scope-v1"
+    )
+    assert market_bar_stock_scope["external_calls_made"] == 0
+    assert "answer_boundary" in market_bar_stock_scope
     market_bar_provider_plan = payload["market_bars"]["repair"]["provider_fill_plan"]
     assert market_bar_provider_plan["schema_version"] == (
         "priced-in-market-bar-provider-fill-plan-v1"
@@ -1839,6 +1845,91 @@ def test_priced_in_full_scan_audit_payload_consolidates_current_state(
         source_filtered["preview"]["sample_explanation"]
     )
     assert "options" in source_filtered["preview_rows"][0]["missing_sources"]
+
+
+def test_priced_in_full_scan_audit_reports_stock_only_bar_coverage(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(securities),
+            [
+                {
+                    "ticker": "MSFT",
+                    "name": "Microsoft Corporation",
+                    "exchange": "NASDAQ",
+                    "sector": "Technology",
+                    "industry": "Software",
+                    "market_cap": 3_000_000_000_000.0,
+                    "avg_dollar_volume_20d": 5_000_000_000.0,
+                    "has_options": True,
+                    "is_active": True,
+                    "updated_at": AVAILABLE_AT,
+                    "metadata": {"type": "CS", "cik": "789019"},
+                },
+                {
+                    "ticker": "GOOG",
+                    "name": "Alphabet Inc.",
+                    "exchange": "NASDAQ",
+                    "sector": "Technology",
+                    "industry": "Internet",
+                    "market_cap": 2_000_000_000_000.0,
+                    "avg_dollar_volume_20d": 3_000_000_000.0,
+                    "has_options": True,
+                    "is_active": True,
+                    "updated_at": AVAILABLE_AT,
+                    "metadata": {"type": "CS", "cik": "1652044"},
+                },
+                {
+                    "ticker": "AAPL",
+                    "name": "AAPL Strategy ETF",
+                    "exchange": "BATS",
+                    "sector": "Unknown",
+                    "industry": "Unknown",
+                    "market_cap": 1_000_000_000.0,
+                    "avg_dollar_volume_20d": 25_000_000.0,
+                    "has_options": True,
+                    "is_active": True,
+                    "updated_at": AVAILABLE_AT,
+                    "metadata": {"type": "ETF"},
+                },
+            ],
+        )
+        conn.execute(
+            insert(daily_bars),
+            [
+                {
+                    "ticker": "MSFT",
+                    "date": AS_OF.date(),
+                    "provider": "polygon",
+                    "open": 100.0,
+                    "high": 110.0,
+                    "low": 99.0,
+                    "close": 108.0,
+                    "volume": 10_000_000,
+                    "vwap": 106.0,
+                    "adjusted": True,
+                    "source_ts": SOURCE_TS,
+                    "available_at": AVAILABLE_AT,
+                }
+            ],
+        )
+
+    payload = priced_in_full_scan_audit_payload(engine, AppConfig.from_env({}))
+
+    stock_scope = payload["market_bars"]["repair"]["stock_scope"]
+    assert stock_scope["status"] == "attention"
+    assert stock_scope["stock_like_security_types"] == ["ADRC", "CS"]
+    assert stock_scope["stock_like_active"] == 2
+    assert stock_scope["stock_like_with_as_of_bar"] == 1
+    assert stock_scope["stock_like_missing_as_of_bar"] == 1
+    assert stock_scope["stock_like_coverage_pct"] == 50.0
+    assert stock_scope["non_stock_active"] == 1
+    assert stock_scope["non_stock_missing_as_of_bar"] == 1
+    assert stock_scope["sample_missing_stock_like_tickers"] == ["GOOG"]
+    assert "stocks-only priced-in answer" in stock_scope["answer_boundary"]
 
 
 def test_priced_in_full_scan_audit_payload_reuses_cached_zero_call_audit(
@@ -3607,7 +3698,9 @@ def test_priced_in_preflight_payload_reports_exact_next_steps(tmp_path: Path) ->
     assert payload["provider"]["ticker_page_delay_seconds"] == 0.0
     assert payload["provider"]["latest_daily_bar_ticker_count"] >= 1001
     assert payload["provider"]["estimated_ticker_seed_pages"] == 2
-    assert payload["commands"]["ingest_tickers"].endswith("--max-pages 2")
+    assert payload["commands"]["ingest_tickers"].endswith(
+        "--max-pages 2 --confirm-external-call"
+    )
     assert payload["commands"]["market_bars_template"].startswith(
         "catalyst-radar market-bars template"
     )
