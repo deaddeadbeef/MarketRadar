@@ -1,6 +1,87 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 11:56:05 +08:00
+Last updated: 2026-05-19 12:11:49 +08:00
+
+## Latest SEC CIK Diagnostic Correction
+
+Current problem:
+
+- After PR #307, the next full-scan catalyst blocker was clear:
+
+  ```text
+  catalyst_events gap_rows=12075
+  plannable=10474
+  blocked_missing_cik=1601
+  ```
+
+- The planner recommended `catalyst-radar ingest-sec company-tickers` for the
+  blocked rows.
+- Running that live SEC refresh made exactly one external SEC call and updated
+  zero active securities:
+
+  ```text
+  refreshed_sec_cik_metadata provider=sec live=True active=12613 missing_before=1602 matched=0 updated=0 missing_after=1602 external_calls=1
+  unmatched_examples=AAAA,AAEQ,AAOG,AAOX,AAPD,AAPU,AAPW,AAUA,AAUS,AAVM
+  ```
+
+- Inspection showed the remaining missing-CIK active rows are mostly not
+  operating-company stocks:
+
+  ```text
+  ETF=1534, ETS=63, CS=2, RIGHT=1, WARRANT=1, ETN=1
+  ```
+
+Fix in this slice:
+
+- `priced_in_source_gap_batches_payload(... source="catalyst_events")` now
+  classifies missing-CIK blockers by instrument type.
+- The diagnostic now distinguishes:
+  - company-like rows (`CS`, `ADRC`) that may be fixed by SEC company tickers;
+  - non-company instruments (`ETF`, `ETS`, `ETN`, `RIGHT`, `WARRANT`, etc.) that
+    should not be expected to clear through SEC company tickers;
+  - unknown-type rows.
+- CLI output now prints:
+
+  ```text
+  missing_cik_types=CS:2,ETF:1533,ETN:1,ETS:63,RIGHT:1,WARRANT:1 company_like=2 non_company=1599 unknown=0
+  non_company_cik_examples=AMDD,BOXX,CAFX,CLIP,IQMM
+  company_like_cik_examples=FRBA,SSBI
+  diagnostic_next=Refresh SEC company tickers only for the small company-like/unknown subset, then handle ETF/ETN/fund-like rows through fund, underlying, or theme evidence instead of SEC company filings.
+  ```
+
+- TUI `batch catalyst_events` messages now include the missing-CIK type
+  breakdown instead of hiding this as a generic metadata problem.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_exposes_missing_cik_blockers tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_classifies_non_company_cik_gaps tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_source_batches_cli_prints_blocked_source_samples tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_batch_command_explains_non_company_cik_gaps -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source catalyst_events --limit 1
+```
+
+Observed:
+
+- Focused tests passed (`4 passed`).
+- Ruff passed.
+- Live source-batch planning made `0` provider calls and now shows the
+  missing-CIK instrument breakdown.
+
+Important interpretation:
+
+- The remaining missing-CIK rows are not a normal metadata-refresh backlog.
+- For full-market priced-in work, SEC filings are an operating-company catalyst
+  source. ETF/ETN/fund-like rows need a different evidence route, likely
+  underlying/theme/fund flow evidence, or they should be scoped separately from
+  SEC catalyst coverage.
+
+Next useful product action:
+
+- Add an explicit non-company/ETF evidence route or filter so the full-scan
+  audit stops treating ETF-style instruments as if they require operating-company
+  SEC filings.
+- Keep using capped `catalyst_events` batches for the `10474` CIK-backed rows
+  when the SEC call budget is intentional.
 
 ## Latest Capped Source-Batch Runner
 

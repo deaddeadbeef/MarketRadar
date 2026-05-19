@@ -2306,6 +2306,52 @@ def test_priced_in_source_gap_batches_payload_exposes_missing_cik_blockers(
     assert payload["diagnostic"]["fix_api"] == "POST /api/radar/sec/company-tickers"
 
 
+def test_priced_in_source_gap_batches_payload_classifies_non_company_cik_gaps(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(securities).values(
+                ticker="AAPL",
+                name="AAPL Strategy ETF",
+                exchange="BATS",
+                sector="Unknown",
+                industry="Unknown",
+                market_cap=1_000_000_000.0,
+                avg_dollar_volume_20d=25_000_000.0,
+                has_options=True,
+                is_active=True,
+                updated_at=AVAILABLE_AT,
+                metadata={"type": "ETF"},
+            )
+        )
+
+    payload = priced_in_source_gap_batches_payload(
+        engine,
+        AppConfig(
+            daily_event_provider="sec",
+            sec_enable_live=True,
+            sec_user_agent="MarketRadar test@example.com",
+        ),
+        source="catalyst_events",
+        batch_limit=1,
+    )
+
+    diagnostic = payload["diagnostic"]
+    assert payload["status"] == "blocked"
+    assert diagnostic["blocked_reason"] == "missing_cik"
+    assert diagnostic["missing_cik_type_counts"] == {"ETF": 1}
+    assert diagnostic["missing_cik_company_like_rows"] == 0
+    assert diagnostic["missing_cik_non_company_rows"] == 1
+    assert diagnostic["sample_non_company_missing_cik_tickers"] == ["AAPL"]
+    assert "non-company instruments" in diagnostic["reason"]
+    assert "Do not expect SEC company-tickers refresh" in diagnostic["next_action"]
+    assert diagnostic["fix_command"] is None
+    assert diagnostic["fix_api"] is None
+
+
 def test_priced_in_source_gap_batches_payload_marks_text_rows_blocked_without_events(
     tmp_path: Path,
 ) -> None:
