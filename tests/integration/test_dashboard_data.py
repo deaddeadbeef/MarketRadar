@@ -1665,6 +1665,18 @@ def test_priced_in_full_scan_audit_payload_consolidates_current_state(
         "catalyst-radar priced-in-source-batches --source all"
     )
     sources = {row["source"]: row for row in payload["sources"]}
+    assert sources["catalyst_events"]["repair"]["schema_version"] == (
+        "priced-in-source-gap-repair-v1"
+    )
+    assert sources["catalyst_events"]["repair"]["source"] == "catalyst_events"
+    assert sources["catalyst_events"]["repair"]["external_calls_made"] == 0
+    assert sources["catalyst_events"]["repair"]["provider_batch_allowed"] is True
+    assert sources["catalyst_events"]["repair"]["batch_plan_command"].startswith(
+        "catalyst-radar priced-in-source-batches --source catalyst_events"
+    )
+    assert "Local text intelligence stays blocked" in sources["catalyst_events"][
+        "repair"
+    ]["usefulness_impact"]
     assert sources["options"]["gap_count"] >= 1
     assert "decision_useful_gap_rows" in sources["options"]
     assert "research_useful_gap_rows" in sources["options"]

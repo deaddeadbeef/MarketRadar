@@ -1,6 +1,116 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 21:11:17 +08:00
+Last updated: 2026-05-19 21:24:44 +08:00
+
+## Latest Catalyst Evidence Repair Surface
+
+Current problem:
+
+- Full-market ranked rows still have a broad catalyst-event evidence gap.
+- Catalyst events matter because they explain the market-emotion side of the
+  price-vs-expectation question; local text intelligence is also blocked for
+  rows without stored event text.
+- The detailed source-batch command already separated company-like SEC catalyst
+  rows from ETF/fund/wrapper rows, but the main priced-in audit/dashboard did
+  not put that routing beside the answer.
+- Current local zero-call state observed before this slice:
+  - `catalyst_events` source coverage: `9/5521`;
+  - company-like catalyst gap rows: `5512`;
+  - routed non-company gap rows: `6563`;
+  - next SEC batch plan: `1102` batches of up to `5` ticker(s);
+  - next batch preview calls if executed: `5` SEC calls;
+  - external calls while inspecting: `0`.
+
+Fix in this slice:
+
+- `priced_in_full_scan_audit_payload.sources[]` now carries a catalyst-events
+  `repair` object when catalyst evidence rows have missing/stale evidence.
+- The repair schema reuses `priced-in-source-gap-repair-v1` and includes:
+  - source;
+  - status;
+  - diagnostic status;
+  - full-scan/company-like catalyst gap counts;
+  - routed non-company gap counts;
+  - company-like/non-company row counts;
+  - sample company-like gap tickers;
+  - sample routed non-company tickers;
+  - whether a provider batch is allowed;
+  - zero-call review/export commands;
+  - batch plan command and API;
+  - non-company evidence route;
+  - current-context boundary;
+  - provider/write boundary;
+  - `external_calls_made=0`;
+  - usefulness impact that local text remains blocked until event text exists.
+- CLI `priced-in-audit` now prints catalyst source repair details under the
+  `catalyst_events` source row, including:
+  - `diagnostic=company_like_sec_and_non_company_routes`;
+  - `provider_batch_allowed=true`;
+  - `non_company_route=...`;
+  - catalyst batch-plan command;
+  - zero-call planning/provider execution boundary.
+- Streamlit **Priced-in Source Gaps** rows now include repair columns for
+  company-like catalyst gaps and routed non-company rows.
+- No SEC, Schwab, Polygon/Massive, OpenAI, or broker/order execution was run.
+
+Current live zero-call observations from the branch:
+
+```text
+catalyst_repair source=catalyst_events status=attention diagnostic=company_like_sec_and_non_company_routes company_like=5512 routed=6563 allowed=True calls=0 batch=catalyst-radar priced-in-source-batches --source catalyst_events --all --json
+```
+
+```text
+- catalyst_events status=partial coverage=9/5521 gap_rows=5512 decision=0 research=0 actionable=0 next=Fill SEC catalyst events for company-like rows; route ETF/fund/wrapper rows to underlying, theme, fund-flow, or similar non-company evidence.
+  repair=status=attention diagnostic=company_like_sec_and_non_company_routes provider_batch_allowed=true next=Fill SEC catalyst events for company-like rows; route ETF/fund/wrapper rows to underlying, theme, fund-flow, or similar non-company evidence.
+    non_company_route=Use fund, underlying, theme, sector, flow, or constituent evidence instead of SEC company filing batches.
+    batch_plan=catalyst-radar priced-in-source-batches --source catalyst_events --all --json
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_payload_consolidates_current_state tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_audit_cli_outputs_full_scan_audit tests\integration\test_dashboard_entrypoint.py::test_dashboard_wires_priced_in_full_scan_panel_after_usefulness -q
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_exposes_missing_cik_blockers tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_classifies_non_company_cik_gaps tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_plans_local_text_batches tests\integration\test_api_routes.py::test_get_radar_priced_in_source_batches_returns_zero_call_plan -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py apps\dashboard\Home.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_dashboard_entrypoint.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-audit --limit 1
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-audit --limit 1 --json
+```
+
+Observed:
+
+- Focused three-test set passed (`3 passed`).
+- Source-batch/API four-test set passed (`4 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+- CLI and JSON checks reported catalyst repair with `external_calls_made=0`.
+- Local services were restarted from the branch for API/dashboard verification.
+- API `GET /api/radar/priced-in/audit?limit=1` reported:
+  - `source=catalyst_events`;
+  - `status=attention`;
+  - `diagnostic=company_like_sec_and_non_company_routes`;
+  - `company_like=5512`;
+  - `routed=6563`;
+  - `allowed=True`;
+  - `calls=0`.
+- Browser verification on `http://127.0.0.1:8514` confirmed the dashboard text
+  included:
+  - `company_like_sec_and_non_company_routes`;
+  - `5512`;
+  - `6563`;
+  - the catalyst-events source row.
+- Browser console check reported 0 current errors.
+
+Next useful product action:
+
+- This slice explains catalyst-event routing and why local text remains blocked;
+  it does not execute SEC batches.
+- The first hard trust blocker remains market-bar coverage:
+  - `523` active tickers are missing as-of bars for `2026-05-15`.
+- Source-fill execution is still a separate operator decision. For
+  catalyst_events, `priced-in-source-batches --source catalyst_events --all
+  --json` shows the full zero-call plan, and `--execute-next` would make a capped
+  SEC call batch only after explicit approval.
 
 ## Latest Options Evidence Repair Surface
 

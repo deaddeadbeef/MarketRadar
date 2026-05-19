@@ -1927,6 +1927,7 @@ def test_priced_in_audit_cli_outputs_full_scan_audit(
     assert "ACME bullish_not_priced_in" in output.out
     assert "sources:" in output.out
     assert "- options status=" in output.out
+    assert "- catalyst_events status=" in output.out
     assert "decision=" in output.out
     assert "research=" in output.out
     assert "actionable=" in output.out
@@ -1974,6 +1975,15 @@ def test_priced_in_audit_cli_outputs_full_scan_audit(
     assert options_source["repair"]["source"] == "options"
     assert payload["preview_rows"][0]["ticker"] == "ACME"
     assert payload["source_coverage"]["source_count"] == 6
+    catalyst_source = next(
+        row for row in payload["sources"] if row["source"] == "catalyst_events"
+    )
+    if catalyst_source.get("repair"):
+        assert catalyst_source["repair"]["schema_version"] == (
+            "priced-in-source-gap-repair-v1"
+        )
+        assert catalyst_source["repair"]["source"] == "catalyst_events"
+        assert catalyst_source["repair"]["external_calls_made"] == 0
     assert payload["instrument_scope"]["schema_version"] == (
         "priced-in-instrument-scope-v1"
     )
