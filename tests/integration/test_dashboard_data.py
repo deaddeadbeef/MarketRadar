@@ -1562,6 +1562,7 @@ def test_priced_in_answer_payload_summarizes_current_scan(tmp_path: Path) -> Non
 
 def test_priced_in_full_scan_audit_payload_consolidates_current_state(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     engine = _engine(tmp_path)
     _insert_dashboard_fixture(engine)
@@ -1644,6 +1645,22 @@ def test_priced_in_full_scan_audit_payload_consolidates_current_state(
         "catalyst-radar priced-in-audit --all --json"
     )
 
+    queue_calls = 0
+    original_queue_payload = priced_in_full_scan_audit_payload.__globals__[
+        "priced_in_queue_payload"
+    ]
+
+    def counted_queue_payload(*args, **kwargs):
+        nonlocal queue_calls
+        queue_calls += 1
+        return original_queue_payload(*args, **kwargs)
+
+    monkeypatch.setitem(
+        priced_in_full_scan_audit_payload.__globals__,
+        "priced_in_queue_payload",
+        counted_queue_payload,
+    )
+
     source_filtered = priced_in_full_scan_audit_payload(
         engine,
         AppConfig.from_env({}),
@@ -1652,6 +1669,7 @@ def test_priced_in_full_scan_audit_payload_consolidates_current_state(
         preview_offset=0,
     )
 
+    assert queue_calls == 1
     assert source_filtered["scope"]["ranked_rows"] == 2
     assert source_filtered["preview"]["filter"]["source_gap"] == ["options"]
     assert source_filtered["preview"]["audit_page_command"] == (
@@ -1660,6 +1678,16 @@ def test_priced_in_full_scan_audit_payload_consolidates_current_state(
     assert source_filtered["preview"]["source_gap_actions"][0]["source"] == "options"
     assert source_filtered["preview"]["source_gap_actions"][0]["plan_command"] == (
         "catalyst-radar priced-in-source-batches --source options --all --json"
+    )
+    assert source_filtered["preview"]["source_gap_actions"][0]["batch_status"] in {
+        "ready",
+        "blocked",
+    }
+    assert source_filtered["preview"]["source_gap_actions"][0][
+        "full_scan_gap_rows"
+    ] >= 1
+    assert "provider batch" in (
+        source_filtered["preview"]["source_gap_actions"][0]["batch_scope"]
     )
     assert "0 provider calls" in (
         source_filtered["preview"]["source_gap_actions"][0]["execution_boundary"]

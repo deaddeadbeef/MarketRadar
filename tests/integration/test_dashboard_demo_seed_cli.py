@@ -1958,6 +1958,18 @@ def test_priced_in_audit_cli_outputs_full_scan_audit(
     assert source_gap_payload["preview"]["source_gap_actions"][0]["plan_command"] == (
         "catalyst-radar priced-in-source-batches --source options --all --json"
     )
+    assert source_gap_payload["preview"]["source_gap_actions"][0]["batch_status"] == (
+        "ready"
+    )
+    assert source_gap_payload["preview"]["source_gap_actions"][0][
+        "first_batch_tickers"
+    ] == ["ACME"]
+    assert source_gap_payload["preview"]["source_gap_actions"][0][
+        "first_batch_external_calls"
+    ] == 1
+    assert source_gap_payload["preview"]["source_gap_actions"][0][
+        "execute_next_command"
+    ] == "catalyst-radar priced-in-source-batches --source options --execute-next"
     assert "options" in source_gap_payload["preview_rows"][0]["missing_sources"]
 
     assert main(["priced-in-audit", "--source-gap", "options", "--limit", "1"]) == 0
@@ -1970,6 +1982,13 @@ def test_priced_in_audit_cli_outputs_full_scan_audit(
     assert "boundary=Planning and browsing make 0 provider calls" in (
         source_gap_output.out
     )
+    assert "provider_batch_plan=status=ready" in source_gap_output.out
+    assert "first_provider_batch=tickers=ACME calls=1" in source_gap_output.out
+    assert (
+        "execute_next=catalyst-radar priced-in-source-batches "
+        "--source options --execute-next"
+    ) in source_gap_output.out
+    assert "batch_scope=First provider batch only" in source_gap_output.out
 
 
 def test_candidate_detail_cli_outputs_priced_in_evidence_brief(

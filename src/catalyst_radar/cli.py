@@ -3998,6 +3998,36 @@ def _print_priced_in_audit(payload: Mapping[str, object]) -> None:
                 boundary = action.get("execution_boundary")
                 if boundary:
                     print(f"  boundary={_compact_cli_text(boundary)}")
+                batch_status = action.get("batch_status")
+                if batch_status:
+                    print(
+                        "  provider_batch_plan="
+                        f"status={batch_status} "
+                        f"gap_rows={_int_value(action.get('full_scan_gap_rows'))} "
+                        f"plannable={_int_value(action.get('plannable_gap_rows'))} "
+                        f"batches={_int_value(action.get('provider_batch_count'))}"
+                    )
+                first_batch_tickers = _sequence_value(action.get("first_batch_tickers"))
+                if first_batch_tickers:
+                    print(
+                        "  first_provider_batch="
+                        f"tickers={','.join(str(item) for item in first_batch_tickers)} "
+                        f"calls={_int_value(action.get('first_batch_external_calls'))} "
+                        f"command={_compact_cli_text(action.get('first_batch_command'))}"
+                    )
+                execute_next = action.get("execute_next_command")
+                if execute_next:
+                    print(f"  execute_next={_compact_cli_text(execute_next)}")
+                blocked_reason = action.get("blocked_reason")
+                if blocked_reason:
+                    print(
+                        "  blocked="
+                        f"reason={_compact_cli_text(blocked_reason)} "
+                        f"next={_compact_cli_text(action.get('diagnostic_next_action'))}"
+                    )
+                batch_scope = action.get("batch_scope")
+                if batch_scope:
+                    print(f"  batch_scope={_compact_cli_text(batch_scope)}")
         audit_next = preview.get("audit_next_page_command")
         if audit_next:
             print(f"more={_compact_cli_text(audit_next)}")
