@@ -1,6 +1,74 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 16:27:19 +08:00
+Last updated: 2026-05-19 16:37:18 +08:00
+
+## Latest Full-Scan Source-Gap Row Filter
+
+Current problem:
+
+- Full-scan audit paging let users browse the ranked universe, but the audit
+  row page did not directly answer "show me the full-scan rows missing this
+  data layer."
+- Users still had to jump from the audit panel to separate source-gap commands
+  to inspect source-specific row examples.
+
+Fix in this slice:
+
+- `priced_in_full_scan_audit_payload` now accepts `source_gap` for the preview
+  rows only. Global full-scan counts, source coverage, trust gaps, and answer
+  remain anchored to the full ranked scan.
+- CLI `priced-in-audit` now accepts `--source-gap <source>`.
+- API `GET /api/radar/priced-in/audit` now accepts `source_gap=<source>`.
+- Streamlit **Priced-in Full Scan** now has a **Source gap** control next to
+  the row-count and offset controls.
+- Audit page commands preserve the source-gap filter, for example:
+  `catalyst-radar priced-in-audit --source-gap options --limit 5 --offset 5`.
+- This remains zero-call browsing only. Provider source-fill chunks remain
+  separate explicit actions.
+
+Current live zero-call observations from the branch:
+
+```text
+priced-in-audit --source-gap options --limit 5
+full_scan_rows=1-5/12087 sample=true export=catalyst-radar priced-in-queue --full-scan --all --json
+full_scan_row_note=This audit row page is filtered to rows missing or stale for options. The tickers below are rows 1-5 from the current ranked page, not the full scan universe of 12087 row(s).
+more=catalyst-radar priced-in-audit --source-gap options --limit 5 --offset 5
+...
+```
+
+JSON observation:
+
+```text
+filter=broker_context range=6-8/12082 rows=3 more=catalyst-radar priced-in-audit --source-gap broker_context --limit 3 --offset 8 external_calls=0 first=AAP
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_payload_consolidates_current_state tests\integration\test_api_routes.py::test_get_radar_priced_in_audit_returns_zero_call_audit tests\integration\test_dashboard_entrypoint.py::test_dashboard_wires_priced_in_full_scan_panel_after_usefulness tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_audit_cli_outputs_full_scan_audit -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py apps\dashboard\Home.py src\catalyst_radar\cli.py src\catalyst_radar\api\routes\radar.py tests\integration\test_dashboard_data.py tests\integration\test_api_routes.py tests\integration\test_dashboard_entrypoint.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-audit --source-gap options --limit 5
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-audit --source-gap broker_context --limit 3 --offset 5 --json
+```
+
+Observed:
+
+- Focused four-test set passed (`4 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+- Live branch CLI source-gap audit browsing reported `external_calls=0`.
+
+Next useful product action:
+
+- Merge this slice, restart local services, then verify:
+  - API health reports the merge commit.
+  - Streamlit health is `ok`.
+  - Live API `/api/radar/priced-in/audit?source_gap=options&limit=4` returns
+    a filtered preview with `external_calls=0`.
+  - Browser dashboard shows **Source gap** beside the full-scan row controls.
+- Actual source-fill execution still requires explicit user approval because it
+  can call SEC/Schwab/market providers.
 
 ## Latest Full-Scan Audit Paging
 

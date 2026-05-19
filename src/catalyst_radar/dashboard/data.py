@@ -1757,6 +1757,7 @@ def priced_in_full_scan_audit_payload(
     config: AppConfig,
     *,
     available_at: datetime | None = None,
+    source_gap: str | Sequence[str] | None = None,
     queue: Mapping[str, object] | None = None,
     preflight: Mapping[str, object] | None = None,
     preview_limit: int = PRICED_IN_FULL_SCAN_PREVIEW_LIMIT,
@@ -1764,10 +1765,12 @@ def priced_in_full_scan_audit_payload(
 ) -> dict[str, object]:
     resolved_preview_limit = _positive_limit(preview_limit)
     resolved_preview_offset = _positive_offset(preview_offset)
+    wanted_source_gaps = _priced_in_source_gap_filter(source_gap)
     audit_page_command = _priced_in_audit_command(
         limit=resolved_preview_limit,
         offset=resolved_preview_offset,
         available_at=available_at,
+        source_gap=wanted_source_gaps,
     )
     resolved_queue = (
         _row_dict(queue)
@@ -1789,15 +1792,30 @@ def priced_in_full_scan_audit_payload(
     if not resolved_preflight:
         resolved_preflight = priced_in_preflight_payload(engine, config)
     full_scan = _priced_in_answer_full_scan_summary(resolved_queue)
-    preview_rows = _priced_in_full_scan_preview_rows(
-        _sequence_value(resolved_queue.get("rows"))
+    preview_queue = (
+        priced_in_queue_payload(
+            engine,
+            config,
+            limit=resolved_preview_limit,
+            offset=resolved_preview_offset,
+            available_at=available_at,
+            status="all",
+            source_gap=wanted_source_gaps,
+        )
+        if wanted_source_gaps
+        else resolved_queue
     )
-    has_more = bool(full_scan.get("has_more"))
+    preview_scan = _priced_in_answer_full_scan_summary(preview_queue)
+    preview_rows = _priced_in_full_scan_preview_rows(
+        _sequence_value(preview_queue.get("rows"))
+    )
+    has_more = bool(preview_scan.get("has_more"))
     next_audit_page_command = (
         _priced_in_audit_command(
             limit=resolved_preview_limit,
             offset=resolved_preview_offset + max(1, resolved_preview_limit),
             available_at=available_at,
+            source_gap=wanted_source_gaps,
         )
         if has_more
         else None
@@ -1875,16 +1893,22 @@ def priced_in_full_scan_audit_payload(
         },
         "preview": {
             "schema_version": "priced-in-full-scan-preview-v1",
-            "row_start": full_scan.get("visible_row_start"),
-            "row_end": full_scan.get("visible_row_end"),
-            "visible_rows": full_scan.get("visible_rows"),
-            "total_rows": ranked_rows,
-            "has_more": full_scan.get("has_more"),
-            "sample_explanation": full_scan.get("sample_explanation"),
-            "review_command": full_scan.get("review_command"),
-            "next_page_command": full_scan.get("next_page_command"),
-            "export_command": full_scan.get("full_export_command")
-            or full_scan.get("export_command"),
+            "row_start": preview_scan.get("visible_row_start"),
+            "row_end": preview_scan.get("visible_row_end"),
+            "visible_rows": preview_scan.get("visible_rows"),
+            "total_rows": preview_scan.get("ranked_rows"),
+            "has_more": preview_scan.get("has_more"),
+            "sample_explanation": _priced_in_audit_preview_note(
+                preview_scan.get("sample_explanation"),
+                source_gaps=wanted_source_gaps,
+            ),
+            "filter": {
+                "source_gap": list(wanted_source_gaps),
+            },
+            "review_command": preview_scan.get("review_command"),
+            "next_page_command": preview_scan.get("next_page_command"),
+            "export_command": preview_scan.get("full_export_command")
+            or preview_scan.get("export_command"),
             "audit_page_command": audit_page_command,
             "audit_next_page_command": next_audit_page_command,
         },
@@ -1932,15 +1956,33 @@ def _priced_in_audit_command(
     limit: int,
     offset: int,
     available_at: datetime | None,
+    source_gap: Sequence[str],
 ) -> str:
     parts = ["catalyst-radar", "priced-in-audit"]
     if available_at is not None:
         parts.extend(["--available-at", available_at.isoformat()])
+    for source in source_gap:
+        parts.extend(["--source-gap", str(source)])
     parts.extend(["--limit", str(_positive_limit(limit))])
     offset_value = _positive_offset(offset)
     if offset_value:
         parts.extend(["--offset", str(offset_value)])
     return " ".join(parts)
+
+
+def _priced_in_audit_preview_note(
+    sample_explanation: object,
+    *,
+    source_gaps: Sequence[str],
+) -> str:
+    base = str(sample_explanation or "").strip()
+    if not source_gaps:
+        return base
+    filter_note = (
+        "This audit row page is filtered to rows missing or stale for "
+        f"{', '.join(source_gaps)}."
+    )
+    return f"{filter_note} {base}".strip()
 
 
 def _priced_in_full_scan_preview_rows(rows: Sequence[object]) -> list[dict[str, object]]:

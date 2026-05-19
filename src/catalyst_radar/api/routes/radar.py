@@ -467,6 +467,7 @@ def radar_priced_in_answer(
 @router.get("/priced-in/audit", dependencies=[Depends(require_role(Role.VIEWER))])
 def radar_priced_in_audit(
     available_at: datetime | None = None,
+    source_gap: str | None = Query(default=None),
     limit: int = Query(default=25, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> dict[str, object]:
@@ -476,6 +477,7 @@ def radar_priced_in_audit(
             _engine(),
             AppConfig.from_env(),
             available_at=_parse_api_datetime(available_at),
+            source_gap=source_gap,
             preview_limit=limit,
             preview_offset=offset,
         )

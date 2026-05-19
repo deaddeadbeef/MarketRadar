@@ -1924,6 +1924,19 @@ def test_priced_in_audit_cli_outputs_full_scan_audit(
         "catalyst-radar priced-in-audit --limit 1"
     )
 
+    assert (
+        main(["priced-in-audit", "--source-gap", "options", "--limit", "1", "--json"])
+        == 0
+    )
+    source_gap_payload = json.loads(capsys.readouterr().out)
+
+    assert source_gap_payload["scope"]["mode"] == "full_scan"
+    assert source_gap_payload["preview"]["filter"]["source_gap"] == ["options"]
+    assert source_gap_payload["preview"]["audit_page_command"] == (
+        "catalyst-radar priced-in-audit --source-gap options --limit 1"
+    )
+    assert "options" in source_gap_payload["preview_rows"][0]["missing_sources"]
+
 
 def test_candidate_detail_cli_outputs_priced_in_evidence_brief(
     tmp_path: Path,

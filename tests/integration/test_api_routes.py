@@ -1449,7 +1449,8 @@ def test_get_radar_priced_in_audit_returns_zero_call_audit(
 
     response = client.get(
         "/api/radar/priced-in/audit?"
-        "available_at=2026-05-18T16:00:00%2B00:00&limit=7&offset=11"
+        "available_at=2026-05-18T16:00:00%2B00:00&"
+        "source_gap=options&limit=7&offset=11"
     )
 
     assert response.status_code == 200
@@ -1458,6 +1459,7 @@ def test_get_radar_priced_in_audit_returns_zero_call_audit(
     assert payload["external_calls_made"] == 0
     assert payload["scope"]["mode"] == "full_scan"
     assert captured["available_at"].isoformat() == "2026-05-18T16:00:00+00:00"
+    assert captured["source_gap"] == "options"
     assert captured["preview_limit"] == 7
     assert captured["preview_offset"] == 11
 

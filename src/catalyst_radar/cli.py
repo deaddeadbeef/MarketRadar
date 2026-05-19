@@ -635,6 +635,15 @@ def build_parser() -> argparse.ArgumentParser:
         default=0,
         help="Zero-based full-scan audit preview row offset.",
     )
+    priced_in_audit.add_argument(
+        "--source-gap",
+        action="append",
+        help=(
+            "Filter audit preview rows missing or stale for a source class. Repeat "
+            "or comma-separate: market_bars,catalyst_events,local_text,options,"
+            "theme_peer_sector,broker_context."
+        ),
+    )
     priced_in_audit.add_argument("--json", action="store_true")
 
     candidate_detail = subparsers.add_parser("candidate-detail")
@@ -1243,6 +1252,7 @@ def main(argv: list[str] | None = None) -> int:
             engine,
             config,
             available_at=args.available_at,
+            source_gap=args.source_gap,
             preview_limit=args.limit,
             preview_offset=args.offset,
         )
