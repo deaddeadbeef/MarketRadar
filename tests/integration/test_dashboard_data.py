@@ -1666,6 +1666,105 @@ def test_priced_in_queue_payload_reports_full_scan_instrument_scope(
     )
 
 
+def test_priced_in_queue_payload_routes_non_company_usefulness_through_theme_context(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(securities).values(
+                ticker="ETFZ",
+                name="ETFZ Thematic Fund",
+                exchange="BATS",
+                sector="Unknown",
+                industry="Unknown",
+                market_cap=1_000_000_000.0,
+                avg_dollar_volume_20d=25_000_000.0,
+                has_options=True,
+                is_active=True,
+                updated_at=AVAILABLE_AT,
+                metadata={"type": "ETF"},
+            )
+        )
+
+    candidate_row = {
+        "ticker": "ETFZ",
+        "as_of": AS_OF,
+        "created_at": AVAILABLE_AT,
+        "state": ActionState.WARNING.value,
+        "final_score": 82.0,
+        "priced_in_status": "bullish_not_priced_in",
+        "priced_in_direction": "bullish",
+        "emotion_score": 84.0,
+        "reaction_score": 31.0,
+        "emotion_reaction_gap": 53.0,
+        "priced_in_score": 77.0,
+        "candidate_theme": "ai_infrastructure",
+        "data_sources": {
+            "available": ["market_bars", "theme_peer_sector"],
+            "missing": [
+                "catalyst_events",
+                "local_text",
+                "options",
+                "broker_context",
+            ],
+            "stale": [],
+        },
+    }
+
+    payload = priced_in_queue_payload(
+        engine,
+        AppConfig.from_env({}),
+        candidate_rows=[candidate_row],
+        limit=10,
+    )
+
+    row = payload["rows"][0]
+    assert payload["instrument_scope"]["non_company_rows"] == 1
+    assert row["instrument"]["security_type"] == "ETF"
+    assert row["instrument"]["category"] == "non_company"
+    assert row["instrument"]["sec_catalyst_applicable"] is False
+    usefulness = row["usefulness"]
+    assert usefulness["status"] == "research_useful"
+    assert usefulness["evidence_route"] == "market_theme_fund_or_flow"
+    assert usefulness["core_sources"] == ["market_bars", "theme_peer_sector"]
+    assert usefulness["routed_optional_sources"] == [
+        "catalyst_events",
+        "local_text",
+    ]
+    assert "catalyst_events" in usefulness["optional_context_gaps"]
+    assert "local_text" in usefulness["optional_context_gaps"]
+    assert "catalyst_events" not in usefulness["missing_for_decision"]
+    assert "local_text" not in usefulness["missing_for_decision"]
+    assert usefulness["missing_for_decision"] == [
+        "candidate_packet",
+        "decision_card",
+    ]
+    assert "Non-company market and theme evidence route is available." in (
+        usefulness["reasons"]
+    )
+
+    catalyst_filtered = priced_in_queue_payload(
+        engine,
+        AppConfig.from_env({}),
+        candidate_rows=[candidate_row],
+        source_gap="catalyst_events",
+    )
+    assert catalyst_filtered["total_count"] == 1
+    assert catalyst_filtered["rows"][0]["usefulness"]["routed_optional_sources"] == [
+        "catalyst_events",
+        "local_text",
+    ]
+
+    options_filtered = priced_in_queue_payload(
+        engine,
+        AppConfig.from_env({}),
+        candidate_rows=[candidate_row],
+        source_gap="options",
+    )
+    assert options_filtered["total_count"] == 1
+
+
 def test_priced_in_answer_blocks_selected_universe_even_with_ready_rows(
     tmp_path: Path,
 ) -> None:

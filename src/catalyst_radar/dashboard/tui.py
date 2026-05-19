@@ -3024,21 +3024,31 @@ def _priced_in_gap_summary(row: Mapping[str, object]) -> str:
     data_sources = row.get("data_sources") or row.get("priced_in_data_sources")
     if not isinstance(data_sources, Mapping):
         return "unknown"
+    usefulness = row.get("usefulness")
+    if not isinstance(usefulness, Mapping):
+        usefulness = {}
+    routed = {
+        str(item)
+        for item in _rows_or_values(usefulness.get("routed_optional_sources"))
+        if str(item).strip()
+    }
     missing = [
         str(item)
         for item in _rows_or_values(data_sources.get("missing"))
-        if str(item).strip()
+        if str(item).strip() and str(item) not in routed
     ]
     stale = [
         str(item)
         for item in _rows_or_values(data_sources.get("stale"))
-        if str(item).strip()
+        if str(item).strip() and str(item) not in routed
     ]
     parts: list[str] = []
     if missing:
         parts.append(f"missing {', '.join(missing[:3])}")
     if stale:
         parts.append(f"stale {', '.join(stale[:3])}")
+    if routed:
+        parts.append(f"routed {', '.join(sorted(routed)[:3])}")
     if not parts:
         return "none"
     return "; ".join(parts)

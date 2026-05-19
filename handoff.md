@@ -1,6 +1,111 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 12:52:14 +08:00
+Last updated: 2026-05-19 13:17:05 +08:00
+
+## Latest Non-Company Usefulness Route Correction
+
+User-facing problem:
+
+- The full scan was already broad, but the queue could still feel like "only
+  these tickers" because the visible table is a page through the ranked scan.
+- More importantly, non-company rows were still scored as not decision-useful
+  when they lacked company-style evidence:
+  - `catalyst_events`
+  - `local_text`
+- That was wrong for ETF/fund/warrant/wrapper rows. Those rows should remain in
+  the full scan, but their first useful evidence route is market reaction plus
+  theme/sector/fund/flow/underlying context, not SEC company filings.
+
+Fix in this slice:
+
+- Priced-in queue rows now carry an explicit row-level `instrument` payload:
+  - `security_type`
+  - `category` (`company_like`, `non_company`, `unknown`)
+  - `evidence_route`
+  - `sec_catalyst_applicable`
+- Usefulness scoring is now instrument-aware:
+  - company-like/unknown rows still require `market_bars`, `catalyst_events`,
+    and `local_text` as core sources;
+  - non-company rows require `market_bars` and `theme_peer_sector` as core
+    sources;
+  - missing `catalyst_events` and `local_text` on non-company rows are reported
+    as routed optional context, not decision blockers.
+- Candidate detail evidence briefs now receive instrument metadata when loading
+  a ticker detail view.
+- CLI and TUI row summaries hide routed company-style sources from the primary
+  "missing" display and show them as routed instead.
+- Source-gap planning still sees routed rows. That is intentional: the planner
+  must be able to say "these non-company rows are routed", not incorrectly
+  return "no gaps".
+
+Important interpretation:
+
+- Full scan remains the broad ranked universe:
+
+  ```text
+  active=12613
+  scanned=12087
+  ranked=12087
+  visible_page=5 in the CLI smoke, 50 in the TUI overview
+  ```
+
+- "Only these tickers" means the UI is showing the current page or provider-safe
+  batch sample, not the scan universe.
+- Current live instrument scope:
+
+  ```text
+  rows=12087
+  company_like=5521
+  non_company=6566
+  unknown=0
+  ```
+
+- Current live decision state:
+
+  ```text
+  research_useful=10
+  decision_useful=0
+  external_calls=0 while viewing
+  ```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_answer_payload_summarizes_current_scan tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_payload_consolidates_current_state tests\integration\test_dashboard_data.py::test_priced_in_queue_payload_reports_full_scan_instrument_scope tests\integration\test_dashboard_data.py::test_priced_in_queue_payload_routes_non_company_usefulness_through_theme_context tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_classifies_non_company_cik_gaps tests\integration\test_dashboard_data.py::test_priced_in_queue_payload_filters_source_gaps tests\integration\test_dashboard_data.py::test_priced_in_queue_payload_filters_decision_gaps tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_queue_cli_outputs_same_zero_call_signal tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_audit_cli_outputs_full_scan_audit tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_tui_once_can_show_full_scan_mode tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_source_batches_cli_prints_non_company_route -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-queue --full-scan --limit 5
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-audit
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source catalyst_events --limit 1
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page overview
+```
+
+Observed:
+
+- Focused integration pass passed (`11 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+- Live CLI/TUI smokes made `0` provider calls.
+- Live queue smoke printed:
+
+  ```text
+  priced_in_queue status=ready count=5 total=12087 offset=0 external_calls=0
+  scan_scope=scanned=12087 requested=n/a filter=all ranked_after_filter=12087 visible_page=5
+  headline=Latest full scan ranked 12087 priced-in row(s); showing 1-5 of 12087.
+  ```
+
+Next useful product action:
+
+- Build the actual non-company evidence source instead of only routing around
+  company-style evidence:
+  - ETF/fund description and objective;
+  - underlying or constituent exposure when available;
+  - sector/theme exposure;
+  - flow/volume confirmation;
+  - local notes/text where available.
+- Then improve the dashboard so the main "Insights" view leads with the actual
+  answer to the user's question: which stocks look emotionally underpriced or
+  overpriced relative to market expectations, and why.
 
 ## Latest Non-Company Catalyst Route Correction
 
