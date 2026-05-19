@@ -1,6 +1,6 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 17:57:51 +08:00
+Last updated: 2026-05-19 18:02:44 +08:00
 
 ## Latest Source-Gap Payoff Ranking
 
@@ -46,7 +46,7 @@ git diff --check
 .\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-audit --limit 5 --json
 ```
 
-Observed so far:
+Observed:
 
 - Focused four-test set passed (`4 passed`).
 - Ruff passed.
@@ -54,12 +54,31 @@ Observed so far:
 - Live branch CLI audit source rows showed options first by payoff
   (`decision=10`, `actionable=12`), broker context second
   (`decision=5`, `actionable=7`), and `external_calls=0`.
+- PR #337 merged as `c7482b5`.
+- Post-merge local services were restarted:
+  - API health returned commit `c7482b56c514`;
+  - Streamlit health returned `ok`.
+- Live API verification:
+  - `/api/radar/priced-in/audit?limit=5`
+  - ranked source payoff as options first (`decision=10`,
+    `actionable=12`, `gaps=12087`) and broker context second
+    (`decision=5`, `actionable=7`, `gaps=12082`), with
+    `external_calls=0`.
+- Browser verification on `http://127.0.0.1:8514`:
+  - **Priced-in Source Gaps** rendered `DECISION USEFUL`,
+    `RESEARCH USEFUL`, `ACTIONABLE`, and `PRIORITY EXAMPLES`.
+  - Options appeared before broker context in the table.
+  - The dashboard uses its latest-run cutoff, so the displayed decision/research
+    split can differ from the no-cutoff API check, but the payoff columns and
+    ordering are present.
 
 Next useful product action:
 
-- Commit, open a PR, merge by rebase, restart local services, verify API and
-  Streamlit health, then run live API/dashboard checks for payoff-ranked source
-  gaps.
+- Actual source-fill execution still requires explicit user approval because it
+  can call SEC/Schwab/market providers.
+- Next useful zero-call product slice: make the dashboard's top-level
+  "next action" panel pull from this payoff ranking so the first screen says
+  exactly which source gap to inspect first and why.
 
 ## Latest Source-Gap First-Batch Actions
 
