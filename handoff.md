@@ -1,6 +1,78 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 04:49:32 +08:00
+Last updated: 2026-05-20 05:07:32 +08:00
+
+## Latest Full-Scan Market-Bar Scope Correction
+
+Goal alignment check:
+
+- The user explicitly pushed back on "only these tickers" and wants a full
+  stock scan. The previous audit output still had a confusing semantic gap:
+  source coverage could say `market_bars 5521/5521` ready because it only
+  counted ranked rows, even though 131 stock-like active securities were
+  unranked because their as-of bars were missing.
+- That was drift-prone because the dashboard could look healthier than the
+  actual stock universe. A full-stock priced-in answer must account for
+  stock-like active rows that failed to enter the ranked output due to missing
+  market bars.
+
+Fix in this slice:
+
+- `priced_in_full_scan_audit_payload` now computes market-bar repair/stock
+  scope before building audit source rows.
+- The `market_bars` source coverage row is now rebased to the intended market
+  bar universe:
+  - stocks-only mode uses stock-like active as-of bar coverage;
+  - all-instrument mode uses active-universe as-of bar coverage.
+- The audit preserves existing options/catalyst/broker diagnostics while only
+  recomputing the market-bars source action.
+- The market-bars source row now carries:
+  - `coverage_basis`;
+  - `as_of_bar_scope`;
+  - `stale`;
+  - `missing`;
+  - a useful missing-bar template command.
+- No provider, broker, OpenAI, order, or DB-write execution was run.
+
+Live zero-call audit observation:
+
+```text
+source_coverage=ready=1/6 weak=options,broker_context,catalyst_events
+- market_bars status=partial coverage=5521/5652 gap_rows=131 decision=0 research=0 actionable=0 next=Fill stock-like missing as-of bars first; then rerun the stocks-only priced-in scan.
+```
+
+Live JSON audit observation:
+
+```text
+market_bars 5521/5652 (131 missing); catalyst_events 9/5521 (5512 missing); local_text 9/5521 (5512 missing); options 0/5521 (5521 missing); theme_peer_sector 5521/5521; broker_context 4/5521 (5517 missing)
+partial stock_like_active_as_of_bars 5521 5652 131
+catalyst-radar market-bars template --expected-as-of 2026-05-15 --out data\local\manual-stock-bars-2026-05-15.csv --missing-only --stocks-only
+external_calls 0
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_reports_stock_only_bar_coverage tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_payload_consolidates_current_state tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_audit_cli_outputs_full_scan_audit -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+```
+
+Observed:
+
+- Focused tests passed (`3 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+
+Next useful product action:
+
+- The current first blocker is now shown honestly: complete the 131 stock-like
+  missing bars, either by filling
+  `data\local\manual-stock-bars-2026-05-15.csv` and importing it after preview,
+  or by explicitly approving the one-call Polygon/Massive grouped-daily provider
+  fill plan.
+- Do not claim the stocks-only priced-in scan is complete until market-bar
+  source coverage reads `5652/5652`.
 
 ## Latest Drift Check And Stocks-Only Market Bar Scope
 
