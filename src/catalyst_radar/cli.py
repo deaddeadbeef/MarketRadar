@@ -3514,6 +3514,9 @@ def _print_priced_in_all_source_batches(payload: Mapping[str, object]) -> None:
         capped_command = row.get("execute_batches_command")
         if capped_command:
             print(f"  capped_execute={_compact_cli_text(capped_command)}")
+        approval = row.get("approval_checklist")
+        if isinstance(approval, Mapping):
+            _print_priced_in_approval_checklist(approval, indent="  ")
 
 
 def _print_priced_in_recommendation_first_batch(
@@ -3562,6 +3565,32 @@ def _source_row(
     return None
 
 
+def _print_priced_in_approval_checklist(
+    approval: Mapping[str, object],
+    *,
+    indent: str = "",
+) -> None:
+    print(
+        f"{indent}approval_checklist="
+        f"required={str(bool(approval.get('approval_required'))).lower()} "
+        f"provider={approval.get('provider') or 'n/a'} "
+        f"calls={_int_value(approval.get('external_calls_required'))} "
+        f"trade_orders={str(bool(approval.get('trade_order_submission_allowed'))).lower()} "
+        f"command={_compact_cli_text(approval.get('execute_next_command'))}"
+    )
+    summary = approval.get("summary")
+    if summary:
+        print(f"{indent}  approval_summary={_compact_cli_text(summary)}")
+    for index, item in enumerate(_sequence_value(approval.get("items")), start=1):
+        if not isinstance(item, Mapping):
+            continue
+        print(
+            f"{indent}  approval_{index}="
+            f"{_compact_cli_text(item.get('item'))}: "
+            f"{_compact_cli_text(item.get('detail'))}"
+        )
+
+
 def _print_priced_in_source_batches(payload: Mapping[str, object]) -> None:
     print(
         "priced_in_source_batches "
@@ -3589,15 +3618,22 @@ def _print_priced_in_source_batches(payload: Mapping[str, object]) -> None:
             f"returned_batches={scan_scope.get('returned_batches')} "
             f"planned_batches={scan_scope.get('planned_batches')} "
             f"returned_tickers={scan_scope.get('returned_tickers')} "
-            f"batch_sample={str(bool(scan_scope.get('tickers_are_batch_sample'))).lower()}"
+            f"batch_sample={str(bool(scan_scope.get('tickers_are_batch_sample'))).lower()} "
+            f"ticker_scope={scan_scope.get('returned_ticker_scope') or 'n/a'}"
         )
         explanation = scan_scope.get("explanation")
         if explanation:
             print(f"scope_note={_compact_cli_text(explanation)}")
+        batch_note = scan_scope.get("batch_preview_note")
+        if batch_note:
+            print(f"ticker_scope_note={_compact_cli_text(batch_note)}")
     print(f"next_action={payload.get('next_action')}")
     boundary = payload.get("execution_boundary")
     if boundary:
         print(f"boundary={_compact_cli_text(boundary)}")
+    approval = payload.get("approval_checklist")
+    if isinstance(approval, Mapping):
+        _print_priced_in_approval_checklist(approval)
     review_command = payload.get("review_rows_command")
     if review_command:
         print(f"review_full_scan_source_gap={_compact_cli_text(review_command)}")
@@ -4038,6 +4074,18 @@ def _print_priced_in_audit(payload: Mapping[str, object]) -> None:
                 boundary = action.get("execution_boundary")
                 if boundary:
                     print(f"  boundary={_compact_cli_text(boundary)}")
+                full_scan_export = action.get("export_rows_command")
+                if full_scan_export:
+                    print(
+                        "  source_gap_full_scan_export="
+                        f"{_compact_cli_text(full_scan_export)}"
+                    )
+                all_batches = action.get("all_batches_command")
+                if all_batches:
+                    print(
+                        "  all_provider_batches="
+                        f"{_compact_cli_text(all_batches)}"
+                    )
                 batch_status = action.get("batch_status")
                 if batch_status:
                     print(
@@ -4058,6 +4106,9 @@ def _print_priced_in_audit(payload: Mapping[str, object]) -> None:
                 execute_next = action.get("execute_next_command")
                 if execute_next:
                     print(f"  execute_next={_compact_cli_text(execute_next)}")
+                approval = action.get("approval_checklist")
+                if isinstance(approval, Mapping):
+                    _print_priced_in_approval_checklist(approval, indent="  ")
                 blocked_reason = action.get("blocked_reason")
                 if blocked_reason:
                     print(
@@ -4068,6 +4119,9 @@ def _print_priced_in_audit(payload: Mapping[str, object]) -> None:
                 batch_scope = action.get("batch_scope")
                 if batch_scope:
                     print(f"  batch_scope={_compact_cli_text(batch_scope)}")
+                batch_note = action.get("batch_preview_note")
+                if batch_note:
+                    print(f"  ticker_scope_note={_compact_cli_text(batch_note)}")
         audit_next = preview.get("audit_next_page_command")
         if audit_next:
             print(f"more={_compact_cli_text(audit_next)}")

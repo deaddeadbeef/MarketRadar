@@ -1067,6 +1067,70 @@ def priced_in_source_gap_batches_payload(
         diagnostic_action = str(diagnostic.get("next_action") or "").strip()
         if diagnostic_action:
             next_action = diagnostic_action
+    review_rows_command = (
+        f"catalyst-radar priced-in-queue --full-scan --source-gap {source_name} --limit 50"
+    )
+    export_rows_command = (
+        f"catalyst-radar priced-in-queue --full-scan --source-gap {source_name} --all --json"
+    )
+    all_batches_command = (
+        "catalyst-radar priced-in-source-batches "
+        f"--source {source_name} --all --json"
+        if batch_count > 0
+        else None
+    )
+    execute_next_command = (
+        "catalyst-radar priced-in-source-batches "
+        f"--source {source_name} --execute-next"
+        if batches
+        else None
+    )
+    execute_batches_command = (
+        "catalyst-radar priced-in-source-batches "
+        f"--source {source_name} --execute-batches 3"
+        if batches
+        else None
+    )
+    execute_batches_api = (
+        "POST /api/radar/priced-in/source-batches/execute-next "
+        '{"source":"'
+        f'{source_name}","max_batches":3'
+        "}"
+        if batches
+        else None
+    )
+    all_batches_api = (
+        "GET /api/radar/priced-in/source-batches"
+        f"?source={source_name}&all_batches=true"
+        if batch_count > 0
+        else None
+    )
+    first_batch = next((batch for batch in batches if isinstance(batch, Mapping)), None)
+    returned_tickers_are_batch_sample = returned_ticker_count < len(tickers)
+    batch_preview_note = (
+        f"Returned tickers are the next source-fill batch preview: "
+        f"{returned_ticker_count} of {len(tickers)} plannable row(s), from "
+        f"{len(all_gap_tickers)} full-scan {source_name} gap row(s). This is not "
+        "the scan universe."
+        if returned_tickers_are_batch_sample
+        else (
+            f"Returned tickers cover every currently returned provider batch for "
+            f"{source_name}. Full-scan gap rows: {len(all_gap_tickers)}. This "
+            "is not the scan universe."
+        )
+    )
+    approval_checklist = _priced_in_source_batch_approval_checklist(
+        source_name=source_name,
+        status=status_value,
+        total_gap_rows=len(all_gap_tickers),
+        batch_count=batch_count,
+        batch_size=resolved_batch_size,
+        first_batch=first_batch,
+        review_rows_command=review_rows_command,
+        all_batches_command=all_batches_command,
+        execute_next_command=execute_next_command,
+        execute_batches_command=execute_batches_command,
+    )
     return {
         "schema_version": "priced-in-source-batches-v1",
         "status": status_value,
@@ -1088,7 +1152,13 @@ def priced_in_source_gap_batches_payload(
             "returned_batch_start": returned_batch_start,
             "returned_batch_end": returned_batch_end,
             "returned_tickers": returned_ticker_count,
-            "tickers_are_batch_sample": returned_ticker_count < len(tickers),
+            "tickers_are_batch_sample": returned_tickers_are_batch_sample,
+            "returned_ticker_scope": (
+                "next_provider_batch_preview"
+                if returned_tickers_are_batch_sample
+                else "returned_provider_batches"
+            ),
+            "batch_preview_note": batch_preview_note,
             "explanation": (
                 "The full scan covers every matching ranked row. The tickers shown "
                 "here are only the returned rate-limited source-fill batch(es); use "
@@ -1126,46 +1196,16 @@ def priced_in_source_gap_batches_payload(
         "batch_offset": resolved_offset,
         "batch_limit": resolved_limit,
         "all_batches": all_batches,
+        "approval_checklist": approval_checklist,
         "count": len(batches),
         "has_more": resolved_offset + len(batches) < batch_count,
-        "review_rows_command": (
-            f"catalyst-radar priced-in-queue --full-scan --source-gap {source_name} --limit 50"
-        ),
-        "export_rows_command": (
-            f"catalyst-radar priced-in-queue --full-scan --source-gap {source_name} --all --json"
-        ),
-        "all_batches_command": (
-            "catalyst-radar priced-in-source-batches "
-            f"--source {source_name} --all --json"
-            if batch_count > 0
-            else None
-        ),
-        "execute_next_command": (
-            "catalyst-radar priced-in-source-batches "
-            f"--source {source_name} --execute-next"
-            if batches
-            else None
-        ),
-        "execute_batches_command": (
-            "catalyst-radar priced-in-source-batches "
-            f"--source {source_name} --execute-batches 3"
-            if batches
-            else None
-        ),
-        "execute_batches_api": (
-            "POST /api/radar/priced-in/source-batches/execute-next "
-            '{"source":"'
-            f'{source_name}","max_batches":3'
-            "}"
-            if batches
-            else None
-        ),
-        "all_batches_api": (
-            "GET /api/radar/priced-in/source-batches"
-            f"?source={source_name}&all_batches=true"
-            if batch_count > 0
-            else None
-        ),
+        "review_rows_command": review_rows_command,
+        "export_rows_command": export_rows_command,
+        "all_batches_command": all_batches_command,
+        "execute_next_command": execute_next_command,
+        "execute_batches_command": execute_batches_command,
+        "execute_batches_api": execute_batches_api,
+        "all_batches_api": all_batches_api,
         "next_batch_command": _priced_in_source_next_batch_command(
             source_name=source_name,
             batch_limit=resolved_limit,
@@ -1350,6 +1390,9 @@ def _priced_in_all_source_batch_row(
         "batch_size": int(_finite_float(plan.get("batch_size"))),
         "scan_scope": _row_dict(_mapping_value(plan, "scan_scope")),
         "first_batch": first_batch_payload,
+        "approval_checklist": _row_dict(
+            _mapping_value(plan, "approval_checklist")
+        ),
         "all_batches_command": plan.get("all_batches_command"),
         "all_batches_api": plan.get("all_batches_api"),
         "review_rows_command": plan.get("review_rows_command"),
@@ -1396,6 +1439,145 @@ def _priced_in_first_source_batch_payload(
         "api": batch.get("api"),
         "api_payload": _row_dict(_mapping_value(batch, "api_payload")),
     }
+
+
+def _priced_in_source_batch_approval_checklist(
+    *,
+    source_name: str,
+    status: str,
+    total_gap_rows: int,
+    batch_count: int,
+    batch_size: int,
+    first_batch: Mapping[str, object] | None,
+    review_rows_command: str,
+    all_batches_command: str | None,
+    execute_next_command: str | None,
+    execute_batches_command: str | None,
+) -> dict[str, object]:
+    batch = _row_dict(first_batch or {})
+    tickers = [
+        str(ticker).strip().upper()
+        for ticker in _sequence_value(batch.get("tickers"))
+        if str(ticker).strip()
+    ]
+    calls = int(_finite_float(batch.get("external_calls_required")))
+    breakdown = _row_dict(_mapping_value(batch, "external_call_breakdown"))
+    approval_required = bool(execute_next_command)
+    provider = _priced_in_source_execution_provider(source_name)
+    if not approval_required:
+        return {
+            "schema_version": "priced-in-source-batch-approval-checklist-v1",
+            "source": source_name,
+            "status": status,
+            "approval_required": False,
+            "provider": provider,
+            "external_calls_required": 0,
+            "external_call_breakdown": {},
+            "trade_order_submission_allowed": False,
+            "execute_next_command": None,
+            "execute_batches_command": None,
+            "summary": "No executable provider/source batch is currently available.",
+            "items": [
+                {
+                    "item": "No execution command",
+                    "status": "blocked",
+                    "detail": (
+                        "Review the diagnostic and source-gap rows before attempting "
+                        "source-fill execution."
+                    ),
+                }
+            ],
+        }
+    batch_range = (
+        f"rows {batch.get('row_start')}-{batch.get('row_end')}"
+        if batch.get("row_start") and batch.get("row_end")
+        else "the first returned batch"
+    )
+    call_summary = (
+        _priced_in_source_call_breakdown_text(breakdown)
+        if breakdown
+        else "0 external calls"
+    )
+    return {
+        "schema_version": "priced-in-source-batch-approval-checklist-v1",
+        "source": source_name,
+        "status": status,
+        "approval_required": True,
+        "provider": provider,
+        "external_calls_required": calls,
+        "external_call_breakdown": breakdown,
+        "trade_order_submission_allowed": False,
+        "execute_next_command": execute_next_command,
+        "execute_batches_command": execute_batches_command,
+        "summary": (
+            f"Approve only if {source_name} source fill for {len(tickers)} ticker(s) "
+            f"and {calls} external call(s) is intentional."
+        ),
+        "items": [
+            {
+                "item": "Full-scan gap reviewed",
+                "status": "required",
+                "detail": (
+                    f"{total_gap_rows} full-scan {source_name} gap row(s). "
+                    f"Review rows first: {review_rows_command}"
+                ),
+            },
+            {
+                "item": "Batch scope accepted",
+                "status": "required",
+                "detail": (
+                    f"Executing next runs only {batch_range}: {len(tickers)} "
+                    f"ticker(s), batch size {batch_size}, out of {batch_count} "
+                    "planned batch(es)."
+                ),
+            },
+            {
+                "item": "Provider budget accepted",
+                "status": "required",
+                "detail": f"{calls} external call(s): {call_summary}.",
+            },
+            {
+                "item": "No trading permission",
+                "status": "required",
+                "detail": (
+                    "This is source-fill/read-only context only; it must not submit "
+                    "orders or change broker positions."
+                ),
+            },
+            {
+                "item": "Exact command confirmed",
+                "status": "required",
+                "detail": str(execute_next_command),
+            },
+            {
+                "item": "Repeat execution capped",
+                "status": "required",
+                "detail": (
+                    f"Use {execute_batches_command} only after reviewing the full "
+                    f"batch list: {all_batches_command or 'no batch list available'}"
+                ),
+            },
+        ],
+    }
+
+
+def _priced_in_source_execution_provider(source_name: str) -> str:
+    if source_name == "catalyst_events":
+        return "sec"
+    if source_name in PRICED_IN_SCHWAB_BATCH_SOURCES:
+        return "schwab"
+    if source_name == "local_text":
+        return "local_text"
+    return "none"
+
+
+def _priced_in_source_call_breakdown_text(counts: Mapping[str, object]) -> str:
+    parts = [
+        f"{key}={int(_finite_float(value))}"
+        for key, value in sorted(counts.items())
+        if int(_finite_float(value)) > 0
+    ]
+    return ", ".join(parts) if parts else "0 external calls"
 
 
 def _priced_in_source_gap_priority_counts(
@@ -2296,10 +2478,16 @@ def _priced_in_audit_source_gap_batch_action(
         "first_batch_command": first_batch_command,
         "execute_next_command": plan.get("execute_next_command"),
         "execute_batches_command": plan.get("execute_batches_command"),
+        "review_rows_command": plan.get("review_rows_command"),
+        "export_rows_command": plan.get("export_rows_command"),
+        "all_batches_command": plan.get("all_batches_command"),
+        "all_batches_api": plan.get("all_batches_api"),
+        "approval_checklist": _row_dict(_mapping_value(plan, "approval_checklist")),
         "diagnostic_status": diagnostic.get("status"),
         "blocked_reason": diagnostic.get("blocked_reason"),
         "diagnostic_next_action": diagnostic.get("next_action"),
         "batch_scope": batch_scope,
+        "batch_preview_note": scan_scope.get("batch_preview_note"),
     }
 
 

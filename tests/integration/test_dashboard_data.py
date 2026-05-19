@@ -1707,6 +1707,18 @@ def test_priced_in_full_scan_audit_payload_consolidates_current_state(
     assert source_filtered["preview"]["source_gap_actions"][0][
         "full_scan_gap_rows"
     ] >= 1
+    assert source_filtered["preview"]["source_gap_actions"][0][
+        "approval_checklist"
+    ]["schema_version"] == "priced-in-source-batch-approval-checklist-v1"
+    assert source_filtered["preview"]["source_gap_actions"][0][
+        "export_rows_command"
+    ] == "catalyst-radar priced-in-queue --full-scan --source-gap options --all --json"
+    assert source_filtered["preview"]["source_gap_actions"][0][
+        "all_batches_command"
+    ] == "catalyst-radar priced-in-source-batches --source options --all --json"
+    assert "not the scan universe" in (
+        source_filtered["preview"]["source_gap_actions"][0]["batch_preview_note"]
+    )
     assert "provider batch" in (
         source_filtered["preview"]["source_gap_actions"][0]["batch_scope"]
     )
@@ -2390,6 +2402,10 @@ def test_priced_in_source_gap_batches_payload_plans_safe_sync_batches(
     assert payload["scan_scope"]["returned_batches"] == 1
     assert payload["scan_scope"]["returned_tickers"] == 1
     assert payload["scan_scope"]["tickers_are_batch_sample"] is True
+    assert payload["scan_scope"]["returned_ticker_scope"] == (
+        "next_provider_batch_preview"
+    )
+    assert "not the scan universe" in payload["scan_scope"]["batch_preview_note"]
     assert payload["filters"]["requested_batch_size"] == 10
     assert payload["filters"]["max_batch_size"] == 1
     assert payload["batch_count"] == 2
@@ -2399,6 +2415,16 @@ def test_priced_in_source_gap_batches_payload_plans_safe_sync_batches(
     assert payload["batches"][0]["command"] == (
         "catalyst-radar schwab-market-sync --ticker AAPL"
     )
+    approval = payload["approval_checklist"]
+    assert approval["schema_version"] == "priced-in-source-batch-approval-checklist-v1"
+    assert approval["approval_required"] is True
+    assert approval["provider"] == "schwab"
+    assert approval["external_calls_required"] == 1
+    assert approval["trade_order_submission_allowed"] is False
+    assert approval["execute_next_command"] == (
+        "catalyst-radar priced-in-source-batches --source options --execute-next"
+    )
+    assert "No trading permission" in [item["item"] for item in approval["items"]]
     assert payload["batches"][0]["api_payload"] == {
         "tickers": ["AAPL"],
         "include_history": True,
@@ -2432,6 +2458,7 @@ def test_priced_in_source_gap_batches_payload_can_return_full_scan_plan(
     assert payload["all_batches"] is True
     assert payload["scan_scope"]["returned_tickers"] == 2
     assert payload["scan_scope"]["tickers_are_batch_sample"] is False
+    assert payload["scan_scope"]["returned_ticker_scope"] == "returned_provider_batches"
     assert payload["batch_offset"] == 0
     assert payload["has_more"] is False
     assert payload["next_batch_command"] is None
@@ -2537,6 +2564,8 @@ def test_priced_in_all_source_gap_batches_payload_summarizes_next_chunks(
     assert rows["options"]["scan_scope"]["returned_tickers"] == 1
     assert rows["options"]["first_batch"]["tickers"] == ["AAPL"]
     assert rows["options"]["first_batch"]["external_calls_required"] == 1
+    assert rows["options"]["approval_checklist"]["approval_required"] is True
+    assert rows["options"]["approval_checklist"]["provider"] == "schwab"
     assert rows["options"]["execute_next_command"] == (
         "catalyst-radar priced-in-source-batches --source options --execute-next"
     )
