@@ -4042,6 +4042,43 @@ def _print_priced_in_audit(payload: Mapping[str, object]) -> None:
         sample_boundary = recommended_source.get("sample_boundary")
         if sample_boundary:
             print(f"  sample_boundary={_compact_cli_text(sample_boundary)}")
+    shortlist = payload.get("answer_shortlist")
+    if isinstance(shortlist, Mapping):
+        print(
+            "answer_shortlist="
+            f"status={shortlist.get('status')} "
+            f"focus={shortlist.get('focus')} "
+            f"decision_ready={shortlist.get('decision_ready_rows')} "
+            f"actionable={shortlist.get('actionable_mismatch_rows')} "
+            f"visible={shortlist.get('visible_rows')} "
+            f"sample={str(bool(shortlist.get('visible_rows_are_sample'))).lower()} "
+            f"external_calls={shortlist.get('external_calls_made')}"
+        )
+        print(f"  summary={_compact_cli_text(shortlist.get('summary'))}")
+        boundary = shortlist.get("investment_decision_boundary")
+        if boundary:
+            print(f"  boundary={_compact_cli_text(boundary)}")
+        rows = shortlist.get("rows")
+        if isinstance(rows, list | tuple) and rows:
+            print("  ticker rank status decision_ready gap emotion reaction missing next_step")
+            for row in rows:
+                if not isinstance(row, Mapping):
+                    continue
+                missing = ",".join(
+                    str(item) for item in _sequence_value(row.get("missing_sources"))
+                )
+                print(
+                    "  "
+                    f"{row.get('ticker')} "
+                    f"{row.get('rank')} "
+                    f"{row.get('status')} "
+                    f"{str(bool(row.get('decision_ready'))).lower()} "
+                    f"{row.get('emotion_reaction_gap')} "
+                    f"{row.get('emotion_score')} "
+                    f"{row.get('reaction_score')} "
+                    f"{missing or '-'} "
+                    f"{_compact_cli_text(row.get('next_step'))}"
+                )
     _print_priced_in_instrument_scope(payload.get("instrument_scope"))
     preview = payload.get("preview")
     if isinstance(preview, Mapping):

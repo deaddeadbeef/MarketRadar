@@ -1,6 +1,92 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 19:33:22 +08:00
+Last updated: 2026-05-19 19:46:51 +08:00
+
+## Latest Market Expectation Shortlist
+
+Current problem:
+
+- The full-scan dashboard had the data needed to answer the user's real
+  question, but the first useful rows were buried inside the large full-scan
+  table and source-gap mechanics.
+- The operator needed the dashboard and CLI/API to first answer:
+  "Which stocks currently look like market emotion has not been fully matched by
+  price reaction?"
+
+Fix in this slice:
+
+- `priced_in_full_scan_audit_payload` now includes `answer_shortlist`.
+- The shortlist is derived from the same ranked full-scan rows already loaded by
+  the audit path, so it adds no provider calls.
+- The shortlist schema is `priced-in-answer-shortlist-v1` and includes:
+  - status;
+  - focus (`full_scan` or a selected source-gap focus);
+  - decision-ready row count;
+  - actionable mismatch row count;
+  - rows needing evidence;
+  - visible row count and sample flag;
+  - full-scan row count;
+  - investment-decision boundary;
+  - top rows with ticker, rank, status, decision-ready flag, gap, emotion,
+    reaction, priced-in score, missing/stale sources, why-now, and next step.
+- CLI `priced-in-audit` now prints `answer_shortlist=...` immediately after the
+  source-gap recommendation, before the larger full-scan preview table.
+- Streamlit **Priced-in Full Scan** now shows **Market Expectation Shortlist**
+  above source-gap mechanics and the large table.
+- Streamlit renders **Top Market Emotion Mismatches** with the ranked top rows
+  and repeats the "not trade approval" boundary.
+- This remains zero-call local analysis only.
+
+Current live zero-call observations from the branch:
+
+```text
+answer_shortlist=status=decision_ready focus=full_scan decision_ready=10 actionable=12 visible=10 sample=false external_calls=0
+  summary=Showing 10 of 10 decision-ready not-priced-in row(s).
+  boundary=This shortlist ranks market-expectation mismatch evidence only; it is not trade approval.
+  A 1 bullish_not_priced_in true 65.9 65.9 0.0 options Review the priced-in evidence and optional source gaps.
+```
+
+```text
+GET /api/radar/priced-in/audit?limit=10
+api_shortlist_status=decision_ready focus=full_scan decision=10 visible=10 first=A calls=0
+```
+
+Browser verification on `http://127.0.0.1:8514`:
+
+- **Market Expectation Shortlist** rendered.
+- **Top Market Emotion Mismatches** rendered.
+- The section showed `External Calls = 0`.
+- The section included the "not trade approval" boundary.
+- The visible dashboard rows included current top mismatch tickers such as
+  `MSFT` and `AAPL` under the latest-run cutoff.
+- Browser console check reported 0 current errors.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_payload_consolidates_current_state tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_audit_cli_outputs_full_scan_audit tests\integration\test_api_routes.py::test_get_radar_priced_in_audit_returns_zero_call_audit tests\integration\test_dashboard_entrypoint.py::test_dashboard_wires_priced_in_full_scan_panel_after_usefulness -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py apps\dashboard\Home.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_dashboard_entrypoint.py tests\integration\test_api_routes.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-audit --limit 10
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-audit --limit 10 --json
+curl.exe --insecure --silent --show-error --fail "https://127.0.0.1:8443/api/radar/priced-in/audit?limit=10"
+```
+
+Observed:
+
+- Focused four-test set passed (`4 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+- CLI and API checks both reported `external_calls=0`.
+- Local services were restarted from the branch for API/dashboard verification.
+
+Next useful product action:
+
+- Commit this slice, open a PR, rebase-merge it, restart services from `main`,
+  and run post-merge API/Streamlit health plus a zero-call shortlist check.
+- Continue improving the answer path, not just source-gap plumbing. A good next
+  slice is to add row-level drill-down links/actions from each shortlist ticker
+  into candidate detail and local evidence gaps.
 
 ## Latest Full-Scan Versus Provider-Batch Boundary
 
