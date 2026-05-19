@@ -142,6 +142,12 @@ PRICED_IN_USEFULNESS_FILTERS: Mapping[str, frozenset[str]] = {
     "monitor_only": frozenset({"monitor_only"}),
     "not_useful": frozenset({"not_useful"}),
 }
+FULL_SCAN_MARKET_BLOCKER_CODES = frozenset(
+    {"stale_daily_bars", "incomplete_daily_bar_coverage"}
+)
+FULL_SCAN_DERIVATIVE_READINESS_AREAS = frozenset(
+    {"Research loop", "Decision Cards"}
+)
 
 ALERT_SUPPRESSION_EXPLANATIONS = {
     "duplicate_trigger": "A prior alert already covers the same trigger.",
@@ -543,7 +549,10 @@ def candidate_delta_payload(
         current_run_rows = [
             row for row in current_rows if _parse_date(row.get("as_of")) == run_as_of
         ]
-        stale_context_count = max(0, len(current_rows) - len(current_run_rows))
+        if current_rows or run_as_of is None:
+            stale_context_count = max(0, len(current_rows) - len(current_run_rows))
+        else:
+            stale_context_count = len(load_candidate_rows(engine, available_at=cutoff))
     elif run_as_of is None:
         current_run_rows = []
         stale_context_count = len(load_candidate_rows(engine, available_at=cutoff))
@@ -2669,9 +2678,39 @@ def operator_work_queue_payload(
 
     queue_rows: list[dict[str, object]] = []
     sequence = 0
+    full_scan_market_blocker = _first_discovery_blocker_for_codes(
+        discovery_snapshot,
+        FULL_SCAN_MARKET_BLOCKER_CODES,
+    )
+    if full_scan_market_blocker:
+        sequence += 1
+        queue_rows.append(
+            _operator_work_queue_row(
+                sequence=sequence,
+                severity=120,
+                priority="must_fix",
+                area="Full scan market bars",
+                item=str(
+                    full_scan_market_blocker.get("finding")
+                    or "Fresh full-market bars are incomplete."
+                ),
+                status="blocked",
+                next_action=str(
+                    full_scan_market_blocker.get("next_action")
+                    or "Refresh full-universe market bars before rerunning the scan."
+                ),
+                evidence=str(full_scan_market_blocker.get("code") or "market_bars"),
+                source="discovery_snapshot",
+            )
+        )
     for row in readiness_rows:
         status = str(row.get("status") or "")
         if status not in {"blocked", "attention"}:
+            continue
+        if (
+            full_scan_market_blocker
+            and str(row.get("area") or "") in FULL_SCAN_DERIVATIVE_READINESS_AREAS
+        ):
             continue
         sequence += 1
         queue_rows.append(
@@ -2878,10 +2917,15 @@ def market_radar_usefulness_payload(
     )
     steps = _radar_steps_by_name(radar_run_summary)
     llm_step = steps.get("llm_review", {})
+    full_scan_market_blocker = _first_discovery_blocker_for_codes(
+        snapshot,
+        FULL_SCAN_MARKET_BLOCKER_CODES,
+    )
 
     market_live = (
         source_modes.get("market") == "live" and source_modes.get("events") == "live"
     )
+    market_scan_ready = market_live and not full_scan_market_blocker
     worker_state = str(worker.get("status") or "not_seen")
     decision_ready = bool(investment.get("manual_buy_review_ready"))
     research_available = bool(candidates) and str(investment.get("status") or "") in {
@@ -2892,15 +2936,21 @@ def market_radar_usefulness_payload(
     layers = [
         _usefulness_layer(
             "Automatic market scan",
-            "ready" if market_live else "blocked",
+            "ready" if market_scan_ready else "blocked",
             (
                 "Market and catalyst sources are live."
-                if market_live
-                else "Market Radar is still using fixture or incomplete live inputs."
+                if market_scan_ready
+                else str(
+                    full_scan_market_blocker.get("finding")
+                    if full_scan_market_blocker
+                    else "Market Radar is still using fixture or incomplete live inputs."
+                )
             ),
             (
                 "Run one capped radar cycle and inspect rejected/provider counts."
-                if market_live
+                if market_scan_ready
+                else str(full_scan_market_blocker.get("next_action"))
+                if full_scan_market_blocker
                 else str(
                     live_plan.get("next_action")
                     or "Configure live market and catalyst sources."
@@ -9024,6 +9074,20 @@ def _first_blocker_action(
         if action not in (None, ""):
             return str(action)
     return default
+
+
+def _first_discovery_blocker_for_codes(
+    discovery_snapshot: Mapping[str, object] | None,
+    codes: frozenset[str],
+) -> dict[str, object]:
+    snapshot = discovery_snapshot if isinstance(discovery_snapshot, Mapping) else {}
+    for blocker in _sequence_value(snapshot.get("blockers")):
+        if not isinstance(blocker, Mapping):
+            continue
+        row = _row_dict(blocker)
+        if str(row.get("code") or "") in codes:
+            return row
+    return {}
 
 
 def _research_why_now(candidate: Mapping[str, object], *, top_event: object) -> str:

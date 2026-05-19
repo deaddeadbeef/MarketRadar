@@ -603,7 +603,7 @@ def test_dashboard_tui_once_can_show_full_scan_mode(
     assert "Full-market priced-in queue - showing" in output.out
     assert "Decision readiness:" in output.out
     assert "Data gaps" in output.out
-    assert "Source coverage next:" in output.out
+    assert "Next data step:" in output.out
     assert "Coverage-first:" in output.out
     assert "ticker rows are the current priced-in scan page" in output.out
 
