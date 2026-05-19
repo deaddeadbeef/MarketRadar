@@ -2853,6 +2853,9 @@ def test_priced_in_preflight_payload_reports_exact_next_steps(tmp_path: Path) ->
     assert payload["schema_version"] == "priced-in-preflight-v1"
     assert payload["external_calls_made"] == 0
     assert payload["status"] in {"blocked", "attention", "ready"}
+    assert payload["target_as_of"] == AS_OF.date().isoformat()
+    assert payload["target_as_of_source"] == "latest_daily_bar"
+    assert payload["latest_run_as_of"] is None
     assert payload["provider"]["ticker_seed_cap_pages"] == 1
     assert payload["provider"]["ticker_page_delay_seconds"] == 0.0
     assert payload["provider"]["latest_daily_bar_ticker_count"] >= 1001
@@ -2909,13 +2912,32 @@ def test_priced_in_preflight_recommends_manual_bar_template_for_missing_bars(
     tmp_path: Path,
 ) -> None:
     engine = _engine(tmp_path)
+    run_as_of = AS_OF.date() + timedelta(days=1)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(daily_bars),
+            {
+                "ticker": "MSFT",
+                "date": AS_OF.date(),
+                "provider": "polygon",
+                "open": 10.0,
+                "high": 11.0,
+                "low": 9.0,
+                "close": 10.5,
+                "volume": 1_000_000,
+                "vwap": 10.2,
+                "adjusted": True,
+                "source_ts": SOURCE_TS,
+                "available_at": AVAILABLE_AT,
+            },
+        )
 
     payload = priced_in_preflight_payload(
         engine,
         AppConfig(daily_market_provider="polygon", polygon_api_key="fixture-key"),
-        latest_run={"universe": None},
+        latest_run={"universe": None, "as_of": run_as_of.isoformat()},
         discovery_snapshot={
-            "run": {"universe": None},
+            "run": {"universe": None, "as_of": run_as_of.isoformat()},
             "freshness": {
                 "active_security_count": 12_613,
                 "active_security_with_as_of_bar_count": 0,
@@ -2931,6 +2953,10 @@ def test_priced_in_preflight_recommends_manual_bar_template_for_missing_bars(
 
     by_area = {row["area"]: row for row in payload["rows"]}
     market_bars = by_area["market_bars"]
+    assert payload["target_as_of"] == run_as_of.isoformat()
+    assert payload["target_as_of_source"] == "run_as_of"
+    assert payload["latest_run_as_of"] == run_as_of.isoformat()
+    assert payload["provider"]["latest_daily_bar_date"] == AS_OF.date().isoformat()
     assert market_bars["status"] == "blocked"
     assert "DB-backed active-universe" in str(market_bars["next_action"])
     assert market_bars["command"].startswith("catalyst-radar market-bars template")

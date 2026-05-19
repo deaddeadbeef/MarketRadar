@@ -325,6 +325,9 @@ def test_run_full_market_scan_script_is_plan_first_and_execute_gated() -> None:
     assert script.is_file()
     assert "priced-in-preflight" in text
     assert "--json" in text
+    assert "preflight.target_as_of" in text
+    assert "preflight.target_as_of_source" in text
+    assert "provider.latest_daily_bar_date" in text
     assert "Plan only: no provider calls or database writes were made." in text
     assert "Invoke-DailyRunAcceptCompletedScan" in text
     assert "feature_scan" in text
@@ -342,6 +345,7 @@ def test_run_full_market_scan_script_is_plan_first_and_execute_gated() -> None:
     assert "--available-at" in text
     assert "--provider\", \"polygon\"" in text
     assert "--universe" in text
+    assert "Scan as-of: {0}; source={1}" in text
     assert (
         '"run-daily", "--as-of", $resolvedAsOf, "--available-at", $availableAt, '
         '"--provider", "polygon", "--json"'

@@ -3718,6 +3718,8 @@ def _print_priced_in_preflight(payload: Mapping[str, object]) -> None:
         "priced_in_preflight "
         f"status={payload.get('status')} "
         f"scan_status={payload.get('scan_status')} "
+        f"target_as_of={payload.get('target_as_of') or 'n/a'} "
+        f"target_source={payload.get('target_as_of_source') or 'n/a'} "
         f"external_calls={payload.get('external_calls_made')}"
     )
     print(f"headline={payload.get('headline')}")
