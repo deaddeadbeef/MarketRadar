@@ -1,6 +1,42 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 07:08:33 +08:00
+Last updated: 2026-05-20 07:13:18 +08:00
+
+## Latest Quick Status Invalid Row Examples
+
+Goal alignment:
+
+- Quick status identified that the local stock-bar template was invalid, but it
+  did not show the user which rows or fields were invalid.
+- That slowed the only zero-call path to clearing the 131 missing stock-like
+  bars.
+- This slice changes only `scripts\market-radar-status.ps1` quick output and
+  makes 0 Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or DB-write
+  calls.
+
+Fix in this slice:
+
+- `scripts\market-radar-status.ps1 -Quick` now prints up to three
+  `invalid_examples` from the local manual bar preview.
+- Live quick status now shows:
+
+  ```text
+  - local template invalid examples: row 2 AACO 2026-05-15: blank close,high,low,open | row 3 ADAC 2026-05-15: blank close,high,low,open | row 4 ADXN 2026-05-15: blank close,high,low,open
+  ```
+
+Validation run in this slice:
+
+```powershell
+powershell -NoProfile -Command '& { $null = [scriptblock]::Create((Get-Content -Raw .\scripts\market-radar-status.ps1)); "powershell syntax ok" }'
+powershell -ExecutionPolicy Bypass -File .\scripts\market-radar-status.ps1 -Quick
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_local_scripts.py::test_market_radar_status_script_is_zero_external_call_sitrep -q
+```
+
+Next useful product action after merge:
+
+- The zero-call manual path is now clearer: fill each missing stock-bar row's
+  required OHLC fields, preview the import again, then only run `--execute`
+  when the preview is valid.
 
 ## Latest Quick Status Stock-Scan Next Action
 
