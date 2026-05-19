@@ -1324,6 +1324,13 @@ def priced_in_all_source_gap_batches_payload(
         ready_rows=ready_rows,
         blocked_rows=blocked_rows,
     )
+    goal_alignment = _priced_in_all_source_goal_alignment(
+        queue,
+        total_gap_rows=total_gap_rows,
+        coverage_recommendation=coverage_recommendation,
+        decision_recommendation=decision_recommendation,
+        stocks_only=stocks_only,
+    )
     return {
         "schema_version": "priced-in-source-batch-overview-v1",
         "status": status_value,
@@ -1340,6 +1347,7 @@ def priced_in_all_source_gap_batches_payload(
             total_gap_rows=total_gap_rows,
             stocks_only=stocks_only,
         ),
+        "goal_alignment": goal_alignment,
         "coverage_first_recommendation": coverage_recommendation,
         "decision_shortcut_recommendation": decision_recommendation,
         "external_calls_made": 0,
@@ -1353,6 +1361,75 @@ def priced_in_all_source_gap_batches_payload(
         "blocked_source_count": len(blocked_rows),
         "total_gap_rows": total_gap_rows,
         "sources": rows,
+    }
+
+
+def _priced_in_all_source_goal_alignment(
+    queue: Mapping[str, object],
+    *,
+    total_gap_rows: int,
+    coverage_recommendation: Mapping[str, object],
+    decision_recommendation: Mapping[str, object],
+    stocks_only: bool,
+) -> dict[str, object]:
+    full_scan = _priced_in_answer_full_scan_summary(queue)
+    ranked_rows = int(_finite_float(full_scan.get("ranked_rows")))
+    scanned_rows = int(_finite_float(full_scan.get("scanned_rows")))
+    active_rows = int(_finite_float(full_scan.get("active_securities")))
+    denominator = ranked_rows or scanned_rows or active_rows
+    instrument_filter = "stocks_only" if stocks_only else "all_instruments"
+    scan_name = "stock scan" if stocks_only else "ranked scan"
+    coverage_source = str(coverage_recommendation.get("source") or "").strip()
+    coverage_gaps = int(_finite_float(coverage_recommendation.get("total_gap_rows")))
+    coverage_calls = int(
+        _finite_float(coverage_recommendation.get("first_batch_external_calls"))
+    )
+    coverage_command = coverage_recommendation.get("command")
+    decision_source = str(decision_recommendation.get("source") or "").strip()
+    decision_rows = int(
+        _finite_float(decision_recommendation.get("decision_useful_gap_rows"))
+    )
+    current_blocker = (
+        f"{coverage_source} evidence has {coverage_gaps} gap row(s)."
+        if coverage_source
+        else "No source coverage blocker is currently runnable."
+    )
+    next_step = str(
+        coverage_recommendation.get("action")
+        or "Review the source coverage plan before adding more data."
+    )
+    return {
+        "schema_version": "priced-in-goal-alignment-v1",
+        "status": "aligned",
+        "goal": (
+            "Find stocks where market emotion has not yet been matched by "
+            "price reaction."
+        ),
+        "useful_definition": (
+            "Useful means a ranked stock row has fresh price reaction plus "
+            "enough catalyst/context evidence to judge the emotion-price gap."
+        ),
+        "instrument_filter": instrument_filter,
+        "stocks_only": bool(stocks_only),
+        "ranked_rows": ranked_rows,
+        "scanned_rows": scanned_rows,
+        "active_securities": active_rows,
+        "source_gap_rows": total_gap_rows,
+        "current_state": (
+            f"The current {scan_name} covers {denominator} ranked row(s) and "
+            f"has {total_gap_rows} source evidence gap row(s)."
+        ),
+        "current_blocker": current_blocker,
+        "next_useful_step": next_step,
+        "next_source": coverage_source or None,
+        "next_command": coverage_command,
+        "next_external_calls_required": coverage_calls,
+        "decision_shortcut_source": decision_source or None,
+        "decision_shortcut_rows": decision_rows,
+        "provider_boundary": (
+            "This is a zero-call plan. Execute only one reviewed source chunk "
+            "when the provider and call budget are intentional."
+        ),
     }
 
 

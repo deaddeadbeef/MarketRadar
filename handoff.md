@@ -1,6 +1,83 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 00:22:27 +08:00
+Last updated: 2026-05-20 00:45:07 +08:00
+
+## Latest Stock-Scan Goal Alignment Surface
+
+Goal alignment check:
+
+- The user stopped the work to check for drift after many PRs.
+- The active goal is still: scan the market to find stocks whose prices have
+  not yet matched market expectations, with both CLI/API and dashboard surfaces.
+- The current useful blocker is still source evidence coverage for the stock
+  scan, not additional market-bar repair or decorative dashboard work.
+- The local stock scan currently has `5521` ranked stock rows. Market bars are
+  usable for this stock lens. The first broad evidence gap is
+  `catalyst_events`, with `5512` stock-row gaps and `5510` plannable SEC
+  targets.
+
+Fix in this slice:
+
+- Added `--stocks-only` startup controls to:
+  - `catalyst-radar dashboard-snapshot`
+  - `catalyst-radar dashboard-tui`
+  - `catalyst-radar agent-brief`
+- The dashboard/TUI/agent snapshot controls now preserve
+  `priced_in_stocks_only=True` when requested, instead of requiring the user to
+  type `stocks` after opening the TUI.
+- `priced_in_all_source_gap_batches_payload` now includes a
+  `goal_alignment` block:
+  - goal: find stocks where market emotion has not yet been matched by price;
+  - useful definition: ranked stock rows need fresh price reaction plus enough
+    catalyst/context evidence to judge the emotion-price gap;
+  - current state: ranked rows and source-gap rows;
+  - current blocker: first source gap;
+  - next useful step and command;
+  - explicit zero-call/provider-boundary language.
+- CLI `priced-in-source-batches --source all` prints that goal-alignment block.
+- TUI source workflow now shows the same human-readable goal/useful/now/blocker
+  summary and points the operator to `batch <source>` before any execute
+  command.
+- No Polygon/Massive, Schwab, SEC, OpenAI, or broker/order execution was run.
+
+Current live zero-call observation from local CLI:
+
+```text
+priced_in_source_batch_overview status=ready sources=6 ready_sources=2 blocked_sources=2 gap_rows=22062 external_calls=0
+full_scan=mode=full_scan active=12613 scanned=12087 ranked=5521 stocks_only=true source_gap_rows=22062 examples_are_samples=true
+goal_alignment=status=aligned stocks_only=true ranked=5521 source_gap_rows=22062 useful=Useful means a ranked stock row has fresh price reaction plus enough catalyst/context evidence to judge the emotion-price gap.
+current=The current stock scan covers 5521 ranked row(s) and has 22062 source evidence gap row(s).
+blocker=catalyst_events evidence has 5512 gap row(s).
+next_useful_command=catalyst-radar priced-in-source-batches --source catalyst_events --stocks-only --execute-next calls=5
+boundary=This is a zero-call plan. Execute only one reviewed source chunk when the provider and call budget are intentional.
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_all_source_gap_batches_payload_summarizes_next_chunks tests\integration\test_dashboard_data.py::test_priced_in_all_source_gap_batches_prioritizes_decision_useful_gaps tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_snapshot_cli_outputs_dashboard_command_center_json tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_snapshot_ops_page_shows_priced_in_source_actions tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_tui_once_can_show_full_scan_mode tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_queue_cli_outputs_same_zero_call_signal -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\cli.py src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source all --stocks-only --limit 1
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --stocks-only --page ops
+```
+
+Observed:
+
+- Focused test set passed (`6 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+- Live stock-only source overview and TUI Ops smoke both made
+  `external_calls=0`.
+
+Next useful product action:
+
+- If the operator explicitly approves the first provider chunk, run only:
+  `catalyst-radar priced-in-source-batches --source catalyst_events --stocks-only --execute-next`
+- That chunk is `5` SEC calls for `AAT`, `AAUC`, `AB`, `ABAT`, and `ABBV`.
+- Do not run that command without explicit approval.
+- After the first SEC chunk, rerun the stock-only source overview and check
+  whether `local_text` becomes runnable for the stored event text.
 
 ## Latest Stocks-Only Source-Batch Scope
 
