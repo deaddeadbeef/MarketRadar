@@ -1,6 +1,73 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 10:04:01 +08:00
+Last updated: 2026-05-19 10:12:56 +08:00
+
+## Latest Provider Error Detail Fix
+
+Live execution attempt after the minimal-call full-scan fix:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\run-full-market-scan.ps1 -Execute
+```
+
+Observed:
+
+- The helper correctly planned only one provider call:
+
+  ```text
+  Execute provider calls: ticker_pages=0; grouped_daily=1; total=1; call_plan_max=6
+  ```
+
+- Polygon/Massive key validity check succeeded separately against market status:
+
+  ```text
+  market_status status=200
+  ```
+
+- The grouped daily endpoint failed with HTTP 403. The provider response body
+  explained the real blocker:
+
+  ```text
+  NOT_AUTHORIZED: Attempted to request today's data before end of day.
+  ```
+
+Fix in this slice:
+
+- `JsonHttpClient` now preserves a short redacted provider response detail for
+  non-2xx JSON responses.
+- Query secrets remain redacted in URLs and response detail.
+- This makes future CLI/API failures actionable instead of only showing:
+
+  ```text
+  HTTP 403 from <redacted URL>
+  ```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\unit\test_http_client.py -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\connectors\http.py tests\unit\test_http_client.py
+git diff --check
+powershell -ExecutionPolicy Bypass -File scripts\run-full-market-scan.ps1 -Execute
+```
+
+Observed:
+
+- HTTP client unit tests passed.
+- Ruff passed.
+- `git diff --check` passed.
+- Live full-scan execution still failed before scan because the provider blocks
+  same-day grouped daily data for the current plan/date, but the error now
+  includes the provider message and redacts the key.
+
+Current data-state conclusion:
+
+- The full active universe exists: `12,613` active securities.
+- The default full-scan helper is now appropriately minimal: one grouped daily
+  call, then local scan.
+- The current blocker is external availability for `2026-05-18` daily bars:
+  wait until the provider releases end-of-day data for the plan, use a manual
+  CSV import, or upgrade the Polygon/Massive plan.
 
 ## Latest Full-Scan Minimal Provider Call Fix
 
