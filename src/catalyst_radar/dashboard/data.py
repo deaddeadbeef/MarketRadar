@@ -2626,6 +2626,16 @@ def _priced_in_full_scan_audit_payload_uncached(
     planning_rows = _sequence_value(resolved_queue.get("planning_rows"))
     if not planning_rows:
         planning_rows = _sequence_value(resolved_queue.get("rows"))
+    market_bars = _priced_in_audit_market_bars(
+        engine,
+        config,
+        resolved_queue,
+        resolved_preflight,
+    )
+    source_coverage = _priced_in_source_coverage_with_market_bar_scope(
+        source_coverage,
+        market_bars,
+    )
     priority_counts = _priced_in_source_gap_priority_counts(planning_rows)
     source_rows = []
     for row in _sequence_value(source_coverage.get("actions")):
@@ -2656,12 +2666,6 @@ def _priced_in_full_scan_audit_payload_uncached(
     decision_ready_count = int(_finite_float(usefulness_counts.get("decision_useful")))
     research_ready_count = int(_finite_float(usefulness_counts.get("research_useful")))
     blocked_count = int(_finite_float(usefulness_counts.get("blocked")))
-    market_bars = _priced_in_audit_market_bars(
-        engine,
-        config,
-        resolved_queue,
-        resolved_preflight,
-    )
     next_action, next_command = _priced_in_audit_next_step(
         resolved_preflight,
         source_rows,
@@ -3762,9 +3766,13 @@ def _priced_in_audit_source_row(
         "source": action.get("source"),
         "status": action.get("status"),
         "available": int(_finite_float(action.get("available"))),
+        "stale": int(_finite_float(action.get("stale"))),
+        "missing": int(_finite_float(action.get("missing"))),
         "row_count": int(_finite_float(action.get("row_count"))),
         "gap_count": int(_finite_float(action.get("gap_count"))),
         "coverage_pct": action.get("coverage_pct"),
+        "coverage_basis": action.get("coverage_basis"),
+        "as_of_bar_scope": _row_dict(_mapping_value(action, "as_of_bar_scope")),
         "sample_tickers": list(_sequence_value(action.get("sample_tickers"))),
         "decision_useful_gap_rows": int(
             _finite_float(priority.get("decision_useful_gap_rows"))
@@ -5147,6 +5155,104 @@ def _priced_in_source_coverage_with_instrument_routes(
         row_count,
         stocks_only=bool(updated.get("stocks_only")),
     )
+    updated["summary"] = _priced_in_source_coverage_summary_text(source_rows, row_count)
+    return updated
+
+
+def _priced_in_source_coverage_with_market_bar_scope(
+    source_coverage: Mapping[str, object],
+    market_bars: Mapping[str, object],
+) -> dict[str, object]:
+    updated = _row_dict(source_coverage)
+    repair = _mapping_value(market_bars, "repair")
+    if not repair:
+        return updated
+
+    stocks_only = bool(repair.get("stocks_only"))
+    if stocks_only:
+        stock_scope = _mapping_value(repair, "stock_scope")
+        active = int(_finite_float(stock_scope.get("stock_like_active")))
+        available = int(_finite_float(stock_scope.get("stock_like_with_as_of_bar")))
+        missing = int(_finite_float(stock_scope.get("stock_like_missing_as_of_bar")))
+        sample_tickers = [
+            str(ticker).strip().upper()
+            for ticker in _sequence_value(
+                stock_scope.get("sample_missing_stock_like_tickers")
+            )
+            if str(ticker).strip()
+        ]
+        coverage_basis = "stock_like_active_as_of_bars"
+        scope_payload: Mapping[str, object] = stock_scope
+    else:
+        active = int(_finite_float(repair.get("active_securities")))
+        available = int(_finite_float(repair.get("with_as_of_bar")))
+        missing = int(_finite_float(repair.get("missing_as_of_bar")))
+        sample_tickers = [
+            str(ticker).strip().upper()
+            for ticker in _sequence_value(
+                repair.get("missing_as_of_bar_ticker_sample")
+                or repair.get("missing_as_of_bar_tickers")
+            )
+            if str(ticker).strip()
+        ]
+        coverage_basis = "active_universe_as_of_bars"
+        scope_payload = {
+            "target_as_of": repair.get("target_as_of"),
+            "active_securities": active,
+            "with_as_of_bar": available,
+            "missing_as_of_bar": missing,
+        }
+    if active <= 0:
+        return updated
+
+    source_rows = {
+        str(source): _row_dict(values)
+        for source, values in _mapping_value(updated, "sources").items()
+        if isinstance(values, Mapping)
+    }
+    market_row = _row_dict(source_rows.get("market_bars", {}))
+    market_row.update(
+        {
+            "raw_row_count": market_row.get("row_count"),
+            "raw_available": market_row.get("available"),
+            "raw_stale": market_row.get("stale"),
+            "raw_missing": market_row.get("missing"),
+            "available": available,
+            "stale": 0,
+            "missing": max(0, missing),
+            "row_count": active,
+            "coverage_pct": _source_coverage_pct(
+                available=available,
+                stale=0,
+                missing=max(0, missing),
+            ),
+            "sample_tickers": _sample_tickers(sample_tickers),
+            "coverage_basis": coverage_basis,
+            "as_of_bar_scope": _row_dict(scope_payload),
+            "repair_status": repair.get("status"),
+        }
+    )
+    source_rows["market_bars"] = market_row
+
+    row_count = int(_finite_float(updated.get("row_count")))
+    updated["sources"] = source_rows
+    updated["weak_sources"] = _priced_in_source_coverage_weak_sources(source_rows)
+    recomputed_actions = _priced_in_source_action_rows(
+        source_rows,
+        row_count,
+        stocks_only=bool(updated.get("stocks_only")),
+    )
+    existing_actions = {
+        str(action.get("source") or ""): _row_dict(action)
+        for action in _sequence_value(updated.get("actions"))
+        if isinstance(action, Mapping)
+    }
+    updated["actions"] = [
+        action
+        if str(action.get("source") or "") == "market_bars"
+        else existing_actions.get(str(action.get("source") or ""), action)
+        for action in recomputed_actions
+    ]
     updated["summary"] = _priced_in_source_coverage_summary_text(source_rows, row_count)
     return updated
 
@@ -10779,6 +10885,31 @@ def _priced_in_source_action_row(
     else:
         status = "missing"
     guidance = _priced_in_source_guidance(source, status)
+    if source == "market_bars" and status not in {"ready", "not_applicable"}:
+        target_as_of = _parse_date(
+            _mapping_value(values, "as_of_bar_scope").get("target_as_of")
+        )
+        stocks_scope = (
+            str(values.get("coverage_basis") or "") == "stock_like_active_as_of_bars"
+        )
+        guidance = {
+            **guidance,
+            "next_action": (
+                "Fill stock-like missing as-of bars first; then rerun the "
+                "stocks-only priced-in scan."
+                if stocks_scope
+                else (
+                    "Fill missing as-of bars for the active universe; then "
+                    "rerun the full priced-in scan."
+                )
+            ),
+            "command": _csv_market_template_command(
+                target_as_of,
+                missing_only=True,
+                stocks_only=stocks_scope,
+            ),
+            "api": "POST /api/radar/market-bars/template",
+        }
     applicability = _row_dict(_mapping_value(values, "applicability"))
     if source == "catalyst_events" and applicability:
         guidance = _priced_in_catalyst_guidance_with_applicability(
@@ -10842,6 +10973,9 @@ def _priced_in_source_action_row(
         "routed_non_company_gap_rows": values.get("routed_non_company_gap_rows"),
         "applicability": applicability,
         "coverage_pct": coverage_pct,
+        "coverage_basis": values.get("coverage_basis"),
+        "as_of_bar_scope": _row_dict(_mapping_value(values, "as_of_bar_scope")),
+        "repair_status": values.get("repair_status"),
         "sample_tickers": sample_tickers,
         "sample_scope": _priced_in_source_sample_scope(
             sample_count=len(sample_tickers),
