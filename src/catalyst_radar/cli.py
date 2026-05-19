@@ -4113,6 +4113,12 @@ def _print_priced_in_audit(payload: Mapping[str, object]) -> None:
                     "    point_in_time_import="
                     f"{_compact_cli_text(point_in_time)}"
                 )
+            non_company_route = repair.get("non_company_route")
+            if non_company_route:
+                print(
+                    "    non_company_route="
+                    f"{_compact_cli_text(non_company_route)}"
+                )
             batch_plan = repair.get("batch_plan_command")
             if batch_plan:
                 print(f"    batch_plan={_compact_cli_text(batch_plan)}")
@@ -4337,6 +4343,15 @@ def _print_priced_in_audit(payload: Mapping[str, object]) -> None:
                     "    point_in_time_import="
                     f"{_compact_cli_text(point_in_time)}"
                 )
+            non_company_route = repair.get("non_company_route")
+            if non_company_route:
+                print(
+                    "    non_company_route="
+                    f"{_compact_cli_text(non_company_route)}"
+                )
+            batch_plan = repair.get("batch_plan_command")
+            if batch_plan:
+                print(f"    batch_plan={_compact_cli_text(batch_plan)}")
             boundary = repair.get("write_boundary")
             if boundary:
                 print(f"    boundary={_compact_cli_text(boundary)}")

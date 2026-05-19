@@ -2937,6 +2937,8 @@ def _priced_in_audit_source_gap_repair(
     action: Mapping[str, object],
 ) -> dict[str, object] | None:
     source = str(action.get("source") or "").strip()
+    if source == "catalyst_events":
+        return _priced_in_audit_catalyst_gap_repair(action)
     if source != "options":
         return None
     gap_count = int(_finite_float(action.get("gap_count")))
@@ -3000,6 +3002,79 @@ def _priced_in_audit_source_gap_repair(
             "Options are supporting market-emotion evidence. This gap does not shrink "
             "the full-scan universe, but it lowers trust in decision-useful mismatch "
             "rows until point-in-time options are present or intentionally skipped."
+        ),
+    }
+
+
+def _priced_in_audit_catalyst_gap_repair(
+    action: Mapping[str, object],
+) -> dict[str, object] | None:
+    applicability = _row_dict(_mapping_value(action, "applicability"))
+    if not applicability:
+        return None
+    company_like_gap_rows = int(_finite_float(applicability.get("applicable_gap_rows")))
+    routed_rows = int(_finite_float(applicability.get("non_applicable_gap_rows")))
+    if company_like_gap_rows <= 0 and routed_rows <= 0:
+        return None
+    provider_batch_allowed = company_like_gap_rows > 0
+    status = "attention" if provider_batch_allowed else "routed"
+    sample_company_like = [
+        str(ticker).strip().upper()
+        for ticker in _sequence_value(applicability.get("sample_applicable_gap_tickers"))
+        if str(ticker).strip()
+    ][:PRICED_IN_SOURCE_ACTION_TICKER_LIMIT]
+    sample_routed = [
+        str(ticker).strip().upper()
+        for ticker in _sequence_value(
+            applicability.get("sample_non_applicable_gap_tickers")
+        )
+        if str(ticker).strip()
+    ][:PRICED_IN_SOURCE_ACTION_TICKER_LIMIT]
+    next_action = str(
+        applicability.get("next_action")
+        or action.get("next_action")
+        or "Fill catalyst evidence for company-like rows and route wrappers."
+    ).strip()
+    return {
+        "schema_version": "priced-in-source-gap-repair-v1",
+        "source": "catalyst_events",
+        "status": status,
+        "diagnostic_status": "company_like_sec_and_non_company_routes",
+        "gap_count": int(_finite_float(action.get("gap_count"))),
+        "company_like_gap_rows": company_like_gap_rows,
+        "routed_non_company_gap_rows": routed_rows,
+        "company_like_rows": int(_finite_float(applicability.get("applicable_rows"))),
+        "non_company_rows": int(
+            _finite_float(applicability.get("non_applicable_rows"))
+        ),
+        "sample_tickers": sample_company_like or sample_routed,
+        "sample_company_like_gap_tickers": sample_company_like,
+        "sample_routed_non_company_tickers": sample_routed,
+        "provider_batch_allowed": provider_batch_allowed,
+        "review_rows_command": action.get("full_scan_gap_review_command"),
+        "export_rows_command": action.get("full_scan_export_command"),
+        "batch_plan_command": action.get("batch_plan_command"),
+        "batch_plan_api": action.get("batch_plan_api"),
+        "non_company_route": (
+            "Use fund, underlying, theme, sector, flow, or constituent evidence "
+            "instead of SEC company filing batches."
+        ),
+        "current_context_boundary": (
+            "SEC catalyst batches apply only to company-like or unknown-type rows. "
+            "ETF, fund, ETN, right, warrant, and other wrapper rows stay in the "
+            "full scan but use the non-company evidence route."
+        ),
+        "write_boundary": (
+            "Review/export/plan commands make 0 provider calls. Executing a SEC "
+            "source batch is explicit, capped, and read-only; routed non-company "
+            "rows make no SEC company-filing calls."
+        ),
+        "external_calls_made": 0,
+        "next_action": next_action,
+        "usefulness_impact": (
+            "Catalyst events explain the emotion side of price-vs-expectation. "
+            "Local text intelligence stays blocked for rows without stored event "
+            "text, so this gap limits trust in market-emotion scoring."
         ),
     }
 

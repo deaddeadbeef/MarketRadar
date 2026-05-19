@@ -2503,6 +2503,10 @@ def _priced_in_full_scan_source_rows(value: object) -> list[dict[str, object]]:
                 "command": row.get("command"),
                 "repair_status": repair.get("status"),
                 "repair_diagnostic": repair.get("diagnostic_status"),
+                "repair_company_like_gaps": repair.get("company_like_gap_rows"),
+                "repair_routed_non_company": repair.get(
+                    "routed_non_company_gap_rows"
+                ),
                 "repair_next_action": repair.get("next_action"),
             }
         )
