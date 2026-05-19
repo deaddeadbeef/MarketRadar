@@ -211,9 +211,13 @@ class SecCikOverrideTemplateWriteResult:
                 "catalyst-radar ingest-sec cik-overrides "
                 f"--csv {self.output_path}"
             ),
+            "validate_command": (
+                "catalyst-radar ingest-sec cik-overrides "
+                f"--csv {self.output_path} --validate-only"
+            ),
             "next_action": (
-                "Fill cik and optional sec_company_name for each row, then import "
-                "the completed CSV."
+                "Fill cik and optional sec_company_name for each row, validate "
+                "the CSV, then import the completed CSV."
             ),
         }
 

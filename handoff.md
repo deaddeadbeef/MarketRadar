@@ -1,6 +1,46 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 03:36:44 +08:00
+Last updated: 2026-05-20 03:46:01 +08:00
+
+## Latest CIK Template Validate-First Output
+
+Goal alignment check:
+
+- Manual CIK repair is the current local path to unblock the two
+  catalyst-events rows (`FRBA`, `SSBI`) that cannot receive SEC catalyst
+  evidence.
+- The validation gate existed, but the template writer still told the operator
+  to fill and import directly. That could skip the no-write safety check.
+
+Fix in this slice:
+
+- `write_sec_cik_override_template_csv` now returns a path-specific
+  `validate_command` alongside `import_command`.
+- `sec_cik_override_template_payload` now includes the default validate command.
+- `catalyst-radar ingest-sec cik-overrides-template ...` now prints:
+
+  ```text
+  validate_command=catalyst-radar ingest-sec cik-overrides --csv <template.csv> --validate-only
+  import_command=catalyst-radar ingest-sec cik-overrides --csv <template.csv>
+  next_action=Fill cik and optional sec_company_name for each row, validate the completed CSV, then import it before replanning catalyst_events.
+  ```
+
+- No SEC/Massive/Polygon, Schwab, OpenAI, broker/order execution, or database
+  write was run. A temporary smoke template file was generated and removed.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_sec_cik_metadata.py::test_write_sec_cik_override_template_csv_writes_blank_cik_rows tests\integration\test_sec_cik_metadata.py::test_ingest_sec_cik_overrides_template_cli_writes_current_blockers tests\integration\test_dashboard_data.py::test_sec_cik_override_template_payload_exports_missing_company_like_rows -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\events\sec_cik.py src\catalyst_radar\cli.py src\catalyst_radar\dashboard\data.py tests\integration\test_sec_cik_metadata.py tests\integration\test_dashboard_data.py
+```
+
+Observed:
+
+- Focused tests passed (`3 passed`).
+- Ruff passed.
+- Live CLI smoke printed `validate_command`, `import_command`,
+  `external_calls=0`, and validate-first next action.
 
 ## Latest CIK Override Validation Gate
 

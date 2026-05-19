@@ -2464,6 +2464,7 @@ def _write_sec_cik_override_template_cli(
         "write_schema_version": write_payload["schema_version"],
         "generated_at": write_payload["generated_at"],
         "import_command": write_payload["import_command"],
+        "validate_command": write_payload["validate_command"],
     }
     if as_json:
         print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
@@ -2491,6 +2492,7 @@ def _write_sec_cik_override_template_cli(
         )
         print(f"routed_non_company={routed_count} examples={routed_text}")
     print(f"columns={','.join(str(column) for column in payload.get('columns', []))}")
+    print(f"validate_command={_compact_cli_text(payload.get('validate_command'))}")
     print(f"import_command={_compact_cli_text(payload.get('import_command'))}")
     print(f"api={_compact_cli_text(payload.get('api'))}")
     print(f"boundary={_compact_cli_text(payload.get('boundary'))}")

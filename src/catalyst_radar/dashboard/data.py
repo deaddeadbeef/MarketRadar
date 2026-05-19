@@ -1373,9 +1373,13 @@ def sec_cik_override_template_payload(
             "catalyst-radar ingest-sec cik-overrides "
             "--csv data\\local\\cik-overrides-template.csv"
         ),
+        "validate_command": (
+            "catalyst-radar ingest-sec cik-overrides "
+            "--csv data\\local\\cik-overrides-template.csv --validate-only"
+        ),
         "next_action": (
-            "Fill cik and optional sec_company_name for each row, then import "
-            "the completed CSV before replanning catalyst_events."
+            "Fill cik and optional sec_company_name for each row, validate the "
+            "completed CSV, then import it before replanning catalyst_events."
             if row_count
             else "No missing company-like SEC CIK blockers need a manual template."
         ),
