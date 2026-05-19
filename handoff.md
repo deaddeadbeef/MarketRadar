@@ -1,6 +1,104 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 11:30:45 +08:00
+Last updated: 2026-05-19 11:56:05 +08:00
+
+## Latest Capped Source-Batch Runner
+
+Current problem:
+
+- The full scan is now correctly exposed as the whole ranked universe, but
+  filling source evidence still required manually repeating one provider chunk
+  at a time.
+- For the current live full scan, `catalyst_events` is the broadest emotion-side
+  blocker:
+
+  ```text
+  gap_rows=12075
+  plannable=10474
+  total_batches=2095
+  batch_size=5
+  blocked_missing_cik=1601
+  ```
+
+Fix in this slice:
+
+- Added a capped source-batch runner that loops the existing guarded one-chunk
+  executor:
+
+  ```powershell
+  catalyst-radar priced-in-source-batches --source catalyst_events --execute-batches 3
+  ```
+
+- The runner:
+  - executes up to `N` chunks only after the explicit `--execute-batches N`
+    flag is provided;
+  - stops early on blocked, failed, or no-action results;
+  - keeps every existing provider guardrail from `--execute-next`;
+  - caps API requests at `max_batches <= 50`;
+  - reports before/after gap rows, plannable rows, executed chunks, and external
+    calls.
+- API support was added without breaking the existing endpoint:
+
+  ```text
+  POST /api/radar/priced-in/source-batches/execute-next
+  body: {"source":"catalyst_events","max_batches":3}
+  ```
+
+  `max_batches` defaults to `1`, so existing one-chunk callers keep the old
+  payload.
+- TUI command support was added:
+
+  ```text
+  batch catalyst_events execute
+  batch catalyst_events execute 3
+  ```
+
+  The Ops page now explains that `execute` runs one guarded chunk and
+  `execute 3` runs a capped batch set.
+- Source-batch planning now prints the capped runner command:
+
+  ```text
+  execute_batches=catalyst-radar priced-in-source-batches --source catalyst_events --execute-batches 3
+  ```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_batch_execute_can_run_capped_chunks tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_snapshot_ops_page_shows_priced_in_source_actions tests\integration\test_dashboard_demo_seed_cli.py::test_source_batch_run_executes_capped_chunks_and_reports_delta tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_source_batches_execute_batches_cli_runs_capped_batch_run tests\integration\test_api_routes.py::test_post_radar_priced_in_source_batch_execute_next_can_run_capped_batches -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\source_batches.py src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py src\catalyst_radar\api\routes\radar.py src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_api_routes.py
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source catalyst_events --limit 1
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source all --execute-batches 3
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page ops
+```
+
+Observed:
+
+- Focused tests passed (`5 passed` in the final focused run; `9 passed` in the
+  wider touched source/API/CLI group before the stale Ops assertion was
+  corrected).
+- Ruff passed.
+- Live `catalyst_events` planning made `0` provider calls and now shows
+  `execute_batches=... --execute-batches 3`.
+- Live guard check correctly rejects `--source all --execute-batches 3` because
+  all-source remains plan-only.
+- Live TUI Ops made `0` provider calls and explains the capped runner.
+
+Important:
+
+- This does not execute live SEC calls by itself.
+- This does not make MarketRadar decision-useful yet.
+- It makes the broad evidence fill operational: the user can now intentionally
+  advance full-market `catalyst_events` coverage by capped chunks instead of
+  repeating a one-chunk command manually.
+
+Next useful product action:
+
+- Use the capped runner to fill `catalyst_events` only when the SEC call budget
+  is intentional.
+- Refresh CIK metadata with `catalyst-radar ingest-sec company-tickers` to clear
+  the current `1601` missing-CIK catalyst rows.
+- After enough catalyst event text exists, run capped `local_text` batches to
+  score the market emotion narrative over the same full scan.
 
 ## Latest Full-Scan Audit Surface
 

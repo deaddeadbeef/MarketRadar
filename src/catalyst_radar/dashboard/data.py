@@ -1089,6 +1089,26 @@ def priced_in_source_gap_batches_payload(
             if batch_count > 0
             else None
         ),
+        "execute_next_command": (
+            "catalyst-radar priced-in-source-batches "
+            f"--source {source_name} --execute-next"
+            if batches
+            else None
+        ),
+        "execute_batches_command": (
+            "catalyst-radar priced-in-source-batches "
+            f"--source {source_name} --execute-batches 3"
+            if batches
+            else None
+        ),
+        "execute_batches_api": (
+            "POST /api/radar/priced-in/source-batches/execute-next "
+            '{"source":"'
+            f'{source_name}","max_batches":3'
+            "}"
+            if batches
+            else None
+        ),
         "all_batches_api": (
             "GET /api/radar/priced-in/source-batches"
             f"?source={source_name}&all_batches=true"
@@ -1284,6 +1304,11 @@ def _priced_in_all_source_batch_row(
         "export_rows_command": plan.get("export_rows_command"),
         "execute_next_command": (
             f"catalyst-radar priced-in-source-batches --source {source} --execute-next"
+            if executable
+            else None
+        ),
+        "execute_batches_command": (
+            f"catalyst-radar priced-in-source-batches --source {source} --execute-batches 3"
             if executable
             else None
         ),
@@ -1523,6 +1548,7 @@ def _priced_in_source_recommendation(
         "action": action,
         "rationale": rationale,
         "command": row.get("execute_next_command") or row.get("all_batches_command"),
+        "capped_command": row.get("execute_batches_command"),
         "api": row.get("execute_next_api") or row.get("all_batches_api"),
         "total_gap_rows": int(_finite_float(row.get("total_gap_rows"))),
         "decision_useful_gap_rows": int(
