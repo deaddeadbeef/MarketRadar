@@ -1623,6 +1623,24 @@ def test_priced_in_full_scan_audit_payload_consolidates_current_state(
     )
     assert len(paged["preview_rows"]) == 1
 
+    source_filtered = priced_in_full_scan_audit_payload(
+        engine,
+        AppConfig.from_env({}),
+        source_gap="options",
+        preview_limit=1,
+        preview_offset=0,
+    )
+
+    assert source_filtered["scope"]["ranked_rows"] == 2
+    assert source_filtered["preview"]["filter"]["source_gap"] == ["options"]
+    assert source_filtered["preview"]["audit_page_command"] == (
+        "catalyst-radar priced-in-audit --source-gap options --limit 1"
+    )
+    assert "filtered to rows missing or stale for options" in (
+        source_filtered["preview"]["sample_explanation"]
+    )
+    assert "options" in source_filtered["preview_rows"][0]["missing_sources"]
+
 
 def test_priced_in_queue_payload_reports_full_scan_instrument_scope(
     tmp_path: Path,

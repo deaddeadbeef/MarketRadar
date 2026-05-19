@@ -39,6 +39,15 @@ from catalyst_radar.storage.broker_repositories import BrokerRepository
 from catalyst_radar.storage.db import create_schema, engine_from_url
 
 USEFUL_FEEDBACK_LABELS = frozenset({"useful", "acted"})
+PRICED_IN_SOURCE_GAP_OPTIONS = [
+    "All",
+    "market_bars",
+    "catalyst_events",
+    "local_text",
+    "options",
+    "theme_peer_sector",
+    "broker_context",
+]
 ALERT_STATUSES = ["planned", "dry_run", "sent", "failed"]
 ALERT_ROUTES = [
     "immediate_manual_review",
@@ -1969,7 +1978,7 @@ def _show_priced_in_full_scan_panel(
     radar_run_summary: Mapping[str, Any],
 ) -> None:
     st.subheader("Priced-in Full Scan")
-    row_control_cols = st.columns([1, 1, 3])
+    row_control_cols = st.columns([1, 1, 1, 2])
     preview_limit = int(
         row_control_cols[0].selectbox(
             "Full-scan rows",
@@ -1987,7 +1996,15 @@ def _show_priced_in_full_scan_panel(
             key="priced_in_full_scan_preview_offset",
         )
     )
-    row_control_cols[2].caption(
+    source_gap_filter = str(
+        row_control_cols[2].selectbox(
+            "Source gap",
+            PRICED_IN_SOURCE_GAP_OPTIONS,
+            index=0,
+            key="priced_in_full_scan_source_gap",
+        )
+    )
+    row_control_cols[3].caption(
         "Browsing full-scan rows makes 0 provider calls. Source-fill chunks remain "
         "separate explicit actions."
     )
@@ -1996,6 +2013,7 @@ def _show_priced_in_full_scan_panel(
             engine,
             config,
             available_at=_radar_summary_cutoff(radar_run_summary),
+            source_gap=None if source_gap_filter == "All" else source_gap_filter,
             preview_limit=preview_limit,
             preview_offset=preview_offset,
         )
