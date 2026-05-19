@@ -1,6 +1,39 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 02:24:32 +08:00
+Last updated: 2026-05-20 02:38:09 +08:00
+
+## Latest Full-Scan Status Wording
+
+Goal alignment check:
+
+- The active goal is full-stock priced-in mismatch scanning: find stocks where
+  market emotion has not yet been matched by price reaction.
+- The local status output already had both the full-scan evidence plan and the
+  decision-shortlist gap, but the labels could still over-focus the operator on
+  the current 9-row decision shortlist.
+- This slice keeps the behavior zero-call and renames the status lines so the
+  full-scan coverage path is visibly separate from decision-context repair.
+
+Fix in this slice:
+
+- `scripts\market-radar-status.ps1` now prints:
+  - `stock coverage-first gap`, sourced from the priced-in evidence plan;
+  - `stock coverage command`, usually the zero-call source-batch plan for
+    `catalyst_events`;
+  - `stock decision-context gap`, sourced from the current decision-shortlist
+    repair recommendation;
+  - `stock point-in-time template/validate/import` for the options repair path.
+- No Polygon/Massive, Schwab, SEC, OpenAI, broker/order execution, or database
+  import was run.
+
+Expected live interpretation:
+
+- Full-scan coverage-first work is still `catalyst_events`: the stock scan has
+  thousands of catalyst/text gaps and needs SEC/event evidence before the whole
+  market-emotion side is trustworthy.
+- Decision-context repair is still `options`: the current 9 decision-useful
+  mismatch rows need point-in-time options context if those rows are being
+  reviewed first.
 
 ## Latest Options Fixture Validation
 
