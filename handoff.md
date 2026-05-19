@@ -1,6 +1,6 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 16:21:28 +08:00
+Last updated: 2026-05-19 16:27:19 +08:00
 
 ## Latest Full-Scan Audit Paging
 
@@ -61,15 +61,22 @@ Observed:
 - `git diff --check` passed.
 - Live branch CLI paging reported rows 26-35 of 12,087 with
   `external_calls=0` and a `more=` audit command.
+- PR #327 merged as `3dd4105`.
+- Post-merge local services were restarted:
+  - API health returned commit `3dd410515f29`.
+  - Streamlit health returned `ok`.
+- Live API verification:
+  - `/api/radar/priced-in/audit?limit=3&offset=30`
+  - returned `api_range=31-33/12087`, `rows=3`,
+    `more=catalyst-radar priced-in-audit --limit 3 --offset 33`, and
+    `external_calls=0`.
+- Browser verification on `http://127.0.0.1:8514` showed the Overview tab
+  rendering **Full-scan rows** and **Row offset** controls before
+  **Full-scan Ranked Rows**, then **Full-scan Trust Gaps**, then
+  **Priced-in Source Gaps**.
 
 Next useful product action:
 
-- Merge this slice, restart local services, then verify:
-  - API health reports the merge commit.
-  - Streamlit health is `ok`.
-  - Browser dashboard shows **Full-scan rows** and **Row offset** controls.
-  - Live API `/api/radar/priced-in/audit?limit=3&offset=30` returns a 3-row
-    preview page.
 - Actual source-fill execution still requires explicit user approval because it
   can call SEC/Schwab/market providers.
 
