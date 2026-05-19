@@ -1,6 +1,6 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 01:28:38 +08:00
+Last updated: 2026-05-20 01:32:30 +08:00
 
 ## Latest Stock-Scan Status Sitrep
 
@@ -23,6 +23,9 @@ Fix in this slice:
   /api/radar/priced-in/audit?stocks_only=true&limit=1
   ```
 
+- The stock-only audit call uses a `90` second curl timeout because this local
+  payload can take longer than the default status-call timeout on the current
+  database. Other status calls keep the default timeout.
 - The JSON payload now includes `priced_in_stock_audit`.
 - Human-readable status now prints a **Stock priced-in scan** block:
   - stock audit status;
@@ -53,6 +56,7 @@ Validation run in this slice:
 ```powershell
 .\.venv\Scripts\python.exe -m pytest tests\integration\test_local_scripts.py::test_market_radar_status_script_is_zero_external_call_sitrep -q
 .\.venv\Scripts\python.exe -m ruff check tests\integration\test_local_scripts.py
+git diff --check
 powershell -ExecutionPolicy Bypass -File scripts\market-radar-status.ps1
 ```
 
