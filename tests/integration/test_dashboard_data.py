@@ -1717,6 +1717,58 @@ def test_priced_in_full_scan_audit_payload_consolidates_current_state(
     assert "options" in source_filtered["preview_rows"][0]["missing_sources"]
 
 
+def test_priced_in_full_scan_audit_payload_reuses_cached_zero_call_audit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    monkeypatch.setitem(
+        priced_in_full_scan_audit_payload.__globals__,
+        "_PRICED_IN_AUDIT_CACHE",
+        {},
+    )
+    queue_calls = 0
+    original_queue_payload = priced_in_full_scan_audit_payload.__globals__[
+        "priced_in_queue_payload"
+    ]
+
+    def counted_queue_payload(*args, **kwargs):
+        nonlocal queue_calls
+        queue_calls += 1
+        return original_queue_payload(*args, **kwargs)
+
+    monkeypatch.setitem(
+        priced_in_full_scan_audit_payload.__globals__,
+        "priced_in_queue_payload",
+        counted_queue_payload,
+    )
+
+    first = priced_in_full_scan_audit_payload(
+        engine,
+        AppConfig.from_env({}),
+        preview_limit=1,
+    )
+    second = priced_in_full_scan_audit_payload(
+        engine,
+        AppConfig.from_env({}),
+        preview_limit=1,
+    )
+
+    assert queue_calls == 1
+    assert second == first
+
+    first["preview"]["visible_rows"] = 999
+    third = priced_in_full_scan_audit_payload(
+        engine,
+        AppConfig.from_env({}),
+        preview_limit=1,
+    )
+
+    assert queue_calls == 1
+    assert third["preview"]["visible_rows"] == 1
+
+
 def test_priced_in_queue_payload_reports_full_scan_instrument_scope(
     tmp_path: Path,
 ) -> None:
