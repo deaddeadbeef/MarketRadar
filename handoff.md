@@ -1,6 +1,6 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 21:24:44 +08:00
+Last updated: 2026-05-19 21:33:24 +08:00
 
 ## Latest Catalyst Evidence Repair Surface
 
@@ -100,6 +100,25 @@ Observed:
   - `6563`;
   - the catalyst-events source row.
 - Browser console check reported 0 current errors.
+- PR #356, `Surface catalyst evidence repair`, was merged by rebase as
+  `d98256e39e6d`.
+- Local services were restarted after merge from `main`:
+  - API health returned commit `d98256e39e6d`;
+  - Streamlit health returned `ok`.
+- Post-merge API verification showed:
+  - `post_merge_catalyst_repair source=catalyst_events`;
+  - `status=attention`;
+  - `diagnostic=company_like_sec_and_non_company_routes`;
+  - `company_like=5512`;
+  - `routed=6563`;
+  - `allowed=True`;
+  - `calls=0`.
+- Post-merge browser verification showed the dashboard text included:
+  - `company_like_sec_and_non_company_routes`;
+  - `5512.00`;
+  - `6563.00`;
+  - `catalyst_events`.
+- Post-merge browser console check reported 0 current errors.
 
 Next useful product action:
 
