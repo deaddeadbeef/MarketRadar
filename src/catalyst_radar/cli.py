@@ -3392,6 +3392,12 @@ def _print_priced_in_all_source_batches(payload: Mapping[str, object]) -> None:
         explanation = scan_scope.get("explanation")
         if explanation:
             print(f"scope_note={_compact_cli_text(explanation)}")
+        review_command = scan_scope.get("review_full_scan_command")
+        if review_command:
+            print(f"full_scan_review={_compact_cli_text(review_command)}")
+        export_command = scan_scope.get("export_full_scan_command")
+        if export_command:
+            print(f"full_scan_export={_compact_cli_text(export_command)}")
     print(f"next_action={payload.get('next_action')}")
     coverage = payload.get("coverage_first_recommendation")
     if isinstance(coverage, Mapping):
@@ -3502,6 +3508,7 @@ def _print_priced_in_recommendation_first_batch(
     command = first_batch.get("command") or recommendation.get("command")
     print(
         f"  {label}_batch="
+        "scope=first_provider_chunk "
         f"rows={row_start}-{row_end} "
         f"tickers={ticker_text} "
         f"calls={calls} "
@@ -3557,6 +3564,12 @@ def _print_priced_in_source_batches(payload: Mapping[str, object]) -> None:
     boundary = payload.get("execution_boundary")
     if boundary:
         print(f"boundary={_compact_cli_text(boundary)}")
+    review_command = payload.get("review_rows_command")
+    if review_command:
+        print(f"review_full_scan_source_gap={_compact_cli_text(review_command)}")
+    export_command = payload.get("export_rows_command")
+    if export_command:
+        print(f"export_full_scan_source_gap={_compact_cli_text(export_command)}")
     diagnostic = payload.get("diagnostic")
     if isinstance(diagnostic, Mapping):
         print(
