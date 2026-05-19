@@ -556,6 +556,10 @@ def test_dashboard_wires_priced_in_full_scan_panel_after_usefulness() -> None:
     assert "Full-scan Ranked Rows" in helper_source
     assert "Selected Source Gap Action" in helper_source
     assert "_priced_in_full_scan_source_gap_action_rows" in helper_source
+    assert "approval_checklist" in source
+    assert "_approval_checklist_text" in source
+    assert "next_provider_batch_preview_not_full_scan" in source
+    assert "Source-gap example tickers are priority examples only" in source
     assert "Full scan rows" in helper_source
     assert "st.dataframe" in helper_source
     assert "Active Securities" in helper_source
@@ -570,7 +574,7 @@ def test_dashboard_wires_priced_in_full_scan_panel_after_usefulness() -> None:
     assert "priority_sample_tickers" in rows_source
     assert "priority_examples_preview" in rows_source
     assert "missing_sources" in preview_rows_source
-    assert "_list_text(row.get(\"first_batch_tickers\"))" in source
+    assert "first_batch_tickers" in source
     assert "gap_count" in rows_source
     assert overview_source.index("_show_market_radar_usefulness") < overview_source.index(
         "_show_priced_in_full_scan_panel"

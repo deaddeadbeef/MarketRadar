@@ -2203,6 +2203,11 @@ def _show_priced_in_full_scan_panel(
             )
         source_gap_actions = _records(preview.get("source_gap_actions"))
         if source_gap_actions:
+            st.caption(
+                "Selected source-gap actions are full-scan decisions. Any ticker list "
+                "shown here is only the next capped provider-fill batch, not the scan "
+                "universe."
+            )
             _show_records(
                 "Selected Source Gap Action",
                 _priced_in_full_scan_source_gap_action_rows(source_gap_actions),
@@ -2230,6 +2235,11 @@ def _show_priced_in_full_scan_panel(
             empty="No full-scan trust gaps.",
         )
     source_rows = _priced_in_full_scan_source_rows(audit.get("sources"))
+    if source_rows:
+        st.caption(
+            "Source-gap example tickers are priority examples only. The gap count and "
+            "full-scan table are the scan scope."
+        )
     _show_records(
         "Priced-in Source Gaps",
         source_rows,
@@ -2313,23 +2323,44 @@ def _priced_in_full_scan_source_gap_action_rows(
 ) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     for row in _records(value):
+        approval = _mapping(row.get("approval_checklist"))
         rows.append(
             {
                 "source": row.get("source"),
                 "status": row.get("status"),
                 "gap_count": row.get("gap_count"),
                 "batch_status": row.get("batch_status"),
-                "full_scan_gap_rows": row.get("full_scan_gap_rows"),
+                "full_scan_scope": f"all {row.get('full_scan_gap_rows')} gap row(s)",
                 "provider_batch_count": row.get("provider_batch_count"),
-                "first_batch_preview": _list_text(row.get("first_batch_tickers")),
+                "next_provider_batch_preview_not_full_scan": _list_text(
+                    row.get("first_batch_tickers")
+                ),
                 "first_batch_calls": row.get("first_batch_external_calls"),
+                "ticker_scope_note": row.get("batch_preview_note"),
+                "source_gap_full_scan_export": row.get("export_rows_command"),
+                "all_provider_batches_command": row.get("all_batches_command"),
+                "approval_required": (
+                    "yes" if approval.get("approval_required") else "no"
+                ),
+                "approval_summary": approval.get("summary"),
+                "approval_checklist": _approval_checklist_text(approval),
                 "execute_next_command": row.get("execute_next_command"),
                 "blocked_reason": row.get("blocked_reason"),
                 "next_action": row.get("next_action"),
                 "batch_scope": row.get("batch_scope"),
             }
-        )
+    )
     return rows
+
+
+def _approval_checklist_text(approval: Mapping[str, Any]) -> str:
+    items = []
+    for item in _records(approval.get("items")):
+        label = str(item.get("item") or "").strip()
+        detail = str(item.get("detail") or "").strip()
+        if label and detail:
+            items.append(f"{label}: {detail}")
+    return " | ".join(items)
 
 
 def _visible_operator_queue_rows(value: object) -> list[dict[str, object]]:

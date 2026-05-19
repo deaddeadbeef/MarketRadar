@@ -1270,6 +1270,9 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
     assert batch_payload["scan_scope"]["tickers_are_batch_sample"] is False
     assert batch_payload["count"] == 1
     assert batch_payload["batches"][0]["tickers"] == ["ACME"]
+    assert batch_payload["approval_checklist"]["approval_required"] is True
+    assert batch_payload["approval_checklist"]["provider"] == "schwab"
+    assert batch_payload["approval_checklist"]["trade_order_submission_allowed"] is False
 
     assert (
         main(
@@ -1289,6 +1292,10 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
 
     assert "scan_scope=mode=full_scan" in output.out
     assert "returned_tickers=1" in output.out
+    assert "ticker_scope=returned_provider_batches" in output.out
+    assert "ticker_scope_note=Returned tickers cover every currently returned" in output.out
+    assert "approval_checklist=required=true provider=schwab" in output.out
+    assert "approval_4=No trading permission" in output.out
     assert "scope_note=The full scan covers every matching ranked row" in output.out
     assert (
         "review_full_scan_source_gap=catalyst-radar priced-in-queue "
@@ -1353,6 +1360,7 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
         "catalyst-radar priced-in-source-batches --source options --execute-next"
     )
     assert source_rows["options"]["first_batch"]["tickers"] == ["ACME"]
+    assert source_rows["options"]["approval_checklist"]["approval_required"] is True
 
     assert (
         main(["priced-in-source-batches", "--source", "all", "--limit", "1"]) == 0
@@ -1363,6 +1371,7 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
     assert "full_scan=mode=full_scan" in output.out
     assert "examples_are_samples=true" in output.out
     assert "scope_note=The full scan covers" in output.out
+    assert "approval_checklist=required=true provider=schwab" in output.out
     assert "full_scan_review=catalyst-radar priced-in-queue --full-scan --limit 50" in output.out
     assert (
         "full_scan_export=catalyst-radar priced-in-queue --full-scan --all --json"
@@ -1994,6 +2003,12 @@ def test_priced_in_audit_cli_outputs_full_scan_audit(
     assert "boundary=Planning and browsing make 0 provider calls" in (
         source_gap_output.out
     )
+    assert "source_gap_full_scan_export=catalyst-radar priced-in-queue" in (
+        source_gap_output.out
+    )
+    assert "all_provider_batches=catalyst-radar priced-in-source-batches" in (
+        source_gap_output.out
+    )
     assert "provider_batch_plan=status=ready" in source_gap_output.out
     assert "first_provider_batch=tickers=ACME calls=1" in source_gap_output.out
     assert (
@@ -2001,6 +2016,9 @@ def test_priced_in_audit_cli_outputs_full_scan_audit(
         "--source options --execute-next"
     ) in source_gap_output.out
     assert "batch_scope=First provider batch only" in source_gap_output.out
+    assert "ticker_scope_note=Returned tickers cover every currently returned" in (
+        source_gap_output.out
+    )
 
 
 def test_candidate_detail_cli_outputs_priced_in_evidence_brief(

@@ -1,6 +1,110 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 18:59:43 +08:00
+Last updated: 2026-05-19 19:28:24 +08:00
+
+## Latest Full-Scan Versus Provider-Batch Boundary
+
+Current problem:
+
+- The user asked, "Why only these tickers? I want full scan."
+- The product was doing the local full-scan analysis, but the source-fill/action
+  surfaces showed the next capped provider batch first. That made a list like
+  `AAMI, AAOI, AAL, AAON, AAP` look like the scan scope, when it was only the
+  next Schwab read-only provider-fill chunk.
+- This confusion is severe because MarketRadar's actual goal is full-market
+  scanning for emotion-versus-price mismatch, while provider fills must remain
+  deliberately rate-limited and manually approved.
+
+Fix in this slice:
+
+- `priced_in_source_gap_batches_payload` now exposes the ticker list scope
+  explicitly in `scan_scope`:
+  - `returned_ticker_scope=next_provider_batch_preview` when the visible
+    tickers are only the next provider chunk;
+  - `returned_ticker_scope=returned_provider_batches` when all returned provider
+    batches are shown;
+  - `batch_preview_note`, which states that the visible tickers are not the scan
+    universe.
+- The API still reports full-scan counts separately:
+  - `full_scan_gap_rows`;
+  - `plannable_rows`;
+  - `planned_batches`;
+  - `returned_tickers`;
+  - `tickers_are_batch_sample`.
+- Selected source-gap audit actions now include:
+  - `review_rows_command`;
+  - `export_rows_command`;
+  - `all_batches_command`;
+  - `all_batches_api`;
+  - `batch_preview_note`.
+- CLI `priced-in-source-batches` now prints `ticker_scope=...` and
+  `ticker_scope_note=...` directly under the full-scan scope line.
+- CLI `priced-in-audit --source-gap ...` now prints the full source-gap export
+  command and the all-provider-batches command before the first provider batch.
+- Streamlit **Selected Source Gap Action** now labels the visible ticker list as
+  `NEXT PROVIDER BATCH PREVIEW NOT FULL SCAN`, adds a `FULL SCAN SCOPE` column,
+  and surfaces the full source-gap export plus all-provider-batches commands.
+- Streamlit **Priced-in Source Gaps** now adds a plain caption that example
+  tickers are priority examples only; the gap count and full-scan table are the
+  scan scope.
+- This remains zero-call browsing/planning only. No SEC, Schwab, Polygon/Massive,
+  OpenAI, or order-submission call is made by these views.
+
+Current live zero-call observations from the branch:
+
+```text
+priced_in_source_batches source=broker_context status=ready gap_rows=12082 plannable=12082 ... batch_size=5 batches=1 total_batches=2417 ... external_calls=0
+scan_scope=mode=full_scan gap_rows=12082 plannable=12082 returned_batches=1 planned_batches=2417 returned_tickers=5 batch_sample=true ticker_scope=next_provider_batch_preview
+ticker_scope_note=Returned tickers are the next source-fill batch preview: 5 of 12082 plannable row(s), from 12082 full-scan broker_context gap row(s). This is not the scan universe.
+```
+
+```text
+GET /api/radar/priced-in/source-batches?source=broker_context&batch_limit=1
+api_source=broker_context status=ready scope=next_provider_batch_preview note=Returned tickers are the next source-fill batch preview: 5 of 12082 plannable row(s), from 12082 full-scan broker_context gap row(s). This is not the scan universe. calls=0
+```
+
+Browser verification on `http://127.0.0.1:8514`:
+
+- **Display complete full scan** rendered.
+- The **Source gap** filter was changed to `broker_context`.
+- **Selected Source Gap Action** rendered after the dashboard rebuilt.
+- The selected action section rendered:
+  - "Selected source-gap actions are full-scan decisions...";
+  - `FULL SCAN SCOPE = all 12082 gap row(s)`;
+  - `NEXT PROVIDER BATCH PREVIEW NOT FULL SCAN = AAMI, AAOI, AAL, AAON, AAP`;
+  - `TICKER SCOPE NOTE = ... This is not the scan universe`;
+  - `SOURCE GAP FULL SCAN EXPORT`;
+  - `ALL PROVIDER BATCHES COMMAND`;
+  - approval checklist text including "No trading permission".
+- Browser console check after reload/selection reported 0 current errors. Older
+  connection-refused entries were from the service restart and were not current
+  page errors.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_plans_safe_sync_batches tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_can_return_full_scan_plan tests\integration\test_dashboard_data.py::test_priced_in_all_source_gap_batches_payload_summarizes_next_chunks tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_payload_consolidates_current_state tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_queue_cli_outputs_same_zero_call_signal tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_audit_cli_outputs_full_scan_audit tests\integration\test_api_routes.py::test_get_radar_priced_in_source_batches_returns_zero_call_plan tests\integration\test_dashboard_entrypoint.py::test_dashboard_wires_priced_in_full_scan_panel_after_usefulness -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py apps\dashboard\Home.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_dashboard_entrypoint.py tests\integration\test_api_routes.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source broker_context --batch-limit 1
+curl.exe --insecure --silent --show-error --fail "https://127.0.0.1:8443/api/radar/priced-in/source-batches?source=broker_context&batch_limit=1"
+```
+
+Observed:
+
+- Focused eight-test set passed (`8 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+- CLI and API checks both reported `external_calls=0`.
+- Local services were restarted from the branch for dashboard verification.
+
+Next useful product action:
+
+- Commit this slice, open a PR, rebase-merge it, restart services from `main`,
+  and run the same zero-call source-batch/API health checks post-merge.
+- Do not run any `--execute-next`, `--execute-batches`, SEC, Schwab, Polygon, or
+  order-submission command unless the user explicitly approves the provider
+  calls after reviewing the checklist.
 
 ## Latest Audit Cache Status UX
 
