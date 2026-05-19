@@ -8191,6 +8191,7 @@ def _priced_in_source_plannable_rows(
             if str(row.get("ticker") or "").strip()
         ]
         cik_by_ticker = _security_cik_by_ticker(engine, tickers)
+        security_meta = _security_metadata_by_ticker(engine, tickers)
         eligible = [
             row
             for row in rows
@@ -8199,29 +8200,30 @@ def _priced_in_source_plannable_rows(
         missing_cik = [
             ticker for ticker in tickers if ticker and ticker not in cik_by_ticker
         ]
+        missing_breakdown = _missing_cik_breakdown(
+            missing_cik,
+            security_meta=security_meta,
+        )
         return eligible, {
             "schema_version": "priced-in-source-batch-diagnostic-v1",
             "status": "eligible" if eligible else "blocked",
-            "reason": (
-                "SEC event batches require CIK metadata for each ticker."
-                if missing_cik
-                else "SEC event batches can be planned for these CIK-backed rows."
-            ),
+            "reason": _missing_cik_reason(missing_breakdown)
+            if missing_cik
+            else "SEC event batches can be planned for these CIK-backed rows.",
             "eligible_rows": len(eligible),
             "blocked_rows": len(missing_cik),
             "blocked_reason": "missing_cik" if missing_cik else None,
             "sample_blocked_tickers": _sample_tickers(missing_cik),
-            "next_action": (
-                "Add CIK metadata for blocked tickers or refresh security metadata "
-                "with catalyst-radar ingest-sec company-tickers before expecting "
-                "SEC catalyst coverage for those rows."
-            )
+            **missing_breakdown,
+            "next_action": _missing_cik_next_action(missing_breakdown)
             if missing_cik
             else None,
             "fix_command": "catalyst-radar ingest-sec company-tickers"
-            if missing_cik
+            if _missing_cik_breakdown_can_refresh(missing_breakdown)
             else None,
-            "fix_api": "POST /api/radar/sec/company-tickers" if missing_cik else None,
+            "fix_api": "POST /api/radar/sec/company-tickers"
+            if _missing_cik_breakdown_can_refresh(missing_breakdown)
+            else None,
         }
     if source_name == "local_text":
         eligible = [
@@ -8331,6 +8333,112 @@ def _security_cik_by_ticker(engine: Engine, tickers: Sequence[str]) -> dict[str,
             if cik:
                 cik_by_ticker[str(row.ticker).strip().upper()] = cik
     return cik_by_ticker
+
+
+def _security_metadata_by_ticker(
+    engine: Engine,
+    tickers: Sequence[str],
+) -> dict[str, dict[str, object]]:
+    normalized = sorted(
+        {str(ticker).strip().upper() for ticker in tickers if str(ticker).strip()}
+    )
+    if not normalized:
+        return {}
+    stmt = select(securities.c.ticker, securities.c.name, securities.c.metadata).where(
+        securities.c.is_active.is_(True),
+        securities.c.ticker.in_(normalized),
+    )
+    rows: dict[str, dict[str, object]] = {}
+    with engine.connect() as conn:
+        for row in conn.execute(stmt):
+            metadata = row._mapping["metadata"] or {}
+            rows[str(row.ticker).strip().upper()] = {
+                "name": str(row._mapping["name"] or ""),
+                "metadata": metadata if isinstance(metadata, Mapping) else {},
+            }
+    return rows
+
+
+def _missing_cik_breakdown(
+    tickers: Sequence[str],
+    *,
+    security_meta: Mapping[str, Mapping[str, object]],
+) -> dict[str, object]:
+    type_counts: dict[str, int] = {}
+    company_like: list[str] = []
+    non_company: list[str] = []
+    unknown_type: list[str] = []
+    for ticker in tickers:
+        metadata = _mapping_value(security_meta.get(ticker), "metadata")
+        security_type = str(metadata.get("type") or "").strip().upper() or "UNKNOWN"
+        type_counts[security_type] = type_counts.get(security_type, 0) + 1
+        if _is_sec_company_like_type(security_type):
+            company_like.append(ticker)
+        elif security_type == "UNKNOWN":
+            unknown_type.append(ticker)
+        else:
+            non_company.append(ticker)
+    return {
+        "missing_cik_type_counts": dict(sorted(type_counts.items())),
+        "missing_cik_company_like_rows": len(company_like),
+        "missing_cik_non_company_rows": len(non_company),
+        "missing_cik_unknown_type_rows": len(unknown_type),
+        "sample_company_like_missing_cik_tickers": _sample_tickers(company_like),
+        "sample_non_company_missing_cik_tickers": _sample_tickers(non_company),
+        "sample_unknown_type_missing_cik_tickers": _sample_tickers(unknown_type),
+    }
+
+
+def _is_sec_company_like_type(security_type: str) -> bool:
+    return str(security_type).strip().upper() in {"CS", "ADRC"}
+
+
+def _missing_cik_breakdown_can_refresh(breakdown: Mapping[str, object]) -> bool:
+    return (
+        int(_finite_float(breakdown.get("missing_cik_company_like_rows"))) > 0
+        or int(_finite_float(breakdown.get("missing_cik_unknown_type_rows"))) > 0
+    )
+
+
+def _missing_cik_reason(breakdown: Mapping[str, object]) -> str:
+    company_like = int(_finite_float(breakdown.get("missing_cik_company_like_rows")))
+    non_company = int(_finite_float(breakdown.get("missing_cik_non_company_rows")))
+    unknown = int(_finite_float(breakdown.get("missing_cik_unknown_type_rows")))
+    if non_company and not company_like and not unknown:
+        return (
+            "SEC event batches require CIK metadata, but the missing rows are "
+            "non-company instruments such as ETFs, ETNs, rights, or warrants."
+        )
+    if non_company:
+        return (
+            "SEC event batches require CIK metadata. Most missing rows are "
+            "non-company instruments; only company-like or unknown-type rows may "
+            "be fixed by SEC company tickers."
+        )
+    return "SEC event batches require CIK metadata for each ticker."
+
+
+def _missing_cik_next_action(breakdown: Mapping[str, object]) -> str:
+    company_like = int(_finite_float(breakdown.get("missing_cik_company_like_rows")))
+    non_company = int(_finite_float(breakdown.get("missing_cik_non_company_rows")))
+    unknown = int(_finite_float(breakdown.get("missing_cik_unknown_type_rows")))
+    if non_company and not company_like and not unknown:
+        return (
+            "Do not expect SEC company-tickers refresh to clear these rows; route "
+            "ETF/ETN/fund-like instruments to a fund, underlying, or theme evidence "
+            "source, or scope SEC catalyst coverage to operating companies."
+        )
+    if non_company:
+        return (
+            "Refresh SEC company tickers only for the small company-like/unknown "
+            "subset, then handle ETF/ETN/fund-like rows through fund, underlying, "
+            "or theme evidence instead of SEC company filings."
+        )
+    return (
+        "Add CIK metadata for blocked tickers or refresh security metadata with "
+        "catalyst-radar ingest-sec company-tickers before expecting SEC catalyst "
+        "coverage for those rows."
+    )
 
 
 def _metadata_cik(metadata: Mapping[str, object]) -> str | None:

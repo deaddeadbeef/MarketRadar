@@ -3505,6 +3505,27 @@ def _print_priced_in_source_batches(payload: Mapping[str, object]) -> None:
                 f"{','.join(str(ticker) for ticker in blocked_samples)} "
                 f"reason={_compact_cli_text(diagnostic.get('blocked_reason'))}"
             )
+        type_counts = diagnostic.get("missing_cik_type_counts")
+        if isinstance(type_counts, Mapping) and type_counts:
+            print(
+                "missing_cik_types="
+                f"{_count_summary({str(key): value for key, value in type_counts.items()})} "
+                f"company_like={_int_value(diagnostic.get('missing_cik_company_like_rows'))} "
+                f"non_company={_int_value(diagnostic.get('missing_cik_non_company_rows'))} "
+                f"unknown={_int_value(diagnostic.get('missing_cik_unknown_type_rows'))}"
+            )
+        non_company_samples = diagnostic.get("sample_non_company_missing_cik_tickers")
+        if isinstance(non_company_samples, list | tuple) and non_company_samples:
+            print(
+                "non_company_cik_examples="
+                f"{','.join(str(ticker) for ticker in non_company_samples)}"
+            )
+        company_like_samples = diagnostic.get("sample_company_like_missing_cik_tickers")
+        if isinstance(company_like_samples, list | tuple) and company_like_samples:
+            print(
+                "company_like_cik_examples="
+                f"{','.join(str(ticker) for ticker in company_like_samples)}"
+            )
         diagnostic_next = diagnostic.get("next_action")
         if diagnostic_next:
             print(f"diagnostic_next={_compact_cli_text(diagnostic_next)}")

@@ -2311,6 +2311,7 @@ def _priced_in_source_batch_message(
     diagnostic_next = str(diagnostic.get("next_action") or "").strip()
     diagnostic_command = str(diagnostic.get("fix_command") or "").strip()
     blocked_samples = _texts(diagnostic.get("sample_blocked_tickers"))
+    missing_cik_suffix = _missing_cik_diagnostic_suffix(diagnostic)
     next_batch_command = str(payload.get("next_batch_command") or "").strip()
     scan_scope = _mapping(payload.get("scan_scope"))
     command = ""
@@ -2388,7 +2389,8 @@ def _priced_in_source_batch_message(
             f"{calls}{api_suffix} "
             f"First safe chunk: {command}. Run from TUI with "
             f"`batch {source_name} execute` if intended.{blocked_suffix}"
-            f"{diagnostic_suffix}{command_suffix}{full_suffix}{next_suffix}"
+            f"{missing_cik_suffix}{diagnostic_suffix}{command_suffix}"
+            f"{full_suffix}{next_suffix}"
         )
     blocked_suffix = (
         f" Blocked examples: {', '.join(blocked_samples)}."
@@ -2406,8 +2408,28 @@ def _priced_in_source_batch_message(
     )
     if diagnostic_command:
         detail = f"{detail} Command: {diagnostic_command}."
-    detail = f"{detail}{blocked_suffix}{diagnostic_suffix}"
+    detail = f"{detail}{blocked_suffix}{missing_cik_suffix}{diagnostic_suffix}"
     return f"{prefix} {detail}"
+
+
+def _missing_cik_diagnostic_suffix(diagnostic: Mapping[str, object]) -> str:
+    type_counts = _mapping(diagnostic.get("missing_cik_type_counts"))
+    if not type_counts:
+        return ""
+    pieces = [
+        f"{key}:{int(_number_or_zero(value))}"
+        for key, value in sorted(type_counts.items(), key=lambda item: str(item[0]))
+        if int(_number_or_zero(value)) > 0
+    ]
+    counts = ", ".join(pieces)
+    company_like = int(_number_or_zero(diagnostic.get("missing_cik_company_like_rows")))
+    non_company = int(_number_or_zero(diagnostic.get("missing_cik_non_company_rows")))
+    unknown = int(_number_or_zero(diagnostic.get("missing_cik_unknown_type_rows")))
+    return (
+        " Missing CIK types: "
+        f"{counts}; company-like {company_like}, non-company {non_company}, "
+        f"unknown {unknown}."
+    )
 
 
 def _priced_in_all_source_batch_message(

@@ -523,6 +523,56 @@ def test_dashboard_batch_command_opens_full_scan_source_batch_plan(
     assert "First safe chunk:" in full_plan.message
 
 
+def test_dashboard_batch_command_explains_non_company_cik_gaps(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    def fake_payload(_engine, _config, **kwargs) -> dict[str, object]:
+        return {
+            "status": "blocked",
+            "source": kwargs["source"],
+            "total_gap_rows": 2,
+            "plannable_gap_rows": 0,
+            "batch_count": 0,
+            "next_action": "Use fund evidence.",
+            "diagnostic": {
+                "reason": "SEC event batches require CIK metadata.",
+                "next_action": "Use ETF evidence instead.",
+                "sample_blocked_tickers": ["AAA", "BBB"],
+                "missing_cik_type_counts": {"ETF": 2},
+                "missing_cik_company_like_rows": 0,
+                "missing_cik_non_company_rows": 2,
+                "missing_cik_unknown_type_rows": 0,
+            },
+            "batches": [],
+        }
+
+    monkeypatch.setattr(
+        "catalyst_radar.dashboard.tui.dashboard_data.priced_in_source_gap_batches_payload",
+        fake_payload,
+    )
+
+    update = _apply_command(
+        "batch catalyst_events",
+        {},
+        "overview",
+        DashboardFilters(),
+        engine=create_engine(database_url, future=True),
+        config=AppConfig.from_env(),
+    )
+
+    assert update.page == "ops"
+    assert "Blocked examples: AAA, BBB." in update.message
+    assert (
+        "Missing CIK types: ETF:2; company-like 0, non-company 2, unknown 0."
+        in update.message
+    )
+    assert "Use ETF evidence instead." in update.message
+
+
 def test_dashboard_batch_execute_runs_one_guarded_local_chunk(
     tmp_path: Path,
     monkeypatch,
@@ -1229,6 +1279,11 @@ def test_priced_in_source_batches_cli_prints_blocked_source_samples(
                 "blocked_reason": "missing_cik",
                 "reason": "SEC event batches require CIK metadata for each ticker.",
                 "sample_blocked_tickers": ["AAA", "BBB"],
+                "missing_cik_type_counts": {"ETF": 2},
+                "missing_cik_company_like_rows": 0,
+                "missing_cik_non_company_rows": 2,
+                "missing_cik_unknown_type_rows": 0,
+                "sample_non_company_missing_cik_tickers": ["AAA", "BBB"],
                 "next_action": "Add CIK metadata for blocked tickers.",
                 "fix_command": "catalyst-radar ingest-sec company-tickers",
                 "fix_api": "POST /api/radar/sec/company-tickers",
@@ -1246,6 +1301,10 @@ def test_priced_in_source_batches_cli_prints_blocked_source_samples(
 
     assert output.err == ""
     assert "blocked_examples=AAA,BBB reason=missing_cik" in output.out
+    assert "missing_cik_types=ETF:2 company_like=0 non_company=2 unknown=0" in (
+        output.out
+    )
+    assert "non_company_cik_examples=AAA,BBB" in output.out
     assert "diagnostic_next=Add CIK metadata for blocked tickers." in output.out
     assert "diagnostic_command=catalyst-radar ingest-sec company-tickers" in output.out
     assert "diagnostic_api=POST /api/radar/sec/company-tickers" in output.out
