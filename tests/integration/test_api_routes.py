@@ -1789,6 +1789,22 @@ def test_post_radar_market_bars_template_and_import_use_database_universe(
         "ZZZ",
     ]
 
+    invalid_preview_response = client.post(
+        "/api/radar/market-bars/import",
+        json={
+            "daily_bars_path": str(template_path),
+            "expected_as_of": "2026-05-11",
+        },
+    )
+
+    assert invalid_preview_response.status_code == 200
+    invalid_preview = invalid_preview_response.json()
+    assert invalid_preview["status"] == "invalid"
+    assert invalid_preview["invalid_row_count"] == 3
+    assert invalid_preview["blank_required_count"] > 0
+    assert invalid_preview["external_calls_made"] == 0
+    assert invalid_preview["executed"] is False
+
     _write_manual_bar_csv(bars_path, ["AAA", "BBB", "ZZZ"], as_of="2026-05-11")
     preview_response = client.post(
         "/api/radar/market-bars/import",

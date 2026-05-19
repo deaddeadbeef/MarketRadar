@@ -319,9 +319,14 @@ def test_market_bars_import_rejects_blank_numeric_fields(
     )
 
     captured = capsys.readouterr()
-    assert exit_code == 1
-    assert "manual market bars failed:" in captured.err
-    assert "invalid open" in captured.err
+    assert exit_code == 2
+    assert captured.err == ""
+    assert "manual_market_bars_import status=invalid" in captured.out
+    assert "invalid=rows=6" in captured.out
+    assert "blank_required=6" in captured.out
+    assert "invalid_examples=row" in captured.out
+    assert "Plan only: no database writes were made." not in captured.out
+    assert "external_calls=0" in captured.out
 
 
 def test_market_bars_import_executes_without_securities_csv(

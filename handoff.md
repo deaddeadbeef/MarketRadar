@@ -1,6 +1,78 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 03:57:37 +08:00
+Last updated: 2026-05-20 04:12:14 +08:00
+
+## Latest Manual Bar Import Invalid Preview
+
+Goal alignment check:
+
+- Full-market priced-in analysis is still blocked by incomplete market-bar
+  coverage: the current scan date has 12,090 of 12,613 active symbols covered,
+  leaving 523 missing rows.
+- The missing-only template exists locally at
+  `data\local\manual-bars-2026-05-15.csv`, but a blank or partially filled
+  template previously failed preview with a parser error such as
+  `cannot convert float NaN to integer`.
+- That was not a useful CLI/API replacement UI: the operator needs to know how
+  many rows/fields are still blank before any local DB write.
+
+Fix in this slice:
+
+- `market-bars import` now inspects manual CSV rows before converting them into
+  `DailyBar` objects.
+- Blank or invalid required fields now return a structured
+  `manual-market-bars-import-v1` payload with `status=invalid`.
+- The invalid preview includes:
+  - row count and ticker count;
+  - expected-as-of coverage if the rows were filled;
+  - invalid row count;
+  - blank required field count;
+  - invalid numeric field count;
+  - example row diagnostics;
+  - the same execute command, but only as the next command after fixing and
+    previewing again.
+- API parity is covered by `POST /api/radar/market-bars/import`, which now
+  returns a 200 payload with `status=invalid` for a blank template instead of
+  requiring the client to parse a conversion exception.
+- No provider calls, broker calls, OpenAI calls, order actions, or database
+  writes were made.
+
+Live zero-write/zero-call observation on the generated local template:
+
+```text
+manual_market_bars_import status=invalid rows=523 tickers=523 active=12613 latest_bar=2026-05-15 expected_as_of=2026-05-15 executed=false external_calls=0
+coverage=bars_at_expected=523 existing=12090 after_import=12613 missing=0
+invalid=rows=523 blank_required=3138 invalid_numeric=0
+next_action=Fix blank or invalid required fields, then preview again before running --execute.
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_provider_ingest_cli.py::test_market_bars_import_rejects_blank_numeric_fields tests\integration\test_provider_ingest_cli.py::test_market_bars_missing_only_template_import_counts_existing_bars tests\integration\test_provider_ingest_cli.py::test_market_bars_import_requires_expected_full_active_coverage tests\integration\test_api_routes.py::test_post_radar_market_bars_template_and_import_use_database_universe -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\market\manual_bars.py src\catalyst_radar\cli.py tests\integration\test_provider_ingest_cli.py tests\integration\test_api_routes.py
+git diff --check
+```
+
+Observed:
+
+- Focused tests passed (`4 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+
+Next useful product action:
+
+- Fill `data\local\manual-bars-2026-05-15.csv`.
+- Preview it with:
+
+  ```powershell
+  catalyst-radar market-bars import --daily-bars data\local\manual-bars-2026-05-15.csv --expected-as-of 2026-05-15
+  ```
+
+- Only after preview returns `status=ready`, run the same command with
+  `--execute` to write local daily bars.
+- Then rerun the zero-call status and plan-only smoke before any provider
+  source execution.
 
 ## Latest Missing-Only Market Bar Guidance
 

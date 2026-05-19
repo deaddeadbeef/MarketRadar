@@ -96,6 +96,10 @@ class ManualBarsImportResult:
     bars_at_expected_as_of: int | None
     missing_expected_tickers: tuple[str, ...] = ()
     executed: bool = False
+    invalid_row_count: int = 0
+    blank_required_count: int = 0
+    invalid_numeric_count: int = 0
+    invalid_examples: tuple[str, ...] = ()
     bars: tuple[DailyBar, ...] = field(default=(), repr=False)
 
     def as_payload(self) -> dict[str, object]:
@@ -108,6 +112,11 @@ class ManualBarsImportResult:
             next_action = "Provide a CSV whose latest date is at least expected_as_of."
         elif self.status == "incomplete":
             next_action = "Fill every active ticker for expected_as_of before importing."
+        elif self.status == "invalid":
+            next_action = (
+                "Fix blank or invalid required fields, then preview again before "
+                "running --execute."
+            )
         else:
             next_action = "Review the CSV before importing."
         return {
@@ -137,6 +146,11 @@ class ManualBarsImportResult:
                 len(self.missing_expected_tickers) - len(missing_sample),
             ),
             "executed": self.executed,
+            "invalid_row_count": self.invalid_row_count,
+            "blank_required_count": self.blank_required_count,
+            "invalid_numeric_count": self.invalid_numeric_count,
+            "invalid_examples": list(self.invalid_examples[:6]),
+            "invalid_more": max(0, len(self.invalid_examples) - 6),
             "external_calls_made": 0,
             "next_action": next_action,
             "execute_command": (
@@ -221,15 +235,66 @@ def preview_manual_market_bars_import(
     expected_as_of: date | None = None,
 ) -> ManualBarsImportResult:
     path = Path(daily_bars_path)
-    bars = tuple(load_daily_bars_csv(path))
-    if not bars:
-        msg = f"daily bars CSV contains no rows: {path}"
-        raise ValueError(msg)
-    _validate_manual_bars(bars)
+    validation = _inspect_manual_bars_csv(path, expected_as_of=expected_as_of)
     active = set(_active_tickers(engine))
     if not active:
         msg = "cannot validate manual market bars: no active securities in database"
         raise ValueError(msg)
+    if validation.row_count <= 0:
+        msg = f"daily bars CSV contains no rows: {path}"
+        raise ValueError(msg)
+    if validation.invalid_row_count:
+        existing_at_expected: set[str] | None = None
+        coverage_after_import: int | None = None
+        missing: tuple[str, ...] = ()
+        if expected_as_of is not None:
+            existing_at_expected = _bar_tickers_for_date(engine, expected_as_of) & active
+            coverage_after = existing_at_expected | (
+                validation.expected_as_of_tickers & active
+            )
+            coverage_after_import = len(coverage_after)
+            missing = tuple(sorted(active - coverage_after))
+        return ManualBarsImportResult(
+            daily_bars_path=path,
+            expected_as_of=expected_as_of,
+            status="invalid",
+            row_count=validation.row_count,
+            ticker_count=len(validation.tickers),
+            latest_bar_date=validation.latest_bar_date,
+            active_security_count=len(active),
+            existing_as_of_bar_count=(
+                len(existing_at_expected) if existing_at_expected is not None else None
+            ),
+            coverage_after_import_count=coverage_after_import,
+            bars_at_expected_as_of=(
+                len(validation.expected_as_of_tickers)
+                if expected_as_of is not None
+                else None
+            ),
+            missing_expected_tickers=missing,
+            invalid_row_count=validation.invalid_row_count,
+            blank_required_count=validation.blank_required_count,
+            invalid_numeric_count=validation.invalid_numeric_count,
+            invalid_examples=validation.invalid_examples,
+        )
+    try:
+        bars = tuple(load_daily_bars_csv(path))
+    except (TypeError, ValueError) as exc:
+        return ManualBarsImportResult(
+            daily_bars_path=path,
+            expected_as_of=expected_as_of,
+            status="invalid",
+            row_count=validation.row_count,
+            ticker_count=len(validation.tickers),
+            latest_bar_date=validation.latest_bar_date,
+            active_security_count=len(active),
+            existing_as_of_bar_count=None,
+            coverage_after_import_count=None,
+            bars_at_expected_as_of=None,
+            invalid_row_count=1,
+            invalid_examples=(str(exc),),
+        )
+    _validate_manual_bars(bars)
     latest = max(bar.date for bar in bars)
     tickers = {bar.ticker.upper() for bar in bars}
     bars_at_expected: int | None = None
@@ -375,6 +440,161 @@ def _validate_manual_bars(bars: tuple[DailyBar, ...]) -> None:
                 f"{bar.ticker} {bar.date.isoformat()} has negative volume"
             )
             raise ValueError(msg)
+
+
+@dataclass(frozen=True)
+class _ManualBarsCsvValidation:
+    row_count: int
+    tickers: frozenset[str]
+    latest_bar_date: date | None
+    expected_as_of_tickers: frozenset[str]
+    invalid_row_count: int
+    blank_required_count: int
+    invalid_numeric_count: int
+    invalid_examples: tuple[str, ...]
+
+
+def _inspect_manual_bars_csv(
+    path: Path,
+    *,
+    expected_as_of: date | None,
+) -> _ManualBarsCsvValidation:
+    required = {
+        "ticker",
+        "date",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "vwap",
+        "adjusted",
+        "provider",
+        "source_ts",
+        "available_at",
+    }
+    numeric_fields = ("open", "high", "low", "close", "volume", "vwap")
+    with path.open("r", encoding="utf-8-sig", newline="") as handle:
+        reader = csv.DictReader(handle)
+        fieldnames = set(reader.fieldnames or ())
+        missing_columns = sorted(required - fieldnames)
+        if missing_columns:
+            msg = (
+                "daily bars CSV is missing required column(s): "
+                + ", ".join(missing_columns)
+            )
+            raise ValueError(msg)
+        row_count = 0
+        tickers: set[str] = set()
+        latest_date: date | None = None
+        expected_date_tickers: set[str] = set()
+        invalid_rows: set[int] = set()
+        blank_required_count = 0
+        invalid_numeric_count = 0
+        examples: list[str] = []
+        for row_number, row in enumerate(reader, start=2):
+            row_count += 1
+            ticker = str(row.get("ticker") or "").strip().upper()
+            date_text = str(row.get("date") or "").strip()
+            if ticker:
+                tickers.add(ticker)
+            parsed_date: date | None = None
+            if date_text:
+                try:
+                    parsed_date = date.fromisoformat(date_text)
+                except ValueError:
+                    invalid_rows.add(row_number)
+                    _append_invalid_example(
+                        examples,
+                        row_number,
+                        ticker,
+                        date_text,
+                        "invalid date",
+                    )
+                    continue
+                latest_date = (
+                    parsed_date
+                    if latest_date is None or parsed_date > latest_date
+                    else latest_date
+                )
+                if expected_as_of is not None and parsed_date == expected_as_of:
+                    expected_date_tickers.add(ticker)
+            blank_fields = [
+                field for field in required if not str(row.get(field) or "").strip()
+            ]
+            if blank_fields:
+                invalid_rows.add(row_number)
+                blank_required_count += len(blank_fields)
+                _append_invalid_example(
+                    examples,
+                    row_number,
+                    ticker,
+                    date_text,
+                    "blank " + ",".join(sorted(blank_fields)[:4]),
+                )
+                continue
+            row_invalid_numeric = False
+            for field in numeric_fields:
+                value = str(row.get(field) or "").strip()
+                try:
+                    parsed = float(value)
+                except ValueError:
+                    row_invalid_numeric = True
+                    invalid_numeric_count += 1
+                    _append_invalid_example(
+                        examples,
+                        row_number,
+                        ticker,
+                        date_text,
+                        f"invalid {field}",
+                    )
+                    continue
+                if not math.isfinite(parsed):
+                    row_invalid_numeric = True
+                    invalid_numeric_count += 1
+                    _append_invalid_example(
+                        examples,
+                        row_number,
+                        ticker,
+                        date_text,
+                        f"invalid {field}",
+                    )
+                if field == "volume" and parsed < 0:
+                    row_invalid_numeric = True
+                    invalid_numeric_count += 1
+                    _append_invalid_example(
+                        examples,
+                        row_number,
+                        ticker,
+                        date_text,
+                        "negative volume",
+                    )
+            if row_invalid_numeric:
+                invalid_rows.add(row_number)
+    return _ManualBarsCsvValidation(
+        row_count=row_count,
+        tickers=frozenset(tickers),
+        latest_bar_date=latest_date,
+        expected_as_of_tickers=frozenset(expected_date_tickers),
+        invalid_row_count=len(invalid_rows),
+        blank_required_count=blank_required_count,
+        invalid_numeric_count=invalid_numeric_count,
+        invalid_examples=tuple(examples),
+    )
+
+
+def _append_invalid_example(
+    examples: list[str],
+    row_number: int,
+    ticker: str,
+    date_text: str,
+    reason: str,
+) -> None:
+    if len(examples) >= 12:
+        return
+    label = ticker or "<blank ticker>"
+    date_label = date_text or "<blank date>"
+    examples.append(f"row {row_number} {label} {date_label}: {reason}")
 
 
 def _as_utc(value: datetime) -> datetime:
