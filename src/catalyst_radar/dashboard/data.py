@@ -1007,6 +1007,16 @@ def priced_in_source_gap_batches_payload(
         if batchable
         else "not_batchable"
     )
+    next_action = _priced_in_source_batches_next_action(
+        source_name=source_name,
+        batchable=batchable,
+        total_gap_rows=len(all_gap_tickers),
+        plannable_gap_rows=len(tickers),
+    )
+    if status_value == "blocked":
+        diagnostic_action = str(diagnostic.get("next_action") or "").strip()
+        if diagnostic_action:
+            next_action = diagnostic_action
     return {
         "schema_version": "priced-in-source-batches-v1",
         "status": status_value,
@@ -1043,12 +1053,7 @@ def priced_in_source_gap_batches_payload(
             batch_count=batch_count,
             batch_size=resolved_batch_size,
         ),
-        "next_action": _priced_in_source_batches_next_action(
-            source_name=source_name,
-            batchable=batchable,
-            total_gap_rows=len(all_gap_tickers),
-            plannable_gap_rows=len(tickers),
-        ),
+        "next_action": next_action,
         "filters": {
             **_row_dict(_mapping_value(resolved_queue, "filters")),
             "source_gap": [source_name],
@@ -1182,6 +1187,11 @@ def priced_in_all_source_gap_batches_payload(
             total_gap_rows=total_gap_rows,
         ),
         "next_action": coverage_recommendation.get("action"),
+        "scan_scope": _priced_in_all_source_overview_scan_scope(
+            queue,
+            source_count=len(rows),
+            total_gap_rows=total_gap_rows,
+        ),
         "coverage_first_recommendation": coverage_recommendation,
         "decision_shortcut_recommendation": decision_recommendation,
         "external_calls_made": 0,
@@ -1195,6 +1205,42 @@ def priced_in_all_source_gap_batches_payload(
         "blocked_source_count": len(blocked_rows),
         "total_gap_rows": total_gap_rows,
         "sources": rows,
+    }
+
+
+def _priced_in_all_source_overview_scan_scope(
+    queue: Mapping[str, object],
+    *,
+    source_count: int,
+    total_gap_rows: int,
+) -> dict[str, object]:
+    full_scan = _priced_in_answer_full_scan_summary(queue)
+    active = int(_finite_float(full_scan.get("active_securities")))
+    scanned = int(_finite_float(full_scan.get("scanned_rows")))
+    ranked = int(_finite_float(full_scan.get("ranked_rows")))
+    mode = str(full_scan.get("mode") or "full_scan")
+    denominator = ranked or scanned or active
+    return {
+        "schema_version": "priced-in-source-overview-scan-scope-v1",
+        "mode": mode,
+        "is_all_active_scan": bool(full_scan.get("is_all_active_scan")),
+        "active_securities": active,
+        "scanned_rows": scanned,
+        "ranked_rows": ranked,
+        "source_classes": source_count,
+        "source_gap_rows": total_gap_rows,
+        "examples_are_samples": True,
+        "explanation": (
+            f"The full scan covers {denominator} ranked row(s). Source rows, "
+            "first batches, and example tickers are coverage summaries or "
+            "provider-safe chunks, not the scan universe."
+        ),
+        "review_full_scan_command": (
+            "catalyst-radar priced-in-queue --full-scan --limit 50"
+        ),
+        "export_full_scan_command": (
+            "catalyst-radar priced-in-queue --full-scan --all --json"
+        ),
     }
 
 
@@ -7826,6 +7872,39 @@ def _priced_in_source_plannable_rows(
     rows: Sequence[Mapping[str, object]],
 ) -> tuple[list[Mapping[str, object]], dict[str, object]]:
     if source_name in PRICED_IN_SCHWAB_BATCH_SOURCES:
+        if source_name == "options":
+            diagnostic = _priced_in_option_gap_diagnostic(engine, rows)
+            diagnostic_status = str(diagnostic.get("status") or "").strip()
+            blocking_statuses = {
+                "newer_than_scan",
+                "after_decision_cutoff",
+                "eligible_but_not_scored",
+            }
+            if diagnostic_status in blocking_statuses:
+                return [], {
+                    "schema_version": "priced-in-source-batch-diagnostic-v1",
+                    "status": "blocked",
+                    "reason": str(
+                        diagnostic.get("next_action")
+                        or "Options source fill is blocked for this scan date."
+                    ),
+                    "eligible_rows": 0,
+                    "blocked_rows": len(rows),
+                    "blocked_reason": diagnostic_status,
+                    "sample_blocked_tickers": _option_gap_diagnostic_samples(
+                        diagnostic
+                    ),
+                    "next_action": diagnostic.get("next_action"),
+                    "option_gap_diagnostic": diagnostic,
+                }
+            return list(rows), {
+                "schema_version": "priced-in-source-batch-diagnostic-v1",
+                "status": "eligible",
+                "reason": "Read-only Schwab option sync can be planned for these rows.",
+                "eligible_rows": len(rows),
+                "blocked_rows": 0,
+                "option_gap_diagnostic": diagnostic,
+            }
         return list(rows), {
             "schema_version": "priced-in-source-batch-diagnostic-v1",
             "status": "eligible",
@@ -7917,6 +7996,23 @@ def _priced_in_source_plannable_rows(
         "eligible_rows": 0,
         "blocked_rows": len(rows),
     }
+
+
+def _option_gap_diagnostic_samples(diagnostic: Mapping[str, object]) -> list[str]:
+    for key in (
+        "sample_newer_than_scan_tickers",
+        "sample_after_cutoff_tickers",
+        "sample_eligible_but_missing_tickers",
+        "sample_no_stored_option_tickers",
+    ):
+        samples = [
+            str(ticker).strip().upper()
+            for ticker in _sequence_value(diagnostic.get(key))
+            if str(ticker).strip()
+        ]
+        if samples:
+            return samples
+    return []
 
 
 def _priced_in_source_row_priority_key(row: Mapping[str, object]) -> tuple[int, float, str]:

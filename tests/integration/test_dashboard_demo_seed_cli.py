@@ -25,6 +25,7 @@ from catalyst_radar.dashboard.tui import (
     DashboardFilters,
     MarketRadarDashboardApp,
     _apply_command,
+    _priced_in_source_workflow_payload,
     dashboard_snapshot_payload,
     run_dashboard_tui,
 )
@@ -141,7 +142,7 @@ def test_dashboard_snapshot_cli_outputs_dashboard_command_center_json(
     )
     assert payload["priced_in_source_workflow"]["coverage_first_action"]
     assert payload["priced_in_source_workflow"]["decision_shortcut_action"].startswith(
-        "Start with options;"
+        "Start with broker_context;"
     )
     options_step = next(
         step
@@ -240,6 +241,73 @@ def test_dashboard_snapshot_cli_outputs_dashboard_command_center_json(
     assert payload["readiness"]["status"] == direct_readiness["status"]
     assert payload["readiness"]["market_radar_usefulness"]["status"] == (
         direct_readiness["market_radar_usefulness"]["status"]
+    )
+
+
+def test_source_workflow_skips_non_point_in_time_options_shortcut() -> None:
+    preflight = {
+        "evidence_plan": {
+            "status": "attention",
+            "steps": [
+                {
+                    "priority": 1,
+                    "area": "catalyst_events",
+                    "status": "attention",
+                    "action": "Review event coverage.",
+                    "command": (
+                        "catalyst-radar priced-in-source-batches "
+                        "--source catalyst_events --all --json"
+                    ),
+                },
+                {
+                    "priority": 2,
+                    "area": "options",
+                    "status": "attention",
+                    "action": (
+                        "Stored options exist after this scan date. Rerun only "
+                        "with a current scan date and current bars, or ingest "
+                        "point-in-time options for the original scan date."
+                    ),
+                    "command": (
+                        "catalyst-radar priced-in-source-batches "
+                        "--source options --all --json"
+                    ),
+                },
+                {
+                    "priority": 3,
+                    "area": "broker_context",
+                    "status": "attention",
+                    "action": "Sync read-only Schwab market context.",
+                    "command": (
+                        "catalyst-radar priced-in-source-batches "
+                        "--source broker_context --all --json"
+                    ),
+                },
+            ],
+        }
+    }
+    queue = {
+        "rows": [
+            {
+                "ticker": "AAMI",
+                "priced_in_status": "bullish_not_priced_in",
+                "usefulness": {"status": "research_useful"},
+                "data_sources": {
+                    "available": ["market_bars", "catalyst_events", "local_text"],
+                    "missing": ["options", "broker_context"],
+                    "stale": [],
+                },
+            }
+        ]
+    }
+
+    payload = _priced_in_source_workflow_payload(
+        preflight,
+        priced_in_queue=queue,
+    )
+
+    assert payload["decision_shortcut_action"].startswith(
+        "Start with broker_context;"
     )
 
 
@@ -1045,11 +1113,26 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
     assert output.err == ""
     assert overview["schema_version"] == "priced-in-source-batch-overview-v1"
     assert overview["external_calls_made"] == 0
+    assert overview["scan_scope"]["schema_version"] == (
+        "priced-in-source-overview-scan-scope-v1"
+    )
+    assert overview["scan_scope"]["mode"] == "full_scan"
+    assert overview["scan_scope"]["examples_are_samples"] is True
     source_rows = {row["source"]: row for row in overview["sources"]}
     assert source_rows["options"]["execute_next_command"] == (
         "catalyst-radar priced-in-source-batches --source options --execute-next"
     )
     assert source_rows["options"]["first_batch"]["tickers"] == ["ACME"]
+
+    assert (
+        main(["priced-in-source-batches", "--source", "all", "--limit", "1"]) == 0
+    )
+    output = capsys.readouterr()
+
+    assert output.err == ""
+    assert "full_scan=mode=full_scan" in output.out
+    assert "examples_are_samples=true" in output.out
+    assert "scope_note=The full scan covers" in output.out
 
     assert (
         main(["priced-in-source-batches", "--source", "all", "--execute-next"]) == 2

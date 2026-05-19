@@ -1,6 +1,129 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 10:22:34 +08:00
+Last updated: 2026-05-19 11:11:03 +08:00
+
+## Latest Full-Scan Source Scope And Options Shortcut Fix
+
+User asked again:
+
+```text
+Why only these tickers? I want full scan
+```
+
+Current live answer:
+
+- MarketRadar is not scanning only the visible tickers.
+- The current latest useful scan is full-active scoped:
+
+  ```text
+  active securities=12613
+  scanned/ranked rows=12087
+  visible CLI answer page=1-5
+  visible TUI overview page=1-50
+  ```
+
+- The visible tickers are a human-review page or a provider-safe source-fill
+  chunk, not the product universe.
+- The source-fill overview now prints this explicitly:
+
+  ```text
+  full_scan=mode=full_scan active=12613 scanned=12087 ranked=12087 source_gap_rows=48319 examples_are_samples=true
+  scope_note=The full scan covers 12087 ranked row(s). Source rows, first batches, and example tickers are coverage summaries or provider-safe chunks, not the scan universe.
+  ```
+
+Root cause fixed in this slice:
+
+- `priced-in-source-batches --source all` had no top-level full-scan scope
+  block, so the first visible example tickers still felt like the universe.
+- The all-source planner treated `options` as a runnable Schwab chunk even when
+  the options diagnostic said stored option features were newer than the scan
+  date. That was wrong for point-in-time evidence:
+
+  ```text
+  Stored options exist after this scan date.
+  Rerun only with a current scan date and current bars, or ingest point-in-time options.
+  ```
+
+- The TUI Ops page used a separate source workflow payload and still showed
+  `Decision shortcut: options`, even after the CLI all-source planner correctly
+  diagnosed options as non-point-in-time.
+
+Fix in this slice:
+
+- `priced_in_all_source_gap_batches_payload()` now includes:
+
+  ```text
+  scan_scope.schema_version=priced-in-source-overview-scan-scope-v1
+  scan_scope.mode=full_scan
+  scan_scope.active_securities
+  scan_scope.scanned_rows
+  scan_scope.ranked_rows
+  scan_scope.source_gap_rows
+  scan_scope.examples_are_samples=true
+  scan_scope.review_full_scan_command
+  scan_scope.export_full_scan_command
+  ```
+
+- The CLI all-source source-batch overview prints the full-scan scope before
+  any source recommendations.
+- `_priced_in_source_plannable_rows()` now blocks `options` source batches when
+  the options diagnostic is non-point-in-time (`newer_than_scan`,
+  `after_decision_cutoff`, or `eligible_but_not_scored`).
+- Blocked options plans expose the nested option diagnostic and no longer emit
+  an `execute_next_command`.
+- The TUI source workflow now skips options as a decision shortcut when its
+  action is explicitly non-point-in-time. In the current live data it now
+  recommends read-only `broker_context` as the smaller shortcut while keeping
+  broad coverage-first work on `catalyst_events`.
+
+Live zero-call observations after the fix:
+
+```text
+priced_in_source_batch_overview status=ready sources=6 ready_sources=2 blocked_sources=2 gap_rows=48319 external_calls=0
+full_scan=mode=full_scan active=12613 scanned=12087 ranked=12087 source_gap_rows=48319 examples_are_samples=true
+coverage_first=source=catalyst_events gaps=12075 calls=5
+decision_shortcut=source=broker_context decision=0 actionable=7 calls=1
+options blocked 12087 ... plannable 0 ... next=Stored options exist after this scan date...
+```
+
+The live TUI Ops page now shows:
+
+```text
+Decision shortcut: Start with broker_context; it clears evidence for 5 research-useful row(s) in the visible ranked page.
+Full scan = the whole ranked universe. Source-fill tickers = the next rate-limited provider chunk, not the ticker universe.
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_all_source_gap_batches_payload_summarizes_next_chunks tests\integration\test_dashboard_data.py::test_priced_in_all_source_gap_batches_prioritizes_decision_useful_gaps tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_plans_safe_sync_batches tests\integration\test_dashboard_data.py::test_priced_in_queue_payload_diagnoses_options_after_scan_date tests\integration\test_dashboard_data.py::test_priced_in_all_source_gap_batches_blocks_options_shortcut_when_not_point_in_time tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_snapshot_cli_outputs_dashboard_command_center_json tests\integration\test_dashboard_demo_seed_cli.py::test_source_workflow_skips_non_point_in_time_options_shortcut tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_queue_cli_outputs_same_zero_call_signal tests\integration\test_api_routes.py::test_get_radar_priced_in_source_batches_can_return_all_source_overview -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_api_routes.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source all --limit 1
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source options --limit 1
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page ops
+```
+
+Observed:
+
+- Focused dashboard/API/TUI tests passed (`9 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+- Live source-batch and TUI smokes made 0 provider calls.
+- A broader `pytest tests\integration\test_dashboard_data.py
+  tests\integration\test_dashboard_demo_seed_cli.py ...` run was attempted but
+  exceeded the 300-second tool timeout, so do not count that full broad run as
+  passed.
+
+Next useful product action:
+
+- For broad evidence coverage, start with `catalyst_events` because it has
+  12,075 full-scan gaps and is source-of-emotion evidence.
+- For a smaller non-options shortcut, use `broker_context` only as read-only
+  supporting context.
+- Do not sync current options for the old 2026-05-15 scan as if they were
+  point-in-time evidence. Either rerun with current bars or ingest historical
+  option features for the original scan date.
 
 ## Latest Provider Availability Blocker Surfacing Fix
 

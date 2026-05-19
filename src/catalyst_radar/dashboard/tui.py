@@ -4310,6 +4310,7 @@ def _priced_in_source_workflow_payload(
             step
             for step in sorted(steps, key=_source_workflow_priority_key)
             if _source_workflow_has_priority(step)
+            and not _source_workflow_priority_blocked(step)
         ),
         None,
     )
@@ -4435,6 +4436,22 @@ def _source_workflow_has_priority(step: Mapping[str, object]) -> bool:
             "decision_useful_gap_rows",
             "research_useful_gap_rows",
             "actionable_gap_rows",
+        )
+    )
+
+
+def _source_workflow_priority_blocked(step: Mapping[str, object]) -> bool:
+    source = str(step.get("source") or "").strip()
+    if source != "options":
+        return False
+    action = str(step.get("action") or "").strip().lower()
+    return any(
+        marker in action
+        for marker in (
+            "stored options exist after this scan date",
+            "point-in-time options",
+            "after the scan cutoff",
+            "decision cutoff",
         )
     )
 
