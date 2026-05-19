@@ -1848,6 +1848,7 @@ def test_post_radar_market_bars_template_and_import_can_scope_to_stocks(
 ) -> None:
     database_url = _database_url(tmp_path, "radar-stock-market-bars.db")
     monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("CATALYST_POLYGON_API_KEY", "fixture-key")
     engine = _create_database(database_url)
     MarketRepository(engine).upsert_securities(
         [
@@ -1938,6 +1939,30 @@ def test_post_radar_market_bars_template_and_import_can_scope_to_stocks(
     assert preview_payload["coverage_after_import_count"] == 2
     assert preview_payload["missing_expected_count"] == 0
     assert preview_payload["external_calls_made"] == 0
+
+    repair_response = client.post(
+        "/api/radar/market-bars/repair-plan",
+        json={
+            "expected_as_of": "2026-05-11",
+            "stocks_only": True,
+        },
+    )
+
+    assert repair_response.status_code == 200
+    repair_payload = repair_response.json()
+    assert repair_payload["schema_version"] == "manual-market-bars-repair-plan-v1"
+    assert repair_payload["status"] == "attention"
+    assert repair_payload["coverage_scope"] == "stock_like"
+    assert repair_payload["active_security_count"] == 2
+    assert repair_payload["existing_as_of_bar_count"] == 1
+    assert repair_payload["missing_as_of_bar_count"] == 1
+    assert repair_payload["manual_template_command"].endswith(
+        "--missing-only --stocks-only"
+    )
+    assert repair_payload["provider_fill_status"] == "ready_for_approval"
+    assert repair_payload["provider_fill_external_call_count"] == 1
+    assert repair_payload["provider_key_configured"] is True
+    assert repair_payload["external_calls_made"] == 0
 
 
 def test_post_radar_sec_submissions_batch_calls_capped_sec_executor(

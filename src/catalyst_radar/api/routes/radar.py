@@ -36,6 +36,7 @@ from catalyst_radar.jobs.scheduler import (
 from catalyst_radar.jobs.step_outcomes import classify_step_outcome
 from catalyst_radar.market.manual_bars import (
     import_manual_market_bars,
+    manual_market_bars_repair_plan,
     write_manual_market_bars_template,
 )
 from catalyst_radar.ops.telemetry import record_telemetry_event
@@ -161,6 +162,13 @@ class MarketBarsImportRequest(BaseModel):
     expected_as_of: Date | None = None
     stocks_only: bool = False
     execute: bool = False
+
+
+class MarketBarsRepairPlanRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_as_of: Date
+    stocks_only: bool = False
 
 
 class SourceBatchExecuteRequest(BaseModel):
@@ -650,6 +658,25 @@ def radar_market_bars_import(
             execute=request.execute,
         )
     except (FileNotFoundError, KeyError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return redact_restricted_external_payload(result.as_payload())
+
+
+@router.post(
+    "/market-bars/repair-plan",
+    dependencies=[Depends(require_role(Role.ANALYST))],
+)
+def radar_market_bars_repair_plan(
+    request: MarketBarsRepairPlanRequest,
+) -> dict[str, object]:
+    try:
+        result = manual_market_bars_repair_plan(
+            _engine(),
+            expected_as_of=request.expected_as_of,
+            stocks_only=request.stocks_only,
+            provider_key_configured=AppConfig.from_env().polygon_api_key_configured,
+        )
+    except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return redact_restricted_external_payload(result.as_payload())
 

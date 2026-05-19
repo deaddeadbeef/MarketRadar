@@ -1,6 +1,91 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 05:28:34 +08:00
+Last updated: 2026-05-20 05:42:22 +08:00
+
+## Latest Fast Market-Bar Repair Plan
+
+Goal alignment check:
+
+- The active objective is still not "make the dashboard prettier"; it is to
+  scan the stock universe and answer whether price has caught up to market
+  expectations.
+- The current first blocker remains stock-like as-of market bars:
+  `5521/5652` covered for `2026-05-15`, with `131` missing.
+- The broad priced-in audit is useful but slow for this one blocker. The
+  useful small slice is a fast zero-call repair-plan surface that gives the
+  operator the exact manual CSV path and the guarded one-call provider option.
+- This slice does not execute Polygon/Massive, SEC, Schwab, OpenAI, broker, or
+  order calls. It only reads local DB state and reports the plan.
+
+Fix in this slice:
+
+- Added reusable `manual_market_bars_repair_plan(...)` in
+  `src\catalyst_radar\market\manual_bars.py`.
+- Added CLI:
+
+  ```powershell
+  catalyst-radar market-bars repair-plan --expected-as-of 2026-05-15 --stocks-only
+  ```
+
+- Added API:
+
+  ```text
+  POST /api/radar/market-bars/repair-plan
+  ```
+
+  request body:
+
+  ```json
+  {"expected_as_of":"2026-05-15","stocks_only":true}
+  ```
+
+- Added the new route to the security boundary allowlist.
+- Added focused CLI/API tests that prove:
+  - the payload is zero-call;
+  - stock-like scope counts active/existing/missing bars correctly;
+  - manual template, preview, and execute commands are returned;
+  - the Polygon/Massive command is only presented as a guarded approval option.
+
+Live zero-call CLI observation:
+
+```text
+manual_market_bars_repair_plan status=attention scope=stock_like expected_as_of=2026-05-15 active=5652 existing=5521 missing=131 external_calls=0
+missing_as_of_tickers=AACO,ADAC,ADXN,AEAQ,AGM.A,AIRT,ALOV,ARCI,AXIN,BEBE,BLIV,BPAC plus 119 more
+manual_template=catalyst-radar market-bars template --expected-as-of 2026-05-15 --out data\local\manual-stock-bars-2026-05-15.csv --missing-only --stocks-only
+preview_import=catalyst-radar market-bars import --daily-bars data\local\manual-stock-bars-2026-05-15.csv --expected-as-of 2026-05-15 --stocks-only
+execute_import=catalyst-radar market-bars import --daily-bars data\local\manual-stock-bars-2026-05-15.csv --expected-as-of 2026-05-15 --stocks-only --execute
+provider_option=status=ready_for_approval external_calls=1 key_configured=true command=catalyst-radar ingest-polygon grouped-daily --date 2026-05-15 --confirm-external-call
+approval_boundary=This repair plan makes 0 provider calls. The provider command makes one Polygon/Massive grouped-daily request and must only be run after explicit operator approval.
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_provider_ingest_cli.py::test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths tests\integration\test_api_routes.py::test_post_radar_market_bars_template_and_import_can_scope_to_stocks tests\integration\test_security_boundaries.py -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\market\manual_bars.py src\catalyst_radar\cli.py src\catalyst_radar\api\routes\radar.py tests\integration\test_provider_ingest_cli.py tests\integration\test_api_routes.py tests\integration\test_security_boundaries.py
+.\.venv\Scripts\python.exe -m catalyst_radar.cli market-bars repair-plan --expected-as-of 2026-05-15 --stocks-only
+git diff --check
+```
+
+Observed:
+
+- Focused tests passed (`15 passed`).
+- Ruff passed.
+- Live CLI repair-plan returned `active=5652`, `existing=5521`,
+  `missing=131`, and `external_calls=0`.
+- `git diff --check` passed.
+
+Next useful product action:
+
+- Merge and restart the local API/dashboard so the API route is available.
+- After restart, smoke:
+
+  ```powershell
+  curl.exe --insecure --fail --silent --show-error --request POST https://127.0.0.1:8443/api/radar/market-bars/repair-plan --header "Content-Type: application/json" --data "{\"expected_as_of\":\"2026-05-15\",\"stocks_only\":true}"
+  ```
+
+- Do not run the provider command unless the user explicitly approves the one
+  Polygon/Massive grouped-daily call.
 
 ## Latest Guarded Market-Bar Provider Option
 

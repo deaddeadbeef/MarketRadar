@@ -114,6 +114,7 @@ from catalyst_radar.jobs.scheduler import (
 )
 from catalyst_radar.market.manual_bars import (
     import_manual_market_bars,
+    manual_market_bars_repair_plan,
     write_manual_market_bars_template,
 )
 from catalyst_radar.pipeline.candidate_packet import build_candidate_packet
@@ -225,6 +226,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     market_bars_import.add_argument("--execute", action="store_true")
     market_bars_import.add_argument("--json", action="store_true")
+    market_bars_repair_plan = market_bars_sub.add_parser("repair-plan")
+    market_bars_repair_plan.add_argument("--database-url")
+    market_bars_repair_plan.add_argument(
+        "--expected-as-of",
+        type=date.fromisoformat,
+        required=True,
+    )
+    market_bars_repair_plan.add_argument(
+        "--stocks-only",
+        action="store_true",
+        help="Plan repair against stock-like active securities only.",
+    )
+    market_bars_repair_plan.add_argument("--json", action="store_true")
 
     polygon = subparsers.add_parser("ingest-polygon")
     polygon_sub = polygon.add_subparsers(dest="polygon_command", required=True)
@@ -1000,6 +1014,19 @@ def main(argv: list[str] | None = None) -> int:
                 else:
                     _print_manual_market_bars_import(payload)
                 return 0 if result.status in {"ready", "imported"} else 2
+            if args.market_bars_command == "repair-plan":
+                result = manual_market_bars_repair_plan(
+                    engine,
+                    expected_as_of=args.expected_as_of,
+                    stocks_only=args.stocks_only,
+                    provider_key_configured=config.polygon_api_key_configured,
+                )
+                payload = result.as_payload()
+                if args.json:
+                    print(json.dumps(payload, sort_keys=True))
+                else:
+                    _print_manual_market_bars_repair_plan(payload)
+                return 0
         except (FileNotFoundError, KeyError, ValueError) as exc:
             print(f"manual market bars failed: {exc}", file=sys.stderr)
             return 1
@@ -3669,6 +3696,40 @@ def _print_manual_market_bars_import(payload: Mapping[str, object]) -> None:
         print("Plan only: no database writes were made.")
     print(f"next_action={payload.get('next_action')}")
     print(f"execute_command={payload.get('execute_command')}")
+
+
+def _print_manual_market_bars_repair_plan(payload: Mapping[str, object]) -> None:
+    print(
+        "manual_market_bars_repair_plan "
+        f"status={payload.get('status')} "
+        f"scope={payload.get('coverage_scope')} "
+        f"expected_as_of={payload.get('expected_as_of')} "
+        f"active={payload.get('active_security_count')} "
+        f"existing={payload.get('existing_as_of_bar_count')} "
+        f"missing={payload.get('missing_as_of_bar_count')} "
+        f"external_calls={payload.get('external_calls_made')}"
+    )
+    sample = payload.get("missing_as_of_bar_ticker_sample")
+    if isinstance(sample, list | tuple) and sample:
+        more = int(payload.get("missing_as_of_bar_ticker_more") or 0)
+        suffix = f" plus {more} more" if more else ""
+        print(
+            "missing_as_of_tickers="
+            + ",".join(str(ticker) for ticker in sample)
+            + suffix
+        )
+    print(f"manual_template={payload.get('manual_template_command')}")
+    print(f"preview_import={payload.get('manual_import_preview_command')}")
+    print(f"execute_import={payload.get('manual_import_execute_command')}")
+    print(
+        "provider_option="
+        f"status={payload.get('provider_fill_status')} "
+        f"external_calls={payload.get('provider_fill_external_call_count')} "
+        f"key_configured={str(bool(payload.get('provider_key_configured'))).lower()} "
+        f"command={payload.get('provider_fill_command') or 'n/a'}"
+    )
+    print(f"approval_boundary={payload.get('approval_boundary')}")
+    print(f"next_action={payload.get('next_action')}")
 
 
 def _print_priced_in_queue(payload: Mapping[str, object]) -> None:

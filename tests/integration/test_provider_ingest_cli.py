@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import json
 from datetime import UTC, date, datetime
 from pathlib import Path
 
@@ -384,6 +385,70 @@ def test_market_bars_stocks_only_template_and_import_scope(
     assert "manual_market_bars_import status=incomplete" in full_output.out
     assert "scope=active_universe" in full_output.out
     assert "missing_expected_tickers=WUNT" in full_output.out
+
+
+def test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    database_url = _database_url(tmp_path)
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("CATALYST_POLYGON_API_KEY", "fixture-key")
+
+    assert main(["init-db"]) == 0
+    capsys.readouterr()
+    engine = create_engine(database_url, future=True)
+    MarketRepository(engine).upsert_securities(
+        [
+            _security("BSTK", "Beta Stock", "CS"),
+            _security("AADR", "Alpha ADR", "ADRC"),
+            _security("EETF", "Example ETF", "ETF"),
+        ]
+    )
+    MarketRepository(engine).upsert_daily_bars(
+        [
+            _daily_bar("BSTK", date(2026, 5, 15)),
+            _daily_bar("EETF", date(2026, 5, 15)),
+        ]
+    )
+
+    exit_code = main(
+        [
+            "market-bars",
+            "repair-plan",
+            "--expected-as-of",
+            "2026-05-15",
+            "--stocks-only",
+            "--json",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    payload = json.loads(captured.out)
+    assert payload["schema_version"] == "manual-market-bars-repair-plan-v1"
+    assert payload["status"] == "attention"
+    assert payload["coverage_scope"] == "stock_like"
+    assert payload["active_security_count"] == 2
+    assert payload["existing_as_of_bar_count"] == 1
+    assert payload["missing_as_of_bar_count"] == 1
+    assert payload["missing_as_of_bar_ticker_sample"] == ["AADR"]
+    assert payload["manual_template_command"].endswith(
+        "--missing-only --stocks-only"
+    )
+    assert payload["manual_import_preview_command"].endswith("--stocks-only")
+    assert payload["manual_import_execute_command"].endswith(
+        "--stocks-only --execute"
+    )
+    assert payload["provider_fill_status"] == "ready_for_approval"
+    assert payload["provider_fill_external_call_count"] == 1
+    assert payload["provider_key_configured"] is True
+    assert payload["provider_fill_command"] == (
+        "catalyst-radar ingest-polygon grouped-daily "
+        "--date 2026-05-15 --confirm-external-call"
+    )
+    assert payload["external_calls_made"] == 0
 
 
 def test_market_bars_import_rejects_blank_numeric_fields(
