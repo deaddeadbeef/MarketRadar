@@ -550,6 +550,8 @@ def test_dashboard_wires_priced_in_full_scan_panel_after_usefulness() -> None:
     assert "source_gap" in helper_source
     assert "recommended_source_gap" in helper_source
     assert "First source gap" in helper_source
+    assert "Evidence repair" in helper_source
+    assert "point_in_time_import_command" in helper_source
     assert "Full Scan Rows" in helper_source
     assert "Audit performance" in helper_source
     assert "cache_status" in helper_source
@@ -583,6 +585,8 @@ def test_dashboard_wires_priced_in_full_scan_panel_after_usefulness() -> None:
     assert "decision_useful_gap_rows" in rows_source
     assert "priority_sample_tickers" in rows_source
     assert "priority_examples_preview" in rows_source
+    assert "repair_status" in rows_source
+    assert "repair_next_action" in rows_source
     assert "missing_sources" in preview_rows_source
     assert "first_batch_tickers" in source
     assert "gap_count" in rows_source

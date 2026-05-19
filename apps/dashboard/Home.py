@@ -2312,6 +2312,54 @@ def _show_priced_in_full_scan_panel(
                 "\n".join(str(command) for command in recommended_commands),
                 language="powershell",
             )
+        repair = _mapping(recommended_source_gap.get("repair"))
+        if repair:
+            repair_message = (
+                f"Evidence repair: {repair.get('next_action') or 'Review this gap.'} "
+                f"{repair.get('usefulness_impact') or ''}"
+            ).strip()
+            if str(repair.get("status") or "") == "blocked":
+                st.warning(repair_message)
+            else:
+                st.info(repair_message)
+            _show_status_badges(
+                [
+                    ("Repair", repair.get("status") or "attention"),
+                    ("Diagnostic", repair.get("diagnostic_status") or "n/a"),
+                    (
+                        "Provider Batch",
+                        "allowed" if repair.get("provider_batch_allowed") else "blocked",
+                    ),
+                    ("External Calls", repair.get("external_calls_made") or 0),
+                ]
+            )
+            st.caption(
+                str(
+                    repair.get("current_context_boundary")
+                    or "Current provider context must match the scan date."
+                )
+            )
+            st.caption(
+                str(
+                    repair.get("write_boundary")
+                    or "Review commands make 0 provider calls."
+                )
+            )
+            repair_commands = [
+                command
+                for command in (
+                    repair.get("review_rows_command"),
+                    repair.get("export_rows_command"),
+                    repair.get("point_in_time_import_command"),
+                    repair.get("batch_plan_command"),
+                )
+                if str(command or "").strip()
+            ]
+            if repair_commands:
+                st.code(
+                    "\n".join(str(command) for command in repair_commands),
+                    language="powershell",
+                )
     review_command = str(scope.get("review_command") or "").strip()
     export_command = str(scope.get("export_command") or "").strip()
     source_command = str(_mapping(audit.get("commands")).get("source_overview") or "").strip()
@@ -2439,6 +2487,7 @@ def _priced_in_full_scan_source_rows(value: object) -> list[dict[str, object]]:
     for row in _records(value):
         samples = _list_text(row.get("sample_tickers"))
         priority_samples = _list_text(row.get("priority_sample_tickers"))
+        repair = _mapping(row.get("repair"))
         rows.append(
             {
                 "source": row.get("source"),
@@ -2452,6 +2501,9 @@ def _priced_in_full_scan_source_rows(value: object) -> list[dict[str, object]]:
                 "coverage_examples_preview": samples,
                 "next_action": row.get("next_action"),
                 "command": row.get("command"),
+                "repair_status": repair.get("status"),
+                "repair_diagnostic": repair.get("diagnostic_status"),
+                "repair_next_action": repair.get("next_action"),
             }
         )
     return sorted(

@@ -1673,6 +1673,23 @@ def test_priced_in_full_scan_audit_payload_consolidates_current_state(
     assert sources["options"]["command"].startswith(
         "catalyst-radar priced-in-source-batches --source options"
     )
+    assert sources["options"]["repair"]["source"] == "options"
+    assert sources["options"]["repair"]["schema_version"] == (
+        "priced-in-source-gap-repair-v1"
+    )
+    assert sources["options"]["repair"]["external_calls_made"] == 0
+    assert sources["options"]["repair"]["point_in_time_import_command"].startswith(
+        "catalyst-radar ingest-options --fixture"
+    )
+    assert "Current Schwab option chains" in sources["options"]["repair"][
+        "current_context_boundary"
+    ]
+    assert sources["options"]["repair"]["provider_batch_allowed"] is True
+    assert "full-scan universe" in sources["options"]["repair"]["usefulness_impact"]
+    if payload["recommended_source_gap"]["source"] == "options":
+        assert payload["recommended_source_gap"]["repair"] == sources["options"][
+            "repair"
+        ]
 
     paged = priced_in_full_scan_audit_payload(
         engine,
