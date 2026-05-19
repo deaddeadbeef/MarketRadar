@@ -1,6 +1,77 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 16:12:47 +08:00
+Last updated: 2026-05-19 16:21:28 +08:00
+
+## Latest Full-Scan Audit Paging
+
+Current problem:
+
+- The dashboard and CLI now show full-scan rows, but only the first preview
+  page was reachable from the audit surface.
+- Users could still ask "why only these tickers?" after seeing row examples,
+  because the row page was not directly pageable in the audit/dashboard view.
+
+Fix in this slice:
+
+- `priced_in_full_scan_audit_payload` now carries audit-specific page commands:
+  - `preview.audit_page_command`
+  - `preview.audit_next_page_command`
+- CLI `priced-in-audit` now accepts:
+  - `--limit <N>`
+  - `--offset <N>`
+- CLI audit output prints `more=<next priced-in-audit command>` when another
+  preview page exists.
+- API `GET /api/radar/priced-in/audit` now accepts `limit` and `offset` query
+  params and forwards them as `preview_limit` / `preview_offset`.
+- Streamlit **Priced-in Full Scan** now has row-count and offset controls above
+  the full-scan ranked rows table.
+- This remains zero-call browsing only; provider source-fill chunks remain
+  separate explicit actions.
+
+Current live zero-call observation from the branch:
+
+```text
+priced-in-audit --limit 10 --offset 25
+full_scan_rows=26-35/12087 sample=true export=catalyst-radar priced-in-queue --full-scan --all --json
+full_scan_row_note=The tickers below are rows 26-35 from the current ranked page, not the full scan universe of 12087 row(s).
+more=catalyst-radar priced-in-audit --limit 10 --offset 35
+...
+```
+
+JSON observation:
+
+```text
+range=26-35/12087 rows=10 more=catalyst-radar priced-in-audit --limit 10 --offset 35 external_calls=0
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_payload_consolidates_current_state tests\integration\test_api_routes.py::test_get_radar_priced_in_audit_returns_zero_call_audit tests\integration\test_dashboard_entrypoint.py::test_dashboard_wires_priced_in_full_scan_panel_after_usefulness tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_audit_cli_outputs_full_scan_audit -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py apps\dashboard\Home.py src\catalyst_radar\cli.py src\catalyst_radar\api\routes\radar.py tests\integration\test_dashboard_data.py tests\integration\test_api_routes.py tests\integration\test_dashboard_entrypoint.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-audit --limit 10 --offset 25
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-audit --limit 10 --offset 25 --json
+```
+
+Observed:
+
+- Focused four-test set passed (`4 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+- Live branch CLI paging reported rows 26-35 of 12,087 with
+  `external_calls=0` and a `more=` audit command.
+
+Next useful product action:
+
+- Merge this slice, restart local services, then verify:
+  - API health reports the merge commit.
+  - Streamlit health is `ok`.
+  - Browser dashboard shows **Full-scan rows** and **Row offset** controls.
+  - Live API `/api/radar/priced-in/audit?limit=3&offset=30` returns a 3-row
+    preview page.
+- Actual source-fill execution still requires explicit user approval because it
+  can call SEC/Schwab/market providers.
 
 ## Latest Full-Scan Row Visibility
 

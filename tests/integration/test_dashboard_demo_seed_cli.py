@@ -1907,10 +1907,21 @@ def test_priced_in_audit_cli_outputs_full_scan_audit(
     assert payload["external_calls_made"] == 0
     assert payload["scope"]["mode"] == "full_scan"
     assert payload["preview"]["schema_version"] == "priced-in-full-scan-preview-v1"
+    assert payload["preview"]["audit_page_command"] == (
+        "catalyst-radar priced-in-audit --limit 25"
+    )
     assert payload["preview_rows"][0]["ticker"] == "ACME"
     assert payload["source_coverage"]["source_count"] == 6
     assert payload["instrument_scope"]["schema_version"] == (
         "priced-in-instrument-scope-v1"
+    )
+
+    assert main(["priced-in-audit", "--limit", "1", "--offset", "0", "--json"]) == 0
+    paged_payload = json.loads(capsys.readouterr().out)
+
+    assert paged_payload["preview"]["visible_rows"] == 1
+    assert paged_payload["preview"]["audit_page_command"] == (
+        "catalyst-radar priced-in-audit --limit 1"
     )
 
 

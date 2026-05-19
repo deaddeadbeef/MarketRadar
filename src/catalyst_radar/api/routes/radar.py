@@ -467,6 +467,8 @@ def radar_priced_in_answer(
 @router.get("/priced-in/audit", dependencies=[Depends(require_role(Role.VIEWER))])
 def radar_priced_in_audit(
     available_at: datetime | None = None,
+    limit: int = Query(default=25, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
 ) -> dict[str, object]:
     audit_payload = _dashboard_helper("priced_in_full_scan_audit_payload")
     return redact_restricted_external_payload(
@@ -474,6 +476,8 @@ def radar_priced_in_audit(
             _engine(),
             AppConfig.from_env(),
             available_at=_parse_api_datetime(available_at),
+            preview_limit=limit,
+            preview_offset=offset,
         )
     )
 
