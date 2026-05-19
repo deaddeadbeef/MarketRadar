@@ -10,6 +10,7 @@ from sqlalchemy import create_engine
 
 from catalyst_radar.cli import main
 from catalyst_radar.core.config import AppConfig
+from catalyst_radar.dashboard import source_batches as source_batch_module
 from catalyst_radar.dashboard.data import (
     load_alert_rows,
     load_candidate_rows,
@@ -428,7 +429,7 @@ def test_dashboard_snapshot_ops_page_shows_priced_in_source_actions(
     assert output.err == ""
     assert "Priced-in Source Gaps" in output.out
     assert "Source Fill Workflow" in output.out
-    assert "Start with options" in output.out
+    assert "Start with broker_context" in output.out
     assert "decision-ready row(s)" in output.out
     assert "options" in output.out
     assert "priced-in-source-batches" in output.out
@@ -436,6 +437,7 @@ def test_dashboard_snapshot_ops_page_shows_priced_in_source_actions(
     assert "Examples are sample tickers only" in output.out
     assert "`batch all` shows this source map without provider calls" in output.out
     assert "batch <source>" in output.out
+    assert "batch <source> execute 3" in output.out
     assert "ACME" in output.out
 
 
@@ -612,6 +614,53 @@ def test_dashboard_batch_execute_runs_one_guarded_local_chunk(
 
     assert alias_update.message.startswith("Executed local_text chunk 1")
     assert calls["tickers"] == ("ACME", "MSFT")
+
+
+def test_dashboard_batch_execute_can_run_capped_chunks(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    captured: dict[str, object] = {}
+
+    def fake_execute_batches(_engine, _config, **kwargs) -> dict[str, object]:
+        captured.update(kwargs)
+        return {
+            "schema_version": "priced-in-source-batch-run-v1",
+            "source": kwargs["source"],
+            "status": "executed",
+            "requested_batches": kwargs["max_batches"],
+            "executed_batches": 3,
+            "stopped_reason": "Reached max_batches=3.",
+            "external_calls_made": 3,
+            "before_plan": {"total_gap_rows": 10, "plannable_gap_rows": 10},
+            "after_plan": {"total_gap_rows": 7, "plannable_gap_rows": 7},
+            "gap_rows_resolved": 3,
+            "plannable_rows_resolved": 3,
+            "executions": [],
+            "next_action": "Review the next batch plan before continuing.",
+        }
+
+    monkeypatch.setattr(
+        "catalyst_radar.dashboard.tui.execute_source_batches",
+        fake_execute_batches,
+    )
+
+    update = _apply_command(
+        "batch catalyst_events execute 3",
+        {},
+        "overview",
+        DashboardFilters(),
+        engine=create_engine(database_url, future=True),
+        config=AppConfig.from_env(),
+    )
+
+    assert update.page == "ops"
+    assert "catalyst_events batch run executed" in update.message
+    assert "executed 3/3 chunk(s)" in update.message
+    assert captured["source"] == "catalyst_events"
+    assert captured["max_batches"] == 3
 
 
 def test_dashboard_run_page_shows_priced_in_evidence_plan(
@@ -1297,6 +1346,172 @@ def test_priced_in_source_batches_execute_next_cli_runs_one_batch(
         "--source local_text --all --json"
     ) in output.out
     assert captured["source"] == "local_text"
+    assert captured["decision_gap"] == ["candidate_packet"]
+
+
+def test_source_batch_run_executes_capped_chunks_and_reports_delta(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    engine = create_engine(database_url, future=True)
+    config = AppConfig.from_env()
+    plan_gap_rows = [10, 8]
+    execute_calls = 0
+
+    def fake_plan(_engine, _config, **kwargs) -> dict[str, object]:
+        gap_rows = plan_gap_rows[min(len(plan_gap_rows) - 1, len(plan_calls))]
+        plan_calls.append(kwargs)
+        return {
+            "status": "ready",
+            "source": kwargs["source"],
+            "total_gap_rows": gap_rows,
+            "plannable_gap_rows": gap_rows,
+            "unplannable_gap_rows": 0,
+            "batch_count": max(1, gap_rows // 2),
+            "batch_size": 5,
+            "next_action": "Run next chunk.",
+            "review_rows_command": (
+                "catalyst-radar priced-in-queue --full-scan "
+                f"--source-gap {kwargs['source']} --limit 50"
+            ),
+            "all_batches_command": (
+                "catalyst-radar priced-in-source-batches "
+                f"--source {kwargs['source']} --all --json"
+            ),
+            "batches": [{"number": 1, "tickers": ["ACME"]}],
+        }
+
+    def fake_execute(_engine, _config, **kwargs) -> dict[str, object]:
+        nonlocal execute_calls
+        execute_calls += 1
+        return {
+            "schema_version": "priced-in-source-batch-execution-v1",
+            "source": kwargs["source"],
+            "status": "executed",
+            "external_calls_made": 1,
+            "batch": {"number": execute_calls, "tickers": ["ACME"]},
+            "result": {"provider": "sec", "event_count": 1},
+        }
+
+    plan_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        source_batch_module,
+        "priced_in_source_gap_batches_payload",
+        fake_plan,
+    )
+    monkeypatch.setattr(
+        source_batch_module,
+        "execute_priced_in_source_batch",
+        fake_execute,
+    )
+
+    payload = source_batch_module.execute_priced_in_source_batches(
+        engine,
+        config,
+        source="catalyst_events",
+        max_batches=2,
+        status="all",
+        usefulness="research_useful",
+        decision_gap=["candidate_packet"],
+    )
+
+    assert payload["schema_version"] == "priced-in-source-batch-run-v1"
+    assert payload["source"] == "catalyst_events"
+    assert payload["status"] == "executed"
+    assert payload["executed_batches"] == 2
+    assert payload["external_calls_made"] == 2
+    assert payload["gap_rows_resolved"] == 2
+    assert payload["before_plan"]["total_gap_rows"] == 10
+    assert payload["after_plan"]["total_gap_rows"] == 8
+    assert "Review the next batch plan" in payload["next_action"]
+    assert payload["next_command"] == (
+        "catalyst-radar priced-in-source-batches --source catalyst_events "
+        "--execute-batches 2"
+    )
+    assert len(payload["executions"]) == 2
+    assert execute_calls == 2
+    assert plan_calls[0]["status"] == "all"
+    assert plan_calls[0]["usefulness"] == "research_useful"
+    assert plan_calls[0]["decision_gap"] == ["candidate_packet"]
+
+
+def test_priced_in_source_batches_execute_batches_cli_runs_capped_batch_run(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    captured: dict[str, object] = {}
+
+    def fake_execute_batches(_engine, _config, **kwargs) -> dict[str, object]:
+        captured.update(kwargs)
+        return {
+            "schema_version": "priced-in-source-batch-run-v1",
+            "source": kwargs["source"],
+            "status": "executed",
+            "requested_batches": kwargs["max_batches"],
+            "executed_batches": 3,
+            "stopped_reason": "Reached max_batches=3.",
+            "external_calls_made": 3,
+            "before_plan": {
+                "total_gap_rows": 10,
+                "plannable_gap_rows": 10,
+                "batch_count": 4,
+            },
+            "after_plan": {
+                "total_gap_rows": 7,
+                "plannable_gap_rows": 7,
+                "batch_count": 3,
+            },
+            "gap_rows_resolved": 3,
+            "plannable_rows_resolved": 3,
+            "next_action": "Review the next batch plan before continuing.",
+            "next_command": (
+                "catalyst-radar priced-in-source-batches --source catalyst_events "
+                "--execute-batches 3"
+            ),
+            "executions": [
+                {
+                    "status": "executed",
+                    "external_calls_made": 1,
+                    "reason": None,
+                    "batch": {"tickers": ["ACME"]},
+                }
+            ],
+        }
+
+    monkeypatch.setattr(
+        "catalyst_radar.cli.execute_priced_in_source_batches",
+        fake_execute_batches,
+    )
+
+    assert (
+        main(
+            [
+                "priced-in-source-batches",
+                "--source",
+                "catalyst_events",
+                "--execute-batches",
+                "3",
+                "--decision-gap",
+                "candidate_packet",
+            ]
+        )
+        == 0
+    )
+    output = capsys.readouterr()
+
+    assert output.err == ""
+    assert (
+        "priced_in_source_batch_run source=catalyst_events status=executed "
+        "executed=3/3 external_calls=3"
+    ) in output.out
+    assert "coverage=gap_rows=10->7 resolved=3" in output.out
+    assert "next_command=catalyst-radar priced-in-source-batches" in output.out
+    assert captured["source"] == "catalyst_events"
+    assert captured["max_batches"] == 3
     assert captured["decision_gap"] == ["candidate_packet"]
 
 

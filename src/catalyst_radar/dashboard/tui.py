@@ -30,7 +30,11 @@ from catalyst_radar.dashboard.source_batches import (
     execute_priced_in_source_batch as execute_source_batch,
 )
 from catalyst_radar.dashboard.source_batches import (
+    execute_priced_in_source_batches as execute_source_batches,
+)
+from catalyst_radar.dashboard.source_batches import (
     source_batch_execution_summary,
+    source_batch_run_summary,
 )
 from catalyst_radar.feedback.service import (
     FeedbackError,
@@ -1847,6 +1851,10 @@ class MarketRadarDashboardApp(App[int]):
                 "command": "batch <source> execute",
                 "meaning": "Run only the next guarded chunk; refresh and repeat deliberately.",
             },
+            {
+                "command": "batch <source> execute 3",
+                "meaning": "Run a capped source-fill batch set and stop on blockers.",
+            },
             {"command": "ticker <SYMBOL|all>", "meaning": "Filter ticker-aware pages."},
             {"command": "run execute", "meaning": "Start one guarded capped radar cycle."},
             {
@@ -2111,7 +2119,9 @@ def _apply_command(
             ),
         )
     if command in {"batch", "batches", "source-batch", "source-batches"}:
-        source, execute_batch, all_batches = _parse_source_batch_command(value)
+        source, execute_batch, all_batches, max_batches = _parse_source_batch_command(
+            value
+        )
         return _CommandUpdate(
             page="ops",
             filters=filters,
@@ -2121,6 +2131,7 @@ def _apply_command(
                     config,
                     source=source,
                     filters=filters,
+                    max_batches=max_batches,
                 )
                 if execute_batch
                 else _priced_in_source_batch_message(
@@ -2270,8 +2281,8 @@ def _priced_in_source_batch_message(
     if not source.strip():
         return (
             "Usage: batch <source>. Try: batch catalyst_events, batch local_text, "
-            "batch options. Add all to summarize the full chunk plan, or execute "
-            "to run one guarded chunk."
+            "batch options. Add all to summarize the full chunk plan, execute "
+            "to run one guarded chunk, or execute 3 for a capped run."
         )
     if source.strip().lower() in {"all", "*"}:
         return _priced_in_all_source_batch_message(
@@ -2436,13 +2447,18 @@ def _priced_in_all_source_batch_message(
         if first_ready
         else ""
     )
+    capped_command = (
+        f" Capped run: {first_ready.get('execute_batches_command')}."
+        if first_ready and first_ready.get("execute_batches_command")
+        else ""
+    )
     next_action = str(payload.get("next_action") or "").strip()
     next_action_text = f" Suggested first: {next_action}" if next_action else ""
     return (
         f"{payload.get('headline')} This is plan-only and makes no provider calls. "
         "Full scan is already the ranked universe; source execution is split into "
         "safe provider chunks. "
-        f"{'; '.join(pieces)}.{next_action_text}{command}"
+        f"{'; '.join(pieces)}.{next_action_text}{command}{capped_command}"
     )
 
 
@@ -2464,21 +2480,23 @@ def _source_batch_priority_key(row: Mapping[str, object]) -> tuple[int, int, int
     return (3, 0, source_order, source)
 
 
-def _parse_source_batch_command(value: str) -> tuple[str, bool, bool]:
+def _parse_source_batch_command(value: str) -> tuple[str, bool, bool, int]:
     parts = [part.strip() for part in value.split() if part.strip()]
     execute_words = {"execute", "exec", "run"}
     full_plan_words = {"all", "full", "full-scan", "fullscan", "plan"}
     lowered = [part.lower() for part in parts]
     if lowered == ["all"]:
-        return "all", False, False
+        return "all", False, False, 1
     execute = any(part in execute_words for part in lowered)
     all_batches = any(part in full_plan_words for part in lowered)
+    numeric_parts = [int(part) for part in lowered if part.isdigit()]
+    max_batches = max(1, numeric_parts[-1]) if numeric_parts else 1
     source_parts = [
         part
         for part in parts
-        if part.lower() not in execute_words | full_plan_words
+        if part.lower() not in execute_words | full_plan_words and not part.isdigit()
     ]
-    return " ".join(source_parts), execute, all_batches
+    return " ".join(source_parts), execute, all_batches, max_batches
 
 
 def _first_priced_in_source_batch_payload(
@@ -2511,11 +2529,13 @@ def _execute_priced_in_source_batch(
     *,
     source: str,
     filters: DashboardFilters,
+    max_batches: int = 1,
 ) -> str:
     if not source.strip():
         return (
             "Usage: batch <source> execute. Try: batch catalyst_events execute, "
-            "batch local_text execute, batch options execute."
+            "batch local_text execute, batch options execute, or "
+            "batch catalyst_events execute 3."
         )
     if source.strip().lower() in {"all", "*"}:
         return (
@@ -2523,6 +2543,18 @@ def _execute_priced_in_source_batch(
             "for example: batch catalyst_events execute."
         )
     try:
+        if int(max_batches) > 1:
+            payload = execute_source_batches(
+                engine,
+                config,
+                source=source,
+                max_batches=int(max_batches),
+                available_at=filters.available_at,
+                status=filters.priced_in_status,
+                usefulness=filters.priced_in_usefulness,
+                decision_gap=filters.priced_in_decision_gap,
+            )
+            return source_batch_run_summary(payload)
         payload = execute_source_batch(
             engine,
             config,
@@ -4564,7 +4596,8 @@ def _source_workflow_lines(payload: Mapping[str, object], width: int) -> list[st
     lines.append(
         "`batch all` shows this source map without provider calls; "
         "`batch <source> all` summarizes the full chunk plan; "
-        "`batch <source> execute` runs exactly one guarded chunk."
+        "`batch <source> execute` runs one guarded chunk; "
+        "`batch <source> execute 3` runs a capped set."
     )
     lines.append(
         "Full scan = the whole ranked universe. Source-fill tickers = the next "
@@ -4637,7 +4670,7 @@ def _ops_lines(payload: Mapping[str, object], width: int) -> list[str]:
         lines.append(
             "Examples are sample tickers only. Type `batch <source>` to show the "
             "full-scan plan; type `batch <source> execute` to run only the next "
-            "guarded chunk."
+            "guarded chunk, or `batch <source> execute 3` for a capped run."
         )
     workflow_lines = _source_workflow_lines(payload, width)
     if workflow_lines:
@@ -4789,6 +4822,7 @@ def _help_lines(width: int) -> list[str]:
         ("source-gap <source|all>", "Filter Insights by missing/stale data source."),
         ("batch <source>", "Plan full-scan source fill and show the next safe chunk."),
         ("batch <source> execute", "Run only the next guarded source-fill chunk."),
+        ("batch <source> execute 3", "Run a capped source-fill batch set."),
         ("decision-gap <gap|all>", "Filter Insights by missing decision evidence."),
         ("next / prev", "Page through the current Insights scan rows."),
         ("offset <row>", "Jump to a 1-based full-scan row number."),

@@ -1666,6 +1666,68 @@ def test_post_radar_priced_in_source_batch_execute_next_runs_one_chunk(
     assert captured["min_gap"] == 12.0
 
 
+def test_post_radar_priced_in_source_batch_execute_next_can_run_capped_batches(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "radar-priced-in-source-execute-batches.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+    captured: dict[str, object] = {}
+
+    def fake_execute_batches(_engine, _config, **kwargs) -> dict[str, object]:
+        captured.update(kwargs)
+        return {
+            "schema_version": "priced-in-source-batch-run-v1",
+            "source": kwargs["source"],
+            "status": "executed",
+            "requested_batches": kwargs["max_batches"],
+            "executed_batches": 3,
+            "external_calls_made": 3,
+            "before_plan": {"total_gap_rows": 10, "plannable_gap_rows": 10},
+            "after_plan": {"total_gap_rows": 7, "plannable_gap_rows": 7},
+            "gap_rows_resolved": 3,
+            "plannable_rows_resolved": 3,
+            "executions": [],
+            "next_action": "Review the next batch plan before continuing.",
+        }
+
+    monkeypatch.setattr(
+        radar_routes,
+        "execute_priced_in_source_batches",
+        fake_execute_batches,
+        raising=False,
+    )
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/radar/priced-in/source-batches/execute-next",
+        json={
+            "source": "catalyst_events",
+            "available_at": "2026-05-18T16:00:00+00:00",
+            "status": "all",
+            "usefulness": "research_useful",
+            "decision_gap": ["candidate_packet"],
+            "min_gap": 12,
+            "max_batches": 3,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["schema_version"] == "priced-in-source-batch-run-v1"
+    assert payload["source"] == "catalyst_events"
+    assert payload["executed_batches"] == 3
+    assert payload["gap_rows_resolved"] == 3
+    assert captured["source"] == "catalyst_events"
+    assert captured["max_batches"] == 3
+    assert captured["available_at"].isoformat() == "2026-05-18T16:00:00+00:00"
+    assert captured["status"] == "all"
+    assert captured["usefulness"] == "research_useful"
+    assert captured["decision_gap"] == ["candidate_packet"]
+    assert captured["min_gap"] == 12.0
+
+
 def test_post_radar_market_bars_template_and_import_use_database_universe(
     tmp_path,
     monkeypatch,

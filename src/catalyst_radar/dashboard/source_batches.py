@@ -35,6 +35,8 @@ from catalyst_radar.storage.repositories import MarketRepository
 from catalyst_radar.storage.text_repositories import TextRepository
 from catalyst_radar.textint.pipeline import run_text_pipeline
 
+MAX_PRICED_IN_SOURCE_BATCH_RUN_CHUNKS = 50
+
 
 def execute_priced_in_source_batch(
     engine: Engine,
@@ -135,6 +137,156 @@ def execute_priced_in_source_batch(
         external_calls_made=int(_number_or_zero(result.get("external_calls_made"))),
         post_execution=post_execution,
     )
+
+
+def execute_priced_in_source_batches(
+    engine: Engine,
+    config: AppConfig,
+    *,
+    source: str,
+    max_batches: int,
+    available_at: datetime | None = None,
+    status: str | None = None,
+    usefulness: str | None = None,
+    decision_gap: str | Sequence[str] | None = None,
+    min_gap: float | None = None,
+) -> dict[str, object]:
+    if int(max_batches) <= 0:
+        raise ValueError("max_batches must be positive")
+    if int(max_batches) > MAX_PRICED_IN_SOURCE_BATCH_RUN_CHUNKS:
+        raise ValueError(
+            "max_batches must be <= "
+            f"{MAX_PRICED_IN_SOURCE_BATCH_RUN_CHUNKS}"
+        )
+    source_name = str(source or "").strip().lower()
+    if source_name in {"all", "*"}:
+        raise ValueError("source all is plan-only; choose one executable source")
+    before_plan = priced_in_source_gap_batches_payload(
+        engine,
+        config,
+        source=source,
+        batch_limit=1,
+        available_at=available_at,
+        status=status,
+        usefulness=usefulness,
+        decision_gap=decision_gap,
+        min_gap=min_gap,
+    )
+    source_name = str(before_plan.get("source") or source_name).strip()
+    executions: list[dict[str, object]] = []
+    external_calls_made = 0
+    stop_reason = ""
+    for _index in range(int(max_batches)):
+        execution = execute_priced_in_source_batch(
+            engine,
+            config,
+            source=source_name,
+            available_at=available_at,
+            status=status,
+            usefulness=usefulness,
+            decision_gap=decision_gap,
+            min_gap=min_gap,
+        )
+        executions.append(execution)
+        external_calls_made += int(_number_or_zero(execution.get("external_calls_made")))
+        execution_status = str(execution.get("status") or "").strip()
+        if execution_status != "executed":
+            stop_reason = str(
+                execution.get("reason")
+                or f"{source_name} batch stopped with status={execution_status}"
+            )
+            break
+    else:
+        stop_reason = f"Reached max_batches={int(max_batches)}."
+
+    after_plan = priced_in_source_gap_batches_payload(
+        engine,
+        config,
+        source=source_name,
+        batch_limit=1,
+        available_at=available_at,
+        status=status,
+        usefulness=usefulness,
+        decision_gap=decision_gap,
+        min_gap=min_gap,
+    )
+    before_summary = _source_plan_summary(before_plan)
+    after_summary = _source_plan_summary(after_plan)
+    executed_batches = sum(
+        1 for item in executions if str(item.get("status") or "") == "executed"
+    )
+    failed = next(
+        (
+            item
+            for item in executions
+            if str(item.get("status") or "") not in {"executed", "no_action"}
+        ),
+        None,
+    )
+    status_value = _source_batch_run_status(
+        executed_batches=executed_batches,
+        requested_batches=int(max_batches),
+        failed=failed,
+        after_summary=after_summary,
+    )
+    next_command = (
+        f"catalyst-radar priced-in-source-batches --source {source_name} "
+        f"--execute-batches {int(max_batches)}"
+        if int(_number_or_zero(after_summary.get("plannable_gap_rows"))) > 0
+        else None
+    )
+    payload: dict[str, object] = {
+        "schema_version": "priced-in-source-batch-run-v1",
+        "source": source_name,
+        "status": status_value,
+        "requested_batches": int(max_batches),
+        "executed_batches": executed_batches,
+        "stopped_reason": stop_reason,
+        "external_calls_made": external_calls_made,
+        "execution_boundary": (
+            "Executes up to the requested number of source-fill chunks, stopping "
+            "early on blocked, failed, or no-action results. Each chunk still uses "
+            "the existing provider-specific guardrails."
+        ),
+        "before_plan": before_summary,
+        "after_plan": after_summary,
+        "gap_rows_resolved": int(_number_or_zero(before_summary.get("total_gap_rows")))
+        - int(_number_or_zero(after_summary.get("total_gap_rows"))),
+        "plannable_rows_resolved": int(
+            _number_or_zero(before_summary.get("plannable_gap_rows"))
+        )
+        - int(_number_or_zero(after_summary.get("plannable_gap_rows"))),
+        "executions": executions,
+        "next_action": _source_batch_run_next_action(
+            source_name=source_name,
+            executed_batches=executed_batches,
+            requested_batches=int(max_batches),
+            failed=failed,
+            after_summary=after_summary,
+            stop_reason=stop_reason,
+        ),
+        "next_command": next_command,
+    }
+    return payload
+
+
+def source_batch_run_summary(payload: Mapping[str, object]) -> str:
+    source = str(payload.get("source") or "source").strip()
+    status = str(payload.get("status") or "unknown").strip()
+    before = _mapping(payload.get("before_plan"))
+    after = _mapping(payload.get("after_plan"))
+    executed = int(_number_or_zero(payload.get("executed_batches")))
+    requested = int(_number_or_zero(payload.get("requested_batches")))
+    resolved = int(_number_or_zero(payload.get("gap_rows_resolved")))
+    calls = int(_number_or_zero(payload.get("external_calls_made")))
+    before_gaps = int(_number_or_zero(before.get("total_gap_rows")))
+    after_gaps = int(_number_or_zero(after.get("total_gap_rows")))
+    next_action = str(payload.get("next_action") or "").strip()
+    return (
+        f"{source} batch run {status}: executed {executed}/{requested} chunk(s), "
+        f"gap rows {before_gaps}->{after_gaps} (resolved {resolved}), "
+        f"external calls={calls}. {next_action}"
+    ).strip()
 
 
 def source_batch_execution_summary(payload: Mapping[str, object]) -> str:
@@ -364,6 +516,63 @@ def _execution_payload(
     if post_execution is not None:
         payload["post_execution"] = dict(post_execution)
     return payload
+
+
+def _source_plan_summary(plan: Mapping[str, object]) -> dict[str, object]:
+    return {
+        "status": plan.get("status"),
+        "total_gap_rows": int(_number_or_zero(plan.get("total_gap_rows"))),
+        "plannable_gap_rows": int(_number_or_zero(plan.get("plannable_gap_rows"))),
+        "unplannable_gap_rows": int(_number_or_zero(plan.get("unplannable_gap_rows"))),
+        "batch_count": int(_number_or_zero(plan.get("batch_count"))),
+        "batch_size": int(_number_or_zero(plan.get("batch_size"))),
+        "next_action": plan.get("next_action"),
+        "review_rows_command": plan.get("review_rows_command"),
+        "all_batches_command": plan.get("all_batches_command"),
+    }
+
+
+def _source_batch_run_status(
+    *,
+    executed_batches: int,
+    requested_batches: int,
+    failed: Mapping[str, object] | None,
+    after_summary: Mapping[str, object],
+) -> str:
+    if int(_number_or_zero(after_summary.get("total_gap_rows"))) <= 0:
+        return "complete"
+    if failed is not None:
+        return "partial" if executed_batches else str(failed.get("status") or "blocked")
+    if executed_batches > 0:
+        return "executed"
+    if requested_batches <= 0:
+        return "blocked"
+    return "no_action"
+
+
+def _source_batch_run_next_action(
+    *,
+    source_name: str,
+    executed_batches: int,
+    requested_batches: int,
+    failed: Mapping[str, object] | None,
+    after_summary: Mapping[str, object],
+    stop_reason: str,
+) -> str:
+    after_gaps = int(_number_or_zero(after_summary.get("total_gap_rows")))
+    after_plannable = int(_number_or_zero(after_summary.get("plannable_gap_rows")))
+    if after_gaps <= 0:
+        return f"No full-scan {source_name} source gaps remain."
+    if failed is not None:
+        reason = str(failed.get("reason") or stop_reason or "Review the failed chunk.")
+        return f"Stopped after {executed_batches} chunk(s): {reason}"
+    if executed_batches > 0:
+        return (
+            f"Executed {executed_batches}/{requested_batches} capped chunk(s). "
+            f"{after_gaps} full-scan gap row(s) remain; {after_plannable} are "
+            "currently plannable. Review the next batch plan before continuing."
+        )
+    return str(after_summary.get("next_action") or stop_reason or "No chunk executed.")
 
 
 def _post_execution_check_payload(

@@ -71,7 +71,9 @@ from catalyst_radar.dashboard.demo_seed import (
 )
 from catalyst_radar.dashboard.source_batches import (
     execute_priced_in_source_batch,
+    execute_priced_in_source_batches,
     source_batch_execution_summary,
+    source_batch_run_summary,
 )
 from catalyst_radar.dashboard.tui import (
     DashboardFilters,
@@ -542,6 +544,14 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Execute only the next planned source-fill batch. Without this flag, "
             "the command remains plan-only and makes no provider calls."
+        ),
+    )
+    priced_in_batches.add_argument(
+        "--execute-batches",
+        type=int,
+        help=(
+            "Execute up to N planned source-fill batches, stopping on blocked or "
+            "failed chunks. Must be explicit because this can call providers."
         ),
     )
     priced_in_batches.add_argument(
@@ -1082,17 +1092,34 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "priced-in-source-batches":
         create_schema(engine)
+        execute_batches = int(args.execute_batches or 0)
         if args.execute_next and args.all_batches:
             print(
                 "priced-in-source-batches --execute-next cannot be combined with --all",
                 file=sys.stderr,
             )
             return 2
+        if execute_batches and args.all_batches:
+            print(
+                "priced-in-source-batches --execute-batches cannot be combined with --all",
+                file=sys.stderr,
+            )
+            return 2
+        if args.execute_next and execute_batches:
+            print(
+                "priced-in-source-batches choose either --execute-next or "
+                "--execute-batches, not both",
+                file=sys.stderr,
+            )
+            return 2
+        if args.execute_batches is not None and execute_batches <= 0:
+            print("priced-in-source-batches --execute-batches must be positive", file=sys.stderr)
+            return 2
         source_name = str(args.source or "").strip().lower()
-        if args.execute_next and source_name in {"all", "*"}:
+        if (args.execute_next or execute_batches) and source_name in {"all", "*"}:
             print(
                 "priced-in-source-batches --source all is plan-only; choose one "
-                "source before using --execute-next",
+                "source before executing batches",
                 file=sys.stderr,
             )
             return 2
@@ -1102,6 +1129,18 @@ def main(argv: list[str] | None = None) -> int:
                     engine,
                     config,
                     source=args.source,
+                    available_at=args.available_at,
+                    status=args.status,
+                    usefulness=args.usefulness,
+                    decision_gap=args.decision_gap,
+                    min_gap=args.min_gap,
+                )
+            elif execute_batches:
+                payload = execute_priced_in_source_batches(
+                    engine,
+                    config,
+                    source=args.source,
+                    max_batches=execute_batches,
                     available_at=args.available_at,
                     status=args.status,
                     usefulness=args.usefulness,
@@ -1139,6 +1178,8 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         if args.json:
             print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
+        elif execute_batches:
+            _print_priced_in_source_batch_run(payload)
         elif args.execute_next:
             _print_priced_in_source_batch_execution(payload)
         elif str(payload.get("schema_version") or "") == (
@@ -1150,6 +1191,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.execute_next:
             execution_status = str(payload.get("status") or "")
             return 0 if execution_status in {"executed", "no_action"} else 1
+        if execute_batches:
+            execution_status = str(payload.get("status") or "")
+            return 0 if execution_status in {"executed", "complete", "no_action"} else 1
         return 0
 
     if args.command == "priced-in-preflight":
@@ -3405,6 +3449,9 @@ def _print_priced_in_all_source_batches(payload: Mapping[str, object]) -> None:
         plan_command = row.get("all_batches_command")
         if plan_command:
             print(f"  plan={_compact_cli_text(plan_command)}")
+        capped_command = row.get("execute_batches_command")
+        if capped_command:
+            print(f"  capped_execute={_compact_cli_text(capped_command)}")
 
 
 def _print_priced_in_source_batches(payload: Mapping[str, object]) -> None:
@@ -3476,6 +3523,9 @@ def _print_priced_in_source_batches(payload: Mapping[str, object]) -> None:
     all_batches_command = payload.get("all_batches_command")
     if all_batches_command:
         print(f"all_batches={_compact_cli_text(all_batches_command)}")
+    execute_batches_command = payload.get("execute_batches_command")
+    if execute_batches_command:
+        print(f"execute_batches={_compact_cli_text(execute_batches_command)}")
     all_batches_api = payload.get("all_batches_api")
     if all_batches_api:
         print(f"all_batches_api={_compact_cli_text(all_batches_api)}")
@@ -3577,6 +3627,57 @@ def _print_priced_in_source_batch_execution(payload: Mapping[str, object]) -> No
         next_plan = post_execution.get("all_batches_command")
         if next_plan:
             print(f"post_plan={_compact_cli_text(next_plan)}")
+
+
+def _print_priced_in_source_batch_run(payload: Mapping[str, object]) -> None:
+    before = payload.get("before_plan")
+    after = payload.get("after_plan")
+    print(
+        "priced_in_source_batch_run "
+        f"source={payload.get('source')} "
+        f"status={payload.get('status')} "
+        f"executed={payload.get('executed_batches')}/"
+        f"{payload.get('requested_batches')} "
+        f"external_calls={payload.get('external_calls_made')}"
+    )
+    if isinstance(before, Mapping) and isinstance(after, Mapping):
+        print(
+            "coverage="
+            f"gap_rows={before.get('total_gap_rows')}->{after.get('total_gap_rows')} "
+            f"resolved={payload.get('gap_rows_resolved')} "
+            f"plannable={before.get('plannable_gap_rows')}->"
+            f"{after.get('plannable_gap_rows')} "
+            f"batches={before.get('batch_count')}->{after.get('batch_count')}"
+        )
+    stopped = payload.get("stopped_reason")
+    if stopped:
+        print(f"stopped={_compact_cli_text(stopped)}")
+    print(f"summary={_compact_cli_text(source_batch_run_summary(payload))}")
+    next_action = payload.get("next_action")
+    if next_action:
+        print(f"next_action={_compact_cli_text(next_action)}")
+    next_command = payload.get("next_command")
+    if next_command:
+        print(f"next_command={_compact_cli_text(next_command)}")
+    executions = payload.get("executions")
+    if isinstance(executions, list | tuple) and executions:
+        print("chunks:")
+        for index, execution in enumerate(executions, start=1):
+            if not isinstance(execution, Mapping):
+                continue
+            batch = execution.get("batch")
+            tickers = ""
+            if isinstance(batch, Mapping):
+                raw_tickers = batch.get("tickers")
+                if isinstance(raw_tickers, list | tuple):
+                    tickers = ",".join(str(ticker) for ticker in raw_tickers)
+            print(
+                f"- {index} "
+                f"status={execution.get('status')} "
+                f"calls={execution.get('external_calls_made')} "
+                f"tickers={tickers} "
+                f"reason={_compact_cli_text(execution.get('reason'))}"
+            )
 
 
 def _count_summary(counts: Mapping[object, object]) -> str:
