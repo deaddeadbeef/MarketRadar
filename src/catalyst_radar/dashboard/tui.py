@@ -3859,6 +3859,8 @@ def _full_scan_audit_summary(payload: Mapping[str, object]) -> str:
         return ""
     scope = _mapping(audit.get("scope"))
     market = _mapping(audit.get("market_bars"))
+    repair = _mapping(market.get("repair"))
+    stock_scope = _mapping(repair.get("stock_scope"))
     coverage = _mapping(audit.get("source_coverage"))
     active = int(_number_or_zero(scope.get("active_securities")))
     ranked = int(_number_or_zero(scope.get("ranked_rows")))
@@ -3872,6 +3874,11 @@ def _full_scan_audit_summary(payload: Mapping[str, object]) -> str:
         f"bars {with_bars}/{active}",
         f"sources {ready_sources}/{source_count}",
     ]
+    if stock_scope:
+        stock_with = int(_number_or_zero(stock_scope.get("stock_like_with_as_of_bar")))
+        stock_active = int(_number_or_zero(stock_scope.get("stock_like_active")))
+        stock_missing = int(_number_or_zero(stock_scope.get("stock_like_missing_as_of_bar")))
+        parts.append(f"stock bars {stock_with}/{stock_active} missing {stock_missing}")
     if next_action:
         parts.append(f"next {next_action}")
     return "; ".join(parts)

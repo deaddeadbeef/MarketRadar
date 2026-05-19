@@ -2186,6 +2186,30 @@ def _show_priced_in_full_scan_panel(
                 ]
             )
             st.caption(str(diagnostic.get("next_action") or "Classify missing bars."))
+        stock_scope = _mapping(market_bar_repair.get("stock_scope"))
+        if stock_scope:
+            st.caption("Stocks-only bar coverage")
+            _show_status_badges(
+                [
+                    ("Stock Scope", stock_scope.get("status") or "unknown"),
+                    ("Stock-like Active", stock_scope.get("stock_like_active") or 0),
+                    (
+                        "Stock-like With Bars",
+                        stock_scope.get("stock_like_with_as_of_bar") or 0,
+                    ),
+                    (
+                        "Stock-like Missing",
+                        stock_scope.get("stock_like_missing_as_of_bar") or 0,
+                    ),
+                ]
+            )
+            missing_stocks = _list_text(
+                stock_scope.get("sample_missing_stock_like_tickers")
+            )
+            if missing_stocks:
+                st.caption(f"Missing stock-like examples: {missing_stocks}")
+            st.caption(str(stock_scope.get("answer_boundary") or ""))
+            st.caption(str(stock_scope.get("next_action") or ""))
         provider_plan = _mapping(market_bar_repair.get("provider_fill_plan"))
         if provider_plan:
             st.caption("Polygon/Massive Fill Plan")
