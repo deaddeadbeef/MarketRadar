@@ -1971,6 +1971,110 @@ def test_priced_in_answer_opens_full_scan_queue_when_decision_ready(
     assert "not the full scan universe" in payload["full_scan"]["sample_explanation"]
 
 
+def test_priced_in_answer_keeps_trust_gaps_when_decision_ready(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    queue = {
+        "status": "ready",
+        "total_count": 12_087,
+        "count": 1,
+        "returned_count": 1,
+        "offset": 0,
+        "has_more": True,
+        "filters": {"status": "all", "limit": 5, "offset": 0},
+        "latest_run": {"as_of": "2026-05-15"},
+        "status_counts": {"bullish_not_priced_in": 1},
+        "usefulness_counts": {"decision_useful": 1},
+        "decision_gap_counts": {
+            "schema_version": "priced-in-decision-gap-counts-v1",
+            "scope": "actionable_mismatch_rows",
+            "row_count": 1,
+            "counts": {},
+            "sample_tickers": {},
+            "top_gaps": [],
+        },
+        "source_coverage": {
+            "summary": "market_bars 12087/12087; options 0/12087",
+            "weak_sources": ["options"],
+            "actions": [
+                {
+                    "source": "options",
+                    "status": "missing",
+                    "gap_count": 12_087,
+                    "next_action": "Inspect the options source plan.",
+                    "batch_plan_command": (
+                        "catalyst-radar priced-in-source-batches "
+                        "--source options --all --json"
+                    ),
+                }
+            ],
+        },
+        "rows": [
+            {
+                "ticker": "A",
+                "priced_in_status": "bullish_not_priced_in",
+                "emotion_reaction_gap": 65.9,
+                "emotion_score": 65.9,
+                "reaction_score": 0.0,
+                "data_sources": {"missing": ["options"], "stale": []},
+                "usefulness": {
+                    "status": "decision_useful",
+                    "decision_ready": True,
+                },
+                "next_step": "Review priced-in evidence.",
+            }
+        ],
+    }
+    preflight = {
+        "evidence_plan": {
+            "steps": [
+                {
+                    "area": "options",
+                    "status": "attention",
+                    "action": "Fill point-in-time options context.",
+                    "command": (
+                        "catalyst-radar priced-in-source-batches "
+                        "--source options --all --json"
+                    ),
+                }
+            ]
+        }
+    }
+
+    payload = priced_in_answer_payload(
+        engine,
+        AppConfig.from_env({}),
+        queue=queue,
+        preflight=preflight,
+    )
+
+    assert payload["status"] == "decision_ready"
+    assert payload["decision_ready"] is True
+    assert payload["trust_blockers"][:2] == [
+        {
+            "area": "options",
+            "status": "attention",
+            "depends_on": [],
+            "next_action": "Fill point-in-time options context.",
+            "command": (
+                "catalyst-radar priced-in-source-batches "
+                "--source options --all --json"
+            ),
+        },
+        {
+            "area": "options",
+            "status": "missing",
+            "gap_count": 12_087,
+            "next_action": "Inspect the options source plan.",
+            "command": (
+                "catalyst-radar priced-in-source-batches "
+                "--source options --all --json"
+            ),
+        }
+    ]
+
+
 def test_priced_in_queue_payload_paginates_ranked_rows(tmp_path: Path) -> None:
     engine = _engine(tmp_path)
     _insert_dashboard_fixture(engine)

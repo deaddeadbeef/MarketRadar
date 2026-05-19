@@ -2471,8 +2471,6 @@ def _priced_in_answer_trust_blockers(
     answer_status: str,
     source_coverage: Mapping[str, object],
 ) -> list[dict[str, object]]:
-    if answer_status == "decision_ready":
-        return []
     rows: list[dict[str, object]] = []
     plan = _mapping_value(preflight, "evidence_plan")
     for step in _sequence_value(plan.get("steps")):
