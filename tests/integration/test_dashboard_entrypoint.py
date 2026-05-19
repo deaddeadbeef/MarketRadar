@@ -560,6 +560,8 @@ def test_dashboard_wires_priced_in_full_scan_panel_after_usefulness() -> None:
     assert "Missing as-of bar examples" in helper_source
     assert "Company-like Missing" in helper_source
     assert "Wrapper Missing" in helper_source
+    assert "Polygon/Massive Fill Plan" in helper_source
+    assert "Execute Calls" in helper_source
     assert "Priority Lens: Market Emotion Mismatches" in helper_source
     assert "Top Priority Rows" in helper_source
     assert "primary_scan" in helper_source

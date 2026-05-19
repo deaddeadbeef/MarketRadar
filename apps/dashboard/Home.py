@@ -2186,6 +2186,41 @@ def _show_priced_in_full_scan_panel(
                 ]
             )
             st.caption(str(diagnostic.get("next_action") or "Classify missing bars."))
+        provider_plan = _mapping(market_bar_repair.get("provider_fill_plan"))
+        if provider_plan:
+            st.caption("Polygon/Massive Fill Plan")
+            _show_status_badges(
+                [
+                    ("Provider Fill", provider_plan.get("status") or "blocked"),
+                    (
+                        "Provider",
+                        provider_plan.get("provider_label")
+                        or provider_plan.get("provider")
+                        or "n/a",
+                    ),
+                    (
+                        "Execute Calls",
+                        provider_plan.get("execute_external_call_count") or 0,
+                    ),
+                    (
+                        "Key Configured",
+                        "yes" if provider_plan.get("provider_key_configured") else "no",
+                    ),
+                ]
+            )
+            st.caption(str(provider_plan.get("approval_boundary") or "Plan only."))
+            st.caption(str(provider_plan.get("point_in_time_boundary") or ""))
+            provider_command = str(provider_plan.get("provider_call_command") or "").strip()
+            manual_template = str(provider_plan.get("manual_template_command") or "").strip()
+            if provider_command or manual_template:
+                st.code(
+                    "\n".join(
+                        command
+                        for command in (provider_command, manual_template)
+                        if command
+                    ),
+                    language="powershell",
+                )
         repair_commands = [
             command
             for command in (

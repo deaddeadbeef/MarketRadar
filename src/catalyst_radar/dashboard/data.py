@@ -2230,6 +2230,7 @@ def _priced_in_full_scan_audit_payload_uncached(
     blocked_count = int(_finite_float(usefulness_counts.get("blocked")))
     market_bars = _priced_in_audit_market_bars(
         engine,
+        config,
         resolved_queue,
         resolved_preflight,
     )
@@ -2805,6 +2806,7 @@ def _priced_in_audit_answer(
 
 def _priced_in_audit_market_bars(
     engine: Engine,
+    config: AppConfig,
     queue: Mapping[str, object],
     preflight: Mapping[str, object],
 ) -> dict[str, object]:
@@ -2833,6 +2835,7 @@ def _priced_in_audit_market_bars(
     )
     repair = _priced_in_audit_market_bar_repair(
         engine=engine,
+        config=config,
         active=active,
         with_as_of_bar=with_as_of_bar,
         missing=missing,
@@ -2861,6 +2864,7 @@ def _priced_in_audit_market_bars(
 def _priced_in_audit_market_bar_repair(
     *,
     engine: Engine,
+    config: AppConfig,
     active: int,
     with_as_of_bar: int,
     missing: int,
@@ -2873,13 +2877,18 @@ def _priced_in_audit_market_bar_repair(
         for ticker in missing_tickers
         if str(ticker).strip()
     ]
-    template_command = _csv_market_template_command(target_as_of)
+    template_command = _csv_market_template_command(target_as_of, missing_only=True)
     import_preview_command = _csv_market_refresh_command(target_as_of, execute=False)
     import_execute_command = _csv_market_refresh_command(target_as_of, execute=True)
     diagnostic = _priced_in_market_bar_missing_diagnostic(
         engine,
         target_as_of=target_as_of,
         missing_ticker_fallback=missing_sample,
+    )
+    provider_fill_plan = _priced_in_market_bar_provider_fill_plan(
+        config,
+        target_as_of=target_as_of,
+        missing=missing,
     )
     status = "ready" if missing <= 0 else str(market_row.get("status") or "attention")
     if missing <= 0:
@@ -2905,11 +2914,78 @@ def _priced_in_audit_market_bar_repair(
         "template_api": "POST /api/radar/market-bars/template",
         "import_api": "POST /api/radar/market-bars/import",
         "diagnostic": diagnostic,
+        "provider_fill_plan": provider_fill_plan,
         "external_calls_made": 0,
         "write_boundary": (
             "Template generation writes a local CSV. Import preview makes no DB "
             "writes. Import --execute writes local daily bars only; none of these "
             "commands call market providers."
+        ),
+        "next_action": next_action,
+    }
+
+
+def _priced_in_market_bar_provider_fill_plan(
+    config: AppConfig,
+    *,
+    target_as_of: date | None,
+    missing: int,
+) -> dict[str, object]:
+    target_value = _date_iso_or_none(target_as_of)
+    provider_command = (
+        f"catalyst-radar ingest-polygon grouped-daily --date {target_value}"
+        if target_value
+        else None
+    )
+    execute_call_count = 1 if target_value and missing > 0 else 0
+    key_configured = bool(config.polygon_api_key_configured)
+    if missing <= 0:
+        status = "not_needed"
+        next_action = "No market-bar provider fill is needed."
+    elif target_as_of is None:
+        status = "blocked"
+        next_action = "Resolve the scan date before planning a provider bar fill."
+    elif key_configured:
+        status = "ready_for_approval"
+        next_action = (
+            "If you approve one market-data provider call, run the grouped-daily "
+            "command, then rerun the scan/audit from the updated local bars."
+        )
+    else:
+        status = "blocked"
+        next_action = (
+            "Set a real Polygon/Massive API key or use the missing-only manual CSV "
+            "template; do not run the provider command until explicitly approved."
+        )
+    return {
+        "schema_version": "priced-in-market-bar-provider-fill-plan-v1",
+        "status": status,
+        "provider": "polygon",
+        "provider_label": "Polygon/Massive grouped daily",
+        "target_as_of": target_value,
+        "missing_as_of_bar": max(0, int(missing)),
+        "provider_key_configured": key_configured,
+        "execute_external_call_count": execute_call_count,
+        "external_calls_made": 0,
+        "provider_call_command": provider_command,
+        "provider_call_api": None,
+        "manual_template_command": _csv_market_template_command(
+            target_as_of,
+            missing_only=True,
+        ),
+        "manual_import_preview_command": _csv_market_refresh_command(
+            target_as_of,
+            execute=False,
+        ),
+        "approval_boundary": (
+            "This plan makes 0 provider calls. The provider command makes one "
+            "Polygon/Massive grouped-daily request and must only be run after "
+            "explicit operator approval."
+        ),
+        "point_in_time_boundary": (
+            "Grouped-daily ingest writes local bars from the fetch context. After "
+            "provider fill, rerun the scan/audit instead of treating an older "
+            "audit as automatically revalidated."
         ),
         "next_action": next_action,
     }
@@ -14291,15 +14367,21 @@ def _csv_market_refresh_command(
     )
 
 
-def _csv_market_template_command(as_of_date: date | None) -> str:
+def _csv_market_template_command(
+    as_of_date: date | None,
+    *,
+    missing_only: bool = False,
+) -> str:
     expected = (
         as_of_date.isoformat()
         if as_of_date is not None
         else "<LATEST_TRADING_DATE>"
     )
+    missing_flag = " --missing-only" if missing_only else ""
     return (
         "catalyst-radar market-bars template "
         f"--expected-as-of {expected} --out data\\local\\manual-bars-{expected}.csv"
+        f"{missing_flag}"
     )
 
 

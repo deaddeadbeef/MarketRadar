@@ -1,6 +1,96 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 22:25:34 +08:00
+Last updated: 2026-05-19 22:38:54 +08:00
+
+## Latest Market-Bar Provider Fill Plan
+
+Current problem:
+
+- The full scan still has `523` missing bars for `2026-05-15`.
+- The missing-only CSV path is now practical, but the dashboard/CLI did not
+  tell the operator whether the configured Polygon/Massive key could fill the
+  same date with a single grouped-daily request.
+- The project also needs to avoid surprise provider calls. A command that can
+  call Polygon/Massive must be shown as a plan with an explicit approval
+  boundary, not executed implicitly.
+
+Fix in this slice:
+
+- `priced_in_full_scan_audit_payload.market_bars.repair` now includes a
+  `provider_fill_plan` object with schema
+  `priced-in-market-bar-provider-fill-plan-v1`.
+- The provider plan reports:
+  - provider label `Polygon/Massive grouped daily`;
+  - target as-of date;
+  - missing bar count;
+  - whether a real Polygon/Massive key is configured;
+  - provider command;
+  - manual missing-only template command;
+  - `execute_external_call_count`;
+  - `external_calls_made=0`;
+  - explicit approval and point-in-time boundaries.
+- CLI `priced-in-audit` now prints the provider fill plan under
+  `market_bar_repair`.
+- Streamlit **Priced-in Full Scan** now surfaces a **Polygon/Massive Fill Plan**
+  with **Execute Calls**, key state, approval boundary, provider command, and
+  missing-only manual fallback.
+- No Polygon/Massive, Schwab, SEC, OpenAI, or broker/order execution was run.
+
+Current live zero-call observations from the branch:
+
+```text
+provider_fill_plan=provider=Polygon/Massive grouped daily status=ready_for_approval execute_calls=1 key_configured=true external_calls=0
+  provider_command=catalyst-radar ingest-polygon grouped-daily --date 2026-05-15
+  manual_template=catalyst-radar market-bars template --expected-as-of 2026-05-15 --out data\local\manual-bars-2026-05-15.csv --missing-only
+  approval_boundary=This plan makes 0 provider calls. The provider command makes one Polygon/Massive grouped-daily request and must only be run after explicit operator approval.
+```
+
+```text
+api_provider_fill_plan status=ready_for_approval execute_calls=1 key_configured=True external_calls=0 command=catalyst-radar ingest-polygon grouped-daily --date 2026-05-15
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_payload_consolidates_current_state tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_audit_cli_outputs_full_scan_audit tests\integration\test_dashboard_entrypoint.py::test_dashboard_wires_priced_in_full_scan_panel_after_usefulness -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py apps\dashboard\Home.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_dashboard_entrypoint.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-audit --limit 1
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-audit --limit 1 --json
+```
+
+Observed:
+
+- Focused three-test set passed (`3 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+- CLI text and JSON checks reported:
+  - `status=ready_for_approval`;
+  - `execute_calls=1`;
+  - key configured `true`;
+  - `external_calls_made=0`;
+  - provider command `catalyst-radar ingest-polygon grouped-daily --date 2026-05-15`.
+- Local services were restarted from the branch for API/dashboard verification.
+- API health returned commit `adb1a4434b4c`.
+- Streamlit health returned `ok`.
+- API `GET /api/radar/priced-in/audit?limit=1` reported the same provider fill
+  plan with `external_calls_made=0`.
+- Browser verification on `http://127.0.0.1:8514` confirmed the dashboard text
+  included:
+  - `Polygon/Massive Fill Plan`;
+  - `Execute Calls`;
+  - `This plan makes 0 provider calls`;
+  - `catalyst-radar ingest-polygon grouped-daily --date 2026-05-15`;
+  - `--missing-only`.
+- Browser console check reported 0 current errors.
+
+Next useful product action:
+
+- If the operator explicitly approves one market-data provider call, run:
+  `catalyst-radar ingest-polygon grouped-daily --date 2026-05-15`.
+- After provider fill, rerun the scan/audit from updated local bars; do not
+  treat the older audit as automatically revalidated.
+- If provider execution is not approved, use the missing-only manual CSV path.
 
 ## Latest Missing-Only Market-Bar Repair Path
 

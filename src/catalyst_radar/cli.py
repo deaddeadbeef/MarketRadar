@@ -4074,6 +4074,31 @@ def _print_priced_in_audit(payload: Mapping[str, object]) -> None:
             route_boundary = diagnostic.get("route_boundary")
             if route_boundary:
                 print(f"    route_boundary={_compact_cli_text(route_boundary)}")
+        provider_plan = repair.get("provider_fill_plan")
+        if isinstance(provider_plan, Mapping) and provider_plan:
+            print(
+                "  provider_fill_plan="
+                f"provider={provider_plan.get('provider_label') or provider_plan.get('provider')} "
+                f"status={provider_plan.get('status')} "
+                f"execute_calls={_int_value(provider_plan.get('execute_external_call_count'))} "
+                f"key_configured={str(bool(provider_plan.get('provider_key_configured'))).lower()} "
+                f"external_calls={provider_plan.get('external_calls_made')}"
+            )
+            provider_command = provider_plan.get("provider_call_command")
+            if provider_command:
+                print(f"    provider_command={_compact_cli_text(provider_command)}")
+            manual_command = provider_plan.get("manual_template_command")
+            if manual_command:
+                print(f"    manual_template={_compact_cli_text(manual_command)}")
+            approval_boundary = provider_plan.get("approval_boundary")
+            if approval_boundary:
+                print(f"    approval_boundary={_compact_cli_text(approval_boundary)}")
+            point_in_time_boundary = provider_plan.get("point_in_time_boundary")
+            if point_in_time_boundary:
+                print(
+                    "    point_in_time_boundary="
+                    f"{_compact_cli_text(point_in_time_boundary)}"
+                )
     print(
         "source_coverage="
         f"ready={coverage.get('ready_source_count')}/"
