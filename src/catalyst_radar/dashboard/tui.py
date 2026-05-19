@@ -2304,6 +2304,7 @@ def _priced_in_source_batch_message(
     status = str(payload.get("status") or "unknown")
     total_gap_rows = int(_number_or_zero(payload.get("total_gap_rows")))
     plannable_gap_rows = int(_number_or_zero(payload.get("plannable_gap_rows")))
+    routed_gap_rows = int(_number_or_zero(payload.get("routed_gap_rows")))
     batch_count = int(_number_or_zero(payload.get("batch_count")))
     next_action = str(payload.get("next_action") or "").strip()
     diagnostic = _mapping(payload.get("diagnostic"))
@@ -2312,6 +2313,7 @@ def _priced_in_source_batch_message(
     diagnostic_command = str(diagnostic.get("fix_command") or "").strip()
     blocked_samples = _texts(diagnostic.get("sample_blocked_tickers"))
     missing_cik_suffix = _missing_cik_diagnostic_suffix(diagnostic)
+    non_company_route_suffix = _non_company_route_suffix(diagnostic)
     next_batch_command = str(payload.get("next_batch_command") or "").strip()
     scan_scope = _mapping(payload.get("scan_scope"))
     command = ""
@@ -2337,7 +2339,8 @@ def _priced_in_source_batch_message(
         api_suffix = ""
     prefix = (
         f"{source_name}: {status}; {total_gap_rows} full-scan gap row(s), "
-        f"{plannable_gap_rows} plannable, {batch_count} batch(es)."
+        f"{plannable_gap_rows} plannable, {routed_gap_rows} routed, "
+        f"{batch_count} batch(es)."
     )
     if command:
         returned_tickers = int(_number_or_zero(scan_scope.get("returned_tickers")))
@@ -2389,7 +2392,8 @@ def _priced_in_source_batch_message(
             f"{calls}{api_suffix} "
             f"First safe chunk: {command}. Run from TUI with "
             f"`batch {source_name} execute` if intended.{blocked_suffix}"
-            f"{missing_cik_suffix}{diagnostic_suffix}{command_suffix}"
+            f"{missing_cik_suffix}{non_company_route_suffix}"
+            f"{diagnostic_suffix}{command_suffix}"
             f"{full_suffix}{next_suffix}"
         )
     blocked_suffix = (
@@ -2408,7 +2412,10 @@ def _priced_in_source_batch_message(
     )
     if diagnostic_command:
         detail = f"{detail} Command: {diagnostic_command}."
-    detail = f"{detail}{blocked_suffix}{missing_cik_suffix}{diagnostic_suffix}"
+    detail = (
+        f"{detail}{blocked_suffix}{missing_cik_suffix}"
+        f"{non_company_route_suffix}{diagnostic_suffix}"
+    )
     return f"{prefix} {detail}"
 
 
@@ -2430,6 +2437,17 @@ def _missing_cik_diagnostic_suffix(diagnostic: Mapping[str, object]) -> str:
         f"{counts}; company-like {company_like}, non-company {non_company}, "
         f"unknown {unknown}."
     )
+
+
+def _non_company_route_suffix(diagnostic: Mapping[str, object]) -> str:
+    routed = int(_number_or_zero(diagnostic.get("routed_non_company_rows")))
+    if routed <= 0:
+        return ""
+    samples = _texts(diagnostic.get("sample_routed_non_company_tickers"))
+    route = str(diagnostic.get("non_company_evidence_route") or "").strip()
+    sample_text = f" Examples: {', '.join(samples)}." if samples else ""
+    route_text = f" Route: {route}" if route else ""
+    return f" Non-company routed: {routed}.{sample_text}{route_text}"
 
 
 def _priced_in_all_source_batch_message(

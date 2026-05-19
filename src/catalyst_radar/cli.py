@@ -3417,7 +3417,7 @@ def _print_priced_in_all_source_batches(payload: Mapping[str, object]) -> None:
         return
     print(
         "source status gap_rows decision research actionable "
-        "plannable batches first_calls next_command"
+        "plannable routed batches first_calls next_command"
     )
     for row in rows:
         if not isinstance(row, Mapping):
@@ -3434,6 +3434,7 @@ def _print_priced_in_all_source_batches(payload: Mapping[str, object]) -> None:
             f"{row.get('research_useful_gap_rows', 0)} "
             f"{row.get('actionable_gap_rows', 0)} "
             f"{row.get('plannable_gap_rows')} "
+            f"{row.get('routed_gap_rows')} "
             f"{row.get('batch_count')} "
             f"{first_calls} "
             f"{_compact_cli_text(row.get('execute_next_command'))}"
@@ -3462,6 +3463,7 @@ def _print_priced_in_source_batches(payload: Mapping[str, object]) -> None:
         f"status={payload.get('status')} "
         f"gap_rows={payload.get('total_gap_rows')} "
         f"plannable={payload.get('plannable_gap_rows')} "
+        f"routed={payload.get('routed_gap_rows')} "
         f"planned_at={payload.get('planned_at')} "
         f"batch_size={payload.get('batch_size')} "
         f"batches={payload.get('count')} "
@@ -3520,6 +3522,20 @@ def _print_priced_in_source_batches(payload: Mapping[str, object]) -> None:
             print(
                 "non_company_cik_examples="
                 f"{','.join(str(ticker) for ticker in non_company_samples)}"
+            )
+        routed_samples = diagnostic.get("sample_routed_non_company_tickers")
+        routed_count = _int_value(diagnostic.get("routed_non_company_rows"))
+        if routed_count:
+            routed_sample_text = (
+                ",".join(str(ticker) for ticker in routed_samples)
+                if isinstance(routed_samples, list | tuple)
+                else ""
+            )
+            print(
+                "non_company_route="
+                f"routed={routed_count} "
+                f"examples={routed_sample_text} "
+                f"route={_compact_cli_text(diagnostic.get('non_company_evidence_route'))}"
             )
         company_like_samples = diagnostic.get("sample_company_like_missing_cik_tickers")
         if isinstance(company_like_samples, list | tuple) and company_like_samples:
