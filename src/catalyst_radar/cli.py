@@ -84,7 +84,10 @@ from catalyst_radar.dashboard.tui import (
     run_dashboard_tui,
 )
 from catalyst_radar.decision_cards.builder import build_decision_card
-from catalyst_radar.events.sec_cik import refresh_sec_cik_metadata
+from catalyst_radar.events.sec_cik import (
+    apply_sec_cik_overrides_csv,
+    refresh_sec_cik_metadata,
+)
 from catalyst_radar.events.sec_ingest import (
     ingest_sec_record,
     ingest_sec_submissions_batch,
@@ -233,6 +236,13 @@ def build_parser() -> argparse.ArgumentParser:
     submissions_batch.add_argument("--fixture", type=Path)
     company_tickers = sec_sub.add_parser("company-tickers")
     company_tickers.add_argument("--fixture", type=Path)
+    cik_overrides = sec_sub.add_parser("cik-overrides")
+    cik_overrides.add_argument(
+        "--csv",
+        type=Path,
+        required=True,
+        help="CSV with ticker,cik[,sec_company_name] columns. Makes no external calls.",
+    )
     ipo_s1 = sec_sub.add_parser("ipo-s1")
     ipo_s1.add_argument("--ticker", required=True)
     ipo_s1.add_argument("--cik", required=True)
@@ -963,6 +973,11 @@ def main(argv: list[str] | None = None) -> int:
                 engine=engine,
                 config=config,
                 fixture_path=args.fixture,
+            )
+        if args.sec_command == "cik-overrides":
+            return _apply_sec_cik_overrides_cli(
+                engine=engine,
+                csv_path=args.csv,
             )
         if args.sec_command == "submissions-batch":
             return _ingest_sec_submissions_batch(
@@ -2262,6 +2277,44 @@ def _refresh_sec_cik_metadata_cli(
         print(f"unmatched_examples={','.join(str(ticker) for ticker in unmatched)}")
     print(f"next_action={payload['next_action']}")
     return 0
+
+
+def _apply_sec_cik_overrides_cli(
+    *,
+    engine: Engine,
+    csv_path: Path,
+) -> int:
+    try:
+        result = apply_sec_cik_overrides_csv(engine, csv_path)
+    except (OSError, ValueError) as exc:
+        print(f"sec cik override import failed: {exc}", file=sys.stderr)
+        return 1
+    payload = result.as_payload()
+    print(
+        "imported_sec_cik_overrides "
+        f"provider=manual "
+        f"live={payload['live']} "
+        f"requested={payload['requested_count']} "
+        f"updated={payload['updated_count']} "
+        f"skipped={payload['skipped_count']} "
+        f"unmatched={payload['unmatched_count']} "
+        f"invalid={payload['invalid_count']} "
+        f"external_calls={payload['external_calls_made']}"
+    )
+    updated = payload.get("updated_tickers")
+    if isinstance(updated, list | tuple) and updated:
+        print(f"updated_examples={','.join(str(ticker) for ticker in updated)}")
+    skipped = payload.get("skipped_tickers")
+    if isinstance(skipped, list | tuple) and skipped:
+        print(f"skipped_examples={','.join(str(ticker) for ticker in skipped)}")
+    unmatched = payload.get("unmatched_tickers")
+    if isinstance(unmatched, list | tuple) and unmatched:
+        print(f"unmatched_examples={','.join(str(ticker) for ticker in unmatched)}")
+    invalid = payload.get("invalid_rows")
+    if isinstance(invalid, list | tuple) and invalid:
+        print(f"invalid_rows={','.join(str(row) for row in invalid)}")
+    print(f"next_action={payload['next_action']}")
+    return 1 if payload["invalid_count"] else 0
 
 
 def _ingest_sec_submissions_batch(
@@ -3799,6 +3852,12 @@ def _print_priced_in_source_batches(payload: Mapping[str, object]) -> None:
         fix_command = diagnostic.get("fix_command")
         if fix_command:
             print(f"diagnostic_command={_compact_cli_text(fix_command)}")
+        manual_fix_command = diagnostic.get("manual_fix_command")
+        if manual_fix_command:
+            print(f"diagnostic_manual_command={_compact_cli_text(manual_fix_command)}")
+        manual_fix_api = diagnostic.get("manual_fix_api")
+        if manual_fix_api:
+            print(f"diagnostic_manual_api={_compact_cli_text(manual_fix_api)}")
         fix_api = diagnostic.get("fix_api")
         if fix_api:
             print(f"diagnostic_api={_compact_cli_text(fix_api)}")

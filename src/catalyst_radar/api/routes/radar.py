@@ -17,7 +17,10 @@ from catalyst_radar.dashboard.source_batches import (
     execute_priced_in_source_batch,
     execute_priced_in_source_batches,
 )
-from catalyst_radar.events.sec_cik import refresh_sec_cik_metadata
+from catalyst_radar.events.sec_cik import (
+    apply_sec_cik_overrides,
+    refresh_sec_cik_metadata,
+)
 from catalyst_radar.events.sec_ingest import (
     SecSubmissionTarget,
     ingest_sec_submissions_batch,
@@ -107,6 +110,20 @@ class SecSubmissionsBatchRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     targets: list[SecSubmissionTargetRequest] = Field(default_factory=list)
+
+
+class SecCikOverrideRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    ticker: str
+    cik: str
+    sec_company_name: str | None = None
+
+
+class SecCikOverridesRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    overrides: list[SecCikOverrideRequest] = Field(default_factory=list)
 
 
 class TextFeaturesBatchRequest(BaseModel):
@@ -660,6 +677,23 @@ def radar_sec_company_tickers() -> dict[str, object]:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return redact_restricted_external_payload(result.as_payload())
+
+
+@router.post(
+    "/sec/cik-overrides",
+    dependencies=[Depends(require_role(Role.ANALYST))],
+)
+def radar_sec_cik_overrides(request: SecCikOverridesRequest) -> dict[str, object]:
+    records = [
+        {
+            "ticker": item.ticker,
+            "cik": item.cik,
+            "sec_company_name": item.sec_company_name,
+        }
+        for item in request.overrides
+    ]
+    result = apply_sec_cik_overrides(_engine(), records)
     return redact_restricted_external_payload(result.as_payload())
 
 

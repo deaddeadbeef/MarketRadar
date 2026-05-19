@@ -1,6 +1,86 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 00:45:07 +08:00
+Last updated: 2026-05-20 01:02:17 +08:00
+
+## Latest Manual SEC CIK Override Path
+
+Goal alignment check:
+
+- The current stock-scan source coverage plan is still correctly centered on
+  `catalyst_events`.
+- Running the first SEC source chunk is approval-gated, so the next safe slice
+  reduced a non-provider blocker instead of making a surprise SEC call.
+- Live zero-call diagnostics show `5512` stock `catalyst_events` gaps, `5510`
+  plannable SEC targets, and only `2` company-like missing-CIK blockers:
+  `FRBA` and `SSBI`.
+
+Fix in this slice:
+
+- Added a zero-provider manual CIK metadata import:
+  `catalyst-radar ingest-sec cik-overrides --csv <cik-overrides.csv>`
+- The CSV must include `ticker,cik` and can include `sec_company_name`.
+- The importer updates only metadata for active local securities:
+  - `cik`
+  - `cik_source=manual_cik_override`
+  - `cik_updated_at`
+  - optional `sec_company_name`
+- Added API parity:
+  `POST /api/radar/sec/cik-overrides`
+  with payload:
+  `{"overrides":[{"ticker":"FRBA","cik":"...","sec_company_name":"..."}]}`
+- Existing missing-CIK diagnostics now show both paths:
+  - live SEC company-tickers refresh:
+    `catalyst-radar ingest-sec company-tickers`
+  - no-provider manual override:
+    `catalyst-radar ingest-sec cik-overrides --csv <cik-overrides.csv>`
+- API route inventory was updated for current actual routes, including earlier
+  market-bar and priced-in audit endpoints that were already live.
+- No Polygon/Massive, Schwab, SEC, OpenAI, or broker/order execution was run.
+
+Current live zero-call observation from local CLI:
+
+```text
+priced_in_source_batches source=catalyst_events status=ready gap_rows=5512 plannable=5510 total_batches=1102 external_calls=0
+blocked_examples=FRBA,SSBI reason=missing_cik
+missing_cik_types=CS:2 company_like=2 non_company=0 unknown=0
+diagnostic_command=catalyst-radar ingest-sec company-tickers
+diagnostic_manual_command=catalyst-radar ingest-sec cik-overrides --csv <cik-overrides.csv>
+diagnostic_manual_api=POST /api/radar/sec/cik-overrides
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_sec_cik_metadata.py tests\integration\test_api_routes.py::test_post_radar_sec_cik_overrides_imports_manual_metadata tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_exposes_missing_cik_blockers tests\integration\test_security_boundaries.py::test_openapi_routes_are_allowlisted_and_broker_routes_are_explicit -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\events\sec_cik.py src\catalyst_radar\cli.py src\catalyst_radar\api\routes\radar.py src\catalyst_radar\dashboard\data.py tests\integration\test_sec_cik_metadata.py tests\integration\test_api_routes.py tests\integration\test_dashboard_data.py tests\integration\test_security_boundaries.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source catalyst_events --stocks-only --batch-limit 1
+```
+
+Observed:
+
+- Focused test set passed (`8 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+- Live source-batch diagnostic remained zero-call and now prints the manual CIK
+  override command/API.
+
+Next useful product action:
+
+- If the exact CIKs for `FRBA` and `SSBI` are known, create a local CSV:
+
+  ```csv
+  ticker,cik,sec_company_name
+  FRBA,<cik>,<name>
+  SSBI,<cik>,<name>
+  ```
+
+- Then run:
+  `catalyst-radar ingest-sec cik-overrides --csv <path-to-csv>`
+- This makes `0` external calls and should reduce the `catalyst_events`
+  unplannable stock rows from `2` to `0`.
+- Do not guess CIK values. If using SEC company-tickers instead, treat that as a
+  SEC provider call and get explicit approval first.
 
 ## Latest Stock-Scan Goal Alignment Surface
 
