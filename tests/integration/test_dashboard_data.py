@@ -1732,6 +1732,9 @@ def test_priced_in_full_scan_audit_payload_consolidates_current_state(
         "priced-in-source-gap-repair-v1"
     )
     assert sources["options"]["repair"]["external_calls_made"] == 0
+    assert sources["options"]["repair"][
+        "point_in_time_template_command"
+    ].startswith("catalyst-radar ingest-options --fixture-template")
     assert sources["options"]["repair"]["point_in_time_import_command"].startswith(
         "catalyst-radar ingest-options --fixture"
     )
@@ -2081,6 +2084,10 @@ def test_priced_in_queue_payload_reports_full_scan_instrument_scope(
     assert stock_audit["scope"]["stocks_only"] is True
     assert stock_audit["scope"]["ranked_rows"] == 1
     assert "--stocks-only" in stock_audit["scope"]["audit_full_export_command"]
+    stock_sources = {row["source"]: row for row in stock_audit["sources"]}
+    assert "--stocks-only" in stock_sources["options"]["repair"][
+        "point_in_time_template_command"
+    ]
 
 
 def test_priced_in_queue_payload_routes_non_company_usefulness_through_theme_context(

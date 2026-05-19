@@ -199,6 +199,10 @@ def test_market_radar_status_script_is_zero_external_call_sitrep() -> None:
     assert "decision_ready=" in text
     assert "stock answer lens:" in text
     assert "stock decision gap:" in text
+    assert "stock gap template:" in text
+    assert "point_in_time_template_command" in text
+    assert "stock gap import:" in text
+    assert "point_in_time_import_command" in text
     assert "stock evidence plan:" in text
     assert "stock evidence command:" in text
     assert "Market freshness:" in text

@@ -3725,6 +3725,9 @@ def _priced_in_audit_source_gap_repair(
         "eligible_but_not_scored",
     }
     provider_batch_allowed = diagnostic_status not in blocking_statuses
+    stocks_only = "--stocks-only" in str(
+        action.get("batch_plan_command") or action.get("command") or ""
+    )
     scan_dates = [
         str(value)
         for value in _sequence_value(diagnostic.get("scan_as_of_dates"))
@@ -3732,7 +3735,8 @@ def _priced_in_audit_source_gap_repair(
     ]
     point_in_time_import_command = _options_point_in_time_import_command(diagnostic)
     point_in_time_template_command = _options_point_in_time_template_command(
-        diagnostic
+        diagnostic,
+        stocks_only=stocks_only,
     )
     sample_tickers = _option_gap_diagnostic_samples(diagnostic)
     if not sample_tickers:

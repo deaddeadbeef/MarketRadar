@@ -80,6 +80,15 @@ $stockScope = $pricedInStockAudit.scope
 $stockAnswer = $pricedInStockAudit.answer_shortlist
 $stockEvidence = $pricedInStockAudit.evidence_plan
 $stockRecommendedSource = $pricedInStockAudit.recommended_source_gap
+$stockRecommendedRepair = $null
+if ($null -ne $stockRecommendedSource) {
+    foreach ($sourceRow in @($pricedInStockAudit.sources)) {
+        if ($sourceRow.source -eq $stockRecommendedSource.source) {
+            $stockRecommendedRepair = $sourceRow.repair
+            break
+        }
+    }
+}
 $discovery = $readiness.discovery_snapshot
 $freshness = $null
 if ($null -ne $discovery) {
@@ -154,6 +163,12 @@ if ($null -ne $stockScope) {
             $stockRecommendedSource.gap_count,
             $stockRecommendedSource.next_action
         )
+        if ($null -ne $stockRecommendedRepair -and $stockRecommendedRepair.point_in_time_template_command) {
+            Write-Output ("- stock gap template: {0}" -f $stockRecommendedRepair.point_in_time_template_command)
+        }
+        if ($null -ne $stockRecommendedRepair -and $stockRecommendedRepair.point_in_time_import_command) {
+            Write-Output ("- stock gap import: {0}" -f $stockRecommendedRepair.point_in_time_import_command)
+        }
     }
     if ($null -ne $stockEvidence -and $stockEvidence.next_action) {
         Write-Output ("- stock evidence plan: {0}" -f $stockEvidence.next_action)
