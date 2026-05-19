@@ -539,9 +539,9 @@ def test_dashboard_wires_priced_in_full_scan_panel_after_usefulness() -> None:
     assert "_priced_in_full_scan_source_gap_action_rows" in functions
     assert "priced_in_full_scan_audit_payload" in helper_source
     assert "Priced-in Full Scan" in helper_source
-    assert "Full-scan rows" in helper_source
-    assert "Row offset" in helper_source
-    assert "Show all rows" in helper_source
+    assert "Rows per page" in helper_source
+    assert "Page offset" in helper_source
+    assert "Display complete full scan" in helper_source
     assert "Source gap" in helper_source
     assert "preview_limit" in helper_source
     assert "preview_offset" in helper_source
@@ -566,7 +566,7 @@ def test_dashboard_wires_priced_in_full_scan_panel_after_usefulness() -> None:
     assert "trust_blockers" in helper_source
     assert "decision_useful_gap_rows" in rows_source
     assert "priority_sample_tickers" in rows_source
-    assert "priority_examples" in rows_source
+    assert "priority_examples_preview" in rows_source
     assert "missing_sources" in preview_rows_source
     assert "_list_text(row.get(\"first_batch_tickers\"))" in source
     assert "gap_count" in rows_source

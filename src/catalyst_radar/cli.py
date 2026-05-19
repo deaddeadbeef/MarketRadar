@@ -3502,7 +3502,7 @@ def _print_priced_in_all_source_batches(payload: Mapping[str, object]) -> None:
         samples = row.get("priority_sample_tickers")
         if isinstance(samples, list | tuple) and samples:
             print(
-                "  priority_examples="
+                "  priority_examples_preview="
                 f"{','.join(str(ticker) for ticker in samples)}"
             )
         action = row.get("next_action")
@@ -3986,6 +3986,15 @@ def _print_priced_in_audit(payload: Mapping[str, object]) -> None:
             "  boundary="
             f"{_compact_cli_text(recommended_source.get('execution_boundary'))}"
         )
+        full_scan_command = recommended_source.get("full_scan_command")
+        if full_scan_command:
+            print(
+                "  full_source_gap_export="
+                f"{_compact_cli_text(full_scan_command)}"
+            )
+        sample_boundary = recommended_source.get("sample_boundary")
+        if sample_boundary:
+            print(f"  sample_boundary={_compact_cli_text(sample_boundary)}")
     _print_priced_in_instrument_scope(payload.get("instrument_scope"))
     preview = payload.get("preview")
     if isinstance(preview, Mapping):
@@ -3993,6 +4002,7 @@ def _print_priced_in_audit(payload: Mapping[str, object]) -> None:
             "full_scan_rows="
             f"{preview.get('row_start')}-{preview.get('row_end')}/"
             f"{preview.get('total_rows')} "
+            f"display={'complete' if bool(preview.get('all_rows')) else 'page_preview'} "
             f"sample={str(bool(preview.get('has_more'))).lower()} "
             f"all_rows={str(bool(preview.get('all_rows'))).lower()} "
             f"export={_compact_cli_text(preview.get('export_command'))}"
@@ -4101,7 +4111,7 @@ def _print_priced_in_audit(payload: Mapping[str, object]) -> None:
         samples = row.get("priority_sample_tickers")
         if isinstance(samples, list | tuple) and samples:
             print(
-                "  priority_examples="
+                "  priority_examples_preview="
                 f"{','.join(str(ticker) for ticker in samples)}"
             )
     commands = payload.get("commands")

@@ -1602,6 +1602,11 @@ def test_priced_in_full_scan_audit_payload_consolidates_current_state(
     assert payload["recommended_source_gap"]["review_command"].startswith(
         "catalyst-radar priced-in-audit --source-gap"
     )
+    assert payload["recommended_source_gap"]["full_scan_command"].startswith(
+        "catalyst-radar priced-in-audit --source-gap"
+    )
+    assert "--all --json" in payload["recommended_source_gap"]["full_scan_command"]
+    assert "priority preview" in payload["recommended_source_gap"]["sample_boundary"]
     assert "0 provider calls" in payload["recommended_source_gap"][
         "execution_boundary"
     ]
