@@ -1,6 +1,63 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 13:41:14 +08:00
+Last updated: 2026-05-19 13:55:54 +08:00
+
+## Latest Manual-Bar Guidance Alignment
+
+Current problem:
+
+- `market-radar-status` correctly told the operator to use the DB-backed
+  manual market-bar template/import path when the full active universe had
+  partial bar coverage.
+- `priced-in-answer` and `priced-in-preflight` still surfaced a provider
+  `run-daily` command from the market-bars attention row. In the current local
+  environment this was confusing because the user is intentionally avoiding
+  Polygon/Massive unless explicitly configured.
+
+Fix in this slice:
+
+- The priced-in preflight `market_bars` attention row now points directly at:
+
+  ```text
+  catalyst-radar market-bars template --expected-as-of <LATEST_TRADING_DATE> --out data\local\manual-bars-<LATEST_TRADING_DATE>.csv
+  ```
+
+- The row keeps status `attention`, because `12090/12613` active securities
+  have run-as-of bars and that remains broad enough for research, but it now
+  clearly says to generate the active-universe template if full active coverage
+  is required before relying on the answer.
+- The API field changed with the command:
+
+  ```text
+  POST /api/radar/market-bars/template
+  ```
+
+- `priced-in-answer` trust blockers inherit the same manual-template command,
+  so the answer view no longer tells the user to fix this partial coverage by
+  making a Polygon-style provider run.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_preflight_uses_manual_bar_template_for_partial_full_scan_bars tests\integration\test_dashboard_data.py::test_priced_in_preflight_recommends_manual_bar_template_for_missing_bars tests\integration\test_dashboard_data.py::test_priced_in_answer_payload_summarizes_current_scan tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_payload_consolidates_current_state -q
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-preflight
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-answer
+```
+
+Observed:
+
+- Focused regression passed (`4 passed`).
+- Live CLI checks made `0` provider calls.
+- Live `priced-in-answer` trust blocker now prints
+  `command=catalyst-radar market-bars template ...` for partial market-bar
+  coverage.
+
+Next useful product action:
+
+- Build Candidate Packets for the 12 actionable mismatch rows, then check
+  whether Decision Cards or source coverage are the next real blocker.
+- Keep provider calls guarded: reviewing preflight/answer/queue remains
+  zero-call.
 
 ## Latest Non-Company Evidence Surface
 
