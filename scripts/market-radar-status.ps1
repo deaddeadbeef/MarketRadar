@@ -185,6 +185,13 @@ if ($Quick) {
         if ($manualMarketBarPreview.next_action) {
             Write-Output ("- local template next: {0}" -f $manualMarketBarPreview.next_action)
         }
+        $invalidExamples = @(
+            $manualMarketBarPreview.invalid_examples |
+                Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }
+        )
+        if ($invalidExamples.Count -gt 0) {
+            Write-Output ("- local template invalid examples: {0}" -f (($invalidExamples | Select-Object -First 3) -join " | "))
+        }
     }
     Write-Output "External calls made: 0"
     return
