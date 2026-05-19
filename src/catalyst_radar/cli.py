@@ -3304,6 +3304,20 @@ def _print_priced_in_all_source_batches(payload: Mapping[str, object]) -> None:
         f"external_calls={payload.get('external_calls_made')}"
     )
     print(f"headline={payload.get('headline')}")
+    scan_scope = payload.get("scan_scope")
+    if isinstance(scan_scope, Mapping):
+        print(
+            "full_scan="
+            f"mode={scan_scope.get('mode')} "
+            f"active={scan_scope.get('active_securities')} "
+            f"scanned={scan_scope.get('scanned_rows')} "
+            f"ranked={scan_scope.get('ranked_rows')} "
+            f"source_gap_rows={scan_scope.get('source_gap_rows')} "
+            f"examples_are_samples={str(bool(scan_scope.get('examples_are_samples'))).lower()}"
+        )
+        explanation = scan_scope.get("explanation")
+        if explanation:
+            print(f"scope_note={_compact_cli_text(explanation)}")
     print(f"next_action={payload.get('next_action')}")
     coverage = payload.get("coverage_first_recommendation")
     if isinstance(coverage, Mapping):

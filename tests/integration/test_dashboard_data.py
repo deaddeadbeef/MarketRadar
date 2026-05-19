@@ -2037,6 +2037,12 @@ def test_priced_in_all_source_gap_batches_payload_summarizes_next_chunks(
     assert rows["options"]["execute_next_command"] == (
         "catalyst-radar priced-in-source-batches --source options --execute-next"
     )
+    assert payload["scan_scope"]["schema_version"] == (
+        "priced-in-source-overview-scan-scope-v1"
+    )
+    assert payload["scan_scope"]["mode"] == "full_scan"
+    assert payload["scan_scope"]["ranked_rows"] == 2
+    assert "not the scan universe" in payload["scan_scope"]["explanation"]
     assert rows["local_text"]["all_batches_command"] == (
         "catalyst-radar priced-in-source-batches --source local_text --all --json"
     )
@@ -2363,6 +2369,49 @@ def test_priced_in_queue_payload_diagnoses_options_after_scan_date(
     actions = {row["source"]: row for row in payload["source_coverage"]["actions"]}
     assert actions["options"]["diagnostic"]["status"] == "newer_than_scan"
     assert "Stored options exist after this scan date" in actions["options"]["next_action"]
+
+
+def test_priced_in_all_source_gap_batches_blocks_options_shortcut_when_not_point_in_time(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    FeatureRepository(engine).upsert_option_features(
+        [
+            OptionFeatureInput(
+                ticker="MSFT",
+                as_of=FUTURE_AT,
+                provider="schwab_option_chain",
+                call_volume=1_000,
+                put_volume=500,
+                call_open_interest=5_000,
+                put_open_interest=3_000,
+                iv_percentile=0.6,
+                skew=0.2,
+                source_ts=FUTURE_AT,
+                available_at=FUTURE_AT,
+                payload={"source": "test"},
+            )
+        ]
+    )
+
+    payload = priced_in_all_source_gap_batches_payload(
+        engine,
+        AppConfig(schwab_market_sync_max_tickers=1),
+    )
+
+    rows = {row["source"]: row for row in payload["sources"]}
+    assert rows["options"]["status"] == "blocked"
+    assert rows["options"]["execute_next_command"] is None
+    assert rows["options"]["diagnostic"]["status"] == "blocked"
+    assert rows["options"]["diagnostic"]["blocked_reason"] == "newer_than_scan"
+    assert (
+        rows["options"]["diagnostic"]["option_gap_diagnostic"]["status"]
+        == "newer_than_scan"
+    )
+    assert "Stored options exist after this scan date" in rows["options"]["next_action"]
+    recommendation = payload["decision_shortcut_recommendation"]
+    assert recommendation is None or recommendation["source"] != "options"
 
 
 def test_priced_in_queue_payload_uses_stored_schwab_market_context(
