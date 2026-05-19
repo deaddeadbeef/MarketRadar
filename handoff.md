@@ -1,6 +1,6 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 18:44:06 +08:00
+Last updated: 2026-05-19 18:48:05 +08:00
 
 ## Latest Full-Audit Cache
 
@@ -70,13 +70,22 @@ Observed:
 - The cache regression test proved the second same-filter audit does not call
   `priced_in_queue_payload` again and that cached payloads are copied before
   returning.
+- PR #342, `Cache priced-in audit payloads`, merged by rebase as `f32d576`.
+- Local services were restarted after merge:
+  - API health returned commit `f32d576c32f0`;
+  - Streamlit health returned `ok`.
+- Post-merge API verification:
+  - first `/api/radar/priced-in/audit?all_rows=true` call returned
+    `12087/12087`, `external_calls=0`, and took `45.0s`;
+  - immediate second same API call returned `12087/12087`,
+    `external_calls=0`, and took `0.64s`.
 
 Next useful product action:
 
-- Open and merge the PR for this branch, restart local services, then re-check
-  API/Streamlit health from the merged commit.
 - Actual source-fill execution still requires explicit user approval because it
   can call SEC/Schwab/market providers.
+- Next useful zero-call slice: make the dashboard/API show the cache status and
+  last build duration so the operator can tell cold rebuilds from cached views.
 
 ## Latest Full-Scan Default UX
 
