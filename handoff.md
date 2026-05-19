@@ -1,6 +1,80 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 01:32:30 +08:00
+Last updated: 2026-05-20 01:42:26 +08:00
+
+## Latest Options Point-In-Time Repair Command
+
+Goal alignment check:
+
+- The stock-only priced-in audit currently shows `9` decision-ready mismatch
+  rows, but every stock row is missing usable point-in-time options context for
+  the stored scan date.
+- `options` is the highest decision-useful gap, but live Schwab option batches
+  are blocked because the stored options are newer than the scan date. Backfill
+  must be point-in-time, not current-live data pretending it was available on
+  `2026-05-15`.
+- This slice does not add a new options provider or run Schwab. It makes the
+  existing zero-call source-batch diagnostic tell the operator the exact local
+  fixture import shape to use.
+
+Fix in this slice:
+
+- Blocked `options` source-batch diagnostics now include:
+
+  ```text
+  point_in_time_import_command=catalyst-radar ingest-options --fixture <point-in-time-options-YYYY-MM-DD.json>
+  ```
+
+- `priced-in-source-batches --source options --stocks-only` now prints:
+
+  ```text
+  diagnostic_point_in_time_import=catalyst-radar ingest-options --fixture <point-in-time-options-2026-05-15.json>
+  ```
+
+- TUI `batch options` messages now include the same **Point-in-time import**
+  instruction when options are blocked by non-point-in-time stored data.
+- The existing audit repair payload continues to use the same helper, so audit
+  and source-batch diagnostics stay consistent.
+- No Polygon/Massive, Schwab, SEC, OpenAI, or broker/order execution was run.
+
+Current live zero-call observation from local CLI:
+
+```text
+priced_in_source_batches source=options status=blocked gap_rows=5521 plannable=0 ... external_calls=0
+blocked_examples=A,MSFT,AAPL,AA reason=newer_than_scan
+diagnostic_point_in_time_import=catalyst-radar ingest-options --fixture <point-in-time-options-2026-05-15.json>
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_all_source_gap_batches_blocks_options_shortcut_when_not_point_in_time tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_source_batches_cli_prints_options_point_in_time_import tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_batch_message_prints_options_point_in_time_import -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source options --stocks-only --batch-limit 1
+```
+
+Observed:
+
+- Focused test set passed (`3 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+- Live source-batch planning for options stayed zero-call and now prints the
+  point-in-time fixture import command.
+
+Next useful product action:
+
+- If a point-in-time options fixture for the original scan date exists, import
+  it with:
+
+  ```powershell
+  catalyst-radar ingest-options --fixture <point-in-time-options-2026-05-15.json>
+  ```
+
+- If using current Schwab option data instead, rerun the scan with a current
+  scan date and current bars; do not backfill current options into the older
+  scan.
+- Provider/source execution is still approval-gated.
 
 ## Latest Stock-Scan Status Sitrep
 

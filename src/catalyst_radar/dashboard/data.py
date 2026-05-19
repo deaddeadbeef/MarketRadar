@@ -3625,7 +3625,7 @@ def _priced_in_audit_source_gap_repair(
         for value in _sequence_value(diagnostic.get("scan_as_of_dates"))
         if str(value).strip()
     ]
-    target_scan_date = scan_dates[0] if len(scan_dates) == 1 else "<SCAN_DATE>"
+    point_in_time_import_command = _options_point_in_time_import_command(diagnostic)
     sample_tickers = _option_gap_diagnostic_samples(diagnostic)
     if not sample_tickers:
         sample_tickers = [
@@ -3651,10 +3651,7 @@ def _priced_in_audit_source_gap_repair(
         "review_rows_command": action.get("full_scan_gap_review_command"),
         "export_rows_command": action.get("full_scan_export_command"),
         "batch_plan_command": action.get("batch_plan_command"),
-        "point_in_time_import_command": (
-            "catalyst-radar ingest-options --fixture "
-            f"<point-in-time-options-{target_scan_date}.json>"
-        ),
+        "point_in_time_import_command": point_in_time_import_command,
         "current_context_boundary": (
             "Current Schwab option chains can support a current rerun, but must not "
             "be backfilled into an older scan as if they were available then."
@@ -10799,6 +10796,9 @@ def _priced_in_source_plannable_rows(
                 "eligible_but_not_scored",
             }
             if diagnostic_status in blocking_statuses:
+                point_in_time_import_command = _options_point_in_time_import_command(
+                    diagnostic
+                )
                 return [], {
                     "schema_version": "priced-in-source-batch-diagnostic-v1",
                     "status": "blocked",
@@ -10813,6 +10813,7 @@ def _priced_in_source_plannable_rows(
                         diagnostic
                     ),
                     "next_action": diagnostic.get("next_action"),
+                    "point_in_time_import_command": point_in_time_import_command,
                     "option_gap_diagnostic": diagnostic,
                 }
             return list(rows), {
@@ -10989,6 +10990,21 @@ def _option_gap_diagnostic_samples(diagnostic: Mapping[str, object]) -> list[str
         if samples:
             return samples
     return []
+
+
+def _options_point_in_time_import_command(
+    diagnostic: Mapping[str, object],
+) -> str:
+    scan_dates = [
+        str(value).strip()
+        for value in _sequence_value(diagnostic.get("scan_as_of_dates"))
+        if str(value).strip()
+    ]
+    target = scan_dates[0] if len(scan_dates) == 1 else "<SCAN_DATE>"
+    return (
+        "catalyst-radar ingest-options --fixture "
+        f"<point-in-time-options-{target}.json>"
+    )
 
 
 def _priced_in_source_row_priority_key(row: Mapping[str, object]) -> tuple[int, float, str]:
