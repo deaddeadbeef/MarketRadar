@@ -1,6 +1,83 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 14:26:23 +08:00
+Last updated: 2026-05-19 14:37:52 +08:00
+
+## Latest TUI Source Coverage Workbench
+
+Current problem:
+
+- The static Ops page already printed the full-scan source-gap workflow, but
+  the interactive TUI table still led with provider health rows.
+- That made the dashboard less useful for the actual product goal:
+  improve the full-market answer by filling the most important missing data
+  layers, without confusing a source-fill chunk with the full scan universe.
+
+Fix in this slice:
+
+- The interactive Ops page now uses a **Source coverage workbench** table:
+  - one row per source workflow item;
+  - columns: priority, source, status, gap rows, useful rows, examples,
+    plan command, next action;
+  - the detail panel states the coverage-first action and the decision
+    shortcut.
+- Pressing Enter or clicking a source row is plan-only:
+  - it calls the existing `batch <source>` planning path;
+  - it does **not** execute provider calls;
+  - execution still requires an explicit `batch <source> execute` or
+    `batch <source> execute <N>` command.
+- The Ops guide text now says exactly that:
+  - click/Enter source rows to inspect a plan;
+  - execute only when the provider and call budget are intentional.
+
+Current live zero-call observations:
+
+```text
+priced-in-source-batches --source all --all
+status=ready sources=6 ready_sources=2 blocked_sources=2 gap_rows=48319 external_calls=0
+full_scan active=12613 scanned=12087 ranked=12087
+coverage_first=catalyst_events gaps=12075 calls=5
+decision_shortcut=broker_context decision=5 actionable=7 calls=1
+```
+
+Live Ops static output still shows:
+
+```text
+Priced-in Source Gaps
+catalyst_events partial ...
+local_text partial ...
+options missing ...
+broker_context partial ...
+Source Fill Workflow
+Coverage-first: Fill SEC catalyst events...
+Decision shortcut: Start with broker_context...
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page ops
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source all --all
+```
+
+Observed:
+
+- Dashboard integration file passed (`30 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+- Live planning commands made `0` provider calls.
+
+Next useful product action:
+
+- The next CLI/API/dashboard gap is to make the **source plan itself**
+  easier to act on:
+  - expose the coverage-first recommendation and decision shortcut as compact
+    API fields that the web dashboard/TUI can both display;
+  - provide a one-command dry-run plan for the next safe chunk;
+  - do not auto-run `catalyst_events` or `broker_context` because those are
+    external-call workflows and must stay explicitly guarded.
 
 ## Latest TUI Full Scan vs Decision Review Clarification
 

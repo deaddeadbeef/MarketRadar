@@ -2161,6 +2161,23 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert ">> 4  Candidates [1]" in frame
 
+            assert await pilot.click("#nav-ops")
+            await pilot.pause()
+            assert app.page == "ops"
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            assert "Source coverage workbench" in frame
+            assert "Enter shows plan" in frame
+            assert "batch" in frame
+            assert "Coverage-first" in frame
+
+            app.query_one("#data-table").focus()
+            await pilot.press("enter")
+            await pilot.pause()
+            frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+            assert "LAST RESPONSE" in frame
+            assert "full-scan" in frame
+            assert "provider calls" in frame
+
             app.query_one("#nav-help").focus()
             await pilot.press("up")
             await pilot.pause()
