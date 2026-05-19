@@ -1,6 +1,90 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 23:40:02 +08:00
+Last updated: 2026-05-20 00:22:27 +08:00
+
+## Latest Stocks-Only Source-Batch Scope
+
+Goal alignment check:
+
+- The user's actual goal is for MarketRadar to scan the market and identify
+  stocks where market emotion has not been fully matched by price reaction.
+- After the stock-only priced-in filter, the next highest-value blocker is not
+  more manual market-bar plumbing. The zero-call audit shows stock market bars
+  are usable for the ranked stock scan; source evidence coverage is the trust
+  gap.
+- This slice keeps follow-up source-batch planning in the same stock-only
+  universe as the stock-only audit, so a user reviewing `5521` stock rows does
+  not accidentally jump back to the broader all-instrument universe when
+  planning catalyst, local-text, options, or broker-context fills.
+
+Fix in this slice:
+
+- `priced_in_source_gap_batches_payload` and
+  `priced_in_all_source_gap_batches_payload` now accept `stocks_only=True`.
+- CLI:
+  - `catalyst-radar priced-in-source-batches --source <source> --stocks-only`
+  - `catalyst-radar priced-in-source-batches --source all --stocks-only`
+  - The same flag is preserved for `--all`, `--execute-next`, and
+    `--execute-batches`.
+- API:
+  - `GET /api/radar/priced-in/source-batches?...&stocks_only=true`
+  - `POST /api/radar/priced-in/source-batches/execute-next` accepts
+    `stocks_only`.
+- TUI batch commands now pass the current stock-only filter into plan and
+  execute helpers.
+- Stock-only source plans now emit stock-only review/export/execute commands:
+  - `catalyst-radar priced-in-queue --stocks-only --full-scan --source-gap ...`
+  - `catalyst-radar priced-in-source-batches --source ... --stocks-only --all --json`
+  - `catalyst-radar priced-in-source-batches --source ... --stocks-only --execute-next`
+- No Polygon/Massive, Schwab, SEC, OpenAI, or broker/order execution was run.
+
+Current live zero-call observation from local CLI:
+
+```text
+priced_in_source_batches source=catalyst_events status=ready gap_rows=5512 plannable=5510 batch_size=5 total_batches=1102 external_calls=0
+scan_scope=mode=full_scan stocks_only=true gap_rows=5512 plannable=5510 returned_tickers=5 batch_sample=true
+approval_checklist=required=true provider=sec calls=5 trade_orders=false command=catalyst-radar priced-in-source-batches --source catalyst_events --stocks-only --execute-next
+blocked_examples=FRBA,SSBI reason=missing_cik
+all_batches=catalyst-radar priced-in-source-batches --source catalyst_events --stocks-only --all --json
+```
+
+```text
+priced_in_source_batch_overview status=ready sources=6 ready_sources=2 blocked_sources=2 gap_rows=22062 external_calls=0
+full_scan=mode=full_scan active=12613 scanned=12087 ranked=5521 stocks_only=true source_gap_rows=22062 examples_are_samples=true
+coverage_first=source=catalyst_events gaps=5512 calls=5 command=catalyst-radar priced-in-source-batches --source catalyst_events --stocks-only --execute-next
+decision_shortcut=source=broker_context decision=5 actionable=5 calls=1 command=catalyst-radar priced-in-source-batches --source broker_context --stocks-only --execute-next
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_plans_safe_sync_batches tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_queue_cli_outputs_same_zero_call_signal tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_audit_cli_outputs_full_scan_audit tests\integration\test_api_routes.py::test_get_radar_priced_in_source_batches_returns_zero_call_plan tests\integration\test_api_routes.py::test_get_radar_priced_in_source_batches_can_return_all_source_overview tests\integration\test_api_routes.py::test_post_radar_priced_in_source_batch_execute_next_runs_one_chunk tests\integration\test_api_routes.py::test_post_radar_priced_in_source_batch_execute_next_can_run_capped_batches -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\source_batches.py src\catalyst_radar\cli.py src\catalyst_radar\api\routes\radar.py src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_api_routes.py tests\integration\test_dashboard_data.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source catalyst_events --stocks-only --batch-limit 1
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source all --stocks-only --limit 1
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page ops
+```
+
+Observed:
+
+- Focused test set passed (`7 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+- CLI source-batch planning and all-source overview made `external_calls=0`.
+- TUI Ops one-shot rendered and made `External calls made: 0`.
+
+Next useful product action:
+
+- Stay focused on evidence coverage for the stock scan. The first coverage-first
+  source is `catalyst_events`, with `5512` stock-row gaps and `5510` plannable
+  SEC targets. The first chunk is intentionally capped to `5` SEC calls.
+- Do not execute the SEC chunk unless the operator explicitly approves that
+  provider budget:
+  `catalyst-radar priced-in-source-batches --source catalyst_events --stocks-only --execute-next`
+- Before running the SEC chunk, inspect:
+  `catalyst-radar priced-in-source-batches --source catalyst_events --stocks-only --all --json`
+  and decide whether the `5`-call first chunk is intentional.
 
 ## Latest Stocks-Only Priced-In Filter
 

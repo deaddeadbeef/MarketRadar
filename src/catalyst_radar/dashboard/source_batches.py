@@ -48,6 +48,7 @@ def execute_priced_in_source_batch(
     usefulness: str | None = None,
     decision_gap: str | Sequence[str] | None = None,
     min_gap: float | None = None,
+    stocks_only: bool = False,
 ) -> dict[str, object]:
     plan = priced_in_source_gap_batches_payload(
         engine,
@@ -59,6 +60,7 @@ def execute_priced_in_source_batch(
         usefulness=usefulness,
         decision_gap=decision_gap,
         min_gap=min_gap,
+        stocks_only=stocks_only,
     )
     source_name = str(plan.get("source") or source).strip()
     batches = _rows(plan.get("batches"))
@@ -121,6 +123,7 @@ def execute_priced_in_source_batch(
             usefulness=usefulness,
             decision_gap=decision_gap,
             min_gap=min_gap,
+            stocks_only=stocks_only,
         )
         post_execution = _post_execution_check_payload(
             source_name=source_name,
@@ -150,6 +153,7 @@ def execute_priced_in_source_batches(
     usefulness: str | None = None,
     decision_gap: str | Sequence[str] | None = None,
     min_gap: float | None = None,
+    stocks_only: bool = False,
 ) -> dict[str, object]:
     if int(max_batches) <= 0:
         raise ValueError("max_batches must be positive")
@@ -171,6 +175,7 @@ def execute_priced_in_source_batches(
         usefulness=usefulness,
         decision_gap=decision_gap,
         min_gap=min_gap,
+        stocks_only=stocks_only,
     )
     source_name = str(before_plan.get("source") or source_name).strip()
     executions: list[dict[str, object]] = []
@@ -186,6 +191,7 @@ def execute_priced_in_source_batches(
             usefulness=usefulness,
             decision_gap=decision_gap,
             min_gap=min_gap,
+            stocks_only=stocks_only,
         )
         executions.append(execution)
         external_calls_made += int(_number_or_zero(execution.get("external_calls_made")))
@@ -209,6 +215,7 @@ def execute_priced_in_source_batches(
         usefulness=usefulness,
         decision_gap=decision_gap,
         min_gap=min_gap,
+        stocks_only=stocks_only,
     )
     before_summary = _source_plan_summary(before_plan)
     after_summary = _source_plan_summary(after_plan)

@@ -143,6 +143,7 @@ class SourceBatchExecuteRequest(BaseModel):
     usefulness: str | None = None
     decision_gap: list[str] = Field(default_factory=list)
     min_gap: float | None = Field(default=None, ge=0)
+    stocks_only: bool = False
     max_batches: int = Field(default=1, ge=1, le=50)
 
 
@@ -505,6 +506,7 @@ def radar_priced_in_source_batches(
     usefulness: str | None = Query(default=None),
     decision_gap: str | None = Query(default=None),
     min_gap: float | None = Query(default=None, ge=0),
+    stocks_only: bool = Query(default=False),
 ) -> dict[str, object]:
     source_name = source.strip().lower()
     if source_name in {"all", "*"}:
@@ -519,6 +521,7 @@ def radar_priced_in_source_batches(
                 usefulness=usefulness,
                 decision_gap=decision_gap,
                 min_gap=min_gap,
+                stocks_only=stocks_only,
             )
         )
     batches_payload = _dashboard_helper("priced_in_source_gap_batches_payload")
@@ -536,6 +539,7 @@ def radar_priced_in_source_batches(
             usefulness=usefulness,
             decision_gap=decision_gap,
             min_gap=min_gap,
+            stocks_only=stocks_only,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -561,6 +565,7 @@ def radar_priced_in_source_batch_execute_next(
                 usefulness=request.usefulness,
                 decision_gap=request.decision_gap,
                 min_gap=request.min_gap,
+                stocks_only=request.stocks_only,
             )
         else:
             payload = execute_priced_in_source_batch(
@@ -572,6 +577,7 @@ def radar_priced_in_source_batch_execute_next(
                 usefulness=request.usefulness,
                 decision_gap=request.decision_gap,
                 min_gap=request.min_gap,
+                stocks_only=request.stocks_only,
             )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
