@@ -524,15 +524,23 @@ def test_dashboard_wires_priced_in_full_scan_panel_after_usefulness() -> None:
         source,
         functions["_priced_in_full_scan_source_rows"],
     )
+    preview_rows_source = ast.get_source_segment(
+        source,
+        functions["_priced_in_full_scan_preview_rows"],
+    )
 
     assert overview_source is not None
     assert helper_source is not None
     assert rows_source is not None
+    assert preview_rows_source is not None
     assert "_show_priced_in_full_scan_panel" in functions
+    assert "_priced_in_full_scan_preview_rows" in functions
     assert "_priced_in_full_scan_source_rows" in functions
     assert "priced_in_full_scan_audit_payload" in helper_source
     assert "Priced-in Full Scan" in helper_source
     assert "Full Scan Rows" in helper_source
+    assert "Full-scan Ranked Rows" in helper_source
+    assert "Full scan row page" in helper_source
     assert "Active Securities" in helper_source
     assert "Decision-ready" in helper_source
     assert "Trust Gaps" in helper_source
@@ -541,6 +549,7 @@ def test_dashboard_wires_priced_in_full_scan_panel_after_usefulness() -> None:
     assert "Priced-in Source Gaps" in helper_source
     assert "external_calls_made" in helper_source
     assert "trust_blockers" in helper_source
+    assert "missing_sources" in preview_rows_source
     assert "gap_count" in rows_source
     assert overview_source.index("_show_market_radar_usefulness") < overview_source.index(
         "_show_priced_in_full_scan_panel"

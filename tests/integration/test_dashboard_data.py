@@ -1573,6 +1573,14 @@ def test_priced_in_full_scan_audit_payload_consolidates_current_state(
     assert payload["scope"]["mode"] == "full_scan"
     assert payload["scope"]["active_securities"] == 2
     assert payload["scope"]["ranked_rows"] == 2
+    assert payload["scope"]["visible_row_start"] == 1
+    assert payload["scope"]["visible_row_end"] == 2
+    assert payload["preview"]["schema_version"] == "priced-in-full-scan-preview-v1"
+    assert payload["preview"]["total_rows"] == 2
+    assert payload["preview_rows"]
+    assert payload["preview_rows"][0]["ticker"] == "MSFT"
+    assert payload["preview_rows"][0]["status"]
+    assert "missing_sources" in payload["preview_rows"][0]
     assert payload["market_bars"]["active_securities"] == 2
     assert payload["instrument_scope"]["schema_version"] == (
         "priced-in-instrument-scope-v1"
