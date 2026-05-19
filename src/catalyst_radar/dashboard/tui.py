@@ -3465,6 +3465,11 @@ def _overview_title(payload: Mapping[str, object]) -> str:
                 f"Selected-universe priced-in queue - showing rows "
                 f"{start}-{end} of {total}{suffix}"
             )
+        if scan_status == "previous_scan":
+            return (
+                f"Previous full-market priced-in scan - showing rows "
+                f"{start}-{end} of {total}{suffix}"
+            )
         return f"Full-market priced-in queue - showing rows {start}-{end} of {total}{suffix}"
     return "Full-market priced-in queue - select a row to act"
 
@@ -3478,6 +3483,7 @@ def _overview_caption(payload: Mapping[str, object]) -> str:
     end = offset + returned
     scan_total = _priced_in_scan_total(queue)
     scan_status = str(queue.get("status") or "").strip()
+    scan_label = _priced_in_scan_row_label(queue)
     status_filter = _priced_in_status_filter(queue)
     source_gap = _source_gap_filter_summary(queue)
     source_gap_text = f" Active source gap filter: {source_gap}." if source_gap else ""
@@ -3493,7 +3499,7 @@ def _overview_caption(payload: Mapping[str, object]) -> str:
                 return (
                     f"This page shows rows {start}-{end}: {returned} decision-ready "
                     "not-priced-in row(s) from "
-                    f"{scan_total or 'the'} latest-scan row(s). "
+                    f"{scan_total or 'the'} {scan_label}. "
                     "These are the actionable answers; type full to inspect the "
                     "whole ranked universe or mismatches for blocked/research rows."
                     f"{usefulness_text}{source_gap_text}{decision_gap_text}"
@@ -3503,7 +3509,7 @@ def _overview_caption(payload: Mapping[str, object]) -> str:
             return (
                 f"This page shows rows {start}-{end}: {returned} bullish/bearish "
                 "not-priced-in mismatch "
-                f"card(s) from {scan_total or 'the'} latest-scan row(s). "
+                f"card(s) from {scan_total or 'the'} {scan_label}. "
                 "Press M or click SCAN -> Full Scan to inspect neutral, blocked, "
                 "stale, and fully-priced rows."
                 f"{usefulness_text}{source_gap_text}{decision_gap_text}"
@@ -3512,7 +3518,7 @@ def _overview_caption(payload: Mapping[str, object]) -> str:
             )
         return (
             f"No actionable not-priced-in mismatch is currently ranked from "
-            f"{scan_total or 'the'} latest-scan row(s). Press M or click "
+            f"{scan_total or 'the'} {scan_label}. Press M or click "
             "SCAN -> Full Scan to inspect neutral, blocked, stale, and fully-priced rows. "
             f"{source_hint_text}"
             "Browsing makes 0 provider calls."
@@ -3535,7 +3541,7 @@ def _overview_caption(payload: Mapping[str, object]) -> str:
             )
         return (
             f"This page shows rows {start}-{end}: {returned} visible rows from "
-            f"{total} latest-scan rows. "
+            f"{total} {scan_label}. "
             "These tickers are only the current page; the table is paged for "
             "human review, not reduced to a watchlist. "
             "Press M or click SCAN -> Mismatches to return to the smaller action queue. "
@@ -3564,6 +3570,16 @@ def _priced_in_scan_total(queue: Mapping[str, object]) -> int:
             )
         )
     )
+
+
+def _priced_in_scan_row_label(queue: Mapping[str, object]) -> str:
+    scan_selection = _mapping(queue.get("scan_selection"))
+    if str(scan_selection.get("mode") or "") == "previous_useful_scan":
+        selected_as_of = str(scan_selection.get("selected_candidate_as_of") or "").strip()
+        if selected_as_of:
+            return f"row(s) in the previous scan dated {selected_as_of}"
+        return "previous-scan row(s)"
+    return "latest-scan row(s)"
 
 
 def _priced_in_status_filter(queue: Mapping[str, object]) -> str:

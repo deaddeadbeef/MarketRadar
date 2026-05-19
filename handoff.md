@@ -1,6 +1,88 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 07:39:10 +08:00
+Last updated: 2026-05-19 07:59:39 +08:00
+
+## Latest Full-Scan Fallback And Run-Guard Fix
+
+User clarification:
+
+- They asked why only a small ticker list was visible and reiterated that they
+  want the full scan.
+- There are two different ticker lists in the product:
+
+  ```text
+  Full scan rows: the ranked priced-in universe, currently 12,087 rows from the
+  last useful scan.
+
+  Source-fill chunk rows: the next provider-safe batch, often 5 tickers because
+  SEC/Schwab/source refresh is capped and must be explicitly executed chunk by
+  chunk.
+  ```
+
+- The source-fill chunk is not the scan universe.
+
+Observed live zero-call state before the fix:
+
+- A newer `2026-05-18` run failed at Polygon grouped daily with HTTP 403.
+- Because that failed run had no feature scan rows, `priced-in-queue
+  --full-scan` temporarily showed `total=0`, hiding the last useful full scan.
+- That made the UI look like MarketRadar only knew about tiny ticker subsets.
+
+Fix in this slice:
+
+- `priced_in_queue_payload()` now falls back to the last coherent populated scan
+  date when the latest run produced no priced-in rows because it failed or
+  skipped before `feature_scan`.
+- The fallback loads one scan date only, not a mixed "latest per ticker" set.
+  Live smoke now reports:
+
+  ```text
+  priced_in_queue status=previous_scan count=5 total=12087
+  scan_selection=mode=previous_useful_scan latest_run_as_of=2026-05-18 selected_as_of=2026-05-15 reason=latest_run_without_priced_in_rows
+  headline=Latest run produced no priced-in rows; showing previous full scan, showing 1-5 of 12087 priced-in row(s).
+  ```
+
+- CLI output prints `scan_selection` when a previous useful scan is being shown.
+  This makes stale/fallback state visible instead of silently pretending it is
+  fresh.
+- TUI overview copy now labels this as a `Previous full-market priced-in scan`
+  and says rows come from the previous scan date, not the latest failed run.
+- Source-batch planning now works again from that previous full scan. Live
+  zero-call smoke showed:
+
+  ```text
+  catalyst_events gap_rows=12080 plannable=10479 total_batches=2096
+  batch 1 tickers=AAL,AAMI,AAOI,AAON,AAP
+  ```
+
+- Scheduler `_event_ingest()` now skips immediately when `daily_bar_ingest`
+  failed in the same run:
+
+  ```text
+  event_ingest skipped: blocked_by_failed_dependency:daily_bar_ingest
+  ```
+
+  This prevents wasting SEC source calls on a run that cannot produce a useful
+  full-market scan.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_jobs.py::test_daily_run_skips_sec_ingest_when_daily_market_bars_fail tests\integration\test_jobs.py::test_daily_run_polygon_provider_fails_closed_without_api_key tests\integration\test_jobs.py::test_daily_run_sec_event_provider_ingests_capped_submissions_with_guarded_http -q
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_queue_payload_keeps_previous_full_scan_after_failed_latest_run tests\integration\test_dashboard_data.py::test_priced_in_queue_payload_respects_latest_run_universe_scope -q
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_queue_cli_outputs_same_zero_call_signal tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_plans_sec_event_batches tests\integration\test_dashboard_data.py::test_priced_in_all_source_gap_batches_payload_summarizes_next_chunks -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\jobs\tasks.py src\catalyst_radar\cli.py tests\integration\test_dashboard_data.py tests\integration\test_jobs.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-queue --full-scan --limit 5
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source catalyst_events --limit 1
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source all
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page overview
+```
+
+Observed: focused pytest passed, ruff passed, `git diff --check` passed, and
+all live CLI smokes were zero-call. The full scan is visible again as the last
+useful scan, while the latest failed run remains visible as a blocker that must
+be fixed before treating output as fresh.
 
 ## Latest SEC CIK Metadata Refresh Slice
 

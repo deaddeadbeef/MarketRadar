@@ -3068,6 +3068,17 @@ def _print_priced_in_queue(payload: Mapping[str, object]) -> None:
             f"ranked_after_filter={payload.get('total_count')} "
             f"visible_page={payload.get('count')}"
         )
+    scan_selection = payload.get("scan_selection")
+    if isinstance(scan_selection, Mapping):
+        mode = str(scan_selection.get("mode") or "")
+        if mode == "previous_useful_scan":
+            print(
+                "scan_selection="
+                f"mode={mode} "
+                f"latest_run_as_of={scan_selection.get('latest_run_as_of') or 'n/a'} "
+                f"selected_as_of={scan_selection.get('selected_candidate_as_of') or 'n/a'} "
+                f"reason={scan_selection.get('reason') or 'n/a'}"
+            )
     print(f"headline={payload.get('headline')}")
     print(f"next_action={payload.get('next_action')}")
     usefulness_counts = payload.get("usefulness_counts")

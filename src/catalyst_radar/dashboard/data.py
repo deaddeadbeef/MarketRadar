@@ -350,6 +350,85 @@ def load_radar_run_candidate_rows(
     return filtered_rows[: _positive_limit(limit)]
 
 
+def _should_use_previous_priced_in_scan(
+    radar_run_summary: Mapping[str, object],
+    candidate_rows: Sequence[Mapping[str, object]],
+) -> bool:
+    if candidate_rows or not radar_run_summary:
+        return False
+    steps = _radar_steps_by_name(radar_run_summary)
+    feature_scan = steps.get("feature_scan", {})
+    feature_status = str(feature_scan.get("status") or "").strip().lower()
+    if feature_status in {"failed", "skipped"}:
+        return True
+    run_path = _radar_run_path_summary(radar_run_summary)
+    return (
+        str(radar_run_summary.get("status") or "").strip().lower()
+        in {"failed", "partial_success"}
+        and int(_finite_float(run_path.get("blocking_count"))) > 0
+    )
+
+
+def _load_previous_populated_priced_in_scan_rows(
+    engine: Engine,
+    *,
+    include_artifacts: bool = True,
+) -> list[dict[str, object]]:
+    scan_date = _previous_populated_priced_in_scan_date(engine)
+    if scan_date is None:
+        return []
+    return load_candidate_rows(
+        engine,
+        as_of_date=scan_date,
+        limit=None,
+        include_artifacts=include_artifacts,
+    )
+
+
+def _previous_populated_priced_in_scan_date(engine: Engine) -> date | None:
+    date_expr = func.date(candidate_states.c.as_of)
+    stmt = (
+        select(date_expr.label("scan_date"), func.count().label("row_count"))
+        .group_by(date_expr)
+        .order_by(date_expr.desc())
+    )
+    counts: list[tuple[date, int]] = []
+    with engine.connect() as conn:
+        for row in conn.execute(stmt):
+            scan_date = _parse_date(row.scan_date)
+            if scan_date is None:
+                continue
+            counts.append((scan_date, int(_finite_float(row.row_count))))
+    if not counts:
+        return None
+    max_count = max(count for _, count in counts)
+    threshold = max(1, int(max_count * 0.9))
+    return max(scan_date for scan_date, count in counts if count >= threshold)
+
+
+def _priced_in_scan_selection_payload(
+    *,
+    mode: str,
+    candidate_rows: Sequence[Mapping[str, object]],
+    latest_run: Mapping[str, object] | None = None,
+    reason: str | None = None,
+) -> dict[str, object]:
+    latest = _row_dict(latest_run) if isinstance(latest_run, Mapping) else {}
+    selected_at = _latest_candidate_as_of(candidate_rows)
+    selected_as_of = _date_iso_or_none(selected_at)
+    return {
+        "schema_version": "priced-in-scan-selection-v1",
+        "mode": mode,
+        "reason": reason,
+        "latest_run_status": latest.get("status"),
+        "latest_run_as_of": latest.get("as_of"),
+        "latest_run_cutoff": latest.get("decision_available_at")
+        or latest.get("finished_at"),
+        "selected_candidate_as_of": selected_as_of,
+        "selected_row_count": len(candidate_rows),
+    }
+
+
 def _filter_rows_to_run_universe(
     engine: Engine,
     rows: Sequence[Mapping[str, object]],
@@ -620,8 +699,11 @@ def priced_in_queue_payload(
 ) -> dict[str, object]:
     latest_run = load_radar_run_summary(engine)
     using_supplied_rows = candidate_rows is not None
+    scan_selection_mode = "latest_run"
+    scan_selection_reason: str | None = None
     if candidate_rows is not None:
         queue_candidate_rows = [_row_dict(row) for row in candidate_rows]
+        scan_selection_mode = "supplied_rows"
     elif available_at is not None:
         queue_candidate_rows = load_candidate_rows(
             engine,
@@ -630,6 +712,7 @@ def priced_in_queue_payload(
             limit=None,
             include_artifacts=True,
         )
+        scan_selection_mode = "requested_cutoff"
     elif latest_run:
         queue_candidate_rows = load_radar_run_candidate_rows(
             engine,
@@ -638,8 +721,18 @@ def priced_in_queue_payload(
             include_artifacts=True,
             include_post_run_artifacts=True,
         )
+        if _should_use_previous_priced_in_scan(latest_run, queue_candidate_rows):
+            previous_rows = _load_previous_populated_priced_in_scan_rows(
+                engine,
+                include_artifacts=True,
+            )
+            if previous_rows:
+                queue_candidate_rows = previous_rows
+                scan_selection_mode = "previous_useful_scan"
+                scan_selection_reason = "latest_run_without_priced_in_rows"
     else:
         queue_candidate_rows = load_candidate_rows(engine, limit=None, include_artifacts=True)
+        scan_selection_mode = "latest_candidate_rows"
     broker_summary = load_broker_summary(engine)
     queue_candidate_rows = candidate_rows_with_market_context(
         queue_candidate_rows,
@@ -712,6 +805,14 @@ def priced_in_queue_payload(
     )
     status_counts = dict(Counter(str(row.get("priced_in_status") or "unknown") for row in rows))
     scan_status = _priced_in_scan_status(discovery)
+    if scan_selection_mode == "previous_useful_scan":
+        scan_status = "previous_scan"
+    scan_selection = _priced_in_scan_selection_payload(
+        mode=scan_selection_mode,
+        reason=scan_selection_reason,
+        latest_run=latest_run,
+        candidate_rows=queue_candidate_rows,
+    )
     preflight = priced_in_preflight_payload(
         engine,
         config,
@@ -739,6 +840,7 @@ def priced_in_queue_payload(
         "next_action": _priced_in_queue_next_action(scan_status),
         "external_calls_made": 0,
         "preflight": preflight,
+        "scan_selection": scan_selection,
         "latest_run": _row_dict(_mapping_value(discovery, "run")),
         "scan": {
             **_row_dict(_mapping_value(discovery, "yield")),
@@ -8360,6 +8462,21 @@ def _priced_in_queue_headline(
     range_start = offset + 1 if returned_count else 0
     range_end = offset + returned_count
     showing = f"showing {range_start}-{range_end} of {total_count}"
+    if status == "previous_scan":
+        if filtered:
+            label = (
+                "actionable mismatch"
+                if status_filter in PRICED_IN_ACTIONABLE_FILTERS
+                else "filtered priced-in"
+            )
+            return (
+                "Latest run produced no priced-in rows; showing previous scan "
+                f"{label} row(s), {showing}."
+            )
+        return (
+            "Latest run produced no priced-in rows; showing previous full scan, "
+            f"{showing} priced-in row(s)."
+        )
     if status == "universe_too_small":
         if filtered:
             label = (
@@ -8404,6 +8521,11 @@ def _priced_in_queue_headline(
 
 
 def _priced_in_queue_next_action(status: str) -> str:
+    if status == "previous_scan":
+        return (
+            "Fix the latest run blocker, then rerun the full scan. Use these rows as "
+            "the last useful scan, not fresh market output."
+        )
     if status == "universe_too_small":
         return (
             "Ingest Polygon/Massive tickers and fresh bars, then run the radar "

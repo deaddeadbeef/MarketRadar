@@ -2701,6 +2701,62 @@ def test_priced_in_queue_payload_respects_latest_run_universe_scope(
     assert [row["ticker"] for row in run_rows] == ["MSFT"]
 
 
+def test_priced_in_queue_payload_keeps_previous_full_scan_after_failed_latest_run(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    failed_as_of = AS_OF.date() + timedelta(days=1)
+    failed_cutoff = AVAILABLE_AT + timedelta(days=1)
+    metadata = {
+        "as_of": failed_as_of.isoformat(),
+        "decision_available_at": failed_cutoff.isoformat(),
+        "outcome_available_at": None,
+        "provider": "polygon",
+        "universe": None,
+        "tickers": [],
+    }
+    with engine.begin() as conn:
+        conn.execute(
+            insert(job_runs),
+            [
+                _job_run_row(
+                    "job-failed-market-bars",
+                    job_type="daily_bar_ingest",
+                    status="failed",
+                    started_at=failed_cutoff,
+                    metadata=metadata,
+                    error_summary="HTTP 403 from grouped daily",
+                ),
+                _job_run_row(
+                    "job-skipped-feature-scan",
+                    job_type="feature_scan",
+                    status="skipped",
+                    started_at=failed_cutoff + timedelta(seconds=1),
+                    metadata=metadata,
+                    error_summary="blocked_by_failed_dependency:daily_bar_ingest",
+                ),
+            ],
+        )
+
+    payload = priced_in_queue_payload(engine, AppConfig.from_env({}), limit=10)
+
+    assert payload["status"] == "previous_scan"
+    assert payload["total_count"] == 2
+    assert [row["ticker"] for row in payload["rows"]] == ["MSFT", "AAPL"]
+    assert payload["scan_selection"] == {
+        "schema_version": "priced-in-scan-selection-v1",
+        "mode": "previous_useful_scan",
+        "reason": "latest_run_without_priced_in_rows",
+        "latest_run_status": "partial_success",
+        "latest_run_as_of": failed_as_of.isoformat(),
+        "latest_run_cutoff": failed_cutoff.isoformat(),
+        "selected_candidate_as_of": AS_OF.date().isoformat(),
+        "selected_row_count": 2,
+    }
+    assert "showing previous full scan" in str(payload["headline"])
+
+
 def test_priced_in_preflight_payload_reports_exact_next_steps(tmp_path: Path) -> None:
     engine = _engine(tmp_path)
     _insert_dashboard_fixture(engine)
