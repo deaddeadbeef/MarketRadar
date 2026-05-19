@@ -1,6 +1,6 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 18:55:27 +08:00
+Last updated: 2026-05-19 18:59:43 +08:00
 
 ## Latest Audit Cache Status UX
 
@@ -55,13 +55,22 @@ Observed:
 - Focused five-test set passed (`5 passed`).
 - Ruff passed.
 - `git diff --check` passed.
+- PR #344, `Show priced-in audit cache status`, merged by rebase as `ff35c4e`.
+- Local services were restarted after merge:
+  - API health returned commit `ff35c4e73888`;
+  - Streamlit health returned `ok`.
+- Post-merge API verification:
+  - first `/api/radar/priced-in/audit?all_rows=true` call returned
+    `cache=miss`, `rows=12087/12087`, `external_calls=0`, and took `44.973s`;
+  - immediate second same API call returned `cache=hit`,
+    `rows=12087/12087`, `external_calls=0`, and took `0.673s`.
 
 Next useful product action:
 
-- Open and merge the PR for this branch, restart local services, then re-check
-  API/Streamlit health from the merged commit.
 - Actual source-fill execution still requires explicit user approval because it
   can call SEC/Schwab/market providers.
+- Next useful zero-call slice: make source-fill approval screens show a single
+  operator checklist before any SEC/Schwab/market provider execution command.
 
 ## Latest Full-Audit Cache
 
