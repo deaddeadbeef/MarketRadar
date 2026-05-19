@@ -1,6 +1,6 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 16:51:52 +08:00
+Last updated: 2026-05-19 16:59:02 +08:00
 
 ## Latest Selected Source-Gap Action
 
@@ -63,15 +63,25 @@ Observed:
 - Ruff passed.
 - `git diff --check` passed.
 - Live branch CLI source-gap action output reported `external_calls=0`.
+- PR #331 merged as `c1867f3`.
+- Post-merge local services were restarted:
+  - API health returned commit `c1867f3f170c`.
+  - Streamlit health returned `ok`.
+- Live API verification:
+  - `/api/radar/priced-in/audit?source_gap=options&limit=2`
+  - returned `api_action=options`,
+    `plan=catalyst-radar priced-in-source-batches --source options --all --json`,
+    the zero-call execution boundary, and `external_calls=0`.
+- Browser verification on `http://127.0.0.1:8514`:
+  - select **Source gap** = `options`;
+  - Overview rendered **Selected Source Gap Action** above
+    **Full-scan Ranked Rows**;
+  - the selected action table included the options plan command and
+    `Planning and browsing make 0 provider calls; execute source batches only
+    after approving provider calls.`
 
 Next useful product action:
 
-- Merge this slice, restart local services, then verify:
-  - API health reports the merge commit.
-  - Streamlit health is `ok`.
-  - Live CLI/API source-gap audit output includes `source_gap_actions`.
-  - Browser dashboard shows **Selected Source Gap Action** after choosing a
-    source-gap filter.
 - Actual source-fill execution still requires explicit user approval because it
   can call SEC/Schwab/market providers.
 
