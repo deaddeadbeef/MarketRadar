@@ -9,7 +9,7 @@ from sqlalchemy import create_engine, delete, func, select
 
 from catalyst_radar.cli import main
 from catalyst_radar.connectors.base import ConnectorHealthStatus
-from catalyst_radar.core.models import DataQualitySeverity, JobStatus
+from catalyst_radar.core.models import DataQualitySeverity, JobStatus, Security
 from catalyst_radar.market.manual_bars import MANUAL_BAR_COLUMNS
 from catalyst_radar.storage.provider_repositories import ProviderRepository
 from catalyst_radar.storage.repositories import MarketRepository
@@ -217,6 +217,7 @@ def test_market_bars_missing_only_template_import_counts_existing_bars(
     assert "coverage=active=6 existing=4 missing=2 missing_only=true" in (
         template_output.out
     )
+    assert "row_order=stock_like_then_unknown_then_non_stock" in template_output.out
     template_rows = _read_csv_rows(template_path)
     assert [row["ticker"] for row in template_rows] == missing_tickers
     assert {row["template_reason"] for row in template_rows} == {"missing_as_of_bar"}
@@ -244,6 +245,50 @@ def test_market_bars_missing_only_template_import_counts_existing_bars(
         import_output.out
     )
     assert "external_calls=0" in import_output.out
+
+
+def test_market_bars_template_sorts_stock_like_rows_first(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    database_url = _database_url(tmp_path)
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["init-db"]) == 0
+    capsys.readouterr()
+    engine = create_engine(database_url, future=True)
+    MarketRepository(engine).upsert_securities(
+        [
+            _security("WUNT", "Unit", "UNIT"),
+            _security("BSTK", "Common Stock", "CS"),
+            _security("EETF", "ETF", "ETF"),
+            _security("AADR", "ADR", "ADRC"),
+            _security("ZUNK", "Unknown", ""),
+        ]
+    )
+    template_path = tmp_path / "missing-bars.csv"
+
+    assert (
+        main(
+            [
+                "market-bars",
+                "template",
+                "--expected-as-of",
+                "2026-05-15",
+                "--out",
+                str(template_path),
+                "--missing-only",
+            ]
+        )
+        == 0
+    )
+
+    captured = capsys.readouterr()
+    assert "row_order=stock_like_then_unknown_then_non_stock" in captured.out
+    rows = _read_csv_rows(template_path)
+    assert [row["ticker"] for row in rows] == ["AADR", "BSTK", "ZUNK", "EETF", "WUNT"]
+    assert [row["security_type"] for row in rows[:2]] == ["ADRC", "CS"]
 
 
 def test_market_bars_import_rejects_blank_numeric_fields(
@@ -482,6 +527,22 @@ def test_ingest_csv_missing_daily_bar_available_at_fails_closed(
 
 def _database_url(tmp_path: Path) -> str:
     return f"sqlite:///{(tmp_path / 'catalyst_radar.db').as_posix()}"
+
+
+def _security(ticker: str, name: str, security_type: str) -> Security:
+    return Security(
+        ticker=ticker,
+        name=name,
+        exchange="NASDAQ",
+        sector="Technology",
+        industry="Software",
+        market_cap=1_000_000_000.0,
+        avg_dollar_volume_20d=10_000_000.0,
+        has_options=True,
+        is_active=True,
+        updated_at=datetime(2026, 5, 15, 20, tzinfo=UTC),
+        metadata={"type": security_type} if security_type else {},
+    )
 
 
 def _seed_csv_market(capsys: pytest.CaptureFixture[str]) -> None:

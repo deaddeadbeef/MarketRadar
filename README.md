@@ -354,13 +354,14 @@ bar CSV with the same schema as `data/sample/daily_bars.csv`. Generate the
 template from the current database universe, not from `data/sample/securities.csv`:
 
 ```powershell
-catalyst-radar market-bars template --expected-as-of 2026-05-16 --out data/local/manual-bars-2026-05-16.csv
+catalyst-radar market-bars template --expected-as-of 2026-05-16 --out data/local/manual-bars-2026-05-16.csv --missing-only
 catalyst-radar market-bars import --daily-bars <fresh-bars.csv> --expected-as-of 2026-05-16
 catalyst-radar market-bars import --daily-bars <fresh-bars.csv> --expected-as-of 2026-05-16 --execute
 ```
 
-The template command writes a local ignored CSV scaffold for every active ticker
-in the live database.
+The template command writes a local ignored CSV scaffold for missing active
+tickers in the live database. Missing-only rows are sorted with stock-like
+instruments first, then unknown types, then fund/wrapper rows.
 Fill `open`, `high`, `low`, `close`, `volume`, and `vwap`, then preview with
 the second command. Preview reports all missing or invalid bar fields it finds
 and validates active-ticker coverage before any import. The `--execute` command

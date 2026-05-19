@@ -1,6 +1,60 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 23:10:36 +08:00
+Last updated: 2026-05-19 23:20:41 +08:00
+
+## Latest Stock-First Manual Market-Bar Template
+
+Goal alignment check:
+
+- The previous slice showed the real local stock-only blocker:
+  `131` missing stock-like bars out of `5652` stock-like active rows.
+- The missing-only manual CSV still needed to be easier for a human to use:
+  its first rows should be actual stocks, not wrappers, if the operator chooses
+  the manual repair path instead of a live Polygon/Massive fill.
+
+Fix in this slice:
+
+- `catalyst-radar market-bars template --missing-only` now sorts rows as:
+  stock-like (`ADRC`, `CS`) first, unknown type next, and non-stock/fund/wrapper
+  rows last.
+- The manual template payload and CLI output now include
+  `row_order=stock_like_then_unknown_then_non_stock`.
+- The CSV schema is unchanged; existing `security_type` and `template_reason`
+  columns remain the human hints.
+- No Polygon/Massive, Schwab, SEC, OpenAI, or broker/order execution was run.
+
+Current live zero-call observation from local DB:
+
+```text
+manual_market_bars_template status=ready rows=523 scope=missing_as_of_bars expected_as_of=2026-05-15 external_calls=0
+coverage=active=12613 existing=12090 missing=523 missing_only=true
+row_order=stock_like_then_unknown_then_non_stock
+first_rows=AACO:CS, ADAC:CS, ADXN:ADRC, AEAQ:CS, AGM.A:CS, AIRT:CS, ALOV:CS, ARCI:CS
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_provider_ingest_cli.py::test_market_bars_template_uses_database_active_universe tests\integration\test_provider_ingest_cli.py::test_market_bars_missing_only_template_import_counts_existing_bars tests\integration\test_provider_ingest_cli.py::test_market_bars_template_sorts_stock_like_rows_first tests\integration\test_api_routes.py::test_post_radar_market_bars_template_and_import_use_database_universe -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\market\manual_bars.py src\catalyst_radar\cli.py tests\integration\test_provider_ingest_cli.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli market-bars template --expected-as-of 2026-05-15 --out <temp-csv> --missing-only
+```
+
+Observed:
+
+- Focused test set passed (`4 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+- Live temp CSV first rows are stock-like (`CS`/`ADRC`).
+
+Next useful product action:
+
+- If live provider execution is not approved, generate the missing-only CSV and
+  fill rows from the top. The first 131 missing rows are the stock-like blockers
+  for a stocks-only priced-in answer.
+- If the operator explicitly approves one provider call, the guarded
+  Polygon/Massive grouped-daily command remains the faster full-date fill.
 
 ## Latest Stocks-Only Market-Bar Scope
 
