@@ -26,6 +26,7 @@ from catalyst_radar.dashboard.tui import (
     DashboardFilters,
     MarketRadarDashboardApp,
     _apply_command,
+    _priced_in_overview_rows,
     _priced_in_source_workflow_payload,
     dashboard_snapshot_payload,
     run_dashboard_tui,
@@ -1247,6 +1248,113 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
     )
     output = capsys.readouterr()
     assert "source all is plan-only" in output.err
+
+
+def test_priced_in_queue_cli_prints_non_company_evidence_route(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    def fake_payload(*_args, **_kwargs):
+        return {
+            "schema_version": "priced-in-queue-v1",
+            "status": "ready",
+            "count": 1,
+            "total_count": 1,
+            "offset": 0,
+            "has_more": False,
+            "external_calls_made": 0,
+            "filters": {"status": "all", "limit": 50, "offset": 0},
+            "scan": {"scanned_securities": 1, "requested_securities": 0},
+            "headline": "Latest full scan ranked 1 priced-in row(s); showing 1-1 of 1.",
+            "next_action": "Review the largest emotion-versus-reaction gaps first.",
+            "usefulness_counts": {"research_useful": 1},
+            "source_coverage": {"summary": "market_bars 1/1", "actions": []},
+            "instrument_scope": {},
+            "rows": [
+                {
+                    "ticker": "ETFZ",
+                    "priced_in_status": "bullish_not_priced_in",
+                    "priced_in_direction": "bullish",
+                    "emotion_reaction_gap": 53.0,
+                    "emotion_score": 84.0,
+                    "reaction_score": 31.0,
+                    "priced_in_score": 77.0,
+                    "score": 82.0,
+                    "blocked": False,
+                    "data_sources": {
+                        "available": ["market_bars", "theme_peer_sector"],
+                        "missing": ["options"],
+                        "stale": [],
+                    },
+                    "usefulness": {
+                        "status": "research_useful",
+                        "next_command": "catalyst-radar build-packets --ticker ETFZ",
+                    },
+                    "non_company_evidence": {
+                        "status": "available",
+                        "route": "market_theme_fund_or_flow",
+                        "summary": "ETFZ: ETFZ Thematic Fund: Instrument type ETF.",
+                    },
+                    "next_step": "Build a Candidate Packet before Decision Card review.",
+                }
+            ],
+        }
+
+    monkeypatch.setattr("catalyst_radar.cli.priced_in_queue_payload", fake_payload)
+
+    assert main(["priced-in-queue"]) == 0
+    output = capsys.readouterr()
+
+    assert output.err == ""
+    assert "ETFZ bullish_not_priced_in research_useful" in output.out
+    assert (
+        "non_company_evidence=status=available "
+        "route=market_theme_fund_or_flow"
+    ) in output.out
+    assert "ETFZ Thematic Fund" in output.out
+
+
+def test_dashboard_overview_rows_include_non_company_evidence_summary() -> None:
+    rows = _priced_in_overview_rows(
+        {
+            "priced_in_queue": {
+                "offset": 0,
+                "rows": [
+                    {
+                        "ticker": "ETFZ",
+                        "priced_in_status": "bullish_not_priced_in",
+                        "emotion_score": 84.0,
+                        "reaction_score": 31.0,
+                        "emotion_reaction_gap": 53.0,
+                        "candidate_theme": "ai_infrastructure",
+                        "data_sources": {
+                            "available": ["market_bars", "theme_peer_sector"],
+                            "missing": ["options"],
+                            "stale": [],
+                        },
+                        "usefulness": {
+                            "label": "Research-useful mismatch",
+                            "next_action": "Build a Candidate Packet.",
+                        },
+                        "non_company_evidence": {
+                            "status": "available",
+                            "summary": (
+                                "ETFZ: ETFZ Thematic Fund: Instrument type ETF."
+                            ),
+                        },
+                    }
+                ],
+            }
+        }
+    )
+
+    assert rows[0]["ticker"] == "ETFZ"
+    assert "non-company available" in rows[0]["why_now"]
+    assert "ETFZ Thematic Fund" in rows[0]["why_now"]
 
 
 def test_priced_in_source_batches_cli_prints_non_company_route(

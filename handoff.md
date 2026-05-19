@@ -1,6 +1,114 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 13:17:05 +08:00
+Last updated: 2026-05-19 13:41:14 +08:00
+
+## Latest Non-Company Evidence Surface
+
+Current problem:
+
+- Non-company rows were correctly routed away from SEC company filing
+  requirements, but the UI still mostly said "routed" rather than showing what
+  evidence the route actually had.
+- For ETF/fund/warrant/wrapper rows, the user needs to see the concrete local
+  evidence path:
+  - what instrument this is;
+  - how emotion compares with price reaction;
+  - what theme/sector context exists;
+  - whether flow/volume features are present;
+  - whether the underlying/fund objective is stored or only inferred from name.
+
+Fix in this slice:
+
+- Queue rows and ticker detail evidence briefs now include
+  `non_company_evidence` for non-company instruments.
+- The payload is local-only and makes no provider calls:
+
+  ```text
+  schema_version=priced-in-non-company-evidence-v1
+  route=market_theme_fund_or_flow
+  external_calls_made=0
+  ```
+
+- Evidence checkpoints currently include:
+  - `instrument_identity`
+  - `market_reaction`
+  - `theme_sector_context`
+  - `flow_volume_context`
+  - `fund_objective` or `underlying_hint` when available/inferable
+- CLI `priced-in-queue` and `candidate-detail` print the non-company evidence
+  summary.
+- TUI overview rows include the non-company evidence summary in the "Why now"
+  text, so the dashboard has a human-visible route instead of only a hidden JSON
+  field.
+- Security metadata lookup now returns name, exchange, sector, industry,
+  market-cap, average dollar volume, options availability, and metadata so the
+  local evidence payload can be built without new storage or providers.
+
+Current live zero-call observation after the change:
+
+```text
+priced_in_queue status=ready count=8 total=12087 offset=0 external_calls=0
+scan_scope=scanned=12087 requested=n/a filter=all ranked_after_filter=12087 visible_page=8
+instrument_scope=rows=12087 company_like=5521 non_company=6566 unknown=0
+
+AAA non_company_evidence=status=available route=market_theme_fund_or_flow
+AAAU non_company_evidence=status=available route=market_theme_fund_or_flow
+```
+
+Example live row:
+
+```text
+AAAU: Goldman Sachs Physical Gold ETF Shares
+emotion 63.72 vs reaction 0
+theme/peer/sector scores=0/0/50
+```
+
+Important interpretation:
+
+- This does not make the full scan decision-ready by itself.
+- It makes the non-company route inspectable from the API/CLI/TUI using stored
+  local data.
+- Full-scan audit remains authoritative for full-market decision readiness:
+
+  ```text
+  research=10
+  decision=0
+  external_calls=0 while viewing
+  ```
+
+- `candidate-detail <ticker>` may see newer post-run artifacts for one ticker;
+  do not confuse that with the full-scan audit count.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_answer_payload_summarizes_current_scan tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_payload_consolidates_current_state tests\integration\test_dashboard_data.py::test_priced_in_queue_payload_reports_full_scan_instrument_scope tests\integration\test_dashboard_data.py::test_priced_in_queue_payload_routes_non_company_usefulness_through_theme_context tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_classifies_non_company_cik_gaps tests\integration\test_dashboard_data.py::test_priced_in_queue_payload_filters_source_gaps tests\integration\test_dashboard_data.py::test_priced_in_queue_payload_filters_decision_gaps tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_queue_cli_outputs_same_zero_call_signal tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_queue_cli_prints_non_company_evidence_route tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_overview_rows_include_non_company_evidence_summary tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_audit_cli_outputs_full_scan_audit tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_tui_once_can_show_full_scan_mode tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_source_batches_cli_prints_non_company_route -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-queue --full-scan --limit 8
+.\.venv\Scripts\python.exe -m catalyst_radar.cli candidate-detail AAAU
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-audit
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page overview
+```
+
+Observed:
+
+- Focused integration pass passed (`13 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+- Live CLI/TUI smokes made `0` provider calls.
+
+Next useful product action:
+
+- The next bottleneck is still decision usefulness:
+  - build candidate packets/decision cards for the actionable mismatch rows; and
+  - fill or explicitly waive options/broker context for rows where that context
+    is only optional.
+- Improve the dashboard answer panel so it clearly separates:
+  - full-scan audit state;
+  - per-ticker detail state;
+  - post-run artifacts that are useful but not yet counted in the latest full
+    scan.
 
 ## Latest Non-Company Usefulness Route Correction
 

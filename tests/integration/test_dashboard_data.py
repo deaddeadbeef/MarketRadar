@@ -1724,6 +1724,19 @@ def test_priced_in_queue_payload_routes_non_company_usefulness_through_theme_con
     assert row["instrument"]["security_type"] == "ETF"
     assert row["instrument"]["category"] == "non_company"
     assert row["instrument"]["sec_catalyst_applicable"] is False
+    evidence = row["non_company_evidence"]
+    assert evidence["schema_version"] == "priced-in-non-company-evidence-v1"
+    assert evidence["status"] == "available"
+    assert evidence["route"] == "market_theme_fund_or_flow"
+    assert evidence["external_calls_made"] == 0
+    assert evidence["missing_required"] == []
+    checkpoints = {item["kind"]: item for item in evidence["checkpoints"]}
+    assert checkpoints["instrument_identity"]["status"] == "available"
+    assert checkpoints["instrument_identity"]["title"] == "ETFZ: ETFZ Thematic Fund"
+    assert checkpoints["market_reaction"]["emotion_reaction_gap"] == 53.0
+    assert checkpoints["theme_sector_context"]["candidate_theme"] == "ai_infrastructure"
+    assert checkpoints["flow_volume_context"]["status"] == "missing"
+    assert "ETFZ Thematic Fund" in evidence["summary"]
     usefulness = row["usefulness"]
     assert usefulness["status"] == "research_useful"
     assert usefulness["evidence_route"] == "market_theme_fund_or_flow"

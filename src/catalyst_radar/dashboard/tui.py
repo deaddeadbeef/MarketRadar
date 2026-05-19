@@ -2985,6 +2985,7 @@ def _priced_in_overview_rows(payload: Mapping[str, object]) -> list[Mapping[str,
         why_now = _join_nonempty(
             (
                 _priced_in_mismatch_text(emotion, reaction, gap),
+                _non_company_evidence_table_summary(candidate),
                 _priced_in_reason(candidate),
                 _human_label(setup),
                 candidate.get("top_catalyst"),
@@ -3018,6 +3019,18 @@ def _priced_in_overview_rows(payload: Mapping[str, object]) -> list[Mapping[str,
             }
         )
     return rows
+
+
+def _non_company_evidence_table_summary(row: Mapping[str, object]) -> str:
+    evidence = _mapping(row.get("non_company_evidence"))
+    if not evidence:
+        return ""
+    status = str(evidence.get("status") or "").strip()
+    summary = str(evidence.get("summary") or "").strip()
+    if not summary:
+        return ""
+    prefix = f"non-company {status}" if status else "non-company"
+    return f"{prefix}: {summary}"
 
 
 def _priced_in_gap_summary(row: Mapping[str, object]) -> str:
@@ -4106,6 +4119,7 @@ def _candidate_detail_kv_pairs(row: Mapping[str, object]) -> tuple[tuple[str, ob
             ("Signal", _priced_in_signal(str(brief.get("status") or ""), fallback="Candidate")),
             ("Usefulness", _candidate_usefulness_summary(brief)),
             ("Why now", brief.get("why_now")),
+            ("Non-company evidence", _non_company_evidence_table_summary(brief)),
             ("Emotion vs reaction", _priced_in_mismatch_text(
                 brief.get("emotion_score"),
                 brief.get("reaction_score"),
@@ -4137,6 +4151,7 @@ def _candidate_detail_kv_pairs(row: Mapping[str, object]) -> tuple[tuple[str, ob
         ("Reaction score", row.get("reaction_score")),
         ("Emotion minus reaction", row.get("emotion_reaction_gap")),
         ("Priced-in reason", row.get("priced_in_reason")),
+        ("Non-company evidence", _non_company_evidence_table_summary(row)),
         ("Data coverage", _data_coverage_summary(row)),
         ("Setup", row.get("setup") or row.get("setup_type")),
         ("Top catalyst", row.get("top_catalyst") or row.get("top_event_title")),
