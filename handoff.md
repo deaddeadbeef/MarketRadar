@@ -1,6 +1,139 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 06:09:34 +08:00
+Last updated: 2026-05-20 06:22:58 +08:00
+
+## Latest Goal Drift Check
+
+User checkpoint:
+
+- The user explicitly paused the PR stream and asked whether the work has
+  drifted from the goal.
+
+Current active goal:
+
+- Build MarketRadar so it can scan the market and help answer whether the
+  market's expectations for a stock are already priced in.
+- Keep two usable surfaces aligned:
+  - CLI/API for repeatable, scriptable checks and functional testing;
+  - dashboard/TUI for human review and action.
+
+Drift assessment:
+
+- Recent work is still goal-aligned because it is correcting the scan's
+  truthfulness and operator path:
+  - market-bar coverage must use the stock-like active universe, not only the
+    currently ranked rows;
+  - `priced-in-answer --stocks-only` must not mix all-instrument counts into a
+    stocks-only answer;
+  - quick status and repair-plan surfaces make the next blocker visible without
+    making surprise provider calls.
+- The risk area is real: too much iteration can become UI/status polishing if
+  it does not move the scan toward more complete market evidence.
+- The next useful product step after this narrow answer-scope PR is not another
+  cosmetic dashboard pass. It is to clear the 131 missing stock-like as-of bars
+  by manual import or by explicit approval for one Polygon/Massive grouped-daily
+  call, then rerun the stocks-only full scan.
+
+Do not do next without explicit approval:
+
+```powershell
+catalyst-radar ingest-polygon grouped-daily --date 2026-05-15 --confirm-external-call
+```
+
+Immediate branch decision:
+
+- Finish and merge the current `feat/answer-stock-scan-summary` branch because
+  it fixes answer-surface scope drift.
+- Stop before any data-provider execution.
+
+## Latest Stocks-Only Answer Summary Fix
+
+Goal alignment check:
+
+- After the source-coverage fix, `priced-in-answer --stocks-only` correctly
+  reported `market_bars 5521/5652`, but the full-scan summary still showed
+  all-instrument active/scanned counts (`active=12613`, `scanned=12087`) and
+  the next command omitted `--stocks-only`.
+- That was still confusing for the actual product goal: a human asking "which
+  stocks are not priced in?" needs the answer scope, counts, and command hints
+  to stay in the stocks-only lane.
+- This slice changes only zero-call answer metadata and command text. It does
+  not run Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or DB-write
+  actions.
+
+Fix in this slice:
+
+- `priced-in-answer --stocks-only` now uses the stock-like market-bar scope in
+  `full_scan`:
+  - `active_securities=5652`;
+  - `scanned_rows=5521`;
+  - `unscanned_rows=131`;
+  - `scan_scope_basis=stock_like_active_as_of_bars`.
+- The decision-ready next command now keeps `--stocks-only`:
+
+  ```text
+  catalyst-radar priced-in-queue --stocks-only --full-scan --limit 50
+  ```
+
+- The legacy `full_scan_export` command now also keeps `--stocks-only` for
+  stocks-only answers:
+
+  ```text
+  catalyst-radar priced-in-queue --stocks-only --full-scan --all --json
+  ```
+
+- The sample explanation now says visible rows are a page from the
+  stocks-only active universe, not the entire instrument universe.
+- The regression test now asserts the stock scope active/scanned/unscanned
+  counts and stocks-only export command when an active common stock is missing
+  its as-of bar.
+
+Live zero-call answer observation:
+
+```text
+full_scan=mode=full_scan active=5652 scanned=5521 ranked=5521 visible=1-5 sample=true
+sample_explanation=The tickers below are rows 1-5 from the current ranked page, not the stocks-only active universe of 5652 row(s).
+next_action=Review the stocks-only full scan; decision-ready tickers are a filtered subset, not the scan universe.
+next_command=catalyst-radar priced-in-queue --stocks-only --full-scan --limit 50
+full_scan_export=catalyst-radar priced-in-queue --stocks-only --full-scan --all --json
+source_coverage=market_bars 5521/5652 (131 missing); ...
+```
+
+JSON observation:
+
+```text
+full_scan.active_securities=5652
+full_scan.scanned_rows=5521
+full_scan.unscanned_rows=131
+full_scan.scan_scope_basis=stock_like_active_as_of_bars
+external_calls_made=0
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_answer_uses_stock_scope_for_market_bar_coverage tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_answer_cli_outputs_current_scan_answer -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py tests\integration\test_dashboard_demo_seed_cli.py
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-answer --stocks-only
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-answer --stocks-only --json
+git diff --check
+```
+
+Observed:
+
+- Focused tests passed (`2 passed`).
+- Ruff passed.
+- Live text and JSON answer surfaces show stock-scope counts and stock-only
+  next command.
+- `git diff --check` passed.
+
+Next useful product action:
+
+- Merge and restart so the CLI/API/dashboard answer surface has consistent
+  stocks-only scope metadata.
+- The data blocker remains: fill/import
+  `data\local\manual-stock-bars-2026-05-15.csv`, or explicitly approve the one
+  Polygon/Massive grouped-daily call.
 
 ## Latest Priced-In Answer Stock-Bar Scope Fix
 
