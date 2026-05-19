@@ -1764,6 +1764,11 @@ def priced_in_full_scan_audit_payload(
 ) -> dict[str, object]:
     resolved_preview_limit = _positive_limit(preview_limit)
     resolved_preview_offset = _positive_offset(preview_offset)
+    audit_page_command = _priced_in_audit_command(
+        limit=resolved_preview_limit,
+        offset=resolved_preview_offset,
+        available_at=available_at,
+    )
     resolved_queue = (
         _row_dict(queue)
         if isinstance(queue, Mapping)
@@ -1786,6 +1791,16 @@ def priced_in_full_scan_audit_payload(
     full_scan = _priced_in_answer_full_scan_summary(resolved_queue)
     preview_rows = _priced_in_full_scan_preview_rows(
         _sequence_value(resolved_queue.get("rows"))
+    )
+    has_more = bool(full_scan.get("has_more"))
+    next_audit_page_command = (
+        _priced_in_audit_command(
+            limit=resolved_preview_limit,
+            offset=resolved_preview_offset + max(1, resolved_preview_limit),
+            available_at=available_at,
+        )
+        if has_more
+        else None
     )
     source_coverage = _mapping_value(resolved_queue, "source_coverage")
     instrument_scope = _mapping_value(resolved_queue, "instrument_scope")
@@ -1855,6 +1870,8 @@ def priced_in_full_scan_audit_payload(
             "export_command": full_scan.get("full_export_command")
             or full_scan.get("export_command"),
             "sample_explanation": full_scan.get("sample_explanation"),
+            "audit_page_command": audit_page_command,
+            "audit_next_page_command": next_audit_page_command,
         },
         "preview": {
             "schema_version": "priced-in-full-scan-preview-v1",
@@ -1868,6 +1885,8 @@ def priced_in_full_scan_audit_payload(
             "next_page_command": full_scan.get("next_page_command"),
             "export_command": full_scan.get("full_export_command")
             or full_scan.get("export_command"),
+            "audit_page_command": audit_page_command,
+            "audit_next_page_command": next_audit_page_command,
         },
         "preview_rows": preview_rows,
         "counts": {
@@ -1906,6 +1925,22 @@ def priced_in_full_scan_audit_payload(
             "export_full_scan": "catalyst-radar priced-in-queue --full-scan --all --json",
         },
     }
+
+
+def _priced_in_audit_command(
+    *,
+    limit: int,
+    offset: int,
+    available_at: datetime | None,
+) -> str:
+    parts = ["catalyst-radar", "priced-in-audit"]
+    if available_at is not None:
+        parts.extend(["--available-at", available_at.isoformat()])
+    parts.extend(["--limit", str(_positive_limit(limit))])
+    offset_value = _positive_offset(offset)
+    if offset_value:
+        parts.extend(["--offset", str(offset_value)])
+    return " ".join(parts)
 
 
 def _priced_in_full_scan_preview_rows(rows: Sequence[object]) -> list[dict[str, object]]:

@@ -538,6 +538,10 @@ def test_dashboard_wires_priced_in_full_scan_panel_after_usefulness() -> None:
     assert "_priced_in_full_scan_source_rows" in functions
     assert "priced_in_full_scan_audit_payload" in helper_source
     assert "Priced-in Full Scan" in helper_source
+    assert "Full-scan rows" in helper_source
+    assert "Row offset" in helper_source
+    assert "preview_limit" in helper_source
+    assert "preview_offset" in helper_source
     assert "Full Scan Rows" in helper_source
     assert "Full-scan Ranked Rows" in helper_source
     assert "Full scan row page" in helper_source

@@ -1607,6 +1607,22 @@ def test_priced_in_full_scan_audit_payload_consolidates_current_state(
         "catalyst-radar priced-in-source-batches --source options"
     )
 
+    paged = priced_in_full_scan_audit_payload(
+        engine,
+        AppConfig.from_env({}),
+        preview_limit=1,
+        preview_offset=0,
+    )
+
+    assert paged["preview"]["visible_rows"] == 1
+    assert paged["preview"]["audit_page_command"] == (
+        "catalyst-radar priced-in-audit --limit 1"
+    )
+    assert paged["preview"]["audit_next_page_command"] == (
+        "catalyst-radar priced-in-audit --limit 1 --offset 1"
+    )
+    assert len(paged["preview_rows"]) == 1
+
 
 def test_priced_in_queue_payload_reports_full_scan_instrument_scope(
     tmp_path: Path,

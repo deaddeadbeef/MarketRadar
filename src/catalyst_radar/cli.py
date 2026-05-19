@@ -623,6 +623,18 @@ def build_parser() -> argparse.ArgumentParser:
     priced_in_audit = subparsers.add_parser("priced-in-audit")
     priced_in_audit.add_argument("--database-url")
     priced_in_audit.add_argument("--available-at", type=_parse_aware_datetime)
+    priced_in_audit.add_argument(
+        "--limit",
+        type=int,
+        default=25,
+        help="Full-scan audit preview rows to show.",
+    )
+    priced_in_audit.add_argument(
+        "--offset",
+        type=int,
+        default=0,
+        help="Zero-based full-scan audit preview row offset.",
+    )
     priced_in_audit.add_argument("--json", action="store_true")
 
     candidate_detail = subparsers.add_parser("candidate-detail")
@@ -1231,6 +1243,8 @@ def main(argv: list[str] | None = None) -> int:
             engine,
             config,
             available_at=args.available_at,
+            preview_limit=args.limit,
+            preview_offset=args.offset,
         )
         if args.json:
             print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
@@ -3946,6 +3960,9 @@ def _print_priced_in_audit(payload: Mapping[str, object]) -> None:
         explanation = preview.get("sample_explanation")
         if explanation:
             print(f"full_scan_row_note={_compact_cli_text(explanation)}")
+        audit_next = preview.get("audit_next_page_command")
+        if audit_next:
+            print(f"more={_compact_cli_text(audit_next)}")
     rows = payload.get("preview_rows")
     if isinstance(rows, list | tuple) and rows:
         print("full_scan_preview:")

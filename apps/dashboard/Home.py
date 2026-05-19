@@ -1968,14 +1968,38 @@ def _show_priced_in_full_scan_panel(
     config: AppConfig,
     radar_run_summary: Mapping[str, Any],
 ) -> None:
+    st.subheader("Priced-in Full Scan")
+    row_control_cols = st.columns([1, 1, 3])
+    preview_limit = int(
+        row_control_cols[0].selectbox(
+            "Full-scan rows",
+            [25, 50, 100],
+            index=0,
+            key="priced_in_full_scan_preview_limit",
+        )
+    )
+    preview_offset = int(
+        row_control_cols[1].number_input(
+            "Row offset",
+            min_value=0,
+            value=0,
+            step=preview_limit,
+            key="priced_in_full_scan_preview_offset",
+        )
+    )
+    row_control_cols[2].caption(
+        "Browsing full-scan rows makes 0 provider calls. Source-fill chunks remain "
+        "separate explicit actions."
+    )
     audit = _mapping(
         dashboard_data.priced_in_full_scan_audit_payload(
             engine,
             config,
             available_at=_radar_summary_cutoff(radar_run_summary),
+            preview_limit=preview_limit,
+            preview_offset=preview_offset,
         )
     )
-    st.subheader("Priced-in Full Scan")
     status = str(audit.get("status") or "unknown")
     message = (
         f"{audit.get('headline') or 'No priced-in full-scan audit yet.'} "
