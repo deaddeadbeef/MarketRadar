@@ -8647,11 +8647,13 @@ def _priced_in_preflight_rows(
                 "blocked",
                 f"Run-as-of bar coverage is {latest_bars}/{active or 'n/a'}.",
                 (
-                    "Run the scheduled scan for the latest trading date; it ingests "
-                    "fresh grouped bars and refreshes the dashboard queue."
+                    "Generate a DB-backed active-universe bar template, fill every "
+                    "active ticker, import it, then rerun the full-market scan. "
+                    "Use the provider run only if its call plan and plan limits "
+                    "match your intent."
                 ),
-                commands.get("run_scan"),
-                "POST /api/radar/runs/call-plan",
+                commands.get("market_bars_template"),
+                "POST /api/radar/market-bars/template",
             )
         )
     elif missing_bars:
@@ -8819,6 +8821,15 @@ def _priced_in_preflight_commands(
             "catalyst-radar build-universe --as-of <LATEST_TRADING_DATE> "
             f"--available-at <UTC-now> --name {config.universe_name} "
             f"--provider {provider}"
+        ),
+        "market_bars_template": _csv_market_template_command(None),
+        "market_bars_import_preview": _csv_market_refresh_command(
+            None,
+            execute=False,
+        ),
+        "market_bars_import_execute": _csv_market_refresh_command(
+            None,
+            execute=True,
         ),
         "review_call_plan": "catalyst-radar dashboard-tui --once --page run",
         "run_scan": (
@@ -11307,11 +11318,20 @@ def _coverage_evidence(row: Mapping[str, object]) -> str:
     return "; ".join(part for part in parts if part) or "n/a"
 
 
-def _csv_market_refresh_command(as_of_date: date | None) -> str:
-    expected = f" --expected-as-of {as_of_date.isoformat()}" if as_of_date else ""
+def _csv_market_refresh_command(
+    as_of_date: date | None,
+    *,
+    execute: bool = True,
+) -> str:
+    expected_value = (
+        as_of_date.isoformat()
+        if as_of_date is not None
+        else "<LATEST_TRADING_DATE>"
+    )
+    execute_flag = " --execute" if execute else ""
     return (
         "catalyst-radar market-bars import --daily-bars <fresh-bars.csv>"
-        f"{expected} --execute"
+        f" --expected-as-of {expected_value}{execute_flag}"
     )
 
 
