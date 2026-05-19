@@ -1,6 +1,55 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 07:01:57 +08:00
+Last updated: 2026-05-20 07:08:33 +08:00
+
+## Latest Quick Status Stock-Scan Next Action
+
+Goal alignment:
+
+- Quick status still printed a first-line `Readiness` next action that pointed
+  at the global active-universe `manual-bars` template.
+- The detailed repair block below it was already correct for the actual
+  stocks-only scan blocker, but the first instruction was easy for a human to
+  follow incorrectly.
+- This slice changes only `scripts\market-radar-status.ps1` output text and
+  makes 0 Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or DB-write
+  calls.
+
+Fix in this slice:
+
+- The old quick-status `Readiness:` line is now labeled `Global readiness:`.
+- Quick status prints a separate `Stock scan next:` line before the detailed
+  repair block:
+
+  ```text
+  Stock scan next: bars=5521/5652; missing=131; command=catalyst-radar market-bars template --expected-as-of 2026-05-15 --out data\local\manual-stock-bars-2026-05-15.csv --missing-only --stocks-only
+  ```
+
+Live zero-call observation:
+
+```text
+Market Radar quick status
+API: ok; build=61f6feb9c91e; version=0.1.0
+Global readiness: research_only; investable=False; next=...
+Stock scan next: bars=5521/5652; missing=131; command=catalyst-radar market-bars template --expected-as-of 2026-05-15 --out data\local\manual-stock-bars-2026-05-15.csv --missing-only --stocks-only
+External calls made: 0
+```
+
+Validation run in this slice:
+
+```powershell
+powershell -NoProfile -Command '& { $null = [scriptblock]::Create((Get-Content -Raw .\scripts\market-radar-status.ps1)); "powershell syntax ok" }'
+powershell -ExecutionPolicy Bypass -File .\scripts\market-radar-status.ps1 -Quick
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_local_scripts.py::test_market_radar_status_script_is_zero_external_call_sitrep -q
+.\.venv\Scripts\python.exe -m ruff check tests\integration\test_local_scripts.py
+```
+
+Next useful product action after merge:
+
+- The quick operator status, CLI/API source-batch plan, and dashboard workflow
+  should all point humans to the same stocks-only market-bar blocker.
+- Actual scan completion still requires filled local bars or explicit approval
+  for the one Polygon/Massive grouped-daily call.
 
 ## Latest Dashboard Source Workflow Stock-Bar Fix
 

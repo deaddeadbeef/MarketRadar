@@ -138,12 +138,19 @@ if ($Quick) {
     Write-Output "Market Radar quick status"
     Write-Output ("API: {0}; build={1}; version={2}" -f $health.status, $build.commit, $build.version)
     Write-Output (
-        "Readiness: {0}; investable={1}; next={2}" -f
+        "Global readiness: {0}; investable={1}; next={2}" -f
         $readiness.status,
         $readiness.safe_to_make_investment_decision,
         $readiness.next_action
     )
     if ($null -ne $marketBarRepairPlan) {
+        Write-Output (
+            "Stock scan next: bars={0}/{1}; missing={2}; command={3}" -f
+            $marketBarRepairPlan.existing_as_of_bar_count,
+            $marketBarRepairPlan.active_security_count,
+            $marketBarRepairPlan.missing_as_of_bar_count,
+            $marketBarRepairPlan.manual_template_command
+        )
         Write-Output (
             "Fast market-bar repair: status={0}; scope={1}; active={2}; existing={3}; missing={4}; external_calls={5}" -f
             $marketBarRepairPlan.status,

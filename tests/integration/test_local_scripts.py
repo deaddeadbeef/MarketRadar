@@ -180,6 +180,8 @@ def test_market_radar_status_script_is_zero_external_call_sitrep() -> None:
     assert '"repair-plan"' in text
     assert "market_bar_repair_plan" in text
     assert "Market Radar quick status" in text
+    assert "Global readiness:" in text
+    assert "Stock scan next:" in text
     assert "Fast market-bar repair:" in text
     assert "/api/radar/priced-in/audit?stocks_only=true&limit=1" in text
     assert "[int]$TimeoutSeconds = 15" in text
