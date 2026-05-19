@@ -20,6 +20,7 @@ from catalyst_radar.dashboard.data import (
     load_ops_health,
     load_ticker_detail,
     load_validation_summary,
+    priced_in_all_source_gap_batches_payload,
     priced_in_answer_payload,
     priced_in_queue_payload,
     radar_readiness_payload,
@@ -2218,6 +2219,33 @@ def test_priced_in_answer_uses_stock_scope_for_market_bar_coverage(
     assert "market-bars template" in market_bar_blockers[0]["command"]
     assert "--stocks-only" in market_bar_blockers[0]["command"]
     assert "market_bars" in payload["source_coverage"]["weak_sources"]
+
+    overview = priced_in_all_source_gap_batches_payload(
+        engine,
+        config,
+        stocks_only=True,
+    )
+    source_rows = {row["source"]: row for row in overview["sources"]}
+    assert overview["status"] == "attention"
+    assert overview["scan_scope"]["active_securities"] == 2
+    assert overview["scan_scope"]["scanned_rows"] == 1
+    assert overview["scan_scope"]["unscanned_rows"] == 1
+    assert overview["scan_scope"]["scan_scope_basis"] == (
+        "stock_like_active_as_of_bars"
+    )
+    assert source_rows["market_bars"]["status"] == "attention"
+    assert source_rows["market_bars"]["total_gap_rows"] == 1
+    assert source_rows["market_bars"]["diagnostic"]["blocked_reason"] == (
+        "missing_stock_like_as_of_bars"
+    )
+    assert "--stocks-only" in source_rows["market_bars"]["diagnostic"][
+        "manual_template_command"
+    ]
+    assert overview["coverage_first_recommendation"]["source"] == "market_bars"
+    assert "market-bars template" in overview["coverage_first_recommendation"][
+        "command"
+    ]
+    assert "--stocks-only" in overview["coverage_first_recommendation"]["command"]
 
 
 def test_priced_in_audit_cli_outputs_full_scan_audit(
