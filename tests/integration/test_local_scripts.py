@@ -175,6 +175,7 @@ def test_market_radar_status_script_is_zero_external_call_sitrep() -> None:
     assert script.is_file()
     assert "/api/health" in text
     assert "/api/radar/readiness" in text
+    assert "/api/radar/priced-in/audit?stocks_only=true&limit=1" in text
     assert "/api/radar/runs/latest" in text
     assert "/api/radar/live-activation" in text
     assert "/api/radar/runs/call-plan" in text
@@ -185,12 +186,19 @@ def test_market_radar_status_script_is_zero_external_call_sitrep() -> None:
     assert "operator_next_step" in text
     assert "readiness_checklist" in text
     assert "market_radar_usefulness" in text
+    assert "priced_in_stock_audit" in text
     assert "discovery_snapshot" in text
     assert "Operator next:" in text
     assert "Usefulness:" in text
     assert "safe_decision=" in text
     assert "ready_layers=" in text
     assert "useful means:" in text
+    assert "Stock priced-in scan:" in text
+    assert "decision_ready=" in text
+    assert "stock answer lens:" in text
+    assert "stock decision gap:" in text
+    assert "stock evidence plan:" in text
+    assert "stock evidence command:" in text
     assert "Market freshness:" in text
     assert "latest_bar=" in text
     assert "run_as_of=" in text

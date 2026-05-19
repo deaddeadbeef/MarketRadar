@@ -43,6 +43,7 @@ function Invoke-ApiJson {
 
 $health = Invoke-ApiJson -Path "/api/health"
 $readiness = Invoke-ApiJson -Path "/api/radar/readiness"
+$pricedInStockAudit = Invoke-ApiJson -Path "/api/radar/priced-in/audit?stocks_only=true&limit=1"
 $latestRun = Invoke-ApiJson -Path "/api/radar/runs/latest"
 $activation = Invoke-ApiJson -Path "/api/radar/live-activation"
 $callPlan = Invoke-ApiJson -Method "POST" -Path "/api/radar/runs/call-plan" -Body "{}"
@@ -54,6 +55,7 @@ $telemetryCoverage = Invoke-ApiJson -Path "/api/ops/telemetry/coverage"
 $payload = [ordered]@{
     health = $health
     readiness = $readiness
+    priced_in_stock_audit = $pricedInStockAudit
     latest_run = $latestRun
     live_activation = $activation
     call_plan = $callPlan
@@ -73,6 +75,10 @@ foreach ($row in @($readiness.readiness_checklist)) {
 }
 
 $usefulness = $readiness.market_radar_usefulness
+$stockScope = $pricedInStockAudit.scope
+$stockAnswer = $pricedInStockAudit.answer_shortlist
+$stockEvidence = $pricedInStockAudit.evidence_plan
+$stockRecommendedSource = $pricedInStockAudit.recommended_source_gap
 $discovery = $readiness.discovery_snapshot
 $freshness = $null
 if ($null -ne $discovery) {
@@ -122,6 +128,38 @@ if ($null -ne $usefulness) {
     Write-Output (
         "- useful means: research triage requires a complete required run path and labeled sources; manual investment review requires fresh market bars, live catalysts, a Decision Card, and no blockers."
     )
+}
+if ($null -ne $stockScope) {
+    Write-Output (
+        "Stock priced-in scan: status={0}; ranked={1}; scanned={2}; decision_ready={3}; external_calls={4}" -f
+        $pricedInStockAudit.status,
+        $stockScope.ranked_rows,
+        $stockScope.scanned_rows,
+        $(if ($null -ne $stockAnswer) { $stockAnswer.decision_ready_rows } else { "n/a" }),
+        $pricedInStockAudit.external_calls_made
+    )
+    if ($null -ne $stockAnswer) {
+        Write-Output (
+            "- stock answer lens: {0}; actionable={1}; boundary={2}" -f
+            $stockAnswer.status,
+            $stockAnswer.actionable_mismatch_rows,
+            $stockAnswer.investment_decision_boundary
+        )
+    }
+    if ($null -ne $stockRecommendedSource) {
+        Write-Output (
+            "- stock decision gap: {0}; gaps={1}; {2}" -f
+            $stockRecommendedSource.source,
+            $stockRecommendedSource.gap_count,
+            $stockRecommendedSource.next_action
+        )
+    }
+    if ($null -ne $stockEvidence -and $stockEvidence.next_action) {
+        Write-Output ("- stock evidence plan: {0}" -f $stockEvidence.next_action)
+    }
+    if ($null -ne $stockEvidence -and $stockEvidence.next_command) {
+        Write-Output ("- stock evidence command: {0}" -f $stockEvidence.next_command)
+    }
 }
 if ($null -ne $freshness) {
     Write-Output (

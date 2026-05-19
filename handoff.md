@@ -1,6 +1,77 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 01:20:58 +08:00
+Last updated: 2026-05-20 01:28:38 +08:00
+
+## Latest Stock-Scan Status Sitrep
+
+Goal alignment check:
+
+- After the CIK-template PR merged, the generic local status script still led
+  with full active-universe market-bar coverage. That is valid for the broad
+  active universe, but it can distract from the user's stated stock-scan goal:
+  identify stocks where market expectations have not yet matched price.
+- The stock-only priced-in audit already has a clearer goal-specific summary:
+  `5521` ranked stock rows, `9` decision-ready mismatch rows, and source
+  evidence blockers. This slice surfaces that summary directly in the local
+  status output before the broader active-universe bar warnings.
+
+Fix in this slice:
+
+- `scripts\market-radar-status.ps1` now reads:
+
+  ```text
+  /api/radar/priced-in/audit?stocks_only=true&limit=1
+  ```
+
+- The JSON payload now includes `priced_in_stock_audit`.
+- Human-readable status now prints a **Stock priced-in scan** block:
+  - stock audit status;
+  - ranked and scanned stock rows;
+  - decision-ready mismatch count;
+  - zero-call boundary;
+  - answer-lens boundary;
+  - top decision gap;
+  - evidence-plan next action and command.
+- This does not change core readiness semantics; full active-universe bars can
+  still be reported as a broader blocker. It just makes the stock-scan goal
+  visible before that generic warning.
+- No Polygon/Massive, Schwab, SEC, OpenAI, or broker/order execution was run.
+
+Current live zero-call observation from local status:
+
+```text
+Stock priced-in scan: status=attention; ranked=5521; scanned=12087; decision_ready=9; external_calls=0
+- stock answer lens: decision_ready; actionable=9; boundary=This shortlist ranks market-expectation mismatch evidence only; it is not trade approval.
+- stock decision gap: options; gaps=5521; Inspect options first. Stored options exist after this scan date. Example tickers: A, MSFT, AAPL, AA. Rerun only with a current scan date and current bars, or ingest point-in-time options for the original scan date.
+- stock evidence plan: Review the run call plan and refresh event ingestion before trusting emotion.
+- stock evidence command: catalyst-radar priced-in-source-batches --source catalyst_events --stocks-only --all --json
+External calls made: 0
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_local_scripts.py::test_market_radar_status_script_is_zero_external_call_sitrep -q
+.\.venv\Scripts\python.exe -m ruff check tests\integration\test_local_scripts.py
+powershell -ExecutionPolicy Bypass -File scripts\market-radar-status.ps1
+```
+
+Observed:
+
+- Focused script contract test passed.
+- Ruff passed for the touched test file.
+- Live status stayed zero-call and now shows the stock scan before the generic
+  market-bar coverage warning.
+
+Next useful product action:
+
+- The stock-specific status still says `attention`; that is correct.
+- Do not treat the `9` decision-ready mismatch rows as investment-ready. The
+  answer lens is a ranked evidence shortlist, not trade approval.
+- Continue with source evidence coverage:
+  - either fill the two local missing CIKs through the zero-call template path;
+  - or, with explicit approval only, run one capped SEC source batch for
+    `catalyst_events`.
 
 ## Latest Missing-CIK Template Export
 
