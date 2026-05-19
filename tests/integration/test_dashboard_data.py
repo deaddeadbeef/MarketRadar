@@ -1637,6 +1637,18 @@ def test_priced_in_full_scan_audit_payload_consolidates_current_state(
     assert market_bar_diagnostic["external_calls_made"] == 0
     assert "company_like_missing_count" in market_bar_diagnostic
     assert "route_boundary" in market_bar_diagnostic
+    market_bar_provider_plan = payload["market_bars"]["repair"]["provider_fill_plan"]
+    assert market_bar_provider_plan["schema_version"] == (
+        "priced-in-market-bar-provider-fill-plan-v1"
+    )
+    assert market_bar_provider_plan["external_calls_made"] == 0
+    assert "Polygon/Massive" in market_bar_provider_plan["provider_label"]
+    assert "explicit operator approval" in market_bar_provider_plan[
+        "approval_boundary"
+    ]
+    assert market_bar_provider_plan["manual_template_command"].endswith(
+        "--missing-only"
+    )
     assert payload["instrument_scope"]["schema_version"] == (
         "priced-in-instrument-scope-v1"
     )

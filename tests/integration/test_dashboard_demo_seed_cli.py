@@ -1906,6 +1906,10 @@ def test_priced_in_audit_cli_outputs_full_scan_audit(
     assert "route_boundary=Market bars are required for price-reaction scoring" in (
         output.out
     )
+    assert "provider_fill_plan=provider=Polygon/Massive grouped daily" in output.out
+    assert "approval_boundary=This plan makes 0 provider calls" in output.out
+    assert "manual_template=catalyst-radar market-bars template" in output.out
+    assert "--missing-only" in output.out
     assert "source_coverage=ready=" in output.out
     assert "performance=cache=" in output.out
     assert "primary_full_scan=scope=full_active_universe" in output.out
@@ -1951,6 +1955,13 @@ def test_priced_in_audit_cli_outputs_full_scan_audit(
         "priced-in-market-bar-missing-diagnostic-v1"
     )
     assert payload["market_bars"]["repair"]["diagnostic"]["external_calls_made"] == 0
+    assert payload["market_bars"]["repair"]["provider_fill_plan"][
+        "schema_version"
+    ] == "priced-in-market-bar-provider-fill-plan-v1"
+    assert (
+        payload["market_bars"]["repair"]["provider_fill_plan"]["external_calls_made"]
+        == 0
+    )
     assert payload["primary_scan"]["schema_version"] == (
         "priced-in-primary-full-scan-v1"
     )
