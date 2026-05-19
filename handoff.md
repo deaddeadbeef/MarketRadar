@@ -1,6 +1,6 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 20:36:39 +08:00
+Last updated: 2026-05-19 20:41:01 +08:00
 
 ## Latest Full-Scan Market-Bar Repair Surface
 
@@ -90,6 +90,21 @@ Observed:
 - `git diff --check` passed.
 - CLI and API checks both reported `external_calls=0`.
 - Local services were restarted from the branch for API/dashboard verification.
+- PR #352, `Surface full scan market bar repair`, was merged by rebase as
+  `5fd8216b9e8f`.
+- Local services were restarted after merge from `main`:
+  - API health returned commit `5fd8216b9e8f`;
+  - Streamlit health returned `ok`.
+- Post-merge API verification showed:
+  - `api_repair=attention`;
+  - `expected=2026-05-15`;
+  - `missing=523`;
+  - `calls=0`.
+- Post-merge CLI verification showed:
+  - `market_bar_repair=status=attention`;
+  - `expected_as_of=2026-05-15`;
+  - `missing=523`;
+  - `external_calls=0`.
 
 Next useful product action:
 
