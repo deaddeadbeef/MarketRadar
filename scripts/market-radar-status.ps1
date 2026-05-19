@@ -80,6 +80,7 @@ $stockScope = $pricedInStockAudit.scope
 $stockAnswer = $pricedInStockAudit.answer_shortlist
 $stockEvidence = $pricedInStockAudit.evidence_plan
 $stockCoverageStep = $null
+$stockCoverageBatchPlan = $null
 if ($null -ne $stockEvidence) {
     foreach ($step in @($stockEvidence.steps)) {
         if ($step.status -ne "ready") {
@@ -87,6 +88,13 @@ if ($null -ne $stockEvidence) {
             break
         }
     }
+}
+if ($null -ne $stockCoverageStep -and $stockCoverageStep.area) {
+    $coverageSource = [System.Uri]::EscapeDataString([string]$stockCoverageStep.area)
+    $stockCoverageBatchPlan = Invoke-ApiJson `
+        -Path ("/api/radar/priced-in/source-batches?source={0}&stocks_only=true&batch_limit=1" -f $coverageSource) `
+        -TimeoutSeconds 90
+    $payload["priced_in_stock_coverage_batch_plan"] = $stockCoverageBatchPlan
 }
 $stockRecommendedSource = $pricedInStockAudit.recommended_source_gap
 $stockRecommendedRepair = $null
@@ -175,6 +183,43 @@ if ($null -ne $stockScope) {
     }
     if ($null -ne $stockCoverageStep -and $stockCoverageStep.command) {
         Write-Output ("- stock coverage command: {0}" -f $stockCoverageStep.command)
+    }
+    $coverageDiagnostic = $null
+    $coverageFirstBatch = $null
+    if ($null -ne $stockCoverageBatchPlan) {
+        $coverageDiagnostic = $stockCoverageBatchPlan.diagnostic
+        $coverageFirstBatch = $stockCoverageBatchPlan.first_batch
+        if ($null -eq $coverageFirstBatch -and $stockCoverageBatchPlan.batches) {
+            $coverageFirstBatch = @($stockCoverageBatchPlan.batches)[0]
+        }
+    }
+    if ($null -ne $coverageDiagnostic -and $null -ne $coverageDiagnostic.eligible_rows) {
+        $coverageNextCalls = "0"
+        if ($null -ne $coverageFirstBatch -and $null -ne $coverageFirstBatch.external_calls_required) {
+            $coverageNextCalls = $coverageFirstBatch.external_calls_required
+        }
+        Write-Output (
+            "- stock coverage SEC plan: eligible={0}; blocked={1}; next_calls={2}; blocked_reason={3}" -f
+            $coverageDiagnostic.eligible_rows,
+            $coverageDiagnostic.blocked_rows,
+            $coverageNextCalls,
+            $(if ($coverageDiagnostic.blocked_reason) { $coverageDiagnostic.blocked_reason } else { "none" })
+        )
+    }
+    if ($null -ne $coverageDiagnostic -and $coverageDiagnostic.sample_blocked_tickers) {
+        Write-Output (
+            "- stock coverage missing CIK: {0}" -f
+            ((@($coverageDiagnostic.sample_blocked_tickers) | Select-Object -First 12) -join ", ")
+        )
+    }
+    if ($null -ne $coverageDiagnostic -and $coverageDiagnostic.manual_template_command) {
+        Write-Output ("- stock CIK template: {0}" -f $coverageDiagnostic.manual_template_command)
+    }
+    if ($null -ne $coverageDiagnostic -and $coverageDiagnostic.manual_fix_command) {
+        Write-Output ("- stock CIK import: {0}" -f $coverageDiagnostic.manual_fix_command)
+    }
+    if ($null -ne $coverageDiagnostic -and $coverageDiagnostic.fix_command) {
+        Write-Output ("- stock CIK refresh: {0}" -f $coverageDiagnostic.fix_command)
     }
     if ($null -ne $stockRecommendedSource) {
         Write-Output (

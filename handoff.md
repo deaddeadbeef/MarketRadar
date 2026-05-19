@@ -1,6 +1,55 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 02:43:59 +08:00
+Last updated: 2026-05-20 02:58:52 +08:00
+
+## Latest Status CIK Blocker Surface
+
+Goal alignment check:
+
+- Full-scan coverage-first work is still `catalyst_events`.
+- The source-batch planner already knew that the current stock scan has
+  thousands of SEC-eligible rows and a small number of missing-CIK blockers,
+  but the local status output did not show that split.
+- This matters because the full-market goal is not just "run the next batch";
+  it is to make the whole stock scan explainable. Rows without CIK metadata
+  cannot receive SEC company catalyst evidence.
+
+Fix in this slice:
+
+- `scripts\market-radar-status.ps1` now calls the existing zero-call
+  source-batch planning endpoint for the current stock coverage source:
+
+  ```text
+  /api/radar/priced-in/source-batches?source=<coverage-source>&stocks_only=true&batch_limit=1
+  ```
+
+- The status output now prints:
+  - SEC-eligible rows;
+  - blocked rows;
+  - external calls required by the next reviewed chunk;
+  - sample missing-CIK tickers;
+  - CIK override template/import commands;
+  - CIK metadata refresh command.
+- The API call is planning-only and reports `external_calls_made=0`.
+- No SEC/Massive/Polygon, Schwab, OpenAI, broker/order execution, or database
+  write was run.
+
+Alignment pause from 2026-05-20:
+
+- Goal is still full-market priced-in mismatch detection: scan all stock rows,
+  collect enough market-emotion evidence, then compare that evidence against
+  price reaction.
+- This slice is aligned because it exposes the current full-scan SEC catalyst
+  blocker instead of adding another dashboard polish layer.
+- Live zero-call status now reports:
+  - `stock coverage SEC plan: eligible=5510; blocked=2; next_calls=5`;
+  - `stock coverage missing CIK: FRBA, SSBI`;
+  - CIK template/import/refresh commands;
+  - `External calls made: 0`.
+- A drift-risk bug was caught before PR: the status script first read
+  `first_batch`, but the source-batch API returns `batches`. The script now
+  falls back to the first returned batch and reports the real planned call
+  count.
 
 ## Latest TUI Full-Scan Next-Step Copy
 

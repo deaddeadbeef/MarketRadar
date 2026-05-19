@@ -200,6 +200,22 @@ def test_market_radar_status_script_is_zero_external_call_sitrep() -> None:
     assert "stock answer lens:" in text
     assert "stock coverage-first gap:" in text
     assert "stock coverage command:" in text
+    assert "/api/radar/priced-in/source-batches?source={0}&stocks_only=true&batch_limit=1" in text
+    assert "priced_in_stock_coverage_batch_plan" in text
+    assert "batches" in text
+    assert "external_calls_required" in text
+    assert "stock coverage SEC plan:" in text
+    assert "eligible_rows" in text
+    assert "blocked_rows" in text
+    assert "next_calls=" in text
+    assert "stock coverage missing CIK:" in text
+    assert "sample_blocked_tickers" in text
+    assert "stock CIK template:" in text
+    assert "manual_template_command" in text
+    assert "stock CIK import:" in text
+    assert "manual_fix_command" in text
+    assert "stock CIK refresh:" in text
+    assert "fix_command" in text
     assert "stock decision-context gap:" in text
     assert "stock point-in-time template:" in text
     assert "point_in_time_template_command" in text
