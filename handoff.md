@@ -1,6 +1,76 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 05:42:22 +08:00
+Last updated: 2026-05-20 05:56:53 +08:00
+
+## Latest Quick Operator Status
+
+Goal alignment check:
+
+- The fast repair-plan CLI/API exists, but the full status script still waited
+  on the broad priced-in audit before showing the first blocker. That is too
+  slow for a human trying to answer "what blocks the stock scan right now?"
+- This slice keeps full status unchanged for deep audits and adds a quick
+  replacement view for the immediate stock-bar blocker.
+- It remains zero-call: no Polygon/Massive, SEC, Schwab, OpenAI, broker, or
+  order execution.
+
+Fix in this slice:
+
+- Added `-Quick` to `scripts\market-radar-status.ps1`.
+- Quick mode prints:
+  - API health/build;
+  - readiness headline;
+  - stock-like market-bar repair plan from the local CLI JSON path;
+  - manual template/preview commands;
+  - guarded provider option and approval boundary;
+  - local manual template preview if the CSV exists.
+- Quick mode returns before the broad priced-in audit, latest run, broker,
+  ops, and telemetry calls.
+- README now documents:
+
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File scripts/market-radar-status.ps1 -Quick
+  ```
+
+Live zero-call quick status observation:
+
+```text
+Market Radar quick status
+API: ok; build=5d968376094a; version=0.1.0
+Readiness: research_only; investable=False; next=...
+Fast market-bar repair: status=attention; scope=stock_like; active=5652; existing=5521; missing=131; external_calls=0
+- manual template: catalyst-radar market-bars template --expected-as-of 2026-05-15 --out data\local\manual-stock-bars-2026-05-15.csv --missing-only --stocks-only
+- preview import: catalyst-radar market-bars import --daily-bars data\local\manual-stock-bars-2026-05-15.csv --expected-as-of 2026-05-15 --stocks-only
+- provider option: status=ready_for_approval; external_calls=1; command=catalyst-radar ingest-polygon grouped-daily --date 2026-05-15 --confirm-external-call
+- provider boundary: This repair plan makes 0 provider calls. The provider command makes one Polygon/Massive grouped-daily request and must only be run after explicit operator approval.
+- local template preview: status=invalid; rows=131; invalid_rows=131; blank_required=786; missing_after_import=0; external_calls=0
+External calls made: 0
+```
+
+Validation run in this slice:
+
+```powershell
+powershell -NoProfile -Command '& { $null = [scriptblock]::Create((Get-Content -Raw .\scripts\market-radar-status.ps1)); "powershell syntax ok" }'
+powershell -ExecutionPolicy Bypass -File .\scripts\market-radar-status.ps1 -Quick
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_local_scripts.py::test_readme_mentions_restart_script_for_local_dashboard tests\integration\test_local_scripts.py::test_market_radar_status_script_is_zero_external_call_sitrep -q
+.\.venv\Scripts\python.exe -m ruff check tests\integration\test_local_scripts.py
+git diff --check
+```
+
+Observed:
+
+- PowerShell syntax parsed.
+- Quick status returned the stock-like repair plan and `External calls made: 0`.
+- Focused tests passed (`2 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+
+Next useful product action:
+
+- Merge and restart so `-Quick` is available from the normal local checkout.
+- The data blocker still remains: either fill/import
+  `data\local\manual-stock-bars-2026-05-15.csv`, or explicitly approve the
+  one Polygon/Massive grouped-daily call.
 
 ## Latest Fast Market-Bar Repair Plan
 

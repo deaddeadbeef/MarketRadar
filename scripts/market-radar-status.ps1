@@ -2,6 +2,7 @@ param(
     [string]$ApiHost = "127.0.0.1",
     [int]$ApiPort = 8443,
     [int]$TelemetryLimit = 3,
+    [switch]$Quick,
     [switch]$Json
 )
 
@@ -16,7 +17,7 @@ function Invoke-ApiJson {
         [int]$TimeoutSeconds = 15
     )
 
-    $args = @(
+    $curlArgs = @(
         "--insecure",
         "--silent",
         "--show-error",
@@ -28,9 +29,9 @@ function Invoke-ApiJson {
         "$baseUrl$Path"
     )
     if ([string]::IsNullOrWhiteSpace($Body) -eq $false) {
-        $args += @("--header", "Content-Type: application/json", "--data", $Body)
+        $curlArgs += @("--header", "Content-Type: application/json", "--data-raw", $Body)
     }
-    $response = & curl.exe @args
+    $response = & curl.exe @curlArgs
     if ($LASTEXITCODE -ne 0) {
         throw "Could not read local API status from $baseUrl$Path. Start services with scripts\restart-local.ps1."
     }
@@ -44,9 +45,40 @@ function Invoke-ApiJson {
 
 $health = Invoke-ApiJson -Path "/api/health"
 $readiness = Invoke-ApiJson -Path "/api/radar/readiness"
+$pythonExe = ".\.venv\Scripts\python.exe"
+if (-not (Test-Path -LiteralPath $pythonExe)) {
+    $pythonExe = "py"
+}
+$marketBarRepairPlan = $null
 $manualMarketBarPreview = $null
 if ($readiness.radar_run.as_of) {
     $runAsOf = [string]$readiness.radar_run.as_of
+    try {
+        $repairArgs = @(
+            "-m",
+            "catalyst_radar.cli",
+            "market-bars",
+            "repair-plan",
+            "--expected-as-of",
+            $runAsOf,
+            "--stocks-only",
+            "--json"
+        )
+        $repairResponse = & $pythonExe @repairArgs 2>$null
+        if ([string]::IsNullOrWhiteSpace(($repairResponse -join "`n"))) {
+            throw "market-bar repair plan returned no JSON"
+        }
+        $marketBarRepairPlan = ($repairResponse -join "`n") | ConvertFrom-Json
+    }
+    catch {
+        $marketBarRepairPlan = [ordered]@{
+            status = "error"
+            expected_as_of = $runAsOf
+            stocks_only = $true
+            detail = $_.Exception.Message
+            external_calls_made = 0
+        }
+    }
     $manualStockBarsPath = "data\local\manual-stock-bars-$runAsOf.csv"
     $manualAllBarsPath = "data\local\manual-bars-$runAsOf.csv"
     $manualBarsPath = $manualAllBarsPath
@@ -57,10 +89,6 @@ if ($readiness.radar_run.as_of) {
     }
     if (Test-Path -LiteralPath $manualBarsPath) {
         try {
-            $pythonExe = ".\.venv\Scripts\python.exe"
-            if (-not (Test-Path -LiteralPath $pythonExe)) {
-                $pythonExe = "py"
-            }
             $previewArgs = @(
                 "-m",
                 "catalyst_radar.cli",
@@ -91,6 +119,70 @@ if ($readiness.radar_run.as_of) {
         }
     }
 }
+
+if ($Quick) {
+    $payload = [ordered]@{
+        health = $health
+        readiness = $readiness
+        market_bar_repair_plan = $marketBarRepairPlan
+        external_calls_made = 0
+    }
+    if ($null -ne $manualMarketBarPreview) {
+        $payload["manual_market_bar_preview"] = $manualMarketBarPreview
+    }
+    if ($Json) {
+        $payload | ConvertTo-Json -Depth 12
+        return
+    }
+    $build = $health.build
+    Write-Output "Market Radar quick status"
+    Write-Output ("API: {0}; build={1}; version={2}" -f $health.status, $build.commit, $build.version)
+    Write-Output (
+        "Readiness: {0}; investable={1}; next={2}" -f
+        $readiness.status,
+        $readiness.safe_to_make_investment_decision,
+        $readiness.next_action
+    )
+    if ($null -ne $marketBarRepairPlan) {
+        Write-Output (
+            "Fast market-bar repair: status={0}; scope={1}; active={2}; existing={3}; missing={4}; external_calls={5}" -f
+            $marketBarRepairPlan.status,
+            $marketBarRepairPlan.coverage_scope,
+            $marketBarRepairPlan.active_security_count,
+            $marketBarRepairPlan.existing_as_of_bar_count,
+            $marketBarRepairPlan.missing_as_of_bar_count,
+            $marketBarRepairPlan.external_calls_made
+        )
+        Write-Output ("- manual template: {0}" -f $marketBarRepairPlan.manual_template_command)
+        Write-Output ("- preview import: {0}" -f $marketBarRepairPlan.manual_import_preview_command)
+        if ($marketBarRepairPlan.provider_fill_command) {
+            Write-Output (
+                "- provider option: status={0}; external_calls={1}; command={2}" -f
+                $marketBarRepairPlan.provider_fill_status,
+                $marketBarRepairPlan.provider_fill_external_call_count,
+                $marketBarRepairPlan.provider_fill_command
+            )
+            Write-Output ("- provider boundary: {0}" -f $marketBarRepairPlan.approval_boundary)
+        }
+    }
+    if ($null -ne $manualMarketBarPreview) {
+        Write-Output (
+            "- local template preview: status={0}; rows={1}; invalid_rows={2}; blank_required={3}; missing_after_import={4}; external_calls={5}" -f
+            $manualMarketBarPreview.status,
+            $(if ($null -ne $manualMarketBarPreview.row_count) { $manualMarketBarPreview.row_count } else { "n/a" }),
+            $(if ($null -ne $manualMarketBarPreview.invalid_row_count) { $manualMarketBarPreview.invalid_row_count } else { "n/a" }),
+            $(if ($null -ne $manualMarketBarPreview.blank_required_count) { $manualMarketBarPreview.blank_required_count } else { "n/a" }),
+            $(if ($null -ne $manualMarketBarPreview.missing_expected_count) { $manualMarketBarPreview.missing_expected_count } else { "n/a" }),
+            $(if ($null -ne $manualMarketBarPreview.external_calls_made) { $manualMarketBarPreview.external_calls_made } else { 0 })
+        )
+        if ($manualMarketBarPreview.next_action) {
+            Write-Output ("- local template next: {0}" -f $manualMarketBarPreview.next_action)
+        }
+    }
+    Write-Output "External calls made: 0"
+    return
+}
+
 $pricedInStockAudit = Invoke-ApiJson -Path "/api/radar/priced-in/audit?stocks_only=true&limit=1" -TimeoutSeconds 90
 $latestRun = Invoke-ApiJson -Path "/api/radar/runs/latest"
 $activation = Invoke-ApiJson -Path "/api/radar/live-activation"
@@ -103,6 +195,7 @@ $telemetryCoverage = Invoke-ApiJson -Path "/api/ops/telemetry/coverage"
 $payload = [ordered]@{
     health = $health
     readiness = $readiness
+    market_bar_repair_plan = $marketBarRepairPlan
     priced_in_stock_audit = $pricedInStockAudit
     latest_run = $latestRun
     live_activation = $activation

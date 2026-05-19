@@ -35,6 +35,7 @@ def test_readme_mentions_restart_script_for_local_dashboard() -> None:
     assert "scripts/run-first-live-smoke.ps1" in readme
     assert "scripts/run-worker-once.ps1" in readme
     assert "scripts/market-radar-status.ps1" in readme
+    assert "scripts/market-radar-status.ps1 -Quick" in readme
     assert "catalyst-radar dashboard-tui" in readme
     assert "catalyst-radar dashboard-snapshot --json" in readme
     assert "docs/dashboard-feature-inventory.md" in readme
@@ -173,8 +174,13 @@ def test_market_radar_status_script_is_zero_external_call_sitrep() -> None:
     text = script.read_text(encoding="utf-8")
 
     assert script.is_file()
+    assert "[switch]$Quick" in text
     assert "/api/health" in text
     assert "/api/radar/readiness" in text
+    assert '"repair-plan"' in text
+    assert "market_bar_repair_plan" in text
+    assert "Market Radar quick status" in text
+    assert "Fast market-bar repair:" in text
     assert "/api/radar/priced-in/audit?stocks_only=true&limit=1" in text
     assert "[int]$TimeoutSeconds = 15" in text
     assert "-TimeoutSeconds 90" in text
