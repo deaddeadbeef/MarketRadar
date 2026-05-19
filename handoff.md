@@ -1,6 +1,82 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 15:04:31 +08:00
+Last updated: 2026-05-19 15:18:05 +08:00
+
+## Latest Full-Scan Ticker Scope Clarification
+
+Current problem:
+
+- The user asked: "Why only these tickers? I want full scan."
+- The stored priced-in queue already is a full-market scan, but the source-fill
+  UX showed first safe ticker chunks in places where they could be mistaken for
+  the whole scan universe.
+- The Ops workbench also put no-op sources like `market_bars` ahead of source
+  gaps, so pressing Enter could show a dead-end status instead of the first
+  useful source-fill plan.
+
+Fix in this slice:
+
+- CLI all-source source-batch output now prints the full-scan row commands:
+  - `full_scan_review=catalyst-radar priced-in-queue --full-scan --limit 50`
+  - `full_scan_export=catalyst-radar priced-in-queue --full-scan --all --json`
+- CLI source-specific source-batch output now prints source-gap row commands:
+  - `review_full_scan_source_gap=... --source-gap <source> --limit 50`
+  - `export_full_scan_source_gap=... --source-gap <source> --all --json`
+- CLI recommendation batch lines now include
+  `scope=first_provider_chunk`, making the five-ticker lists explicitly
+  provider chunks, not the scan universe.
+- TUI `batch <source>` responses now lead with
+  `first provider chunk only` and include review/export commands for every
+  matching full-scan row.
+- TUI `batch all` responses now say the full scan universe size and distinguish
+  full-scan rows from first safe provider chunks.
+- Ops source workbench rows are sorted so sources with useful/gap work appear
+  before no-gap/no-op sources.
+
+Current live zero-call observation:
+
+```text
+priced-in-source-batches --source all --all
+full_scan=mode=full_scan active=12613 scanned=12087 ranked=12087 source_gap_rows=48319 examples_are_samples=true
+full_scan_review=catalyst-radar priced-in-queue --full-scan --limit 50
+full_scan_export=catalyst-radar priced-in-queue --full-scan --all --json
+coverage_first_batch=scope=first_provider_chunk rows=1-5 tickers=AAT,AAUC,AB,ABAT,ABBV calls=5 ...
+decision_shortcut_batch=scope=first_provider_chunk rows=1-5 tickers=AAMI,AAOI,AAL,AAON,AAP calls=1 ...
+external_calls=0
+
+priced-in-source-batches --source catalyst_events --batch-limit 1
+scan_scope=mode=full_scan gap_rows=12075 plannable=5510 returned_batches=1 planned_batches=1102 returned_tickers=5 batch_sample=true
+review_full_scan_source_gap=catalyst-radar priced-in-queue --full-scan --source-gap catalyst_events --limit 50
+export_full_scan_source_gap=catalyst-radar priced-in-queue --full-scan --source-gap catalyst_events --all --json
+external_calls=0
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\cli.py src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source all --all
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source catalyst_events --batch-limit 1
+```
+
+Observed:
+
+- Dashboard integration file passed (`30 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+- Live all-source and catalyst source-batch commands reported
+  `external_calls=0` and printed the new full-scan review/export commands.
+
+Next useful product action:
+
+- The full scan is present as a paged/exportable ranked universe. The remaining
+  real work is filling source gaps across that universe through explicit,
+  rate-limited provider chunks.
+- Do not run external source-fill chunks automatically. If the user explicitly
+  approves provider calls, the next coverage-first command remains:
+  `catalyst-radar priced-in-source-batches --source catalyst_events --execute-next`.
 
 ## Latest Agent Brief Source Workflow Alignment
 

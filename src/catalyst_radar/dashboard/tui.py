@@ -2425,6 +2425,8 @@ def _priced_in_source_batch_message(
     scan_scope = _mapping(payload.get("scan_scope"))
     command = ""
     all_batches_command = str(payload.get("all_batches_command") or "").strip()
+    review_rows_command = str(payload.get("review_rows_command") or "").strip()
+    export_rows_command = str(payload.get("export_rows_command") or "").strip()
     calls = ""
     batches = _rows(payload.get("batches"))
     if batches:
@@ -2478,6 +2480,16 @@ def _priced_in_source_batch_message(
             if all_batches_command
             else ""
         )
+        row_review_suffix = (
+            f" Review every matching full-scan row: {review_rows_command}."
+            if review_rows_command
+            else ""
+        )
+        row_export_suffix = (
+            f" Export every matching full-scan row: {export_rows_command}."
+            if export_rows_command
+            else ""
+        )
         next_suffix = f" Next chunk page: {next_batch_command}." if next_batch_command else ""
         blocked_suffix = (
             f" Blocked examples: {', '.join(blocked_samples)}."
@@ -2495,13 +2507,14 @@ def _priced_in_source_batch_message(
             else ""
         )
         return (
-            f"{prefix} This is a full-scan plan, not a watchlist.{chunk_scope}"
+            f"first provider chunk only. {prefix} This is a full-scan plan, "
+            f"not a watchlist.{chunk_scope}"
             f"{calls}{api_suffix} "
-            f"First safe chunk: {command}. Run from TUI with "
+            f"Command: {command}. Run from TUI with "
             f"`batch {source_name} execute` if intended.{blocked_suffix}"
             f"{missing_cik_suffix}{non_company_route_suffix}"
             f"{diagnostic_suffix}{command_suffix}"
-            f"{full_suffix}{next_suffix}"
+            f"{full_suffix}{row_review_suffix}{row_export_suffix}{next_suffix}"
         )
     blocked_suffix = (
         f" Blocked examples: {', '.join(blocked_samples)}."
@@ -2602,10 +2615,30 @@ def _priced_in_all_source_batch_message(
     next_action = str(payload.get("next_action") or "").strip()
     next_action_text = f" Suggested first: {next_action}" if next_action else ""
     recommendation_text = _all_source_recommendation_detail(payload)
+    scan_scope = _mapping(payload.get("scan_scope"))
+    ranked_rows = int(_number_or_zero(scan_scope.get("ranked_rows")))
+    review_command = str(scan_scope.get("review_full_scan_command") or "").strip()
+    export_command = str(scan_scope.get("export_full_scan_command") or "").strip()
+    scan_text = (
+        f" Full scan universe: {ranked_rows} ranked row(s)."
+        if ranked_rows
+        else " Full scan universe: all ranked rows."
+    )
+    review_text = (
+        f" Review rows: {review_command}."
+        if review_command
+        else ""
+    )
+    export_text = (
+        f" Export rows: {export_command}."
+        if export_command
+        else ""
+    )
     return (
         f"{payload.get('headline')} This is plan-only and makes no provider calls. "
-        "Full scan is already the ranked universe; source execution is split into "
-        "safe provider chunks. "
+        "Full scan is already the ranked universe; the tickers below are only "
+        "first safe provider chunks. Source execution is split into safe chunks. "
+        f"{scan_text}{review_text}{export_text} "
         f"{'; '.join(pieces)}.{next_action_text}{recommendation_text}"
         f"{command}{capped_command}"
     )
@@ -2629,9 +2662,9 @@ def _all_source_recommendation_detail(payload: Mapping[str, object]) -> str:
         calls = int(_number_or_zero(first_batch.get("external_calls_required")))
         command = str(first_batch.get("command") or recommendation.get("command") or "")
         details.append(
-            f" {label}: {source} rows {first_batch.get('row_start')}-"
-            f"{first_batch.get('row_end')}; tickers {tickers}; calls {calls}; "
-            f"command {command}."
+            f" {label} (first provider chunk only): {source} rows "
+            f"{first_batch.get('row_start')}-{first_batch.get('row_end')}; "
+            f"tickers {tickers}; calls {calls}; command {command}."
         )
     return "".join(details)
 
@@ -5078,7 +5111,7 @@ def _source_coverage_workbench_rows(
             }
         )
     if rows:
-        return rows
+        return sorted(rows, key=_source_coverage_workbench_sort_key)
     for index, action in enumerate(_rows(coverage.get("actions")), start=1):
         source = str(action.get("source") or "").strip()
         if not source:
@@ -5098,7 +5131,27 @@ def _source_coverage_workbench_rows(
                 or "Inspect the source plan.",
             }
         )
-    return rows
+    return sorted(rows, key=_source_coverage_workbench_sort_key)
+
+
+def _source_coverage_workbench_sort_key(row: Mapping[str, object]) -> tuple[int, int, str]:
+    source = str(row.get("source") or "")
+    try:
+        source_order = dashboard_data.PRICED_IN_SOURCE_CLASSES.index(source)
+    except ValueError:
+        source_order = len(dashboard_data.PRICED_IN_SOURCE_CLASSES)
+    status = str(row.get("status") or "").strip().lower()
+    gap_rows = int(_number_or_zero(row.get("gap_rows")))
+    useful_rows = str(row.get("useful_rows") or "").strip().lower()
+    if gap_rows <= 0 and status in {"ready", "no_gaps"}:
+        return (4, source_order, source)
+    if "decision" in useful_rows:
+        return (0, source_order, source)
+    if "research" in useful_rows or "action" in useful_rows:
+        return (1, source_order, source)
+    if gap_rows > 0:
+        return (2, source_order, source)
+    return (3, source_order, source)
 
 
 def _source_coverage_workbench_detail(

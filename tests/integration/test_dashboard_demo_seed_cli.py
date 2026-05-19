@@ -477,7 +477,8 @@ def test_dashboard_batch_command_opens_full_scan_source_batch_plan(
         "plannable ticker for this source."
     ) in update.message
     assert "Add `all` to summarize every chunk for this source." in update.message
-    assert "First safe chunk: catalyst-radar schwab-market-sync --ticker ACME" in (
+    assert "first provider chunk only." in update.message
+    assert "Command: catalyst-radar schwab-market-sync --ticker ACME" in (
         update.message
     )
     assert "`batch options execute`" in update.message
@@ -497,10 +498,14 @@ def test_dashboard_batch_command_opens_full_scan_source_batch_plan(
 
     assert overview.page == "ops"
     assert "plan-only and makes no provider calls" in overview.message
-    assert "source execution is split into safe provider chunks" in overview.message
+    assert "tickers below are only first safe provider chunks" in overview.message
+    assert "Full scan universe:" in overview.message
+    assert "Review rows: catalyst-radar priced-in-queue --full-scan --limit 50" in (
+        overview.message
+    )
     assert "Suggested first:" in overview.message
-    assert "Coverage-first chunk:" in overview.message
-    assert "Decision shortcut chunk:" in overview.message
+    assert "Coverage-first chunk (first provider chunk only):" in overview.message
+    assert "Decision shortcut chunk (first provider chunk only):" in overview.message
     assert "tickers ACME" in overview.message
     assert "calls 1" in overview.message
     assert "options=ready" in overview.message
@@ -528,7 +533,8 @@ def test_dashboard_batch_command_opens_full_scan_source_batch_plan(
         "this includes every currently plannable ticker for this source"
         in full_plan.message
     )
-    assert "First safe chunk:" in full_plan.message
+    assert "first provider chunk only." in full_plan.message
+    assert "Command:" in full_plan.message
 
 
 def test_dashboard_batch_command_explains_non_company_cik_gaps(
@@ -1284,6 +1290,14 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
     assert "scan_scope=mode=full_scan" in output.out
     assert "returned_tickers=1" in output.out
     assert "scope_note=The full scan covers every matching ranked row" in output.out
+    assert (
+        "review_full_scan_source_gap=catalyst-radar priced-in-queue "
+        "--full-scan --source-gap options --limit 50"
+    ) in output.out
+    assert (
+        "export_full_scan_source_gap=catalyst-radar priced-in-queue "
+        "--full-scan --source-gap options --all --json"
+    ) in output.out
 
     assert (
         main(
@@ -1349,7 +1363,13 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
     assert "full_scan=mode=full_scan" in output.out
     assert "examples_are_samples=true" in output.out
     assert "scope_note=The full scan covers" in output.out
+    assert "full_scan_review=catalyst-radar priced-in-queue --full-scan --limit 50" in output.out
+    assert (
+        "full_scan_export=catalyst-radar priced-in-queue --full-scan --all --json"
+        in output.out
+    )
     assert "coverage_first_batch=" in output.out
+    assert "scope=first_provider_chunk" in output.out
     assert "tickers=ACME" in output.out
     assert "calls=" in output.out
 
@@ -2183,6 +2203,7 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert "LAST RESPONSE" in frame
             assert "full-scan" in frame
+            assert "first provider chunk" in frame
             assert "provider calls" in frame
 
             app.query_one("#nav-help").focus()
