@@ -1,6 +1,77 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 13:55:54 +08:00
+Last updated: 2026-05-19 14:05:23 +08:00
+
+## Latest Local Candidate Packet / Decision Card Refresh
+
+Current local DB action:
+
+- After the manual-bar guidance fix was merged and the local services were
+  restarted, the priced-in answer still recommended local artifacts:
+
+  ```text
+  catalyst-radar build-packets --as-of 2026-05-15 --ticker A --ticker MSFT --ticker AAMI --ticker AAOI --ticker AAA --ticker AAAU --ticker AAPL --ticker AA --ticker AAL --ticker AAON --ticker AAP --ticker AAAC --min-state ResearchOnly
+  ```
+
+- That command was run from `main` and built:
+
+  ```text
+  built candidate_packets=12
+  ```
+
+- The follow-up decision-card command was then run for the remaining local
+  decision-card gaps:
+
+  ```text
+  catalyst-radar build-decision-cards --as-of 2026-05-15 --ticker A --ticker AAMI --ticker AAOI --ticker AAA --ticker AAAU --ticker AA --ticker AAL --ticker AAON --ticker AAP --ticker AAAC --min-state ResearchOnly
+  built decision_cards=10
+  ```
+
+Current live zero-call observation after local artifact generation:
+
+```text
+priced_in_answer status=decision_ready decision_ready=true investment_decision_ready=false total=12087 mismatches=12 research=0 blocked=7920 external_calls=0
+answer=Not fully priced for 10 decision-ready row(s); review the top evidence before any action.
+decision_readiness=status=ready actionable=12 decision_ready=10
+```
+
+`priced-in-queue --decision-ready --limit 20` now reports:
+
+```text
+count=10 total=10 external_calls=0
+source_coverage=market_bars 10/10; catalyst_events 9/9; local_text 10/10; options 0/10 (10 missing); theme_peer_sector 10/10; broker_context 5/10 (5 missing)
+```
+
+Dashboard snapshot:
+
+```text
+Page: overview | View: Full scan | Answer: decision ready ready=true | Trade status: research only | Trade safe: False | External calls made: 0
+Decision readiness: 10 not-priced-in row(s) are decision-ready.
+```
+
+Important interpretation:
+
+- MarketRadar can now answer the full-scan priced-in question for the current
+  stored scan at a research/decision-support level:
+  - 10 rows look not fully priced in and have local Decision Cards.
+  - The answer is still **not trade approval**.
+- Overall readiness remains `research_only` because:
+  - active-universe market-bar coverage is still partial (`12090/12613`);
+  - options are still missing for the 10 decision-ready rows;
+  - broker context is missing for 5 of those 10 rows;
+  - full source coverage remains incomplete outside the decision-ready subset.
+- Do not rerun packet/card generation unless a new scan, new as-of date, or
+  new evidence changes the candidate set.
+
+Next useful product action:
+
+- Improve the dashboard/CLI review path for the 10 decision-ready rows:
+  - make the Decision Card view easy to open from the TUI;
+  - separate "priced-in decision-ready" from "safe to trade";
+  - surface the remaining optional gaps (`options`, `broker_context`) in a
+    concise review checklist.
+- To move from research-ready to fuller coverage, fill the missing active
+  market bars through the manual template/import path.
 
 ## Latest Manual-Bar Guidance Alignment
 
@@ -52,12 +123,10 @@ Observed:
   `command=catalyst-radar market-bars template ...` for partial market-bar
   coverage.
 
-Next useful product action:
-
-- Build Candidate Packets for the 12 actionable mismatch rows, then check
-  whether Decision Cards or source coverage are the next real blocker.
-- Keep provider calls guarded: reviewing preflight/answer/queue remains
-  zero-call.
+Next useful product action from this older slice has been completed locally:
+Candidate Packets and Decision Cards were built for the current actionable
+mismatch rows. Keep provider calls guarded: reviewing preflight/answer/queue
+remains zero-call.
 
 ## Latest Non-Company Evidence Surface
 
