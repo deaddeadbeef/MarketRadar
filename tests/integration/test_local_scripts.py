@@ -242,6 +242,9 @@ def test_market_radar_status_script_is_zero_external_call_sitrep() -> None:
     assert "--missing-only" in text
     assert "Stock-like market bars:" in text
     assert "stock-like template command:" in text
+    assert "stock-like provider option:" in text
+    assert "stock-like provider boundary:" in text
+    assert "provider_call_command" in text
     assert "manual-stock-bars-" in text
     assert "--stocks-only" in text
     assert "catalyst-radar market-bars import" in text
