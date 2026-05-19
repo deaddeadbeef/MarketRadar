@@ -13,7 +13,7 @@ from apps.api.main import create_app
 from catalyst_radar.alerts.models import Alert, alert_id
 from catalyst_radar.api.routes import agents as agent_routes
 from catalyst_radar.api.routes import radar as radar_routes
-from catalyst_radar.core.models import ActionState, Security
+from catalyst_radar.core.models import ActionState, DailyBar, Security
 from catalyst_radar.dashboard import data as dashboard_data
 from catalyst_radar.jobs.scheduler import SchedulerRunResult
 from catalyst_radar.jobs.tasks import DailyRunResult, DailyRunSpec, JobStepResult
@@ -1842,6 +1842,104 @@ def test_post_radar_market_bars_template_and_import_use_database_universe(
     assert bars[0].date == date(2026, 5, 11)
 
 
+def test_post_radar_market_bars_template_and_import_can_scope_to_stocks(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "radar-stock-market-bars.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = _create_database(database_url)
+    MarketRepository(engine).upsert_securities(
+        [
+            Security(
+                ticker="AADR",
+                name="Alpha ADR",
+                exchange="NYSE",
+                sector="Financials",
+                industry="Banks",
+                market_cap=1_000_000_000,
+                avg_dollar_volume_20d=20_000_000,
+                has_options=True,
+                is_active=True,
+                updated_at=AVAILABLE_AT,
+                metadata={"type": "ADRC"},
+            ),
+            Security(
+                ticker="BSTK",
+                name="Beta Stock",
+                exchange="NASDAQ",
+                sector="Technology",
+                industry="Software",
+                market_cap=1_000_000_000,
+                avg_dollar_volume_20d=20_000_000,
+                has_options=True,
+                is_active=True,
+                updated_at=AVAILABLE_AT,
+                metadata={"type": "CS"},
+            ),
+            Security(
+                ticker="EETF",
+                name="Example ETF",
+                exchange="NYSE",
+                sector="ETF",
+                industry="ETF",
+                market_cap=1_000_000_000,
+                avg_dollar_volume_20d=20_000_000,
+                has_options=True,
+                is_active=True,
+                updated_at=AVAILABLE_AT,
+                metadata={"type": "ETF"},
+            ),
+        ]
+    )
+    MarketRepository(engine).upsert_daily_bars(
+        [_daily_bar("BSTK", date(2026, 5, 11))]
+    )
+    template_path = tmp_path / "api-stock-bars.csv"
+    bars_path = tmp_path / "api-filled-stock-bars.csv"
+    client = TestClient(create_app())
+
+    template_response = client.post(
+        "/api/radar/market-bars/template",
+        json={
+            "expected_as_of": "2026-05-11",
+            "output_path": str(template_path),
+            "missing_only": True,
+            "stocks_only": True,
+        },
+    )
+
+    assert template_response.status_code == 200
+    template_payload = template_response.json()
+    assert template_payload["status"] == "ready"
+    assert template_payload["row_count"] == 1
+    assert template_payload["stocks_only"] is True
+    assert template_payload["template_scope"] == "stock_like_missing_as_of_bars"
+    assert template_payload["active_security_count"] == 2
+    assert template_payload["existing_as_of_bar_count"] == 1
+    assert template_payload["missing_as_of_bar_count"] == 1
+    assert [row["ticker"] for row in _read_csv_rows(template_path)] == ["AADR"]
+
+    _write_manual_bar_csv(bars_path, ["AADR"], as_of="2026-05-11")
+    preview_response = client.post(
+        "/api/radar/market-bars/import",
+        json={
+            "daily_bars_path": str(bars_path),
+            "expected_as_of": "2026-05-11",
+            "stocks_only": True,
+        },
+    )
+
+    assert preview_response.status_code == 200
+    preview_payload = preview_response.json()
+    assert preview_payload["status"] == "ready"
+    assert preview_payload["stocks_only"] is True
+    assert preview_payload["coverage_scope"] == "stock_like"
+    assert preview_payload["coverage_after_import_count"] == 2
+    assert preview_payload["missing_expected_count"] == 0
+    assert preview_payload["external_calls_made"] == 0
+
+
 def test_post_radar_sec_submissions_batch_calls_capped_sec_executor(
     tmp_path,
     monkeypatch,
@@ -3097,6 +3195,23 @@ def _write_manual_bar_csv(path: Path, tickers: list[str], *, as_of: str) -> None
                     "available_at": stamp,
                 }
             )
+
+
+def _daily_bar(ticker: str, bar_date: date) -> DailyBar:
+    return DailyBar(
+        ticker=ticker,
+        date=bar_date,
+        open=100.0,
+        high=101.0,
+        low=99.0,
+        close=100.0,
+        volume=1_000_000,
+        vwap=100.0,
+        adjusted=True,
+        provider="manual_csv",
+        source_ts=datetime(2026, 5, 11, 21, tzinfo=UTC),
+        available_at=datetime(2026, 5, 11, 21, tzinfo=UTC),
+    )
 
 
 def _configure_fake_safe_llm(monkeypatch, database_url: str) -> None:

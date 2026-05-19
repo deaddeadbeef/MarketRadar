@@ -208,11 +208,21 @@ def build_parser() -> argparse.ArgumentParser:
     market_bars_template.add_argument("--out", type=Path, required=True)
     market_bars_template.add_argument("--provider", default="manual_csv")
     market_bars_template.add_argument("--missing-only", action="store_true")
+    market_bars_template.add_argument(
+        "--stocks-only",
+        action="store_true",
+        help="Restrict the template to stock-like active securities (common stock and ADR).",
+    )
     market_bars_template.add_argument("--json", action="store_true")
     market_bars_import = market_bars_sub.add_parser("import")
     market_bars_import.add_argument("--database-url")
     market_bars_import.add_argument("--daily-bars", type=Path, required=True)
     market_bars_import.add_argument("--expected-as-of", type=date.fromisoformat)
+    market_bars_import.add_argument(
+        "--stocks-only",
+        action="store_true",
+        help="Validate expected coverage against stock-like active securities only.",
+    )
     market_bars_import.add_argument("--execute", action="store_true")
     market_bars_import.add_argument("--json", action="store_true")
 
@@ -968,6 +978,7 @@ def main(argv: list[str] | None = None) -> int:
                     expected_as_of=args.expected_as_of,
                     provider=args.provider,
                     missing_only=args.missing_only,
+                    stocks_only=args.stocks_only,
                 )
                 payload = result.as_payload()
                 if args.json:
@@ -981,6 +992,7 @@ def main(argv: list[str] | None = None) -> int:
                     daily_bars_path=args.daily_bars,
                     expected_as_of=args.expected_as_of,
                     execute=args.execute,
+                    stocks_only=args.stocks_only,
                 )
                 payload = result.as_payload()
                 if args.json:
@@ -3605,7 +3617,8 @@ def _print_manual_market_bars_template(payload: Mapping[str, object]) -> None:
         f"active={payload.get('active_security_count')} "
         f"existing={payload.get('existing_as_of_bar_count')} "
         f"missing={payload.get('missing_as_of_bar_count')} "
-        f"missing_only={str(bool(payload.get('missing_only'))).lower()}"
+        f"missing_only={str(bool(payload.get('missing_only'))).lower()} "
+        f"stocks_only={str(bool(payload.get('stocks_only'))).lower()}"
     )
     if payload.get("row_order"):
         print(f"row_order={payload.get('row_order')}")
@@ -3632,7 +3645,8 @@ def _print_manual_market_bars_import(payload: Mapping[str, object]) -> None:
             f"bars_at_expected={payload.get('bars_at_expected_as_of')} "
             f"existing={payload.get('existing_as_of_bar_count')} "
             f"after_import={payload.get('coverage_after_import_count')} "
-            f"missing={payload.get('missing_expected_count')}"
+            f"missing={payload.get('missing_expected_count')} "
+            f"scope={payload.get('coverage_scope')}"
         )
     missing = payload.get("missing_expected_tickers")
     if isinstance(missing, list | tuple) and missing:

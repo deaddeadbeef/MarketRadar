@@ -1,6 +1,105 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 04:32:33 +08:00
+Last updated: 2026-05-20 04:49:32 +08:00
+
+## Latest Drift Check And Stocks-Only Market Bar Scope
+
+Goal alignment check:
+
+- The active goal remains: scan the market broadly enough to decide whether a
+  stock's price has already matched market expectations.
+- The current branch is still aligned with that goal. It is not dashboard
+  decoration. It removes a concrete full-scan blocker by letting the operator
+  repair missing daily bars for stock-like rows first.
+- The prior active-universe blocker was 523 missing as-of market bars. The
+  useful stock-first split is now visible:
+  - `5652` stock-like active securities;
+  - `5521` already have the 2026-05-15 as-of bar;
+  - `131` stock-like rows are missing and need manual bar values;
+  - `392` additional missing rows are non-stock instruments and should not
+    block the first stock-priced-in scan.
+- This keeps "useful" well defined: complete stock-like market-bar coverage
+  first, then continue catalyst/options/agent evidence coverage. Do not make
+  the user fill 523 mixed rows before the stock scan can progress.
+
+Fix in this slice:
+
+- `market-bars template` now accepts `--stocks-only`.
+- `market-bars import` now accepts `--stocks-only`.
+- The manual bar template/import payloads now report:
+  - `stocks_only`;
+  - `template_scope` such as `stock_like_missing_as_of_bars`;
+  - `coverage_scope` such as `stock_like`.
+- API parity was added through:
+  - `POST /api/radar/market-bars/template` with `stocks_only: true`;
+  - `POST /api/radar/market-bars/import` with `stocks_only: true`.
+- `scripts\market-radar-status.ps1` now prefers
+  `data\local\manual-stock-bars-<run-as-of>.csv` when present and previews it
+  with `--stocks-only`.
+- Status output now shows the stock-like coverage split and the exact
+  stock-like template/preview commands.
+- No Polygon/Massive, SEC, Schwab, OpenAI, broker/order, or database-write
+  execution was run while validating this branch.
+
+Live zero-write/zero-provider-call observations:
+
+```text
+manual_market_bars_template status=ready rows=131 scope=stock_like_missing_as_of_bars expected_as_of=2026-05-15 path=data\local\manual-stock-bars-2026-05-15.csv external_calls=0
+coverage=active=5652 existing=5521 missing=131 missing_only=true stocks_only=true
+import_command=catalyst-radar market-bars import --daily-bars data\local\manual-stock-bars-2026-05-15.csv --expected-as-of 2026-05-15 --stocks-only
+execute_command=catalyst-radar market-bars import --daily-bars data\local\manual-stock-bars-2026-05-15.csv --expected-as-of 2026-05-15 --stocks-only --execute
+```
+
+The generated stock-like template is intentionally blank, so preview exits
+nonzero with `status=invalid`, which is correct:
+
+```text
+manual_market_bars_import status=invalid rows=131 tickers=131 active=5652 latest_bar=2026-05-15 expected_as_of=2026-05-15 executed=false external_calls=0
+coverage=bars_at_expected=131 existing=5521 after_import=5652 missing=0 scope=stock_like
+invalid=rows=131 blank_required=786 invalid_numeric=0
+next_action=Fix blank or invalid required fields, then preview again before running --execute.
+```
+
+Status script live observation:
+
+```text
+Stock-like market bars: active=5652; with_as_of_bar=5521; missing=131; non_stock_missing=392
+- stock-like template command: catalyst-radar market-bars template --expected-as-of 2026-05-15 --out data\local\manual-stock-bars-2026-05-15.csv --missing-only --stocks-only
+- stock-like preview command: catalyst-radar market-bars import --daily-bars data\local\manual-stock-bars-2026-05-15.csv --expected-as-of 2026-05-15 --stocks-only
+- local template preview: status=invalid; rows=131; invalid_rows=131; blank_required=786; missing_after_import=0; external_calls=0
+External calls made: 0
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_provider_ingest_cli.py::test_market_bars_stocks_only_template_and_import_scope tests\integration\test_provider_ingest_cli.py::test_market_bars_missing_only_template_import_counts_existing_bars tests\integration\test_api_routes.py::test_post_radar_market_bars_template_and_import_can_scope_to_stocks tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_payload_consolidates_current_state tests\integration\test_local_scripts.py::test_market_radar_status_script_is_zero_external_call_sitrep -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\market\manual_bars.py src\catalyst_radar\cli.py src\catalyst_radar\api\routes\radar.py src\catalyst_radar\dashboard\data.py tests\integration\test_provider_ingest_cli.py tests\integration\test_api_routes.py tests\integration\test_local_scripts.py tests\integration\test_dashboard_data.py
+powershell -NoProfile -Command '$null = [scriptblock]::Create((Get-Content -Raw .\scripts\market-radar-status.ps1)); "powershell syntax ok"'
+git diff --check
+```
+
+Observed:
+
+- Focused tests passed (`5 passed`).
+- Ruff passed.
+- PowerShell status script parsed successfully.
+- `git diff --check` passed.
+
+Next useful product action:
+
+- Fill `data\local\manual-stock-bars-2026-05-15.csv` for the 131 stock-like
+  rows.
+- Preview without writing:
+
+  ```powershell
+  catalyst-radar market-bars import --daily-bars data\local\manual-stock-bars-2026-05-15.csv --expected-as-of 2026-05-15 --stocks-only
+  ```
+
+- Only after preview returns `status=ready`, run the same command with
+  `--execute` to write local stock-like daily bars.
+- Then rerun zero-call status and the priced-in audit before any SEC/Schwab
+  execution.
 
 ## Latest Status Preview For Local Manual Bars
 

@@ -240,9 +240,13 @@ def test_market_radar_status_script_is_zero_external_call_sitrep() -> None:
     assert "Generate the missing-bar template" in text
     assert "catalyst-radar market-bars template" in text
     assert "--missing-only" in text
+    assert "Stock-like market bars:" in text
+    assert "stock-like template command:" in text
+    assert "manual-stock-bars-" in text
+    assert "--stocks-only" in text
     assert "catalyst-radar market-bars import" in text
     assert "--expected-as-of" in text
-    assert "catalyst_radar.cli market-bars import" in text
+    assert "catalyst_radar.cli" in text
     assert "manual_market_bar_preview" in text
     assert "local template preview:" in text
     assert "local template invalid examples:" in text

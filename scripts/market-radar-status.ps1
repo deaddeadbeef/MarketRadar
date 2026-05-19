@@ -47,17 +47,35 @@ $readiness = Invoke-ApiJson -Path "/api/radar/readiness"
 $manualMarketBarPreview = $null
 if ($readiness.radar_run.as_of) {
     $runAsOf = [string]$readiness.radar_run.as_of
-    $manualBarsPath = "data\local\manual-bars-$runAsOf.csv"
+    $manualStockBarsPath = "data\local\manual-stock-bars-$runAsOf.csv"
+    $manualAllBarsPath = "data\local\manual-bars-$runAsOf.csv"
+    $manualBarsPath = $manualAllBarsPath
+    $manualBarsStocksOnly = $false
+    if (Test-Path -LiteralPath $manualStockBarsPath) {
+        $manualBarsPath = $manualStockBarsPath
+        $manualBarsStocksOnly = $true
+    }
     if (Test-Path -LiteralPath $manualBarsPath) {
         try {
             $pythonExe = ".\.venv\Scripts\python.exe"
             if (-not (Test-Path -LiteralPath $pythonExe)) {
                 $pythonExe = "py"
             }
-            $previewResponse = & $pythonExe -m catalyst_radar.cli market-bars import `
-                --daily-bars $manualBarsPath `
-                --expected-as-of $runAsOf `
-                --json 2>$null
+            $previewArgs = @(
+                "-m",
+                "catalyst_radar.cli",
+                "market-bars",
+                "import",
+                "--daily-bars",
+                $manualBarsPath,
+                "--expected-as-of",
+                $runAsOf,
+                "--json"
+            )
+            if ($manualBarsStocksOnly) {
+                $previewArgs += "--stocks-only"
+            }
+            $previewResponse = & $pythonExe @previewArgs 2>$null
             if ([string]::IsNullOrWhiteSpace(($previewResponse -join "`n"))) {
                 throw "manual market-bar preview returned no JSON"
             }
@@ -108,6 +126,7 @@ $usefulness = $readiness.market_radar_usefulness
 $stockScope = $pricedInStockAudit.scope
 $stockAnswer = $pricedInStockAudit.answer_shortlist
 $stockEvidence = $pricedInStockAudit.evidence_plan
+$stockBarScope = $pricedInStockAudit.market_bars.repair.stock_scope
 $stockCoverageStep = $null
 $stockCoverageBatchPlan = $null
 if ($null -ne $stockEvidence) {
@@ -297,6 +316,23 @@ if ($null -ne $freshness) {
         Write-Output ("- market freshness: {0}" -f $staleBarBlocker.next_action)
     }
     if ($readiness.radar_run.as_of) {
+        if ($null -ne $stockBarScope) {
+            Write-Output (
+                "Stock-like market bars: active={0}; with_as_of_bar={1}; missing={2}; non_stock_missing={3}" -f
+                $stockBarScope.stock_like_active,
+                $stockBarScope.stock_like_with_as_of_bar,
+                $stockBarScope.stock_like_missing_as_of_bar,
+                $stockBarScope.non_stock_missing_as_of_bar
+            )
+            Write-Output (
+                "- stock-like template command: catalyst-radar market-bars template --expected-as-of {0} --out data\local\manual-stock-bars-{0}.csv --missing-only --stocks-only" -f
+                $readiness.radar_run.as_of
+            )
+            Write-Output (
+                "- stock-like preview command: catalyst-radar market-bars import --daily-bars data\local\manual-stock-bars-{0}.csv --expected-as-of {0} --stocks-only" -f
+                $readiness.radar_run.as_of
+            )
+        }
         Write-Output (
             "- template command: catalyst-radar market-bars template --expected-as-of {0} --out data\local\manual-bars-{0}.csv --missing-only" -f
             $readiness.radar_run.as_of

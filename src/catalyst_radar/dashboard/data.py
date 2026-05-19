@@ -3283,6 +3283,8 @@ def _priced_in_audit_market_bars(
         for row in _sequence_value(preflight.get("rows"))
         if isinstance(row, Mapping)
     }
+    filters = _mapping_value(queue, "filters")
+    stocks_only = bool(filters.get("stocks_only"))
     market_row = _row_dict(rows_by_area.get("market_bars", {}))
     target_as_of = (
         _parse_date(latest_run.get("as_of"))
@@ -3300,6 +3302,7 @@ def _priced_in_audit_market_bars(
         missing_tickers=_sequence_value(
             freshness.get("missing_as_of_daily_bar_tickers")
         ),
+        stocks_only=stocks_only,
     )
     return {
         "status": market_row.get("status") or ("ready" if missing == 0 else "attention"),
@@ -3327,15 +3330,28 @@ def _priced_in_audit_market_bar_repair(
     target_as_of: date | None,
     market_row: Mapping[str, object],
     missing_tickers: Sequence[object],
+    stocks_only: bool,
 ) -> dict[str, object]:
     missing_sample = [
         str(ticker).strip().upper()
         for ticker in missing_tickers
         if str(ticker).strip()
     ]
-    template_command = _csv_market_template_command(target_as_of, missing_only=True)
-    import_preview_command = _csv_market_refresh_command(target_as_of, execute=False)
-    import_execute_command = _csv_market_refresh_command(target_as_of, execute=True)
+    template_command = _csv_market_template_command(
+        target_as_of,
+        missing_only=True,
+        stocks_only=stocks_only,
+    )
+    import_preview_command = _csv_market_refresh_command(
+        target_as_of,
+        execute=False,
+        stocks_only=stocks_only,
+    )
+    import_execute_command = _csv_market_refresh_command(
+        target_as_of,
+        execute=True,
+        stocks_only=stocks_only,
+    )
     diagnostic = _priced_in_market_bar_missing_diagnostic(
         engine,
         target_as_of=target_as_of,
@@ -3353,6 +3369,13 @@ def _priced_in_audit_market_bar_repair(
     status = "ready" if missing <= 0 else str(market_row.get("status") or "attention")
     if missing <= 0:
         next_action = "As-of market bars cover the active universe."
+    elif stocks_only:
+        next_action = (
+            "Generate the DB-backed stock-like missing-bar template, fill only "
+            "the missing common stock and ADR rows for the scan date, preview "
+            "the import, then execute the local DB import only when stock-like "
+            "coverage is complete."
+        )
     else:
         next_action = (
             "Generate the DB-backed missing-bar template, fill only the missing "
@@ -3366,6 +3389,8 @@ def _priced_in_audit_market_bar_repair(
         "active_securities": active,
         "with_as_of_bar": with_as_of_bar,
         "missing_as_of_bar": missing,
+        "stocks_only": stocks_only,
+        "coverage_scope": "stock_like" if stocks_only else "active_universe",
         "missing_as_of_bar_tickers": missing_sample,
         "missing_as_of_bar_ticker_sample": missing_sample[:12],
         "template_command": template_command,
@@ -12672,7 +12697,10 @@ def _priced_in_preflight_commands(
             f"--available-at <UTC-now> --name {config.universe_name} "
             f"--provider {provider}"
         ),
-        "market_bars_template": _csv_market_template_command(None, missing_only=True),
+        "market_bars_template": _csv_market_template_command(
+            None,
+            missing_only=True,
+        ),
         "market_bars_import_preview": _csv_market_refresh_command(
             None,
             execute=False,
@@ -15233,6 +15261,7 @@ def _csv_market_refresh_command(
     as_of_date: date | None,
     *,
     execute: bool = True,
+    stocks_only: bool = False,
 ) -> str:
     expected_value = (
         as_of_date.isoformat()
@@ -15240,9 +15269,10 @@ def _csv_market_refresh_command(
         else "<LATEST_TRADING_DATE>"
     )
     execute_flag = " --execute" if execute else ""
+    stocks_flag = " --stocks-only" if stocks_only else ""
     return (
         "catalyst-radar market-bars import --daily-bars <fresh-bars.csv>"
-        f" --expected-as-of {expected_value}{execute_flag}"
+        f" --expected-as-of {expected_value}{stocks_flag}{execute_flag}"
     )
 
 
@@ -15250,6 +15280,7 @@ def _csv_market_template_command(
     as_of_date: date | None,
     *,
     missing_only: bool = False,
+    stocks_only: bool = False,
 ) -> str:
     expected = (
         as_of_date.isoformat()
@@ -15257,10 +15288,12 @@ def _csv_market_template_command(
         else "<LATEST_TRADING_DATE>"
     )
     missing_flag = " --missing-only" if missing_only else ""
+    stocks_flag = " --stocks-only" if stocks_only else ""
+    filename_prefix = "manual-stock-bars" if stocks_only else "manual-bars"
     return (
         "catalyst-radar market-bars template "
-        f"--expected-as-of {expected} --out data\\local\\manual-bars-{expected}.csv"
-        f"{missing_flag}"
+        f"--expected-as-of {expected} --out data\\local\\{filename_prefix}-{expected}.csv"
+        f"{missing_flag}{stocks_flag}"
     )
 
 
