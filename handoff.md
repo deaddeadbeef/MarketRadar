@@ -1,6 +1,66 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 15:40:40 +08:00
+Last updated: 2026-05-19 15:50:27 +08:00
+
+## Latest Priced-in Answer Trust Gaps
+
+Current problem:
+
+- `priced-in-answer` could report `decision_ready=true` and show the
+  not-priced-in rows, but the payload suppressed `trust_blockers` when the
+  answer status was `decision_ready`.
+- That made the CLI/API answer easier to misread as "the whole full scan is
+  fully trusted" even when source coverage still had catalyst/text/options/
+  broker/bar gaps.
+
+Fix in this slice:
+
+- `priced_in_answer_payload` no longer hides trust gaps for decision-ready
+  answers.
+- The same answer can now say:
+  - `decision_ready=true` for the filtered not-priced-in answer; and
+  - `trust_blockers` for full-scan reliability gaps that still need attention.
+- No provider calls are added. This only changes the zero-call answer payload
+  and CLI rendering of fields that already existed.
+
+Current live zero-call observation:
+
+```text
+priced-in-answer
+priced_in_answer status=decision_ready decision_ready=true investment_decision_ready=false total=12087 ...
+answer=Not fully priced for 10 decision-ready row(s); review the top evidence before any action.
+source_coverage=market_bars 12087/12087; catalyst_events 9/5521 ...; options 0/12087 ...
+trust_blockers:
+- catalyst_events status=attention ... command=catalyst-radar priced-in-source-batches --source catalyst_events --all --json
+- local_text status=attention ...
+- options status=attention ...
+- broker_context status=attention ...
+- market_bars status=attention ...
+external_calls=0
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_answer_keeps_trust_gaps_when_decision_ready tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_answer_cli_outputs_current_scan_answer -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py tests\integration\test_dashboard_data.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-answer
+```
+
+Observed:
+
+- Focused two-test set passed (`2 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+- Live `priced-in-answer` reported `external_calls=0` and printed
+  `trust_blockers` while still showing the 10 decision-ready not-priced-in rows.
+
+Next useful product action:
+
+- Consider surfacing the same trust-gap distinction in the Streamlit
+  **Priced-in Full Scan** panel if users still confuse decision-ready rows with
+  full-scan trust completion.
 
 ## Latest Web Dashboard Full-Scan Panel
 
