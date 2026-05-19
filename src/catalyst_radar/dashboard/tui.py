@@ -1183,10 +1183,10 @@ class MarketRadarDashboardApp(App[int]):
 
     def _navigation_text(self) -> str:
         return (
-            "[bold #58a6ff]KEYS[/] 1 insights | 4 candidates | 5 alerts | 0 tutorial | "
-            "D ready | M full/mismatch | next/prev scan rows | Ctrl+N/P page\n"
-            "[bold #58a6ff]MOUSE[/] click sidebar or table rows | "
-            "Tab focus | Up/Down on sidebar | Enter open | Esc command | q quit\n"
+            "[bold #58a6ff]KEYS[/] 1 insights | 4 candidates | D ready | "
+            "M full/mismatch | next/prev rows | Ctrl+N/P page\n"
+            "[bold #58a6ff]MOUSE[/] click sidebar/table | Tab focus | "
+            "Up/Down on sidebar | Enter open | Esc command | q quit\n"
         )
 
     def _response_text(self) -> str:
@@ -1282,9 +1282,10 @@ class MarketRadarDashboardApp(App[int]):
                 [
                     (
                         f"[bold #7ee787]MARKET RADAR[/] // [b]{page_title}[/b]  "
-                        f"[dim]view {view_label} | answer {answer_status} "
+                        f"[dim]view {view_label} | Priced-in answer {answer_status} "
                         f"({answer_ready}) | "
-                        f"trade {readiness.get('status') or 'unknown'} | "
+                        f"Trade safe? {can_act} | "
+                        f"status {readiness.get('status') or 'unknown'} | "
                         f"{self.payload.get('external_calls_made', 0)} calls while viewing[/dim]"
                     ),
                     (
@@ -1295,7 +1296,7 @@ class MarketRadarDashboardApp(App[int]):
                         f"[dim]Build {(_nested(runtime, 'build', 'commit') or 'n/a')} | "
                         f"Ticker {controls.get('ticker') or 'all'}[/dim]"
                     ),
-                    f"[bold #58a6ff]Do next[/] {next_action or 'No operator action.'}",
+                    f"[bold #58a6ff]Do next[/] {_clip(next_action or 'No operator action.', 118)}",
                 ]
             )
         )
@@ -3395,6 +3396,20 @@ def _decision_readiness_summary(payload: Mapping[str, object]) -> str:
 
 
 def _overview_source_workflow_hint(payload: Mapping[str, object]) -> str:
+    preflight = _mapping(payload.get("priced_in_preflight"))
+    evidence_plan = _mapping(preflight.get("evidence_plan"))
+    evidence_steps = _rows(evidence_plan.get("steps"))
+    first_evidence_step = evidence_steps[0] if evidence_steps else {}
+    if (
+        str(first_evidence_step.get("area") or "") == "market_bars"
+        and str(first_evidence_step.get("status") or "") == "blocked"
+    ):
+        why = str(first_evidence_step.get("why") or "").strip()
+        command = str(first_evidence_step.get("command") or "").strip()
+        command_text = f" Command: {command}" if command else ""
+        why_text = f" {why}" if why else ""
+        return f"Fresh full scan blocked by market bars.{why_text}{command_text}"
+
     workflow = _mapping(payload.get("priced_in_source_workflow"))
     steps = _rows(workflow.get("steps"))
     coverage_step = steps[0] if steps else {}
@@ -3488,7 +3503,7 @@ def _overview_caption(payload: Mapping[str, object]) -> str:
     source_gap = _source_gap_filter_summary(queue)
     source_gap_text = f" Active source gap filter: {source_gap}." if source_gap else ""
     source_hint = _overview_source_workflow_hint(payload)
-    source_hint_text = f" Source coverage next: {source_hint} " if source_hint else ""
+    source_hint_text = f" Next data step: {source_hint} " if source_hint else ""
     if status_filter == "actionable":
         usefulness = _usefulness_counts_summary(queue)
         usefulness_text = f" Usefulness mix: {usefulness}." if usefulness else ""

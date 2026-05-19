@@ -1,6 +1,94 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 08:40:45 +08:00
+Last updated: 2026-05-19 09:10:58 +08:00
+
+## Latest Full-Scan Readiness Priority Fix
+
+User clarification:
+
+- They asked why the dashboard only showed a small ticker set and reiterated
+  that they want a full scan.
+- The answer is:
+
+  ```text
+  Visible dashboard rows:
+    A human-review page from the ranked scan. The current live smoke shows
+    rows 1-50 from 12,087 previous useful scan rows.
+
+  Fresh full-scan blocker:
+    The latest run as-of date still has 0/12,613 active-security daily bars,
+    so the fresh full-market scan cannot be trusted yet.
+
+  Provider chunks:
+    Small SEC/Schwab/source batches are execution chunks, not the scan universe.
+  ```
+
+Root cause fixed in this slice:
+
+- `priced-in-preflight` already pointed at the DB-backed full active-universe
+  market-bar template, but the top-level readiness/operator summaries still
+  selected downstream `Research loop` and `Decision Cards` blockers first.
+- That made the dashboard feel like the current page or source chunk was the
+  product's scope, instead of showing the root full-scan blocker.
+
+Fix in this slice:
+
+- `operator_work_queue_payload()` now promotes `stale_daily_bars` and
+  `incomplete_daily_bar_coverage` discovery blockers into a first-class
+  `Full scan market bars` operator row.
+- When that root blocker exists, downstream `Research loop` and
+  `Decision Cards` readiness rows are suppressed in the operator queue so the
+  first human action is the full-universe market-bar refresh.
+- `market_radar_usefulness_payload()` no longer marks the automatic market scan
+  as ready just because live providers are configured; it remains blocked until
+  full run-as-of market bars are present.
+- The overview caption now says `Next data step:` and, when applicable,
+  `Fresh full scan blocked by market bars...` with the DB-backed template
+  command.
+- The TUI hero and navigation lines were shortened so the price answer,
+  trade-safety state, keyboard help, and mouse help remain visible in
+  Windows-terminal-sized layouts.
+- `candidate_delta_payload()` now counts stale candidate context from the
+  database when the latest run produced no current-run candidate rows.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_operator_work_queue_prioritizes_full_scan_market_bar_root_cause tests\integration\test_dashboard_data.py::test_market_radar_usefulness_payload_blocks_live_scan_until_full_bars tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_tui_once_can_show_full_scan_mode -q
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_modern_dashboard_tui_supports_mouse_navigation tests\integration\test_dashboard_data.py::test_radar_readiness_candidate_delta_keeps_stale_context_without_current_rows -q
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-snapshot --page overview --json
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page overview
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-preflight
+```
+
+Observed:
+
+- Focused tests passed.
+- The broader dashboard data and demo TUI integration files passed.
+- Ruff passed.
+- `git diff --check` passed.
+- Live dashboard snapshot made 0 external calls and reported:
+
+  ```text
+  operator_area=Full scan market bars
+  full_scan_rows=12087
+  visible_page=50
+  external_calls=0
+  ```
+
+- Live TUI overview made 0 external calls and now says the current tickers are
+  only rows 1-50 from the previous 12,087-row full-market scan, while the next
+  data step is the fresh full-scan market-bar template for the 0/12,613
+  run-as-of coverage blocker.
+
+Next useful product slice:
+
+- Import complete 2026-05-18 daily bars for all 12,613 active securities, then
+  rerun plan-only preflight before any capped provider execution.
+- Keep source/broker chunks visibly labeled as chunks, not scan universe.
 
 ## Latest Priced-In Preflight Manual-Bar Guidance Fix
 

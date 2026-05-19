@@ -965,6 +965,62 @@ def test_market_radar_usefulness_payload_opens_decision_review_when_live_ready()
     assert "manual investment review" in str(payload["headline"])
 
 
+def test_market_radar_usefulness_payload_blocks_live_scan_until_full_bars() -> None:
+    config = AppConfig.from_env(
+        {
+            "CATALYST_DAILY_MARKET_PROVIDER": "polygon",
+            "CATALYST_DAILY_PROVIDER": "polygon",
+            "CATALYST_POLYGON_API_KEY": "fixture-key",
+            "CATALYST_DAILY_EVENT_PROVIDER": "sec",
+            "CATALYST_SEC_ENABLE_LIVE": "1",
+            "CATALYST_SEC_USER_AGENT": "MarketRadar/0.1 test@example.com",
+        }
+    )
+    payload = market_radar_usefulness_payload(
+        config,
+        radar_run_summary={
+            "steps": [
+                _run_step("daily_bar_ingest", "failed", reason="provider_403"),
+                _run_step(
+                    "feature_scan",
+                    "skipped",
+                    reason="blocked_by_failed_dependency:daily_bar_ingest",
+                ),
+            ],
+        },
+        discovery_snapshot={
+            "status": "blocked",
+            "source_modes": {"market": "live", "events": "live"},
+            "freshness": {"latest_bars_older_than_as_of": True},
+            "yield": {"candidate_packets": 0, "decision_cards": 0},
+            "blockers": [
+                {
+                    "code": "stale_daily_bars",
+                    "finding": "As-of coverage: 0/12613 active securities.",
+                    "next_action": (
+                        "Generate a DB-backed active-universe bar template with "
+                        "`catalyst-radar market-bars template --expected-as-of "
+                        "2026-05-18 --out data\\local\\manual-bars-2026-05-18.csv`."
+                    ),
+                }
+            ],
+        },
+        candidate_rows=[],
+        worker_status={"status": "idle"},
+    )
+
+    by_layer = {str(row["layer"]): row for row in payload["layers"]}
+    assert payload["status"] == "setup_blocked"
+    assert by_layer["Automatic market scan"]["status"] == "blocked"
+    assert "0/12613 active securities" in str(
+        by_layer["Automatic market scan"]["current"]
+    )
+    assert "catalyst-radar market-bars template" in str(
+        by_layer["Automatic market scan"]["next_action"]
+    )
+    assert "catalyst-radar market-bars template" in str(payload["next_action"])
+
+
 def test_radar_readiness_payload_summarizes_operator_decision_gate(
     tmp_path: Path,
 ) -> None:
@@ -2960,6 +3016,82 @@ def test_operator_work_queue_prioritizes_setup_blockers_and_candidate_context(
     assert payload["rows"][0]["priority"] == "must_fix"
     assert "local CSV/fixture bars" in str(payload["rows"][0]["item"])
     assert any(row.get("area") == "Candidate" for row in payload["rows"])
+
+
+def test_operator_work_queue_prioritizes_full_scan_market_bar_root_cause() -> None:
+    config = AppConfig(
+        daily_market_provider="polygon",
+        polygon_api_key="fixture-key",
+        daily_event_provider="sec",
+        sec_enable_live=True,
+        sec_user_agent="MarketRadar test@example.com",
+    )
+    full_scan_action = (
+        "Generate a DB-backed active-universe bar template with "
+        "`catalyst-radar market-bars template --expected-as-of 2026-05-18 "
+        "--out data\\local\\manual-bars-2026-05-18.csv`, fill every active "
+        "ticker, import it, then rerun the full-market scan."
+    )
+
+    payload = operator_work_queue_payload(
+        config,
+        radar_run_summary={
+            "steps": [
+                _run_step("daily_bar_ingest", "failed", reason="provider_403"),
+                _run_step(
+                    "feature_scan",
+                    "skipped",
+                    reason="blocked_by_failed_dependency:daily_bar_ingest",
+                ),
+                _run_step(
+                    "candidate_packets",
+                    "skipped",
+                    reason="blocked_by_failed_dependency:feature_scan",
+                ),
+                _run_step(
+                    "decision_cards",
+                    "skipped",
+                    reason="blocked_by_failed_dependency:candidate_packets",
+                ),
+            ],
+        },
+        discovery_snapshot={
+            "status": "blocked",
+            "source_modes": {"market": "live", "events": "live"},
+            "freshness": {"latest_bars_older_than_as_of": True},
+            "yield": {"candidate_packets": 0, "decision_cards": 0},
+            "blockers": [
+                {
+                    "code": "stale_daily_bars",
+                    "finding": (
+                        "Latest daily bars are 2026-05-15, older than run as-of. "
+                        "As-of coverage: 0/12613 active securities."
+                    ),
+                    "next_action": full_scan_action,
+                },
+                {
+                    "code": "blocked_run_steps",
+                    "finding": "9 required run step(s) need attention.",
+                    "next_action": "Open the run-step action table.",
+                },
+                {
+                    "code": "no_candidate_packets",
+                    "finding": "No candidate packets were produced.",
+                    "next_action": "Treat scores as incomplete.",
+                },
+            ],
+        },
+        candidate_rows=[],
+    )
+
+    top = payload["rows"][0]
+    assert top["area"] == "Full scan market bars"
+    assert top["priority"] == "must_fix"
+    assert top["source"] == "discovery_snapshot"
+    assert "0/12613 active securities" in str(top["item"])
+    assert "catalyst-radar market-bars template" in str(payload["next_action"])
+    assert "Research loop" not in [str(row["area"]) for row in payload["rows"]]
+    assert "Decision Cards" not in [str(row["area"]) for row in payload["rows"]]
 
 
 def test_data_source_coverage_payload_marks_fixture_and_read_only_modes() -> None:
