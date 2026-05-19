@@ -25,6 +25,10 @@ from catalyst_radar.jobs.scheduler import (
     scheduler_run_payload,
 )
 from catalyst_radar.jobs.step_outcomes import classify_step_outcome
+from catalyst_radar.market.manual_bars import (
+    import_manual_market_bars,
+    write_manual_market_bars_template,
+)
 from catalyst_radar.ops.telemetry import record_telemetry_event
 from catalyst_radar.security.access import Role, require_role
 from catalyst_radar.security.licenses import (
@@ -108,6 +112,22 @@ class TextFeaturesBatchRequest(BaseModel):
     as_of: Date
     available_at: datetime | None = None
     tickers: list[str] = Field(default_factory=list)
+
+
+class MarketBarsTemplateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_as_of: Date
+    output_path: str
+    provider: str = "manual_csv"
+
+
+class MarketBarsImportRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    daily_bars_path: str
+    expected_as_of: Date | None = None
+    execute: bool = False
 
 
 class SourceBatchExecuteRequest(BaseModel):
@@ -510,6 +530,44 @@ def radar_priced_in_source_batch_execute_next(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return redact_restricted_external_payload(payload)
+
+
+@router.post(
+    "/market-bars/template",
+    dependencies=[Depends(require_role(Role.ANALYST))],
+)
+def radar_market_bars_template(
+    request: MarketBarsTemplateRequest,
+) -> dict[str, object]:
+    try:
+        result = write_manual_market_bars_template(
+            _engine(),
+            output_path=request.output_path,
+            expected_as_of=request.expected_as_of,
+            provider=request.provider,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return redact_restricted_external_payload(result.as_payload())
+
+
+@router.post(
+    "/market-bars/import",
+    dependencies=[Depends(require_role(Role.ANALYST))],
+)
+def radar_market_bars_import(
+    request: MarketBarsImportRequest,
+) -> dict[str, object]:
+    try:
+        result = import_manual_market_bars(
+            _engine(),
+            daily_bars_path=request.daily_bars_path,
+            expected_as_of=request.expected_as_of,
+            execute=request.execute,
+        )
+    except (FileNotFoundError, KeyError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return redact_restricted_external_payload(result.as_payload())
 
 
 @router.post(

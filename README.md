@@ -350,20 +350,22 @@ See `docs/dashboard-feature-inventory.md` for the current dashboard feature
 inventory and TUI coverage.
 
 If the sitrep reports stale CSV market bars, import a manually prepared daily
-bar CSV with the same schema as `data/sample/daily_bars.csv`:
+bar CSV with the same schema as `data/sample/daily_bars.csv`. Generate the
+template from the current database universe, not from `data/sample/securities.csv`:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/refresh-csv-market-data.ps1 -TemplateOut data/local/manual-bars-2026-05-16.csv -ExpectedAsOf 2026-05-16
-powershell -ExecutionPolicy Bypass -File scripts/refresh-csv-market-data.ps1 -DailyBars <fresh-bars.csv> -ExpectedAsOf 2026-05-16
-powershell -ExecutionPolicy Bypass -File scripts/refresh-csv-market-data.ps1 -DailyBars <fresh-bars.csv> -ExpectedAsOf 2026-05-16 -Execute
+catalyst-radar market-bars template --expected-as-of 2026-05-16 --out data/local/manual-bars-2026-05-16.csv
+catalyst-radar market-bars import --daily-bars <fresh-bars.csv> --expected-as-of 2026-05-16
+catalyst-radar market-bars import --daily-bars <fresh-bars.csv> --expected-as-of 2026-05-16 --execute
 ```
 
-The template command writes a local ignored CSV scaffold for active tickers.
+The template command writes a local ignored CSV scaffold for every active ticker
+in the live database.
 Fill `open`, `high`, `low`, `close`, `volume`, and `vwap`, then preview with
 the second command. Preview reports all missing or invalid bar fields it finds
-and validates active-ticker coverage before any import. The `-Execute` command
-wraps the existing local `ingest-csv` path, records provider health, and makes
-0 Polygon, SEC, Schwab, or OpenAI calls. After importing, rerun
+and validates active-ticker coverage before any import. The `--execute` command
+writes the bars to the local database and makes 0 Polygon, SEC, Schwab, or
+OpenAI calls. After importing, rerun
 `scripts/market-radar-status.ps1`, then use the plan-only smoke before any
 capped live radar cycle.
 

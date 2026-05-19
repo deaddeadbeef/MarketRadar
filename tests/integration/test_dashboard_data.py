@@ -656,11 +656,15 @@ def test_investment_readiness_payload_blocks_fixture_candidates() -> None:
                     "code": "fixture_market_data",
                     "finding": "Market data is still local CSV/fixture-backed.",
                     "next_action": (
-                        "Use SEC-only results for research only; import fresh CSV bars "
-                        "with `powershell -ExecutionPolicy Bypass -File "
-                        "scripts\\refresh-csv-market-data.ps1 -DailyBars "
-                        "<fresh-bars.csv> -Execute` or configure a live market provider "
-                        "before relying on broad discovery."
+                        "Use SEC-only results for research only; generate a "
+                        "DB-backed active-universe bar template with "
+                        "`catalyst-radar market-bars template --expected-as-of "
+                        "<LATEST_TRADING_DATE> --out "
+                        "data\\local\\manual-bars-<LATEST_TRADING_DATE>.csv`, "
+                        "then import filled bars with `catalyst-radar market-bars "
+                        "import --daily-bars <fresh-bars.csv> --execute` or "
+                        "configure a live market provider before relying on broad "
+                        "discovery."
                     ),
                 }
             ],
@@ -681,8 +685,8 @@ def test_investment_readiness_payload_blocks_fixture_candidates() -> None:
     assert "research-only" in str(readiness["headline"])
     assert "fixture_market_data" in str(readiness["evidence"])
     assert "Use SEC-only results for research only" in str(readiness["next_action"])
-    assert "scripts\\refresh-csv-market-data.ps1" in str(readiness["next_action"])
-    assert "-DailyBars <fresh-bars.csv>" in str(readiness["next_action"])
+    assert "catalyst-radar market-bars template" in str(readiness["next_action"])
+    assert "catalyst-radar market-bars import" in str(readiness["next_action"])
 
 
 def test_investment_readiness_payload_allows_live_buy_review() -> None:
@@ -745,11 +749,14 @@ def test_investment_readiness_payload_blocks_partial_latest_bar_coverage() -> No
                         "daily-bar date 2026-05-16."
                     ),
                     "next_action": (
-                        "Use SEC-only results for research only; import fresh CSV bars "
-                        "with `powershell -ExecutionPolicy Bypass -File "
-                        "scripts\\refresh-csv-market-data.ps1 -DailyBars "
-                        "<fresh-bars.csv> -ExpectedAsOf 2026-05-16 -Execute` "
-                        "or configure a live market provider before acting."
+                        "Use SEC-only results for research only; generate a "
+                        "DB-backed active-universe bar template with "
+                        "`catalyst-radar market-bars template --expected-as-of "
+                        "2026-05-16 --out data\\local\\manual-bars-2026-05-16.csv`, "
+                        "then import filled bars with `catalyst-radar market-bars "
+                        "import --daily-bars <fresh-bars.csv> --expected-as-of "
+                        "2026-05-16 --execute` or configure a live market "
+                        "provider before acting."
                     ),
                 }
             ],
@@ -769,8 +776,8 @@ def test_investment_readiness_payload_blocks_partial_latest_bar_coverage() -> No
     assert readiness["manual_buy_review_ready"] is False
     assert "research-only" in str(readiness["headline"])
     assert "incomplete_daily_bar_coverage" in str(readiness["evidence"])
-    assert "scripts\\refresh-csv-market-data.ps1" in str(readiness["next_action"])
-    assert "-ExpectedAsOf 2026-05-16" in str(readiness["next_action"])
+    assert "catalyst-radar market-bars template" in str(readiness["next_action"])
+    assert "--expected-as-of 2026-05-16" in str(readiness["next_action"])
 
 
 def test_investment_readiness_payload_requires_buy_review_card() -> None:
@@ -1045,7 +1052,7 @@ def test_radar_readiness_payload_summarizes_operator_decision_gate(
     assert "Use SEC-only results for research only" in str(
         payload["candidate_decision_labels"][0]["readiness_gate"]
     )
-    assert "scripts\\refresh-csv-market-data.ps1" in str(
+    assert "catalyst-radar market-bars template" in str(
         payload["candidate_decision_labels"][0]["readiness_gate"]
     )
     assert payload["candidate_decision_labels"][0]["audit"]["provider_license_policy"][
@@ -4745,7 +4752,7 @@ def test_readiness_checklist_payload_separates_blockers_from_expected_gates() ->
     assert "SEC-only results for research only" in str(
         by_area["Live market scan"]["next_action"]
     )
-    assert "scripts\\refresh-csv-market-data.ps1" in str(
+    assert "catalyst-radar market-bars template" in str(
         by_area["Live market scan"]["next_action"]
     )
     assert by_area["Catalyst feed"]["status"] == "blocked"
@@ -6061,7 +6068,7 @@ def test_radar_discovery_snapshot_labels_fixture_thin_run(
         row for row in snapshot["blockers"] if row["code"] == "fixture_market_data"
     )
     assert "SEC-only results for research only" in str(fixture_market["next_action"])
-    assert "scripts\\refresh-csv-market-data.ps1" in str(fixture_market["next_action"])
+    assert "catalyst-radar market-bars template" in str(fixture_market["next_action"])
     assert snapshot["freshness"]["latest_bars_older_than_as_of"] is False
     assert snapshot["top_discoveries"][0]["ticker"] == "MSFT"
     assert snapshot["top_discoveries"][0]["packet"] == "packet-msft-latest"
@@ -6339,8 +6346,8 @@ def test_radar_discovery_snapshot_flags_stale_bars_and_empty_packets(
     stale_bars = next(row for row in snapshot["blockers"] if row["code"] == "stale_daily_bars")
     assert "As-of coverage: 0/2 active securities" in str(stale_bars["finding"])
     assert "Missing: AAPL, MSFT" in str(stale_bars["finding"])
-    assert "scripts\\refresh-csv-market-data.ps1" in str(stale_bars["next_action"])
-    assert "-ExpectedAsOf 2026-05-10" in str(stale_bars["next_action"])
+    assert "catalyst-radar market-bars template" in str(stale_bars["next_action"])
+    assert "--expected-as-of 2026-05-10" in str(stale_bars["next_action"])
 
 
 def test_radar_discovery_snapshot_flags_incomplete_latest_bar_coverage(
@@ -6427,8 +6434,8 @@ def test_radar_discovery_snapshot_flags_incomplete_latest_bar_coverage(
     )
     assert "498 of 500 active securities" in str(coverage["finding"])
     assert "Missing: AAPL, MSFT" in str(coverage["finding"])
-    assert "scripts\\refresh-csv-market-data.ps1" in str(coverage["next_action"])
-    assert "-ExpectedAsOf 2026-05-10" in str(coverage["next_action"])
+    assert "catalyst-radar market-bars template" in str(coverage["next_action"])
+    assert "--expected-as-of 2026-05-10" in str(coverage["next_action"])
 
 
 def test_radar_discovery_snapshot_exposes_stale_candidate_context(

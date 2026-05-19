@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import csv
 from datetime import UTC, date, datetime
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 from sqlalchemy import func, insert, select
@@ -10,13 +12,15 @@ from apps.api.main import create_app
 from catalyst_radar.alerts.models import Alert, alert_id
 from catalyst_radar.api.routes import agents as agent_routes
 from catalyst_radar.api.routes import radar as radar_routes
-from catalyst_radar.core.models import ActionState
+from catalyst_radar.core.models import ActionState, Security
 from catalyst_radar.dashboard import data as dashboard_data
 from catalyst_radar.jobs.scheduler import SchedulerRunResult
 from catalyst_radar.jobs.tasks import DailyRunResult, DailyRunSpec, JobStepResult
+from catalyst_radar.market.manual_bars import MANUAL_BAR_COLUMNS
 from catalyst_radar.security.audit import AuditLogRepository
 from catalyst_radar.storage.alert_repositories import AlertRepository
 from catalyst_radar.storage.db import create_schema, engine_from_url
+from catalyst_radar.storage.repositories import MarketRepository
 from catalyst_radar.storage.schema import (
     alerts,
     audit_events,
@@ -1621,6 +1625,75 @@ def test_post_radar_priced_in_source_batch_execute_next_runs_one_chunk(
     assert captured["min_gap"] == 12.0
 
 
+def test_post_radar_market_bars_template_and_import_use_database_universe(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "radar-market-bars.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = _create_database(database_url)
+    _insert_active_securities(engine, ["AAA", "BBB", "ZZZ"])
+    template_path = tmp_path / "api-manual-bars.csv"
+    bars_path = tmp_path / "api-filled-bars.csv"
+    client = TestClient(create_app())
+
+    template_response = client.post(
+        "/api/radar/market-bars/template",
+        json={
+            "expected_as_of": "2026-05-11",
+            "output_path": str(template_path),
+        },
+    )
+
+    assert template_response.status_code == 200
+    template_payload = template_response.json()
+    assert template_payload["schema_version"] == "manual-market-bars-template-v1"
+    assert template_payload["status"] == "ready"
+    assert template_payload["row_count"] == 3
+    assert template_payload["external_calls_made"] == 0
+    assert [row["ticker"] for row in _read_csv_rows(template_path)] == [
+        "AAA",
+        "BBB",
+        "ZZZ",
+    ]
+
+    _write_manual_bar_csv(bars_path, ["AAA", "BBB", "ZZZ"], as_of="2026-05-11")
+    preview_response = client.post(
+        "/api/radar/market-bars/import",
+        json={
+            "daily_bars_path": str(bars_path),
+            "expected_as_of": "2026-05-11",
+        },
+    )
+
+    assert preview_response.status_code == 200
+    preview_payload = preview_response.json()
+    assert preview_payload["status"] == "ready"
+    assert preview_payload["executed"] is False
+    assert preview_payload["external_calls_made"] == 0
+
+    execute_response = client.post(
+        "/api/radar/market-bars/import",
+        json={
+            "daily_bars_path": str(bars_path),
+            "expected_as_of": "2026-05-11",
+            "execute": True,
+        },
+    )
+
+    assert execute_response.status_code == 200
+    execute_payload = execute_response.json()
+    assert execute_payload["status"] == "imported"
+    assert execute_payload["executed"] is True
+    bars = MarketRepository(engine).daily_bars(
+        "BBB",
+        end=date(2026, 5, 11),
+        lookback=1,
+    )
+    assert len(bars) == 1
+    assert bars[0].date == date(2026, 5, 11)
+
+
 def test_post_radar_sec_submissions_batch_calls_capped_sec_executor(
     tmp_path,
     monkeypatch,
@@ -2597,6 +2670,55 @@ def _create_database(database_url: str):
     engine = engine_from_url(database_url)
     create_schema(engine)
     return engine
+
+
+def _insert_active_securities(engine, tickers: list[str]) -> None:
+    MarketRepository(engine).upsert_securities(
+        [
+            Security(
+                ticker=ticker,
+                name=f"{ticker} Inc.",
+                exchange="NASDAQ",
+                sector="Technology",
+                industry="Software",
+                market_cap=1_000_000_000,
+                avg_dollar_volume_20d=20_000_000,
+                has_options=True,
+                is_active=True,
+                updated_at=AVAILABLE_AT,
+            )
+            for ticker in tickers
+        ]
+    )
+
+
+def _read_csv_rows(path: Path) -> list[dict[str, str]]:
+    with path.open(encoding="utf-8", newline="") as handle:
+        return list(csv.DictReader(handle))
+
+
+def _write_manual_bar_csv(path: Path, tickers: list[str], *, as_of: str) -> None:
+    stamp = datetime(2026, 5, 11, 21, tzinfo=UTC).isoformat()
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=MANUAL_BAR_COLUMNS)
+        writer.writeheader()
+        for index, ticker in enumerate(tickers):
+            writer.writerow(
+                {
+                    "ticker": ticker,
+                    "date": as_of,
+                    "open": "100",
+                    "high": "101",
+                    "low": "99",
+                    "close": f"{100 + (index / 100):.2f}",
+                    "volume": "1000000",
+                    "vwap": "100",
+                    "adjusted": "true",
+                    "provider": "manual_csv",
+                    "source_ts": stamp,
+                    "available_at": stamp,
+                }
+            )
 
 
 def _configure_fake_safe_llm(monkeypatch, database_url: str) -> None:

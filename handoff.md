@@ -1,6 +1,94 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 07:59:39 +08:00
+Last updated: 2026-05-19 08:28:23 +08:00
+
+## Latest DB-Backed Manual Market Bar Full-Scan Fix
+
+User clarification:
+
+- They asked again why only a small ticker list was visible and said they want
+  a full scan.
+- The product now has three deliberately different ticker scopes:
+
+  ```text
+  Full scan rows:
+    Human-review pages from the ranked scan. Live smoke currently shows 12,087
+    previous useful scan rows from 2026-05-15 because the 2026-05-18 run failed
+    before producing priced-in rows.
+
+  Active market-bar universe:
+    Every active security in the database that needs a fresh daily bar before a
+    fresh full-market run can be trusted. Live smoke currently generated a
+    12,613-row manual bar template for 2026-05-18.
+
+  Source-fill chunks:
+    Small provider-safe batches used to fill SEC/options/text/broker context.
+    These chunks are not the scan universe.
+  ```
+
+Root cause fixed in this slice:
+
+- The previous manual CSV helper still defaulted to
+  `data/sample/securities.csv`. That was too easy to confuse with the actual
+  full active database universe.
+- Added first-class DB-backed manual market-bar operations:
+
+  ```powershell
+  catalyst-radar market-bars template --expected-as-of 2026-05-18 --out data\local\manual-bars-2026-05-18.csv
+  catalyst-radar market-bars import --daily-bars <fresh-bars.csv> --expected-as-of 2026-05-18
+  catalyst-radar market-bars import --daily-bars <fresh-bars.csv> --expected-as-of 2026-05-18 --execute
+  ```
+
+- `market-bars template` reads `MarketRepository.list_active_securities()`,
+  writes one row per active DB ticker, and makes 0 external calls.
+- `market-bars import` previews first, validates that every active ticker has a
+  bar on `--expected-as-of`, refuses incomplete/stale imports, rejects invalid
+  numeric OHLCV values, and only writes when `--execute` is present.
+- Added API equivalents:
+
+  ```text
+  POST /api/radar/market-bars/template
+  POST /api/radar/market-bars/import
+  ```
+
+- Dashboard/status/readme copy now points to the DB-backed CLI path instead of
+  the legacy sample-securities wrapper.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_provider_ingest_cli.py::test_market_bars_template_uses_database_active_universe tests\integration\test_provider_ingest_cli.py::test_market_bars_import_requires_expected_full_active_coverage tests\integration\test_provider_ingest_cli.py::test_market_bars_import_executes_without_securities_csv tests\integration\test_api_routes.py::test_post_radar_market_bars_template_and_import_use_database_universe -q
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_provider_ingest_cli.py::test_market_bars_import_rejects_blank_numeric_fields tests\integration\test_provider_ingest_cli.py::test_market_bars_import_executes_without_securities_csv -q
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_investment_readiness_payload_blocks_fixture_candidates tests\integration\test_dashboard_data.py::test_investment_readiness_payload_blocks_partial_latest_bar_coverage tests\integration\test_dashboard_data.py::test_radar_readiness_payload_summarizes_operator_decision_gate tests\integration\test_dashboard_data.py::test_readiness_checklist_payload_separates_blockers_from_expected_gates tests\integration\test_dashboard_data.py::test_radar_discovery_snapshot_labels_fixture_thin_run tests\integration\test_dashboard_data.py::test_radar_discovery_snapshot_flags_stale_bars_and_empty_packets tests\integration\test_dashboard_data.py::test_radar_discovery_snapshot_flags_incomplete_latest_bar_coverage tests\integration\test_local_scripts.py::test_readme_mentions_restart_script_for_local_dashboard tests\integration\test_local_scripts.py::test_market_radar_status_script_is_zero_external_call_sitrep -q
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_provider_ingest_cli.py tests\integration\test_local_scripts.py -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\market\manual_bars.py src\catalyst_radar\cli.py src\catalyst_radar\api\routes\radar.py src\catalyst_radar\dashboard\data.py tests\integration\test_provider_ingest_cli.py tests\integration\test_api_routes.py tests\integration\test_dashboard_data.py tests\integration\test_local_scripts.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-queue --full-scan --limit 3
+.\.venv\Scripts\python.exe -m catalyst_radar.cli market-bars template --expected-as-of 2026-05-18 --out $env:TEMP\market-radar-manual-bars-smoke.csv
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page overview
+```
+
+Observed:
+
+- Focused tests passed.
+- Ruff passed.
+- `git diff --check` passed.
+- `priced-in-queue --full-scan --limit 3` made 0 external calls and showed
+  `status=previous_scan`, `total=12087`, with
+  `scan_selection=mode=previous_useful_scan`.
+- DB-backed live template smoke made 0 external calls and wrote 12,613 data rows
+  plus the CSV header for `expected_as_of=2026-05-18`.
+- Dashboard overview made 0 external calls and showed the previous full-market
+  priced-in scan page, with clear wording that the visible tickers are a page
+  from the full scan, not a watchlist.
+
+Next useful product slice:
+
+- The fresh full-market scan is still blocked until fresh 2026-05-18 bars are
+  provided for all 12,613 active DB securities or a live market provider is
+  available.
+- After importing complete fresh bars, run the plan-only smoke before any capped
+  scheduler execution.
 
 ## Latest Full-Scan Fallback And Run-Guard Fix
 

@@ -35,7 +35,8 @@ def test_readme_mentions_restart_script_for_local_dashboard() -> None:
     assert "catalyst-radar dashboard-tui" in readme
     assert "catalyst-radar dashboard-snapshot --json" in readme
     assert "docs/dashboard-feature-inventory.md" in readme
-    assert "scripts/refresh-csv-market-data.ps1" in readme
+    assert "catalyst-radar market-bars template" in readme
+    assert "catalyst-radar market-bars import" in readme
     assert "scripts/export-telemetry.ps1" in readme
     assert "scripts/export-operator-evidence.ps1" in readme
     assert "scripts/export-pr-ledger.ps1" in readme
@@ -200,8 +201,9 @@ def test_market_radar_status_script_is_zero_external_call_sitrep() -> None:
     assert "latest-bar coverage:" in text
     assert "missing latest-bar tickers:" in text
     assert "Generate the manual bar template" in text
-    assert "scripts\\refresh-csv-market-data.ps1" in text
-    assert "-ExpectedAsOf" in text
+    assert "catalyst-radar market-bars template" in text
+    assert "catalyst-radar market-bars import" in text
+    assert "--expected-as-of" in text
     assert "Portfolio context:" in text
     assert "Broker:" in text
     assert "access_token_active=" in text
