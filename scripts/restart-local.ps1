@@ -12,6 +12,8 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoRoot = Split-Path -Parent $ScriptDir
 $StateDir = Join-Path $RepoRoot ".state\processes"
 $PythonPath = Join-Path $RepoRoot "src"
+$VenvPython = Join-Path $RepoRoot ".venv\Scripts\python.exe"
+$PythonExe = if (Test-Path $VenvPython) { $VenvPython } else { "python" }
 $ApiOut = Join-Path $StateDir "api.out.log"
 $ApiErr = Join-Path $StateDir "api.err.log"
 $DashboardOut = Join-Path $StateDir "dashboard.out.log"
@@ -51,7 +53,7 @@ $dashboardArgs = @(
     "--server.address", $DashboardHost
 )
 
-$apiProcess = Start-Process -FilePath "python" `
+$apiProcess = Start-Process -FilePath $PythonExe `
     -ArgumentList $apiArgs `
     -WorkingDirectory $RepoRoot `
     -WindowStyle Hidden `
@@ -59,7 +61,7 @@ $apiProcess = Start-Process -FilePath "python" `
     -RedirectStandardError $ApiErr `
     -PassThru
 
-$dashboardProcess = Start-Process -FilePath "python" `
+$dashboardProcess = Start-Process -FilePath $PythonExe `
     -ArgumentList $dashboardArgs `
     -WorkingDirectory $RepoRoot `
     -WindowStyle Hidden `
@@ -98,6 +100,7 @@ if (-not $SkipHealthCheck) {
 [PSCustomObject]@{
     ApiPid = $apiProcess.Id
     DashboardPid = $dashboardProcess.Id
+    Python = $PythonExe
     ApiUrl = "https://$ApiHost`:$ApiPort"
     DashboardUrl = "http://$DashboardHost`:$DashboardPort"
     ApiLog = $ApiErr

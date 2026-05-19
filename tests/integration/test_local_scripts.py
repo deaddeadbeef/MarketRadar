@@ -14,6 +14,9 @@ def test_restart_local_script_restarts_only_market_radar_processes() -> None:
     assert "data\\local\\schwab-localhost-key.pem" in text
     assert "data\\local\\schwab-localhost-cert.pem" in text
     assert "PYTHONPATH" in text
+    assert ".venv\\Scripts\\python.exe" in text
+    assert "$PythonExe = if (Test-Path $VenvPython)" in text
+    assert "Start-Process -FilePath $PythonExe" in text
     assert "-Environment" not in text
     assert "curl.exe" in text
     assert "--insecure" in text
