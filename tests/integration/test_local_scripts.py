@@ -212,6 +212,8 @@ def test_market_radar_status_script_is_zero_external_call_sitrep() -> None:
     assert "sample_blocked_tickers" in text
     assert "stock CIK template:" in text
     assert "manual_template_command" in text
+    assert "stock CIK validate:" in text
+    assert "manual_validate_command" in text
     assert "stock CIK import:" in text
     assert "manual_fix_command" in text
     assert "stock CIK refresh:" in text

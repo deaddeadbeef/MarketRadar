@@ -1,6 +1,72 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 03:21:26 +08:00
+Last updated: 2026-05-20 03:36:44 +08:00
+
+## Latest CIK Override Validation Gate
+
+Goal alignment check:
+
+- The full-market priced-in goal is currently blocked first by
+  `catalyst_events` coverage. The current stock scan has `5510` SEC-eligible
+  rows, `2` missing-CIK blockers (`FRBA`, `SSBI`), and a next SEC chunk that
+  would cost `5` calls if explicitly approved.
+- The prior slices exposed the blocker and repair commands. This slice adds a
+  zero-call, no-write validation gate before manual CIK import, so a filled
+  override CSV can be checked before it changes local security metadata.
+- This is useful because bad or blank CIK rows would leave the full-scan SEC
+  catalyst blocker unresolved while appearing operationally "handled."
+
+Fix in this slice:
+
+- Added `validate_sec_cik_overrides` and `validate_sec_cik_overrides_csv`.
+- Added CLI validation:
+
+  ```powershell
+  catalyst-radar ingest-sec cik-overrides --csv <cik-overrides.csv> --validate-only
+  ```
+
+- Added API validation:
+
+  ```text
+  POST /api/radar/sec/cik-overrides/validate
+  {"overrides":[{"ticker":"FRBA","cik":"...","sec_company_name":"..."}]}
+  ```
+
+- Validation reports status, requested rows, syntactically valid rows, update
+  candidates, already-current rows, unmatched active securities, invalid rows,
+  duplicate tickers, examples, import command, next action, and
+  `external_calls_made=0`.
+- Source-batch diagnostics, CLI all/source views, TUI batch text, and
+  `market-radar-status.ps1` now include the CIK validate command before the CIK
+  import command.
+- No SEC/Massive/Polygon, Schwab, OpenAI, broker/order execution, or database
+  write was run.
+
+Live zero-call source-batch observation before PR:
+
+```text
+priced_in_source_batches ... external_calls=0
+diagnostic_manual_template_command=catalyst-radar ingest-sec cik-overrides-template --out data\local\cik-overrides-template.csv --stocks-only
+diagnostic_manual_validate_command=catalyst-radar ingest-sec cik-overrides --csv <cik-overrides.csv> --validate-only
+diagnostic_manual_validate_api=POST /api/radar/sec/cik-overrides/validate
+diagnostic_manual_command=catalyst-radar ingest-sec cik-overrides --csv <cik-overrides.csv>
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_sec_cik_metadata.py::test_validate_sec_cik_overrides_reports_import_readiness_without_writes tests\integration\test_sec_cik_metadata.py::test_ingest_sec_cik_overrides_validate_only_cli_reports_without_writes tests\integration\test_api_routes.py::test_post_radar_sec_cik_overrides_validate_returns_zero_call_plan tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_exposes_missing_cik_blockers tests\integration\test_local_scripts.py::test_market_radar_status_script_is_zero_external_call_sitrep tests\integration\test_security_boundaries.py::test_openapi_routes_are_allowlisted_and_broker_routes_are_explicit -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\events\sec_cik.py src\catalyst_radar\cli.py src\catalyst_radar\api\routes\radar.py src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py tests\integration\test_sec_cik_metadata.py tests\integration\test_api_routes.py tests\integration\test_dashboard_data.py tests\integration\test_local_scripts.py tests\integration\test_security_boundaries.py
+git diff --check
+powershell -NoProfile -Command '$null = [scriptblock]::Create((Get-Content -Raw .\scripts\market-radar-status.ps1)); "powershell syntax ok"'
+```
+
+Observed:
+
+- Focused tests passed (`6 passed`).
+- Ruff passed for touched Python files.
+- PowerShell status script parsed successfully.
+- `git diff --check` passed.
 
 ## Latest Dashboard Source Blocker Diagnostics
 

@@ -121,6 +121,76 @@ class SecCikOverrideResult:
 
 
 @dataclass(frozen=True)
+class SecCikOverrideValidationResult:
+    requested_count: int
+    valid_count: int
+    update_candidate_count: int
+    skipped_count: int
+    unmatched_count: int
+    invalid_count: int
+    duplicate_count: int
+    update_candidate_tickers: tuple[str, ...]
+    skipped_tickers: tuple[str, ...]
+    unmatched_tickers: tuple[str, ...]
+    invalid_rows: tuple[str, ...]
+    duplicate_tickers: tuple[str, ...]
+    validated_at: datetime
+
+    @property
+    def status(self) -> str:
+        if self.requested_count <= 0 or self.invalid_count or self.duplicate_count:
+            return "blocked"
+        if self.unmatched_count:
+            return "attention"
+        if self.update_candidate_count:
+            return "ready"
+        return "noop"
+
+    def as_payload(self) -> dict[str, object]:
+        return {
+            "schema_version": "sec-cik-override-validation-v1",
+            "status": self.status,
+            "provider": "manual",
+            "live": False,
+            "external_calls_made": 0,
+            "requested_count": self.requested_count,
+            "valid_count": self.valid_count,
+            "update_candidate_count": self.update_candidate_count,
+            "skipped_count": self.skipped_count,
+            "unmatched_count": self.unmatched_count,
+            "invalid_count": self.invalid_count,
+            "duplicate_count": self.duplicate_count,
+            "update_candidate_tickers": list(self.update_candidate_tickers),
+            "skipped_tickers": list(self.skipped_tickers),
+            "unmatched_tickers": list(self.unmatched_tickers),
+            "invalid_rows": list(self.invalid_rows),
+            "duplicate_tickers": list(self.duplicate_tickers),
+            "validated_at": self.validated_at.isoformat(),
+            "import_command": (
+                "catalyst-radar ingest-sec cik-overrides "
+                "--csv <cik-overrides.csv>"
+            ),
+            "next_action": self._next_action(),
+        }
+
+    def _next_action(self) -> str:
+        if self.requested_count <= 0:
+            return "Add at least one ticker/CIK override row before importing."
+        if self.invalid_count:
+            return "Fix invalid ticker/CIK rows before importing overrides."
+        if self.duplicate_count:
+            return "Remove duplicate ticker rows before importing overrides."
+        if self.unmatched_count:
+            return (
+                "Some override tickers are not active securities in the local "
+                "database; confirm the symbols before importing."
+            )
+        if self.update_candidate_count:
+            return "Import can update local CIK metadata without provider calls."
+        return "Import would not change local CIK metadata."
+
+
+@dataclass(frozen=True)
 class SecCikOverrideTemplateWriteResult:
     output_path: Path
     row_count: int
@@ -187,6 +257,76 @@ def apply_sec_cik_overrides_csv(
     return apply_sec_cik_overrides(engine, records, source=source)
 
 
+def validate_sec_cik_overrides_csv(
+    engine: Engine,
+    path: Path,
+) -> SecCikOverrideValidationResult:
+    records = _read_cik_override_csv(path)
+    return validate_sec_cik_overrides(engine, records)
+
+
+def validate_sec_cik_overrides(
+    engine: Engine,
+    records: Sequence[Mapping[str, object]],
+) -> SecCikOverrideValidationResult:
+    validated_at = datetime.now(UTC).replace(microsecond=0)
+    requested_count, parsed, invalid_rows = _parse_cik_override_records(records)
+    duplicate_tickers: list[str] = []
+    duplicate_seen: set[str] = set()
+    unique_records: list[dict[str, str]] = []
+    seen_tickers: set[str] = set()
+    for record in parsed:
+        ticker = record["ticker"]
+        if ticker in seen_tickers:
+            if ticker not in duplicate_seen:
+                duplicate_tickers.append(ticker)
+                duplicate_seen.add(ticker)
+            continue
+        seen_tickers.add(ticker)
+        unique_records.append(record)
+
+    update_candidates: list[str] = []
+    skipped: list[str] = []
+    unmatched: list[str] = []
+    if unique_records:
+        with engine.connect() as conn:
+            active_rows = {
+                str(row.ticker).strip().upper(): _as_mapping(row._mapping["metadata"])
+                for row in conn.execute(
+                    select(securities.c.ticker, securities.c.metadata).where(
+                        securities.c.is_active.is_(True),
+                        securities.c.ticker.in_(
+                            [record["ticker"] for record in unique_records]
+                        ),
+                    )
+                )
+            }
+        for record in unique_records:
+            metadata = active_rows.get(record["ticker"])
+            if metadata is None:
+                unmatched.append(record["ticker"])
+            elif _metadata_cik(metadata) == record["cik"]:
+                skipped.append(record["ticker"])
+            else:
+                update_candidates.append(record["ticker"])
+
+    return SecCikOverrideValidationResult(
+        requested_count=requested_count,
+        valid_count=len(parsed),
+        update_candidate_count=len(update_candidates),
+        skipped_count=len(skipped),
+        unmatched_count=len(unmatched),
+        invalid_count=len(invalid_rows),
+        duplicate_count=len(duplicate_tickers),
+        update_candidate_tickers=tuple(update_candidates[:10]),
+        skipped_tickers=tuple(skipped[:10]),
+        unmatched_tickers=tuple(unmatched[:10]),
+        invalid_rows=tuple(invalid_rows[:10]),
+        duplicate_tickers=tuple(duplicate_tickers[:10]),
+        validated_at=validated_at,
+    )
+
+
 def apply_sec_cik_overrides(
     engine: Engine,
     records: Sequence[Mapping[str, object]],
@@ -194,22 +334,7 @@ def apply_sec_cik_overrides(
     source: str = "manual_cik_override",
 ) -> SecCikOverrideResult:
     applied_at = datetime.now(UTC).replace(microsecond=0)
-    requested_count = len(records)
-    parsed: list[dict[str, str]] = []
-    invalid_rows: list[str] = []
-    for index, record in enumerate(records, start=1):
-        ticker = str(record.get("ticker") or "").strip().upper()
-        cik = _normalize_cik(record.get("cik") or record.get("cik_str"))
-        if not ticker or cik is None:
-            invalid_rows.append(f"row {index}")
-            continue
-        company_name = str(
-            record.get("sec_company_name")
-            or record.get("company_name")
-            or record.get("name")
-            or ""
-        ).strip()
-        parsed.append({"ticker": ticker, "cik": cik, "company_name": company_name})
+    requested_count, parsed, invalid_rows = _parse_cik_override_records(records)
 
     updated: list[str] = []
     skipped: list[str] = []
@@ -428,6 +553,28 @@ def _read_cik_override_csv(path: Path) -> list[dict[str, object]]:
         return [dict(row) for row in reader]
 
 
+def _parse_cik_override_records(
+    records: Sequence[Mapping[str, object]],
+) -> tuple[int, list[dict[str, str]], list[str]]:
+    requested_count = len(records)
+    parsed: list[dict[str, str]] = []
+    invalid_rows: list[str] = []
+    for index, record in enumerate(records, start=1):
+        ticker = str(record.get("ticker") or "").strip().upper()
+        cik = _normalize_cik(record.get("cik") or record.get("cik_str"))
+        if not ticker or cik is None:
+            invalid_rows.append(f"row {index}")
+            continue
+        company_name = str(
+            record.get("sec_company_name")
+            or record.get("company_name")
+            or record.get("name")
+            or ""
+        ).strip()
+        parsed.append({"ticker": ticker, "cik": cik, "company_name": company_name})
+    return requested_count, parsed, invalid_rows
+
+
 def _as_mapping(value: Any) -> Mapping[str, object]:
     return value if isinstance(value, Mapping) else {}
 
@@ -436,10 +583,13 @@ __all__ = [
     "SEC_COMPANY_TICKERS_URL",
     "SEC_CIK_OVERRIDE_TEMPLATE_COLUMNS",
     "SecCikOverrideResult",
+    "SecCikOverrideValidationResult",
     "SecCikOverrideTemplateWriteResult",
     "SecCikMetadataRefreshResult",
     "apply_sec_cik_overrides",
     "apply_sec_cik_overrides_csv",
     "refresh_sec_cik_metadata",
+    "validate_sec_cik_overrides",
+    "validate_sec_cik_overrides_csv",
     "write_sec_cik_override_template_csv",
 ]

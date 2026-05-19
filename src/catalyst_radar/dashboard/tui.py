@@ -2449,6 +2449,9 @@ def _priced_in_source_batch_message(
     point_in_time_import = str(
         diagnostic.get("point_in_time_import_command") or ""
     ).strip()
+    manual_validate_command = str(
+        diagnostic.get("manual_validate_command") or ""
+    ).strip()
     manual_fix_command = str(diagnostic.get("manual_fix_command") or "").strip()
     blocked_samples = _texts(diagnostic.get("sample_blocked_tickers"))
     missing_cik_suffix = _missing_cik_diagnostic_suffix(diagnostic)
@@ -2559,6 +2562,11 @@ def _priced_in_source_batch_message(
             if manual_fix_command
             else ""
         )
+        manual_validate_suffix = (
+            f" CIK validate: {manual_validate_command}."
+            if manual_validate_command
+            else ""
+        )
         return (
             f"first provider chunk only. {prefix} This is a full-scan plan, "
             f"not a watchlist.{chunk_scope}"
@@ -2570,6 +2578,7 @@ def _priced_in_source_batch_message(
             f"{point_in_time_template_suffix}"
             f"{point_in_time_validate_suffix}"
             f"{point_in_time_suffix}"
+            f"{manual_validate_suffix}"
             f"{manual_fix_suffix}"
             f"{full_suffix}{row_review_suffix}{row_export_suffix}{next_suffix}"
         )
@@ -2595,6 +2604,8 @@ def _priced_in_source_batch_message(
         detail = f"{detail} Validate: {point_in_time_validate}."
     if point_in_time_import:
         detail = f"{detail} Point-in-time import: {point_in_time_import}."
+    if manual_validate_command:
+        detail = f"{detail} CIK validate: {manual_validate_command}."
     if manual_fix_command:
         detail = f"{detail} CIK import: {manual_fix_command}."
     detail = (

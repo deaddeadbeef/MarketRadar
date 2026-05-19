@@ -215,6 +215,9 @@ if ($null -ne $stockScope) {
     if ($null -ne $coverageDiagnostic -and $coverageDiagnostic.manual_template_command) {
         Write-Output ("- stock CIK template: {0}" -f $coverageDiagnostic.manual_template_command)
     }
+    if ($null -ne $coverageDiagnostic -and $coverageDiagnostic.manual_validate_command) {
+        Write-Output ("- stock CIK validate: {0}" -f $coverageDiagnostic.manual_validate_command)
+    }
     if ($null -ne $coverageDiagnostic -and $coverageDiagnostic.manual_fix_command) {
         Write-Output ("- stock CIK import: {0}" -f $coverageDiagnostic.manual_fix_command)
     }
