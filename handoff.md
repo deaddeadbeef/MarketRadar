@@ -1,6 +1,6 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 20:14:04 +08:00
+Last updated: 2026-05-19 20:19:21 +08:00
 
 ## Latest Goal-Drift Check And Full-Scan Primary UX
 
@@ -99,6 +99,22 @@ Observed:
 - `git diff --check` passed.
 - CLI and API checks both reported `external_calls=0`.
 - Local services were restarted from the branch for API/dashboard verification.
+- PR #350, `Make priced-in full scan primary`, was merged by rebase as
+  `64ca6d777608`.
+- Local services were restarted after merge from `main`:
+  - API health returned commit `64ca6d777608`;
+  - Streamlit health returned `ok`.
+- Post-merge CLI verification showed:
+  - `primary_full_scan=scope=full_active_universe`;
+  - `ranked=12087`;
+  - `selection=priority_lens_not_scan_universe`;
+  - `external_calls=0`.
+- Post-merge API verification showed:
+  - `api_primary=full_active_universe`;
+  - `ranked=12087`;
+  - `display=page_preview`;
+  - `shortlist=priority_lens_not_scan_universe`;
+  - `calls=0`.
 
 Next useful product action:
 
