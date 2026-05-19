@@ -4095,6 +4095,30 @@ def _print_priced_in_audit(payload: Mapping[str, object]) -> None:
         sample_boundary = recommended_source.get("sample_boundary")
         if sample_boundary:
             print(f"  sample_boundary={_compact_cli_text(sample_boundary)}")
+        repair = recommended_source.get("repair")
+        if isinstance(repair, Mapping) and repair:
+            print(
+                "  source_gap_repair="
+                f"source={repair.get('source')} "
+                f"status={repair.get('status')} "
+                f"diagnostic={repair.get('diagnostic_status') or 'n/a'} "
+                f"provider_batch_allowed="
+                f"{str(bool(repair.get('provider_batch_allowed'))).lower()} "
+                f"external_calls={repair.get('external_calls_made')}"
+            )
+            print(f"    next={_compact_cli_text(repair.get('next_action'))}")
+            point_in_time = repair.get("point_in_time_import_command")
+            if point_in_time:
+                print(
+                    "    point_in_time_import="
+                    f"{_compact_cli_text(point_in_time)}"
+                )
+            batch_plan = repair.get("batch_plan_command")
+            if batch_plan:
+                print(f"    batch_plan={_compact_cli_text(batch_plan)}")
+            boundary = repair.get("write_boundary")
+            if boundary:
+                print(f"    boundary={_compact_cli_text(boundary)}")
     shortlist = payload.get("answer_shortlist")
     if isinstance(shortlist, Mapping):
         print(
@@ -4297,6 +4321,25 @@ def _print_priced_in_audit(payload: Mapping[str, object]) -> None:
                 "  priority_examples_preview="
                 f"{','.join(str(ticker) for ticker in samples)}"
             )
+        repair = row.get("repair")
+        if isinstance(repair, Mapping) and repair:
+            print(
+                "  repair="
+                f"status={repair.get('status')} "
+                f"diagnostic={repair.get('diagnostic_status') or 'n/a'} "
+                f"provider_batch_allowed="
+                f"{str(bool(repair.get('provider_batch_allowed'))).lower()} "
+                f"next={_compact_cli_text(repair.get('next_action'))}"
+            )
+            point_in_time = repair.get("point_in_time_import_command")
+            if point_in_time:
+                print(
+                    "    point_in_time_import="
+                    f"{_compact_cli_text(point_in_time)}"
+                )
+            boundary = repair.get("write_boundary")
+            if boundary:
+                print(f"    boundary={_compact_cli_text(boundary)}")
     commands = payload.get("commands")
     if isinstance(commands, Mapping):
         print("commands:")

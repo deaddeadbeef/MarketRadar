@@ -1910,6 +1910,9 @@ def test_priced_in_audit_cli_outputs_full_scan_audit(
     assert "boundary=Reviewing this recommendation makes 0 provider calls" in output.out
     assert "full_source_gap_export=catalyst-radar priced-in-audit" in output.out
     assert "sample_boundary=Example tickers are only a priority preview" in output.out
+    assert "repair=status=attention diagnostic=no_stored_options" in output.out
+    assert "point_in_time_import=catalyst-radar ingest-options --fixture" in output.out
+    assert "provider_batch_allowed=true" in output.out
     assert "answer_shortlist=status=" in output.out
     assert "selection=priority_lens_not_scan_universe" in output.out
     assert "ticker rank status decision_ready gap emotion reaction missing next_step" in (
@@ -1963,6 +1966,12 @@ def test_priced_in_audit_cli_outputs_full_scan_audit(
         "catalyst-radar priced-in-audit --source-gap"
     )
     assert "--all --json" in payload["recommended_source_gap"]["full_scan_command"]
+    options_source = next(row for row in payload["sources"] if row["source"] == "options")
+    assert options_source["repair"]["schema_version"] == (
+        "priced-in-source-gap-repair-v1"
+    )
+    assert options_source["repair"]["external_calls_made"] == 0
+    assert options_source["repair"]["source"] == "options"
     assert payload["preview_rows"][0]["ticker"] == "ACME"
     assert payload["source_coverage"]["source_count"] == 6
     assert payload["instrument_scope"]["schema_version"] == (

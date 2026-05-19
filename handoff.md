@@ -1,6 +1,128 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 20:41:01 +08:00
+Last updated: 2026-05-19 20:58:18 +08:00
+
+## Latest Options Evidence Repair Surface
+
+Current problem:
+
+- The full scan correctly ranks the active universe first, but the highest
+  payoff evidence gap is currently options coverage.
+- The detailed source-batch command already knew when options were blocked
+  because stored option features were newer than the scan date, but the main
+  priced-in audit/dashboard did not put that diagnosis directly beside the
+  answer.
+- That made the main answer less useful: the operator could see
+  `options 0/12087`, but had to know which secondary command explained whether
+  to run a source batch, rerun a current scan, or ingest point-in-time options.
+- Current local state observed before this slice:
+  - full scan ranked rows: `12087`;
+  - active securities: `12613`;
+  - options coverage: `0/12087`;
+  - current options diagnostic: `newer_than_scan`;
+  - provider batch allowed for this scan date: `false`;
+  - external calls while inspecting: `0`.
+
+Fix in this slice:
+
+- `priced_in_full_scan_audit_payload.sources[]` now carries an options
+  `repair` object when options rows have missing/stale evidence.
+- The repair schema is `priced-in-source-gap-repair-v1` and includes:
+  - source;
+  - status;
+  - diagnostic status;
+  - full-scan gap count;
+  - scan as-of date(s);
+  - sample tickers;
+  - whether a provider batch is currently allowed;
+  - zero-call review/export commands;
+  - batch plan command;
+  - point-in-time fixture import command;
+  - current-context boundary;
+  - write/provider-call boundary;
+  - `external_calls_made=0`;
+  - usefulness impact.
+- `recommended_source_gap.repair` is included when the recommended source gap is
+  options. It is omitted for non-options recommendations instead of returning an
+  empty object.
+- CLI `priced-in-audit` now prints:
+  - `source_gap_repair=...` under the recommended source gap when options is the
+    recommendation;
+  - `repair=...` under the options source row in all cases where options has a
+    repair path;
+  - `point_in_time_import=...`;
+  - the explicit no-hidden-provider-call/write boundary.
+- Streamlit **Priced-in Full Scan** now shows an **Evidence repair** block when
+  the recommended source gap has a repair object.
+- Streamlit **Priced-in Source Gaps** rows now include options repair status,
+  diagnostic, and next action.
+- No provider/source execution was run.
+
+Current live zero-call observations from the branch:
+
+```text
+recommended_source_gap=source=options decision=10 actionable=12 research=0 gap_rows=12087 review=catalyst-radar priced-in-audit --source-gap options --limit 25
+  source_gap_repair=source=options status=blocked diagnostic=newer_than_scan provider_batch_allowed=false external_calls=0
+    point_in_time_import=catalyst-radar ingest-options --fixture <point-in-time-options-2026-05-15.json>
+```
+
+```text
+options repair:
+status=blocked
+diagnostic_status=newer_than_scan
+gap_count=12087
+scan_as_of_dates=2026-05-15
+provider_batch_allowed=false
+external_calls_made=0
+next_action=Stored options exist after this scan date. Example tickers: A, MSFT, AAAU, AAPL, AA. Rerun only with a current scan date and current bars, or ingest point-in-time options for the original scan date.
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_payload_consolidates_current_state tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_audit_cli_outputs_full_scan_audit tests\integration\test_dashboard_entrypoint.py::test_dashboard_wires_priced_in_full_scan_panel_after_usefulness tests\integration\test_dashboard_data.py::test_priced_in_queue_payload_diagnoses_options_after_scan_date tests\integration\test_dashboard_data.py::test_priced_in_all_source_gap_batches_blocks_options_shortcut_when_not_point_in_time tests\integration\test_api_routes.py::test_get_radar_priced_in_audit_returns_zero_call_audit -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py apps\dashboard\Home.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_dashboard_entrypoint.py tests\integration\test_api_routes.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-audit --limit 3
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-audit --limit 3 --json
+```
+
+Observed:
+
+- Focused six-test set passed (`6 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+- CLI and JSON checks reported options repair with `external_calls_made=0`.
+- Local services were restarted from the branch for API/dashboard verification.
+- API `GET /api/radar/priced-in/audit?limit=3` reported:
+  - `source=options`;
+  - `status=blocked`;
+  - `diagnostic=newer_than_scan`;
+  - `provider_batch_allowed=false`;
+  - `external_calls_made=0`;
+  - point-in-time import command for `2026-05-15`.
+- Browser verification on `http://127.0.0.1:8514` confirmed the dashboard text
+  included:
+  - **Priced-in Full Scan**;
+  - **Full-Market Scan**;
+  - **First source gap**;
+  - **Evidence repair**;
+  - `newer_than_scan`;
+  - `point-in-time-options-2026-05-15.json`.
+- Browser console check reported 0 current errors.
+
+Next useful product action:
+
+- This slice explains why the options gap is not safely runnable for the older
+  scan date. It does not fill options coverage.
+- The first hard trust blocker is still market-bar coverage:
+  - `523` active tickers are missing as-of bars for `2026-05-15`.
+- After market bars are complete, decide one explicit options path:
+  - ingest point-in-time option features for the original scan date; or
+  - rerun a current scan with current bars and current read-only Schwab options.
+- Continue avoiding UI-only polish unless it directly helps answer:
+  "Which full-market rows show emotion not matched by price, and what evidence
+  is missing before I can trust that?"
 
 ## Latest Full-Scan Market-Bar Repair Surface
 

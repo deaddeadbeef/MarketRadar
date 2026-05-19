@@ -2908,6 +2908,7 @@ def _priced_in_audit_source_row(
     priority_counts: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     priority = _row_dict(priority_counts or {})
+    repair = _priced_in_audit_source_gap_repair(action)
     return {
         "source": action.get("source"),
         "status": action.get("status"),
@@ -2928,6 +2929,78 @@ def _priced_in_audit_source_row(
         ),
         "next_action": action.get("next_action"),
         "command": action.get("batch_plan_command") or action.get("command"),
+        "repair": repair,
+    }
+
+
+def _priced_in_audit_source_gap_repair(
+    action: Mapping[str, object],
+) -> dict[str, object] | None:
+    source = str(action.get("source") or "").strip()
+    if source != "options":
+        return None
+    gap_count = int(_finite_float(action.get("gap_count")))
+    if gap_count <= 0:
+        return None
+    diagnostic = _row_dict(_mapping_value(action, "diagnostic"))
+    diagnostic_status = str(diagnostic.get("status") or "").strip()
+    blocking_statuses = {
+        "newer_than_scan",
+        "after_decision_cutoff",
+        "eligible_but_not_scored",
+    }
+    provider_batch_allowed = diagnostic_status not in blocking_statuses
+    scan_dates = [
+        str(value)
+        for value in _sequence_value(diagnostic.get("scan_as_of_dates"))
+        if str(value).strip()
+    ]
+    target_scan_date = scan_dates[0] if len(scan_dates) == 1 else "<SCAN_DATE>"
+    sample_tickers = _option_gap_diagnostic_samples(diagnostic)
+    if not sample_tickers:
+        sample_tickers = [
+            str(ticker).strip().upper()
+            for ticker in _sequence_value(action.get("sample_tickers"))
+            if str(ticker).strip()
+        ][:PRICED_IN_SOURCE_ACTION_TICKER_LIMIT]
+    next_action = str(
+        diagnostic.get("next_action")
+        or action.get("next_action")
+        or "Review options evidence before trusting decision-useful mismatch rows."
+    ).strip()
+    status = "blocked" if not provider_batch_allowed else "attention"
+    return {
+        "schema_version": "priced-in-source-gap-repair-v1",
+        "source": source,
+        "status": status,
+        "diagnostic_status": diagnostic_status or None,
+        "gap_count": gap_count,
+        "scan_as_of_dates": scan_dates,
+        "sample_tickers": sample_tickers,
+        "provider_batch_allowed": provider_batch_allowed,
+        "review_rows_command": action.get("full_scan_gap_review_command"),
+        "export_rows_command": action.get("full_scan_export_command"),
+        "batch_plan_command": action.get("batch_plan_command"),
+        "point_in_time_import_command": (
+            "catalyst-radar ingest-options --fixture "
+            f"<point-in-time-options-{target_scan_date}.json>"
+        ),
+        "current_context_boundary": (
+            "Current Schwab option chains can support a current rerun, but must not "
+            "be backfilled into an older scan as if they were available then."
+        ),
+        "write_boundary": (
+            "Review/export/plan commands make 0 provider calls. Fixture import writes "
+            "local option features only. Live Schwab source batches stay explicit, "
+            "read-only, and rate-limited when they are allowed."
+        ),
+        "external_calls_made": 0,
+        "next_action": next_action,
+        "usefulness_impact": (
+            "Options are supporting market-emotion evidence. This gap does not shrink "
+            "the full-scan universe, but it lowers trust in decision-useful mismatch "
+            "rows until point-in-time options are present or intentionally skipped."
+        ),
     }
 
 
@@ -2984,7 +3057,7 @@ def _priced_in_audit_recommended_source_gap(
         "Example tickers are only a priority preview; the source gap itself covers "
         f"{gap_rows} full-scan row(s)."
     )
-    return {
+    result = {
         "schema_version": "priced-in-recommended-source-gap-v1",
         "source": source,
         "status": top.get("status"),
@@ -3006,6 +3079,10 @@ def _priced_in_audit_recommended_source_gap(
             "batches only after explicitly approving provider calls."
         ),
     }
+    repair = _row_dict(_mapping_value(top, "repair"))
+    if repair:
+        result["repair"] = repair
+    return result
 
 
 def _priced_in_audit_next_step(
