@@ -30,6 +30,10 @@ MANUAL_BAR_COLUMNS = (
     "source_ts",
     "available_at",
 )
+MANUAL_BAR_COMPANY_LIKE_TYPES = frozenset({"ADRC", "CS"})
+MANUAL_BAR_NON_STOCK_TYPES = frozenset(
+    {"ETF", "ETN", "ETS", "ETV", "FUND", "PFD", "RIGHT", "SP", "UNIT", "WARRANT"}
+)
 
 
 @dataclass(frozen=True)
@@ -56,12 +60,14 @@ class ManualBarsTemplateResult:
             "missing_as_of_bar_count": self.missing_as_of_bar_count,
             "missing_only": self.missing_only,
             "template_scope": "missing_as_of_bars" if self.missing_only else "active_universe",
+            "row_order": "stock_like_then_unknown_then_non_stock",
             "provider": self.provider,
             "generated_at": self.generated_at.isoformat(),
             "external_calls_made": 0,
             "next_action": (
-                "Fill open, high, low, close, volume, and vwap for every row, "
-                "then preview the import before executing."
+                "Rows are sorted stock-like first. Fill open, high, low, close, "
+                "volume, and vwap for every row, then preview the import before "
+                "executing."
             ),
             "import_command": (
                 "catalyst-radar market-bars import "
@@ -166,6 +172,7 @@ def write_manual_market_bars_template(
         for row in active_rows
         if not missing_only or row[0] not in existing
     ]
+    template_rows = sorted(template_rows, key=_manual_bar_template_sort_key)
     resolved_at = _as_utc(generated_at or datetime.now(UTC))
     path = Path(output_path)
     if path.parent != Path(""):
@@ -318,6 +325,22 @@ def _active_security_rows(engine: Engine) -> tuple[tuple[str, str], ...]:
         security_type = str(metadata.get("type") or "").strip().upper()
         values.append((ticker, security_type))
     return tuple(values)
+
+
+def _manual_bar_template_sort_key(row: tuple[str, str]) -> tuple[int, str]:
+    ticker, security_type = row
+    return (_manual_bar_security_type_priority(security_type), ticker)
+
+
+def _manual_bar_security_type_priority(security_type: str) -> int:
+    normalized = str(security_type or "").strip().upper() or "UNKNOWN"
+    if normalized in MANUAL_BAR_COMPANY_LIKE_TYPES:
+        return 0
+    if normalized == "UNKNOWN":
+        return 1
+    if normalized in MANUAL_BAR_NON_STOCK_TYPES:
+        return 2
+    return 3
 
 
 def _bar_tickers_for_date(engine: Engine, as_of_date: date) -> set[str]:

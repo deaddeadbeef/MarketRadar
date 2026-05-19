@@ -3231,6 +3231,8 @@ def _print_manual_market_bars_template(payload: Mapping[str, object]) -> None:
         f"missing={payload.get('missing_as_of_bar_count')} "
         f"missing_only={str(bool(payload.get('missing_only'))).lower()}"
     )
+    if payload.get("row_order"):
+        print(f"row_order={payload.get('row_order')}")
     print(f"next_action={payload.get('next_action')}")
     print(f"import_command={payload.get('import_command')}")
     print(f"execute_command={payload.get('execute_command')}")
