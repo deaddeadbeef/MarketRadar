@@ -8,7 +8,7 @@ from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-from catalyst_radar.security.redaction import redact_url
+from catalyst_radar.security.redaction import redact_text, redact_url
 
 
 @dataclass(frozen=True)
@@ -175,7 +175,7 @@ class JsonHttpClient:
             timeout_seconds=self.timeout_seconds,
         )
         if response.status_code < 200 or response.status_code >= 300:
-            raise RuntimeError(f"HTTP {response.status_code} from {redact_url(response.url)}")
+            raise RuntimeError(_http_error_message(response))
         try:
             return json.loads(response.body.decode("utf-8"))
         except json.JSONDecodeError as exc:
@@ -198,11 +198,39 @@ class JsonHttpClient:
             timeout_seconds=self.timeout_seconds,
         )
         if response.status_code < 200 or response.status_code >= 300:
-            raise RuntimeError(f"HTTP {response.status_code} from {redact_url(response.url)}")
+            raise RuntimeError(_http_error_message(response))
         try:
             return json.loads(response.body.decode("utf-8"))
         except json.JSONDecodeError as exc:
             raise RuntimeError(f"invalid JSON from {redact_url(response.url)}") from exc
+
+
+def _http_error_message(response: HttpResponse) -> str:
+    detail = _http_error_detail(response.body)
+    message = f"HTTP {response.status_code} from {redact_url(response.url)}"
+    return f"{message}; detail={detail}" if detail else message
+
+
+def _http_error_detail(body: bytes) -> str:
+    text = body.decode("utf-8", errors="replace").strip()
+    if not text:
+        return ""
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        detail = text
+    else:
+        if isinstance(payload, Mapping):
+            parts = [
+                str(payload.get(key) or "").strip()
+                for key in ("status", "message", "error")
+                if str(payload.get(key) or "").strip()
+            ]
+            detail = ": ".join(parts) if parts else json.dumps(payload, sort_keys=True)
+        else:
+            detail = str(payload)
+    detail = redact_text(detail)
+    return detail[:300] + "..." if len(detail) > 300 else detail
 
 
 __all__ = [

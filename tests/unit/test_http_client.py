@@ -52,6 +52,35 @@ def test_json_client_raises_redacted_error() -> None:
         client.get_json("https://example.test/data?apiKey=secret")
     except RuntimeError as exc:
         assert "apiKey=<redacted>" in str(exc)
+        assert "rate limited" in str(exc)
+        assert "secret" not in str(exc)
+    else:
+        raise AssertionError("expected HTTP error")
+
+
+def test_json_client_http_error_includes_redacted_provider_message() -> None:
+    transport = FakeHttpTransport(
+        {
+            "https://example.test/data?apiKey=secret": HttpResponse(
+                status_code=403,
+                url="https://example.test/data?apiKey=secret",
+                headers={},
+                body=(
+                    b'{"status":"NOT_AUTHORIZED",'
+                    b'"message":"Attempted to request today before end of day"}'
+                ),
+            )
+        }
+    )
+    client = JsonHttpClient(transport=transport, timeout_seconds=3)
+
+    try:
+        client.get_json("https://example.test/data?apiKey=secret")
+    except RuntimeError as exc:
+        assert "HTTP 403" in str(exc)
+        assert "apiKey=<redacted>" in str(exc)
+        assert "NOT_AUTHORIZED" in str(exc)
+        assert "Attempted to request today before end of day" in str(exc)
         assert "secret" not in str(exc)
     else:
         raise AssertionError("expected HTTP error")
