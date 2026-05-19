@@ -4421,6 +4421,9 @@ def _run_lines(payload: Mapping[str, object], width: int) -> list[str]:
         blocker_hint = _run_audit_source_blocker_hint(blocker)
         if blocker_hint:
             evidence_items.append(("Inspect source blocker", blocker_hint))
+        provider_hint = _run_audit_provider_fill_hint(blocker)
+        if provider_hint:
+            evidence_items.append(("Provider fill option", provider_hint))
         lines.extend(_kv_lines(evidence_items, width=width))
         lines.append("")
         lines.extend(
@@ -4519,6 +4522,19 @@ def _run_audit_source_blocker_hint(blocker: Mapping[str, object] | None) -> str 
             f"and exact call budget; type `batch all` for the source map."
         )
     return None
+
+
+def _run_audit_provider_fill_hint(blocker: Mapping[str, object] | None) -> str | None:
+    if not blocker or str(blocker.get("source") or "") != "market_bars":
+        return None
+    command = str(blocker.get("provider_fill_command") or "").strip()
+    if not command:
+        return None
+    status = str(blocker.get("provider_fill_status") or "unknown").strip()
+    calls = int(_number_or_zero(blocker.get("provider_fill_external_call_count")))
+    return (
+        f"{status}; {calls} external call(s) only after explicit approval: `{command}`"
+    )
 
 
 def _run_audit_source_rows(

@@ -1955,6 +1955,9 @@ def test_priced_in_full_scan_audit_reports_stock_only_bar_coverage(
     assert market_source["sample_tickers"] == ["GOOG"]
     assert market_source["command"].endswith("--missing-only --stocks-only")
     assert "stock-like missing as-of bars" in market_source["next_action"]
+    assert market_source["provider_fill_status"] == "blocked"
+    assert market_source["provider_fill_external_call_count"] == 1
+    assert market_source["provider_fill_command"].endswith("--confirm-external-call")
     assert "market_bars 1/2 (1 missing)" in payload["source_coverage"]["summary"]
 
 

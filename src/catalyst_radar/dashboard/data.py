@@ -3365,14 +3365,27 @@ def _priced_in_audit_market_bar_repair(
         engine,
         target_as_of=target_as_of,
     )
+    effective_missing = (
+        int(_finite_float(stock_scope.get("stock_like_missing_as_of_bar")))
+        if stocks_only
+        else missing
+    )
     provider_fill_plan = _priced_in_market_bar_provider_fill_plan(
         config,
         target_as_of=target_as_of,
-        missing=missing,
+        missing=effective_missing,
     )
-    status = "ready" if missing <= 0 else str(market_row.get("status") or "attention")
-    if missing <= 0:
-        next_action = "As-of market bars cover the active universe."
+    status = (
+        "ready"
+        if effective_missing <= 0
+        else str(market_row.get("status") or "attention")
+    )
+    if effective_missing <= 0:
+        next_action = (
+            "Stock-like rows have as-of market bars."
+            if stocks_only
+            else "As-of market bars cover the active universe."
+        )
     elif stocks_only:
         next_action = (
             "Generate the DB-backed stock-like missing-bar template, fill only "
@@ -3773,6 +3786,12 @@ def _priced_in_audit_source_row(
         "coverage_pct": action.get("coverage_pct"),
         "coverage_basis": action.get("coverage_basis"),
         "as_of_bar_scope": _row_dict(_mapping_value(action, "as_of_bar_scope")),
+        "provider_fill_plan": _row_dict(_mapping_value(action, "provider_fill_plan")),
+        "provider_fill_command": action.get("provider_fill_command"),
+        "provider_fill_status": action.get("provider_fill_status"),
+        "provider_fill_external_call_count": action.get(
+            "provider_fill_external_call_count"
+        ),
         "sample_tickers": list(_sequence_value(action.get("sample_tickers"))),
         "decision_useful_gap_rows": int(
             _finite_float(priority.get("decision_useful_gap_rows"))
@@ -5205,6 +5224,7 @@ def _priced_in_source_coverage_with_market_bar_scope(
     if active <= 0:
         return updated
 
+    provider_fill_plan = _mapping_value(repair, "provider_fill_plan")
     source_rows = {
         str(source): _row_dict(values)
         for source, values in _mapping_value(updated, "sources").items()
@@ -5230,6 +5250,12 @@ def _priced_in_source_coverage_with_market_bar_scope(
             "coverage_basis": coverage_basis,
             "as_of_bar_scope": _row_dict(scope_payload),
             "repair_status": repair.get("status"),
+            "provider_fill_plan": _row_dict(provider_fill_plan),
+            "provider_fill_command": provider_fill_plan.get("provider_call_command"),
+            "provider_fill_status": provider_fill_plan.get("status"),
+            "provider_fill_external_call_count": provider_fill_plan.get(
+                "execute_external_call_count"
+            ),
         }
     )
     source_rows["market_bars"] = market_row
@@ -10976,6 +11002,12 @@ def _priced_in_source_action_row(
         "coverage_basis": values.get("coverage_basis"),
         "as_of_bar_scope": _row_dict(_mapping_value(values, "as_of_bar_scope")),
         "repair_status": values.get("repair_status"),
+        "provider_fill_plan": _row_dict(_mapping_value(values, "provider_fill_plan")),
+        "provider_fill_command": values.get("provider_fill_command"),
+        "provider_fill_status": values.get("provider_fill_status"),
+        "provider_fill_external_call_count": values.get(
+            "provider_fill_external_call_count"
+        ),
         "sample_tickers": sample_tickers,
         "sample_scope": _priced_in_source_sample_scope(
             sample_count=len(sample_tickers),

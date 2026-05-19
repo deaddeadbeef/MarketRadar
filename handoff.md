@@ -1,6 +1,90 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 05:17:02 +08:00
+Last updated: 2026-05-20 05:28:34 +08:00
+
+## Latest Guarded Market-Bar Provider Option
+
+Goal alignment check:
+
+- The current blocker remains data, not another scan algorithm: the stocks-only
+  full scan is missing 131 stock-like as-of bars.
+- The dashboard/status surfaces already showed the zero-call manual CSV path,
+  but the alternative provider path was easy to miss. The useful next step is
+  to make the choice explicit: fill the CSV with zero calls, or intentionally
+  approve one Polygon/Massive grouped-daily call.
+- This does not execute providers. It only exposes the existing guarded command
+  in CLI/API/dashboard payloads.
+
+Fix in this slice:
+
+- The market-bars source row now carries the provider fill plan:
+  - `provider_fill_status`;
+  - `provider_fill_external_call_count`;
+  - `provider_fill_command`;
+  - `provider_fill_plan`.
+- In stocks-only mode, the provider fill plan now uses the effective
+  stock-like missing count. This prevents a false `not_needed` plan when ranked
+  rows have bars but an active stock-like row is still unranked due to missing
+  bars.
+- The TUI run page now shows a `Provider fill option` line for market-bar
+  blockers.
+- `scripts\market-radar-status.ps1` now prints the stock-like provider option
+  and an explicit approval boundary.
+- No provider, broker, OpenAI, order, or DB-write execution was run.
+
+Live zero-call JSON audit observation:
+
+```text
+partial stock_like_active_as_of_bars 5521 5652 131
+ready_for_approval 1
+catalyst-radar ingest-polygon grouped-daily --date 2026-05-15 --confirm-external-call
+external_calls 0
+```
+
+Live zero-call TUI observation:
+
+```text
+Answer: attention ready=false
+Source coverage: market_bars 5521/5652 (131 missing); ...
+Provider fill option: ready_for_approval; 1 external call(s) only after explicit approval: `catalyst-radar ingest-polygon grouped-daily --date 2026-05-15 --confirm-external-call`
+```
+
+Live zero-call status observation:
+
+```text
+- stock-like provider option: status=ready_for_approval; external_calls=1; command=catalyst-radar ingest-polygon grouped-daily --date 2026-05-15 --confirm-external-call
+- stock-like provider boundary: run only after explicit approval; grouped daily writes local bars, then rerun audit.
+External calls made: 0
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_reports_stock_only_bar_coverage tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_payload_consolidates_current_state tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_run_page_shows_priced_in_evidence_plan tests\integration\test_local_scripts.py::test_market_radar_status_script_is_zero_external_call_sitrep -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_local_scripts.py
+powershell -NoProfile -Command '$null = [scriptblock]::Create((Get-Content -Raw .\scripts\market-radar-status.ps1)); "powershell syntax ok"'
+git diff --check
+```
+
+Observed:
+
+- Focused tests passed (`4 passed`).
+- Ruff passed.
+- PowerShell status script parsed successfully.
+- `git diff --check` passed.
+
+Next useful product action:
+
+- If the user explicitly approves provider execution, the next market-bar
+  command is:
+
+  ```powershell
+  catalyst-radar ingest-polygon grouped-daily --date 2026-05-15 --confirm-external-call
+  ```
+
+- Otherwise keep the zero-call path: fill and preview
+  `data\local\manual-stock-bars-2026-05-15.csv`, then import only after
+  preview returns `status=ready`.
 
 ## Latest TUI Full-Scan Blocker Correction
 

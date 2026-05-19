@@ -127,6 +127,7 @@ $stockScope = $pricedInStockAudit.scope
 $stockAnswer = $pricedInStockAudit.answer_shortlist
 $stockEvidence = $pricedInStockAudit.evidence_plan
 $stockBarScope = $pricedInStockAudit.market_bars.repair.stock_scope
+$stockBarProviderFill = $pricedInStockAudit.market_bars.repair.provider_fill_plan
 $stockCoverageStep = $null
 $stockCoverageBatchPlan = $null
 if ($null -ne $stockEvidence) {
@@ -332,6 +333,15 @@ if ($null -ne $freshness) {
                 "- stock-like preview command: catalyst-radar market-bars import --daily-bars data\local\manual-stock-bars-{0}.csv --expected-as-of {0} --stocks-only" -f
                 $readiness.radar_run.as_of
             )
+            if ($null -ne $stockBarProviderFill -and $stockBarProviderFill.provider_call_command) {
+                Write-Output (
+                    "- stock-like provider option: status={0}; external_calls={1}; command={2}" -f
+                    $stockBarProviderFill.status,
+                    $(if ($null -ne $stockBarProviderFill.execute_external_call_count) { $stockBarProviderFill.execute_external_call_count } else { 0 }),
+                    $stockBarProviderFill.provider_call_command
+                )
+                Write-Output "- stock-like provider boundary: run only after explicit approval; grouped daily writes local bars, then rerun audit."
+            }
         }
         Write-Output (
             "- template command: catalyst-radar market-bars template --expected-as-of {0} --out data\local\manual-bars-{0}.csv --missing-only" -f
