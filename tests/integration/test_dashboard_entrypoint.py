@@ -509,6 +509,44 @@ def test_dashboard_wires_operator_work_queue_before_activation_sections() -> Non
     )
 
 
+def test_dashboard_wires_priced_in_full_scan_panel_after_usefulness() -> None:
+    source = Path("apps/dashboard/Home.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    functions = {
+        node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)
+    }
+    overview_source = ast.get_source_segment(source, functions["_show_overview"])
+    helper_source = ast.get_source_segment(
+        source,
+        functions["_show_priced_in_full_scan_panel"],
+    )
+    rows_source = ast.get_source_segment(
+        source,
+        functions["_priced_in_full_scan_source_rows"],
+    )
+
+    assert overview_source is not None
+    assert helper_source is not None
+    assert rows_source is not None
+    assert "_show_priced_in_full_scan_panel" in functions
+    assert "_priced_in_full_scan_source_rows" in functions
+    assert "priced_in_full_scan_audit_payload" in helper_source
+    assert "Priced-in Full Scan" in helper_source
+    assert "Full Scan Rows" in helper_source
+    assert "Active Securities" in helper_source
+    assert "Decision-ready" in helper_source
+    assert "Full-scan commands" in helper_source
+    assert "Priced-in Source Gaps" in helper_source
+    assert "external_calls_made" in helper_source
+    assert "gap_count" in rows_source
+    assert overview_source.index("_show_market_radar_usefulness") < overview_source.index(
+        "_show_priced_in_full_scan_panel"
+    )
+    assert overview_source.index("_show_priced_in_full_scan_panel") < overview_source.index(
+        "_show_operator_work_queue"
+    )
+
+
 def test_dashboard_wires_agent_review_summary_near_radar_run() -> None:
     source = Path("apps/dashboard/Home.py").read_text(encoding="utf-8")
     tree = ast.parse(source)

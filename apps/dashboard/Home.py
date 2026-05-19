@@ -1962,6 +1962,114 @@ def _show_market_radar_usefulness(
     st.caption(str(usefulness.get("evidence") or "No usefulness evidence."))
 
 
+def _show_priced_in_full_scan_panel(
+    *,
+    engine: object,
+    config: AppConfig,
+    radar_run_summary: Mapping[str, Any],
+) -> None:
+    audit = _mapping(
+        dashboard_data.priced_in_full_scan_audit_payload(
+            engine,
+            config,
+            available_at=_radar_summary_cutoff(radar_run_summary),
+        )
+    )
+    st.subheader("Priced-in Full Scan")
+    status = str(audit.get("status") or "unknown")
+    message = (
+        f"{audit.get('headline') or 'No priced-in full-scan audit yet.'} "
+        f"Answer: {audit.get('answer') or 'n/a'} "
+        f"Next: {audit.get('next_action') or 'n/a'}"
+    ).strip()
+    if status == "decision_ready":
+        st.success(message)
+    elif status in {"research_ready", "attention"}:
+        st.info(message)
+    else:
+        st.warning(message)
+    scope = _mapping(audit.get("scope"))
+    counts = _mapping(audit.get("counts"))
+    source_coverage = _mapping(audit.get("source_coverage"))
+    metric_cols = st.columns(5)
+    metric_cols[0].metric("Full Scan Rows", int(_metric_number(scope.get("ranked_rows"))))
+    metric_cols[1].metric(
+        "Active Securities",
+        int(_metric_number(scope.get("active_securities"))),
+    )
+    metric_cols[2].metric(
+        "Research Leads",
+        int(_metric_number(counts.get("research_lead_rows"))),
+    )
+    metric_cols[3].metric(
+        "Decision-ready",
+        int(_metric_number(counts.get("decision_ready_rows"))),
+    )
+    metric_cols[4].metric(
+        "Sources Ready",
+        f"{int(_metric_number(source_coverage.get('ready_source_count')))}/"
+        f"{int(_metric_number(source_coverage.get('source_count')))}",
+    )
+    _show_status_badges(
+        [
+            ("Mode", scope.get("mode") or "unknown"),
+            (
+                "Visible Tickers",
+                "sample" if scope.get("visible_tickers_are_sample") else "all visible",
+            ),
+            ("External Calls", audit.get("external_calls_made") or 0),
+            ("Question", audit.get("question") or "priced-in"),
+        ]
+    )
+    st.caption(
+        str(
+            audit.get("useful_definition")
+            or "Useful means source coverage is broad enough to trust the scan."
+        )
+    )
+    review_command = str(scope.get("review_command") or "").strip()
+    export_command = str(scope.get("export_command") or "").strip()
+    source_command = str(_mapping(audit.get("commands")).get("source_overview") or "").strip()
+    commands = [
+        command
+        for command in (review_command, export_command, source_command, audit.get("next_command"))
+        if str(command or "").strip()
+    ]
+    if commands:
+        with st.expander("Full-scan commands", expanded=False):
+            st.code("\n".join(str(command) for command in commands), language="powershell")
+    source_rows = _priced_in_full_scan_source_rows(audit.get("sources"))
+    _show_records(
+        "Priced-in Source Gaps",
+        source_rows,
+        empty="No priced-in source gap rows.",
+    )
+
+
+def _priced_in_full_scan_source_rows(value: object) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for row in _records(value):
+        samples = _list_text(row.get("sample_tickers"))
+        rows.append(
+            {
+                "source": row.get("source"),
+                "status": row.get("status"),
+                "coverage_pct": row.get("coverage_pct"),
+                "gap_count": row.get("gap_count"),
+                "examples": samples,
+                "next_action": row.get("next_action"),
+                "command": row.get("command"),
+            }
+        )
+    return sorted(
+        rows,
+        key=lambda row: (
+            1 if int(_metric_number(row.get("gap_count"))) <= 0 else 0,
+            str(row.get("source") or ""),
+        ),
+    )
+
+
 def _visible_operator_queue_rows(value: object) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     for rank, row in enumerate(_records(value), start=1):
@@ -2955,6 +3063,11 @@ def _show_overview(
         broker_summary=broker_summary,
         discovery_snapshot=discovery_snapshot,
         candidate_rows=candidate_rows,
+    )
+    _show_priced_in_full_scan_panel(
+        engine=engine,
+        config=config,
+        radar_run_summary=radar_run_summary,
     )
     _show_operator_work_queue(
         config=config,

@@ -1,6 +1,56 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 15:18:05 +08:00
+Last updated: 2026-05-19 15:36:13 +08:00
+
+## Latest Web Dashboard Full-Scan Panel
+
+Current problem:
+
+- CLI/TUI now explain that the five-ticker lists are first provider chunks,
+  but the Streamlit dashboard still led with older usefulness/operator sections.
+- A human opening the browser dashboard could still miss the actual product
+  question: "Has price fully matched market expectations across the full scan?"
+
+Fix in this slice:
+
+- Added a zero-call Streamlit section named **Priced-in Full Scan**.
+- It uses the existing `priced_in_full_scan_audit_payload`, not a new planner.
+- The panel appears immediately after **Market Radar Usefulness** and before
+  **Operator Work Queue**.
+- It shows:
+  - full scan rows;
+  - active securities;
+  - research leads;
+  - decision-ready rows;
+  - ready source count;
+  - full-scan review/export commands;
+  - priced-in source gap rows sorted with gaps before no-gap sources.
+- The panel includes `external_calls_made` and does not execute providers.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_entrypoint.py::test_dashboard_wires_priced_in_full_scan_panel_after_usefulness -q
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_entrypoint.py::test_dashboard_wires_priced_in_full_scan_panel_after_usefulness tests\integration\test_dashboard_entrypoint.py::test_dashboard_wires_operator_work_queue_before_activation_sections tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_payload_consolidates_current_state -q
+.\.venv\Scripts\python.exe -m ruff check apps\dashboard\Home.py tests\integration\test_dashboard_entrypoint.py
+git diff --check
+```
+
+Observed:
+
+- Focused Streamlit wiring test passed.
+- Focused three-test set passed (`3 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+- A broader `tests\integration\test_dashboard_entrypoint.py` run exceeded a
+  4-minute timeout in this environment, so do not record it as passing.
+
+Next useful product action:
+
+- After merge, restart local services and visually verify the Streamlit
+  dashboard shows the new **Priced-in Full Scan** section.
+- Actual source-fill execution still requires explicit user approval because
+  it can call SEC/Schwab/market providers.
 
 ## Latest Full-Scan Ticker Scope Clarification
 
