@@ -1,6 +1,88 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 03:46:01 +08:00
+Last updated: 2026-05-20 03:57:37 +08:00
+
+## Latest Missing-Only Market Bar Guidance
+
+Goal alignment check:
+
+- The active product goal is still full-market priced-in mismatch detection:
+  every ranked stock row needs enough price-reaction and market-emotion evidence
+  before the dashboard can answer whether expectations are already reflected in
+  price.
+- The current full-scan blocker is not that MarketRadar lacks a manual bar
+  repair path. The path already exists as
+  `catalyst-radar market-bars template --missing-only`.
+- The drift was in the operator guidance: local status and several
+  readiness/preflight strings still said to generate an active-universe
+  template and fill every active ticker. On the live database that sounds like
+  a 12,613-row manual job even though only 523 as-of rows are missing.
+- This slice keeps the work useful and small by wiring the existing
+  missing-only repair mode into the human-facing CLI/API/dashboard guidance.
+
+Fix in this slice:
+
+- `priced_in_preflight_payload` now surfaces the market-bar repair command with
+  `--missing-only`.
+- Market-bar preflight/readiness text now says "missing-bar template" and "fill
+  only missing ticker rows" instead of implying a full active-universe refill.
+- `priced_in_full_scan_audit_payload` market-bar repair guidance now points at
+  the missing-bar template workflow.
+- `scripts\market-radar-status.ps1` now prints:
+
+  ```text
+  catalyst-radar market-bars template --expected-as-of <date> --out data\local\manual-bars-<date>.csv --missing-only
+  ```
+
+  and says to fill only missing ticker rows.
+- `scripts\refresh-csv-market-data.ps1` now says to fill the generated ticker
+  rows when an import preview is incomplete.
+- No provider calls, broker calls, OpenAI calls, order actions, or database
+  writes were made.
+
+Live zero-call observation after the patch:
+
+```text
+Market as-of coverage: active=12613; with_as_of_bar=12090; missing=523
+- template command: catalyst-radar market-bars template --expected-as-of 2026-05-15 --out data\local\manual-bars-2026-05-15.csv --missing-only
+- market coverage: Generate the missing-bar template and fill only missing ticker rows before import.
+- latest-bar coverage: Fill only missing ticker rows for the latest/as-of date before treating bars as fresh.
+External calls made: 0
+```
+
+Live missing-only template smoke:
+
+```text
+manual_market_bars_template status=ready rows=523 scope=missing_as_of_bars expected_as_of=2026-05-15 path=data\local\_codex-missing-bars-smoke.csv external_calls=0
+coverage=active=12613 existing=12090 missing=523 missing_only=true
+```
+
+The temporary smoke file was removed after verification.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_provider_ingest_cli.py::test_market_bars_missing_only_template_import_counts_existing_bars tests\integration\test_dashboard_data.py::test_priced_in_preflight_uses_manual_bar_template_for_partial_full_scan_bars tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_payload_consolidates_current_state tests\integration\test_dashboard_data.py::test_operator_work_queue_prioritizes_full_scan_market_bar_root_cause tests\integration\test_local_scripts.py::test_market_radar_status_script_is_zero_external_call_sitrep tests\integration\test_local_scripts.py::test_refresh_csv_market_data_script_wraps_local_ingest_without_provider_calls -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py tests\integration\test_dashboard_data.py tests\integration\test_local_scripts.py
+powershell -NoProfile -Command '$null = [scriptblock]::Create((Get-Content -Raw .\scripts\market-radar-status.ps1)); $null = [scriptblock]::Create((Get-Content -Raw .\scripts\refresh-csv-market-data.ps1)); "powershell syntax ok"'
+git diff --check
+```
+
+Observed:
+
+- Focused tests passed (`6 passed`).
+- Ruff passed.
+- PowerShell syntax parsed successfully.
+- `git diff --check` passed.
+
+Next useful product action:
+
+- The immediate market-bar repair surface is now practical: generate the
+  523-row missing-bar template, fill those rows, preview import, execute import,
+  then rerun the zero-call status and plan-only smoke.
+- Provider/source execution remains approval-gated. Do not run the import
+  execute path unless the filled CSV exists and the user intends the local DB
+  write.
 
 ## Latest CIK Template Validate-First Output
 

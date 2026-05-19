@@ -266,7 +266,7 @@ if ($null -ne $freshness) {
     }
     if ($readiness.radar_run.as_of) {
         Write-Output (
-            "- template command: catalyst-radar market-bars template --expected-as-of {0} --out data\local\manual-bars-{0}.csv" -f
+            "- template command: catalyst-radar market-bars template --expected-as-of {0} --out data\local\manual-bars-{0}.csv --missing-only" -f
             $readiness.radar_run.as_of
         )
         Write-Output (
@@ -294,14 +294,14 @@ if ($null -ne $databaseHealth) {
         $null -ne $databaseHealth.active_security_with_daily_bar_count -and
         [int]$databaseHealth.active_security_with_daily_bar_count -lt [int]$databaseHealth.active_security_count
     ) {
-        Write-Output "- market coverage: Generate the manual bar template and fill every active ticker before import."
+        Write-Output "- market coverage: Generate the missing-bar template and fill only missing ticker rows before import."
     }
     if (
         $null -ne $databaseHealth.active_security_count -and
         $null -ne $databaseHealth.active_security_with_latest_daily_bar_count -and
         [int]$databaseHealth.active_security_with_latest_daily_bar_count -lt [int]$databaseHealth.active_security_count
     ) {
-        Write-Output "- latest-bar coverage: Fill every active ticker for the latest/as-of date before treating bars as fresh."
+        Write-Output "- latest-bar coverage: Fill only missing ticker rows for the latest/as-of date before treating bars as fresh."
         $missingLatest = @($databaseHealth.missing_latest_daily_bar_tickers)
         if ($missingLatest.Count -gt 0) {
             Write-Output ("- missing latest-bar tickers: {0}" -f (($missingLatest | Select-Object -First 12) -join ", "))

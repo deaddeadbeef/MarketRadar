@@ -237,8 +237,9 @@ def test_market_radar_status_script_is_zero_external_call_sitrep() -> None:
     assert "with_latest_bar=" in text
     assert "latest-bar coverage:" in text
     assert "missing latest-bar tickers:" in text
-    assert "Generate the manual bar template" in text
+    assert "Generate the missing-bar template" in text
     assert "catalyst-radar market-bars template" in text
+    assert "--missing-only" in text
     assert "catalyst-radar market-bars import" in text
     assert "--expected-as-of" in text
     assert "Portfolio context:" in text
@@ -286,7 +287,7 @@ def test_refresh_csv_market_data_script_wraps_local_ingest_without_provider_call
     assert "Fix the rows above, then preview again before importing." in text
     assert "Coverage check:" in text
     assert "Refusing to import incomplete bars" in text
-    assert "Generate a template with -TemplateOut" in text
+    assert "fill the generated ticker rows" in text
     assert "Import-Csv" in text
     assert "latest_bar=" in text
     assert "Freshness check:" in text

@@ -395,7 +395,7 @@ if ($missingExpectedTickers.Count -gt 0) {
     Write-Output "External calls made: 0"
     Write-Output "Refusing to import incomplete bars for the requested as-of date."
     Write-Output ("Missing expected-as-of bars for active tickers: {0}{1}" -f $sampleMissing, $suffix)
-    Write-Output "Generate a template with -TemplateOut, fill every active ticker row, then preview again."
+    Write-Output "Generate a template with -TemplateOut, fill the generated ticker rows, then preview again."
     exit 2
 }
 
