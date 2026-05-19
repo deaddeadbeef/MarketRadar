@@ -3234,6 +3234,10 @@ def test_sec_cik_override_template_payload_exports_missing_company_like_rows(
     ]
     assert payload["command"].endswith("--stocks-only")
     assert payload["api"] == "GET /api/radar/sec/cik-overrides-template?stocks_only=true"
+    assert payload["validate_command"] == (
+        "catalyst-radar ingest-sec cik-overrides "
+        "--csv data\\local\\cik-overrides-template.csv --validate-only"
+    )
     assert payload["import_command"] == (
         "catalyst-radar ingest-sec cik-overrides "
         "--csv data\\local\\cik-overrides-template.csv"

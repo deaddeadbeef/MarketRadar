@@ -281,6 +281,12 @@ def test_write_sec_cik_override_template_csv_writes_blank_cik_rows(
     assert payload["schema_version"] == "sec-cik-override-template-write-v1"
     assert payload["external_calls_made"] == 0
     assert payload["row_count"] == 1
+    assert payload["validate_command"] == (
+        f"catalyst-radar ingest-sec cik-overrides --csv {output} --validate-only"
+    )
+    assert payload["import_command"] == (
+        f"catalyst-radar ingest-sec cik-overrides --csv {output}"
+    )
     assert output.read_text(encoding="utf-8").splitlines() == [
         "ticker,cik,sec_company_name,security_type,template_reason",
         "FRBA,,,CS,missing_sec_cik_for_catalyst_events_source_gap",
@@ -356,6 +362,9 @@ def test_ingest_sec_cik_overrides_template_cli_writes_current_blockers(
     assert "rows=1" in captured.out
     assert "external_calls=0" in captured.out
     assert "missing_cik_examples=FRBA" in captured.out
+    assert "validate_command=catalyst-radar ingest-sec cik-overrides" in captured.out
+    assert "--validate-only" in captured.out
+    assert "import_command=catalyst-radar ingest-sec cik-overrides" in captured.out
     assert output.read_text(encoding="utf-8").splitlines()[1].startswith("FRBA,,,CS")
 
 
