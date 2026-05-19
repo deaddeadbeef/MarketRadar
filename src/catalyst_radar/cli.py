@@ -3934,6 +3934,12 @@ def _print_priced_in_source_batches(payload: Mapping[str, object]) -> None:
         diagnostic_next = diagnostic.get("next_action")
         if diagnostic_next:
             print(f"diagnostic_next={_compact_cli_text(diagnostic_next)}")
+        point_in_time_import = diagnostic.get("point_in_time_import_command")
+        if point_in_time_import:
+            print(
+                "diagnostic_point_in_time_import="
+                f"{_compact_cli_text(point_in_time_import)}"
+            )
         fix_command = diagnostic.get("fix_command")
         if fix_command:
             print(f"diagnostic_command={_compact_cli_text(fix_command)}")

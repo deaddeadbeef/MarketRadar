@@ -1646,6 +1646,121 @@ def test_priced_in_source_batches_cli_prints_non_company_route(
     assert "diagnostic_next=Use fund evidence." in output.out
 
 
+def test_priced_in_source_batches_cli_prints_options_point_in_time_import(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    def fake_payload(*_args, **_kwargs):
+        return {
+            "schema_version": "priced-in-source-batches-v1",
+            "source": "options",
+            "status": "blocked",
+            "total_gap_rows": 2,
+            "plannable_gap_rows": 0,
+            "unplannable_gap_rows": 2,
+            "routed_gap_rows": 0,
+            "planned_at": "2026-05-18T16:00:00+00:00",
+            "batch_size": 5,
+            "count": 0,
+            "batch_count": 0,
+            "batch_offset": 0,
+            "all_batches": False,
+            "external_calls_made": 0,
+            "headline": "2 full-scan rows have an options gap.",
+            "next_action": "Ingest point-in-time options.",
+            "execution_boundary": "Plan only.",
+            "diagnostic": {
+                "status": "blocked",
+                "eligible_rows": 0,
+                "blocked_rows": 2,
+                "blocked_reason": "newer_than_scan",
+                "reason": "Stored options are newer than the scan.",
+                "sample_blocked_tickers": ["AAPL"],
+                "next_action": "Ingest point-in-time options.",
+                "point_in_time_import_command": (
+                    "catalyst-radar ingest-options --fixture "
+                    "<point-in-time-options-2026-05-15.json>"
+                ),
+            },
+            "batches": [],
+        }
+
+    monkeypatch.setattr(
+        "catalyst_radar.cli.priced_in_source_gap_batches_payload",
+        fake_payload,
+    )
+
+    assert main(["priced-in-source-batches", "--source", "options"]) == 0
+    output = capsys.readouterr()
+
+    assert output.err == ""
+    assert "status=blocked" in output.out
+    assert "blocked_examples=AAPL reason=newer_than_scan" in output.out
+    assert (
+        "diagnostic_point_in_time_import=catalyst-radar ingest-options --fixture "
+        "<point-in-time-options-2026-05-15.json>"
+    ) in output.out
+
+
+def test_dashboard_batch_message_prints_options_point_in_time_import(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    def fake_payload(*_args, **_kwargs):
+        return {
+            "schema_version": "priced-in-source-batches-v1",
+            "source": "options",
+            "status": "blocked",
+            "total_gap_rows": 2,
+            "plannable_gap_rows": 0,
+            "unplannable_gap_rows": 2,
+            "routed_gap_rows": 0,
+            "batch_count": 0,
+            "next_action": "Ingest point-in-time options.",
+            "diagnostic": {
+                "reason": "Stored options are newer than the scan.",
+                "sample_blocked_tickers": ["AAPL"],
+                "blocked_reason": "newer_than_scan",
+                "next_action": "Ingest point-in-time options.",
+                "point_in_time_import_command": (
+                    "catalyst-radar ingest-options --fixture "
+                    "<point-in-time-options-2026-05-15.json>"
+                ),
+            },
+            "batches": [],
+        }
+
+    monkeypatch.setattr(
+        "catalyst_radar.dashboard.tui.dashboard_data."
+        "priced_in_source_gap_batches_payload",
+        fake_payload,
+    )
+
+    update = _apply_command(
+        "batch options",
+        {},
+        "overview",
+        DashboardFilters(),
+        engine=create_engine(database_url, future=True),
+        config=AppConfig.from_env(),
+    )
+
+    assert update.page == "ops"
+    assert "options: blocked;" in update.message
+    assert "Blocked examples: AAPL." in update.message
+    assert (
+        "Point-in-time import: catalyst-radar ingest-options --fixture "
+        "<point-in-time-options-2026-05-15.json>."
+    ) in update.message
+
+
 def test_priced_in_source_batches_execute_next_cli_runs_one_batch(
     tmp_path: Path,
     monkeypatch,

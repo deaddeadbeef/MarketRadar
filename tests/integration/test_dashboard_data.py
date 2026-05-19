@@ -3368,6 +3368,10 @@ def test_priced_in_all_source_gap_batches_blocks_options_shortcut_when_not_point
     assert rows["options"]["execute_next_command"] is None
     assert rows["options"]["diagnostic"]["status"] == "blocked"
     assert rows["options"]["diagnostic"]["blocked_reason"] == "newer_than_scan"
+    assert rows["options"]["diagnostic"]["point_in_time_import_command"] == (
+        "catalyst-radar ingest-options --fixture "
+        "<point-in-time-options-2026-05-10.json>"
+    )
     assert (
         rows["options"]["diagnostic"]["option_gap_diagnostic"]["status"]
         == "newer_than_scan"
