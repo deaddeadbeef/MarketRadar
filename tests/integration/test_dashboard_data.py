@@ -3169,7 +3169,14 @@ def test_priced_in_source_gap_batches_payload_exposes_missing_cik_blockers(
     assert payload["diagnostic"]["manual_fix_command"] == (
         "catalyst-radar ingest-sec cik-overrides --csv <cik-overrides.csv>"
     )
+    assert payload["diagnostic"]["manual_validate_command"] == (
+        "catalyst-radar ingest-sec cik-overrides "
+        "--csv <cik-overrides.csv> --validate-only"
+    )
     assert payload["diagnostic"]["manual_fix_api"] == "POST /api/radar/sec/cik-overrides"
+    assert payload["diagnostic"]["manual_validate_api"] == (
+        "POST /api/radar/sec/cik-overrides/validate"
+    )
     assert payload["diagnostic"]["manual_template_command"] == (
         "catalyst-radar ingest-sec cik-overrides-template "
         "--out data\\local\\cik-overrides-template.csv"

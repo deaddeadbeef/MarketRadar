@@ -93,6 +93,7 @@ from catalyst_radar.decision_cards.builder import build_decision_card
 from catalyst_radar.events.sec_cik import (
     apply_sec_cik_overrides_csv,
     refresh_sec_cik_metadata,
+    validate_sec_cik_overrides_csv,
     write_sec_cik_override_template_csv,
 )
 from catalyst_radar.events.sec_ingest import (
@@ -249,6 +250,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         required=True,
         help="CSV with ticker,cik[,sec_company_name] columns. Makes no external calls.",
+    )
+    cik_overrides.add_argument(
+        "--validate-only",
+        action="store_true",
+        help="Validate the CSV without writing to the database.",
     )
     cik_overrides_template = sec_sub.add_parser("cik-overrides-template")
     cik_overrides_template.add_argument(
@@ -1016,6 +1022,7 @@ def main(argv: list[str] | None = None) -> int:
             return _apply_sec_cik_overrides_cli(
                 engine=engine,
                 csv_path=args.csv,
+                validate_only=args.validate_only,
             )
         if args.sec_command == "cik-overrides-template":
             return _write_sec_cik_override_template_cli(
@@ -2355,7 +2362,33 @@ def _apply_sec_cik_overrides_cli(
     *,
     engine: Engine,
     csv_path: Path,
+    validate_only: bool = False,
 ) -> int:
+    if validate_only:
+        try:
+            result = validate_sec_cik_overrides_csv(engine, csv_path)
+        except (OSError, ValueError) as exc:
+            print(f"sec cik override validation failed: {exc}", file=sys.stderr)
+            return 1
+        payload = result.as_payload()
+        print(
+            "validated_sec_cik_overrides "
+            f"provider=manual "
+            f"status={payload['status']} "
+            f"live={payload['live']} "
+            f"requested={payload['requested_count']} "
+            f"valid={payload['valid_count']} "
+            f"updates={payload['update_candidate_count']} "
+            f"skipped={payload['skipped_count']} "
+            f"unmatched={payload['unmatched_count']} "
+            f"invalid={payload['invalid_count']} "
+            f"duplicates={payload['duplicate_count']} "
+            f"external_calls={payload['external_calls_made']}"
+        )
+        _print_sec_cik_override_validation_examples(payload)
+        print(f"import_command={payload['import_command']}")
+        print(f"next_action={payload['next_action']}")
+        return 0 if payload["status"] in {"ready", "noop"} else 1
     try:
         result = apply_sec_cik_overrides_csv(engine, csv_path)
     except (OSError, ValueError) as exc:
@@ -2387,6 +2420,20 @@ def _apply_sec_cik_overrides_cli(
         print(f"invalid_rows={','.join(str(row) for row in invalid)}")
     print(f"next_action={payload['next_action']}")
     return 1 if payload["invalid_count"] else 0
+
+
+def _print_sec_cik_override_validation_examples(payload: Mapping[str, object]) -> None:
+    examples = (
+        ("update_candidate_tickers", "update_examples"),
+        ("skipped_tickers", "skipped_examples"),
+        ("unmatched_tickers", "unmatched_examples"),
+        ("duplicate_tickers", "duplicate_examples"),
+        ("invalid_rows", "invalid_rows"),
+    )
+    for key, label in examples:
+        rows = payload.get(key)
+        if isinstance(rows, list | tuple) and rows:
+            print(f"{label}={','.join(str(row) for row in rows)}")
 
 
 def _write_sec_cik_override_template_cli(
@@ -3976,6 +4023,7 @@ def _print_priced_in_source_diagnostic(
     for key, label in (
         ("fix_command", "refresh"),
         ("manual_template_command", "template"),
+        ("manual_validate_command", "validate"),
         ("manual_fix_command", "import"),
     ):
         command = diagnostic.get(key)
@@ -4140,6 +4188,18 @@ def _print_priced_in_source_batches(payload: Mapping[str, object]) -> None:
         manual_fix_api = diagnostic.get("manual_fix_api")
         if manual_fix_api:
             print(f"diagnostic_manual_api={_compact_cli_text(manual_fix_api)}")
+        manual_validate_command = diagnostic.get("manual_validate_command")
+        if manual_validate_command:
+            print(
+                "diagnostic_manual_validate_command="
+                f"{_compact_cli_text(manual_validate_command)}"
+            )
+        manual_validate_api = diagnostic.get("manual_validate_api")
+        if manual_validate_api:
+            print(
+                "diagnostic_manual_validate_api="
+                f"{_compact_cli_text(manual_validate_api)}"
+            )
         manual_template_command = diagnostic.get("manual_template_command")
         if manual_template_command:
             print(

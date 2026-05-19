@@ -22,6 +22,7 @@ from catalyst_radar.dashboard.source_batches import (
 from catalyst_radar.events.sec_cik import (
     apply_sec_cik_overrides,
     refresh_sec_cik_metadata,
+    validate_sec_cik_overrides,
 )
 from catalyst_radar.events.sec_ingest import (
     SecSubmissionTarget,
@@ -747,6 +748,25 @@ def radar_sec_cik_overrides(request: SecCikOverridesRequest) -> dict[str, object
         for item in request.overrides
     ]
     result = apply_sec_cik_overrides(_engine(), records)
+    return redact_restricted_external_payload(result.as_payload())
+
+
+@router.post(
+    "/sec/cik-overrides/validate",
+    dependencies=[Depends(require_role(Role.ANALYST))],
+)
+def radar_sec_cik_overrides_validate(
+    request: SecCikOverridesRequest,
+) -> dict[str, object]:
+    records = [
+        {
+            "ticker": item.ticker,
+            "cik": item.cik,
+            "sec_company_name": item.sec_company_name,
+        }
+        for item in request.overrides
+    ]
+    result = validate_sec_cik_overrides(_engine(), records)
     return redact_restricted_external_payload(result.as_payload())
 
 

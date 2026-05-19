@@ -205,6 +205,14 @@ EXPECTED_API_ROUTES = {
     ): ("catalyst_radar.api.routes.radar", "radar_sec_cik_overrides", ("radar",)),
     (
         "POST",
+        "/api/radar/sec/cik-overrides/validate",
+    ): (
+        "catalyst_radar.api.routes.radar",
+        "radar_sec_cik_overrides_validate",
+        ("radar",),
+    ),
+    (
+        "POST",
         "/api/radar/market-bars/template",
     ): ("catalyst_radar.api.routes.radar", "radar_market_bars_template", ("radar",)),
     (
