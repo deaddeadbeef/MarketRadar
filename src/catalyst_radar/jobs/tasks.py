@@ -477,6 +477,9 @@ def _event_ingest(context: _DailyRunContext) -> _StepOutcome:
     provider = _scheduled_event_provider(context)
     if provider in DISABLED_SCHEDULED_PROVIDER_NAMES:
         return _skipped("no_scheduled_event_provider")
+    daily_ingest = context.step_results.get("daily_bar_ingest")
+    if daily_ingest is not None and daily_ingest.status == JobStatus.FAILED.value:
+        return _skipped("blocked_by_failed_dependency:daily_bar_ingest")
     if provider not in EVENT_SCHEDULED_PROVIDER_NAMES:
         return _skipped(
             "scheduled_event_provider_not_supported",

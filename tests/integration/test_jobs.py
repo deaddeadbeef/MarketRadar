@@ -476,6 +476,49 @@ def test_daily_run_polygon_provider_fails_closed_without_api_key(monkeypatch):
     assert health.status == "down"
 
 
+def test_daily_run_skips_sec_ingest_when_daily_market_bars_fail(monkeypatch):
+    class NoSecTransport:
+        def get(self, url, *, headers, timeout_seconds):
+            del headers, timeout_seconds
+            msg = f"SEC should not be called after daily_bar_ingest fails: {url}"
+            raise AssertionError(msg)
+
+        def post(self, url, *, headers, body, timeout_seconds):
+            del headers, body, timeout_seconds
+            msg = f"unexpected POST after daily_bar_ingest fails: {url}"
+            raise AssertionError(msg)
+
+    monkeypatch.setenv("CATALYST_DAILY_MARKET_PROVIDER", "polygon")
+    monkeypatch.setenv("CATALYST_DAILY_EVENT_PROVIDER", "sec")
+    monkeypatch.setenv("CATALYST_POLYGON_API_KEY", "")
+    monkeypatch.setenv("CATALYST_SEC_ENABLE_LIVE", "1")
+    monkeypatch.setenv("CATALYST_SEC_USER_AGENT", "CatalystRadar/0.1 test@example.com")
+    monkeypatch.setattr("catalyst_radar.jobs.tasks.UrlLibHttpTransport", NoSecTransport)
+    engine = _engine()
+    now = datetime(2026, 5, 8, 21, 0, tzinfo=UTC)
+    _insert_active_security(engine, now, metadata={"cik": "0000789019"})
+    spec = DailyRunSpec(
+        as_of=date(2026, 5, 8),
+        decision_available_at=now,
+        run_llm=False,
+        dry_run_alerts=True,
+    )
+
+    result = run_daily(spec, engine=engine)
+
+    assert result.step("daily_bar_ingest").status == "failed"
+    event_step = result.step("event_ingest")
+    assert event_step.status == "skipped"
+    assert event_step.reason == "blocked_by_failed_dependency:daily_bar_ingest"
+    assert result.step("feature_scan").status == "skipped"
+    assert result.step("feature_scan").reason == "blocked_by_failed_dependency:daily_bar_ingest"
+    with engine.connect() as conn:
+        sec_jobs = conn.execute(
+            select(job_runs).where(job_runs.c.job_type == "scheduled_sec_submissions")
+        ).all()
+    assert sec_jobs == []
+
+
 def test_daily_run_polygon_provider_ingests_grouped_daily_with_guarded_http(
     monkeypatch,
 ) -> None:
