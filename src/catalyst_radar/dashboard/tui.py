@@ -60,6 +60,7 @@ class DashboardFilters:
     priced_in_usefulness: str | None = None
     priced_in_source_gap: str | Sequence[str] | None = None
     priced_in_decision_gap: str | Sequence[str] | None = None
+    priced_in_stocks_only: bool = False
     priced_in_limit: int = 50
     priced_in_offset: int = 0
     telemetry_limit: int = 8
@@ -84,6 +85,7 @@ class DashboardFilters:
             priced_in_usefulness=_normalize_optional_filter(self.priced_in_usefulness),
             priced_in_source_gap=priced_in_source_gap,
             priced_in_decision_gap=priced_in_decision_gap,
+            priced_in_stocks_only=bool(self.priced_in_stocks_only),
             priced_in_limit=min(200, max(1, int(self.priced_in_limit))),
             priced_in_offset=max(0, int(self.priced_in_offset)),
             telemetry_limit=max(1, int(self.telemetry_limit)),
@@ -448,6 +450,7 @@ def dashboard_snapshot_payload(
         usefulness=filters.priced_in_usefulness,
         source_gap=filters.priced_in_source_gap,
         decision_gap=filters.priced_in_decision_gap,
+        stocks_only=filters.priced_in_stocks_only,
     )
     priced_in_source_coverage = (
         priced_in_queue.get("source_coverage")
@@ -474,12 +477,14 @@ def dashboard_snapshot_payload(
         config,
         queue=priced_in_queue,
         preflight=priced_in_preflight,
+        stocks_only=filters.priced_in_stocks_only,
     )
     priced_in_audit = dashboard_data.priced_in_full_scan_audit_payload(
         engine,
         config,
         queue=priced_in_queue,
         preflight=priced_in_preflight,
+        stocks_only=filters.priced_in_stocks_only,
     )
     operator_next_step = dashboard_data.operator_next_step_payload(operator_work_queue)
     readiness_payload = dashboard_data.radar_readiness_payload(
@@ -509,6 +514,7 @@ def dashboard_snapshot_payload(
             "priced_in_usefulness": filters.priced_in_usefulness,
             "priced_in_source_gap": list(filters.priced_in_source_gap or ()),
             "priced_in_decision_gap": list(filters.priced_in_decision_gap or ()),
+            "priced_in_stocks_only": filters.priced_in_stocks_only,
             "priced_in_limit": filters.priced_in_limit,
             "priced_in_offset": filters.priced_in_offset,
             "telemetry_limit": filters.telemetry_limit,
@@ -927,7 +933,7 @@ class MarketRadarDashboardApp(App[int]):
                     yield Static(id="operator-response")
                 yield Input(
                     placeholder=(
-                        "Type a command or click a row. Try: ready, full, mismatches, "
+                        "Type a command or click a row. Try: stocks, ready, full, mismatches, "
                         "2, 4, run, refresh, help, q"
                     ),
                     id="command",
@@ -1926,10 +1932,10 @@ class MarketRadarDashboardApp(App[int]):
                 "meaning": "Open the walkthrough or the market insight queue.",
             },
             {
-                "command": "ready / full / mismatches",
+                "command": "stocks / ready / full / mismatches",
                 "meaning": (
-                    "Switch Insights between decision-ready rows, full universe rows, "
-                    "and the broader mismatch queue."
+                    "Switch Insights between stock-like rows, decision-ready rows, "
+                    "full universe rows, and the broader mismatch queue."
                 ),
             },
             {
@@ -2071,9 +2077,25 @@ def _apply_command(
                 filters,
                 priced_in_status="all",
                 priced_in_usefulness=None,
+                priced_in_stocks_only=False,
                 priced_in_offset=0,
             ).normalized(),
             message="Full Scan mode: showing page 1 from the whole ranked universe.",
+        )
+    if command in {"stock", "stocks", "stocks-only", "stocks_only"}:
+        return _CommandUpdate(
+            page="overview",
+            filters=replace(
+                filters,
+                priced_in_status="all",
+                priced_in_usefulness=None,
+                priced_in_stocks_only=True,
+                priced_in_offset=0,
+            ).normalized(),
+            message=(
+                "Stocks-only mode: showing common-stock and ADR rows from the "
+                "local ranked scan. Type full to return to all instruments."
+            ),
         )
     if command in {"d", "ready", "decision", "decision-ready", "decision_ready"}:
         return _CommandUpdate(

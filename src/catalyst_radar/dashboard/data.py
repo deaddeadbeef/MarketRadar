@@ -719,6 +719,7 @@ def priced_in_queue_payload(
     source_gap: str | Sequence[str] | None = None,
     decision_gap: str | Sequence[str] | None = None,
     min_gap: float | None = None,
+    stocks_only: bool = False,
     candidate_rows: Sequence[Mapping[str, object]] | None = None,
     total_count: int | None = None,
     include_planning_rows: bool = False,
@@ -819,6 +820,8 @@ def priced_in_queue_payload(
             for row in rows
             if _priced_in_decision_gap_matches(row, wanted_decision_gaps)
         ]
+    if stocks_only:
+        rows = [row for row in rows if _priced_in_row_is_stock_like(row)]
     rows = sorted(rows, key=_priced_in_queue_sort_key)
     loaded_total_count = len(rows)
     if (
@@ -897,6 +900,7 @@ def priced_in_queue_payload(
             "source_gap": list(wanted_source_gaps),
             "decision_gap": list(wanted_decision_gaps),
             "min_gap": min_gap,
+            "stocks_only": bool(stocks_only),
             "limit": resolved_limit,
             "offset": resolved_offset,
             "available_at": available_at.isoformat() if available_at else None,
@@ -1840,6 +1844,7 @@ def priced_in_answer_payload(
     source_gap: str | Sequence[str] | None = None,
     decision_gap: str | Sequence[str] | None = None,
     min_gap: float | None = None,
+    stocks_only: bool = False,
     queue: Mapping[str, object] | None = None,
     preflight: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
@@ -1858,6 +1863,7 @@ def priced_in_answer_payload(
             source_gap=source_gap,
             decision_gap=decision_gap,
             min_gap=min_gap,
+            stocks_only=stocks_only,
         )
     )
     resolved_preflight = (
@@ -1963,6 +1969,7 @@ def priced_in_full_scan_audit_payload(
     preview_limit: int = PRICED_IN_FULL_SCAN_PREVIEW_LIMIT,
     preview_offset: int = 0,
     all_rows: bool = False,
+    stocks_only: bool = False,
 ) -> dict[str, object]:
     if queue is not None or preflight is not None:
         return _priced_in_full_scan_audit_payload_uncached(
@@ -1975,6 +1982,7 @@ def priced_in_full_scan_audit_payload(
             preview_limit=preview_limit,
             preview_offset=preview_offset,
             all_rows=all_rows,
+            stocks_only=stocks_only,
         )
 
     resolved_all_rows = bool(all_rows)
@@ -2004,6 +2012,7 @@ def priced_in_full_scan_audit_payload(
         resolved_preview_limit,
         resolved_preview_offset,
         resolved_all_rows,
+        bool(stocks_only),
         state_token,
     )
     now = monotonic()
@@ -2028,6 +2037,7 @@ def priced_in_full_scan_audit_payload(
         preview_limit=preview_limit,
         preview_offset=preview_offset,
         all_rows=all_rows,
+        stocks_only=stocks_only,
     )
     _priced_in_audit_cache_performance(
         payload,
@@ -2121,6 +2131,7 @@ def _priced_in_full_scan_audit_payload_uncached(
     preview_limit: int = PRICED_IN_FULL_SCAN_PREVIEW_LIMIT,
     preview_offset: int = 0,
     all_rows: bool = False,
+    stocks_only: bool = False,
 ) -> dict[str, object]:
     resolved_all_rows = bool(all_rows)
     resolved_preview_limit = 1_000_000 if resolved_all_rows else _positive_limit(preview_limit)
@@ -2132,6 +2143,7 @@ def _priced_in_full_scan_audit_payload_uncached(
         available_at=available_at,
         source_gap=wanted_source_gaps,
         all_rows=resolved_all_rows,
+        stocks_only=stocks_only,
     )
     resolved_queue = (
         _row_dict(queue)
@@ -2144,6 +2156,7 @@ def _priced_in_full_scan_audit_payload_uncached(
             available_at=available_at,
             status="all",
             include_planning_rows=True,
+            stocks_only=stocks_only,
         )
     )
     resolved_preflight = (
@@ -2169,6 +2182,7 @@ def _priced_in_full_scan_audit_payload_uncached(
             available_at=available_at,
             status="all",
             source_gap=wanted_source_gaps,
+            stocks_only=stocks_only,
         )
     preview_scan = _priced_in_answer_full_scan_summary(preview_queue)
     preview_rows = _priced_in_full_scan_preview_rows(
@@ -2182,6 +2196,7 @@ def _priced_in_full_scan_audit_payload_uncached(
             available_at=available_at,
             source_gap=wanted_source_gaps,
             all_rows=False,
+            stocks_only=stocks_only,
         )
         if has_more
         else None
@@ -2193,6 +2208,7 @@ def _priced_in_full_scan_audit_payload_uncached(
         source_gap=wanted_source_gaps,
         all_rows=True,
         json=True,
+        stocks_only=stocks_only,
     )
     source_coverage = _mapping_value(resolved_queue, "source_coverage")
     instrument_scope = _mapping_value(resolved_queue, "instrument_scope")
@@ -2241,6 +2257,7 @@ def _priced_in_full_scan_audit_payload_uncached(
     recommended_source_gap = _priced_in_audit_recommended_source_gap(
         source_rows,
         available_at=available_at,
+        stocks_only=stocks_only,
     )
     status = _priced_in_audit_status(
         preflight_status=str(resolved_preflight.get("status") or ""),
@@ -2301,6 +2318,8 @@ def _priced_in_full_scan_audit_payload_uncached(
         "external_calls_made": 0,
         "scope": {
             "mode": full_scan.get("mode"),
+            "instrument_filter": "stocks_only" if stocks_only else "all",
+            "stocks_only": bool(stocks_only),
             "is_all_active_scan": full_scan.get("is_all_active_scan"),
             "active_securities": active,
             "scanned_rows": full_scan.get("scanned_rows"),
@@ -2336,6 +2355,7 @@ def _priced_in_full_scan_audit_payload_uncached(
             ),
             "filter": {
                 "source_gap": list(wanted_source_gaps),
+                "stocks_only": bool(stocks_only),
             },
             "source_gap_actions": source_gap_actions,
             "review_command": preview_scan.get("review_command"),
@@ -2683,10 +2703,13 @@ def _priced_in_audit_command(
     source_gap: Sequence[str],
     all_rows: bool = False,
     json: bool = False,
+    stocks_only: bool = False,
 ) -> str:
     parts = ["catalyst-radar", "priced-in-audit"]
     if available_at is not None:
         parts.extend(["--available-at", available_at.isoformat()])
+    if stocks_only:
+        parts.append("--stocks-only")
     for source in source_gap:
         parts.extend(["--source-gap", str(source)])
     if all_rows:
@@ -3503,6 +3526,7 @@ def _priced_in_audit_recommended_source_gap(
     source_rows: Sequence[Mapping[str, object]],
     *,
     available_at: datetime | None,
+    stocks_only: bool = False,
 ) -> dict[str, object] | None:
     candidates = [
         row
@@ -3534,6 +3558,7 @@ def _priced_in_audit_recommended_source_gap(
         offset=0,
         available_at=available_at,
         source_gap=[source] if source else [],
+        stocks_only=stocks_only,
     )
     full_scan_command = _priced_in_audit_command(
         limit=25,
@@ -3542,6 +3567,7 @@ def _priced_in_audit_recommended_source_gap(
         source_gap=[source] if source else [],
         all_rows=True,
         json=True,
+        stocks_only=stocks_only,
     )
     rationale = (
         f"{source} has the highest current payoff: {decision_rows} "
@@ -3635,15 +3661,18 @@ def _priced_in_answer_full_scan_summary(
     review_command = _priced_in_queue_command_from_filters(filters)
     export_command = _priced_in_queue_command_from_filters(filters, all_rows=True)
     mode = str(scan_scope.get("mode") or "full_scan")
+    stocks_only = bool(filters.get("stocks_only"))
     sample_text = (
         f"The tickers below are rows {start}-{end} from the current ranked page, "
-        f"not the full scan universe of {total} row(s)."
+        f"not the {'stocks-only ' if stocks_only else ''}scan universe of {total} row(s)."
         if total and returned and returned < total
         else "The visible tickers cover the current filtered result set."
     )
     return {
         "schema_version": "priced-in-full-scan-summary-v1",
         "mode": mode,
+        "instrument_filter": "stocks_only" if stocks_only else "all",
+        "stocks_only": stocks_only,
         "is_all_active_scan": mode == "full_scan",
         "active_securities": active,
         "scanned_rows": scan_total or total,
@@ -3657,7 +3686,11 @@ def _priced_in_answer_full_scan_summary(
         "review_command": review_command,
         "next_page_command": scan_scope.get("next_page_command"),
         "export_command": export_command,
-        "full_export_command": "catalyst-radar priced-in-queue --full-scan --all --json",
+        "full_export_command": (
+            "catalyst-radar priced-in-queue --stocks-only --full-scan --all --json"
+            if stocks_only
+            else "catalyst-radar priced-in-queue --full-scan --all --json"
+        ),
     }
 
 
@@ -3665,6 +3698,7 @@ def _priced_in_answer_scan_scope(queue: Mapping[str, object]) -> dict[str, objec
     filters = _mapping_value(queue, "filters")
     queue_status = str(queue.get("status") or "").strip().lower()
     status = str(filters.get("status") or "all").strip().lower()
+    stocks_only = bool(filters.get("stocks_only"))
     total = int(_finite_float(queue.get("total_count")))
     returned = int(
         _finite_float(queue.get("returned_count"))
@@ -3695,7 +3729,8 @@ def _priced_in_answer_scan_scope(queue: Mapping[str, object]) -> dict[str, objec
     elif full_scan_mode:
         explanation = (
             f"Showing ranked rows {row_start}-{row_end} of {total}; "
-            "the visible tickers are one page from the full scan, not the scan universe."
+            "the visible tickers are one page from the "
+            f"{'stocks-only ' if stocks_only else ''}full scan, not the scan universe."
         )
     else:
         explanation = (
@@ -3706,6 +3741,8 @@ def _priced_in_answer_scan_scope(queue: Mapping[str, object]) -> dict[str, objec
     return {
         "schema_version": "priced-in-scan-scope-v1",
         "mode": mode,
+        "instrument_filter": "stocks_only" if stocks_only else "all",
+        "stocks_only": stocks_only,
         "visible_row_start": row_start,
         "visible_row_end": row_end,
         "visible_rows": returned,
@@ -3740,6 +3777,8 @@ def _priced_in_queue_command_from_filters(
     available_at = str(filters.get("available_at") or "").strip()
     if available_at:
         parts.extend(["--available-at", available_at])
+    if bool(filters.get("stocks_only")):
+        parts.append("--stocks-only")
     status = str(filters.get("status") or "all").strip().lower()
     if status in {"", "all"}:
         parts.append("--full-scan")
@@ -9567,6 +9606,11 @@ def _priced_in_row_blockers(row: Mapping[str, object]) -> list[str]:
     if str(row.get("state") or "").strip().lower() == "blocked" and not blockers:
         blockers.add("policy_blocked")
     return sorted(blockers)
+
+
+def _priced_in_row_is_stock_like(row: Mapping[str, object]) -> bool:
+    instrument = _mapping_value(row, "instrument")
+    return str(instrument.get("category") or "").strip().lower() == "company_like"
 
 
 def _priced_in_row_source_payload(row: Mapping[str, object]) -> dict[str, object]:

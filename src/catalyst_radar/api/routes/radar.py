@@ -411,6 +411,7 @@ def radar_priced_in_queue(
     source_gap: str | None = Query(default=None),
     decision_gap: str | None = Query(default=None),
     min_gap: float | None = Query(default=None, ge=0),
+    stocks_only: bool = Query(default=False),
 ) -> dict[str, object]:
     priced_in_payload = _dashboard_helper("priced_in_queue_payload")
     resolved_status = "actionable" if decision_ready else status
@@ -427,6 +428,7 @@ def radar_priced_in_queue(
             source_gap=source_gap,
             decision_gap=decision_gap,
             min_gap=min_gap,
+            stocks_only=stocks_only,
         )
     )
 
@@ -448,6 +450,7 @@ def radar_priced_in_answer(
     source_gap: str | None = Query(default=None),
     decision_gap: str | None = Query(default=None),
     min_gap: float | None = Query(default=None, ge=0),
+    stocks_only: bool = Query(default=False),
 ) -> dict[str, object]:
     answer_payload = _dashboard_helper("priced_in_answer_payload")
     return redact_restricted_external_payload(
@@ -461,6 +464,7 @@ def radar_priced_in_answer(
             source_gap=source_gap,
             decision_gap=decision_gap,
             min_gap=min_gap,
+            stocks_only=stocks_only,
         )
     )
 
@@ -472,6 +476,7 @@ def radar_priced_in_audit(
     limit: int = Query(default=25, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     all_rows: bool = Query(default=False),
+    stocks_only: bool = Query(default=False),
 ) -> dict[str, object]:
     audit_payload = _dashboard_helper("priced_in_full_scan_audit_payload")
     return redact_restricted_external_payload(
@@ -483,6 +488,7 @@ def radar_priced_in_audit(
             preview_limit=1_000_000 if all_rows else limit,
             preview_offset=0 if all_rows else offset,
             all_rows=all_rows,
+            stocks_only=stocks_only,
         )
     )
 

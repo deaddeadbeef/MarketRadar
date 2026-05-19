@@ -14,6 +14,7 @@ catalyst-radar dashboard-tui
 catalyst-radar dashboard-tui --once --page overview
 catalyst-radar dashboard-tui --once --page features
 catalyst-radar priced-in-answer
+catalyst-radar priced-in-queue --stocks-only --json
 catalyst-radar priced-in-queue --decision-ready
 catalyst-radar priced-in-preflight --json
 catalyst-radar priced-in-queue --json
@@ -30,8 +31,9 @@ from the candidates page, `open <#|alert-id>` from the alerts page, `ticker
 `clear-filters`, `help`, and `q`. The default Insights view is the full ranked
 scan. Type `ready` or press `D` in the TUI only when you intentionally want the
 decision-useful subset from that full scan; the API equivalent is
-`GET /api/radar/priced-in?decision_ready=true`; type `full` to return to the
-whole ranked universe. `run execute` starts one capped radar cycle
+`GET /api/radar/priced-in?decision_ready=true`; type `stocks` to focus common
+stock/ADR rows, and type `full` to return to the whole ranked universe.
+`run execute` starts one capped radar cycle
 through the existing scheduler only after the call plan has been shown. The TUI
 also supports source-fill planning and execution: `batch <source>` is zero-call
 and shows the full-scan plan plus the next safe chunk, while
@@ -55,7 +57,7 @@ The TUI also supports low-risk operator writes: `action <ticker> <action> [notes
 | --- | --- | --- | --- |
 | Readiness | Investment readiness, usefulness score, and operator next step | `overview`, `readiness` | Know whether output is research-only or decision-useful. |
 | Full scan coverage | Active security count, requested/scanned securities, candidate count, latest/run bar coverage, stocks-only bar coverage, zero-call preflight blockers, and selected-universe warnings | `overview`, `ops`, `run`, `priced-in-preflight`, `/api/radar/priced-in/preflight` | Confirm the queue came from a real all-active pass rather than a tiny fixture or `liquid-us` selected universe, distinguish a stocks-only coverage gap from fund/wrapper gaps, and get the exact next command when it did not. |
-| Current priced-in answer | One zero-call answer to whether price has matched market expectations, with research/answer-ready counts, optional context gaps, next command, and explicit trade-readiness boundary | `overview`, `priced-in-answer`, `priced-in-queue --full-scan`, `priced-in-queue --decision-ready`, `/api/radar/priced-in`, `/api/radar/priced-in?decision_ready=true`, `/api/radar/priced-in/answer`, `dashboard-snapshot --json` | Know whether the current scan can answer the priced-in question, while keeping trade approval tied to the separate readiness/manual-buy-review gate. |
+| Current priced-in answer | One zero-call answer to whether price has matched market expectations, with research/answer-ready counts, optional context gaps, next command, stock-only filtering, and explicit trade-readiness boundary | `overview`, `priced-in-answer`, `priced-in-queue --full-scan`, `priced-in-queue --stocks-only`, `priced-in-queue --decision-ready`, `/api/radar/priced-in`, `/api/radar/priced-in?stocks_only=true`, `/api/radar/priced-in?decision_ready=true`, `/api/radar/priced-in/answer`, `dashboard-snapshot --json` | Know whether the current scan can answer the priced-in question, focus actual common-stock/ADR rows when the task is “any stock,” while keeping trade approval tied to the separate readiness/manual-buy-review gate. |
 | Priced-in mismatch | Emotion score, price-reaction score, emotion-minus-reaction gap, status, reason, queue-level and row-level source coverage, next step | `overview`, `candidates`, `candidate:<ticker>`, `priced-in-queue`, `/api/radar/priced-in` | Find stocks where market emotion appears ahead of or behind price reaction, distinguish blocking local evidence gaps from optional options/broker context, and see whether each source is contributing. |
 | Source fill workflow | Prioritized zero-call workflow from priced-in preflight evidence-plan steps, including dependencies, next source action, the all-source plan command, and a compact overview hint for coverage-first versus decision-shortcut work | `overview`, `ops`, `dashboard-snapshot --page ops --json`, `batch all` in TUI | Know the next data layer to inspect before running provider chunks; keep action distinct from response. |
 | All-source batch overview | Plan-only source-gap map across market bars, catalyst events, local text, options, theme/peer context, and broker context, with first executable chunk per source, a broad `coverage_first` recommendation, a smaller `decision_shortcut`, and zero provider calls | `priced-in-source-batches --source all`, `/api/radar/priced-in/source-batches?source=all`, `batch all` in TUI | Decide which data layer to fill next before spending provider calls; avoid confusing whole-market coverage work with the current top-answer subset. |

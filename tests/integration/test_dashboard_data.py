@@ -2058,6 +2058,28 @@ def test_priced_in_queue_payload_reports_full_scan_instrument_scope(
         actions["catalyst_events"]["external_call_boundary"]
     )
 
+    stock_payload = priced_in_queue_payload(
+        engine,
+        AppConfig.from_env({}),
+        limit=10,
+        stocks_only=True,
+    )
+    assert stock_payload["filters"]["stocks_only"] is True
+    assert stock_payload["total_count"] == 1
+    assert [row["ticker"] for row in stock_payload["rows"]] == ["MSFT"]
+    assert stock_payload["instrument_scope"]["company_like_rows"] == 1
+    assert stock_payload["instrument_scope"]["non_company_rows"] == 0
+
+    stock_audit = priced_in_full_scan_audit_payload(
+        engine,
+        AppConfig.from_env({}),
+        stocks_only=True,
+    )
+    assert stock_audit["scope"]["instrument_filter"] == "stocks_only"
+    assert stock_audit["scope"]["stocks_only"] is True
+    assert stock_audit["scope"]["ranked_rows"] == 1
+    assert "--stocks-only" in stock_audit["scope"]["audit_full_export_command"]
+
 
 def test_priced_in_queue_payload_routes_non_company_usefulness_through_theme_context(
     tmp_path: Path,

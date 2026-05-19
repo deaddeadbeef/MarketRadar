@@ -530,6 +530,11 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     priced_in.add_argument("--min-gap", type=float)
+    priced_in.add_argument(
+        "--stocks-only",
+        action="store_true",
+        help="Show only stock-like rows (common stocks and ADRs) from the ranked scan.",
+    )
     priced_in.add_argument("--json", action="store_true")
 
     priced_in_batches = subparsers.add_parser("priced-in-source-batches")
@@ -621,6 +626,11 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     priced_in_answer.add_argument("--min-gap", type=float)
+    priced_in_answer.add_argument(
+        "--stocks-only",
+        action="store_true",
+        help="Answer using only stock-like rows (common stocks and ADRs).",
+    )
     priced_in_answer.add_argument("--json", action="store_true")
 
     priced_in_audit = subparsers.add_parser("priced-in-audit")
@@ -655,6 +665,11 @@ def build_parser() -> argparse.ArgumentParser:
             "or comma-separate: market_bars,catalyst_events,local_text,options,"
             "theme_peer_sector,broker_context."
         ),
+    )
+    priced_in_audit.add_argument(
+        "--stocks-only",
+        action="store_true",
+        help="Audit only stock-like rows (common stocks and ADRs) from the full scan.",
     )
     priced_in_audit.add_argument("--json", action="store_true")
 
@@ -1119,6 +1134,7 @@ def main(argv: list[str] | None = None) -> int:
             source_gap=args.source_gap,
             decision_gap=args.decision_gap,
             min_gap=args.min_gap,
+            stocks_only=args.stocks_only,
         )
         if args.json:
             print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
@@ -1253,6 +1269,7 @@ def main(argv: list[str] | None = None) -> int:
             source_gap=args.source_gap,
             decision_gap=args.decision_gap,
             min_gap=args.min_gap,
+            stocks_only=args.stocks_only,
         )
         if args.json:
             print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
@@ -1270,6 +1287,7 @@ def main(argv: list[str] | None = None) -> int:
             preview_limit=1_000_000 if args.all_rows else args.limit,
             preview_offset=0 if args.all_rows else args.offset,
             all_rows=args.all_rows,
+            stocks_only=args.stocks_only,
         )
         if args.json:
             print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
