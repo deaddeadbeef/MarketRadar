@@ -155,6 +155,11 @@ def test_dashboard_snapshot_cli_outputs_dashboard_command_center_json(
     assert options_step["priority_sample_tickers"] == ["ACME"]
     assert payload["priced_in_answer"]["schema_version"] == "priced-in-answer-v1"
     assert payload["priced_in_answer"]["external_calls_made"] == 0
+    assert payload["priced_in_audit"]["schema_version"] == (
+        "priced-in-full-scan-audit-v1"
+    )
+    assert payload["priced_in_audit"]["external_calls_made"] == 0
+    assert payload["priced_in_audit"]["scope"]["mode"] == "full_scan"
     assert payload["priced_in_answer"]["question"] == (
         "Has price fully matched market expectations?"
     )
@@ -669,6 +674,7 @@ def test_dashboard_tui_once_can_show_full_scan_mode(
     assert "Trade status:" in output.out
     assert "Trade safe:" in output.out
     assert "Full-market priced-in queue - showing" in output.out
+    assert "Full scan audit:" in output.out
     assert "Decision readiness:" in output.out
     assert "Data gaps" in output.out
     assert "Next data step:" in output.out
@@ -1346,6 +1352,41 @@ def test_priced_in_answer_cli_outputs_current_scan_answer(
     assert payload["full_scan"]["schema_version"] == (
         "priced-in-full-scan-summary-v1"
     )
+
+
+def test_priced_in_audit_cli_outputs_full_scan_audit(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["seed-dashboard-demo"]) == 0
+    capsys.readouterr()
+
+    assert main(["priced-in-audit"]) == 0
+    output = capsys.readouterr()
+
+    assert output.err == ""
+    assert "priced_in_audit status=" in output.out
+    assert (
+        "question=Can MarketRadar answer whether price matches market expectations?"
+        in output.out
+    )
+    assert "market_bars=status=" in output.out
+    assert "source_coverage=ready=" in output.out
+    assert "sources:" in output.out
+    assert "- options status=" in output.out
+    assert "commands:" in output.out
+
+    assert main(["priced-in-audit", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["schema_version"] == "priced-in-full-scan-audit-v1"
+    assert payload["external_calls_made"] == 0
+    assert payload["scope"]["mode"] == "full_scan"
+    assert payload["source_coverage"]["source_count"] == 6
 
 
 def test_candidate_detail_cli_outputs_priced_in_evidence_brief(

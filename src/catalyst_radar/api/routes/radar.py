@@ -460,6 +460,20 @@ def radar_priced_in_answer(
     )
 
 
+@router.get("/priced-in/audit", dependencies=[Depends(require_role(Role.VIEWER))])
+def radar_priced_in_audit(
+    available_at: datetime | None = None,
+) -> dict[str, object]:
+    audit_payload = _dashboard_helper("priced_in_full_scan_audit_payload")
+    return redact_restricted_external_payload(
+        audit_payload(
+            _engine(),
+            AppConfig.from_env(),
+            available_at=_parse_api_datetime(available_at),
+        )
+    )
+
+
 @router.get("/priced-in/source-batches", dependencies=[Depends(require_role(Role.VIEWER))])
 def radar_priced_in_source_batches(
     source: str = Query(...),

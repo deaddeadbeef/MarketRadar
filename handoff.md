@@ -1,6 +1,95 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 11:11:03 +08:00
+Last updated: 2026-05-19 11:30:45 +08:00
+
+## Latest Full-Scan Audit Surface
+
+Current problem:
+
+- The dashboard had separate surfaces for priced-in answer, preflight,
+  source batches, and source workflow.
+- Those pieces were accurate, but they still required the operator to mentally
+  assemble the answer to:
+
+  ```text
+  Can MarketRadar currently answer whether price matches market expectations?
+  If not, what exact full-scan coverage is missing?
+  ```
+
+Fix in this slice:
+
+- Added `priced_in_full_scan_audit_payload()` as a zero-call consolidated audit
+  over existing local queue/preflight data.
+- Added CLI:
+
+  ```powershell
+  catalyst-radar priced-in-audit
+  catalyst-radar priced-in-audit --json
+  ```
+
+- Added API route:
+
+  ```text
+  GET /api/radar/priced-in/audit
+  ```
+
+- Added the audit payload to the TUI/dashboard snapshot and displayed a compact
+  Insights line:
+
+  ```text
+  Full scan audit: attention; ranked 12087/12613; bars 12090/12613; sources 2/6; next Review the run call plan and refresh event ingestion before trusting emotion.
+  ```
+
+What the live audit says before this slice is merged/restarted:
+
+```text
+priced_in_audit status=attention active=12613 scanned=12087 ranked=12087 research=10 decision=0 external_calls=0
+answer=Partially. MarketRadar has research output, but source or coverage gaps still need attention before trusting the answer.
+market_bars=status=attention coverage=12090/12613 missing=523 coverage_pct=95.9
+source_coverage=ready=2/6 weak=options,broker_context,catalyst_events
+next_action=Review the run call plan and refresh event ingestion before trusting emotion.
+next_command=catalyst-radar priced-in-source-batches --source catalyst_events --all --json
+```
+
+Important interpretation:
+
+- This does not make any provider calls.
+- This does not claim the system is investable.
+- The current state is still research-only/attention:
+  - `12087/12613` active securities are ranked.
+  - `523` active securities still lack as-of bars.
+  - Only `2/6` priced-in source classes are fully covered.
+  - There are `10` research leads and `0` decision-ready rows.
+- The next broad evidence action remains catalyst-event coverage, not current
+  options sync.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_payload_consolidates_current_state tests\integration\test_dashboard_data.py::test_priced_in_answer_payload_summarizes_current_scan tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_audit_cli_outputs_full_scan_audit tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_snapshot_cli_outputs_dashboard_command_center_json tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_tui_once_can_show_full_scan_mode tests\integration\test_api_routes.py::test_get_radar_priced_in_audit_returns_zero_call_audit tests\integration\test_api_routes.py::test_get_radar_priced_in_answer_returns_current_scan_answer -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\api\routes\radar.py src\catalyst_radar\cli.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_api_routes.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-audit
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page overview
+```
+
+Observed:
+
+- Focused tests passed (`7 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+- Live CLI/TUI branch smokes made 0 provider calls.
+- Live API curl returned 404 before merge because the running service was still
+  the prior `main` build. Re-run API curl after this PR is merged and local
+  services are restarted.
+
+Next useful product slice:
+
+- Use the audit output as the human/operator entry point.
+- Then either:
+  - fill the 523 as-of daily-bar gaps through the manual bar import path, or
+  - proceed with explicit `catalyst_events` source batches if accepting the
+    current `95.9%` market-bar coverage as research-only.
 
 ## Latest Full-Scan Source Scope And Options Shortcut Fix
 

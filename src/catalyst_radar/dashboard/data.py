@@ -1692,6 +1692,252 @@ def priced_in_answer_payload(
     }
 
 
+def priced_in_full_scan_audit_payload(
+    engine: Engine,
+    config: AppConfig,
+    *,
+    available_at: datetime | None = None,
+    queue: Mapping[str, object] | None = None,
+    preflight: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    resolved_queue = (
+        _row_dict(queue)
+        if isinstance(queue, Mapping)
+        else priced_in_queue_payload(
+            engine,
+            config,
+            limit=1,
+            offset=0,
+            available_at=available_at,
+            status="all",
+        )
+    )
+    resolved_preflight = (
+        _row_dict(preflight)
+        if isinstance(preflight, Mapping)
+        else _row_dict(_mapping_value(resolved_queue, "preflight"))
+    )
+    if not resolved_preflight:
+        resolved_preflight = priced_in_preflight_payload(engine, config)
+    full_scan = _priced_in_answer_full_scan_summary(resolved_queue)
+    source_coverage = _mapping_value(resolved_queue, "source_coverage")
+    source_rows = [
+        _priced_in_audit_source_row(row)
+        for row in _sequence_value(source_coverage.get("actions"))
+        if isinstance(row, Mapping)
+    ]
+    status_counts = _mapping_value(resolved_queue, "status_counts")
+    usefulness_counts = _mapping_value(resolved_queue, "usefulness_counts")
+    actionable_count = sum(
+        int(_finite_float(status_counts.get(item)))
+        for item in PRICED_IN_ACTIONABLE_STATUSES
+    )
+    decision_ready_count = int(_finite_float(usefulness_counts.get("decision_useful")))
+    research_ready_count = int(_finite_float(usefulness_counts.get("research_useful")))
+    blocked_count = int(_finite_float(usefulness_counts.get("blocked")))
+    market_bars = _priced_in_audit_market_bars(resolved_queue, resolved_preflight)
+    next_action, next_command = _priced_in_audit_next_step(
+        resolved_preflight,
+        source_rows,
+    )
+    status = _priced_in_audit_status(
+        preflight_status=str(resolved_preflight.get("status") or ""),
+        decision_ready_count=decision_ready_count,
+        research_ready_count=research_ready_count,
+    )
+    ranked_rows = int(_finite_float(full_scan.get("ranked_rows")))
+    active = int(_finite_float(full_scan.get("active_securities"))) or ranked_rows
+    return {
+        "schema_version": "priced-in-full-scan-audit-v1",
+        "status": status,
+        "headline": (
+            f"Full scan ranks {ranked_rows} row(s) from {active} active "
+            f"securities; {research_ready_count} research lead(s), "
+            f"{decision_ready_count} decision-ready row(s)."
+        ),
+        "question": "Can MarketRadar answer whether price matches market expectations?",
+        "answer": _priced_in_audit_answer(
+            status=status,
+            actionable_count=actionable_count,
+            research_ready_count=research_ready_count,
+            decision_ready_count=decision_ready_count,
+            blocked_count=blocked_count,
+        ),
+        "external_calls_made": 0,
+        "scope": {
+            "mode": full_scan.get("mode"),
+            "is_all_active_scan": full_scan.get("is_all_active_scan"),
+            "active_securities": active,
+            "scanned_rows": full_scan.get("scanned_rows"),
+            "ranked_rows": ranked_rows,
+            "visible_rows": full_scan.get("visible_rows"),
+            "visible_tickers_are_sample": full_scan.get(
+                "visible_tickers_are_sample"
+            ),
+            "review_command": full_scan.get("review_command"),
+            "export_command": full_scan.get("full_export_command")
+            or full_scan.get("export_command"),
+        },
+        "counts": {
+            "actionable_mismatch_rows": actionable_count,
+            "research_lead_rows": research_ready_count,
+            "decision_ready_rows": decision_ready_count,
+            "blocked_rows": blocked_count,
+        },
+        "market_bars": market_bars,
+        "source_coverage": {
+            "summary": source_coverage.get("summary"),
+            "weak_sources": list(_sequence_value(source_coverage.get("weak_sources"))),
+            "ready_source_count": sum(
+                1 for row in source_rows if str(row.get("status")) == "ready"
+            ),
+            "source_count": len(source_rows),
+        },
+        "sources": source_rows,
+        "evidence_plan": _row_dict(_mapping_value(resolved_preflight, "evidence_plan")),
+        "next_action": next_action,
+        "next_command": next_command,
+        "useful_definition": (
+            "Useful means full-scan price reaction is covered, catalyst/text "
+            "evidence explains the emotion side, decision artifacts exist for "
+            "candidate rows, and optional broker/options context is point-in-time "
+            "or explicitly labeled supporting evidence."
+        ),
+        "commands": {
+            "answer": "catalyst-radar priced-in-answer",
+            "queue": "catalyst-radar priced-in-queue --full-scan --limit 50",
+            "preflight": "catalyst-radar priced-in-preflight",
+            "source_overview": "catalyst-radar priced-in-source-batches --source all",
+            "export_full_scan": "catalyst-radar priced-in-queue --full-scan --all --json",
+        },
+    }
+
+
+def _priced_in_audit_status(
+    *,
+    preflight_status: str,
+    decision_ready_count: int,
+    research_ready_count: int,
+) -> str:
+    normalized = preflight_status.strip().lower()
+    if normalized == "blocked":
+        return "blocked"
+    if normalized == "attention":
+        return "attention"
+    if decision_ready_count > 0:
+        return "decision_ready"
+    if research_ready_count > 0:
+        return "research_only"
+    return "monitor_only"
+
+
+def _priced_in_audit_answer(
+    *,
+    status: str,
+    actionable_count: int,
+    research_ready_count: int,
+    decision_ready_count: int,
+    blocked_count: int,
+) -> str:
+    if status == "blocked":
+        return "No. Full-scan prerequisites still block a trustworthy answer."
+    if status == "attention":
+        return (
+            "Partially. MarketRadar has research output, but source or coverage "
+            "gaps still need attention before trusting the answer."
+        )
+    if decision_ready_count:
+        return (
+            f"Yes for review: {decision_ready_count} row(s) have a priced-in "
+            "answer ready for human decision review."
+        )
+    if research_ready_count:
+        return (
+            f"Research only: {research_ready_count} not-priced-in lead(s) need "
+            "more evidence before decision review."
+        )
+    if actionable_count:
+        return (
+            f"Not yet. {actionable_count} actionable mismatch row(s) remain "
+            f"but {blocked_count} row(s) are blocked or incomplete."
+        )
+    return "No actionable emotion-versus-price mismatch is currently ready."
+
+
+def _priced_in_audit_market_bars(
+    queue: Mapping[str, object],
+    preflight: Mapping[str, object],
+) -> dict[str, object]:
+    scan = _mapping_value(queue, "scan")
+    freshness = _mapping_value(scan, "freshness")
+    active = int(_finite_float(freshness.get("active_security_count")))
+    if active <= 0:
+        active = int(_finite_float(queue.get("total_count")))
+    with_as_of_bar = int(
+        _finite_float(freshness.get("active_security_with_as_of_bar_count"))
+    )
+    missing = int(_finite_float(freshness.get("missing_as_of_daily_bar_count")))
+    if with_as_of_bar <= 0 and missing <= 0 and active > 0:
+        with_as_of_bar = active
+    rows_by_area = {
+        str(row.get("area") or ""): row
+        for row in _sequence_value(preflight.get("rows"))
+        if isinstance(row, Mapping)
+    }
+    market_row = _row_dict(rows_by_area.get("market_bars", {}))
+    return {
+        "status": market_row.get("status") or ("ready" if missing == 0 else "attention"),
+        "active_securities": active,
+        "with_as_of_bar": with_as_of_bar,
+        "missing_as_of_bar": missing,
+        "coverage_pct": round((with_as_of_bar / active) * 100, 1) if active else 0.0,
+        "finding": market_row.get("finding"),
+        "next_action": market_row.get("next_action"),
+        "command": market_row.get("command"),
+    }
+
+
+def _priced_in_audit_source_row(action: Mapping[str, object]) -> dict[str, object]:
+    return {
+        "source": action.get("source"),
+        "status": action.get("status"),
+        "available": int(_finite_float(action.get("available"))),
+        "row_count": int(_finite_float(action.get("row_count"))),
+        "gap_count": int(_finite_float(action.get("gap_count"))),
+        "coverage_pct": action.get("coverage_pct"),
+        "sample_tickers": list(_sequence_value(action.get("sample_tickers"))),
+        "next_action": action.get("next_action"),
+        "command": action.get("batch_plan_command") or action.get("command"),
+    }
+
+
+def _priced_in_audit_next_step(
+    preflight: Mapping[str, object],
+    source_rows: Sequence[Mapping[str, object]],
+) -> tuple[str, str | None]:
+    plan = _mapping_value(preflight, "evidence_plan")
+    for step in _sequence_value(plan.get("steps")):
+        if not isinstance(step, Mapping):
+            continue
+        if str(step.get("status") or "") == "ready":
+            continue
+        action = str(step.get("action") or step.get("next_action") or "").strip()
+        command = str(step.get("command") or "").strip()
+        if action:
+            return action, command or None
+    for row in source_rows:
+        if int(_finite_float(row.get("gap_count"))) <= 0:
+            continue
+        action = str(row.get("next_action") or "").strip()
+        command = str(row.get("command") or "").strip()
+        if action:
+            return action, command or None
+    return (
+        "Open the full priced-in queue and review the largest emotion/reaction gaps.",
+        "catalyst-radar priced-in-queue --full-scan --limit 50",
+    )
+
+
 def _priced_in_answer_full_scan_summary(
     queue: Mapping[str, object],
 ) -> dict[str, object]:

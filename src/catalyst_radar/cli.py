@@ -59,6 +59,7 @@ from catalyst_radar.dashboard.data import (
     load_ticker_detail,
     priced_in_all_source_gap_batches_payload,
     priced_in_answer_payload,
+    priced_in_full_scan_audit_payload,
     priced_in_preflight_payload,
     priced_in_queue_payload,
     priced_in_source_gap_batches_payload,
@@ -607,6 +608,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     priced_in_answer.add_argument("--min-gap", type=float)
     priced_in_answer.add_argument("--json", action="store_true")
+
+    priced_in_audit = subparsers.add_parser("priced-in-audit")
+    priced_in_audit.add_argument("--database-url")
+    priced_in_audit.add_argument("--available-at", type=_parse_aware_datetime)
+    priced_in_audit.add_argument("--json", action="store_true")
 
     candidate_detail = subparsers.add_parser("candidate-detail")
     candidate_detail.add_argument("ticker")
@@ -1172,6 +1178,19 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
         else:
             _print_priced_in_answer(payload)
+        return 0
+
+    if args.command == "priced-in-audit":
+        create_schema(engine)
+        payload = priced_in_full_scan_audit_payload(
+            engine,
+            config,
+            available_at=args.available_at,
+        )
+        if args.json:
+            print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
+        else:
+            _print_priced_in_audit(payload)
         return 0
 
     if args.command == "candidate-detail":
@@ -3609,6 +3628,70 @@ def _priced_in_data_summary(row: Mapping[str, object]) -> str:
         if summary:
             return summary.replace(" ", "_")
     return "n/a"
+
+
+def _print_priced_in_audit(payload: Mapping[str, object]) -> None:
+    scope = payload.get("scope") if isinstance(payload.get("scope"), Mapping) else {}
+    counts = payload.get("counts") if isinstance(payload.get("counts"), Mapping) else {}
+    market = (
+        payload.get("market_bars")
+        if isinstance(payload.get("market_bars"), Mapping)
+        else {}
+    )
+    coverage = (
+        payload.get("source_coverage")
+        if isinstance(payload.get("source_coverage"), Mapping)
+        else {}
+    )
+    print(
+        "priced_in_audit "
+        f"status={payload.get('status')} "
+        f"active={scope.get('active_securities')} "
+        f"scanned={scope.get('scanned_rows')} "
+        f"ranked={scope.get('ranked_rows')} "
+        f"research={counts.get('research_lead_rows')} "
+        f"decision={counts.get('decision_ready_rows')} "
+        f"external_calls={payload.get('external_calls_made')}"
+    )
+    print(f"question={payload.get('question')}")
+    print(f"answer={_compact_cli_text(payload.get('answer'))}")
+    print(f"headline={_compact_cli_text(payload.get('headline'))}")
+    print(
+        "market_bars="
+        f"status={market.get('status')} "
+        f"coverage={market.get('with_as_of_bar')}/"
+        f"{market.get('active_securities')} "
+        f"missing={market.get('missing_as_of_bar')} "
+        f"coverage_pct={market.get('coverage_pct')}"
+    )
+    print(
+        "source_coverage="
+        f"ready={coverage.get('ready_source_count')}/"
+        f"{coverage.get('source_count')} "
+        f"weak={','.join(str(item) for item in _sequence_value(coverage.get('weak_sources')))}"
+    )
+    next_action = payload.get("next_action")
+    if next_action:
+        print(f"next_action={_compact_cli_text(next_action)}")
+    next_command = payload.get("next_command")
+    if next_command:
+        print(f"next_command={_compact_cli_text(next_command)}")
+    print("sources:")
+    for row in _sequence_value(payload.get("sources")):
+        if not isinstance(row, Mapping):
+            continue
+        print(
+            f"- {row.get('source')} "
+            f"status={row.get('status')} "
+            f"coverage={row.get('available')}/{row.get('row_count')} "
+            f"gap_rows={row.get('gap_count')} "
+            f"next={_compact_cli_text(row.get('next_action'))}"
+        )
+    commands = payload.get("commands")
+    if isinstance(commands, Mapping):
+        print("commands:")
+        for name, command in commands.items():
+            print(f"- {name}={_compact_cli_text(command)}")
 
 
 def _print_priced_in_answer(payload: Mapping[str, object]) -> None:

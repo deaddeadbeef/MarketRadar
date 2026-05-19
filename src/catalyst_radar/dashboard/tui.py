@@ -446,6 +446,12 @@ def dashboard_snapshot_payload(
         queue=priced_in_queue,
         preflight=priced_in_preflight,
     )
+    priced_in_audit = dashboard_data.priced_in_full_scan_audit_payload(
+        engine,
+        config,
+        queue=priced_in_queue,
+        preflight=priced_in_preflight,
+    )
     operator_next_step = dashboard_data.operator_next_step_payload(operator_work_queue)
     readiness_payload = dashboard_data.radar_readiness_payload(
         engine,
@@ -490,6 +496,7 @@ def dashboard_snapshot_payload(
         "priced_in_preflight": priced_in_preflight,
         "priced_in_queue": priced_in_queue,
         "priced_in_answer": priced_in_answer,
+        "priced_in_audit": priced_in_audit,
         "priced_in_source_coverage": priced_in_source_coverage,
         "priced_in_source_workflow": priced_in_source_workflow,
         "candidates": {
@@ -3358,6 +3365,9 @@ def _priced_in_mismatch_text(emotion: object, reaction: object, gap: object) -> 
 
 def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
     lines = [_rule(_overview_title(payload), width)]
+    audit_summary = _full_scan_audit_summary(payload)
+    if audit_summary:
+        lines.append(f"Full scan audit: {audit_summary}")
     decision_summary = _decision_readiness_summary(payload)
     if decision_summary:
         lines.append(f"Decision readiness: {decision_summary}")
@@ -3380,6 +3390,30 @@ def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
     lines.append("")
     lines.append(_overview_caption(payload))
     return lines
+
+
+def _full_scan_audit_summary(payload: Mapping[str, object]) -> str:
+    audit = _mapping(payload.get("priced_in_audit"))
+    if not audit:
+        return ""
+    scope = _mapping(audit.get("scope"))
+    market = _mapping(audit.get("market_bars"))
+    coverage = _mapping(audit.get("source_coverage"))
+    active = int(_number_or_zero(scope.get("active_securities")))
+    ranked = int(_number_or_zero(scope.get("ranked_rows")))
+    with_bars = int(_number_or_zero(market.get("with_as_of_bar")))
+    ready_sources = int(_number_or_zero(coverage.get("ready_source_count")))
+    source_count = int(_number_or_zero(coverage.get("source_count")))
+    next_action = _clip(str(audit.get("next_action") or "").strip(), 120)
+    parts = [
+        f"{audit.get('status')}",
+        f"ranked {ranked}/{active}",
+        f"bars {with_bars}/{active}",
+        f"sources {ready_sources}/{source_count}",
+    ]
+    if next_action:
+        parts.append(f"next {next_action}")
+    return "; ".join(parts)
 
 
 def _decision_readiness_summary(payload: Mapping[str, object]) -> str:
