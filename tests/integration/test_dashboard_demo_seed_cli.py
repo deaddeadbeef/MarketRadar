@@ -1345,6 +1345,9 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
     assert "full_scan=mode=full_scan" in output.out
     assert "examples_are_samples=true" in output.out
     assert "scope_note=The full scan covers" in output.out
+    assert "coverage_first_batch=" in output.out
+    assert "tickers=ACME" in output.out
+    assert "calls=" in output.out
 
     assert (
         main(["priced-in-source-batches", "--source", "all", "--execute-next"]) == 2
