@@ -3724,6 +3724,15 @@ def _print_priced_in_preflight(payload: Mapping[str, object]) -> None:
     )
     print(f"headline={payload.get('headline')}")
     print(f"next_action={payload.get('next_action')}")
+    scan_scope = payload.get("scan_scope")
+    if isinstance(scan_scope, Mapping):
+        print(
+            "scan_scope "
+            f"active={scan_scope.get('active_security_count')} "
+            f"requested={scan_scope.get('requested_securities')} "
+            f"scanned={scan_scope.get('scanned_securities')} "
+            f"universe={scan_scope.get('universe') or 'all'}"
+        )
     provider = payload.get("provider")
     if isinstance(provider, Mapping):
         print(

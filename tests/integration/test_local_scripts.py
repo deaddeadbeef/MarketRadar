@@ -334,7 +334,19 @@ def test_run_full_market_scan_script_is_plan_first_and_execute_gated() -> None:
     assert "-Execute" in text
     assert "-AllowPartial" in text
     assert "-UseUniverse" in text
+    assert "-RefreshTickers" in text
     assert "Scan scope: all active securities with available bars" in text
+    assert "Active universe:" in text
+    assert "Ticker seed: {0}; configured_pages={1}; estimated_pages={2}; selected_pages={3}" in text
+    assert (
+        "Execute provider calls: ticker_pages={0}; grouped_daily=1; "
+        "total={1}; call_plan_max={2}"
+    ) in text
+    assert "plannedProviderCalls -gt $maxExternalCalls" in text
+    assert "exceeds call_plan_max" in text
+    assert "if ($shouldSeedTickers)" in text
+    assert "active universe is already seeded" in text
+    assert "Skipping Polygon ticker seed" in text
     assert "CATALYST_POLYGON_TICKERS_MAX_PAGES" in text
     assert "CATALYST_POLYGON_TICKER_PAGE_DELAY_SECONDS" in text
     assert "CATALYST_DAILY_MARKET_PROVIDER" in text

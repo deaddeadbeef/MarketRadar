@@ -4,6 +4,7 @@ param(
     [double]$TickerPageDelaySeconds = -1,
     [string]$UniverseName = "",
     [switch]$UseUniverse,
+    [switch]$RefreshTickers,
     [switch]$AllowPartial,
     [switch]$Execute
 )
@@ -76,10 +77,17 @@ try {
 
     $preflight = Invoke-RadarJson @("priced-in-preflight", "--json")
     $provider = $preflight.provider
+    $scanScope = $preflight.scan_scope
+    $activeSecurityCount = if ($null -ne $scanScope.active_security_count) { [int]$scanScope.active_security_count } else { 0 }
     $estimatedPages = [int]$provider.estimated_ticker_seed_pages
     $configuredPages = [int]$provider.ticker_seed_cap_pages
     $resolvedPages = if ($TickerPages -gt 0) { $TickerPages } elseif ($estimatedPages -gt 0) { $estimatedPages } else { $configuredPages }
     $resolvedDelay = if ($TickerPageDelaySeconds -ge 0) { $TickerPageDelaySeconds } else { [double]$provider.ticker_page_delay_seconds }
+    $shouldSeedTickers = [bool]$RefreshTickers -or $activeSecurityCount -lt 500
+    $tickerSeedStatus = if ($shouldSeedTickers) { "enabled" } else { "skipped" }
+    $plannedTickerCalls = if ($shouldSeedTickers) { $resolvedPages } else { 0 }
+    $plannedProviderCalls = $plannedTickerCalls + 1
+    $maxExternalCalls = if ($null -ne $preflight.call_plan.max_external_call_count) { [int]$preflight.call_plan.max_external_call_count } else { 0 }
     $preflightTargetAsOf = [string]$preflight.target_as_of
     $latestDailyBarDate = [string]$provider.latest_daily_bar_date
     if (-not [string]::IsNullOrWhiteSpace($AsOf)) {
@@ -116,9 +124,11 @@ try {
     else {
         Write-Output "Scan scope: all active securities with available bars"
     }
+    Write-Output ("Active universe: {0}" -f $activeSecurityCount)
     Write-Output ("Latest bars: date={0}; tickers={1}" -f $provider.latest_daily_bar_date, $provider.latest_daily_bar_ticker_count)
-    Write-Output ("Ticker seed pages: configured={0}; estimated={1}; selected={2}" -f $configuredPages, $estimatedPages, $resolvedPages)
+    Write-Output ("Ticker seed: {0}; configured_pages={1}; estimated_pages={2}; selected_pages={3}" -f $tickerSeedStatus, $configuredPages, $estimatedPages, $resolvedPages)
     Write-Output ("Ticker page delay seconds: {0}" -f $resolvedDelay)
+    Write-Output ("Execute provider calls: ticker_pages={0}; grouped_daily=1; total={1}; call_plan_max={2}" -f $plannedTickerCalls, $plannedProviderCalls, $maxExternalCalls)
     Write-Output ("Scan as-of: {0}; source={1}" -f $resolvedAsOf, $resolvedAsOfSource)
 
     if ($marketProvider -ne "polygon") {
@@ -126,9 +136,13 @@ try {
         throw "Full-market live scan script currently requires CATALYST_DAILY_MARKET_PROVIDER=polygon."
     }
 
-    if ($estimatedPages -gt 0 -and $resolvedPages -lt $estimatedPages -and -not $AllowPartial) {
+    if ($shouldSeedTickers -and $estimatedPages -gt 0 -and $resolvedPages -lt $estimatedPages -and -not $AllowPartial) {
         Write-Output "External calls made: 0"
         throw "Selected TickerPages=$resolvedPages is below estimated full seed pages=$estimatedPages. Re-run with -TickerPages $estimatedPages or -AllowPartial."
+    }
+    if ($Execute -and $maxExternalCalls -gt 0 -and $plannedProviderCalls -gt $maxExternalCalls) {
+        Write-Output "External calls made: 0"
+        throw "Planned provider calls=$plannedProviderCalls exceeds call_plan_max=$maxExternalCalls. Drop -RefreshTickers or raise the guarded call cap intentionally."
     }
 
     Write-Output ""
@@ -136,9 +150,14 @@ try {
         Write-Output "Plan only: no provider calls or database writes were made."
         Write-Output "Re-run with -Execute to run this sequence in the current PowerShell process:"
         Write-Output "Add -UseUniverse only if you intentionally want a selected liquid universe instead of all active securities."
-        Write-Output ('$env:CATALYST_POLYGON_TICKERS_MAX_PAGES="{0}"' -f $resolvedPages)
-        Write-Output ('$env:CATALYST_POLYGON_TICKER_PAGE_DELAY_SECONDS="{0}"' -f $resolvedDelay)
-        Write-Output ("catalyst-radar ingest-polygon tickers --max-pages {0}" -f $resolvedPages)
+        if ($shouldSeedTickers) {
+            Write-Output ('$env:CATALYST_POLYGON_TICKERS_MAX_PAGES="{0}"' -f $resolvedPages)
+            Write-Output ('$env:CATALYST_POLYGON_TICKER_PAGE_DELAY_SECONDS="{0}"' -f $resolvedDelay)
+            Write-Output ("catalyst-radar ingest-polygon tickers --max-pages {0}" -f $resolvedPages)
+        }
+        else {
+            Write-Output "catalyst-radar ingest-polygon tickers skipped; active universe is already seeded. Add -RefreshTickers to reseed."
+        }
         Write-Output ("catalyst-radar ingest-polygon grouped-daily --date {0}" -f $resolvedAsOf)
         Write-Output '$env:CATALYST_DAILY_MARKET_PROVIDER="off"'
         if ($UseUniverse) {
@@ -153,11 +172,15 @@ try {
         return
     }
 
-    $env:CATALYST_POLYGON_TICKERS_MAX_PAGES = [string]$resolvedPages
-    $env:CATALYST_POLYGON_TICKER_PAGE_DELAY_SECONDS = [string]$resolvedDelay
-
     Write-Output "Executing full-market scheduled scan. Provider calls are explicit below."
-    Invoke-Checked $dashboardExe @("ingest-polygon", "tickers", "--max-pages", [string]$resolvedPages)
+    if ($shouldSeedTickers) {
+        $env:CATALYST_POLYGON_TICKERS_MAX_PAGES = [string]$resolvedPages
+        $env:CATALYST_POLYGON_TICKER_PAGE_DELAY_SECONDS = [string]$resolvedDelay
+        Invoke-Checked $dashboardExe @("ingest-polygon", "tickers", "--max-pages", [string]$resolvedPages)
+    }
+    else {
+        Write-Output "Skipping Polygon ticker seed; active universe is already seeded."
+    }
     Invoke-Checked $dashboardExe @("ingest-polygon", "grouped-daily", "--date", $resolvedAsOf)
     $availableAt = [DateTimeOffset]::UtcNow.ToString("o")
     $env:CATALYST_DAILY_MARKET_PROVIDER = "off"
@@ -169,7 +192,7 @@ try {
         Invoke-DailyRunAcceptCompletedScan @("run-daily", "--as-of", $resolvedAsOf, "--available-at", $availableAt, "--provider", "polygon", "--json") | Out-Null
     }
     Invoke-Checked $dashboardExe @("priced-in-queue", "--json")
-    Write-Output ("External provider call budget requested: polygon_ticker_pages={0}; grouped_daily=1" -f $resolvedPages)
+    Write-Output ("External provider call budget requested: polygon_ticker_pages={0}; grouped_daily=1" -f $plannedTickerCalls)
 }
 finally {
     if ($hadTickerMaxPages) {

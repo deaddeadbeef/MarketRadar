@@ -2228,6 +2228,18 @@ def priced_in_preflight_payload(
         target_as_of_source = "latest_daily_bar"
     else:
         target_as_of_source = None
+    freshness = _mapping_value(discovery, "freshness")
+    scan_yield = _mapping_value(discovery, "yield")
+    scan_scope = {
+        "active_security_count": int(
+            _finite_float(freshness.get("active_security_count"))
+        ),
+        "requested_securities": int(
+            _finite_float(scan_yield.get("requested_securities"))
+        ),
+        "scanned_securities": int(_finite_float(scan_yield.get("scanned_securities"))),
+        "universe": discovery_run.get("universe"),
+    }
     return {
         "schema_version": "priced-in-preflight-v1",
         "status": status,
@@ -2236,6 +2248,7 @@ def priced_in_preflight_payload(
         "target_as_of": target_as_of,
         "target_as_of_source": target_as_of_source,
         "latest_run_as_of": run_as_of,
+        "scan_scope": scan_scope,
         "external_calls_made": 0,
         "scan_status": _priced_in_scan_status(discovery),
         "provider": {

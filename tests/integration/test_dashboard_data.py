@@ -2856,6 +2856,12 @@ def test_priced_in_preflight_payload_reports_exact_next_steps(tmp_path: Path) ->
     assert payload["target_as_of"] == AS_OF.date().isoformat()
     assert payload["target_as_of_source"] == "latest_daily_bar"
     assert payload["latest_run_as_of"] is None
+    assert payload["scan_scope"] == {
+        "active_security_count": 0,
+        "requested_securities": 0,
+        "scanned_securities": 0,
+        "universe": None,
+    }
     assert payload["provider"]["ticker_seed_cap_pages"] == 1
     assert payload["provider"]["ticker_page_delay_seconds"] == 0.0
     assert payload["provider"]["latest_daily_bar_ticker_count"] >= 1001
@@ -2956,6 +2962,12 @@ def test_priced_in_preflight_recommends_manual_bar_template_for_missing_bars(
     assert payload["target_as_of"] == run_as_of.isoformat()
     assert payload["target_as_of_source"] == "run_as_of"
     assert payload["latest_run_as_of"] == run_as_of.isoformat()
+    assert payload["scan_scope"] == {
+        "active_security_count": 12_613,
+        "requested_securities": 12_613,
+        "scanned_securities": 0,
+        "universe": None,
+    }
     assert payload["provider"]["latest_daily_bar_date"] == AS_OF.date().isoformat()
     assert market_bars["status"] == "blocked"
     assert "DB-backed active-universe" in str(market_bars["next_action"])

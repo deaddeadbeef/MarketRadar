@@ -1,6 +1,125 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 09:39:49 +08:00
+Last updated: 2026-05-19 10:04:01 +08:00
+
+## Latest Full-Scan Minimal Provider Call Fix
+
+User clarification:
+
+- Full scan means every active security for the target run date.
+- A small visible ticker list is only a review page or enrichment chunk.
+- The next useful step is to unblock the `2026-05-18` market bars, not to keep
+  reseeding tickers or reviewing stale candidate rows.
+
+Root cause fixed in this slice:
+
+- `scripts\run-full-market-scan.ps1` still planned Polygon ticker reseeding by
+  default:
+
+  ```text
+  catalyst-radar ingest-polygon tickers --max-pages 13
+  catalyst-radar ingest-polygon grouped-daily --date 2026-05-18
+  ```
+
+- The active universe is already present:
+
+  ```text
+  active=12613
+  ```
+
+- That made the default helper look like a 14-call operation even though the
+  next blocker only needs the grouped daily bars for the target date.
+
+Fix in this slice:
+
+- `priced_in_preflight_payload()` now includes a structured `scan_scope`:
+
+  ```text
+  active_security_count
+  requested_securities
+  scanned_securities
+  universe
+  ```
+
+- `priced-in-preflight` CLI prints the scan scope line so the operator can see
+  the real universe size.
+- `scripts\run-full-market-scan.ps1` now skips Polygon ticker reseeding when
+  the active universe is already seeded. It only seeds tickers when:
+
+  ```text
+  active_security_count < 500
+  ```
+
+  or when the operator explicitly passes:
+
+  ```powershell
+  -RefreshTickers
+  ```
+
+- The script now prints the execute-time provider-call budget:
+
+  ```text
+  Execute provider calls: ticker_pages=0; grouped_daily=1; total=1; call_plan_max=6
+  ```
+
+- If `-Execute -RefreshTickers` would exceed the call-plan max, the script
+  fails before any provider calls and tells the operator to drop
+  `-RefreshTickers` or intentionally raise the guarded cap.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_preflight_payload_reports_exact_next_steps tests\integration\test_dashboard_data.py::test_priced_in_preflight_recommends_manual_bar_template_for_missing_bars tests\integration\test_local_scripts.py::test_run_full_market_scan_script_is_plan_first_and_execute_gated -q
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py tests\integration\test_local_scripts.py -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py tests\integration\test_dashboard_data.py tests\integration\test_local_scripts.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-preflight
+powershell -ExecutionPolicy Bypass -File scripts\run-full-market-scan.ps1
+powershell -ExecutionPolicy Bypass -File scripts\run-full-market-scan.ps1 -RefreshTickers
+powershell -ExecutionPolicy Bypass -File scripts\run-full-market-scan.ps1 -RefreshTickers -Execute
+```
+
+Observed:
+
+- Focused pytest passed.
+- Broader touched-file pytest passed after rerunning with a longer timeout.
+- Ruff passed.
+- `git diff --check` passed.
+- `priced-in-preflight` made 0 external calls and reported:
+
+  ```text
+  scan_scope active=12613 requested=0 scanned=0 universe=all
+  ```
+
+- Default full-scan plan made 0 external calls and now reports:
+
+  ```text
+  Ticker seed: skipped
+  Execute provider calls: ticker_pages=0; grouped_daily=1; total=1; call_plan_max=6
+  catalyst-radar ingest-polygon grouped-daily --date 2026-05-18
+  catalyst-radar run-daily --as-of 2026-05-18 ...
+  ```
+
+- `-RefreshTickers` plan remains available for an intentional reseed, but shows:
+
+  ```text
+  Execute provider calls: ticker_pages=13; grouped_daily=1; total=14; call_plan_max=6
+  ```
+
+- `-RefreshTickers -Execute` failed before provider calls with:
+
+  ```text
+  External calls made: 0
+  Planned provider calls=14 exceeds call_plan_max=6.
+  ```
+
+Next useful product slice:
+
+- Run the default helper with `-Execute` to make one Polygon/Massive grouped
+  daily call for `2026-05-18`, then inspect market-bar coverage.
+- If coverage remains below full active universe, decide whether the remaining
+  symbols are legitimately missing/no-trade instruments or whether the active
+  universe needs a targeted cleanup/reseed.
 
 ## Latest Full-Scan Target Date Fix
 
