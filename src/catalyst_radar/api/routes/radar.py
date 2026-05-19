@@ -151,6 +151,7 @@ class MarketBarsTemplateRequest(BaseModel):
     output_path: str
     provider: str = "manual_csv"
     missing_only: bool = False
+    stocks_only: bool = False
 
 
 class MarketBarsImportRequest(BaseModel):
@@ -158,6 +159,7 @@ class MarketBarsImportRequest(BaseModel):
 
     daily_bars_path: str
     expected_as_of: Date | None = None
+    stocks_only: bool = False
     execute: bool = False
 
 
@@ -625,6 +627,7 @@ def radar_market_bars_template(
             expected_as_of=request.expected_as_of,
             provider=request.provider,
             missing_only=request.missing_only,
+            stocks_only=request.stocks_only,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -643,6 +646,7 @@ def radar_market_bars_import(
             _engine(),
             daily_bars_path=request.daily_bars_path,
             expected_as_of=request.expected_as_of,
+            stocks_only=request.stocks_only,
             execute=request.execute,
         )
     except (FileNotFoundError, KeyError, ValueError) as exc:

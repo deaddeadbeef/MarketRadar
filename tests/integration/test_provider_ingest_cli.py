@@ -9,7 +9,7 @@ from sqlalchemy import create_engine, delete, func, select
 
 from catalyst_radar.cli import main
 from catalyst_radar.connectors.base import ConnectorHealthStatus
-from catalyst_radar.core.models import DataQualitySeverity, JobStatus, Security
+from catalyst_radar.core.models import DailyBar, DataQualitySeverity, JobStatus, Security
 from catalyst_radar.market.manual_bars import MANUAL_BAR_COLUMNS
 from catalyst_radar.storage.provider_repositories import ProviderRepository
 from catalyst_radar.storage.repositories import MarketRepository
@@ -289,6 +289,101 @@ def test_market_bars_template_sorts_stock_like_rows_first(
     rows = _read_csv_rows(template_path)
     assert [row["ticker"] for row in rows] == ["AADR", "BSTK", "ZUNK", "EETF", "WUNT"]
     assert [row["security_type"] for row in rows[:2]] == ["ADRC", "CS"]
+
+
+def test_market_bars_stocks_only_template_and_import_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    database_url = _database_url(tmp_path)
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["init-db"]) == 0
+    capsys.readouterr()
+    engine = create_engine(database_url, future=True)
+    MarketRepository(engine).upsert_securities(
+        [
+            _security("BSTK", "Beta Stock", "CS"),
+            _security("AADR", "Alpha ADR", "ADRC"),
+            _security("EETF", "Example ETF", "ETF"),
+            _security("WUNT", "Wrapper Unit", "UNIT"),
+        ]
+    )
+    MarketRepository(engine).upsert_daily_bars(
+        [
+            _daily_bar("BSTK", date(2026, 5, 15)),
+            _daily_bar("EETF", date(2026, 5, 15)),
+        ]
+    )
+    template_path = tmp_path / "stock-bars.csv"
+
+    assert (
+        main(
+            [
+                "market-bars",
+                "template",
+                "--expected-as-of",
+                "2026-05-15",
+                "--out",
+                str(template_path),
+                "--missing-only",
+                "--stocks-only",
+            ]
+        )
+        == 0
+    )
+
+    output = capsys.readouterr()
+    assert "manual_market_bars_template status=ready rows=1" in output.out
+    assert "scope=stock_like_missing_as_of_bars" in output.out
+    assert "coverage=active=2 existing=1 missing=1" in output.out
+    assert "stocks_only=true" in output.out
+    assert [row["ticker"] for row in _read_csv_rows(template_path)] == ["AADR"]
+
+    filled_path = tmp_path / "filled-stock-bars.csv"
+    _write_manual_bars(filled_path, ["AADR"], as_of="2026-05-15")
+
+    assert (
+        main(
+            [
+                "market-bars",
+                "import",
+                "--daily-bars",
+                str(filled_path),
+                "--expected-as-of",
+                "2026-05-15",
+                "--stocks-only",
+            ]
+        )
+        == 0
+    )
+
+    scoped_output = capsys.readouterr()
+    assert "manual_market_bars_import status=ready" in scoped_output.out
+    assert "coverage=bars_at_expected=1 existing=1 after_import=2 missing=0 scope=stock_like" in (
+        scoped_output.out
+    )
+    assert "--stocks-only --execute" in scoped_output.out
+
+    assert (
+        main(
+            [
+                "market-bars",
+                "import",
+                "--daily-bars",
+                str(filled_path),
+                "--expected-as-of",
+                "2026-05-15",
+            ]
+        )
+        == 2
+    )
+
+    full_output = capsys.readouterr()
+    assert "manual_market_bars_import status=incomplete" in full_output.out
+    assert "scope=active_universe" in full_output.out
+    assert "missing_expected_tickers=WUNT" in full_output.out
 
 
 def test_market_bars_import_rejects_blank_numeric_fields(
@@ -603,3 +698,20 @@ def _write_manual_bars(
                     "available_at": stamp,
                 }
             )
+
+
+def _daily_bar(ticker: str, bar_date: date) -> DailyBar:
+    return DailyBar(
+        ticker=ticker,
+        date=bar_date,
+        open=100.0,
+        high=101.0,
+        low=99.0,
+        close=100.0,
+        volume=1_000_000,
+        vwap=100.0,
+        adjusted=True,
+        provider="manual_csv",
+        source_ts=datetime(2026, 5, 15, 21, tzinfo=UTC),
+        available_at=datetime(2026, 5, 15, 21, tzinfo=UTC),
+    )

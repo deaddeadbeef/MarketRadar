@@ -45,10 +45,20 @@ class ManualBarsTemplateResult:
     existing_as_of_bar_count: int
     missing_as_of_bar_count: int
     missing_only: bool
+    stocks_only: bool
     provider: str
     generated_at: datetime
 
     def as_payload(self) -> dict[str, object]:
+        if self.stocks_only and self.missing_only:
+            template_scope = "stock_like_missing_as_of_bars"
+        elif self.stocks_only:
+            template_scope = "stock_like_active_universe"
+        elif self.missing_only:
+            template_scope = "missing_as_of_bars"
+        else:
+            template_scope = "active_universe"
+        stock_flag = " --stocks-only" if self.stocks_only else ""
         return {
             "schema_version": "manual-market-bars-template-v1",
             "status": "ready",
@@ -59,7 +69,8 @@ class ManualBarsTemplateResult:
             "existing_as_of_bar_count": self.existing_as_of_bar_count,
             "missing_as_of_bar_count": self.missing_as_of_bar_count,
             "missing_only": self.missing_only,
-            "template_scope": "missing_as_of_bars" if self.missing_only else "active_universe",
+            "stocks_only": self.stocks_only,
+            "template_scope": template_scope,
             "row_order": "stock_like_then_unknown_then_non_stock",
             "provider": self.provider,
             "generated_at": self.generated_at.isoformat(),
@@ -73,11 +84,13 @@ class ManualBarsTemplateResult:
                 "catalyst-radar market-bars import "
                 f"--daily-bars {self.output_path} "
                 f"--expected-as-of {self.expected_as_of.isoformat()}"
+                f"{stock_flag}"
             ),
             "execute_command": (
                 "catalyst-radar market-bars import "
                 f"--daily-bars {self.output_path} "
-                f"--expected-as-of {self.expected_as_of.isoformat()} --execute"
+                f"--expected-as-of {self.expected_as_of.isoformat()}"
+                f"{stock_flag} --execute"
             ),
         }
 
@@ -94,6 +107,7 @@ class ManualBarsImportResult:
     existing_as_of_bar_count: int | None
     coverage_after_import_count: int | None
     bars_at_expected_as_of: int | None
+    stocks_only: bool = False
     missing_expected_tickers: tuple[str, ...] = ()
     executed: bool = False
     invalid_row_count: int = 0
@@ -139,6 +153,8 @@ class ManualBarsImportResult:
             "existing_as_of_bar_count": self.existing_as_of_bar_count,
             "coverage_after_import_count": self.coverage_after_import_count,
             "bars_at_expected_as_of": self.bars_at_expected_as_of,
+            "stocks_only": self.stocks_only,
+            "coverage_scope": "stock_like" if self.stocks_only else "active_universe",
             "missing_expected_count": len(self.missing_expected_tickers),
             "missing_expected_tickers": missing_sample,
             "missing_expected_more": max(
@@ -161,6 +177,7 @@ class ManualBarsImportResult:
                     if self.expected_as_of is not None
                     else ""
                 )
+                + (" --stocks-only" if self.stocks_only else "")
                 + " --execute"
             ),
         }
@@ -174,16 +191,25 @@ def write_manual_market_bars_template(
     provider: str = "manual_csv",
     generated_at: datetime | None = None,
     missing_only: bool = False,
+    stocks_only: bool = False,
 ) -> ManualBarsTemplateResult:
     active_rows = _active_security_rows(engine)
     if not active_rows:
         msg = "cannot build manual market-bar template: no active securities in database"
         raise ValueError(msg)
-    active_tickers = tuple(row[0] for row in active_rows)
+    scoped_rows = (
+        tuple(row for row in active_rows if _manual_bar_is_stock_like(row[1]))
+        if stocks_only
+        else active_rows
+    )
+    if not scoped_rows:
+        msg = "cannot build manual market-bar template: no matching active securities"
+        raise ValueError(msg)
+    active_tickers = tuple(row[0] for row in scoped_rows)
     existing = _bar_tickers_for_date(engine, expected_as_of)
     template_rows = [
         row
-        for row in active_rows
+        for row in scoped_rows
         if not missing_only or row[0] not in existing
     ]
     template_rows = sorted(template_rows, key=_manual_bar_template_sort_key)
@@ -223,6 +249,7 @@ def write_manual_market_bars_template(
         existing_as_of_bar_count=len(existing & set(active_tickers)),
         missing_as_of_bar_count=len(set(active_tickers) - existing),
         missing_only=missing_only,
+        stocks_only=stocks_only,
         provider=provider,
         generated_at=resolved_at,
     )
@@ -233,10 +260,11 @@ def preview_manual_market_bars_import(
     *,
     daily_bars_path: str | Path,
     expected_as_of: date | None = None,
+    stocks_only: bool = False,
 ) -> ManualBarsImportResult:
     path = Path(daily_bars_path)
     validation = _inspect_manual_bars_csv(path, expected_as_of=expected_as_of)
-    active = set(_active_tickers(engine))
+    active = set(_active_tickers(engine, stocks_only=stocks_only))
     if not active:
         msg = "cannot validate manual market bars: no active securities in database"
         raise ValueError(msg)
@@ -271,6 +299,7 @@ def preview_manual_market_bars_import(
                 if expected_as_of is not None
                 else None
             ),
+            stocks_only=stocks_only,
             missing_expected_tickers=missing,
             invalid_row_count=validation.invalid_row_count,
             blank_required_count=validation.blank_required_count,
@@ -291,6 +320,7 @@ def preview_manual_market_bars_import(
             existing_as_of_bar_count=None,
             coverage_after_import_count=None,
             bars_at_expected_as_of=None,
+            stocks_only=stocks_only,
             invalid_row_count=1,
             invalid_examples=(str(exc),),
         )
@@ -328,6 +358,7 @@ def preview_manual_market_bars_import(
         ),
         coverage_after_import_count=coverage_after_import,
         bars_at_expected_as_of=bars_at_expected,
+        stocks_only=stocks_only,
         missing_expected_tickers=missing,
         bars=bars,
     )
@@ -339,11 +370,13 @@ def import_manual_market_bars(
     daily_bars_path: str | Path,
     expected_as_of: date | None = None,
     execute: bool = False,
+    stocks_only: bool = False,
 ) -> ManualBarsImportResult:
     preview = preview_manual_market_bars_import(
         engine,
         daily_bars_path=daily_bars_path,
         expected_as_of=expected_as_of,
+        stocks_only=stocks_only,
     )
     if preview.status != "ready":
         return preview
@@ -361,16 +394,23 @@ def import_manual_market_bars(
         existing_as_of_bar_count=preview.existing_as_of_bar_count,
         coverage_after_import_count=preview.coverage_after_import_count,
         bars_at_expected_as_of=preview.bars_at_expected_as_of,
+        stocks_only=preview.stocks_only,
         missing_expected_tickers=preview.missing_expected_tickers,
         executed=True,
         bars=preview.bars,
     )
 
 
-def _active_tickers(engine: Engine) -> tuple[str, ...]:
+def _active_tickers(engine: Engine, *, stocks_only: bool = False) -> tuple[str, ...]:
+    if not stocks_only:
+        return tuple(
+            security.ticker.upper()
+            for security in MarketRepository(engine).list_active_securities()
+        )
     return tuple(
-        security.ticker.upper()
-        for security in MarketRepository(engine).list_active_securities()
+        row[0]
+        for row in _active_security_rows(engine)
+        if _manual_bar_is_stock_like(row[1])
     )
 
 
@@ -406,6 +446,10 @@ def _manual_bar_security_type_priority(security_type: str) -> int:
     if normalized in MANUAL_BAR_NON_STOCK_TYPES:
         return 2
     return 3
+
+
+def _manual_bar_is_stock_like(security_type: str) -> bool:
+    return str(security_type or "").strip().upper() in MANUAL_BAR_COMPANY_LIKE_TYPES
 
 
 def _bar_tickers_for_date(engine: Engine, as_of_date: date) -> set[str]:
