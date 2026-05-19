@@ -242,6 +242,10 @@ def test_market_radar_status_script_is_zero_external_call_sitrep() -> None:
     assert "--missing-only" in text
     assert "catalyst-radar market-bars import" in text
     assert "--expected-as-of" in text
+    assert "catalyst_radar.cli market-bars import" in text
+    assert "manual_market_bar_preview" in text
+    assert "local template preview:" in text
+    assert "local template invalid examples:" in text
     assert "Portfolio context:" in text
     assert "Broker:" in text
     assert "access_token_active=" in text
