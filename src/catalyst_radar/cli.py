@@ -3993,6 +3993,16 @@ def _print_priced_in_all_source_batches(payload: Mapping[str, object]) -> None:
             decision,
             label="decision_shortcut",
         )
+    decision_blocker = payload.get("decision_shortcut_blocker")
+    if isinstance(decision_blocker, Mapping) and decision_blocker:
+        print(
+            "decision_shortcut_blocked="
+            f"blocked_by={decision_blocker.get('blocked_by') or 'n/a'} "
+            f"gaps={decision_blocker.get('blocked_gap_rows')} "
+            f"calls={_int_value(decision_blocker.get('external_calls_required'))} "
+            f"command={_compact_cli_text(decision_blocker.get('command'))}"
+        )
+        print(f"  action={_compact_cli_text(decision_blocker.get('action'))}")
     boundary = payload.get("execution_boundary")
     if boundary:
         print(f"boundary={_compact_cli_text(boundary)}")
