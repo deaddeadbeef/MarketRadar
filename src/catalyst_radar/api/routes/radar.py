@@ -4,12 +4,14 @@ from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, time, timedelta
 from datetime import date as Date
 from math import ceil
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
+from catalyst_radar.connectors.options import validate_options_fixture_json
 from catalyst_radar.connectors.provider_ingest import ProviderIngestError
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.dashboard import data as dashboard_data
@@ -124,6 +126,13 @@ class SecCikOverridesRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     overrides: list[SecCikOverrideRequest] = Field(default_factory=list)
+
+
+class OptionsFixtureValidateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    fixture_path: str
+    expected_as_of: Date | None = None
 
 
 class TextFeaturesBatchRequest(BaseModel):
@@ -693,6 +702,20 @@ def radar_options_fixture_template(
         stocks_only=stocks_only,
     )
     return redact_restricted_external_payload(payload)
+
+
+@router.post(
+    "/options/fixture-validate",
+    dependencies=[Depends(require_role(Role.ANALYST))],
+)
+def radar_options_fixture_validate(
+    request: OptionsFixtureValidateRequest,
+) -> dict[str, object]:
+    result = validate_options_fixture_json(
+        Path(request.fixture_path),
+        expected_as_of=request.expected_as_of,
+    )
+    return redact_restricted_external_payload(result.as_payload())
 
 
 @router.get(

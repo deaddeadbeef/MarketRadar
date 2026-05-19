@@ -1474,6 +1474,11 @@ def options_fixture_template_payload(
             stocks_only=stocks_only,
         ),
         "api": f"GET /api/radar/options/fixture-template{query}",
+        "validation_command": (
+            f"catalyst-radar ingest-options --fixture {default_path} "
+            f"--validate-only --expected-as-of {target_date}"
+        ),
+        "validation_api": "POST /api/radar/options/fixture-validate",
         "import_command": f"catalyst-radar ingest-options --fixture {default_path}",
         "next_action": (
             "Fill the aggregate option fields for each ticker, then import the "
@@ -3738,6 +3743,9 @@ def _priced_in_audit_source_gap_repair(
         diagnostic,
         stocks_only=stocks_only,
     )
+    point_in_time_validate_command = _options_point_in_time_validate_command(
+        diagnostic
+    )
     sample_tickers = _option_gap_diagnostic_samples(diagnostic)
     if not sample_tickers:
         sample_tickers = [
@@ -3764,6 +3772,7 @@ def _priced_in_audit_source_gap_repair(
         "export_rows_command": action.get("full_scan_export_command"),
         "batch_plan_command": action.get("batch_plan_command"),
         "point_in_time_template_command": point_in_time_template_command,
+        "point_in_time_validate_command": point_in_time_validate_command,
         "point_in_time_import_command": point_in_time_import_command,
         "current_context_boundary": (
             "Current Schwab option chains can support a current rerun, but must not "
@@ -10919,6 +10928,9 @@ def _priced_in_source_plannable_rows(
                         stocks_only=stocks_only,
                     )
                 )
+                point_in_time_validate_command = _options_point_in_time_validate_command(
+                    diagnostic
+                )
                 return [], {
                     "schema_version": "priced-in-source-batch-diagnostic-v1",
                     "status": "blocked",
@@ -10934,6 +10946,7 @@ def _priced_in_source_plannable_rows(
                     ),
                     "next_action": diagnostic.get("next_action"),
                     "point_in_time_template_command": point_in_time_template_command,
+                    "point_in_time_validate_command": point_in_time_validate_command,
                     "point_in_time_import_command": point_in_time_import_command,
                     "option_gap_diagnostic": diagnostic,
                 }
@@ -11133,6 +11146,17 @@ def _options_point_in_time_template_command(
         "catalyst-radar ingest-options --fixture-template "
         f"--out data\\local\\point-in-time-options-{target}.json"
         + (" --stocks-only" if stocks_only else "")
+    )
+
+
+def _options_point_in_time_validate_command(
+    diagnostic: Mapping[str, object],
+) -> str:
+    target = _options_point_in_time_target_date(diagnostic)
+    return (
+        "catalyst-radar ingest-options --fixture "
+        f"data\\local\\point-in-time-options-{target}.json "
+        f"--validate-only --expected-as-of {target}"
     )
 
 

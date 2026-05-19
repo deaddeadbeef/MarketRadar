@@ -184,6 +184,14 @@ EXPECTED_API_ROUTES = {
         ("radar",),
     ),
     (
+        "POST",
+        "/api/radar/options/fixture-validate",
+    ): (
+        "catalyst_radar.api.routes.radar",
+        "radar_options_fixture_validate",
+        ("radar",),
+    ),
+    (
         "GET",
         "/api/radar/sec/cik-overrides-template",
     ): (

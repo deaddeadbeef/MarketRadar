@@ -1,6 +1,93 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 02:12:46 +08:00
+Last updated: 2026-05-20 02:24:32 +08:00
+
+## Latest Options Fixture Validation
+
+Goal alignment check:
+
+- The stock scan still cannot trust options context until point-in-time options
+  rows are filled for the scan date.
+- The prior slices made the template/export path visible, but importing a
+  half-filled template would fail late or write bad evidence if validation were
+  too loose.
+- This slice adds a zero-call, no-write validation step before import. It keeps
+  the dashboard/CLI/API repair path useful without adding a new provider.
+
+Fix in this slice:
+
+- Added options fixture validation:
+
+  ```powershell
+  catalyst-radar ingest-options --fixture data\local\point-in-time-options-2026-05-15.json --validate-only --expected-as-of 2026-05-15
+  ```
+
+- Added API parity:
+
+  ```text
+  POST /api/radar/options/fixture-validate
+  {"fixture_path":"data\\local\\point-in-time-options-2026-05-15.json","expected_as_of":"2026-05-15"}
+  ```
+
+- The validator checks:
+  - header datetime fields are present and timezone-aware;
+  - optional expected `as_of` date matches;
+  - `results` is a list;
+  - ticker is present and not duplicated;
+  - aggregate numeric fields are present, nonblank, finite, and nonnegative;
+  - `iv_percentile` is between `0` and `1`.
+- Source-batch diagnostics and TUI `batch options` now show commands in this
+  order:
+  1. template export;
+  2. validate-only;
+  3. import.
+- `market-radar-status.ps1` also prints `stock gap validate` when present.
+- No Polygon/Massive, Schwab, SEC, OpenAI, broker/order execution, or options
+  DB import was run.
+
+Current live zero-call observation from local CLI:
+
+```text
+options_fixture_validation status=ready rows=1 valid=1 invalid=0 blank_required=0 invalid_numeric=0 missing_fields=0 duplicates=0 as_of=2026-05-08T21:00:00+00:00 external_calls=0
+import_command=catalyst-radar ingest-options --fixture tests\fixtures\options\options_summary_2026-05-08.json
+next_action=Import the validated point-in-time options fixture.
+```
+
+`priced-in-source-batches --source options --stocks-only --batch-limit 1` now
+prints:
+
+```text
+diagnostic_point_in_time_template=catalyst-radar ingest-options --fixture-template --out data\local\point-in-time-options-2026-05-15.json --stocks-only
+diagnostic_point_in_time_validate=catalyst-radar ingest-options --fixture data\local\point-in-time-options-2026-05-15.json --validate-only --expected-as-of 2026-05-15
+diagnostic_point_in_time_import=catalyst-radar ingest-options --fixture <point-in-time-options-2026-05-15.json>
+external_calls=0
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_options_ingest.py::test_validate_options_fixture_json_rejects_blank_template_rows tests\integration\test_options_ingest.py::test_validate_options_fixture_json_accepts_filled_rows tests\integration\test_options_ingest.py::test_ingest_options_validate_only_cli_reports_invalid_fixture tests\integration\test_dashboard_data.py::test_options_fixture_template_payload_exports_point_in_time_skeleton tests\integration\test_dashboard_data.py::test_priced_in_all_source_gap_batches_blocks_options_shortcut_when_not_point_in_time tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_payload_consolidates_current_state tests\integration\test_dashboard_data.py::test_priced_in_queue_payload_reports_full_scan_instrument_scope tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_source_batches_cli_prints_options_point_in_time_import tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_batch_message_prints_options_point_in_time_import tests\integration\test_api_routes.py::test_post_radar_options_fixture_validate_returns_zero_call_result tests\integration\test_security_boundaries.py::test_openapi_routes_are_allowlisted_and_broker_routes_are_explicit tests\integration\test_local_scripts.py::test_market_radar_status_script_is_zero_external_call_sitrep -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\connectors\options.py src\catalyst_radar\cli.py src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\api\routes\radar.py tests\integration\test_options_ingest.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_api_routes.py tests\integration\test_local_scripts.py tests\integration\test_security_boundaries.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli ingest-options --fixture tests\fixtures\options\options_summary_2026-05-08.json --validate-only --expected-as-of 2026-05-08
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source options --stocks-only --batch-limit 1
+```
+
+Observed:
+
+- Focused test set passed (`12 passed`).
+- Ruff passed for Python files.
+- `git diff --check` passed.
+- Known fixture validation stayed zero-call and returned `status=ready`.
+- Source-batch planning stayed zero-call and now prints the validation command.
+
+Next useful product action:
+
+- The template/validate/import path is now safe for local point-in-time options
+  data, but no actual 2026-05-15 options values have been filled yet.
+- Without user-provided point-in-time options or approval to rerun current
+  Schwab chains against a current scan, the `options` source gap remains real.
+- Provider/source execution remains approval-gated.
 
 ## Latest Status Surface For Options Template
 

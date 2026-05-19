@@ -166,6 +166,9 @@ if ($null -ne $stockScope) {
         if ($null -ne $stockRecommendedRepair -and $stockRecommendedRepair.point_in_time_template_command) {
             Write-Output ("- stock gap template: {0}" -f $stockRecommendedRepair.point_in_time_template_command)
         }
+        if ($null -ne $stockRecommendedRepair -and $stockRecommendedRepair.point_in_time_validate_command) {
+            Write-Output ("- stock gap validate: {0}" -f $stockRecommendedRepair.point_in_time_validate_command)
+        }
         if ($null -ne $stockRecommendedRepair -and $stockRecommendedRepair.point_in_time_import_command) {
             Write-Output ("- stock gap import: {0}" -f $stockRecommendedRepair.point_in_time_import_command)
         }

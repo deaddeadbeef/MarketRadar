@@ -47,6 +47,7 @@ from catalyst_radar.connectors.market_data import CsvMarketDataConnector
 from catalyst_radar.connectors.news import NewsJsonConnector
 from catalyst_radar.connectors.options import (
     OptionsAggregateConnector,
+    validate_options_fixture_json,
     write_options_fixture_template_json,
 )
 from catalyst_radar.connectors.polygon import PolygonEndpoint, PolygonMarketDataConnector
@@ -276,6 +277,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     options = subparsers.add_parser("ingest-options")
     options.add_argument("--fixture", type=Path)
+    options.add_argument(
+        "--validate-only",
+        action="store_true",
+        help="Validate an options fixture without importing or writing to the database.",
+    )
+    options.add_argument("--expected-as-of", type=date.fromisoformat)
     options.add_argument(
         "--fixture-template",
         action="store_true",
@@ -1065,6 +1072,18 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "ingest-options":
         create_schema(engine)
+        if args.validate_only:
+            if args.fixture is None:
+                print(
+                    "options fixture validation failed: provide --fixture",
+                    file=sys.stderr,
+                )
+                return 1
+            return _validate_options_fixture_cli(
+                fixture_path=args.fixture,
+                expected_as_of=args.expected_as_of,
+                as_json=args.json,
+            )
         if args.fixture_template:
             if args.out is None:
                 print(
@@ -2484,6 +2503,44 @@ def _write_options_fixture_template_cli(
     print(f"boundary={_compact_cli_text(payload.get('boundary'))}")
     print(f"next_action={_compact_cli_text(payload.get('next_action'))}")
     return 0
+
+
+def _validate_options_fixture_cli(
+    *,
+    fixture_path: Path,
+    expected_as_of: date | None,
+    as_json: bool,
+) -> int:
+    result = validate_options_fixture_json(
+        fixture_path,
+        expected_as_of=expected_as_of,
+    )
+    payload = result.as_payload()
+    if as_json:
+        print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
+        return 0 if payload["status"] == "ready" else 1
+    print(
+        "options_fixture_validation "
+        f"status={payload.get('status')} "
+        f"rows={payload.get('row_count')} "
+        f"valid={payload.get('valid_row_count')} "
+        f"invalid={payload.get('invalid_row_count')} "
+        f"blank_required={payload.get('blank_required_count')} "
+        f"invalid_numeric={payload.get('invalid_numeric_count')} "
+        f"missing_fields={payload.get('missing_field_count')} "
+        f"duplicates={payload.get('duplicate_ticker_count')} "
+        f"as_of={payload.get('as_of')} "
+        f"external_calls={payload.get('external_calls_made')}"
+    )
+    errors = payload.get("errors")
+    if isinstance(errors, list | tuple):
+        for error in errors:
+            print(f"error={_compact_cli_text(error)}")
+    import_command = payload.get("import_command")
+    if import_command:
+        print(f"import_command={_compact_cli_text(import_command)}")
+    print(f"next_action={_compact_cli_text(payload.get('next_action'))}")
+    return 0 if payload["status"] == "ready" else 1
 
 
 def _ingest_sec_submissions_batch(
@@ -4023,6 +4080,12 @@ def _print_priced_in_source_batches(payload: Mapping[str, object]) -> None:
             print(
                 "diagnostic_point_in_time_template="
                 f"{_compact_cli_text(point_in_time_template)}"
+            )
+        point_in_time_validate = diagnostic.get("point_in_time_validate_command")
+        if point_in_time_validate:
+            print(
+                "diagnostic_point_in_time_validate="
+                f"{_compact_cli_text(point_in_time_validate)}"
             )
         point_in_time_import = diagnostic.get("point_in_time_import_command")
         if point_in_time_import:
