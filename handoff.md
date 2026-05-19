@@ -1,6 +1,57 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 02:03:33 +08:00
+Last updated: 2026-05-20 02:12:46 +08:00
+
+## Latest Status Surface For Options Template
+
+Goal alignment check:
+
+- After the options fixture-template PR merged, the audit/status surface still
+  needed one human-facing cleanup: `market-radar-status.ps1` showed that
+  options were the current stock decision gap, but did not print the new
+  template/import repair commands.
+- The audit repair command also lost the `--stocks-only` flag when the audit
+  was run in stock-only mode, even though the source-batch command preserved
+  it.
+- This is a narrow dashboard/CLI status fix. It does not add provider calls or
+  new source behavior.
+
+Fix in this slice:
+
+- Stock-only priced-in audit repair now keeps `--stocks-only` on:
+
+  ```text
+  point_in_time_template_command=catalyst-radar ingest-options --fixture-template --out data\local\point-in-time-options-2026-05-15.json --stocks-only
+  ```
+
+- `scripts\market-radar-status.ps1` now resolves the recommended stock source
+  row and prints repair commands when present:
+
+  ```text
+  - stock gap template: catalyst-radar ingest-options --fixture-template --out data\local\point-in-time-options-2026-05-15.json --stocks-only
+  - stock gap import: catalyst-radar ingest-options --fixture <point-in-time-options-2026-05-15.json>
+  ```
+
+- No Polygon/Massive, Schwab, SEC, OpenAI, or broker/order execution was run.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_payload_consolidates_current_state tests\integration\test_dashboard_data.py::test_priced_in_queue_payload_reports_full_scan_instrument_scope tests\integration\test_local_scripts.py::test_market_radar_status_script_is_zero_external_call_sitrep -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py tests\integration\test_dashboard_data.py tests\integration\test_local_scripts.py
+git diff --check
+powershell -ExecutionPolicy Bypass -File scripts\market-radar-status.ps1
+```
+
+Observed:
+
+- Focused test set passed (`3 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+- Live local status stayed `External calls made: 0` and printed the stock gap
+  template/import lines. Because the API service was still running the previous
+  merged build at that moment, the live status template line did not yet include
+  `--stocks-only`; after this slice is merged and services restart, it should.
 
 ## Latest Options Fixture Template Export
 
