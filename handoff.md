@@ -1,6 +1,6 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 20:58:18 +08:00
+Last updated: 2026-05-19 21:11:17 +08:00
 
 ## Latest Options Evidence Repair Surface
 
@@ -110,6 +110,25 @@ Observed:
   - `newer_than_scan`;
   - `point-in-time-options-2026-05-15.json`.
 - Browser console check reported 0 current errors.
+- PR #354, `Surface options evidence repair`, was merged by rebase as
+  `d0b274cc5847`.
+- Local services were restarted after merge from `main`:
+  - API health returned commit `d0b274cc5847`;
+  - Streamlit health returned `ok`.
+- Post-merge API verification showed:
+  - `post_merge_api_repair source=options`;
+  - `status=blocked`;
+  - `diagnostic=newer_than_scan`;
+  - `allowed=False`;
+  - `calls=0`;
+  - point-in-time import command for `2026-05-15`.
+- Post-merge browser verification showed the dashboard text included:
+  - **Evidence repair**;
+  - `point-in-time-options-2026-05-15.json`;
+  - `newer_than_scan`;
+  - **Current Schwab option chains**;
+  - **Review/export/plan commands make 0 provider calls**.
+- Post-merge browser console check reported 0 current errors.
 
 Next useful product action:
 
