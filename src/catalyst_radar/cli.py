@@ -3997,6 +3997,36 @@ def _print_priced_in_audit(payload: Mapping[str, object]) -> None:
         f"missing={market.get('missing_as_of_bar')} "
         f"coverage_pct={market.get('coverage_pct')}"
     )
+    repair = market.get("repair")
+    if isinstance(repair, Mapping):
+        sample = ",".join(
+            str(ticker)
+            for ticker in _sequence_value(
+                repair.get("missing_as_of_bar_ticker_sample")
+            )
+        )
+        print(
+            "market_bar_repair="
+            f"status={repair.get('status')} "
+            f"expected_as_of={repair.get('target_as_of') or 'n/a'} "
+            f"missing={repair.get('missing_as_of_bar')} "
+            f"sample={sample or '-'} "
+            f"external_calls={repair.get('external_calls_made')}"
+        )
+        if repair.get("template_command"):
+            print(f"  template={_compact_cli_text(repair.get('template_command'))}")
+        if repair.get("import_preview_command"):
+            print(
+                "  preview_import="
+                f"{_compact_cli_text(repair.get('import_preview_command'))}"
+            )
+        if repair.get("import_execute_command"):
+            print(
+                "  execute_import="
+                f"{_compact_cli_text(repair.get('import_execute_command'))}"
+            )
+        if repair.get("write_boundary"):
+            print(f"  boundary={_compact_cli_text(repair.get('write_boundary'))}")
     print(
         "source_coverage="
         f"ready={coverage.get('ready_source_count')}/"

@@ -1899,6 +1899,9 @@ def test_priced_in_audit_cli_outputs_full_scan_audit(
         in output.out
     )
     assert "market_bars=status=" in output.out
+    assert "market_bar_repair=status=" in output.out
+    assert "template=catalyst-radar market-bars template" in output.out
+    assert "preview_import=catalyst-radar market-bars import" in output.out
     assert "source_coverage=ready=" in output.out
     assert "performance=cache=" in output.out
     assert "primary_full_scan=scope=full_active_universe" in output.out
@@ -1932,6 +1935,10 @@ def test_priced_in_audit_cli_outputs_full_scan_audit(
     assert payload["schema_version"] == "priced-in-full-scan-audit-v1"
     assert payload["external_calls_made"] == 0
     assert payload["scope"]["mode"] == "full_scan"
+    assert payload["market_bars"]["repair"]["schema_version"] == (
+        "priced-in-market-bar-repair-v1"
+    )
+    assert payload["market_bars"]["repair"]["external_calls_made"] == 0
     assert payload["primary_scan"]["schema_version"] == (
         "priced-in-primary-full-scan-v1"
     )
