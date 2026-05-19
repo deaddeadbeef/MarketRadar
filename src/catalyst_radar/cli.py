@@ -3733,6 +3733,14 @@ def _print_priced_in_preflight(payload: Mapping[str, object]) -> None:
             f"scanned={scan_scope.get('scanned_securities')} "
             f"universe={scan_scope.get('universe') or 'all'}"
         )
+    provider_blocker = payload.get("provider_blocker")
+    if isinstance(provider_blocker, Mapping) and provider_blocker:
+        print(
+            "provider_blocker "
+            f"provider={provider_blocker.get('provider')} "
+            f"target_as_of={provider_blocker.get('target_as_of')} "
+            f"reason={_compact_cli_text(provider_blocker.get('reason'))}"
+        )
     provider = payload.get("provider")
     if isinstance(provider, Mapping):
         print(

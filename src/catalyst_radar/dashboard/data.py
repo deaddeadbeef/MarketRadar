@@ -39,6 +39,7 @@ from catalyst_radar.jobs.step_outcomes import (
 )
 from catalyst_radar.jobs.tasks import DAILY_STEP_ORDER
 from catalyst_radar.scoring.priced_in import evaluate_priced_in
+from catalyst_radar.security.redaction import redact_text
 from catalyst_radar.storage.broker_repositories import BrokerRepository
 from catalyst_radar.storage.budget_repositories import BudgetLedgerRepository
 from catalyst_radar.storage.provider_repositories import ProviderRepository
@@ -2192,6 +2193,23 @@ def priced_in_preflight_payload(
         config,
         target_ticker_pages=_estimated_ticker_seed_pages(bar_universe),
     )
+    discovery_run = _mapping_value(discovery, "run")
+    run_as_of = _date_iso_or_none(
+        _parse_date(run.get("as_of"))
+    ) or _date_iso_or_none(_parse_date(discovery_run.get("as_of")))
+    latest_bar_as_of = str(bar_universe.get("latest_daily_bar_date") or "").strip()
+    target_as_of = run_as_of or latest_bar_as_of or None
+    if run_as_of:
+        target_as_of_source = "run_as_of"
+    elif latest_bar_as_of:
+        target_as_of_source = "latest_daily_bar"
+    else:
+        target_as_of_source = None
+    provider_blocker = _latest_market_bar_provider_failure(
+        engine,
+        provider=_provider_name(config.daily_market_provider, default="csv"),
+        target_as_of=target_as_of,
+    )
     rows = _priced_in_preflight_rows(
         discovery,
         call_plan,
@@ -2200,6 +2218,7 @@ def priced_in_preflight_payload(
         config,
         bar_universe,
         resolved_source_coverage,
+        provider_blocker,
     )
     evidence_plan = _priced_in_evidence_plan(rows)
     blocked_rows = [row for row in rows if row["status"] == "blocked"]
@@ -2216,18 +2235,6 @@ def priced_in_preflight_payload(
         status = "ready"
         headline = "Full-market priced-in scan prerequisites look ready."
         next_action = "Run one capped radar cycle, then review priced-in gaps."
-    discovery_run = _mapping_value(discovery, "run")
-    run_as_of = _date_iso_or_none(
-        _parse_date(run.get("as_of"))
-    ) or _date_iso_or_none(_parse_date(discovery_run.get("as_of")))
-    latest_bar_as_of = str(bar_universe.get("latest_daily_bar_date") or "").strip()
-    target_as_of = run_as_of or latest_bar_as_of or None
-    if run_as_of:
-        target_as_of_source = "run_as_of"
-    elif latest_bar_as_of:
-        target_as_of_source = "latest_daily_bar"
-    else:
-        target_as_of_source = None
     freshness = _mapping_value(discovery, "freshness")
     scan_yield = _mapping_value(discovery, "yield")
     scan_scope = {
@@ -2249,6 +2256,7 @@ def priced_in_preflight_payload(
         "target_as_of_source": target_as_of_source,
         "latest_run_as_of": run_as_of,
         "scan_scope": scan_scope,
+        "provider_blocker": provider_blocker,
         "external_calls_made": 0,
         "scan_status": _priced_in_scan_status(discovery),
         "provider": {
@@ -8624,6 +8632,7 @@ def _priced_in_preflight_rows(
     config: AppConfig,
     bar_universe: Mapping[str, object],
     source_coverage: Mapping[str, object],
+    provider_blocker: Mapping[str, object],
 ) -> list[dict[str, object]]:
     scan_yield = _mapping_value(discovery, "yield")
     freshness = _mapping_value(discovery, "freshness")
@@ -8719,17 +8728,30 @@ def _priced_in_preflight_rows(
 
     bar_coverage_ratio = (latest_bars / active) if active else 0.0
     if latest_bars == 0 or (missing_bars and bar_coverage_ratio < 0.9):
+        provider_reason = str(provider_blocker.get("reason") or "").strip()
+        provider_note = (
+            f" Latest {provider} market-data failure: {provider_reason}"
+            if provider_reason
+            else ""
+        )
+        next_action = (
+            "Wait until the provider releases the target daily bars, use the "
+            "DB-backed manual bar template/import path, or intentionally upgrade "
+            "the provider plan before rerunning."
+            if provider_reason
+            else (
+                "Generate a DB-backed active-universe bar template, fill every "
+                "active ticker, import it, then rerun the full-market scan. "
+                "Use the provider run only if its call plan and plan limits "
+                "match your intent."
+            )
+        )
         rows.append(
             _priced_in_preflight_row(
                 "market_bars",
                 "blocked",
-                f"Run-as-of bar coverage is {latest_bars}/{active or 'n/a'}.",
-                (
-                    "Generate a DB-backed active-universe bar template, fill every "
-                    "active ticker, import it, then rerun the full-market scan. "
-                    "Use the provider run only if its call plan and plan limits "
-                    "match your intent."
-                ),
+                f"Run-as-of bar coverage is {latest_bars}/{active or 'n/a'}.{provider_note}",
+                next_action,
                 commands.get("market_bars_template"),
                 "POST /api/radar/market-bars/template",
             )
@@ -8957,6 +8979,53 @@ def _estimated_ticker_seed_pages(source: Mapping[str, object]) -> int | None:
         return None
     pages = int(_finite_float(value))
     return pages if pages > 0 else None
+
+
+def _latest_market_bar_provider_failure(
+    engine: Engine,
+    *,
+    provider: str,
+    target_as_of: str | None,
+) -> dict[str, object]:
+    provider_name = str(provider or "").strip().lower()
+    if provider_name in {"", "csv", "off", "none"}:
+        return {}
+    with engine.connect() as conn:
+        rows = conn.execute(
+            select(
+                job_runs.c.job_type,
+                job_runs.c.provider,
+                job_runs.c.status,
+                job_runs.c.started_at,
+                job_runs.c.error_summary,
+                job_runs.c.metadata,
+            )
+            .where(
+                job_runs.c.provider == provider_name,
+                job_runs.c.status == "failed",
+            )
+            .order_by(job_runs.c.started_at.desc(), job_runs.c.id.desc())
+            .limit(20)
+        ).mappings()
+        for row in rows:
+            metadata = _mapping_value(row, "metadata")
+            job_type = str(row.get("job_type") or "")
+            if "daily" not in job_type and "bar" not in job_type:
+                continue
+            date_text = str(metadata.get("date") or "")
+            reason = redact_text(str(row.get("error_summary") or "").strip())
+            if target_as_of and target_as_of not in date_text and target_as_of not in reason:
+                continue
+            if not reason:
+                continue
+            return {
+                "provider": provider_name,
+                "job_type": job_type,
+                "target_as_of": target_as_of,
+                "started_at": _iso_or_none(row.get("started_at")),
+                "reason": reason,
+            }
+    return {}
 
 
 def _research_shortlist_priority(row: Mapping[str, object]) -> str:

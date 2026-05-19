@@ -2937,6 +2937,25 @@ def test_priced_in_preflight_recommends_manual_bar_template_for_missing_bars(
                 "available_at": AVAILABLE_AT,
             },
         )
+        conn.execute(
+            insert(job_runs),
+            _job_run_row(
+                "job-polygon-grouped-daily-blocked",
+                job_type="polygon_grouped_daily",
+                status="failed",
+                started_at=AVAILABLE_AT,
+                metadata={
+                    "provider": "polygon",
+                    "endpoint": "polygon_grouped_daily",
+                    "date": run_as_of.isoformat(),
+                },
+                error_summary=(
+                    "HTTP 403 from https://api.polygon.io/v2/aggs?apiKey=<redacted>; "
+                    "detail=NOT_AUTHORIZED: Attempted to request today's data before "
+                    "end of day."
+                ),
+            ),
+        )
 
     payload = priced_in_preflight_payload(
         engine,
@@ -2969,8 +2988,16 @@ def test_priced_in_preflight_recommends_manual_bar_template_for_missing_bars(
         "universe": None,
     }
     assert payload["provider"]["latest_daily_bar_date"] == AS_OF.date().isoformat()
+    assert payload["provider_blocker"]["provider"] == "polygon"
+    assert payload["provider_blocker"]["target_as_of"] == run_as_of.isoformat()
+    assert "NOT_AUTHORIZED" in str(payload["provider_blocker"]["reason"])
+    assert "today's data before end of day" in str(market_bars["finding"])
+    assert "Wait until the provider releases" in str(market_bars["next_action"])
+    assert "Wait until the provider releases" in str(
+        payload["evidence_plan"]["next_action"]
+    )
     assert market_bars["status"] == "blocked"
-    assert "DB-backed active-universe" in str(market_bars["next_action"])
+    assert "DB-backed manual bar template" in str(market_bars["next_action"])
     assert market_bars["command"].startswith("catalyst-radar market-bars template")
     assert market_bars["api"] == "POST /api/radar/market-bars/template"
     assert payload["commands"]["run_scan"].startswith(

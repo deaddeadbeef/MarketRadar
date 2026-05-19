@@ -1,6 +1,88 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 10:12:56 +08:00
+Last updated: 2026-05-19 10:22:34 +08:00
+
+## Latest Provider Availability Blocker Surfacing Fix
+
+After the provider-error detail fix, the live DB contained a failed
+`polygon_grouped_daily` job for the target date:
+
+```text
+2026-05-18
+```
+
+Root cause fixed in this slice:
+
+- The provider failure existed in `job_runs`, but `priced-in-preflight` and the
+  TUI Run page still made the operator infer the real blocker from logs.
+- The dashboard could say only "missing bars" even though the current actionable
+  reason was:
+
+  ```text
+  NOT_AUTHORIZED: Attempted to request today's data before end of day.
+  ```
+
+Fix in this slice:
+
+- `priced_in_preflight_payload()` now checks recent failed market-data provider
+  jobs for the target as-of date.
+- The payload exposes:
+
+  ```text
+  provider_blocker
+  ```
+
+- The market-bars evidence row now includes the latest provider failure when it
+  matches the target date.
+- `priced-in-preflight` CLI prints a `provider_blocker` line.
+- The TUI Run page now surfaces the provider-date blocker as the first evidence
+  action:
+
+  ```text
+  Wait until the provider releases the target daily bars, use the DB-backed
+  manual bar template/import path, or intentionally upgrade the provider plan
+  before rerunning.
+  ```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_preflight_recommends_manual_bar_template_for_missing_bars -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py tests\integration\test_dashboard_data.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-preflight
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page run
+```
+
+Observed:
+
+- Focused pytest passed.
+- Ruff passed.
+- `git diff --check` passed.
+- `priced-in-preflight` made 0 external calls and printed:
+
+  ```text
+  provider_blocker provider=polygon target_as_of=2026-05-18 reason=HTTP 403 ...
+  detail=NOT_AUTHORIZED: Attempted to request today's data before end of day.
+  ```
+
+- TUI one-shot needed a longer timeout than 30 seconds against the live DB but
+  completed successfully and showed the provider-date blocker on the Run page.
+
+Current data-state conclusion:
+
+- This is no longer a "wrong ticker list" problem.
+- The active universe is already full enough to attempt a full scan:
+
+  ```text
+  active=12613
+  ```
+
+- The current blocker is that same-day grouped daily bars for `2026-05-18` are
+  not available to the current Polygon/Massive plan yet.
+- Next useful action is to wait for provider end-of-day availability, import a
+  manual full-bar CSV, or upgrade plan; then rerun the default one-call helper
+  and inspect coverage.
 
 ## Latest Provider Error Detail Fix
 
