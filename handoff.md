@@ -1,6 +1,48 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 09:10:58 +08:00
+Last updated: 2026-05-19 09:22:43 +08:00
+
+## Latest Local Restart Python Fix
+
+Post-merge local service restart exposed a launcher issue:
+
+- `scripts\restart-local.ps1` used plain `python`.
+- On this workstation that resolved to the Microsoft Store/system Python, not
+  the repo venv.
+- The API failed to start because that interpreter did not have the TUI
+  dependency loaded by the API route imports:
+
+  ```text
+  ModuleNotFoundError: No module named 'textual'
+  ```
+
+Fix in this slice:
+
+- `scripts\restart-local.ps1` now prefers:
+
+  ```powershell
+  .\.venv\Scripts\python.exe
+  ```
+
+  and falls back to `python` only if the repo venv executable is missing.
+- The script output now includes the Python executable path it used.
+
+Validation to run for this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_local_scripts.py::test_restart_local_script_restarts_only_market_radar_processes -q
+.\.venv\Scripts\python.exe -m ruff check scripts tests\integration\test_local_scripts.py
+git diff --check
+powershell -ExecutionPolicy Bypass -File scripts\restart-local.ps1
+powershell -ExecutionPolicy Bypass -File scripts\market-radar-status.ps1
+```
+
+Expected:
+
+- Restart should bring both API and Streamlit dashboard back up using the repo
+  venv interpreter.
+- Status should report the new `Full scan market bars` operator next action and
+  make 0 external calls.
 
 ## Latest Full-Scan Readiness Priority Fix
 
