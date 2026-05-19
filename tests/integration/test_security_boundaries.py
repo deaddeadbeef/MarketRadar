@@ -221,6 +221,14 @@ EXPECTED_API_ROUTES = {
     ): ("catalyst_radar.api.routes.radar", "radar_market_bars_import", ("radar",)),
     (
         "POST",
+        "/api/radar/market-bars/repair-plan",
+    ): (
+        "catalyst_radar.api.routes.radar",
+        "radar_market_bars_repair_plan",
+        ("radar",),
+    ),
+    (
+        "POST",
         "/api/radar/text/features-batch",
     ): ("catalyst_radar.api.routes.radar", "radar_text_features_batch", ("radar",)),
     (

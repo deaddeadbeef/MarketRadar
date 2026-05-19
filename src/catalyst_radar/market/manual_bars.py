@@ -183,6 +183,100 @@ class ManualBarsImportResult:
         }
 
 
+@dataclass(frozen=True)
+class ManualBarsRepairPlanResult:
+    expected_as_of: date
+    active_security_count: int
+    existing_as_of_bar_count: int
+    missing_as_of_bar_tickers: tuple[str, ...]
+    stocks_only: bool
+    provider_key_configured: bool
+    generated_at: datetime
+
+    @property
+    def missing_as_of_bar_count(self) -> int:
+        return len(self.missing_as_of_bar_tickers)
+
+    def as_payload(self) -> dict[str, object]:
+        missing = self.missing_as_of_bar_count
+        template_command = _manual_market_bars_template_command(
+            self.expected_as_of,
+            stocks_only=self.stocks_only,
+        )
+        import_preview_command = _manual_market_bars_import_command(
+            self.expected_as_of,
+            stocks_only=self.stocks_only,
+            execute=False,
+        )
+        import_execute_command = _manual_market_bars_import_command(
+            self.expected_as_of,
+            stocks_only=self.stocks_only,
+            execute=True,
+        )
+        provider_command = (
+            "catalyst-radar ingest-polygon grouped-daily "
+            f"--date {self.expected_as_of.isoformat()} --confirm-external-call"
+        )
+        if missing <= 0:
+            status = "ready"
+            provider_fill_status = "not_needed"
+            next_action = "As-of market bars already cover this scope."
+        elif self.provider_key_configured:
+            status = "attention"
+            provider_fill_status = "ready_for_approval"
+            next_action = (
+                "Fill the manual CSV and preview the import, or explicitly approve "
+                "the one-call Polygon/Massive grouped-daily fill."
+            )
+        else:
+            status = "attention"
+            provider_fill_status = "blocked"
+            next_action = (
+                "Fill the manual CSV and preview the import, or configure a real "
+                "Polygon/Massive API key before using the provider fill command."
+            )
+        missing_sample = list(self.missing_as_of_bar_tickers[:12])
+        return {
+            "schema_version": "manual-market-bars-repair-plan-v1",
+            "status": status,
+            "expected_as_of": self.expected_as_of.isoformat(),
+            "stocks_only": self.stocks_only,
+            "coverage_scope": "stock_like" if self.stocks_only else "active_universe",
+            "active_security_count": self.active_security_count,
+            "existing_as_of_bar_count": self.existing_as_of_bar_count,
+            "missing_as_of_bar_count": missing,
+            "missing_as_of_bar_ticker_sample": missing_sample,
+            "missing_as_of_bar_ticker_more": max(
+                0,
+                missing - len(missing_sample),
+            ),
+            "manual_template_command": template_command,
+            "manual_import_preview_command": import_preview_command,
+            "manual_import_execute_command": import_execute_command,
+            "manual_template_api": "POST /api/radar/market-bars/template",
+            "manual_import_api": "POST /api/radar/market-bars/import",
+            "provider_fill_status": provider_fill_status,
+            "provider": "polygon",
+            "provider_label": "Polygon/Massive grouped daily",
+            "provider_key_configured": self.provider_key_configured,
+            "provider_fill_external_call_count": 1 if missing > 0 else 0,
+            "provider_fill_command": provider_command if missing > 0 else None,
+            "provider_fill_api": None,
+            "external_calls_made": 0,
+            "approval_boundary": (
+                "This repair plan makes 0 provider calls. The provider command "
+                "makes one Polygon/Massive grouped-daily request and must only be "
+                "run after explicit operator approval."
+            ),
+            "write_boundary": (
+                "Template generation writes a local CSV. Import preview makes no "
+                "database writes. Import --execute writes local daily bars only."
+            ),
+            "generated_at": self.generated_at.isoformat(),
+            "next_action": next_action,
+        }
+
+
 def write_manual_market_bars_template(
     engine: Engine,
     *,
@@ -252,6 +346,40 @@ def write_manual_market_bars_template(
         stocks_only=stocks_only,
         provider=provider,
         generated_at=resolved_at,
+    )
+
+
+def manual_market_bars_repair_plan(
+    engine: Engine,
+    *,
+    expected_as_of: date,
+    stocks_only: bool = False,
+    provider_key_configured: bool = False,
+    generated_at: datetime | None = None,
+) -> ManualBarsRepairPlanResult:
+    active_rows = _active_security_rows(engine)
+    if not active_rows:
+        msg = "cannot build manual market-bar repair plan: no active securities in database"
+        raise ValueError(msg)
+    scoped_rows = (
+        tuple(row for row in active_rows if _manual_bar_is_stock_like(row[1]))
+        if stocks_only
+        else active_rows
+    )
+    if not scoped_rows:
+        msg = "cannot build manual market-bar repair plan: no matching active securities"
+        raise ValueError(msg)
+    active_tickers = {ticker for ticker, _security_type in scoped_rows}
+    existing = _bar_tickers_for_date(engine, expected_as_of)
+    missing = tuple(sorted(active_tickers - existing))
+    return ManualBarsRepairPlanResult(
+        expected_as_of=expected_as_of,
+        active_security_count=len(active_tickers),
+        existing_as_of_bar_count=len(existing & active_tickers),
+        missing_as_of_bar_tickers=missing,
+        stocks_only=stocks_only,
+        provider_key_configured=provider_key_configured,
+        generated_at=_as_utc(generated_at or datetime.now(UTC)),
     )
 
 
@@ -461,6 +589,37 @@ def _bar_tickers_for_date(engine: Engine, as_of_date: date) -> set[str]:
             )
             if str(row._mapping["ticker"]).strip()
         }
+
+
+def _manual_market_bars_template_command(
+    expected_as_of: date,
+    *,
+    stocks_only: bool,
+) -> str:
+    filename_prefix = "manual-stock-bars" if stocks_only else "manual-bars"
+    stocks_flag = " --stocks-only" if stocks_only else ""
+    return (
+        "catalyst-radar market-bars template "
+        f"--expected-as-of {expected_as_of.isoformat()} "
+        f"--out data\\local\\{filename_prefix}-{expected_as_of.isoformat()}.csv "
+        f"--missing-only{stocks_flag}"
+    )
+
+
+def _manual_market_bars_import_command(
+    expected_as_of: date,
+    *,
+    stocks_only: bool,
+    execute: bool,
+) -> str:
+    filename_prefix = "manual-stock-bars" if stocks_only else "manual-bars"
+    stocks_flag = " --stocks-only" if stocks_only else ""
+    execute_flag = " --execute" if execute else ""
+    return (
+        "catalyst-radar market-bars import "
+        f"--daily-bars data\\local\\{filename_prefix}-{expected_as_of.isoformat()}.csv "
+        f"--expected-as-of {expected_as_of.isoformat()}{stocks_flag}{execute_flag}"
+    )
 
 
 def _validate_manual_bars(bars: tuple[DailyBar, ...]) -> None:
