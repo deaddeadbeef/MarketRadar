@@ -1617,6 +1617,19 @@ def test_priced_in_full_scan_audit_payload_consolidates_current_state(
             "external_calls_made"
         ] == 0
     assert payload["market_bars"]["active_securities"] == 2
+    assert payload["market_bars"]["repair"]["schema_version"] == (
+        "priced-in-market-bar-repair-v1"
+    )
+    assert payload["market_bars"]["repair"]["external_calls_made"] == 0
+    assert payload["market_bars"]["repair"]["template_command"].startswith(
+        "catalyst-radar market-bars template"
+    )
+    assert payload["market_bars"]["repair"]["import_preview_command"].startswith(
+        "catalyst-radar market-bars import --daily-bars <fresh-bars.csv>"
+    )
+    assert payload["market_bars"]["repair"]["template_api"] == (
+        "POST /api/radar/market-bars/template"
+    )
     assert payload["instrument_scope"]["schema_version"] == (
         "priced-in-instrument-scope-v1"
     )

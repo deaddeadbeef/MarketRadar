@@ -1,6 +1,106 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 20:19:21 +08:00
+Last updated: 2026-05-19 20:36:39 +08:00
+
+## Latest Full-Scan Market-Bar Repair Surface
+
+Current problem:
+
+- The full scan is now clearly primary, but the first trust blocker is still
+  incomplete as-of market bars.
+- `market-radar-status.ps1` showed the correct repair path, but the priced-in
+  audit/dashboard did not put that path beside the full-scan answer.
+- Current local state:
+  - active securities: `12613`;
+  - as-of bars available: `12090`;
+  - missing as-of bars: `523`;
+  - expected scan date: `2026-05-15`;
+  - external calls while inspecting: `0`.
+
+Fix in this slice:
+
+- `priced_in_full_scan_audit_payload.market_bars` now includes a `repair`
+  object.
+- `market_bars.repair` schema is `priced-in-market-bar-repair-v1` and includes:
+  - status;
+  - target as-of date;
+  - active/covered/missing counts;
+  - missing ticker sample;
+  - DB-backed template command;
+  - import preview command;
+  - import execute command;
+  - matching API endpoints;
+  - explicit write boundary;
+  - `external_calls_made=0`.
+- CLI `priced-in-audit` now prints `market_bar_repair=...` immediately after
+  `market_bars=...`, including the sample missing tickers and template/import
+  commands.
+- Streamlit **Priced-in Full Scan** now shows a **Market bar coverage is
+  incomplete** warning directly under **Full-Market Scan** when as-of coverage
+  is incomplete.
+- The dashboard warning shows:
+  - missing count;
+  - expected as-of date;
+  - sample missing tickers;
+  - template/import commands;
+  - boundary that template/import are local and call no market providers.
+- No provider/source execution was run.
+
+Current live zero-call observations from the branch:
+
+```text
+market_bars=status=attention coverage=12090/12613 missing=523 coverage_pct=95.9
+market_bar_repair=status=attention expected_as_of=2026-05-15 missing=523 sample=AACBR,AACBU,AACIW,AACO,AACOU,AACOW,ACAAU,ACAAW,ADAC,ADXN,AEAQ,AEAQU external_calls=0
+template=catalyst-radar market-bars template --expected-as-of 2026-05-15 --out data\local\manual-bars-2026-05-15.csv
+preview_import=catalyst-radar market-bars import --daily-bars <fresh-bars.csv> --expected-as-of 2026-05-15
+execute_import=catalyst-radar market-bars import --daily-bars <fresh-bars.csv> --expected-as-of 2026-05-15 --execute
+```
+
+```text
+GET /api/radar/priced-in/audit?limit=5
+api_repair=attention expected=2026-05-15 missing=523 calls=0 sample=AACBR,AACBU,AACIW,AACO,AACOU,AACOW,ACAAU,ACAAW,ADAC,ADXN,AEAQ,AEAQU
+```
+
+Browser verification on `http://127.0.0.1:8514`:
+
+- **Market bar coverage is incomplete** rendered.
+- The warning showed `523 active ticker(s)`.
+- **Missing as-of bar examples** rendered.
+- The dated template command rendered.
+- The dated import command rendered.
+- The no-market-provider-call boundary rendered.
+- Browser console check reported 0 current errors.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_payload_consolidates_current_state tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_audit_cli_outputs_full_scan_audit tests\integration\test_dashboard_entrypoint.py::test_dashboard_wires_priced_in_full_scan_panel_after_usefulness -q
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_api_routes.py::test_get_radar_priced_in_audit_returns_zero_call_audit tests\integration\test_provider_ingest_cli.py::test_market_bars_template_uses_database_active_universe tests\integration\test_provider_ingest_cli.py::test_market_bars_import_requires_expected_full_active_coverage -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py apps\dashboard\Home.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_dashboard_entrypoint.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-audit --limit 5
+curl.exe --insecure --silent --show-error --fail "https://127.0.0.1:8443/api/radar/priced-in/audit?limit=5"
+```
+
+Observed:
+
+- Focused three-test set passed (`3 passed`).
+- API/provider-ingest three-test set passed (`3 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+- CLI and API checks both reported `external_calls=0`.
+- Local services were restarted from the branch for API/dashboard verification.
+
+Next useful product action:
+
+- The product now says exactly how to repair the first full-scan trust gap
+  without provider calls. The remaining large data-kind gaps are:
+  - options: `0/12087`;
+  - local text: `12/12087`;
+  - broker context: `5/12087` and currently stale;
+  - catalyst events: `9/5521` company-like rows.
+- Next useful slice should make one of those evidence source families similarly
+  explicit in the full-scan answer path, without adding hidden provider calls.
 
 ## Latest Goal-Drift Check And Full-Scan Primary UX
 

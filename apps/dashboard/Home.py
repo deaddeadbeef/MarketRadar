@@ -2048,6 +2048,7 @@ def _show_priced_in_full_scan_panel(
     scope = _mapping(audit.get("scope"))
     counts = _mapping(audit.get("counts"))
     source_coverage = _mapping(audit.get("source_coverage"))
+    market_bars = _mapping(audit.get("market_bars"))
     performance = _mapping(audit.get("performance"))
     metric_cols = st.columns(5)
     metric_cols[0].metric("Full Scan Rows", int(_metric_number(scope.get("ranked_rows"))))
@@ -2138,6 +2139,44 @@ def _show_priced_in_full_scan_panel(
         export_command = str(primary_scan.get("export_command") or "").strip()
         if export_command:
             st.code(export_command, language="powershell")
+    market_bar_repair = _mapping(market_bars.get("repair"))
+    if market_bar_repair and int(_metric_number(market_bar_repair.get("missing_as_of_bar"))):
+        st.warning(
+            "Market bar coverage is incomplete for the scan date. "
+            f"{market_bar_repair.get('missing_as_of_bar')} active ticker(s) "
+            "need as-of bars before this is a complete active-universe answer."
+        )
+        _show_status_badges(
+            [
+                ("Repair", market_bar_repair.get("status") or "attention"),
+                ("Expected As-Of", market_bar_repair.get("target_as_of") or "n/a"),
+                ("With Bars", market_bar_repair.get("with_as_of_bar") or 0),
+                ("Missing", market_bar_repair.get("missing_as_of_bar") or 0),
+                ("External Calls", market_bar_repair.get("external_calls_made") or 0),
+            ]
+        )
+        missing_sample = _list_text(
+            market_bar_repair.get("missing_as_of_bar_ticker_sample")
+        )
+        if missing_sample:
+            st.caption(f"Missing as-of bar examples: {missing_sample}")
+        st.caption(
+            str(
+                market_bar_repair.get("write_boundary")
+                or "Manual market-bar repair is local only."
+            )
+        )
+        repair_commands = [
+            command
+            for command in (
+                market_bar_repair.get("template_command"),
+                market_bar_repair.get("import_preview_command"),
+                market_bar_repair.get("import_execute_command"),
+            )
+            if str(command or "").strip()
+        ]
+        if repair_commands:
+            st.code("\n".join(str(command) for command in repair_commands), language="powershell")
     preview = _mapping(audit.get("preview"))
     preview_rows = _priced_in_full_scan_preview_rows(audit.get("preview_rows"))
     if preview_rows:

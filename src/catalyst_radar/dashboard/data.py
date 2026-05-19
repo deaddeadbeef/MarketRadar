@@ -2805,6 +2805,7 @@ def _priced_in_audit_market_bars(
 ) -> dict[str, object]:
     scan = _mapping_value(queue, "scan")
     freshness = _mapping_value(scan, "freshness")
+    latest_run = _mapping_value(queue, "latest_run")
     active = int(_finite_float(freshness.get("active_security_count")))
     if active <= 0:
         active = int(_finite_float(queue.get("total_count")))
@@ -2820,15 +2821,84 @@ def _priced_in_audit_market_bars(
         if isinstance(row, Mapping)
     }
     market_row = _row_dict(rows_by_area.get("market_bars", {}))
+    target_as_of = (
+        _parse_date(latest_run.get("as_of"))
+        or _parse_date(freshness.get("latest_candidate_session_date"))
+        or _parse_date(freshness.get("latest_daily_bar_date"))
+    )
+    repair = _priced_in_audit_market_bar_repair(
+        active=active,
+        with_as_of_bar=with_as_of_bar,
+        missing=missing,
+        target_as_of=target_as_of,
+        market_row=market_row,
+        missing_tickers=_sequence_value(
+            freshness.get("missing_as_of_daily_bar_tickers")
+        ),
+    )
     return {
         "status": market_row.get("status") or ("ready" if missing == 0 else "attention"),
         "active_securities": active,
         "with_as_of_bar": with_as_of_bar,
         "missing_as_of_bar": missing,
         "coverage_pct": round((with_as_of_bar / active) * 100, 1) if active else 0.0,
+        "target_as_of": _date_iso_or_none(target_as_of),
+        "missing_as_of_bar_tickers": repair.get("missing_as_of_bar_tickers"),
         "finding": market_row.get("finding"),
         "next_action": market_row.get("next_action"),
-        "command": market_row.get("command"),
+        "command": repair.get("template_command") or market_row.get("command"),
+        "api": repair.get("template_api") or market_row.get("api"),
+        "repair": repair,
+    }
+
+
+def _priced_in_audit_market_bar_repair(
+    *,
+    active: int,
+    with_as_of_bar: int,
+    missing: int,
+    target_as_of: date | None,
+    market_row: Mapping[str, object],
+    missing_tickers: Sequence[object],
+) -> dict[str, object]:
+    missing_sample = [
+        str(ticker).strip().upper()
+        for ticker in missing_tickers
+        if str(ticker).strip()
+    ]
+    template_command = _csv_market_template_command(target_as_of)
+    import_preview_command = _csv_market_refresh_command(target_as_of, execute=False)
+    import_execute_command = _csv_market_refresh_command(target_as_of, execute=True)
+    status = "ready" if missing <= 0 else str(market_row.get("status") or "attention")
+    if missing <= 0:
+        next_action = "As-of market bars cover the active universe."
+    else:
+        next_action = (
+            "Generate the DB-backed active-universe bar template, fill every "
+            "missing ticker for the scan date, preview the import, then execute "
+            "the local DB import only when coverage is complete."
+        )
+    return {
+        "schema_version": "priced-in-market-bar-repair-v1",
+        "status": status,
+        "target_as_of": _date_iso_or_none(target_as_of),
+        "active_securities": active,
+        "with_as_of_bar": with_as_of_bar,
+        "missing_as_of_bar": missing,
+        "missing_as_of_bar_tickers": missing_sample,
+        "missing_as_of_bar_ticker_sample": missing_sample[:12],
+        "template_command": template_command,
+        "import_preview_command": import_preview_command,
+        "import_execute_command": import_execute_command,
+        "template_api": "POST /api/radar/market-bars/template",
+        "import_api": "POST /api/radar/market-bars/import",
+        "external_calls_made": 0,
+        "write_boundary": (
+            "Template generation writes a local CSV. Import preview makes no DB "
+            "writes. Import --execute writes local daily bars only; none of these "
+            "commands call market providers."
+        ),
+        "next_action": next_action,
     }
 
 
