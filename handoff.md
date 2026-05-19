@@ -1,6 +1,6 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 16:08:16 +08:00
+Last updated: 2026-05-19 16:12:47 +08:00
 
 ## Latest Full-Scan Row Visibility
 
@@ -56,11 +56,16 @@ Observed:
 - `git diff --check` passed.
 - Live audit reported `preview_rows=25`, `range=1-25/12087`,
   `external_calls=0`, and first preview ticker `A`.
+- PR #325 merged as `254923e`.
+- Post-merge local services were restarted:
+  - API health returned commit `254923ee6765`.
+  - Streamlit health returned `ok`.
+- Browser verification on `http://127.0.0.1:8514` showed the Overview tab
+  rendering **Full-scan Ranked Rows** with rows 1-25 of 12,087 before
+  **Full-scan Trust Gaps** and **Priced-in Source Gaps**.
 
 Next useful product action:
 
-- Merge this slice, restart local services, and visually verify that the
-  Streamlit panel shows **Full-scan Ranked Rows**.
 - Actual source-fill execution still requires explicit user approval because it
   can call SEC/Schwab/market providers.
 
