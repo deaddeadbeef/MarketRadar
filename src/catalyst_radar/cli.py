@@ -3967,6 +3967,25 @@ def _print_priced_in_audit(payload: Mapping[str, object]) -> None:
         f"{coverage.get('source_count')} "
         f"weak={','.join(str(item) for item in _sequence_value(coverage.get('weak_sources')))}"
     )
+    recommended_source = payload.get("recommended_source_gap")
+    if isinstance(recommended_source, Mapping):
+        print(
+            "recommended_source_gap="
+            f"source={recommended_source.get('source')} "
+            f"decision={recommended_source.get('decision_useful_gap_rows')} "
+            f"actionable={recommended_source.get('actionable_gap_rows')} "
+            f"research={recommended_source.get('research_useful_gap_rows')} "
+            f"gap_rows={recommended_source.get('gap_count')} "
+            f"review={_compact_cli_text(recommended_source.get('review_command'))}"
+        )
+        print(
+            "  why="
+            f"{_compact_cli_text(recommended_source.get('rationale'))}"
+        )
+        print(
+            "  boundary="
+            f"{_compact_cli_text(recommended_source.get('execution_boundary'))}"
+        )
     _print_priced_in_instrument_scope(payload.get("instrument_scope"))
     preview = payload.get("preview")
     if isinstance(preview, Mapping):

@@ -1,6 +1,77 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-19 18:02:44 +08:00
+Last updated: 2026-05-19 18:10:56 +08:00
+
+## Latest Payoff-Ranked Next Action
+
+Current problem:
+
+- Source-gap payoff columns were visible in the table, but the first visible
+  next-action area still did not explicitly say which source gap to inspect
+  first and why.
+- Users still had to infer that the first table row was the most valuable
+  coverage action.
+
+Fix in this slice:
+
+- `priced_in_full_scan_audit_payload` now includes
+  `recommended_source_gap`.
+- The recommendation includes:
+  - source;
+  - status;
+  - decision-useful gap rows;
+  - actionable gap rows;
+  - research-useful gap rows;
+  - total gap rows;
+  - priority example tickers;
+  - rationale;
+  - next action;
+  - source-gap review command;
+  - source-batch plan command;
+  - provider-call boundary.
+- CLI `priced-in-audit` now prints `recommended_source_gap=...`,
+  `why=...`, and the zero-call boundary before the row preview.
+- Streamlit **Priced-in Full Scan** now shows a **First source gap** callout
+  above the command/table area, with payoff badges and the review/plan commands.
+- This remains zero-call guidance only.
+
+Current live zero-call observations from the branch:
+
+```text
+priced-in-audit --limit 5 --json
+rec_source=options decision=10 actionable=12 research=0 gaps=12087 review=catalyst-radar priced-in-audit --source-gap options --limit 25 external_calls=0
+```
+
+```text
+priced-in-audit --limit 5
+recommended_source_gap=source=options decision=10 actionable=12 research=0 gap_rows=12087 review=catalyst-radar priced-in-audit --source-gap options --limit 25
+  why=options has the highest current payoff: 10 decision-useful gap row(s), 12 actionable gap row(s), 0 research-useful gap row(s), and 12087 total gap row(s).
+  boundary=Reviewing this recommendation makes 0 provider calls. Execute source batches only after explicitly approving provider calls.
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_payload_consolidates_current_state tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_audit_cli_outputs_full_scan_audit tests\integration\test_api_routes.py::test_get_radar_priced_in_audit_returns_zero_call_audit tests\integration\test_dashboard_entrypoint.py::test_dashboard_wires_priced_in_full_scan_panel_after_usefulness -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py apps\dashboard\Home.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_dashboard_entrypoint.py tests\integration\test_api_routes.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-audit --limit 5 --json
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-audit --limit 5
+```
+
+Observed so far:
+
+- Focused four-test set passed (`4 passed`).
+- Ruff passed.
+- `git diff --check` passed.
+- Live branch CLI recommended options first with `decision=10`,
+  `actionable=12`, `gaps=12087`, and `external_calls=0`.
+
+Next useful product action:
+
+- Commit, open a PR, merge by rebase, restart local services, verify API and
+  Streamlit health, then run live API/dashboard checks for the first-source-gap
+  callout.
 
 ## Latest Source-Gap Payoff Ranking
 

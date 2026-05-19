@@ -1891,6 +1891,8 @@ def test_priced_in_audit_cli_outputs_full_scan_audit(
     )
     assert "market_bars=status=" in output.out
     assert "source_coverage=ready=" in output.out
+    assert "recommended_source_gap=source=" in output.out
+    assert "boundary=Reviewing this recommendation makes 0 provider calls" in output.out
     assert "instrument_scope=rows=" in output.out
     assert "sec_catalyst_applicability=applicable=" in output.out
     assert "full_scan_rows=" in output.out
