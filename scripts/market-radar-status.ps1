@@ -44,6 +44,35 @@ function Invoke-ApiJson {
 
 $health = Invoke-ApiJson -Path "/api/health"
 $readiness = Invoke-ApiJson -Path "/api/radar/readiness"
+$manualMarketBarPreview = $null
+if ($readiness.radar_run.as_of) {
+    $runAsOf = [string]$readiness.radar_run.as_of
+    $manualBarsPath = "data\local\manual-bars-$runAsOf.csv"
+    if (Test-Path -LiteralPath $manualBarsPath) {
+        try {
+            $pythonExe = ".\.venv\Scripts\python.exe"
+            if (-not (Test-Path -LiteralPath $pythonExe)) {
+                $pythonExe = "py"
+            }
+            $previewResponse = & $pythonExe -m catalyst_radar.cli market-bars import `
+                --daily-bars $manualBarsPath `
+                --expected-as-of $runAsOf `
+                --json 2>$null
+            if ([string]::IsNullOrWhiteSpace(($previewResponse -join "`n"))) {
+                throw "manual market-bar preview returned no JSON"
+            }
+            $manualMarketBarPreview = ($previewResponse -join "`n") | ConvertFrom-Json
+        }
+        catch {
+            $manualMarketBarPreview = [ordered]@{
+                status = "error"
+                daily_bars_path = $manualBarsPath
+                detail = $_.Exception.Message
+                external_calls_made = 0
+            }
+        }
+    }
+}
 $pricedInStockAudit = Invoke-ApiJson -Path "/api/radar/priced-in/audit?stocks_only=true&limit=1" -TimeoutSeconds 90
 $latestRun = Invoke-ApiJson -Path "/api/radar/runs/latest"
 $activation = Invoke-ApiJson -Path "/api/radar/live-activation"
@@ -119,6 +148,9 @@ foreach ($blocker in @($discovery.blockers)) {
     }
 }
 $databaseHealth = $opsHealth.database
+if ($null -ne $manualMarketBarPreview) {
+    $payload["manual_market_bar_preview"] = $manualMarketBarPreview
+}
 
 if ($Json) {
     $payload | ConvertTo-Json -Depth 12
@@ -273,6 +305,30 @@ if ($null -ne $freshness) {
             "- refresh command: catalyst-radar market-bars import --daily-bars <fresh-bars.csv> --expected-as-of {0} --execute" -f
             $readiness.radar_run.as_of
         )
+        if ($null -ne $manualMarketBarPreview) {
+            Write-Output (
+                "- local template preview: status={0}; rows={1}; invalid_rows={2}; blank_required={3}; missing_after_import={4}; external_calls={5}" -f
+                $manualMarketBarPreview.status,
+                $(if ($null -ne $manualMarketBarPreview.row_count) { $manualMarketBarPreview.row_count } else { "n/a" }),
+                $(if ($null -ne $manualMarketBarPreview.invalid_row_count) { $manualMarketBarPreview.invalid_row_count } else { "n/a" }),
+                $(if ($null -ne $manualMarketBarPreview.blank_required_count) { $manualMarketBarPreview.blank_required_count } else { "n/a" }),
+                $(if ($null -ne $manualMarketBarPreview.missing_expected_count) { $manualMarketBarPreview.missing_expected_count } else { "n/a" }),
+                $(if ($null -ne $manualMarketBarPreview.external_calls_made) { $manualMarketBarPreview.external_calls_made } else { 0 })
+            )
+            $invalidExamples = @(
+                $manualMarketBarPreview.invalid_examples |
+                    Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }
+            )
+            if ($invalidExamples.Count -gt 0) {
+                Write-Output ("- local template invalid examples: {0}" -f (($invalidExamples | Select-Object -First 3) -join " | "))
+            }
+            if ($manualMarketBarPreview.detail) {
+                Write-Output ("- local template preview error: {0}" -f $manualMarketBarPreview.detail)
+            }
+            if ($manualMarketBarPreview.next_action) {
+                Write-Output ("- local template next: {0}" -f $manualMarketBarPreview.next_action)
+            }
+        }
     }
 }
 if ($null -ne $databaseHealth) {

@@ -1,6 +1,65 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 04:12:14 +08:00
+Last updated: 2026-05-20 04:32:33 +08:00
+
+## Latest Status Preview For Local Manual Bars
+
+Goal alignment check:
+
+- The immediate full-scan blocker is still market-bar coverage for the current
+  scan date. The local missing-bar template exists, but the operator should not
+  have to remember a separate preview command just to see whether it is ready.
+- This is not dashboard polish for its own sake. It keeps the replacement
+  CLI/status surface centered on the next useful action: fill the generated
+  523-row CSV until preview returns `status=ready`, then execute the local DB
+  import.
+
+Fix in this slice:
+
+- `scripts\market-radar-status.ps1` now checks for
+  `data\local\manual-bars-<run-as-of>.csv`.
+- If the file exists, status runs the zero-write CLI preview:
+
+  ```powershell
+  catalyst-radar market-bars import --daily-bars data\local\manual-bars-<date>.csv --expected-as-of <date> --json
+  ```
+
+- The status output now includes:
+  - local template status;
+  - row count;
+  - invalid row count;
+  - blank required field count;
+  - missing rows after import;
+  - invalid examples;
+  - next action.
+- The JSON status payload now includes `manual_market_bar_preview`.
+- No provider calls, broker calls, OpenAI calls, order actions, or database
+  writes were made.
+
+Live zero-write/zero-call status observation:
+
+```text
+- local template preview: status=invalid; rows=523; invalid_rows=523; blank_required=3138; missing_after_import=0; external_calls=0
+- local template invalid examples: row 2 AACO 2026-05-15: blank close,high,low,open | row 3 ADAC 2026-05-15: blank close,high,low,open | row 4 ADXN 2026-05-15: blank close,high,low,open
+- local template next: Fix blank or invalid required fields, then preview again before running --execute.
+External calls made: 0
+```
+
+Validation run in this slice:
+
+```powershell
+powershell -NoProfile -Command '$null = [scriptblock]::Create((Get-Content -Raw .\scripts\market-radar-status.ps1)); "powershell syntax ok"'
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_local_scripts.py::test_market_radar_status_script_is_zero_external_call_sitrep -q
+.\.venv\Scripts\python.exe -m ruff check tests\integration\test_local_scripts.py
+git diff --check
+```
+
+Observed:
+
+- Focused status-script test passed (`1 passed`).
+- Ruff passed for the touched test.
+- PowerShell syntax parsed successfully.
+- `git diff --check` passed.
 
 ## Latest Manual Bar Import Invalid Preview
 
