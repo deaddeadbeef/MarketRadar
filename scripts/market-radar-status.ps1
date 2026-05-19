@@ -43,6 +43,31 @@ function Invoke-ApiJson {
     }
 }
 
+function Format-FieldCountSummary {
+    param([object]$Value)
+
+    if ($null -eq $Value) {
+        return ""
+    }
+    $pairs = @()
+    if ($Value -is [System.Collections.IDictionary]) {
+        foreach ($key in $Value.Keys) {
+            $count = $Value[$key]
+            if ($null -ne $count) {
+                $pairs += ("{0}={1}" -f $key, $count)
+            }
+        }
+    }
+    else {
+        foreach ($property in @($Value.PSObject.Properties)) {
+            if ($null -ne $property.Value) {
+                $pairs += ("{0}={1}" -f $property.Name, $property.Value)
+            }
+        }
+    }
+    return ($pairs -join ", ")
+}
+
 $health = Invoke-ApiJson -Path "/api/health"
 $readiness = Invoke-ApiJson -Path "/api/radar/readiness"
 $pythonExe = ".\.venv\Scripts\python.exe"
@@ -184,6 +209,10 @@ if ($Quick) {
         )
         if ($manualMarketBarPreview.next_action) {
             Write-Output ("- local template next: {0}" -f $manualMarketBarPreview.next_action)
+        }
+        $blankFieldSummary = Format-FieldCountSummary -Value $manualMarketBarPreview.blank_required_field_counts
+        if (-not [string]::IsNullOrWhiteSpace($blankFieldSummary)) {
+            Write-Output ("- local template blank fields: {0}" -f $blankFieldSummary)
         }
         $invalidExamples = @(
             $manualMarketBarPreview.invalid_examples |
@@ -474,6 +503,10 @@ if ($null -ne $freshness) {
             )
             if ($invalidExamples.Count -gt 0) {
                 Write-Output ("- local template invalid examples: {0}" -f (($invalidExamples | Select-Object -First 3) -join " | "))
+            }
+            $blankFieldSummary = Format-FieldCountSummary -Value $manualMarketBarPreview.blank_required_field_counts
+            if (-not [string]::IsNullOrWhiteSpace($blankFieldSummary)) {
+                Write-Output ("- local template blank fields: {0}" -f $blankFieldSummary)
             }
             if ($manualMarketBarPreview.detail) {
                 Write-Output ("- local template preview error: {0}" -f $manualMarketBarPreview.detail)
