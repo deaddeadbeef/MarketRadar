@@ -1,8 +1,51 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 00:50:30 +08:00
+Last updated: 2026-05-21 01:07:57 +08:00
 
 
+
+
+## Latest TUI Saved-File Action Boundaries
+
+Goal alignment / drift check:
+
+- The active goal remains: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- The current first useful blocker is still `market_bars`; no provider calls were made.
+- The prior slice exposed saved-file request bodies through CLI/API payloads, but the human TUI could still clip the safety flags behind long commands.
+- This slice keeps the dashboard useful for human eyes: the action boundary appears before the long command.
+
+Fix in this slice:
+
+- Saved Polygon/Massive capture, validate, and import summaries now render request-body flags before commands:
+  - safe capture body has `confirm_external_call=false`;
+  - confirmed capture body has `confirm_external_call=true`;
+  - saved-file import preview has `execute=false` and import has `execute=true`.
+- The Run page now shows a `Market Bar Saved-File Actions` fallback section when a payload has market-bar repair data but no audit source rows.
+- Existing Overview/Ops saved-file lines now expose the same request-boundary text early enough to survive clipping.
+- README already documents these request-body fields from the prior slice; no README wording changed here.
+- This is TUI presentation work only. It does not execute provider capture, validate/import files, call Schwab, call OpenAI, or reduce the scan universe.
+
+Validation:
+
+```powershell
+$env:PYTHONPATH = 'C:\Users\fpan1\MarketRadar-tui-saved-file-actions\src'; C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_manual_bar_fill_progress_summary_is_human_readable tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_batch_message_prints_market_bar_saved_file_repair -q
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+$env:PYTHONPATH = 'C:\Users\fpan1\MarketRadar-tui-saved-file-actions\src'; C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page run
+```
+
+Observed in the feature worktree:
+
+- Focused pytest passed: 2 tests.
+- Ruff passed on modified TUI/test files.
+- `git diff --check` passed.
+- Live zero-call TUI render showed `Saved file capture`, `Saved file check`, and `Saved file import` with the request-body flags and `External calls made: 0`.
+
+Next useful product action:
+
+- Do not treat this as goal completion.
+- The live stock-only bar blocker remains: the manual stock-bar CSV exists but has 131 empty rows.
+- The next real data action is still either manual fill/import or explicit approval for the one Polygon/Massive saved-response capture.
 
 
 ## Latest Saved-File API Request Bodies
