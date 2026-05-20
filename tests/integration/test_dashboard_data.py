@@ -2424,7 +2424,37 @@ def test_priced_in_queue_payload_reports_full_scan_instrument_scope(
                     "updated_at": AVAILABLE_AT,
                     "metadata": {"type": "ETF"},
                 },
+                {
+                    "ticker": "GOOG",
+                    "name": "Alphabet Inc.",
+                    "exchange": "NASDAQ",
+                    "sector": "Communication Services",
+                    "industry": "Internet Content",
+                    "market_cap": 2_000_000_000_000.0,
+                    "avg_dollar_volume_20d": 4_000_000_000.0,
+                    "has_options": True,
+                    "is_active": True,
+                    "updated_at": AVAILABLE_AT,
+                    "metadata": {"type": "CS", "cik": "1652044"},
+                },
             ],
+        )
+        conn.execute(
+            insert(daily_bars),
+            {
+                "ticker": "MSFT",
+                "date": AS_OF.date(),
+                "provider": "polygon",
+                "open": 10.0,
+                "high": 11.0,
+                "low": 9.0,
+                "close": 10.5,
+                "volume": 1_000_000,
+                "vwap": 10.2,
+                "adjusted": True,
+                "source_ts": SOURCE_TS,
+                "available_at": AVAILABLE_AT,
+            },
         )
 
     payload = priced_in_queue_payload(engine, AppConfig.from_env({}), limit=1)
@@ -2470,6 +2500,21 @@ def test_priced_in_queue_payload_reports_full_scan_instrument_scope(
     assert [row["ticker"] for row in stock_payload["rows"]] == ["MSFT"]
     assert stock_payload["instrument_scope"]["company_like_rows"] == 1
     assert stock_payload["instrument_scope"]["non_company_rows"] == 0
+
+    stock_preflight = priced_in_preflight_payload(
+        engine,
+        AppConfig.from_env({}),
+        stocks_only=True,
+    )
+    assert stock_preflight["source_coverage"]["row_count"] == 1
+    assert "no priced-in rows" not in stock_preflight["source_coverage"]["summary"]
+    stock_market_bars = stock_preflight["source_coverage"]["sources"]["market_bars"]
+    assert stock_market_bars["row_count"] == 2
+    assert stock_market_bars["available"] == 1
+    assert stock_market_bars["missing"] == 1
+    assert "market_bars 1/2 (1 missing)" in stock_preflight["source_coverage"][
+        "summary"
+    ]
 
     stock_audit = priced_in_full_scan_audit_payload(
         engine,

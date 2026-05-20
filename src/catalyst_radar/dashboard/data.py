@@ -6011,6 +6011,8 @@ def priced_in_preflight_payload(
             stocks_only=stocks_only,
         )
     )
+    freshness = _mapping_value(discovery, "freshness")
+    scan_yield = _mapping_value(discovery, "yield")
     commands = _priced_in_preflight_commands(
         config,
         target_ticker_pages=_estimated_ticker_seed_pages(bar_universe),
@@ -6033,6 +6035,17 @@ def priced_in_preflight_payload(
         _priced_in_market_bar_stock_scope(engine, target_as_of=target_as_of_date)
         if stocks_only
         else None
+    )
+    resolved_source_coverage = _priced_in_source_coverage_with_market_bar_scope(
+        resolved_source_coverage,
+        {
+            "repair": _priced_in_preflight_market_bar_repair_scope(
+                freshness=freshness,
+                target_as_of=target_as_of_date,
+                stocks_only=stocks_only,
+                stock_scope=stock_scope,
+            )
+        },
     )
     provider_blocker = _latest_market_bar_provider_failure(
         engine,
@@ -6066,8 +6079,6 @@ def priced_in_preflight_payload(
         status = "ready"
         headline = "Full-market priced-in scan prerequisites look ready."
         next_action = "Run one capped radar cycle, then review priced-in gaps."
-    freshness = _mapping_value(discovery, "freshness")
-    scan_yield = _mapping_value(discovery, "yield")
     scan_scope = {
         "instrument_filter": "stocks_only" if stocks_only else "all_instruments",
         "active_security_count": int(
@@ -6250,15 +6261,67 @@ def _priced_in_preflight_source_coverage(
         candidate_rows,
         _market_context_value(broker_summary),
     )
+    security_meta = _security_metadata_by_ticker(
+        engine,
+        [
+            str(row.get("ticker") or "").strip().upper()
+            for row in candidate_rows
+            if isinstance(row, Mapping)
+        ],
+    )
     queue_rows = [
-        _priced_in_queue_row(row)
+        _priced_in_queue_row(
+            row,
+            security_metadata=security_meta.get(
+                str(row.get("ticker") or "").strip().upper()
+            ),
+        )
         for row in candidate_rows
         if isinstance(row, Mapping)
     ]
     if stocks_only:
         queue_rows = [row for row in queue_rows if _priced_in_row_is_stock_like(row)]
     coverage = priced_in_source_coverage_summary(queue_rows, stocks_only=stocks_only)
+    coverage = _priced_in_source_coverage_with_instrument_routes(
+        engine,
+        queue_rows,
+        coverage,
+    )
     return _priced_in_source_coverage_with_option_diagnostic(engine, queue_rows, coverage)
+
+
+def _priced_in_preflight_market_bar_repair_scope(
+    *,
+    freshness: Mapping[str, object],
+    target_as_of: date | None,
+    stocks_only: bool,
+    stock_scope: Mapping[str, object] | None,
+) -> dict[str, object]:
+    if stocks_only and stock_scope:
+        return {"stocks_only": True, "stock_scope": _row_dict(stock_scope)}
+
+    active = int(_finite_float(freshness.get("active_security_count")))
+    if active <= 0:
+        return {}
+    available = int(
+        _finite_float(freshness.get("active_security_with_as_of_bar_count"))
+    )
+    missing = int(_finite_float(freshness.get("missing_as_of_daily_bar_count")))
+    sample_tickers = [
+        str(ticker).strip().upper()
+        for ticker in _sequence_value(freshness.get("missing_as_of_daily_bar_tickers"))
+        if str(ticker).strip()
+    ]
+    return {
+        "status": "ready" if missing <= 0 else "attention",
+        "target_as_of": _date_iso_or_none(target_as_of),
+        "active_securities": active,
+        "with_as_of_bar": available,
+        "missing_as_of_bar": missing,
+        "stocks_only": False,
+        "missing_as_of_bar_tickers": sample_tickers,
+        "missing_as_of_bar_ticker_sample": _sample_tickers(sample_tickers),
+    }
 
 
 def priced_in_source_coverage_summary(
