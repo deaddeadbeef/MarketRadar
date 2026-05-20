@@ -1,6 +1,59 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 10:04:34 +08:00
+Last updated: 2026-05-20 10:08:15 +08:00
+
+## Latest Local Manual Template Regeneration
+
+Goal alignment:
+
+- The active blocker is still the 523 missing scan-date market bars.
+- Provider fill still requires explicit approval, so the useful zero-call work
+  is making the local manual repair path as easy and safe as possible.
+- The existing `data\local\manual-bars-2026-05-15.csv` was inspected before
+  regeneration. It had 523 rows, no `name` column, and zero rows with any
+  required OHLCV/VWAP field filled, so regenerating it did not overwrite
+  operator-entered bar values.
+- `data\local\` is ignored by git, so the regenerated CSV is a local workspace
+  artifact and not part of the PR.
+- This made 0 Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or provider
+  calls.
+
+Local artifact state after regeneration:
+
+```text
+file: data\local\manual-bars-2026-05-15.csv
+rows: 523
+has_name_column: true
+filled_required_rows: 0
+first_row: AACO | CS | Abony Acquisition Corp. I Class A Ordinary Share
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m catalyst_radar.cli market-bars template --expected-as-of 2026-05-15 --out data\local\manual-bars-2026-05-15.csv --missing-only
+.\.venv\Scripts\python.exe -m catalyst_radar.cli market-bars import --daily-bars data\local\manual-bars-2026-05-15.csv --expected-as-of 2026-05-15
+powershell -ExecutionPolicy Bypass -File .\scripts\market-radar-status.ps1 -Quick
+```
+
+Results:
+
+- Template generation reported `rows=523`, `external_calls=0`, and the new
+  `Rows include security names` next action.
+- Import preview still exits non-zero with `status=invalid`, which is expected
+  until OHLCV/VWAP values are filled. It reported `blank_required=3138` and
+  `external_calls=0`.
+- Quick status still reports `bars=12090/12613`, `missing=523`, and
+  `External calls made: 0`.
+
+Next useful product action:
+
+- Fill OHLCV/VWAP in `data\local\manual-bars-2026-05-15.csv`, then run the
+  import preview again.
+- Do not regenerate this file again without rechecking for filled required
+  values first.
+- Do not run the guarded Polygon/Massive grouped-daily fill without explicit
+  user approval.
 
 ## Latest Manual Bar Template Name Column
 
