@@ -287,7 +287,10 @@ latest bars. It also reports coverage for the latest run's `as_of` date, which
 is the date the manual template must satisfy before the run can become
 decision-useful. It makes 0 Polygon, SEC, Schwab, or OpenAI calls.
 Quick mode limits the output to health, readiness, the stock-like market-bar
-repair plan, and any local manual-bar template preview.
+repair plan, saved-capture approval packet, and any local manual-bar template
+preview. The saved-capture approval lines show whether approval is required,
+how many bars are targeted, the exact external-call count if approved, and the
+zero-call question to review before running `bars saved capture confirm`.
 
 For functional end-to-end tests of the same command-center data the dashboard
 renders:
