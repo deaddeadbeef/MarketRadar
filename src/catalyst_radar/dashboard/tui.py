@@ -2459,6 +2459,12 @@ def _priced_in_source_batch_message(
     point_in_time_import = str(
         diagnostic.get("point_in_time_import_command") or ""
     ).strip()
+    point_in_time_progress = _mapping(
+        diagnostic.get("point_in_time_fixture_progress")
+    )
+    point_in_time_progress_suffix = _point_in_time_options_progress_suffix(
+        point_in_time_progress
+    )
     manual_validate_command = str(
         diagnostic.get("manual_validate_command") or ""
     ).strip()
@@ -2588,6 +2594,7 @@ def _priced_in_source_batch_message(
             f"{point_in_time_template_suffix}"
             f"{point_in_time_validate_suffix}"
             f"{point_in_time_suffix}"
+            f"{point_in_time_progress_suffix}"
             f"{manual_validate_suffix}"
             f"{manual_fix_suffix}"
             f"{full_suffix}{row_review_suffix}{row_export_suffix}{next_suffix}"
@@ -2614,6 +2621,8 @@ def _priced_in_source_batch_message(
         detail = f"{detail} Validate: {point_in_time_validate}."
     if point_in_time_import:
         detail = f"{detail} Point-in-time import: {point_in_time_import}."
+    if point_in_time_progress_suffix:
+        detail = f"{detail}{point_in_time_progress_suffix}"
     if manual_validate_command:
         detail = f"{detail} CIK validate: {manual_validate_command}."
     if manual_fix_command:
@@ -2623,6 +2632,24 @@ def _priced_in_source_batch_message(
         f"{non_company_route_suffix}{diagnostic_suffix}"
     )
     return f"{prefix} {detail}"
+
+
+def _point_in_time_options_progress_suffix(progress: Mapping[str, object]) -> str:
+    if not progress:
+        return ""
+    status = str(progress.get("status") or "unknown").strip()
+    path = str(progress.get("path") or "").strip()
+    exists = bool(progress.get("exists"))
+    rows = int(_number_or_zero(progress.get("row_count")))
+    complete = int(_number_or_zero(progress.get("complete")))
+    partial = int(_number_or_zero(progress.get("partial")))
+    empty = int(_number_or_zero(progress.get("empty")))
+    if not exists:
+        return f" Local template: {status}; create {path}." if path else ""
+    return (
+        f" Local template: {status}; {complete} complete, {partial} partial, "
+        f"{empty} empty of {rows} row(s) at {path}."
+    )
 
 
 def _source_batch_diagnostic_summary(diagnostic: Mapping[str, object]) -> str:

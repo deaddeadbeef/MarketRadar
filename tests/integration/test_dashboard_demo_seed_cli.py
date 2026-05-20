@@ -1847,6 +1847,16 @@ def test_priced_in_source_batches_cli_prints_options_point_in_time_import(
                     "catalyst-radar ingest-options --fixture "
                     "<point-in-time-options-2026-05-15.json>"
                 ),
+                "point_in_time_fixture_progress": {
+                    "status": "needs_fill",
+                    "exists": True,
+                    "row_count": 2,
+                    "complete": 0,
+                    "partial": 1,
+                    "empty": 1,
+                    "path": "data\\local\\point-in-time-options-2026-05-15.json",
+                    "external_calls_made": 0,
+                },
             },
             "batches": [],
         }
@@ -1876,6 +1886,11 @@ def test_priced_in_source_batches_cli_prints_options_point_in_time_import(
     assert (
         "diagnostic_point_in_time_import=catalyst-radar ingest-options --fixture "
         "<point-in-time-options-2026-05-15.json>"
+    ) in output.out
+    assert (
+        "diagnostic_point_in_time_fixture=status=needs_fill exists=true rows=2 "
+        "complete=0 partial=1 empty=1 "
+        "path=data\\local\\point-in-time-options-2026-05-15.json"
     ) in output.out
 
 
@@ -1915,6 +1930,16 @@ def test_dashboard_batch_message_prints_options_point_in_time_import(
                     "catalyst-radar ingest-options --fixture "
                     "<point-in-time-options-2026-05-15.json>"
                 ),
+                "point_in_time_fixture_progress": {
+                    "status": "needs_fill",
+                    "exists": True,
+                    "row_count": 2,
+                    "complete": 0,
+                    "partial": 1,
+                    "empty": 1,
+                    "path": "data\\local\\point-in-time-options-2026-05-15.json",
+                    "external_calls_made": 0,
+                },
             },
             "batches": [],
         }
@@ -1949,6 +1974,10 @@ def test_dashboard_batch_message_prints_options_point_in_time_import(
     assert (
         "Point-in-time import: catalyst-radar ingest-options --fixture "
         "<point-in-time-options-2026-05-15.json>."
+    ) in update.message
+    assert (
+        "Local template: needs_fill; 0 complete, 1 partial, 1 empty of 2 row(s) "
+        "at data\\local\\point-in-time-options-2026-05-15.json."
     ) in update.message
 
 

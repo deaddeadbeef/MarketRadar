@@ -1,6 +1,119 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 12:55:39 +08:00
+Last updated: 2026-05-20 13:16:05 +08:00
+
+## Latest Drift Check And Options Template Progress
+
+Goal alignment:
+
+- The active goal is still to scan the broad market and identify stocks where
+  market emotion/expectations have not yet been matched by price reaction.
+- The useful definition for the product remains:
+  - fresh enough price reaction for each scanned security;
+  - enough catalyst/text/options/broker context to judge market emotion;
+  - clear source-coverage blockers before any investment decision.
+- This means more TUI polish is drift unless it exposes or clears a data-source
+  blocker. The next useful work stayed in source coverage, not dashboard
+  decoration.
+- The current full scan still has the same high-value blockers:
+  - full active-universe bars: `12090/12613`, `523` missing;
+  - stock-like bars: `5521/5652`, `131` missing;
+  - options context: `12087` full-scan rows blocked because stored options are
+    not point-in-time for the scan date.
+- This slice makes 0 Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or
+  provider calls.
+
+Operational context before this slice:
+
+- A zero-call point-in-time options template already exists locally:
+
+  ```text
+  data\local\point-in-time-options-2026-05-15.json
+  ```
+
+- It contains `12087` rows for the scan date and is currently blank:
+
+  ```text
+  complete=0; partial=0; empty=12087
+  ```
+
+- Before this slice, `priced-in-source-batches --source options --all` still
+  repeated only the create-template guidance, so the operator could not tell
+  that the next useful action was to fill/validate the existing file.
+
+Fix in this slice:
+
+- `priced_in_source_gap_batches_payload(...)` now detects the local
+  `data\local\point-in-time-options-<scan-date>.json` file without provider
+  calls.
+- The options diagnostic now includes:
+  - `point_in_time_fixture_progress.status`;
+  - `exists`;
+  - `row_count`;
+  - `complete`;
+  - `partial`;
+  - `empty`;
+  - validation/blank/invalid counts;
+  - the local path and zero-call boundary.
+- If the file is missing, the plan keeps the original point-in-time warning
+  about newer/current options and still shows the template command.
+- If the file exists, the plan's next action shifts to filling and validating
+  that existing file before import.
+- The CLI now prints a concise progress line:
+
+  ```text
+  diagnostic_point_in_time_fixture=status=needs_fill exists=true rows=12087 complete=0 partial=0 empty=12087 path=data\local\point-in-time-options-2026-05-15.json
+  ```
+
+- The TUI batch message and Ops source workflow now show the same existing-file
+  action instead of implying no template exists.
+
+Live zero-call observations:
+
+```text
+priced_in_source_batches source=options status=blocked gap_rows=12087 plannable=0 routed=0 ... external_calls=0
+next_action=Fill point-in-time option fields in data\local\point-in-time-options-2026-05-15.json; then validate before import.
+diagnostic_point_in_time_fixture=status=needs_fill exists=true rows=12087 complete=0 partial=0 empty=12087 path=data\local\point-in-time-options-2026-05-15.json
+```
+
+```text
+Source Fill Workflow / options: Fill point-in-time option ...
+External calls made: 0
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_reports_existing_options_template tests\integration\test_dashboard_data.py::test_priced_in_queue_payload_diagnoses_options_after_scan_date tests\integration\test_dashboard_data.py::test_priced_in_all_source_gap_batches_blocks_options_shortcut_when_not_point_in_time tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_source_batches_cli_prints_options_point_in_time_import tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_batch_message_prints_options_point_in_time_import -q
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_api_routes.py::test_get_radar_priced_in_source_batches_returns_zero_call_plan tests\integration\test_api_routes.py::test_get_radar_options_fixture_template_returns_zero_call_fixture tests\integration\test_api_routes.py::test_post_radar_options_fixture_validate_returns_zero_call_result tests\integration\test_options_ingest.py::test_validate_options_fixture_json_rejects_blank_template_rows tests\integration\test_options_ingest.py::test_validate_options_fixture_json_accepts_filled_rows tests\integration\test_options_ingest.py::test_ingest_options_fixture_template_cli_writes_gap_template -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source options --all
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page ops
+```
+
+Results:
+
+- Focused pytest passed: `5 passed`.
+- API/options focused pytest passed: `6 passed`.
+- Ruff passed.
+- `git diff --check` passed.
+- Live CLI and TUI observations made 0 external calls.
+
+Next useful product action:
+
+- Do not add more dashboard polish until the source blockers move.
+- Highest leverage path remains fixing scan-date price coverage:
+  either explicitly approve the one-call Polygon/Massive grouped-daily repair
+  for `2026-05-15`, or fill/import the manual market-bar CSVs.
+- In parallel or after price coverage, fill
+  `data\local\point-in-time-options-2026-05-15.json`, then validate:
+
+  ```powershell
+  .\.venv\Scripts\python.exe -m catalyst_radar.cli ingest-options --fixture data\local\point-in-time-options-2026-05-15.json --validate-only --expected-as-of 2026-05-15
+  ```
+
+- Only import the options fixture after validation reports `status=ready`.
 
 ## Latest Historical Provider-Health Warning Gate
 

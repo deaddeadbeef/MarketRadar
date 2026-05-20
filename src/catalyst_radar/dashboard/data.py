@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
@@ -33,7 +34,11 @@ from catalyst_radar.brokers.rate_limit import (
     schwab_rate_limit_config_payload,
     schwab_rate_limit_status,
 )
-from catalyst_radar.connectors.options import OPTIONS_FIXTURE_TEMPLATE_RESULT_FIELDS
+from catalyst_radar.connectors.options import (
+    OPTIONS_FIXTURE_NUMERIC_FIELDS,
+    OPTIONS_FIXTURE_TEMPLATE_RESULT_FIELDS,
+    validate_options_fixture_json,
+)
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.core.models import ActionState, MarketFeatures
 from catalyst_radar.core.runtime import build_info
@@ -4566,6 +4571,15 @@ def _priced_in_audit_source_gap_repair(
     point_in_time_validate_command = _options_point_in_time_validate_command(
         diagnostic
     )
+    point_in_time_progress = _options_point_in_time_fixture_progress(
+        diagnostic,
+        stocks_only=stocks_only,
+    )
+    progress_action = (
+        point_in_time_progress.get("next_action")
+        if bool(point_in_time_progress.get("exists"))
+        else None
+    )
     sample_tickers = _option_gap_diagnostic_samples(diagnostic)
     if not sample_tickers:
         sample_tickers = [
@@ -4574,7 +4588,8 @@ def _priced_in_audit_source_gap_repair(
             if str(ticker).strip()
         ][:PRICED_IN_SOURCE_ACTION_TICKER_LIMIT]
     next_action = str(
-        diagnostic.get("next_action")
+        progress_action
+        or diagnostic.get("next_action")
         or action.get("next_action")
         or "Review options evidence before trusting decision-useful mismatch rows."
     ).strip()
@@ -4594,6 +4609,7 @@ def _priced_in_audit_source_gap_repair(
         "point_in_time_template_command": point_in_time_template_command,
         "point_in_time_validate_command": point_in_time_validate_command,
         "point_in_time_import_command": point_in_time_import_command,
+        "point_in_time_fixture_progress": point_in_time_progress,
         "current_context_boundary": (
             "Current Schwab option chains can support a current rerun, but must not "
             "be backfilled into an older scan as if they were available then."
@@ -5960,6 +5976,16 @@ def _priced_in_source_coverage_with_option_diagnostic(
     if not diagnostic:
         return _row_dict(source_coverage)
     updated = _row_dict(source_coverage)
+    stocks_only = bool(updated.get("stocks_only"))
+    point_in_time_progress = _options_point_in_time_fixture_progress(
+        diagnostic,
+        stocks_only=stocks_only,
+    )
+    if point_in_time_progress:
+        diagnostic = {
+            **diagnostic,
+            "point_in_time_fixture_progress": point_in_time_progress,
+        }
     updated["options_gap_diagnostic"] = diagnostic
     updated_actions: list[dict[str, object]] = []
     for action in _sequence_value(updated.get("actions")):
@@ -5968,7 +5994,14 @@ def _priced_in_source_coverage_with_option_diagnostic(
         action_row = _row_dict(action)
         if str(action_row.get("source") or "") == "options":
             action_row["diagnostic"] = diagnostic
-            next_action = str(diagnostic.get("next_action") or "").strip()
+            progress_action = (
+                point_in_time_progress.get("next_action")
+                if bool(point_in_time_progress.get("exists"))
+                else None
+            )
+            next_action = str(
+                progress_action or diagnostic.get("next_action") or ""
+            ).strip()
             if next_action:
                 action_row["next_action"] = next_action
         updated_actions.append(action_row)
@@ -12027,23 +12060,35 @@ def _priced_in_source_plannable_rows(
                 point_in_time_validate_command = _options_point_in_time_validate_command(
                     diagnostic
                 )
+                point_in_time_progress = _options_point_in_time_fixture_progress(
+                    diagnostic,
+                    stocks_only=stocks_only,
+                )
+                progress_action = (
+                    point_in_time_progress.get("next_action")
+                    if bool(point_in_time_progress.get("exists"))
+                    else None
+                )
+                next_action = str(
+                    progress_action
+                    or diagnostic.get("next_action")
+                    or "Options source fill is blocked for this scan date."
+                )
                 return [], {
                     "schema_version": "priced-in-source-batch-diagnostic-v1",
                     "status": "blocked",
-                    "reason": str(
-                        diagnostic.get("next_action")
-                        or "Options source fill is blocked for this scan date."
-                    ),
+                    "reason": next_action,
                     "eligible_rows": 0,
                     "blocked_rows": len(rows),
                     "blocked_reason": diagnostic_status,
                     "sample_blocked_tickers": _option_gap_diagnostic_samples(
                         diagnostic
                     ),
-                    "next_action": diagnostic.get("next_action"),
+                    "next_action": next_action,
                     "point_in_time_template_command": point_in_time_template_command,
                     "point_in_time_validate_command": point_in_time_validate_command,
                     "point_in_time_import_command": point_in_time_import_command,
+                    "point_in_time_fixture_progress": point_in_time_progress,
                     "option_gap_diagnostic": diagnostic,
                 }
             return list(rows), {
@@ -12229,6 +12274,127 @@ def _option_gap_diagnostic_samples(diagnostic: Mapping[str, object]) -> list[str
         if samples:
             return samples
     return []
+
+
+def _options_point_in_time_fixture_progress(
+    diagnostic: Mapping[str, object],
+    *,
+    stocks_only: bool = False,
+) -> dict[str, object]:
+    target = _options_point_in_time_target_date(diagnostic)
+    display_path = _options_point_in_time_fixture_display_path(target)
+    base = {
+        "schema_version": "options-point-in-time-fixture-progress-v1",
+        "target_date": target,
+        "path": display_path,
+        "external_calls_made": 0,
+        "validate_command": _options_point_in_time_validate_command(diagnostic),
+        "import_command": _options_point_in_time_import_command(diagnostic),
+        "template_command": _options_point_in_time_template_command(
+            diagnostic,
+            stocks_only=stocks_only,
+        ),
+    }
+    if target == "<SCAN_DATE>":
+        return {
+            **base,
+            "status": "unknown_scan_date",
+            "exists": False,
+            "row_count": 0,
+            "complete": 0,
+            "partial": 0,
+            "empty": 0,
+            "next_action": (
+                "Pick one scan date before creating or importing a point-in-time "
+                "options fixture."
+            ),
+        }
+    path = _options_point_in_time_fixture_path(target)
+    if not path.exists():
+        return {
+            **base,
+            "status": "missing",
+            "exists": False,
+            "row_count": 0,
+            "complete": 0,
+            "partial": 0,
+            "empty": 0,
+            "next_action": (
+                "Create the point-in-time options template, fill scan-date option "
+                "context, then validate before import."
+            ),
+        }
+
+    validation = validate_options_fixture_json(path, expected_as_of=target).as_payload()
+    row_count = int(_finite_float(validation.get("row_count")))
+    complete = int(_finite_float(validation.get("valid_row_count")))
+    empty = _options_fixture_empty_row_count(path)
+    partial = max(0, row_count - complete - empty)
+    status = "ready_to_import" if validation.get("status") == "ready" else "needs_fill"
+    if row_count <= 0 or int(_finite_float(validation.get("missing_field_count"))):
+        status = "needs_fix"
+    next_action = (
+        f"Import the validated point-in-time options fixture at {display_path}."
+        if status == "ready_to_import"
+        else (
+            f"Fill point-in-time option fields in {display_path}; "
+            "then validate before import."
+        )
+    )
+    return {
+        **base,
+        "status": status,
+        "exists": True,
+        "row_count": row_count,
+        "complete": complete,
+        "partial": partial,
+        "empty": empty,
+        "invalid_rows": int(_finite_float(validation.get("invalid_row_count"))),
+        "blank_required_count": int(
+            _finite_float(validation.get("blank_required_count"))
+        ),
+        "invalid_numeric_count": int(
+            _finite_float(validation.get("invalid_numeric_count"))
+        ),
+        "missing_field_count": int(_finite_float(validation.get("missing_field_count"))),
+        "duplicate_ticker_count": int(
+            _finite_float(validation.get("duplicate_ticker_count"))
+        ),
+        "next_action": next_action,
+    }
+
+
+def _options_fixture_empty_row_count(path: Path) -> int:
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return 0
+    if not isinstance(payload, Mapping):
+        return 0
+    results = payload.get("results")
+    if not isinstance(results, list):
+        return 0
+    empty = 0
+    for row in results:
+        if not isinstance(row, Mapping):
+            continue
+        filled = [
+            field
+            for field in OPTIONS_FIXTURE_NUMERIC_FIELDS
+            if str(row.get(field) or "").strip()
+        ]
+        if not filled:
+            empty += 1
+    return empty
+
+
+def _options_point_in_time_fixture_path(target: str) -> Path:
+    return Path("data") / "local" / f"point-in-time-options-{target}.json"
+
+
+def _options_point_in_time_fixture_display_path(target: str) -> str:
+    return f"data\\local\\point-in-time-options-{target}.json"
 
 
 def _options_point_in_time_import_command(

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -3755,6 +3756,85 @@ def test_priced_in_all_source_gap_batches_blocks_options_shortcut_when_not_point
     assert "Stored options exist after this scan date" in rows["options"]["next_action"]
     recommendation = payload["decision_shortcut_recommendation"]
     assert recommendation is None or recommendation["source"] != "options"
+
+
+def test_priced_in_source_gap_batches_reports_existing_options_template(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    FeatureRepository(engine).upsert_option_features(
+        [
+            OptionFeatureInput(
+                ticker="MSFT",
+                as_of=FUTURE_AT,
+                provider="schwab_option_chain",
+                call_volume=1_000,
+                put_volume=500,
+                call_open_interest=5_000,
+                put_open_interest=3_000,
+                iv_percentile=0.6,
+                skew=0.2,
+                source_ts=FUTURE_AT,
+                available_at=FUTURE_AT,
+                payload={"source": "test"},
+            )
+        ]
+    )
+    output_path = tmp_path / "data" / "local" / "point-in-time-options-2026-05-10.json"
+    output_path.parent.mkdir(parents=True)
+    output_path.write_text(
+        json.dumps(
+            {
+                "as_of": AS_OF.isoformat(),
+                "source_ts": AS_OF.isoformat(),
+                "available_at": AS_OF.isoformat(),
+                "provider": "options_fixture",
+                "results": [
+                    {
+                        "ticker": "MSFT",
+                        "call_volume": "",
+                        "put_volume": "",
+                        "call_open_interest": "",
+                        "put_open_interest": "",
+                        "iv_percentile": "",
+                        "skew": "",
+                    },
+                    {
+                        "ticker": "AAPL",
+                        "call_volume": "",
+                        "put_volume": "",
+                        "call_open_interest": "",
+                        "put_open_interest": "",
+                        "iv_percentile": "",
+                        "skew": "",
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    payload = priced_in_source_gap_batches_payload(
+        engine,
+        AppConfig(schwab_market_sync_max_tickers=1),
+        source="options",
+    )
+
+    diagnostic = payload["diagnostic"]
+    progress = diagnostic["point_in_time_fixture_progress"]
+    assert progress["status"] == "needs_fill"
+    assert progress["exists"] is True
+    assert progress["path"] == "data\\local\\point-in-time-options-2026-05-10.json"
+    assert progress["row_count"] == 2
+    assert progress["complete"] == 0
+    assert progress["partial"] == 0
+    assert progress["empty"] == 2
+    assert diagnostic["next_action"].startswith("Fill point-in-time option fields")
+    assert payload["next_action"] == diagnostic["next_action"]
+    assert payload["external_calls_made"] == 0
 
 
 def test_options_fixture_template_payload_exports_point_in_time_skeleton(
