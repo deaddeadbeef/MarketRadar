@@ -1,6 +1,71 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 09:42:54 +08:00
+Last updated: 2026-05-20 09:53:28 +08:00
+
+## Latest Dashboard Missing-Bar Type Visibility
+
+Goal alignment:
+
+- The CLI/API now show the full-market missing-bar type breakdown. The
+  dashboard is a human operator surface, so it also needs to explain why the
+  full-market priced-in answer is still blocked.
+- This slice keeps the dashboard work narrow: no layout redesign, no provider
+  execution, and no new source workflow. It only renders the same market-bar
+  blocker shape already present in the priced-in audit diagnostic.
+- This makes 0 Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or provider
+  calls while rendering.
+
+Fix in this slice:
+
+- Overview now renders a `Missing bar types:` line when the priced-in audit has
+  missing market-bar diagnostics.
+- Ops now renders the same `Missing bar types:` line above the source-gap
+  table, so the operational blocker and the source workflow sit together.
+- A small TUI helper formats the diagnostic as:
+  `523 missing scan-date bars; types ADRC:8, CS:123, ...; company-like 131; ...`.
+- Tests cover the helper output and keep the full-scan TUI smoke green.
+
+Live zero-call observations:
+
+```text
+Page: overview | View: Full scan | Answer: attention ready=false | Trade status: research only | Trade safe: False | External calls made: 0
+Full scan audit: attention; ranked 12087/12613; bars 12090/12613; sources 1/6; stock bars 5521/5652 missing 131
+Missing bar types: 523 missing scan-date bars; types ADRC:8, CS:123, ETF:1, ETV:1, FUND:2, PFD:14, RIGHT:47, SP:6, UN...
+Decision readiness: 10 row(s) look decision-ready inside the scanned subset, but 523 market-bar row(s) are missing from the full scan.
+```
+
+```text
+Page: ops | View: Full scan | Answer: attention ready=false | Trade status: research only | Trade safe: False | External calls made: 0
+Operations
+Missing bar types: 523 missing scan-date bars; types ADRC:8, CS:123, ETF:1, ETV:1, FUND:2, PFD:14, RIGHT:47, SP:6, UN...
+Priced-in Source Gaps
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_tui_once_can_show_full_scan_mode tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_market_bar_missing_type_summary_is_human_readable -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --scan-mode all --page overview
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page ops
+```
+
+Results:
+
+- Focused TUI tests passed.
+- Ruff passed.
+- `git diff --check` passed.
+- Live Overview and Ops TUI renders showed `External calls made: 0` and the new
+  `Missing bar types:` line.
+
+Next useful product action after merge:
+
+- The UI now explains the full-market bar blocker in both CLI/API/status and
+  dashboard surfaces.
+- The blocker itself is unchanged: fill/import
+  `data\local\manual-bars-2026-05-15.csv`, or explicitly approve the one-call
+  Polygon/Massive grouped-daily fill.
 
 ## Latest Full-Market Missing-Bar Type Breakdown
 

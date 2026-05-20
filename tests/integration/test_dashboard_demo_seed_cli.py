@@ -30,6 +30,7 @@ from catalyst_radar.dashboard.tui import (
     DashboardFilters,
     MarketRadarDashboardApp,
     _apply_command,
+    _market_bar_missing_type_summary,
     _priced_in_overview_rows,
     _priced_in_review_rows,
     _priced_in_source_workflow_payload,
@@ -925,6 +926,31 @@ def test_dashboard_tui_once_can_show_full_scan_mode(
     assert "Source Fill Workflow" in output.out
     assert "stock rows" in output.out
     assert "priced-in-source-batches --source all --stocks-only" in output.out
+
+
+def test_dashboard_market_bar_missing_type_summary_is_human_readable() -> None:
+    payload = {
+        "priced_in_audit": {
+            "market_bars": {
+                "missing_as_of_bar": 3,
+                "repair": {
+                    "diagnostic": {
+                        "missing_count": 3,
+                        "type_counts": {"CS": 2, "UNIT": 1},
+                        "company_like_missing_count": 2,
+                        "fund_like_missing_count": 0,
+                        "wrapper_missing_count": 1,
+                        "unknown_missing_count": 0,
+                    }
+                },
+            }
+        }
+    }
+
+    assert _market_bar_missing_type_summary(payload) == (
+        "3 missing scan-date bars; types CS:2, UNIT:1; "
+        "company-like 2; fund-like 0; wrappers 1; unknown 0"
+    )
 
 
 def test_dashboard_review_page_is_distinct_from_full_scan() -> None:
