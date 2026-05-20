@@ -366,11 +366,11 @@ filesystem, web, or order-submission tools.
 See `docs/dashboard-feature-inventory.md` for the current dashboard feature
 inventory and TUI coverage.
 
-When the sitrep or `priced-in-preflight --stocks-only --json` says the stock scan
+When the sitrep or `priced-in-preflight --json` says the broad scan
 is blocked on `market_bars`, inspect the repair plan first:
 
 ```powershell
-catalyst-radar market-bars repair-plan --expected-as-of 2026-05-15 --stocks-only --json
+catalyst-radar market-bars repair-plan --expected-as-of 2026-05-15 --json
 ```
 
 That plan is the operator contract for both CLI and dashboard. It tells you the
@@ -388,12 +388,12 @@ commands to show in the TUI before falling back to long CLI commands;
 `provider_saved_file_import_preview_request_body`, and
 `provider_saved_file_import_request_body` are the zero-provider-call saved-file
 preview/import bodies. The TUI exposes the same workflow from the Run page.
-For manual zero-call repair, `bars manual template` generates the local
-missing-bar CSV for stock-like active rows by default, `bars manual import`
-previews complete rows only with 0 provider calls and 0 DB writes, and
+For manual zero-call repair, `bars manual template` generates the full
+active-universe missing-bar CSV by default, `bars manual import` previews
+complete rows only with 0 provider calls and 0 DB writes, and
 `bars manual import execute` writes only completed rows into the local database.
-Use `bars manual full template` when you intentionally want the full active
-universe template instead of the stock-like scope. For saved-provider repair,
+Use `bars manual stocks template` when you intentionally want the narrower
+stock-like scope instead of the full active universe. For saved-provider repair,
 `bars saved capture` shows the approval boundary and makes 0 provider calls;
 `bars saved capture confirm` is the explicit one-call Polygon/Massive capture
 and immediately prints a zero-call post-capture preview of whether the saved
@@ -420,9 +420,9 @@ current database universe, fill only complete OHLCV rows, preview them, then
 execute the import only after the preview is clean:
 
 ```powershell
-catalyst-radar market-bars template --expected-as-of 2026-05-15 --out data/local/manual-stock-bars-2026-05-15.csv --missing-only --stocks-only
-catalyst-radar market-bars import --daily-bars data/local/manual-stock-bars-2026-05-15.csv --expected-as-of 2026-05-15 --stocks-only --complete-rows-only
-catalyst-radar market-bars import --daily-bars data/local/manual-stock-bars-2026-05-15.csv --expected-as-of 2026-05-15 --stocks-only --complete-rows-only --execute
+catalyst-radar market-bars template --expected-as-of 2026-05-15 --out data/local/manual-bars-2026-05-15.csv --missing-only
+catalyst-radar market-bars import --daily-bars data/local/manual-bars-2026-05-15.csv --expected-as-of 2026-05-15 --complete-rows-only
+catalyst-radar market-bars import --daily-bars data/local/manual-bars-2026-05-15.csv --expected-as-of 2026-05-15 --complete-rows-only --execute
 ```
 
 For the saved-provider repair path, one explicit capture can write the raw
