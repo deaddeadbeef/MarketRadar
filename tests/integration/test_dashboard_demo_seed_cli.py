@@ -29,6 +29,7 @@ from catalyst_radar.dashboard.demo_seed import DEMO_AVAILABLE_AT
 from catalyst_radar.dashboard.tui import (
     DashboardFilters,
     MarketRadarDashboardApp,
+    _answer_full_scan_scope_summary,
     _apply_command,
     _market_bar_manual_fill_progress_summary,
     _market_bar_missing_type_summary,
@@ -2267,6 +2268,8 @@ def test_priced_in_answer_cli_outputs_current_scan_answer(
     assert "investment_boundary=Priced-in answer readiness is not trade approval" in output.out
     assert "decision_readiness=status=" in output.out
     assert "full_scan=mode=full_scan" in output.out
+    assert "unscanned=" in output.out
+    assert "basis=" in output.out
     assert "sample=false" in output.out
     assert "review_full_scan=catalyst-radar priced-in-queue --full-scan" in output.out
     assert (
@@ -2296,6 +2299,30 @@ def test_priced_in_answer_cli_outputs_current_scan_answer(
     )
     assert payload["full_scan"]["schema_version"] == (
         "priced-in-full-scan-summary-v1"
+    )
+
+
+def test_dashboard_summary_surfaces_unscanned_full_scan_rows() -> None:
+    payload = {
+        "priced_in_answer": {
+            "full_scan": {
+                "instrument_filter": "all",
+                "active_securities": 12613,
+                "scanned_rows": 12087,
+                "unscanned_rows": 526,
+            }
+        },
+        "priced_in_audit": {
+            "market_bars": {
+                "missing_as_of_bar": 523,
+                "repair": {"diagnostic": {"missing_count": 523}},
+            }
+        },
+    }
+
+    assert _answer_full_scan_scope_summary(payload) == (
+        "Full-scan coverage: 12087/12613 active all-instrument row(s) scanned; "
+        "526 unscanned; 523 missing scan-date market bar(s)."
     )
 
 
