@@ -271,6 +271,86 @@ def test_polygon_grouped_daily_validate_only_requires_fixture(
         )
 
 
+def test_polygon_grouped_daily_save_response_uses_fixture_without_db_writes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    output_path = tmp_path / "local" / "polygon-grouped-daily-2026-05-08.json"
+
+    result = run_cli(
+        [
+            "ingest-polygon",
+            "grouped-daily",
+            "--date",
+            "2026-05-08",
+            "--fixture",
+            "tests/fixtures/polygon/grouped_daily_2026-05-08.json",
+            "--save-response",
+            str(output_path),
+        ],
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        capsys=capsys,
+        env={"CATALYST_POLYGON_API_KEY": ""},
+    )
+
+    assert result.exit_code == 0
+    assert result.stderr == ""
+    assert output_path.read_bytes() == Path(
+        "tests/fixtures/polygon/grouped_daily_2026-05-08.json"
+    ).read_bytes()
+    assert "polygon_grouped_daily_response_capture status=ready" in result.stdout
+    assert "source=fixture" in result.stdout
+    assert "external_calls=0 db_writes=0" in result.stdout
+    assert f"--fixture {output_path}" in result.stdout
+
+    engine = create_engine(result.database_url, future=True)
+    with engine.connect() as conn:
+        assert conn.execute(select(func.count()).select_from(job_runs)).scalar_one() == 0
+        assert (
+            conn.execute(select(func.count()).select_from(raw_provider_records)).scalar_one()
+            == 0
+        )
+        assert conn.execute(select(func.count()).select_from(daily_bars)).scalar_one() == 0
+
+
+def test_polygon_grouped_daily_save_response_live_requires_confirmation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    output_path = tmp_path / "polygon-live.json"
+
+    result = run_cli(
+        [
+            "ingest-polygon",
+            "grouped-daily",
+            "--date",
+            "2026-05-08",
+            "--save-response",
+            str(output_path),
+        ],
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        capsys=capsys,
+        env={"CATALYST_POLYGON_API_KEY": "test-real-looking-polygon-key"},
+    )
+
+    assert result.exit_code == 2
+    assert result.stdout == ""
+    assert "requires --confirm-external-call" in result.stderr
+    assert not output_path.exists()
+
+    engine = create_engine(result.database_url, future=True)
+    with engine.connect() as conn:
+        assert conn.execute(select(func.count()).select_from(job_runs)).scalar_one() == 0
+        assert (
+            conn.execute(select(func.count()).select_from(raw_provider_records)).scalar_one()
+            == 0
+        )
+
+
 def test_polygon_grouped_daily_accepts_missing_optional_vwap(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

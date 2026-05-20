@@ -1031,6 +1031,13 @@ def test_dashboard_manual_bar_fill_progress_summary_is_human_readable() -> None:
                             "catalyst-radar ingest-polygon grouped-daily "
                             "--date 2026-05-15 --confirm-external-call"
                         ),
+                        "provider_saved_file_capture_command": (
+                            "catalyst-radar ingest-polygon grouped-daily "
+                            "--date 2026-05-15 --save-response "
+                            "data\\local\\polygon-grouped-daily-2026-05-15.json "
+                            "--confirm-external-call"
+                        ),
+                        "provider_saved_file_capture_external_call_count": 1,
                         "provider_saved_file_import_command": (
                             "catalyst-radar ingest-polygon grouped-daily "
                             "--date 2026-05-15 --fixture "
@@ -1074,6 +1081,8 @@ def test_dashboard_manual_bar_fill_progress_summary_is_human_readable() -> None:
     assert "Regenerate the blank local CSV so it includes name" in ops
     assert "Provider fill: ready_for_approval_with_health_warning" in overview
     assert "Provider fill: ready_for_approval_with_health_warning" in ops
+    assert "Saved file capture: 1 external call(s)" in overview
+    assert "Saved file capture: 1 external call(s)" in ops
     assert "Saved file import: 0 external call(s)" in overview
     assert "Saved file import: 0 external call(s)" in ops
     assert "Manual CSV progress: 12/523 complete; 3 partial; 508 empty" in overview

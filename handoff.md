@@ -1,6 +1,100 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 17:24:21 +08:00
+Last updated: 2026-05-20 17:39:29 +08:00
+
+## Latest Guarded Grouped-Daily Response Capture
+
+Goal alignment / drift check:
+
+- The active goal remains: scan the broad market and tell whether any stock's
+  price has not yet matched market emotion/expectations.
+- The live product is still blocked before a trustworthy priced-in answer by
+  scan-date `market_bars` coverage:
+  - full active universe: `12090/12613` bars present, `523` missing;
+  - stock-like universe: `5521/5652` bars present, `131` missing;
+  - readiness: `research_only`.
+- The previous slice made saved-file preview/import available through the API.
+  The remaining practical gap was how an operator gets the grouped-daily JSON
+  response into `data\local\polygon-grouped-daily-2026-05-15.json` without
+  immediately writing database rows.
+- This slice adds that missing capture step. It is still not goal completion.
+  It is a controlled way to obtain the local file needed to clear the first
+  data gate.
+
+Fix in this slice:
+
+- Added CLI option:
+  `catalyst-radar ingest-polygon grouped-daily --date <YYYY-MM-DD> --save-response <path>`
+- Live provider capture behavior:
+  - supported only for `grouped-daily`;
+  - writes the raw provider JSON response body to disk;
+  - makes 0 database writes;
+  - requires `--confirm-external-call` when no `--fixture` is provided;
+  - reports `external_calls_made=1` for live provider capture;
+  - validates that the response body is JSON before writing;
+  - redacts the provider URL in returned metadata.
+- Fixture-backed capture behavior:
+  - `--fixture <path> --save-response <out>` copies the fixture-backed response
+    to the output file;
+  - reports `external_calls_made=0` and `db_writes_made=0`;
+  - is used by tests and local smoke checks only.
+- Capture output now prints:
+  - `validate_command=... --fixture <saved-file> --validate-only`
+  - `import_command=... --fixture <saved-file>`
+  - the next action telling the operator to validate before importing.
+- Repair-plan, priced-in provider-fill payload, status script, and TUI now show
+  three separate saved-file steps:
+  1. capture: `1` external call, explicit approval required;
+  2. check/validate: `0` external calls, `0` DB writes;
+  3. import: `0` external calls, DB write only from the saved local file.
+- This slice does not execute a real Polygon/Massive provider request. It does
+  not change scoring, evidence gates, source semantics, agent behavior,
+  Schwab behavior, or broker/order behavior.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\cli.py src\catalyst_radar\market\manual_bars.py src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py tests\integration\test_polygon_ingest_cli.py tests\integration\test_provider_ingest_cli.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_local_scripts.py
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_polygon_ingest_cli.py::test_polygon_grouped_daily_save_response_uses_fixture_without_db_writes tests\integration\test_polygon_ingest_cli.py::test_polygon_grouped_daily_save_response_live_requires_confirmation tests\integration\test_provider_ingest_cli.py::test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_warns_for_stale_eod_provider_health tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_market_bar_missing_type_summary_is_human_readable tests\integration\test_local_scripts.py::test_market_radar_status_script_is_zero_external_call_sitrep -q
+$out = Join-Path $env:TEMP "mrdr-grouped-daily-smoke.json"; if (Test-Path $out) { Remove-Item -LiteralPath $out -Force }; .\.venv\Scripts\python.exe -m catalyst_radar.cli ingest-polygon grouped-daily --date 2026-05-08 --fixture tests\fixtures\polygon\grouped_daily_2026-05-08.json --save-response $out; if (Test-Path $out) { "saved=$out bytes=$((Get-Item -LiteralPath $out).Length)"; Remove-Item -LiteralPath $out -Force }
+powershell -NoProfile -Command '$null = [scriptblock]::Create((Get-Content -Raw .\scripts\market-radar-status.ps1)); "syntax-ok"'
+.\.venv\Scripts\python.exe -m catalyst_radar.cli market-bars repair-plan --expected-as-of 2026-05-15 --stocks-only | Select-String -Pattern 'provider_saved_file_capture|provider_saved_file_validate|provider_saved_file_import|provider_saved_file_boundary'
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page ops --stocks-only | Select-String -Pattern 'Saved file capture|Saved file check|Saved file import|External calls made'
+```
+
+Results:
+
+- Ruff passed.
+- Focused capture/provider/dashboard/status regression tests passed:
+  `6 passed`.
+- Fixture-backed capture smoke wrote a 961-byte JSON file to `%TEMP%`, printed
+  `external_calls=0 db_writes=0`, then removed the smoke file.
+- PowerShell status script parse check returned `syntax-ok`.
+- Stock repair-plan smoke printed:
+  - `provider_saved_file_capture=external_calls=1 ... --save-response ... --confirm-external-call`
+  - `provider_saved_file_validate=external_calls=0 ... --validate-only`
+  - `provider_saved_file_import=external_calls=0 ... --fixture ...`
+  - the saved-file boundary explaining capture vs validate/import.
+- TUI Ops smoke printed `External calls made: 0`, `Saved file capture`,
+  `Saved file check`, and `Saved file import`.
+
+Next useful product action:
+
+- Clear the `market_bars` blocker. If you approve one historical Polygon/Massive
+  grouped-daily provider call, the CLI flow is now:
+
+  ```powershell
+  catalyst-radar ingest-polygon grouped-daily --date 2026-05-15 --save-response data\local\polygon-grouped-daily-2026-05-15.json --confirm-external-call
+  catalyst-radar ingest-polygon grouped-daily --date 2026-05-15 --fixture data\local\polygon-grouped-daily-2026-05-15.json --validate-only
+  catalyst-radar ingest-polygon grouped-daily --date 2026-05-15 --fixture data\local\polygon-grouped-daily-2026-05-15.json
+  powershell -ExecutionPolicy Bypass -File scripts\market-radar-status.ps1 -Quick
+  ```
+
+- Do not run the first command without explicit operator approval. It makes one
+  provider call. The validate/import commands read from disk and make 0
+  provider calls.
+- After bars are clear, rerun the priced-in audit and continue with the next
+  evidence gate instead of doing more provider-path polish.
 
 ## Latest Guarded Saved Grouped-Daily Import API
 

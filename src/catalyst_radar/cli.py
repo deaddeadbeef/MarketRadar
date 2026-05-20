@@ -127,7 +127,7 @@ from catalyst_radar.security.licenses import (
     ProviderLicenseError,
     require_external_export_allowed,
 )
-from catalyst_radar.security.redaction import redact_text, redact_value
+from catalyst_radar.security.redaction import redact_text, redact_url, redact_value
 from catalyst_radar.security.secrets import load_app_dotenv
 from catalyst_radar.storage.alert_repositories import AlertRepository
 from catalyst_radar.storage.broker_repositories import BrokerRepository
@@ -265,6 +265,15 @@ def build_parser() -> argparse.ArgumentParser:
     grouped.add_argument("--date", type=date.fromisoformat, required=True)
     grouped.add_argument("--fixture", type=Path)
     grouped.add_argument("--validate-only", action="store_true")
+    grouped.add_argument(
+        "--save-response",
+        type=Path,
+        help=(
+            "Save the grouped-daily provider JSON response to disk without "
+            "writing database rows. Live requests still require "
+            "--confirm-external-call."
+        ),
+    )
     grouped.add_argument("--confirm-external-call", action="store_true")
     grouped.add_argument("--json", action="store_true")
     tickers = polygon_sub.add_parser("tickers")
@@ -1084,6 +1093,7 @@ def main(argv: list[str] | None = None) -> int:
             polygon_command=args.polygon_command,
             date_value=args.date if hasattr(args, "date") else None,
             fixture_path=args.fixture,
+            save_response_path=getattr(args, "save_response", None),
             max_pages=getattr(args, "max_pages", None),
             confirm_external_call=getattr(args, "confirm_external_call", False),
             validate_only=getattr(args, "validate_only", False),
@@ -2334,12 +2344,50 @@ def _ingest_polygon_provider(
     polygon_command: str,
     date_value: date | None,
     fixture_path: Path | None,
+    save_response_path: Path | None,
     max_pages: int | None,
     confirm_external_call: bool,
     validate_only: bool = False,
     json_output: bool = False,
 ) -> int:
     try:
+        if save_response_path is not None:
+            if polygon_command != "grouped-daily" or date_value is None:
+                print(
+                    "polygon response capture requires grouped-daily --date",
+                    file=sys.stderr,
+                )
+                return 2
+            if validate_only:
+                print(
+                    "polygon response capture cannot be combined with --validate-only",
+                    file=sys.stderr,
+                )
+                return 2
+            if fixture_path is None and not config.polygon_api_key_configured:
+                print(
+                    "polygon response capture failed: missing CATALYST_POLYGON_API_KEY",
+                    file=sys.stderr,
+                )
+                return 1
+            if fixture_path is None and not confirm_external_call:
+                print(
+                    "polygon response capture requires --confirm-external-call "
+                    "for live provider requests",
+                    file=sys.stderr,
+                )
+                return 2
+            payload = _capture_polygon_grouped_daily_response(
+                config=config,
+                date_value=date_value,
+                fixture_path=fixture_path,
+                output_path=save_response_path,
+            )
+            if json_output:
+                print(json.dumps(payload, sort_keys=True))
+            else:
+                _print_polygon_grouped_daily_response_capture(payload)
+            return 0
         if validate_only:
             if (
                 polygon_command != "grouped-daily"
@@ -2397,6 +2445,70 @@ def _ingest_polygon_provider(
     else:
         _print_provider_result(result)
     return 0
+
+
+def _capture_polygon_grouped_daily_response(
+    *,
+    config: AppConfig,
+    date_value: date,
+    fixture_path: Path | None,
+    output_path: Path,
+) -> dict[str, object]:
+    api_key = _polygon_api_key(config=config, fixture_path=fixture_path)
+    url = _polygon_grouped_daily_url(
+        config=config,
+        date_value=date_value,
+        api_key=api_key,
+    )
+    transport = (
+        FakeHttpTransport({url: _fixture_response(url, fixture_path)})
+        if fixture_path is not None
+        else UrlLibHttpTransport()
+    )
+    response = transport.get(
+        url,
+        headers={},
+        timeout_seconds=config.http_timeout_seconds,
+    )
+    if response.status_code < 200 or response.status_code >= 300:
+        detail = redact_text(response.body.decode("utf-8", errors="replace").strip())
+        msg = f"HTTP {response.status_code} from {redact_url(response.url)}"
+        if detail:
+            msg = f"{msg}; detail={detail}"
+        raise RuntimeError(msg)
+    try:
+        json.loads(response.body.decode("utf-8"))
+    except json.JSONDecodeError as exc:
+        msg = f"invalid JSON from {redact_url(response.url)}"
+        raise RuntimeError(msg) from exc
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_bytes(response.body)
+    target_date = date_value.isoformat()
+    return {
+        "schema_version": "polygon-grouped-daily-response-capture-v1",
+        "status": "ready",
+        "provider": "polygon",
+        "date": target_date,
+        "source": "fixture" if fixture_path is not None else "live_provider",
+        "url": redact_url(response.url),
+        "output_path": str(output_path),
+        "bytes_written": len(response.body),
+        "status_code": response.status_code,
+        "external_calls_made": 0 if fixture_path is not None else 1,
+        "db_writes_made": 0,
+        "validate_command": (
+            "catalyst-radar ingest-polygon grouped-daily "
+            f"--date {target_date} --fixture {output_path} --validate-only"
+        ),
+        "import_command": (
+            "catalyst-radar ingest-polygon grouped-daily "
+            f"--date {target_date} --fixture {output_path}"
+        ),
+        "next_action": (
+            "Run the validate command, then import only if the preview covers "
+            "the missing market bars."
+        ),
+    }
 
 
 def _ingest_sec_provider(
@@ -3908,6 +4020,13 @@ def _print_manual_market_bars_repair_plan(payload: Mapping[str, object]) -> None
     )
     saved_file_command = payload.get("provider_saved_file_import_command")
     if saved_file_command:
+        saved_file_capture_command = payload.get("provider_saved_file_capture_command")
+        if saved_file_capture_command:
+            print(
+                "provider_saved_file_capture="
+                f"external_calls={payload.get('provider_saved_file_capture_external_call_count')} "
+                f"command={_compact_cli_text(saved_file_capture_command)}"
+            )
         saved_file_validate_command = payload.get("provider_saved_file_validate_command")
         if saved_file_validate_command:
             print(
@@ -4969,6 +5088,14 @@ def _print_priced_in_audit(payload: Mapping[str, object]) -> None:
                 print(f"    provider_command={_compact_cli_text(provider_command)}")
             saved_file_command = provider_plan.get("provider_saved_file_import_command")
             if saved_file_command:
+                saved_file_capture_command = provider_plan.get(
+                    "provider_saved_file_capture_command"
+                )
+                if saved_file_capture_command:
+                    print(
+                        "    saved_file_capture="
+                        f"{_compact_cli_text(saved_file_capture_command)}"
+                    )
                 saved_file_validate_command = provider_plan.get(
                     "provider_saved_file_validate_command"
                 )
@@ -5898,6 +6025,24 @@ def _provider_result_payload(result: ProviderIngestResult) -> dict[str, object]:
         "option_feature_count": result.option_feature_count,
         "rejected_count": result.rejected_count,
     }
+
+
+def _print_polygon_grouped_daily_response_capture(
+    payload: Mapping[str, object],
+) -> None:
+    print(
+        "polygon_grouped_daily_response_capture "
+        f"status={payload.get('status')} "
+        f"date={payload.get('date')} "
+        f"source={payload.get('source')} "
+        f"output={payload.get('output_path')} "
+        f"bytes={payload.get('bytes_written')} "
+        f"external_calls={payload.get('external_calls_made')} "
+        f"db_writes={payload.get('db_writes_made')}"
+    )
+    print(f"validate_command={payload.get('validate_command')}")
+    print(f"import_command={payload.get('import_command')}")
+    print(f"next_action={payload.get('next_action')}")
 
 
 def _print_polygon_grouped_daily_fixture_preview(
