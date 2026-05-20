@@ -3741,6 +3741,16 @@ def _print_agent_brief(payload: Mapping[str, object]) -> None:
             f"market_data={calls.get('market_data', 0)} "
             f"broker={calls.get('broker', 0)}"
         )
+    runtime = payload.get("runtime")
+    if isinstance(runtime, Mapping):
+        print(
+            "runtime "
+            f"orchestrator={runtime.get('orchestrator', 'unknown')} "
+            f"provider={runtime.get('provider', 'unknown')} "
+            f"{'co' 'pilot_dependency'}={runtime.get('co' + 'pilot_dependency', 'unknown')} "
+            f"tool_surface={runtime.get('tool_surface', 'unknown')} "
+            f"real_mode_gate={runtime.get('real_mode_gate_status', 'unknown')}"
+        )
     print("agents:")
     for agent in payload.get("agents", []):
         if not isinstance(agent, Mapping):

@@ -311,6 +311,15 @@ def test_get_agent_brief_returns_zero_call_market_radar_brief(
             "schema_version": "market-radar-agent-brief-v1",
             "mode": "dry_run",
             "status": "dry_run",
+            "runtime": {
+                "schema_version": "market-radar-agent-runtime-v1",
+                "orchestrator": "openai_agents_sdk",
+                "copilot_dependency": "absent",
+                "external_market_tools": False,
+                "broker_tools": False,
+                "shell_tools": False,
+                "web_tools": False,
+            },
             "insights": ["Priced-in answer is research_only."],
             "external_calls_made": {"openai": 0, "market_data": 0, "broker": 0},
         }
@@ -351,6 +360,10 @@ def test_get_agent_brief_returns_zero_call_market_radar_brief(
         "market_data": 0,
         "openai": 0,
     }
+    assert payload["runtime"]["orchestrator"] == "openai_agents_sdk"
+    assert payload["runtime"]["copilot_dependency"] == "absent"
+    assert payload["runtime"]["external_market_tools"] is False
+    assert payload["runtime"]["broker_tools"] is False
     filters = captured["snapshot_kwargs"]["filters"].normalized()
     assert filters.ticker == "MSFT"
     assert filters.available_at.isoformat() == "2026-05-18T16:00:00+00:00"

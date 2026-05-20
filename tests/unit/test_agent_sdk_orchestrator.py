@@ -28,10 +28,31 @@ def test_agent_sdk_dry_run_brief_is_multi_agent_and_zero_call() -> None:
         "market_data": 0,
         "broker": 0,
     }
+    assert brief["runtime"] == {
+        "schema_version": "market-radar-agent-runtime-v1",
+        "orchestrator": "openai_agents_sdk",
+        "provider": "openai",
+        "mode": "dry_run",
+        "real_mode_gate_status": "blocked",
+        "tool_surface": "specialist_agents_only",
+        "copilot_dependency": "absent",
+        "external_market_tools": False,
+        "broker_tools": False,
+        "shell_tools": False,
+        "filesystem_tools": False,
+        "web_tools": False,
+        "max_turns": 6,
+    }
     blocked = " ".join(brief["blocked_operations"])
     assert "Schwab" in blocked
     assert "order" in blocked
     assert "shell" in blocked
+    assert any(
+        check["name"] == "Agent runtime"
+        and "openai_agents_sdk" in check["detail"]
+        and "copilot_dependency=absent" in check["detail"]
+        for check in brief["security_checks"]
+    )
     assert any("Priced-in answer is research_only" in insight for insight in brief["insights"])
     assert any("Priced-in queue is ready" in insight for insight in brief["insights"])
     assert any("Priced-in evidence plan is attention" in insight for insight in brief["insights"])
@@ -61,6 +82,9 @@ def test_agent_sdk_real_mode_gate_fails_closed_without_secret_leak() -> None:
     assert "sk-test-secret" not in gate_text
     assert brief["mode"] == "blocked"
     assert brief["status"] == "blocked"
+    assert brief["runtime"]["orchestrator"] == "openai_agents_sdk"
+    assert brief["runtime"]["copilot_dependency"] == "absent"
+    assert brief["runtime"]["real_mode_gate_status"] == "blocked"
     assert brief["external_calls_made"]["openai"] == 0
     assert "sk-test-secret" not in brief_text
 

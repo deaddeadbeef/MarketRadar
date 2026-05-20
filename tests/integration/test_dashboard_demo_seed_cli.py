@@ -889,6 +889,9 @@ def test_dashboard_agent_page_shows_agent_brief(
     assert output.err == ""
     assert "Agent Brief" in output.out
     assert "openai=0" in output.out
+    assert "OpenAI Agents SDK" in output.out
+    assert "Copilot absent" in output.out
+    assert "specialist agents only" in output.out
     assert "Priced-in answer is" in output.out
 
 
@@ -2127,6 +2130,13 @@ def test_agent_brief_cli_outputs_zero_call_dry_run(
     assert payload["schema_version"] == "market-radar-agent-brief-v1"
     assert payload["mode"] == "dry_run"
     assert payload["status"] == "dry_run"
+    assert payload["runtime"]["schema_version"] == "market-radar-agent-runtime-v1"
+    assert payload["runtime"]["orchestrator"] == "openai_agents_sdk"
+    assert payload["runtime"]["copilot_dependency"] == "absent"
+    assert payload["runtime"]["external_market_tools"] is False
+    assert payload["runtime"]["broker_tools"] is False
+    assert payload["runtime"]["shell_tools"] is False
+    assert payload["runtime"]["web_tools"] is False
     assert payload["external_calls_made"] == {
         "broker": 0,
         "market_data": 0,

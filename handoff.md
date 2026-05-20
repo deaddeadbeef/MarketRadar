@@ -1,6 +1,42 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 05:35:52 +08:00
+Last updated: 2026-05-21 05:56:52 +08:00
+
+
+
+## Latest Agent Runtime Boundary Visibility
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- The trusted-answer blocker remains market_bars: a zero-call source overview still reports full-scan status `attention`, 12,613 active securities, 12,087 ranked rows, 48,842 total source-gap rows, and the first source blocker `market_bars` with 523 missing 2026-05-15 active-universe bars.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, import rows, change scoring, reduce the universe, or claim readiness.
+- This is useful because the agent layer must be safe and legible before it becomes intelligent. The CLI/API/TUI now state the runtime boundary directly: OpenAI Agents SDK orchestration, no GitHub Copilot dependency, specialist-agent tools only, and no market-data/broker/shell/filesystem/web tools exposed to agents.
+
+Fix in this slice:
+
+- `agent-brief` payloads now include `runtime` metadata with `schema_version=market-radar-agent-runtime-v1`, `orchestrator=openai_agents_sdk`, `provider=openai`, the real-mode gate status, tool surface, max turns, and explicit false flags for market, broker, shell, filesystem, and web tools.
+- Real Agents SDK mode carries the same runtime metadata after the SDK response is coerced back through `MarketRadarAgentBrief`.
+- Agent security checks now include an `Agent runtime` row so the runtime boundary survives both JSON and table rendering.
+- CLI non-JSON output now prints a compact `runtime ...` line.
+- The TUI Agent page now shows `Runtime: OpenAI Agents SDK; Copilot absent; tools specialist agents only; real gate ...; blocked tools ...` in the explainer, static page, and Agent Brief table.
+- README now documents the `runtime` block and where the operator can verify the OpenAI Agents SDK / no-Copilot boundary without reading source.
+
+Validation observed in this slice:
+
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\agents\sdk_orchestrator.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\unit\test_agent_sdk_orchestrator.py tests\unit\test_agent_provider_boundary.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_api_routes.py` passed with `All checks passed!`.
+- Focused pytest passed 9 tests covering SDK dry-run/blocked behavior, no Copilot runtime-source references, OpenAI SDK declarations, the TUI Agent page, CLI JSON output, and API agent-brief output.
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m py_compile src\catalyst_radar\agents\sdk_orchestrator.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\unit\test_agent_sdk_orchestrator.py tests\unit\test_agent_provider_boundary.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_api_routes.py` exited 0.
+- `git diff --check` passed.
+- Live zero-call `agent-brief --json` smoke returned `schema=market-radar-agent-brief-v1`, `mode=dry_run`, `runtime=openai_agents_sdk absent`, and `calls={'broker': 0, 'market_data': 0, 'openai': 0}`.
+- Live zero-call `dashboard-tui --once --page agent` smoke showed `External calls made: 0`, `openai=0`, `Runtime: OpenAI Agents SDK; Copilot absent; tools specialist agents only; real gate blocked; blocked tools market, broker, shell, web`.
+- Live zero-call `priced-in-source-batches --source all --json` drift check still shows source status `attention`; next action remains filling missing as-of bars for the active universe.
+
+Next useful product action:
+
+- Do not treat this slice as goal completion.
+- The immediate trusted-answer blocker remains filling or capturing the missing 2026-05-15 active-universe market bars under explicit operator approval, then rerunning `priced-in-source-batches --source all`.
+- After the bar gate clears, the now-visible agent runtime boundary gives a safer place to add actual multi-agent priced-in analysis without connecting agents to provider, broker, shell, filesystem, or web tools.
 
 
 
