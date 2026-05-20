@@ -1,6 +1,38 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 06:16:53 +08:00
+Last updated: 2026-05-21 06:24:20 +08:00
+
+
+
+## Latest Quick-Status Saved-Capture Approval Packet
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- The trusted-answer blocker remains market_bars: the full-market quick status still reports 12,090/12,613 scan-date bars and 523 missing 2026-05-15 active-universe bars.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, import rows, change scoring, reduce the universe, or claim readiness.
+- This is useful because `scripts\market-radar-status.ps1 -Quick` is the normal PowerShell status path after bootstrap/restart. It now prints the same saved-capture approval packet that CLI/API/TUI expose, so the operator sees the one-call approval boundary without opening the TUI.
+
+Fix in this slice:
+
+- Added `Write-SavedFileCaptureApproval` to `scripts\market-radar-status.ps1`.
+- Quick status now prints full-market and stock-only saved-file capture approval lines with status, approval flag, missing count, external calls without approval, external calls if approved, DB writes during capture, and confirm command.
+- Quick status also prints the capture approval question, e.g. `Approve one Polygon/Massive grouped-daily call for 2026-05-15?`.
+- README now documents that quick status includes the saved-capture approval packet.
+
+Validation observed in this slice:
+
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check tests\integration\test_local_scripts.py` passed with `All checks passed!`.
+- Focused pytest passed `tests\integration\test_local_scripts.py::test_market_radar_status_script_is_zero_external_call_sitrep`.
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m py_compile tests\integration\test_local_scripts.py` exited 0.
+- `git diff --check` passed.
+- Live zero-call quick-status smoke showed API build `24a0e409c8e4`, full-market `provider saved-file capture approval: status=approval_required; approval_required=True; missing=523; external_calls_without_approval=0; external_calls_if_approved=1; db_writes_during_capture=0; confirm=bars saved capture confirm`, the matching question, stock-only approval status for 131 missing bars, and `External calls made: 0`.
+
+Next useful product action:
+
+- Do not treat this slice as goal completion.
+- The immediate trusted-answer blocker remains the same 523 missing 2026-05-15 active-universe market bars.
+- The safest real unblock remains explicit operator approval for one saved grouped-daily provider capture or a manually supplied saved grouped-daily JSON file followed by zero-call validate/import.
 
 
 

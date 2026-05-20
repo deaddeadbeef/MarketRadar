@@ -114,6 +114,31 @@ function Get-RepairPlanNextCommand {
     return $Fallback
 }
 
+function Write-SavedFileCaptureApproval {
+    param(
+        [string]$Label,
+        [object]$Packet
+    )
+
+    if ($null -eq $Packet) {
+        return
+    }
+    Write-Output (
+        "- {0} saved-file capture approval: status={1}; approval_required={2}; missing={3}; external_calls_without_approval={4}; external_calls_if_approved={5}; db_writes_during_capture={6}; confirm={7}" -f
+        $Label,
+        $(if ($Packet.status) { $Packet.status } else { "unknown" }),
+        $(if ($null -ne $Packet.approval_required) { $Packet.approval_required } else { $false }),
+        $(if ($null -ne $Packet.missing_as_of_bar_count) { $Packet.missing_as_of_bar_count } else { "n/a" }),
+        $(if ($null -ne $Packet.external_calls_without_approval) { $Packet.external_calls_without_approval } else { 0 }),
+        $(if ($null -ne $Packet.external_calls_if_approved) { $Packet.external_calls_if_approved } else { 0 }),
+        $(if ($null -ne $Packet.db_writes_during_capture) { $Packet.db_writes_during_capture } else { 0 }),
+        $(if ($Packet.tui_confirm_command) { $Packet.tui_confirm_command } else { "n/a" })
+    )
+    if ($Packet.question) {
+        Write-Output ("- {0} saved-file capture question: {1}" -f $Label, $Packet.question)
+    }
+}
+
 $health = Invoke-ApiJson -Path "/api/health"
 $readiness = Invoke-ApiJson -Path "/api/radar/readiness"
 $pythonExe = ".\.venv\Scripts\python.exe"
@@ -413,6 +438,9 @@ if ($Quick) {
                     $marketBarRepairPlan.provider_saved_file_capture_command
                 )
             }
+            Write-SavedFileCaptureApproval `
+                -Label "provider" `
+                -Packet $marketBarRepairPlan.provider_saved_file_capture_approval_packet
             if ($marketBarRepairPlan.provider_saved_file_validate_command) {
                 Write-Output (
                     "- provider saved-file validate: external_calls={0}; command={1}" -f
@@ -523,6 +551,9 @@ if ($Quick) {
                     $stockMarketBarRepairPlan.provider_saved_file_capture_command
                 )
             }
+            Write-SavedFileCaptureApproval `
+                -Label "stock provider" `
+                -Packet $stockMarketBarRepairPlan.provider_saved_file_capture_approval_packet
             if ($stockMarketBarRepairPlan.provider_saved_file_validate_command) {
                 Write-Output (
                     "- stock provider saved-file validate: external_calls={0}; command={1}" -f
