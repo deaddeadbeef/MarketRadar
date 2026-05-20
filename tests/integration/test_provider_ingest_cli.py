@@ -287,9 +287,11 @@ def test_market_bars_template_sorts_stock_like_rows_first(
 
     captured = capsys.readouterr()
     assert "row_order=stock_like_then_unknown_then_non_stock" in captured.out
+    assert "Rows include security names" in captured.out
     rows = _read_csv_rows(template_path)
     assert [row["ticker"] for row in rows] == ["AADR", "BSTK", "ZUNK", "EETF", "WUNT"]
     assert [row["security_type"] for row in rows[:2]] == ["ADRC", "CS"]
+    assert [row["name"] for row in rows[:2]] == ["ADR", "Common Stock"]
 
 
 def test_market_bars_stocks_only_template_and_import_scope(
@@ -340,7 +342,9 @@ def test_market_bars_stocks_only_template_and_import_scope(
     assert "scope=stock_like_missing_as_of_bars" in output.out
     assert "coverage=active=2 existing=1 missing=1" in output.out
     assert "stocks_only=true" in output.out
-    assert [row["ticker"] for row in _read_csv_rows(template_path)] == ["AADR"]
+    template_rows = _read_csv_rows(template_path)
+    assert [row["ticker"] for row in template_rows] == ["AADR"]
+    assert template_rows[0]["name"] == "Alpha ADR"
 
     filled_path = tmp_path / "filled-stock-bars.csv"
     _write_manual_bars(filled_path, ["AADR"], as_of="2026-05-15")
