@@ -462,6 +462,11 @@ class ManualBarsRepairPlanResult:
             "provider_saved_file_capture_command": (
                 provider_saved_file_capture_command if missing > 0 else None
             ),
+            "provider_saved_file_capture_api": (
+                "POST /api/radar/market-bars/provider-fixture-capture"
+                if missing > 0
+                else None
+            ),
             "provider_saved_file_capture_external_call_count": 1
             if missing > 0
             else 0,

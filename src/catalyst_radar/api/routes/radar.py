@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from catalyst_radar.connectors.options import validate_options_fixture_json
 from catalyst_radar.connectors.polygon_fixture import (
+    capture_polygon_grouped_daily_response,
     ingest_polygon_grouped_daily_fixture,
     preview_polygon_grouped_daily_fixture,
 )
@@ -182,6 +183,15 @@ class MarketBarsProviderFixturePreviewRequest(BaseModel):
 
     expected_as_of: Date
     fixture_path: str
+
+
+class MarketBarsProviderFixtureCaptureRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_as_of: Date
+    output_path: str
+    fixture_path: str | None = None
+    confirm_external_call: bool = False
 
 
 class MarketBarsProviderFixtureImportRequest(BaseModel):
@@ -731,6 +741,55 @@ def radar_market_bars_provider_fixture_preview(
             fixture_path=Path(request.fixture_path),
         )
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return redact_restricted_external_payload(payload)
+
+
+@router.post(
+    "/market-bars/provider-fixture-capture",
+    dependencies=[Depends(require_role(Role.ANALYST))],
+)
+def radar_market_bars_provider_fixture_capture(
+    request: MarketBarsProviderFixtureCaptureRequest,
+) -> dict[str, object]:
+    output_path = Path(request.output_path)
+    if request.fixture_path is None and not request.confirm_external_call:
+        target_date = request.expected_as_of.isoformat()
+        return redact_restricted_external_payload(
+            {
+                "schema_version": "polygon-grouped-daily-response-capture-v1",
+                "status": "approval_required",
+                "provider": "polygon",
+                "date": target_date,
+                "output_path": str(output_path),
+                "capture_external_call_count": 1,
+                "external_calls_made": 0,
+                "db_writes_made": 0,
+                "capture_command": (
+                    "catalyst-radar ingest-polygon grouped-daily "
+                    f"--date {target_date} --save-response {output_path} "
+                    "--confirm-external-call"
+                ),
+                "approval_boundary": (
+                    "Live grouped-daily capture makes one Polygon/Massive "
+                    "provider call and requires explicit operator approval."
+                ),
+                "next_action": (
+                    "Set confirm_external_call=true only if you approve the "
+                    "single provider call, or provide fixture_path for a local "
+                    "fixture-backed capture."
+                ),
+            },
+        )
+    try:
+        payload = capture_polygon_grouped_daily_response(
+            config=AppConfig.from_env(),
+            date_value=request.expected_as_of,
+            output_path=output_path,
+            fixture_path=Path(request.fixture_path) if request.fixture_path else None,
+            confirm_external_call=request.confirm_external_call,
+        )
+    except (FileNotFoundError, PermissionError, RuntimeError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return redact_restricted_external_payload(payload)
 

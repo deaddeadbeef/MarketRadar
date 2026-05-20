@@ -621,6 +621,9 @@ def test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths(
         "--save-response data\\local\\polygon-grouped-daily-2026-05-15.json "
         "--confirm-external-call"
     )
+    assert payload["provider_saved_file_capture_api"] == (
+        "POST /api/radar/market-bars/provider-fixture-capture"
+    )
     assert payload["provider_saved_file_capture_external_call_count"] == 1
     assert payload["provider_saved_file_import_command"] == (
         "catalyst-radar ingest-polygon grouped-daily "

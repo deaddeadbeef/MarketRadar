@@ -52,6 +52,7 @@ from catalyst_radar.connectors.options import (
 )
 from catalyst_radar.connectors.polygon import PolygonEndpoint, PolygonMarketDataConnector
 from catalyst_radar.connectors.polygon_fixture import (
+    capture_polygon_grouped_daily_response,
     preview_polygon_grouped_daily_fixture,
 )
 from catalyst_radar.connectors.provider_ingest import (
@@ -127,7 +128,7 @@ from catalyst_radar.security.licenses import (
     ProviderLicenseError,
     require_external_export_allowed,
 )
-from catalyst_radar.security.redaction import redact_text, redact_url, redact_value
+from catalyst_radar.security.redaction import redact_text, redact_value
 from catalyst_radar.security.secrets import load_app_dotenv
 from catalyst_radar.storage.alert_repositories import AlertRepository
 from catalyst_radar.storage.broker_repositories import BrokerRepository
@@ -2377,11 +2378,12 @@ def _ingest_polygon_provider(
                     file=sys.stderr,
                 )
                 return 2
-            payload = _capture_polygon_grouped_daily_response(
+            payload = capture_polygon_grouped_daily_response(
                 config=config,
                 date_value=date_value,
                 fixture_path=fixture_path,
                 output_path=save_response_path,
+                confirm_external_call=confirm_external_call,
             )
             if json_output:
                 print(json.dumps(payload, sort_keys=True))
@@ -2445,71 +2447,6 @@ def _ingest_polygon_provider(
     else:
         _print_provider_result(result)
     return 0
-
-
-def _capture_polygon_grouped_daily_response(
-    *,
-    config: AppConfig,
-    date_value: date,
-    fixture_path: Path | None,
-    output_path: Path,
-) -> dict[str, object]:
-    api_key = _polygon_api_key(config=config, fixture_path=fixture_path)
-    url = _polygon_grouped_daily_url(
-        config=config,
-        date_value=date_value,
-        api_key=api_key,
-    )
-    transport = (
-        FakeHttpTransport({url: _fixture_response(url, fixture_path)})
-        if fixture_path is not None
-        else UrlLibHttpTransport()
-    )
-    response = transport.get(
-        url,
-        headers={},
-        timeout_seconds=config.http_timeout_seconds,
-    )
-    if response.status_code < 200 or response.status_code >= 300:
-        detail = redact_text(response.body.decode("utf-8", errors="replace").strip())
-        msg = f"HTTP {response.status_code} from {redact_url(response.url)}"
-        if detail:
-            msg = f"{msg}; detail={detail}"
-        raise RuntimeError(msg)
-    try:
-        json.loads(response.body.decode("utf-8"))
-    except json.JSONDecodeError as exc:
-        msg = f"invalid JSON from {redact_url(response.url)}"
-        raise RuntimeError(msg) from exc
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_bytes(response.body)
-    target_date = date_value.isoformat()
-    return {
-        "schema_version": "polygon-grouped-daily-response-capture-v1",
-        "status": "ready",
-        "provider": "polygon",
-        "date": target_date,
-        "source": "fixture" if fixture_path is not None else "live_provider",
-        "url": redact_url(response.url),
-        "output_path": str(output_path),
-        "bytes_written": len(response.body),
-        "status_code": response.status_code,
-        "external_calls_made": 0 if fixture_path is not None else 1,
-        "db_writes_made": 0,
-        "validate_command": (
-            "catalyst-radar ingest-polygon grouped-daily "
-            f"--date {target_date} --fixture {output_path} --validate-only"
-        ),
-        "import_command": (
-            "catalyst-radar ingest-polygon grouped-daily "
-            f"--date {target_date} --fixture {output_path}"
-        ),
-        "next_action": (
-            "Run the validate command, then import only if the preview covers "
-            "the missing market bars."
-        ),
-    }
-
 
 def _ingest_sec_provider(
     *,
