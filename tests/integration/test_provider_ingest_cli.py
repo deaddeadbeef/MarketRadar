@@ -468,6 +468,97 @@ def test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths(
     assert payload["external_calls_made"] == 0
 
 
+def test_market_bars_repair_plan_previews_existing_local_template(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    database_url = _database_url(tmp_path)
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["init-db"]) == 0
+    capsys.readouterr()
+    engine = create_engine(database_url, future=True)
+    MarketRepository(engine).upsert_securities(
+        [
+            _security("BSTK", "Beta Stock", "CS"),
+            _security("AADR", "Alpha ADR", "ADRC"),
+        ]
+    )
+    MarketRepository(engine).upsert_daily_bars(
+        [_daily_bar("BSTK", date(2026, 5, 15))]
+    )
+
+    assert (
+        main(
+            [
+                "market-bars",
+                "template",
+                "--expected-as-of",
+                "2026-05-15",
+                "--out",
+                "data\\local\\manual-stock-bars-2026-05-15.csv",
+                "--missing-only",
+                "--stocks-only",
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+
+    assert (
+        main(
+            [
+                "market-bars",
+                "repair-plan",
+                "--expected-as-of",
+                "2026-05-15",
+                "--stocks-only",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    payload = json.loads(capsys.readouterr().out)
+    preview = payload["local_template_preview"]
+    assert payload["local_template_exists"] is True
+    assert preview["status"] == "invalid"
+    assert preview["row_count"] == 1
+    assert preview["invalid_row_count"] == 1
+    assert preview["blank_required_count"] == 6
+    assert preview["blank_required_field_counts"] == {
+        "open": 1,
+        "high": 1,
+        "low": 1,
+        "close": 1,
+        "volume": 1,
+        "vwap": 1,
+    }
+    assert preview["external_calls_made"] == 0
+
+    assert (
+        main(
+            [
+                "market-bars",
+                "repair-plan",
+                "--expected-as-of",
+                "2026-05-15",
+                "--stocks-only",
+            ]
+        )
+        == 0
+    )
+    captured = capsys.readouterr()
+    assert (
+        "local_template=path=data\\local\\manual-stock-bars-2026-05-15.csv exists=true"
+        in captured.out
+    )
+    assert "local_template_preview=status=invalid" in captured.out
+    assert "local_template_blank_required_fields=open=1" in captured.out
+    assert "local_template_invalid_examples=row 2 AADR 2026-05-15" in captured.out
+
+
 def test_market_bars_import_rejects_blank_numeric_fields(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
