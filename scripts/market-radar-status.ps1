@@ -220,6 +220,32 @@ if ($Quick) {
         $coreFirstGap,
         $coreEvidenceCommand
     )
+    if ($null -ne $stockMarketBarRepairPlan) {
+        $stockEvidenceStatus = "unknown"
+        $stockFirstGap = "market_bars"
+        $stockEvidenceCommand = "catalyst-radar priced-in-answer --stocks-only"
+        if (
+            $null -ne $stockMarketBarRepairPlan.missing_as_of_bar_count -and
+            [int]$stockMarketBarRepairPlan.missing_as_of_bar_count -gt 0
+        ) {
+            $stockEvidenceStatus = "blocked"
+            $stockFirstGap = "market_bars"
+            $stockEvidenceCommand = $stockMarketBarRepairPlan.manual_template_command
+        }
+        elseif ($stockMarketBarRepairPlan.status -eq "ready") {
+            $stockEvidenceStatus = "market_bars_ready"
+            $stockFirstGap = "catalyst_events_or_local_text"
+        }
+        Write-Output (
+            "Stock priced-in gate: status={0}; first_gap={1}; stock_like={2}/{3}; missing={4}; core_order=market_bars,catalyst_events,local_text; command={5}; external_calls=0" -f
+            $stockEvidenceStatus,
+            $stockFirstGap,
+            $stockMarketBarRepairPlan.existing_as_of_bar_count,
+            $stockMarketBarRepairPlan.active_security_count,
+            $stockMarketBarRepairPlan.missing_as_of_bar_count,
+            $stockEvidenceCommand
+        )
+    }
     if ($null -ne $marketBarRepairPlan) {
         Write-Output (
             "Full-market next: bars={0}/{1}; missing={2}; command={3}" -f

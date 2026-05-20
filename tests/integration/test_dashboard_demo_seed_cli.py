@@ -2333,6 +2333,38 @@ def test_dashboard_summary_surfaces_unscanned_full_scan_rows() -> None:
     )
 
 
+def test_dashboard_summary_surfaces_stock_scope_market_bar_gap() -> None:
+    payload = {
+        "priced_in_answer": {
+            "full_scan": {
+                "instrument_filter": "stocks_only",
+                "active_securities": 5652,
+                "scanned_rows": 5521,
+                "unscanned_rows": 131,
+            }
+        },
+        "priced_in_audit": {
+            "market_bars": {
+                "missing_as_of_bar": 523,
+                "repair": {
+                    "diagnostic": {"missing_count": 523},
+                    "stock_scope": {
+                        "stock_like_active": 5652,
+                        "stock_like_with_as_of_bar": 5521,
+                        "stock_like_missing_as_of_bar": 131,
+                    },
+                },
+            }
+        },
+    }
+
+    assert _answer_full_scan_scope_summary(payload) == (
+        "Full-scan coverage: 5521/5652 active stock-like row(s) scanned; "
+        "131 unscanned; 131 missing stock-like scan-date market bar(s); "
+        "523 all-instrument missing."
+    )
+
+
 def test_dashboard_summary_surfaces_answer_evidence_completeness() -> None:
     payload = {
         "priced_in_answer": {

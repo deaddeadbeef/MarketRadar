@@ -4348,11 +4348,23 @@ def _answer_full_scan_scope_summary(payload: Mapping[str, object]) -> str:
         "all": "all-instrument",
         "stocks_only": "stock-like",
     }.get(scope, scope)
-    blocker = (
-        f"; {missing} missing scan-date market bar(s)"
-        if missing
-        else ""
-    )
+    blocker = ""
+    if scope == "stocks_only":
+        audit = _mapping(payload.get("priced_in_audit"))
+        market = _mapping(audit.get("market_bars"))
+        repair = _mapping(market.get("repair"))
+        stock_scope = _mapping(repair.get("stock_scope"))
+        stock_missing = int(
+            _number_or_zero(stock_scope.get("stock_like_missing_as_of_bar"))
+        )
+        if stock_missing <= 0:
+            stock_missing = unscanned
+        if stock_missing:
+            blocker = f"; {stock_missing} missing stock-like scan-date market bar(s)"
+            if missing and missing != stock_missing:
+                blocker = f"{blocker}; {missing} all-instrument missing"
+    elif missing:
+        blocker = f"; {missing} missing scan-date market bar(s)"
     return (
         f"Full-scan coverage: {scanned}/{active} active {scope_label} row(s) scanned; "
         f"{unscanned} unscanned{blocker}."
