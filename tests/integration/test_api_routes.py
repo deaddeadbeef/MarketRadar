@@ -1918,6 +1918,7 @@ def test_post_radar_market_bars_template_and_import_can_scope_to_stocks(
     assert template_payload["row_count"] == 1
     assert template_payload["stocks_only"] is True
     assert template_payload["template_scope"] == "stock_like_missing_as_of_bars"
+    assert "name" in template_payload["template_columns"]
     assert template_payload["active_security_count"] == 2
     assert template_payload["existing_as_of_bar_count"] == 1
     assert template_payload["missing_as_of_bar_count"] == 1

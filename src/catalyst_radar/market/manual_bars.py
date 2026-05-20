@@ -20,6 +20,7 @@ MANUAL_BAR_COLUMNS = (
     "ticker",
     "date",
     "security_type",
+    "name",
     "template_reason",
     "open",
     "high",
@@ -74,14 +75,15 @@ class ManualBarsTemplateResult:
             "missing_only": self.missing_only,
             "stocks_only": self.stocks_only,
             "template_scope": template_scope,
+            "template_columns": list(MANUAL_BAR_COLUMNS),
             "row_order": "stock_like_then_unknown_then_non_stock",
             "provider": self.provider,
             "generated_at": self.generated_at.isoformat(),
             "external_calls_made": 0,
             "next_action": (
-                "Rows are sorted stock-like first. Fill open, high, low, close, "
-                "volume, and vwap for every row, then preview the import before "
-                "executing."
+                "Rows include security names and are sorted stock-like first. "
+                "Fill open, high, low, close, volume, and vwap for every row, "
+                "then preview the import before executing."
             ),
             "import_command": (
                 "catalyst-radar market-bars import "
@@ -361,12 +363,13 @@ def write_manual_market_bars_template(
     with path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=MANUAL_BAR_COLUMNS)
         writer.writeheader()
-        for ticker, security_type in template_rows:
+        for ticker, security_type, name in template_rows:
             writer.writerow(
                 {
                     "ticker": ticker,
                     "date": expected_as_of.isoformat(),
                     "security_type": security_type,
+                    "name": name,
                     "template_reason": (
                         "missing_as_of_bar" if ticker not in existing else "active_universe"
                     ),
@@ -416,9 +419,9 @@ def manual_market_bars_repair_plan(
     if not scoped_rows:
         msg = "cannot build manual market-bar repair plan: no matching active securities"
         raise ValueError(msg)
-    active_tickers = {ticker for ticker, _security_type in scoped_rows}
+    active_tickers = {ticker for ticker, _security_type, _name in scoped_rows}
     security_type_by_ticker = {
-        ticker: security_type for ticker, security_type in scoped_rows
+        ticker: security_type for ticker, security_type, _name in scoped_rows
     }
     existing = _bar_tickers_for_date(engine, expected_as_of)
     missing = tuple(sorted(active_tickers - existing))
@@ -632,26 +635,27 @@ def _active_tickers(engine: Engine, *, stocks_only: bool = False) -> tuple[str, 
     )
 
 
-def _active_security_rows(engine: Engine) -> tuple[tuple[str, str], ...]:
+def _active_security_rows(engine: Engine) -> tuple[tuple[str, str, str], ...]:
     with engine.connect() as conn:
         rows = conn.execute(
-            select(securities.c.ticker, securities.c.metadata)
+            select(securities.c.ticker, securities.c.name, securities.c.metadata)
             .where(securities.c.is_active.is_(True))
             .order_by(securities.c.ticker)
         ).all()
-    values: list[tuple[str, str]] = []
+    values: list[tuple[str, str, str]] = []
     for row in rows:
         ticker = str(row._mapping["ticker"] or "").strip().upper()
+        name = str(row._mapping["name"] or "").strip()
         metadata = row._mapping["metadata"]
         if not isinstance(metadata, dict):
             metadata = {}
         security_type = str(metadata.get("type") or "").strip().upper()
-        values.append((ticker, security_type))
+        values.append((ticker, security_type, name))
     return tuple(values)
 
 
-def _manual_bar_template_sort_key(row: tuple[str, str]) -> tuple[int, str]:
-    ticker, security_type = row
+def _manual_bar_template_sort_key(row: tuple[str, str, str]) -> tuple[int, str]:
+    ticker, security_type, _name = row
     return (_manual_bar_security_type_priority(security_type), ticker)
 
 

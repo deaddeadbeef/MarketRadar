@@ -1,6 +1,78 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 09:59:29 +08:00
+Last updated: 2026-05-20 10:04:34 +08:00
+
+## Latest Manual Bar Template Name Column
+
+Goal alignment:
+
+- The active completion blocker is still the missing scan-date market bars.
+  Provider fill requires explicit approval, so the useful zero-call path is to
+  make the manual repair artifact easier to fill and audit.
+- This slice adds security names to generated manual market-bar templates.
+  The name column helps the operator identify ambiguous tickers, units,
+  warrants, ADRs, preferred shares, funds, and common stocks while filling real
+  OHLCV/VWAP values.
+- This does not change import semantics. Imports still read the same required
+  daily-bar fields; the new `name` column is descriptive.
+- This makes 0 Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or provider
+  calls.
+
+Fix in this slice:
+
+- `MANUAL_BAR_COLUMNS` now includes `name` after `security_type`.
+- `write_manual_market_bars_template(...)` writes the active security name into
+  each generated row.
+- The template payload now exposes `template_columns`.
+- Template `next_action` now tells the operator that rows include names.
+- Tests cover template row names, template payload columns, and unchanged import
+  behavior.
+
+Live zero-call observation:
+
+```text
+manual_market_bars_template status=ready rows=523 scope=missing_as_of_bars expected_as_of=2026-05-15 external_calls=0
+next_action=Rows include security names and are sorted stock-like first. Fill open, high, low, close, volume, and vwap for every row, then preview the import before executing.
+
+ticker: AACO
+security_type: CS
+name: Abony Acquisition Corp. I Class A Ordinary Share
+
+ticker: ADAC
+security_type: CS
+name: American Drive Acquisition Company Class A Ordinary Shares
+
+ticker: ADXN
+security_type: ADRC
+name: Addex Therapeutics Ltd American Depositary Shares
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_provider_ingest_cli.py::test_market_bars_template_sorts_stock_like_rows_first tests\integration\test_provider_ingest_cli.py::test_market_bars_stocks_only_template_and_import_scope tests\integration\test_provider_ingest_cli.py::test_market_bars_repair_plan_previews_existing_local_template tests\integration\test_api_routes.py::test_post_radar_market_bars_template_and_import_can_scope_to_stocks -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\market\manual_bars.py tests\integration\test_provider_ingest_cli.py tests\integration\test_api_routes.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli market-bars template --expected-as-of 2026-05-15 --out $env:TEMP\market-radar-manual-bars-name-check.csv --missing-only
+```
+
+Results:
+
+- Focused pytest passed.
+- Ruff passed.
+- `git diff --check` passed.
+- The live generated template had 523 rows, `external_calls=0`, and populated
+  `name` values for the first missing rows.
+
+Next useful product action after merge:
+
+- Regenerate `data\local\manual-bars-2026-05-15.csv` if the operator wants the
+  checked-in local repair template to include the new `name` column, then fill
+  OHLCV/VWAP values and preview import.
+- Do not overwrite a partially filled operator CSV without checking first.
+- The actual completion blocker remains unchanged: real scan-date bars are
+  still required, manually or through explicit approval for the guarded
+  Polygon/Massive grouped-daily fill.
 
 ## Latest Goal Completion Audit
 
