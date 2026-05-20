@@ -680,6 +680,71 @@ def test_market_bars_repair_plan_blocks_provider_fill_when_health_is_down(
     assert "HTTP 403 from grouped daily" in text
 
 
+def test_market_bars_repair_plan_warns_for_stale_eod_provider_health(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    database_url = _database_url(tmp_path)
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("CATALYST_POLYGON_API_KEY", "fixture-key")
+
+    assert main(["init-db"]) == 0
+    capsys.readouterr()
+    engine = create_engine(database_url, future=True)
+    MarketRepository(engine).upsert_securities([_security("AADR", "Alpha ADR", "ADRC")])
+    ProviderRepository(engine).save_health(
+        ConnectorHealth(
+            provider="polygon",
+            status=ConnectorHealthStatus.DOWN,
+            checked_at=datetime(2026, 5, 19, 2, 12, tzinfo=UTC),
+            reason=(
+                "HTTP 403 from grouped daily; detail=NOT_AUTHORIZED: Attempted "
+                "to request today's data before end of day."
+            ),
+            latency_ms=12.0,
+        )
+    )
+
+    assert (
+        main(
+            [
+                "market-bars",
+                "repair-plan",
+                "--expected-as-of",
+                "2026-05-15",
+                "--json",
+            ]
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["provider_fill_status"] == (
+        "ready_for_approval_with_health_warning"
+    )
+    assert payload["provider_health_blocks_fill"] is False
+    assert "stale same-day EOD denial" in payload["provider_health_warning"]
+    assert payload["provider_fill_external_call_count"] == 1
+    assert payload["external_calls_made"] == 0
+
+    assert (
+        main(
+            [
+                "market-bars",
+                "repair-plan",
+                "--expected-as-of",
+                "2026-05-15",
+            ]
+        )
+        == 0
+    )
+    text = capsys.readouterr().out
+    assert "provider_option=status=ready_for_approval_with_health_warning" in text
+    assert "provider_health_warning=Stored Polygon/Massive health" in text
+
+
 def test_market_bars_repair_plan_previews_existing_local_template(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

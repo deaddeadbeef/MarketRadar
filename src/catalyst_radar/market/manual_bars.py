@@ -298,11 +298,24 @@ class ManualBarsRepairPlanResult:
             reason=self.provider_health_reason,
             checked_at=self.provider_health_checked_at,
         )
+        provider_health_gate = manual_bar_provider_health_gate(
+            status=self.provider_health_status,
+            reason=self.provider_health_reason,
+            checked_at=self.provider_health_checked_at,
+            target_as_of=self.expected_as_of,
+            generated_at=self.generated_at,
+        )
+        provider_health_blocks_fill = bool(
+            provider_health_gate.get("blocks_provider_fill"),
+        )
+        provider_health_warning = (
+            str(provider_health_gate.get("warning") or "").strip() or None
+        )
         if missing <= 0:
             status = "ready"
             provider_fill_status = "not_needed"
             next_action = "As-of market bars already cover this scope."
-        elif self.provider_health_status == "down":
+        elif provider_health_blocks_fill:
             status = "attention"
             provider_fill_status = "blocked_by_provider_health"
             next_action = (
@@ -311,11 +324,22 @@ class ManualBarsRepairPlanResult:
             )
         elif self.provider_key_configured:
             status = "attention"
-            provider_fill_status = "ready_for_approval"
-            next_action = (
-                "Fill the manual CSV and preview the import, or explicitly approve "
-                "the one-call Polygon/Massive grouped-daily fill."
+            provider_fill_status = (
+                "ready_for_approval_with_health_warning"
+                if provider_health_warning
+                else "ready_for_approval"
             )
+            if provider_health_warning:
+                next_action = (
+                    "Fill the manual CSV, or explicitly approve the one-call "
+                    "Polygon/Massive grouped-daily fill after reviewing the stored "
+                    "provider-health warning."
+                )
+            else:
+                next_action = (
+                    "Fill the manual CSV and preview the import, or explicitly approve "
+                    "the one-call Polygon/Massive grouped-daily fill."
+                )
         else:
             status = "attention"
             provider_fill_status = "blocked"
@@ -408,6 +432,8 @@ class ManualBarsRepairPlanResult:
             "provider_label": "Polygon/Massive grouped daily",
             "provider_key_configured": self.provider_key_configured,
             "provider_health": provider_health,
+            "provider_health_blocks_fill": provider_health_blocks_fill,
+            "provider_health_warning": provider_health_warning,
             "provider_fill_external_call_count": 1 if missing > 0 else 0,
             "provider_fill_command": provider_command if missing > 0 else None,
             "provider_fill_api": None,
@@ -601,6 +627,69 @@ def _manual_bar_provider_health_payload(
         "reason": reason,
         "checked_at": checked_at.isoformat() if checked_at is not None else None,
     }
+
+
+def manual_bar_provider_health_gate(
+    *,
+    status: str | None,
+    reason: str | None,
+    checked_at: datetime | None,
+    target_as_of: date,
+    generated_at: datetime | None = None,
+) -> dict[str, object]:
+    normalized_status = str(status or "").strip().lower()
+    if normalized_status != "down":
+        return {
+            "schema_version": "manual-market-bars-provider-health-gate-v1",
+            "status": "clear",
+            "blocks_provider_fill": False,
+            "warning": None,
+            "external_calls_made": 0,
+        }
+    resolved_at = _as_utc(generated_at or datetime.now(UTC))
+    checked = _as_utc(checked_at) if checked_at is not None else None
+    if _manual_bar_provider_health_is_stale_eod_denial(
+        reason=reason,
+        checked_at=checked,
+        target_as_of=target_as_of,
+        generated_at=resolved_at,
+    ):
+        return {
+            "schema_version": "manual-market-bars-provider-health-gate-v1",
+            "status": "warning",
+            "blocks_provider_fill": False,
+            "warning": (
+                "Stored Polygon/Massive health is a stale same-day EOD denial; "
+                "the target date is historical, so the grouped-daily command can "
+                "be reviewed for explicit one-call approval."
+            ),
+            "external_calls_made": 0,
+        }
+    return {
+        "schema_version": "manual-market-bars-provider-health-gate-v1",
+        "status": "blocked",
+        "blocks_provider_fill": True,
+        "warning": None,
+        "external_calls_made": 0,
+    }
+
+
+def _manual_bar_provider_health_is_stale_eod_denial(
+    *,
+    reason: str | None,
+    checked_at: datetime | None,
+    target_as_of: date,
+    generated_at: datetime,
+) -> bool:
+    reason_text = str(reason or "").lower()
+    if "before end of day" not in reason_text and "today's data" not in reason_text:
+        return False
+    current_date = generated_at.date()
+    if target_as_of >= current_date:
+        return False
+    if checked_at is None:
+        return True
+    return target_as_of <= checked_at.date() or checked_at.date() < current_date
 
 
 def write_manual_market_bars_template(

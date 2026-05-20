@@ -1,6 +1,115 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 12:30:29 +08:00
+Last updated: 2026-05-20 12:55:39 +08:00
+
+## Latest Historical Provider-Health Warning Gate
+
+Goal alignment:
+
+- The immediate full-scan blocker is still missing scan-date market bars:
+  `12090/12613` full active-universe bars and `5521/5652` stock-like bars.
+- Manual CSV repair is still valid, but the fastest likely path is the
+  one-call Polygon/Massive grouped-daily fill for `2026-05-15`.
+- The stored Polygon/Massive health row is `down`, but the reason is a
+  date-specific same-day/EOD denial from an earlier request:
+  `Attempted to request today's data before end of day`.
+- That health row should warn the operator, not hard-block a historical
+  `2026-05-15` grouped-daily request on `2026-05-20`.
+- This slice makes 0 Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or
+  provider calls.
+
+Operational update before this slice:
+
+- The blank stock-like manual template was regenerated locally with the `name`
+  column:
+
+  ```powershell
+  .\.venv\Scripts\python.exe -m catalyst_radar.cli market-bars template --expected-as-of 2026-05-15 --out data\local\manual-stock-bars-2026-05-15.csv --missing-only --stocks-only --overwrite
+  ```
+
+- Result:
+
+  ```text
+  manual_market_bars_template status=ready rows=131 scope=stock_like_missing_as_of_bars expected_as_of=2026-05-15 path=data\local\manual-stock-bars-2026-05-15.csv external_calls=0
+  ```
+
+- The first rows now include names, e.g. `AACO, ... Abony Acquisition Corp. I
+  Class A Ordinary Share`.
+
+Fix in this slice:
+
+- `manual_bar_provider_health_gate(...)` now distinguishes:
+  - true blocking provider health; from
+  - stale same-day/EOD denial health when the requested grouped-daily target is
+    historical.
+- `manual_market_bars_repair_plan(...).as_payload()` now includes:
+  - `provider_health_blocks_fill`;
+  - `provider_health_warning`.
+- CLI repair-plan output prints `provider_health_warning=...`.
+- `priced_in` dashboard data uses the same provider-health gate for
+  `provider_fill_plan`.
+- `scripts\market-radar-status.ps1 -Quick` prints provider warnings for both
+  full-market and stock-market repair scopes.
+- TUI Overview/Ops now show a `Provider fill:` line when a provider repair
+  command exists, including status, call count, approval boundary, and warning.
+
+Live zero-call observations:
+
+```text
+provider_option=status=ready_for_approval_with_health_warning external_calls=1 key_configured=true command=catalyst-radar ingest-polygon grouped-daily --date 2026-05-15 --confirm-external-call
+provider_health=status=down checked_at=2026-05-19T02:12:46.092338+00:00 reason=HTTP 403 ... Attempted to request today's data before end of day ...
+provider_health_warning=Stored Polygon/Massive health is a stale same-day EOD denial; the target date is historical, so the grouped-daily command can be reviewed for explicit one-call approval.
+external_calls=0
+```
+
+```text
+Provider fill: ready_for_approval_with_health_warning; 1 external call(s); explicit approval required; warning Stor...
+```
+
+```text
+- provider option: status=ready_for_approval_with_health_warning; health=down; external_calls=1; command=catalyst-radar ingest-polygon grouped-daily --date 2026-05-15 --confirm-external-call
+- provider health warning: Stored Polygon/Massive health is a stale same-day EOD denial; the target date is historical, so the grouped-daily command can be reviewed for explicit one-call approval.
+- stock provider option: status=ready_for_approval_with_health_warning; health=down; external_calls=1; command=catalyst-radar ingest-polygon grouped-daily --date 2026-05-15 --confirm-external-call
+- stock provider health warning: Stored Polygon/Massive health is a stale same-day EOD denial; the target date is historical, so the grouped-daily command can be reviewed for explicit one-call approval.
+External calls made: 0
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_provider_ingest_cli.py::test_market_bars_repair_plan_blocks_provider_fill_when_health_is_down tests\integration\test_provider_ingest_cli.py::test_market_bars_repair_plan_warns_for_stale_eod_provider_health tests\integration\test_provider_ingest_cli.py::test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_warns_for_stale_eod_provider_health tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_manual_bar_fill_progress_summary_is_human_readable tests\integration\test_local_scripts.py::test_market_radar_status_script_is_zero_external_call_sitrep -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\market\manual_bars.py src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\integration\test_provider_ingest_cli.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_local_scripts.py
+powershell -NoProfile -Command "& { `$null = [scriptblock]::Create((Get-Content -Raw .\scripts\market-radar-status.ps1)); 'powershell syntax ok' }"
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli market-bars repair-plan --expected-as-of 2026-05-15
+.\.venv\Scripts\python.exe -m catalyst_radar.cli market-bars repair-plan --expected-as-of 2026-05-15 --stocks-only
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page overview
+powershell -ExecutionPolicy Bypass -File .\scripts\market-radar-status.ps1 -Quick
+```
+
+Results:
+
+- Focused pytest passed: `6 passed`.
+- Ruff passed.
+- PowerShell syntax parse passed.
+- `git diff --check` passed.
+- Live CLI repair plans, TUI render, and quick status all reported
+  `external_calls=0`.
+
+Next useful product action:
+
+- Do not run this without explicit operator approval, but the fastest likely
+  market-bar repair path is now visible and no longer incorrectly blocked by
+  stale same-day health:
+
+  ```powershell
+  .\.venv\Scripts\python.exe -m catalyst_radar.cli ingest-polygon grouped-daily --date 2026-05-15 --confirm-external-call
+  ```
+
+- If the operator does not want that one provider call, continue manual fill of
+  `data\local\manual-stock-bars-2026-05-15.csv` or
+  `data\local\manual-bars-2026-05-15.csv` and import complete rows
+  incrementally.
 
 ## Latest Drift Check And Stock Template Schema Guard
 

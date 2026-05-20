@@ -3880,6 +3880,9 @@ def _print_manual_market_bars_repair_plan(payload: Mapping[str, object]) -> None
             f"checked_at={provider_health.get('checked_at') or 'n/a'} "
             f"reason={_compact_cli_text(provider_health.get('reason'))}"
         )
+    provider_health_warning = payload.get("provider_health_warning")
+    if provider_health_warning:
+        print(f"provider_health_warning={_compact_cli_text(provider_health_warning)}")
     print(f"approval_boundary={payload.get('approval_boundary')}")
     print(f"next_action={payload.get('next_action')}")
 

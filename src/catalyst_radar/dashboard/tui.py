@@ -3821,6 +3821,12 @@ def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
             "Market bar next: "
             f"{_clip(operator_step_summary, max(20, width - 18))}"
         )
+    provider_fill_summary = _market_bar_provider_fill_summary(payload)
+    if provider_fill_summary:
+        lines.append(
+            "Provider fill: "
+            f"{_clip(provider_fill_summary, max(20, width - 17))}"
+        )
     instrument_summary = _full_scan_instrument_scope_summary(payload)
     if instrument_summary:
         lines.append(f"Instrument scope: {instrument_summary}")
@@ -4052,6 +4058,26 @@ def _stock_market_bar_next_summary(payload: Mapping[str, object]) -> str:
         parts.append(f"next {next_action}")
     if command:
         parts.append(f"command {command}")
+    return "; ".join(parts)
+
+
+def _market_bar_provider_fill_summary(payload: Mapping[str, object]) -> str:
+    audit = _mapping(payload.get("priced_in_audit"))
+    market = _mapping(audit.get("market_bars"))
+    repair = _mapping(market.get("repair"))
+    provider_plan = _mapping(repair.get("provider_fill_plan"))
+    if not provider_plan:
+        return ""
+    command = str(provider_plan.get("provider_call_command") or "").strip()
+    calls = int(_number_or_zero(provider_plan.get("execute_external_call_count")))
+    if not command or calls <= 0:
+        return ""
+    status = str(provider_plan.get("status") or "unknown").strip()
+    warning = str(provider_plan.get("provider_health_warning") or "").strip()
+    parts = [status, f"{calls} external call(s)", "explicit approval required"]
+    if warning:
+        parts.append(f"warning {warning}")
+    parts.append(f"command {command}")
     return "; ".join(parts)
 
 
@@ -5795,6 +5821,12 @@ def _ops_lines(payload: Mapping[str, object], width: int) -> list[str]:
         lines.append(
             "Market bar next: "
             f"{_clip(operator_step_summary, max(20, width - 18))}"
+        )
+    provider_fill_summary = _market_bar_provider_fill_summary(payload)
+    if provider_fill_summary:
+        lines.append(
+            "Provider fill: "
+            f"{_clip(provider_fill_summary, max(20, width - 17))}"
         )
     source_actions = [
         {

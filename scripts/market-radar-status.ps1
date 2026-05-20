@@ -278,6 +278,9 @@ if ($Quick) {
             if ($null -ne $providerHealth -and $providerHealth.reason) {
                 Write-Output ("- provider health reason: {0}" -f $providerHealth.reason)
             }
+            if ($marketBarRepairPlan.provider_health_warning) {
+                Write-Output ("- provider health warning: {0}" -f $marketBarRepairPlan.provider_health_warning)
+            }
             Write-Output ("- provider boundary: {0}" -f $marketBarRepairPlan.approval_boundary)
         }
     }
@@ -341,6 +344,9 @@ if ($Quick) {
                 $stockMarketBarRepairPlan.provider_fill_external_call_count,
                 $stockMarketBarRepairPlan.provider_fill_command
             )
+            if ($stockMarketBarRepairPlan.provider_health_warning) {
+                Write-Output ("- stock provider health warning: {0}" -f $stockMarketBarRepairPlan.provider_health_warning)
+            }
         }
     }
     if ($null -ne $manualMarketBarPreview) {

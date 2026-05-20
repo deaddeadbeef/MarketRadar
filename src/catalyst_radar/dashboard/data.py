@@ -44,6 +44,7 @@ from catalyst_radar.jobs.step_outcomes import (
 from catalyst_radar.jobs.tasks import DAILY_STEP_ORDER
 from catalyst_radar.market.manual_bars import (
     MANUAL_BAR_REQUIRED_FILL_FIELDS,
+    manual_bar_provider_health_gate,
     manual_market_bars_repair_plan,
 )
 from catalyst_radar.scoring.priced_in import evaluate_priced_in
@@ -4248,24 +4249,55 @@ def _priced_in_market_bar_provider_fill_plan(
     )
     execute_call_count = 1 if target_value and missing > 0 else 0
     key_configured = bool(config.polygon_api_key_configured)
+    provider_health_gate = (
+        manual_bar_provider_health_gate(
+            status=provider_health.get("status"),
+            reason=provider_health.get("reason"),
+            checked_at=_as_utc_datetime_or_none(provider_health.get("checked_at")),
+            target_as_of=target_as_of,
+        )
+        if target_as_of is not None
+        else {
+            "blocks_provider_fill": False,
+            "warning": None,
+            "external_calls_made": 0,
+        }
+    )
+    provider_health_blocks_fill = bool(
+        provider_health_gate.get("blocks_provider_fill"),
+    )
+    provider_health_warning = (
+        str(provider_health_gate.get("warning") or "").strip() or None
+    )
     if missing <= 0:
         status = "not_needed"
         next_action = "No market-bar provider fill is needed."
     elif target_as_of is None:
         status = "blocked"
         next_action = "Resolve the scan date before planning a provider bar fill."
-    elif provider_health.get("status") == "down":
+    elif provider_health_blocks_fill:
         status = "blocked_by_provider_health"
         next_action = (
             "Stored Polygon/Massive health is down; use the manual CSV path or "
             "fix provider access before requesting the grouped-daily fill."
         )
     elif key_configured:
-        status = "ready_for_approval"
-        next_action = (
-            "If you approve one market-data provider call, run the grouped-daily "
-            "command, then rerun the scan/audit from the updated local bars."
+        status = (
+            "ready_for_approval_with_health_warning"
+            if provider_health_warning
+            else "ready_for_approval"
         )
+        if provider_health_warning:
+            next_action = (
+                "Stored Polygon/Massive health was a stale same-day EOD denial; "
+                "review the warning, then run the grouped-daily command only if "
+                "you approve one historical market-data provider call."
+            )
+        else:
+            next_action = (
+                "If you approve one market-data provider call, run the grouped-daily "
+                "command, then rerun the scan/audit from the updated local bars."
+            )
     else:
         status = "blocked"
         next_action = (
@@ -4281,6 +4313,8 @@ def _priced_in_market_bar_provider_fill_plan(
         "missing_as_of_bar": max(0, int(missing)),
         "provider_key_configured": key_configured,
         "provider_health": provider_health or None,
+        "provider_health_blocks_fill": provider_health_blocks_fill,
+        "provider_health_warning": provider_health_warning,
         "execute_external_call_count": execute_call_count,
         "external_calls_made": 0,
         "provider_call_command": provider_command,

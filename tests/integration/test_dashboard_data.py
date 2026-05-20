@@ -31,6 +31,7 @@ from catalyst_radar.connectors.csv_market import load_securities_csv
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.core.models import ActionState, DailyBar, Security
 from catalyst_radar.dashboard.data import (
+    _priced_in_market_bar_provider_fill_plan,
     _priced_in_scan_status,
     actionability_breakdown_payload,
     activation_summary_payload,
@@ -1856,6 +1857,41 @@ def test_priced_in_full_scan_audit_payload_consolidates_current_state(
         source_filtered["preview"]["sample_explanation"]
     )
     assert "options" in source_filtered["preview_rows"][0]["missing_sources"]
+
+
+def test_priced_in_full_scan_audit_warns_for_stale_eod_provider_health(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(provider_health).values(
+                id="provider-polygon-eod-down",
+                provider="polygon",
+                status="down",
+                checked_at=AS_OF + timedelta(days=2),
+                reason=(
+                    "HTTP 403 from grouped daily; detail=NOT_AUTHORIZED: "
+                    "Attempted to request today's data before end of day."
+                ),
+                latency_ms=12.0,
+            )
+        )
+
+    provider_plan = _priced_in_market_bar_provider_fill_plan(
+        engine,
+        AppConfig.from_env({"CATALYST_POLYGON_API_KEY": "fixture-key"}),
+        target_as_of=AS_OF.date(),
+        missing=1,
+    )
+
+    assert provider_plan["status"] == "ready_for_approval_with_health_warning"
+    assert provider_plan["provider_health"]["status"] == "down"
+    assert provider_plan["provider_health_blocks_fill"] is False
+    assert "stale same-day EOD denial" in provider_plan["provider_health_warning"]
+    assert provider_plan["execute_external_call_count"] == 1
+    assert provider_plan["external_calls_made"] == 0
 
 
 def test_priced_in_full_scan_audit_reports_stock_only_bar_coverage(
