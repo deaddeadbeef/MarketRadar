@@ -1869,43 +1869,12 @@ class MarketRadarDashboardApp(App[int]):
     def _tutorial_model(
         self,
     ) -> tuple[str, Sequence[tuple[str, str, int]], list[Mapping[str, object]], str]:
-        rows = [
-            {
-                "step": "1",
-                "do": "Press 1 or click Insights",
-                "result": "See the current insight queue: ticker, signal, why, and action.",
-            },
-            {
-                "step": "2",
-                "do": "Press 2 or click Readiness",
-                "result": "See exactly what blocks a decision-useful workflow.",
-            },
-            {
-                "step": "3",
-                "do": "Press D or click Decision-ready",
-                "result": "Show only not-priced-in rows that passed the usefulness gate.",
-            },
-            {
-                "step": "4",
-                "do": "Press 4 or click Candidates",
-                "result": "Review companies. These are research rows, not trade signals.",
-            },
-            {
-                "step": "5",
-                "do": "Press 3 or click Run",
-                "result": "Review external-call budget before running anything.",
-            },
-            {
-                "step": "6",
-                "do": "Use the bottom command box",
-                "result": "Try ticker AAPL, refresh, help, or q. Esc focuses the box.",
-            },
-        ]
+        rows = _tutorial_mission_rows(self.payload) + _tutorial_control_rows()
         return (
             "Tutorial - your first 90 seconds",
             [("step", "Step", 6), ("do", "Do this", 34), ("result", "What happens", 96)],
             rows,
-            "Safe rule: clicking, filtering, tutorial, and refresh make 0 provider calls.",
+            _tutorial_caption(self.payload),
         )
 
     def _overview_model(
@@ -2075,7 +2044,7 @@ def render_dashboard_tui(
     page = _normalize_page(page)
     lines = _header_lines(payload, page, resolved_width)
     if page == "tutorial":
-        lines.extend(_tutorial_lines(resolved_width))
+        lines.extend(_tutorial_lines(payload, resolved_width))
     elif page == "overview":
         lines.extend(_overview_lines(payload, resolved_width))
     elif page == "review":
@@ -4267,42 +4236,91 @@ def _priced_in_view_label(payload: Mapping[str, object]) -> str:
     return f"{_human_label(status)} filter"
 
 
-def _tutorial_lines(width: int) -> list[str]:
-    lines = [_rule("Tutorial - your first 90 seconds", width)]
+def _tutorial_mission_rows(payload: Mapping[str, object]) -> list[Mapping[str, object]]:
+    step_labels = {
+        "Question": ("WHY", "Read the mission"),
+        "Current answer": ("NOW", "Check the answer"),
+        "Scan progress": ("SCAN", "Check coverage"),
+        "Trust blocker": ("BLOCK", "Find the blocker"),
+        "Useful next": ("NEXT", "Do the next useful thing"),
+        "Boundary": ("SAFE", "Respect the boundary"),
+    }
+    rows: list[Mapping[str, object]] = []
+    for label, value in _run_mission_brief_items(payload):
+        if label not in step_labels:
+            continue
+        step, action = step_labels[label]
+        text = str(value or "").strip()
+        if not text:
+            continue
+        rows.append(
+            {
+                "step": step,
+                "do": action,
+                "result": text,
+            }
+        )
+    return rows
+
+
+def _tutorial_control_rows() -> list[Mapping[str, object]]:
+    return [
+        {
+            "step": "1",
+            "do": "Press 1 or click Insights",
+            "result": "See the current insight queue: ticker, signal, why, and action.",
+        },
+        {
+            "step": "2",
+            "do": "Press 2 or click Readiness",
+            "result": "See exactly what blocks a decision-useful workflow.",
+        },
+        {
+            "step": "3",
+            "do": "Press D or click Decision-ready",
+            "result": "Show only not-priced-in rows that passed the usefulness gate.",
+        },
+        {
+            "step": "4",
+            "do": "Press 4 or click Candidates",
+            "result": "Review companies. These are research rows, not trade signals.",
+        },
+        {
+            "step": "5",
+            "do": "Press 3 or click Run",
+            "result": "Review external-call budget before running anything.",
+        },
+        {
+            "step": "6",
+            "do": "Use the bottom command box",
+            "result": "Try ticker AAPL, refresh, help, or q. Esc focuses the box.",
+        },
+    ]
+
+
+def _tutorial_caption(payload: Mapping[str, object]) -> str:
+    prefix = (
+        "Read WHY/NOW/NEXT first; then follow the numbered rows. "
+        if _tutorial_mission_rows(payload)
+        else ""
+    )
+    return (
+        f"{prefix}Safe rule: clicking, filtering, tutorial, and refresh make "
+        "0 provider calls."
+    )
+
+
+def _tutorial_lines(payload: Mapping[str, object], width: int) -> list[str]:
+    lines: list[str] = []
+    mission_items = _run_mission_brief_items(payload)
+    if mission_items:
+        lines.append(_rule("Mission - why this exists", width))
+        lines.extend(_kv_lines(mission_items, width=width))
+        lines.append("")
+    lines.append(_rule("Tutorial - your first 90 seconds", width))
     lines.extend(
         _table_lines(
-            [
-                {
-                    "step": "1",
-                    "do": "Press 1 / click Insights",
-                    "result": "See ticker signals, why they matter, and the next action.",
-                },
-                {
-                    "step": "2",
-                    "do": "Press 2 / click Readiness",
-                    "result": "See blockers before trusting output.",
-                },
-                {
-                    "step": "3",
-                    "do": "Press M / click SCAN",
-                    "result": "Toggle between mismatch shortlist and full scan rows.",
-                },
-                {
-                    "step": "4",
-                    "do": "Press 4 / click Candidates",
-                    "result": "Review company research rows.",
-                },
-                {
-                    "step": "5",
-                    "do": "Press 3 / click Run",
-                    "result": "Review the external-call plan before running anything.",
-                },
-                {
-                    "step": "6",
-                    "do": "Use command box",
-                    "result": "Try ticker AAPL, refresh, help, or q.",
-                },
-            ],
+            _tutorial_control_rows(),
             [
                 ("step", "Step", 6),
                 ("do", "Do this", 28),
@@ -4316,7 +4334,7 @@ def _tutorial_lines(width: int) -> list[str]:
     lines.extend(
         _kv_lines(
             (
-                ("Safe rule", "Tutorial, clicking, filtering, and refresh make 0 provider calls."),
+                ("Safe rule", _tutorial_caption(payload)),
                 ("Orders", "Real order submission is disabled."),
                 ("Exit", "Press q."),
             ),

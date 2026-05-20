@@ -1004,6 +1004,9 @@ def test_dashboard_tui_once_defaults_to_tutorial(
 
     assert output.err == ""
     assert "Page: tutorial" in output.out
+    assert "Mission - why this exists" in output.out
+    assert "Current answer" in output.out
+    assert "Useful next" in output.out
     assert "Tutorial - your first 90 seconds" in output.out
 
 
