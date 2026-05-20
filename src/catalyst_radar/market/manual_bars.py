@@ -325,6 +325,30 @@ class ManualBarsRepairPlanResult:
             **provider_saved_file_capture_request_body,
             "confirm_external_call": True,
         }
+        dashboard_manual_template_command = _dashboard_manual_market_bars_command(
+            "template",
+            stocks_only=self.stocks_only,
+        )
+        dashboard_manual_template_regenerate_command = (
+            _dashboard_manual_market_bars_command(
+                "template",
+                stocks_only=self.stocks_only,
+                overwrite=True,
+            )
+        )
+        dashboard_manual_import_preview_command = (
+            _dashboard_manual_market_bars_command(
+                "import",
+                stocks_only=self.stocks_only,
+            )
+        )
+        dashboard_manual_import_execute_command = (
+            _dashboard_manual_market_bars_command(
+                "import",
+                stocks_only=self.stocks_only,
+                execute=True,
+            )
+        )
         provider_saved_file_validate_request_body = {
             "expected_as_of": self.expected_as_of.isoformat(),
             "fixture_path": str(provider_saved_file_path),
@@ -459,6 +483,18 @@ class ManualBarsRepairPlanResult:
             ),
             "missing_with_local_history_sample": list(
                 self.missing_with_local_history_tickers[:12]
+            ),
+            "dashboard_manual_template_command": (
+                dashboard_manual_template_command if missing > 0 else None
+            ),
+            "dashboard_manual_template_regenerate_command": (
+                dashboard_manual_template_regenerate_command if missing > 0 else None
+            ),
+            "dashboard_manual_import_preview_command": (
+                dashboard_manual_import_preview_command if missing > 0 else None
+            ),
+            "dashboard_manual_import_execute_command": (
+                dashboard_manual_import_execute_command if missing > 0 else None
             ),
             "missing_with_local_history_more": max(
                 0,
@@ -1450,6 +1486,24 @@ def _manual_bar_datetime(value: object) -> datetime:
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         return parsed.replace(tzinfo=UTC)
     return parsed.astimezone(UTC)
+
+
+def _dashboard_manual_market_bars_command(
+    action: str,
+    *,
+    stocks_only: bool,
+    execute: bool = False,
+    overwrite: bool = False,
+) -> str:
+    parts = ["bars", "manual"]
+    if not stocks_only:
+        parts.append("full")
+    parts.append(action)
+    if execute:
+        parts.append("execute")
+    if overwrite:
+        parts.append("overwrite")
+    return " ".join(parts)
 
 
 def _manual_market_bars_template_command(

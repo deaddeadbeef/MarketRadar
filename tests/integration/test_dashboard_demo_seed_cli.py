@@ -1082,6 +1082,11 @@ def test_dashboard_manual_bar_fill_progress_summary_is_human_readable() -> None:
                             "2026-05-15 --complete-rows-only"
                         ),
                     },
+                    "dashboard_manual_template_command": "bars manual full template",
+                    "dashboard_manual_import_preview_command": "bars manual full import",
+                    "dashboard_manual_import_execute_command": (
+                        "bars manual full import execute"
+                    ),
                     "provider_fill_plan": {
                         "status": "ready_for_approval_with_health_warning",
                         "provider_label": "Polygon/Massive grouped daily",
@@ -1174,6 +1179,9 @@ def test_dashboard_manual_bar_fill_progress_summary_is_human_readable() -> None:
         "12/523 complete; 3 partial; 508 empty; 15 touched; preview invalid; "
         "file data\\local\\manual-bars-2026-05-15.csv"
     )
+    assert "Command: bars manual full import" in _market_bar_operator_step_summary(
+        payload
+    )
     assert _market_bar_operator_step_summary(payload).startswith(
         "Finish or clear partial OHLCV/VWAP rows"
     )
@@ -1195,6 +1203,8 @@ def test_dashboard_manual_bar_fill_progress_summary_is_human_readable() -> None:
     assert "Saved file capture: 1 external call(s)" in overview
     assert "safe confirm_external_call=false" in overview
     assert "confirm confirm_external_call=true" in ops
+    assert "Manual CSV action" in run
+    assert "bars manual full import" in run
     assert "Saved file capture" in run
     assert "--save-response" in run
     assert "Saved file import: missing saved file" in overview

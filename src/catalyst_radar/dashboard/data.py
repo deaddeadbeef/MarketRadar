@@ -4132,6 +4132,18 @@ def _priced_in_audit_market_bar_repair(
         "import_preview_command": import_preview_command,
         "import_execute_command": import_execute_command,
         "required_fill_fields": list(MANUAL_BAR_REQUIRED_FILL_FIELDS),
+        "dashboard_manual_template_command": manual_repair_plan.get(
+            "dashboard_manual_template_command"
+        ),
+        "dashboard_manual_template_regenerate_command": manual_repair_plan.get(
+            "dashboard_manual_template_regenerate_command"
+        ),
+        "dashboard_manual_import_preview_command": manual_repair_plan.get(
+            "dashboard_manual_import_preview_command"
+        ),
+        "dashboard_manual_import_execute_command": manual_repair_plan.get(
+            "dashboard_manual_import_execute_command"
+        ),
         "blank_required_field_counts_if_new_template": {
             field_name: effective_missing
             for field_name in MANUAL_BAR_REQUIRED_FILL_FIELDS
@@ -4181,6 +4193,18 @@ def _priced_in_stock_scope_with_manual_repair(
         {
             "manual_template_regenerate_command": repair_plan.get(
                 "manual_template_regenerate_command",
+            ),
+            "dashboard_manual_template_command": repair_plan.get(
+                "dashboard_manual_template_command"
+            ),
+            "dashboard_manual_template_regenerate_command": repair_plan.get(
+                "dashboard_manual_template_regenerate_command"
+            ),
+            "dashboard_manual_import_preview_command": repair_plan.get(
+                "dashboard_manual_import_preview_command"
+            ),
+            "dashboard_manual_import_execute_command": repair_plan.get(
+                "dashboard_manual_import_execute_command"
             ),
             "local_template_path": repair_plan.get("local_template_path"),
             "local_template_exists": bool(repair_plan.get("local_template_exists")),
@@ -6887,6 +6911,18 @@ def _priced_in_source_coverage_with_market_bar_scope(
             "coverage_basis": coverage_basis,
             "as_of_bar_scope": _row_dict(scope_payload),
             "repair_status": repair.get("status"),
+            "dashboard_manual_template_command": repair.get(
+                "dashboard_manual_template_command"
+            ),
+            "dashboard_manual_template_regenerate_command": repair.get(
+                "dashboard_manual_template_regenerate_command"
+            ),
+            "dashboard_manual_import_preview_command": repair.get(
+                "dashboard_manual_import_preview_command"
+            ),
+            "dashboard_manual_import_execute_command": repair.get(
+                "dashboard_manual_import_execute_command"
+            ),
             "provider_fill_plan": _row_dict(provider_fill_plan),
             "provider_fill_command": provider_fill_plan.get("provider_call_command"),
             "provider_fill_status": provider_fill_plan.get("status"),
@@ -12696,6 +12732,18 @@ def _priced_in_source_action_row(
         "provider_fill_status": values.get("provider_fill_status"),
         "provider_fill_external_call_count": values.get(
             "provider_fill_external_call_count"
+        ),
+        "dashboard_manual_template_command": values.get(
+            "dashboard_manual_template_command"
+        ),
+        "dashboard_manual_template_regenerate_command": values.get(
+            "dashboard_manual_template_regenerate_command"
+        ),
+        "dashboard_manual_import_preview_command": values.get(
+            "dashboard_manual_import_preview_command"
+        ),
+        "dashboard_manual_import_execute_command": values.get(
+            "dashboard_manual_import_execute_command"
         ),
         "sample_tickers": sample_tickers,
         "sample_scope": _priced_in_source_sample_scope(
