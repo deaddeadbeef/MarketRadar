@@ -1,6 +1,82 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 16:54:19 +08:00
+Last updated: 2026-05-20 17:09:09 +08:00
+
+## Latest Saved Grouped-Daily Preview API Parity
+
+Goal alignment / drift check:
+
+- The active goal remains: scan the broad market and tell whether any stock's
+  price has not yet matched market emotion/expectations.
+- The goal explicitly has two operating surfaces: CLI/API and dashboard. The
+  previous slice added a safe CLI preview for saved Polygon/Massive grouped
+  daily files, but the API still lacked the same no-write operation.
+- This slice keeps the same product blocker in view: full-market priced-in
+  analysis is still blocked by scan-date market bars. It does not change the
+  scoring model, scan eligibility, dashboard layout, live provider execution,
+  agent behavior, Schwab behavior, or broker/order behavior.
+- This slice makes 0 Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or
+  provider calls.
+
+Fix in this slice:
+
+- Extracted the saved grouped-daily fixture preview into
+  `catalyst_radar.connectors.polygon_fixture.preview_polygon_grouped_daily_fixture`.
+- The CLI `ingest-polygon grouped-daily --fixture ... --validate-only` now uses
+  that shared helper.
+- Added API request model `MarketBarsProviderFixturePreviewRequest`.
+- Added API endpoint:
+  `POST /api/radar/market-bars/provider-fixture-preview`
+- The endpoint:
+  - requires analyst role like the other market-bar write-adjacent endpoints;
+  - reads a saved grouped-daily JSON fixture from disk;
+  - returns the same `polygon-grouped-daily-fixture-preview-v1` payload as the
+    CLI preview;
+  - reports coverage against active and stock-like local securities;
+  - reports `external_calls_made=0` and `db_writes_made=0`;
+  - does not save provider health, job runs, raw provider records, normalized
+    provider records, incidents, or daily bars;
+  - returns HTTP 422 for invalid/missing local fixture files.
+- Repair-plan and priced-in provider-fill payloads now expose:
+  - `provider_saved_file_validate_command`
+  - `provider_saved_file_validate_api`
+  - `provider_saved_file_import_command`
+  - `provider_saved_file_external_call_count=0`
+- Updated security-boundary coverage for the new route.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\connectors\polygon_fixture.py src\catalyst_radar\cli.py src\catalyst_radar\api\routes\radar.py src\catalyst_radar\market\manual_bars.py src\catalyst_radar\dashboard\data.py tests\integration\test_api_routes.py tests\integration\test_provider_ingest_cli.py tests\integration\test_dashboard_data.py tests\integration\test_security_boundaries.py
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_api_routes.py::test_post_radar_market_bars_provider_fixture_preview_is_zero_write tests\integration\test_api_routes.py::test_post_radar_market_bars_provider_fixture_preview_rejects_missing_file tests\integration\test_polygon_ingest_cli.py::test_polygon_grouped_daily_fixture_validate_only_makes_no_writes tests\integration\test_provider_ingest_cli.py::test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_warns_for_stale_eod_provider_health -q
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_security_boundaries.py -q
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_api_routes.py::test_post_radar_market_bars_template_and_import_use_database_universe tests\integration\test_api_routes.py::test_post_radar_market_bars_import_complete_rows_only_is_incremental tests\integration\test_api_routes.py::test_post_radar_market_bars_template_and_import_can_scope_to_stocks tests\integration\test_api_routes.py::test_post_radar_market_bars_provider_fixture_preview_is_zero_write tests\integration\test_api_routes.py::test_post_radar_market_bars_provider_fixture_preview_rejects_missing_file -q
+.\.venv\Scripts\python.exe -m catalyst_radar.cli ingest-polygon grouped-daily --date 2026-05-08 --fixture tests\fixtures\polygon\grouped_daily_2026-05-08.json --validate-only --json
+git diff --check
+```
+
+Results:
+
+- Ruff passed.
+- Focused API/CLI/provider/dashboard regression tests passed: `5 passed`.
+- Security-boundary tests passed: `13 passed`.
+- Market-bar API focused tests passed: `5 passed`.
+- CLI validate-only JSON smoke returned schema
+  `polygon-grouped-daily-fixture-preview-v1`, `status=ready_with_rejections`,
+  `external_calls_made=0`, and `db_writes_made=0`.
+- `git diff --check` passed.
+
+Next useful product action:
+
+- Clear the `market_bars` blocker. The safe API path is now:
+  `POST /api/radar/market-bars/provider-fixture-preview` with
+  `expected_as_of=2026-05-15` and
+  `fixture_path=data\local\polygon-grouped-daily-2026-05-15.json`.
+- If the preview covers the missing bars, use the CLI saved-file import path
+  already shown by the repair plan, then rerun quick status and the priced-in
+  audit.
+- Do not run provider/source-fill execution commands without explicit operator
+  approval.
 
 ## Latest Saved Grouped-Daily Preview Before Import
 

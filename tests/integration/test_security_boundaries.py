@@ -229,6 +229,14 @@ EXPECTED_API_ROUTES = {
     ),
     (
         "POST",
+        "/api/radar/market-bars/provider-fixture-preview",
+    ): (
+        "catalyst_radar.api.routes.radar",
+        "radar_market_bars_provider_fixture_preview",
+        ("radar",),
+    ),
+    (
+        "POST",
         "/api/radar/text/features-batch",
     ): ("catalyst_radar.api.routes.radar", "radar_text_features_batch", ("radar",)),
     (
