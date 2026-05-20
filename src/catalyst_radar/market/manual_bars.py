@@ -465,6 +465,11 @@ class ManualBarsRepairPlanResult:
                 if missing > 0
                 else None
             ),
+            "provider_saved_file_import_api": (
+                "POST /api/radar/market-bars/provider-fixture-import"
+                if missing > 0
+                else None
+            ),
             "provider_saved_file_external_call_count": 0,
             "provider_saved_file_boundary": (
                 "Validate the saved Polygon/Massive grouped-daily JSON response "

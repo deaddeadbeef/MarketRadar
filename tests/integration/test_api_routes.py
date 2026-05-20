@@ -2176,6 +2176,149 @@ def test_post_radar_market_bars_provider_fixture_preview_rejects_missing_file(
     assert response.status_code == 422
 
 
+def test_post_radar_market_bars_provider_fixture_import_previews_without_writes(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "radar-provider-fixture-import-preview.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = _create_database(database_url)
+    MarketRepository(engine).upsert_securities(
+        [
+            _security_with_type("AAPL", "CS"),
+            _security_with_type("MSFT", "CS"),
+            _security_with_type("GOOG", "CS"),
+        ]
+    )
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/radar/market-bars/provider-fixture-import",
+        json={
+            "expected_as_of": "2026-05-08",
+            "fixture_path": "tests/fixtures/polygon/grouped_daily_2026-05-08.json",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["schema_version"] == "polygon-grouped-daily-fixture-import-v1"
+    assert payload["status"] == "ready_with_rejections"
+    assert payload["executed"] is False
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
+    assert "execute=true" in payload["write_boundary"]
+
+    with engine.connect() as conn:
+        assert conn.execute(select(func.count()).select_from(job_runs)).scalar_one() == 0
+        assert (
+            conn.execute(select(func.count()).select_from(raw_provider_records)).scalar_one()
+            == 0
+        )
+        assert (
+            conn.execute(
+                select(func.count()).select_from(normalized_provider_records)
+            ).scalar_one()
+            == 0
+        )
+        assert conn.execute(select(func.count()).select_from(daily_bars)).scalar_one() == 0
+        assert (
+            conn.execute(select(func.count()).select_from(data_quality_incidents)).scalar_one()
+            == 0
+        )
+
+
+def test_post_radar_market_bars_provider_fixture_import_executes_saved_fixture(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "radar-provider-fixture-import.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = _create_database(database_url)
+    MarketRepository(engine).upsert_securities(
+        [
+            _security_with_type("AAPL", "CS"),
+            _security_with_type("MSFT", "CS"),
+            _security_with_type("GOOG", "CS"),
+        ]
+    )
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/radar/market-bars/provider-fixture-import",
+        json={
+            "expected_as_of": "2026-05-08",
+            "fixture_path": "tests/fixtures/polygon/grouped_daily_2026-05-08.json",
+            "execute": True,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["schema_version"] == "polygon-grouped-daily-fixture-import-v1"
+    assert payload["status"] == "imported_with_rejections"
+    assert payload["executed"] is True
+    assert payload["requested_count"] == 7
+    assert payload["raw_count"] == 6
+    assert payload["normalized_count"] == 6
+    assert payload["daily_bar_count"] == 6
+    assert payload["rejected_count"] == 1
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 1
+    assert payload["preview"]["schema_version"] == (
+        "polygon-grouped-daily-fixture-preview-v1"
+    )
+    assert "0 provider calls" in payload["write_boundary"]
+
+    with engine.connect() as conn:
+        assert conn.execute(select(func.count()).select_from(job_runs)).scalar_one() == 1
+        assert (
+            conn.execute(select(func.count()).select_from(raw_provider_records)).scalar_one()
+            == 6
+        )
+        assert (
+            conn.execute(
+                select(func.count()).select_from(normalized_provider_records)
+            ).scalar_one()
+            == 6
+        )
+        assert conn.execute(select(func.count()).select_from(daily_bars)).scalar_one() == 6
+        assert (
+            conn.execute(select(func.count()).select_from(data_quality_incidents)).scalar_one()
+            == 1
+        )
+        assert (
+            conn.execute(
+                select(func.count()).where(
+                    daily_bars.c.ticker == "AAPL",
+                    daily_bars.c.date == date(2026, 5, 8),
+                )
+            ).scalar_one()
+            == 1
+        )
+
+
+def test_post_radar_market_bars_provider_fixture_import_rejects_missing_file(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "radar-provider-fixture-import-missing.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/radar/market-bars/provider-fixture-import",
+        json={
+            "expected_as_of": "2026-05-08",
+            "fixture_path": str(tmp_path / "missing-grouped-daily.json"),
+            "execute": True,
+        },
+    )
+
+    assert response.status_code == 422
+
+
 def test_post_radar_sec_submissions_batch_calls_capped_sec_executor(
     tmp_path,
     monkeypatch,
