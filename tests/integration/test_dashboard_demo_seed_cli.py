@@ -42,6 +42,7 @@ from catalyst_radar.dashboard.tui import (
     _priced_in_overview_rows,
     _priced_in_review_rows,
     _priced_in_source_workflow_payload,
+    _run_audit_source_blocker_hint,
     _stock_market_bar_next_summary,
     dashboard_filters_for_page,
     dashboard_snapshot_payload,
@@ -1021,6 +1022,40 @@ def test_dashboard_market_bar_missing_type_summary_is_human_readable() -> None:
     assert _market_bar_missing_type_summary(payload) == (
         "3 missing scan-date bars; types CS:2, UNIT:1; "
         "company-like 2; fund-like 0; wrappers 1; unknown 0"
+    )
+
+
+def test_dashboard_source_blocker_prefers_dashboard_market_bar_actions() -> None:
+    payload = {
+        "priced_in_audit": {
+            "sources": [
+                {
+                    "source": "market_bars",
+                    "status": "blocked",
+                    "command": (
+                        "catalyst-radar market-bars template --expected-as-of "
+                        "2026-05-15 --out data\\local\\manual-bars-2026-05-15.csv "
+                        "--missing-only"
+                    ),
+                }
+            ],
+            "market_bars": {
+                "repair": {
+                    "dashboard_manual_template_command": "bars manual full template",
+                    "dashboard_manual_import_preview_command": "bars manual full import",
+                }
+            },
+        }
+    }
+
+    hint = _run_audit_source_blocker_hint(
+        payload["priced_in_audit"]["sources"][0],
+        payload,
+    )
+
+    assert hint == (
+        "type `bars manual full template` to create the CSV; "
+        "type `bars manual full import` to preview complete rows; 0 provider calls."
     )
 
 
