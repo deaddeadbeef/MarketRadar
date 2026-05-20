@@ -472,14 +472,14 @@ def _filter_rows_to_run_universe(
     universe = str(radar_run_summary.get("universe") or "").strip()
     run_date = _parse_date(radar_run_summary.get("as_of"))
     if not universe or run_date is None or cutoff is None:
-        return [_row_dict(row) for row in rows]
+        return [_shallow_row_dict(row) for row in rows if isinstance(row, Mapping)]
     snapshot = ProviderRepository(engine).latest_universe_snapshot(
         name=universe,
         as_of=datetime(run_date.year, run_date.month, run_date.day, 21, tzinfo=UTC),
         available_at=cutoff,
     )
     if snapshot is None:
-        return [_row_dict(row) for row in rows]
+        return [_shallow_row_dict(row) for row in rows if isinstance(row, Mapping)]
     tickers = {
         member.ticker.upper()
         for member in ProviderRepository(engine).list_universe_member_rows(snapshot.id)
@@ -487,9 +487,10 @@ def _filter_rows_to_run_universe(
     if not tickers:
         return []
     return [
-        _row_dict(row)
+        _shallow_row_dict(row)
         for row in rows
-        if str(row.get("ticker") or "").strip().upper() in tickers
+        if isinstance(row, Mapping)
+        and str(row.get("ticker") or "").strip().upper() in tickers
     ]
 
 
@@ -542,7 +543,7 @@ def candidate_rows_with_market_context(
     for row in candidate_rows:
         if not isinstance(row, Mapping):
             continue
-        values = _row_dict(row)
+        values = _shallow_row_dict(row)
         ticker = str(values.get("ticker") or "").strip().upper()
         context = context_by_ticker.get(ticker)
         if context is None:
@@ -2772,10 +2773,15 @@ def priced_in_answer_payload(
             stocks_only=stocks_only,
         )
     )
+    queue_preflight = _mapping_value(resolved_queue, "preflight")
     resolved_preflight = (
         _row_dict(preflight)
         if isinstance(preflight, Mapping)
-        else priced_in_preflight_payload(engine, config)
+        else (
+            _row_dict(queue_preflight)
+            if isinstance(queue_preflight, Mapping) and queue_preflight
+            else priced_in_preflight_payload(engine, config)
+        )
     )
     status_counts = _mapping_value(resolved_queue, "status_counts")
     usefulness_counts = _mapping_value(resolved_queue, "usefulness_counts")
@@ -9666,7 +9672,11 @@ def radar_discovery_snapshot_payload(
         else load_ops_health(engine, now=artifact_cutoff or cutoff)
     )
     if candidate_rows is not None:
-        run_candidate_rows = [_row_dict(row) for row in candidate_rows]
+        run_candidate_rows = [
+            _shallow_row_dict(row)
+            for row in candidate_rows
+            if isinstance(row, Mapping)
+        ]
         context_candidate_rows = run_candidate_rows
     else:
         run_candidate_rows = load_candidate_rows(
@@ -14458,6 +14468,12 @@ def _row_dict(row: Mapping[str, object] | None) -> dict[str, object]:
     return {str(key): _json_safe(value) for key, value in row.items()}
 
 
+def _shallow_row_dict(row: Mapping[str, object] | None) -> dict[str, object]:
+    if row is None:
+        return {}
+    return {str(key): value for key, value in row.items()}
+
+
 def _dataclass_dict(value: object) -> dict[str, object]:
     if not is_dataclass(value) or isinstance(value, type):
         return _row_dict(value) if isinstance(value, Mapping) else {}
@@ -16077,7 +16093,7 @@ def _discovery_scoped_candidates(
         ticker = str(row.get("ticker") or "").strip().upper()
         if tickers and ticker not in tickers:
             continue
-        rows.append(_row_dict(row))
+        rows.append(_shallow_row_dict(row))
     return rows
 
 
@@ -16100,7 +16116,7 @@ def _discovery_run_candidates(
             continue
         if as_of_date is not None and _parse_date(row.get("as_of")) != as_of_date:
             continue
-        rows.append(_row_dict(row))
+        rows.append(_shallow_row_dict(row))
     return rows
 
 
@@ -16115,7 +16131,7 @@ def _latest_candidate_context_payload(
     run_as_of = _parse_date(summary.get("as_of"))
     latest_candidate_date = latest_candidate_at.date() if latest_candidate_at else None
     top_candidates = sorted(
-        (_row_dict(row) for row in candidates),
+        (row for row in candidates if isinstance(row, Mapping)),
         key=lambda row: (-_finite_float(row.get("final_score")), str(row.get("ticker") or "")),
     )[: max(0, int(limit))]
     return {
@@ -16155,7 +16171,7 @@ def _latest_run_packet_candidates(
             continue
         if run_finished_at is not None and packet_produced_at > run_finished_at:
             continue
-        rows.append(_row_dict(row))
+        rows.append(_shallow_row_dict(row))
     return rows
 
 

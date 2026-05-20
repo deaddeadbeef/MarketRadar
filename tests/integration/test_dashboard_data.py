@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -1565,6 +1566,103 @@ def test_priced_in_answer_payload_summarizes_current_scan(tmp_path: Path) -> Non
         assert payload["top_rows"][0]["ticker"] == "MSFT"
         assert payload["top_rows"][0]["decision_ready"] is False
         assert payload["top_rows"][0]["missing_sources"]
+
+
+def test_priced_in_answer_payload_reuses_queue_preflight(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = _engine(tmp_path)
+    queued_preflight = {
+        "schema_version": "priced-in-preflight-v1",
+        "rows": [{"area": "market_bars", "status": "ready"}],
+        "evidence_plan": {"steps": []},
+    }
+    queued_payload = {
+        "schema_version": "priced-in-queue-v1",
+        "status": "ready",
+        "latest_run": {"as_of": "2026-05-15"},
+        "scan": {"freshness": {"active_security_count": 1}},
+        "filters": {
+            "status": "all",
+            "usefulness": "all",
+            "source_gap": [],
+            "decision_gap": [],
+            "min_gap": None,
+            "stocks_only": False,
+            "limit": 1,
+            "offset": 0,
+        },
+        "count": 0,
+        "returned_count": 0,
+        "total_count": 0,
+        "offset": 0,
+        "has_more": False,
+        "status_counts": {},
+        "usefulness_counts": {},
+        "decision_gap_counts": {"row_count": 0, "counts": {}},
+        "source_coverage": {
+            "sources": {},
+            "actions": [],
+            "summary": "",
+            "weak_sources": [],
+        },
+        "rows": [],
+        "preflight": queued_preflight,
+    }
+    queue_calls = 0
+    seen_preflight: Mapping[str, object] | None = None
+
+    def fake_queue_payload(*args, **kwargs):
+        nonlocal queue_calls
+        queue_calls += 1
+        return queued_payload
+
+    def fail_preflight_payload(*args, **kwargs):
+        raise AssertionError("priced-in answer recomputed preflight")
+
+    def fake_market_bars(_engine, _config, _queue, preflight):
+        nonlocal seen_preflight
+        seen_preflight = preflight
+        return {
+            "status": "ready",
+            "active_securities": 1,
+            "with_as_of_bar": 1,
+            "missing_as_of_bar": 0,
+            "repair": {
+                "schema_version": "priced-in-market-bar-repair-v1",
+                "status": "ready",
+                "active_securities": 1,
+                "with_as_of_bar": 1,
+                "missing_as_of_bar": 0,
+                "external_calls_made": 0,
+            },
+        }
+
+    monkeypatch.setitem(
+        priced_in_answer_payload.__globals__,
+        "priced_in_queue_payload",
+        fake_queue_payload,
+    )
+    monkeypatch.setitem(
+        priced_in_answer_payload.__globals__,
+        "priced_in_preflight_payload",
+        fail_preflight_payload,
+    )
+    monkeypatch.setitem(
+        priced_in_answer_payload.__globals__,
+        "_priced_in_audit_market_bars",
+        fake_market_bars,
+    )
+
+    payload = priced_in_answer_payload(engine, AppConfig.from_env({}), limit=1)
+
+    assert queue_calls == 1
+    assert seen_preflight is not None
+    assert seen_preflight["schema_version"] == "priced-in-preflight-v1"
+    assert seen_preflight["rows"] == queued_preflight["rows"]
+    assert payload["schema_version"] == "priced-in-answer-v1"
+    assert payload["external_calls_made"] == 0
 
 
 def test_priced_in_full_scan_audit_payload_consolidates_current_state(
