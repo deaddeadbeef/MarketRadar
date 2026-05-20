@@ -1,8 +1,39 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 07:08:35 +08:00
+Last updated: 2026-05-21 07:39:53 +08:00
 
 
+
+## Latest Full-Market Trust Gate
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, import rows, change scoring, reduce the universe, or claim readiness.
+- This is useful because the operator now gets one explicit zero-call answer to: `Can MarketRadar trust a full-market priced-in answer right now?`
+
+Fix in this slice:
+
+- `priced_in_answer_payload` now includes `full_market_trust_gate` with status, boolean trust flag, first blocker, source gap count, scan counts, next action/command, and `external_calls_made=0`.
+- CLI text for `priced-in-answer` prints the trust gate, while `priced-in-answer --json` and `GET /api/radar/priced-in/answer` expose the structured payload.
+- The TUI Tutorial and Run mission rows now show `Trust gate` next to current answer, trust blocker, useful next, and boundary.
+- README documents that the priced-in answer API/CLI carries the same gate surfaced in the dashboard.
+
+Validation observed in this slice:
+
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\integration\test_dashboard_demo_seed_cli.py` passed with `All checks passed!`.
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m py_compile src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\integration\test_dashboard_demo_seed_cli.py` exited 0.
+- Focused pytest passed 3 tests: `test_priced_in_answer_cli_outputs_current_scan_answer`, `test_dashboard_run_page_shows_priced_in_evidence_plan`, and `test_dashboard_tui_once_defaults_to_tutorial`.
+- `git diff --check` passed.
+- Live zero-call `priced-in-answer --json` smoke against `schwab-live.db` returned `full_market_trust_gate.status=blocked`, `trusted_full_market_answer=False`, `first_blocker=market_bars`, `external_calls_made=0`, and scan coverage `12087/12613` with `526` unscanned.
+- Live zero-call text `priced-in-answer` smoke printed `full_market_trust_gate=...`, `evidence_completeness=...`, and `external_calls=0`.
+- Live zero-call TUI Run and Tutorial smokes both showed `Trust gate` and `External calls made: 0`.
+
+Next useful product action:
+
+- Do not treat this slice as goal completion.
+- The immediate trusted-answer blocker remains missing 2026-05-15 active-universe market bars; the latest zero-call smoke reports first blocker `market_bars`, first gap count `523`, and full scan coverage `12087/12613` with `526` unscanned rows.
+- The next real unblock still requires explicit operator approval for one saved grouped-daily provider capture, or a manually supplied saved grouped-daily JSON file followed by zero-call validate/import.
 
 ## Latest Agent Brief Market-Bar Unblock Options
 

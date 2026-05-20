@@ -128,6 +128,12 @@ source, next command, call boundary, next unblock options, and roadmap of
 remaining evidence gaps. When market bars block the answer, those unblock
 options separate the zero-call manual CSV path from the saved Polygon/Massive
 capture approval path, including the expected call count before capture.
+`priced-in-answer` and `GET /api/radar/priced-in/answer` also include
+`full_market_trust_gate`, a zero-call yes/no contract for whether the current
+full-market priced-in answer is trustworthy yet. The TUI mission rows surface
+the same gate so the dashboard starts with the answer, the blocker, and safety.
+The gate is a readiness contract only: `blocked` means keep collecting
+evidence, not that a trade should be made or skipped.
 The default is still the full scan. Use `ready`, press `D`, or run
 `catalyst-radar priced-in-queue --decision-ready` only when you intentionally
 want the small decision-useful subset from that full scan.
