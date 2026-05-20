@@ -28,6 +28,7 @@ from catalyst_radar.storage.schema import (
     budget_ledger,
     candidate_packets,
     candidate_states,
+    daily_bars,
     decision_cards,
     securities,
     signal_features,
@@ -1882,6 +1883,73 @@ def test_post_radar_market_bars_template_and_import_use_database_universe(
     assert bars[0].date == date(2026, 5, 11)
 
 
+def test_post_radar_market_bars_import_complete_rows_only_is_incremental(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "radar-market-bars-incremental.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = _create_database(database_url)
+    _insert_active_securities(engine, ["AAA", "BBB", "ZZZ"])
+    bars_path = tmp_path / "api-incremental-bars.csv"
+    _write_mixed_manual_bar_csv(
+        bars_path,
+        complete_tickers=["AAA"],
+        empty_tickers=["BBB"],
+        partial_tickers=[],
+        as_of="2026-05-11",
+    )
+    client = TestClient(create_app())
+
+    preview_response = client.post(
+        "/api/radar/market-bars/import",
+        json={
+            "daily_bars_path": str(bars_path),
+            "expected_as_of": "2026-05-11",
+            "complete_rows_only": True,
+        },
+    )
+
+    assert preview_response.status_code == 200
+    preview_payload = preview_response.json()
+    assert preview_payload["status"] == "ready_partial"
+    assert preview_payload["complete_rows_only"] is True
+    assert preview_payload["coverage_after_import_count"] == 1
+    assert preview_payload["missing_expected_count"] == 2
+    assert preview_payload["fill_progress"] == {
+        "complete_rows": 1,
+        "partial_rows": 0,
+        "empty_rows": 1,
+        "filled_rows": 1,
+    }
+    assert preview_payload["executed"] is False
+    assert preview_payload["external_calls_made"] == 0
+
+    execute_response = client.post(
+        "/api/radar/market-bars/import",
+        json={
+            "daily_bars_path": str(bars_path),
+            "expected_as_of": "2026-05-11",
+            "complete_rows_only": True,
+            "execute": True,
+        },
+    )
+
+    assert execute_response.status_code == 200
+    execute_payload = execute_response.json()
+    assert execute_payload["status"] == "partial_imported"
+    assert execute_payload["executed"] is True
+    with engine.connect() as conn:
+        imported = {
+            str(row._mapping["ticker"])
+            for row in conn.execute(
+                select(daily_bars.c.ticker).where(daily_bars.c.date == date(2026, 5, 11))
+            )
+        }
+    assert "AAA" in imported
+    assert "BBB" not in imported
+
+
 def test_post_radar_market_bars_template_and_import_can_scope_to_stocks(
     tmp_path,
     monkeypatch,
@@ -3273,6 +3341,71 @@ def _write_manual_bar_csv(path: Path, tickers: list[str], *, as_of: str) -> None
                     "close": f"{100 + (index / 100):.2f}",
                     "volume": "1000000",
                     "vwap": "100",
+                    "adjusted": "true",
+                    "provider": "manual_csv",
+                    "source_ts": stamp,
+                    "available_at": stamp,
+                }
+            )
+
+
+def _write_mixed_manual_bar_csv(
+    path: Path,
+    *,
+    complete_tickers: list[str],
+    empty_tickers: list[str],
+    partial_tickers: list[str],
+    as_of: str,
+) -> None:
+    stamp = datetime(2026, 5, 11, 21, tzinfo=UTC).isoformat()
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=MANUAL_BAR_COLUMNS)
+        writer.writeheader()
+        for index, ticker in enumerate(complete_tickers):
+            writer.writerow(
+                {
+                    "ticker": ticker,
+                    "date": as_of,
+                    "open": "100",
+                    "high": "101",
+                    "low": "99",
+                    "close": f"{100 + (index / 100):.2f}",
+                    "volume": "1000000",
+                    "vwap": "100",
+                    "adjusted": "true",
+                    "provider": "manual_csv",
+                    "source_ts": stamp,
+                    "available_at": stamp,
+                }
+            )
+        for ticker in empty_tickers:
+            writer.writerow(
+                {
+                    "ticker": ticker,
+                    "date": as_of,
+                    "open": "",
+                    "high": "",
+                    "low": "",
+                    "close": "",
+                    "volume": "",
+                    "vwap": "",
+                    "adjusted": "true",
+                    "provider": "manual_csv",
+                    "source_ts": stamp,
+                    "available_at": stamp,
+                }
+            )
+        for ticker in partial_tickers:
+            writer.writerow(
+                {
+                    "ticker": ticker,
+                    "date": as_of,
+                    "open": "100",
+                    "high": "",
+                    "low": "",
+                    "close": "",
+                    "volume": "",
+                    "vwap": "",
                     "adjusted": "true",
                     "provider": "manual_csv",
                     "source_ts": stamp,

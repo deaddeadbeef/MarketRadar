@@ -124,22 +124,45 @@ class ManualBarsImportResult:
     empty_required_row_count: int = 0
     invalid_examples: tuple[str, ...] = ()
     bars: tuple[DailyBar, ...] = field(default=(), repr=False)
+    complete_rows_only: bool = False
 
     def as_payload(self) -> dict[str, object]:
         missing_sample = list(self.missing_expected_tickers[:12])
-        if self.status == "imported":
+        if self.status == "partial_imported":
+            next_action = (
+                "Imported complete rows only; continue filling the CSV until "
+                "full coverage is ready."
+            )
+        elif self.status == "imported":
             next_action = "Run one plan-only radar smoke, then run a capped scan if intended."
+        elif self.status == "ready_partial":
+            next_action = (
+                "Complete-row preview is ready; rerun with --execute "
+                "--complete-rows-only to import completed rows. Full coverage "
+                "remains incomplete."
+            )
         elif self.status == "ready":
             next_action = "Preview is ready; rerun with --execute to import these bars."
         elif self.status == "stale":
             next_action = "Provide a CSV whose latest date is at least expected_as_of."
         elif self.status == "incomplete":
             next_action = "Fill every active ticker for expected_as_of before importing."
-        elif self.status == "invalid":
+        elif self.status == "no_complete_rows":
             next_action = (
-                "Fix blank or invalid required fields, then preview again before "
-                "running --execute."
+                "Fill at least one complete OHLCV/VWAP row before using "
+                "--complete-rows-only."
             )
+        elif self.status == "invalid":
+            if self.complete_rows_only:
+                next_action = (
+                    "Fix partial or invalid touched rows, or leave unfinished rows "
+                    "fully empty before importing complete rows only."
+                )
+            else:
+                next_action = (
+                    "Fix blank or invalid required fields, then preview again before "
+                    "running --execute."
+                )
         else:
             next_action = "Review the CSV before importing."
         return {
@@ -164,6 +187,7 @@ class ManualBarsImportResult:
             "bars_at_expected_as_of": self.bars_at_expected_as_of,
             "stocks_only": self.stocks_only,
             "coverage_scope": "stock_like" if self.stocks_only else "active_universe",
+            "complete_rows_only": self.complete_rows_only,
             "missing_expected_count": len(self.missing_expected_tickers),
             "missing_expected_tickers": missing_sample,
             "missing_expected_more": max(
@@ -203,6 +227,7 @@ class ManualBarsImportResult:
                     else ""
                 )
                 + (" --stocks-only" if self.stocks_only else "")
+                + (" --complete-rows-only" if self.complete_rows_only else "")
                 + " --execute"
             ),
         }
@@ -242,6 +267,18 @@ class ManualBarsRepairPlanResult:
             self.expected_as_of,
             stocks_only=self.stocks_only,
             execute=True,
+        )
+        incremental_import_preview_command = _manual_market_bars_import_command(
+            self.expected_as_of,
+            stocks_only=self.stocks_only,
+            execute=False,
+            complete_rows_only=True,
+        )
+        incremental_import_execute_command = _manual_market_bars_import_command(
+            self.expected_as_of,
+            stocks_only=self.stocks_only,
+            execute=True,
+            complete_rows_only=True,
         )
         provider_command = (
             "catalyst-radar ingest-polygon grouped-daily "
@@ -307,6 +344,12 @@ class ManualBarsRepairPlanResult:
             "manual_template_command": template_command,
             "manual_import_preview_command": import_preview_command,
             "manual_import_execute_command": import_execute_command,
+            "manual_incremental_import_preview_command": (
+                incremental_import_preview_command
+            ),
+            "manual_incremental_import_execute_command": (
+                incremental_import_execute_command
+            ),
             "local_template_path": str(self.local_template_path),
             "local_template_exists": self.local_template_path.exists(),
             "local_template_preview": self.local_template_preview,
@@ -507,9 +550,14 @@ def preview_manual_market_bars_import(
     daily_bars_path: str | Path,
     expected_as_of: date | None = None,
     stocks_only: bool = False,
+    complete_rows_only: bool = False,
 ) -> ManualBarsImportResult:
     path = Path(daily_bars_path)
-    validation = _inspect_manual_bars_csv(path, expected_as_of=expected_as_of)
+    validation = _inspect_manual_bars_csv(
+        path,
+        expected_as_of=expected_as_of,
+        complete_rows_only=complete_rows_only,
+    )
     active = set(_active_tickers(engine, stocks_only=stocks_only))
     if not active:
         msg = "cannot validate manual market bars: no active securities in database"
@@ -555,9 +603,14 @@ def preview_manual_market_bars_import(
             partial_required_row_count=validation.partial_required_row_count,
             empty_required_row_count=validation.empty_required_row_count,
             invalid_examples=validation.invalid_examples,
+            complete_rows_only=complete_rows_only,
         )
     try:
-        bars = tuple(load_daily_bars_csv(path))
+        bars = (
+            _load_complete_manual_bars_csv(path)
+            if complete_rows_only
+            else tuple(load_daily_bars_csv(path))
+        )
     except (TypeError, ValueError) as exc:
         return ManualBarsImportResult(
             daily_bars_path=path,
@@ -576,6 +629,36 @@ def preview_manual_market_bars_import(
             partial_required_row_count=validation.partial_required_row_count,
             empty_required_row_count=validation.empty_required_row_count,
             invalid_examples=(str(exc),),
+            complete_rows_only=complete_rows_only,
+        )
+    if not bars:
+        existing_at_expected: set[str] | None = None
+        coverage_after_import: int | None = None
+        missing: tuple[str, ...] = ()
+        if expected_as_of is not None:
+            existing_at_expected = _bar_tickers_for_date(engine, expected_as_of) & active
+            coverage_after_import = len(existing_at_expected)
+            missing = tuple(sorted(active - existing_at_expected))
+        return ManualBarsImportResult(
+            daily_bars_path=path,
+            expected_as_of=expected_as_of,
+            status="no_complete_rows" if complete_rows_only else "invalid",
+            row_count=0,
+            ticker_count=0,
+            latest_bar_date=validation.latest_bar_date,
+            active_security_count=len(active),
+            existing_as_of_bar_count=(
+                len(existing_at_expected) if existing_at_expected is not None else None
+            ),
+            coverage_after_import_count=coverage_after_import,
+            bars_at_expected_as_of=0 if expected_as_of is not None else None,
+            stocks_only=stocks_only,
+            missing_expected_tickers=missing,
+            complete_required_row_count=validation.complete_required_row_count,
+            partial_required_row_count=validation.partial_required_row_count,
+            empty_required_row_count=validation.empty_required_row_count,
+            invalid_examples=("no complete manual market-bar rows were found",),
+            complete_rows_only=complete_rows_only,
         )
     _validate_manual_bars(bars)
     latest = max(bar.date for bar in bars)
@@ -597,7 +680,7 @@ def preview_manual_market_bars_import(
         coverage_after_import = len(coverage_after)
         missing = tuple(sorted(active - coverage_after))
         if missing and status == "ready":
-            status = "incomplete"
+            status = "ready_partial" if complete_rows_only else "incomplete"
     return ManualBarsImportResult(
         daily_bars_path=path,
         expected_as_of=expected_as_of,
@@ -616,6 +699,7 @@ def preview_manual_market_bars_import(
         complete_required_row_count=validation.complete_required_row_count,
         partial_required_row_count=validation.partial_required_row_count,
         empty_required_row_count=validation.empty_required_row_count,
+        complete_rows_only=complete_rows_only,
         bars=bars,
     )
 
@@ -627,14 +711,16 @@ def import_manual_market_bars(
     expected_as_of: date | None = None,
     execute: bool = False,
     stocks_only: bool = False,
+    complete_rows_only: bool = False,
 ) -> ManualBarsImportResult:
     preview = preview_manual_market_bars_import(
         engine,
         daily_bars_path=daily_bars_path,
         expected_as_of=expected_as_of,
         stocks_only=stocks_only,
+        complete_rows_only=complete_rows_only,
     )
-    if preview.status != "ready":
+    if preview.status not in {"ready", "ready_partial"}:
         return preview
     if not execute:
         return preview
@@ -642,7 +728,7 @@ def import_manual_market_bars(
     return ManualBarsImportResult(
         daily_bars_path=preview.daily_bars_path,
         expected_as_of=preview.expected_as_of,
-        status="imported",
+        status="partial_imported" if preview.status == "ready_partial" else "imported",
         row_count=preview.row_count,
         ticker_count=preview.ticker_count,
         latest_bar_date=preview.latest_bar_date,
@@ -656,6 +742,7 @@ def import_manual_market_bars(
         complete_required_row_count=preview.complete_required_row_count,
         partial_required_row_count=preview.partial_required_row_count,
         empty_required_row_count=preview.empty_required_row_count,
+        complete_rows_only=preview.complete_rows_only,
         bars=preview.bars,
     )
 
@@ -756,6 +843,51 @@ def _filled_required_row_count(path: Path) -> int:
         return count
 
 
+def _load_complete_manual_bars_csv(path: Path) -> tuple[DailyBar, ...]:
+    bars: list[DailyBar] = []
+    with path.open("r", encoding="utf-8-sig", newline="") as handle:
+        reader = csv.DictReader(handle)
+        for row in reader:
+            if not all(
+                str(row.get(field_name) or "").strip()
+                for field_name in MANUAL_BAR_REQUIRED_FILL_FIELDS
+            ):
+                continue
+            bars.append(
+                DailyBar(
+                    ticker=str(row["ticker"]).strip().upper(),
+                    date=date.fromisoformat(str(row["date"]).strip()),
+                    open=float(str(row["open"]).strip()),
+                    high=float(str(row["high"]).strip()),
+                    low=float(str(row["low"]).strip()),
+                    close=float(str(row["close"]).strip()),
+                    volume=int(float(str(row["volume"]).strip())),
+                    vwap=float(str(row["vwap"]).strip()),
+                    adjusted=_manual_bar_bool(row["adjusted"]),
+                    provider=str(row["provider"]).strip(),
+                    source_ts=_manual_bar_datetime(row["source_ts"]),
+                    available_at=_manual_bar_datetime(row["available_at"]),
+                )
+            )
+    return tuple(bars)
+
+
+def _manual_bar_bool(value: object) -> bool:
+    normalized = str(value).strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"Invalid boolean value for adjusted: {value!r}")
+
+
+def _manual_bar_datetime(value: object) -> datetime:
+    parsed = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
 def _manual_market_bars_template_command(
     expected_as_of: date,
     *,
@@ -775,8 +907,10 @@ def _manual_market_bars_import_command(
     *,
     stocks_only: bool,
     execute: bool,
+    complete_rows_only: bool = False,
 ) -> str:
     stocks_flag = " --stocks-only" if stocks_only else ""
+    complete_rows_flag = " --complete-rows-only" if complete_rows_only else ""
     execute_flag = " --execute" if execute else ""
     template_path = _manual_market_bars_template_path(
         expected_as_of,
@@ -785,7 +919,8 @@ def _manual_market_bars_import_command(
     return (
         "catalyst-radar market-bars import "
         f"--daily-bars {template_path} "
-        f"--expected-as-of {expected_as_of.isoformat()}{stocks_flag}{execute_flag}"
+        f"--expected-as-of {expected_as_of.isoformat()}"
+        f"{stocks_flag}{complete_rows_flag}{execute_flag}"
     )
 
 
@@ -841,6 +976,7 @@ def _inspect_manual_bars_csv(
     path: Path,
     *,
     expected_as_of: date | None,
+    complete_rows_only: bool = False,
 ) -> _ManualBarsCsvValidation:
     required = {
         "ticker",
@@ -904,19 +1040,29 @@ def _inspect_manual_bars_csv(
                     if latest_date is None or parsed_date > latest_date
                     else latest_date
                 )
-                if expected_as_of is not None and parsed_date == expected_as_of:
-                    expected_date_tickers.add(ticker)
             filled_required_fields = [
                 field
                 for field in MANUAL_BAR_REQUIRED_FILL_FIELDS
                 if str(row.get(field) or "").strip()
             ]
-            if len(filled_required_fields) == len(MANUAL_BAR_REQUIRED_FILL_FIELDS):
+            is_complete_required = (
+                len(filled_required_fields) == len(MANUAL_BAR_REQUIRED_FILL_FIELDS)
+            )
+            is_empty_required = not filled_required_fields
+            if (
+                expected_as_of is not None
+                and parsed_date == expected_as_of
+                and (not complete_rows_only or is_complete_required)
+            ):
+                expected_date_tickers.add(ticker)
+            if is_complete_required:
                 complete_required_row_count += 1
             elif filled_required_fields:
                 partial_required_row_count += 1
             else:
                 empty_required_row_count += 1
+            if complete_rows_only and is_empty_required:
+                continue
             blank_fields = [
                 field for field in required if not str(row.get(field) or "").strip()
             ]

@@ -178,6 +178,77 @@ def test_market_bars_import_requires_expected_full_active_coverage(
     assert "external_calls=0" in captured.out
 
 
+def test_market_bars_import_complete_rows_only_allows_incremental_import(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    database_url = _database_url(tmp_path)
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _seed_csv_market(capsys)
+    incremental_bars = tmp_path / "incremental-bars.csv"
+    _write_mixed_manual_bars(
+        incremental_bars,
+        complete_tickers=["AAA"],
+        empty_tickers=["BBB"],
+        as_of="2026-05-11",
+    )
+
+    assert (
+        main(
+            [
+                "market-bars",
+                "import",
+                "--daily-bars",
+                str(incremental_bars),
+                "--expected-as-of",
+                "2026-05-11",
+                "--complete-rows-only",
+            ]
+        )
+        == 0
+    )
+
+    preview = capsys.readouterr()
+    assert "manual_market_bars_import status=ready_partial" in preview.out
+    assert "complete_rows_only=true" in preview.out
+    assert "coverage=bars_at_expected=1 existing=0 after_import=1 missing=5" in (
+        preview.out
+    )
+    assert "fill_progress=complete=1 partial=0 empty=1 filled=1" in preview.out
+    assert "external_calls=0" in preview.out
+
+    assert (
+        main(
+            [
+                "market-bars",
+                "import",
+                "--daily-bars",
+                str(incremental_bars),
+                "--expected-as-of",
+                "2026-05-11",
+                "--complete-rows-only",
+                "--execute",
+            ]
+        )
+        == 0
+    )
+
+    executed = capsys.readouterr()
+    assert "manual_market_bars_import status=partial_imported" in executed.out
+    assert "executed=true" in executed.out
+    engine = create_engine(database_url, future=True)
+    with engine.connect() as conn:
+        imported = {
+            str(row._mapping["ticker"])
+            for row in conn.execute(
+                select(daily_bars.c.ticker).where(daily_bars.c.date == date(2026, 5, 11))
+            )
+        }
+    assert "AAA" in imported
+    assert "BBB" not in imported
+
+
 def test_market_bars_missing_only_template_import_counts_existing_bars(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -500,6 +571,12 @@ def test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths(
     assert payload["manual_import_preview_command"].endswith("--stocks-only")
     assert payload["manual_import_execute_command"].endswith(
         "--stocks-only --execute"
+    )
+    assert payload["manual_incremental_import_preview_command"].endswith(
+        "--stocks-only --complete-rows-only"
+    )
+    assert payload["manual_incremental_import_execute_command"].endswith(
+        "--stocks-only --complete-rows-only --execute"
     )
     assert payload["required_fill_fields"] == [
         "open",
@@ -946,6 +1023,53 @@ def _write_manual_bars(
                     "close": f"{100 + (index / 100):.2f}",
                     "volume": "1000000",
                     "vwap": "100",
+                    "adjusted": "true",
+                    "provider": "manual_csv",
+                    "source_ts": stamp,
+                    "available_at": stamp,
+                }
+            )
+
+
+def _write_mixed_manual_bars(
+    path: Path,
+    *,
+    complete_tickers: list[str],
+    empty_tickers: list[str],
+    as_of: str,
+) -> None:
+    stamp = datetime(2026, 5, 11, 21, tzinfo=UTC).isoformat()
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=MANUAL_BAR_COLUMNS)
+        writer.writeheader()
+        for index, ticker in enumerate(complete_tickers):
+            writer.writerow(
+                {
+                    "ticker": ticker,
+                    "date": as_of,
+                    "open": "100",
+                    "high": "101",
+                    "low": "99",
+                    "close": f"{100 + (index / 100):.2f}",
+                    "volume": "1000000",
+                    "vwap": "100",
+                    "adjusted": "true",
+                    "provider": "manual_csv",
+                    "source_ts": stamp,
+                    "available_at": stamp,
+                }
+            )
+        for ticker in empty_tickers:
+            writer.writerow(
+                {
+                    "ticker": ticker,
+                    "date": as_of,
+                    "open": "",
+                    "high": "",
+                    "low": "",
+                    "close": "",
+                    "volume": "",
+                    "vwap": "",
                     "adjusted": "true",
                     "provider": "manual_csv",
                     "source_ts": stamp,

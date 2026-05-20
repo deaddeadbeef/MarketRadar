@@ -232,6 +232,14 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Validate expected coverage against stock-like active securities only.",
     )
+    market_bars_import.add_argument(
+        "--complete-rows-only",
+        action="store_true",
+        help=(
+            "Import only rows with complete OHLCV/VWAP values; unfinished rows "
+            "must be fully empty or the preview remains invalid."
+        ),
+    )
     market_bars_import.add_argument("--execute", action="store_true")
     market_bars_import.add_argument("--json", action="store_true")
     market_bars_repair_plan = market_bars_sub.add_parser("repair-plan")
@@ -1016,13 +1024,19 @@ def main(argv: list[str] | None = None) -> int:
                     expected_as_of=args.expected_as_of,
                     execute=args.execute,
                     stocks_only=args.stocks_only,
+                    complete_rows_only=args.complete_rows_only,
                 )
                 payload = result.as_payload()
                 if args.json:
                     print(json.dumps(payload, sort_keys=True))
                 else:
                     _print_manual_market_bars_import(payload)
-                return 0 if result.status in {"ready", "imported"} else 2
+                return (
+                    0
+                    if result.status
+                    in {"ready", "ready_partial", "imported", "partial_imported"}
+                    else 2
+                )
             if args.market_bars_command == "repair-plan":
                 result = manual_market_bars_repair_plan(
                     engine,
@@ -3672,6 +3686,7 @@ def _print_manual_market_bars_import(payload: Mapping[str, object]) -> None:
         f"active={payload.get('active_security_count')} "
         f"latest_bar={payload.get('latest_bar_date') or 'n/a'} "
         f"expected_as_of={payload.get('expected_as_of') or 'n/a'} "
+        f"complete_rows_only={str(bool(payload.get('complete_rows_only'))).lower()} "
         f"executed={str(bool(payload.get('executed'))).lower()} "
         f"external_calls={payload.get('external_calls_made')}"
     )
@@ -3716,7 +3731,7 @@ def _print_manual_market_bars_import(payload: Mapping[str, object]) -> None:
         examples = payload.get("invalid_examples")
         if isinstance(examples, list | tuple) and examples:
             print("invalid_examples=" + " | ".join(str(item) for item in examples))
-    if payload.get("status") == "ready":
+    if payload.get("status") in {"ready", "ready_partial"}:
         print("Plan only: no database writes were made.")
     print(f"next_action={payload.get('next_action')}")
     print(f"execute_command={payload.get('execute_command')}")
@@ -3748,6 +3763,14 @@ def _print_manual_market_bars_repair_plan(payload: Mapping[str, object]) -> None
     print(f"manual_template={payload.get('manual_template_command')}")
     print(f"preview_import={payload.get('manual_import_preview_command')}")
     print(f"execute_import={payload.get('manual_import_execute_command')}")
+    print(
+        "incremental_preview_import="
+        f"{payload.get('manual_incremental_import_preview_command')}"
+    )
+    print(
+        "incremental_execute_import="
+        f"{payload.get('manual_incremental_import_execute_command')}"
+    )
     print(
         "local_template="
         f"path={payload.get('local_template_path') or 'n/a'} "
