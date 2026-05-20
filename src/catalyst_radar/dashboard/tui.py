@@ -5071,7 +5071,7 @@ def _priced_in_source_workflow_payload(
         blocker_action = str(blocker.get("next_action") or "").strip()
         blocker_command = str(blocker.get("command") or "").strip()
         promoted_market_bar_blocker = bool(
-            stocks_only and source == "market_bars" and blocker_gap_count > 0
+            source == "market_bars" and blocker_gap_count > 0
         )
         steps.append(
             {
@@ -5106,8 +5106,7 @@ def _priced_in_source_workflow_payload(
         step["priority"] = index
     coverage_step = steps[0] if steps else {}
     use_coverage_step = bool(
-        stocks_only
-        and coverage_step.get("source") == "market_bars"
+        coverage_step.get("source") == "market_bars"
         and int(_number_or_zero(coverage_step.get("gap_rows"))) > 0
     )
     next_action = (
@@ -5137,12 +5136,13 @@ def _priced_in_source_workflow_payload(
     decision_shortcut_command = None
     decision_shortcut_blocker = None
     if use_coverage_step:
+        row_label = "stock-like row" if stocks_only else "active row"
         decision_shortcut_blocker = {
             "blocked_by": "market_bars",
             "blocked_gap_rows": int(_number_or_zero(coverage_step.get("gap_rows"))),
             "action": (
                 "Clear market_bars first; decision shortcuts are hidden until "
-                "every stock-like row has scan-date price reaction."
+                f"every {row_label} has scan-date price reaction."
             ),
             "command": next_command,
             "external_calls_required": 0,

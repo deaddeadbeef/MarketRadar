@@ -1,6 +1,115 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 08:27:43 +08:00
+Last updated: 2026-05-20 09:03:19 +08:00
+
+## Latest Full-Market Source Guard Drift Check
+
+Goal alignment:
+
+- The active product goal is still: scan the full active market, combine price
+  reaction with market-emotion evidence, and tell the operator where price has
+  not yet matched expectations.
+- The dashboard and CLI/API must support that goal. They should not become a
+  separate dashboard-polish project, and they should not steer the operator into
+  SEC, Schwab, OpenAI, or broker side quests while the scan universe itself is
+  incomplete.
+- The latest drift check found a real gap: stocks-only source-batch surfaces
+  already blocked provider side quests while stock-like market bars were
+  incomplete, but the default full-market source overview could still promote
+  catalyst or broker source work even though 523 active securities had no
+  scan-date market bar.
+- This slice fixes that full-market path. The first useful action for the
+  default full scan is now the active-universe market-bar repair plan, not SEC
+  or Schwab enrichment.
+- This slice makes 0 Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or
+  provider calls.
+
+Fix in this slice:
+
+- `priced_in_source_gap_batches_payload(... source="market_bars")` now plans
+  against the full active universe by default instead of only the already-ranked
+  queue subset.
+- The same market-bar planner handles both scopes:
+  - `--stocks-only`: `coverage_basis=stock_like_active_as_of_bars`, blocker
+    reason `missing_stock_like_as_of_bars`, and repair commands include
+    `--stocks-only`.
+  - default full market: `coverage_basis=active_universe_as_of_bars`, blocker
+    reason `missing_active_as_of_bars`, and repair commands target
+    `data\local\manual-bars-<date>.csv` without `--stocks-only`.
+- The all-source overview carries `coverage_basis` through source rows and
+  recommendations, so full-market wording says `active` / `full-market` instead
+  of falling back to `stock-like` / `full-stock`.
+- `execute_priced_in_source_batch(...)` now blocks every non-`market_bars`
+  source execution when the relevant market-bar scope is incomplete, including
+  the default full-market scan. The blocked execution payload returns
+  `external_calls_made=0` and an `execution_blocker`.
+- The dashboard/TUI source workflow now promotes market bars for both stocks-only
+  and full-market scans when market bars are the coverage blocker.
+- The separate priced-in evidence plan now orders partial market-bar coverage
+  before catalyst, local text, options, broker context, and agent review, so the
+  agent brief no longer lists SEC source work as the first evidence step while
+  full-market bars are missing.
+
+Live zero-call observations:
+
+```text
+priced_in_source_batch_overview status=attention sources=6 ready_sources=2 blocked_sources=3 gap_rows=48842 external_calls=0
+goal_alignment=status=aligned stocks_only=false ranked=12087 source_gap_rows=48842
+  goal=Find stocks where market emotion has not yet been matched by price reaction.
+  blocker=market_bars evidence has 523 gap row(s); 0 eligible row(s), 523 blocked row(s); blocked_reason=missing_active_as_of_bars; examples=AACBR, AACBU, AACIW, AACO, AACOU.
+  next_useful_step=Fill missing as-of bars for the active universe; then rerun the full priced-in scan.
+coverage_first=source=market_bars gaps=523 calls=0 command=catalyst-radar market-bars template --expected-as-of 2026-05-15 --out data\local\manual-bars-2026-05-15.csv --missing-only
+  why=Fresh price reaction defines the scan universe; clear active market-bar gaps before claiming full-market coverage.
+decision_shortcut_blocked=blocked_by=market_bars gaps=523 calls=0 command=catalyst-radar market-bars template --expected-as-of 2026-05-15 --out data\local\manual-bars-2026-05-15.csv --missing-only
+  action=Clear market_bars first; decision shortcuts are hidden until every active row has scan-date price reaction.
+```
+
+```text
+priced_in_source_batch_execution source=broker_context status=blocked external_calls=0
+reason=market_bars must be complete before executing broker_context source batches for a full scan; 523 active row(s) still lack scan-date price reaction.
+execution_blocker=blocked_by=market_bars gaps=523 calls=0 command=catalyst-radar market-bars template --expected-as-of 2026-05-15 --out data\local\manual-bars-2026-05-15.csv --missing-only
+```
+
+Agent brief dry-run observation:
+
+```text
+Priced-in answer is blocked; decision_ready=false; Full-market priced-in answer is not ready: 523 row(s) still lack scan-date price reaction.
+Priced-in evidence plan is attention; next=Coverage is broad enough for research; generate the DB-backed missing-bar template if you want the full active universe covered before relying on the answer.
+Priced-in source workflow is attention; coverage-first=Fill missing as-of bars for the active universe; then rerun the full priced-in scan.
+external_calls_made: broker=0, market_data=0, openai=0
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_source_batches_prioritize_full_market_bar_coverage tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_answer_uses_stock_scope_for_market_bar_coverage tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_source_execution_blocks_until_stock_bars_complete tests\integration\test_dashboard_data.py::test_priced_in_preflight_uses_manual_bar_template_for_partial_full_scan_bars -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\source_batches.py src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_dashboard_data.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source all --limit 1
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source broker_context --execute-next
+.\.venv\Scripts\python.exe -m catalyst_radar.cli agent-brief --json
+```
+
+Expected note:
+
+- `priced-in-source-batches --source broker_context --execute-next` exits
+  non-zero because it is blocked. That is correct; the output is the evidence,
+  and `external_calls=0` is the safety proof.
+- The all-source overview still shows per-source planning details for SEC and
+  Schwab rows, but direct execution is blocked until market bars are complete.
+  Do not follow those provider commands until the market-bar blocker is cleared
+  or the user explicitly overrides the call plan.
+
+Next useful product action after merge:
+
+- Stop adding dashboard polish unless it directly reduces this blocker or makes
+  the full-market scan answer clearer.
+- The only useful default next step is to fill/import
+  `data\local\manual-bars-2026-05-15.csv`, or get explicit user approval for the
+  one Polygon/Massive grouped-daily repair path.
+- After the 523 missing active bars are cleared, rerun the full priced-in scan
+  and only then proceed to source evidence gaps such as SEC catalyst events,
+  local text, options, broker context, and agent review.
 
 ## Latest Priced-In Answer Partial-Scan Guard
 
