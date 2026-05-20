@@ -197,12 +197,15 @@ def test_market_radar_status_script_is_zero_external_call_sitrep() -> None:
     assert "local bar history:" in text
     assert "missing without local history:" in text
     assert "missing security types:" in text
+    assert "missing universe diagnostics:" in text
+    assert "missing universe note:" in text
     assert "incremental complete-row import:" in text
     assert "template schema:" in text
     assert "strict next action:" in text
     assert "stock strict next action:" in text
     assert "stock template schema:" in text
     assert "stock local template fill progress:" in text
+    assert "stock missing universe diagnostics:" in text
     assert "stock provider option: status={0}; health={1}; external_calls={2}; command={3}" in text
     assert "stock provider health warning:" in text
     assert "stock provider saved-file capture:" in text

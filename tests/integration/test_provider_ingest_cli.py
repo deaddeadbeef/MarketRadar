@@ -529,7 +529,7 @@ def test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths(
     MarketRepository(engine).upsert_securities(
         [
             _security("BSTK", "Beta Stock", "CS"),
-            _security("AADR", "Alpha ADR", "ADRC"),
+            _security("AADR", "Alpha Acquisition ADR", "ADRC"),
             _security("EETF", "Example ETF", "ETF"),
         ]
     )
@@ -566,6 +566,13 @@ def test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths(
     assert payload["missing_with_local_history_sample"] == []
     assert payload["missing_without_local_history_count"] == 1
     assert payload["missing_without_local_history_sample"] == ["AADR"]
+    assert payload["missing_universe_diagnostic"]["schema_version"] == (
+        "manual-market-bars-missing-universe-diagnostic-v1"
+    )
+    assert payload["missing_universe_diagnostic"]["missing_count"] == 1
+    assert payload["missing_universe_diagnostic"]["acquisition_or_spac_name_count"] == 1
+    assert payload["missing_universe_diagnostic"]["no_composite_figi_count"] == 1
+    assert payload["missing_universe_diagnostic"]["external_calls_made"] == 0
     assert payload["manual_template_command"].endswith(
         "--missing-only --stocks-only"
     )

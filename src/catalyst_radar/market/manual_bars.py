@@ -39,6 +39,12 @@ MANUAL_BAR_COMPANY_LIKE_TYPES = frozenset({"ADRC", "CS"})
 MANUAL_BAR_NON_STOCK_TYPES = frozenset(
     {"ETF", "ETN", "ETS", "ETV", "FUND", "PFD", "RIGHT", "SP", "UNIT", "WARRANT"}
 )
+MANUAL_BAR_ACQUISITION_NAME_MARKERS = (
+    "acquisition",
+    "spac",
+    "blank check",
+    "liquidity opportunity vehicle",
+)
 
 
 @dataclass(frozen=True)
@@ -248,6 +254,7 @@ class ManualBarsRepairPlanResult:
     generated_at: datetime
     local_template_path: Path
     local_template_preview: dict[str, object] | None = None
+    missing_universe_diagnostic: dict[str, object] = field(default_factory=dict)
     provider_health_status: str | None = None
     provider_health_reason: str | None = None
     provider_health_checked_at: datetime | None = None
@@ -402,6 +409,7 @@ class ManualBarsRepairPlanResult:
                 security_type: count
                 for security_type, count in self.missing_security_type_counts
             },
+            "missing_universe_diagnostic": self.missing_universe_diagnostic,
             "missing_with_local_history_count": len(
                 self.missing_with_local_history_tickers
             ),
@@ -887,6 +895,7 @@ def manual_market_bars_repair_plan(
     missing_security_type_counts = _security_type_counts(
         security_type_by_ticker.get(ticker, "") for ticker in missing
     )
+    missing_universe_diagnostic = _missing_bar_universe_diagnostic(engine, missing)
     tickers_with_history = _bar_tickers_with_any_history(engine)
     missing_with_history = tuple(
         ticker for ticker in missing if ticker in tickers_with_history
@@ -924,6 +933,7 @@ def manual_market_bars_repair_plan(
         existing_as_of_bar_count=len(existing & active_tickers),
         missing_as_of_bar_tickers=missing,
         missing_security_type_counts=missing_security_type_counts,
+        missing_universe_diagnostic=missing_universe_diagnostic,
         missing_with_local_history_tickers=missing_with_history,
         missing_without_local_history_tickers=missing_without_history,
         stocks_only=stocks_only,
@@ -1221,6 +1231,89 @@ def _bar_tickers_with_any_history(engine: Engine) -> set[str]:
             for row in conn.execute(select(daily_bars.c.ticker).distinct())
             if str(row._mapping["ticker"]).strip()
         }
+
+
+def _missing_bar_universe_diagnostic(
+    engine: Engine,
+    missing_tickers: tuple[str, ...],
+) -> dict[str, object]:
+    if not missing_tickers:
+        return {
+            "schema_version": "manual-market-bars-missing-universe-diagnostic-v1",
+            "missing_count": 0,
+            "external_calls_made": 0,
+            "summary": "No missing market-bar rows in this scope.",
+        }
+    with engine.connect() as conn:
+        rows = conn.execute(
+            select(
+                securities.c.ticker,
+                securities.c.name,
+                securities.c.sector,
+                securities.c.market_cap,
+                securities.c.avg_dollar_volume_20d,
+                securities.c.has_options,
+                securities.c.metadata,
+            ).where(securities.c.ticker.in_(missing_tickers))
+        ).mappings().all()
+    acquisition_or_spac: list[str] = []
+    no_composite_figi: list[str] = []
+    zero_market_cap: list[str] = []
+    zero_avg_dollar_volume: list[str] = []
+    unknown_sector: list[str] = []
+    no_options: list[str] = []
+    for row in rows:
+        ticker = str(row["ticker"] or "").strip().upper()
+        name = str(row["name"] or "").strip().lower()
+        metadata = row["metadata"] if isinstance(row["metadata"], dict) else {}
+        if any(marker in name for marker in MANUAL_BAR_ACQUISITION_NAME_MARKERS):
+            acquisition_or_spac.append(ticker)
+        if not str(metadata.get("composite_figi") or "").strip():
+            no_composite_figi.append(ticker)
+        if _non_positive_number(row["market_cap"]):
+            zero_market_cap.append(ticker)
+        if _non_positive_number(row["avg_dollar_volume_20d"]):
+            zero_avg_dollar_volume.append(ticker)
+        if str(row["sector"] or "").strip().lower() in {"", "unknown"}:
+            unknown_sector.append(ticker)
+        if not bool(row["has_options"]):
+            no_options.append(ticker)
+    summary_parts = [
+        f"{len(rows)}/{len(missing_tickers)} missing ticker(s) still active locally",
+        f"{len(acquisition_or_spac)} acquisition/SPAC-style name(s)",
+        f"{len(no_composite_figi)} without composite FIGI",
+        f"{len(zero_avg_dollar_volume)} with zero local avg dollar volume",
+    ]
+    return {
+        "schema_version": "manual-market-bars-missing-universe-diagnostic-v1",
+        "missing_count": len(missing_tickers),
+        "active_metadata_rows": len(rows),
+        "acquisition_or_spac_name_count": len(acquisition_or_spac),
+        "acquisition_or_spac_name_sample": acquisition_or_spac[:12],
+        "no_composite_figi_count": len(no_composite_figi),
+        "no_composite_figi_sample": no_composite_figi[:12],
+        "zero_market_cap_count": len(zero_market_cap),
+        "zero_market_cap_sample": zero_market_cap[:12],
+        "zero_avg_dollar_volume_20d_count": len(zero_avg_dollar_volume),
+        "zero_avg_dollar_volume_20d_sample": zero_avg_dollar_volume[:12],
+        "unknown_sector_count": len(unknown_sector),
+        "unknown_sector_sample": unknown_sector[:12],
+        "no_options_count": len(no_options),
+        "no_options_sample": no_options[:12],
+        "summary": "; ".join(summary_parts) + ".",
+        "operator_note": (
+            "This is universe-quality context only. It does not exclude rows from "
+            "the scan or reduce the missing-bar requirement."
+        ),
+        "external_calls_made": 0,
+    }
+
+
+def _non_positive_number(value: object) -> bool:
+    try:
+        return float(value or 0) <= 0
+    except (TypeError, ValueError):
+        return True
 
 
 def _filled_required_row_count(path: Path) -> int:

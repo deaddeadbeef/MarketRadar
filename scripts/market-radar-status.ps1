@@ -335,6 +335,21 @@ if ($Quick) {
         if (-not [string]::IsNullOrWhiteSpace($missingTypeSummary)) {
             Write-Output ("- missing security types: {0}" -f $missingTypeSummary)
         }
+        if ($null -ne $marketBarRepairPlan.missing_universe_diagnostic) {
+            $diag = $marketBarRepairPlan.missing_universe_diagnostic
+            Write-Output (
+                "- missing universe diagnostics: active_metadata={0}; acquisition_or_spac_names={1}; no_composite_figi={2}; zero_avg_dollar_volume_20d={3}; zero_market_cap={4}; external_calls={5}" -f
+                $(if ($null -ne $diag.active_metadata_rows) { $diag.active_metadata_rows } else { "n/a" }),
+                $(if ($null -ne $diag.acquisition_or_spac_name_count) { $diag.acquisition_or_spac_name_count } else { "n/a" }),
+                $(if ($null -ne $diag.no_composite_figi_count) { $diag.no_composite_figi_count } else { "n/a" }),
+                $(if ($null -ne $diag.zero_avg_dollar_volume_20d_count) { $diag.zero_avg_dollar_volume_20d_count } else { "n/a" }),
+                $(if ($null -ne $diag.zero_market_cap_count) { $diag.zero_market_cap_count } else { "n/a" }),
+                $(if ($null -ne $diag.external_calls_made) { $diag.external_calls_made } else { 0 })
+            )
+            if ($diag.operator_note) {
+                Write-Output ("- missing universe note: {0}" -f $diag.operator_note)
+            }
+        }
         if ($marketBarRepairPlan.provider_fill_command) {
             $providerHealth = $marketBarRepairPlan.provider_health
             $providerHealthText = $(if ($null -ne $providerHealth -and $providerHealth.status) { $providerHealth.status } else { "unknown" })
@@ -427,6 +442,18 @@ if ($Quick) {
                     $(if ($null -ne $stockFillProgress.filled_rows) { $stockFillProgress.filled_rows } else { 0 })
                 )
             }
+        }
+        if ($null -ne $stockMarketBarRepairPlan.missing_universe_diagnostic) {
+            $stockDiag = $stockMarketBarRepairPlan.missing_universe_diagnostic
+            Write-Output (
+                "- stock missing universe diagnostics: active_metadata={0}; acquisition_or_spac_names={1}; no_composite_figi={2}; zero_avg_dollar_volume_20d={3}; zero_market_cap={4}; external_calls={5}" -f
+                $(if ($null -ne $stockDiag.active_metadata_rows) { $stockDiag.active_metadata_rows } else { "n/a" }),
+                $(if ($null -ne $stockDiag.acquisition_or_spac_name_count) { $stockDiag.acquisition_or_spac_name_count } else { "n/a" }),
+                $(if ($null -ne $stockDiag.no_composite_figi_count) { $stockDiag.no_composite_figi_count } else { "n/a" }),
+                $(if ($null -ne $stockDiag.zero_avg_dollar_volume_20d_count) { $stockDiag.zero_avg_dollar_volume_20d_count } else { "n/a" }),
+                $(if ($null -ne $stockDiag.zero_market_cap_count) { $stockDiag.zero_market_cap_count } else { "n/a" }),
+                $(if ($null -ne $stockDiag.external_calls_made) { $stockDiag.external_calls_made } else { 0 })
+            )
         }
         if ($stockMarketBarRepairPlan.provider_fill_command) {
             $stockProviderHealth = $stockMarketBarRepairPlan.provider_health
