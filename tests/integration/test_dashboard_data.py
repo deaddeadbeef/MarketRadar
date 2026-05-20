@@ -1945,6 +1945,13 @@ def test_priced_in_full_scan_audit_reports_stock_only_bar_coverage(
     assert stock_scope["non_stock_missing_as_of_bar"] == 1
     assert stock_scope["sample_missing_stock_like_tickers"] == ["GOOG"]
     assert "stocks-only priced-in answer" in stock_scope["answer_boundary"]
+    assert stock_scope["manual_template_command"].endswith(
+        "--missing-only --stocks-only"
+    )
+    assert stock_scope["manual_import_preview_command"].endswith("--stocks-only")
+    assert stock_scope["manual_import_execute_command"].endswith(
+        "--stocks-only --execute"
+    )
     market_source = {row["source"]: row for row in payload["sources"]}["market_bars"]
     assert market_source["status"] == "partial"
     assert market_source["coverage_basis"] == "stock_like_active_as_of_bars"

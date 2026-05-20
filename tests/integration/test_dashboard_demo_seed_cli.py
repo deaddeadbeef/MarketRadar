@@ -36,6 +36,7 @@ from catalyst_radar.dashboard.tui import (
     _priced_in_overview_rows,
     _priced_in_review_rows,
     _priced_in_source_workflow_payload,
+    _stock_market_bar_next_summary,
     dashboard_filters_for_page,
     dashboard_snapshot_payload,
     render_dashboard_tui,
@@ -962,6 +963,22 @@ def test_dashboard_manual_bar_fill_progress_summary_is_human_readable() -> None:
                 "repair": {
                     "template_row_count": 523,
                     "local_template_path": "data\\local\\manual-bars-2026-05-15.csv",
+                    "stock_scope": {
+                        "stock_like_active": 5652,
+                        "stock_like_with_as_of_bar": 5521,
+                        "stock_like_missing_as_of_bar": 131,
+                        "next_action": (
+                            "Fill stock-like missing as-of bars first; they are "
+                            "required before the system can claim a complete "
+                            "stocks-only priced-in answer."
+                        ),
+                        "manual_template_command": (
+                            "catalyst-radar market-bars template --expected-as-of "
+                            "2026-05-15 --out "
+                            "data\\local\\manual-stock-bars-2026-05-15.csv "
+                            "--missing-only --stocks-only"
+                        ),
+                    },
                     "operator_step": {
                         "status": "fix_partial_rows",
                         "manual_step": True,
@@ -1004,8 +1021,13 @@ def test_dashboard_manual_bar_fill_progress_summary_is_human_readable() -> None:
     assert _market_bar_operator_step_summary(payload).startswith(
         "Finish or clear partial OHLCV/VWAP rows"
     )
+    assert _stock_market_bar_next_summary(payload).startswith(
+        "5521/5652 stock-like rows have scan-date bars; 131 missing"
+    )
     overview = render_dashboard_tui(payload, page="overview", width=160)
     ops = render_dashboard_tui(payload, page="ops", width=160)
+    assert "Stock bar next: 5521/5652 stock-like rows have scan-date bars" in overview
+    assert "Stock bar next: 5521/5652 stock-like rows have scan-date bars" in ops
     assert "Manual CSV progress: 12/523 complete; 3 partial; 508 empty" in overview
     assert "Manual CSV progress: 12/523 complete; 3 partial; 508 empty" in ops
     assert "Market bar next: Finish or clear partial OHLCV/VWAP rows" in overview

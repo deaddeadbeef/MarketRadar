@@ -3798,6 +3798,12 @@ def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
     audit_summary = _full_scan_audit_summary(payload)
     if audit_summary:
         lines.append(f"Full scan audit: {audit_summary}")
+    stock_bar_summary = _stock_market_bar_next_summary(payload)
+    if stock_bar_summary:
+        lines.append(
+            "Stock bar next: "
+            f"{_clip(stock_bar_summary, max(20, width - 17))}"
+        )
     missing_type_summary = _market_bar_missing_type_summary(payload)
     if missing_type_summary:
         lines.append(
@@ -4014,6 +4020,31 @@ def _full_scan_audit_summary(payload: Mapping[str, object]) -> str:
         parts.append(f"stock bars {stock_with}/{stock_active} missing {stock_missing}")
     if next_action:
         parts.append(f"next {next_action}")
+    return "; ".join(parts)
+
+
+def _stock_market_bar_next_summary(payload: Mapping[str, object]) -> str:
+    audit = _mapping(payload.get("priced_in_audit"))
+    market = _mapping(audit.get("market_bars"))
+    repair = _mapping(market.get("repair"))
+    stock_scope = _mapping(repair.get("stock_scope"))
+    if not stock_scope:
+        return ""
+    missing = int(_number_or_zero(stock_scope.get("stock_like_missing_as_of_bar")))
+    if missing <= 0:
+        return ""
+    active = int(_number_or_zero(stock_scope.get("stock_like_active")))
+    with_bar = int(_number_or_zero(stock_scope.get("stock_like_with_as_of_bar")))
+    next_action = str(stock_scope.get("next_action") or "").strip()
+    command = str(stock_scope.get("manual_template_command") or "").strip()
+    parts = [
+        f"{with_bar}/{active} stock-like rows have scan-date bars",
+        f"{missing} missing",
+    ]
+    if next_action:
+        parts.append(f"next {next_action}")
+    if command:
+        parts.append(f"command {command}")
     return "; ".join(parts)
 
 
@@ -5739,6 +5770,12 @@ def _ops_lines(payload: Mapping[str, object], width: int) -> list[str]:
     if missing_type_summary:
         lines.append(
             f"Missing bar types: {_clip(missing_type_summary, max(20, width - 19))}"
+        )
+    stock_bar_summary = _stock_market_bar_next_summary(payload)
+    if stock_bar_summary:
+        lines.append(
+            "Stock bar next: "
+            f"{_clip(stock_bar_summary, max(20, width - 17))}"
         )
     manual_progress_summary = _market_bar_manual_fill_progress_summary(payload)
     if manual_progress_summary:

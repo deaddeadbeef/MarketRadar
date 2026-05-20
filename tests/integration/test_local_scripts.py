@@ -179,9 +179,11 @@ def test_market_radar_status_script_is_zero_external_call_sitrep() -> None:
     assert "/api/radar/readiness" in text
     assert '"repair-plan"' in text
     assert "market_bar_repair_plan" in text
+    assert "stock_market_bar_repair_plan" in text
     assert "Market Radar quick status" in text
     assert "Global readiness:" in text
     assert "Full-market next:" in text
+    assert "Stock-market next:" in text
     assert "Fast market-bar repair:" in text
     assert "Format-FieldCountSummary" in text
     assert "local bar history:" in text
@@ -189,6 +191,9 @@ def test_market_radar_status_script_is_zero_external_call_sitrep() -> None:
     assert "missing security types:" in text
     assert "incremental complete-row import:" in text
     assert "strict next action:" in text
+    assert "stock strict next action:" in text
+    assert "stock local template fill progress:" in text
+    assert "stock provider option: status={0}; health={1}; external_calls={2}; command={3}" in text
     assert "provider option: status={0}; health={1}; external_calls={2}; command={3}" in text
     assert "local template fill progress:" in text
     assert "/api/radar/priced-in/audit?stocks_only=true&limit=1" in text
@@ -220,19 +225,24 @@ def test_market_radar_status_script_is_zero_external_call_sitrep() -> None:
     assert "priced_in_stock_coverage_batch_plan" in text
     assert "batches" in text
     assert "external_calls_required" in text
-    assert "stock coverage SEC plan:" in text
+    assert "stock coverage batch plan:" in text
     assert "eligible_rows" in text
     assert "blocked_rows" in text
     assert "next_calls=" in text
-    assert "stock coverage missing CIK:" in text
+    assert "stock coverage missing bars" in text
+    assert "stock coverage missing CIK" in text
     assert "sample_blocked_tickers" in text
-    assert "stock CIK template:" in text
+    assert "stock bar template:" in text
+    assert "stock CIK template" in text
     assert "manual_template_command" in text
-    assert "stock CIK validate:" in text
+    assert "stock bar validate:" in text
+    assert "stock CIK validate" in text
     assert "manual_validate_command" in text
-    assert "stock CIK import:" in text
+    assert "stock bar import:" in text
+    assert "stock CIK import" in text
     assert "manual_fix_command" in text
-    assert "stock CIK refresh:" in text
+    assert "stock bar refresh:" in text
+    assert "stock CIK refresh" in text
     assert "fix_command" in text
     assert "stock decision-context gap:" in text
     assert "stock point-in-time template:" in text
