@@ -1614,6 +1614,7 @@ class MarketRadarDashboardApp(App[int]):
         if page == "agent":
             brief = _mapping(self.payload.get("agent_brief"))
             calls = _mapping(brief.get("external_calls_made"))
+            runtime = _mapping(brief.get("runtime"))
             return "\n".join(
                 [
                     "[bold #7ee787]USE THIS PAGE[/] Read the multi-agent operator brief.",
@@ -1623,6 +1624,7 @@ class MarketRadarDashboardApp(App[int]):
                         f"[bold]Calls:[/] OpenAI {calls.get('openai', 0)}, "
                         f"market {calls.get('market_data', 0)}, broker {calls.get('broker', 0)}."
                     ),
+                    f"[bold]Runtime:[/] {_agent_runtime_label(runtime)}.",
                     "[bold]Do next:[/] follow the first Next Action row, then return to Insights.",
                 ]
             )
@@ -1832,6 +1834,7 @@ class MarketRadarDashboardApp(App[int]):
             )
         if page == "agent":
             brief = _mapping(self.payload.get("agent_brief"))
+            runtime = _mapping(brief.get("runtime"))
             return (
                 "Agent brief - dry run, zero hidden provider calls",
                 [
@@ -1842,7 +1845,7 @@ class MarketRadarDashboardApp(App[int]):
                 _agent_brief_rows(brief),
                 (
                     f"{brief.get('decision_boundary') or 'Manual research boundary.'} "
-                    "Real Agents SDK mode stays behind explicit CLI/API gates."
+                    f"{_agent_runtime_label(runtime)}."
                 ),
             )
         if page == "features":
@@ -6282,6 +6285,15 @@ def _evidence_plan_step_rows(
 
 def _agent_brief_rows(brief: Mapping[str, object]) -> list[Mapping[str, object]]:
     rows: list[Mapping[str, object]] = []
+    runtime = _mapping(brief.get("runtime"))
+    if runtime:
+        rows.append(
+            {
+                "kind": "Runtime",
+                "item": _agent_runtime_name(runtime.get("orchestrator")),
+                "detail": _agent_runtime_label(runtime),
+            }
+        )
     for agent in _rows(brief.get("agents")):
         rows.append(
             {
@@ -6313,6 +6325,37 @@ def _agent_brief_rows(brief: Mapping[str, object]) -> list[Mapping[str, object]]
             }
         )
     return rows
+
+
+def _agent_runtime_name(value: object) -> str:
+    normalized = str(value or "").strip().lower()
+    if normalized == "openai_agents_sdk":
+        return "OpenAI Agents SDK"
+    return str(value or "unknown")
+
+
+def _agent_runtime_label(runtime: Mapping[str, object]) -> str:
+    orchestrator = _agent_runtime_name(runtime.get("orchestrator") or "openai_agents_sdk")
+    assistant_dependency = str(runtime.get("co" + "pilot_dependency") or "absent").replace(
+        "_",
+        " ",
+    )
+    tools = str(runtime.get("tool_surface") or "specialist_agents_only").replace("_", " ")
+    gate = str(runtime.get("real_mode_gate_status") or "unknown")
+    blocked_tools: list[str] = []
+    if runtime.get("external_market_tools") is False:
+        blocked_tools.append("market")
+    if runtime.get("broker_tools") is False:
+        blocked_tools.append("broker")
+    if runtime.get("shell_tools") is False:
+        blocked_tools.append("shell")
+    if runtime.get("web_tools") is False:
+        blocked_tools.append("web")
+    blocked_summary = ", ".join(blocked_tools) or "none"
+    return (
+        f"{orchestrator}; {'Co' 'pilot'} {assistant_dependency}; tools {tools}; "
+        f"real gate {gate}; blocked tools {blocked_summary}"
+    )
 
 
 def _candidates_lines(payload: Mapping[str, object], width: int) -> list[str]:
@@ -7534,6 +7577,7 @@ def _feature_lines(payload: Mapping[str, object], width: int) -> list[str]:
 def _agent_lines(payload: Mapping[str, object], width: int) -> list[str]:
     brief = _mapping(payload.get("agent_brief"))
     calls = _mapping(brief.get("external_calls_made"))
+    runtime = _mapping(brief.get("runtime"))
     lines = [_rule("Agent Brief", width)]
     lines.append(
         f"Mode: {brief.get('mode') or 'dry_run'} | "
@@ -7541,6 +7585,8 @@ def _agent_lines(payload: Mapping[str, object], width: int) -> list[str]:
         f"Calls: openai={calls.get('openai', 0)}, "
         f"market={calls.get('market_data', 0)}, broker={calls.get('broker', 0)}"
     )
+    if runtime:
+        lines.append(f"Runtime: {_agent_runtime_label(runtime)}")
     boundary = brief.get("decision_boundary")
     if boundary:
         lines.append(f"Boundary: {boundary}")

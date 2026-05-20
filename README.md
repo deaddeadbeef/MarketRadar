@@ -350,6 +350,9 @@ separate readiness/manual-buy-review gate.
 default it runs a deterministic dry-run brief from the same redacted dashboard
 snapshot, with four roles: Data Sentinel, Catalyst Analyst, Risk Officer, and
 Operator. It makes 0 Polygon, SEC, Schwab, or OpenAI calls in default mode.
+The JSON payload and the TUI Agent page include a `runtime` block that names
+`openai_agents_sdk`, marks `copilot_dependency=absent`, and shows that market,
+broker, shell, filesystem, and web tools are unavailable to the agent layer.
 Real Agents SDK mode is opt-in:
 
 ```powershell
@@ -533,7 +536,10 @@ new manager-style operator layer. It is disabled by default, requires
 `CATALYST_ENABLE_AGENT_SDK=true` plus the same OpenAI premium gates for real
 mode, and exposes only specialist agents as tools. It does not grant model
 access to market-data providers, Schwab, local files, shell, web browsing, or
-order submission.
+order submission. The CLI/API payload and Agent TUI page expose this as
+`runtime.orchestrator=openai_agents_sdk`,
+`runtime.copilot_dependency=absent`, and zero market-data/broker/shell/web
+tool flags so the operator can verify the boundary without reading source.
 
 ## Verification commands
 

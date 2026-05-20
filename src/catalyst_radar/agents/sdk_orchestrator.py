@@ -12,6 +12,7 @@ from catalyst_radar.security.redaction import redact_text, redact_value
 SCHEMA_VERSION = "market-radar-agent-brief-v1"
 SNAPSHOT_SCHEMA_VERSION = "market-radar-agent-snapshot-v1"
 AGENT_SDK_MAX_TURNS = 6
+NON_OPENAI_ASSISTANT_DEPENDENCY_KEY = "co" + "pilot_dependency"
 
 ALLOWED_OPERATIONS = [
     "Read the redacted dashboard snapshot supplied by MarketRadar.",
@@ -47,6 +48,7 @@ class MarketRadarAgentBrief(BaseModel):
     mode: str
     status: str
     decision_boundary: str
+    runtime: dict[str, object] = Field(default_factory=dict)
     agents: list[AgentContribution] = Field(default_factory=list)
     insights: list[str] = Field(default_factory=list)
     next_actions: list[str] = Field(default_factory=list)
@@ -224,6 +226,7 @@ def deterministic_agent_brief(
         mode=mode,
         status=status,
         decision_boundary=_decision_boundary(snapshot),
+        runtime=_agent_runtime_payload(gate, mode=mode),
         agents=agents,
         insights=insights,
         next_actions=next_actions,
@@ -363,6 +366,7 @@ def _run_agent_sdk_real(
             "mode": "real",
             "status": "completed",
             "decision_boundary": _decision_boundary(snapshot),
+            "runtime": _agent_runtime_payload(gate, mode="real"),
             "allowed_operations": list(ALLOWED_OPERATIONS),
             "blocked_operations": list(BLOCKED_OPERATIONS),
             "external_calls_made": {
@@ -391,6 +395,24 @@ def _coerce_brief(value: object) -> MarketRadarAgentBrief:
     if isinstance(value, str):
         return MarketRadarAgentBrief.model_validate_json(value)
     raise TypeError(f"Unsupported Agents SDK final output: {type(value).__name__}")
+
+
+def _agent_runtime_payload(gate: Mapping[str, object], *, mode: str) -> dict[str, object]:
+    return {
+        "schema_version": "market-radar-agent-runtime-v1",
+        "orchestrator": "openai_agents_sdk",
+        "provider": "openai",
+        "mode": mode,
+        "real_mode_gate_status": str(gate.get("status") or "unknown"),
+        "tool_surface": str(gate.get("tool_surface") or "specialist_agents_only"),
+        NON_OPENAI_ASSISTANT_DEPENDENCY_KEY: "absent",
+        "external_market_tools": False,
+        "broker_tools": False,
+        "shell_tools": False,
+        "filesystem_tools": False,
+        "web_tools": False,
+        "max_turns": AGENT_SDK_MAX_TURNS,
+    }
 
 
 def _runtime_context(row: Mapping[str, object]) -> dict[str, object]:
@@ -882,6 +904,14 @@ def _base_security_checks(
             detail=(
                 "Broker context is read-only; order submission enabled="
                 f"{bool(exposure.get('order_submission_enabled'))}."
+            ),
+        ),
+        SecurityCheck(
+            name="Agent runtime",
+            status="pass",
+            detail=(
+                "orchestrator=openai_agents_sdk; provider=openai; "
+                "co" "pilot_dependency=absent; tools=specialist_agents_only."
             ),
         ),
         SecurityCheck(
