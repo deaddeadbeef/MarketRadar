@@ -2478,10 +2478,14 @@ def _priced_in_source_batch_message(
     point_in_time_progress_suffix = _point_in_time_options_progress_suffix(
         point_in_time_progress
     )
+    saved_file_suffix = _source_batch_provider_saved_file_suffix(diagnostic)
     manual_validate_command = str(
         diagnostic.get("manual_validate_command") or ""
     ).strip()
     manual_fix_command = str(diagnostic.get("manual_fix_command") or "").strip()
+    manual_validate_label, manual_fix_label = _source_batch_manual_command_labels(
+        source_name
+    )
     blocked_samples = _texts(diagnostic.get("sample_blocked_tickers"))
     missing_cik_suffix = _missing_cik_diagnostic_suffix(diagnostic)
     blocker_suffix = _source_batch_diagnostic_summary(diagnostic)
@@ -2587,12 +2591,12 @@ def _priced_in_source_batch_message(
             else ""
         )
         manual_fix_suffix = (
-            f" CIK import: {manual_fix_command}."
+            f" {manual_fix_label}: {manual_fix_command}."
             if manual_fix_command
             else ""
         )
         manual_validate_suffix = (
-            f" CIK validate: {manual_validate_command}."
+            f" {manual_validate_label}: {manual_validate_command}."
             if manual_validate_command
             else ""
         )
@@ -2608,6 +2612,7 @@ def _priced_in_source_batch_message(
             f"{point_in_time_validate_suffix}"
             f"{point_in_time_suffix}"
             f"{point_in_time_progress_suffix}"
+            f"{saved_file_suffix}"
             f"{manual_validate_suffix}"
             f"{manual_fix_suffix}"
             f"{full_suffix}{row_review_suffix}{row_export_suffix}{next_suffix}"
@@ -2636,15 +2641,78 @@ def _priced_in_source_batch_message(
         detail = f"{detail} Point-in-time import: {point_in_time_import}."
     if point_in_time_progress_suffix:
         detail = f"{detail}{point_in_time_progress_suffix}"
+    if saved_file_suffix:
+        detail = f"{detail}{saved_file_suffix}"
     if manual_validate_command:
-        detail = f"{detail} CIK validate: {manual_validate_command}."
+        detail = f"{detail} {manual_validate_label}: {manual_validate_command}."
     if manual_fix_command:
-        detail = f"{detail} CIK import: {manual_fix_command}."
+        detail = f"{detail} {manual_fix_label}: {manual_fix_command}."
     detail = (
         f"{detail}{blocked_suffix}{blocker_suffix}{missing_cik_suffix}"
         f"{non_company_route_suffix}{diagnostic_suffix}"
     )
     return f"{prefix} {detail}"
+
+
+def _source_batch_manual_command_labels(source: str) -> tuple[str, str]:
+    normalized = source.strip().lower()
+    if normalized == "market_bars":
+        return ("Manual bar check", "Manual bar import")
+    if normalized == "catalyst_events":
+        return ("CIK validate", "CIK import")
+    return ("Manual validate", "Manual import")
+
+
+def _source_batch_provider_saved_file_suffix(
+    diagnostic: Mapping[str, object],
+) -> str:
+    status = str(diagnostic.get("provider_saved_file_status") or "").strip()
+    path = str(diagnostic.get("provider_saved_file_path") or "").strip()
+    if not status and not path:
+        return ""
+    exists = str(bool(diagnostic.get("provider_saved_file_exists"))).lower()
+    next_action = str(
+        diagnostic.get("provider_saved_file_next_action") or ""
+    ).strip()
+    capture = str(
+        diagnostic.get("provider_saved_file_capture_command") or ""
+    ).strip()
+    validate = str(
+        diagnostic.get("provider_saved_file_validate_command") or ""
+    ).strip()
+    import_command = str(
+        diagnostic.get("provider_saved_file_import_command") or ""
+    ).strip()
+    capture_calls = int(
+        _number_or_zero(diagnostic.get("provider_saved_file_capture_external_call_count"))
+    )
+    saved_file_calls = int(
+        _number_or_zero(diagnostic.get("provider_saved_file_external_call_count"))
+    )
+    boundary = str(diagnostic.get("provider_saved_file_boundary") or "").strip()
+    pieces = [
+        f" Saved file: {status or 'unknown'}; exists={exists}; path {path}."
+    ]
+    if next_action:
+        pieces.append(f" Saved file next: {next_action}")
+    if capture:
+        pieces.append(
+            f" Saved file capture: {capture_calls} external call(s); "
+            f"command {capture}."
+        )
+    if validate:
+        pieces.append(
+            f" Saved file check: {saved_file_calls} external call(s); "
+            f"command {validate}."
+        )
+    if import_command:
+        pieces.append(
+            f" Saved file import: {saved_file_calls} external call(s); "
+            f"command {import_command}."
+        )
+    if boundary:
+        pieces.append(f" Saved file boundary: {boundary}")
+    return "".join(pieces)
 
 
 def _point_in_time_options_progress_suffix(progress: Mapping[str, object]) -> str:

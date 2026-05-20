@@ -1,6 +1,67 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 21:13:15 +08:00
+Last updated: 2026-05-20 21:27:15 +08:00
+
+## Latest TUI Batch Market-Bar Repair Guidance
+
+Goal alignment / drift check:
+
+- The active goal remains: MarketRadar should scan the broad stock market and
+  identify stocks where market emotion/expectations have not yet been matched
+  by price.
+- The current first blocker is still `market_bars`; no provider calls were
+  made.
+- The CLI/API source overview now exposes the saved Polygon/Massive response
+  path, but the replacement TUI command `batch market_bars` still only surfaced
+  the manual template/import path.
+- While checking that command, the dashboard also used stale `CIK validate` and
+  `CIK import` labels for market-bar CSV commands, which blurred action vs.
+  response in the human UI.
+
+Fix in this slice:
+
+- `batch market_bars` now includes saved-file repair guidance in its status
+  message:
+  - saved file status/path;
+  - saved file capture command and 1-call boundary;
+  - saved file validate/check command and 0-call boundary;
+  - saved file import command and 0-call boundary;
+  - saved-file approval boundary text.
+- Market-bar manual CSV commands in the TUI are now labeled `Manual bar check`
+  and `Manual bar import`.
+- CIK labels are retained for `catalyst_events`, where those commands really
+  are CIK override validation/import commands.
+- This is still a zero-call dashboard guidance change.
+
+Validation:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_batch_message_prints_market_bar_saved_file_repair tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_batch_command_opens_full_scan_source_batch_plan tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_source_batches_prioritize_full_market_bar_coverage -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+```
+
+Live local TUI command smoke:
+
+```powershell
+batch market_bars
+```
+
+Observed result:
+
+- the message includes `Saved file capture`, `Saved file check`, and
+  `Saved file import`;
+- the message includes `Manual bar check` and `Manual bar import`;
+- the message no longer labels market-bar CSV work as CIK work.
+
+Next useful product action:
+
+- Do not treat this as goal completion.
+- The live blocker remains `market_bars`: 131 stock-like rows still need
+  scan-date bars before the stocks-only priced-in answer can be trusted.
+- Clearing that blocker still requires either explicit approval for the single
+  Polygon/Massive saved-response capture or manual fill/import of
+  `data\local\manual-stock-bars-2026-05-15.csv`.
 
 ## Latest Source Overview Saved-File Repair Path
 

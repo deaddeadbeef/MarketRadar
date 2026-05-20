@@ -2079,6 +2079,112 @@ def test_dashboard_batch_message_prints_options_point_in_time_import(
     ) in update.message
 
 
+def test_dashboard_batch_message_prints_market_bar_saved_file_repair(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    def fake_payload(*_args, **_kwargs):
+        return {
+            "schema_version": "priced-in-source-batches-v1",
+            "source": "market_bars",
+            "status": "attention",
+            "total_gap_rows": 131,
+            "plannable_gap_rows": 0,
+            "unplannable_gap_rows": 131,
+            "routed_gap_rows": 0,
+            "batch_count": 0,
+            "next_action": "Fill missing market bars.",
+            "diagnostic": {
+                "reason": "5521/5652 stock-like rows have scan-date bars.",
+                "blocked_reason": "missing_stock_like_as_of_bars",
+                "blocked_rows": 131,
+                "eligible_rows": 0,
+                "sample_blocked_tickers": ["AACO"],
+                "fix_command": (
+                    "catalyst-radar market-bars template --expected-as-of "
+                    "2026-05-15 --out "
+                    "data\\local\\manual-stock-bars-2026-05-15.csv "
+                    "--missing-only --stocks-only"
+                ),
+                "manual_validate_command": (
+                    "catalyst-radar market-bars import --daily-bars "
+                    "data\\local\\manual-stock-bars-2026-05-15.csv "
+                    "--expected-as-of 2026-05-15 --stocks-only"
+                ),
+                "manual_fix_command": (
+                    "catalyst-radar market-bars import --daily-bars "
+                    "data\\local\\manual-stock-bars-2026-05-15.csv "
+                    "--expected-as-of 2026-05-15 --stocks-only --execute"
+                ),
+                "provider_saved_file_path": (
+                    "data\\local\\polygon-grouped-daily-2026-05-15.json"
+                ),
+                "provider_saved_file_exists": False,
+                "provider_saved_file_status": "missing",
+                "provider_saved_file_next_action": (
+                    "Capture or obtain the saved grouped-daily JSON response."
+                ),
+                "provider_saved_file_capture_command": (
+                    "catalyst-radar ingest-polygon grouped-daily "
+                    "--date 2026-05-15 --save-response "
+                    "data\\local\\polygon-grouped-daily-2026-05-15.json "
+                    "--confirm-external-call"
+                ),
+                "provider_saved_file_capture_external_call_count": 1,
+                "provider_saved_file_validate_command": (
+                    "catalyst-radar ingest-polygon grouped-daily "
+                    "--date 2026-05-15 --fixture "
+                    "data\\local\\polygon-grouped-daily-2026-05-15.json "
+                    "--validate-only"
+                ),
+                "provider_saved_file_import_command": (
+                    "catalyst-radar ingest-polygon grouped-daily "
+                    "--date 2026-05-15 --fixture "
+                    "data\\local\\polygon-grouped-daily-2026-05-15.json"
+                ),
+                "provider_saved_file_external_call_count": 0,
+                "provider_saved_file_boundary": (
+                    "Capture makes one provider call only with explicit approval."
+                ),
+            },
+            "batches": [],
+        }
+
+    monkeypatch.setattr(
+        "catalyst_radar.dashboard.tui.dashboard_data."
+        "priced_in_source_gap_batches_payload",
+        fake_payload,
+    )
+
+    update = _apply_command(
+        "batch market_bars",
+        {},
+        "overview",
+        DashboardFilters(),
+        engine=create_engine(database_url, future=True),
+        config=AppConfig.from_env(),
+    )
+
+    assert update.page == "ops"
+    assert "market_bars: attention;" in update.message
+    assert "Saved file: missing; exists=false" in update.message
+    assert "data\\local\\polygon-grouped-daily-2026-05-15.json" in update.message
+    assert "Saved file capture: 1 external call(s); command" in update.message
+    assert "--save-response data\\local\\polygon-grouped-daily-2026-05-15.json" in (
+        update.message
+    )
+    assert "Saved file check: 0 external call(s); command" in update.message
+    assert "Saved file import: 0 external call(s); command" in update.message
+    assert "explicit approval" in update.message
+    assert "Manual bar check: catalyst-radar market-bars import" in update.message
+    assert "Manual bar import: catalyst-radar market-bars import" in update.message
+    assert "CIK validate:" not in update.message
+    assert "CIK import:" not in update.message
+
+
 def test_priced_in_source_batches_execute_next_cli_runs_one_batch(
     tmp_path: Path,
     monkeypatch,
