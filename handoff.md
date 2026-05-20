@@ -1,6 +1,57 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 18:24:34 +08:00
+Last updated: 2026-05-20 18:31:04 +08:00
+
+## Latest Market-Bar Full-Coverage Operator Wording
+
+Goal alignment / drift check:
+
+- The active goal remains: scan the broad market and tell whether any stock's
+  price has not yet matched market emotion/expectations.
+- After the full-scan dashboard fixes, the remaining primary blocker is still
+  `market_bars`. The old manual-template operator action said to fill "at
+  least one" row and that blank rows could wait. That was safe for incremental
+  import, but weak product guidance for the actual full-scan goal.
+- This slice keeps the incremental `--complete-rows-only` workflow intact while
+  making the full-coverage target explicit.
+- It makes 0 Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or provider
+  calls.
+
+Fix in this slice:
+
+- Updated the `manual_fill_required` operator action in
+  `src/catalyst_radar/market/manual_bars.py`.
+- New wording starts with the goal: fill all missing OHLCV/VWAP rows for full
+  coverage.
+- It still gives the safe incremental path: start with one complete row and
+  preview `--complete-rows-only` as a checkpoint.
+- Added a regression assertion that the operator action contains both the full
+  missing-row goal and the incremental checkpoint wording.
+
+Validation run in this slice:
+
+```powershell
+..\..\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\market\manual_bars.py tests\integration\test_provider_ingest_cli.py tests\integration\test_local_scripts.py
+..\..\.venv\Scripts\python.exe -m pytest tests\integration\test_provider_ingest_cli.py::test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths tests\integration\test_provider_ingest_cli.py::test_market_bars_repair_plan_previews_existing_local_template tests\integration\test_provider_ingest_cli.py::test_market_bars_repair_plan_guides_complete_rows_only_preview tests\integration\test_local_scripts.py::test_market_radar_status_script_is_zero_external_call_sitrep -q
+```
+
+Results:
+
+- Ruff passed.
+- Focused market-bar repair/status tests passed: `4 passed`.
+
+Next useful product action:
+
+- Do not treat this as goal completion. The data blocker remains
+  `market_bars`: current status before this slice was `131` missing stock-like
+  scan-date bars and `523` all-instrument missing bars.
+- The fastest full-coverage path remains explicit approval for one historical
+  Polygon/Massive grouped-daily capture, then saved-file validate/import. The
+  no-provider path remains manually filling the missing-bar CSV.
+- After market bars are repaired, continue with `catalyst_events`, then
+  `local_text`.
+- Do not run live provider/source-fill execution commands without explicit
+  operator approval.
 
 ## Latest Dashboard Full-Scan Source Data Fix
 
