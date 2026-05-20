@@ -188,6 +188,7 @@ def test_market_radar_status_script_is_zero_external_call_sitrep() -> None:
     assert "missing without local history:" in text
     assert "missing security types:" in text
     assert "incremental complete-row import:" in text
+    assert "strict next action:" in text
     assert "local template fill progress:" in text
     assert "/api/radar/priced-in/audit?stocks_only=true&limit=1" in text
     assert "[int]$TimeoutSeconds = 15" in text

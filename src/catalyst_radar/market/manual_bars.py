@@ -303,6 +303,18 @@ class ManualBarsRepairPlanResult:
                 "Polygon/Massive API key before using the provider fill command."
             )
         missing_sample = list(self.missing_as_of_bar_tickers[:12])
+        local_template_exists = self.local_template_path.exists()
+        operator_step = _manual_market_bars_operator_step(
+            missing=missing,
+            local_template_exists=local_template_exists,
+            local_template_path=self.local_template_path,
+            local_template_preview=self.local_template_preview,
+            template_command=template_command,
+            import_preview_command=import_preview_command,
+            import_execute_command=import_execute_command,
+            incremental_import_preview_command=incremental_import_preview_command,
+            incremental_import_execute_command=incremental_import_execute_command,
+        )
         return {
             "schema_version": "manual-market-bars-repair-plan-v1",
             "status": status,
@@ -351,8 +363,9 @@ class ManualBarsRepairPlanResult:
                 incremental_import_execute_command
             ),
             "local_template_path": str(self.local_template_path),
-            "local_template_exists": self.local_template_path.exists(),
+            "local_template_exists": local_template_exists,
             "local_template_preview": self.local_template_preview,
+            "operator_step": operator_step,
             "manual_template_api": "POST /api/radar/market-bars/template",
             "manual_import_api": "POST /api/radar/market-bars/import",
             "required_fill_fields": list(MANUAL_BAR_REQUIRED_FILL_FIELDS),
@@ -382,6 +395,144 @@ class ManualBarsRepairPlanResult:
             "generated_at": self.generated_at.isoformat(),
             "next_action": next_action,
         }
+
+
+def _manual_market_bars_operator_step(
+    *,
+    missing: int,
+    local_template_exists: bool,
+    local_template_path: Path,
+    local_template_preview: dict[str, object] | None,
+    template_command: str,
+    import_preview_command: str,
+    import_execute_command: str,
+    incremental_import_preview_command: str,
+    incremental_import_execute_command: str,
+) -> dict[str, object]:
+    if missing <= 0:
+        return {
+            "status": "ready",
+            "kind": "rerun_audit",
+            "action": "Market bars cover this scope. Rerun the priced-in audit.",
+            "command": "catalyst-radar priced-in-audit --all --json",
+            "after_manual_command": None,
+            "manual_step": False,
+            "external_calls_made": 0,
+        }
+    if not local_template_exists:
+        return {
+            "status": "needs_template",
+            "kind": "generate_template",
+            "action": "Generate the DB-backed missing-bar CSV for the full scope.",
+            "command": template_command,
+            "after_manual_command": import_preview_command,
+            "manual_step": False,
+            "external_calls_made": 0,
+        }
+    if not isinstance(local_template_preview, dict):
+        return {
+            "status": "needs_preview",
+            "kind": "preview_template",
+            "action": "Preview the local missing-bar CSV before importing.",
+            "command": import_preview_command,
+            "after_manual_command": None,
+            "manual_step": False,
+            "external_calls_made": 0,
+        }
+
+    preview_status = str(local_template_preview.get("status") or "").strip().lower()
+    progress = local_template_preview.get("fill_progress")
+    if not isinstance(progress, dict):
+        progress = {}
+    complete_rows = _int_payload_value(progress.get("complete_rows"))
+    partial_rows = _int_payload_value(progress.get("partial_rows"))
+    empty_rows = _int_payload_value(progress.get("empty_rows"))
+    invalid_rows = _int_payload_value(local_template_preview.get("invalid_row_count"))
+
+    if preview_status == "ready":
+        return {
+            "status": "ready_to_import",
+            "kind": "execute_import",
+            "action": "Import the complete full-scope market-bar CSV.",
+            "command": local_template_preview.get("execute_command")
+            or import_execute_command,
+            "after_manual_command": None,
+            "manual_step": False,
+            "external_calls_made": 0,
+        }
+    if preview_status == "ready_partial":
+        return {
+            "status": "ready_to_import_complete_rows",
+            "kind": "execute_incremental_import",
+            "action": "Import the completed rows, then keep filling the remaining rows.",
+            "command": local_template_preview.get("execute_command")
+            or incremental_import_execute_command,
+            "after_manual_command": None,
+            "manual_step": False,
+            "external_calls_made": 0,
+        }
+    if preview_status == "partial_imported":
+        return {
+            "status": "continue_manual_fill",
+            "kind": "fill_remaining_rows",
+            "action": "Continue filling the remaining missing-bar rows.",
+            "command": None,
+            "after_manual_command": incremental_import_preview_command,
+            "manual_step": True,
+            "external_calls_made": 0,
+        }
+    if partial_rows > 0:
+        return {
+            "status": "fix_partial_rows",
+            "kind": "finish_or_clear_partial_rows",
+            "action": (
+                "Finish or clear partial OHLCV/VWAP rows in "
+                f"{local_template_path}; partial rows cannot be imported."
+            ),
+            "command": import_preview_command,
+            "after_manual_command": incremental_import_preview_command,
+            "manual_step": True,
+            "external_calls_made": 0,
+        }
+    if complete_rows <= 0 and empty_rows > 0:
+        return {
+            "status": "manual_fill_required",
+            "kind": "fill_first_complete_rows",
+            "action": (
+                "Fill at least one complete OHLCV/VWAP row in "
+                f"{local_template_path}; blank rows can wait."
+            ),
+            "command": None,
+            "after_manual_command": incremental_import_preview_command,
+            "manual_step": True,
+            "external_calls_made": 0,
+        }
+    if invalid_rows > 0:
+        return {
+            "status": "fix_invalid_rows",
+            "kind": "fix_csv_values",
+            "action": "Fix invalid manual CSV values, then preview again.",
+            "command": import_preview_command,
+            "after_manual_command": incremental_import_preview_command,
+            "manual_step": True,
+            "external_calls_made": 0,
+        }
+    return {
+        "status": "review_csv",
+        "kind": "review_template",
+        "action": "Review the manual CSV state before importing.",
+        "command": import_preview_command,
+        "after_manual_command": incremental_import_preview_command,
+        "manual_step": False,
+        "external_calls_made": 0,
+    }
+
+
+def _int_payload_value(value: object) -> int:
+    try:
+        return int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0
 
 
 def write_manual_market_bars_template(
