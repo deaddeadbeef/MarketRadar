@@ -3117,6 +3117,17 @@ def test_priced_in_preflight_cli_outputs_zero_call_plan(
     assert payload["evidence_plan"]["external_calls_made"] == 0
     assert payload["commands"]["review_queue"] == "catalyst-radar priced-in-queue --json"
 
+    assert main(["priced-in-preflight", "--stocks-only", "--json"]) == 0
+    stock_output = capsys.readouterr()
+    stock_payload = json.loads(stock_output.out)
+    assert stock_output.err == ""
+    assert stock_payload["stocks_only"] is True
+    assert stock_payload["instrument_filter"] == "stocks_only"
+    assert stock_payload["commands"]["review_queue"] == (
+        "catalyst-radar priced-in-queue --json --stocks-only"
+    )
+    assert "--stocks-only" in stock_payload["commands"]["market_bars_template"]
+
     assert main(["priced-in-preflight"]) == 0
     text_output = capsys.readouterr()
     assert text_output.err == ""

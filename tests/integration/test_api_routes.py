@@ -1337,12 +1337,15 @@ def test_get_radar_priced_in_preflight_returns_zero_call_steps(
     database_url = _database_url(tmp_path, "radar-priced-in-preflight.db")
     monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
     _create_database(database_url)
-    monkeypatch.setattr(
-        dashboard_data,
-        "priced_in_preflight_payload",
-        lambda _engine, _config: {
+    seen_stocks_only: list[bool] = []
+
+    def fake_preflight_payload(_engine, _config, *, stocks_only: bool = False):
+        seen_stocks_only.append(stocks_only)
+        return {
             "schema_version": "priced-in-preflight-v1",
             "status": "blocked",
+            "stocks_only": stocks_only,
+            "instrument_filter": "stocks_only" if stocks_only else "all_instruments",
             "external_calls_made": 0,
             "rows": [
                 {
@@ -1358,7 +1361,12 @@ def test_get_radar_priced_in_preflight_returns_zero_call_steps(
                 "external_calls_made": 0,
                 "steps": [{"priority": 1, "area": "universe", "status": "blocked"}],
             },
-        },
+        }
+
+    monkeypatch.setattr(
+        dashboard_data,
+        "priced_in_preflight_payload",
+        fake_preflight_payload,
         raising=False,
     )
     client = TestClient(create_app())
@@ -1371,6 +1379,14 @@ def test_get_radar_priced_in_preflight_returns_zero_call_steps(
     assert payload["external_calls_made"] == 0
     assert payload["rows"][0]["area"] == "universe"
     assert payload["evidence_plan"]["schema_version"] == "priced-in-evidence-plan-v1"
+    assert seen_stocks_only[-1] is False
+
+    stock_response = client.get("/api/radar/priced-in/preflight?stocks_only=true")
+    assert stock_response.status_code == 200
+    stock_payload = stock_response.json()
+    assert stock_payload["stocks_only"] is True
+    assert stock_payload["instrument_filter"] == "stocks_only"
+    assert seen_stocks_only[-1] is True
 
 
 def test_get_radar_priced_in_answer_returns_current_scan_answer(

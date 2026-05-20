@@ -4737,6 +4737,7 @@ def test_priced_in_preflight_payload_reports_exact_next_steps(tmp_path: Path) ->
     assert payload["target_as_of_source"] == "latest_daily_bar"
     assert payload["latest_run_as_of"] is None
     assert payload["scan_scope"] == {
+        "instrument_filter": "all_instruments",
         "active_security_count": 0,
         "requested_securities": 0,
         "scanned_securities": 0,
@@ -4794,6 +4795,25 @@ def test_priced_in_preflight_payload_reports_exact_next_steps(tmp_path: Path) ->
     assert plan_by_area["local_text"]["depends_on"] == ["catalyst_events"]
     assert evidence_plan["next_command"]
     assert payload["api"]["queue"] == "GET /api/radar/priced-in"
+
+    stock_payload = priced_in_preflight_payload(
+        engine,
+        AppConfig(daily_market_provider="polygon", polygon_tickers_max_pages=1),
+        stocks_only=True,
+    )
+
+    assert stock_payload["stocks_only"] is True
+    assert stock_payload["instrument_filter"] == "stocks_only"
+    assert stock_payload["scan_scope"]["instrument_filter"] == "stocks_only"
+    assert stock_payload["source_coverage"]["stocks_only"] is True
+    assert stock_payload["commands"]["review_queue"] == (
+        "catalyst-radar priced-in-queue --json --stocks-only"
+    )
+    assert stock_payload["api"]["queue"] == (
+        "GET /api/radar/priced-in?stocks_only=true"
+    )
+    assert "--stocks-only" in stock_payload["commands"]["market_bars_template"]
+    assert "--stocks-only" in stock_payload["commands"]["market_bars_import_preview"]
 
 
 def test_priced_in_preflight_recommends_manual_bar_template_for_missing_bars(

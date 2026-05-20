@@ -503,10 +503,16 @@ def radar_priced_in_queue(
 
 
 @router.get("/priced-in/preflight", dependencies=[Depends(require_role(Role.VIEWER))])
-def radar_priced_in_preflight() -> dict[str, object]:
+def radar_priced_in_preflight(
+    stocks_only: bool = Query(default=False),
+) -> dict[str, object]:
     preflight_payload = _dashboard_helper("priced_in_preflight_payload")
     return redact_restricted_external_payload(
-        preflight_payload(_engine(), AppConfig.from_env())
+        preflight_payload(
+            _engine(),
+            AppConfig.from_env(),
+            stocks_only=stocks_only,
+        )
     )
 
 

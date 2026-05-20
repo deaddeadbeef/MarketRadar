@@ -907,6 +907,7 @@ def priced_in_queue_payload(
         latest_run=latest_run,
         discovery_snapshot=discovery,
         source_coverage=source_coverage,
+        stocks_only=stocks_only,
     )
     payload = {
         "schema_version": "priced-in-queue-v1",
@@ -2809,7 +2810,7 @@ def priced_in_answer_payload(
         else (
             _row_dict(queue_preflight)
             if isinstance(queue_preflight, Mapping) and queue_preflight
-            else priced_in_preflight_payload(engine, config)
+            else priced_in_preflight_payload(engine, config, stocks_only=stocks_only)
         )
     )
     status_counts = _mapping_value(resolved_queue, "status_counts")
@@ -3155,7 +3156,11 @@ def _priced_in_full_scan_audit_payload_uncached(
         else _row_dict(_mapping_value(resolved_queue, "preflight"))
     )
     if not resolved_preflight:
-        resolved_preflight = priced_in_preflight_payload(engine, config)
+        resolved_preflight = priced_in_preflight_payload(
+            engine,
+            config,
+            stocks_only=stocks_only,
+        )
     full_scan = _priced_in_answer_full_scan_summary(resolved_queue)
     preview_queue = resolved_queue
     if wanted_source_gaps:
@@ -5979,6 +5984,7 @@ def priced_in_preflight_payload(
     latest_run: Mapping[str, object] | None = None,
     discovery_snapshot: Mapping[str, object] | None = None,
     source_coverage: Mapping[str, object] | None = None,
+    stocks_only: bool = False,
 ) -> dict[str, object]:
     run = (
         _row_dict(latest_run)
@@ -5999,11 +6005,16 @@ def priced_in_preflight_payload(
     resolved_source_coverage = (
         _row_dict(source_coverage)
         if isinstance(source_coverage, Mapping)
-        else _priced_in_preflight_source_coverage(engine, run)
+        else _priced_in_preflight_source_coverage(
+            engine,
+            run,
+            stocks_only=stocks_only,
+        )
     )
     commands = _priced_in_preflight_commands(
         config,
         target_ticker_pages=_estimated_ticker_seed_pages(bar_universe),
+        stocks_only=stocks_only,
     )
     discovery_run = _mapping_value(discovery, "run")
     run_as_of = _date_iso_or_none(
@@ -6017,6 +6028,12 @@ def priced_in_preflight_payload(
         target_as_of_source = "latest_daily_bar"
     else:
         target_as_of_source = None
+    target_as_of_date = _parse_date(target_as_of)
+    stock_scope = (
+        _priced_in_market_bar_stock_scope(engine, target_as_of=target_as_of_date)
+        if stocks_only
+        else None
+    )
     provider_blocker = _latest_market_bar_provider_failure(
         engine,
         provider=_provider_name(config.daily_market_provider, default="csv"),
@@ -6031,6 +6048,8 @@ def priced_in_preflight_payload(
         bar_universe,
         resolved_source_coverage,
         provider_blocker,
+        stocks_only=stocks_only,
+        stock_scope=stock_scope,
     )
     evidence_plan = _priced_in_evidence_plan(rows)
     blocked_rows = [row for row in rows if row["status"] == "blocked"]
@@ -6050,6 +6069,7 @@ def priced_in_preflight_payload(
     freshness = _mapping_value(discovery, "freshness")
     scan_yield = _mapping_value(discovery, "yield")
     scan_scope = {
+        "instrument_filter": "stocks_only" if stocks_only else "all_instruments",
         "active_security_count": int(
             _finite_float(freshness.get("active_security_count"))
         ),
@@ -6059,8 +6079,24 @@ def priced_in_preflight_payload(
         "scanned_securities": int(_finite_float(scan_yield.get("scanned_securities"))),
         "universe": discovery_run.get("universe"),
     }
+    if stock_scope:
+        scan_scope.update(
+            {
+                "stock_like_active": int(
+                    _finite_float(stock_scope.get("stock_like_active")),
+                ),
+                "stock_like_with_as_of_bar": int(
+                    _finite_float(stock_scope.get("stock_like_with_as_of_bar")),
+                ),
+                "stock_like_missing_as_of_bar": int(
+                    _finite_float(stock_scope.get("stock_like_missing_as_of_bar")),
+                ),
+            }
+        )
     return {
         "schema_version": "priced-in-preflight-v1",
+        "stocks_only": bool(stocks_only),
+        "instrument_filter": "stocks_only" if stocks_only else "all_instruments",
         "status": status,
         "headline": headline,
         "next_action": next_action,
@@ -6082,7 +6118,8 @@ def priced_in_preflight_payload(
             "seed_universe": "POST /api/radar/universe/seed",
             "call_plan": "POST /api/radar/runs/call-plan",
             "run": "POST /api/radar/runs",
-            "queue": "GET /api/radar/priced-in",
+            "queue": "GET /api/radar/priced-in"
+            + ("?stocks_only=true" if stocks_only else ""),
         },
         "call_plan": {
             "status": call_plan.get("status"),
@@ -6196,6 +6233,8 @@ def _priced_in_evidence_plan_dependencies(area: str) -> list[str]:
 def _priced_in_preflight_source_coverage(
     engine: Engine,
     latest_run: Mapping[str, object],
+    *,
+    stocks_only: bool = False,
 ) -> dict[str, object]:
     if latest_run:
         candidate_rows = load_radar_run_candidate_rows(
@@ -6216,7 +6255,9 @@ def _priced_in_preflight_source_coverage(
         for row in candidate_rows
         if isinstance(row, Mapping)
     ]
-    coverage = priced_in_source_coverage_summary(queue_rows)
+    if stocks_only:
+        queue_rows = [row for row in queue_rows if _priced_in_row_is_stock_like(row)]
+    coverage = priced_in_source_coverage_summary(queue_rows, stocks_only=stocks_only)
     return _priced_in_source_coverage_with_option_diagnostic(engine, queue_rows, coverage)
 
 
@@ -13966,6 +14007,9 @@ def _priced_in_preflight_rows(
     bar_universe: Mapping[str, object],
     source_coverage: Mapping[str, object],
     provider_blocker: Mapping[str, object],
+    *,
+    stocks_only: bool = False,
+    stock_scope: Mapping[str, object] | None = None,
 ) -> list[dict[str, object]]:
     scan_yield = _mapping_value(discovery, "yield")
     freshness = _mapping_value(discovery, "freshness")
@@ -13974,6 +14018,15 @@ def _priced_in_preflight_rows(
     scanned = int(_finite_float(scan_yield.get("scanned_securities")))
     latest_bars = int(_finite_float(freshness.get("active_security_with_as_of_bar_count")))
     missing_bars = int(_finite_float(freshness.get("missing_as_of_daily_bar_count")))
+    if stocks_only and stock_scope:
+        stock_like_active = int(_finite_float(stock_scope.get("stock_like_active")))
+        active = stock_like_active or active
+        latest_bars = int(
+            _finite_float(stock_scope.get("stock_like_with_as_of_bar")),
+        )
+        missing_bars = int(
+            _finite_float(stock_scope.get("stock_like_missing_as_of_bar")),
+        )
     run = _mapping_value(discovery, "run")
     run_universe = str(run.get("universe") or "").strip()
     provider = _provider_name(config.daily_market_provider, default="csv")
@@ -14031,8 +14084,16 @@ def _priced_in_preflight_rows(
             _priced_in_preflight_row(
                 "universe",
                 "ready",
-                f"{active or requested or scanned} securities are available for scan scope.",
-                "Keep scanning without a ticker filter.",
+                (
+                    f"{active or requested or scanned} "
+                    f"{'stock-like ' if stocks_only else ''}securities are available "
+                    "for scan scope."
+                ),
+                (
+                    "Keep scanning stock-like rows without a ticker filter."
+                    if stocks_only
+                    else "Keep scanning without a ticker filter."
+                ),
                 commands.get("run_scan"),
                 "POST /api/radar/runs",
             )
@@ -14060,7 +14121,7 @@ def _priced_in_preflight_rows(
         )
 
     bar_coverage_ratio = (latest_bars / active) if active else 0.0
-    if latest_bars == 0 or (missing_bars and bar_coverage_ratio < 0.9):
+    if latest_bars == 0 or (missing_bars and (stocks_only or bar_coverage_ratio < 0.9)):
         provider_reason = str(provider_blocker.get("reason") or "").strip()
         provider_note = (
             f" Latest {provider} market-data failure: {provider_reason}"
@@ -14073,17 +14134,28 @@ def _priced_in_preflight_rows(
             "the provider plan before rerunning."
             if provider_reason
             else (
-                "Generate a DB-backed missing-bar template, fill only the "
-                "missing ticker rows, import it, then rerun the full-market scan. "
-                "Use the provider run only if its call plan and plan limits "
-                "match your intent."
+                (
+                    "Generate the stock-only DB-backed missing-bar template, fill "
+                    "the stock-like missing rows, import it, then rerun the "
+                    "stocks-only priced-in answer."
+                )
+                if stocks_only
+                else (
+                    "Generate a DB-backed missing-bar template, fill only the "
+                    "missing ticker rows, import it, then rerun the full-market scan. "
+                    "Use the provider run only if its call plan and plan limits "
+                    "match your intent."
+                )
             )
         )
         rows.append(
             _priced_in_preflight_row(
                 "market_bars",
                 "blocked",
-                f"Run-as-of bar coverage is {latest_bars}/{active or 'n/a'}.{provider_note}",
+                (
+                    f"Run-as-of {'stock-like ' if stocks_only else ''}bar "
+                    f"coverage is {latest_bars}/{active or 'n/a'}.{provider_note}"
+                ),
                 next_action,
                 commands.get("market_bars_template"),
                 "POST /api/radar/market-bars/template",
@@ -14094,7 +14166,10 @@ def _priced_in_preflight_rows(
             _priced_in_preflight_row(
                 "market_bars",
                 "attention",
-                f"Run-as-of bars cover {latest_bars}/{active} securities.",
+                (
+                    f"Run-as-of bars cover {latest_bars}/{active} "
+                    f"{'stock-like ' if stocks_only else ''}securities."
+                ),
                 (
                     "Coverage is broad enough for research; generate the "
                     "DB-backed missing-bar template if you want the full active "
@@ -14109,7 +14184,10 @@ def _priced_in_preflight_rows(
             _priced_in_preflight_row(
                 "market_bars",
                 "ready",
-                f"Run-as-of bars cover {latest_bars}/{active or latest_bars} securities.",
+                (
+                    f"Run-as-of bars cover {latest_bars}/{active or latest_bars} "
+                    f"{'stock-like ' if stocks_only else ''}securities."
+                ),
                 "Use the latest bars in the next scan.",
                 commands.get("run_scan"),
                 "POST /api/radar/runs",
@@ -14239,6 +14317,7 @@ def _priced_in_preflight_commands(
     config: AppConfig,
     *,
     target_ticker_pages: int | None = None,
+    stocks_only: bool = False,
 ) -> dict[str, str]:
     provider = _provider_name(config.daily_market_provider, default="csv")
     if provider == "polygon":
@@ -14268,14 +14347,17 @@ def _priced_in_preflight_commands(
         "market_bars_template": _csv_market_template_command(
             None,
             missing_only=True,
+            stocks_only=stocks_only,
         ),
         "market_bars_import_preview": _csv_market_refresh_command(
             None,
             execute=False,
+            stocks_only=stocks_only,
         ),
         "market_bars_import_execute": _csv_market_refresh_command(
             None,
             execute=True,
+            stocks_only=stocks_only,
         ),
         "review_call_plan": "catalyst-radar dashboard-tui --once --page run",
         "run_scan": (
@@ -14287,7 +14369,10 @@ def _priced_in_preflight_commands(
             f"--available-at <UTC-now> --provider {provider} "
             f"--universe {config.universe_name} --json"
         ),
-        "review_queue": "catalyst-radar priced-in-queue --json",
+        "review_queue": (
+            "catalyst-radar priced-in-queue --json"
+            + (" --stocks-only" if stocks_only else "")
+        ),
     }
 
 
