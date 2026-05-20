@@ -1138,6 +1138,13 @@ def test_dashboard_manual_bar_fill_progress_summary_is_human_readable() -> None:
     assert "Market bar next: Finish or clear partial OHLCV/VWAP rows" in ops
 
 
+def test_dashboard_start_page_alias_opens_tutorial() -> None:
+    screen = render_dashboard_tui({}, page="start", width=120)
+
+    assert "Page: tutorial" in screen
+    assert "Tutorial - your first 90 seconds" in screen
+
+
 def test_dashboard_review_page_is_distinct_from_full_scan() -> None:
     review_filters = dashboard_filters_for_page(DashboardFilters(), "review")
     assert review_filters.priced_in_status == "actionable"
