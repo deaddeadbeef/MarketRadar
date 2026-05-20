@@ -3772,12 +3772,21 @@ def _market_bar_saved_file_capture_command(
         else "provider_saved_file_capture_request_body",
     )
     output_path = _market_bar_saved_file_path(body, "output_path")
+    plan = _market_bar_provider_fill_plan(payload)
+    target = str(plan.get("target_as_of") or body.get("expected_as_of") or "").strip()
+    missing = int(_number_or_zero(plan.get("missing_as_of_bar")))
     if not confirmed:
+        target_text = f"target={target}; " if target else ""
+        missing_text = f"current_missing={missing}; " if missing else ""
         return (
-            "Saved-file capture is approval-gated; external_calls_made=0; "
+            "Saved-file capture is approval-gated; "
+            f"{target_text}{missing_text}"
+            "external_calls_made=0; "
             f"safe request body confirm_external_call=false output_path={output_path}. "
             "Type `bars saved capture confirm` only if you approve one "
-            "Polygon/Massive grouped-daily provider call."
+            "Polygon/Massive grouped-daily provider call. After capture, "
+            "type `bars saved import` to preview the saved file, then "
+            "`bars saved import execute` only if coverage matches intent."
         )
     captured = capture_polygon_grouped_daily_response_with_preview(
         config=config,

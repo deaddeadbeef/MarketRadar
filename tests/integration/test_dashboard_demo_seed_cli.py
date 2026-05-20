@@ -1268,6 +1268,8 @@ def _saved_file_command_payload(fixture_path, output_path):
             "market_bars": {
                 "repair": {
                     "provider_fill_plan": {
+                        "target_as_of": "2026-05-08",
+                        "missing_as_of_bar": 3,
                         "provider_saved_file_capture_request_body": {
                             "expected_as_of": "2026-05-08",
                             "output_path": output,
@@ -1368,7 +1370,10 @@ def test_dashboard_bars_saved_capture_requires_confirm_without_call(tmp_path: Pa
     assert update.page == "run"
     assert "approval-gated" in update.message
     assert "external_calls_made=0" in update.message
+    assert "target=2026-05-08" in update.message
+    assert "current_missing=3" in update.message
     assert "confirm_external_call=false" in update.message
+    assert "bars saved import` to preview" in update.message
     assert "bars saved capture confirm" in update.message
     assert not output_path.exists()
 

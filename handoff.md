@@ -1,6 +1,38 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 05:21:33 +08:00
+Last updated: 2026-05-21 05:35:52 +08:00
+
+
+
+## Latest Market-Bar Capture Approval Context
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- The trusted-answer blocker remains market_bars: the current full-market source roadmap still reports 523 missing active-universe bars for 2026-05-15.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, import rows, change scoring, reduce the universe, or claim readiness.
+- This is useful because the single approved Polygon/Massive grouped-daily capture is the fastest realistic path through the first gate. The approval response and TUI prompt now tell the operator what the call is expected to unblock and exactly how to preview/import the saved file afterward.
+
+Fix in this slice:
+
+- `POST /api/radar/market-bars/provider-fixture-capture` with `confirm_external_call=false` now returns zero-call approval context: current coverage scope, active rows, existing scan-date bars, missing scan-date bars, saved-file validate/import commands, and saved-file request bodies that point at the requested output path.
+- Empty or unseeded databases still return an approval-required response with `approval_context_status=unavailable` and 0 calls made.
+- TUI `bars saved capture` now shows target date, current missing-bar count, 0-call status, and the exact next step: preview with `bars saved import`, then execute only if coverage matches intent.
+- README now documents that the saved capture approval step includes current missing-bar count and zero-call validate/import request bodies.
+
+Validation observed in this slice:
+
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\api\routes\radar.py src\catalyst_radar\dashboard\tui.py tests\integration\test_api_routes.py tests\integration\test_dashboard_demo_seed_cli.py` passed with `All checks passed!`.
+- Focused pytest passed 4 tests covering approval-required API context, fixture-backed capture preview, TUI approval prompt, and TUI post-capture preview.
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m py_compile src\catalyst_radar\api\routes\radar.py src\catalyst_radar\dashboard\tui.py tests\integration\test_api_routes.py tests\integration\test_dashboard_demo_seed_cli.py` exited 0.
+- `git diff --check` passed.
+- Live TUI Run-page smoke against `schwab-live.db` showed `Saved file capture` and `External calls made: 0`.
+- Live API smoke against `schwab-live.db` returned `status=approval_required`, `approval_context_status=ready`, `coverage_scope=active_universe`, `active_security_count=12613`, `existing_as_of_bar_count=12090`, `missing_as_of_bar_count=523`, `approval_context_external_calls_made=0`, `external_calls_made=0`, and `db_writes_made=0`.
+
+Next useful product action:
+
+- Do not treat this slice as goal completion.
+- The real blocker remains filling or capturing the missing 2026-05-15 market bars under explicit operator control, then rerunning `priced-in-source-batches --source all`.
 
 
 
