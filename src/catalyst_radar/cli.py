@@ -3732,6 +3732,20 @@ def _print_manual_market_bars_repair_plan(payload: Mapping[str, object]) -> None
         f"path={payload.get('local_template_path') or 'n/a'} "
         f"exists={str(bool(payload.get('local_template_exists'))).lower()}"
     )
+    print(
+        "local_bar_history="
+        f"missing_with_history={payload.get('missing_with_local_history_count', 'n/a')} "
+        f"missing_without_history={payload.get('missing_without_local_history_count', 'n/a')}"
+    )
+    no_history = payload.get("missing_without_local_history_sample")
+    if isinstance(no_history, list | tuple) and no_history:
+        more = int(payload.get("missing_without_local_history_more") or 0)
+        suffix = f" plus {more} more" if more else ""
+        print(
+            "missing_without_local_history="
+            + ",".join(str(ticker) for ticker in no_history)
+            + suffix
+        )
     preview = payload.get("local_template_preview")
     if isinstance(preview, Mapping):
         print(

@@ -189,6 +189,18 @@ if ($Quick) {
         )
         Write-Output ("- manual template: {0}" -f $marketBarRepairPlan.manual_template_command)
         Write-Output ("- preview import: {0}" -f $marketBarRepairPlan.manual_import_preview_command)
+        Write-Output (
+            "- local bar history: missing_with_history={0}; missing_without_history={1}" -f
+            $(if ($null -ne $marketBarRepairPlan.missing_with_local_history_count) { $marketBarRepairPlan.missing_with_local_history_count } else { "n/a" }),
+            $(if ($null -ne $marketBarRepairPlan.missing_without_local_history_count) { $marketBarRepairPlan.missing_without_local_history_count } else { "n/a" })
+        )
+        $noHistory = @(
+            $marketBarRepairPlan.missing_without_local_history_sample |
+                Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }
+        )
+        if ($noHistory.Count -gt 0) {
+            Write-Output ("- missing without local history: {0}" -f (($noHistory | Select-Object -First 12) -join ", "))
+        }
         if ($marketBarRepairPlan.provider_fill_command) {
             Write-Output (
                 "- provider option: status={0}; external_calls={1}; command={2}" -f
