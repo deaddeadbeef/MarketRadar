@@ -7625,7 +7625,10 @@ def load_theme_rows(
 
     stmt = (
         select(
-            candidate_states,
+            candidate_states.c.ticker,
+            candidate_states.c.as_of,
+            candidate_states.c.state,
+            candidate_states.c.final_score,
             signal_features.c.payload.label("signal_payload"),
         )
         .join(
@@ -7648,11 +7651,27 @@ def load_theme_rows(
     groups: defaultdict[str, list[dict[str, object]]] = defaultdict(list)
     with engine.connect() as conn:
         for row in conn.execute(stmt):
-            values = _row_dict(row._mapping)
-            signal_payload = values.pop("signal_payload", None)
-            metadata = _mapping_value(_mapping_value(signal_payload, "candidate"), "metadata")
+            values = row._mapping
+            signal_payload = values.get("signal_payload")
+            candidate_payload = (
+                signal_payload.get("candidate")
+                if isinstance(signal_payload, Mapping)
+                else None
+            )
+            metadata = (
+                candidate_payload.get("metadata")
+                if isinstance(candidate_payload, Mapping)
+                else {}
+            )
             theme = _theme_name(metadata) or "unclassified"
-            groups[theme].append(values)
+            groups[theme].append(
+                {
+                    "ticker": values.get("ticker"),
+                    "as_of": _as_utc_datetime_or_none(values.get("as_of")),
+                    "state": values.get("state"),
+                    "final_score": values.get("final_score"),
+                }
+            )
 
     rows = []
     for theme, items in groups.items():
