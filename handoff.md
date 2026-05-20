@@ -1,6 +1,84 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 13:56:00 +08:00
+Last updated: 2026-05-20 14:06:50 +08:00
+
+## Latest Core Evidence Decision Gate
+
+Goal alignment:
+
+- The active goal remains: scan the broad market and tell whether any stock's
+  price has not yet matched market emotion/expectations.
+- The previous slice made evidence completeness visible. This slice makes the
+  gate enforce that visibility: the priced-in answer cannot become globally
+  `decision_ready` just because a subset row looks reviewable if required core
+  evidence layers are still incomplete.
+- Core evidence currently means:
+  - market bars for price reaction;
+  - catalyst events for the emotion/catalyst side;
+  - local text intelligence derived from catalyst/event text.
+- Optional context such as options, theme/peer/sector, and broker context stays
+  visible as trust context, but does not by itself hard-block the core answer.
+- This slice makes 0 Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or
+  provider calls.
+
+Fix in this slice:
+
+- `priced_in_answer_payload(...)` now computes the first required/core evidence
+  gap from `evidence_completeness`.
+- `_priced_in_answer_status(...)` now blocks if:
+  - the scan is partial/selected;
+  - market bars are missing; or
+  - any non-market core evidence layer is incomplete.
+- `_priced_in_answer_decision_readiness(...)` now recommends the first core
+  evidence gap when market bars are complete but catalyst/text evidence is not.
+- Answer/headline copy now names the blocking core evidence layer, e.g.:
+
+  ```text
+  Full-market priced-in answer is not ready: core evidence layer catalyst_events still has 1 gap row(s). 1 scanned-subset row(s) still look reviewable, but core evidence must be repaired first.
+  Full scan blocked by catalyst_events core evidence gap (1 row(s)); 2 scanned row(s).
+  ```
+
+- A focused regression covers the future state after market bars are repaired:
+  even with a decision-useful row and complete market bars, incomplete
+  `catalyst_events` keeps the overall answer blocked and points the next command
+  at the catalyst source-batch plan.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_answer_blocks_core_evidence_gaps_even_with_ready_rows tests\integration\test_dashboard_data.py::test_priced_in_answer_opens_full_scan_queue_when_decision_ready tests\integration\test_dashboard_data.py::test_priced_in_answer_keeps_trust_gaps_when_decision_ready tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_answer_cli_outputs_current_scan_answer -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py tests\integration\test_dashboard_data.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-answer
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-answer --json
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page overview
+```
+
+Results:
+
+- Focused pytest passed: `4 passed`.
+- Ruff passed.
+- `git diff --check` passed.
+- Live CLI, JSON answer payload, and Overview TUI observations all reported
+  `external_calls=0`.
+
+Live state after the slice still blocks at market bars:
+
+```text
+decision_readiness=status=blocked ... summary=10 row(s) look decision-ready inside the scanned subset, but 523 market-bar row(s) are missing from the full scan.
+evidence_completeness=all_sources_ready=false core_sources_ready=false ready=1/6 core=0/3 first_gap=market_bars ...
+```
+
+Next useful product action:
+
+- The code path is now safer for the next phase: after the `523` missing
+  scan-date bars are repaired, the answer will not be marked globally ready
+  until `catalyst_events` and `local_text` are also complete.
+- The current real blocker remains the same: fill/import the missing market bars
+  manually or explicitly approve the one-call Polygon/Massive grouped-daily
+  repair.
+- Do not run provider/source-fill execution commands without explicit operator
+  approval.
 
 ## Latest Evidence-Completeness Answer Gate
 

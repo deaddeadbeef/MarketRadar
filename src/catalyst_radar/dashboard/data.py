@@ -2803,6 +2803,12 @@ def priced_in_answer_payload(
     )
     market_bar_gap = _priced_in_answer_market_bar_gap(source_coverage)
     market_bar_gap_count = int(_finite_float(market_bar_gap.get("count")))
+    evidence_completeness = _priced_in_answer_evidence_completeness(source_coverage)
+    core_evidence_gap = _priced_in_answer_core_evidence_gap(
+        evidence_completeness,
+        skip_market_bars=market_bar_gap_count > 0,
+    )
+    core_evidence_gap_count = int(_finite_float(core_evidence_gap.get("count")))
     answer_status = _priced_in_answer_status(
         queue_status=str(resolved_queue.get("status") or "unknown"),
         actionable_count=actionable_count,
@@ -2810,6 +2816,7 @@ def priced_in_answer_payload(
         research_lead_count=research_lead_count,
         blocked_count=blocked_count,
         market_bar_gap_count=market_bar_gap_count,
+        core_evidence_gap_count=core_evidence_gap_count,
     )
     decision_readiness = _priced_in_answer_decision_readiness(
         _mapping_value(resolved_queue, "decision_gap_counts"),
@@ -2817,8 +2824,8 @@ def priced_in_answer_payload(
         decision_ready_count=decision_ready_count,
         scan_as_of=str(_mapping_value(resolved_queue, "latest_run").get("as_of") or ""),
         market_bar_gap=market_bar_gap,
+        core_evidence_gap=core_evidence_gap,
     )
-    evidence_completeness = _priced_in_answer_evidence_completeness(source_coverage)
     next_action, next_command = _priced_in_answer_next_step(
         answer_status=answer_status,
         preflight=resolved_preflight,
@@ -2854,6 +2861,7 @@ def priced_in_answer_payload(
             research_lead_count=research_lead_count,
             blocked_count=blocked_count,
             market_bar_gap_count=market_bar_gap_count,
+            core_evidence_gap=core_evidence_gap,
             stocks_only=stocks_only,
         ),
         "headline": _priced_in_answer_headline(
@@ -2864,6 +2872,7 @@ def priced_in_answer_payload(
             research_lead_count=research_lead_count,
             blocked_count=blocked_count,
             market_bar_gap_count=market_bar_gap_count,
+            core_evidence_gap=core_evidence_gap,
             stocks_only=stocks_only,
         ),
         "decision_ready": decision_ready,
@@ -5098,6 +5107,7 @@ def _priced_in_answer_decision_readiness(
     decision_ready_count: int,
     scan_as_of: str = "",
     market_bar_gap: Mapping[str, object] | None = None,
+    core_evidence_gap: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     row_count = int(_finite_float(decision_gap_counts.get("row_count")))
     count_values = _mapping_value(decision_gap_counts, "counts")
@@ -5140,6 +5150,22 @@ def _priced_in_answer_decision_readiness(
             market_recommendation,
             *[gap for gap in top_gaps if gap.get("gap") != "market_bars"],
         ]
+    core_gap = _row_dict(core_evidence_gap or {})
+    core_gap_name = str(core_gap.get("gap") or "").strip()
+    core_gap_count = int(_finite_float(core_gap.get("count")))
+    if market_gap_count <= 0 and core_gap_count > 0 and core_gap_name:
+        core_recommendation = {
+            "gap": core_gap_name,
+            "source": core_gap.get("source") or core_gap_name,
+            "count": core_gap_count,
+            "sample_tickers": list(_sequence_value(core_gap.get("sample_tickers"))),
+            "next_action": core_gap.get("next_action"),
+            "command": core_gap.get("command"),
+        }
+        top_gaps = [
+            core_recommendation,
+            *[gap for gap in top_gaps if gap.get("gap") != core_gap_name],
+        ]
     recommended = top_gaps[0] if top_gaps else {}
     if market_gap_count > 0:
         status = "blocked"
@@ -5153,6 +5179,19 @@ def _priced_in_answer_decision_readiness(
             summary = (
                 f"The full scan is blocked by {market_gap_count} missing "
                 "market-bar row(s)."
+            )
+    elif core_gap_count > 0 and core_gap_name:
+        status = "blocked"
+        if decision_ready_count > 0:
+            summary = (
+                f"{decision_ready_count} row(s) look decision-ready inside the "
+                f"scanned subset, but core evidence layer {core_gap_name} still "
+                f"has {core_gap_count} gap row(s)."
+            )
+        else:
+            summary = (
+                f"The full scan is blocked by core evidence layer {core_gap_name} "
+                f"({core_gap_count} gap row(s))."
             )
     elif decision_ready_count > 0:
         status = "ready"
@@ -5297,6 +5336,34 @@ def _priced_in_answer_evidence_completeness(
         "layers": layers,
         "external_calls_made": 0,
     }
+
+
+def _priced_in_answer_core_evidence_gap(
+    evidence_completeness: Mapping[str, object],
+    *,
+    skip_market_bars: bool = False,
+) -> dict[str, object]:
+    for layer in _sequence_value(evidence_completeness.get("layers")):
+        if not isinstance(layer, Mapping):
+            continue
+        if not bool(layer.get("required_for_core_answer")):
+            continue
+        source = str(layer.get("source") or "").strip()
+        if skip_market_bars and source == "market_bars":
+            continue
+        status = str(layer.get("status") or "").strip()
+        gap_count = int(_finite_float(layer.get("gap_count")))
+        if status == "ready" and gap_count <= 0:
+            continue
+        return {
+            "gap": source,
+            "source": source,
+            "count": gap_count,
+            "status": status,
+            "next_action": layer.get("next_action"),
+            "command": layer.get("command"),
+        }
+    return {}
 
 
 def _priced_in_decision_gap_row(
@@ -5550,10 +5617,13 @@ def _priced_in_answer_status(
     research_lead_count: int,
     blocked_count: int,
     market_bar_gap_count: int = 0,
+    core_evidence_gap_count: int = 0,
 ) -> str:
     if queue_status in {"universe_too_small", "partial_scan", "selected_universe"}:
         return "blocked"
     if market_bar_gap_count > 0:
+        return "blocked"
+    if core_evidence_gap_count > 0:
         return "blocked"
     if decision_ready_count > 0:
         return "decision_ready"
@@ -5572,6 +5642,7 @@ def _priced_in_answer_text(
     research_lead_count: int,
     blocked_count: int,
     market_bar_gap_count: int = 0,
+    core_evidence_gap: Mapping[str, object] | None = None,
     stocks_only: bool = False,
 ) -> str:
     if answer_status == "decision_ready":
@@ -5598,6 +5669,21 @@ def _priced_in_answer_text(
                 f"{market_bar_gap_count} row(s) still lack scan-date price "
                 f"reaction.{suffix}"
             )
+        core_gap = _row_dict(core_evidence_gap or {})
+        core_gap_name = str(core_gap.get("gap") or "").strip()
+        core_gap_count = int(_finite_float(core_gap.get("count")))
+        if core_gap_name and core_gap_count > 0:
+            scope = "Stocks-only" if stocks_only else "Full-market"
+            suffix = (
+                f" {decision_ready_count} scanned-subset row(s) still look "
+                "reviewable, but core evidence must be repaired first."
+                if decision_ready_count > 0
+                else ""
+            )
+            return (
+                f"{scope} priced-in answer is not ready: core evidence layer "
+                f"{core_gap_name} still has {core_gap_count} gap row(s).{suffix}"
+            )
         return (
             f"{actionable_count or blocked_count} possible mismatch row(s) are blocked "
             "by missing evidence or scan readiness."
@@ -5614,6 +5700,7 @@ def _priced_in_answer_headline(
     research_lead_count: int,
     blocked_count: int,
     market_bar_gap_count: int = 0,
+    core_evidence_gap: Mapping[str, object] | None = None,
     stocks_only: bool = False,
 ) -> str:
     if answer_status == "decision_ready":
@@ -5633,6 +5720,14 @@ def _priced_in_answer_headline(
                 f"Full scan blocked by {market_bar_gap_count} missing "
                 f"{scope} market-bar row(s); {total_count} scanned row(s) are "
                 "only a subset."
+            )
+        core_gap = _row_dict(core_evidence_gap or {})
+        core_gap_name = str(core_gap.get("gap") or "").strip()
+        core_gap_count = int(_finite_float(core_gap.get("count")))
+        if core_gap_name and core_gap_count > 0:
+            return (
+                f"Full scan blocked by {core_gap_name} core evidence gap "
+                f"({core_gap_count} row(s)); {total_count} scanned row(s)."
             )
         return (
             f"{blocked_count or actionable_count} row(s) need evidence cleanup before "
