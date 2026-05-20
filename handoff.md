@@ -1,9 +1,43 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 04:36:41 +08:00
+Last updated: 2026-05-21 04:58:01 +08:00
 
 
 
+
+## Latest TUI SEC CIK Override Actions
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- The first trusted-answer blocker is still market_bars: the current live status still reports 523 missing full active-universe bars and 131 missing stock-like bars for 2026-05-15.
+- This slice does not fill market bars, reduce the universe, call Polygon/Massive, call SEC, call Schwab, call OpenAI, change scoring, or claim readiness.
+- This is useful because the next source after bars, catalyst_events, has an existing local repair path for company-like rows blocked only by missing SEC CIK metadata. CLI and API already exposed it; the TUI replacement UI did not.
+
+Fix in this slice:
+
+- Added dashboard-native SEC CIK override commands:
+  - cik template creates data\local\cik-overrides-template.csv from the current catalyst-events CIK blocker rows.
+  - cik validate validates that local CSV with 0 provider calls and db_writes=0.
+  - cik import previews the same validation with 0 provider calls and db_writes=0.
+  - cik import execute is the explicit local metadata update path after validation review.
+- sec cik import is accepted as an alias for the same workflow.
+- The TUI help table now lists cik template, cik validate, and cik import next to bars/options repair actions.
+- README now documents the TUI commands and existing API parity: GET /api/radar/sec/cik-overrides-template, POST /api/radar/sec/cik-overrides/validate, and POST /api/radar/sec/cik-overrides.
+
+Validation observed in this slice:
+
+- C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py
+- PYTHONPATH pointed at .worktrees\tui-sec-cik-actions\src; pytest passed tests for the new dashboard CIK command, adjacent options command, and existing SEC CIK CLI template/validate behavior.
+- dashboard-tui --once --page help listed cik template, cik validate, cik import, and External calls made: 0.
+- py_compile passed for src\catalyst_radar\dashboard\tui.py and tests\integration\test_dashboard_demo_seed_cli.py.
+- git diff --check passed.
+
+Next useful product action:
+
+- Do not treat this slice as goal completion.
+- The next real product progress is still to clear market_bars through a completed manual CSV, a saved grouped-daily file, or an explicitly approved one-call Polygon/Massive capture.
+- After the bar gate clears, rerun priced-in-source-batches --source all; if catalyst_events still reports missing CIK rows such as FRBA or SSBI, use cik template, fill exact SEC CIKs, run cik validate, then cik import execute before approving SEC source-fill batches.
 
 ## Latest API Point-In-Time Options Fixture Import
 

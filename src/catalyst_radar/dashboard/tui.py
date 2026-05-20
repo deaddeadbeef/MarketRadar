@@ -52,6 +52,11 @@ from catalyst_radar.dashboard.source_batches import (
     source_batch_execution_summary,
     source_batch_run_summary,
 )
+from catalyst_radar.events.sec_cik import (
+    apply_sec_cik_overrides_csv,
+    validate_sec_cik_overrides_csv,
+    write_sec_cik_override_template_csv,
+)
 from catalyst_radar.feedback.service import (
     FeedbackError,
 )
@@ -2029,6 +2034,10 @@ class MarketRadarDashboardApp(App[int]):
                 "command": "options template / validate / import",
                 "meaning": "Create, check, or explicitly import point-in-time options evidence.",
             },
+            {
+                "command": "cik template / validate / import",
+                "meaning": "Create, check, or explicitly import local SEC CIK overrides.",
+            },
             {"command": "ticker <SYMBOL|all>", "meaning": "Filter ticker-aware pages."},
             {"command": "run execute", "meaning": "Start one guarded capped radar cycle."},
             {
@@ -2332,6 +2341,23 @@ def _apply_command(
                 engine,
                 config,
                 value,
+                filters=filters,
+            ),
+        )
+    if command in {"cik", "ciks", "sec-cik", "sec_cik"} or (
+        command == "sec"
+        and (value.split(maxsplit=1) or [""])[0].lower() in {"cik", "ciks"}
+    ):
+        sec_value = value
+        if command == "sec":
+            _head, _sep, sec_value = value.partition(" ")
+        return _CommandUpdate(
+            page="ops",
+            filters=filters,
+            message=_execute_sec_cik_command(
+                engine,
+                config,
+                sec_value,
                 filters=filters,
             ),
         )
@@ -3061,6 +3087,179 @@ def _first_priced_in_source_batch_payload(
         )
     except ValueError as exc:
         return str(exc)
+
+
+
+_SEC_CIK_COMMAND_USAGE = (
+    "Usage: cik template, cik validate, cik import, or cik import execute."
+)
+_SEC_CIK_SCOPE_TOKENS = {
+    "stock",
+    "stocks",
+    "stock-like",
+    "stocks-only",
+    "stocks_only",
+    "full",
+    "all",
+    "active",
+    "universe",
+}
+
+
+def _execute_sec_cik_command(
+    engine: Engine,
+    config: AppConfig,
+    value: str,
+    *,
+    filters: DashboardFilters,
+):
+    parts = [part.strip().lower() for part in value.split() if part.strip()]
+    if parts and parts[0] in {"manual", "override", "overrides"}:
+        parts = parts[1:]
+    if not parts:
+        return _SEC_CIK_COMMAND_USAGE
+    stocks_only = _sec_cik_stocks_only(parts, filters)
+    command_parts = [part for part in parts if part not in _SEC_CIK_SCOPE_TOKENS]
+    if not command_parts:
+        return _SEC_CIK_COMMAND_USAGE
+    action = command_parts[0]
+    if action in {"create", "generate"}:
+        action = "template"
+    if action in {"check", "preview"}:
+        action = "validate"
+    try:
+        template = _sec_cik_template_payload(
+            engine,
+            config,
+            filters=filters,
+            stocks_only=stocks_only,
+        )
+        csv_path = _sec_cik_default_path()
+        if action == "template":
+            result = write_sec_cik_override_template_csv(
+                csv_path,
+                _rows(template.get("rows")),
+            )
+            return _sec_cik_template_message(template, result.as_payload())
+        if action == "validate":
+            validation = validate_sec_cik_overrides_csv(engine, csv_path).as_payload()
+            return _sec_cik_validation_message(
+                "SEC CIK validation",
+                validation,
+                include_execute_hint=True,
+            )
+        if action == "import":
+            validation = validate_sec_cik_overrides_csv(engine, csv_path).as_payload()
+            execute = "execute" in command_parts
+            if not execute:
+                return _sec_cik_validation_message(
+                    "SEC CIK import preview",
+                    validation,
+                    include_execute_hint=True,
+                )
+            if str(validation.get("status") or "") == "blocked":
+                return _sec_cik_validation_message(
+                    "SEC CIK import blocked",
+                    validation,
+                    include_execute_hint=False,
+                )
+            result = apply_sec_cik_overrides_csv(engine, csv_path)
+            return _sec_cik_import_execute_message(result.as_payload())
+    except (FileNotFoundError, KeyError, PermissionError, ValueError) as exc:
+        return f"SEC CIK action failed: {exc}"
+    return _SEC_CIK_COMMAND_USAGE
+
+
+def _sec_cik_stocks_only(
+    parts: Sequence[str],
+    filters: DashboardFilters,
+):
+    if any(part in {"full", "all", "active", "universe"} for part in parts):
+        return False
+    if any(part.startswith("stock") for part in parts):
+        return True
+    return bool(filters.priced_in_stocks_only)
+
+
+def _sec_cik_template_payload(
+    engine: Engine,
+    config: AppConfig,
+    *,
+    filters: DashboardFilters,
+    stocks_only: bool,
+):
+    return dashboard_data.sec_cik_override_template_payload(
+        engine,
+        config,
+        available_at=filters.available_at,
+        status=filters.priced_in_status,
+        usefulness=filters.priced_in_usefulness,
+        decision_gap=filters.priced_in_decision_gap,
+        stocks_only=stocks_only,
+    )
+
+
+def _sec_cik_default_path():
+    return Path("data") / "local" / "cik-overrides-template.csv"
+
+
+def _sec_cik_template_message(
+    template: Mapping[str, object],
+    result: Mapping[str, object],
+):
+    return (
+        "SEC CIK template ready; "
+        f"rows={template.get('row_count')}; "
+        f"stocks_only={str(bool(template.get('stocks_only'))).lower()}; "
+        f"path={result.get('output_path')}; "
+        f"external_calls={template.get('external_calls_made')}; "
+        "db_writes=0. Fill exact SEC CIKs, then run cik validate; use "
+        "cik import execute only after reviewing validation."
+    )
+
+
+def _sec_cik_validation_message(
+    label: str,
+    validation: Mapping[str, object],
+    *,
+    include_execute_hint: bool,
+):
+    status = str(validation.get("status") or "unknown")
+    parts = [
+        f"{label}: status={status}",
+        f"requested={validation.get('requested_count')}",
+        f"valid={validation.get('valid_count')}",
+        f"updates={validation.get('update_candidate_count')}",
+        f"skipped={validation.get('skipped_count')}",
+        f"unmatched={validation.get('unmatched_count')}",
+        f"invalid={validation.get('invalid_count')}",
+        f"duplicates={validation.get('duplicate_count')}",
+        f"external_calls={validation.get('external_calls_made')}",
+        "db_writes=0",
+    ]
+    next_action = str(validation.get("next_action") or "").strip()
+    if include_execute_hint and status in {"ready", "attention", "noop"}:
+        parts.append("execute with cik import execute after reviewing exact CIKs")
+    elif next_action:
+        parts.append(f"next={next_action}")
+    return "; ".join(parts)
+
+
+def _sec_cik_import_execute_message(result: Mapping[str, object]):
+    parts = [
+        "SEC CIK import executed",
+        f"requested={result.get('requested_count')}",
+        f"updated={result.get('updated_count')}",
+        f"skipped={result.get('skipped_count')}",
+        f"unmatched={result.get('unmatched_count')}",
+        f"invalid={result.get('invalid_count')}",
+        f"external_calls={result.get('external_calls_made')}",
+        "db_writes=1",
+    ]
+    next_action = str(result.get("next_action") or "").strip()
+    if next_action:
+        parts.append(f"next={next_action}")
+    return "; ".join(parts)
 
 
 _OPTIONS_COMMAND_USAGE = (
@@ -7379,6 +7578,9 @@ def _help_lines(width: int) -> list[str]:
         ("bars saved capture", "Plan saved capture; add confirm for one provider call."),
         ("bars saved validate", "Validate the saved grouped-daily file from disk."),
         ("bars saved import", "Preview or execute the saved-file import."),
+        ("cik template", "Create the local SEC CIK override CSV."),
+        ("cik validate", "Validate the local CIK override CSV with zero calls."),
+        ("cik import", "Preview or explicitly execute CIK metadata import."),
         ("options template", "Create the point-in-time options JSON template."),
         ("options validate", "Validate the local options fixture with zero calls."),
         ("options import", "Preview or explicitly execute options fixture import."),
