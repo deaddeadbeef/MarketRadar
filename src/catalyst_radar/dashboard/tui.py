@@ -278,6 +278,7 @@ DASHBOARD_FEATURES: tuple[dict[str, str], ...] = (
 PAGE_ALIASES: Mapping[str, str] = {
     "0": "tutorial",
     "learn": "tutorial",
+    "start": "tutorial",
     "tut": "tutorial",
     "tutorial": "tutorial",
     "1": "overview",
@@ -286,7 +287,6 @@ PAGE_ALIASES: Mapping[str, str] = {
     "insights": "overview",
     "o": "overview",
     "overview": "overview",
-    "start": "overview",
     "2": "readiness",
     "ready": "readiness",
     "readiness": "readiness",

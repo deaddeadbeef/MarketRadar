@@ -1,6 +1,47 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 19:54:25 +08:00
+Last updated: 2026-05-20 20:01:47 +08:00
+
+## Latest Tutorial Start Alias Fix
+
+Goal alignment / drift check:
+
+- The active goal remains: MarketRadar should scan the broad stock market and
+  identify stocks where market emotion/expectations have not yet been matched
+  by price.
+- The dashboard remains important as the human replacement UI. During the
+  latest audit, `dashboard-tui --once --page start` rendered the Insights page
+  (`overview`) instead of the beginner tutorial.
+- Root cause: `PAGE_ALIASES` mapped `start` to `overview`, while the current
+  onboarding page is `tutorial`.
+
+Fix in this slice:
+
+- Updated `src/catalyst_radar/dashboard/tui.py` so `start` maps to `tutorial`.
+- Added a regression:
+  `tests/integration/test_dashboard_demo_seed_cli.py::test_dashboard_start_page_alias_opens_tutorial`.
+- `home` and `1` still route to Insights/overview.
+
+Validation:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_start_page_alias_opens_tutorial tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_review_page_is_distinct_from_full_scan -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page start
+```
+
+Result:
+
+- Focused tests passed.
+- Ruff passed.
+- CLI smoke rendered `Page: tutorial` and `Tutorial - your first 90 seconds`.
+- This made 0 provider calls.
+
+Next useful product action:
+
+- This is a dashboard usability fix only. Do not treat it as goal completion.
+- The first data blocker remains `market_bars`: 131 stock-like rows still need
+  scan-date bars before the stocks-only priced-in answer can be trusted.
 
 ## Latest Zero-Call Next-Source Preparation
 
