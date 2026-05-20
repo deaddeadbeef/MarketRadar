@@ -4035,8 +4035,15 @@ def _stock_market_bar_next_summary(payload: Mapping[str, object]) -> str:
         return ""
     active = int(_number_or_zero(stock_scope.get("stock_like_active")))
     with_bar = int(_number_or_zero(stock_scope.get("stock_like_with_as_of_bar")))
-    next_action = str(stock_scope.get("next_action") or "").strip()
-    command = str(stock_scope.get("manual_template_command") or "").strip()
+    operator_step = _mapping(stock_scope.get("operator_step"))
+    next_action = str(
+        operator_step.get("action") or stock_scope.get("next_action") or ""
+    ).strip()
+    command = str(
+        operator_step.get("command")
+        or stock_scope.get("manual_template_command")
+        or ""
+    ).strip()
     parts = [
         f"{with_bar}/{active} stock-like rows have scan-date bars",
         f"{missing} missing",
