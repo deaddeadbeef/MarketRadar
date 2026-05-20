@@ -1,6 +1,68 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 07:51:04 +08:00
+Last updated: 2026-05-20 08:05:30 +08:00
+
+## Latest Source Execution Market-Bar Guard
+
+Goal alignment:
+
+- The overview and dashboard no longer promote decision shortcuts while
+  `market_bars` is the first blocker, but a direct
+  `priced-in-source-batches --source <source> --stocks-only --execute-next`
+  could still enter provider-specific execution planning.
+- That was still a drift risk: the system should not spend SEC/Schwab/provider
+  calls to enrich partial stock rows before every stock-like row has scan-date
+  price reaction.
+- This slice blocks non-`market_bars` source execution for stocks-only scans
+  until the stock-like market-bar scope is complete. It makes 0
+  Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or DB-write calls.
+
+Fix in this slice:
+
+- `execute_priced_in_source_batch(...)` checks the full stocks-only
+  `market_bars` plan before executing any other source.
+- If market bars are incomplete, execution returns `status=blocked`,
+  `external_calls_made=0`, and an `execution_blocker` with:
+  - `blocked_by=market_bars`;
+  - the missing stock-like bar count;
+  - the zero-call repair command.
+- The text CLI prints the execution blocker.
+
+Live zero-call observations:
+
+```text
+priced_in_source_batch_execution source=broker_context status=blocked external_calls=0
+reason=market_bars must be complete before executing broker_context source batches for a stocks-only scan; 131 stock-like row(s) still lack scan-date price reaction.
+execution_blocker=blocked_by=market_bars gaps=131 calls=0 command=catalyst-radar market-bars template --expected-as-of 2026-05-15 --out data\local\manual-stock-bars-2026-05-15.csv --missing-only --stocks-only
+```
+
+```text
+priced_in_source_batch_execution source=catalyst_events status=blocked external_calls=0
+reason=market_bars must be complete before executing catalyst_events source batches for a stocks-only scan; 131 stock-like row(s) still lack scan-date price reaction.
+execution_blocker=blocked_by=market_bars gaps=131 calls=0 command=catalyst-radar market-bars template --expected-as-of 2026-05-15 --out data\local\manual-stock-bars-2026-05-15.csv --missing-only --stocks-only
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_source_execution_blocks_until_stock_bars_complete -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\source_batches.py src\catalyst_radar\cli.py tests\integration\test_dashboard_demo_seed_cli.py
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source broker_context --stocks-only --execute-next
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source catalyst_events --stocks-only --execute-next
+```
+
+Expected note:
+
+- The live execute commands return a non-zero exit code while status is
+  `blocked`; that is correct. Their output is the evidence source, and
+  `external_calls=0`.
+
+Next useful product action after merge:
+
+- The system now blocks accidental source-fill side quests until price-reaction
+  coverage is complete.
+- The only meaningful next product move remains data completion: fill/import
+  the 131 rows or explicitly approve the one Polygon/Massive grouped-daily call.
 
 ## Latest Decision Shortcut Suppression
 
