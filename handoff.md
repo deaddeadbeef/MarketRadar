@@ -1,6 +1,74 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 14:06:50 +08:00
+Last updated: 2026-05-20 14:23:12 +08:00
+
+## Latest Drift Check And Quick Status Evidence Gate
+
+Goal alignment:
+
+- The active goal remains: scan the broad market and tell whether any stock's
+  price has not yet matched market emotion/expectations.
+- The pause-and-check after many PRs found that the current useful blocker is
+  still evidence coverage, not more dashboard chrome.
+- The latest merged state already makes full-scan coverage and all-source
+  evidence completeness visible in `priced-in-answer`, the API answer payload,
+  and the TUI. The remaining human-operator gap was the fastest status command:
+  `scripts\market-radar-status.ps1 -Quick` jumped from global readiness
+  directly into market-bar repair details without naming the priced-in evidence
+  gate.
+- A direct quick-status call to `/api/radar/priced-in/answer?limit=1` was tried
+  during this slice and rejected because it waited about 90 seconds and timed
+  out through the local API. The equivalent CLI answer path completed but still
+  took about 78 seconds. That is too slow for a command named `-Quick`.
+- The implemented change therefore does not re-run the full priced-in answer.
+  It derives the immediate gate from the already-fetched zero-call market-bar
+  repair plan and prints the core evidence order:
+  `market_bars,catalyst_events,local_text`.
+- This slice makes 0 Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or
+  provider calls.
+
+Fix in this slice:
+
+- `scripts\market-radar-status.ps1 -Quick` now prints:
+
+  ```text
+  Full-market priced-in gate: status=blocked; first_gap=market_bars; core_order=market_bars,catalyst_events,local_text; command=catalyst-radar market-bars template --expected-as-of 2026-05-15 --out data\local\manual-bars-2026-05-15.csv --missing-only; external_calls=0
+  ```
+
+- The line appears before the detailed market-bar repair plan so the operator
+  sees why the repair matters: it is the first required core-evidence blocker
+  for the priced-in answer.
+- `-Quick -Json` remains small and keeps `external_calls_made = 0`; it does not
+  embed the slow priced-in answer payload.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_local_scripts.py::test_market_radar_status_script_is_zero_external_call_sitrep -q
+.\.venv\Scripts\python.exe -m ruff check tests\integration\test_local_scripts.py
+powershell -NoProfile -Command '& { $null = [scriptblock]::Create((Get-Content -Raw .\scripts\market-radar-status.ps1)); ''powershell syntax ok'' }'
+git diff --check
+powershell -ExecutionPolicy Bypass -File .\scripts\market-radar-status.ps1 -Quick
+```
+
+Results:
+
+- Focused pytest passed: `1 passed`.
+- Ruff passed.
+- PowerShell parse passed.
+- `git diff --check` passed.
+- Live quick status completed in about 16 seconds and reported
+  `External calls made: 0`.
+
+Next useful product action:
+
+- The drift check confirms the next real blocker is still scan-date market-bar
+  coverage: `12090/12613` active all-instrument bars are present and `523` are
+  missing.
+- After market bars are repaired, do not mark the answer globally ready until
+  the next core layers, `catalyst_events` and `local_text`, are complete.
+- Do not run provider/source-fill execution commands without explicit operator
+  approval.
 
 ## Latest Core Evidence Decision Gate
 

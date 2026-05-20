@@ -198,6 +198,28 @@ if ($Quick) {
         $readiness.safe_to_make_investment_decision,
         $readiness.next_action
     )
+    $coreEvidenceStatus = "unknown"
+    $coreFirstGap = "market_bars"
+    $coreEvidenceCommand = "catalyst-radar priced-in-answer"
+    if (
+        $null -ne $marketBarRepairPlan -and
+        $null -ne $marketBarRepairPlan.missing_as_of_bar_count -and
+        [int]$marketBarRepairPlan.missing_as_of_bar_count -gt 0
+    ) {
+        $coreEvidenceStatus = "blocked"
+        $coreFirstGap = "market_bars"
+        $coreEvidenceCommand = $marketBarRepairPlan.manual_template_command
+    }
+    elseif ($null -ne $marketBarRepairPlan -and $marketBarRepairPlan.status -eq "ready") {
+        $coreEvidenceStatus = "market_bars_ready"
+        $coreFirstGap = "catalyst_events_or_local_text"
+    }
+    Write-Output (
+        "Full-market priced-in gate: status={0}; first_gap={1}; core_order=market_bars,catalyst_events,local_text; command={2}; external_calls=0" -f
+        $coreEvidenceStatus,
+        $coreFirstGap,
+        $coreEvidenceCommand
+    )
     if ($null -ne $marketBarRepairPlan) {
         Write-Output (
             "Full-market next: bars={0}/{1}; missing={2}; command={3}" -f
