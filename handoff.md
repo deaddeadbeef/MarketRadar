@@ -1,6 +1,86 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 14:23:12 +08:00
+Last updated: 2026-05-20 14:51:35 +08:00
+
+## Latest Priced-In Answer Latency Fix
+
+Goal alignment:
+
+- The active goal remains: scan the broad market and tell whether any stock's
+  price has not yet matched market emotion/expectations.
+- The latest drift check showed the evidence gates are now honest, but the
+  `priced-in-answer` path was too slow to serve as a useful CLI/API/dashboard
+  answer surface for a human operator.
+- This slice keeps scope narrow: no new provider, no scoring rewrite, no UI
+  redesign, and no source-fill execution. It removes duplicated local work and
+  hot-path deep copies in the zero-call answer/readiness path.
+- This slice makes 0 Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or
+  provider calls.
+
+Root cause found:
+
+- `priced_in_answer_payload(...)` called `priced_in_queue_payload(...)`.
+- The queue payload already contains `preflight`.
+- The answer path ignored that embedded preflight and computed preflight again
+  from scratch.
+- Profiling also showed the remaining latency was mostly repeated
+  JSON-safe deep-copying of 12k candidate rows and nested artifacts inside
+  discovery helpers that only read those rows.
+
+Fix in this slice:
+
+- `priced_in_answer_payload(...)` now reuses `resolved_queue["preflight"]`
+  when it is already present.
+- Read-only broad-scan candidate row paths now use shallow top-level row copies
+  instead of recursively JSON-safe-copying every nested artifact:
+  - `candidate_rows_with_market_context(...)`;
+  - `_filter_rows_to_run_universe(...)`;
+  - `radar_discovery_snapshot_payload(...)` when rows are supplied;
+  - `_discovery_scoped_candidates(...)`;
+  - `_discovery_run_candidates(...)`;
+  - `_latest_run_packet_candidates(...)`;
+  - `_latest_candidate_context_payload(...)` sorting.
+- A regression proves the answer path reuses queue preflight and fails if it
+  tries to recompute preflight after a queue has already supplied it.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_answer_payload_reuses_queue_preflight tests\integration\test_dashboard_data.py::test_priced_in_answer_payload_summarizes_current_scan tests\integration\test_dashboard_data.py::test_priced_in_answer_blocks_core_evidence_gaps_even_with_ready_rows -q
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_answer_payload_reuses_queue_preflight tests\integration\test_dashboard_data.py::test_priced_in_answer_payload_summarizes_current_scan tests\integration\test_dashboard_data.py::test_priced_in_queue_payload_surfaces_ranked_gap_rows tests\integration\test_dashboard_data.py::test_priced_in_queue_payload_respects_latest_run_universe_scope -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py tests\integration\test_dashboard_data.py
+git diff --check
+Measure-Command { .\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-answer --limit 1 --json > $null } | Select-Object -ExpandProperty TotalSeconds
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-answer --limit 1
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page overview
+```
+
+Results:
+
+- Focused pytest passed: `3 passed`.
+- Queue/answer focused pytest passed: `4 passed`.
+- Ruff passed.
+- `git diff --check` passed.
+- Live `priced-in-answer --limit 1 --json` improved from about `78s` before
+  this work to about `20s` after this work.
+- The direct payload timing on the live `.env.local` database reported about
+  `18.6s`, `status=blocked`, `external_calls=0`, and
+  `first_gap=market_bars`.
+- Live CLI output still reports the same real blocker:
+  `523` missing active market-bar rows, `12087` scanned rows, and
+  `External calls made: 0`.
+- TUI overview still renders the evidence layer summary and full-scan coverage
+  with `External calls made: 0`.
+
+Next useful product action:
+
+- The answer path is faster but still not instant. The remaining hot path is
+  mostly loading and deriving 12k candidate rows. Continue optimizing only if
+  it blocks dashboard interaction.
+- The product blocker is unchanged: repair scan-date market bars first, then
+  complete `catalyst_events` and `local_text`.
+- Do not run provider/source-fill execution commands without explicit operator
+  approval.
 
 ## Latest Drift Check And Quick Status Evidence Gate
 
