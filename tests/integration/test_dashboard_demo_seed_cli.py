@@ -976,6 +976,25 @@ def test_dashboard_tui_once_can_show_full_scan_mode(
     assert "priced-in-source-batches --source all --stocks-only" in output.out
 
 
+def test_dashboard_tui_once_defaults_to_tutorial(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["seed-dashboard-demo"]) == 0
+    capsys.readouterr()
+
+    assert main(["dashboard-tui", "--once"]) == 0
+    output = capsys.readouterr()
+
+    assert output.err == ""
+    assert "Page: tutorial" in output.out
+    assert "Tutorial - your first 90 seconds" in output.out
+
+
 def test_dashboard_market_bar_missing_type_summary_is_human_readable() -> None:
     payload = {
         "priced_in_audit": {

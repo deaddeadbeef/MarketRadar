@@ -221,8 +221,8 @@ The TUI is the operational replacement surface for the web dashboard. It loads
 the same command-center data helpers and provides pages for tutorial, insights,
 readiness, run/call-plan, candidates, alerts, IPO/S-1, broker, ops, telemetry,
 themes, validation, costs, and current feature inventory. `radar` opens on
-`1 Insights` by default, because the main job is to show market context you can
-act on. `0 Tutorial` remains available for the first 90-second walkthrough.
+`0 Tutorial` by default so the first screen explains the workflow and current
+blocker. Press `1` or run `radar --page overview` for Insights.
 The insights page is the full-market priced-in queue by default: the first row reports scan
 coverage, then candidate rows show emotion score, price-reaction score,
 emotion-minus-reaction gap, priced-in status, why the mismatch matters, and the

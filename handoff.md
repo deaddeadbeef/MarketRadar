@@ -1,6 +1,51 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 20:01:47 +08:00
+Last updated: 2026-05-20 20:07:35 +08:00
+
+## Latest Default Dashboard Onboarding Fix
+
+Goal alignment / drift check:
+
+- The active goal remains: MarketRadar should scan the broad stock market and
+  identify stocks where market emotion/expectations have not yet been matched
+  by price.
+- The dashboard is the human replacement UI. After the `start` alias fix, the
+  no-argument `dashboard-tui` entry point still opened on Insights/overview,
+  which is a dense scan page and not the tutorial the user asked for.
+- Root cause: the CLI parser default for `dashboard-tui --page` was still
+  `overview`.
+
+Fix in this slice:
+
+- Changed the `dashboard-tui` CLI default page to `tutorial`.
+- Kept explicit `--page overview` behavior unchanged.
+- Kept `dashboard-snapshot` default unchanged because that command is a
+  programmatic snapshot/export surface.
+- Added regression coverage:
+  `tests/integration/test_dashboard_demo_seed_cli.py::test_dashboard_tui_once_defaults_to_tutorial`.
+- Updated README and `docs/dashboard-feature-inventory.md` so documented entry
+  points match the new human-first default.
+
+Validation:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_tui_once_defaults_to_tutorial tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_start_page_alias_opens_tutorial tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_tui_once_can_show_full_scan_mode -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\cli.py tests\integration\test_dashboard_demo_seed_cli.py
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once
+```
+
+Result:
+
+- Focused tests passed.
+- Ruff passed.
+- CLI smoke rendered `Page: tutorial` and `Tutorial - your first 90 seconds`.
+- This made 0 provider calls.
+
+Next useful product action:
+
+- This is a dashboard usability fix only. Do not treat it as goal completion.
+- The first data blocker remains `market_bars`: 131 stock-like rows still need
+  scan-date bars before the stocks-only priced-in answer can be trusted.
 
 ## Latest Tutorial Start Alias Fix
 
