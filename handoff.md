@@ -1,6 +1,63 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 15:21:48 +08:00
+Last updated: 2026-05-20 15:30:57 +08:00
+
+## Latest Theme Row Dashboard Speedup
+
+Goal alignment:
+
+- The active goal remains: scan the broad market and tell whether any stock's
+  price has not yet matched market emotion/expectations.
+- The evidence blocker is still missing market bars, but the dashboard is the
+  human control surface for that scan. After the previous reuse slice, live
+  stock-only Overview still spent most of its time in `load_theme_rows(...)`.
+- Profiling showed `load_theme_rows(...)` only needs ticker, as-of, state,
+  final score, and theme metadata, but it selected full candidate-state rows
+  and recursively JSON-normalized them.
+- This slice keeps scope narrow: it does not change pricing logic, evidence
+  gates, provider execution, agent behavior, or UI layout. It only makes the
+  existing dashboard theme summary cheaper to build.
+- This slice makes 0 Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or
+  provider calls.
+
+Fix in this slice:
+
+- `load_theme_rows(...)` now selects only the candidate fields it renders:
+  ticker, as-of, state, and final score.
+- It reads theme metadata directly from the signal payload instead of
+  deep-copying every candidate-state row through `_row_dict(...)`.
+- It preserves UTC normalization for `latest_as_of`.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_load_theme_rows_groups_candidate_themes tests\integration\test_dashboard_data.py::test_load_theme_rows_respects_available_at_cutoff -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py tests\integration\test_dashboard_data.py
+git diff --check
+Measure-Command { .\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page overview --stocks-only > $null } | Select-Object -ExpandProperty TotalSeconds
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page overview --stocks-only
+```
+
+Results:
+
+- Focused pytest passed: `2 passed`.
+- Ruff passed.
+- `git diff --check` passed.
+- Live `dashboard-tui --once --page overview --stocks-only` improved to about
+  `13.3s`, down from about `19.5s` after the previous slice and about `34.6s`
+  before dashboard snapshot reuse work.
+- Live in-process stock-only dashboard snapshot measured about `12.6s`.
+- The live dashboard smoke still reported the stock gate, evidence gaps, and
+  `External calls made: 0`.
+
+Next useful product action:
+
+- The dashboard is now more usable but still not instant. Do not optimize
+  further unless interaction latency blocks operation.
+- The product blocker remains data coverage: `131` stock-like rows and `523`
+  all-instrument active rows still lack scan-date bars.
+- Do not run provider/source-fill execution commands without explicit operator
+  approval.
 
 ## Latest Dashboard Snapshot Latency Reuse
 
