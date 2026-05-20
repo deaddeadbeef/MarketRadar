@@ -201,6 +201,10 @@ if ($Quick) {
         if ($noHistory.Count -gt 0) {
             Write-Output ("- missing without local history: {0}" -f (($noHistory | Select-Object -First 12) -join ", "))
         }
+        $missingTypeSummary = Format-FieldCountSummary -Value $marketBarRepairPlan.missing_security_type_counts
+        if (-not [string]::IsNullOrWhiteSpace($missingTypeSummary)) {
+            Write-Output ("- missing security types: {0}" -f $missingTypeSummary)
+        }
         if ($marketBarRepairPlan.provider_fill_command) {
             Write-Output (
                 "- provider option: status={0}; external_calls={1}; command={2}" -f

@@ -434,6 +434,7 @@ def test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths(
     assert payload["existing_as_of_bar_count"] == 1
     assert payload["missing_as_of_bar_count"] == 1
     assert payload["missing_as_of_bar_ticker_sample"] == ["AADR"]
+    assert payload["missing_security_type_counts"] == {"ADRC": 1}
     assert payload["missing_with_local_history_count"] == 0
     assert payload["missing_with_local_history_sample"] == []
     assert payload["missing_without_local_history_count"] == 1
@@ -540,6 +541,7 @@ def test_market_bars_repair_plan_previews_existing_local_template(
         "vwap": 1,
     }
     assert preview["external_calls_made"] == 0
+    assert payload["missing_security_type_counts"] == {"ADRC": 1}
     assert payload["missing_with_local_history_count"] == 0
     assert payload["missing_without_local_history_count"] == 1
 
@@ -564,6 +566,7 @@ def test_market_bars_repair_plan_previews_existing_local_template(
         "local_bar_history=missing_with_history=0 missing_without_history=1"
         in captured.out
     )
+    assert "missing_security_types=ADRC:1" in captured.out
     assert "missing_without_local_history=AADR" in captured.out
     assert "local_template_preview=status=invalid" in captured.out
     assert "local_template_blank_required_fields=open=1" in captured.out
