@@ -1,6 +1,61 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 16:05:50 +08:00
+Last updated: 2026-05-20 16:11:58 +08:00
+
+## Latest Status Script Manual-Bar Next Action Alignment
+
+Goal alignment:
+
+- The active goal remains: scan the broad market and tell whether any stock's
+  price has not yet matched market emotion/expectations.
+- After the incremental repair guidance PR, the CLI/API repair plan had the
+  right workflow, but `scripts\market-radar-status.ps1 -Quick` still printed a
+  lower-level strict import-preview `next_action` after the repair-plan action.
+  On blank or partly filled templates this could contradict the higher-level
+  operator step and make the first data-coverage blocker harder to clear.
+- This slice keeps scope narrow: status output only. It does not change market
+  data import behavior, evidence gates, source coverage semantics, provider
+  execution, agent behavior, or dashboard layout.
+- This slice makes 0 Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or
+  provider calls.
+
+Fix in this slice:
+
+- Added `Get-ManualTemplateNextAction` to the local status script.
+- The script now prefers the repair plan's `operator_step.action` for
+  `local template next` and only falls back to the raw import-preview
+  `next_action` when no repair-plan operator action exists.
+- This keeps the zero-call sitrep focused on the useful next workflow step:
+  fill a complete OHLCV/VWAP row first, then use the incremental
+  `--complete-rows-only` path.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_local_scripts.py::test_market_radar_status_script_is_zero_external_call_sitrep -q
+git diff --check
+powershell -NoProfile -Command '$null = [scriptblock]::Create((Get-Content -Raw .\scripts\market-radar-status.ps1)); "syntax-ok"'
+powershell -ExecutionPolicy Bypass -File .\scripts\market-radar-status.ps1 -Quick
+```
+
+Results:
+
+- Focused pytest passed: `1 passed`.
+- `git diff --check` passed.
+- PowerShell script parse check passed: `syntax-ok`.
+- Live quick status reported API ok on build `fb2592ffa8aa`, the same
+  stock-like bar blocker (`5521/5652`, `131` missing), and
+  `External calls made: 0`.
+- The live `local template next` line now says to fill at least one complete
+  OHLCV/VWAP row instead of saying to fix blank required fields.
+
+Next useful product action:
+
+- The first product blocker remains data coverage. Clear the `131` stock-like
+  missing bars manually or explicitly approve the one-call Polygon/Massive
+  grouped-daily fill for `2026-05-15`.
+- Do not run provider/source-fill execution commands without explicit operator
+  approval.
 
 ## Latest Manual Bar Incremental Repair Guidance
 
