@@ -1,6 +1,6 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 03:48:51 +08:00
+Last updated: 2026-05-21 03:55:05 +08:00
 
 
 
@@ -33,12 +33,13 @@ $env:PYTHONPATH="C:\Users\fpan1\MarketRadar-post-capture-preview\src"; C:\Users\
 $env:PYTHONPATH="C:\Users\fpan1\MarketRadar-post-capture-preview\src"; C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_bars_saved_capture_requires_confirm_without_call tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_bars_saved_validate_and_import_fixture_are_operator_actions tests\integration\test_polygon_ingest_cli.py::test_polygon_grouped_daily_fixture_validate_only_makes_no_writes tests\integration\test_api_routes.py::test_post_radar_market_bars_provider_fixture_import_previews_without_writes -q
 ```
 
-Observed results so far: Ruff passed, `py_compile` passed, `git diff --check` passed, focused pytest passed 7 tests, and a zero-call live-DB TUI smoke showed `Mission Brief`, `Current answer`, `Trust blocker`, `Saved file`, and `External calls made: 0`. PR creation, merge, local restart, and post-merge smoke still need to run before this slice is closed.
+Observed results: Ruff passed, `py_compile` passed, `git diff --check` passed, focused pytest passed 7 tests, PR #470 was rebase-merged into `main`, local services were restarted, `scripts/market-radar-status.ps1 -Quick` reported API build `90e9f67db70a` with `External calls made: 0`, and a zero-call live-DB TUI smoke showed `Mission Brief`, `Current answer`, `Trust blocker`, `Saved file`, and `External calls made: 0`.
 
 Next useful product action:
 
-- Finish this slice with `git diff --check`, commit, PR, rebase merge, restart local services, and smoke main.
-- Do not mark the overall goal complete. The system still cannot produce a trusted full-market priced-in answer until market-bar gaps are filled and the broader source roadmap is advanced.
+- Do not treat this slice as goal completion. The system still cannot produce a trusted full-market priced-in answer until market-bar gaps are filled and the broader source roadmap is advanced.
+- Current main still shows the same data blocker: 523 full active-universe missing bars and 131 stock-like missing bars for 2026-05-15. The next useful action is still to fill/capture/import those market bars under explicit operator control.
+
 ## Latest Full-Scan Mission Brief
 
 Goal alignment / drift check:
