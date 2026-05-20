@@ -1,6 +1,43 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 02:10:12 +08:00
+Last updated: 2026-05-21 02:42:46 +08:00
+
+
+
+
+## Latest Dashboard-Native Market-Bar Actions
+
+Goal alignment / drift check:
+
+- The active goal remains: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- The current first useful blocker is still `market_bars`; no provider, broker, SEC, or OpenAI calls were made while implementing this slice.
+- The TUI could execute manual market-bar commands, but the Run page and API repair payload still leaned on long CLI commands for the first blocker.
+- This slice makes the dashboard a clearer replacement UI: repair-plan payloads now carry native `bars manual ...` action strings, and the Run page shows a `Manual CSV action` line before provider options.
+
+Fix in this slice:
+
+- `manual_market_bars_repair_plan(...).as_payload()` now includes `dashboard_manual_template_command`, `dashboard_manual_template_regenerate_command`, `dashboard_manual_import_preview_command`, and `dashboard_manual_import_execute_command`.
+- The priced-in market-bar audit and source coverage action rows propagate those dashboard commands.
+- The Run page now shows a `Manual CSV action` item with the relevant `bars manual ...` commands and `0 provider calls`.
+- The overview market-bar next summary prefers dashboard-native manual import commands when available.
+- README now documents the dashboard command fields next to the API request-body contract.
+
+Validation observed in this slice:
+
+```powershell
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\market\manual_bars.py src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py tests\integration\test_api_routes.py tests\integration\test_dashboard_demo_seed_cli.py
+$env:PYTHONPATH='C:\Users\fpan1\MarketRadar-dashboard-market-bar-actions\src'; C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\test_api_routes.py::test_post_radar_market_bars_template_and_import_can_scope_to_stocks tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_manual_bar_fill_progress_summary_is_human_readable tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_bars_manual_template_and_import_are_zero_call_actions -q
+git diff --check
+$env:PYTHONPATH='C:\Users\fpan1\MarketRadar-dashboard-market-bar-actions\src'; $env:CATALYST_DATABASE_URL='sqlite:///C:/Users/fpan1/MarketRadar/data/local/schwab-live.db'; C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page run | Select-String 'Manual CSV action|Inspect source blocker|External calls made'
+$env:PYTHONPATH='C:\Users\fpan1\MarketRadar-dashboard-market-bar-actions\src'; $env:CATALYST_DATABASE_URL='sqlite:///C:/Users/fpan1/MarketRadar/data/local/schwab-live.db'; C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m catalyst_radar.cli market-bars repair-plan --expected-as-of 2026-05-15 --stocks-only --json | Select-String 'dashboard_manual|external_calls_made'
+```
+
+Observed results: Ruff passed, focused pytest passed 3 tests, `git diff --check` passed, live Run-page smoke showed `Manual CSV action` and `External calls made: 0`, and live repair-plan JSON exposed `dashboard_manual_*` commands with `external_calls_made=0`.
+
+Next useful product action:
+
+- Do not treat this as goal completion.
+- The real data blocker remains: stock-like scan still needs missing market bars filled manually or through an explicitly approved saved Polygon/Massive capture before the full priced-in scan can be trusted.
 
 
 

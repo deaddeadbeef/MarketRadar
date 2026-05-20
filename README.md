@@ -375,6 +375,10 @@ request bodies so a UI does not need to guess parameters:
 `provider_saved_file_capture_request_body` is the safe approval boundary with
 `confirm_external_call=false`; `provider_saved_file_capture_confirm_request_body`
 is the explicit one-provider-call capture body with `confirm_external_call=true`;
+`dashboard_manual_template_command`,
+`dashboard_manual_import_preview_command`, and
+`dashboard_manual_import_execute_command` are the dashboard-native zero-provider-call
+commands to show in the TUI before falling back to long CLI commands;
 `provider_saved_file_validate_request_body`,
 `provider_saved_file_import_preview_request_body`, and
 `provider_saved_file_import_request_body` are the zero-provider-call saved-file

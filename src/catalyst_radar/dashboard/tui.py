@@ -4977,10 +4977,23 @@ def _market_bar_operator_step_summary(payload: Mapping[str, object]) -> str:
     if not action:
         return ""
     command = str(step.get("command") or "").strip()
+    dashboard_preview = str(
+        repair.get("dashboard_manual_import_preview_command") or ""
+    ).strip()
+    dashboard_execute = str(
+        repair.get("dashboard_manual_import_execute_command") or ""
+    ).strip()
     after_manual = str(step.get("after_manual_command") or "").strip()
     external_calls = int(_number_or_zero(step.get("external_calls_made")))
     manual = bool(step.get("manual_step"))
     command_text = command or "manual edit"
+    if manual and dashboard_preview:
+        command_text = dashboard_preview
+        if dashboard_execute:
+            command_text = (
+                f"{command_text}; execute after preview with {dashboard_execute}"
+            )
+        return f"{action} Command: {command_text}. Calls: {external_calls}."
     if manual and after_manual:
         command_text = f"{command_text}; then {after_manual}"
     return f"{action} Command: {command_text}. Calls: {external_calls}."
@@ -5475,6 +5488,9 @@ def _run_lines(payload: Mapping[str, object], width: int) -> list[str]:
         blocker_hint = _run_audit_source_blocker_hint(blocker)
         if blocker_hint:
             evidence_items.append(("Inspect source blocker", blocker_hint))
+        manual_hint = _market_bar_manual_action_summary(payload)
+        if manual_hint:
+            evidence_items.append(("Manual CSV action", manual_hint))
         provider_hint = _run_audit_provider_fill_hint(blocker)
         if provider_hint:
             evidence_items.append(("Provider fill option", provider_hint))
@@ -5552,11 +5568,36 @@ def _run_lines(payload: Mapping[str, object], width: int) -> list[str]:
     )
     return lines
 
+def _market_bar_manual_action_summary(payload: Mapping[str, object]) -> str:
+    audit = _mapping(payload.get("priced_in_audit"))
+    market = _mapping(audit.get("market_bars"))
+    repair = _mapping(market.get("repair"))
+    if not repair:
+        return ""
+    template = str(repair.get("dashboard_manual_template_command") or "").strip()
+    preview = str(repair.get("dashboard_manual_import_preview_command") or "").strip()
+    execute = str(repair.get("dashboard_manual_import_execute_command") or "").strip()
+    if not template and not preview:
+        return ""
+    parts = ["0 provider calls"]
+    if template:
+        parts.append(f"type `{template}` to create or refresh the CSV")
+    if preview:
+        parts.append(f"type `{preview}` to preview complete rows")
+    if execute:
+        parts.append(f"type `{execute}` only after preview to write local DB rows")
+    return "; ".join(parts) + "."
+
+
+
 
 def _run_saved_file_action_items(
     payload: Mapping[str, object],
 ):
     items: list[tuple[str, object]] = []
+    manual_hint = _market_bar_manual_action_summary(payload)
+    if manual_hint:
+        items.append(("Manual CSV action", manual_hint))
     saved_capture_hint = _market_bar_provider_saved_file_capture_summary(payload)
     if saved_capture_hint:
         items.append(("Saved file capture", saved_capture_hint))
@@ -5599,6 +5640,19 @@ def _run_audit_source_blocker_hint(blocker: Mapping[str, object] | None) -> str 
     if not source:
         return None
     command = str(blocker.get("command") or "").strip()
+    dashboard_template = str(
+        blocker.get("dashboard_manual_template_command") or ""
+    ).strip()
+    dashboard_preview = str(
+        blocker.get("dashboard_manual_import_preview_command") or ""
+    ).strip()
+    if source == "market_bars" and (dashboard_template or dashboard_preview):
+        action_parts = []
+        if dashboard_template:
+            action_parts.append(f"type `{dashboard_template}` to create the CSV")
+        if dashboard_preview:
+            action_parts.append(f"type `{dashboard_preview}` to preview complete rows")
+        return "; ".join(action_parts) + "; 0 provider calls."
     if source == "market_bars" and command:
         return f"Run `{command}` to create the missing-bar template; preview before import."
     if source in dashboard_data.PRICED_IN_SOURCE_CLASSES:
