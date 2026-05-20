@@ -1,6 +1,78 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 10:43:20 +08:00
+Last updated: 2026-05-20 10:59:49 +08:00
+
+## Latest Incremental Manual Bar Import
+
+Goal alignment:
+
+- The active full-market priced-in blocker remains the 523 missing
+  `2026-05-15` OHLCV/VWAP rows.
+- A strict all-or-nothing manual CSV import makes repair harder: if the
+  operator fills 10 rows and leaves 513 rows blank, the old preview remains
+  invalid and none of the complete rows can be imported.
+- This slice adds a conservative incremental path. Complete rows can be
+  imported with `--complete-rows-only`; fully empty rows are skipped; partially
+  touched or invalid rows still block the incremental import.
+- This makes 0 Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or provider
+  calls.
+
+Fix in this slice:
+
+- `market-bars import --complete-rows-only` previews/imports only rows with all
+  required OHLCV/VWAP fields filled.
+- `POST /api/radar/market-bars/import` accepts `"complete_rows_only": true`.
+- Incremental preview returns `ready_partial` when complete rows are importable
+  but full active-universe coverage is still missing.
+- Incremental execute returns `partial_imported` and writes only complete rows.
+- Empty rows are ignored in incremental mode; partial rows remain invalid so
+  half-entered values cannot be silently imported.
+- `market-bars repair-plan` and `scripts\market-radar-status.ps1 -Quick` now
+  show the incremental complete-row import command.
+
+Live zero-call observation against current local template:
+
+```text
+manual_market_bars_import status=no_complete_rows rows=0 tickers=0 active=12613 latest_bar=2026-05-15 expected_as_of=2026-05-15 complete_rows_only=true executed=false external_calls=0
+coverage=bars_at_expected=0 existing=12090 after_import=12090 missing=523 scope=active_universe
+fill_progress=complete=0 partial=0 empty=523 filled=0
+next_action=Fill at least one complete OHLCV/VWAP row before using --complete-rows-only.
+```
+
+Status script now prints:
+
+```text
+- incremental complete-row import: catalyst-radar market-bars import --daily-bars data\local\manual-bars-2026-05-15.csv --expected-as-of 2026-05-15 --complete-rows-only --execute
+- local template fill progress: complete=0; partial=0; empty=523; filled=0
+External calls made: 0
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_provider_ingest_cli.py::test_market_bars_import_complete_rows_only_allows_incremental_import tests\integration\test_provider_ingest_cli.py::test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths tests\integration\test_api_routes.py::test_post_radar_market_bars_import_complete_rows_only_is_incremental tests\integration\test_local_scripts.py::test_market_radar_status_script_is_zero_external_call_sitrep -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\market\manual_bars.py src\catalyst_radar\cli.py src\catalyst_radar\api\routes\radar.py tests\integration\test_provider_ingest_cli.py tests\integration\test_api_routes.py tests\integration\test_local_scripts.py
+powershell -NoProfile -Command '& { $null = [scriptblock]::Create((Get-Content -Raw .\scripts\market-radar-status.ps1)); "powershell syntax ok" }'
+git diff --check
+```
+
+Results:
+
+- Focused pytest passed.
+- Ruff passed.
+- PowerShell syntax parse passed.
+- `git diff --check` passed.
+- Live complete-row preview against the current local CSV correctly refused to
+  import because all 523 rows are still empty, and reported `external_calls=0`.
+
+Next useful product action:
+
+- As soon as any rows in `data\local\manual-bars-2026-05-15.csv` are complete,
+  run the incremental preview. If it reports `ready_partial`, execute the
+  complete rows to reduce the blocker count without waiting for all 523 rows.
+- The full-market priced-in answer remains blocked until all 523 missing rows
+  are filled/imported, or until the user explicitly approves the one-call
+  Polygon/Massive grouped-daily fill.
 
 ## Latest Dashboard Manual CSV Progress
 

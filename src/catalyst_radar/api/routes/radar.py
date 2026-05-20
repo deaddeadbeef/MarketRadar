@@ -162,6 +162,7 @@ class MarketBarsImportRequest(BaseModel):
     daily_bars_path: str
     expected_as_of: Date | None = None
     stocks_only: bool = False
+    complete_rows_only: bool = False
     execute: bool = False
 
 
@@ -657,6 +658,7 @@ def radar_market_bars_import(
             daily_bars_path=request.daily_bars_path,
             expected_as_of=request.expected_as_of,
             stocks_only=request.stocks_only,
+            complete_rows_only=request.complete_rows_only,
             execute=request.execute,
         )
     except (FileNotFoundError, KeyError, ValueError) as exc:
