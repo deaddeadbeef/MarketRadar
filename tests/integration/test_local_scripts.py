@@ -193,6 +193,7 @@ def test_market_radar_status_script_is_zero_external_call_sitrep() -> None:
     assert "Stock-market next:" in text
     assert "Fast market-bar repair:" in text
     assert "Format-FieldCountSummary" in text
+    assert "Get-ManualTemplateNextAction" in text
     assert "local bar history:" in text
     assert "missing without local history:" in text
     assert "missing security types:" in text

@@ -68,6 +68,28 @@ function Format-FieldCountSummary {
     return ($pairs -join ", ")
 }
 
+function Get-ManualTemplateNextAction {
+    param(
+        [object]$Preview,
+        [object]$RepairPlan
+    )
+
+    if (
+        $null -ne $RepairPlan -and
+        $null -ne $RepairPlan.operator_step -and
+        -not [string]::IsNullOrWhiteSpace([string]$RepairPlan.operator_step.action)
+    ) {
+        return [string]$RepairPlan.operator_step.action
+    }
+    if (
+        $null -ne $Preview -and
+        -not [string]::IsNullOrWhiteSpace([string]$Preview.next_action)
+    ) {
+        return [string]$Preview.next_action
+    }
+    return $null
+}
+
 $health = Invoke-ApiJson -Path "/api/health"
 $readiness = Invoke-ApiJson -Path "/api/radar/readiness"
 $pythonExe = ".\.venv\Scripts\python.exe"
@@ -407,8 +429,10 @@ if ($Quick) {
             $(if ($null -ne $manualMarketBarPreview.missing_expected_count) { $manualMarketBarPreview.missing_expected_count } else { "n/a" }),
             $(if ($null -ne $manualMarketBarPreview.external_calls_made) { $manualMarketBarPreview.external_calls_made } else { 0 })
         )
-        if ($manualMarketBarPreview.next_action) {
-            Write-Output ("- local template next: {0}" -f $manualMarketBarPreview.next_action)
+        $manualPreviewRepairPlan = $(if ($manualBarsStocksOnly) { $stockMarketBarRepairPlan } else { $marketBarRepairPlan })
+        $manualTemplateNext = Get-ManualTemplateNextAction -Preview $manualMarketBarPreview -RepairPlan $manualPreviewRepairPlan
+        if ($manualTemplateNext) {
+            Write-Output ("- local template next: {0}" -f $manualTemplateNext)
         }
         $fillProgress = $manualMarketBarPreview.fill_progress
         if ($null -ne $fillProgress) {
@@ -777,8 +801,10 @@ if ($null -ne $freshness) {
             if ($manualMarketBarPreview.detail) {
                 Write-Output ("- local template preview error: {0}" -f $manualMarketBarPreview.detail)
             }
-            if ($manualMarketBarPreview.next_action) {
-                Write-Output ("- local template next: {0}" -f $manualMarketBarPreview.next_action)
+            $manualPreviewRepairPlan = $(if ($manualBarsStocksOnly) { $stockMarketBarRepairPlan } else { $marketBarRepairPlan })
+            $manualTemplateNext = Get-ManualTemplateNextAction -Preview $manualMarketBarPreview -RepairPlan $manualPreviewRepairPlan
+            if ($manualTemplateNext) {
+                Write-Output ("- local template next: {0}" -f $manualTemplateNext)
             }
         }
     }
