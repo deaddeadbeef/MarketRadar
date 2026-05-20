@@ -3872,6 +3872,19 @@ def _print_manual_market_bars_repair_plan(payload: Mapping[str, object]) -> None
         f"key_configured={str(bool(payload.get('provider_key_configured'))).lower()} "
         f"command={payload.get('provider_fill_command') or 'n/a'}"
     )
+    saved_file_command = payload.get("provider_saved_file_import_command")
+    if saved_file_command:
+        print(
+            "provider_saved_file_import="
+            f"external_calls={payload.get('provider_saved_file_external_call_count')} "
+            f"command={_compact_cli_text(saved_file_command)}"
+        )
+        saved_file_boundary = payload.get("provider_saved_file_boundary")
+        if saved_file_boundary:
+            print(
+                "provider_saved_file_boundary="
+                f"{_compact_cli_text(saved_file_boundary)}"
+            )
     provider_health = payload.get("provider_health")
     if isinstance(provider_health, Mapping):
         print(
@@ -4913,6 +4926,18 @@ def _print_priced_in_audit(payload: Mapping[str, object]) -> None:
             provider_command = provider_plan.get("provider_call_command")
             if provider_command:
                 print(f"    provider_command={_compact_cli_text(provider_command)}")
+            saved_file_command = provider_plan.get("provider_saved_file_import_command")
+            if saved_file_command:
+                print(
+                    "    saved_file_import="
+                    f"{_compact_cli_text(saved_file_command)}"
+                )
+            saved_file_boundary = provider_plan.get("provider_saved_file_boundary")
+            if saved_file_boundary:
+                print(
+                    "    saved_file_boundary="
+                    f"{_compact_cli_text(saved_file_boundary)}"
+                )
             manual_command = provider_plan.get("manual_template_command")
             if manual_command:
                 print(f"    manual_template={_compact_cli_text(manual_command)}")

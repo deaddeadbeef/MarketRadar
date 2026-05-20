@@ -1,6 +1,76 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 16:11:58 +08:00
+Last updated: 2026-05-20 16:26:02 +08:00
+
+## Latest Saved Grouped-Daily File Import Path
+
+Goal alignment:
+
+- The active goal remains: scan the broad market and tell whether any stock's
+  price has not yet matched market emotion/expectations.
+- The first hard blocker is still scan-date market bars. Provider execution
+  still requires explicit operator approval, and manual OHLCV/VWAP entry is
+  tedious for `131` stock-like missing rows / `523` full-universe missing rows.
+- The CLI already supported `ingest-polygon grouped-daily --fixture <json>`,
+  which imports a saved Polygon/Massive grouped-daily JSON response from disk
+  without making a network call. That path was not visible in the repair plan,
+  status script, priced-in audit output, or TUI summary.
+- This slice exposes that existing zero-call path. It does not add a new data
+  provider, alter market-bar validation, change evidence gates, execute
+  providers, or change scoring.
+- This slice makes 0 Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or
+  provider calls.
+
+Fix in this slice:
+
+- `manual_market_bars_repair_plan(...).as_payload()` now includes:
+  - `provider_saved_file_path`
+  - `provider_saved_file_import_command`
+  - `provider_saved_file_external_call_count=0`
+  - `provider_saved_file_boundary`
+- `_priced_in_market_bar_provider_fill_plan(...)` now carries the same saved
+  grouped-daily file import command into the CLI/API/dashboard audit payload.
+- `market-bars repair-plan` text output prints `provider_saved_file_import`.
+- `priced-in-audit` text output prints `saved_file_import` when a provider
+  fill plan is relevant.
+- `scripts\market-radar-status.ps1 -Quick` prints full-scope and stock-scope
+  saved-file import hints.
+- The TUI provider-fill summary includes the saved-file command when available.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_provider_ingest_cli.py::test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_payload_consolidates_current_state tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_warns_for_stale_eod_provider_health tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_audit_cli_outputs_full_scan_audit tests\integration\test_local_scripts.py::test_market_radar_status_script_is_zero_external_call_sitrep -q
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_polygon_ingest_cli.py::test_polygon_fixture_ingest_persists_raw_normalized_and_daily_bars -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\market\manual_bars.py src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\integration\test_provider_ingest_cli.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_local_scripts.py
+git diff --check
+powershell -ExecutionPolicy Bypass -File .\scripts\market-radar-status.ps1 -Quick
+.\.venv\Scripts\python.exe -m catalyst_radar.cli market-bars repair-plan --expected-as-of 2026-05-15 --stocks-only
+```
+
+Results:
+
+- Focused pytest passed: `5 passed`.
+- Grouped-daily fixture ingest regression passed: `1 passed`.
+- Ruff passed.
+- `git diff --check` passed.
+- Live quick status reported the same first blocker, API build `f0f79b719d83`,
+  `External calls made: 0`, and this new zero-call command:
+  `catalyst-radar ingest-polygon grouped-daily --date 2026-05-15 --fixture data\local\polygon-grouped-daily-2026-05-15.json`.
+- Live stock repair plan also printed the same saved-file import command and
+  clarified that it imports a saved JSON file from disk with 0 provider calls.
+
+Next useful product action:
+
+- Clear the `market_bars` blocker. The current choices are:
+  - manually fill/import `data\local\manual-stock-bars-2026-05-15.csv` or
+    `data\local\manual-bars-2026-05-15.csv`;
+  - place a saved Polygon/Massive grouped-daily JSON response at
+    `data\local\polygon-grouped-daily-2026-05-15.json` and import it with the
+    displayed `--fixture` command;
+  - explicitly approve the one-call Polygon/Massive grouped-daily fill.
+- Do not run provider/source-fill execution commands without explicit operator
+  approval.
 
 ## Latest Status Script Manual-Bar Next Action Alignment
 

@@ -353,6 +353,16 @@ if ($Quick) {
             }
             Write-Output ("- provider boundary: {0}" -f $marketBarRepairPlan.approval_boundary)
         }
+        if ($marketBarRepairPlan.provider_saved_file_import_command) {
+            Write-Output (
+                "- provider saved-file import: external_calls={0}; command={1}" -f
+                $(if ($null -ne $marketBarRepairPlan.provider_saved_file_external_call_count) { $marketBarRepairPlan.provider_saved_file_external_call_count } else { 0 }),
+                $marketBarRepairPlan.provider_saved_file_import_command
+            )
+            if ($marketBarRepairPlan.provider_saved_file_boundary) {
+                Write-Output ("- provider saved-file boundary: {0}" -f $marketBarRepairPlan.provider_saved_file_boundary)
+            }
+        }
     }
     if ($null -ne $stockMarketBarRepairPlan) {
         Write-Output (
@@ -417,6 +427,13 @@ if ($Quick) {
             if ($stockMarketBarRepairPlan.provider_health_warning) {
                 Write-Output ("- stock provider health warning: {0}" -f $stockMarketBarRepairPlan.provider_health_warning)
             }
+        }
+        if ($stockMarketBarRepairPlan.provider_saved_file_import_command) {
+            Write-Output (
+                "- stock provider saved-file import: external_calls={0}; command={1}" -f
+                $(if ($null -ne $stockMarketBarRepairPlan.provider_saved_file_external_call_count) { $stockMarketBarRepairPlan.provider_saved_file_external_call_count } else { 0 }),
+                $stockMarketBarRepairPlan.provider_saved_file_import_command
+            )
         }
     }
     if ($null -ne $manualMarketBarPreview) {

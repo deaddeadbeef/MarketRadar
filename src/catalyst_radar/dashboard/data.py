@@ -4309,6 +4309,17 @@ def _priced_in_market_bar_provider_fill_plan(
         if target_value
         else None
     )
+    saved_file_path = (
+        Path("data") / "local" / f"polygon-grouped-daily-{target_value}.json"
+        if target_value
+        else None
+    )
+    saved_file_import_command = (
+        "catalyst-radar ingest-polygon grouped-daily "
+        f"--date {target_value} --fixture {saved_file_path}"
+        if target_value and saved_file_path is not None
+        else None
+    )
     execute_call_count = 1 if target_value and missing > 0 else 0
     key_configured = bool(config.polygon_api_key_configured)
     provider_health_gate = (
@@ -4341,7 +4352,8 @@ def _priced_in_market_bar_provider_fill_plan(
         status = "blocked_by_provider_health"
         next_action = (
             "Stored Polygon/Massive health is down; use the manual CSV path or "
-            "fix provider access before requesting the grouped-daily fill."
+            "import a saved grouped-daily JSON response before requesting the "
+            "grouped-daily fill."
         )
     elif key_configured:
         status = (
@@ -4352,19 +4364,21 @@ def _priced_in_market_bar_provider_fill_plan(
         if provider_health_warning:
             next_action = (
                 "Stored Polygon/Massive health was a stale same-day EOD denial; "
-                "review the warning, then run the grouped-daily command only if "
-                "you approve one historical market-data provider call."
+                "import a saved grouped-daily JSON response, or run the grouped-daily "
+                "command only if you approve one historical market-data provider call."
             )
         else:
             next_action = (
-                "If you approve one market-data provider call, run the grouped-daily "
-                "command, then rerun the scan/audit from the updated local bars."
+                "Import a saved grouped-daily JSON response, or if you approve one "
+                "market-data provider call, run the grouped-daily command, then rerun "
+                "the scan/audit from the updated local bars."
             )
     else:
         status = "blocked"
         next_action = (
-            "Set a real Polygon/Massive API key or use the missing-only manual CSV "
-            "template; do not run the provider command until explicitly approved."
+            "Use the missing-only manual CSV template, import a saved grouped-daily "
+            "JSON response, or set a real Polygon/Massive API key; do not run the "
+            "provider command until explicitly approved."
         )
     return {
         "schema_version": "priced-in-market-bar-provider-fill-plan-v1",
@@ -4381,6 +4395,14 @@ def _priced_in_market_bar_provider_fill_plan(
         "external_calls_made": 0,
         "provider_call_command": provider_command,
         "provider_call_api": None,
+        "provider_saved_file_path": str(saved_file_path) if saved_file_path else None,
+        "provider_saved_file_import_command": saved_file_import_command,
+        "provider_saved_file_external_call_count": 0,
+        "provider_saved_file_boundary": (
+            "Imports a saved Polygon/Massive grouped-daily JSON response from disk "
+            "and makes 0 provider calls; obtain the file separately under your "
+            "provider terms."
+        ),
         "manual_template_command": _csv_market_template_command(
             target_as_of,
             missing_only=True,

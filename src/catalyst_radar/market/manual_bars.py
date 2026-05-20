@@ -293,6 +293,14 @@ class ManualBarsRepairPlanResult:
             "catalyst-radar ingest-polygon grouped-daily "
             f"--date {self.expected_as_of.isoformat()} --confirm-external-call"
         )
+        provider_saved_file_path = _polygon_grouped_daily_fixture_path(
+            self.expected_as_of,
+        )
+        provider_saved_file_import_command = (
+            "catalyst-radar ingest-polygon grouped-daily "
+            f"--date {self.expected_as_of.isoformat()} "
+            f"--fixture {provider_saved_file_path}"
+        )
         provider_health = _manual_bar_provider_health_payload(
             status=self.provider_health_status,
             reason=self.provider_health_reason,
@@ -320,7 +328,8 @@ class ManualBarsRepairPlanResult:
             provider_fill_status = "blocked_by_provider_health"
             next_action = (
                 "Fill the manual CSV, or fix the Polygon/Massive provider health "
-                "before requesting a grouped-daily fill."
+                "before requesting a grouped-daily fill. If you already have a "
+                "saved grouped-daily JSON response, import it with the fixture path."
             )
         elif self.provider_key_configured:
             status = "attention"
@@ -331,21 +340,23 @@ class ManualBarsRepairPlanResult:
             )
             if provider_health_warning:
                 next_action = (
-                    "Fill the manual CSV, or explicitly approve the one-call "
-                    "Polygon/Massive grouped-daily fill after reviewing the stored "
-                    "provider-health warning."
+                    "Fill the manual CSV, import a saved grouped-daily JSON response, "
+                    "or explicitly approve the one-call Polygon/Massive grouped-daily "
+                    "fill after reviewing the stored provider-health warning."
                 )
             else:
                 next_action = (
-                    "Fill the manual CSV and preview the import, or explicitly approve "
-                    "the one-call Polygon/Massive grouped-daily fill."
+                    "Fill the manual CSV, import a saved grouped-daily JSON response, "
+                    "or explicitly approve the one-call Polygon/Massive grouped-daily "
+                    "fill."
                 )
         else:
             status = "attention"
             provider_fill_status = "blocked"
             next_action = (
-                "Fill the manual CSV and preview the import, or configure a real "
-                "Polygon/Massive API key before using the provider fill command."
+                "Fill the manual CSV, import a saved grouped-daily JSON response, "
+                "or configure a real Polygon/Massive API key before using the "
+                "provider fill command."
             )
         missing_sample = list(self.missing_as_of_bar_tickers[:12])
         local_template_exists = self.local_template_path.exists()
@@ -437,6 +448,18 @@ class ManualBarsRepairPlanResult:
             "provider_fill_external_call_count": 1 if missing > 0 else 0,
             "provider_fill_command": provider_command if missing > 0 else None,
             "provider_fill_api": None,
+            "provider_saved_file_path": (
+                str(provider_saved_file_path) if missing > 0 else None
+            ),
+            "provider_saved_file_import_command": (
+                provider_saved_file_import_command if missing > 0 else None
+            ),
+            "provider_saved_file_external_call_count": 0,
+            "provider_saved_file_boundary": (
+                "Imports a saved Polygon/Massive grouped-daily JSON response from "
+                "disk and makes 0 provider calls; obtain the file separately under "
+                "your provider terms."
+            ),
             "external_calls_made": 0,
             "approval_boundary": (
                 "This repair plan makes 0 provider calls. The provider command "
@@ -1268,6 +1291,14 @@ def _manual_market_bars_template_path(
 ) -> Path:
     filename_prefix = "manual-stock-bars" if stocks_only else "manual-bars"
     return Path("data") / "local" / f"{filename_prefix}-{expected_as_of.isoformat()}.csv"
+
+
+def _polygon_grouped_daily_fixture_path(expected_as_of: date) -> Path:
+    return (
+        Path("data")
+        / "local"
+        / f"polygon-grouped-daily-{expected_as_of.isoformat()}.json"
+    )
 
 
 def _manual_bar_template_schema_payload(path: Path) -> dict[str, object]:

@@ -4129,6 +4129,11 @@ def _market_bar_provider_fill_summary(payload: Mapping[str, object]) -> str:
     if warning:
         parts.append(f"warning {warning}")
     parts.append(f"command {command}")
+    saved_file_command = str(
+        provider_plan.get("provider_saved_file_import_command") or ""
+    ).strip()
+    if saved_file_command:
+        parts.append(f"saved file {saved_file_command}")
     return "; ".join(parts)
 
 
