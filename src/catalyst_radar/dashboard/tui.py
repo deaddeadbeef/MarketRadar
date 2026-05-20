@@ -5485,7 +5485,7 @@ def _run_lines(payload: Mapping[str, object], width: int) -> list[str]:
             ("Full-scan evidence", full_scan_evidence),
             ("Visible-page source coverage", coverage.get("summary")),
         ]
-        blocker_hint = _run_audit_source_blocker_hint(blocker)
+        blocker_hint = _run_audit_source_blocker_hint(blocker, payload)
         if blocker_hint:
             evidence_items.append(("Inspect source blocker", blocker_hint))
         manual_hint = _market_bar_manual_action_summary(payload)
@@ -5633,7 +5633,10 @@ def _run_first_audit_source_blocker(
     )[0]
 
 
-def _run_audit_source_blocker_hint(blocker: Mapping[str, object] | None) -> str | None:
+def _run_audit_source_blocker_hint(
+    blocker: Mapping[str, object] | None,
+    payload: Mapping[str, object] | None = None,
+) -> str | None:
     if not blocker:
         return None
     source = str(blocker.get("source") or "").strip()
@@ -5646,6 +5649,18 @@ def _run_audit_source_blocker_hint(blocker: Mapping[str, object] | None) -> str 
     dashboard_preview = str(
         blocker.get("dashboard_manual_import_preview_command") or ""
     ).strip()
+    if source == "market_bars" and payload and not (
+        dashboard_template or dashboard_preview
+    ):
+        audit = _mapping(payload.get("priced_in_audit"))
+        market = _mapping(audit.get("market_bars"))
+        repair = _mapping(market.get("repair"))
+        dashboard_template = str(
+            repair.get("dashboard_manual_template_command") or ""
+        ).strip()
+        dashboard_preview = str(
+            repair.get("dashboard_manual_import_preview_command") or ""
+        ).strip()
     if source == "market_bars" and (dashboard_template or dashboard_preview):
         action_parts = []
         if dashboard_template:

@@ -1,7 +1,36 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 02:42:46 +08:00
+Last updated: 2026-05-21 02:59:32 +08:00
 
+
+
+## Latest Run-Page Source Blocker Alignment
+
+Goal alignment / drift check:
+
+- The active goal remains: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- Post-merge smoke for the prior slice showed one remaining dashboard inconsistency: `Manual CSV action` used native `bars manual ...` commands, but `Inspect source blocker` still opened with the long CLI template command.
+- This is a human-UI issue only. It does not change provider behavior, reduce the scan universe, import data, or call Polygon/Massive, Schwab, SEC, or OpenAI.
+
+Fix in this slice:
+
+- `_run_audit_source_blocker_hint(...)` can now receive the full dashboard payload.
+- For a `market_bars` blocker that lacks dashboard command fields on the source row, the hint falls back to `priced_in_audit.market_bars.repair.dashboard_manual_*`.
+- Added a regression test that the source-blocker hint prefers `bars manual full template` and `bars manual full import` over the long CLI fallback.
+
+Validation to run before PR:
+
+```powershell
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py
+$env:PYTHONPATH='C:\Users\fpan1\MarketRadar-dashboard-source-blocker-action\src'; C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_source_blocker_prefers_dashboard_market_bar_actions tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_manual_bar_fill_progress_summary_is_human_readable -q
+git diff --check
+$env:PYTHONPATH='C:\Users\fpan1\MarketRadar-dashboard-source-blocker-action\src'; C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page run | Select-String 'Inspect source blocker|Manual CSV action|External calls made'
+```
+
+Next useful product action:
+
+- Do not treat this as goal completion.
+- The data blocker remains unchanged: stock-like scan still needs 131 missing market bars and full active-universe scan still needs 523 missing market bars before the priced-in scan can be trusted.
 
 
 
