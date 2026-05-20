@@ -1084,6 +1084,12 @@ def test_dashboard_manual_bar_fill_progress_summary_is_human_readable() -> None:
                             "--date 2026-05-15 --fixture "
                             "data\\local\\polygon-grouped-daily-2026-05-15.json"
                         ),
+                        "provider_saved_file_exists": False,
+                        "provider_saved_file_status": "missing",
+                        "provider_saved_file_next_action": (
+                            "Capture or obtain the saved grouped-daily JSON response "
+                            "before running saved-file validate/import."
+                        ),
                         "provider_saved_file_external_call_count": 0,
                     },
                     "local_template_preview": {
@@ -1124,8 +1130,8 @@ def test_dashboard_manual_bar_fill_progress_summary_is_human_readable() -> None:
     assert "Provider fill: ready_for_approval_with_health_warning" in ops
     assert "Saved file capture: 1 external call(s)" in overview
     assert "Saved file capture: 1 external call(s)" in ops
-    assert "Saved file import: 0 external call(s)" in overview
-    assert "Saved file import: 0 external call(s)" in ops
+    assert "Saved file import: missing saved file" in overview
+    assert "Saved file import: missing saved file" in ops
     assert "Manual CSV progress: 12/523 complete; 3 partial; 508 empty" in overview
     assert "Manual CSV progress: 12/523 complete; 3 partial; 508 empty" in ops
     assert "Market bar next: Finish or clear partial OHLCV/VWAP rows" in overview

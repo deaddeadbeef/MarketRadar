@@ -316,6 +316,26 @@ class ManualBarsRepairPlanResult:
         provider_saved_file_validate_command = (
             f"{provider_saved_file_import_command} --validate-only"
         )
+        provider_saved_file_exists = bool(
+            missing > 0 and provider_saved_file_path.exists()
+        )
+        provider_saved_file_status = (
+            "available"
+            if provider_saved_file_exists
+            else ("missing" if missing > 0 else "not_needed")
+        )
+        if provider_saved_file_status == "available":
+            provider_saved_file_next_action = (
+                "Validate the saved grouped-daily JSON response, then import it. "
+                "Both saved-file steps make 0 provider calls."
+            )
+        elif provider_saved_file_status == "missing":
+            provider_saved_file_next_action = (
+                "Capture or obtain the saved grouped-daily JSON response before "
+                "running saved-file validate/import."
+            )
+        else:
+            provider_saved_file_next_action = "No saved-file import is needed."
         provider_health = _manual_bar_provider_health_payload(
             status=self.provider_health_status,
             reason=self.provider_health_reason,
@@ -467,6 +487,9 @@ class ManualBarsRepairPlanResult:
             "provider_saved_file_path": (
                 str(provider_saved_file_path) if missing > 0 else None
             ),
+            "provider_saved_file_exists": provider_saved_file_exists,
+            "provider_saved_file_status": provider_saved_file_status,
+            "provider_saved_file_next_action": provider_saved_file_next_action,
             "provider_saved_file_capture_command": (
                 provider_saved_file_capture_command if missing > 0 else None
             ),

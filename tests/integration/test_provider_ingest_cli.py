@@ -622,6 +622,9 @@ def test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths(
     assert payload["provider_saved_file_path"] == (
         "data\\local\\polygon-grouped-daily-2026-05-15.json"
     )
+    assert payload["provider_saved_file_exists"] is False
+    assert payload["provider_saved_file_status"] == "missing"
+    assert "Capture or obtain" in payload["provider_saved_file_next_action"]
     assert payload["provider_saved_file_capture_command"] == (
         "catalyst-radar ingest-polygon grouped-daily "
         "--date 2026-05-15 "

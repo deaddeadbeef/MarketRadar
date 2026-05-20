@@ -4179,7 +4179,17 @@ def _market_bar_provider_saved_file_summary(payload: Mapping[str, object]) -> st
     if not command:
         return ""
     calls = int(_number_or_zero(provider_plan.get("provider_saved_file_external_call_count")))
-    return f"{calls} external call(s); command {command}"
+    status = str(provider_plan.get("provider_saved_file_status") or "unknown").strip()
+    exists_value = provider_plan.get("provider_saved_file_exists")
+    if status == "missing" or (exists_value is False and status != "available"):
+        next_action = str(
+            provider_plan.get("provider_saved_file_next_action") or ""
+        ).strip()
+        prefix = "missing saved file"
+        if next_action:
+            prefix = f"{prefix}; {next_action}"
+        return f"{prefix}; {calls} external call(s); command {command}"
+    return f"{status}; {calls} external call(s); command {command}"
 
 
 def _market_bar_provider_saved_file_capture_summary(
@@ -4219,7 +4229,17 @@ def _market_bar_provider_saved_file_validate_summary(
     if not command:
         return ""
     calls = int(_number_or_zero(provider_plan.get("provider_saved_file_external_call_count")))
-    return f"{calls} external call(s); command {command}"
+    status = str(provider_plan.get("provider_saved_file_status") or "unknown").strip()
+    exists_value = provider_plan.get("provider_saved_file_exists")
+    if status == "missing" or (exists_value is False and status != "available"):
+        next_action = str(
+            provider_plan.get("provider_saved_file_next_action") or ""
+        ).strip()
+        prefix = "missing saved file"
+        if next_action:
+            prefix = f"{prefix}; {next_action}"
+        return f"{prefix}; {calls} external call(s); command {command}"
+    return f"{status}; {calls} external call(s); command {command}"
 
 
 def _full_scan_instrument_scope_summary(payload: Mapping[str, object]) -> str:

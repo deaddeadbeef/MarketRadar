@@ -4332,6 +4332,24 @@ def _priced_in_market_bar_provider_fill_plan(
         if saved_file_import_command
         else None
     )
+    saved_file_exists = bool(saved_file_path is not None and saved_file_path.exists())
+    saved_file_status = (
+        "available"
+        if saved_file_exists
+        else ("missing" if target_value and missing > 0 else "not_needed")
+    )
+    if saved_file_status == "available":
+        saved_file_next_action = (
+            "Validate the saved grouped-daily JSON response, then import it. "
+            "Both saved-file steps make 0 provider calls."
+        )
+    elif saved_file_status == "missing":
+        saved_file_next_action = (
+            "Capture or obtain the saved grouped-daily JSON response before "
+            "running saved-file validate/import."
+        )
+    else:
+        saved_file_next_action = "No saved-file import is needed."
     execute_call_count = 1 if target_value and missing > 0 else 0
     key_configured = bool(config.polygon_api_key_configured)
     provider_health_gate = (
@@ -4408,6 +4426,9 @@ def _priced_in_market_bar_provider_fill_plan(
         "provider_call_command": provider_command,
         "provider_call_api": None,
         "provider_saved_file_path": str(saved_file_path) if saved_file_path else None,
+        "provider_saved_file_exists": saved_file_exists,
+        "provider_saved_file_status": saved_file_status,
+        "provider_saved_file_next_action": saved_file_next_action,
         "provider_saved_file_capture_command": saved_file_capture_command,
         "provider_saved_file_capture_api": (
             "POST /api/radar/market-bars/provider-fixture-capture"

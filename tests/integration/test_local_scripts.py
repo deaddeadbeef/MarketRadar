@@ -209,11 +209,13 @@ def test_market_radar_status_script_is_zero_external_call_sitrep() -> None:
     assert "stock provider option: status={0}; health={1}; external_calls={2}; command={3}" in text
     assert "stock provider health warning:" in text
     assert "stock provider saved-file capture:" in text
+    assert "stock provider saved-file status:" in text
     assert "stock provider saved-file validate:" in text
     assert "stock provider saved-file import:" in text
     assert "provider option: status={0}; health={1}; external_calls={2}; command={3}" in text
     assert "provider health warning:" in text
     assert "provider saved-file capture:" in text
+    assert "provider saved-file status:" in text
     assert "provider saved-file validate:" in text
     assert "provider saved-file import:" in text
     assert "provider saved-file boundary:" in text
