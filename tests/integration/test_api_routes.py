@@ -2222,7 +2222,16 @@ def test_post_radar_market_bars_provider_fixture_capture_requires_approval(
 ) -> None:
     database_url = _database_url(tmp_path, "radar-provider-fixture-capture-plan.db")
     monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
-    _create_database(database_url)
+    engine = _create_database(database_url)
+    MarketRepository(engine).upsert_securities(
+        [
+            _security_with_type("AAPL", "CS"),
+            _security_with_type("MSFT", "CS"),
+        ]
+    )
+    MarketRepository(engine).upsert_daily_bars(
+        [_daily_bar("AAPL", date(2026, 5, 8))]
+    )
     output_path = tmp_path / "polygon-grouped-daily-2026-05-08.json"
     client = TestClient(create_app())
 
@@ -2241,7 +2250,28 @@ def test_post_radar_market_bars_provider_fixture_capture_requires_approval(
     assert payload["capture_external_call_count"] == 1
     assert payload["external_calls_made"] == 0
     assert payload["db_writes_made"] == 0
+    assert payload["approval_context_status"] == "ready"
+    assert payload["approval_context_external_calls_made"] == 0
+    assert payload["coverage_scope"] == "active_universe"
+    assert payload["active_security_count"] == 2
+    assert payload["existing_as_of_bar_count"] == 1
+    assert payload["missing_as_of_bar_count"] == 1
+    assert payload["provider_saved_file_validate_request_body"] == {
+        "expected_as_of": "2026-05-08",
+        "fixture_path": str(output_path),
+    }
+    assert payload["provider_saved_file_import_preview_request_body"] == {
+        "expected_as_of": "2026-05-08",
+        "fixture_path": str(output_path),
+        "execute": False,
+    }
+    assert payload["provider_saved_file_import_request_body"] == {
+        "expected_as_of": "2026-05-08",
+        "fixture_path": str(output_path),
+        "execute": True,
+    }
     assert "--confirm-external-call" in payload["capture_command"]
+    assert "--validate-only" in payload["provider_saved_file_validate_command"]
     assert not output_path.exists()
 
 

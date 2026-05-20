@@ -394,7 +394,8 @@ complete rows only with 0 provider calls and 0 DB writes, and
 `bars manual import execute` writes only completed rows into the local database.
 Use `bars manual stocks template` when you intentionally want the narrower
 stock-like scope instead of the full active universe. For saved-provider repair,
-`bars saved capture` shows the approval boundary and makes 0 provider calls;
+`bars saved capture` shows the approval boundary, current missing-bar count,
+and the zero-call validate/import request bodies without making provider calls;
 `bars saved capture confirm` is the explicit one-call Polygon/Massive capture
 and immediately prints a zero-call post-capture preview of whether the saved
 file covers current missing bars; `bars saved validate` checks the saved

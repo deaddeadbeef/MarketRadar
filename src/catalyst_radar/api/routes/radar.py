@@ -218,6 +218,73 @@ class MarketBarsProviderFixtureImportRequest(BaseModel):
     execute: bool = False
 
 
+def _market_bars_capture_approval_context(
+    engine: Any,
+    *,
+    expected_as_of: Date,
+    output_path: Path,
+):
+    config = AppConfig.from_env()
+    provider_health = ProviderRepository(engine).latest_health("polygon")
+    target_date = expected_as_of.isoformat()
+    fixture_path = str(output_path)
+    validate_body = {
+        "expected_as_of": target_date,
+        "fixture_path": fixture_path,
+    }
+    import_preview_body = {**validate_body, "execute": False}
+    import_body = {**validate_body, "execute": True}
+    try:
+        repair = manual_market_bars_repair_plan(
+            engine,
+            expected_as_of=expected_as_of,
+            stocks_only=False,
+            provider_key_configured=config.polygon_api_key_configured,
+            provider_health_status=(
+                provider_health.status.value if provider_health is not None else None
+            ),
+            provider_health_reason=(
+                provider_health.reason if provider_health is not None else None
+            ),
+            provider_health_checked_at=(
+                provider_health.checked_at if provider_health is not None else None
+            ),
+        ).as_payload()
+    except ValueError as exc:
+        return {
+            "approval_context_status": "unavailable",
+            "approval_context_reason": str(exc),
+            "approval_context_external_calls_made": 0,
+            "provider_saved_file_validate_request_body": validate_body,
+            "provider_saved_file_import_preview_request_body": import_preview_body,
+            "provider_saved_file_import_request_body": import_body,
+        }
+    return {
+        "approval_context_status": "ready",
+        "approval_context_external_calls_made": repair.get("external_calls_made", 0),
+        "coverage_scope": repair.get("coverage_scope"),
+        "active_security_count": repair.get("active_security_count"),
+        "existing_as_of_bar_count": repair.get("existing_as_of_bar_count"),
+        "missing_as_of_bar_count": repair.get("missing_as_of_bar_count"),
+        "provider_saved_file_status": repair.get("provider_saved_file_status"),
+        "provider_saved_file_validate_command": (
+            "catalyst-radar ingest-polygon grouped-daily "
+            f"--date {target_date} --fixture {output_path} --validate-only"
+        ),
+        "provider_saved_file_import_command": (
+            "catalyst-radar ingest-polygon grouped-daily "
+            f"--date {target_date} --fixture {output_path}"
+        ),
+        "provider_saved_file_validate_request_body": validate_body,
+        "provider_saved_file_import_preview_request_body": import_preview_body,
+        "provider_saved_file_import_request_body": import_body,
+        "next_zero_call_after_capture": (
+            "After capture, preview the saved file from disk, then import only "
+            "if the preview covers the intended missing market bars."
+        ),
+    }
+
+
 class SourceBatchExecuteRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -777,6 +844,11 @@ def radar_market_bars_provider_fixture_capture(
     output_path = Path(request.output_path)
     if request.fixture_path is None and not request.confirm_external_call:
         target_date = request.expected_as_of.isoformat()
+        approval_context = _market_bars_capture_approval_context(
+            _engine(),
+            expected_as_of=request.expected_as_of,
+            output_path=output_path,
+        )
         return redact_restricted_external_payload(
             {
                 "schema_version": "polygon-grouped-daily-response-capture-v1",
@@ -801,6 +873,7 @@ def radar_market_bars_provider_fixture_capture(
                     "single provider call, or provide fixture_path for a local "
                     "fixture-backed capture."
                 ),
+                **approval_context,
             },
         )
     try:
