@@ -451,7 +451,6 @@ def dashboard_snapshot_payload(
         source_gap=filters.priced_in_source_gap,
         decision_gap=filters.priced_in_decision_gap,
         stocks_only=filters.priced_in_stocks_only,
-        candidate_rows=candidate_rows,
         latest_run_summary=latest_run,
         broker_summary=broker_summary,
         discovery_snapshot=discovery_snapshot,

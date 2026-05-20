@@ -825,6 +825,44 @@ def test_dashboard_run_page_shows_priced_in_evidence_plan(
     assert "priced-in-source-" in output.out
 
 
+def test_dashboard_snapshot_priced_in_queue_loads_scan_rows_from_database(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["seed-dashboard-demo"]) == 0
+    capsys.readouterr()
+
+    engine = create_engine(database_url, future=True)
+    config = AppConfig.from_env({"CATALYST_DATABASE_URL": database_url})
+    captured_kwargs: list[dict[str, object]] = []
+    original = dashboard_data_module.priced_in_queue_payload
+
+    def capture_priced_in_queue_payload(*args, **kwargs):
+        captured_kwargs.append(dict(kwargs))
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(
+        dashboard_data_module,
+        "priced_in_queue_payload",
+        capture_priced_in_queue_payload,
+    )
+
+    payload = dashboard_snapshot_payload(
+        engine=engine,
+        config=config,
+        dotenv_loaded=False,
+        filters=DashboardFilters(priced_in_stocks_only=True),
+    )
+
+    assert captured_kwargs
+    assert "candidate_rows" not in captured_kwargs[0]
+    assert payload["priced_in_queue"]["scan_selection"]["mode"] != "supplied_rows"
+
+
 def test_dashboard_agent_page_shows_agent_brief(
     tmp_path: Path,
     monkeypatch,
