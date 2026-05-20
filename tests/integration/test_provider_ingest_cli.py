@@ -595,6 +595,12 @@ def test_market_bars_repair_plan_previews_existing_local_template(
         "volume": 1,
         "vwap": 1,
     }
+    assert preview["fill_progress"] == {
+        "complete_rows": 0,
+        "partial_rows": 0,
+        "empty_rows": 1,
+        "filled_rows": 0,
+    }
     assert preview["external_calls_made"] == 0
     assert payload["missing_security_type_counts"] == {"ADRC": 1}
     assert payload["missing_with_local_history_count"] == 0
@@ -624,6 +630,10 @@ def test_market_bars_repair_plan_previews_existing_local_template(
     assert "missing_security_types=ADRC:1" in captured.out
     assert "missing_without_local_history=AADR" in captured.out
     assert "local_template_preview=status=invalid" in captured.out
+    assert (
+        "local_template_fill_progress=complete=0 partial=0 empty=1 filled=0"
+        in captured.out
+    )
     assert "local_template_blank_required_fields=open=1" in captured.out
     assert "local_template_invalid_examples=row 2 AADR 2026-05-15" in captured.out
 
@@ -660,6 +670,7 @@ def test_market_bars_import_rejects_blank_numeric_fields(
     assert captured.err == ""
     assert "manual_market_bars_import status=invalid" in captured.out
     assert "invalid=rows=6" in captured.out
+    assert "fill_progress=complete=0 partial=6 empty=0 filled=6" in captured.out
     assert "blank_required=6" in captured.out
     assert "blank_required_fields=open=6" in captured.out
     assert "invalid_examples=row" in captured.out

@@ -1,6 +1,76 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 10:15:05 +08:00
+Last updated: 2026-05-20 10:22:09 +08:00
+
+## Latest Manual CSV Fill Progress
+
+Goal alignment:
+
+- The remaining full-market blocker is filling
+  `data\local\manual-bars-2026-05-15.csv` with real scan-date OHLCV/VWAP
+  values.
+- This slice makes that manual work measurable. The import preview, repair-plan
+  preview, API payload, and quick status now show how many manual rows are
+  complete, partially filled, or empty.
+- This makes 0 Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or provider
+  calls.
+
+Fix in this slice:
+
+- Manual CSV validation now computes `fill_progress`:
+  - `complete_rows`: all required OHLCV/VWAP fields filled;
+  - `partial_rows`: at least one required OHLCV/VWAP field filled, but not all;
+  - `empty_rows`: no required OHLCV/VWAP fields filled;
+  - `filled_rows`: complete plus partial.
+- `market-bars import` text output prints `fill_progress=...`.
+- `market-bars repair-plan` text output prints local template fill progress.
+- `scripts\market-radar-status.ps1 -Quick` prints
+  `- local template fill progress: ...`.
+- API JSON responses expose the same `fill_progress` object.
+
+Live zero-call observation:
+
+```text
+manual_market_bars_import status=invalid rows=523 tickers=523 active=12613 latest_bar=2026-05-15 expected_as_of=2026-05-15 executed=false external_calls=0
+coverage=bars_at_expected=523 existing=12090 after_import=12613 missing=0 scope=active_universe
+fill_progress=complete=0 partial=0 empty=523 filled=0
+invalid=rows=523 blank_required=3138 invalid_numeric=0
+```
+
+Quick status observation:
+
+```text
+- local template preview: status=invalid; rows=523; invalid_rows=523; blank_required=3138; missing_after_import=0; external_calls=0
+- local template fill progress: complete=0; partial=0; empty=523; filled=0
+- local template blank fields: close=523, high=523, low=523, open=523, volume=523, vwap=523
+External calls made: 0
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_provider_ingest_cli.py::test_market_bars_repair_plan_previews_existing_local_template tests\integration\test_provider_ingest_cli.py::test_market_bars_import_rejects_blank_numeric_fields tests\integration\test_api_routes.py::test_post_radar_market_bars_template_and_import_use_database_universe tests\integration\test_local_scripts.py::test_market_radar_status_script_is_zero_external_call_sitrep -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\market\manual_bars.py src\catalyst_radar\cli.py tests\integration\test_provider_ingest_cli.py tests\integration\test_api_routes.py tests\integration\test_local_scripts.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli market-bars import --daily-bars data\local\manual-bars-2026-05-15.csv --expected-as-of 2026-05-15
+powershell -ExecutionPolicy Bypass -File .\scripts\market-radar-status.ps1 -Quick
+```
+
+Results:
+
+- Focused pytest passed.
+- Ruff passed.
+- `git diff --check` passed.
+- Live import preview and quick status both reported `external_calls=0` and
+  fill progress `complete=0 partial=0 empty=523 filled=0`.
+
+Next useful product action:
+
+- Fill OHLCV/VWAP values in the manual CSV. Re-run import preview; the progress
+  line should move rows from `empty` to `partial` or `complete`.
+- The goal remains blocked until `complete=523`, the preview is `ready`, and the
+  local import is executed, or until the user explicitly approves the guarded
+  Polygon/Massive grouped-daily fill.
 
 ## Latest Manual Template Overwrite Guard
 

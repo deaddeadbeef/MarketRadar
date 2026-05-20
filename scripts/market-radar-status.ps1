@@ -228,6 +228,16 @@ if ($Quick) {
         if ($manualMarketBarPreview.next_action) {
             Write-Output ("- local template next: {0}" -f $manualMarketBarPreview.next_action)
         }
+        $fillProgress = $manualMarketBarPreview.fill_progress
+        if ($null -ne $fillProgress) {
+            Write-Output (
+                "- local template fill progress: complete={0}; partial={1}; empty={2}; filled={3}" -f
+                $(if ($null -ne $fillProgress.complete_rows) { $fillProgress.complete_rows } else { 0 }),
+                $(if ($null -ne $fillProgress.partial_rows) { $fillProgress.partial_rows } else { 0 }),
+                $(if ($null -ne $fillProgress.empty_rows) { $fillProgress.empty_rows } else { 0 }),
+                $(if ($null -ne $fillProgress.filled_rows) { $fillProgress.filled_rows } else { 0 })
+            )
+        }
         $blankFieldSummary = Format-FieldCountSummary -Value $manualMarketBarPreview.blank_required_field_counts
         if (-not [string]::IsNullOrWhiteSpace($blankFieldSummary)) {
             Write-Output ("- local template blank fields: {0}" -f $blankFieldSummary)

@@ -119,6 +119,9 @@ class ManualBarsImportResult:
     blank_required_count: int = 0
     blank_required_field_counts: tuple[tuple[str, int], ...] = ()
     invalid_numeric_count: int = 0
+    complete_required_row_count: int = 0
+    partial_required_row_count: int = 0
+    empty_required_row_count: int = 0
     invalid_examples: tuple[str, ...] = ()
     bars: tuple[DailyBar, ...] = field(default=(), repr=False)
 
@@ -175,6 +178,18 @@ class ManualBarsImportResult:
                 for field_name, count in self.blank_required_field_counts
             },
             "invalid_numeric_count": self.invalid_numeric_count,
+            "fill_progress": {
+                "complete_rows": self.complete_required_row_count,
+                "partial_rows": self.partial_required_row_count,
+                "empty_rows": self.empty_required_row_count,
+                "filled_rows": (
+                    self.complete_required_row_count
+                    + self.partial_required_row_count
+                ),
+            },
+            "complete_required_row_count": self.complete_required_row_count,
+            "partial_required_row_count": self.partial_required_row_count,
+            "empty_required_row_count": self.empty_required_row_count,
             "invalid_examples": list(self.invalid_examples[:6]),
             "invalid_more": max(0, len(self.invalid_examples) - 6),
             "external_calls_made": 0,
@@ -536,6 +551,9 @@ def preview_manual_market_bars_import(
             blank_required_count=validation.blank_required_count,
             blank_required_field_counts=validation.blank_required_field_counts,
             invalid_numeric_count=validation.invalid_numeric_count,
+            complete_required_row_count=validation.complete_required_row_count,
+            partial_required_row_count=validation.partial_required_row_count,
+            empty_required_row_count=validation.empty_required_row_count,
             invalid_examples=validation.invalid_examples,
         )
     try:
@@ -554,6 +572,9 @@ def preview_manual_market_bars_import(
             bars_at_expected_as_of=None,
             stocks_only=stocks_only,
             invalid_row_count=1,
+            complete_required_row_count=validation.complete_required_row_count,
+            partial_required_row_count=validation.partial_required_row_count,
+            empty_required_row_count=validation.empty_required_row_count,
             invalid_examples=(str(exc),),
         )
     _validate_manual_bars(bars)
@@ -592,6 +613,9 @@ def preview_manual_market_bars_import(
         bars_at_expected_as_of=bars_at_expected,
         stocks_only=stocks_only,
         missing_expected_tickers=missing,
+        complete_required_row_count=validation.complete_required_row_count,
+        partial_required_row_count=validation.partial_required_row_count,
+        empty_required_row_count=validation.empty_required_row_count,
         bars=bars,
     )
 
@@ -629,6 +653,9 @@ def import_manual_market_bars(
         stocks_only=preview.stocks_only,
         missing_expected_tickers=preview.missing_expected_tickers,
         executed=True,
+        complete_required_row_count=preview.complete_required_row_count,
+        partial_required_row_count=preview.partial_required_row_count,
+        empty_required_row_count=preview.empty_required_row_count,
         bars=preview.bars,
     )
 
@@ -804,6 +831,9 @@ class _ManualBarsCsvValidation:
     blank_required_count: int
     blank_required_field_counts: tuple[tuple[str, int], ...]
     invalid_numeric_count: int
+    complete_required_row_count: int
+    partial_required_row_count: int
+    empty_required_row_count: int
     invalid_examples: tuple[str, ...]
 
 
@@ -845,6 +875,9 @@ def _inspect_manual_bars_csv(
         blank_required_count = 0
         blank_required_field_counts: dict[str, int] = {}
         invalid_numeric_count = 0
+        complete_required_row_count = 0
+        partial_required_row_count = 0
+        empty_required_row_count = 0
         examples: list[str] = []
         for row_number, row in enumerate(reader, start=2):
             row_count += 1
@@ -873,6 +906,17 @@ def _inspect_manual_bars_csv(
                 )
                 if expected_as_of is not None and parsed_date == expected_as_of:
                     expected_date_tickers.add(ticker)
+            filled_required_fields = [
+                field
+                for field in MANUAL_BAR_REQUIRED_FILL_FIELDS
+                if str(row.get(field) or "").strip()
+            ]
+            if len(filled_required_fields) == len(MANUAL_BAR_REQUIRED_FILL_FIELDS):
+                complete_required_row_count += 1
+            elif filled_required_fields:
+                partial_required_row_count += 1
+            else:
+                empty_required_row_count += 1
             blank_fields = [
                 field for field in required if not str(row.get(field) or "").strip()
             ]
@@ -942,6 +986,9 @@ def _inspect_manual_bars_csv(
             if blank_required_field_counts.get(field, 0)
         ),
         invalid_numeric_count=invalid_numeric_count,
+        complete_required_row_count=complete_required_row_count,
+        partial_required_row_count=partial_required_row_count,
+        empty_required_row_count=empty_required_row_count,
         invalid_examples=tuple(examples),
     )
 
