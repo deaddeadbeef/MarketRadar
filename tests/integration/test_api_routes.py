@@ -33,6 +33,7 @@ from catalyst_radar.storage.schema import (
     decision_cards,
     job_runs,
     normalized_provider_records,
+    option_features,
     raw_provider_records,
     securities,
     signal_features,
@@ -2691,6 +2692,133 @@ def test_post_radar_options_fixture_validate_returns_zero_call_result(
     assert payload["row_count"] == 1
     assert payload["external_calls_made"] == 0
     assert payload["import_command"].endswith(str(fixture))
+
+
+def test_post_radar_options_fixture_import_previews_and_executes_local_fixture(
+    tmp_path,
+    monkeypatch,
+):
+    database_url = _database_url(tmp_path, "radar-options-import.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = _create_database(database_url)
+    fixture = tmp_path / "point-in-time-options.json"
+    with fixture.open("w", encoding="utf-8") as handle:
+        json.dump(
+            {
+                "as_of": "2026-05-10T21:00:00+00:00",
+                "source_ts": "2026-05-10T21:00:00+00:00",
+                "available_at": "2026-05-10T21:00:00+00:00",
+                "provider": "options_fixture",
+                "results": [
+                    {
+                        "ticker": "MSFT",
+                        "call_volume": 100,
+                        "put_volume": 50,
+                        "call_open_interest": 1000,
+                        "put_open_interest": 700,
+                        "iv_percentile": 0.55,
+                        "skew": 0.1,
+                    }
+                ],
+            },
+            handle,
+        )
+    client = TestClient(create_app())
+
+    preview_response = client.post(
+        "/api/radar/options/fixture-import",
+        json={"fixture_path": str(fixture), "expected_as_of": "2026-05-10"},
+    )
+
+    assert preview_response.status_code == 200
+    preview = preview_response.json()
+    assert preview["schema_version"] == "options-fixture-import-v1"
+    assert preview["status"] == "ready"
+    assert preview["executed"] is False
+    assert preview["external_calls_made"] == 0
+    assert preview["db_writes_made"] == 0
+    assert preview["validation"]["valid_row_count"] == 1
+    assert "execute=true" in preview["write_boundary"]
+
+    with engine.connect() as conn:
+        assert conn.execute(select(func.count()).select_from(job_runs)).scalar_one() == 0
+        assert (
+            conn.execute(select(func.count()).select_from(raw_provider_records)).scalar_one()
+            == 0
+        )
+        assert conn.execute(select(func.count()).select_from(option_features)).scalar_one() == 0
+
+    execute_response = client.post(
+        "/api/radar/options/fixture-import",
+        json={
+            "fixture_path": str(fixture),
+            "expected_as_of": "2026-05-10",
+            "execute": True,
+        },
+    )
+
+    assert execute_response.status_code == 200
+    payload = execute_response.json()
+    assert payload["schema_version"] == "options-fixture-import-v1"
+    assert payload["status"] == "imported"
+    assert payload["executed"] is True
+    assert payload["requested_count"] == 1
+    assert payload["raw_count"] == 1
+    assert payload["normalized_count"] == 1
+    assert payload["option_feature_count"] == 1
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 1
+    assert "0 provider calls" in payload["write_boundary"]
+
+    with engine.connect() as conn:
+        assert conn.execute(select(func.count()).select_from(job_runs)).scalar_one() == 1
+        assert (
+            conn.execute(select(func.count()).select_from(raw_provider_records)).scalar_one()
+            == 1
+        )
+        assert (
+            conn.execute(
+                select(func.count()).select_from(normalized_provider_records)
+            ).scalar_one()
+            == 1
+        )
+        assert conn.execute(select(func.count()).select_from(option_features)).scalar_one() == 1
+
+
+def test_post_radar_options_fixture_import_blocks_invalid_execute(
+    tmp_path,
+    monkeypatch,
+):
+    database_url = _database_url(tmp_path, "radar-options-import-invalid.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = _create_database(database_url)
+    fixture = tmp_path / "point-in-time-options-invalid.json"
+    with fixture.open("w", encoding="utf-8") as handle:
+        json.dump(
+            {
+                "as_of": "2026-05-10T21:00:00+00:00",
+                "source_ts": "2026-05-10T21:00:00+00:00",
+                "available_at": "2026-05-10T21:00:00+00:00",
+                "provider": "options_fixture",
+                "results": [{"ticker": "MSFT", "call_volume": ""}],
+            },
+            handle,
+        )
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/radar/options/fixture-import",
+        json={
+            "fixture_path": str(fixture),
+            "expected_as_of": "2026-05-10",
+            "execute": True,
+        },
+    )
+
+    assert response.status_code == 422
+    with engine.connect() as conn:
+        assert conn.execute(select(func.count()).select_from(job_runs)).scalar_one() == 0
+        assert conn.execute(select(func.count()).select_from(option_features)).scalar_one() == 0
 
 
 def test_post_radar_sec_cik_overrides_imports_manual_metadata(
