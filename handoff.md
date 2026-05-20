@@ -1,7 +1,48 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 02:59:32 +08:00
+Last updated: 2026-05-21 03:22:03 +08:00
 
+
+
+## Latest Full-Scan Mission Brief
+
+Goal alignment / drift check:
+
+- The active goal remains: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice is deliberately small and zero-call. It does not import bars, call Polygon/Massive, call SEC, call Schwab, call OpenAI, change scoring, or shrink the scan universe.
+- The live data blocker remains unchanged: full active-universe scan still needs 523 missing market bars before the priced-in answer can be trusted.
+- The useful product problem addressed here is comprehension: CLI/API and dashboard users should immediately see the question being answered, whether the answer is trusted, why not, and the next safe action.
+
+Fix in this slice:
+
+- `priced-in-source-batches --source all --json` now includes `mission_brief` with:
+  - the priced-in question;
+  - current trusted-answer state;
+  - scan progress;
+  - next source, gap rows, command, and call count;
+  - zero-call operator boundary;
+  - a compact roadmap of remaining evidence gaps.
+- The non-JSON CLI output prints the same mission brief before the lower-level scan scope and source tables.
+- The TUI Run page now starts with a `Mission Brief` section above call planning, with current answer, scan progress, trust blocker, useful next action, and zero-call boundary.
+- README now documents the `mission_brief` payload and the Run-page Mission Brief.
+
+Validation observed in this slice:
+
+```powershell
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\integration\test_dashboard_demo_seed_cli.py
+$env:PYTHONPATH="C:\Users\fpan1\MarketRadar-full-scan-mission\src"; C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_queue_cli_outputs_same_zero_call_signal tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_run_page_shows_priced_in_evidence_plan -q
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m py_compile src\catalyst_radar\cli.py src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py
+git diff --check
+$env:PYTHONPATH="C:\Users\fpan1\MarketRadar-full-scan-mission\src"; $env:CATALYST_DATABASE_URL="sqlite:///C:/Users/fpan1/MarketRadar/data/local/schwab-live.db"; C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source all | Select-String "mission_brief|answer=|now=|roadmap=|external_calls"
+$env:PYTHONPATH="C:\Users\fpan1\MarketRadar-full-scan-mission\src"; $env:CATALYST_DATABASE_URL="sqlite:///C:/Users/fpan1/MarketRadar/data/local/schwab-live.db"; C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page run | Select-String "Mission Brief|Current answer|Trust blocker|Boundary|External calls made"
+```
+
+Observed results: Ruff passed, focused pytest passed 2 tests, `py_compile` passed, `git diff --check` passed, live all-source CLI smoke printed `mission_brief` with `external_calls=0`, and live Run-page smoke showed `Mission Brief`, `Current answer`, `Trust blocker`, `Boundary`, and `External calls made: 0`.
+
+Next useful product action:
+
+- Do not treat this as goal completion.
+- The next real progress is still to clear the `market_bars` blocker through the zero-call manual CSV path or an explicitly approved saved Polygon/Massive grouped-daily capture, then rerun the full source roadmap.
 
 
 ## Latest Run-Page Source Blocker Alignment

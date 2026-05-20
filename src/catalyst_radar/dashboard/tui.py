@@ -5436,7 +5436,13 @@ def _run_lines(payload: Mapping[str, object], width: int) -> list[str]:
     audit_sources = _rows(audit.get("sources"))
     evidence_plan = _mapping(_mapping(payload.get("priced_in_preflight")).get("evidence_plan"))
     full_scan_evidence = _answer_evidence_completeness_summary(payload)
-    lines = [_rule("Radar Run And Call Plan", width)]
+    mission_items = _run_mission_brief_items(payload)
+    lines: list[str] = []
+    if mission_items:
+        lines.append(_rule("Mission Brief", width))
+        lines.extend(_kv_lines(mission_items, width=width))
+        lines.append("")
+    lines.append(_rule("Radar Run And Call Plan", width))
     lines.extend(
         _kv_lines(
             (
@@ -5568,6 +5574,80 @@ def _run_lines(payload: Mapping[str, object], width: int) -> list[str]:
     )
     return lines
 
+
+def _run_mission_brief_items(
+    payload: Mapping[str, object],
+) -> list[tuple[str, object]]:
+    answer = _mapping(payload.get("priced_in_answer"))
+    audit = _mapping(payload.get("priced_in_audit"))
+    audit_sources = _rows(audit.get("sources"))
+    blocker = _run_first_audit_source_blocker(audit_sources)
+    question = answer.get("question") or audit.get("question")
+    current = answer.get("answer") or audit.get("answer")
+    full_scan = _mapping(answer.get("full_scan"))
+    scope = _mapping(audit.get("scope"))
+    active = int(
+        _number_or_zero(
+            _first_value(
+                full_scan.get("active_securities"),
+                scope.get("active_securities"),
+            )
+        )
+    )
+    scanned = int(
+        _number_or_zero(
+            _first_value(full_scan.get("scanned_rows"), scope.get("scanned_rows"))
+        )
+    )
+    ranked = int(
+        _number_or_zero(
+            _first_value(full_scan.get("ranked_rows"), scope.get("ranked_rows"))
+        )
+    )
+    source_coverage = _mapping(audit.get("source_coverage"))
+    coverage_text = str(source_coverage.get("summary") or "").strip()
+    progress_parts = []
+    if active or scanned or ranked:
+        progress_parts.append(
+            f"active {active}; scanned {scanned}; ranked {ranked}"
+        )
+    if coverage_text:
+        progress_parts.append(coverage_text)
+    blocker_text = ""
+    if blocker:
+        source = blocker.get("source") or "source"
+        gaps = int(_number_or_zero(blocker.get("gap_count")))
+        status = blocker.get("status") or "attention"
+        blocker_text = f"{source} {status}; gaps {gaps}"
+    next_action = (
+        blocker.get("next_action")
+        if blocker
+        else audit.get("next_action") or answer.get("next_action")
+    )
+    items: list[tuple[str, object]] = []
+    if question:
+        items.append(("Question", question))
+    if current:
+        items.append(("Current answer", current))
+    if progress_parts:
+        items.append(("Scan progress", "; ".join(progress_parts)))
+    if blocker_text:
+        items.append(("Trust blocker", blocker_text))
+    if next_action:
+        items.append(("Useful next", next_action))
+    if items:
+        items.append(
+            (
+                "Boundary",
+                (
+                    "Viewing and navigation make 0 provider calls; execute only "
+                    "one reviewed action at a time."
+                ),
+            )
+        )
+    return items
+
+
 def _market_bar_manual_action_summary(payload: Mapping[str, object]) -> str:
     audit = _mapping(payload.get("priced_in_audit"))
     market = _mapping(audit.get("market_bars"))
@@ -5587,8 +5667,6 @@ def _market_bar_manual_action_summary(payload: Mapping[str, object]) -> str:
     if execute:
         parts.append(f"type `{execute}` only after preview to write local DB rows")
     return "; ".join(parts) + "."
-
-
 
 
 def _run_saved_file_action_items(

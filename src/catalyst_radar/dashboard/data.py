@@ -1992,6 +1992,21 @@ def priced_in_all_source_gap_batches_payload(
         stocks_only=stocks_only,
         market_bars=market_bars_for_scope,
     )
+    scan_scope = _priced_in_all_source_overview_scan_scope(
+        queue,
+        source_count=len(rows),
+        total_gap_rows=total_gap_rows,
+        stocks_only=stocks_only,
+        market_bars=market_bars_for_scope,
+    )
+    mission_brief = _priced_in_all_source_mission_brief(
+        status=status_value,
+        scan_scope=scan_scope,
+        goal_alignment=goal_alignment,
+        coverage_recommendation=coverage_recommendation,
+        decision_shortcut_blocker=decision_shortcut_blocker,
+        rows=rows,
+    )
     return {
         "schema_version": "priced-in-source-batch-overview-v1",
         "status": status_value,
@@ -2002,13 +2017,8 @@ def priced_in_all_source_gap_batches_payload(
             total_gap_rows=total_gap_rows,
         ),
         "next_action": coverage_recommendation.get("action"),
-        "scan_scope": _priced_in_all_source_overview_scan_scope(
-            queue,
-            source_count=len(rows),
-            total_gap_rows=total_gap_rows,
-            stocks_only=stocks_only,
-            market_bars=market_bars_for_scope,
-        ),
+        "scan_scope": scan_scope,
+        "mission_brief": mission_brief,
         "goal_alignment": goal_alignment,
         "coverage_first_recommendation": coverage_recommendation,
         "decision_shortcut_recommendation": decision_recommendation,
@@ -2025,6 +2035,122 @@ def priced_in_all_source_gap_batches_payload(
         "total_gap_rows": total_gap_rows,
         "sources": rows,
     }
+
+
+
+def _priced_in_all_source_mission_brief(
+    *,
+    status: str,
+    scan_scope: Mapping[str, object],
+    goal_alignment: Mapping[str, object],
+    coverage_recommendation: Mapping[str, object],
+    decision_shortcut_blocker: Mapping[str, object] | None,
+    rows: Sequence[Mapping[str, object]],
+) -> dict[str, object]:
+    active = int(_finite_float(scan_scope.get("active_securities")))
+    scanned = int(_finite_float(scan_scope.get("scanned_rows")))
+    ranked = int(_finite_float(scan_scope.get("ranked_rows")))
+    gap_rows = int(_finite_float(goal_alignment.get("source_gap_rows")))
+    next_source = str(coverage_recommendation.get("source") or "").strip()
+    next_gaps = int(_finite_float(coverage_recommendation.get("total_gap_rows")))
+    next_calls = int(
+        _finite_float(coverage_recommendation.get("first_batch_external_calls"))
+    )
+    answer = _priced_in_mission_answer_text(
+        status=status,
+        active=active,
+        scanned=scanned,
+        ranked=ranked,
+        gap_rows=gap_rows,
+        next_source=next_source,
+        next_gaps=next_gaps,
+        decision_shortcut_blocker=decision_shortcut_blocker,
+    )
+    return {
+        "schema_version": "priced-in-mission-brief-v1",
+        "question": (
+            "Which stocks have market emotion that price has not fully matched?"
+        ),
+        "current_answer": answer,
+        "useful_definition": goal_alignment.get("useful_definition"),
+        "scan_progress": {
+            "active_securities": active,
+            "scanned_rows": scanned,
+            "ranked_rows": ranked,
+            "source_gap_rows": gap_rows,
+        },
+        "next_source": next_source or None,
+        "next_gap_rows": next_gaps,
+        "next_operator_action": coverage_recommendation.get("action"),
+        "next_command": coverage_recommendation.get("command"),
+        "next_external_calls_required": next_calls,
+        "operator_boundary": (
+            "Viewing this brief is zero-call. Execute only one reviewed source "
+            "or repair action when the provider, date, and call budget are "
+            "intentional."
+        ),
+        "roadmap": _priced_in_mission_source_roadmap(rows),
+    }
+
+
+def _priced_in_mission_answer_text(
+    *,
+    status: str,
+    active: int,
+    scanned: int,
+    ranked: int,
+    gap_rows: int,
+    next_source: str,
+    next_gaps: int,
+    decision_shortcut_blocker: Mapping[str, object] | None,
+) -> str:
+    if status == "complete" and gap_rows <= 0:
+        return (
+            f"Trusted scan coverage is complete for {ranked or scanned} ranked "
+            "row(s); review the ranked queue for expectation-price gaps."
+        )
+    if isinstance(decision_shortcut_blocker, Mapping) and next_source == "market_bars":
+        return (
+            "Not trusted yet: market_bars is missing scan-date price reaction "
+            f"for {next_gaps} active row(s), so MarketRadar cannot claim a "
+            "full-market priced-in answer."
+        )
+    if next_source:
+        return (
+            f"Not complete yet: {next_source} still has {next_gaps} gap row(s). "
+            f"The current scan has {ranked or scanned} ranked row(s) from "
+            f"{active or scanned} active security row(s)."
+        )
+    return (
+        f"Not complete yet: {gap_rows} source evidence gap row(s) remain across "
+        f"{ranked or scanned} ranked row(s)."
+    )
+
+
+def _priced_in_mission_source_roadmap(
+    rows: Sequence[Mapping[str, object]],
+) -> list[dict[str, object]]:
+    roadmap: list[dict[str, object]] = []
+    for row in rows:
+        source = str(row.get("source") or "").strip()
+        gaps = int(_finite_float(row.get("total_gap_rows")))
+        if not source or gaps <= 0:
+            continue
+        first_batch = _mapping_value(row, "first_batch")
+        roadmap.append(
+            {
+                "source": source,
+                "status": row.get("status"),
+                "gap_rows": gaps,
+                "next_chunk_external_calls": int(
+                    _finite_float(first_batch.get("external_calls_required"))
+                )
+                if first_batch
+                else 0,
+                "next_action": row.get("next_action"),
+            }
+        )
+    return roadmap
 
 
 def _priced_in_all_source_goal_alignment(
