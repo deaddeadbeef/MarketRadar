@@ -2109,6 +2109,23 @@ def test_post_radar_market_bars_template_and_import_can_scope_to_stocks(
     assert repair_payload["provider_fill_status"] == "ready_for_approval"
     assert repair_payload["provider_fill_external_call_count"] == 1
     assert repair_payload["provider_key_configured"] is True
+    assert repair_payload["provider_saved_file_capture_request_body"] == {
+        "expected_as_of": "2026-05-11",
+        "output_path": "data\\local\\polygon-grouped-daily-2026-05-11.json",
+        "confirm_external_call": False,
+    }
+    assert repair_payload["provider_saved_file_capture_confirm_request_body"] == {
+        **repair_payload["provider_saved_file_capture_request_body"],
+        "confirm_external_call": True,
+    }
+    assert repair_payload["provider_saved_file_validate_request_body"] == {
+        "expected_as_of": "2026-05-11",
+        "fixture_path": "data\\local\\polygon-grouped-daily-2026-05-11.json",
+    }
+    assert repair_payload["provider_saved_file_import_request_body"] == {
+        **repair_payload["provider_saved_file_validate_request_body"],
+        "execute": True,
+    }
     assert repair_payload["external_calls_made"] == 0
 
 

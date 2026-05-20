@@ -4413,6 +4413,35 @@ def _priced_in_market_bar_provider_fill_plan(
         if saved_file_import_command
         else None
     )
+    saved_file_capture_request_body = (
+        {
+            "expected_as_of": target_value,
+            "output_path": str(saved_file_path),
+            "confirm_external_call": False,
+        }
+        if target_value and saved_file_path is not None
+        else None
+    )
+    saved_file_capture_confirm_request_body = (
+        {**saved_file_capture_request_body, "confirm_external_call": True}
+        if saved_file_capture_request_body
+        else None
+    )
+    saved_file_validate_request_body = (
+        {"expected_as_of": target_value, "fixture_path": str(saved_file_path)}
+        if target_value and saved_file_path is not None
+        else None
+    )
+    saved_file_import_preview_request_body = (
+        {**saved_file_validate_request_body, "execute": False}
+        if saved_file_validate_request_body
+        else None
+    )
+    saved_file_import_request_body = (
+        {**saved_file_validate_request_body, "execute": True}
+        if saved_file_validate_request_body
+        else None
+    )
     saved_file_exists = bool(saved_file_path is not None and saved_file_path.exists())
     saved_file_status = (
         "available"
@@ -4516,6 +4545,12 @@ def _priced_in_market_bar_provider_fill_plan(
             if saved_file_capture_command
             else None
         ),
+        "provider_saved_file_capture_request_body": (
+            saved_file_capture_request_body if saved_file_capture_command else None
+        ),
+        "provider_saved_file_capture_confirm_request_body": (
+            saved_file_capture_confirm_request_body if saved_file_capture_command else None
+        ),
         "provider_saved_file_capture_external_call_count": 1
         if saved_file_capture_command and missing > 0
         else 0,
@@ -4526,10 +4561,19 @@ def _priced_in_market_bar_provider_fill_plan(
             if saved_file_validate_command
             else None
         ),
+        "provider_saved_file_validate_request_body": (
+            saved_file_validate_request_body if saved_file_validate_command else None
+        ),
         "provider_saved_file_import_api": (
             "POST /api/radar/market-bars/provider-fixture-import"
             if saved_file_import_command
             else None
+        ),
+        "provider_saved_file_import_preview_request_body": (
+            saved_file_import_preview_request_body if saved_file_import_command else None
+        ),
+        "provider_saved_file_import_request_body": (
+            saved_file_import_request_body if saved_file_import_command else None
         ),
         "provider_saved_file_external_call_count": 0,
         "provider_saved_file_boundary": (
@@ -6525,14 +6569,33 @@ def _priced_in_preflight_manual_market_bar_repair(
     return {
         "manual_repair_status": plan.get("status"),
         "operator_step": _row_dict(_mapping_value(plan, "operator_step")),
+        "provider_saved_file_capture_command": plan.get(
+            "provider_saved_file_capture_command"
+        ),
+        "provider_saved_file_capture_api": plan.get("provider_saved_file_capture_api"),
         "provider_saved_file_validate_command": plan.get(
             "provider_saved_file_validate_command"
         ),
+        "provider_saved_file_capture_request_body": plan.get(
+            "provider_saved_file_capture_request_body"
+        ),
+        "provider_saved_file_capture_confirm_request_body": plan.get(
+            "provider_saved_file_capture_confirm_request_body"
+        ),
         "provider_saved_file_validate_api": plan.get("provider_saved_file_validate_api"),
+        "provider_saved_file_validate_request_body": plan.get(
+            "provider_saved_file_validate_request_body"
+        ),
         "provider_saved_file_import_command": plan.get(
             "provider_saved_file_import_command"
         ),
         "provider_saved_file_import_api": plan.get("provider_saved_file_import_api"),
+        "provider_saved_file_import_preview_request_body": plan.get(
+            "provider_saved_file_import_preview_request_body"
+        ),
+        "provider_saved_file_import_request_body": plan.get(
+            "provider_saved_file_import_request_body"
+        ),
         "manual_template_command": plan.get("manual_template_command"),
         "manual_import_preview_command": plan.get("manual_import_preview_command"),
         "manual_import_api": plan.get("manual_import_api"),

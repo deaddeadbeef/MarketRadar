@@ -634,6 +634,15 @@ def test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths(
     assert payload["provider_saved_file_capture_api"] == (
         "POST /api/radar/market-bars/provider-fixture-capture"
     )
+    assert payload["provider_saved_file_capture_request_body"] == {
+        "expected_as_of": "2026-05-15",
+        "output_path": "data\\local\\polygon-grouped-daily-2026-05-15.json",
+        "confirm_external_call": False,
+    }
+    assert payload["provider_saved_file_capture_confirm_request_body"] == {
+        **payload["provider_saved_file_capture_request_body"],
+        "confirm_external_call": True,
+    }
     assert payload["provider_saved_file_capture_external_call_count"] == 1
     assert payload["provider_saved_file_import_command"] == (
         "catalyst-radar ingest-polygon grouped-daily "
@@ -649,9 +658,21 @@ def test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths(
     assert payload["provider_saved_file_validate_api"] == (
         "POST /api/radar/market-bars/provider-fixture-preview"
     )
+    assert payload["provider_saved_file_validate_request_body"] == {
+        "expected_as_of": "2026-05-15",
+        "fixture_path": "data\\local\\polygon-grouped-daily-2026-05-15.json",
+    }
     assert payload["provider_saved_file_import_api"] == (
         "POST /api/radar/market-bars/provider-fixture-import"
     )
+    assert payload["provider_saved_file_import_preview_request_body"] == {
+        **payload["provider_saved_file_validate_request_body"],
+        "execute": False,
+    }
+    assert payload["provider_saved_file_import_request_body"] == {
+        **payload["provider_saved_file_validate_request_body"],
+        "execute": True,
+    }
     assert payload["provider_saved_file_external_call_count"] == 0
     assert "0 provider calls" in payload["provider_saved_file_boundary"]
     assert payload["external_calls_made"] == 0

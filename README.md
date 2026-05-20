@@ -361,26 +361,53 @@ filesystem, web, or order-submission tools.
 See `docs/dashboard-feature-inventory.md` for the current dashboard feature
 inventory and TUI coverage.
 
-If the sitrep reports stale CSV market bars, import a manually prepared daily
-bar CSV with the same schema as `data/sample/daily_bars.csv`. Generate the
-template from the current database universe, not from `data/sample/securities.csv`:
+When the sitrep or `priced-in-preflight --stocks-only --json` says the stock scan
+is blocked on `market_bars`, inspect the repair plan first:
 
 ```powershell
-catalyst-radar market-bars template --expected-as-of 2026-05-16 --out data/local/manual-bars-2026-05-16.csv --missing-only
-catalyst-radar market-bars import --daily-bars <fresh-bars.csv> --expected-as-of 2026-05-16
-catalyst-radar market-bars import --daily-bars <fresh-bars.csv> --expected-as-of 2026-05-16 --execute
+catalyst-radar market-bars repair-plan --expected-as-of 2026-05-15 --stocks-only --json
+```
+
+That plan is the operator contract for both CLI and dashboard. It tells you the
+manual CSV path, the saved Polygon/Massive response path, whether that response
+file already exists, and the next zero-call command. It also exposes API-ready
+request bodies so a UI does not need to guess parameters:
+`provider_saved_file_capture_request_body` is the safe approval boundary with
+`confirm_external_call=false`; `provider_saved_file_capture_confirm_request_body`
+is the explicit one-provider-call capture body with `confirm_external_call=true`;
+`provider_saved_file_validate_request_body`,
+`provider_saved_file_import_preview_request_body`, and
+`provider_saved_file_import_request_body` are the zero-provider-call saved-file
+preview/import bodies.
+
+For a manual repair, generate or reuse the local ignored CSV scaffold from the
+current database universe, fill only complete OHLCV rows, preview them, then
+execute the import only after the preview is clean:
+
+```powershell
+catalyst-radar market-bars template --expected-as-of 2026-05-15 --out data/local/manual-stock-bars-2026-05-15.csv --missing-only --stocks-only
+catalyst-radar market-bars import --daily-bars data/local/manual-stock-bars-2026-05-15.csv --expected-as-of 2026-05-15 --stocks-only --complete-rows-only
+catalyst-radar market-bars import --daily-bars data/local/manual-stock-bars-2026-05-15.csv --expected-as-of 2026-05-15 --stocks-only --complete-rows-only --execute
+```
+
+For the saved-provider repair path, one explicit capture can write the raw
+grouped-daily response to disk, then validate and import from that file with 0
+provider calls:
+
+```powershell
+catalyst-radar ingest-polygon grouped-daily --date 2026-05-15 --save-response data/local/polygon-grouped-daily-2026-05-15.json --confirm-external-call
+catalyst-radar ingest-polygon grouped-daily --date 2026-05-15 --fixture data/local/polygon-grouped-daily-2026-05-15.json --validate-only
+catalyst-radar ingest-polygon grouped-daily --date 2026-05-15 --fixture data/local/polygon-grouped-daily-2026-05-15.json
 ```
 
 The template command writes a local ignored CSV scaffold for missing active
 tickers in the live database. Missing-only rows are sorted with stock-like
-instruments first, then unknown types, then fund/wrapper rows.
-Fill `open`, `high`, `low`, `close`, `volume`, and `vwap`, then preview with
-the second command. Preview reports all missing or invalid bar fields it finds
-and validates active-ticker coverage before any import. The `--execute` command
-writes the bars to the local database and makes 0 Polygon, SEC, Schwab, or
-OpenAI calls. After importing, rerun
-`scripts/market-radar-status.ps1`, then use the plan-only smoke before any
-capped live radar cycle.
+instruments first, then unknown types, then fund/wrapper rows. Fill `open`,
+`high`, `low`, `close`, `volume`, and `vwap`; preview reports missing or
+invalid bar fields and validates active-ticker coverage before any import.
+Saved-file validation/import and manual CSV import make 0 Polygon, SEC, Schwab,
+or OpenAI calls. After importing, rerun `scripts/market-radar-status.ps1`, then
+use the plan-only smoke before any capped live radar cycle.
 
 For a redacted raw telemetry evidence snapshot:
 
