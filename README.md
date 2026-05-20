@@ -378,7 +378,13 @@ is the explicit one-provider-call capture body with `confirm_external_call=true`
 `provider_saved_file_validate_request_body`,
 `provider_saved_file_import_preview_request_body`, and
 `provider_saved_file_import_request_body` are the zero-provider-call saved-file
-preview/import bodies. The TUI exposes the same workflow from the Run page:
+preview/import bodies. The TUI exposes the same workflow from the Run page.
+For manual zero-call repair, `bars manual template` generates the local
+missing-bar CSV for stock-like active rows by default, `bars manual import`
+previews complete rows only with 0 provider calls and 0 DB writes, and
+`bars manual import execute` writes only completed rows into the local database.
+Use `bars manual full template` when you intentionally want the full active
+universe template instead of the stock-like scope. For saved-provider repair,
 `bars saved capture` shows the approval boundary and makes 0 provider calls;
 `bars saved capture confirm` is the explicit one-call Polygon/Massive capture;
 `bars saved validate` checks the saved grouped-daily JSON from disk;

@@ -50,6 +50,10 @@ from catalyst_radar.feedback.service import (
     record_feedback as record_alert_feedback,
 )
 from catalyst_radar.jobs.scheduler import SchedulerConfig, run_once, scheduler_run_payload
+from catalyst_radar.market.manual_bars import (
+    import_manual_market_bars,
+    write_manual_market_bars_template,
+)
 from catalyst_radar.security.licenses import redact_restricted_external_payload
 from catalyst_radar.storage.broker_repositories import BrokerRepository
 from catalyst_radar.storage.job_repositories import JobLockRepository
@@ -2000,6 +2004,14 @@ class MarketRadarDashboardApp(App[int]):
                 ),
             },
             {
+                "command": "bars manual template",
+                "meaning": "Generate the local missing-bar CSV for stock-like rows.",
+            },
+            {
+                "command": "bars manual import",
+                "meaning": "Preview or execute complete-row manual market-bar import.",
+            },
+            {
                 "command": "bars saved validate/import",
                 "meaning": "Validate or preview/import the saved grouped-daily file.",
             },
@@ -2290,11 +2302,12 @@ def _apply_command(
         return _CommandUpdate(
             page="run",
             filters=filters,
-            message=_execute_market_bar_saved_file_command(
+            message=_execute_market_bar_command(
                 engine,
                 config,
                 payload,
                 value,
+                filters=filters,
             ),
         )
     if command in {"batch", "batches", "source-batch", "source-batches"}:
@@ -3023,6 +3036,202 @@ def _first_priced_in_source_batch_payload(
         )
     except ValueError as exc:
         return str(exc)
+
+
+_MARKET_BAR_COMMAND_USAGE = "Usage: bars manual template/import or bars saved capture/import."
+
+
+def _execute_market_bar_command(
+    engine: Engine,
+    config: AppConfig,
+    payload: Mapping[str, object],
+    value: str,
+    *,
+    filters: DashboardFilters,
+) -> str:
+    parts = [part.strip().lower() for part in value.split() if part.strip()]
+    if not parts:
+        return _MARKET_BAR_COMMAND_USAGE
+    head = parts[0]
+    if head in {"manual", "csv", "template", "preview", "validate", "import"}:
+        return _execute_market_bar_manual_command(
+            engine,
+            payload,
+            parts,
+            filters=filters,
+        )
+    if head in {"saved", "saved-file", "file"}:
+        return _execute_market_bar_saved_file_command(
+            engine,
+            config,
+            payload,
+            value,
+        )
+    return _MARKET_BAR_COMMAND_USAGE
+
+
+_MARKET_BAR_MANUAL_SCOPE_TOKENS = {
+    "stock",
+    "stocks",
+    "stock-like",
+    "stocks-only",
+    "stocks_only",
+    "full",
+    "all",
+    "active",
+    "universe",
+}
+
+
+def _execute_market_bar_manual_command(
+    engine: Engine,
+    payload: Mapping[str, object],
+    parts: Sequence[str],
+    *,
+    filters: DashboardFilters,
+) -> str:
+    normalized = [part for part in parts if part != "manual"]
+    stocks_only = _market_bar_manual_stocks_only(payload, normalized, filters)
+    command_parts = [
+        part
+        for part in normalized
+        if part not in _MARKET_BAR_MANUAL_SCOPE_TOKENS
+    ]
+    if not command_parts:
+        return _MARKET_BAR_COMMAND_USAGE
+    action = command_parts[0]
+    if action in {"check", "preview", "validate"}:
+        action = "import"
+    try:
+        repair = _market_bar_manual_repair(payload, stocks_only=stocks_only)
+        if action == "template":
+            result = write_manual_market_bars_template(
+                engine,
+                output_path=_market_bar_manual_path(repair),
+                expected_as_of=_market_bar_manual_date(repair),
+                missing_only=True,
+                stocks_only=stocks_only,
+                overwrite="overwrite" in command_parts,
+            )
+            return _manual_market_bar_template_message(result.as_payload())
+        if action == "import":
+            execute = "execute" in command_parts
+            result = import_manual_market_bars(
+                engine,
+                daily_bars_path=_market_bar_manual_path(repair),
+                expected_as_of=_market_bar_manual_date(repair),
+                stocks_only=stocks_only,
+                complete_rows_only=True,
+                execute=execute,
+            )
+            return _manual_market_bar_import_message(result.as_payload())
+    except (FileNotFoundError, KeyError, PermissionError, ValueError) as exc:
+        return f"Manual market-bar action failed: {exc}"
+    return _MARKET_BAR_COMMAND_USAGE
+
+
+def _market_bar_repair_payload(payload: Mapping[str, object]) -> Mapping[str, object]:
+    audit = _mapping(payload.get("priced_in_audit"))
+    market = _mapping(audit.get("market_bars"))
+    return _mapping(market.get("repair"))
+
+
+def _market_bar_manual_repair(
+    payload: Mapping[str, object],
+    *,
+    stocks_only: bool,
+) -> Mapping[str, object]:
+    repair = _market_bar_repair_payload(payload)
+    if stocks_only:
+        stock_scope = _mapping(repair.get("stock_scope"))
+        if stock_scope:
+            return stock_scope
+    if repair:
+        return repair
+    preflight = _mapping(payload.get("priced_in_preflight"))
+    first_blocker = _mapping(preflight.get("first_blocker"))
+    if str(first_blocker.get("area") or "") == "market_bars":
+        if stocks_only:
+            stock_scope = _mapping(first_blocker.get("stock_scope"))
+            if stock_scope:
+                return stock_scope
+        return first_blocker
+    return {}
+
+
+def _market_bar_manual_stocks_only(
+    payload: Mapping[str, object],
+    parts: Sequence[str],
+    filters: DashboardFilters,
+) -> bool:
+    if any(part in {"full", "all", "active", "universe"} for part in parts):
+        return False
+    if any(part.startswith("stock") for part in parts):
+        return True
+    if filters.priced_in_stocks_only:
+        return True
+    if _mapping(_market_bar_repair_payload(payload).get("stock_scope")):
+        return True
+    preflight = _mapping(payload.get("priced_in_preflight"))
+    first_blocker = _mapping(preflight.get("first_blocker"))
+    if str(first_blocker.get("area") or "") == "market_bars":
+        return bool(_mapping(first_blocker.get("stock_scope")))
+    return False
+
+
+def _market_bar_manual_date(repair: Mapping[str, object]) -> date:
+    value = str(
+        repair.get("target_as_of") or repair.get("expected_as_of") or ""
+    ).strip()
+    if not value:
+        raise ValueError("manual market-bar repair data is missing target_as_of")
+    return date.fromisoformat(value)
+
+
+def _market_bar_manual_path(repair: Mapping[str, object]) -> Path:
+    value = str(
+        repair.get("local_template_path")
+        or repair.get("daily_bars_path")
+        or ""
+    ).strip()
+    if not value:
+        raise ValueError("manual market-bar repair data is missing local_template_path")
+    return Path(value)
+
+
+def _manual_market_bar_template_message(payload: Mapping[str, object]) -> str:
+    return (
+        "Manual market-bar template ready; "
+        f"rows={payload.get('row_count')}; "
+        f"stocks_only={str(bool(payload.get('stocks_only'))).lower()}; "
+        f"path={payload.get('output_path')}; "
+        f"external_calls={payload.get('external_calls_made')}; "
+        "db_writes=0. Fill complete OHLCV/VWAP rows, then run "
+        "`bars manual import` to preview."
+    )
+
+
+def _manual_market_bar_import_message(payload: Mapping[str, object]) -> str:
+    fill = _mapping(payload.get("fill_progress"))
+    executed = bool(payload.get("executed"))
+    db_writes = 1 if executed else 0
+    label = "executed" if executed else "preview"
+    parts = [
+        f"Manual market-bar import {label}: status={payload.get('status')}",
+        f"complete_rows_only={str(bool(payload.get('complete_rows_only'))).lower()}",
+        f"complete={fill.get('complete_rows')}",
+        f"partial={fill.get('partial_rows')}",
+        f"empty={fill.get('empty_rows')}",
+        f"missing_after_import={payload.get('missing_expected_count')}",
+        f"external_calls={payload.get('external_calls_made')}",
+        f"db_writes={db_writes}",
+    ]
+    next_action = str(payload.get("next_action") or "").strip()
+    if next_action:
+        parts.append(f"next={next_action}")
+    if not executed:
+        parts.append("execute with `bars manual import execute` after preview")
+    return "; ".join(parts)
 
 
 _MARKET_BAR_SAVED_FILE_USAGE = (
@@ -6753,6 +6962,8 @@ def _help_lines(width: int) -> list[str]:
         ("batch <source>", "Plan full-scan source fill and show the next safe chunk."),
         ("batch <source> execute", "Run only the next guarded source-fill chunk."),
         ("batch <source> execute 3", "Run a capped source-fill batch set."),
+        ("bars manual template", "Generate the local missing-bar CSV."),
+        ("bars manual import", "Preview or execute complete-row manual import."),
         ("bars saved capture", "Plan saved capture; add confirm for one provider call."),
         ("bars saved validate", "Validate the saved grouped-daily file from disk."),
         ("bars saved import", "Preview or execute the saved-file import."),
