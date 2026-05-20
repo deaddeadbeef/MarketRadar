@@ -198,6 +198,8 @@ class ManualBarsRepairPlanResult:
     stocks_only: bool
     provider_key_configured: bool
     generated_at: datetime
+    local_template_path: Path
+    local_template_preview: dict[str, object] | None = None
 
     @property
     def missing_as_of_bar_count(self) -> int:
@@ -259,6 +261,9 @@ class ManualBarsRepairPlanResult:
             "manual_template_command": template_command,
             "manual_import_preview_command": import_preview_command,
             "manual_import_execute_command": import_execute_command,
+            "local_template_path": str(self.local_template_path),
+            "local_template_exists": self.local_template_path.exists(),
+            "local_template_preview": self.local_template_preview,
             "manual_template_api": "POST /api/radar/market-bars/template",
             "manual_import_api": "POST /api/radar/market-bars/import",
             "required_fill_fields": list(MANUAL_BAR_REQUIRED_FILL_FIELDS),
@@ -385,6 +390,30 @@ def manual_market_bars_repair_plan(
     active_tickers = {ticker for ticker, _security_type in scoped_rows}
     existing = _bar_tickers_for_date(engine, expected_as_of)
     missing = tuple(sorted(active_tickers - existing))
+    template_path = _manual_market_bars_template_path(
+        expected_as_of,
+        stocks_only=stocks_only,
+    )
+    local_template_preview: dict[str, object] | None = None
+    if template_path.exists():
+        try:
+            local_template_preview = preview_manual_market_bars_import(
+                engine,
+                daily_bars_path=template_path,
+                expected_as_of=expected_as_of,
+                stocks_only=stocks_only,
+            ).as_payload()
+        except ValueError as exc:
+            local_template_preview = {
+                "schema_version": "manual-market-bars-local-template-preview-v1",
+                "status": "invalid",
+                "daily_bars_path": str(template_path),
+                "expected_as_of": expected_as_of.isoformat(),
+                "stocks_only": stocks_only,
+                "error": str(exc),
+                "external_calls_made": 0,
+                "next_action": "Fix or regenerate the local manual market-bars template.",
+            }
     return ManualBarsRepairPlanResult(
         expected_as_of=expected_as_of,
         active_security_count=len(active_tickers),
@@ -392,6 +421,8 @@ def manual_market_bars_repair_plan(
         missing_as_of_bar_tickers=missing,
         stocks_only=stocks_only,
         provider_key_configured=provider_key_configured,
+        local_template_path=template_path,
+        local_template_preview=local_template_preview,
         generated_at=_as_utc(generated_at or datetime.now(UTC)),
     )
 
@@ -610,12 +641,11 @@ def _manual_market_bars_template_command(
     *,
     stocks_only: bool,
 ) -> str:
-    filename_prefix = "manual-stock-bars" if stocks_only else "manual-bars"
     stocks_flag = " --stocks-only" if stocks_only else ""
     return (
         "catalyst-radar market-bars template "
         f"--expected-as-of {expected_as_of.isoformat()} "
-        f"--out data\\local\\{filename_prefix}-{expected_as_of.isoformat()}.csv "
+        f"--out {_manual_market_bars_template_path(expected_as_of, stocks_only=stocks_only)} "
         f"--missing-only{stocks_flag}"
     )
 
@@ -626,14 +656,26 @@ def _manual_market_bars_import_command(
     stocks_only: bool,
     execute: bool,
 ) -> str:
-    filename_prefix = "manual-stock-bars" if stocks_only else "manual-bars"
     stocks_flag = " --stocks-only" if stocks_only else ""
     execute_flag = " --execute" if execute else ""
+    template_path = _manual_market_bars_template_path(
+        expected_as_of,
+        stocks_only=stocks_only,
+    )
     return (
         "catalyst-radar market-bars import "
-        f"--daily-bars data\\local\\{filename_prefix}-{expected_as_of.isoformat()}.csv "
+        f"--daily-bars {template_path} "
         f"--expected-as-of {expected_as_of.isoformat()}{stocks_flag}{execute_flag}"
     )
+
+
+def _manual_market_bars_template_path(
+    expected_as_of: date,
+    *,
+    stocks_only: bool,
+) -> Path:
+    filename_prefix = "manual-stock-bars" if stocks_only else "manual-bars"
+    return Path("data") / "local" / f"{filename_prefix}-{expected_as_of.isoformat()}.csv"
 
 
 def _validate_manual_bars(bars: tuple[DailyBar, ...]) -> None:

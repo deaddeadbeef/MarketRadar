@@ -3728,6 +3728,37 @@ def _print_manual_market_bars_repair_plan(payload: Mapping[str, object]) -> None
     print(f"preview_import={payload.get('manual_import_preview_command')}")
     print(f"execute_import={payload.get('manual_import_execute_command')}")
     print(
+        "local_template="
+        f"path={payload.get('local_template_path') or 'n/a'} "
+        f"exists={str(bool(payload.get('local_template_exists'))).lower()}"
+    )
+    preview = payload.get("local_template_preview")
+    if isinstance(preview, Mapping):
+        print(
+            "local_template_preview="
+            f"status={preview.get('status')} "
+            f"rows={preview.get('row_count', 'n/a')} "
+            f"invalid_rows={preview.get('invalid_row_count', 'n/a')} "
+            f"blank_required={preview.get('blank_required_count', 'n/a')} "
+            f"missing_after_import={preview.get('missing_expected_count', 'n/a')} "
+            f"external_calls={preview.get('external_calls_made')}"
+        )
+        blank_fields = preview.get("blank_required_field_counts")
+        if isinstance(blank_fields, dict) and blank_fields:
+            summary = ",".join(
+                f"{field}={count}" for field, count in blank_fields.items()
+            )
+            print(f"local_template_blank_required_fields={summary}")
+        examples = preview.get("invalid_examples")
+        if isinstance(examples, list | tuple) and examples:
+            print(
+                "local_template_invalid_examples="
+                + " | ".join(str(item) for item in examples[:3])
+            )
+        error = preview.get("error")
+        if error:
+            print(f"local_template_error={error}")
+    print(
         "provider_option="
         f"status={payload.get('provider_fill_status')} "
         f"external_calls={payload.get('provider_fill_external_call_count')} "

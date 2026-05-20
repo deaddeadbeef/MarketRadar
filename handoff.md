@@ -1,6 +1,68 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 09:03:19 +08:00
+Last updated: 2026-05-20 09:15:46 +08:00
+
+## Latest Manual Template Preview In Repair Plan
+
+Goal alignment:
+
+- The active full-market blocker is still missing scan-date bars. The live
+  default repair target is `data\local\manual-bars-2026-05-15.csv`.
+- The template file already exists, but the repair-plan surface only said to
+  fill and preview it. That forced the operator to run a second command before
+  learning whether the existing file was ready, invalid, or still blank.
+- This slice keeps the scope narrow and useful: the repair plan now inspects the
+  existing local template when it is present and reports the same zero-call
+  preview evidence inline.
+- This makes 0 Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or provider
+  calls.
+
+Fix in this slice:
+
+- `manual_market_bars_repair_plan(...)` now computes the default local template
+  path for the requested scope:
+  - full market: `data\local\manual-bars-<date>.csv`;
+  - stocks-only: `data\local\manual-stock-bars-<date>.csv`.
+- The repair-plan payload now includes:
+  - `local_template_path`;
+  - `local_template_exists`;
+  - `local_template_preview` when the file exists.
+- `local_template_preview` reuses the existing import-preview validation and
+  keeps `external_calls_made=0`. It does not write to the database.
+- The text CLI now prints:
+  - local template path/existence;
+  - preview status, row count, invalid-row count, blank-required count,
+    missing-after-import count, and external-call count;
+  - blank required field counts;
+  - up to three invalid examples.
+
+Live zero-call observation:
+
+```text
+manual_market_bars_repair_plan status=attention scope=active_universe expected_as_of=2026-05-15 active=12613 existing=12090 missing=523 external_calls=0
+local_template=path=data\local\manual-bars-2026-05-15.csv exists=true
+local_template_preview=status=invalid rows=523 invalid_rows=523 blank_required=3138 missing_after_import=0 external_calls=0
+local_template_blank_required_fields=open=523,high=523,low=523,close=523,volume=523,vwap=523
+local_template_invalid_examples=row 2 AACO 2026-05-15: blank close,high,low,open | row 3 ADAC 2026-05-15: blank close,high,low,open | row 4 ADXN 2026-05-15: blank close,high,low,open
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_api_routes.py::test_post_radar_market_bars_template_and_import_can_scope_to_stocks tests\integration\test_provider_ingest_cli.py::test_market_bars_repair_plan_previews_existing_local_template tests\integration\test_provider_ingest_cli.py::test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\market\manual_bars.py src\catalyst_radar\cli.py tests\integration\test_provider_ingest_cli.py tests\integration\test_api_routes.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli market-bars repair-plan --expected-as-of 2026-05-15
+.\.venv\Scripts\python.exe -m catalyst_radar.cli market-bars repair-plan --expected-as-of 2026-05-15 --json
+```
+
+Next useful product action after merge:
+
+- The system now tells the operator exactly why the existing full-market
+  template cannot be imported: all 523 rows still have blank required OHLCV/VWAP
+  fields.
+- The real next step is still data completion: fill those fields or explicitly
+  approve the one-call Polygon/Massive grouped-daily repair path.
 
 ## Latest Full-Market Source Guard Drift Check
 
