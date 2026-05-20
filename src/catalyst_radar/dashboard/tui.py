@@ -3776,17 +3776,29 @@ def _market_bar_saved_file_capture_command(
     )
     output_path = _market_bar_saved_file_path(body, "output_path")
     plan = _market_bar_provider_fill_plan(payload)
-    target = str(plan.get("target_as_of") or body.get("expected_as_of") or "").strip()
-    missing = int(_number_or_zero(plan.get("missing_as_of_bar")))
+    packet = _mapping(plan.get("provider_saved_file_capture_approval_packet"))
+    target = str(
+        packet.get("expected_as_of")
+        or plan.get("target_as_of")
+        or body.get("expected_as_of")
+        or ""
+    ).strip()
+    missing = int(
+        _number_or_zero(
+            packet.get("missing_as_of_bar_count") or plan.get("missing_as_of_bar"),
+        ),
+    )
     if not confirmed:
+        approval_status = str(packet.get("status") or "approval_required")
+        confirm_command = str(packet.get("tui_confirm_command") or "bars saved capture confirm")
         target_text = f"target={target}; " if target else ""
         missing_text = f"current_missing={missing}; " if missing else ""
         return (
             "Saved-file capture is approval-gated; "
-            f"{target_text}{missing_text}"
-            "external_calls_made=0; "
+            f"status={approval_status}; {target_text}{missing_text}"
+            "external_calls_made=0; db_writes_made=0; "
             f"safe request body confirm_external_call=false output_path={output_path}. "
-            "Type `bars saved capture confirm` only if you approve one "
+            f"Type `{confirm_command}` only if you approve one "
             "Polygon/Massive grouped-daily provider call. After capture, "
             "type `bars saved import` to preview the saved file, then "
             "`bars saved import execute` only if coverage matches intent."
@@ -5265,6 +5277,19 @@ def _market_bar_provider_saved_file_capture_summary(
     ).strip()
     if not command:
         return ""
+    packet = _mapping(provider_plan.get("provider_saved_file_capture_approval_packet"))
+    if packet:
+        status = str(packet.get("status") or "unknown")
+        missing = int(_number_or_zero(packet.get("missing_as_of_bar_count")))
+        calls = int(_number_or_zero(packet.get("external_calls_if_approved")))
+        db_writes = int(_number_or_zero(packet.get("db_writes_during_capture")))
+        confirm = str(packet.get("tui_confirm_command") or "n/a")
+        question = str(packet.get("question") or "").strip()
+        return (
+            f"{status}; {missing} bars targeted; {calls} external call(s) if "
+            f"approved; {db_writes} db writes during capture; type `{confirm}`. "
+            f"{question}"
+        )
     calls = int(
         _number_or_zero(
             provider_plan.get("provider_saved_file_capture_external_call_count"),

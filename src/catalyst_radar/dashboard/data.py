@@ -51,6 +51,7 @@ from catalyst_radar.market.manual_bars import (
     MANUAL_BAR_REQUIRED_FILL_FIELDS,
     manual_bar_provider_health_gate,
     manual_market_bars_repair_plan,
+    provider_saved_file_capture_approval_packet,
 )
 from catalyst_radar.scoring.priced_in import evaluate_priced_in
 from catalyst_radar.security.redaction import redact_text
@@ -1412,6 +1413,9 @@ def _priced_in_market_bar_source_gap_plan(
         config,
         target_as_of=target_as_of,
         missing=missing,
+        active_security_count=active,
+        existing_as_of_bar_count=available,
+        coverage_scope="stock_like" if stocks_only else "active_universe",
     )
     template_command = _csv_market_template_command(
         target_as_of,
@@ -4160,11 +4164,22 @@ def _priced_in_audit_market_bar_repair(
         if stocks_only
         else missing
     )
+    provider_active = (
+        int(_finite_float(stock_scope.get("stock_like_active"))) if stocks_only else None
+    )
+    provider_existing = (
+        int(_finite_float(stock_scope.get("stock_like_with_as_of_bar")))
+        if stocks_only
+        else None
+    )
     provider_fill_plan = _priced_in_market_bar_provider_fill_plan(
         engine,
         config,
         target_as_of=target_as_of,
         missing=effective_missing,
+        active_security_count=provider_active,
+        existing_as_of_bar_count=provider_existing,
+        coverage_scope="stock_like" if stocks_only else "active_universe",
     )
     manual_repair_plan: dict[str, object] = {}
     stock_manual_repair_plan: dict[str, object] = {}
@@ -4531,6 +4546,9 @@ def _priced_in_market_bar_provider_fill_plan(
     *,
     target_as_of: date | None,
     missing: int,
+    active_security_count: int | None = None,
+    existing_as_of_bar_count: int | None = None,
+    coverage_scope: str = "active_universe",
 ) -> dict[str, object]:
     provider_health = _latest_provider_health_payload(engine, "polygon")
     target_value = _date_iso_or_none(target_as_of)
@@ -4670,6 +4688,35 @@ def _priced_in_market_bar_provider_fill_plan(
             "JSON response, or set a real Polygon/Massive API key; do not run the "
             "provider command until explicitly approved."
         )
+    saved_file_capture_approval_packet = (
+        provider_saved_file_capture_approval_packet(
+            expected_as_of=target_as_of,
+            coverage_scope=coverage_scope,
+            active_security_count=active_security_count,
+            existing_as_of_bar_count=existing_as_of_bar_count,
+            missing_as_of_bar_count=max(0, int(missing)),
+            provider_key_configured=key_configured,
+            provider_fill_status=status,
+            provider_health_blocks_fill=provider_health_blocks_fill,
+            provider_health_warning=provider_health_warning,
+            provider_saved_file_path=saved_file_path,
+            provider_saved_file_status=saved_file_status,
+            provider_saved_file_capture_command=saved_file_capture_command,
+            provider_saved_file_capture_request_body=saved_file_capture_request_body,
+            provider_saved_file_capture_confirm_request_body=(
+                saved_file_capture_confirm_request_body
+            ),
+            provider_saved_file_validate_command=saved_file_validate_command,
+            provider_saved_file_validate_request_body=saved_file_validate_request_body,
+            provider_saved_file_import_command=saved_file_import_command,
+            provider_saved_file_import_preview_request_body=(
+                saved_file_import_preview_request_body
+            ),
+            provider_saved_file_import_request_body=saved_file_import_request_body,
+        )
+        if target_as_of is not None and saved_file_path is not None
+        else None
+    )
     return {
         "schema_version": "priced-in-market-bar-provider-fill-plan-v1",
         "status": status,
@@ -4704,6 +4751,9 @@ def _priced_in_market_bar_provider_fill_plan(
         "provider_saved_file_capture_external_call_count": 1
         if saved_file_capture_command and missing > 0
         else 0,
+        "provider_saved_file_capture_approval_packet": (
+            saved_file_capture_approval_packet
+        ),
         "provider_saved_file_import_command": saved_file_import_command,
         "provider_saved_file_validate_command": saved_file_validate_command,
         "provider_saved_file_validate_api": (
@@ -6339,6 +6389,29 @@ def priced_in_preflight_payload(
                 config,
                 target_as_of=target_as_of_date,
                 missing=repair_missing,
+                active_security_count=(
+                    int(
+                        _finite_float(
+                            _mapping_value(market_bar_repair, "stock_scope").get(
+                                "stock_like_active"
+                            )
+                        )
+                    )
+                    if stocks_only
+                    else int(_finite_float(market_bar_repair.get("active_securities")))
+                ),
+                existing_as_of_bar_count=(
+                    int(
+                        _finite_float(
+                            _mapping_value(market_bar_repair, "stock_scope").get(
+                                "stock_like_with_as_of_bar"
+                            )
+                        )
+                    )
+                    if stocks_only
+                    else int(_finite_float(market_bar_repair.get("with_as_of_bar")))
+                ),
+                coverage_scope="stock_like" if stocks_only else "active_universe",
             ),
         }
     resolved_source_coverage = _priced_in_source_coverage_with_market_bar_scope(
