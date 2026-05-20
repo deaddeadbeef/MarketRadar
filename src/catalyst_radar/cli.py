@@ -3891,6 +3891,21 @@ def _print_manual_market_bars_repair_plan(payload: Mapping[str, object]) -> None
         f"missing_with_history={payload.get('missing_with_local_history_count', 'n/a')} "
         f"missing_without_history={payload.get('missing_without_local_history_count', 'n/a')}"
     )
+    diagnostic = payload.get("missing_universe_diagnostic")
+    if isinstance(diagnostic, Mapping):
+        print(
+            "missing_universe="
+            f"active_metadata={diagnostic.get('active_metadata_rows', 'n/a')} "
+            f"acquisition_or_spac_names={diagnostic.get('acquisition_or_spac_name_count', 'n/a')} "
+            f"no_composite_figi={diagnostic.get('no_composite_figi_count', 'n/a')} "
+            "zero_avg_dollar_volume_20d="
+            f"{diagnostic.get('zero_avg_dollar_volume_20d_count', 'n/a')} "
+            f"zero_market_cap={diagnostic.get('zero_market_cap_count', 'n/a')} "
+            f"external_calls={diagnostic.get('external_calls_made', 0)}"
+        )
+        note = str(diagnostic.get("operator_note") or "").strip()
+        if note:
+            print(f"missing_universe_note={_compact_cli_text(note)}")
     operator_step = payload.get("operator_step")
     if isinstance(operator_step, Mapping):
         command = operator_step.get("command") or "manual"

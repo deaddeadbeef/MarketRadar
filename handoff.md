@@ -1,6 +1,77 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 18:31:04 +08:00
+Last updated: 2026-05-20 18:47:54 +08:00
+
+## Latest Missing-Bar Universe Diagnostic
+
+Goal alignment / drift check:
+
+- The active goal remains: scan the broad market and tell whether any stock's
+  price has not yet matched market emotion/expectations.
+- The latest live blocker is still `market_bars`, before catalyst events,
+  local text, agent reasoning, or broker action can be trusted.
+- This slice is intentionally narrow: it does not add a new dashboard surface,
+  does not change scoring, does not exclude any ticker, does not reduce
+  readiness requirements, and does not make a provider/source/broker/LLM call.
+- The purpose is to make the current full-scan blocker more useful for a human:
+  if 131 stock-like rows are missing bars, the repair plan now explains whether
+  those rows look like ordinary liquid companies or low-quality universe rows
+  such as acquisition/SPAC-style names with missing identifiers and no local
+  liquidity metadata.
+
+Fix in this slice:
+
+- `manual_market_bars_repair_plan(...).as_payload()` now includes
+  `missing_universe_diagnostic`.
+- The diagnostic reports:
+  - missing ticker count;
+  - how many missing tickers still have active local metadata rows;
+  - acquisition/SPAC-style name count and sample;
+  - missing composite FIGI count and sample;
+  - zero local market-cap count and sample;
+  - zero local average-dollar-volume count and sample;
+  - unknown sector count and sample;
+  - no-options count and sample;
+  - an explicit operator note that this is context only and does not exclude
+    rows from the scan.
+- CLI `market-bars repair-plan` prints the diagnostic as
+  `missing_universe=...` and `missing_universe_note=...`.
+- `scripts/market-radar-status.ps1 -Quick` prints both full-market and
+  stock-like missing-universe diagnostics when available.
+- Regression tests assert the payload and status-script output remain zero-call.
+
+Validation run in this slice:
+
+```powershell
+..\..\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\market\manual_bars.py src\catalyst_radar\cli.py tests\integration\test_provider_ingest_cli.py tests\integration\test_local_scripts.py
+..\..\.venv\Scripts\python.exe -m pytest tests\integration\test_provider_ingest_cli.py::test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths tests\integration\test_provider_ingest_cli.py::test_market_bars_repair_plan_previews_existing_local_template tests\integration\test_provider_ingest_cli.py::test_market_bars_repair_plan_guides_complete_rows_only_preview tests\integration\test_local_scripts.py::test_market_radar_status_script_is_zero_external_call_sitrep -q
+$line = Select-String -LiteralPath ..\..\.env.local -Pattern '^CATALYST_DATABASE_URL=' | Select-Object -First 1; if ($line) { $env:CATALYST_DATABASE_URL = ($line.Line -replace '^CATALYST_DATABASE_URL=', '').Trim('"') }; $env:PYTHONPATH = "$PWD\src"; ..\..\.venv\Scripts\python.exe -m catalyst_radar.cli market-bars repair-plan --expected-as-of 2026-05-15 --stocks-only | Select-String -Pattern 'missing_universe|acquisition_or_spac|no_composite|external_calls=0'
+```
+
+Results:
+
+- Ruff passed.
+- Focused market-bar repair/status tests passed: `4 passed`.
+- Live DB-backed CLI smoke made 0 provider calls and reported:
+  - stock-like scope: `active=5652`, `existing=5521`, `missing=131`;
+  - `active_metadata=131`;
+  - `acquisition_or_spac_names=61`;
+  - `no_composite_figi=103`;
+  - `zero_avg_dollar_volume_20d=131`;
+  - `zero_market_cap=131`.
+
+Next useful product action:
+
+- Do not treat this as goal completion. It only clarifies the blocker.
+- The useful path is still to clear `market_bars` for the stock-like full scan,
+  preferably by explicit approval for one historical Polygon/Massive grouped
+  daily saved-file capture, then validate/import from that saved file.
+- If provider capture is not approved, fill/import the local
+  `data\local\manual-stock-bars-2026-05-15.csv` template.
+- After market bars are repaired, rerun the priced-in preflight/answer and move
+  to the next core evidence blocker: `catalyst_events`, then `local_text`.
+- Do not run live provider/source-fill execution commands without explicit
+  operator approval.
 
 ## Latest Market-Bar Full-Coverage Operator Wording
 
