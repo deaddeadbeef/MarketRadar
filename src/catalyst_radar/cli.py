@@ -5735,6 +5735,27 @@ def _print_priced_in_preflight(payload: Mapping[str, object]) -> None:
     )
     print(f"headline={payload.get('headline')}")
     print(f"next_action={payload.get('next_action')}")
+    first_blocker = payload.get("first_blocker")
+    if isinstance(first_blocker, Mapping):
+        print(
+            "first_blocker "
+            f"area={first_blocker.get('area') or 'n/a'} "
+            f"status={first_blocker.get('status') or 'n/a'} "
+            f"source_gap_count={first_blocker.get('source_gap_count')} "
+            f"reason={_compact_cli_text(first_blocker.get('source_blocked_reason'))} "
+            f"action={_compact_cli_text(first_blocker.get('action'))} "
+            f"command={_compact_cli_text(first_blocker.get('command'))}"
+        )
+    operator_next_step = payload.get("operator_next_step")
+    if isinstance(operator_next_step, Mapping):
+        print(
+            "operator_next_step "
+            f"area={operator_next_step.get('area') or 'n/a'} "
+            f"status={operator_next_step.get('status') or 'n/a'} "
+            f"external_calls={operator_next_step.get('external_calls_made')} "
+            f"action={_compact_cli_text(operator_next_step.get('action'))} "
+            f"command={_compact_cli_text(operator_next_step.get('command'))}"
+        )
     scan_scope = payload.get("scan_scope")
     if isinstance(scan_scope, Mapping):
         print(

@@ -1,6 +1,53 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 21:39:21 +08:00
+Last updated: 2026-05-20 23:27:31 +08:00
+
+
+## Latest Preflight First-Blocker Contract
+
+Goal alignment / drift check:
+
+- The active goal remains: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- The current first useful blocker is still `market_bars`; no provider calls were made.
+- A live zero-call check showed that `priced-in-preflight --stocks-only --json` had `status=blocked` but did not expose a top-level first blocker or operator next-step object. That made API and dashboard consumers parse nested rows to answer the simplest human question: what do I do next for the priced-in goal?
+
+Fix in this slice:
+
+- `priced_in_preflight_payload(...)` now includes:
+  - `first_gap`, currently `market_bars` for the live stocks-only gate;
+  - `first_blocker`, with area, status, action, command, API, dependency, source-gap counts, and `external_calls_made=0`;
+  - `operator_next_step`, with the exact next action and command for clients that need a single instruction.
+- `catalyst-radar priced-in-preflight` now prints `first_blocker` and `operator_next_step` lines before the detailed row table.
+- The TUI full-scan coverage row now consumes the same fields so the dashboard can show the first blocker and its gap count without recomputing its own interpretation.
+- This is presentation and contract only. It does not weaken evidence requirements, execute imports, call providers, or reduce the full-scan universe.
+
+Live DB-backed smoke from the feature worktree:
+
+```powershell
+catalyst-radar priced-in-preflight --stocks-only --json
+```
+
+Observed:
+
+- `status=blocked`;
+- `first_gap=market_bars`;
+- `target_as_of=2026-05-15`;
+- `operator_next_step.area=market_bars`;
+- `operator_next_step.command=catalyst-radar market-bars template --expected-as-of 2026-05-15 --out data\local\manual-stock-bars-2026-05-15.csv --missing-only --stocks-only`;
+- `external_calls_made=0`.
+
+Validation:
+
+```powershell
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_preflight_payload_reports_exact_next_steps tests\integration\test_dashboard_data.py::test_priced_in_preflight_recommends_manual_bar_template_for_missing_bars tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_preflight_cli_outputs_zero_call_plan -q
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py
+```
+
+Next useful product action:
+
+- Do not treat this as goal completion.
+- The product is aligned on the first blocker: stock-like scan-date bars must be completed before a complete stocks-only priced-in answer can be trusted.
+- Clearing that blocker still requires either explicit approval for the single Polygon/Massive saved-response capture, or manual fill/import of `data\local\manual-stock-bars-2026-05-15.csv`.
 
 ## Latest Market-Bar Repair Context in Source Views
 

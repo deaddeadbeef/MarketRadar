@@ -33,6 +33,7 @@ from catalyst_radar.dashboard.tui import (
     _answer_evidence_completeness_summary,
     _answer_full_scan_scope_summary,
     _apply_command,
+    _full_scan_coverage_row,
     _market_bar_manual_fill_progress_summary,
     _market_bar_missing_type_summary,
     _market_bar_operator_step_summary,
@@ -3362,6 +3363,10 @@ def test_priced_in_preflight_cli_outputs_zero_call_plan(
     assert payload["schema_version"] == "priced-in-preflight-v1"
     assert payload["external_calls_made"] == 0
     assert payload["rows"][0]["area"] == "universe"
+    assert payload["first_gap"] == payload["first_blocker"]["area"]
+    assert payload["first_blocker"]["external_calls_made"] == 0
+    assert payload["operator_next_step"]["area"] == payload["first_blocker"]["area"]
+    assert payload["operator_next_step"]["external_calls_made"] == 0
     assert payload["evidence_plan"]["schema_version"] == "priced-in-evidence-plan-v1"
     assert payload["evidence_plan"]["external_calls_made"] == 0
     assert payload["commands"]["review_queue"] == "catalyst-radar priced-in-queue --json"
@@ -3380,8 +3385,38 @@ def test_priced_in_preflight_cli_outputs_zero_call_plan(
     assert main(["priced-in-preflight"]) == 0
     text_output = capsys.readouterr()
     assert text_output.err == ""
+    assert "first_blocker area=" in text_output.out
+    assert "operator_next_step area=" in text_output.out
     assert "evidence_plan status=" in text_output.out
     assert "priority area status depends_on action command" in text_output.out
+
+
+def test_tui_full_scan_row_uses_preflight_first_blocker():
+    row = _full_scan_coverage_row(
+        freshness={"active_security_with_as_of_bar_count": 5521},
+        database={
+            "active_security_count": 5652,
+            "active_security_with_latest_daily_bar_count": 5521,
+        },
+        scan_yield={"requested_securities": 5652, "scanned_securities": 5521},
+        preflight={
+            "next_action": "fallback action",
+            "first_blocker": {
+                "area": "market_bars",
+                "status": "blocked",
+                "source_gap_count": 131,
+            },
+            "operator_next_step": {
+                "action": "Fill stock-like missing bars first.",
+            },
+        },
+        candidate_count=5521,
+        displayed_count=50,
+        actionable_count=0,
+    )
+
+    assert row["next_action"] == "Fill stock-like missing bars first."
+    assert "first blocker market_bars blocked; gaps 131" in row["why_now"]
 
 
 def test_agent_brief_cli_real_mode_blocks_without_explicit_gates(

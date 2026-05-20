@@ -3774,30 +3774,45 @@ def _full_scan_coverage_row(
     )
     run_with_bars = int(_number_or_zero(freshness.get("active_security_with_as_of_bar_count")))
     denominator = active_count or requested or scanned
+    operator_next = _mapping(preflight.get("operator_next_step"))
+    first_blocker = _mapping(preflight.get("first_blocker"))
+    preflight_next_action = str(
+        operator_next.get("action") or preflight.get("next_action") or ""
+    )
     if denominator < 500:
         signal = "Universe too small"
-        next_action = str(preflight.get("next_action") or "")
+        next_action = preflight_next_action
     elif scanned and denominator and scanned < max(1, int(denominator * 0.9)):
         signal = "Partial scan"
-        next_action = str(
-            preflight.get("next_action")
-            or "Open Ops/Run and fix missing bars before trusting the ranked queue."
+        next_action = preflight_next_action or (
+            "Open Ops/Run and fix missing bars before trusting the ranked queue."
         )
     else:
         signal = "Full scan coverage"
-        next_action = str(
-            preflight.get("next_action")
-            or (
-                "Use next/prev/offset to page the full scan; type export full "
-                "for all ranked rows, then work the largest mismatches first."
-            )
+        next_action = preflight_next_action or (
+            "Use next/prev/offset to page the full scan; type export full "
+            "for all ranked rows, then work the largest mismatches first."
         )
-    why_now = (
-        f"active {active_count or 'n/a'}; requested {requested or 'n/a'}; "
-        f"scanned {scanned or 'n/a'}; ranked {candidate_count}; "
-        f"actionable {actionable_count}; showing {displayed_count}; "
-        f"latest bars {latest_with_bars or 'n/a'}/{active_count or 'n/a'}; "
-        f"run bars {run_with_bars or 'n/a'}/{active_count or 'n/a'}"
+    blocker_area = str(first_blocker.get("area") or "").strip()
+    blocker_status = str(first_blocker.get("status") or "").strip()
+    blocker_gaps = int(_number_or_zero(first_blocker.get("source_gap_count")))
+    blocker_text = ""
+    if blocker_area:
+        blocker_text = f"first blocker {blocker_area}"
+        if blocker_status:
+            blocker_text = f"{blocker_text} {blocker_status}"
+        if blocker_gaps:
+            blocker_text = f"{blocker_text}; gaps {blocker_gaps}"
+    why_now = _join_nonempty(
+        (
+            f"active {active_count or 'n/a'}; requested {requested or 'n/a'}; "
+            f"scanned {scanned or 'n/a'}; ranked {candidate_count}; "
+            f"actionable {actionable_count}; showing {displayed_count}; "
+            f"latest bars {latest_with_bars or 'n/a'}/{active_count or 'n/a'}; "
+            f"run bars {run_with_bars or 'n/a'}/{active_count or 'n/a'}",
+            blocker_text,
+        ),
+        separator="; ",
     )
     return {
         "_row_key": "full-scan-coverage",

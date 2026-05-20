@@ -6162,6 +6162,14 @@ def priced_in_preflight_payload(
         stock_scope=stock_scope,
     )
     evidence_plan = _priced_in_evidence_plan(rows)
+    first_blocker = _priced_in_preflight_first_blocker(
+        evidence_plan,
+        resolved_source_coverage,
+    )
+    operator_next_step = _priced_in_preflight_operator_next_step(
+        first_blocker,
+        evidence_plan,
+    )
     blocked_rows = [row for row in rows if row["status"] == "blocked"]
     attention_rows = [row for row in rows if row["status"] == "attention"]
     if blocked_rows:
@@ -6208,6 +6216,9 @@ def priced_in_preflight_payload(
         "status": status,
         "headline": headline,
         "next_action": next_action,
+        "first_gap": first_blocker.get("area"),
+        "first_blocker": first_blocker,
+        "operator_next_step": operator_next_step,
         "target_as_of": target_as_of,
         "target_as_of_source": target_as_of_source,
         "latest_run_as_of": run_as_of,
@@ -6239,6 +6250,87 @@ def priced_in_preflight_payload(
         "rows": rows,
     }
 
+
+def _priced_in_preflight_first_blocker(
+    evidence_plan: Mapping[str, object],
+    source_coverage: Mapping[str, object],
+):
+    steps = [
+        _row_dict(step)
+        for step in _sequence_value(evidence_plan.get("steps"))
+        if isinstance(step, Mapping)
+    ]
+    if not steps:
+        return {
+            "schema_version": "priced-in-first-blocker-v1",
+            "status": "ready",
+            "area": None,
+            "action": "Review the full-scan priced-in queue and candidate evidence.",
+            "command": "catalyst-radar priced-in-queue --full-scan --limit 50",
+            "api": "GET /api/radar/priced-in",
+            "depends_on": [],
+            "source_gap_count": 0,
+            "source_row_count": 0,
+            "source_available_count": 0,
+            "source_blocked_reason": None,
+            "external_calls_made": 0,
+        }
+
+    first = steps[0]
+    area = str(first.get("area") or "").strip()
+    source_action = next(
+        (
+            _row_dict(action)
+            for action in _sequence_value(source_coverage.get("actions"))
+            if isinstance(action, Mapping)
+            and str(action.get("source") or "").strip() == area
+        ),
+        {},
+    )
+    gap_count = int(
+        _finite_float(source_action.get("gap_count"))
+        or _finite_float(source_action.get("missing"))
+        + _finite_float(source_action.get("stale"))
+    )
+    row_count = int(_finite_float(source_action.get("row_count")))
+    available_count = int(_finite_float(source_action.get("available")))
+    source_diagnostic = _mapping_value(source_action, "diagnostic")
+    blocked_reason = (
+        source_action.get("blocked_reason")
+        or source_diagnostic.get("blocked_reason")
+        or source_diagnostic.get("reason")
+    )
+    return {
+        "schema_version": "priced-in-first-blocker-v1",
+        "status": first.get("status"),
+        "area": area or None,
+        "action": first.get("action"),
+        "command": first.get("command"),
+        "api": first.get("api"),
+        "depends_on": list(_sequence_value(first.get("depends_on"))),
+        "source_gap_count": gap_count,
+        "source_row_count": row_count,
+        "source_available_count": available_count,
+        "source_blocked_reason": blocked_reason,
+        "external_calls_made": 0,
+    }
+
+
+def _priced_in_preflight_operator_next_step(
+    first_blocker: Mapping[str, object],
+    evidence_plan: Mapping[str, object],
+):
+    action = first_blocker.get("action") or evidence_plan.get("next_action")
+    command = first_blocker.get("command") or evidence_plan.get("next_command")
+    return {
+        "schema_version": "priced-in-preflight-next-step-v1",
+        "status": first_blocker.get("status") or evidence_plan.get("status"),
+        "area": first_blocker.get("area"),
+        "action": action,
+        "command": command,
+        "api": first_blocker.get("api"),
+        "external_calls_made": 0,
+    }
 
 def _priced_in_evidence_plan(rows: Sequence[Mapping[str, object]]) -> dict[str, object]:
     actionable_rows = [
