@@ -451,6 +451,10 @@ def dashboard_snapshot_payload(
         source_gap=filters.priced_in_source_gap,
         decision_gap=filters.priced_in_decision_gap,
         stocks_only=filters.priced_in_stocks_only,
+        candidate_rows=candidate_rows,
+        latest_run_summary=latest_run,
+        broker_summary=broker_summary,
+        discovery_snapshot=discovery_snapshot,
     )
     priced_in_source_coverage = (
         priced_in_queue.get("source_coverage")
@@ -468,12 +472,19 @@ def dashboard_snapshot_payload(
             source_coverage=priced_in_source_coverage,
         )
     )
+    priced_in_market_bars = dashboard_data._priced_in_audit_market_bars(
+        engine,
+        config,
+        priced_in_queue,
+        priced_in_preflight,
+    )
     priced_in_answer = dashboard_data.priced_in_answer_payload(
         engine,
         config,
         queue=priced_in_queue,
         preflight=priced_in_preflight,
         stocks_only=filters.priced_in_stocks_only,
+        market_bars=priced_in_market_bars,
     )
     priced_in_source_workflow = _priced_in_source_workflow_payload(
         priced_in_preflight,
@@ -486,6 +497,7 @@ def dashboard_snapshot_payload(
         queue=priced_in_queue,
         preflight=priced_in_preflight,
         stocks_only=filters.priced_in_stocks_only,
+        market_bars=priced_in_market_bars,
     )
     operator_next_step = dashboard_data.operator_next_step_payload(operator_work_queue)
     readiness_payload = dashboard_data.radar_readiness_payload(
