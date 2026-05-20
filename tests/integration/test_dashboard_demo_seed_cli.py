@@ -1141,6 +1141,7 @@ def test_dashboard_manual_bar_fill_progress_summary_is_human_readable() -> None:
     )
     overview = render_dashboard_tui(payload, page="overview", width=160)
     ops = render_dashboard_tui(payload, page="ops", width=160)
+    run = render_dashboard_tui(payload, page="run", width=160)
     assert "Stock bar next: 5521/5652 stock-like rows have scan-date bars" in overview
     assert "Stock bar next: 5521/5652 stock-like rows have scan-date bars" in ops
     assert "Regenerate the blank local CSV so it includes name" in overview
@@ -1149,8 +1150,12 @@ def test_dashboard_manual_bar_fill_progress_summary_is_human_readable() -> None:
     assert "Provider fill: ready_for_approval_with_health_warning" in ops
     assert "Saved file capture: 1 external call(s)" in overview
     assert "Saved file capture: 1 external call(s)" in ops
+    assert "Saved file capture" in run
+    assert "--save-response" in run
     assert "Saved file import: missing saved file" in overview
     assert "Saved file import: missing saved file" in ops
+    assert "Saved file check: missing saved file" in run
+    assert "Saved file import: missing saved file" in run
     assert "Manual CSV progress: 12/523 complete; 3 partial; 508 empty" in overview
     assert "Manual CSV progress: 12/523 complete; 3 partial; 508 empty" in ops
     assert "Market bar next: Finish or clear partial OHLCV/VWAP rows" in overview
