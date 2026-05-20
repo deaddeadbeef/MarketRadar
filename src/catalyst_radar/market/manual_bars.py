@@ -195,6 +195,8 @@ class ManualBarsRepairPlanResult:
     active_security_count: int
     existing_as_of_bar_count: int
     missing_as_of_bar_tickers: tuple[str, ...]
+    missing_with_local_history_tickers: tuple[str, ...]
+    missing_without_local_history_tickers: tuple[str, ...]
     stocks_only: bool
     provider_key_configured: bool
     generated_at: datetime
@@ -257,6 +259,26 @@ class ManualBarsRepairPlanResult:
             "missing_as_of_bar_ticker_more": max(
                 0,
                 missing - len(missing_sample),
+            ),
+            "missing_with_local_history_count": len(
+                self.missing_with_local_history_tickers
+            ),
+            "missing_with_local_history_sample": list(
+                self.missing_with_local_history_tickers[:12]
+            ),
+            "missing_with_local_history_more": max(
+                0,
+                len(self.missing_with_local_history_tickers) - 12,
+            ),
+            "missing_without_local_history_count": len(
+                self.missing_without_local_history_tickers
+            ),
+            "missing_without_local_history_sample": list(
+                self.missing_without_local_history_tickers[:12]
+            ),
+            "missing_without_local_history_more": max(
+                0,
+                len(self.missing_without_local_history_tickers) - 12,
             ),
             "manual_template_command": template_command,
             "manual_import_preview_command": import_preview_command,
@@ -390,6 +412,13 @@ def manual_market_bars_repair_plan(
     active_tickers = {ticker for ticker, _security_type in scoped_rows}
     existing = _bar_tickers_for_date(engine, expected_as_of)
     missing = tuple(sorted(active_tickers - existing))
+    tickers_with_history = _bar_tickers_with_any_history(engine)
+    missing_with_history = tuple(
+        ticker for ticker in missing if ticker in tickers_with_history
+    )
+    missing_without_history = tuple(
+        ticker for ticker in missing if ticker not in tickers_with_history
+    )
     template_path = _manual_market_bars_template_path(
         expected_as_of,
         stocks_only=stocks_only,
@@ -419,6 +448,8 @@ def manual_market_bars_repair_plan(
         active_security_count=len(active_tickers),
         existing_as_of_bar_count=len(existing & active_tickers),
         missing_as_of_bar_tickers=missing,
+        missing_with_local_history_tickers=missing_with_history,
+        missing_without_local_history_tickers=missing_without_history,
         stocks_only=stocks_only,
         provider_key_configured=provider_key_configured,
         local_template_path=template_path,
@@ -632,6 +663,15 @@ def _bar_tickers_for_date(engine: Engine, as_of_date: date) -> set[str]:
             for row in conn.execute(
                 select(daily_bars.c.ticker).where(daily_bars.c.date == as_of_date)
             )
+            if str(row._mapping["ticker"]).strip()
+        }
+
+
+def _bar_tickers_with_any_history(engine: Engine) -> set[str]:
+    with engine.connect() as conn:
+        return {
+            str(row._mapping["ticker"]).strip().upper()
+            for row in conn.execute(select(daily_bars.c.ticker).distinct())
             if str(row._mapping["ticker"]).strip()
         }
 

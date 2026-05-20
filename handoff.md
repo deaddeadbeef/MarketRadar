@@ -1,6 +1,100 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 09:20:22 +08:00
+Last updated: 2026-05-20 09:34:02 +08:00
+
+## Latest Drift Check And Local Bar History Diagnostic
+
+Goal alignment:
+
+- The active goal is still the full-market priced-in scan: scan the active
+  market, compare price reaction with market-emotion evidence, and identify
+  stocks where price has not yet matched expectations.
+- The last several PRs stayed aligned by blocking answer/source/provider work
+  while scan-date market bars are incomplete. That is the right product
+  boundary: without full scan-date price reaction, the system can produce a
+  browseable queue but not a trustworthy full-market answer.
+- The current drift risk is adding dashboard polish, SEC/Schwab enrichment, or
+  agent/provider features before the full-market bar blocker is cleared.
+- This slice remains useful and narrow: it tells the operator whether the 523
+  missing full-market bars can be recovered from existing local bar history.
+  The answer is no: all 523 missing tickers have no exact local daily-bar
+  history in the database.
+- This makes 0 Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or provider
+  calls.
+
+Fix in this slice:
+
+- `manual_market_bars_repair_plan(...)` now splits missing scan-date tickers
+  into:
+  - `missing_with_local_history_*`;
+  - `missing_without_local_history_*`.
+- The text CLI now prints:
+  - `local_bar_history=missing_with_history=... missing_without_history=...`;
+  - a sample of missing tickers with no local bar history.
+- `scripts\market-radar-status.ps1 -Quick` now includes the same local-history
+  diagnostic in the fast full-market status block.
+- Tests cover the new payload fields, text CLI output, and quick-status script
+  strings.
+
+Live zero-call observation:
+
+```text
+Market Radar quick status
+API: ok; build=fabe2da7200d; version=0.1.0
+Global readiness: research_only; investable=False
+Full-market next: bars=12090/12613; missing=523; command=catalyst-radar market-bars template --expected-as-of 2026-05-15 --out data\local\manual-bars-2026-05-15.csv --missing-only
+Fast market-bar repair: status=attention; scope=active_universe; active=12613; existing=12090; missing=523; external_calls=0
+- local bar history: missing_with_history=0; missing_without_history=523
+- missing without local history: AACBR, AACBU, AACIW, AACO, AACOU, AACOW, ACAAU, ACAAW, ADAC, ADXN, AEAQ, AEAQU
+- provider option: status=ready_for_approval; external_calls=1; command=catalyst-radar ingest-polygon grouped-daily --date 2026-05-15 --confirm-external-call
+- provider boundary: This repair plan makes 0 provider calls. The provider command makes one Polygon/Massive grouped-daily request and must only be run after explicit operator approval.
+- local template preview: status=invalid; rows=523; invalid_rows=523; blank_required=3138; missing_after_import=0; external_calls=0
+External calls made: 0
+```
+
+Repair-plan observation:
+
+```text
+manual_market_bars_repair_plan status=attention scope=active_universe expected_as_of=2026-05-15 active=12613 existing=12090 missing=523 external_calls=0
+local_bar_history=missing_with_history=0 missing_without_history=523
+missing_without_local_history=AACBR,AACBU,AACIW,AACO,AACOU,AACOW,ACAAU,ACAAW,ADAC,ADXN,AEAQ,AEAQU plus 511 more
+local_template_preview=status=invalid rows=523 invalid_rows=523 blank_required=3138 missing_after_import=0 external_calls=0
+provider_option=status=ready_for_approval external_calls=1 key_configured=true command=catalyst-radar ingest-polygon grouped-daily --date 2026-05-15 --confirm-external-call
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_provider_ingest_cli.py::test_market_bars_repair_plan_previews_existing_local_template tests\integration\test_provider_ingest_cli.py::test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths tests\integration\test_local_scripts.py::test_market_radar_status_script_is_zero_external_call_sitrep -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\market\manual_bars.py src\catalyst_radar\cli.py tests\integration\test_provider_ingest_cli.py tests\integration\test_local_scripts.py
+powershell -NoProfile -Command '& { $null = [scriptblock]::Create((Get-Content -Raw .\scripts\market-radar-status.ps1)); "powershell syntax ok" }'
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli market-bars repair-plan --expected-as-of 2026-05-15
+.\.venv\Scripts\python.exe -m catalyst_radar.cli market-bars repair-plan --expected-as-of 2026-05-15 --json
+```
+
+Results:
+
+- Focused pytest passed.
+- Ruff passed.
+- PowerShell syntax parse passed.
+- `git diff --check` passed.
+- Repair-plan text and JSON both reported `external_calls=0` and
+  `missing_with_history=0 missing_without_history=523`.
+
+Next useful product action after merge:
+
+- Do not add more source enrichment or dashboard polish until it directly helps
+  clear or explain this blocker.
+- The full-market scan cannot become trustworthy from existing local history.
+  The operator must either fill/import `data\local\manual-bars-2026-05-15.csv`
+  with real OHLCV/VWAP values, or explicitly approve the one-call
+  Polygon/Massive grouped-daily fill.
+- Do not run the provider command without explicit approval:
+
+```powershell
+.\.venv\Scripts\python.exe -m catalyst_radar.cli ingest-polygon grouped-daily --date 2026-05-15 --confirm-external-call
+```
 
 ## Latest Quick Status Full-Market Repair Alignment
 
