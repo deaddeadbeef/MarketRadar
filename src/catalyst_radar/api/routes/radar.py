@@ -673,12 +673,23 @@ def radar_market_bars_import(
 def radar_market_bars_repair_plan(
     request: MarketBarsRepairPlanRequest,
 ) -> dict[str, object]:
+    engine = _engine()
+    provider_health = ProviderRepository(engine).latest_health("polygon")
     try:
         result = manual_market_bars_repair_plan(
-            _engine(),
+            engine,
             expected_as_of=request.expected_as_of,
             stocks_only=request.stocks_only,
             provider_key_configured=AppConfig.from_env().polygon_api_key_configured,
+            provider_health_status=(
+                provider_health.status.value if provider_health is not None else None
+            ),
+            provider_health_reason=(
+                provider_health.reason if provider_health is not None else None
+            ),
+            provider_health_checked_at=(
+                provider_health.checked_at if provider_health is not None else None
+            ),
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

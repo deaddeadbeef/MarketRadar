@@ -223,12 +223,18 @@ if ($Quick) {
             Write-Output ("- missing security types: {0}" -f $missingTypeSummary)
         }
         if ($marketBarRepairPlan.provider_fill_command) {
+            $providerHealth = $marketBarRepairPlan.provider_health
+            $providerHealthText = $(if ($null -ne $providerHealth -and $providerHealth.status) { $providerHealth.status } else { "unknown" })
             Write-Output (
-                "- provider option: status={0}; external_calls={1}; command={2}" -f
+                "- provider option: status={0}; health={1}; external_calls={2}; command={3}" -f
                 $marketBarRepairPlan.provider_fill_status,
+                $providerHealthText,
                 $marketBarRepairPlan.provider_fill_external_call_count,
                 $marketBarRepairPlan.provider_fill_command
             )
+            if ($null -ne $providerHealth -and $providerHealth.reason) {
+                Write-Output ("- provider health reason: {0}" -f $providerHealth.reason)
+            }
             Write-Output ("- provider boundary: {0}" -f $marketBarRepairPlan.approval_boundary)
         }
     }
