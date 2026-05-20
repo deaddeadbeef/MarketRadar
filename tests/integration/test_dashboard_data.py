@@ -4778,6 +4778,13 @@ def test_priced_in_preflight_payload_reports_exact_next_steps(tmp_path: Path) ->
     assert payload["schema_version"] == "priced-in-preflight-v1"
     assert payload["external_calls_made"] == 0
     assert payload["status"] in {"blocked", "attention", "ready"}
+    assert payload["first_blocker"]["schema_version"] == "priced-in-first-blocker-v1"
+    assert payload["first_gap"] == payload["first_blocker"]["area"]
+    assert payload["operator_next_step"]["schema_version"] == (
+        "priced-in-preflight-next-step-v1"
+    )
+    assert payload["operator_next_step"]["area"] == payload["first_blocker"]["area"]
+    assert payload["operator_next_step"]["external_calls_made"] == 0
     assert payload["target_as_of"] == AS_OF.date().isoformat()
     assert payload["target_as_of_source"] == "latest_daily_bar"
     assert payload["latest_run_as_of"] is None
@@ -4946,6 +4953,11 @@ def test_priced_in_preflight_recommends_manual_bar_template_for_missing_bars(
         payload["evidence_plan"]["next_action"]
     )
     assert market_bars["status"] == "blocked"
+    assert payload["first_gap"] == "market_bars"
+    assert payload["first_blocker"]["area"] == "market_bars"
+    assert payload["first_blocker"]["status"] == "blocked"
+    assert payload["operator_next_step"]["area"] == "market_bars"
+    assert payload["operator_next_step"]["action"] == market_bars["next_action"]
     assert "DB-backed manual bar template" in str(market_bars["next_action"])
     assert market_bars["command"].startswith("catalyst-radar market-bars template")
     assert run_as_of.isoformat() in str(market_bars["command"])
