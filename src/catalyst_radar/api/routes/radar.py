@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from catalyst_radar.connectors.options import validate_options_fixture_json
 from catalyst_radar.connectors.polygon_fixture import (
-    capture_polygon_grouped_daily_response,
+    capture_polygon_grouped_daily_response_with_preview,
     ingest_polygon_grouped_daily_fixture,
     preview_polygon_grouped_daily_fixture,
 )
@@ -788,8 +788,9 @@ def radar_market_bars_provider_fixture_capture(
             },
         )
     try:
-        payload = capture_polygon_grouped_daily_response(
+        payload = capture_polygon_grouped_daily_response_with_preview(
             config=AppConfig.from_env(),
+            market_repo=MarketRepository(_engine()),
             date_value=request.expected_as_of,
             output_path=output_path,
             fixture_path=Path(request.fixture_path) if request.fixture_path else None,

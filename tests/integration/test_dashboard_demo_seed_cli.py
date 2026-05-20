@@ -1373,6 +1373,65 @@ def test_dashboard_bars_saved_capture_requires_confirm_without_call(tmp_path: Pa
     assert not output_path.exists()
 
 
+def test_dashboard_bars_saved_capture_confirm_reports_post_capture_preview(
+    tmp_path: Path,
+    monkeypatch,
+):
+    database_path = tmp_path / "capture-confirm.db"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    create_schema(engine)
+    _seed_saved_file_command_universe(engine)
+    output_path = tmp_path / "polygon-grouped-daily-2026-05-08.json"
+    payload = _saved_file_command_payload(
+        Path("tests/fixtures/polygon/grouped_daily_2026-05-08.json"),
+        output_path,
+    )
+
+    def fake_capture(**kwargs):
+        saved_path = kwargs["output_path"]
+        saved_path.write_text("{}", encoding="utf-8")
+        return {
+            "status": "ready",
+            "source": "fixture",
+            "bytes_written": 2,
+            "external_calls_made": 0,
+            "output_path": str(saved_path),
+            "post_capture_preview": {
+                "status": "ready",
+                "daily_bar_count": 2,
+                "rejected_count": 0,
+                "external_calls_made": 0,
+                "db_writes_made": 0,
+                "coverage": {
+                    "missing_covered_by_fixture_count": 2,
+                    "missing_after_import_count": 1,
+                    "stock_like_missing_after_import_count": 1,
+                },
+            },
+        }
+
+    monkeypatch.setattr(
+        "catalyst_radar.dashboard.tui.capture_polygon_grouped_daily_response_with_preview",
+        fake_capture,
+    )
+    update = _apply_command(
+        "bars saved capture confirm",
+        payload,
+        "run",
+        DashboardFilters(),
+        engine=engine,
+        config=AppConfig.from_env({"CATALYST_DATABASE_URL": database_url}),
+    )
+
+    assert update.page == "run"
+    assert "Saved-file capture completed" in update.message
+    assert "Post-capture preview: status=ready" in update.message
+    assert "missing_covered=2" in update.message
+    assert "missing_after_import=1" in update.message
+    assert "external_calls=0" in update.message
+    assert "bars saved import execute" in update.message
+
 def test_dashboard_bars_saved_validate_and_import_fixture_are_operator_actions(
     tmp_path: Path,
 ):

@@ -205,6 +205,37 @@ def capture_polygon_grouped_daily_response(
         ),
     }
 
+def capture_polygon_grouped_daily_response_with_preview(
+    *,
+    config: AppConfig,
+    market_repo: MarketRepository,
+    date_value: date,
+    output_path: Path,
+    fixture_path: Path | None = None,
+    confirm_external_call: bool = False,
+) -> dict[str, object]:
+    payload = capture_polygon_grouped_daily_response(
+        config=config,
+        date_value=date_value,
+        output_path=output_path,
+        fixture_path=fixture_path,
+        confirm_external_call=confirm_external_call,
+    )
+    preview = preview_polygon_grouped_daily_fixture(
+        config=config,
+        market_repo=market_repo,
+        date_value=date_value,
+        fixture_path=output_path,
+    )
+    return {
+        **payload,
+        "post_capture_preview": preview,
+        "post_capture_external_calls_made": int(
+            preview.get("external_calls_made") or 0,
+        ),
+        "post_capture_db_writes_made": int(preview.get("db_writes_made") or 0),
+        "next_action": _polygon_capture_with_preview_next_action(preview),
+    }
 
 def build_polygon_grouped_daily_fixture_ingest(
     *,
@@ -378,10 +409,39 @@ def _polygon_fixture_preview_next_action(
         "then repair the remaining gaps."
     )
 
+def _polygon_capture_with_preview_next_action(
+    preview: Mapping[str, object],
+) -> str:
+    status = str(preview.get("status") or "")
+    coverage = preview.get("coverage")
+    if not isinstance(coverage, Mapping):
+        coverage = {}
+    if status == "invalid":
+        return (
+            "Saved response was captured, but preview is invalid; fix or "
+            "recapture before importing."
+        )
+    covered = int(coverage.get("missing_covered_by_fixture_count") or 0)
+    missing_after = int(coverage.get("missing_after_import_count") or 0)
+    active_count = int(coverage.get("active_security_count") or 0)
+    if active_count <= 0:
+        return "Saved response is valid; import only after the active universe exists locally."
+    if missing_after <= 0:
+        return "Saved response covers the missing active bars; import the saved file if intended."
+    if covered:
+        return (
+            "Saved response covers some missing bars; import if intended, "
+            "then repair the remaining gaps."
+        )
+    return (
+        "Saved response is valid but covers no current missing bars; check date "
+        "and universe before importing."
+    )
 
 __all__ = [
     "build_polygon_grouped_daily_fixture_ingest",
     "capture_polygon_grouped_daily_response",
+    "capture_polygon_grouped_daily_response_with_preview",
     "ingest_polygon_grouped_daily_fixture",
     "preview_polygon_grouped_daily_fixture",
 ]

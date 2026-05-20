@@ -277,6 +277,22 @@ def test_polygon_grouped_daily_save_response_uses_fixture_without_db_writes(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     output_path = tmp_path / "local" / "polygon-grouped-daily-2026-05-08.json"
+    init = run_cli(
+        ["init-db"],
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        capsys=capsys,
+        env={"CATALYST_POLYGON_API_KEY": ""},
+    )
+    assert init.exit_code == 0
+    engine = create_engine(init.database_url, future=True)
+    MarketRepository(engine).upsert_securities(
+        [
+            _security("AAPL", security_type="CS"),
+            _security("MSFT", security_type="CS"),
+            _security("GOOG", security_type="CS"),
+        ]
+    )
 
     result = run_cli(
         [
@@ -303,6 +319,9 @@ def test_polygon_grouped_daily_save_response_uses_fixture_without_db_writes(
     assert "polygon_grouped_daily_response_capture status=ready" in result.stdout
     assert "source=fixture" in result.stdout
     assert "external_calls=0 db_writes=0" in result.stdout
+    assert "post_capture_preview status=ready_with_rejections" in result.stdout
+    assert "covers_missing=2 missing_after=1" in result.stdout
+    assert "stock_missing_after=1 external_calls=0 db_writes=0" in result.stdout
     assert f"--fixture {output_path}" in result.stdout
 
     engine = create_engine(result.database_url, future=True)

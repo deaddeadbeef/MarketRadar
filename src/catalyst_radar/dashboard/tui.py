@@ -26,7 +26,7 @@ from catalyst_radar.brokers.interactive import (
     trigger_payload,
 )
 from catalyst_radar.connectors.polygon_fixture import (
-    capture_polygon_grouped_daily_response,
+    capture_polygon_grouped_daily_response_with_preview,
     ingest_polygon_grouped_daily_fixture,
     preview_polygon_grouped_daily_fixture,
 )
@@ -3259,6 +3259,7 @@ def _execute_market_bar_saved_file_command(
     try:
         if action == "capture":
             return _market_bar_saved_file_capture_command(
+                engine,
                 config,
                 payload,
                 confirmed="confirm" in parts or "execute" in parts,
@@ -3316,6 +3317,7 @@ def _execute_market_bar_saved_file_command(
 
 
 def _market_bar_saved_file_capture_command(
+    engine: Engine,
     config: AppConfig,
     payload: Mapping[str, object],
     *,
@@ -3335,21 +3337,33 @@ def _market_bar_saved_file_capture_command(
             "Type `bars saved capture confirm` only if you approve one "
             "Polygon/Massive grouped-daily provider call."
         )
-    captured = capture_polygon_grouped_daily_response(
+    captured = capture_polygon_grouped_daily_response_with_preview(
         config=config,
+        market_repo=MarketRepository(engine),
         date_value=_market_bar_saved_file_date(body),
         output_path=output_path,
         confirm_external_call=True,
     )
+    preview = captured.get("post_capture_preview")
+    preview_message = ""
+    if isinstance(preview, Mapping):
+        preview_message = " " + _saved_market_bar_preview_message(
+            "Post-capture preview",
+            preview,
+        )
+    source = captured.get("source")
+    bytes_written = captured.get("bytes_written")
+    external_calls = captured.get("external_calls_made")
+    saved_output = captured.get("output_path")
     return (
         "Saved-file capture completed; "
-        f"source={captured.get('source')}; "
-        f"bytes={captured.get('bytes_written')}; "
-        f"external_calls={captured.get('external_calls_made')}; "
-        f"output={captured.get('output_path')}. "
-        "Next: bars saved validate."
+        f"source={source}; "
+        f"bytes={bytes_written}; "
+        f"external_calls={external_calls}; "
+        f"output={saved_output}."
+        f"{preview_message} "
+        "Next: bars saved import execute only if the preview matches intent."
     )
-
 
 def _preview_saved_market_bar_file(
     engine: Engine,

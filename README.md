@@ -395,8 +395,10 @@ previews complete rows only with 0 provider calls and 0 DB writes, and
 Use `bars manual full template` when you intentionally want the full active
 universe template instead of the stock-like scope. For saved-provider repair,
 `bars saved capture` shows the approval boundary and makes 0 provider calls;
-`bars saved capture confirm` is the explicit one-call Polygon/Massive capture;
-`bars saved validate` checks the saved grouped-daily JSON from disk;
+`bars saved capture confirm` is the explicit one-call Polygon/Massive capture
+and immediately prints a zero-call post-capture preview of whether the saved
+file covers current missing bars; `bars saved validate` checks the saved
+grouped-daily JSON from disk when you want to re-check it later;
 `bars saved import` previews the local import; and `bars saved import execute`
 writes that saved file into the local database with 0 provider calls.
 
@@ -411,8 +413,9 @@ catalyst-radar market-bars import --daily-bars data/local/manual-stock-bars-2026
 ```
 
 For the saved-provider repair path, one explicit capture can write the raw
-grouped-daily response to disk, then validate and import from that file with 0
-provider calls:
+grouped-daily response to disk and immediately show a zero-call post-capture
+coverage preview. Validate remains available for later re-checks, and import
+from that saved file makes 0 provider calls:
 
 ```powershell
 catalyst-radar ingest-polygon grouped-daily --date 2026-05-15 --save-response data/local/polygon-grouped-daily-2026-05-15.json --confirm-external-call
