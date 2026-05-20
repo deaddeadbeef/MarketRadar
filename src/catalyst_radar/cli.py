@@ -4444,6 +4444,18 @@ def _print_priced_in_source_batches(payload: Mapping[str, object]) -> None:
                 "diagnostic_point_in_time_import="
                 f"{_compact_cli_text(point_in_time_import)}"
             )
+        point_in_time_progress = diagnostic.get("point_in_time_fixture_progress")
+        if isinstance(point_in_time_progress, Mapping):
+            print(
+                "diagnostic_point_in_time_fixture="
+                f"status={point_in_time_progress.get('status')} "
+                f"exists={str(bool(point_in_time_progress.get('exists'))).lower()} "
+                f"rows={_int_value(point_in_time_progress.get('row_count'))} "
+                f"complete={_int_value(point_in_time_progress.get('complete'))} "
+                f"partial={_int_value(point_in_time_progress.get('partial'))} "
+                f"empty={_int_value(point_in_time_progress.get('empty'))} "
+                f"path={_compact_cli_text(point_in_time_progress.get('path'))}"
+            )
         fix_command = diagnostic.get("fix_command")
         if fix_command:
             print(f"diagnostic_command={_compact_cli_text(fix_command)}")
