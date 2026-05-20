@@ -3972,6 +3972,20 @@ def _print_manual_market_bars_repair_plan(payload: Mapping[str, object]) -> None
     )
     saved_file_command = payload.get("provider_saved_file_import_command")
     if saved_file_command:
+        saved_file_next_action = str(
+            payload.get("provider_saved_file_next_action") or ""
+        ).strip()
+        print(
+            "provider_saved_file_status="
+            f"status={payload.get('provider_saved_file_status') or 'unknown'} "
+            f"exists={str(bool(payload.get('provider_saved_file_exists'))).lower()} "
+            f"path={payload.get('provider_saved_file_path') or 'n/a'}"
+            + (
+                f" next_action={_compact_cli_text(saved_file_next_action)}"
+                if saved_file_next_action
+                else ""
+            )
+        )
         saved_file_capture_command = payload.get("provider_saved_file_capture_command")
         if saved_file_capture_command:
             print(

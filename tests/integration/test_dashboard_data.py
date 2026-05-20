@@ -1825,6 +1825,11 @@ def test_priced_in_full_scan_audit_payload_consolidates_current_state(
         assert "--fixture data\\local\\polygon-grouped-daily-" in (
             market_bar_provider_plan["provider_saved_file_import_command"]
         )
+        assert market_bar_provider_plan["provider_saved_file_exists"] is False
+        assert market_bar_provider_plan["provider_saved_file_status"] == "missing"
+        assert "Capture or obtain" in market_bar_provider_plan[
+            "provider_saved_file_next_action"
+        ]
         assert market_bar_provider_plan[
             "provider_saved_file_validate_command"
         ].endswith("--validate-only")

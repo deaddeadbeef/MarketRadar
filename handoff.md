@@ -1,6 +1,73 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 18:47:54 +08:00
+Last updated: 2026-05-20 19:01:01 +08:00
+
+## Latest Saved-File Status Gate
+
+Goal alignment / drift check:
+
+- The active goal remains: scan the broad market and tell whether any stock's
+  price has not yet matched market emotion/expectations.
+- The live blocker remains `market_bars`; no catalyst/local-text/agent answer
+  can be trusted until bars are repaired.
+- The useful next path is either:
+  - explicit approval for one Polygon/Massive grouped-daily saved-response
+    capture, then zero-call validate/import from that saved file; or
+  - manual fill/import of the missing-bar CSV.
+- The provider saved-file path previously showed validate/import commands even
+  when the saved response file did not exist. That was not wrong, but it was
+  weak human guidance and could make a zero-call import path look ready when it
+  was not.
+- This slice stays narrow: it does not call providers, does not change scoring,
+  does not exclude tickers, does not weaken readiness, and does not add a new
+  workflow.
+
+Fix in this slice:
+
+- Market-bar repair plans now include:
+  - `provider_saved_file_exists`;
+  - `provider_saved_file_status` (`missing`, `available`, or `not_needed`);
+  - `provider_saved_file_next_action`.
+- The priced-in audit market-bar provider plan carries the same saved-file
+  status fields, so dashboard/TUI pages can show the same truth as CLI/API.
+- CLI `market-bars repair-plan` prints `provider_saved_file_status=...` before
+  the saved-file validate/import commands.
+- `scripts/market-radar-status.ps1 -Quick` prints full-market and stock-like
+  saved-file status lines.
+- The TUI saved-file validate/import summaries now say `missing saved file`
+  before the zero-call commands when the fixture path has not been captured yet.
+
+Validation run in this slice:
+
+```powershell
+..\..\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\market\manual_bars.py src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\integration\test_provider_ingest_cli.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_local_scripts.py
+..\..\.venv\Scripts\python.exe -m pytest tests\integration\test_provider_ingest_cli.py::test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_warns_for_stale_eod_provider_health tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_market_bar_missing_type_summary_is_human_readable tests\integration\test_local_scripts.py::test_market_radar_status_script_is_zero_external_call_sitrep -q
+$line = Select-String -LiteralPath ..\..\.env.local -Pattern '^CATALYST_DATABASE_URL=' | Select-Object -First 1; if ($line) { $env:CATALYST_DATABASE_URL = ($line.Line -replace '^CATALYST_DATABASE_URL=', '').Trim('"') }; $env:PYTHONPATH = "$PWD\src"; ..\..\.venv\Scripts\python.exe -m catalyst_radar.cli market-bars repair-plan --expected-as-of 2026-05-15 --stocks-only | Select-String -Pattern 'provider_saved_file_status|provider_saved_file_validate|provider_saved_file_import|external_calls=0'
+```
+
+Results:
+
+- Ruff passed.
+- Focused repair-plan/dashboard/status tests passed: `4 passed`.
+- Live DB-backed CLI smoke made 0 provider calls and reported:
+  - `provider_saved_file_status=status=missing`;
+  - `exists=false`;
+  - path `data\local\polygon-grouped-daily-2026-05-15.json`;
+  - next action: capture or obtain the saved grouped-daily JSON before
+    saved-file validate/import.
+
+Next useful product action:
+
+- Do not treat this as goal completion. It only clarifies the saved-file gate.
+- Merge this slice, restart local services, and rerun quick status from the
+  primary checkout to verify the live dashboard/API now expose saved-file
+  status.
+- Then actually clear `market_bars`: either approve one grouped-daily
+  saved-response capture or fill/import `data\local\manual-stock-bars-2026-05-15.csv`.
+- After bars are repaired, rerun priced-in preflight/answer and move to
+  `catalyst_events`, then `local_text`.
+- Do not run live provider/source-fill execution commands without explicit
+  operator approval.
 
 ## Latest Missing-Bar Universe Diagnostic
 

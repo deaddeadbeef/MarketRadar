@@ -369,6 +369,13 @@ if ($Quick) {
             Write-Output ("- provider boundary: {0}" -f $marketBarRepairPlan.approval_boundary)
         }
         if ($marketBarRepairPlan.provider_saved_file_import_command) {
+            Write-Output (
+                "- provider saved-file status: status={0}; exists={1}; path={2}; next={3}" -f
+                $(if ($marketBarRepairPlan.provider_saved_file_status) { $marketBarRepairPlan.provider_saved_file_status } else { "unknown" }),
+                $(if ($null -ne $marketBarRepairPlan.provider_saved_file_exists) { $marketBarRepairPlan.provider_saved_file_exists } else { $false }),
+                $(if ($marketBarRepairPlan.provider_saved_file_path) { $marketBarRepairPlan.provider_saved_file_path } else { "n/a" }),
+                $(if ($marketBarRepairPlan.provider_saved_file_next_action) { $marketBarRepairPlan.provider_saved_file_next_action } else { "n/a" })
+            )
             if ($marketBarRepairPlan.provider_saved_file_capture_command) {
                 Write-Output (
                     "- provider saved-file capture: external_calls={0}; command={1}" -f
@@ -470,6 +477,13 @@ if ($Quick) {
             }
         }
         if ($stockMarketBarRepairPlan.provider_saved_file_import_command) {
+            Write-Output (
+                "- stock provider saved-file status: status={0}; exists={1}; path={2}; next={3}" -f
+                $(if ($stockMarketBarRepairPlan.provider_saved_file_status) { $stockMarketBarRepairPlan.provider_saved_file_status } else { "unknown" }),
+                $(if ($null -ne $stockMarketBarRepairPlan.provider_saved_file_exists) { $stockMarketBarRepairPlan.provider_saved_file_exists } else { $false }),
+                $(if ($stockMarketBarRepairPlan.provider_saved_file_path) { $stockMarketBarRepairPlan.provider_saved_file_path } else { "n/a" }),
+                $(if ($stockMarketBarRepairPlan.provider_saved_file_next_action) { $stockMarketBarRepairPlan.provider_saved_file_next_action } else { "n/a" })
+            )
             if ($stockMarketBarRepairPlan.provider_saved_file_capture_command) {
                 Write-Output (
                     "- stock provider saved-file capture: external_calls={0}; command={1}" -f
