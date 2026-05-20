@@ -4290,6 +4290,39 @@ def _market_bar_provider_fill_summary(payload: Mapping[str, object]) -> str:
     return "; ".join(parts)
 
 
+def _saved_file_request_field(
+    source: Mapping[str, object],
+    body_key: str,
+    field: str,
+    label: str,
+):
+    body = _mapping(source.get(body_key))
+    if not body or field not in body:
+        return ""
+    value = body.get(field)
+    if isinstance(value, bool):
+        value_text = str(value).lower()
+    else:
+        value_text = str(value or "").strip()
+    if not value_text:
+        return ""
+    prefix = f"{label} " if label else ""
+    return f"{prefix}{field}={value_text}"
+
+
+def _saved_file_request_boundary(source: Mapping[str, object], fields, label: str):
+    pieces = [
+        piece
+        for body_key, field, field_label in fields
+        if (
+            piece := _saved_file_request_field(source, body_key, field, field_label)
+        )
+    ]
+    if not pieces:
+        return ""
+    return f"; {label} " + "; ".join(pieces)
+
+
 def _market_bar_provider_saved_file_summary(payload: Mapping[str, object]) -> str:
     audit = _mapping(payload.get("priced_in_audit"))
     market = _mapping(audit.get("market_bars"))
@@ -4305,15 +4338,25 @@ def _market_bar_provider_saved_file_summary(payload: Mapping[str, object]) -> st
     calls = int(_number_or_zero(provider_plan.get("provider_saved_file_external_call_count")))
     status = str(provider_plan.get("provider_saved_file_status") or "unknown").strip()
     exists_value = provider_plan.get("provider_saved_file_exists")
+    boundary = _saved_file_request_boundary(
+        provider_plan,
+        (
+            ("provider_saved_file_import_preview_request_body", "execute", "preview"),
+            ("provider_saved_file_import_request_body", "execute", "import"),
+        ),
+        "request bodies",
+    )
     if status == "missing" or (exists_value is False and status != "available"):
         next_action = str(
             provider_plan.get("provider_saved_file_next_action") or ""
         ).strip()
         prefix = "missing saved file"
-        if next_action:
-            prefix = f"{prefix}; {next_action}"
-        return f"{prefix}; {calls} external call(s); command {command}"
-    return f"{status}; {calls} external call(s); command {command}"
+        next_suffix = f"; next {next_action}" if next_action else ""
+        return (
+            f"{prefix}; {calls} external call(s){boundary}"
+            f"{next_suffix}; command {command}"
+        )
+    return f"{status}; {calls} external call(s){boundary}; command {command}"
 
 
 def _market_bar_provider_saved_file_capture_summary(
@@ -4335,7 +4378,26 @@ def _market_bar_provider_saved_file_capture_summary(
             provider_plan.get("provider_saved_file_capture_external_call_count"),
         ),
     )
-    return f"{calls} external call(s); explicit approval required; command {command}"
+    boundary = _saved_file_request_boundary(
+        provider_plan,
+        (
+            (
+                "provider_saved_file_capture_request_body",
+                "confirm_external_call",
+                "safe",
+            ),
+            (
+                "provider_saved_file_capture_confirm_request_body",
+                "confirm_external_call",
+                "confirm",
+            ),
+        ),
+        "request bodies",
+    )
+    return (
+        f"{calls} external call(s); explicit approval required"
+        f"{boundary}; command {command}"
+    )
 
 
 def _market_bar_provider_saved_file_validate_summary(
@@ -4355,15 +4417,22 @@ def _market_bar_provider_saved_file_validate_summary(
     calls = int(_number_or_zero(provider_plan.get("provider_saved_file_external_call_count")))
     status = str(provider_plan.get("provider_saved_file_status") or "unknown").strip()
     exists_value = provider_plan.get("provider_saved_file_exists")
+    boundary = _saved_file_request_boundary(
+        provider_plan,
+        (("provider_saved_file_validate_request_body", "fixture_path", "validate"),),
+        "request body",
+    )
     if status == "missing" or (exists_value is False and status != "available"):
         next_action = str(
             provider_plan.get("provider_saved_file_next_action") or ""
         ).strip()
         prefix = "missing saved file"
-        if next_action:
-            prefix = f"{prefix}; {next_action}"
-        return f"{prefix}; {calls} external call(s); command {command}"
-    return f"{status}; {calls} external call(s); command {command}"
+        next_suffix = f"; next {next_action}" if next_action else ""
+        return (
+            f"{prefix}; {calls} external call(s){boundary}"
+            f"{next_suffix}; command {command}"
+        )
+    return f"{status}; {calls} external call(s){boundary}; command {command}"
 
 
 def _full_scan_instrument_scope_summary(payload: Mapping[str, object]) -> str:
@@ -5014,7 +5083,13 @@ def _run_lines(payload: Mapping[str, object], width: int) -> list[str]:
                 limit=8,
             )
         )
-    elif evidence_plan:
+    else:
+        saved_action_items = _run_saved_file_action_items(payload)
+        if saved_action_items:
+            lines.append("")
+            lines.append(_rule("Market Bar Saved-File Actions", width))
+            lines.extend(_kv_lines(saved_action_items, width=width))
+    if not audit_sources and evidence_plan:
         lines.append("")
         lines.append(_rule("Priced-in Evidence Plan", width))
         evidence_items: list[tuple[str, object]] = [
@@ -5055,6 +5130,22 @@ def _run_lines(payload: Mapping[str, object], width: int) -> list[str]:
         "Type `run execute` to start one capped cycle."
     )
     return lines
+
+
+def _run_saved_file_action_items(
+    payload: Mapping[str, object],
+):
+    items: list[tuple[str, object]] = []
+    saved_capture_hint = _market_bar_provider_saved_file_capture_summary(payload)
+    if saved_capture_hint:
+        items.append(("Saved file capture", saved_capture_hint))
+    saved_validate_hint = _market_bar_provider_saved_file_validate_summary(payload)
+    if saved_validate_hint:
+        items.append(("Saved file check", saved_validate_hint))
+    saved_import_hint = _market_bar_provider_saved_file_summary(payload)
+    if saved_import_hint:
+        items.append(("Saved file import", saved_import_hint))
+    return items
 
 
 def _run_first_audit_source_blocker(

@@ -1099,6 +1099,46 @@ def test_dashboard_manual_bar_fill_progress_summary_is_human_readable() -> None:
                             "--confirm-external-call"
                         ),
                         "provider_saved_file_capture_external_call_count": 1,
+                        "provider_saved_file_capture_request_body": {
+                            "expected_as_of": "2026-05-15",
+                            "output_path": (
+                                "data\\local\\polygon-grouped-daily-2026-05-15.json"
+                            ),
+                            "confirm_external_call": False,
+                        },
+                        "provider_saved_file_capture_confirm_request_body": {
+                            "expected_as_of": "2026-05-15",
+                            "output_path": (
+                                "data\\local\\polygon-grouped-daily-2026-05-15.json"
+                            ),
+                            "confirm_external_call": True,
+                        },
+                        "provider_saved_file_validate_request_body": {
+                            "expected_as_of": "2026-05-15",
+                            "fixture_path": (
+                                "data\\local\\polygon-grouped-daily-2026-05-15.json"
+                            ),
+                        },
+                        "provider_saved_file_import_preview_request_body": {
+                            "expected_as_of": "2026-05-15",
+                            "fixture_path": (
+                                "data\\local\\polygon-grouped-daily-2026-05-15.json"
+                            ),
+                            "execute": False,
+                        },
+                        "provider_saved_file_import_request_body": {
+                            "expected_as_of": "2026-05-15",
+                            "fixture_path": (
+                                "data\\local\\polygon-grouped-daily-2026-05-15.json"
+                            ),
+                            "execute": True,
+                        },
+                        "provider_saved_file_validate_command": (
+                            "catalyst-radar ingest-polygon grouped-daily "
+                            "--date 2026-05-15 --fixture "
+                            "data\\local\\polygon-grouped-daily-2026-05-15.json "
+                            "--validate-only"
+                        ),
                         "provider_saved_file_import_command": (
                             "catalyst-radar ingest-polygon grouped-daily "
                             "--date 2026-05-15 --fixture "
@@ -1150,13 +1190,18 @@ def test_dashboard_manual_bar_fill_progress_summary_is_human_readable() -> None:
     assert "Provider fill: ready_for_approval_with_health_warning" in overview
     assert "Provider fill: ready_for_approval_with_health_warning" in ops
     assert "Saved file capture: 1 external call(s)" in overview
-    assert "Saved file capture: 1 external call(s)" in ops
+    assert "safe confirm_external_call=false" in overview
+    assert "confirm confirm_external_call=true" in ops
     assert "Saved file capture" in run
     assert "--save-response" in run
     assert "Saved file import: missing saved file" in overview
-    assert "Saved file import: missing saved file" in ops
-    assert "Saved file check: missing saved file" in run
-    assert "Saved file import: missing saved file" in run
+    assert "preview execute=false" in overview
+    assert "import execute=true" in ops
+    assert "Saved file check" in run
+    assert "missing saved file" in run
+    assert "validate fixture_path=data\\local\\polygon-grouped-daily" in run
+    assert "Saved file import" in run
+    assert "preview execute=false" in run
     assert "Manual CSV progress: 12/523 complete; 3 partial; 508 empty" in overview
     assert "Manual CSV progress: 12/523 complete; 3 partial; 508 empty" in ops
     assert "Market bar next: Finish or clear partial OHLCV/VWAP rows" in overview
