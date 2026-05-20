@@ -820,6 +820,10 @@ def test_dashboard_run_page_shows_priced_in_evidence_plan(
     output = capsys.readouterr()
 
     assert output.err == ""
+    assert "Mission Brief" in output.out
+    assert "Current answer" in output.out
+    assert "Trust blocker" in output.out
+    assert "Boundary" in output.out
     assert "Priced-in Evidence Plan" in output.out
     assert "Evidence status" in output.out
     assert "Full-scan evidence" in output.out
@@ -2076,6 +2080,12 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
     )
     assert "market emotion" in overview["goal_alignment"]["goal"]
     assert "fresh price reaction" in overview["goal_alignment"]["useful_definition"]
+    assert overview["mission_brief"]["schema_version"] == "priced-in-mission-brief-v1"
+    assert "market emotion" in overview["mission_brief"]["question"]
+    assert overview["mission_brief"]["scan_progress"]["source_gap_rows"] == (
+        overview["total_gap_rows"]
+    )
+    assert overview["mission_brief"]["roadmap"]
     source_rows = {row["source"]: row for row in overview["sources"]}
     assert source_rows["options"]["execute_next_command"] == (
         "catalyst-radar priced-in-source-batches --source options --execute-next"
@@ -2094,6 +2104,9 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
     assert "scope_note=The full scan covers" in output.out
     assert "goal_alignment=status=aligned" in output.out
     assert "goal=Find stocks where market emotion" in output.out
+    assert "mission_brief=question=Which stocks" in output.out
+    assert "  answer=" in output.out
+    assert "  roadmap=" in output.out
     assert "next_useful_step=" in output.out
     assert "approval_checklist=required=true provider=schwab" in output.out
     assert "full_scan_review=catalyst-radar priced-in-queue --full-scan --limit 50" in output.out

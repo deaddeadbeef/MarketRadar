@@ -4198,6 +4198,50 @@ def _print_priced_in_queue(payload: Mapping[str, object]) -> None:
         print(f"more={_priced_in_more_command(filters, limit, next_offset)}")
 
 
+
+def _print_priced_in_mission_brief(payload: Mapping[str, object]) -> None:
+    mission = payload.get("mission_brief")
+    if not isinstance(mission, Mapping):
+        return
+    question = _compact_cli_text(mission.get("question"))
+    print(f"mission_brief=question={question}")
+    answer = mission.get("current_answer")
+    if answer:
+        print(f"  answer={_compact_cli_text(answer)}")
+    useful = mission.get("useful_definition")
+    if useful:
+        print(f"  useful={_compact_cli_text(useful)}")
+    next_source = mission.get("next_source") or "n/a"
+    next_gaps = _int_value(mission.get("next_gap_rows"))
+    next_calls = _int_value(mission.get("next_external_calls_required"))
+    action = _compact_cli_text(mission.get("next_operator_action"))
+    print(
+        "  now="
+        f"source={next_source} gaps={next_gaps} calls={next_calls} "
+        f"action={action}"
+    )
+    command = mission.get("next_command")
+    if command:
+        print(f"  command={_compact_cli_text(command)}")
+    boundary = mission.get("operator_boundary")
+    if boundary:
+        print(f"  boundary={_compact_cli_text(boundary)}")
+    roadmap = mission.get("roadmap")
+    if isinstance(roadmap, list | tuple) and roadmap:
+        parts: list[str] = []
+        for row in roadmap:
+            if not isinstance(row, Mapping):
+                continue
+            source = row.get("source")
+            status = row.get("status")
+            gaps = _int_value(row.get("gap_rows"))
+            calls = _int_value(row.get("next_chunk_external_calls"))
+            parts.append(f"{source}:{status} gaps={gaps} calls={calls}")
+        if parts:
+            roadmap_text = "; ".join(parts[:6])
+            print(f"  roadmap={roadmap_text}")
+
+
 def _print_priced_in_all_source_batches(payload: Mapping[str, object]) -> None:
     print(
         "priced_in_source_batch_overview "
@@ -4209,6 +4253,7 @@ def _print_priced_in_all_source_batches(payload: Mapping[str, object]) -> None:
         f"external_calls={payload.get('external_calls_made')}"
     )
     print(f"headline={payload.get('headline')}")
+    _print_priced_in_mission_brief(payload)
     scan_scope = payload.get("scan_scope")
     if isinstance(scan_scope, Mapping):
         print(

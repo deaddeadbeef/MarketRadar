@@ -122,7 +122,9 @@ the broader ranked universe.
 for the smaller set of currently decision-ready/actionable rows. Use the
 coverage-first source when your goal is improving the whole-market scan; use the
 decision shortcut only when you intentionally want to deepen the current top
-answer subset.
+answer subset. The JSON payload also includes `mission_brief`, a zero-call
+operator summary with the current trusted-answer state, scan progress, next
+source, next command, call boundary, and roadmap of remaining evidence gaps.
 The default is still the full scan. Use `ready`, press `D`, or run
 `catalyst-radar priced-in-queue --decision-ready` only when you intentionally
 want the small decision-useful subset from that full scan.
@@ -220,7 +222,10 @@ Git update step and `radar --force-install` to refresh the editable install.
 The TUI is the operational replacement surface for the web dashboard. It loads
 the same command-center data helpers and provides pages for tutorial, insights,
 readiness, run/call-plan, candidates, alerts, IPO/S-1, broker, ops, telemetry,
-themes, validation, costs, and current feature inventory. `radar` opens on
+themes, validation, costs, and current feature inventory. The Run page now
+starts with a Mission Brief: the priced-in question, current trusted-answer
+state, scan progress, first trust blocker, useful next action, and the zero-call
+boundary before the call-plan details. `radar` opens on
 `0 Tutorial` by default so the first screen explains the workflow and current
 blocker. Press `1` or run `radar --page overview` for Insights.
 The insights page is the full-market priced-in queue by default: the first row reports scan
