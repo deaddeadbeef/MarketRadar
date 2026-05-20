@@ -3826,6 +3826,12 @@ def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
     if audit_summary:
         lines.append(f"Full scan audit: {audit_summary}")
     stock_bar_summary = _stock_market_bar_next_summary(payload)
+    full_scan_summary = _answer_full_scan_scope_summary(payload)
+    if full_scan_summary:
+        lines.append(
+            "Full scan coverage: "
+            f"{_clip(full_scan_summary.replace('Full-scan coverage: ', ''), max(20, width - 22))}"
+        )
     if stock_bar_summary:
         lines.append(
             "Stock bar next: "
@@ -4167,6 +4173,22 @@ def _market_bar_missing_type_summary(payload: Mapping[str, object]) -> str:
     return f"{missing} missing scan-date bars; types {', '.join(pieces)}; {route}"
 
 
+def _market_bar_missing_count(payload: Mapping[str, object]) -> int:
+    audit = _mapping(payload.get("priced_in_audit"))
+    market = _mapping(audit.get("market_bars"))
+    repair = _mapping(market.get("repair"))
+    diagnostic = _mapping(repair.get("diagnostic"))
+    return int(
+        _number_or_zero(
+            _first_value(
+                diagnostic.get("missing_count"),
+                market.get("missing_as_of_bar"),
+                repair.get("missing_as_of_bar"),
+            )
+        )
+    )
+
+
 def _market_bar_manual_fill_progress_summary(payload: Mapping[str, object]) -> str:
     audit = _mapping(payload.get("priced_in_audit"))
     market = _mapping(audit.get("market_bars"))
@@ -4236,6 +4258,10 @@ def _decision_readiness_summary(payload: Mapping[str, object]) -> str:
 
 
 def _overview_source_workflow_hint(payload: Mapping[str, object]) -> str:
+    full_scan_summary = _answer_full_scan_scope_summary(payload)
+    if full_scan_summary:
+        return full_scan_summary
+
     preflight = _mapping(payload.get("priced_in_preflight"))
     evidence_plan = _mapping(preflight.get("evidence_plan"))
     evidence_steps = _rows(evidence_plan.get("steps"))
@@ -4300,6 +4326,31 @@ def _overview_source_workflow_hint(payload: Mapping[str, object]) -> str:
     if coverage:
         return f"Full-scan coverage: {_clip(coverage, 140)}"
     return "Open Ops or run batch all to inspect source gaps."
+
+
+def _answer_full_scan_scope_summary(payload: Mapping[str, object]) -> str:
+    answer = _mapping(payload.get("priced_in_answer"))
+    full_scan = _mapping(answer.get("full_scan"))
+    active = int(_number_or_zero(full_scan.get("active_securities")))
+    scanned = int(_number_or_zero(full_scan.get("scanned_rows")))
+    unscanned = int(_number_or_zero(full_scan.get("unscanned_rows")))
+    if active <= 0 or unscanned <= 0:
+        return ""
+    missing = _market_bar_missing_count(payload)
+    scope = str(full_scan.get("instrument_filter") or "full").strip()
+    scope_label = {
+        "all": "all-instrument",
+        "stocks_only": "stock-like",
+    }.get(scope, scope)
+    blocker = (
+        f"; {missing} missing scan-date market bar(s)"
+        if missing
+        else ""
+    )
+    return (
+        f"Full-scan coverage: {scanned}/{active} active {scope_label} row(s) scanned; "
+        f"{unscanned} unscanned{blocker}."
+    )
 
 
 def _overview_title(payload: Mapping[str, object]) -> str:
@@ -5625,16 +5676,24 @@ def _source_workflow_lines(payload: Mapping[str, object], width: int) -> list[st
     lines = [_rule("Source Fill Workflow", width)]
     goal = _mapping(workflow.get("goal_alignment"))
     if goal:
+        full_scan_summary = _answer_full_scan_scope_summary(payload)
+        goal_items: list[tuple[str, object]] = [
+            ("Goal", goal.get("goal")),
+            ("Useful", goal.get("useful_definition")),
+        ]
+        if full_scan_summary:
+            goal_items.append(("Full scan", full_scan_summary))
+        goal_items.extend(
+            [
+                ("Now", goal.get("current_state")),
+                ("Blocker", goal.get("current_blocker")),
+                ("Next", goal.get("next_useful_step")),
+                ("Safety", goal.get("provider_boundary")),
+            ]
+        )
         lines.extend(
             _kv_lines(
-                (
-                    ("Goal", goal.get("goal")),
-                    ("Useful", goal.get("useful_definition")),
-                    ("Now", goal.get("current_state")),
-                    ("Blocker", goal.get("current_blocker")),
-                    ("Next", goal.get("next_useful_step")),
-                    ("Safety", goal.get("provider_boundary")),
-                ),
+                goal_items,
                 width=width,
             )
         )

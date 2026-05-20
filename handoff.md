@@ -1,6 +1,105 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 13:16:05 +08:00
+Last updated: 2026-05-20 13:38:16 +08:00
+
+## Latest Drift Check And Full-Scan Coverage Signal
+
+Goal alignment:
+
+- The active goal is still: scan the broad market and identify stocks where
+  market emotion/expectations have not yet been matched by price reaction.
+- The latest drift check found the useful blocker is not more dashboard chrome.
+  It is honest full-scan coverage:
+  - the scan currently ranks `12087` rows;
+  - the active all-instrument universe has `12613` rows;
+  - therefore `526` active rows are not represented in the ranked scan;
+  - the first concrete blocker is still `523` missing scan-date market-bar
+    rows.
+- This slice stays aligned because it makes the active-vs-scanned gap visible
+  in the human dashboard and CLI answer. It does not add a new source,
+  workflow, provider call path, or investment action.
+- This slice makes 0 Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or
+  provider calls.
+
+Fix in this slice:
+
+- `priced-in-answer` now prints the full-scan basis and unscanned count:
+
+  ```text
+  full_scan=mode=full_scan active=12613 scanned=12087 unscanned=526 ranked=12087 basis=active_universe visible=1-5 sample=true
+  ```
+
+- Overview and Ops TUI now show the full-scan coverage warning directly:
+
+  ```text
+  Full-scan coverage: 12087/12613 active all-instrument row(s) scanned; 526 unscanned; 523 missing scan-date market bar(s).
+  ```
+
+- The Ops source-fill workflow now repeats that warning under `Full scan`, so
+  the operator can distinguish:
+  - the full universe size;
+  - the currently scanned/ranked subset;
+  - the next source blocker to clear.
+
+Live zero-call observations:
+
+```text
+priced_in_answer status=blocked ... external_calls=0
+headline=Full scan blocked by 523 missing active market-bar row(s); 12087 scanned row(s) are only a subset.
+full_scan=mode=full_scan active=12613 scanned=12087 unscanned=526 ranked=12087 basis=active_universe visible=1-5 sample=true
+```
+
+```text
+Full scan coverage: 12087/12613 active all-instrument row(s) scanned; 526 unscanned; 523 missing scan-date market b...
+External calls made: 0
+```
+
+```text
+Full scan                : Full-scan coverage: 12087/12613 active all-instrument row(s) scanned; 526 unscanned; 523
+                         : missing scan-date market bar(s).
+Safety                   : Template generation and import preview are zero-call. Provider fills or source-batch
+                         : execution require explicit approval.
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_answer_cli_outputs_current_scan_answer tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_summary_surfaces_unscanned_full_scan_rows -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\cli.py src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-answer
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page overview
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page ops
+```
+
+Results:
+
+- Focused pytest passed: `2 passed`.
+- Ruff passed.
+- `git diff --check` passed.
+- Live CLI, Overview TUI, and Ops TUI observations reported
+  `external_calls=0`.
+
+Next useful product action:
+
+- Clear the first full-scan blocker: missing scan-date market bars.
+- Fastest likely path still requires explicit operator approval for the
+  one-call Polygon/Massive grouped-daily repair:
+
+  ```powershell
+  .\.venv\Scripts\python.exe -m catalyst_radar.cli ingest-polygon grouped-daily --date 2026-05-15 --confirm-external-call
+  ```
+
+- If the operator does not approve that provider call, fill/import complete
+  rows from:
+
+  ```text
+  data\local\manual-bars-2026-05-15.csv
+  data\local\manual-stock-bars-2026-05-15.csv
+  ```
+
+- Do not claim the priced-in answer is ready while `unscanned` is non-zero or
+  scan-date market bars are missing.
 
 ## Latest Drift Check And Options Template Progress
 
