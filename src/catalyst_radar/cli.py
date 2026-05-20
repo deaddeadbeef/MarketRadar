@@ -5776,6 +5776,19 @@ def _print_priced_in_answer(payload: Mapping[str, object]) -> None:
             f"first_gap={evidence.get('first_gap_source') or 'n/a'} "
             f"summary={_compact_cli_text(evidence.get('summary'))}"
         )
+    trust_gate = payload.get("full_market_trust_gate")
+    if isinstance(trust_gate, Mapping):
+        print(
+            "full_market_trust_gate="
+            f"status={trust_gate.get('status') or 'n/a'} "
+            f"trusted={str(bool(trust_gate.get('trusted_full_market_answer'))).lower()} "
+            f"first_blocker={trust_gate.get('first_blocker') or 'n/a'} "
+            f"first_gap={trust_gate.get('first_gap_count') or 0} "
+            f"scan={trust_gate.get('scanned_rows') or 0}/"
+            f"{trust_gate.get('active_securities') or 0} "
+            f"unscanned={trust_gate.get('unscanned_rows') or 0} "
+            f"external_calls={trust_gate.get('external_calls_made') or 0}"
+        )
     print(f"next_action={payload.get('next_action')}")
     if payload.get("next_command"):
         print(f"next_command={_compact_cli_text(payload.get('next_command'))}")

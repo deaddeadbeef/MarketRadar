@@ -3169,6 +3169,27 @@ def priced_in_answer_payload(
         resolved_queue,
         market_bars=resolved_market_bars,
     )
+    trust_gate_trusted = bool(
+        bool(evidence_completeness.get("all_sources_ready"))
+        and int(_finite_float(full_scan_summary.get("unscanned_rows"))) <= 0
+    )
+    full_market_trust_gate = {
+        "schema_version": "priced-in-full-market-trust-gate-v1",
+        "question": "Can MarketRadar trust a full-market priced-in answer right now?",
+        "status": "ready" if trust_gate_trusted else "blocked",
+        "trusted_full_market_answer": trust_gate_trusted,
+        "answer": evidence_completeness.get("summary"),
+        "first_blocker": evidence_completeness.get("first_gap_source"),
+        "first_gap_count": evidence_completeness.get("first_gap_count"),
+        "active_securities": full_scan_summary.get("active_securities"),
+        "scanned_rows": full_scan_summary.get("scanned_rows"),
+        "unscanned_rows": full_scan_summary.get("unscanned_rows"),
+        "ranked_rows": full_scan_summary.get("ranked_rows"),
+        "next_action": evidence_completeness.get("next_action"),
+        "next_command": evidence_completeness.get("command"),
+        "operator_boundary": "This gate is zero-call and cannot run providers.",
+        "external_calls_made": 0,
+    }
     decision_ready = answer_status == "decision_ready"
     trust_blockers = _priced_in_prioritized_trust_blockers(
         _priced_in_answer_trust_blockers(
@@ -3223,6 +3244,7 @@ def priced_in_answer_payload(
         },
         "scan_scope": _priced_in_answer_scan_scope(resolved_queue),
         "full_scan": full_scan_summary,
+        "full_market_trust_gate": full_market_trust_gate,
         "decision_readiness": decision_readiness,
         "evidence_completeness": evidence_completeness,
         "filters": _row_dict(_mapping_value(resolved_queue, "filters")),

@@ -4243,6 +4243,7 @@ def _tutorial_mission_rows(payload: Mapping[str, object]) -> list[Mapping[str, o
         "Scan progress": ("SCAN", "Check coverage"),
         "Trust blocker": ("BLOCK", "Find the blocker"),
         "Useful next": ("NEXT", "Do the next useful thing"),
+        "Trust gate": ("GATE", "Check trust gate"),
         "Boundary": ("SAFE", "Respect the boundary"),
     }
     rows: list[Mapping[str, object]] = []
@@ -6140,6 +6141,10 @@ def _run_mission_brief_items(
         items.append(("Question", question))
     if current:
         items.append(("Current answer", current))
+    trust_gate = _mapping(answer.get("full_market_trust_gate"))
+    if trust_gate:
+        gate_text = f"{trust_gate.get('status')}; {trust_gate.get('answer')}"
+        items.append(("Trust gate", gate_text))
     if progress_parts:
         items.append(("Scan progress", "; ".join(progress_parts)))
     if blocker_text:

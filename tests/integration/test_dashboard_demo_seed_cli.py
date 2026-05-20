@@ -822,6 +822,7 @@ def test_dashboard_run_page_shows_priced_in_evidence_plan(
     assert output.err == ""
     assert "Mission Brief" in output.out
     assert "Current answer" in output.out
+    assert "Trust gate" in output.out
     assert "Trust blocker" in output.out
     assert "Boundary" in output.out
     assert "Priced-in Evidence Plan" in output.out
@@ -1007,6 +1008,7 @@ def test_dashboard_tui_once_defaults_to_tutorial(
     assert "Mission - why this exists" in output.out
     assert "Current answer" in output.out
     assert "Useful next" in output.out
+    assert "Trust gate" in output.out
     assert "Tutorial - your first 90 seconds" in output.out
 
 
@@ -3255,6 +3257,7 @@ def test_priced_in_answer_cli_outputs_current_scan_answer(
     assert "basis=" in output.out
     assert "sample=false" in output.out
     assert "review_full_scan=catalyst-radar priced-in-queue --full-scan" in output.out
+    assert "full_market_trust_gate=" in output.out
     assert (
         "export_full_scan=catalyst-radar priced-in-queue --full-scan --all --json"
         in output.out
@@ -3288,6 +3291,10 @@ def test_priced_in_answer_cli_outputs_current_scan_answer(
     assert payload["full_scan"]["schema_version"] == (
         "priced-in-full-scan-summary-v1"
     )
+    assert payload["full_market_trust_gate"]["schema_version"] == (
+        "priced-in-full-market-trust-gate-v1"
+    )
+    assert payload["full_market_trust_gate"]["external_calls_made"] == 0
 
 
 def test_dashboard_summary_surfaces_unscanned_full_scan_rows() -> None:
