@@ -1,6 +1,60 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 19:42:44 +08:00
+Last updated: 2026-05-20 19:54:25 +08:00
+
+## Latest Zero-Call Next-Source Preparation
+
+Goal alignment / drift check:
+
+- The active goal remains: scan the broad stock market and identify stocks
+  where market emotion/expectations have not yet been matched by price.
+- This does not clear the current first blocker. The live stocks-only priced-in
+  path is still blocked by `market_bars`: 5521/5652 stock-like rows have
+  scan-date bars and 131 are missing.
+- Since provider capture still needs explicit operator approval, the only safe
+  useful work left was zero-call preparation for the next evidence layer after
+  bars clear.
+
+Zero-call work completed:
+
+- Generated the stock-only SEC CIK override template:
+
+  ```powershell
+  .\.venv\Scripts\python.exe -m catalyst_radar.cli ingest-sec cik-overrides-template --out data\local\cik-overrides-template.csv --stocks-only
+  ```
+
+- Output path: `data\local\cik-overrides-template.csv` (ignored local data).
+- The template has 2 rows: `FRBA` and `SSBI`.
+- It made 0 external calls.
+- Validation was intentionally blocked because the generated template has blank
+  CIK fields:
+
+  ```powershell
+  .\.venv\Scripts\python.exe -m catalyst_radar.cli ingest-sec cik-overrides --csv data\local\cik-overrides-template.csv --validate-only
+  ```
+
+- Validation result:
+  - `status=blocked`;
+  - requested rows `2`;
+  - valid rows `0`;
+  - invalid rows `2`;
+  - external calls `0`.
+
+Next useful operator actions:
+
+- First clear `market_bars`. Either approve one Polygon/Massive grouped-daily
+  saved-response capture or manually fill/import
+  `data\local\manual-stock-bars-2026-05-15.csv`.
+- After bars clear, fill exact SEC CIKs for `FRBA` and `SSBI` in
+  `data\local\cik-overrides-template.csv`, then run:
+
+  ```powershell
+  .\.venv\Scripts\python.exe -m catalyst_radar.cli ingest-sec cik-overrides --csv data\local\cik-overrides-template.csv --validate-only
+  .\.venv\Scripts\python.exe -m catalyst_radar.cli ingest-sec cik-overrides --csv data\local\cik-overrides-template.csv
+  ```
+
+- Do not guess CIKs. Use exact SEC CIKs or an explicitly approved SEC
+  company-tickers refresh.
 
 ## Latest Stock Preflight Source-Coverage Alignment
 
