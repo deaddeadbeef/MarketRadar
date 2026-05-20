@@ -1,6 +1,67 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 15:53:34 +08:00
+Last updated: 2026-05-20 16:05:50 +08:00
+
+## Latest Manual Bar Incremental Repair Guidance
+
+Goal alignment:
+
+- The active goal remains: scan the broad market and tell whether any stock's
+  price has not yet matched market emotion/expectations.
+- A fresh drift check showed the recent dashboard/CLI/API work is still
+  adjacent to the goal, but the first product blocker remains scan-date market
+  bars: stock-like coverage is `5521/5652`, with `131` missing rows, and the
+  full active universe is `12090/12613`, with `523` missing rows.
+- This slice stays on that blocker. It does not change evidence scoring,
+  provider execution, source coverage semantics, agent behavior, or dashboard
+  layout. It only makes the existing zero-call manual bar repair flow less
+  confusing once an operator has filled some rows.
+- This slice makes 0 Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or
+  provider calls.
+
+Fix in this slice:
+
+- `_manual_market_bars_operator_step(...)` now recognizes a partially filled
+  local template where at least one row has complete OHLCV/VWAP, the remaining
+  unfinished rows are fully blank, and no invalid numeric values are present.
+- In that state, the repair plan returns
+  `status=needs_incremental_preview` and points the operator to the existing
+  `--complete-rows-only` preview/import workflow instead of saying generic
+  invalid rows must be fixed.
+- Partial rows still require finishing or clearing, and complete rows with
+  invalid numeric values still go through the invalid-value fix path.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_provider_ingest_cli.py::test_market_bars_repair_plan_guides_complete_rows_only_preview tests\integration\test_provider_ingest_cli.py::test_market_bars_repair_plan_keeps_invalid_numeric_in_fix_path tests\integration\test_provider_ingest_cli.py::test_market_bars_repair_plan_previews_existing_local_template tests\integration\test_provider_ingest_cli.py::test_market_bars_import_complete_rows_only_allows_incremental_import -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\market\manual_bars.py tests\integration\test_provider_ingest_cli.py
+git diff --check
+powershell -ExecutionPolicy Bypass -File .\scripts\market-radar-status.ps1 -Quick
+.\.venv\Scripts\python.exe -m catalyst_radar.cli market-bars repair-plan --expected-as-of 2026-05-15 --stocks-only
+```
+
+Results:
+
+- Focused pytest passed: `4 passed`.
+- Ruff passed.
+- `git diff --check` passed.
+- Live quick status still reported the stock gate blocked by `market_bars`,
+  `5521/5652` stock-like bars present, `131` missing, and
+  `External calls made: 0`.
+- Live stock repair plan still reported `manual_fill_required` because the
+  current template has `complete=0`, `partial=0`, `empty=131`, which is correct.
+  Once an operator completes at least one row and leaves the rest blank, the
+  new branch will route them to the incremental `--complete-rows-only` preview.
+
+Next useful product action:
+
+- The product blocker remains data coverage, not TUI polish. Either fill the
+  `131` stock-like OHLCV/VWAP rows manually and use the incremental import
+  workflow, or explicitly approve the one-call Polygon/Massive grouped-daily
+  fill for `2026-05-15`.
+- Do not run provider/source-fill execution commands without explicit operator
+  approval.
 
 ## Latest Queue Candidate Brief Skip
 
