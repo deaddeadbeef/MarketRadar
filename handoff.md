@@ -1,6 +1,75 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 20:42:10 +08:00
+Last updated: 2026-05-20 20:51:49 +08:00
+
+## Latest Post-Bar Source Plan Audit
+
+Goal alignment / drift check:
+
+- The active goal remains: MarketRadar should scan the broad stock market and
+  identify stocks where market emotion/expectations have not yet been matched
+  by price.
+- The current first blocker is still `market_bars`, so no claim of a useful
+  priced-in answer is valid yet.
+- No provider calls were made in this audit.
+- This audit checked the next evidence layer after bars so work does not drift
+  back into UI polish once the market-bar blocker clears.
+
+Live blocker state:
+
+- API build: `8281a3a4f41e`.
+- Full-market priced-in gate:
+  - `status=blocked`;
+  - `first_gap=market_bars`;
+  - active bar coverage `12090/12613`;
+  - missing bars `523`;
+  - external calls made `0`.
+- Stock-only priced-in gate:
+  - `status=blocked`;
+  - `first_gap=market_bars`;
+  - stock-like bar coverage `5521/5652`;
+  - missing stock-like bars `131`;
+  - external calls made `0`.
+
+Zero-call next-source plan after bars:
+
+```powershell
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source all --stocks-only
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source catalyst_events --stocks-only
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source local_text --stocks-only
+```
+
+Observed source plan:
+
+- `market_bars` is still first:
+  - 131 stock-like market-bar gaps;
+  - examples: `AACO`, `ADAC`, `ADXN`, `AEAQ`, `AGM.A`;
+  - zero-call command:
+    `catalyst-radar market-bars template --expected-as-of 2026-05-15 --out data\local\manual-stock-bars-2026-05-15.csv --missing-only --stocks-only`.
+- `catalyst_events` is the next major source after bars:
+  - 5512 stock rows have catalyst-event gaps;
+  - 5510 are plannable through SEC submissions batches;
+  - 1102 planned batches, 5 SEC calls per next batch;
+  - first guarded execute command:
+    `catalyst-radar priced-in-source-batches --source catalyst_events --stocks-only --execute-next`;
+  - missing CIK blockers: `FRBA`, `SSBI`;
+  - CIK template command:
+    `catalyst-radar ingest-sec cik-overrides-template --out data\local\cik-overrides-template.csv --stocks-only`;
+  - validate/import commands:
+    `catalyst-radar ingest-sec cik-overrides --csv <cik-overrides.csv> --validate-only`
+    and `catalyst-radar ingest-sec cik-overrides --csv <cik-overrides.csv>`.
+- `local_text` is blocked until catalyst events exist:
+  - 5512 rows blocked by `missing_catalyst_events`;
+  - no executable local-text batch is currently available.
+
+Next useful product action:
+
+- Do not treat this as goal completion.
+- First clear `market_bars` through either explicit approval for the one
+  Polygon/Massive saved-response capture or manual fill/import of
+  `data\local\manual-stock-bars-2026-05-15.csv`.
+- After bars clear, use the source-batch plan above to run SEC catalyst-event
+  batches intentionally and fill CIKs for `FRBA`/`SSBI` without guessing.
 
 ## Latest Run Page Saved-File Repair Path
 
