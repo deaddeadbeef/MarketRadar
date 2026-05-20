@@ -436,13 +436,13 @@ def test_dashboard_snapshot_cli_outputs_human_readable_zero_call_summary(
         "Page: overview",
         "DB:",
         "Ticker: ACME",
-        "Full-market priced-in queue - showing",
+        "Visible priced-in review page - rows",
         "#",
         "ACME",
         "Bullish not priced",
         "emotion",
         "reaction",
-        "ticker rows are the current priced-in scan page",
+        "review page, not the full scan universe",
         "External calls made: 0",
     ):
         assert expected in output.out
@@ -861,7 +861,7 @@ def test_dashboard_tui_once_can_show_full_scan_mode(
     assert "Answer:" in output.out
     assert "Trade status:" in output.out
     assert "Trade safe:" in output.out
-    assert "Full-market priced-in queue - showing" in output.out
+    assert "Visible priced-in review page - rows" in output.out
     assert "Full scan audit:" in output.out
     assert "Instrument scope:" in output.out
     assert "Decision readiness:" in output.out
@@ -869,7 +869,7 @@ def test_dashboard_tui_once_can_show_full_scan_mode(
     assert "Next data step:" in output.out
     assert "Full-scan coverage:" in output.out
     assert "Shortlist context:" in output.out
-    assert "ticker rows are the current priced-in scan page" in output.out
+    assert "review page, not the full scan universe" in output.out
 
     assert (
         main(
@@ -1186,7 +1186,7 @@ def test_dashboard_review_page_is_distinct_from_full_scan() -> None:
     assert "BETA" not in review
 
     overview = render_dashboard_tui(payload, page="overview", width=140)
-    assert "Full-market priced-in queue" in overview
+    assert "Visible priced-in review page" in overview
     assert "ACME" in overview
     assert "BETA" in overview
 
@@ -3202,11 +3202,11 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert app.page == "overview"
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert "INSIGHTS" in frame
-            assert "Full-market priced-in queue - showing" in frame
+            assert "Visible priced-in review page - rows" in frame
             assert "ACME" in frame
             assert "Bullish not priced" in frame
             assert "Data gaps" in frame
-            assert "showing the first ranked page from the entire scan" in frame
+            assert "showing review page 1 from the ranked scan" in frame
             assert "M  Mismatches only" in frame
             assert "ALL Full scan rows" in frame
             assert "Candidates [1]" in frame
@@ -3237,7 +3237,7 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert app.filters.priced_in_status == "all"
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert "Full Scan mode" in frame
-            assert "Full-market priced-in queue - showing" in frame
+            assert "Visible priced-in review page - rows" in frame
 
             app.query_one("#data-table").focus()
             await pilot.press("enter")
