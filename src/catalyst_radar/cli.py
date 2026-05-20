@@ -3781,6 +3781,19 @@ def _print_manual_market_bars_repair_plan(payload: Mapping[str, object]) -> None
         f"missing_with_history={payload.get('missing_with_local_history_count', 'n/a')} "
         f"missing_without_history={payload.get('missing_without_local_history_count', 'n/a')}"
     )
+    operator_step = payload.get("operator_step")
+    if isinstance(operator_step, Mapping):
+        command = operator_step.get("command") or "manual"
+        after_manual = operator_step.get("after_manual_command") or "n/a"
+        print(
+            "operator_step="
+            f"status={operator_step.get('status')} "
+            f"manual={str(bool(operator_step.get('manual_step'))).lower()} "
+            f"external_calls={operator_step.get('external_calls_made', 0)} "
+            f"action={_compact_cli_text(operator_step.get('action'))} "
+            f"command={_compact_cli_text(command)} "
+            f"after_manual={_compact_cli_text(after_manual)}"
+        )
     no_history = payload.get("missing_without_local_history_sample")
     if isinstance(no_history, list | tuple) and no_history:
         more = int(payload.get("missing_without_local_history_more") or 0)

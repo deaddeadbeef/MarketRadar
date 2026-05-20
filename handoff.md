@@ -1,6 +1,91 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 10:59:49 +08:00
+Last updated: 2026-05-20 11:18:44 +08:00
+
+## Latest Strict Market-Bar Next Action
+
+Goal alignment:
+
+- The active objective is still a full-market priced-in scan, not a curated
+  watchlist. The current hard blocker remains missing scan-date market bars:
+  `12090/12613` active securities have `2026-05-15` bars and `523` do not.
+- The dashboard and CLI already showed progress and commands, but the operator
+  still had to infer the next immediate step from several lines.
+- This slice adds a single strict `operator_step` to the market-bar repair
+  plan, then surfaces it in the CLI, quick status script, and TUI Overview/Ops.
+- This makes 0 Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or provider
+  calls.
+
+Fix in this slice:
+
+- `manual_market_bars_repair_plan(...).as_payload()` now includes
+  `operator_step` with:
+  - `status`
+  - `kind`
+  - `action`
+  - `command`
+  - `after_manual_command`
+  - `manual_step`
+  - `external_calls_made`
+- The operator step is deliberately strict:
+  - no local template -> generate the missing-bar template;
+  - blank template -> fill at least one complete OHLCV/VWAP row;
+  - partial rows -> finish or clear partial rows before import;
+  - ready partial preview -> import complete rows only;
+  - ready full preview -> execute the full import;
+  - already complete -> rerun the priced-in audit.
+- `market-bars repair-plan` prints the operator step as a single line.
+- `scripts\market-radar-status.ps1 -Quick` prints
+  `- strict next action: ...`.
+- `priced_in_full_scan_audit_payload(...)` carries the same operator step into
+  `market_bars.repair.operator_step`.
+- The TUI Overview and Ops pages render `Market bar next: ...` below manual CSV
+  progress.
+
+Live zero-call observation:
+
+```text
+operator_step=status=manual_fill_required manual=true external_calls=0 action=Fill at least one complete OHLCV/VWAP row in data\local\manual-bars-2026-05-15.csv; blank rows can wait. command=manual after_manual=catalyst-radar market-bars import --daily-bars data\local\manual-bars-2026-05-15.csv --expected-as-of 2026-05-15 --complete-rows-only
+```
+
+```text
+- strict next action: status=manual_fill_required; manual=True; external_calls=0; action=Fill at least one complete OHLCV/VWAP row in data\local\manual-bars-2026-05-15.csv; blank rows can wait.; command=manual; after_manual=catalyst-radar market-bars import --daily-bars data\local\manual-bars-2026-05-15.csv --expected-as-of 2026-05-15 --complete-rows-only
+External calls made: 0
+```
+
+TUI Overview/Ops now show:
+
+```text
+Market bar next: Fill at least one complete OHLCV/VWAP row in data\local\manual-bars-2026-05-15.csv; blank rows can ...
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_provider_ingest_cli.py::test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths tests\integration\test_provider_ingest_cli.py::test_market_bars_repair_plan_previews_existing_local_template tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_reports_local_manual_template_progress tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_manual_bar_fill_progress_summary_is_human_readable tests\integration\test_local_scripts.py::test_market_radar_status_script_is_zero_external_call_sitrep -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\market\manual_bars.py src\catalyst_radar\cli.py src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py tests\integration\test_provider_ingest_cli.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_local_scripts.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli market-bars repair-plan --expected-as-of 2026-05-15
+powershell -ExecutionPolicy Bypass -File .\scripts\market-radar-status.ps1 -Quick
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --scan-mode all --page overview
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --scan-mode all --page ops
+```
+
+Results:
+
+- Focused pytest passed.
+- Ruff passed.
+- `git diff --check` passed.
+- Live repair plan, quick status, Overview TUI, and Ops TUI all reported
+  `external_calls=0`.
+
+Next useful product action:
+
+- The strict next action is now explicit: fill at least one complete row in
+  `data\local\manual-bars-2026-05-15.csv`, then run the complete-row preview.
+- The full-market priced-in answer remains blocked until all 523 missing bars
+  are filled/imported, or until the user explicitly approves the one-call
+  Polygon/Massive grouped-daily fill.
 
 ## Latest Incremental Manual Bar Import
 

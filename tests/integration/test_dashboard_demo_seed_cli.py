@@ -32,6 +32,7 @@ from catalyst_radar.dashboard.tui import (
     _apply_command,
     _market_bar_manual_fill_progress_summary,
     _market_bar_missing_type_summary,
+    _market_bar_operator_step_summary,
     _priced_in_overview_rows,
     _priced_in_review_rows,
     _priced_in_source_workflow_payload,
@@ -961,6 +962,26 @@ def test_dashboard_manual_bar_fill_progress_summary_is_human_readable() -> None:
                 "repair": {
                     "template_row_count": 523,
                     "local_template_path": "data\\local\\manual-bars-2026-05-15.csv",
+                    "operator_step": {
+                        "status": "fix_partial_rows",
+                        "manual_step": True,
+                        "external_calls_made": 0,
+                        "action": (
+                            "Finish or clear partial OHLCV/VWAP rows in "
+                            "data\\local\\manual-bars-2026-05-15.csv; partial rows "
+                            "cannot be imported."
+                        ),
+                        "command": (
+                            "catalyst-radar market-bars import --daily-bars "
+                            "data\\local\\manual-bars-2026-05-15.csv --expected-as-of "
+                            "2026-05-15"
+                        ),
+                        "after_manual_command": (
+                            "catalyst-radar market-bars import --daily-bars "
+                            "data\\local\\manual-bars-2026-05-15.csv --expected-as-of "
+                            "2026-05-15 --complete-rows-only"
+                        ),
+                    },
                     "local_template_preview": {
                         "status": "invalid",
                         "row_count": 523,
@@ -980,10 +1001,15 @@ def test_dashboard_manual_bar_fill_progress_summary_is_human_readable() -> None:
         "12/523 complete; 3 partial; 508 empty; 15 touched; preview invalid; "
         "file data\\local\\manual-bars-2026-05-15.csv"
     )
+    assert _market_bar_operator_step_summary(payload).startswith(
+        "Finish or clear partial OHLCV/VWAP rows"
+    )
     overview = render_dashboard_tui(payload, page="overview", width=160)
     ops = render_dashboard_tui(payload, page="ops", width=160)
     assert "Manual CSV progress: 12/523 complete; 3 partial; 508 empty" in overview
     assert "Manual CSV progress: 12/523 complete; 3 partial; 508 empty" in ops
+    assert "Market bar next: Finish or clear partial OHLCV/VWAP rows" in overview
+    assert "Market bar next: Finish or clear partial OHLCV/VWAP rows" in ops
 
 
 def test_dashboard_review_page_is_distinct_from_full_scan() -> None:

@@ -518,6 +518,7 @@ def test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    monkeypatch.chdir(tmp_path)
     database_url = _database_url(tmp_path)
     monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
     monkeypatch.setenv("CATALYST_POLYGON_API_KEY", "fixture-key")
@@ -578,6 +579,15 @@ def test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths(
     assert payload["manual_incremental_import_execute_command"].endswith(
         "--stocks-only --complete-rows-only --execute"
     )
+    assert payload["operator_step"] == {
+        "status": "needs_template",
+        "kind": "generate_template",
+        "action": "Generate the DB-backed missing-bar CSV for the full scope.",
+        "command": payload["manual_template_command"],
+        "after_manual_command": payload["manual_import_preview_command"],
+        "manual_step": False,
+        "external_calls_made": 0,
+    }
     assert payload["required_fill_fields"] == [
         "open",
         "high",
@@ -679,6 +689,13 @@ def test_market_bars_repair_plan_previews_existing_local_template(
         "filled_rows": 0,
     }
     assert preview["external_calls_made"] == 0
+    assert payload["operator_step"]["status"] == "manual_fill_required"
+    assert payload["operator_step"]["kind"] == "fill_first_complete_rows"
+    assert payload["operator_step"]["manual_step"] is True
+    assert payload["operator_step"]["command"] is None
+    assert payload["operator_step"]["after_manual_command"].endswith(
+        "--stocks-only --complete-rows-only"
+    )
     assert payload["missing_security_type_counts"] == {"ADRC": 1}
     assert payload["missing_with_local_history_count"] == 0
     assert payload["missing_without_local_history_count"] == 1
@@ -711,6 +728,8 @@ def test_market_bars_repair_plan_previews_existing_local_template(
         "local_template_fill_progress=complete=0 partial=0 empty=1 filled=0"
         in captured.out
     )
+    assert "operator_step=status=manual_fill_required" in captured.out
+    assert "after_manual=catalyst-radar market-bars import" in captured.out
     assert "local_template_blank_required_fields=open=1" in captured.out
     assert "local_template_invalid_examples=row 2 AADR 2026-05-15" in captured.out
 

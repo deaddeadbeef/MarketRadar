@@ -2053,6 +2053,10 @@ def test_priced_in_full_scan_audit_reports_local_manual_template_progress(
         "empty_rows": 0,
         "filled_rows": 1,
     }
+    assert repair["operator_step"]["status"] == "fix_partial_rows"
+    assert repair["operator_step"]["manual_step"] is True
+    assert repair["operator_step"]["external_calls_made"] == 0
+
 
 def test_priced_in_full_scan_audit_payload_reuses_cached_zero_call_audit(
     tmp_path: Path,

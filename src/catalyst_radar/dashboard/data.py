@@ -3972,6 +3972,9 @@ def _priced_in_audit_market_bar_repair(
             _row_dict(local_template_preview) if local_template_preview else None
         ),
         "local_template_fill_progress": _row_dict(local_template_fill_progress),
+        "operator_step": _row_dict(
+            _mapping_value(manual_repair_plan, "operator_step"),
+        ),
         "template_api": "POST /api/radar/market-bars/template",
         "import_api": "POST /api/radar/market-bars/import",
         "diagnostic": diagnostic,

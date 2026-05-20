@@ -192,6 +192,20 @@ if ($Quick) {
         if ($marketBarRepairPlan.manual_incremental_import_execute_command) {
             Write-Output ("- incremental complete-row import: {0}" -f $marketBarRepairPlan.manual_incremental_import_execute_command)
         }
+        if ($null -ne $marketBarRepairPlan.operator_step) {
+            $step = $marketBarRepairPlan.operator_step
+            $stepCommand = $(if ($step.command) { $step.command } else { "manual" })
+            $afterManual = $(if ($step.after_manual_command) { $step.after_manual_command } else { "n/a" })
+            Write-Output (
+                "- strict next action: status={0}; manual={1}; external_calls={2}; action={3}; command={4}; after_manual={5}" -f
+                $step.status,
+                $step.manual_step,
+                $(if ($null -ne $step.external_calls_made) { $step.external_calls_made } else { 0 }),
+                $step.action,
+                $stepCommand,
+                $afterManual
+            )
+        }
         Write-Output (
             "- local bar history: missing_with_history={0}; missing_without_history={1}" -f
             $(if ($null -ne $marketBarRepairPlan.missing_with_local_history_count) { $marketBarRepairPlan.missing_with_local_history_count } else { "n/a" }),
