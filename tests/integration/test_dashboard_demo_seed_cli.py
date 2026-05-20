@@ -11,6 +11,7 @@ from sqlalchemy import create_engine
 from catalyst_radar.cli import main
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.core.models import DailyBar, Security
+from catalyst_radar.dashboard import data as dashboard_data_module
 from catalyst_radar.dashboard import source_batches as source_batch_module
 from catalyst_radar.dashboard.data import (
     load_alert_rows,
@@ -2541,6 +2542,72 @@ def test_priced_in_answer_uses_stock_scope_for_market_bar_coverage(
     assert "Template generation and import preview are zero-call" in workflow[
         "goal_alignment"
     ]["provider_boundary"]
+
+
+def test_dashboard_snapshot_reuses_priced_in_market_bar_audit(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["seed-dashboard-demo"]) == 0
+    capsys.readouterr()
+    engine = create_engine(database_url, future=True)
+    config = AppConfig.from_env({"CATALYST_DATABASE_URL": database_url})
+    market_bar_calls = 0
+    broker_summary_calls = 0
+    discovery_calls = 0
+    original_market_bars = dashboard_data_module._priced_in_audit_market_bars
+    original_broker_summary = dashboard_data_module.load_broker_summary
+    original_discovery = dashboard_data_module.radar_discovery_snapshot_payload
+
+    def counted_market_bars(*args, **kwargs):
+        nonlocal market_bar_calls
+        market_bar_calls += 1
+        return original_market_bars(*args, **kwargs)
+
+    def counted_broker_summary(*args, **kwargs):
+        nonlocal broker_summary_calls
+        broker_summary_calls += 1
+        return original_broker_summary(*args, **kwargs)
+
+    def counted_discovery(*args, **kwargs):
+        nonlocal discovery_calls
+        discovery_calls += 1
+        return original_discovery(*args, **kwargs)
+
+    monkeypatch.setattr(
+        dashboard_data_module,
+        "_priced_in_audit_market_bars",
+        counted_market_bars,
+    )
+    monkeypatch.setattr(
+        dashboard_data_module,
+        "load_broker_summary",
+        counted_broker_summary,
+    )
+    monkeypatch.setattr(
+        dashboard_data_module,
+        "radar_discovery_snapshot_payload",
+        counted_discovery,
+    )
+
+    payload = dashboard_snapshot_payload(
+        engine=engine,
+        config=config,
+        dotenv_loaded=False,
+        filters=DashboardFilters(priced_in_stocks_only=True, priced_in_limit=1),
+    )
+
+    assert market_bar_calls == 1
+    assert broker_summary_calls == 1
+    assert discovery_calls == 1
+    assert payload["priced_in_answer"]["schema_version"] == "priced-in-answer-v1"
+    assert payload["priced_in_audit"]["market_bars"]["repair"]["schema_version"] == (
+        "priced-in-market-bar-repair-v1"
+    )
 
 
 def test_priced_in_source_execution_blocks_until_stock_bars_complete(

@@ -735,13 +735,20 @@ def priced_in_queue_payload(
     candidate_rows: Sequence[Mapping[str, object]] | None = None,
     total_count: int | None = None,
     include_planning_rows: bool = False,
+    latest_run_summary: Mapping[str, object] | None = None,
+    broker_summary: Mapping[str, object] | None = None,
+    discovery_snapshot: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
-    latest_run = load_radar_run_summary(engine)
+    latest_run = (
+        _shallow_row_dict(latest_run_summary)
+        if isinstance(latest_run_summary, Mapping)
+        else load_radar_run_summary(engine)
+    )
     using_supplied_rows = candidate_rows is not None
     scan_selection_mode = "latest_run"
     scan_selection_reason: str | None = None
     if candidate_rows is not None:
-        queue_candidate_rows = [_row_dict(row) for row in candidate_rows]
+        queue_candidate_rows = [_shallow_row_dict(row) for row in candidate_rows]
         scan_selection_mode = "supplied_rows"
     elif available_at is not None:
         queue_candidate_rows = load_candidate_rows(
@@ -772,16 +779,24 @@ def priced_in_queue_payload(
     else:
         queue_candidate_rows = load_candidate_rows(engine, limit=None, include_artifacts=True)
         scan_selection_mode = "latest_candidate_rows"
-    broker_summary = load_broker_summary(engine)
+    resolved_broker_summary = (
+        _shallow_row_dict(broker_summary)
+        if isinstance(broker_summary, Mapping)
+        else load_broker_summary(engine)
+    )
     queue_candidate_rows = candidate_rows_with_market_context(
         queue_candidate_rows,
-        _market_context_value(broker_summary),
+        _market_context_value(resolved_broker_summary),
     )
-    discovery = radar_discovery_snapshot_payload(
-        engine,
-        config,
-        radar_run_summary=latest_run,
-        candidate_rows=queue_candidate_rows,
+    discovery = (
+        _shallow_row_dict(discovery_snapshot)
+        if isinstance(discovery_snapshot, Mapping)
+        else radar_discovery_snapshot_payload(
+            engine,
+            config,
+            radar_run_summary=latest_run,
+            candidate_rows=queue_candidate_rows,
+        )
     )
     wanted_status = str(status or "").strip().lower()
     wanted_usefulness, usefulness_matches = _priced_in_usefulness_filter(usefulness)
@@ -2754,6 +2769,7 @@ def priced_in_answer_payload(
     stocks_only: bool = False,
     queue: Mapping[str, object] | None = None,
     preflight: Mapping[str, object] | None = None,
+    market_bars: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     resolved_limit = _positive_limit(limit)
     resolved_queue = (
@@ -2797,15 +2813,19 @@ def priced_in_answer_payload(
         stocks_only=stocks_only,
     )
     source_coverage = _mapping_value(resolved_queue, "source_coverage")
-    market_bars = _priced_in_audit_market_bars(
-        engine,
-        config,
-        resolved_queue,
-        resolved_preflight,
+    resolved_market_bars = (
+        _row_dict(market_bars)
+        if isinstance(market_bars, Mapping)
+        else _priced_in_audit_market_bars(
+            engine,
+            config,
+            resolved_queue,
+            resolved_preflight,
+        )
     )
     source_coverage = _priced_in_source_coverage_with_market_bar_scope(
         source_coverage,
-        market_bars,
+        resolved_market_bars,
     )
     market_bar_gap = _priced_in_answer_market_bar_gap(source_coverage)
     market_bar_gap_count = int(_finite_float(market_bar_gap.get("count")))
@@ -2841,7 +2861,7 @@ def priced_in_answer_payload(
     )
     full_scan_summary = _priced_in_answer_full_scan_summary(
         resolved_queue,
-        market_bars=market_bars,
+        market_bars=resolved_market_bars,
     )
     decision_ready = answer_status == "decision_ready"
     trust_blockers = _priced_in_prioritized_trust_blockers(
@@ -2923,8 +2943,9 @@ def priced_in_full_scan_audit_payload(
     preview_offset: int = 0,
     all_rows: bool = False,
     stocks_only: bool = False,
+    market_bars: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
-    if queue is not None or preflight is not None:
+    if queue is not None or preflight is not None or market_bars is not None:
         return _priced_in_full_scan_audit_payload_uncached(
             engine,
             config,
@@ -2936,6 +2957,7 @@ def priced_in_full_scan_audit_payload(
             preview_offset=preview_offset,
             all_rows=all_rows,
             stocks_only=stocks_only,
+            market_bars=market_bars,
         )
 
     resolved_all_rows = bool(all_rows)
@@ -3086,6 +3108,7 @@ def _priced_in_full_scan_audit_payload_uncached(
     preview_offset: int = 0,
     all_rows: bool = False,
     stocks_only: bool = False,
+    market_bars: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     resolved_all_rows = bool(all_rows)
     resolved_preview_limit = 1_000_000 if resolved_all_rows else _positive_limit(preview_limit)
@@ -3169,15 +3192,19 @@ def _priced_in_full_scan_audit_payload_uncached(
     planning_rows = _sequence_value(resolved_queue.get("planning_rows"))
     if not planning_rows:
         planning_rows = _sequence_value(resolved_queue.get("rows"))
-    market_bars = _priced_in_audit_market_bars(
-        engine,
-        config,
-        resolved_queue,
-        resolved_preflight,
+    resolved_market_bars = (
+        _row_dict(market_bars)
+        if isinstance(market_bars, Mapping)
+        else _priced_in_audit_market_bars(
+            engine,
+            config,
+            resolved_queue,
+            resolved_preflight,
+        )
     )
     source_coverage = _priced_in_source_coverage_with_market_bar_scope(
         source_coverage,
-        market_bars,
+        resolved_market_bars,
     )
     priority_counts = _priced_in_source_gap_priority_counts(planning_rows)
     source_rows = []
@@ -3336,7 +3363,7 @@ def _priced_in_full_scan_audit_payload_uncached(
             "decision_ready_rows": decision_ready_count,
             "blocked_rows": blocked_count,
         },
-        "market_bars": market_bars,
+        "market_bars": resolved_market_bars,
         "source_coverage": {
             "summary": source_coverage.get("summary"),
             "weak_sources": list(_sequence_value(source_coverage.get("weak_sources"))),

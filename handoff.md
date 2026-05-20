@@ -1,6 +1,72 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 15:04:00 +08:00
+Last updated: 2026-05-20 15:21:48 +08:00
+
+## Latest Dashboard Snapshot Latency Reuse
+
+Goal alignment:
+
+- The active goal remains: scan the broad market and tell whether any stock's
+  price has not yet matched market emotion/expectations.
+- The dashboard must be useful for human eyes. After the stock gate
+  clarification, the next practical problem was that a stock-only Overview
+  snapshot still took about `31s` in-process and about `34.6s` through
+  `dashboard-tui --once`, which is too slow for an operator control surface.
+- Profiling showed `dashboard_snapshot_payload(...)` loaded latest candidates,
+  broker context, discovery state, queue state, answer state, audit state, and
+  market-bar repair state with repeated work.
+- This slice keeps scope narrow: it does not change scoring, evidence gates,
+  provider execution, or the UI model. It reuses already-computed live DB
+  payloads inside one dashboard snapshot.
+- This slice makes 0 Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or
+  provider calls.
+
+Fix in this slice:
+
+- `priced_in_queue_payload(...)` can now accept already-loaded
+  `latest_run_summary`, `broker_summary`, `discovery_snapshot`, and
+  `candidate_rows`.
+- `dashboard_snapshot_payload(...)` passes the candidate rows, latest run,
+  broker summary, and discovery payload it already computed into
+  `priced_in_queue_payload(...)`, avoiding duplicate live DB derivation.
+- `priced_in_answer_payload(...)` and `priced_in_full_scan_audit_payload(...)`
+  can now accept a precomputed `market_bars` payload.
+- `dashboard_snapshot_payload(...)` computes the market-bar audit once and
+  shares it with both answer and audit payloads.
+- A regression counts the dashboard snapshot calls and verifies that broker
+  summary, discovery, and market-bar audit are each built once for the snapshot.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_snapshot_reuses_priced_in_market_bar_audit tests\integration\test_dashboard_data.py::test_priced_in_answer_payload_reuses_queue_preflight tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_payload_consolidates_current_state -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_dashboard_data.py
+git diff --check
+Measure-Command { .\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page overview --stocks-only > $null } | Select-Object -ExpandProperty TotalSeconds
+```
+
+Results:
+
+- Focused pytest passed: `3 passed`.
+- Ruff passed.
+- `git diff --check` passed.
+- Live stock-only dashboard snapshot with `.env.local` loaded improved from
+  about `31s` to about `17.7s`.
+- Live `dashboard-tui --once --page overview --stocks-only` improved from
+  about `34.6s` to about `19.5s`.
+- The output still reports `external_calls=0`.
+
+Next useful product action:
+
+- The dashboard is still not instant. The next hot path is broad priced-in
+  queue row/source-action assembly across about 5.5k stock-like rows or 12k
+  all-instrument rows.
+- Do not optimize further unless it blocks interactive dashboard use; the data
+  coverage blocker remains more important.
+- The product blocker is still scan-date market-bar coverage: `131` stock-like
+  rows and `523` all-instrument active rows are missing scan-date bars.
+- Do not run provider/source-fill execution commands without explicit operator
+  approval.
 
 ## Latest Stock Objective Gate Clarification
 
