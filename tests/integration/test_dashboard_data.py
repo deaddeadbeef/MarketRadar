@@ -8423,6 +8423,8 @@ def test_radar_discovery_snapshot_labels_fixture_thin_run(
     )
     assert "SEC-only results for research only" in str(fixture_market["next_action"])
     assert "catalyst-radar market-bars template" in str(fixture_market["next_action"])
+    assert "--complete-rows-only" in str(fixture_market["next_action"])
+    assert "fresh-bars.csv" not in str(fixture_market["next_action"])
     assert snapshot["freshness"]["latest_bars_older_than_as_of"] is False
     assert snapshot["top_discoveries"][0]["ticker"] == "MSFT"
     assert snapshot["top_discoveries"][0]["packet"] == "packet-msft-latest"
@@ -8702,6 +8704,8 @@ def test_radar_discovery_snapshot_flags_stale_bars_and_empty_packets(
     assert "Missing: AAPL, MSFT" in str(stale_bars["finding"])
     assert "catalyst-radar market-bars template" in str(stale_bars["next_action"])
     assert "--expected-as-of 2026-05-10" in str(stale_bars["next_action"])
+    assert "--complete-rows-only" in str(stale_bars["next_action"])
+    assert "fresh-bars.csv" not in str(stale_bars["next_action"])
 
 
 def test_radar_discovery_snapshot_flags_incomplete_latest_bar_coverage(
@@ -8790,6 +8794,8 @@ def test_radar_discovery_snapshot_flags_incomplete_latest_bar_coverage(
     assert "Missing: AAPL, MSFT" in str(coverage["finding"])
     assert "catalyst-radar market-bars template" in str(coverage["next_action"])
     assert "--expected-as-of 2026-05-10" in str(coverage["next_action"])
+    assert "--complete-rows-only" in str(coverage["next_action"])
+    assert "fresh-bars.csv" not in str(coverage["next_action"])
 
 
 def test_radar_discovery_snapshot_exposes_stale_candidate_context(

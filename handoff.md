@@ -1,8 +1,45 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 00:16:31 +08:00
+Last updated: 2026-05-21 00:26:08 +08:00
 
 
+
+
+## Latest Readiness Strict-Step Alignment
+
+Goal alignment / drift check:
+
+- The active goal remains: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- The current first useful blocker is still `market_bars`; no provider calls were made.
+- After quick status was aligned, the API readiness `next_action` still opened with the older template-generation path and a generic fresh-bars CSV import placeholder.
+- That string feeds the dashboard header and operator surfaces, so it needs to point at the concrete fill/import workflow instead of another generic template hint.
+
+Fix in this slice:
+
+- `_csv_market_refresh_command(...)` now supports `complete_rows_only=True`.
+- `_csv_market_refresh_next_action(...)` and `_csv_market_refresh_discovery_action(...)` now say to fill the concrete DB-backed local template path, generate that template only if it is missing, then preview complete rows from that same path.
+- The generated guidance no longer uses the fresh-bars CSV placeholder for these API-facing readiness/discovery blockers.
+- This is zero-call output alignment only. It does not import bars, call providers, call the broker, call OpenAI, or reduce the scan universe.
+
+Validation:
+
+```powershell
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_radar_discovery_snapshot_labels_fixture_thin_run tests\integration\test_dashboard_data.py::test_radar_discovery_snapshot_flags_stale_bars_and_empty_packets tests\integration\test_dashboard_data.py::test_radar_discovery_snapshot_flags_incomplete_latest_bar_coverage -q
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py tests\integration\test_dashboard_data.py
+git diff --check
+```
+
+Expected live smoke after this slice:
+
+- `/api/radar/readiness` should still report `status=research_only` and `safe_to_make_investment_decision=false`.
+- `next_action` should name `data\local\manual-bars-2026-05-15.csv` and `--complete-rows-only`.
+- `next_action` should not contain `fresh-bars.csv`.
+
+Next useful product action:
+
+- Do not treat this as goal completion.
+- The live stock-only bar blocker remains: the manual stock-bar CSV exists but has 131 empty rows.
+- The next real data action is still either manual fill/import or explicit approval for the one Polygon/Massive saved-response capture.
 
 
 ## Latest Quick Status Strict-Step Alignment

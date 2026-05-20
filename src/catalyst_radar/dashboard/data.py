@@ -17294,6 +17294,7 @@ def _csv_market_refresh_command(
     daily_bars_path: str | Path | None = None,
     execute: bool = True,
     stocks_only: bool = False,
+    complete_rows_only: bool = False,
 ) -> str:
     expected_value = (
         as_of_date.isoformat()
@@ -17303,9 +17304,11 @@ def _csv_market_refresh_command(
     daily_bars_value = str(daily_bars_path) if daily_bars_path else "<fresh-bars.csv>"
     execute_flag = " --execute" if execute else ""
     stocks_flag = " --stocks-only" if stocks_only else ""
+    complete_rows_flag = " --complete-rows-only" if complete_rows_only else ""
     return (
         f"catalyst-radar market-bars import --daily-bars {daily_bars_value}"
-        f" --expected-as-of {expected_value}{stocks_flag}{execute_flag}"
+        f" --expected-as-of {expected_value}{stocks_flag}"
+        f"{complete_rows_flag}{execute_flag}"
     )
 
 
@@ -17345,22 +17348,38 @@ def _csv_market_template_path(
 
 
 def _csv_market_refresh_next_action(as_of_date: date | None) -> str:
+    template_path = _csv_market_template_path(as_of_date)
     template_command = _csv_market_template_command(as_of_date, missing_only=True)
+    import_preview_command = _csv_market_refresh_command(
+        as_of_date,
+        daily_bars_path=template_path,
+        execute=False,
+        complete_rows_only=True,
+    )
     return (
-        "Use SEC-only results for research only; generate a DB-backed missing-bar "
-        f"template with `{template_command}`, then "
-        f"import filled bars with `{_csv_market_refresh_command(as_of_date)}` or "
-        "configure a live market provider before acting."
+        "Use SEC-only results for research only; fill "
+        f"`{template_path}`. If it is missing, generate it with "
+        f"`{template_command}`. Then preview complete rows with "
+        f"`{import_preview_command}` or configure a live market provider before "
+        "acting."
     )
 
 
 def _csv_market_refresh_discovery_action(as_of_date: date | None) -> str:
+    template_path = _csv_market_template_path(as_of_date)
     template_command = _csv_market_template_command(as_of_date, missing_only=True)
+    import_preview_command = _csv_market_refresh_command(
+        as_of_date,
+        daily_bars_path=template_path,
+        execute=False,
+        complete_rows_only=True,
+    )
     return (
-        "Use SEC-only results for research only; generate a DB-backed missing-bar "
-        f"template with `{template_command}`, then "
-        f"import filled bars with `{_csv_market_refresh_command(as_of_date)}` or "
-        "configure a live market provider before relying on broad discovery."
+        "Use SEC-only results for research only; fill "
+        f"`{template_path}`. If it is missing, generate it with "
+        f"`{template_command}`. Then preview complete rows with "
+        f"`{import_preview_command}` or configure a live market provider before "
+        "relying on broad discovery."
     )
 
 
