@@ -296,6 +296,11 @@ class ManualBarsRepairPlanResult:
         provider_saved_file_path = _polygon_grouped_daily_fixture_path(
             self.expected_as_of,
         )
+        provider_saved_file_capture_command = (
+            "catalyst-radar ingest-polygon grouped-daily "
+            f"--date {self.expected_as_of.isoformat()} "
+            f"--save-response {provider_saved_file_path} --confirm-external-call"
+        )
         provider_saved_file_import_command = (
             "catalyst-radar ingest-polygon grouped-daily "
             f"--date {self.expected_as_of.isoformat()} "
@@ -454,6 +459,12 @@ class ManualBarsRepairPlanResult:
             "provider_saved_file_path": (
                 str(provider_saved_file_path) if missing > 0 else None
             ),
+            "provider_saved_file_capture_command": (
+                provider_saved_file_capture_command if missing > 0 else None
+            ),
+            "provider_saved_file_capture_external_call_count": 1
+            if missing > 0
+            else 0,
             "provider_saved_file_import_command": (
                 provider_saved_file_import_command if missing > 0 else None
             ),
@@ -472,9 +483,10 @@ class ManualBarsRepairPlanResult:
             ),
             "provider_saved_file_external_call_count": 0,
             "provider_saved_file_boundary": (
-                "Validate the saved Polygon/Massive grouped-daily JSON response "
-                "before import. Validation and import read from disk and make 0 "
-                "provider calls; obtain the file separately under your provider terms."
+                "Capture or obtain the saved Polygon/Massive grouped-daily JSON "
+                "response before import. Capture makes one provider call only with "
+                "explicit approval. Validation and import read from disk and make 0 "
+                "provider calls."
             ),
             "external_calls_made": 0,
             "approval_boundary": (

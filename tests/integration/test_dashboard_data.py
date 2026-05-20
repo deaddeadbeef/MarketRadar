@@ -1810,6 +1810,15 @@ def test_priced_in_full_scan_audit_payload_consolidates_current_state(
         assert market_bar_provider_plan[
             "provider_saved_file_import_command"
         ].startswith("catalyst-radar ingest-polygon grouped-daily")
+        assert market_bar_provider_plan[
+            "provider_saved_file_capture_command"
+        ].startswith("catalyst-radar ingest-polygon grouped-daily")
+        assert "--save-response" in market_bar_provider_plan[
+            "provider_saved_file_capture_command"
+        ]
+        assert market_bar_provider_plan[
+            "provider_saved_file_capture_external_call_count"
+        ] == 1
         assert "--fixture data\\local\\polygon-grouped-daily-" in (
             market_bar_provider_plan["provider_saved_file_import_command"]
         )
@@ -2062,6 +2071,13 @@ def test_priced_in_full_scan_audit_warns_for_stale_eod_provider_health(
         "--date 2026-05-10 "
         "--fixture data\\local\\polygon-grouped-daily-2026-05-10.json"
     )
+    assert provider_plan["provider_saved_file_capture_command"] == (
+        "catalyst-radar ingest-polygon grouped-daily "
+        "--date 2026-05-10 "
+        "--save-response data\\local\\polygon-grouped-daily-2026-05-10.json "
+        "--confirm-external-call"
+    )
+    assert provider_plan["provider_saved_file_capture_external_call_count"] == 1
     assert provider_plan["provider_saved_file_validate_command"] == (
         "catalyst-radar ingest-polygon grouped-daily "
         "--date 2026-05-10 "

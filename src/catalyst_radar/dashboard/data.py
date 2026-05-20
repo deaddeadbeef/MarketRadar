@@ -4320,6 +4320,13 @@ def _priced_in_market_bar_provider_fill_plan(
         if target_value and saved_file_path is not None
         else None
     )
+    saved_file_capture_command = (
+        "catalyst-radar ingest-polygon grouped-daily "
+        f"--date {target_value} --save-response {saved_file_path} "
+        "--confirm-external-call"
+        if target_value and saved_file_path is not None
+        else None
+    )
     saved_file_validate_command = (
         f"{saved_file_import_command} --validate-only"
         if saved_file_import_command
@@ -4401,6 +4408,10 @@ def _priced_in_market_bar_provider_fill_plan(
         "provider_call_command": provider_command,
         "provider_call_api": None,
         "provider_saved_file_path": str(saved_file_path) if saved_file_path else None,
+        "provider_saved_file_capture_command": saved_file_capture_command,
+        "provider_saved_file_capture_external_call_count": 1
+        if saved_file_capture_command and missing > 0
+        else 0,
         "provider_saved_file_import_command": saved_file_import_command,
         "provider_saved_file_validate_command": saved_file_validate_command,
         "provider_saved_file_validate_api": (
@@ -4415,9 +4426,9 @@ def _priced_in_market_bar_provider_fill_plan(
         ),
         "provider_saved_file_external_call_count": 0,
         "provider_saved_file_boundary": (
-            "Validate the saved Polygon/Massive grouped-daily JSON response before "
-            "import. Validation and import read from disk and make 0 provider calls; "
-            "obtain the file separately under your provider terms."
+            "Capture or obtain the saved Polygon/Massive grouped-daily JSON response "
+            "before import. Capture makes one provider call only with explicit "
+            "approval. Validation and import read from disk and make 0 provider calls."
         ),
         "manual_template_command": _csv_market_template_command(
             target_as_of,
