@@ -1,6 +1,51 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 20:18:57 +08:00
+Last updated: 2026-05-20 20:42:10 +08:00
+
+## Latest Run Page Saved-File Repair Path
+
+Goal alignment / drift check:
+
+- The active goal remains: MarketRadar should scan the broad stock market and
+  identify stocks where market emotion/expectations have not yet been matched
+  by price.
+- The current live blocker is still `market_bars`; no new provider calls were
+  made.
+- After the CLI/API preflight started exposing concrete saved-response repair
+  commands, the TUI Run page still emphasized the direct provider fill command
+  and did not show the saved-file capture/check/import path in the evidence
+  plan.
+- The Run page is where a human reviews external-call plans, so hiding the
+  safer saved-response path made the dashboard less useful for clearing the
+  current blocker.
+
+Fix in this slice:
+
+- The TUI Run page now reuses the existing market-bar saved-file summaries and
+  appends them to the priced-in evidence plan when available:
+  - `Saved file capture`;
+  - `Saved file check`;
+  - `Saved file import`.
+- These lines preserve the explicit approval boundary: capture is the only
+  provider-call step; check/import are saved-file operations and remain
+  zero-call.
+- No data requirements were weakened and no rows were excluded.
+
+Validation:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_run_page_shows_priced_in_evidence_plan tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_market_bar_missing_type_summary_is_human_readable -q
+```
+
+Next useful product action:
+
+- Do not treat this as goal completion. This only makes the human dashboard
+  show the same market-bar repair path as CLI/API.
+- The live blocker remains `market_bars`: 131 stock-like rows still need
+  scan-date bars before the stocks-only priced-in answer can be trusted.
+- Clearing that blocker still requires either explicit approval for the single
+  Polygon/Massive saved-response capture or manual fill/import of
+  `data\local\manual-stock-bars-2026-05-15.csv`.
 
 ## Latest Concrete Priced-In Preflight Repair Commands
 

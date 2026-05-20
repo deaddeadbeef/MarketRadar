@@ -4864,6 +4864,15 @@ def _run_lines(payload: Mapping[str, object], width: int) -> list[str]:
         provider_hint = _run_audit_provider_fill_hint(blocker)
         if provider_hint:
             evidence_items.append(("Provider fill option", provider_hint))
+        saved_capture_hint = _market_bar_provider_saved_file_capture_summary(payload)
+        if saved_capture_hint:
+            evidence_items.append(("Saved file capture", saved_capture_hint))
+        saved_validate_hint = _market_bar_provider_saved_file_validate_summary(payload)
+        if saved_validate_hint:
+            evidence_items.append(("Saved file check", saved_validate_hint))
+        saved_import_hint = _market_bar_provider_saved_file_summary(payload)
+        if saved_import_hint:
+            evidence_items.append(("Saved file import", saved_import_hint))
         lines.extend(_kv_lines(evidence_items, width=width))
         lines.append("")
         lines.extend(
