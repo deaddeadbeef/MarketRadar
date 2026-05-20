@@ -5340,6 +5340,19 @@ def _print_priced_in_answer(payload: Mapping[str, object]) -> None:
                 f"count={recommended.get('count')} "
                 f"command={_compact_cli_text(recommended.get('command'))}"
             )
+    evidence = payload.get("evidence_completeness")
+    if isinstance(evidence, Mapping):
+        print(
+            "evidence_completeness="
+            f"all_sources_ready={str(bool(evidence.get('all_sources_ready'))).lower()} "
+            f"core_sources_ready={str(bool(evidence.get('core_sources_ready'))).lower()} "
+            f"ready={evidence.get('ready_source_count')}/"
+            f"{evidence.get('total_source_count')} "
+            f"core={evidence.get('required_ready_source_count')}/"
+            f"{evidence.get('required_source_count')} "
+            f"first_gap={evidence.get('first_gap_source') or 'n/a'} "
+            f"summary={_compact_cli_text(evidence.get('summary'))}"
+        )
     print(f"next_action={payload.get('next_action')}")
     if payload.get("next_command"):
         print(f"next_command={_compact_cli_text(payload.get('next_command'))}")

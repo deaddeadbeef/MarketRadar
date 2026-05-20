@@ -3832,6 +3832,12 @@ def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
             "Full scan coverage: "
             f"{_clip(full_scan_summary.replace('Full-scan coverage: ', ''), max(20, width - 22))}"
         )
+    evidence_summary = _answer_evidence_completeness_summary(payload)
+    if evidence_summary:
+        lines.append(
+            "Evidence layers: "
+            f"{_clip(evidence_summary.replace('Evidence layers: ', ''), max(20, width - 20))}"
+        )
     if stock_bar_summary:
         lines.append(
             "Stock bar next: "
@@ -4351,6 +4357,28 @@ def _answer_full_scan_scope_summary(payload: Mapping[str, object]) -> str:
         f"Full-scan coverage: {scanned}/{active} active {scope_label} row(s) scanned; "
         f"{unscanned} unscanned{blocker}."
     )
+
+
+def _answer_evidence_completeness_summary(payload: Mapping[str, object]) -> str:
+    answer = _mapping(payload.get("priced_in_answer"))
+    evidence = _mapping(answer.get("evidence_completeness"))
+    if not evidence:
+        return ""
+    summary = str(evidence.get("summary") or "").strip()
+    if summary:
+        return f"Evidence layers: {summary}"
+    ready = int(_number_or_zero(evidence.get("ready_source_count")))
+    total = int(_number_or_zero(evidence.get("total_source_count")))
+    if total <= 0:
+        return ""
+    first_gap = str(evidence.get("first_gap_source") or "").strip()
+    first_gap_count = int(_number_or_zero(evidence.get("first_gap_count")))
+    suffix = (
+        f"; first gap {first_gap}:{first_gap_count}"
+        if first_gap and first_gap_count
+        else ""
+    )
+    return f"Evidence layers: {ready}/{total} complete{suffix}."
 
 
 def _overview_title(payload: Mapping[str, object]) -> str:
@@ -5683,6 +5711,9 @@ def _source_workflow_lines(payload: Mapping[str, object], width: int) -> list[st
         ]
         if full_scan_summary:
             goal_items.append(("Full scan", full_scan_summary))
+        evidence_summary = _answer_evidence_completeness_summary(payload)
+        if evidence_summary:
+            goal_items.append(("Evidence", evidence_summary))
         goal_items.extend(
             [
                 ("Now", goal.get("current_state")),

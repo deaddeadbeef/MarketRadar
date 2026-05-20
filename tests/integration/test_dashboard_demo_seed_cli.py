@@ -29,6 +29,7 @@ from catalyst_radar.dashboard.demo_seed import DEMO_AVAILABLE_AT
 from catalyst_radar.dashboard.tui import (
     DashboardFilters,
     MarketRadarDashboardApp,
+    _answer_evidence_completeness_summary,
     _answer_full_scan_scope_summary,
     _apply_command,
     _market_bar_manual_fill_progress_summary,
@@ -2267,6 +2268,7 @@ def test_priced_in_answer_cli_outputs_current_scan_answer(
     assert "investment_decision_ready=false" in output.out
     assert "investment_boundary=Priced-in answer readiness is not trade approval" in output.out
     assert "decision_readiness=status=" in output.out
+    assert "evidence_completeness=all_sources_ready=" in output.out
     assert "full_scan=mode=full_scan" in output.out
     assert "unscanned=" in output.out
     assert "basis=" in output.out
@@ -2297,6 +2299,11 @@ def test_priced_in_answer_cli_outputs_current_scan_answer(
     assert payload["decision_readiness"]["schema_version"] == (
         "priced-in-decision-readiness-v1"
     )
+    assert payload["evidence_completeness"]["schema_version"] == (
+        "priced-in-evidence-completeness-v1"
+    )
+    assert payload["evidence_completeness"]["all_sources_ready"] is False
+    assert payload["evidence_completeness"]["total_source_count"] >= 1
     assert payload["full_scan"]["schema_version"] == (
         "priced-in-full-scan-summary-v1"
     )
@@ -2323,6 +2330,28 @@ def test_dashboard_summary_surfaces_unscanned_full_scan_rows() -> None:
     assert _answer_full_scan_scope_summary(payload) == (
         "Full-scan coverage: 12087/12613 active all-instrument row(s) scanned; "
         "526 unscanned; 523 missing scan-date market bar(s)."
+    )
+
+
+def test_dashboard_summary_surfaces_answer_evidence_completeness() -> None:
+    payload = {
+        "priced_in_answer": {
+            "evidence_completeness": {
+                "ready_source_count": 1,
+                "total_source_count": 6,
+                "first_gap_source": "market_bars",
+                "first_gap_count": 523,
+                "summary": (
+                    "1/6 priced-in evidence layer(s) complete; core 0/3; "
+                    "first gaps market_bars:523, catalyst_events:5512."
+                ),
+            }
+        }
+    }
+
+    assert _answer_evidence_completeness_summary(payload) == (
+        "Evidence layers: 1/6 priced-in evidence layer(s) complete; core 0/3; "
+        "first gaps market_bars:523, catalyst_events:5512."
     )
 
 
