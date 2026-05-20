@@ -4016,6 +4016,24 @@ def _print_manual_market_bars_repair_plan(payload: Mapping[str, object]) -> None
                 f"external_calls={payload.get('provider_saved_file_capture_external_call_count')} "
                 f"command={_compact_cli_text(saved_file_capture_command)}"
             )
+        approval_packet = payload.get("provider_saved_file_capture_approval_packet")
+        if isinstance(approval_packet, Mapping):
+            print(
+                "provider_saved_file_capture_approval="
+                f"status={approval_packet.get('status')} "
+                f"approval_required={str(bool(approval_packet.get('approval_required'))).lower()} "
+                f"missing={approval_packet.get('missing_as_of_bar_count')} "
+                "external_calls_if_approved="
+                f"{approval_packet.get('external_calls_if_approved')} "
+                f"db_writes_during_capture={approval_packet.get('db_writes_during_capture')} "
+                f"tui_confirm={approval_packet.get('tui_confirm_command') or 'n/a'}"
+            )
+            question = str(approval_packet.get("question") or "").strip()
+            if question:
+                print(
+                    "provider_saved_file_capture_question="
+                    f"{_compact_cli_text(question)}"
+                )
         saved_file_validate_command = payload.get("provider_saved_file_validate_command")
         if saved_file_validate_command:
             print(

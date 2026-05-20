@@ -644,6 +644,35 @@ def test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths(
         "confirm_external_call": True,
     }
     assert payload["provider_saved_file_capture_external_call_count"] == 1
+    approval_packet = payload["provider_saved_file_capture_approval_packet"]
+    assert approval_packet["schema_version"] == (
+        "market-bars-saved-capture-approval-packet-v1"
+    )
+    assert approval_packet["status"] == "approval_required"
+    assert approval_packet["approval_required"] is True
+    assert approval_packet["coverage_scope"] == "stock_like"
+    assert approval_packet["expected_as_of"] == "2026-05-15"
+    assert approval_packet["active_security_count"] == 2
+    assert approval_packet["existing_as_of_bar_count"] == 1
+    assert approval_packet["missing_as_of_bar_count"] == 1
+    assert approval_packet["external_calls_without_approval"] == 0
+    assert approval_packet["external_calls_if_approved"] == 1
+    assert approval_packet["db_writes_during_capture"] == 0
+    assert approval_packet["tui_plan_command"] == "bars saved capture"
+    assert approval_packet["tui_confirm_command"] == "bars saved capture confirm"
+    assert approval_packet["capture_request_body"] == (
+        payload["provider_saved_file_capture_request_body"]
+    )
+    assert approval_packet["capture_confirm_request_body"] == (
+        payload["provider_saved_file_capture_confirm_request_body"]
+    )
+    assert [step["step"] for step in approval_packet["post_capture_zero_call_steps"]] == [
+        "validate_saved_file",
+        "preview_import",
+        "execute_import_after_preview",
+    ]
+    assert approval_packet["post_capture_zero_call_steps"][0]["external_calls_made"] == 0
+    assert "0 provider calls" in " ".join(approval_packet["guardrails"])
     assert payload["provider_saved_file_import_command"] == (
         "catalyst-radar ingest-polygon grouped-daily "
         "--date 2026-05-15 "
@@ -721,6 +750,14 @@ def test_market_bars_repair_plan_prefers_available_saved_provider_file(
 
     assert payload["provider_saved_file_exists"] is True
     assert payload["provider_saved_file_status"] == "available"
+    approval_packet = payload["provider_saved_file_capture_approval_packet"]
+    assert approval_packet["status"] == "saved_file_available"
+    assert approval_packet["approval_required"] is False
+    assert approval_packet["external_calls_if_approved"] == 0
+    assert approval_packet["tui_confirm_command"] is None
+    assert approval_packet["post_capture_zero_call_steps"][0]["tui_command"] == (
+        "bars saved validate"
+    )
     assert payload["operator_step"] == {
         "status": "saved_file_available",
         "kind": "validate_saved_provider_response",
@@ -781,6 +818,10 @@ def test_market_bars_repair_plan_blocks_provider_fill_when_health_is_down(
         "checked_at": "2026-05-15T21:00:00+00:00",
     }
     assert "fix the Polygon/Massive provider health" in payload["next_action"]
+    approval_packet = payload["provider_saved_file_capture_approval_packet"]
+    assert approval_packet["status"] == "blocked_by_provider_health"
+    assert approval_packet["approval_required"] is False
+    assert approval_packet["external_calls_if_approved"] == 0
     assert payload["external_calls_made"] == 0
 
     assert (

@@ -1163,6 +1163,22 @@ def test_dashboard_manual_bar_fill_progress_summary_is_human_readable() -> None:
                             ),
                             "confirm_external_call": True,
                         },
+                        "provider_saved_file_capture_approval_packet": {
+                            "schema_version": (
+                                "market-bars-saved-capture-approval-packet-v1"
+                            ),
+                            "status": "approval_required",
+                            "approval_required": True,
+                            "question": (
+                                "Approve one Polygon/Massive grouped-daily call "
+                                "for 2026-05-15?"
+                            ),
+                            "expected_as_of": "2026-05-15",
+                            "missing_as_of_bar_count": 523,
+                            "external_calls_if_approved": 1,
+                            "db_writes_during_capture": 0,
+                            "tui_confirm_command": "bars saved capture confirm",
+                        },
                         "provider_saved_file_validate_request_body": {
                             "expected_as_of": "2026-05-15",
                             "fixture_path": (
@@ -1242,13 +1258,14 @@ def test_dashboard_manual_bar_fill_progress_summary_is_human_readable() -> None:
     assert "Regenerate the blank local CSV so it includes name" in ops
     assert "Provider fill: ready_for_approval_with_health_warning" in overview
     assert "Provider fill: ready_for_approval_with_health_warning" in ops
-    assert "Saved file capture: 1 external call(s)" in overview
-    assert "safe confirm_external_call=false" in overview
-    assert "confirm confirm_external_call=true" in ops
+    assert "Saved file capture: approval_required" in overview
+    assert "bars targeted; 1 external call(s) if approved" in overview
+    assert "type `bars saved capture confirm`" in ops
     assert "Manual CSV action" in run
     assert "bars manual import" in run
     assert "Saved file capture" in run
-    assert "--save-response" in run
+    assert "approval_required" in run
+    assert "bars saved capture confirm" in run
     assert "Saved file import: missing saved file" in overview
     assert "preview execute=false" in overview
     assert "import execute=true" in ops
@@ -1282,6 +1299,22 @@ def _saved_file_command_payload(fixture_path, output_path):
                             "expected_as_of": "2026-05-08",
                             "output_path": output,
                             "confirm_external_call": True,
+                        },
+                        "provider_saved_file_capture_approval_packet": {
+                            "schema_version": (
+                                "market-bars-saved-capture-approval-packet-v1"
+                            ),
+                            "status": "approval_required",
+                            "approval_required": True,
+                            "question": (
+                                "Approve one Polygon/Massive grouped-daily call "
+                                "for 2026-05-08?"
+                            ),
+                            "expected_as_of": "2026-05-08",
+                            "missing_as_of_bar_count": 3,
+                            "external_calls_if_approved": 1,
+                            "db_writes_during_capture": 0,
+                            "tui_confirm_command": "bars saved capture confirm",
                         },
                         "provider_saved_file_validate_request_body": {
                             "expected_as_of": "2026-05-08",
@@ -1372,7 +1405,9 @@ def test_dashboard_bars_saved_capture_requires_confirm_without_call(tmp_path: Pa
 
     assert update.page == "run"
     assert "approval-gated" in update.message
+    assert "status=approval_required" in update.message
     assert "external_calls_made=0" in update.message
+    assert "db_writes_made=0" in update.message
     assert "target=2026-05-08" in update.message
     assert "current_missing=3" in update.message
     assert "confirm_external_call=false" in update.message

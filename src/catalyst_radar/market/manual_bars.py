@@ -3,7 +3,7 @@ from __future__ import annotations
 import csv
 import math
 from collections import Counter
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -399,6 +399,7 @@ class ManualBarsRepairPlanResult:
         provider_health_warning = (
             str(provider_health_gate.get("warning") or "").strip() or None
         )
+        coverage_scope = "stock_like" if self.stocks_only else "active_universe"
         if missing <= 0:
             status = "ready"
             provider_fill_status = "not_needed"
@@ -459,12 +460,47 @@ class ManualBarsRepairPlanResult:
             provider_saved_file_validate_command=provider_saved_file_validate_command,
             provider_saved_file_import_command=provider_saved_file_import_command,
         )
+        saved_file_capture_approval_packet = (
+            provider_saved_file_capture_approval_packet(
+                expected_as_of=self.expected_as_of,
+                coverage_scope=coverage_scope,
+                active_security_count=self.active_security_count,
+                existing_as_of_bar_count=self.existing_as_of_bar_count,
+                missing_as_of_bar_count=missing,
+                provider_key_configured=self.provider_key_configured,
+                provider_fill_status=provider_fill_status,
+                provider_health_blocks_fill=provider_health_blocks_fill,
+                provider_health_warning=provider_health_warning,
+                provider_saved_file_path=provider_saved_file_path,
+                provider_saved_file_status=provider_saved_file_status,
+                provider_saved_file_capture_command=provider_saved_file_capture_command,
+                provider_saved_file_capture_request_body=(
+                    provider_saved_file_capture_request_body if missing > 0 else None
+                ),
+                provider_saved_file_capture_confirm_request_body=(
+                    provider_saved_file_capture_confirm_request_body
+                    if missing > 0
+                    else None
+                ),
+                provider_saved_file_validate_command=provider_saved_file_validate_command,
+                provider_saved_file_validate_request_body=(
+                    provider_saved_file_validate_request_body if missing > 0 else None
+                ),
+                provider_saved_file_import_command=provider_saved_file_import_command,
+                provider_saved_file_import_preview_request_body=(
+                    provider_saved_file_import_preview_request_body if missing > 0 else None
+                ),
+                provider_saved_file_import_request_body=(
+                    provider_saved_file_import_request_body if missing > 0 else None
+                ),
+            )
+        )
         return {
             "schema_version": "manual-market-bars-repair-plan-v1",
             "status": status,
             "expected_as_of": self.expected_as_of.isoformat(),
             "stocks_only": self.stocks_only,
-            "coverage_scope": "stock_like" if self.stocks_only else "active_universe",
+            "coverage_scope": coverage_scope,
             "active_security_count": self.active_security_count,
             "existing_as_of_bar_count": self.existing_as_of_bar_count,
             "missing_as_of_bar_count": missing,
@@ -567,6 +603,9 @@ class ManualBarsRepairPlanResult:
             "provider_saved_file_capture_external_call_count": 1
             if missing > 0
             else 0,
+            "provider_saved_file_capture_approval_packet": (
+                saved_file_capture_approval_packet
+            ),
             "provider_saved_file_import_command": (
                 provider_saved_file_import_command if missing > 0 else None
             ),
@@ -612,6 +651,138 @@ class ManualBarsRepairPlanResult:
             "generated_at": self.generated_at.isoformat(),
             "next_action": next_action,
         }
+
+
+def provider_saved_file_capture_approval_packet(
+    *,
+    expected_as_of: date,
+    coverage_scope: str,
+    active_security_count: int | None,
+    existing_as_of_bar_count: int | None,
+    missing_as_of_bar_count: int,
+    provider_key_configured: bool,
+    provider_fill_status: str,
+    provider_health_blocks_fill: bool,
+    provider_health_warning: str | None,
+    provider_saved_file_path: Path,
+    provider_saved_file_status: str,
+    provider_saved_file_capture_command: str,
+    provider_saved_file_capture_request_body: Mapping[str, object] | None,
+    provider_saved_file_capture_confirm_request_body: Mapping[str, object] | None,
+    provider_saved_file_validate_command: str,
+    provider_saved_file_validate_request_body: Mapping[str, object] | None,
+    provider_saved_file_import_command: str,
+    provider_saved_file_import_preview_request_body: Mapping[str, object] | None,
+    provider_saved_file_import_request_body: Mapping[str, object] | None,
+) -> dict[str, object]:
+    approval_required = False
+    if missing_as_of_bar_count <= 0:
+        status = "not_needed"
+        next_action = "No capture is needed; the scan date already has full bar coverage."
+    elif provider_saved_file_status == "available":
+        status = "saved_file_available"
+        next_action = (
+            "Validate the saved grouped-daily file, then preview/import it with "
+            "0 provider calls."
+        )
+    elif not provider_key_configured:
+        status = "blocked_missing_api_key"
+        next_action = (
+            "Configure a Polygon/Massive API key or provide a saved grouped-daily "
+            "JSON file before capture."
+        )
+    elif provider_health_blocks_fill:
+        status = "blocked_by_provider_health"
+        next_action = (
+            "Review provider health before approving capture, or use the manual "
+            "CSV/saved-file import path."
+        )
+    else:
+        status = "approval_required"
+        approval_required = True
+        next_action = (
+            "Approve exactly one saved grouped-daily provider capture only if this "
+            "target date and missing-bar count match your intent."
+        )
+
+    return {
+        "schema_version": "market-bars-saved-capture-approval-packet-v1",
+        "status": status,
+        "approval_required": approval_required,
+        "question": (
+            "Approve one Polygon/Massive grouped-daily call for "
+            f"{expected_as_of.isoformat()}?"
+        ),
+        "purpose": (
+            "Capture the provider response to disk so validation and import can "
+            "run from a saved file with 0 further provider calls."
+        ),
+        "coverage_scope": coverage_scope,
+        "expected_as_of": expected_as_of.isoformat(),
+        "active_security_count": active_security_count,
+        "existing_as_of_bar_count": existing_as_of_bar_count,
+        "missing_as_of_bar_count": max(0, missing_as_of_bar_count),
+        "provider": "polygon",
+        "provider_label": "Polygon/Massive grouped daily",
+        "provider_key_configured": provider_key_configured,
+        "provider_fill_status": provider_fill_status,
+        "provider_health_warning": provider_health_warning,
+        "saved_file_status": provider_saved_file_status,
+        "saved_file_path": str(provider_saved_file_path),
+        "external_calls_without_approval": 0,
+        "external_calls_if_approved": 1 if approval_required else 0,
+        "db_writes_during_capture": 0,
+        "tui_plan_command": "bars saved capture",
+        "tui_confirm_command": "bars saved capture confirm"
+        if approval_required
+        else None,
+        "capture_cli_command": provider_saved_file_capture_command
+        if approval_required
+        else None,
+        "capture_api": "POST /api/radar/market-bars/provider-fixture-capture"
+        if provider_saved_file_capture_request_body is not None
+        else None,
+        "capture_request_body": provider_saved_file_capture_request_body,
+        "capture_confirm_request_body": provider_saved_file_capture_confirm_request_body,
+        "post_capture_zero_call_steps": [
+            {
+                "step": "validate_saved_file",
+                "tui_command": "bars saved validate",
+                "cli_command": provider_saved_file_validate_command,
+                "api": "POST /api/radar/market-bars/provider-fixture-preview",
+                "request_body": provider_saved_file_validate_request_body,
+                "external_calls_made": 0,
+                "db_writes_made": 0,
+            },
+            {
+                "step": "preview_import",
+                "tui_command": "bars saved import",
+                "api": "POST /api/radar/market-bars/provider-fixture-import",
+                "request_body": provider_saved_file_import_preview_request_body,
+                "external_calls_made": 0,
+                "db_writes_made": 0,
+            },
+            {
+                "step": "execute_import_after_preview",
+                "tui_command": "bars saved import execute",
+                "cli_command": provider_saved_file_import_command,
+                "api": "POST /api/radar/market-bars/provider-fixture-import",
+                "request_body": provider_saved_file_import_request_body,
+                "external_calls_made": 0,
+                "db_writes_boundary": "writes local daily bars only after preview review",
+            },
+        ]
+        if missing_as_of_bar_count > 0
+        else [],
+        "guardrails": [
+            "This packet makes 0 provider calls.",
+            "Capture makes exactly one provider call only after explicit approval.",
+            "Capture writes the raw provider response to disk and makes 0 database writes.",
+            "Validate and preview import make 0 provider calls and 0 database writes.",
+            "Execute import only after saved-file coverage matches the active-universe gap.",
+        ],
+        "next_action": next_action,
+    }
 
 
 def _manual_market_bars_operator_step(

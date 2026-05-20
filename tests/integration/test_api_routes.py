@@ -2138,6 +2138,18 @@ def test_post_radar_market_bars_template_and_import_can_scope_to_stocks(
         **repair_payload["provider_saved_file_capture_request_body"],
         "confirm_external_call": True,
     }
+    approval_packet = repair_payload["provider_saved_file_capture_approval_packet"]
+    assert approval_packet["status"] == "approval_required"
+    assert approval_packet["approval_required"] is True
+    assert approval_packet["coverage_scope"] == "stock_like"
+    assert approval_packet["missing_as_of_bar_count"] == 1
+    assert approval_packet["external_calls_without_approval"] == 0
+    assert approval_packet["external_calls_if_approved"] == 1
+    assert approval_packet["db_writes_during_capture"] == 0
+    assert approval_packet["tui_confirm_command"] == "bars saved capture confirm"
+    assert approval_packet["capture_confirm_request_body"] == (
+        repair_payload["provider_saved_file_capture_confirm_request_body"]
+    )
     assert repair_payload["provider_saved_file_validate_request_body"] == {
         "expected_as_of": "2026-05-11",
         "fixture_path": "data\\local\\polygon-grouped-daily-2026-05-11.json",

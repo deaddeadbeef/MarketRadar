@@ -1,6 +1,42 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 05:56:52 +08:00
+Last updated: 2026-05-21 06:16:53 +08:00
+
+
+
+## Latest Market-Bar Saved-Capture Approval Packet
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- The trusted-answer blocker remains market_bars: the live full-market repair plan still reports `status=attention`, 12,613 active securities, 12,090 existing scan-date bars, and 523 missing 2026-05-15 active-universe bars.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, import rows, change scoring, reduce the universe, or claim readiness.
+- This is useful because the next real unblock is an operator-approved saved Polygon/Massive grouped-daily capture. The CLI/API/TUI now expose one compact approval packet that states exactly what approving the call means before any provider call can happen.
+
+Fix in this slice:
+
+- `market-bars repair-plan` payloads now include `provider_saved_file_capture_approval_packet` with schema `market-bars-saved-capture-approval-packet-v1`.
+- The approval packet includes status, approval requirement, target date, coverage scope, active/existing/missing bar counts, provider label, saved-file path/status, zero-call safe request body, explicit confirm request body, external-call count if approved, DB-write boundary during capture, TUI plan/confirm commands, and post-capture zero-call steps for validate, import preview, and explicit import.
+- The dashboard provider-fill plan now carries the same packet so the Run page can show the operator-ready approval summary instead of only raw command fragments.
+- `bars saved capture` now reports packet status, target date, current missing count, 0 provider calls, 0 DB writes, and the exact `bars saved capture confirm` command.
+- CLI text output for `market-bars repair-plan` now prints the capture approval status, approval flag, missing count, external calls if approved, DB writes during capture, TUI confirm command, and approval question.
+- README now documents `provider_saved_file_capture_approval_packet` and the saved-capture approval packet surfaced by `bars saved capture`.
+
+Validation observed in this slice:
+
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\market\manual_bars.py src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\integration\test_provider_ingest_cli.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_api_routes.py` passed with `All checks passed!`.
+- Focused pytest passed 6 tests covering market-bar repair-plan packet payloads, available-saved-file packet status, provider-health-blocked packet status, dashboard saved-capture approval prompt, dashboard market-bar render copy, and API repair-plan packet output.
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m py_compile src\catalyst_radar\market\manual_bars.py src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\integration\test_provider_ingest_cli.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_api_routes.py` exited 0.
+- `git diff --check` passed.
+- Live zero-call JSON repair-plan smoke returned `packet=approval_required approval=True`, `packet_missing=523`, `calls_without=0`, `calls_if_approved=1`, `db_writes_capture=0`, `tui_confirm=bars saved capture confirm`, post-capture steps `validate_saved_file,preview_import,execute_import_after_preview`, and `external_calls=0`.
+- Live zero-call CLI text repair-plan smoke printed the approval line and question: `Approve one Polygon/Massive grouped-daily call for 2026-05-15?`.
+- Live zero-call Run-page smoke showed `Saved file capture: approval_required; 523 bars targeted; 1 external call(s) if approved; 0 db writes during capture; type bars saved capture confirm` and `External calls made: 0`.
+
+Next useful product action:
+
+- Do not treat this slice as goal completion.
+- The immediate trusted-answer blocker remains the same 523 missing 2026-05-15 active-universe market bars.
+- With this packet visible, the next real unblock is either explicit operator approval for `bars saved capture confirm` / the equivalent API confirm body, or a manually supplied saved grouped-daily JSON file followed by `bars saved validate`, `bars saved import`, and `bars saved import execute`.
 
 
 
