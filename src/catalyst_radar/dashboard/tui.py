@@ -3798,6 +3798,11 @@ def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
     audit_summary = _full_scan_audit_summary(payload)
     if audit_summary:
         lines.append(f"Full scan audit: {audit_summary}")
+    missing_type_summary = _market_bar_missing_type_summary(payload)
+    if missing_type_summary:
+        lines.append(
+            f"Missing bar types: {_clip(missing_type_summary, max(20, width - 19))}"
+        )
     instrument_summary = _full_scan_instrument_scope_summary(payload)
     if instrument_summary:
         lines.append(f"Instrument scope: {instrument_summary}")
@@ -4023,6 +4028,40 @@ def _full_scan_instrument_scope_summary(payload: Mapping[str, object]) -> str:
     if next_action:
         parts.append(f"next {next_action}")
     return "; ".join(parts)
+
+
+def _market_bar_missing_type_summary(payload: Mapping[str, object]) -> str:
+    audit = _mapping(payload.get("priced_in_audit"))
+    market = _mapping(audit.get("market_bars"))
+    repair = _mapping(market.get("repair"))
+    diagnostic = _mapping(repair.get("diagnostic"))
+    type_counts = _mapping(diagnostic.get("type_counts"))
+    if not type_counts:
+        return ""
+    pieces = [
+        f"{key}:{int(_number_or_zero(value))}"
+        for key, value in sorted(type_counts.items(), key=lambda item: str(item[0]))
+        if int(_number_or_zero(value)) > 0
+    ]
+    if not pieces:
+        return ""
+    missing = int(
+        _number_or_zero(
+            _first_value(
+                diagnostic.get("missing_count"),
+                market.get("missing_as_of_bar"),
+            )
+        )
+    )
+    company_like = int(_number_or_zero(diagnostic.get("company_like_missing_count")))
+    fund_like = int(_number_or_zero(diagnostic.get("fund_like_missing_count")))
+    wrappers = int(_number_or_zero(diagnostic.get("wrapper_missing_count")))
+    unknown = int(_number_or_zero(diagnostic.get("unknown_missing_count")))
+    route = (
+        f"company-like {company_like}; fund-like {fund_like}; "
+        f"wrappers {wrappers}; unknown {unknown}"
+    )
+    return f"{missing} missing scan-date bars; types {', '.join(pieces)}; {route}"
 
 
 def _decision_readiness_summary(payload: Mapping[str, object]) -> str:
@@ -5629,6 +5668,11 @@ def _ops_lines(payload: Mapping[str, object], width: int) -> list[str]:
             width=width,
         )
     )
+    missing_type_summary = _market_bar_missing_type_summary(payload)
+    if missing_type_summary:
+        lines.append(
+            f"Missing bar types: {_clip(missing_type_summary, max(20, width - 19))}"
+        )
     source_actions = [
         {
             **action,
