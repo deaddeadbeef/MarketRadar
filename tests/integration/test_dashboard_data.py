@@ -1685,6 +1685,33 @@ def test_priced_in_answer_payload_reuses_queue_preflight(
     assert payload["external_calls_made"] == 0
 
 
+def test_priced_in_answer_skips_heavy_candidate_briefs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+
+    def fail_candidate_brief(*args, **kwargs):
+        raise AssertionError("priced-in queue rebuilt candidate briefs")
+
+    monkeypatch.setitem(
+        priced_in_answer_payload.__globals__,
+        "_candidate_research_brief",
+        fail_candidate_brief,
+    )
+    monkeypatch.setitem(
+        priced_in_answer_payload.__globals__,
+        "_priced_in_evidence_brief",
+        fail_candidate_brief,
+    )
+
+    payload = priced_in_answer_payload(engine, AppConfig.from_env({}), limit=1)
+
+    assert payload["schema_version"] == "priced-in-answer-v1"
+    assert payload["external_calls_made"] == 0
+
+
 def test_priced_in_full_scan_audit_payload_consolidates_current_state(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

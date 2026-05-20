@@ -207,6 +207,7 @@ def load_candidate_rows(
     as_of_date: date | None = None,
     limit: int | None = 200,
     include_artifacts: bool = True,
+    include_briefs: bool = True,
 ) -> list[dict[str, object]]:
     cutoff = _as_utc_datetime_or_none(available_at)
     artifact_cutoff = (
@@ -346,7 +347,10 @@ def load_candidate_rows(
     if limit is not None:
         stmt = stmt.limit(_positive_limit(limit))
     with engine.connect() as conn:
-        return [_candidate_row(row._mapping) for row in conn.execute(stmt)]
+        return [
+            _candidate_row(row._mapping, include_briefs=include_briefs)
+            for row in conn.execute(stmt)
+        ]
 
 
 def load_radar_run_candidate_rows(
@@ -356,6 +360,7 @@ def load_radar_run_candidate_rows(
     limit: int | None = 200,
     include_artifacts: bool = True,
     include_post_run_artifacts: bool = False,
+    include_briefs: bool = True,
 ) -> list[dict[str, object]]:
     summary = _row_dict(radar_run_summary)
     cutoff = _parse_utc_datetime(summary.get("finished_at")) or _parse_utc_datetime(
@@ -371,6 +376,7 @@ def load_radar_run_candidate_rows(
         as_of_date=_parse_date(summary.get("as_of")),
         limit=None if run_has_universe else limit,
         include_artifacts=include_artifacts,
+        include_briefs=include_briefs,
     )
     filtered_rows = _filter_rows_to_run_universe(
         engine,
@@ -757,6 +763,7 @@ def priced_in_queue_payload(
             as_of_date=_parse_date(latest_run.get("as_of")) if latest_run else None,
             limit=None,
             include_artifacts=True,
+            include_briefs=False,
         )
         scan_selection_mode = "requested_cutoff"
     elif latest_run:
@@ -766,6 +773,7 @@ def priced_in_queue_payload(
             limit=None,
             include_artifacts=True,
             include_post_run_artifacts=True,
+            include_briefs=False,
         )
         if _should_use_previous_priced_in_scan(latest_run, queue_candidate_rows):
             previous_rows = _load_previous_populated_priced_in_scan_rows(
@@ -777,7 +785,12 @@ def priced_in_queue_payload(
                 scan_selection_mode = "previous_useful_scan"
                 scan_selection_reason = "latest_run_without_priced_in_rows"
     else:
-        queue_candidate_rows = load_candidate_rows(engine, limit=None, include_artifacts=True)
+        queue_candidate_rows = load_candidate_rows(
+            engine,
+            limit=None,
+            include_artifacts=True,
+            include_briefs=False,
+        )
         scan_selection_mode = "latest_candidate_rows"
     resolved_broker_summary = (
         _shallow_row_dict(broker_summary)
@@ -10291,7 +10304,7 @@ def readiness_checklist_payload(
     return rows
 
 
-def _candidate_row(row: Any) -> dict[str, object]:
+def _candidate_row(row: Any, *, include_briefs: bool = True) -> dict[str, object]:
     values = dict(row)
     for key in (
         "as_of",
@@ -10421,11 +10434,12 @@ def _candidate_row(row: Any) -> dict[str, object]:
         packet_payload.get("disconfirming_evidence", [])
     )
     values["manual_review_disclaimer"] = card_payload.get("disclaimer")
-    values["research_brief"] = _candidate_research_brief(values, packet_payload)
-    values["priced_in_evidence_brief"] = _priced_in_evidence_brief(
-        values,
-        packet_payload=packet_payload,
-    )
+    if include_briefs:
+        values["research_brief"] = _candidate_research_brief(values, packet_payload)
+        values["priced_in_evidence_brief"] = _priced_in_evidence_brief(
+            values,
+            packet_payload=packet_payload,
+        )
     return values
 
 

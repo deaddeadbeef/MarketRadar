@@ -1,6 +1,76 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 15:41:55 +08:00
+Last updated: 2026-05-20 15:53:34 +08:00
+
+## Latest Queue Candidate Brief Skip
+
+Goal alignment:
+
+- The active goal remains: scan the broad market and tell whether any stock's
+  price has not yet matched market emotion/expectations.
+- After the prior queue usefulness speedup, live CLI/API answer and
+  source-batch planning still spent time loading full candidate rows. Profiling
+  showed candidate loading always built heavy `research_brief` and
+  `priced_in_evidence_brief` payloads, even when the priced-in queue only
+  needed normalized row fields for scan coverage, source gaps, and usefulness.
+- This slice keeps scope narrow: detailed candidate/ticker pages still build
+  briefs by default. The priced-in queue path opts out because it does not use
+  those per-row briefs.
+- This slice does not change scoring, evidence gates, source-batch semantics,
+  provider execution, agent behavior, or UI layout.
+- This slice makes 0 Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or
+  provider calls.
+
+Fix in this slice:
+
+- `load_candidate_rows(...)` and `load_radar_run_candidate_rows(...)` now accept
+  `include_briefs`, defaulting to `True`.
+- `_candidate_row(...)` skips `research_brief` and
+  `priced_in_evidence_brief` construction when `include_briefs=False`.
+- `priced_in_queue_payload(...)` passes `include_briefs=False` for latest-run,
+  requested-cutoff, and fallback candidate loads.
+- Added a regression that fails if `priced_in_answer_payload(...)` rebuilds
+  heavy candidate briefs through the queue path.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_answer_skips_heavy_candidate_briefs tests\integration\test_dashboard_data.py::test_priced_in_answer_payload_summarizes_current_scan tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_plans_sec_event_batches tests\integration\test_dashboard_data.py::test_priced_in_source_gap_batches_payload_exposes_missing_cik_blockers -q
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_load_ticker_detail_returns_candidate_packet_card_events_and_validation -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py tests\integration\test_dashboard_data.py
+git diff --check
+Measure-Command { .\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-answer --stocks-only --limit 1 --json > $null } | Select-Object -ExpandProperty TotalSeconds
+Measure-Command { .\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --stocks-only --source catalyst_events --batch-limit 1 --json > $null } | Select-Object -ExpandProperty TotalSeconds
+Measure-Command { .\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page overview --stocks-only > $null } | Select-Object -ExpandProperty TotalSeconds
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --stocks-only --source catalyst_events --batch-limit 1
+```
+
+Results:
+
+- Focused pytest passed: `4 passed`.
+- Candidate detail regression passed: `1 passed`.
+- Ruff passed.
+- `git diff --check` passed.
+- Live `priced-in-answer --stocks-only --limit 1 --json` measured about
+  `13.7s`.
+- Live `priced-in-source-batches --stocks-only --source catalyst_events
+  --batch-limit 1 --json` measured about `13.4s`.
+- Live stock-only dashboard once measured about `12.8s`.
+- Live source-batch output still reported `5512` catalyst event gaps, `5510`
+  eligible/plannable SEC rows, `2` missing-CIK blockers (`FRBA`, `SSBI`),
+  explicit approval for `5` SEC calls, and `external_calls=0`.
+
+Next useful product action:
+
+- The product blocker remains stock-like scan-date market bars: `131` rows are
+  missing.
+- The source-batch path is ready for explicit operator approval after bars:
+  catalyst events are planned in 5-call SEC chunks, and the two missing CIKs can
+  be handled through `catalyst-radar ingest-sec cik-overrides-template --out
+  data\local\cik-overrides-template.csv --stocks-only` or an explicitly
+  approved SEC company-tickers refresh.
+- Do not run provider/source-fill execution commands without explicit operator
+  approval.
 
 ## Latest Priced-In Queue Usefulness Speedup
 
