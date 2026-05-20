@@ -3684,6 +3684,15 @@ def _print_manual_market_bars_import(payload: Mapping[str, object]) -> None:
             f"missing={payload.get('missing_expected_count')} "
             f"scope={payload.get('coverage_scope')}"
         )
+    fill_progress = payload.get("fill_progress")
+    if isinstance(fill_progress, Mapping):
+        print(
+            "fill_progress="
+            f"complete={fill_progress.get('complete_rows', 0)} "
+            f"partial={fill_progress.get('partial_rows', 0)} "
+            f"empty={fill_progress.get('empty_rows', 0)} "
+            f"filled={fill_progress.get('filled_rows', 0)}"
+        )
     missing = payload.get("missing_expected_tickers")
     if isinstance(missing, list | tuple) and missing:
         sample = ",".join(str(ticker) for ticker in missing)
@@ -3775,6 +3784,15 @@ def _print_manual_market_bars_repair_plan(payload: Mapping[str, object]) -> None
                 f"{field}={count}" for field, count in blank_fields.items()
             )
             print(f"local_template_blank_required_fields={summary}")
+        fill_progress = preview.get("fill_progress")
+        if isinstance(fill_progress, Mapping):
+            print(
+                "local_template_fill_progress="
+                f"complete={fill_progress.get('complete_rows', 0)} "
+                f"partial={fill_progress.get('partial_rows', 0)} "
+                f"empty={fill_progress.get('empty_rows', 0)} "
+                f"filled={fill_progress.get('filled_rows', 0)}"
+            )
         examples = preview.get("invalid_examples")
         if isinstance(examples, list | tuple) and examples:
             print(

@@ -1804,6 +1804,12 @@ def test_post_radar_market_bars_template_and_import_use_database_universe(
     assert invalid_preview["blank_required_count"] > 0
     assert invalid_preview["blank_required_field_counts"]["open"] == 3
     assert invalid_preview["blank_required_field_counts"]["vwap"] == 3
+    assert invalid_preview["fill_progress"] == {
+        "complete_rows": 0,
+        "partial_rows": 0,
+        "empty_rows": 3,
+        "filled_rows": 0,
+    }
     assert invalid_preview["external_calls_made"] == 0
     assert invalid_preview["executed"] is False
 
@@ -1845,6 +1851,12 @@ def test_post_radar_market_bars_template_and_import_use_database_universe(
     assert preview_response.status_code == 200
     preview_payload = preview_response.json()
     assert preview_payload["status"] == "ready"
+    assert preview_payload["fill_progress"] == {
+        "complete_rows": 3,
+        "partial_rows": 0,
+        "empty_rows": 0,
+        "filled_rows": 3,
+    }
     assert preview_payload["executed"] is False
     assert preview_payload["external_calls_made"] == 0
 
