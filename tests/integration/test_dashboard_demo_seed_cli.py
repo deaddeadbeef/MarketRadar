@@ -3,10 +3,10 @@ from __future__ import annotations
 import asyncio
 import html
 import json
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, func, select
 
 from catalyst_radar.cli import main
 from catalyst_radar.core.config import AppConfig
@@ -47,7 +47,9 @@ from catalyst_radar.dashboard.tui import (
     render_dashboard_tui,
     run_dashboard_tui,
 )
+from catalyst_radar.storage.db import create_schema
 from catalyst_radar.storage.repositories import MarketRepository
+from catalyst_radar.storage.schema import daily_bars
 
 
 def test_seed_dashboard_demo_populates_command_center_layers(
@@ -1206,6 +1208,177 @@ def test_dashboard_manual_bar_fill_progress_summary_is_human_readable() -> None:
     assert "Manual CSV progress: 12/523 complete; 3 partial; 508 empty" in ops
     assert "Market bar next: Finish or clear partial OHLCV/VWAP rows" in overview
     assert "Market bar next: Finish or clear partial OHLCV/VWAP rows" in ops
+
+
+def _saved_file_command_payload(fixture_path, output_path):
+    fixture = str(fixture_path)
+    output = str(output_path)
+    return {
+        "priced_in_audit": {
+            "market_bars": {
+                "repair": {
+                    "provider_fill_plan": {
+                        "provider_saved_file_capture_request_body": {
+                            "expected_as_of": "2026-05-08",
+                            "output_path": output,
+                            "confirm_external_call": False,
+                        },
+                        "provider_saved_file_capture_confirm_request_body": {
+                            "expected_as_of": "2026-05-08",
+                            "output_path": output,
+                            "confirm_external_call": True,
+                        },
+                        "provider_saved_file_validate_request_body": {
+                            "expected_as_of": "2026-05-08",
+                            "fixture_path": fixture,
+                        },
+                        "provider_saved_file_import_preview_request_body": {
+                            "expected_as_of": "2026-05-08",
+                            "fixture_path": fixture,
+                            "execute": False,
+                        },
+                        "provider_saved_file_import_request_body": {
+                            "expected_as_of": "2026-05-08",
+                            "fixture_path": fixture,
+                            "execute": True,
+                        },
+                    }
+                }
+            }
+        }
+    }
+
+
+def _seed_saved_file_command_universe(engine):
+    updated_at = datetime(2026, 5, 8, tzinfo=UTC)
+    MarketRepository(engine).upsert_securities(
+        [
+            Security(
+                ticker="AAPL",
+                name="Apple Inc.",
+                exchange="NASDAQ",
+                sector="Technology",
+                industry="Consumer Electronics",
+                market_cap=3_000_000_000_000,
+                avg_dollar_volume_20d=10_000_000_000,
+                has_options=True,
+                is_active=True,
+                updated_at=updated_at,
+                metadata={"security_type": "CS"},
+            ),
+            Security(
+                ticker="MSFT",
+                name="Microsoft Corp.",
+                exchange="NASDAQ",
+                sector="Technology",
+                industry="Software",
+                market_cap=2_800_000_000_000,
+                avg_dollar_volume_20d=8_000_000_000,
+                has_options=True,
+                is_active=True,
+                updated_at=updated_at,
+                metadata={"security_type": "CS"},
+            ),
+            Security(
+                ticker="GOOG",
+                name="Alphabet Inc.",
+                exchange="NASDAQ",
+                sector="Communication Services",
+                industry="Internet Content",
+                market_cap=1_900_000_000_000,
+                avg_dollar_volume_20d=5_000_000_000,
+                has_options=True,
+                is_active=True,
+                updated_at=updated_at,
+                metadata={"security_type": "CS"},
+            ),
+        ]
+    )
+
+
+def test_dashboard_bars_saved_capture_requires_confirm_without_call(tmp_path: Path):
+    database_url = f"sqlite:///{(tmp_path / 'capture.db').as_posix()}"
+    engine = create_engine(database_url, future=True)
+    create_schema(engine)
+    output_path = tmp_path / "polygon-grouped-daily-2026-05-08.json"
+    payload = _saved_file_command_payload(
+        Path("tests/fixtures/polygon/grouped_daily_2026-05-08.json"),
+        output_path,
+    )
+
+    update = _apply_command(
+        "bars saved capture",
+        payload,
+        "run",
+        DashboardFilters(),
+        engine=engine,
+        config=AppConfig.from_env({"CATALYST_DATABASE_URL": database_url}),
+    )
+
+    assert update.page == "run"
+    assert "approval-gated" in update.message
+    assert "external_calls_made=0" in update.message
+    assert "confirm_external_call=false" in update.message
+    assert "bars saved capture confirm" in update.message
+    assert not output_path.exists()
+
+
+def test_dashboard_bars_saved_validate_and_import_fixture_are_operator_actions(
+    tmp_path: Path,
+):
+    database_url = f"sqlite:///{(tmp_path / 'import.db').as_posix()}"
+    engine = create_engine(database_url, future=True)
+    create_schema(engine)
+    _seed_saved_file_command_universe(engine)
+    fixture_path = Path("tests/fixtures/polygon/grouped_daily_2026-05-08.json")
+    payload = _saved_file_command_payload(
+        fixture_path,
+        tmp_path / "polygon-grouped-daily-2026-05-08.json",
+    )
+    config = AppConfig.from_env({"CATALYST_DATABASE_URL": database_url})
+
+    validate = _apply_command(
+        "bars saved validate",
+        payload,
+        "run",
+        DashboardFilters(),
+        engine=engine,
+        config=config,
+    )
+    assert "Saved-file validate: status=ready_with_rejections" in validate.message
+    assert "external_calls=0" in validate.message
+    assert "db_writes=0" in validate.message
+    assert "missing_after_import=1" in validate.message
+
+    preview = _apply_command(
+        "bars saved import",
+        payload,
+        "run",
+        DashboardFilters(),
+        engine=engine,
+        config=config,
+    )
+    assert "Saved-file import preview: status=ready_with_rejections" in preview.message
+    assert "external_calls=0" in preview.message
+    assert "db_writes=0" in preview.message
+    assert "bars saved import execute" in preview.message
+
+    execute = _apply_command(
+        "bars saved import execute",
+        payload,
+        "run",
+        DashboardFilters(),
+        engine=engine,
+        config=config,
+    )
+    assert "Saved-file import executed" in execute.message
+    assert "daily_bars=6" in execute.message
+    assert "rejected=1" in execute.message
+    assert "external_calls=0" in execute.message
+    assert "db_writes=1" in execute.message
+
+    with engine.connect() as conn:
+        assert conn.execute(select(func.count()).select_from(daily_bars)).scalar_one() == 6
 
 
 def test_dashboard_start_page_alias_opens_tutorial() -> None:

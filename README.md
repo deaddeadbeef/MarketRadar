@@ -378,7 +378,12 @@ is the explicit one-provider-call capture body with `confirm_external_call=true`
 `provider_saved_file_validate_request_body`,
 `provider_saved_file_import_preview_request_body`, and
 `provider_saved_file_import_request_body` are the zero-provider-call saved-file
-preview/import bodies.
+preview/import bodies. The TUI exposes the same workflow from the Run page:
+`bars saved capture` shows the approval boundary and makes 0 provider calls;
+`bars saved capture confirm` is the explicit one-call Polygon/Massive capture;
+`bars saved validate` checks the saved grouped-daily JSON from disk;
+`bars saved import` previews the local import; and `bars saved import execute`
+writes that saved file into the local database with 0 provider calls.
 
 For a manual repair, generate or reuse the local ignored CSV scaffold from the
 current database universe, fill only complete OHLCV rows, preview them, then
