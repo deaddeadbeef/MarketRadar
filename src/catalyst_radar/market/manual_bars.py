@@ -1496,8 +1496,8 @@ def _dashboard_manual_market_bars_command(
     overwrite: bool = False,
 ) -> str:
     parts = ["bars", "manual"]
-    if not stocks_only:
-        parts.append("full")
+    if stocks_only:
+        parts.append("stocks")
     parts.append(action)
     if execute:
         parts.append("execute")

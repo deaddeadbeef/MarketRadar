@@ -1045,8 +1045,8 @@ def test_dashboard_source_blocker_prefers_dashboard_market_bar_actions() -> None
             ],
             "market_bars": {
                 "repair": {
-                    "dashboard_manual_template_command": "bars manual full template",
-                    "dashboard_manual_import_preview_command": "bars manual full import",
+                    "dashboard_manual_template_command": "bars manual template",
+                    "dashboard_manual_import_preview_command": "bars manual import",
                 }
             },
         }
@@ -1058,8 +1058,8 @@ def test_dashboard_source_blocker_prefers_dashboard_market_bar_actions() -> None
     )
 
     assert hint == (
-        "type `bars manual full template` to create the CSV; "
-        "type `bars manual full import` to preview complete rows; 0 provider calls."
+        "type `bars manual template` to create the CSV; "
+        "type `bars manual import` to preview complete rows; 0 provider calls."
     )
 
 
@@ -1121,10 +1121,10 @@ def test_dashboard_manual_bar_fill_progress_summary_is_human_readable() -> None:
                             "2026-05-15 --complete-rows-only"
                         ),
                     },
-                    "dashboard_manual_template_command": "bars manual full template",
-                    "dashboard_manual_import_preview_command": "bars manual full import",
+                    "dashboard_manual_template_command": "bars manual template",
+                    "dashboard_manual_import_preview_command": "bars manual import",
                     "dashboard_manual_import_execute_command": (
-                        "bars manual full import execute"
+                        "bars manual import execute"
                     ),
                     "provider_fill_plan": {
                         "status": "ready_for_approval_with_health_warning",
@@ -1218,7 +1218,7 @@ def test_dashboard_manual_bar_fill_progress_summary_is_human_readable() -> None:
         "12/523 complete; 3 partial; 508 empty; 15 touched; preview invalid; "
         "file data\\local\\manual-bars-2026-05-15.csv"
     )
-    assert "Command: bars manual full import" in _market_bar_operator_step_summary(
+    assert "Command: bars manual import" in _market_bar_operator_step_summary(
         payload
     )
     assert _market_bar_operator_step_summary(payload).startswith(
@@ -1243,7 +1243,7 @@ def test_dashboard_manual_bar_fill_progress_summary_is_human_readable() -> None:
     assert "safe confirm_external_call=false" in overview
     assert "confirm confirm_external_call=true" in ops
     assert "Manual CSV action" in run
-    assert "bars manual full import" in run
+    assert "bars manual import" in run
     assert "Saved file capture" in run
     assert "--save-response" in run
     assert "Saved file import: missing saved file" in overview

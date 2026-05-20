@@ -1,6 +1,37 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 05:13:19 +08:00
+Last updated: 2026-05-21 05:21:33 +08:00
+
+
+
+## Latest TUI Short Full-Market Bar Actions
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- The trusted-answer blocker is still market_bars: the current live status reports 523 missing full active-universe bars for 2026-05-15.
+- This slice does not fill bars, call Polygon/Massive, call SEC, call Schwab, call OpenAI, change scoring, or reduce the universe.
+- This is useful because the Run page was still teaching longer `bars manual full ...` commands after full-market repair became the default. The human-facing path should be the shortest safe command.
+
+Fix in this slice:
+
+- Dashboard repair-plan payloads now emit `bars manual template`, `bars manual import`, and `bars manual import execute` for full-market repair.
+- Explicit stock-like repair still emits `bars manual stocks ...` commands.
+- Run-page blocker hints and manual CSV action text now use the short full-market commands.
+
+Validation observed in this slice:
+
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\market\manual_bars.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_api_routes.py` passed with `All checks passed!`.
+- Focused pytest passed 5 tests covering stock-scoped API command emission, Run-page source blocker text, manual bar progress summary, default full manual import, and explicit stock template behavior.
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m py_compile src\catalyst_radar\market\manual_bars.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_api_routes.py` exited 0.
+- `git diff --check` passed.
+- Live Run-page smoke against `schwab-live.db` showed `Inspect source blocker` and `Manual CSV action` using `bars manual template` / `bars manual import` and showed `External calls made: 0`.
+- Live repair-plan smoke against `schwab-live.db` returned `dashboard_manual_template_command=bars manual template`, `dashboard_manual_import_preview_command=bars manual import`, `dashboard_manual_import_execute_command=bars manual import execute`, and `external_calls_made=0`.
+
+Next useful product action:
+
+- Do not treat this slice as goal completion.
+- The real blocker remains filling or capturing the missing 2026-05-15 market bars under explicit operator control, then rerunning `priced-in-source-batches --source all`.
 
 
 
