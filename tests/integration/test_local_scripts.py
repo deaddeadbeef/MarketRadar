@@ -41,6 +41,12 @@ def test_readme_mentions_restart_script_for_local_dashboard() -> None:
     assert "docs/dashboard-feature-inventory.md" in readme
     assert "catalyst-radar market-bars template" in readme
     assert "catalyst-radar market-bars import" in readme
+    assert "provider_saved_file_capture_request_body" in readme
+    assert "provider_saved_file_capture_confirm_request_body" in readme
+    assert "provider_saved_file_validate_request_body" in readme
+    assert "provider_saved_file_import_preview_request_body" in readme
+    assert "provider_saved_file_import_request_body" in readme
+    assert "--save-response data/local/polygon-grouped-daily-" in readme
     assert "scripts/export-telemetry.ps1" in readme
     assert "scripts/export-operator-evidence.ps1" in readme
     assert "scripts/export-pr-ledger.ps1" in readme

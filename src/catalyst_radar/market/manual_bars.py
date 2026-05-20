@@ -316,6 +316,27 @@ class ManualBarsRepairPlanResult:
         provider_saved_file_validate_command = (
             f"{provider_saved_file_import_command} --validate-only"
         )
+        provider_saved_file_capture_request_body = {
+            "expected_as_of": self.expected_as_of.isoformat(),
+            "output_path": str(provider_saved_file_path),
+            "confirm_external_call": False,
+        }
+        provider_saved_file_capture_confirm_request_body = {
+            **provider_saved_file_capture_request_body,
+            "confirm_external_call": True,
+        }
+        provider_saved_file_validate_request_body = {
+            "expected_as_of": self.expected_as_of.isoformat(),
+            "fixture_path": str(provider_saved_file_path),
+        }
+        provider_saved_file_import_preview_request_body = {
+            **provider_saved_file_validate_request_body,
+            "execute": False,
+        }
+        provider_saved_file_import_request_body = {
+            **provider_saved_file_validate_request_body,
+            "execute": True,
+        }
         provider_saved_file_exists = bool(
             missing > 0 and provider_saved_file_path.exists()
         )
@@ -501,6 +522,12 @@ class ManualBarsRepairPlanResult:
                 if missing > 0
                 else None
             ),
+            "provider_saved_file_capture_request_body": (
+                provider_saved_file_capture_request_body if missing > 0 else None
+            ),
+            "provider_saved_file_capture_confirm_request_body": (
+                provider_saved_file_capture_confirm_request_body if missing > 0 else None
+            ),
             "provider_saved_file_capture_external_call_count": 1
             if missing > 0
             else 0,
@@ -515,10 +542,19 @@ class ManualBarsRepairPlanResult:
                 if missing > 0
                 else None
             ),
+            "provider_saved_file_validate_request_body": (
+                provider_saved_file_validate_request_body if missing > 0 else None
+            ),
             "provider_saved_file_import_api": (
                 "POST /api/radar/market-bars/provider-fixture-import"
                 if missing > 0
                 else None
+            ),
+            "provider_saved_file_import_preview_request_body": (
+                provider_saved_file_import_preview_request_body if missing > 0 else None
+            ),
+            "provider_saved_file_import_request_body": (
+                provider_saved_file_import_request_body if missing > 0 else None
             ),
             "provider_saved_file_external_call_count": 0,
             "provider_saved_file_boundary": (

@@ -1,8 +1,57 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 00:26:08 +08:00
+Last updated: 2026-05-21 00:50:30 +08:00
 
 
+
+
+## Latest Saved-File API Request Bodies
+
+Goal alignment / drift check:
+
+- The active goal remains: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- The current first useful blocker is still `market_bars`; no provider calls were made.
+- The repair plan already exposed saved-file endpoints, but dashboard/API clients still had to reconstruct JSON bodies for capture, validate, and import actions.
+- That is a replacement-UI gap: the dashboard should be able to show and eventually submit the same guarded operation the CLI describes, without guessing request parameters.
+
+Fix in this slice:
+
+- `manual_market_bars_repair_plan(...).as_payload()` now includes saved-file request bodies:
+  - `provider_saved_file_capture_request_body` with `confirm_external_call=false` for the approval-required dry boundary;
+  - `provider_saved_file_capture_confirm_request_body` with `confirm_external_call=true` for the explicit one-call capture path;
+  - `provider_saved_file_validate_request_body` for the zero-call saved JSON preview;
+  - `provider_saved_file_import_preview_request_body` and `provider_saved_file_import_request_body` for the zero-call saved JSON import endpoint.
+- The priced-in market-bar provider fill plan carries the same request bodies for dashboard/preflight consumers.
+- `_priced_in_preflight_manual_market_bar_repair(...)` propagates the saved-file request bodies so `priced-in-preflight` clients can build action controls from the first-blocker payload.
+- `README.md` now documents the repair-plan-first workflow, manual CSV repair, saved Polygon/Massive response validation/import, and the request-body fields dashboard/API clients can use.
+- This is API contract and operator documentation work only. It does not execute provider capture, validate/import files, call Schwab, call OpenAI, or reduce the scan universe.
+
+Validation:
+
+```powershell
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\test_provider_ingest_cli.py::test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths tests\integration\test_api_routes.py::test_post_radar_market_bars_template_and_import_can_scope_to_stocks tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_payload_consolidates_current_state tests\integration\test_local_scripts.py::test_readme_mentions_restart_script_for_local_dashboard -q
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\market\manual_bars.py src\catalyst_radar\dashboard\data.py tests\integration\test_provider_ingest_cli.py tests\integration\test_api_routes.py tests\integration\test_dashboard_data.py tests\integration\test_local_scripts.py
+git diff --check
+```
+
+Observed in the feature worktree after the README update:
+
+- Focused pytest passed: 4 tests.
+- Ruff passed on modified Python files/tests.
+- `git diff --check` passed.
+- Live zero-call repair-plan smoke returned saved-file capture/confirm/validate/import request bodies and `external_calls_made=0`.
+
+Expected live smoke after this slice:
+
+- `market-bars repair-plan --expected-as-of 2026-05-15 --stocks-only --json` should include request bodies for saved-file capture/validate/import.
+- The safe capture request body should have `confirm_external_call=false`; the explicit confirm body should have `confirm_external_call=true`.
+- External calls made while rendering the plan should remain `0`.
+
+Next useful product action:
+
+- Do not treat this as goal completion.
+- The live stock-only bar blocker remains: the manual stock-bar CSV exists but has 131 empty rows.
+- The next real data action is still either manual fill/import or explicit approval for the one Polygon/Massive saved-response capture.
 
 
 ## Latest Readiness Strict-Step Alignment
