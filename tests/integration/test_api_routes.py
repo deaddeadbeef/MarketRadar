@@ -2116,10 +2116,10 @@ def test_post_radar_market_bars_template_and_import_can_scope_to_stocks(
         "confirm_external_call": False,
     }
     assert repair_payload["dashboard_manual_template_command"] == (
-        "bars manual template"
+        "bars manual stocks template"
     )
     assert repair_payload["dashboard_manual_import_preview_command"] == (
-        "bars manual import"
+        "bars manual stocks import"
     )
     assert repair_payload["provider_saved_file_capture_confirm_request_body"] == {
         **repair_payload["provider_saved_file_capture_request_body"],
