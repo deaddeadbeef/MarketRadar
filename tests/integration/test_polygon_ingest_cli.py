@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
@@ -10,7 +10,7 @@ from sqlalchemy import create_engine, func, select
 
 from catalyst_radar.cli import main
 from catalyst_radar.connectors.base import ConnectorHealthStatus
-from catalyst_radar.core.models import JobStatus
+from catalyst_radar.core.models import JobStatus, Security
 from catalyst_radar.storage.provider_repositories import ProviderRepository
 from catalyst_radar.storage.repositories import MarketRepository
 from catalyst_radar.storage.schema import (
@@ -169,6 +169,106 @@ def test_polygon_fixture_ingest_persists_raw_normalized_and_daily_bars(
     assert job.raw_count == 6
     assert job.normalized_count == 6
     assert len(market_repo.daily_bars("AAPL", end=date(2026, 5, 8), lookback=10)) == 1
+
+
+def test_polygon_grouped_daily_fixture_validate_only_makes_no_writes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    init = run_cli(
+        ["init-db"],
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        capsys=capsys,
+        env={"CATALYST_POLYGON_API_KEY": ""},
+    )
+    assert init.exit_code == 0
+    engine = create_engine(init.database_url, future=True)
+    MarketRepository(engine).upsert_securities(
+        [
+            _security("AAPL", security_type="CS"),
+            _security("MSFT", security_type="CS"),
+            _security("GOOG", security_type="CS"),
+        ]
+    )
+
+    result = run_cli(
+        [
+            "ingest-polygon",
+            "grouped-daily",
+            "--date",
+            "2026-05-08",
+            "--fixture",
+            "tests/fixtures/polygon/grouped_daily_2026-05-08.json",
+            "--validate-only",
+        ],
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        capsys=capsys,
+        env={"CATALYST_POLYGON_API_KEY": ""},
+    )
+
+    assert result.exit_code == 0
+    assert result.stderr == ""
+    assert "polygon_grouped_daily_fixture_preview status=ready_with_rejections" in result.stdout
+    assert "raw=6 normalized=6 daily_bars=6 rejected=1" in result.stdout
+    assert "external_calls=0 db_writes=0" in result.stdout
+    assert (
+        "coverage active=3 existing=0 fixture_matches=2 "
+        "covers_missing=2 missing_after=1"
+    ) in result.stdout
+    assert "stock_like active=3 existing=0 covers_missing=2 missing_after=1" in result.stdout
+
+    with engine.connect() as conn:
+        assert conn.execute(select(func.count()).select_from(job_runs)).scalar_one() == 0
+        assert (
+            conn.execute(select(func.count()).select_from(raw_provider_records)).scalar_one()
+            == 0
+        )
+        assert (
+            conn.execute(
+                select(func.count()).select_from(normalized_provider_records)
+            ).scalar_one()
+            == 0
+        )
+        assert conn.execute(select(func.count()).select_from(daily_bars)).scalar_one() == 0
+        assert (
+            conn.execute(select(func.count()).select_from(data_quality_incidents)).scalar_one()
+            == 0
+        )
+
+
+def test_polygon_grouped_daily_validate_only_requires_fixture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    result = run_cli(
+        [
+            "ingest-polygon",
+            "grouped-daily",
+            "--date",
+            "2026-05-08",
+            "--validate-only",
+        ],
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        capsys=capsys,
+        env={"CATALYST_POLYGON_API_KEY": "test-real-looking-polygon-key"},
+    )
+
+    assert result.exit_code == 2
+    assert result.stdout == ""
+    assert "requires grouped-daily --fixture" in result.stderr
+
+    engine = create_engine(result.database_url, future=True)
+    with engine.connect() as conn:
+        assert conn.execute(select(func.count()).select_from(job_runs)).scalar_one() == 0
+        assert (
+            conn.execute(select(func.count()).select_from(raw_provider_records)).scalar_one()
+            == 0
+        )
 
 
 def test_polygon_grouped_daily_accepts_missing_optional_vwap(
@@ -369,3 +469,19 @@ def run_cli(
 
 def _database_url(tmp_path: Path) -> str:
     return f"sqlite:///{(tmp_path / 'catalyst_radar.db').as_posix()}"
+
+
+def _security(ticker: str, *, security_type: str) -> Security:
+    return Security(
+        ticker=ticker,
+        name=ticker,
+        exchange="XNAS",
+        sector="Technology",
+        industry="Software",
+        market_cap=1_000_000_000,
+        avg_dollar_volume_20d=10_000_000,
+        has_options=True,
+        is_active=True,
+        updated_at=datetime(2026, 5, 8, tzinfo=UTC),
+        metadata={"type": security_type},
+    )

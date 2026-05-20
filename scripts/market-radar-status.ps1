@@ -354,6 +354,13 @@ if ($Quick) {
             Write-Output ("- provider boundary: {0}" -f $marketBarRepairPlan.approval_boundary)
         }
         if ($marketBarRepairPlan.provider_saved_file_import_command) {
+            if ($marketBarRepairPlan.provider_saved_file_validate_command) {
+                Write-Output (
+                    "- provider saved-file validate: external_calls={0}; command={1}" -f
+                    $(if ($null -ne $marketBarRepairPlan.provider_saved_file_external_call_count) { $marketBarRepairPlan.provider_saved_file_external_call_count } else { 0 }),
+                    $marketBarRepairPlan.provider_saved_file_validate_command
+                )
+            }
             Write-Output (
                 "- provider saved-file import: external_calls={0}; command={1}" -f
                 $(if ($null -ne $marketBarRepairPlan.provider_saved_file_external_call_count) { $marketBarRepairPlan.provider_saved_file_external_call_count } else { 0 }),
@@ -429,6 +436,13 @@ if ($Quick) {
             }
         }
         if ($stockMarketBarRepairPlan.provider_saved_file_import_command) {
+            if ($stockMarketBarRepairPlan.provider_saved_file_validate_command) {
+                Write-Output (
+                    "- stock provider saved-file validate: external_calls={0}; command={1}" -f
+                    $(if ($null -ne $stockMarketBarRepairPlan.provider_saved_file_external_call_count) { $stockMarketBarRepairPlan.provider_saved_file_external_call_count } else { 0 }),
+                    $stockMarketBarRepairPlan.provider_saved_file_validate_command
+                )
+            }
             Write-Output (
                 "- stock provider saved-file import: external_calls={0}; command={1}" -f
                 $(if ($null -ne $stockMarketBarRepairPlan.provider_saved_file_external_call_count) { $stockMarketBarRepairPlan.provider_saved_file_external_call_count } else { 0 }),

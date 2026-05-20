@@ -3878,6 +3878,14 @@ def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
             "Provider fill: "
             f"{_clip(provider_fill_summary, max(20, width - 17))}"
         )
+    saved_file_validate_summary = _market_bar_provider_saved_file_validate_summary(
+        payload,
+    )
+    if saved_file_validate_summary:
+        lines.append(
+            "Saved file check: "
+            f"{_clip(saved_file_validate_summary, max(20, width - 20))}"
+        )
     saved_file_summary = _market_bar_provider_saved_file_summary(payload)
     if saved_file_summary:
         lines.append(
@@ -4147,6 +4155,24 @@ def _market_bar_provider_saved_file_summary(payload: Mapping[str, object]) -> st
         return ""
     command = str(
         provider_plan.get("provider_saved_file_import_command") or ""
+    ).strip()
+    if not command:
+        return ""
+    calls = int(_number_or_zero(provider_plan.get("provider_saved_file_external_call_count")))
+    return f"{calls} external call(s); command {command}"
+
+
+def _market_bar_provider_saved_file_validate_summary(
+    payload: Mapping[str, object],
+) -> str:
+    audit = _mapping(payload.get("priced_in_audit"))
+    market = _mapping(audit.get("market_bars"))
+    repair = _mapping(market.get("repair"))
+    provider_plan = _mapping(repair.get("provider_fill_plan"))
+    if not provider_plan:
+        return ""
+    command = str(
+        provider_plan.get("provider_saved_file_validate_command") or ""
     ).strip()
     if not command:
         return ""
@@ -5990,6 +6016,14 @@ def _ops_lines(payload: Mapping[str, object], width: int) -> list[str]:
         lines.append(
             "Provider fill: "
             f"{_clip(provider_fill_summary, max(20, width - 17))}"
+        )
+    saved_file_validate_summary = _market_bar_provider_saved_file_validate_summary(
+        payload,
+    )
+    if saved_file_validate_summary:
+        lines.append(
+            "Saved file check: "
+            f"{_clip(saved_file_validate_summary, max(20, width - 20))}"
         )
     saved_file_summary = _market_bar_provider_saved_file_summary(payload)
     if saved_file_summary:

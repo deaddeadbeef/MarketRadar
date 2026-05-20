@@ -1,6 +1,120 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 16:34:46 +08:00
+Last updated: 2026-05-20 16:54:19 +08:00
+
+## Latest Saved Grouped-Daily Preview Before Import
+
+Goal alignment / drift check:
+
+- The active goal remains: scan the broad market and tell whether any stock's
+  price has not yet matched market emotion/expectations.
+- Recent dashboard/TUI work is useful only insofar as it helps an operator clear
+  real evidence gates. The first hard product blocker is still scan-date market
+  bars, not UI polish.
+- Current live blocker before this slice:
+  - full active universe bars: `12090/12613`, `523` missing.
+  - stock-like bars: `5521/5652`, `131` missing.
+  - first gap: `market_bars`.
+- The safest near-term path is to clear those bars from local data without
+  surprise provider calls. The existing saved grouped-daily JSON import wrote
+  immediately; an operator had no preview to verify that the file matched the
+  date/universe and would actually reduce the missing-bar gap.
+- This slice adds a no-write preview/validation step before importing a saved
+  Polygon/Massive grouped-daily JSON file. It does not change scoring,
+  evidence gates, source semantics, agent behavior, live provider execution, or
+  broker behavior.
+- This slice makes 0 Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or
+  provider calls.
+
+Fix in this slice:
+
+- Added `--validate-only` to:
+  `catalyst-radar ingest-polygon grouped-daily --date <YYYY-MM-DD> --fixture <path>`.
+- The validate-only path:
+  - requires `--fixture`;
+  - uses the fixture transport and does not need a real Polygon/Massive key;
+  - fetches and normalizes the saved JSON from disk;
+  - reports raw/normalized/daily-bar/rejected counts;
+  - fails closed on abort rejections, date mismatches, or zero target-date bars;
+  - compares fixture tickers against the local active universe and scan-date
+    bars;
+  - reports active/stock-like missing bars covered and missing bars remaining
+    after a hypothetical import;
+  - records `external_calls_made=0` and `db_writes_made=0`;
+  - does not save provider health, job runs, raw provider records, normalized
+    provider records, incidents, or daily bars.
+- Added optional `--json` output for grouped-daily ingest. In validate-only mode
+  it prints the preview payload; in import mode it prints the provider ingest
+  result payload.
+- Repair-plan and priced-in provider-fill payloads now include:
+  - `provider_saved_file_validate_command`
+  - `provider_saved_file_import_command`
+  - `provider_saved_file_external_call_count=0`
+  - an updated boundary telling the operator to validate before import.
+- `market-bars repair-plan` text output now prints
+  `provider_saved_file_validate` before `provider_saved_file_import`.
+- `priced-in-audit` text output now prints `saved_file_validate` before
+  `saved_file_import`.
+- `scripts\market-radar-status.ps1 -Quick` now prints both full-scope and
+  stock-scope saved-file validate commands before the import commands.
+- The TUI Overview and Ops pages now render a separate `Saved file check` line
+  before `Saved file import`, so the operator sees the zero-call preview step
+  before the DB-writing import step.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\cli.py src\catalyst_radar\market\manual_bars.py src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py tests\integration\test_polygon_ingest_cli.py tests\integration\test_provider_ingest_cli.py tests\integration\test_dashboard_data.py tests\integration\test_local_scripts.py
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_polygon_ingest_cli.py::test_polygon_grouped_daily_fixture_validate_only_makes_no_writes tests\integration\test_polygon_ingest_cli.py::test_polygon_grouped_daily_validate_only_requires_fixture tests\integration\test_provider_ingest_cli.py::test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_warns_for_stale_eod_provider_health tests\integration\test_local_scripts.py::test_market_radar_status_script_is_zero_external_call_sitrep -q
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_provider_ingest_cli.py::test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_payload_consolidates_current_state tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_warns_for_stale_eod_provider_health tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_market_bar_missing_type_summary_is_human_readable tests\integration\test_local_scripts.py::test_market_radar_status_script_is_zero_external_call_sitrep -q
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_polygon_ingest_cli.py -q
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli ingest-polygon grouped-daily --date 2026-05-08 --fixture tests\fixtures\polygon\grouped_daily_2026-05-08.json --validate-only
+.\.venv\Scripts\python.exe -m catalyst_radar.cli ingest-polygon grouped-daily --date 2026-05-08 --fixture tests\fixtures\polygon\grouped_daily_2026-05-08.json --validate-only --json
+powershell -NoProfile -Command '$null = [scriptblock]::Create((Get-Content -Raw .\scripts\market-radar-status.ps1)); "syntax-ok"'
+powershell -ExecutionPolicy Bypass -File .\scripts\market-radar-status.ps1 -Quick
+.\.venv\Scripts\python.exe -m catalyst_radar.cli market-bars repair-plan --expected-as-of 2026-05-15 --stocks-only | Select-String -Pattern 'provider_saved_file_validate|provider_saved_file_import|provider_saved_file_boundary'
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page ops --stocks-only | Select-String -Pattern 'Saved file check|Saved file import|External calls made'
+```
+
+Results:
+
+- Ruff passed.
+- Focused preview + surfaced-command pytest passed: `5 passed`.
+- Broader status/TUI/provider focused pytest passed: `5 passed`.
+- Full Polygon ingest CLI test module passed: `11 passed`.
+- `git diff --check` passed.
+- PowerShell status script parse check passed: `syntax-ok`.
+- Fixture validate-only text smoke printed:
+  - `status=ready_with_rejections`
+  - `raw=6 normalized=6 daily_bars=6 rejected=1`
+  - `external_calls=0 db_writes=0`
+  - local coverage estimates.
+- Fixture validate-only JSON smoke printed schema
+  `polygon-grouped-daily-fixture-preview-v1` with `external_calls_made=0` and
+  `db_writes_made=0`.
+- Live quick status still reports the same first blocker and `External calls
+  made: 0`, but now includes:
+  - `provider saved-file validate: ... --validate-only`
+  - `provider saved-file import: ... --fixture ...`
+  - the updated saved-file boundary.
+- Live stock repair-plan output printed
+  `provider_saved_file_validate=external_calls=0 ... --validate-only`.
+- Live TUI Ops smoke printed `External calls made: 0`, `Saved file check`, and
+  `Saved file import`.
+
+Next useful product action:
+
+- Clear the `market_bars` blocker. Preferred no-surprise sequence:
+  1. Put a saved Polygon/Massive grouped-daily JSON response at
+     `data\local\polygon-grouped-daily-2026-05-15.json`.
+  2. Run:
+     `catalyst-radar ingest-polygon grouped-daily --date 2026-05-15 --fixture data\local\polygon-grouped-daily-2026-05-15.json --validate-only`
+  3. If the preview covers the missing bars, run the same command without
+     `--validate-only` to import from disk.
+  4. Rerun quick status and priced-in audit.
+- Do not run provider/source-fill execution commands without explicit operator
+  approval.
 
 ## Latest TUI Saved-File Import Visibility
 
