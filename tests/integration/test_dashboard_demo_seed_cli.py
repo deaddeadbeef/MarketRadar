@@ -30,6 +30,7 @@ from catalyst_radar.dashboard.tui import (
     DashboardFilters,
     MarketRadarDashboardApp,
     _apply_command,
+    _market_bar_manual_fill_progress_summary,
     _market_bar_missing_type_summary,
     _priced_in_overview_rows,
     _priced_in_review_rows,
@@ -951,6 +952,38 @@ def test_dashboard_market_bar_missing_type_summary_is_human_readable() -> None:
         "3 missing scan-date bars; types CS:2, UNIT:1; "
         "company-like 2; fund-like 0; wrappers 1; unknown 0"
     )
+
+
+def test_dashboard_manual_bar_fill_progress_summary_is_human_readable() -> None:
+    payload = {
+        "priced_in_audit": {
+            "market_bars": {
+                "repair": {
+                    "template_row_count": 523,
+                    "local_template_path": "data\\local\\manual-bars-2026-05-15.csv",
+                    "local_template_preview": {
+                        "status": "invalid",
+                        "row_count": 523,
+                        "fill_progress": {
+                            "complete_rows": 12,
+                            "partial_rows": 3,
+                            "empty_rows": 508,
+                            "filled_rows": 15,
+                        },
+                    },
+                }
+            }
+        }
+    }
+
+    assert _market_bar_manual_fill_progress_summary(payload) == (
+        "12/523 complete; 3 partial; 508 empty; 15 touched; preview invalid; "
+        "file data\\local\\manual-bars-2026-05-15.csv"
+    )
+    overview = render_dashboard_tui(payload, page="overview", width=160)
+    ops = render_dashboard_tui(payload, page="ops", width=160)
+    assert "Manual CSV progress: 12/523 complete; 3 partial; 508 empty" in overview
+    assert "Manual CSV progress: 12/523 complete; 3 partial; 508 empty" in ops
 
 
 def test_dashboard_review_page_is_distinct_from_full_scan() -> None:

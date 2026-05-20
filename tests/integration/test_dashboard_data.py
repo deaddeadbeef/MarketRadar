@@ -1961,6 +1961,99 @@ def test_priced_in_full_scan_audit_reports_stock_only_bar_coverage(
     assert "market_bars 1/2 (1 missing)" in payload["source_coverage"]["summary"]
 
 
+def test_priced_in_full_scan_audit_reports_local_manual_template_progress(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(securities),
+            [
+                {
+                    "ticker": "MSFT",
+                    "name": "Microsoft Corporation",
+                    "exchange": "NASDAQ",
+                    "sector": "Technology",
+                    "industry": "Software",
+                    "market_cap": 3_000_000_000_000.0,
+                    "avg_dollar_volume_20d": 5_000_000_000.0,
+                    "has_options": True,
+                    "is_active": True,
+                    "updated_at": AVAILABLE_AT,
+                    "metadata": {"type": "CS", "cik": "789019"},
+                },
+                {
+                    "ticker": "GOOG",
+                    "name": "Alphabet Inc.",
+                    "exchange": "NASDAQ",
+                    "sector": "Technology",
+                    "industry": "Internet",
+                    "market_cap": 2_000_000_000_000.0,
+                    "avg_dollar_volume_20d": 3_000_000_000.0,
+                    "has_options": True,
+                    "is_active": True,
+                    "updated_at": AVAILABLE_AT,
+                    "metadata": {"type": "CS", "cik": "1652044"},
+                },
+            ],
+        )
+        conn.execute(
+            insert(daily_bars).values(
+                ticker="MSFT",
+                date=AS_OF.date(),
+                provider="polygon",
+                open=100.0,
+                high=110.0,
+                low=99.0,
+                close=108.0,
+                volume=10_000_000,
+                vwap=106.0,
+                adjusted=True,
+                source_ts=SOURCE_TS,
+                available_at=AVAILABLE_AT,
+            )
+        )
+    template_dir = tmp_path / "data" / "local"
+    template_dir.mkdir(parents=True)
+    template_path = template_dir / f"manual-bars-{AS_OF.date().isoformat()}.csv"
+    template_path.write_text(
+        "\n".join(
+            [
+                (
+                    "ticker,date,security_type,name,template_reason,open,high,low,"
+                    "close,volume,vwap,adjusted,provider,source_ts,available_at"
+                ),
+                (
+                    f"GOOG,{AS_OF.date().isoformat()},CS,Alphabet Inc.,"
+                    "missing_as_of_bar,100,,,,,,true,manual_csv,"
+                    f"{SOURCE_TS.isoformat()},{AVAILABLE_AT.isoformat()}"
+                ),
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    payload = priced_in_full_scan_audit_payload(
+        engine,
+        AppConfig.from_env({}),
+    )
+
+    repair = payload["market_bars"]["repair"]
+    assert repair["local_template_exists"] is True
+    assert repair["local_template_path"].endswith(
+        f"manual-bars-{AS_OF.date().isoformat()}.csv"
+    )
+    assert repair["local_template_preview"]["status"] == "invalid"
+    assert repair["local_template_fill_progress"] == {
+        "complete_rows": 0,
+        "partial_rows": 1,
+        "empty_rows": 0,
+        "filled_rows": 1,
+    }
+
 def test_priced_in_full_scan_audit_payload_reuses_cached_zero_call_audit(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
