@@ -4252,6 +4252,28 @@ def _print_priced_in_mission_brief(payload: Mapping[str, object]) -> None:
     command = mission.get("next_command")
     if command:
         print(f"  command={_compact_cli_text(command)}")
+    unblock_options = mission.get("next_unblock_options")
+    if isinstance(unblock_options, list | tuple):
+        for option in unblock_options[:5]:
+            if not isinstance(option, Mapping):
+                continue
+            kind = option.get("kind") or "option"
+            status = option.get("status") or "unknown"
+            calls = _int_value(option.get("external_calls_required"))
+            writes = (
+                option.get("db_writes_during_step")
+                if "db_writes_during_step" in option
+                else option.get("db_writes_before_execute")
+            )
+            command_text = _compact_cli_text(option.get("command"))
+            print(
+                "  unblock="
+                f"{kind} status={status} calls={calls} db_writes={_int_value(writes)} "
+                f"command={command_text}"
+            )
+            question = option.get("question")
+            if question:
+                print(f"    question={_compact_cli_text(question)}")
     boundary = mission.get("operator_boundary")
     if boundary:
         print(f"  boundary={_compact_cli_text(boundary)}")

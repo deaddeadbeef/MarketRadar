@@ -1498,6 +1498,9 @@ def _priced_in_market_bar_source_gap_plan(
         "provider_saved_file_capture_external_call_count": provider_plan.get(
             "provider_saved_file_capture_external_call_count"
         ),
+        "provider_saved_file_capture_approval_packet": provider_plan.get(
+            "provider_saved_file_capture_approval_packet"
+        ),
         "provider_saved_file_validate_command": provider_plan.get(
             "provider_saved_file_validate_command"
         ),
@@ -2088,6 +2091,9 @@ def _priced_in_all_source_mission_brief(
         "next_operator_action": coverage_recommendation.get("action"),
         "next_command": coverage_recommendation.get("command"),
         "next_external_calls_required": next_calls,
+        "next_unblock_options": _priced_in_mission_unblock_options(
+            coverage_recommendation
+        ),
         "operator_boundary": (
             "Viewing this brief is zero-call. Execute only one reviewed source "
             "or repair action when the provider, date, and call budget are "
@@ -2155,6 +2161,86 @@ def _priced_in_mission_source_roadmap(
             }
         )
     return roadmap
+
+
+def _priced_in_mission_unblock_options(
+    coverage_recommendation: Mapping[str, object],
+) -> list[dict[str, object]]:
+    source = str(coverage_recommendation.get("source") or "").strip()
+    gaps = int(_finite_float(coverage_recommendation.get("total_gap_rows")))
+    if source != "market_bars" or gaps <= 0:
+        return []
+    diagnostic = _row_dict(_mapping_value(coverage_recommendation, "diagnostic"))
+    options: list[dict[str, object]] = []
+
+    manual_template = str(diagnostic.get("manual_template_command") or "").strip()
+    manual_preview = str(diagnostic.get("manual_validate_command") or "").strip()
+    manual_execute = str(diagnostic.get("manual_fix_command") or "").strip()
+    if manual_template:
+        options.append(
+            {
+                "kind": "manual_csv",
+                "status": "available",
+                "label": "Manual CSV",
+                "external_calls_required": 0,
+                "db_writes_before_execute": 0,
+                "command": manual_template,
+                "preview_command": manual_preview or None,
+                "execute_command": manual_execute or None,
+                "next_action": (
+                    "Create or fill the missing-bar CSV, preview complete rows, "
+                    "then execute the import only after review."
+                ),
+            }
+        )
+
+    packet = _row_dict(
+        _mapping_value(diagnostic, "provider_saved_file_capture_approval_packet")
+    )
+    if packet:
+        options.append(
+            {
+                "kind": "saved_provider_capture",
+                "status": packet.get("status"),
+                "label": "Saved provider capture",
+                "approval_required": bool(packet.get("approval_required")),
+                "external_calls_required": int(
+                    _finite_float(packet.get("external_calls_if_approved"))
+                ),
+                "db_writes_during_step": int(
+                    _finite_float(packet.get("db_writes_during_capture"))
+                ),
+                "command": packet.get("tui_confirm_command")
+                or packet.get("capture_cli_command"),
+                "question": packet.get("question"),
+                "next_action": packet.get("next_action"),
+            }
+        )
+
+        for step in _sequence_value(packet.get("post_capture_zero_call_steps")):
+            if not isinstance(step, Mapping):
+                continue
+            step_name = str(step.get("step") or "").strip()
+            if step_name not in {"validate_saved_file", "preview_import"}:
+                continue
+            options.append(
+                {
+                    "kind": step_name,
+                    "status": packet.get("saved_file_status"),
+                    "label": step_name.replace("_", " ").title(),
+                    "external_calls_required": int(
+                        _finite_float(step.get("external_calls_made"))
+                    ),
+                    "db_writes_during_step": int(
+                        _finite_float(step.get("db_writes_made"))
+                    ),
+                    "command": step.get("tui_command") or step.get("cli_command"),
+                    "next_action": (
+                        "Use after the saved provider response exists on disk."
+                    ),
+                }
+            )
+    return options
 
 
 def _priced_in_all_source_goal_alignment(

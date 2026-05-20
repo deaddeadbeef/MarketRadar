@@ -1,6 +1,44 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 06:36:56 +08:00
+Last updated: 2026-05-21 06:53:01 +08:00
+
+
+
+## Latest Source Mission Unblock Options
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- The zero-call source-roadmap smoke still reports `status=attention`, `external_calls_made=0`, next source `market_bars`, and 523 missing 2026-05-15 active-universe bars.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, import rows, change scoring, reduce the universe, or claim readiness.
+- This is useful because the top source-batch mission brief was still naming only the manual CSV command, while the actual operator choice also includes a saved Polygon/Massive grouped-daily capture approval path. CLI/API/dashboard now show those choices together without making the call.
+
+Fix in this slice:
+
+- `priced-in-source-batches --source all --json` mission payloads now include `next_unblock_options` when market bars block the answer.
+- The unblock options separate:
+  - `manual_csv`, 0 external calls before execute, with template/preview/execute commands.
+  - `saved_provider_capture`, explicit approval status/question, external calls if approved, DB writes during capture, and TUI confirm command.
+  - saved-file zero-call `validate_saved_file` and `preview_import` follow-up steps.
+- Market-bar source diagnostics in the all-source overview now carry the same `provider_saved_file_capture_approval_packet` already used by repair-plan/API/TUI paths.
+- CLI text output now prints each mission unblock option as `unblock=...` lines, including the approval question when present.
+- The Run page and Tutorial mission brief now include an `Unblock options` row for the market-bar blocker, reusing the existing manual/saved-capture summaries.
+- README documents that `mission_brief` includes next unblock options and separates the manual CSV path from the saved capture approval path.
+
+Validation observed in this slice:
+
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\integration\test_dashboard_demo_seed_cli.py` passed with `All checks passed!`.
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m py_compile src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\integration\test_dashboard_demo_seed_cli.py` exited 0.
+- Focused pytest passed `tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_source_batches_prioritize_full_market_bar_coverage` and `tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_run_page_shows_priced_in_evidence_plan`.
+- Live zero-call JSON source-roadmap smoke against `schwab-live.db` showed `next_unblock_options`: `manual_csv` calls=0, `saved_provider_capture` status=approval_required calls=1 command=`bars saved capture confirm`, `validate_saved_file` calls=0, and `preview_import` calls=0.
+- Live zero-call CLI source-roadmap smoke printed the same `unblock=` lines plus `question=Approve one Polygon/Massive grouped-daily call for 2026-05-15?`.
+- Live zero-call TUI Run-page and Tutorial smoke showed `Unblock options` while still reporting `External calls made: 0`.
+
+Next useful product action:
+
+- Do not treat this slice as goal completion.
+- The immediate trusted-answer blocker remains the same 523 missing 2026-05-15 active-universe market bars.
+- The next real unblock still requires explicit operator approval for one saved grouped-daily provider capture, or a manually supplied saved grouped-daily JSON file followed by zero-call validate/import.
 
 
 

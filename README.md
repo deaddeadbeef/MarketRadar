@@ -124,7 +124,10 @@ coverage-first source when your goal is improving the whole-market scan; use the
 decision shortcut only when you intentionally want to deepen the current top
 answer subset. The JSON payload also includes `mission_brief`, a zero-call
 operator summary with the current trusted-answer state, scan progress, next
-source, next command, call boundary, and roadmap of remaining evidence gaps.
+source, next command, call boundary, next unblock options, and roadmap of
+remaining evidence gaps. When market bars block the answer, those unblock
+options separate the zero-call manual CSV path from the saved Polygon/Massive
+capture approval path, including the expected call count before capture.
 The default is still the full scan. Use `ready`, press `D`, or run
 `catalyst-radar priced-in-queue --decision-ready` only when you intentionally
 want the small decision-useful subset from that full scan.
