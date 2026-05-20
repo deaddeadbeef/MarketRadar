@@ -51,7 +51,7 @@ from catalyst_radar.dashboard.tui import (
 )
 from catalyst_radar.storage.db import create_schema
 from catalyst_radar.storage.repositories import MarketRepository
-from catalyst_radar.storage.schema import daily_bars
+from catalyst_radar.storage.schema import daily_bars, option_features
 
 
 def test_seed_dashboard_demo_populates_command_center_layers(
@@ -1610,6 +1610,129 @@ def test_dashboard_bars_manual_full_scope_uses_full_template_path(tmp_path: Path
     assert "stocks_only=false" in update.message
     assert full_template.exists()
     assert not stock_template.exists()
+
+
+def test_dashboard_options_fixture_commands_are_zero_call_operator_actions(
+    tmp_path: Path,
+    monkeypatch,
+):
+    database_url = f"sqlite:///{(tmp_path / 'options.db').as_posix()}"
+    engine = create_engine(database_url, future=True)
+    create_schema(engine)
+    monkeypatch.chdir(tmp_path)
+
+    def fake_template_payload(*args, **kwargs):
+        return {
+            "schema_version": "options-fixture-template-v1",
+            "status": "ready",
+            "provider": "manual",
+            "live": False,
+            "external_calls_made": 0,
+            "source": "options",
+            "stocks_only": bool(kwargs.get("stocks_only")),
+            "source_gap_rows": 1,
+            "row_count": 1,
+            "target_as_of": "2026-05-10T21:00:00+00:00",
+            "target_date": "2026-05-10",
+            "fixture": {
+                "as_of": "2026-05-10T21:00:00+00:00",
+                "source_ts": "2026-05-10T21:00:00+00:00",
+                "available_at": "2026-05-10T21:00:00+00:00",
+                "provider": "options_fixture",
+                "results": [
+                    {
+                        "ticker": "ACME",
+                        "call_volume": "",
+                        "put_volume": "",
+                        "call_open_interest": "",
+                        "put_open_interest": "",
+                        "iv_percentile": "",
+                        "skew": "",
+                    }
+                ],
+            },
+        }
+
+    monkeypatch.setattr(
+        "catalyst_radar.dashboard.tui.dashboard_data.options_fixture_template_payload",
+        fake_template_payload,
+    )
+    config = AppConfig.from_env({"CATALYST_DATABASE_URL": database_url})
+
+    template = _apply_command(
+        "options template",
+        {},
+        "run",
+        DashboardFilters(),
+        engine=engine,
+        config=config,
+    )
+    fixture_path = tmp_path / "data" / "local" / "point-in-time-options-2026-05-10.json"
+    assert "Options fixture template ready" in template.message
+    assert "rows=1" in template.message
+    assert "external_calls=0" in template.message
+    assert "db_writes=0" in template.message
+    assert fixture_path.exists()
+
+    invalid = _apply_command(
+        "options validate",
+        {},
+        "run",
+        DashboardFilters(),
+        engine=engine,
+        config=config,
+    )
+    assert "Options fixture validation: status=invalid" in invalid.message
+    assert "blank_required=6" in invalid.message
+    assert "external_calls=0" in invalid.message
+    assert "db_writes=0" in invalid.message
+
+    fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+    fixture["results"][0].update(
+        {
+            "call_volume": "1200",
+            "put_volume": "800",
+            "call_open_interest": "5000",
+            "put_open_interest": "4100",
+            "iv_percentile": "0.64",
+            "skew": "-0.08",
+        }
+    )
+    with fixture_path.open("w", encoding="utf-8") as handle:
+        json.dump(fixture, handle, indent=2)
+
+    preview = _apply_command(
+        "options import",
+        {},
+        "run",
+        DashboardFilters(),
+        engine=engine,
+        config=config,
+    )
+    assert "Options fixture import preview: status=ready" in preview.message
+    assert "valid=1" in preview.message
+    assert "external_calls=0" in preview.message
+    assert "db_writes=0" in preview.message
+    assert "options import execute" in preview.message
+
+    with engine.connect() as conn:
+        assert conn.execute(select(func.count()).select_from(option_features)).scalar_one() == 0
+
+    executed = _apply_command(
+        "options import execute",
+        {},
+        "run",
+        DashboardFilters(),
+        engine=engine,
+        config=config,
+    )
+    assert "Options fixture import executed" in executed.message
+    assert "option_features=1" in executed.message
+    assert "external_calls=0" in executed.message
+    assert "db_writes=1" in executed.message
+
+    with engine.connect() as conn:
+        assert conn.execute(select(func.count()).select_from(option_features)).scalar_one() == 1
 
 
 def test_dashboard_start_page_alias_opens_tutorial() -> None:

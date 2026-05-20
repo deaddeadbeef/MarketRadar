@@ -25,12 +25,21 @@ from catalyst_radar.brokers.interactive import (
     record_opportunity_action,
     trigger_payload,
 )
+from catalyst_radar.connectors.base import ConnectorRequest
+from catalyst_radar.connectors.options import (
+    OptionsAggregateConnector,
+    validate_options_fixture_json,
+    write_options_fixture_template_json,
+)
 from catalyst_radar.connectors.polygon_fixture import (
     capture_polygon_grouped_daily_response_with_preview,
     ingest_polygon_grouped_daily_fixture,
     preview_polygon_grouped_daily_fixture,
 )
-from catalyst_radar.connectors.provider_ingest import ProviderIngestError
+from catalyst_radar.connectors.provider_ingest import (
+    ProviderIngestError,
+    ingest_provider_records,
+)
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.dashboard import data as dashboard_data
 from catalyst_radar.dashboard.source_batches import (
@@ -56,6 +65,7 @@ from catalyst_radar.market.manual_bars import (
 )
 from catalyst_radar.security.licenses import redact_restricted_external_payload
 from catalyst_radar.storage.broker_repositories import BrokerRepository
+from catalyst_radar.storage.feature_repositories import FeatureRepository
 from catalyst_radar.storage.job_repositories import JobLockRepository
 from catalyst_radar.storage.provider_repositories import ProviderRepository
 from catalyst_radar.storage.repositories import MarketRepository
@@ -2015,6 +2025,10 @@ class MarketRadarDashboardApp(App[int]):
                 "command": "bars saved validate/import",
                 "meaning": "Validate or preview/import the saved grouped-daily file.",
             },
+            {
+                "command": "options template / validate / import",
+                "meaning": "Create, check, or explicitly import point-in-time options evidence.",
+            },
             {"command": "ticker <SYMBOL|all>", "meaning": "Filter ticker-aware pages."},
             {"command": "run execute", "meaning": "Start one guarded capped radar cycle."},
             {
@@ -2306,6 +2320,17 @@ def _apply_command(
                 engine,
                 config,
                 payload,
+                value,
+                filters=filters,
+            ),
+        )
+    if command in {"options", "option", "options-flow", "options_flow"}:
+        return _CommandUpdate(
+            page="run",
+            filters=filters,
+            message=_execute_options_fixture_command(
+                engine,
+                config,
                 value,
                 filters=filters,
             ),
@@ -3036,6 +3061,232 @@ def _first_priced_in_source_batch_payload(
         )
     except ValueError as exc:
         return str(exc)
+
+
+_OPTIONS_COMMAND_USAGE = (
+    "Usage: options template, options validate, options import, "
+    "or options import execute."
+)
+_OPTIONS_SCOPE_TOKENS = {
+    "stock",
+    "stocks",
+    "stock-like",
+    "stocks-only",
+    "stocks_only",
+    "full",
+    "all",
+    "active",
+    "universe",
+}
+
+
+def _execute_options_fixture_command(
+    engine: Engine,
+    config: AppConfig,
+    value: str,
+    *,
+    filters: DashboardFilters,
+):
+    parts = [part.strip().lower() for part in value.split() if part.strip()]
+    if parts and parts[0] in {"fixture", "manual", "point-in-time", "point_in_time"}:
+        parts = parts[1:]
+    if not parts:
+        return _OPTIONS_COMMAND_USAGE
+    stocks_only = _options_fixture_stocks_only(parts, filters)
+    command_parts = [part for part in parts if part not in _OPTIONS_SCOPE_TOKENS]
+    if not command_parts:
+        return _OPTIONS_COMMAND_USAGE
+    action = command_parts[0]
+    if action in {"check", "preview"}:
+        action = "validate"
+    try:
+        template = _options_fixture_template_payload(
+            engine,
+            config,
+            filters=filters,
+            stocks_only=stocks_only,
+        )
+        fixture_path = _options_fixture_default_path(template)
+        expected_as_of = _options_fixture_expected_as_of(template)
+        if action in {"create", "generate", "template"}:
+            wr = write_options_fixture_template_json(
+                fixture_path,
+                _mapping(template.get("fixture")),
+            )
+            return _options_fixture_template_message(
+                template,
+                wr.as_payload(),
+            )
+        if action == "validate":
+            validation = validate_options_fixture_json(
+                fixture_path,
+                expected_as_of=expected_as_of,
+            ).as_payload()
+            return _options_fixture_validation_message(
+                "Options fixture validation",
+                validation,
+                include_execute_hint=True,
+            )
+        if action == "import":
+            validation = validate_options_fixture_json(
+                fixture_path,
+                expected_as_of=expected_as_of,
+            ).as_payload()
+            execute = "execute" in command_parts
+            if not execute:
+                return _options_fixture_validation_message(
+                    "Options fixture import preview",
+                    validation,
+                    include_execute_hint=True,
+                )
+            if str(validation.get("status") or "") != "ready":
+                return _options_fixture_validation_message(
+                    "Options fixture import blocked",
+                    validation,
+                    include_execute_hint=False,
+                )
+            result = _ingest_options_fixture(
+                engine,
+                fixture_path=fixture_path,
+            )
+            return _options_fixture_import_execute_message(result)
+    except (
+        FileNotFoundError,
+        KeyError,
+        PermissionError,
+        ProviderIngestError,
+        RuntimeError,
+        ValueError,
+    ) as exc:
+        return f"Options fixture action failed: {exc}"
+    return _OPTIONS_COMMAND_USAGE
+
+
+def _options_fixture_stocks_only(
+    parts: Sequence[str],
+    filters: DashboardFilters,
+):
+    if any(part in {"full", "all", "active", "universe"} for part in parts):
+        return False
+    if any(part.startswith("stock") for part in parts):
+        return True
+    return bool(filters.priced_in_stocks_only)
+
+
+def _options_fixture_template_payload(
+    engine: Engine,
+    config: AppConfig,
+    *,
+    filters: DashboardFilters,
+    stocks_only: bool,
+):
+    return dashboard_data.options_fixture_template_payload(
+        engine,
+        config,
+        available_at=filters.available_at,
+        status=filters.priced_in_status,
+        usefulness=filters.priced_in_usefulness,
+        decision_gap=filters.priced_in_decision_gap,
+        stocks_only=stocks_only,
+    )
+
+
+def _options_fixture_default_path(template: Mapping[str, object]):
+    target = str(template.get("target_date") or "").strip()
+    if not target or "<" in target or ">" in target:
+        raise ValueError(
+            "options fixture target date is ambiguous; set one scan date before "
+            "creating or importing a point-in-time fixture"
+        )
+    return Path("data") / "local" / f"point-in-time-options-{target}.json"
+
+
+def _options_fixture_expected_as_of(template: Mapping[str, object]):
+    target = str(template.get("target_date") or "").strip()
+    if not target or "<" in target or ">" in target:
+        return None
+    return date.fromisoformat(target)
+
+
+def _options_fixture_template_message(
+    template: Mapping[str, object],
+    wr: Mapping[str, object],
+):
+    return (
+        "Options fixture template ready; "
+        f"rows={template.get('row_count')}; "
+        f"stocks_only={str(bool(template.get('stocks_only'))).lower()}; "
+        f"target={template.get('target_date')}; "
+        f"path={wr.get('output_path')}; "
+        f"external_calls={template.get('external_calls_made')}; "
+        "db_writes=0. Fill point-in-time option fields, then run "
+        "options validate; use options import execute only after validation is ready."
+    )
+
+
+def _options_fixture_validation_message(
+    label: str,
+    validation: Mapping[str, object],
+    *,
+    include_execute_hint: bool,
+):
+    status = str(validation.get("status") or "unknown")
+    parts = [
+        f"{label}: status={status}",
+        f"rows={validation.get('row_count')}",
+        f"valid={validation.get('valid_row_count')}",
+        f"invalid={validation.get('invalid_row_count')}",
+        f"blank_required={validation.get('blank_required_count')}",
+        f"invalid_numeric={validation.get('invalid_numeric_count')}",
+        f"missing_fields={validation.get('missing_field_count')}",
+        f"duplicates={validation.get('duplicate_ticker_count')}",
+        f"as_of={validation.get('as_of')}",
+        f"path={validation.get('path')}",
+        f"external_calls={validation.get('external_calls_made')}",
+        "db_writes=0",
+    ]
+    if include_execute_hint and status == "ready":
+        parts.append("execute with options import execute after reviewing")
+    elif status != "ready":
+        next_action = str(validation.get("next_action") or "").strip()
+        if next_action:
+            parts.append(f"next={next_action}")
+    return "; ".join(parts)
+
+
+def _ingest_options_fixture(
+    engine: Engine,
+    *,
+    fixture_path: Path,
+):
+    connector = OptionsAggregateConnector(fixture_path=fixture_path)
+    request = ConnectorRequest(
+        provider="options_fixture",
+        endpoint="fixture",
+        params={"fixture": str(fixture_path)},
+        requested_at=datetime.now(UTC),
+    )
+    return ingest_provider_records(
+        connector=connector,
+        request=request,
+        market_repo=MarketRepository(engine),
+        provider_repo=ProviderRepository(engine),
+        job_type="options_fixture",
+        metadata={"provider": "options_fixture", "fixture": str(fixture_path)},
+        feature_repo=FeatureRepository(engine),
+    )
+
+
+def _options_fixture_import_execute_message(result):
+    return (
+        "Options fixture import executed; "
+        f"raw={result.raw_count}; "
+        f"normalized={result.normalized_count}; "
+        f"option_features={result.option_feature_count}; "
+        f"rejected={result.rejected_count}; "
+        "external_calls=0; db_writes=1. Refresh the dashboard and rerun "
+        "the priced-in source roadmap before trusting options evidence."
+    )
 
 
 _MARKET_BAR_COMMAND_USAGE = "Usage: bars manual template/import or bars saved capture/import."
@@ -7128,6 +7379,9 @@ def _help_lines(width: int) -> list[str]:
         ("bars saved capture", "Plan saved capture; add confirm for one provider call."),
         ("bars saved validate", "Validate the saved grouped-daily file from disk."),
         ("bars saved import", "Preview or execute the saved-file import."),
+        ("options template", "Create the point-in-time options JSON template."),
+        ("options validate", "Validate the local options fixture with zero calls."),
+        ("options import", "Preview or explicitly execute options fixture import."),
         ("decision-gap <gap|all>", "Filter Insights by missing decision evidence."),
         ("next / prev", "Page through the current Insights scan rows."),
         ("offset <row>", "Jump to a 1-based full-scan row number."),

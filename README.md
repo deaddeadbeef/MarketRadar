@@ -402,6 +402,14 @@ grouped-daily JSON from disk when you want to re-check it later;
 `bars saved import` previews the local import; and `bars saved import execute`
 writes that saved file into the local database with 0 provider calls.
 
+Options evidence now has the same dashboard-native operator path.
+`options template` creates the point-in-time options JSON scaffold for the
+current scan-date options gaps, `options validate` checks the local fixture with
+0 provider calls and db_writes=0, `options import` previews the same validation,
+and `options import execute` explicitly persists the validated fixture to local
+option features with 0 provider calls. Add `stocks` or `full` to the command
+when you intentionally want a stock-like-only or full active-universe template.
+
 For a manual repair, generate or reuse the local ignored CSV scaffold from the
 current database universe, fill only complete OHLCV rows, preview them, then
 execute the import only after the preview is clean:

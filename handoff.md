@@ -1,9 +1,48 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 03:55:05 +08:00
+Last updated: 2026-05-21 04:21:46 +08:00
 
 
 
+
+## Latest TUI Point-In-Time Options Fixture Actions
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- The immediate trusted-answer blocker is still `market_bars`; this slice does not fill bars, shrink the universe, change scoring, or claim readiness.
+- No Polygon/Massive, SEC, Schwab, OpenAI, broker, or provider calls were made. The new dashboard actions are local fixture/template/import controls only.
+- This is still useful because options flow is one of the evidence routes needed after the bar gate clears. The source roadmap already exposes options as blocked by a point-in-time local fixture, and the TUI should be a replacement operator UI rather than forcing a CLI paste.
+
+Fix in this slice:
+
+- Added dashboard-native options fixture commands on the Run page:
+  - `options template` creates the point-in-time options JSON scaffold under `data\local\point-in-time-options-YYYY-MM-DD.json` for the current scan-date options gaps.
+  - `options validate` validates that local JSON fixture with 0 external calls and db_writes=0.
+  - `options import` previews the same validation and keeps db_writes=0.
+  - `options import execute` is the explicit local persistence path; it validates first, then reuses `OptionsAggregateConnector`, provider-ingest storage, and `FeatureRepository` to persist option features with 0 provider calls.
+- The command accepts `stocks` or `full` scope tokens so the operator can intentionally choose stock-like-only or full active-universe option scaffolds.
+- Textual help and static help now list the options fixture commands.
+- README now documents the options fixture commands next to the market-bar dashboard actions.
+
+Validation observed in this slice:
+
+```powershell
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py
+$env:PYTHONPATH="C:\Users\fpan1\MarketRadar\.worktrees\tui-options-fixture-actions\src"; C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_options_fixture_commands_are_zero_call_operator_actions -q
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m py_compile src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py
+$env:PYTHONPATH="C:\Users\fpan1\MarketRadar\.worktrees\tui-options-fixture-actions\src"; C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_bars_manual_template_and_import_are_zero_call_actions tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_bars_saved_validate_and_import_fixture_are_operator_actions tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_options_fixture_commands_are_zero_call_operator_actions -q
+$env:PYTHONPATH="C:\Users\fpan1\MarketRadar\.worktrees\tui-options-fixture-actions\src"; C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\test_options_ingest.py::test_ingest_options_fixture_template_cli_writes_gap_template tests\integration\test_options_ingest.py::test_ingest_options_validate_only_cli_reports_invalid_fixture tests\integration\test_options_ingest.py::test_validate_options_fixture_json_accepts_filled_rows -q
+$env:PYTHONPATH="C:\Users\fpan1\MarketRadar\.worktrees\tui-options-fixture-actions\src"; C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page help | Select-String 'options template|options validate|options import|External calls made'
+```
+
+Observed results: Ruff passed, py_compile passed, the new focused dashboard options command test passed, adjacent dashboard market-bar/operator tests passed, focused options-ingest tests passed, and the zero-call TUI help smoke listed `options template`, `options validate`, `options import`, and `External calls made: 0`.
+
+Next useful product action:
+
+- Do not treat this slice as goal completion.
+- The immediate trusted-answer blocker remains market bars: fill/capture/import the missing 2026-05-15 bars under explicit operator control, then rerun the full source roadmap.
+- After market bars are cleared, use `batch options` to inspect the exact options gap and `options template` / `options validate` / `options import execute` only if point-in-time options evidence is still needed for the full-market priced-in answer.
 
 ## Latest Saved Market-Bar Capture Preview
 
