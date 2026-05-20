@@ -301,6 +301,9 @@ class ManualBarsRepairPlanResult:
             f"--date {self.expected_as_of.isoformat()} "
             f"--fixture {provider_saved_file_path}"
         )
+        provider_saved_file_validate_command = (
+            f"{provider_saved_file_import_command} --validate-only"
+        )
         provider_health = _manual_bar_provider_health_payload(
             status=self.provider_health_status,
             reason=self.provider_health_reason,
@@ -454,11 +457,14 @@ class ManualBarsRepairPlanResult:
             "provider_saved_file_import_command": (
                 provider_saved_file_import_command if missing > 0 else None
             ),
+            "provider_saved_file_validate_command": (
+                provider_saved_file_validate_command if missing > 0 else None
+            ),
             "provider_saved_file_external_call_count": 0,
             "provider_saved_file_boundary": (
-                "Imports a saved Polygon/Massive grouped-daily JSON response from "
-                "disk and makes 0 provider calls; obtain the file separately under "
-                "your provider terms."
+                "Validate the saved Polygon/Massive grouped-daily JSON response "
+                "before import. Validation and import read from disk and make 0 "
+                "provider calls; obtain the file separately under your provider terms."
             ),
             "external_calls_made": 0,
             "approval_boundary": (
