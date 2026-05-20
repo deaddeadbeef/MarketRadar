@@ -1,6 +1,69 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 15:30:57 +08:00
+Last updated: 2026-05-20 15:41:55 +08:00
+
+## Latest Priced-In Queue Usefulness Speedup
+
+Goal alignment:
+
+- The active goal remains: scan the broad market and tell whether any stock's
+  price has not yet matched market emotion/expectations.
+- After the dashboard theme speedup, the stock-only CLI/API answer path still
+  spent noticeable time assembling queue rows. Profiling showed
+  `_priced_in_queue_row(...)` rebuilt full source-action command rows for every
+  candidate just to decide usefulness.
+- Detailed source-action rows are still needed in the evidence brief and source
+  planning surfaces, but the queue usefulness verdict only needs the names of
+  sources that are missing or stale.
+- This slice keeps scope narrow: it does not change scoring, evidence gates,
+  provider execution, source batch planning, agent behavior, or UI layout.
+- This slice makes 0 Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or
+  provider calls.
+
+Fix in this slice:
+
+- Added `_priced_in_source_gap_names_from_payload(...)` as a lightweight helper
+  that derives missing/stale source names from a row's source payload.
+- `_priced_in_queue_row(...)` now passes those source-gap names into
+  `_priced_in_usefulness_verdict(...)` instead of building full source-action
+  rows.
+- `_priced_in_usefulness_verdict(...)` still accepts detailed `source_actions`
+  for existing call sites; this keeps evidence brief behavior unchanged.
+- Added a parity regression showing the lightweight source-gap helper matches
+  the old source-action status interpretation.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_source_gap_names_match_action_statuses tests\integration\test_dashboard_data.py::test_priced_in_answer_payload_summarizes_current_scan tests\integration\test_dashboard_data.py::test_priced_in_answer_payload_reuses_queue_preflight tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_answer_uses_stock_scope_for_market_bar_coverage -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py tests\integration\test_dashboard_data.py
+git diff --check
+Measure-Command { .\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-answer --stocks-only --limit 1 --json > $null } | Select-Object -ExpandProperty TotalSeconds
+Measure-Command { .\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page overview --stocks-only > $null } | Select-Object -ExpandProperty TotalSeconds
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-answer --stocks-only --limit 1
+```
+
+Results:
+
+- Focused pytest passed: `4 passed`.
+- Ruff passed.
+- `git diff --check` passed.
+- Live `priced-in-answer --stocks-only --limit 1 --json` measured about
+  `17.1s`.
+- Live stock-only dashboard once measured about `14.9s`.
+- Live answer output still reported `status=blocked`, `market_bars:131`,
+  `catalyst_events:5512`, `local_text:5512`, and `external_calls=0`.
+
+Next useful product action:
+
+- The product blocker remains data coverage. Stock-only priced-in answer is
+  blocked until `131` stock-like scan-date bars are filled.
+- After bars, the next core blockers are `catalyst_events` and `local_text`.
+  Current zero-call source-batch planning reports `5512` catalyst event gaps,
+  `5510` plannable SEC rows, `2` missing-CIK blockers (`FRBA`, `SSBI`), and
+  local text blocked until catalyst event text exists.
+- Do not run provider/source-fill execution commands without explicit operator
+  approval.
 
 ## Latest Theme Row Dashboard Speedup
 

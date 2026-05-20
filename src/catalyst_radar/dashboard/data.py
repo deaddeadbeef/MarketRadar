@@ -11317,15 +11317,12 @@ def _priced_in_queue_row(
         instrument=instrument,
         security_metadata=security_metadata,
     )
-    source_actions = _priced_in_source_actions_from_payload(
-        data_sources,
-        ticker=_priced_in_action_ticker(row),
-    )
+    source_gaps = _priced_in_source_gap_names_from_payload(data_sources)
     usefulness = _priced_in_usefulness_verdict(
         row,
         blockers=blockers,
         data_sources=data_sources,
-        source_actions=source_actions,
+        source_gaps=source_gaps,
         instrument=instrument,
     )
     reason = str(
@@ -11830,6 +11827,26 @@ def _priced_in_source_actions_from_payload(
     return _priced_in_source_action_rows(source_rows, 1)
 
 
+def _priced_in_source_gap_names_from_payload(
+    data_sources: Mapping[str, object],
+) -> list[str]:
+    available = {
+        str(item)
+        for item in _sequence_value(data_sources.get("available"))
+        if str(item).strip()
+    }
+    stale = {
+        str(item)
+        for item in _sequence_value(data_sources.get("stale"))
+        if str(item).strip()
+    }
+    return [
+        source
+        for source in PRICED_IN_SOURCE_CLASSES
+        if source in stale or source not in available
+    ]
+
+
 def _priced_in_core_sources_for_instrument(
     instrument: Mapping[str, object],
 ) -> set[str]:
@@ -11852,7 +11869,8 @@ def _priced_in_usefulness_verdict(
     *,
     blockers: Sequence[str],
     data_sources: Mapping[str, object],
-    source_actions: Sequence[Mapping[str, object]],
+    source_actions: Sequence[Mapping[str, object]] = (),
+    source_gaps: Sequence[str] | None = None,
     instrument: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     status = str(candidate.get("priced_in_status") or "").strip().lower()
@@ -11877,19 +11895,25 @@ def _priced_in_usefulness_verdict(
     )
     missing_core = sorted(source for source in core_sources if source not in available)
     stale_core = sorted(source for source in core_sources if source in stale)
-    source_gaps = [
-        str(action.get("source"))
-        for action in source_actions
-        if str(action.get("status") or "") not in {"ready", "not_applicable"}
-    ]
+    resolved_source_gaps = (
+        [str(source) for source in source_gaps if str(source).strip()]
+        if source_gaps is not None
+        else [
+            str(action.get("source"))
+            for action in source_actions
+            if str(action.get("status") or "") not in {"ready", "not_applicable"}
+        ]
+    )
     optional_context_gaps = sorted(
         dict.fromkeys(
-            source for source in source_gaps if source in optional_context_sources
+            source
+            for source in resolved_source_gaps
+            if source in optional_context_sources
         )
     )
     missing_for_decision = [
         source
-        for source in source_gaps
+        for source in resolved_source_gaps
         if source not in optional_context_sources
     ]
     candidate_packet_id = str(candidate.get("candidate_packet_id") or "").strip()

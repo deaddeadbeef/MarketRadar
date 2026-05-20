@@ -35,6 +35,8 @@ from catalyst_radar.core.models import ActionState, DailyBar, Security
 from catalyst_radar.dashboard.data import (
     _priced_in_market_bar_provider_fill_plan,
     _priced_in_scan_status,
+    _priced_in_source_actions_from_payload,
+    _priced_in_source_gap_names_from_payload,
     actionability_breakdown_payload,
     activation_summary_payload,
     agent_review_ledger_rows_payload,
@@ -1566,6 +1568,24 @@ def test_priced_in_answer_payload_summarizes_current_scan(tmp_path: Path) -> Non
         assert payload["top_rows"][0]["ticker"] == "MSFT"
         assert payload["top_rows"][0]["decision_ready"] is False
         assert payload["top_rows"][0]["missing_sources"]
+
+
+def test_priced_in_source_gap_names_match_action_statuses() -> None:
+    data_sources = {
+        "available": ["market_bars", "theme_peer_sector"],
+        "stale": ["local_text"],
+        "missing": ["catalyst_events"],
+    }
+    action_gaps = [
+        str(action.get("source"))
+        for action in _priced_in_source_actions_from_payload(
+            data_sources,
+            ticker="ACME",
+        )
+        if str(action.get("status") or "") not in {"ready", "not_applicable"}
+    ]
+
+    assert _priced_in_source_gap_names_from_payload(data_sources) == action_gaps
 
 
 def test_priced_in_answer_payload_reuses_queue_preflight(
