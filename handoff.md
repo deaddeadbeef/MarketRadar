@@ -1,6 +1,70 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 17:50:15 +08:00
+Last updated: 2026-05-20 18:05:36 +08:00
+
+## Latest Dashboard Scan-Scope Drift Correction
+
+Goal alignment / drift check:
+
+- The active goal remains: scan the broad market and tell whether any stock's
+  price has not yet matched market emotion/expectations.
+- This slice intentionally does not add a new provider, agent, scoring model,
+  broker action, or dashboard surface. It is a small dashboard correction after
+  the drift check.
+- The problem was human-facing clarity: the overview title could say
+  `Full-market priced-in queue - showing rows 1-50 of 90` while the real
+  stocks-only scan scope was `5521/5652` scanned with `131` unscanned rows. That
+  wording made a visible review page look like the full market.
+- This slice keeps the scan/gating logic unchanged and makes the dashboard
+  harder to misread.
+- It makes 0 Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or provider
+  calls.
+
+Fix in this slice:
+
+- Replaced the default overview title with:
+  `Visible priced-in review page - rows <start>-<end> of <visible-total>`.
+- Added a title suffix from `priced_in_answer.full_scan` when available, for
+  example:
+  `stock-like scan 5521/5652, 131 unscanned`.
+- Updated the overview caption so full-scan mode explains that the table is one
+  review page, not the full scan universe, and that the coverage lines above
+  describe the real active-market scan scope.
+- Updated fallback caption copy to say the table is not the full scan universe
+  or a separate watchlist.
+- Updated interactive full-scan status messages from "whole ranked universe" to
+  "review page 1; coverage line shows the scan universe".
+- Updated TUI integration assertions so future changes do not reintroduce the
+  confusing `Full-market priced-in queue` wording.
+
+Validation run in this slice:
+
+```powershell
+..\..\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py
+..\..\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_snapshot_cli_outputs_human_readable_zero_call_summary tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_tui_once_can_show_full_scan_mode tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_review_page_is_distinct_from_full_scan tests\integration\test_dashboard_demo_seed_cli.py::test_modern_dashboard_tui_supports_mouse_navigation -q
+..\..\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page overview --scan-mode all | Select-String -Pattern 'Visible priced-in|Full scan coverage|review page|Decision readiness|active scan|stock-like scan'
+```
+
+Results:
+
+- Ruff passed.
+- Focused dashboard/TUI regression tests passed: `4 passed`.
+- Live one-shot TUI smoke made 0 provider calls. The local database currently
+  had no actionable mismatch rows visible in that filter, so the pattern check
+  matched only the `Decision readiness` line; the seeded integration tests cover
+  the changed overview title/caption paths.
+
+Next useful product action:
+
+- Do not treat this as goal completion. It is only a human-clarity correction.
+- The next product step is still to clear the `market_bars` blocker, then rerun
+  the stocks-only priced-in answer/audit. Current known blocker from the latest
+  status check remains `131` missing stock-like scan-date bars and `523`
+  all-instrument missing bars.
+- After market bars are repaired, continue with core emotion evidence:
+  `catalyst_events` first, then `local_text`.
+- Do not run live provider/source-fill execution commands without explicit
+  operator approval.
 
 ## Latest Guarded Grouped-Daily Capture API
 

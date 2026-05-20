@@ -1093,7 +1093,7 @@ class MarketRadarDashboardApp(App[int]):
         ).normalized()
         self.page = "overview"
         self.status_message = (
-            "Full Scan mode: showing page 1 from the whole ranked universe."
+            "Full Scan mode: showing review page 1; coverage line shows the scan universe."
             if resolved == "all"
             else "Mismatches mode: showing only bullish/bearish not-priced-in rows."
         )
@@ -1451,9 +1451,9 @@ class MarketRadarDashboardApp(App[int]):
             total = int(_number_or_zero(queue.get("total_count")))
             if status_filter == "all":
                 mode_help = (
-                    "showing the first ranked page from the entire scan"
+                    "showing review page 1 from the ranked scan"
                     if offset == 0
-                    else "showing a later ranked page from the entire scan"
+                    else "showing a later review page from the ranked scan"
                 )
             else:
                 mode_help = (
@@ -2102,7 +2102,9 @@ def _apply_command(
                 priced_in_stocks_only=False,
                 priced_in_offset=0,
             ).normalized(),
-            message="Full Scan mode: showing page 1 from the whole ranked universe.",
+            message=(
+                "Full Scan mode: showing review page 1; coverage line shows the scan universe."
+            ),
         )
     if command in {"stock", "stocks", "stocks-only", "stocks_only"}:
         return _CommandUpdate(
@@ -2155,7 +2157,7 @@ def _apply_command(
                 priced_in_offset=0,
             ).normalized(),
             message=(
-                "Full Scan mode: showing page 1 from the whole ranked universe."
+                "Full Scan mode: showing review page 1; coverage line shows the scan universe."
                 if scan_status == "all"
                 else f"Scan filter updated: {scan_status}."
             ),
@@ -4512,6 +4514,8 @@ def _overview_title(payload: Mapping[str, object]) -> str:
         usefulness = _usefulness_counts_summary(queue)
         suffix_parts = [part for part in (usefulness, source_gap, decision_gap) if part]
         suffix = f"; {'; '.join(suffix_parts)}" if suffix_parts else ""
+        scope = _priced_in_scope_title_suffix(payload, queue)
+        scope_text = f"; {scope}" if scope else ""
         if scan_status == "selected_universe":
             return (
                 f"Selected-universe priced-in queue - showing rows "
@@ -4522,8 +4526,33 @@ def _overview_title(payload: Mapping[str, object]) -> str:
                 f"Previous full-market priced-in scan - showing rows "
                 f"{start}-{end} of {total}{suffix}"
             )
-        return f"Full-market priced-in queue - showing rows {start}-{end} of {total}{suffix}"
-    return "Full-market priced-in queue - select a row to act"
+        return (
+            f"Visible priced-in review page - rows {start}-{end} of {total}"
+            f"{scope_text}{suffix}"
+        )
+    return "Visible priced-in review page - select a row to inspect evidence"
+
+
+def _priced_in_scope_title_suffix(
+    payload: Mapping[str, object],
+    queue: Mapping[str, object],
+) -> str:
+    answer = _mapping(payload.get("priced_in_answer"))
+    full_scan = _mapping(answer.get("full_scan"))
+    active = int(_number_or_zero(full_scan.get("active_securities")))
+    scanned = int(_number_or_zero(full_scan.get("scanned_rows")))
+    unscanned = int(_number_or_zero(full_scan.get("unscanned_rows")))
+    if active > 0 and scanned > 0:
+        instrument_filter = str(full_scan.get("instrument_filter") or "").strip()
+        label = "stock-like scan" if instrument_filter == "stocks_only" else "active scan"
+        suffix = f"{label} {scanned}/{active}"
+        if unscanned > 0:
+            suffix = f"{suffix}, {unscanned} unscanned"
+        return suffix
+    scan_total = _priced_in_scan_total(queue)
+    if scan_total:
+        return f"scan rows {scan_total}"
+    return ""
 
 
 def _overview_caption(payload: Mapping[str, object]) -> str:
@@ -4592,10 +4621,10 @@ def _overview_caption(payload: Mapping[str, object]) -> str:
                 "Browsing makes 0 provider calls."
             )
         return (
-            f"This page shows rows {start}-{end}: {returned} visible rows from "
+            "This table is one review page, not the full scan universe. "
+            f"It shows rows {start}-{end}: {returned} visible rows from "
             f"{total} {scan_label}. "
-            "These tickers are only the current page; the table is paged for "
-            "human review, not reduced to a watchlist. "
+            "The coverage lines above tell you the real active-market scan scope. "
             "Press M or click SCAN -> Mismatches to return to the smaller action queue. "
             "Use priced-in-queue --status all --limit/--offset or the API offset "
             "parameter to page deeper; use priced-in-queue --full-scan --all --json "
@@ -4605,8 +4634,8 @@ def _overview_caption(payload: Mapping[str, object]) -> str:
             "Browsing makes 0 provider calls."
         )
     return (
-        "The ticker rows are the current priced-in scan page, not a separate "
-        "watchlist. Enter opens the relevant evidence page."
+        "The table is the current priced-in review page, not the full scan "
+        "universe or a separate watchlist. Enter opens the relevant evidence page."
         f"{source_gap_text}{source_hint_text} Browsing makes 0 provider calls."
     )
 
