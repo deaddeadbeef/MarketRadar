@@ -6146,6 +6146,9 @@ def _run_mission_brief_items(
         items.append(("Trust blocker", blocker_text))
     if next_action:
         items.append(("Useful next", next_action))
+    unblock_summary = _run_market_bar_unblock_summary(payload, blocker)
+    if unblock_summary:
+        items.append(("Unblock options", unblock_summary))
     if items:
         items.append(
             (
@@ -6157,6 +6160,22 @@ def _run_mission_brief_items(
             )
         )
     return items
+
+
+def _run_market_bar_unblock_summary(
+    payload: Mapping[str, object],
+    blocker: Mapping[str, object] | None,
+) -> str:
+    if not blocker or str(blocker.get("source") or "") != "market_bars":
+        return ""
+    manual = _market_bar_manual_action_summary(payload)
+    capture = _market_bar_provider_saved_file_capture_summary(payload)
+    parts: list[str] = []
+    if manual:
+        parts.append("manual CSV: 0 provider calls")
+    if capture:
+        parts.append(f"saved capture: {capture}")
+    return "; ".join(parts)
 
 
 def _market_bar_manual_action_summary(payload: Mapping[str, object]) -> str:

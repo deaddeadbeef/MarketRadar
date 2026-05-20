@@ -3684,6 +3684,7 @@ def test_priced_in_source_batches_prioritize_full_market_bar_coverage(
 ) -> None:
     database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
     monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("CATALYST_POLYGON_API_KEY", "test-key")
 
     assert main(["seed-dashboard-demo"]) == 0
     capsys.readouterr()
@@ -3708,7 +3709,12 @@ def test_priced_in_source_batches_prioritize_full_market_bar_coverage(
 
     overview = priced_in_all_source_gap_batches_payload(
         engine,
-        AppConfig.from_env({"CATALYST_DATABASE_URL": database_url}),
+        AppConfig.from_env(
+            {
+                "CATALYST_DATABASE_URL": database_url,
+                "CATALYST_POLYGON_API_KEY": "test-key",
+            }
+        ),
     )
     source_rows = {row["source"]: row for row in overview["sources"]}
 
@@ -3716,6 +3722,23 @@ def test_priced_in_source_batches_prioritize_full_market_bar_coverage(
     assert overview["coverage_first_recommendation"]["source"] == "market_bars"
     assert overview["decision_shortcut_recommendation"] is None
     assert overview["decision_shortcut_blocker"]["blocked_by"] == "market_bars"
+    unblock_options = {
+        option["kind"]: option
+        for option in overview["mission_brief"]["next_unblock_options"]
+    }
+    assert unblock_options["manual_csv"]["external_calls_required"] == 0
+    assert "market-bars template" in unblock_options["manual_csv"]["command"]
+    assert unblock_options["saved_provider_capture"]["status"] == "approval_required"
+    assert unblock_options["saved_provider_capture"]["approval_required"] is True
+    assert unblock_options["saved_provider_capture"]["external_calls_required"] == 1
+    assert unblock_options["saved_provider_capture"]["db_writes_during_step"] == 0
+    assert unblock_options["saved_provider_capture"]["command"] == (
+        "bars saved capture confirm"
+    )
+    assert "Approve one Polygon/Massive" in unblock_options[
+        "saved_provider_capture"
+    ]["question"]
+    assert unblock_options["validate_saved_file"]["external_calls_required"] == 0
     assert overview["coverage_first_recommendation"]["coverage_basis"] == (
         "active_universe_as_of_bars"
     )
@@ -3772,6 +3795,12 @@ def test_priced_in_source_batches_prioritize_full_market_bar_coverage(
         ]
         == 1
     )
+    approval_packet = source_rows["market_bars"]["diagnostic"][
+        "provider_saved_file_capture_approval_packet"
+    ]
+    assert approval_packet["status"] == "approval_required"
+    assert approval_packet["external_calls_if_approved"] == 1
+    assert approval_packet["db_writes_during_capture"] == 0
     assert (
         source_rows["market_bars"]["diagnostic"][
             "provider_saved_file_external_call_count"
@@ -3791,6 +3820,12 @@ def test_priced_in_source_batches_prioritize_full_market_bar_coverage(
     assert main(["priced-in-source-batches", "--source", "all"]) == 0
     output = capsys.readouterr()
     assert output.err == ""
+    assert "unblock=manual_csv status=available calls=0" in output.out
+    assert (
+        "unblock=saved_provider_capture status=approval_required calls=1 "
+        "db_writes=0 command=bars saved capture confirm"
+    ) in output.out
+    assert "question=Approve one Polygon/Massive grouped-daily call" in output.out
     assert "provider_saved_file_status=status=missing" in output.out
     assert "provider_saved_file_capture=external_calls=1" in output.out
     assert "--save-response data\\local\\polygon-grouped-daily-" in output.out
