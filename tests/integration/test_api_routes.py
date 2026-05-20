@@ -2251,6 +2251,13 @@ def test_post_radar_market_bars_provider_fixture_capture_uses_fixture_without_db
     database_url = _database_url(tmp_path, "radar-provider-fixture-capture.db")
     monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
     engine = _create_database(database_url)
+    MarketRepository(engine).upsert_securities(
+        [
+            _security_with_type("AAPL", "CS"),
+            _security_with_type("MSFT", "CS"),
+            _security_with_type("GOOG", "CS"),
+        ]
+    )
     output_path = tmp_path / "polygon-grouped-daily-2026-05-08.json"
     client = TestClient(create_app())
 
@@ -2270,6 +2277,13 @@ def test_post_radar_market_bars_provider_fixture_capture_uses_fixture_without_db
     assert payload["source"] == "fixture"
     assert payload["external_calls_made"] == 0
     assert payload["db_writes_made"] == 0
+    preview = payload["post_capture_preview"]
+    assert preview["status"] == "ready_with_rejections"
+    assert preview["external_calls_made"] == 0
+    assert preview["db_writes_made"] == 0
+    coverage = preview["coverage"]
+    assert coverage["missing_covered_by_fixture_count"] == 2
+    assert coverage["missing_after_import_count"] == 1
     assert output_path.read_bytes() == Path(
         "tests/fixtures/polygon/grouped_daily_2026-05-08.json"
     ).read_bytes()

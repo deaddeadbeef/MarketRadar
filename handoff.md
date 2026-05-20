@@ -1,9 +1,44 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 03:22:03 +08:00
+Last updated: 2026-05-21 03:48:51 +08:00
 
 
 
+
+## Latest Saved Market-Bar Capture Preview
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- The immediate trusted-answer blocker remains market bars. The latest local status before this slice still showed 523 missing full active-universe bars and 131 missing stock-like bars for the scan date.
+- This slice is intentionally narrow. It does not call Polygon/Massive, SEC, Schwab, OpenAI, import rows, change scoring, shrink the universe, or add another abstraction.
+- The useful product problem addressed here is operator friction: after one explicitly approved Polygon/Massive grouped-daily saved-response capture, the user should immediately know whether that saved file covers the current missing bars before deciding to import it.
+
+Fix in this slice:
+
+- Added `capture_polygon_grouped_daily_response_with_preview(...)` in `src/catalyst_radar/connectors/polygon_fixture.py`.
+- It performs the existing approved capture, then runs `preview_polygon_grouped_daily_fixture(...)` against the saved output file.
+- The post-capture preview makes 0 additional provider calls and 0 DB writes. It reports fixture status, daily bar count, missing-bar coverage, remaining missing bars, and stock-like remaining missing bars.
+- CLI saved-response capture now prints `post_capture_preview ...` after `polygon_grouped_daily_response_capture ...`.
+- API `/api/radar/market-bars/provider-fixture-capture` now returns `post_capture_preview` for confirmed or fixture-backed captures. The approval-required path remains unchanged and still makes 0 calls.
+- TUI command `bars saved capture confirm` now reports `Post-capture preview: ...` in the last-response panel and tells the operator to import only if the preview matches intent.
+- README now documents that saved capture includes an immediate zero-call post-capture coverage preview.
+
+Validation observed in this slice:
+
+```powershell
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\connectors\polygon_fixture.py src\catalyst_radar\cli.py src\catalyst_radar\api\routes\radar.py src\catalyst_radar\dashboard\tui.py tests\integration\test_polygon_ingest_cli.py tests\integration\test_api_routes.py tests\integration\test_dashboard_demo_seed_cli.py
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m py_compile src\catalyst_radar\connectors\polygon_fixture.py src\catalyst_radar\cli.py src\catalyst_radar\api\routes\radar.py src\catalyst_radar\dashboard\tui.py
+$env:PYTHONPATH="C:\Users\fpan1\MarketRadar-post-capture-preview\src"; C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\test_polygon_ingest_cli.py::test_polygon_grouped_daily_save_response_uses_fixture_without_db_writes tests\integration\test_api_routes.py::test_post_radar_market_bars_provider_fixture_capture_uses_fixture_without_db_writes tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_bars_saved_capture_confirm_reports_post_capture_preview -q
+$env:PYTHONPATH="C:\Users\fpan1\MarketRadar-post-capture-preview\src"; C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_bars_saved_capture_requires_confirm_without_call tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_bars_saved_validate_and_import_fixture_are_operator_actions tests\integration\test_polygon_ingest_cli.py::test_polygon_grouped_daily_fixture_validate_only_makes_no_writes tests\integration\test_api_routes.py::test_post_radar_market_bars_provider_fixture_import_previews_without_writes -q
+```
+
+Observed results so far: Ruff passed, `py_compile` passed, `git diff --check` passed, focused pytest passed 7 tests, and a zero-call live-DB TUI smoke showed `Mission Brief`, `Current answer`, `Trust blocker`, `Saved file`, and `External calls made: 0`. PR creation, merge, local restart, and post-merge smoke still need to run before this slice is closed.
+
+Next useful product action:
+
+- Finish this slice with `git diff --check`, commit, PR, rebase merge, restart local services, and smoke main.
+- Do not mark the overall goal complete. The system still cannot produce a trusted full-market priced-in answer until market-bar gaps are filled and the broader source roadmap is advanced.
 ## Latest Full-Scan Mission Brief
 
 Goal alignment / drift check:

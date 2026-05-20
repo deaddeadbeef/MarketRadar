@@ -52,7 +52,7 @@ from catalyst_radar.connectors.options import (
 )
 from catalyst_radar.connectors.polygon import PolygonEndpoint, PolygonMarketDataConnector
 from catalyst_radar.connectors.polygon_fixture import (
-    capture_polygon_grouped_daily_response,
+    capture_polygon_grouped_daily_response_with_preview,
     preview_polygon_grouped_daily_fixture,
 )
 from catalyst_radar.connectors.provider_ingest import (
@@ -2390,8 +2390,9 @@ def _ingest_polygon_provider(
                     file=sys.stderr,
                 )
                 return 2
-            payload = capture_polygon_grouped_daily_response(
+            payload = capture_polygon_grouped_daily_response_with_preview(
                 config=config,
+                market_repo=market_repo,
                 date_value=date_value,
                 fixture_path=fixture_path,
                 output_path=save_response_path,
@@ -6222,20 +6223,51 @@ def _provider_result_payload(result: ProviderIngestResult) -> dict[str, object]:
 def _print_polygon_grouped_daily_response_capture(
     payload: Mapping[str, object],
 ) -> None:
+    status = payload.get("status")
+    capture_date = payload.get("date")
+    source = payload.get("source")
+    output_path = payload.get("output_path")
+    bytes_written = payload.get("bytes_written")
+    external_calls = payload.get("external_calls_made")
+    db_writes = payload.get("db_writes_made")
     print(
         "polygon_grouped_daily_response_capture "
-        f"status={payload.get('status')} "
-        f"date={payload.get('date')} "
-        f"source={payload.get('source')} "
-        f"output={payload.get('output_path')} "
-        f"bytes={payload.get('bytes_written')} "
-        f"external_calls={payload.get('external_calls_made')} "
-        f"db_writes={payload.get('db_writes_made')}"
+        f"status={status} "
+        f"date={capture_date} "
+        f"source={source} "
+        f"output={output_path} "
+        f"bytes={bytes_written} "
+        f"external_calls={external_calls} "
+        f"db_writes={db_writes}"
     )
-    print(f"validate_command={payload.get('validate_command')}")
-    print(f"import_command={payload.get('import_command')}")
-    print(f"next_action={payload.get('next_action')}")
-
+    preview = payload.get("post_capture_preview")
+    if isinstance(preview, Mapping):
+        coverage = _mapping_value(preview.get("coverage"))
+        preview_status = preview.get("status")
+        daily_bar_count = preview.get("daily_bar_count")
+        covers_missing = coverage.get("missing_covered_by_fixture_count", 0)
+        missing_after = coverage.get("missing_after_import_count", 0)
+        stock_missing_after = coverage.get(
+            "stock_like_missing_after_import_count", 0
+        )
+        preview_external_calls = preview.get("external_calls_made")
+        preview_db_writes = preview.get("db_writes_made")
+        print(
+            "post_capture_preview "
+            f"status={preview_status} "
+            f"daily_bars={daily_bar_count} "
+            f"covers_missing={covers_missing} "
+            f"missing_after={missing_after} "
+            f"stock_missing_after={stock_missing_after} "
+            f"external_calls={preview_external_calls} "
+            f"db_writes={preview_db_writes}"
+        )
+    validate_command = payload.get("validate_command")
+    import_command = payload.get("import_command")
+    next_action = payload.get("next_action")
+    print(f"validate_command={validate_command}")
+    print(f"import_command={import_command}")
+    print(f"next_action={next_action}")
 
 def _print_polygon_grouped_daily_fixture_preview(
     payload: Mapping[str, object],
