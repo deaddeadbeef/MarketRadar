@@ -657,6 +657,63 @@ def test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths(
     assert payload["external_calls_made"] == 0
 
 
+def test_market_bars_repair_plan_prefers_available_saved_provider_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+):
+    monkeypatch.chdir(tmp_path)
+    database_url = _database_url(tmp_path)
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("CATALYST_POLYGON_API_KEY", "fixture-key")
+
+    assert main(["init-db"]) == 0
+    capsys.readouterr()
+    engine = create_engine(database_url, future=True)
+    MarketRepository(engine).upsert_securities(
+        [
+            _security("BSTK", "Beta Stock", "CS"),
+            _security("AADR", "Alpha ADR", "ADRC"),
+        ]
+    )
+    MarketRepository(engine).upsert_daily_bars(
+        [_daily_bar("BSTK", date(2026, 5, 15))]
+    )
+    saved_file = tmp_path / "data" / "local" / "polygon-grouped-daily-2026-05-15.json"
+    saved_file.parent.mkdir(parents=True)
+    saved_file.write_text('{"results": []}', encoding="utf-8")
+
+    assert (
+        main(
+            [
+                "market-bars",
+                "repair-plan",
+                "--expected-as-of",
+                "2026-05-15",
+                "--stocks-only",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["provider_saved_file_exists"] is True
+    assert payload["provider_saved_file_status"] == "available"
+    assert payload["operator_step"] == {
+        "status": "saved_file_available",
+        "kind": "validate_saved_provider_response",
+        "action": (
+            "Validate the saved Polygon/Massive grouped-daily JSON response; "
+            "if it passes, import it to clear scan-date market-bar gaps."
+        ),
+        "command": payload["provider_saved_file_validate_command"],
+        "after_manual_command": payload["provider_saved_file_import_command"],
+        "manual_step": False,
+        "external_calls_made": 0,
+    }
+
+
 def test_market_bars_repair_plan_blocks_provider_fill_when_health_is_down(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
