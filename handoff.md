@@ -1,6 +1,93 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 17:39:29 +08:00
+Last updated: 2026-05-20 17:50:15 +08:00
+
+## Latest Guarded Grouped-Daily Capture API
+
+Goal alignment / drift check:
+
+- The active goal remains: scan the broad market and tell whether any stock's
+  price has not yet matched market emotion/expectations.
+- MarketRadar is still not done. The current live blocker remains
+  `market_bars`, with scan-date gaps in both full-market and stock-like scope.
+- The previous slice added CLI response capture. This slice gives the API and
+  dashboard a matching guarded capture surface, so a UI can support the same
+  capture -> validate -> import sequence without shelling out.
+- This slice does not execute a real Polygon/Massive provider request. It does
+  not change scoring, scan eligibility, source semantics, agent behavior,
+  Schwab behavior, or broker/order behavior.
+
+Fix in this slice:
+
+- Moved grouped-daily response capture into
+  `catalyst_radar.connectors.polygon_fixture.capture_polygon_grouped_daily_response`.
+- The shared helper:
+  - writes the raw grouped-daily JSON response body to a local file;
+  - validates that the response body is JSON before writing;
+  - redacts provider URLs in payloads;
+  - requires `confirm_external_call=True` for live provider capture;
+  - supports fixture-backed capture with `external_calls_made=0`;
+  - reports `db_writes_made=0`.
+- CLI `ingest-polygon grouped-daily --save-response ...` now uses that shared
+  helper.
+- Added API request model `MarketBarsProviderFixtureCaptureRequest`.
+- Added API endpoint:
+  `POST /api/radar/market-bars/provider-fixture-capture`
+- Endpoint behavior:
+  - requires analyst role;
+  - with no `confirm_external_call` and no `fixture_path`, returns
+    `status=approval_required`, `external_calls_made=0`, and writes no file;
+  - with `fixture_path`, captures from disk and makes 0 provider calls;
+  - with `confirm_external_call=true` and no `fixture_path`, performs the
+    single live grouped-daily provider capture.
+- Repair-plan and priced-in provider-fill payloads now expose:
+  - `provider_saved_file_capture_command`
+  - `provider_saved_file_capture_api=POST /api/radar/market-bars/provider-fixture-capture`
+  - `provider_saved_file_capture_external_call_count=1`
+- Updated API security-boundary coverage for the new route.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\connectors\polygon_fixture.py src\catalyst_radar\cli.py src\catalyst_radar\api\routes\radar.py src\catalyst_radar\market\manual_bars.py src\catalyst_radar\dashboard\data.py tests\integration\test_api_routes.py tests\integration\test_provider_ingest_cli.py tests\integration\test_dashboard_data.py tests\integration\test_security_boundaries.py
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_api_routes.py::test_post_radar_market_bars_provider_fixture_capture_requires_approval tests\integration\test_api_routes.py::test_post_radar_market_bars_provider_fixture_capture_uses_fixture_without_db_writes tests\integration\test_api_routes.py::test_post_radar_market_bars_provider_fixture_import_previews_without_writes tests\integration\test_provider_ingest_cli.py::test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_warns_for_stale_eod_provider_health tests\integration\test_security_boundaries.py -q
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_polygon_ingest_cli.py -q
+git diff --check
+```
+
+Results:
+
+- Ruff passed.
+- Focused API/provider/dashboard/security regression tests passed:
+  `18 passed`.
+- Full Polygon ingest CLI regression module passed: `13 passed`.
+- `git diff --check` passed.
+- First live API smoke after adding the route returned 404 because local
+  services were still running the prior merged build. Services were restarted
+  from this branch and the route was smoked again.
+- Live local approval-required API smoke returned
+  `schema_version=polygon-grouped-daily-response-capture-v1`,
+  `status=approval_required`, `capture_external_call_count=1`,
+  `external_calls_made=0`, and `db_writes_made=0`; the temp output file did
+  not exist after the call.
+- Live local fixture-backed API smoke returned `status=ready`, `source=fixture`,
+  `external_calls_made=0`, and `db_writes_made=0`; it wrote a 961-byte temp
+  JSON file and the smoke removed it.
+
+Next useful product action:
+
+- Clear the `market_bars` blocker. The API path is now:
+
+  ```text
+  POST /api/radar/market-bars/provider-fixture-capture
+  POST /api/radar/market-bars/provider-fixture-preview
+  POST /api/radar/market-bars/provider-fixture-import
+  ```
+
+- The capture route makes one provider call only when `confirm_external_call`
+  is true. Preview/import read from disk and make 0 provider calls.
+- Do not run live capture until the operator explicitly approves the one
+  historical grouped-daily provider call for `2026-05-15`.
 
 ## Latest Guarded Grouped-Daily Response Capture
 

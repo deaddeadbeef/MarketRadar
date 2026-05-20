@@ -2176,6 +2176,74 @@ def test_post_radar_market_bars_provider_fixture_preview_rejects_missing_file(
     assert response.status_code == 422
 
 
+def test_post_radar_market_bars_provider_fixture_capture_requires_approval(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "radar-provider-fixture-capture-plan.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+    output_path = tmp_path / "polygon-grouped-daily-2026-05-08.json"
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/radar/market-bars/provider-fixture-capture",
+        json={
+            "expected_as_of": "2026-05-08",
+            "output_path": str(output_path),
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["schema_version"] == "polygon-grouped-daily-response-capture-v1"
+    assert payload["status"] == "approval_required"
+    assert payload["capture_external_call_count"] == 1
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
+    assert "--confirm-external-call" in payload["capture_command"]
+    assert not output_path.exists()
+
+
+def test_post_radar_market_bars_provider_fixture_capture_uses_fixture_without_db_writes(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "radar-provider-fixture-capture.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = _create_database(database_url)
+    output_path = tmp_path / "polygon-grouped-daily-2026-05-08.json"
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/radar/market-bars/provider-fixture-capture",
+        json={
+            "expected_as_of": "2026-05-08",
+            "output_path": str(output_path),
+            "fixture_path": "tests/fixtures/polygon/grouped_daily_2026-05-08.json",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["schema_version"] == "polygon-grouped-daily-response-capture-v1"
+    assert payload["status"] == "ready"
+    assert payload["source"] == "fixture"
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
+    assert output_path.read_bytes() == Path(
+        "tests/fixtures/polygon/grouped_daily_2026-05-08.json"
+    ).read_bytes()
+
+    with engine.connect() as conn:
+        assert conn.execute(select(func.count()).select_from(job_runs)).scalar_one() == 0
+        assert (
+            conn.execute(select(func.count()).select_from(raw_provider_records)).scalar_one()
+            == 0
+        )
+        assert conn.execute(select(func.count()).select_from(daily_bars)).scalar_one() == 0
+
+
 def test_post_radar_market_bars_provider_fixture_import_previews_without_writes(
     tmp_path,
     monkeypatch,

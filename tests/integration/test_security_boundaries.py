@@ -237,6 +237,14 @@ EXPECTED_API_ROUTES = {
     ),
     (
         "POST",
+        "/api/radar/market-bars/provider-fixture-capture",
+    ): (
+        "catalyst_radar.api.routes.radar",
+        "radar_market_bars_provider_fixture_capture",
+        ("radar",),
+    ),
+    (
+        "POST",
         "/api/radar/market-bars/provider-fixture-import",
     ): (
         "catalyst_radar.api.routes.radar",

@@ -4409,6 +4409,11 @@ def _priced_in_market_bar_provider_fill_plan(
         "provider_call_api": None,
         "provider_saved_file_path": str(saved_file_path) if saved_file_path else None,
         "provider_saved_file_capture_command": saved_file_capture_command,
+        "provider_saved_file_capture_api": (
+            "POST /api/radar/market-bars/provider-fixture-capture"
+            if saved_file_capture_command
+            else None
+        ),
         "provider_saved_file_capture_external_call_count": 1
         if saved_file_capture_command and missing > 0
         else 0,

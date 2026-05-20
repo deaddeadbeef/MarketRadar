@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping, Sequence
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -8,13 +9,19 @@ from urllib.parse import urlencode
 from sqlalchemy import select
 
 from catalyst_radar.connectors.base import ConnectorRecordKind, ConnectorRequest
-from catalyst_radar.connectors.http import FakeHttpTransport, HttpResponse, JsonHttpClient
+from catalyst_radar.connectors.http import (
+    FakeHttpTransport,
+    HttpResponse,
+    JsonHttpClient,
+    UrlLibHttpTransport,
+)
 from catalyst_radar.connectors.polygon import PolygonEndpoint, PolygonMarketDataConnector
 from catalyst_radar.connectors.provider_ingest import (
     ProviderIngestResult,
     ingest_provider_records,
 )
 from catalyst_radar.core.config import AppConfig
+from catalyst_radar.security.redaction import redact_text, redact_url
 from catalyst_radar.storage.provider_repositories import ProviderRepository
 from catalyst_radar.storage.repositories import MarketRepository
 from catalyst_radar.storage.schema import daily_bars
@@ -117,6 +124,86 @@ def ingest_polygon_grouped_daily_fixture(
         job_type=job_type,
         metadata=metadata,
     )
+
+
+def capture_polygon_grouped_daily_response(
+    *,
+    config: AppConfig,
+    date_value: date,
+    output_path: Path,
+    fixture_path: Path | None = None,
+    confirm_external_call: bool = False,
+) -> dict[str, object]:
+    if fixture_path is None and not config.polygon_api_key_configured:
+        raise ValueError("missing CATALYST_POLYGON_API_KEY")
+    if fixture_path is None and not confirm_external_call:
+        raise PermissionError(
+            "polygon grouped-daily response capture requires confirm_external_call=true",
+        )
+    api_key = "fixture-key" if fixture_path is not None else config.polygon_api_key
+    url = _polygon_grouped_daily_url(
+        config=config,
+        date_value=date_value,
+        api_key=api_key,
+    )
+    transport = (
+        FakeHttpTransport(
+            {
+                url: HttpResponse(
+                    status_code=200,
+                    url=url,
+                    headers={"content-type": "application/json"},
+                    body=fixture_path.read_bytes(),
+                ),
+            },
+        )
+        if fixture_path is not None
+        else UrlLibHttpTransport()
+    )
+    response = transport.get(
+        url,
+        headers={},
+        timeout_seconds=config.http_timeout_seconds,
+    )
+    if response.status_code < 200 or response.status_code >= 300:
+        detail = redact_text(response.body.decode("utf-8", errors="replace").strip())
+        msg = f"HTTP {response.status_code} from {redact_url(response.url)}"
+        if detail:
+            msg = f"{msg}; detail={detail}"
+        raise RuntimeError(msg)
+    try:
+        json.loads(response.body.decode("utf-8"))
+    except json.JSONDecodeError as exc:
+        msg = f"invalid JSON from {redact_url(response.url)}"
+        raise RuntimeError(msg) from exc
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_bytes(response.body)
+    target_date = date_value.isoformat()
+    return {
+        "schema_version": "polygon-grouped-daily-response-capture-v1",
+        "status": "ready",
+        "provider": "polygon",
+        "date": target_date,
+        "source": "fixture" if fixture_path is not None else "live_provider",
+        "url": redact_url(response.url),
+        "output_path": str(output_path),
+        "bytes_written": len(response.body),
+        "status_code": response.status_code,
+        "external_calls_made": 0 if fixture_path is not None else 1,
+        "db_writes_made": 0,
+        "validate_command": (
+            "catalyst-radar ingest-polygon grouped-daily "
+            f"--date {target_date} --fixture {output_path} --validate-only"
+        ),
+        "import_command": (
+            "catalyst-radar ingest-polygon grouped-daily "
+            f"--date {target_date} --fixture {output_path}"
+        ),
+        "next_action": (
+            "Run the validate command, then import only if the preview covers "
+            "the missing market bars."
+        ),
+    }
 
 
 def build_polygon_grouped_daily_fixture_ingest(
@@ -294,6 +381,7 @@ def _polygon_fixture_preview_next_action(
 
 __all__ = [
     "build_polygon_grouped_daily_fixture_ingest",
+    "capture_polygon_grouped_daily_response",
     "ingest_polygon_grouped_daily_fixture",
     "preview_polygon_grouped_daily_fixture",
 ]
