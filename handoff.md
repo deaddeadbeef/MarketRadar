@@ -1,6 +1,39 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 06:24:20 +08:00
+Last updated: 2026-05-21 06:36:56 +08:00
+
+
+
+## Latest Tutorial Mission Brief Alignment
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- The zero-call source roadmap still reports `status=attention`, `external_calls_made=0`, next source `market_bars`, and 523 missing 2026-05-15 active-universe bars.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, import rows, change scoring, reduce the universe, or claim readiness.
+- This is useful because the dashboard default entry page is the first human contact point. It now answers why the tool exists, what the current trusted-answer state is, and what the next useful blocker is before teaching keyboard/mouse controls.
+
+Fix in this slice:
+
+- The Textual tutorial table now prepends mission rows derived from the same mission brief data used by the Run page: WHY, NOW, SCAN, BLOCK, NEXT, and SAFE.
+- The non-interactive `dashboard-tui --once --page tutorial` render now includes a `Mission - why this exists` section with question/current answer/scan progress/trust blocker/useful next/boundary.
+- README now documents that `radar` opens on a tutorial that leads with the mission/current-answer/next-blocker summary before the shortcut walkthrough.
+- The tutorial remains zero-call and does not add a new model, provider path, or hidden state.
+
+Validation observed in this slice:
+
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py` passed with `All checks passed!`.
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m py_compile src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py` exited 0.
+- Focused pytest passed `tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_tui_once_defaults_to_tutorial`, `tests\integration\test_dashboard_demo_seed_cli.py::test_modern_dashboard_tui_supports_mouse_navigation`, and `tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_run_page_shows_priced_in_evidence_plan`.
+- Live zero-call tutorial smoke against `schwab-live.db` showed `Mission - why this exists`, `Current answer`, `Trust blocker`, `Useful next`, and `External calls made: 0`.
+- Live zero-call source-roadmap drift check returned `status=attention`, `calls=0`, `next=market_bars`, `gaps=523`, and action `Fill missing as-of bars for the active universe; then rerun the full priced-in scan.`
+- `git diff --check` passed.
+
+Next useful product action:
+
+- Do not treat this slice as goal completion.
+- The immediate trusted-answer blocker remains the same 523 missing 2026-05-15 active-universe market bars.
+- The next real unblock still requires explicit operator approval for one saved grouped-daily provider capture, or a manually supplied saved grouped-daily JSON file followed by zero-call validate/import.
 
 
 

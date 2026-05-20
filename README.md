@@ -226,8 +226,10 @@ themes, validation, costs, and current feature inventory. The Run page now
 starts with a Mission Brief: the priced-in question, current trusted-answer
 state, scan progress, first trust blocker, useful next action, and the zero-call
 boundary before the call-plan details. `radar` opens on
-`0 Tutorial` by default so the first screen explains the workflow and current
-blocker. Press `1` or run `radar --page overview` for Insights.
+`0 Tutorial` by default; the tutorial now leads with that same mission/current
+answer/next-blocker summary before the control walkthrough, so the first screen
+answers why the tool exists before it teaches shortcuts. Press `1` or run
+`radar --page overview` for Insights.
 The insights page is the full-market priced-in queue by default: the first row reports scan
 coverage, then candidate rows show emotion score, price-reaction score,
 emotion-minus-reaction gap, priced-in status, why the mismatch matters, and the
