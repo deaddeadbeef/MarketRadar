@@ -2862,6 +2862,55 @@ def test_priced_in_source_batches_prioritize_full_market_bar_coverage(
     assert "<fresh-bars.csv>" not in source_rows["market_bars"]["diagnostic"][
         "manual_fix_command"
     ]
+    assert source_rows["market_bars"]["diagnostic"][
+        "provider_saved_file_status"
+    ] == "missing"
+    provider_saved_file_path = source_rows["market_bars"]["diagnostic"][
+        "provider_saved_file_path"
+    ]
+    assert "data\\local\\polygon-grouped-daily-" in provider_saved_file_path
+    assert provider_saved_file_path in source_rows["market_bars"]["diagnostic"][
+        "provider_saved_file_capture_command"
+    ]
+    assert "--save-response" in source_rows["market_bars"]["diagnostic"][
+        "provider_saved_file_capture_command"
+    ]
+    assert "--validate-only" in source_rows["market_bars"]["diagnostic"][
+        "provider_saved_file_validate_command"
+    ]
+    assert "--fixture" in source_rows["market_bars"]["diagnostic"][
+        "provider_saved_file_import_command"
+    ]
+    assert (
+        source_rows["market_bars"]["diagnostic"][
+            "provider_saved_file_capture_external_call_count"
+        ]
+        == 1
+    )
+    assert (
+        source_rows["market_bars"]["diagnostic"][
+            "provider_saved_file_external_call_count"
+        ]
+        == 0
+    )
+
+    assert main(["priced-in-source-batches", "--source", "all"]) == 0
+    output = capsys.readouterr()
+    assert output.err == ""
+    assert "provider_saved_file_status=status=missing" in output.out
+    assert "provider_saved_file_capture=external_calls=1" in output.out
+    assert "--save-response data\\local\\polygon-grouped-daily-" in output.out
+    assert "provider_saved_file_validate=external_calls=0" in output.out
+    assert "provider_saved_file_import=external_calls=0" in output.out
+
+    assert main(["priced-in-source-batches", "--source", "market_bars"]) == 0
+    output = capsys.readouterr()
+    assert output.err == ""
+    assert "diagnostic_provider_saved_file_status=status=missing" in output.out
+    assert "diagnostic_provider_saved_file_capture=external_calls=1" in output.out
+    assert "--save-response data\\local\\polygon-grouped-daily-" in output.out
+    assert "diagnostic_provider_saved_file_validate=external_calls=0" in output.out
+    assert "diagnostic_provider_saved_file_import=external_calls=0" in output.out
 
     execution = source_batch_module.execute_priced_in_source_batch(
         engine,

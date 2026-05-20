@@ -1475,6 +1475,30 @@ def _priced_in_market_bar_source_gap_plan(
         "provider_fill_external_call_count": provider_plan.get(
             "execute_external_call_count"
         ),
+        "provider_saved_file_path": provider_plan.get("provider_saved_file_path"),
+        "provider_saved_file_exists": provider_plan.get("provider_saved_file_exists"),
+        "provider_saved_file_status": provider_plan.get("provider_saved_file_status"),
+        "provider_saved_file_next_action": provider_plan.get(
+            "provider_saved_file_next_action"
+        ),
+        "provider_saved_file_capture_command": provider_plan.get(
+            "provider_saved_file_capture_command"
+        ),
+        "provider_saved_file_capture_external_call_count": provider_plan.get(
+            "provider_saved_file_capture_external_call_count"
+        ),
+        "provider_saved_file_validate_command": provider_plan.get(
+            "provider_saved_file_validate_command"
+        ),
+        "provider_saved_file_import_command": provider_plan.get(
+            "provider_saved_file_import_command"
+        ),
+        "provider_saved_file_external_call_count": provider_plan.get(
+            "provider_saved_file_external_call_count"
+        ),
+        "provider_saved_file_boundary": provider_plan.get(
+            "provider_saved_file_boundary"
+        ),
         "external_calls_made": 0,
     }
     approval_checklist = _priced_in_source_batch_approval_checklist(

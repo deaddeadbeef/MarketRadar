@@ -1,6 +1,69 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 20:58:02 +08:00
+Last updated: 2026-05-20 21:13:15 +08:00
+
+## Latest Source Overview Saved-File Repair Path
+
+Goal alignment / drift check:
+
+- The active goal remains: MarketRadar should scan the broad stock market and
+  identify stocks where market emotion/expectations have not yet been matched
+  by price.
+- The current first blocker is still `market_bars`; no provider calls were
+  made.
+- After the manual CSV repair path was made concrete, the source-batch overview
+  still hid the safer Polygon/Massive saved-response path, even though the
+  market-bar planner already computed it.
+- That meant `priced-in-source-batches --source all --stocks-only` and
+  `priced-in-source-batches --source market_bars --stocks-only` did not show the
+  exact capture/check/import route for the current blocker.
+
+Fix in this slice:
+
+- The market-bar source-gap diagnostic now carries the saved-file repair plan:
+  - saved file path/status;
+  - capture command and its 1-call boundary;
+  - validate command and its 0-call boundary;
+  - import command and its 0-call boundary;
+  - saved-file approval boundary text.
+- The all-source CLI overview now prints those fields under the `market_bars`
+  source row.
+- The single-source `market_bars` CLI view now prints the same fields with
+  `diagnostic_provider_saved_file_*` labels.
+- This remains planning/output only. Rendering these commands makes 0 provider
+  calls and imports nothing.
+
+Live DB-backed CLI smoke:
+
+```powershell
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source all --stocks-only
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source market_bars --stocks-only
+```
+
+Observed saved-file path for the live stock-only blocker:
+
+```powershell
+catalyst-radar ingest-polygon grouped-daily --date 2026-05-15 --save-response data\local\polygon-grouped-daily-2026-05-15.json --confirm-external-call
+catalyst-radar ingest-polygon grouped-daily --date 2026-05-15 --fixture data\local\polygon-grouped-daily-2026-05-15.json --validate-only
+catalyst-radar ingest-polygon grouped-daily --date 2026-05-15 --fixture data\local\polygon-grouped-daily-2026-05-15.json
+```
+
+Validation:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_source_batches_prioritize_full_market_bar_coverage tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_preflight_cli_outputs_zero_call_plan tests\integration\test_api_routes.py::test_get_radar_priced_in_source_batches_returns_zero_call_plan -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\cli.py src\catalyst_radar\dashboard\data.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+```
+
+Next useful product action:
+
+- Do not treat this as goal completion.
+- The live blocker remains `market_bars`: 131 stock-like rows still need
+  scan-date bars before the stocks-only priced-in answer can be trusted.
+- Clearing that blocker still requires either explicit approval for the single
+  Polygon/Massive saved-response capture above or manual fill/import of
+  `data\local\manual-stock-bars-2026-05-15.csv`.
 
 ## Latest Source Overview Market-Bar Import Path Fix
 
