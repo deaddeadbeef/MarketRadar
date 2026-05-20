@@ -3897,6 +3897,8 @@ def _priced_in_audit_market_bar_repair(
         missing=effective_missing,
     )
     manual_repair_plan: dict[str, object] = {}
+    stock_manual_repair_plan: dict[str, object] = {}
+    provider_health_kwargs = _manual_repair_provider_health_kwargs(engine)
     if target_as_of is not None:
         try:
             manual_repair_plan = manual_market_bars_repair_plan(
@@ -3904,7 +3906,7 @@ def _priced_in_audit_market_bar_repair(
                 expected_as_of=target_as_of,
                 stocks_only=stocks_only,
                 provider_key_configured=config.polygon_api_key_configured,
-                **_manual_repair_provider_health_kwargs(engine),
+                **provider_health_kwargs,
             ).as_payload()
         except ValueError as exc:
             manual_repair_plan = {
@@ -3915,6 +3917,30 @@ def _priced_in_audit_market_bar_repair(
                 "error": str(exc),
                 "external_calls_made": 0,
             }
+        if stocks_only:
+            stock_manual_repair_plan = manual_repair_plan
+        else:
+            try:
+                stock_manual_repair_plan = manual_market_bars_repair_plan(
+                    engine,
+                    expected_as_of=target_as_of,
+                    stocks_only=True,
+                    provider_key_configured=config.polygon_api_key_configured,
+                    **provider_health_kwargs,
+                ).as_payload()
+            except ValueError as exc:
+                stock_manual_repair_plan = {
+                    "schema_version": "manual-market-bars-repair-plan-v1",
+                    "status": "invalid",
+                    "expected_as_of": target_as_of.isoformat(),
+                    "stocks_only": True,
+                    "error": str(exc),
+                    "external_calls_made": 0,
+                }
+    stock_scope = _priced_in_stock_scope_with_manual_repair(
+        stock_scope,
+        stock_manual_repair_plan,
+    )
     local_template_preview = _mapping_value(
         manual_repair_plan,
         "local_template_preview",
@@ -3991,6 +4017,45 @@ def _priced_in_audit_market_bar_repair(
         ),
         "next_action": next_action,
     }
+
+
+def _priced_in_stock_scope_with_manual_repair(
+    stock_scope: Mapping[str, object],
+    repair_plan: Mapping[str, object],
+) -> dict[str, object]:
+    enriched = _row_dict(stock_scope)
+    if not repair_plan:
+        return enriched
+    operator_step = _row_dict(_mapping_value(repair_plan, "operator_step"))
+    local_template_preview = _mapping_value(repair_plan, "local_template_preview")
+    local_template_fill_progress = _mapping_value(
+        local_template_preview,
+        "fill_progress",
+    )
+    local_template_schema = _mapping_value(repair_plan, "local_template_schema")
+    enriched.update(
+        {
+            "manual_template_regenerate_command": repair_plan.get(
+                "manual_template_regenerate_command",
+            ),
+            "local_template_path": repair_plan.get("local_template_path"),
+            "local_template_exists": bool(repair_plan.get("local_template_exists")),
+            "local_template_schema": (
+                _row_dict(local_template_schema) if local_template_schema else {}
+            ),
+            "local_template_preview": (
+                _row_dict(local_template_preview) if local_template_preview else None
+            ),
+            "local_template_fill_progress": _row_dict(
+                local_template_fill_progress,
+            ),
+            "operator_step": operator_step,
+        }
+    )
+    action = str(operator_step.get("action") or "").strip()
+    if action:
+        enriched["next_action"] = action
+    return enriched
 
 
 def _priced_in_market_bar_stock_scope(

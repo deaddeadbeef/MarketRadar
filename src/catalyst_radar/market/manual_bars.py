@@ -34,6 +34,7 @@ MANUAL_BAR_COLUMNS = (
     "available_at",
 )
 MANUAL_BAR_REQUIRED_FILL_FIELDS = ("open", "high", "low", "close", "volume", "vwap")
+MANUAL_BAR_CONTEXT_COLUMNS = ("name",)
 MANUAL_BAR_COMPANY_LIKE_TYPES = frozenset({"ADRC", "CS"})
 MANUAL_BAR_NON_STOCK_TYPES = frozenset(
     {"ETF", "ETN", "ETS", "ETV", "FUND", "PFD", "RIGHT", "SP", "UNIT", "WARRANT"}
@@ -261,6 +262,11 @@ class ManualBarsRepairPlanResult:
             self.expected_as_of,
             stocks_only=self.stocks_only,
         )
+        regenerate_template_command = _manual_market_bars_template_command(
+            self.expected_as_of,
+            stocks_only=self.stocks_only,
+            overwrite=True,
+        )
         import_preview_command = _manual_market_bars_import_command(
             self.expected_as_of,
             stocks_only=self.stocks_only,
@@ -319,12 +325,17 @@ class ManualBarsRepairPlanResult:
             )
         missing_sample = list(self.missing_as_of_bar_tickers[:12])
         local_template_exists = self.local_template_path.exists()
+        local_template_schema = _manual_bar_template_schema_payload(
+            self.local_template_path,
+        )
         operator_step = _manual_market_bars_operator_step(
             missing=missing,
             local_template_exists=local_template_exists,
             local_template_path=self.local_template_path,
             local_template_preview=self.local_template_preview,
+            local_template_schema=local_template_schema,
             template_command=template_command,
+            regenerate_template_command=regenerate_template_command,
             import_preview_command=import_preview_command,
             import_execute_command=import_execute_command,
             incremental_import_preview_command=incremental_import_preview_command,
@@ -369,6 +380,7 @@ class ManualBarsRepairPlanResult:
                 len(self.missing_without_local_history_tickers) - 12,
             ),
             "manual_template_command": template_command,
+            "manual_template_regenerate_command": regenerate_template_command,
             "manual_import_preview_command": import_preview_command,
             "manual_import_execute_command": import_execute_command,
             "manual_incremental_import_preview_command": (
@@ -379,6 +391,7 @@ class ManualBarsRepairPlanResult:
             ),
             "local_template_path": str(self.local_template_path),
             "local_template_exists": local_template_exists,
+            "local_template_schema": local_template_schema,
             "local_template_preview": self.local_template_preview,
             "operator_step": operator_step,
             "manual_template_api": "POST /api/radar/market-bars/template",
@@ -419,7 +432,9 @@ def _manual_market_bars_operator_step(
     local_template_exists: bool,
     local_template_path: Path,
     local_template_preview: dict[str, object] | None,
+    local_template_schema: dict[str, object],
     template_command: str,
+    regenerate_template_command: str,
     import_preview_command: str,
     import_execute_command: str,
     incremental_import_preview_command: str,
@@ -464,6 +479,27 @@ def _manual_market_bars_operator_step(
     partial_rows = _int_payload_value(progress.get("partial_rows"))
     empty_rows = _int_payload_value(progress.get("empty_rows"))
     invalid_rows = _int_payload_value(local_template_preview.get("invalid_row_count"))
+    filled_rows = complete_rows + partial_rows
+
+    missing_context_columns = local_template_schema.get("missing_context_columns")
+    if (
+        isinstance(missing_context_columns, list)
+        and missing_context_columns
+        and filled_rows <= 0
+    ):
+        missing_label = ", ".join(str(item) for item in missing_context_columns)
+        return {
+            "status": "stale_template_schema",
+            "kind": "regenerate_blank_template",
+            "action": (
+                f"Regenerate the blank local CSV so it includes {missing_label}; "
+                "then fill the named rows."
+            ),
+            "command": regenerate_template_command,
+            "after_manual_command": incremental_import_preview_command,
+            "manual_step": False,
+            "external_calls_made": 0,
+        }
 
     if preview_status == "ready":
         return {
@@ -1081,13 +1117,15 @@ def _manual_market_bars_template_command(
     expected_as_of: date,
     *,
     stocks_only: bool,
+    overwrite: bool = False,
 ) -> str:
     stocks_flag = " --stocks-only" if stocks_only else ""
+    overwrite_flag = " --overwrite" if overwrite else ""
     return (
         "catalyst-radar market-bars template "
         f"--expected-as-of {expected_as_of.isoformat()} "
         f"--out {_manual_market_bars_template_path(expected_as_of, stocks_only=stocks_only)} "
-        f"--missing-only{stocks_flag}"
+        f"--missing-only{stocks_flag}{overwrite_flag}"
     )
 
 
@@ -1120,6 +1158,49 @@ def _manual_market_bars_template_path(
 ) -> Path:
     filename_prefix = "manual-stock-bars" if stocks_only else "manual-bars"
     return Path("data") / "local" / f"{filename_prefix}-{expected_as_of.isoformat()}.csv"
+
+
+def _manual_bar_template_schema_payload(path: Path) -> dict[str, object]:
+    if not path.exists():
+        return {
+            "schema_version": "manual-market-bars-template-schema-v1",
+            "status": "missing",
+            "path": str(path),
+            "columns": [],
+            "template_columns": list(MANUAL_BAR_COLUMNS),
+            "missing_template_columns": list(MANUAL_BAR_COLUMNS),
+            "missing_context_columns": list(MANUAL_BAR_CONTEXT_COLUMNS),
+            "external_calls_made": 0,
+        }
+    with path.open("r", encoding="utf-8-sig", newline="") as handle:
+        reader = csv.DictReader(handle)
+        columns = tuple(
+            str(column).strip()
+            for column in (reader.fieldnames or ())
+            if str(column).strip()
+        )
+    missing_template_columns = [
+        column for column in MANUAL_BAR_COLUMNS if column not in columns
+    ]
+    missing_context_columns = [
+        column for column in MANUAL_BAR_CONTEXT_COLUMNS if column not in columns
+    ]
+    if missing_context_columns:
+        status = "stale_context_columns"
+    elif missing_template_columns:
+        status = "missing_template_columns"
+    else:
+        status = "current"
+    return {
+        "schema_version": "manual-market-bars-template-schema-v1",
+        "status": status,
+        "path": str(path),
+        "columns": list(columns),
+        "template_columns": list(MANUAL_BAR_COLUMNS),
+        "missing_template_columns": missing_template_columns,
+        "missing_context_columns": missing_context_columns,
+        "external_calls_made": 0,
+    }
 
 
 def _validate_manual_bars(bars: tuple[DailyBar, ...]) -> None:

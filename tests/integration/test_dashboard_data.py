@@ -2041,6 +2041,23 @@ def test_priced_in_full_scan_audit_reports_local_manual_template_progress(
         ),
         encoding="utf-8",
     )
+    stock_template_path = template_dir / f"manual-stock-bars-{AS_OF.date().isoformat()}.csv"
+    stock_template_path.write_text(
+        "\n".join(
+            [
+                (
+                    "ticker,date,security_type,template_reason,open,high,low,"
+                    "close,volume,vwap,adjusted,provider,source_ts,available_at"
+                ),
+                (
+                    f"GOOG,{AS_OF.date().isoformat()},CS,missing_as_of_bar,"
+                    ",,,,,,true,manual_csv,"
+                    f"{SOURCE_TS.isoformat()},{AVAILABLE_AT.isoformat()}"
+                ),
+            ]
+        ),
+        encoding="utf-8",
+    )
     monkeypatch.chdir(tmp_path)
 
     payload = priced_in_full_scan_audit_payload(
@@ -2063,6 +2080,11 @@ def test_priced_in_full_scan_audit_reports_local_manual_template_progress(
     assert repair["operator_step"]["status"] == "fix_partial_rows"
     assert repair["operator_step"]["manual_step"] is True
     assert repair["operator_step"]["external_calls_made"] == 0
+    stock_scope = repair["stock_scope"]
+    assert stock_scope["local_template_schema"]["status"] == "stale_context_columns"
+    assert stock_scope["local_template_schema"]["missing_context_columns"] == ["name"]
+    assert stock_scope["operator_step"]["status"] == "stale_template_schema"
+    assert "includes name" in stock_scope["next_action"]
 
 
 def test_priced_in_full_scan_audit_payload_reuses_cached_zero_call_audit(

@@ -799,6 +799,104 @@ def test_market_bars_repair_plan_previews_existing_local_template(
     assert "local_template_invalid_examples=row 2 AADR 2026-05-15" in captured.out
 
 
+def test_market_bars_repair_plan_detects_stale_blank_template_schema(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    database_url = _database_url(tmp_path)
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["init-db"]) == 0
+    capsys.readouterr()
+    engine = create_engine(database_url, future=True)
+    MarketRepository(engine).upsert_securities(
+        [
+            _security("BSTK", "Beta Stock", "CS"),
+            _security("AADR", "Alpha ADR", "ADRC"),
+        ]
+    )
+    MarketRepository(engine).upsert_daily_bars(
+        [_daily_bar("BSTK", date(2026, 5, 15))]
+    )
+
+    template_path = Path("data") / "local" / "manual-stock-bars-2026-05-15.csv"
+    template_path.parent.mkdir(parents=True, exist_ok=True)
+    stale_columns = [column for column in MANUAL_BAR_COLUMNS if column != "name"]
+    with template_path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=stale_columns)
+        writer.writeheader()
+        writer.writerow(
+            {
+                "ticker": "AADR",
+                "date": "2026-05-15",
+                "security_type": "ADRC",
+                "template_reason": "missing_as_of_bar",
+                "open": "",
+                "high": "",
+                "low": "",
+                "close": "",
+                "volume": "",
+                "vwap": "",
+                "adjusted": "true",
+                "provider": "manual_csv",
+                "source_ts": "2026-05-15T21:00:00+00:00",
+                "available_at": "2026-05-15T21:00:00+00:00",
+            }
+        )
+
+    assert (
+        main(
+            [
+                "market-bars",
+                "repair-plan",
+                "--expected-as-of",
+                "2026-05-15",
+                "--stocks-only",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["local_template_schema"]["status"] == "stale_context_columns"
+    assert payload["local_template_schema"]["missing_context_columns"] == ["name"]
+    assert payload["manual_template_regenerate_command"].endswith(
+        "--missing-only --stocks-only --overwrite"
+    )
+    assert payload["operator_step"]["status"] == "stale_template_schema"
+    assert payload["operator_step"]["kind"] == "regenerate_blank_template"
+    assert payload["operator_step"]["command"] == payload[
+        "manual_template_regenerate_command"
+    ]
+    assert payload["operator_step"]["manual_step"] is False
+    assert payload["operator_step"]["external_calls_made"] == 0
+    assert payload["local_template_preview"]["fill_progress"] == {
+        "complete_rows": 0,
+        "partial_rows": 0,
+        "empty_rows": 1,
+        "filled_rows": 0,
+    }
+
+    assert (
+        main(
+            [
+                "market-bars",
+                "repair-plan",
+                "--expected-as-of",
+                "2026-05-15",
+                "--stocks-only",
+            ]
+        )
+        == 0
+    )
+    text = capsys.readouterr().out
+    assert "local_template_schema=status=stale_context_columns missing_context=name" in text
+    assert "operator_step=status=stale_template_schema" in text
+    assert "--stocks-only --overwrite" in text
+
+
 def test_market_bars_import_rejects_blank_numeric_fields(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

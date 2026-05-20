@@ -978,6 +978,21 @@ def test_dashboard_manual_bar_fill_progress_summary_is_human_readable() -> None:
                             "data\\local\\manual-stock-bars-2026-05-15.csv "
                             "--missing-only --stocks-only"
                         ),
+                        "operator_step": {
+                            "status": "stale_template_schema",
+                            "manual_step": False,
+                            "external_calls_made": 0,
+                            "action": (
+                                "Regenerate the blank local CSV so it includes "
+                                "name; then fill the named rows."
+                            ),
+                            "command": (
+                                "catalyst-radar market-bars template "
+                                "--expected-as-of 2026-05-15 --out "
+                                "data\\local\\manual-stock-bars-2026-05-15.csv "
+                                "--missing-only --stocks-only --overwrite"
+                            ),
+                        },
                     },
                     "operator_step": {
                         "status": "fix_partial_rows",
@@ -1028,6 +1043,8 @@ def test_dashboard_manual_bar_fill_progress_summary_is_human_readable() -> None:
     ops = render_dashboard_tui(payload, page="ops", width=160)
     assert "Stock bar next: 5521/5652 stock-like rows have scan-date bars" in overview
     assert "Stock bar next: 5521/5652 stock-like rows have scan-date bars" in ops
+    assert "Regenerate the blank local CSV so it includes name" in overview
+    assert "Regenerate the blank local CSV so it includes name" in ops
     assert "Manual CSV progress: 12/523 complete; 3 partial; 508 empty" in overview
     assert "Manual CSV progress: 12/523 complete; 3 partial; 508 empty" in ops
     assert "Market bar next: Finish or clear partial OHLCV/VWAP rows" in overview

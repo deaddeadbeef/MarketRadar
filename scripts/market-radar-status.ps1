@@ -216,6 +216,21 @@ if ($Quick) {
             $marketBarRepairPlan.external_calls_made
         )
         Write-Output ("- manual template: {0}" -f $marketBarRepairPlan.manual_template_command)
+        $marketTemplateSchema = $marketBarRepairPlan.local_template_schema
+        if ($null -ne $marketTemplateSchema) {
+            $missingContext = @(
+                $marketTemplateSchema.missing_context_columns |
+                    Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }
+            )
+            if ($missingContext.Count -gt 0) {
+                Write-Output (
+                    "- template schema: status={0}; missing_context={1}; regenerate={2}" -f
+                    $marketTemplateSchema.status,
+                    ($missingContext -join ","),
+                    $marketBarRepairPlan.manual_template_regenerate_command
+                )
+            }
+        }
         Write-Output ("- preview import: {0}" -f $marketBarRepairPlan.manual_import_preview_command)
         if ($marketBarRepairPlan.manual_incremental_import_execute_command) {
             Write-Output ("- incremental complete-row import: {0}" -f $marketBarRepairPlan.manual_incremental_import_execute_command)
@@ -287,6 +302,21 @@ if ($Quick) {
                 $stockStepCommand,
                 $stockAfterManual
             )
+        }
+        $stockTemplateSchema = $stockMarketBarRepairPlan.local_template_schema
+        if ($null -ne $stockTemplateSchema) {
+            $stockMissingContext = @(
+                $stockTemplateSchema.missing_context_columns |
+                    Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }
+            )
+            if ($stockMissingContext.Count -gt 0) {
+                Write-Output (
+                    "- stock template schema: status={0}; missing_context={1}; regenerate={2}" -f
+                    $stockTemplateSchema.status,
+                    ($stockMissingContext -join ","),
+                    $stockMarketBarRepairPlan.manual_template_regenerate_command
+                )
+            }
         }
         $stockPreview = $stockMarketBarRepairPlan.local_template_preview
         if ($null -ne $stockPreview) {

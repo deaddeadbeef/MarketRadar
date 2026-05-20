@@ -1,6 +1,112 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 12:05:10 +08:00
+Last updated: 2026-05-20 12:30:29 +08:00
+
+## Latest Drift Check And Stock Template Schema Guard
+
+Goal alignment:
+
+- The active product goal is not a generic market-data dashboard. It is to scan
+  the broad market and identify stocks where price has not yet caught up with
+  market expectations.
+- The useful path is therefore:
+  1. keep the scan broad enough to cover the market;
+  2. make source coverage honest;
+  3. remove blockers that prevent the priced-in answer from being trustworthy;
+  4. surface the next human action clearly in CLI/status/TUI.
+- The latest drift check found that TUI polish and provider wiring had started
+  to take attention away from the data-coverage blocker. The immediate blocker
+  is still scan-date market-bar coverage:
+  - full active universe: `12090/12613` bars, `523` missing;
+  - stock-like universe: `5521/5652` bars, `131` missing.
+- The live stock manual template existed but was stale: it did not include the
+  `name` column. That made the human-fill CSV much harder to use because rows
+  like `AACO` had no company name context.
+- This slice makes 0 Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or
+  provider calls.
+
+Fix in this slice:
+
+- `manual_market_bars_repair_plan(...).as_payload()` now includes:
+  - `manual_template_regenerate_command`;
+  - `local_template_schema`;
+  - context-column checks for stale manual templates.
+- Blank stale templates now get a strict operator step:
+
+  ```text
+  status=stale_template_schema
+  kind=regenerate_blank_template
+  action=Regenerate the blank local CSV so it includes name; then fill the named rows.
+  command=catalyst-radar market-bars template --expected-as-of 2026-05-15 --out data\local\manual-stock-bars-2026-05-15.csv --missing-only --stocks-only --overwrite
+  external_calls_made=0
+  ```
+
+- The guard only recommends overwrite when the stale template has no complete
+  or partial OHLCV/VWAP rows. If rows have been touched, import/fix behavior
+  remains prioritized so filled human data is not discarded.
+- `market-bars repair-plan` text output now prints
+  `local_template_schema=status=... missing_context=...`.
+- `scripts\market-radar-status.ps1 -Quick` now prints stock template schema
+  warnings and the regenerate command.
+- Dashboard full-scan stock scope now carries the stock-specific manual repair
+  operator step, so the TUI `Stock bar next:` line points at regeneration when
+  the stock template is stale.
+
+Live zero-call observations:
+
+```text
+local_template_schema=status=stale_context_columns missing_context=name
+operator_step=status=stale_template_schema manual=false external_calls=0 action=Regenerate the blank local CSV so it includes name; then fill the named rows. command=catalyst-radar market-bars template --expected-as-of 2026-05-15 --out data\local\manual-stock-bars-2026-05-15.csv --missing-only --stocks-only --overwrite after_manual=catalyst-radar market-bars import --daily-bars data\local\manual-stock-bars-2026-05-15.csv --expected-as-of 2026-05-15 --stocks-only --complete-rows-only
+```
+
+```text
+Stock bar next: 5521/5652 stock-like rows have scan-date bars; 131 missing; next Regenerate the blank local CSV so i...
+```
+
+```text
+- stock strict next action: status=stale_template_schema; manual=False; external_calls=0; action=Regenerate the blank local CSV so it includes name; then fill the named rows.; command=catalyst-radar market-bars template --expected-as-of 2026-05-15 --out data\local\manual-stock-bars-2026-05-15.csv --missing-only --stocks-only --overwrite; after_manual=catalyst-radar market-bars import --daily-bars data\local\manual-stock-bars-2026-05-15.csv --expected-as-of 2026-05-15 --stocks-only --complete-rows-only
+- stock template schema: status=stale_context_columns; missing_context=name; regenerate=catalyst-radar market-bars template --expected-as-of 2026-05-15 --out data\local\manual-stock-bars-2026-05-15.csv --missing-only --stocks-only --overwrite
+External calls made: 0
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_provider_ingest_cli.py::test_market_bars_repair_plan_detects_stale_blank_template_schema tests\integration\test_provider_ingest_cli.py::test_market_bars_repair_plan_previews_existing_local_template tests\integration\test_provider_ingest_cli.py::test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_manual_bar_fill_progress_summary_is_human_readable tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_reports_local_manual_template_progress tests\integration\test_local_scripts.py::test_market_radar_status_script_is_zero_external_call_sitrep -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\market\manual_bars.py src\catalyst_radar\cli.py src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py tests\integration\test_provider_ingest_cli.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_local_scripts.py
+powershell -NoProfile -Command "& { `$null = [scriptblock]::Create((Get-Content -Raw .\scripts\market-radar-status.ps1)); 'powershell syntax ok' }"
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli market-bars repair-plan --expected-as-of 2026-05-15 --stocks-only
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page overview
+powershell -ExecutionPolicy Bypass -File .\scripts\market-radar-status.ps1 -Quick
+```
+
+Results:
+
+- Focused pytest passed: `6 passed`.
+- Ruff passed.
+- PowerShell syntax parse passed.
+- `git diff --check` passed.
+- Live repair plan, TUI render, and quick status all reported
+  `external_calls=0`.
+
+Next useful product action:
+
+- Regenerate the blank stock template so the 131 missing stock-like rows include
+  company names:
+
+  ```powershell
+  .\.venv\Scripts\python.exe -m catalyst_radar.cli market-bars template --expected-as-of 2026-05-15 --out data\local\manual-stock-bars-2026-05-15.csv --missing-only --stocks-only --overwrite
+  ```
+
+- Then fill/import complete rows incrementally:
+
+  ```powershell
+  .\.venv\Scripts\python.exe -m catalyst_radar.cli market-bars import --daily-bars data\local\manual-stock-bars-2026-05-15.csv --expected-as-of 2026-05-15 --stocks-only --complete-rows-only
+  ```
+
+- Do not run the Polygon/Massive grouped-daily provider command without explicit
+  operator approval; stored provider health is still `down`.
 
 ## Latest Stock-Market Next Action Status
 

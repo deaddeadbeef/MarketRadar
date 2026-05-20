@@ -3790,6 +3790,19 @@ def _print_manual_market_bars_repair_plan(payload: Mapping[str, object]) -> None
         f"path={payload.get('local_template_path') or 'n/a'} "
         f"exists={str(bool(payload.get('local_template_exists'))).lower()}"
     )
+    template_schema = payload.get("local_template_schema")
+    if isinstance(template_schema, Mapping):
+        missing_context = template_schema.get("missing_context_columns")
+        missing_label = (
+            ",".join(str(column) for column in missing_context)
+            if isinstance(missing_context, list | tuple) and missing_context
+            else "none"
+        )
+        print(
+            "local_template_schema="
+            f"status={template_schema.get('status')} "
+            f"missing_context={missing_label}"
+        )
     print(
         "local_bar_history="
         f"missing_with_history={payload.get('missing_with_local_history_count', 'n/a')} "
