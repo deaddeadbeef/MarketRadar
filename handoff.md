@@ -1,7 +1,47 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 01:07:57 +08:00
+Last updated: 2026-05-21 01:40:55 +08:00
 
+
+
+
+## Latest TUI Saved-File Commands
+
+Goal alignment / drift check:
+
+- The active goal remains: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- The current first useful blocker is still `market_bars`; no provider calls were made while implementing this slice.
+- The TUI already showed saved-file action boundaries, but it still required the operator to leave the dashboard and paste CLI/API commands for the repair workflow.
+- This slice keeps the dashboard useful as a replacement operator UI: it can plan, validate, preview, and execute the saved grouped-daily import path directly, with explicit provider and write boundaries.
+
+Fix in this slice:
+
+- Added TUI commands on the Run page:
+  - `bars saved capture` shows the saved Polygon/Massive capture approval boundary and makes 0 provider calls.
+  - `bars saved capture confirm` is the explicit one-call capture path. Do not run it unless the operator approves the live provider call.
+  - `bars saved validate` reads the saved grouped-daily JSON from disk and makes 0 provider calls and 0 DB writes.
+  - `bars saved import` previews the saved-file import and makes 0 provider calls and 0 DB writes.
+  - `bars saved import execute` imports the saved grouped-daily file into the local DB and makes 0 provider calls.
+- The TUI command path reuses the existing Polygon fixture/capture helpers and repositories instead of adding a second ingestion layer.
+- The saved-file summaries now reuse the provider fill plan from either the full audit payload or the priced-in first blocker payload.
+- README now documents the TUI saved-file commands next to the repair-plan request-body contract.
+
+Validation observed in this slice:
+
+```powershell
+$env:PYTHONPATH='C:\Users\fpan1\MarketRadar-tui-saved-file-commands\src'; C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_bars_saved_capture_requires_confirm_without_call tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_bars_saved_validate_and_import_fixture_are_operator_actions tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_manual_bar_fill_progress_summary_is_human_readable -q
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+$env:PYTHONPATH='C:\Users\fpan1\MarketRadar-tui-saved-file-commands\src'; C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page help | Select-String 'bars saved'
+$env:PYTHONPATH='C:\Users\fpan1\MarketRadar-tui-saved-file-commands\src'; C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page run | Select-String 'External calls made'
+```
+
+Observed results: focused pytest passed 3 tests, Ruff passed, `git diff --check` passed, the static help listed the three `bars saved` commands, and the run-page smoke still reported `External calls made: 0`.
+
+Next useful product action:
+
+- Do not treat this as goal completion.
+- After this PR is merged, the operator still needs either a completed manual market-bar CSV or explicit approval for one saved Polygon/Massive grouped-daily capture before the full stocks-only priced-in scan can clear the current market-bar blocker.
 
 
 

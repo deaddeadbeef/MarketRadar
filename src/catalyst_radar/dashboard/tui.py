@@ -5,6 +5,7 @@ import shutil
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
 from uuid import uuid4
 
 from sqlalchemy.engine import Engine
@@ -24,6 +25,12 @@ from catalyst_radar.brokers.interactive import (
     record_opportunity_action,
     trigger_payload,
 )
+from catalyst_radar.connectors.polygon_fixture import (
+    capture_polygon_grouped_daily_response,
+    ingest_polygon_grouped_daily_fixture,
+    preview_polygon_grouped_daily_fixture,
+)
+from catalyst_radar.connectors.provider_ingest import ProviderIngestError
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.dashboard import data as dashboard_data
 from catalyst_radar.dashboard.source_batches import (
@@ -46,6 +53,8 @@ from catalyst_radar.jobs.scheduler import SchedulerConfig, run_once, scheduler_r
 from catalyst_radar.security.licenses import redact_restricted_external_payload
 from catalyst_radar.storage.broker_repositories import BrokerRepository
 from catalyst_radar.storage.job_repositories import JobLockRepository
+from catalyst_radar.storage.provider_repositories import ProviderRepository
+from catalyst_radar.storage.repositories import MarketRepository
 
 RADAR_RUN_COOLDOWN_LOCK_NAME = "manual_radar_run_cooldown"
 
@@ -1984,6 +1993,16 @@ class MarketRadarDashboardApp(App[int]):
                 "command": "batch <source> execute 3",
                 "meaning": "Run a capped source-fill batch set and stop on blockers.",
             },
+            {
+                "command": "bars saved capture",
+                "meaning": (
+                    "Plan saved Polygon/Massive capture; add confirm for one provider call."
+                ),
+            },
+            {
+                "command": "bars saved validate/import",
+                "meaning": "Validate or preview/import the saved grouped-daily file.",
+            },
             {"command": "ticker <SYMBOL|all>", "meaning": "Filter ticker-aware pages."},
             {"command": "run execute", "meaning": "Start one guarded capped radar cycle."},
             {
@@ -2265,6 +2284,17 @@ def _apply_command(
                 "Source-gap filter cleared."
                 if not source_gaps
                 else f"Source-gap filter: {', '.join(source_gaps)}."
+            ),
+        )
+    if command in {"bars", "bar", "market-bars", "market_bars"}:
+        return _CommandUpdate(
+            page="run",
+            filters=filters,
+            message=_execute_market_bar_saved_file_command(
+                engine,
+                config,
+                payload,
+                value,
             ),
         )
     if command in {"batch", "batches", "source-batch", "source-batches"}:
@@ -2993,6 +3023,200 @@ def _first_priced_in_source_batch_payload(
         )
     except ValueError as exc:
         return str(exc)
+
+
+_MARKET_BAR_SAVED_FILE_USAGE = (
+    "Usage: bars saved capture, bars saved capture confirm, "
+    "bars saved validate, bars saved import, or bars saved import execute."
+)
+
+
+def _execute_market_bar_saved_file_command(
+    engine: Engine,
+    config: AppConfig,
+    payload: Mapping[str, object],
+    value: str,
+) -> str:
+    parts = [part.strip().lower() for part in value.split() if part.strip()]
+    if parts and parts[0] in {"saved", "saved-file", "file"}:
+        parts = parts[1:]
+    if not parts:
+        return _MARKET_BAR_SAVED_FILE_USAGE
+    action = parts[0]
+    if action in {"check", "preview"}:
+        action = "validate"
+    if action not in {"capture", "validate", "import"}:
+        return _MARKET_BAR_SAVED_FILE_USAGE
+    try:
+        if action == "capture":
+            return _market_bar_saved_file_capture_command(
+                config,
+                payload,
+                confirmed="confirm" in parts or "execute" in parts,
+            )
+        if action == "validate":
+            body = _market_bar_saved_file_request_body(
+                payload,
+                "provider_saved_file_validate_request_body",
+            )
+            preview = _preview_saved_market_bar_file(engine, config, body)
+            return _saved_market_bar_preview_message("Saved-file validate", preview)
+        execute = "execute" in parts
+        body = _market_bar_saved_file_request_body(
+            payload,
+            "provider_saved_file_import_request_body"
+            if execute
+            else "provider_saved_file_import_preview_request_body",
+        )
+        if execute:
+            preview = _preview_saved_market_bar_file(engine, config, body)
+            if str(preview.get("status") or "") == "invalid":
+                return _saved_market_bar_preview_message(
+                    "Saved-file import blocked",
+                    preview,
+                )
+            result = ingest_polygon_grouped_daily_fixture(
+                config=config,
+                market_repo=MarketRepository(engine),
+                provider_repo=ProviderRepository(engine),
+                date_value=_market_bar_saved_file_date(body),
+                fixture_path=_market_bar_saved_file_path(body, "fixture_path"),
+            )
+            return (
+                "Saved-file import executed; "
+                f"daily_bars={result.daily_bar_count}; "
+                f"rejected={result.rejected_count}; "
+                "external_calls=0; db_writes=1. Refresh the dashboard and "
+                "rerun the priced-in preflight before continuing."
+            )
+        preview = _preview_saved_market_bar_file(engine, config, body)
+        return (
+            f"{_saved_market_bar_preview_message('Saved-file import preview', preview)} "
+            "No database writes were made; type `bars saved import execute` "
+            "only after the preview covers the intended missing bars."
+        )
+    except (
+        FileNotFoundError,
+        KeyError,
+        PermissionError,
+        RuntimeError,
+        ValueError,
+        ProviderIngestError,
+    ) as exc:
+        return f"Saved-file market-bar action failed: {exc}"
+
+
+def _market_bar_saved_file_capture_command(
+    config: AppConfig,
+    payload: Mapping[str, object],
+    *,
+    confirmed: bool,
+) -> str:
+    body = _market_bar_saved_file_request_body(
+        payload,
+        "provider_saved_file_capture_confirm_request_body"
+        if confirmed
+        else "provider_saved_file_capture_request_body",
+    )
+    output_path = _market_bar_saved_file_path(body, "output_path")
+    if not confirmed:
+        return (
+            "Saved-file capture is approval-gated; external_calls_made=0; "
+            f"safe request body confirm_external_call=false output_path={output_path}. "
+            "Type `bars saved capture confirm` only if you approve one "
+            "Polygon/Massive grouped-daily provider call."
+        )
+    captured = capture_polygon_grouped_daily_response(
+        config=config,
+        date_value=_market_bar_saved_file_date(body),
+        output_path=output_path,
+        confirm_external_call=True,
+    )
+    return (
+        "Saved-file capture completed; "
+        f"source={captured.get('source')}; "
+        f"bytes={captured.get('bytes_written')}; "
+        f"external_calls={captured.get('external_calls_made')}; "
+        f"output={captured.get('output_path')}. "
+        "Next: bars saved validate."
+    )
+
+
+def _preview_saved_market_bar_file(
+    engine: Engine,
+    config: AppConfig,
+    body: Mapping[str, object],
+) -> Mapping[str, object]:
+    return preview_polygon_grouped_daily_fixture(
+        config=config,
+        market_repo=MarketRepository(engine),
+        date_value=_market_bar_saved_file_date(body),
+        fixture_path=_market_bar_saved_file_path(body, "fixture_path"),
+    )
+
+
+def _saved_market_bar_preview_message(
+    label: str,
+    preview: Mapping[str, object],
+) -> str:
+    coverage = _mapping(preview.get("coverage"))
+    parts = [
+        f"{label}: status={preview.get('status')}",
+        f"daily_bars={preview.get('daily_bar_count')}",
+        f"rejected={preview.get('rejected_count')}",
+        f"missing_covered={coverage.get('missing_covered_by_fixture_count')}",
+        f"missing_after_import={coverage.get('missing_after_import_count')}",
+        "stock_missing_after_import="
+        f"{coverage.get('stock_like_missing_after_import_count')}",
+        f"external_calls={preview.get('external_calls_made')}",
+        "db_writes=0",
+    ]
+    next_action = str(preview.get("next_action") or "").strip()
+    if next_action:
+        parts.append(f"next={next_action}")
+    return "; ".join(parts)
+
+
+def _market_bar_saved_file_request_body(
+    payload: Mapping[str, object],
+    key: str,
+) -> Mapping[str, object]:
+    plan = _market_bar_provider_fill_plan(payload)
+    body = _mapping(plan.get(key))
+    if not body:
+        raise ValueError(
+            "saved-file request body is missing; refresh the dashboard or run "
+            "market-bars repair-plan first",
+        )
+    return body
+
+
+def _market_bar_provider_fill_plan(payload: Mapping[str, object]) -> Mapping[str, object]:
+    audit = _mapping(payload.get("priced_in_audit"))
+    market = _mapping(audit.get("market_bars"))
+    repair = _mapping(market.get("repair"))
+    plan = _mapping(repair.get("provider_fill_plan"))
+    if plan:
+        return plan
+    preflight = _mapping(payload.get("priced_in_preflight"))
+    first_blocker = _mapping(preflight.get("first_blocker"))
+    if str(first_blocker.get("area") or "") == "market_bars":
+        return first_blocker
+    return {}
+
+
+def _market_bar_saved_file_date(body: Mapping[str, object]) -> date:
+    value = str(body.get("expected_as_of") or "").strip()
+    if not value:
+        raise ValueError("saved-file request body is missing expected_as_of")
+    return date.fromisoformat(value)
+
+
+def _market_bar_saved_file_path(body: Mapping[str, object], key: str) -> Path:
+    value = str(body.get(key) or "").strip()
+    if not value:
+        raise ValueError(f"saved-file request body is missing {key}")
+    return Path(value)
 
 
 def _execute_priced_in_source_batch(
@@ -4271,10 +4495,7 @@ def _stock_market_bar_next_summary(payload: Mapping[str, object]) -> str:
 
 
 def _market_bar_provider_fill_summary(payload: Mapping[str, object]) -> str:
-    audit = _mapping(payload.get("priced_in_audit"))
-    market = _mapping(audit.get("market_bars"))
-    repair = _mapping(market.get("repair"))
-    provider_plan = _mapping(repair.get("provider_fill_plan"))
+    provider_plan = _market_bar_provider_fill_plan(payload)
     if not provider_plan:
         return ""
     command = str(provider_plan.get("provider_call_command") or "").strip()
@@ -4324,10 +4545,7 @@ def _saved_file_request_boundary(source: Mapping[str, object], fields, label: st
 
 
 def _market_bar_provider_saved_file_summary(payload: Mapping[str, object]) -> str:
-    audit = _mapping(payload.get("priced_in_audit"))
-    market = _mapping(audit.get("market_bars"))
-    repair = _mapping(market.get("repair"))
-    provider_plan = _mapping(repair.get("provider_fill_plan"))
+    provider_plan = _market_bar_provider_fill_plan(payload)
     if not provider_plan:
         return ""
     command = str(
@@ -4362,10 +4580,7 @@ def _market_bar_provider_saved_file_summary(payload: Mapping[str, object]) -> st
 def _market_bar_provider_saved_file_capture_summary(
     payload: Mapping[str, object],
 ) -> str:
-    audit = _mapping(payload.get("priced_in_audit"))
-    market = _mapping(audit.get("market_bars"))
-    repair = _mapping(market.get("repair"))
-    provider_plan = _mapping(repair.get("provider_fill_plan"))
+    provider_plan = _market_bar_provider_fill_plan(payload)
     if not provider_plan:
         return ""
     command = str(
@@ -4403,10 +4618,7 @@ def _market_bar_provider_saved_file_capture_summary(
 def _market_bar_provider_saved_file_validate_summary(
     payload: Mapping[str, object],
 ) -> str:
-    audit = _mapping(payload.get("priced_in_audit"))
-    market = _mapping(audit.get("market_bars"))
-    repair = _mapping(market.get("repair"))
-    provider_plan = _mapping(repair.get("provider_fill_plan"))
+    provider_plan = _market_bar_provider_fill_plan(payload)
     if not provider_plan:
         return ""
     command = str(
@@ -6541,6 +6753,9 @@ def _help_lines(width: int) -> list[str]:
         ("batch <source>", "Plan full-scan source fill and show the next safe chunk."),
         ("batch <source> execute", "Run only the next guarded source-fill chunk."),
         ("batch <source> execute 3", "Run a capped source-fill batch set."),
+        ("bars saved capture", "Plan saved capture; add confirm for one provider call."),
+        ("bars saved validate", "Validate the saved grouped-daily file from disk."),
+        ("bars saved import", "Preview or execute the saved-file import."),
         ("decision-gap <gap|all>", "Filter Insights by missing decision evidence."),
         ("next / prev", "Page through the current Insights scan rows."),
         ("offset <row>", "Jump to a 1-based full-scan row number."),
