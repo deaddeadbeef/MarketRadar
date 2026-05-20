@@ -29,7 +29,7 @@ from catalyst_radar.brokers.models import (
 )
 from catalyst_radar.connectors.csv_market import load_securities_csv
 from catalyst_radar.core.config import AppConfig
-from catalyst_radar.core.models import ActionState
+from catalyst_radar.core.models import ActionState, DailyBar, Security
 from catalyst_radar.dashboard.data import (
     _priced_in_scan_status,
     actionability_breakdown_payload,
@@ -2268,6 +2268,141 @@ def test_priced_in_answer_blocks_selected_universe_even_with_ready_rows(
     assert "did not scan all 12613 active securities" in (
         payload["scan_scope"]["explanation"]
     )
+
+
+def test_priced_in_answer_blocks_incomplete_stock_bars_even_with_ready_rows(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    as_of = datetime(2026, 5, 15, 21, tzinfo=UTC)
+    market_repo = MarketRepository(engine)
+    market_repo.upsert_securities(
+        [
+            Security(
+                ticker="GOOD",
+                name="Good Bars Inc",
+                exchange="NASDAQ",
+                sector="Technology",
+                industry="Software",
+                market_cap=1_000_000_000,
+                avg_dollar_volume_20d=20_000_000,
+                has_options=True,
+                is_active=True,
+                updated_at=as_of,
+                metadata={"type": "CS"},
+            ),
+            Security(
+                ticker="MISS",
+                name="Missing Bars Inc",
+                exchange="NASDAQ",
+                sector="Technology",
+                industry="Software",
+                market_cap=1_000_000_000,
+                avg_dollar_volume_20d=20_000_000,
+                has_options=True,
+                is_active=True,
+                updated_at=as_of,
+                metadata={"type": "CS"},
+            ),
+        ]
+    )
+    market_repo.upsert_daily_bars(
+        [
+            DailyBar(
+                ticker="GOOD",
+                date=as_of.date(),
+                open=100,
+                high=101,
+                low=99,
+                close=100,
+                volume=1_000_000,
+                vwap=100,
+                adjusted=True,
+                provider="manual_csv",
+                source_ts=as_of,
+                available_at=as_of,
+            )
+        ]
+    )
+
+    payload = priced_in_answer_payload(
+        engine,
+        AppConfig.from_env({}),
+        stocks_only=True,
+        queue={
+            "status": "ready",
+            "total_count": 1,
+            "count": 1,
+            "returned_count": 1,
+            "offset": 0,
+            "has_more": False,
+            "filters": {"status": "all", "limit": 5, "offset": 0, "stocks_only": True},
+            "status_counts": {"bullish_not_priced_in": 1},
+            "usefulness_counts": {"decision_useful": 1},
+            "decision_gap_counts": {
+                "schema_version": "priced-in-decision-gap-counts-v1",
+                "scope": "actionable_mismatch_rows",
+                "row_count": 1,
+                "counts": {},
+                "sample_tickers": {},
+            },
+            "rows": [
+                {
+                    "ticker": "GOOD",
+                    "priced_in_status": "bullish_not_priced_in",
+                    "priced_in_direction": "bullish",
+                    "emotion_reaction_gap": 25.0,
+                    "emotion_score": 70.0,
+                    "reaction_score": 45.0,
+                    "usefulness": {
+                        "status": "decision_useful",
+                        "decision_ready": True,
+                        "next_command": "catalyst-radar decision-card --ticker GOOD",
+                    },
+                    "data_sources": {
+                        "available": [
+                            "market_bars",
+                            "catalyst_events",
+                            "local_text",
+                            "theme_peer_sector",
+                        ],
+                        "missing": [],
+                        "stale": [],
+                    },
+                }
+            ],
+            "latest_run": {"as_of": as_of.date().isoformat()},
+            "scan": {"freshness": {"active_security_count": 2}},
+            "source_coverage": {
+                "summary": "market_bars 1/1",
+                "weak_sources": [],
+                "sources": {
+                    "market_bars": {
+                        "available": 1,
+                        "stale": 0,
+                        "missing": 0,
+                        "row_count": 1,
+                        "coverage_pct": 100.0,
+                    }
+                },
+                "actions": [],
+            },
+        },
+        preflight={"evidence_plan": {"steps": []}, "rows": []},
+    )
+
+    assert payload["status"] == "blocked"
+    assert payload["decision_ready"] is False
+    assert payload["priced_in_answer_ready"] is False
+    assert payload["counts"]["decision_ready_rows"] == 1
+    assert "Stocks-only priced-in answer is not ready" in payload["answer"]
+    assert "1 missing stock-like market-bar row" in payload["headline"]
+    assert payload["decision_readiness"]["status"] == "blocked"
+    assert payload["decision_readiness"]["recommended_gap"]["gap"] == "market_bars"
+    assert payload["decision_readiness"]["recommended_gap"]["count"] == 1
+    assert payload["trust_blockers"][0]["area"] == "market_bars"
+    assert "market-bars template" in payload["next_command"]
+    assert "--stocks-only" in payload["next_command"]
 
 
 def test_priced_in_answer_prefers_local_artifact_gap_before_options(

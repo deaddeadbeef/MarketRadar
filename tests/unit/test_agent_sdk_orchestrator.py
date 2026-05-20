@@ -33,7 +33,7 @@ def test_agent_sdk_dry_run_brief_is_multi_agent_and_zero_call() -> None:
     assert "order" in blocked
     assert "shell" in blocked
     assert any("Priced-in answer is research_only" in insight for insight in brief["insights"])
-    assert any("Priced-in scan is ready" in insight for insight in brief["insights"])
+    assert any("Priced-in queue is ready" in insight for insight in brief["insights"])
     assert any("Priced-in evidence plan is attention" in insight for insight in brief["insights"])
     assert any("Priced-in source workflow is attention" in insight for insight in brief["insights"])
     assert "Review the full-scan source batch plan." in brief["next_actions"]
