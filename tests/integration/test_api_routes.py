@@ -1807,6 +1807,32 @@ def test_post_radar_market_bars_template_and_import_use_database_universe(
     assert invalid_preview["external_calls_made"] == 0
     assert invalid_preview["executed"] is False
 
+    _write_manual_bar_csv(template_path, ["AAA"], as_of="2026-05-11")
+    guarded_template_response = client.post(
+        "/api/radar/market-bars/template",
+        json={
+            "expected_as_of": "2026-05-11",
+            "output_path": str(template_path),
+            "missing_only": True,
+        },
+    )
+    assert guarded_template_response.status_code == 422
+    assert "refusing to overwrite manual market-bar template" in str(
+        guarded_template_response.json()["detail"]
+    )
+
+    overwrite_template_response = client.post(
+        "/api/radar/market-bars/template",
+        json={
+            "expected_as_of": "2026-05-11",
+            "output_path": str(template_path),
+            "missing_only": True,
+            "overwrite": True,
+        },
+    )
+    assert overwrite_template_response.status_code == 200
+    assert overwrite_template_response.json()["status"] == "ready"
+
     _write_manual_bar_csv(bars_path, ["AAA", "BBB", "ZZZ"], as_of="2026-05-11")
     preview_response = client.post(
         "/api/radar/market-bars/import",

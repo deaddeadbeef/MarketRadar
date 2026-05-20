@@ -210,6 +210,14 @@ def build_parser() -> argparse.ArgumentParser:
     market_bars_template.add_argument("--provider", default="manual_csv")
     market_bars_template.add_argument("--missing-only", action="store_true")
     market_bars_template.add_argument(
+        "--overwrite",
+        action="store_true",
+        help=(
+            "Overwrite an existing manual template even if it contains filled "
+            "OHLCV/VWAP values."
+        ),
+    )
+    market_bars_template.add_argument(
         "--stocks-only",
         action="store_true",
         help="Restrict the template to stock-like active securities (common stock and ADR).",
@@ -993,6 +1001,7 @@ def main(argv: list[str] | None = None) -> int:
                     provider=args.provider,
                     missing_only=args.missing_only,
                     stocks_only=args.stocks_only,
+                    overwrite=args.overwrite,
                 )
                 payload = result.as_payload()
                 if args.json:

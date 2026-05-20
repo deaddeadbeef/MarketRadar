@@ -248,6 +248,57 @@ def test_market_bars_missing_only_template_import_counts_existing_bars(
     assert "external_calls=0" in import_output.out
 
 
+def test_market_bars_template_refuses_to_overwrite_filled_manual_rows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    database_url = _database_url(tmp_path)
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _seed_csv_market(capsys)
+    template_path = tmp_path / "manual-bars.csv"
+    _write_manual_bars(template_path, ["AAA"], as_of="2026-05-11")
+
+    assert (
+        main(
+            [
+                "market-bars",
+                "template",
+                "--expected-as-of",
+                "2026-05-11",
+                "--out",
+                str(template_path),
+                "--missing-only",
+            ]
+        )
+        == 1
+    )
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert "refusing to overwrite manual market-bar template" in output.err
+    assert _read_csv_rows(template_path)[0]["open"] == "100"
+
+    assert (
+        main(
+            [
+                "market-bars",
+                "template",
+                "--expected-as-of",
+                "2026-05-11",
+                "--out",
+                str(template_path),
+                "--missing-only",
+                "--overwrite",
+            ]
+        )
+        == 0
+    )
+
+    overwrite_output = capsys.readouterr()
+    assert "manual_market_bars_template status=ready" in overwrite_output.out
+    assert all(not row["open"] for row in _read_csv_rows(template_path))
+
+
 def test_market_bars_template_sorts_stock_like_rows_first(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

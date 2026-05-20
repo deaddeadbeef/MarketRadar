@@ -1,6 +1,65 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 10:08:15 +08:00
+Last updated: 2026-05-20 10:15:05 +08:00
+
+## Latest Manual Template Overwrite Guard
+
+Goal alignment:
+
+- The active blocker is still `data\local\manual-bars-2026-05-15.csv`. Since
+  that file is the manual path to unblock the full-market priced-in scan, the
+  system must not accidentally destroy operator-entered OHLCV/VWAP values.
+- This slice adds an overwrite guard to manual market-bar template generation.
+  It directly protects the artifact that must be filled before the full-market
+  priced-in answer can become trustworthy.
+- This makes 0 Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or provider
+  calls.
+
+Fix in this slice:
+
+- `write_manual_market_bars_template(..., overwrite=False)` now scans an
+  existing output CSV before writing.
+- If the existing file has any filled required OHLCV/VWAP values, template
+  generation refuses to overwrite it.
+- The CLI exposes `market-bars template --overwrite` for deliberate replacement
+  after backup/confirmation.
+- The API request body supports `"overwrite": true` for the same explicit
+  replacement path.
+- Blank generated templates can still be regenerated without `--overwrite`,
+  which preserves the current local workflow.
+
+Live zero-call guard check:
+
+```text
+manual market bars failed: refusing to overwrite manual market-bar template with 1 row(s) containing filled OHLCV/VWAP values: C:\Users\fpan1\AppData\Local\Temp\market-radar-filled-template-guard.csv; rerun with --overwrite only after backing up or confirming the filled values are no longer needed
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_provider_ingest_cli.py::test_market_bars_template_refuses_to_overwrite_filled_manual_rows tests\integration\test_provider_ingest_cli.py::test_market_bars_missing_only_template_import_counts_existing_bars tests\integration\test_api_routes.py::test_post_radar_market_bars_template_and_import_use_database_universe tests\integration\test_api_routes.py::test_post_radar_market_bars_template_and_import_can_scope_to_stocks -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\market\manual_bars.py src\catalyst_radar\cli.py src\catalyst_radar\api\routes\radar.py tests\integration\test_provider_ingest_cli.py tests\integration\test_api_routes.py
+git diff --check
+powershell -ExecutionPolicy Bypass -File .\scripts\market-radar-status.ps1 -Quick
+```
+
+Results:
+
+- Focused pytest passed.
+- Ruff passed.
+- `git diff --check` passed.
+- Live temp-file guard check refused to overwrite one filled row.
+- Quick status still reports `bars=12090/12613`, `missing=523`, and
+  `External calls made: 0`.
+
+Next useful product action:
+
+- Fill OHLCV/VWAP in `data\local\manual-bars-2026-05-15.csv`, then run the
+  import preview again.
+- If the template must be regenerated after any rows are filled, back it up
+  first and use `--overwrite` only deliberately.
+- Do not run the guarded Polygon/Massive grouped-daily fill without explicit
+  user approval.
 
 ## Latest Local Manual Template Regeneration
 

@@ -335,6 +335,7 @@ def write_manual_market_bars_template(
     generated_at: datetime | None = None,
     missing_only: bool = False,
     stocks_only: bool = False,
+    overwrite: bool = False,
 ) -> ManualBarsTemplateResult:
     active_rows = _active_security_rows(engine)
     if not active_rows:
@@ -358,6 +359,16 @@ def write_manual_market_bars_template(
     template_rows = sorted(template_rows, key=_manual_bar_template_sort_key)
     resolved_at = _as_utc(generated_at or datetime.now(UTC))
     path = Path(output_path)
+    if path.exists() and not overwrite:
+        filled_rows = _filled_required_row_count(path)
+        if filled_rows:
+            msg = (
+                "refusing to overwrite manual market-bar template with "
+                f"{filled_rows} row(s) containing filled OHLCV/VWAP values: {path}; "
+                "rerun with --overwrite only after backing up or confirming the "
+                "filled values are no longer needed"
+            )
+            raise ValueError(msg)
     if path.parent != Path(""):
         path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as handle:
@@ -703,6 +714,19 @@ def _bar_tickers_with_any_history(engine: Engine) -> set[str]:
             for row in conn.execute(select(daily_bars.c.ticker).distinct())
             if str(row._mapping["ticker"]).strip()
         }
+
+
+def _filled_required_row_count(path: Path) -> int:
+    with path.open("r", encoding="utf-8-sig", newline="") as handle:
+        reader = csv.DictReader(handle)
+        count = 0
+        for row in reader:
+            if any(
+                str(row.get(field_name) or "").strip()
+                for field_name in MANUAL_BAR_REQUIRED_FILL_FIELDS
+            ):
+                count += 1
+        return count
 
 
 def _manual_market_bars_template_command(
