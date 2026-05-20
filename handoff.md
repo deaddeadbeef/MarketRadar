@@ -1,7 +1,40 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 23:27:31 +08:00
+Last updated: 2026-05-20 23:43:25 +08:00
 
+
+
+## Latest Saved-File Operator Step
+
+Goal alignment / drift check:
+
+- The active goal remains: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- The current first useful blocker is still `market_bars`; no provider calls were made.
+- The repair plan already exposed the saved Polygon/Massive grouped-daily response path, but its primary `operator_step` was still driven only by manual CSV state. If the saved response file was present, CLI/API/TUI consumers would still be told to work the manual CSV first.
+
+Fix in this slice:
+
+- `manual_market_bars_repair_plan(...)` now prefers the saved provider response when it exists on disk and missing bars remain.
+- In that state, `operator_step` becomes:
+  - `status=saved_file_available`;
+  - `kind=validate_saved_provider_response`;
+  - `command=saved-file validate command`;
+  - `after_manual_command=saved-file import command`;
+  - `external_calls_made=0`.
+- This keeps the live provider boundary intact: capture still requires explicit approval, while saved-file validation and import read from disk and make 0 provider calls.
+
+Validation:
+
+```powershell
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\test_provider_ingest_cli.py::test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths tests\integration\test_provider_ingest_cli.py::test_market_bars_repair_plan_prefers_available_saved_provider_file tests\integration\test_provider_ingest_cli.py::test_market_bars_repair_plan_previews_existing_local_template tests\integration\test_provider_ingest_cli.py::test_market_bars_repair_plan_guides_complete_rows_only_preview -q
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\market\manual_bars.py tests\integration\test_provider_ingest_cli.py
+```
+
+Next useful product action:
+
+- Do not treat this as goal completion.
+- The live saved response file is still missing at `data\local\polygon-grouped-daily-2026-05-15.json`.
+- Once that file exists, the repair plan will now route the operator to validate it first, then import it locally to clear the market-bar blocker.
 
 ## Latest Preflight First-Blocker Contract
 

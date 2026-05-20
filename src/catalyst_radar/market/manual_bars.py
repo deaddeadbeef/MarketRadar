@@ -410,6 +410,9 @@ class ManualBarsRepairPlanResult:
             import_execute_command=import_execute_command,
             incremental_import_preview_command=incremental_import_preview_command,
             incremental_import_execute_command=incremental_import_execute_command,
+            provider_saved_file_exists=provider_saved_file_exists,
+            provider_saved_file_validate_command=provider_saved_file_validate_command,
+            provider_saved_file_import_command=provider_saved_file_import_command,
         )
         return {
             "schema_version": "manual-market-bars-repair-plan-v1",
@@ -552,6 +555,9 @@ def _manual_market_bars_operator_step(
     import_execute_command: str,
     incremental_import_preview_command: str,
     incremental_import_execute_command: str,
+    provider_saved_file_exists: bool,
+    provider_saved_file_validate_command: str,
+    provider_saved_file_import_command: str,
 ) -> dict[str, object]:
     if missing <= 0:
         return {
@@ -560,6 +566,19 @@ def _manual_market_bars_operator_step(
             "action": "Market bars cover this scope. Rerun the priced-in audit.",
             "command": "catalyst-radar priced-in-audit --all --json",
             "after_manual_command": None,
+            "manual_step": False,
+            "external_calls_made": 0,
+        }
+    if provider_saved_file_exists:
+        return {
+            "status": "saved_file_available",
+            "kind": "validate_saved_provider_response",
+            "action": (
+                "Validate the saved Polygon/Massive grouped-daily JSON response; "
+                "if it passes, import it to clear scan-date market-bar gaps."
+            ),
+            "command": provider_saved_file_validate_command,
+            "after_manual_command": provider_saved_file_import_command,
             "manual_step": False,
             "external_calls_made": 0,
         }
