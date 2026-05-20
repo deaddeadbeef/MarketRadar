@@ -123,6 +123,7 @@ def redacted_operator_snapshot(payload: Mapping[str, object]) -> dict[str, objec
             _mapping(source.get("priced_in_source_workflow")),
             _mapping(source.get("priced_in_preflight")),
             _mapping(source.get("priced_in_answer")),
+            _mapping(source.get("priced_in_audit")),
         ),
         "candidates": _candidates_context(_mapping(source.get("candidates"))),
         "alerts": _alerts_context(_mapping(source.get("alerts"))),
@@ -188,6 +189,7 @@ def deterministic_agent_brief(
             _priced_in_insight(priced_in),
             _priced_in_evidence_plan_insight(priced_in),
             _priced_in_source_workflow_insight(priced_in),
+            _priced_in_unblock_options_insight(priced_in),
             _top_queue_insight(work_queue),
             *[_candidate_insight(row) for row in candidates[:3]],
             *[_alert_insight(row) for row in alerts[:2]],
@@ -205,6 +207,7 @@ def deterministic_agent_brief(
             _text(_mapping(priced_in.get("source_workflow")).get("coverage_first_command")),
             _text(_mapping(priced_in.get("source_workflow")).get("decision_shortcut_action")),
             _text(_mapping(priced_in.get("source_workflow")).get("decision_shortcut_command")),
+            *_priced_in_unblock_option_actions(priced_in),
             _text(priced_in.get("next_action")),
             _text(work_queue.get("next_action")),
             _text(call_plan.get("next_action")) if max_provider_calls else None,
@@ -528,8 +531,10 @@ def _priced_in_context(
     source_workflow: Mapping[str, object],
     preflight: Mapping[str, object],
     answer: Mapping[str, object],
+    audit: Mapping[str, object],
 ) -> dict[str, object]:
     coverage = source_coverage or _mapping(queue.get("source_coverage"))
+    market_bar_unblock_options = _market_bar_unblock_options_context(audit)
     return {
         **_copy_keys(
             queue,
@@ -579,6 +584,11 @@ def _priced_in_context(
             _mapping(preflight.get("evidence_plan"))
         ),
         "source_workflow": _priced_in_source_workflow_context(source_workflow),
+        **(
+            {"market_bar_unblock_options": market_bar_unblock_options}
+            if market_bar_unblock_options
+            else {}
+        ),
         "source_coverage": {
             **_copy_keys(
                 coverage,
@@ -604,6 +614,66 @@ def _priced_in_context(
         },
         "rows": [_priced_in_row_context(item) for item in _rows(queue.get("rows"))[:8]],
     }
+
+
+def _market_bar_unblock_options_context(audit: Mapping[str, object]) -> list[dict[str, object]]:
+    repair = _mapping(_mapping(audit.get("market_bars")).get("repair"))
+    if not repair:
+        return []
+    options: list[dict[str, object]] = []
+    manual_command = _text(
+        repair.get("dashboard_manual_template_command") or repair.get("template_command")
+    )
+    manual_preview = _text(
+        repair.get("dashboard_manual_import_preview_command")
+        or repair.get("import_preview_command")
+    )
+    if manual_command:
+        options.append(
+            {
+                "kind": "manual_csv",
+                "status": "available",
+                "external_calls_required": 0,
+                "db_writes_during_step": 0,
+                "command": manual_command,
+                "preview_command": manual_preview or None,
+            }
+        )
+
+    provider_plan = _mapping(repair.get("provider_fill_plan"))
+    packet = _mapping(provider_plan.get("provider_saved_file_capture_approval_packet"))
+    if packet:
+        options.append(
+            {
+                "kind": "saved_provider_capture",
+                "status": _text(packet.get("status")) or "unknown",
+                "approval_required": bool(packet.get("approval_required")),
+                "external_calls_required": int(
+                    _number(packet.get("external_calls_if_approved"))
+                ),
+                "db_writes_during_step": int(
+                    _number(packet.get("db_writes_during_capture"))
+                ),
+                "command": _text(packet.get("tui_confirm_command"))
+                or _text(packet.get("capture_cli_command")),
+                "question": _text(packet.get("question")),
+            }
+        )
+        for step in _rows(packet.get("post_capture_zero_call_steps")):
+            step_name = _text(step.get("step"))
+            if step_name not in {"validate_saved_file", "preview_import"}:
+                continue
+            options.append(
+                {
+                    "kind": step_name,
+                    "status": _text(packet.get("saved_file_status")) or "unknown",
+                    "external_calls_required": int(_number(step.get("external_calls_made"))),
+                    "db_writes_during_step": int(_number(step.get("db_writes_made"))),
+                    "command": _text(step.get("tui_command"))
+                    or _text(step.get("cli_command")),
+                }
+            )
+    return options[:5]
 
 
 def _priced_in_source_workflow_context(workflow: Mapping[str, object]) -> dict[str, object]:
@@ -1077,6 +1147,40 @@ def _priced_in_source_workflow_insight(priced_in: Mapping[str, object]) -> str |
         f"Priced-in source workflow is {_text(workflow.get('status')) or 'unknown'}; "
         f"{'; '.join(pieces)}."
     )
+
+
+def _priced_in_unblock_options_insight(priced_in: Mapping[str, object]) -> str | None:
+    options = _rows(priced_in.get("market_bar_unblock_options"))
+    if not options:
+        return None
+    pieces = []
+    for option in options[:4]:
+        kind = _text(option.get("kind")) or "option"
+        status = _text(option.get("status")) or "unknown"
+        calls = int(_number(option.get("external_calls_required")))
+        command = _text(option.get("command"))
+        command_piece = f" command={command}" if command else ""
+        pieces.append(f"{kind} status={status} calls={calls}{command_piece}")
+    return "Market-bar unblock options: " + "; ".join(pieces) + "."
+
+
+def _priced_in_unblock_option_actions(priced_in: Mapping[str, object]) -> list[str]:
+    actions: list[str] = []
+    for option in _rows(priced_in.get("market_bar_unblock_options"))[:4]:
+        kind = _text(option.get("kind"))
+        calls = int(_number(option.get("external_calls_required")))
+        writes = int(_number(option.get("db_writes_during_step")))
+        command = _text(option.get("command"))
+        if not kind or not command:
+            continue
+        if kind == "saved_provider_capture":
+            actions.append(
+                f"Approve {command} only if one market-data call and {writes} "
+                "DB writes during capture match your intent."
+            )
+            continue
+        actions.append(f"Use {command} for {kind}; external calls={calls}.")
+    return actions
 
 
 def _top_queue_insight(work_queue: Mapping[str, object]) -> str | None:
