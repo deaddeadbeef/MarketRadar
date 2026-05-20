@@ -1807,6 +1807,16 @@ def test_priced_in_full_scan_audit_payload_consolidates_current_state(
     provider_call_command = market_bar_provider_plan["provider_call_command"]
     if provider_call_command is not None:
         assert provider_call_command.endswith("--confirm-external-call")
+        assert market_bar_provider_plan[
+            "provider_saved_file_import_command"
+        ].startswith("catalyst-radar ingest-polygon grouped-daily")
+        assert "--fixture data\\local\\polygon-grouped-daily-" in (
+            market_bar_provider_plan["provider_saved_file_import_command"]
+        )
+    assert market_bar_provider_plan["provider_saved_file_external_call_count"] == 0
+    assert "0 provider calls" in market_bar_provider_plan[
+        "provider_saved_file_boundary"
+    ]
     assert market_bar_provider_plan["manual_template_command"].endswith(
         "--missing-only"
     )
@@ -2038,6 +2048,12 @@ def test_priced_in_full_scan_audit_warns_for_stale_eod_provider_health(
     assert "stale same-day EOD denial" in provider_plan["provider_health_warning"]
     assert provider_plan["execute_external_call_count"] == 1
     assert provider_plan["external_calls_made"] == 0
+    assert provider_plan["provider_saved_file_import_command"] == (
+        "catalyst-radar ingest-polygon grouped-daily "
+        "--date 2026-05-10 "
+        "--fixture data\\local\\polygon-grouped-daily-2026-05-10.json"
+    )
+    assert provider_plan["provider_saved_file_external_call_count"] == 0
 
 
 def test_priced_in_full_scan_audit_reports_stock_only_bar_coverage(
