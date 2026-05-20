@@ -1,6 +1,72 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 09:53:28 +08:00
+Last updated: 2026-05-20 09:59:29 +08:00
+
+## Latest Goal Completion Audit
+
+Objective restated as concrete deliverables:
+
+- MarketRadar must scan the full active market, not only a handpicked watchlist.
+- It must combine price reaction with market-emotion evidence and answer:
+  "has price fully matched market expectations?"
+- CLI/API surfaces must expose that answer, the scan scope, evidence gaps,
+  safety boundaries, and next commands.
+- Dashboard/TUI surfaces must make the same answer understandable for a human
+  operator.
+- The system must not make Polygon/Massive, SEC, Schwab, OpenAI, broker, or
+  order calls while browsing, planning, auditing, or rendering. Provider calls
+  require an explicit command and operator approval.
+
+Prompt-to-artifact checklist:
+
+- Full active market scan:
+  - Evidence: `priced-in-answer --json` reports
+    `full_scan.active_securities=12613`, `ranked_rows=12087`,
+    `unscanned_rows=526`, and `scan_scope.mode=full_scan`.
+  - Status: incomplete. The scan is broad, but 523 active securities still lack
+    scan-date price reaction.
+- Price/emotion answer:
+  - Evidence: `priced-in-answer --json` answers
+    `Full-market priced-in answer is not ready: 523 row(s) still lack scan-date
+    price reaction.`
+  - Status: blocked, not complete.
+- CLI/API usefulness:
+  - Evidence: `priced-in-answer --json`, `market-bars repair-plan`, and
+    `scripts\market-radar-status.ps1 -Quick` expose the blocker, next command,
+    sample tickers, security-type breakdown, and zero-call boundary.
+  - Status: useful for diagnosis and repair planning, but the final priced-in
+    answer is blocked by missing bars.
+- Dashboard/TUI usefulness:
+  - Evidence: `dashboard-tui --once --scan-mode all --page overview` and
+    `dashboard-tui --once --page ops` render the full-scan audit, decision
+    readiness, and missing-bar type summary with `External calls made: 0`.
+  - Status: useful for human review, but it correctly shows a blocked answer.
+- Provider/broker/agent safety:
+  - Evidence: quick status reports `External calls made: 0`; repair plan says
+    the provider fill command is one call and requires explicit approval.
+  - Status: aligned. Do not run provider fill without explicit approval.
+- Completion gate:
+  - Evidence: quick status reports `Full-market next: bars=12090/12613;
+    missing=523`; local template preview is `invalid` with
+    `blank_required=3138`.
+  - Status: not achieved. The blocking artifact is
+    `data\local\manual-bars-2026-05-15.csv` or the guarded provider fill.
+
+Current audit conclusion:
+
+- Do not mark the active goal complete.
+- More dashboard polish, source enrichment, Schwab work, or agent work would be
+  drift unless it directly helps clear or explain the missing scan-date market
+  bars.
+- The next real completion action is data acquisition:
+  - fill/import `data\local\manual-bars-2026-05-15.csv`; or
+  - get explicit user approval to run the one-call Polygon/Massive grouped
+    daily fill.
+- Do not run this command without explicit approval:
+
+```powershell
+.\.venv\Scripts\python.exe -m catalyst_radar.cli ingest-polygon grouped-daily --date 2026-05-15 --confirm-external-call
+```
 
 ## Latest Dashboard Missing-Bar Type Visibility
 
