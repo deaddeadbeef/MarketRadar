@@ -4801,9 +4801,10 @@ def test_priced_in_preflight_payload_reports_exact_next_steps(tmp_path: Path) ->
     assert payload["commands"]["market_bars_import_execute"].startswith(
         "catalyst-radar market-bars import"
     )
-    assert "--expected-as-of <LATEST_TRADING_DATE>" in payload["commands"][
+    assert f"--expected-as-of {AS_OF.date().isoformat()}" in payload["commands"][
         "market_bars_import_preview"
     ]
+    assert f"--date {AS_OF.date().isoformat()}" in payload["commands"]["ingest_bars"]
     assert payload["commands"]["run_scan"].startswith("catalyst-radar run-daily")
     assert "--universe" not in payload["commands"]["run_scan"]
     assert payload["commands"]["run_selected_universe_scan"].endswith(
@@ -4929,6 +4930,7 @@ def test_priced_in_preflight_recommends_manual_bar_template_for_missing_bars(
     assert payload["target_as_of_source"] == "run_as_of"
     assert payload["latest_run_as_of"] == run_as_of.isoformat()
     assert payload["scan_scope"] == {
+        "instrument_filter": "all_instruments",
         "active_security_count": 12_613,
         "requested_securities": 12_613,
         "scanned_securities": 0,
@@ -4946,10 +4948,23 @@ def test_priced_in_preflight_recommends_manual_bar_template_for_missing_bars(
     assert market_bars["status"] == "blocked"
     assert "DB-backed manual bar template" in str(market_bars["next_action"])
     assert market_bars["command"].startswith("catalyst-radar market-bars template")
+    assert run_as_of.isoformat() in str(market_bars["command"])
     assert market_bars["api"] == "POST /api/radar/market-bars/template"
+    market_source = payload["source_coverage"]["sources"]["market_bars"]
+    provider_plan = market_source["provider_fill_plan"]
+    assert provider_plan["provider_saved_file_status"] == "missing"
+    assert provider_plan["provider_saved_file_capture_command"] == (
+        "catalyst-radar ingest-polygon grouped-daily "
+        f"--date {run_as_of.isoformat()} "
+        f"--save-response data\\local\\polygon-grouped-daily-{run_as_of.isoformat()}.json "
+        "--confirm-external-call"
+    )
+    assert provider_plan["provider_saved_file_capture_external_call_count"] == 1
+    assert provider_plan["provider_saved_file_external_call_count"] == 0
     assert payload["commands"]["run_scan"].startswith(
         "catalyst-radar run-daily"
     )
+    assert run_as_of.isoformat() in payload["commands"]["run_scan"]
     assert payload["evidence_plan"]["steps"][0]["area"] == "market_bars"
     assert payload["evidence_plan"]["next_command"].startswith(
         "catalyst-radar market-bars template"

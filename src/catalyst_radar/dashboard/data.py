@@ -1430,7 +1430,7 @@ def _priced_in_market_bar_source_gap_plan(
     )
     status_value = (
         "no_gaps"
-        if missing <= 0 and active > 0
+        if missing <= 0
         else "blocked"
         if target_as_of is None or active <= 0
         else "attention"
@@ -6013,11 +6013,6 @@ def priced_in_preflight_payload(
     )
     freshness = _mapping_value(discovery, "freshness")
     scan_yield = _mapping_value(discovery, "yield")
-    commands = _priced_in_preflight_commands(
-        config,
-        target_ticker_pages=_estimated_ticker_seed_pages(bar_universe),
-        stocks_only=stocks_only,
-    )
     discovery_run = _mapping_value(discovery, "run")
     run_as_of = _date_iso_or_none(
         _parse_date(run.get("as_of"))
@@ -6031,21 +6026,47 @@ def priced_in_preflight_payload(
     else:
         target_as_of_source = None
     target_as_of_date = _parse_date(target_as_of)
+    commands = _priced_in_preflight_commands(
+        config,
+        target_as_of=target_as_of_date,
+        target_ticker_pages=_estimated_ticker_seed_pages(bar_universe),
+        stocks_only=stocks_only,
+    )
     stock_scope = (
         _priced_in_market_bar_stock_scope(engine, target_as_of=target_as_of_date)
         if stocks_only
         else None
     )
+    market_bar_repair = _priced_in_preflight_market_bar_repair_scope(
+        freshness=freshness,
+        target_as_of=target_as_of_date,
+        stocks_only=stocks_only,
+        stock_scope=stock_scope,
+    )
+    if market_bar_repair:
+        repair_missing = (
+            int(
+                _finite_float(
+                    _mapping_value(market_bar_repair, "stock_scope").get(
+                        "stock_like_missing_as_of_bar"
+                    )
+                )
+            )
+            if stocks_only
+            else int(_finite_float(market_bar_repair.get("missing_as_of_bar")))
+        )
+        market_bar_repair = {
+            **market_bar_repair,
+            "provider_fill_plan": _priced_in_market_bar_provider_fill_plan(
+                engine,
+                config,
+                target_as_of=target_as_of_date,
+                missing=repair_missing,
+            ),
+        }
     resolved_source_coverage = _priced_in_source_coverage_with_market_bar_scope(
         resolved_source_coverage,
-        {
-            "repair": _priced_in_preflight_market_bar_repair_scope(
-                freshness=freshness,
-                target_as_of=target_as_of_date,
-                stocks_only=stocks_only,
-                stock_scope=stock_scope,
-            )
-        },
+        {"repair": market_bar_repair},
     )
     provider_blocker = _latest_market_bar_provider_failure(
         engine,
@@ -14379,10 +14400,16 @@ def _priced_in_preflight_row(
 def _priced_in_preflight_commands(
     config: AppConfig,
     *,
+    target_as_of: date | None = None,
     target_ticker_pages: int | None = None,
     stocks_only: bool = False,
 ) -> dict[str, str]:
     provider = _provider_name(config.daily_market_provider, default="csv")
+    target_value = (
+        target_as_of.isoformat()
+        if target_as_of is not None
+        else "<LATEST_TRADING_DATE>"
+    )
     if provider == "polygon":
         page_cap = max(1, int(config.polygon_tickers_max_pages))
         target_pages = max(page_cap, target_ticker_pages or page_cap)
@@ -14392,7 +14419,7 @@ def _priced_in_preflight_commands(
         )
         ingest_bars = (
             "catalyst-radar ingest-polygon grouped-daily "
-            "--date <LATEST_TRADING_DATE> --confirm-external-call"
+            f"--date {target_value} --confirm-external-call"
         )
     else:
         ingest_tickers = (
@@ -14403,32 +14430,32 @@ def _priced_in_preflight_commands(
         "ingest_tickers": ingest_tickers,
         "ingest_bars": ingest_bars,
         "build_universe": (
-            "catalyst-radar build-universe --as-of <LATEST_TRADING_DATE> "
+            f"catalyst-radar build-universe --as-of {target_value} "
             f"--available-at <UTC-now> --name {config.universe_name} "
             f"--provider {provider}"
         ),
         "market_bars_template": _csv_market_template_command(
-            None,
+            target_as_of,
             missing_only=True,
             stocks_only=stocks_only,
         ),
         "market_bars_import_preview": _csv_market_refresh_command(
-            None,
+            target_as_of,
             execute=False,
             stocks_only=stocks_only,
         ),
         "market_bars_import_execute": _csv_market_refresh_command(
-            None,
+            target_as_of,
             execute=True,
             stocks_only=stocks_only,
         ),
         "review_call_plan": "catalyst-radar dashboard-tui --once --page run",
         "run_scan": (
-            "catalyst-radar run-daily --as-of <LATEST_TRADING_DATE> "
+            f"catalyst-radar run-daily --as-of {target_value} "
             f"--available-at <UTC-now> --provider {provider} --json"
         ),
         "run_selected_universe_scan": (
-            "catalyst-radar run-daily --as-of <LATEST_TRADING_DATE> "
+            f"catalyst-radar run-daily --as-of {target_value} "
             f"--available-at <UTC-now> --provider {provider} "
             f"--universe {config.universe_name} --json"
         ),

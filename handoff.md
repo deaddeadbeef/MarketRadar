@@ -1,6 +1,75 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 20:07:35 +08:00
+Last updated: 2026-05-20 20:18:57 +08:00
+
+## Latest Concrete Priced-In Preflight Repair Commands
+
+Goal alignment / drift check:
+
+- The active goal remains: MarketRadar should scan the broad stock market and
+  identify stocks where market emotion/expectations have not yet been matched
+  by price.
+- After the dashboard onboarding fix, the next useful work returned to the
+  first evidence-chain blocker: `market_bars`.
+- The live stock-only priced-in preflight knew the target date
+  (`2026-05-15`) but still emitted some top-level commands with
+  `<LATEST_TRADING_DATE>` placeholders, and its market-bar source coverage did
+  not expose the saved Polygon/Massive response capture/import plan.
+- That made the CLI/API less useful for the human/operator path to clear the
+  current blocker.
+
+Fix in this slice:
+
+- `priced_in_preflight_payload(...)` now computes the target scan date before
+  building command strings.
+- `commands.ingest_bars`, `commands.build_universe`, `commands.run_scan`,
+  `commands.run_selected_universe_scan`, and the manual market-bar
+  template/import commands now use the concrete target date when one is known.
+- The market-bar source coverage row in `priced-in-preflight` now includes the
+  same `provider_fill_plan` saved-file fields used by the market-bar repair
+  plan, including:
+  - `provider_saved_file_status`;
+  - `provider_saved_file_capture_command`;
+  - `provider_saved_file_validate_command`;
+  - `provider_saved_file_import_command`;
+  - saved-file external call counts.
+- While validating the broader data helper file, a source-gap overview status
+  inconsistency was fixed: market-bar source planning now reports `no_gaps`
+  when there are 0 market-bar gaps, instead of marking the source blocked only
+  because a fixture lacks an active-universe scope.
+- This remains a planning/inspection surface. Rendering and JSON export still
+  make 0 provider calls.
+
+Validation:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_preflight_payload_reports_exact_next_steps tests\integration\test_dashboard_data.py::test_priced_in_preflight_recommends_manual_bar_template_for_missing_bars -q
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py -q
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_preflight_cli_outputs_zero_call_plan tests\integration\test_api_routes.py::test_get_radar_priced_in_preflight_returns_zero_call_steps -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py tests\integration\test_dashboard_data.py
+$json = .\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-preflight --stocks-only --json; $p = $json | ConvertFrom-Json; $p.commands.market_bars_template; $p.source_coverage.sources.market_bars.provider_fill_plan.provider_saved_file_capture_command
+```
+
+Observed live DB-backed CLI smoke:
+
+- `target_as_of=2026-05-15`;
+- manual template command:
+  `catalyst-radar market-bars template --expected-as-of 2026-05-15 --out data\local\manual-stock-bars-2026-05-15.csv --missing-only --stocks-only`;
+- provider saved-file capture command:
+  `catalyst-radar ingest-polygon grouped-daily --date 2026-05-15 --save-response data\local\polygon-grouped-daily-2026-05-15.json --confirm-external-call`;
+- `provider_saved_file_status=missing`;
+- capture external call count `1`;
+- preflight external calls made `0`.
+
+Next useful product action:
+
+- Do not treat this as goal completion. It only makes the current blocker more
+  actionable through CLI/API.
+- The live blocker remains `market_bars`: 131 stock-like rows still need
+  scan-date bars before the stocks-only priced-in answer can be trusted.
+- Clearing that blocker still requires either explicit approval for the single
+  Polygon/Massive saved-response capture or manual fill/import of
+  `data\local\manual-stock-bars-2026-05-15.csv`.
 
 ## Latest Default Dashboard Onboarding Fix
 
