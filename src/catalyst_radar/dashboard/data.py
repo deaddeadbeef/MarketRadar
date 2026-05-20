@@ -6119,6 +6119,12 @@ def priced_in_preflight_payload(
         stocks_only=stocks_only,
         stock_scope=stock_scope,
     )
+    manual_market_bar_repair = _priced_in_preflight_manual_market_bar_repair(
+        engine,
+        config,
+        target_as_of=target_as_of_date,
+        stocks_only=stocks_only,
+    )
     if market_bar_repair:
         repair_missing = (
             int(
@@ -6133,6 +6139,7 @@ def priced_in_preflight_payload(
         )
         market_bar_repair = {
             **market_bar_repair,
+            **manual_market_bar_repair,
             "provider_fill_plan": _priced_in_market_bar_provider_fill_plan(
                 engine,
                 config,
@@ -6160,6 +6167,7 @@ def priced_in_preflight_payload(
         provider_blocker,
         stocks_only=stocks_only,
         stock_scope=stock_scope,
+        market_bar_repair=market_bar_repair,
     )
     evidence_plan = _priced_in_evidence_plan(rows)
     first_blocker = _priced_in_preflight_first_blocker(
@@ -6308,6 +6316,9 @@ def _priced_in_preflight_first_blocker(
         "command": first.get("command"),
         "api": first.get("api"),
         "depends_on": list(_sequence_value(first.get("depends_on"))),
+        "operator_step": _row_dict(_mapping_value(first, "operator_step")),
+        "manual_step": bool(first.get("manual_step")),
+        "after_manual_command": first.get("after_manual_command"),
         "source_gap_count": gap_count,
         "source_row_count": row_count,
         "source_available_count": available_count,
@@ -6329,6 +6340,9 @@ def _priced_in_preflight_operator_next_step(
         "action": action,
         "command": command,
         "api": first_blocker.get("api"),
+        "manual_step": bool(first_blocker.get("manual_step")),
+        "after_manual_command": first_blocker.get("after_manual_command"),
+        "operator_step": _row_dict(_mapping_value(first_blocker, "operator_step")),
         "external_calls_made": 0,
     }
 
@@ -6408,7 +6422,7 @@ def _priced_in_evidence_plan_step(
     row: Mapping[str, object],
 ) -> dict[str, object]:
     area = str(row.get("area") or "")
-    return {
+    step = {
         "priority": priority,
         "area": area,
         "status": row.get("status"),
@@ -6418,6 +6432,12 @@ def _priced_in_evidence_plan_step(
         "api": row.get("api"),
         "depends_on": _priced_in_evidence_plan_dependencies(area),
     }
+    operator_step = _mapping_value(row, "operator_step")
+    if operator_step:
+        step["operator_step"] = _row_dict(operator_step)
+        step["manual_step"] = bool(operator_step.get("manual_step"))
+        step["after_manual_command"] = operator_step.get("after_manual_command")
+    return step
 
 
 def _priced_in_evidence_plan_dependencies(area: str) -> list[str]:
@@ -6477,6 +6497,50 @@ def _priced_in_preflight_source_coverage(
         coverage,
     )
     return _priced_in_source_coverage_with_option_diagnostic(engine, queue_rows, coverage)
+
+
+def _priced_in_preflight_manual_market_bar_repair(
+    engine: Engine,
+    config: AppConfig,
+    *,
+    target_as_of: date | None,
+    stocks_only: bool,
+):
+    if target_as_of is None:
+        return {}
+    try:
+        plan = manual_market_bars_repair_plan(
+            engine,
+            expected_as_of=target_as_of,
+            stocks_only=stocks_only,
+            provider_key_configured=config.polygon_api_key_configured,
+            **_manual_repair_provider_health_kwargs(engine),
+        ).as_payload()
+    except ValueError as exc:
+        return {
+            "manual_repair_status": "invalid",
+            "manual_repair_error": str(exc),
+            "external_calls_made": 0,
+        }
+    return {
+        "manual_repair_status": plan.get("status"),
+        "operator_step": _row_dict(_mapping_value(plan, "operator_step")),
+        "provider_saved_file_validate_command": plan.get(
+            "provider_saved_file_validate_command"
+        ),
+        "provider_saved_file_validate_api": plan.get("provider_saved_file_validate_api"),
+        "provider_saved_file_import_command": plan.get(
+            "provider_saved_file_import_command"
+        ),
+        "provider_saved_file_import_api": plan.get("provider_saved_file_import_api"),
+        "manual_template_command": plan.get("manual_template_command"),
+        "manual_import_preview_command": plan.get("manual_import_preview_command"),
+        "manual_import_api": plan.get("manual_import_api"),
+        "local_template_path": plan.get("local_template_path"),
+        "local_template_exists": bool(plan.get("local_template_exists")),
+        "local_template_preview": _row_dict(_mapping_value(plan, "local_template_preview")),
+        "external_calls_made": 0,
+    }
 
 
 def _priced_in_preflight_market_bar_repair_scope(
@@ -14262,6 +14326,7 @@ def _priced_in_preflight_rows(
     *,
     stocks_only: bool = False,
     stock_scope: Mapping[str, object] | None = None,
+    market_bar_repair: Mapping[str, object] | None = None,
 ) -> list[dict[str, object]]:
     scan_yield = _mapping_value(discovery, "yield")
     freshness = _mapping_value(discovery, "freshness")
@@ -14290,6 +14355,10 @@ def _priced_in_preflight_rows(
     )
     rows: list[dict[str, object]] = []
     source_actions = _priced_in_preflight_source_actions(source_coverage)
+    market_bar_operator_step = _mapping_value(
+        market_bar_repair or {},
+        "operator_step",
+    )
 
     if (active or requested or scanned) < 500:
         cap_note = ""
@@ -14400,37 +14469,60 @@ def _priced_in_preflight_rows(
                 )
             )
         )
-        rows.append(
-            _priced_in_preflight_row(
-                "market_bars",
-                "blocked",
-                (
-                    f"Run-as-of {'stock-like ' if stocks_only else ''}bar "
-                    f"coverage is {latest_bars}/{active or 'n/a'}.{provider_note}"
-                ),
-                next_action,
-                commands.get("market_bars_template"),
-                "POST /api/radar/market-bars/template",
-            )
+        repair_action = str(market_bar_operator_step.get("action") or "").strip()
+        repair_command = str(
+            market_bar_operator_step.get("command")
+            or market_bar_operator_step.get("after_manual_command")
+            or ""
+        ).strip()
+        market_bar_row = _priced_in_preflight_row(
+            "market_bars",
+            "blocked",
+            (
+                f"Run-as-of {'stock-like ' if stocks_only else ''}bar "
+                f"coverage is {latest_bars}/{active or 'n/a'}.{provider_note}"
+            ),
+            repair_action or next_action,
+            repair_command or commands.get("market_bars_template"),
+            _priced_in_market_bar_operator_api(
+                repair_command,
+                market_bar_repair or {},
+                fallback="POST /api/radar/market-bars/template",
+            ),
         )
+        if market_bar_operator_step:
+            market_bar_row["operator_step"] = _row_dict(market_bar_operator_step)
+        rows.append(market_bar_row)
     elif missing_bars:
-        rows.append(
-            _priced_in_preflight_row(
-                "market_bars",
-                "attention",
-                (
-                    f"Run-as-of bars cover {latest_bars}/{active} "
-                    f"{'stock-like ' if stocks_only else ''}securities."
-                ),
-                (
-                    "Coverage is broad enough for research; generate the "
-                    "DB-backed missing-bar template if you want the full active "
-                    "universe covered before relying on the answer."
-                ),
-                commands.get("market_bars_template"),
-                "POST /api/radar/market-bars/template",
-            )
+        repair_action = str(market_bar_operator_step.get("action") or "").strip()
+        repair_command = str(
+            market_bar_operator_step.get("command")
+            or market_bar_operator_step.get("after_manual_command")
+            or ""
+        ).strip()
+        market_bar_row = _priced_in_preflight_row(
+            "market_bars",
+            "attention",
+            (
+                f"Run-as-of bars cover {latest_bars}/{active} "
+                f"{'stock-like ' if stocks_only else ''}securities."
+            ),
+            repair_action
+            or (
+                "Coverage is broad enough for research; generate the "
+                "DB-backed missing-bar template if you want the full active "
+                "universe covered before relying on the answer."
+            ),
+            repair_command or commands.get("market_bars_template"),
+            _priced_in_market_bar_operator_api(
+                repair_command,
+                market_bar_repair or {},
+                fallback="POST /api/radar/market-bars/template",
+            ),
         )
+        if market_bar_operator_step:
+            market_bar_row["operator_step"] = _row_dict(market_bar_operator_step)
+        rows.append(market_bar_row)
     else:
         rows.append(
             _priced_in_preflight_row(
@@ -14503,6 +14595,28 @@ def _priced_in_preflight_rows(
         )
     )
     return rows
+
+
+def _priced_in_market_bar_operator_api(
+    command: str,
+    repair: Mapping[str, object],
+    *,
+    fallback: str,
+) -> str:
+    command = command.strip()
+    if not command:
+        return fallback
+    if command == str(repair.get("provider_saved_file_validate_command") or ""):
+        return str(repair.get("provider_saved_file_validate_api") or fallback)
+    if command == str(repair.get("provider_saved_file_import_command") or ""):
+        return str(repair.get("provider_saved_file_import_api") or fallback)
+    if "market-bars import" in command:
+        return str(
+            repair.get("import_api")
+            or repair.get("manual_import_api")
+            or "POST /api/radar/market-bars/import"
+        )
+    return fallback
 
 
 def _priced_in_preflight_source_actions(

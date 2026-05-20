@@ -5022,6 +5022,102 @@ def test_priced_in_preflight_uses_manual_bar_template_for_partial_full_scan_bars
     )
 
 
+def test_priced_in_preflight_uses_saved_market_bar_operator_step(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    engine = _engine(tmp_path)
+    as_of = AS_OF.date()
+    market_repo = MarketRepository(engine)
+    market_repo.upsert_securities(
+        [
+            Security(
+                ticker="GOOD",
+                name="Good Bars Inc",
+                exchange="NASDAQ",
+                sector="Technology",
+                industry="Software",
+                market_cap=1_000_000_000,
+                avg_dollar_volume_20d=20_000_000,
+                has_options=True,
+                is_active=True,
+                updated_at=AS_OF,
+                metadata={"type": "CS"},
+            ),
+            Security(
+                ticker="MISS",
+                name="Missing Bars Inc",
+                exchange="NASDAQ",
+                sector="Technology",
+                industry="Software",
+                market_cap=1_000_000_000,
+                avg_dollar_volume_20d=20_000_000,
+                has_options=True,
+                is_active=True,
+                updated_at=AS_OF,
+                metadata={"type": "CS"},
+            ),
+        ]
+    )
+    market_repo.upsert_daily_bars(
+        [
+            DailyBar(
+                ticker="GOOD",
+                date=as_of,
+                open=100,
+                high=110,
+                low=95,
+                close=105,
+                volume=1_000_000,
+                vwap=103,
+                adjusted=True,
+                provider="polygon",
+                source_ts=SOURCE_TS,
+                available_at=AVAILABLE_AT,
+            )
+        ]
+    )
+    saved_file = tmp_path / "data" / "local" / "polygon-grouped-daily-2026-05-10.json"
+    saved_file.parent.mkdir(parents=True)
+    saved_file.write_text('{"results": []}', encoding="utf-8")
+
+    payload = priced_in_preflight_payload(
+        engine,
+        AppConfig(daily_market_provider="polygon", polygon_api_key="fixture-key"),
+        latest_run={"universe": None, "as_of": as_of.isoformat()},
+        discovery_snapshot={
+            "run": {"universe": None, "as_of": as_of.isoformat()},
+            "freshness": {
+                "active_security_count": 1_000,
+                "active_security_with_as_of_bar_count": 999,
+                "missing_as_of_daily_bar_count": 1,
+            },
+            "yield": {
+                "requested_securities": 1_000,
+                "scanned_securities": 999,
+            },
+        },
+        source_coverage={"schema_version": "priced-in-source-coverage-v1", "actions": []},
+    )
+
+    assert payload["first_gap"] == "market_bars"
+    assert payload["operator_next_step"]["area"] == "market_bars"
+    assert payload["operator_next_step"]["manual_step"] is False
+    assert payload["operator_next_step"]["operator_step"]["status"] == (
+        "saved_file_available"
+    )
+    assert payload["operator_next_step"]["command"] == (
+        "catalyst-radar ingest-polygon grouped-daily "
+        "--date 2026-05-10 "
+        "--fixture data\\local\\polygon-grouped-daily-2026-05-10.json "
+        "--validate-only"
+    )
+    assert payload["operator_next_step"]["after_manual_command"] == (
+        "catalyst-radar ingest-polygon grouped-daily "
+        "--date 2026-05-10 "
+        "--fixture data\\local\\polygon-grouped-daily-2026-05-10.json"
+    )
+    assert payload["operator_next_step"]["external_calls_made"] == 0
+
+
 def test_priced_in_preflight_warns_when_latest_run_is_selected_universe(
     tmp_path: Path,
 ) -> None:

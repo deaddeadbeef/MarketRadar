@@ -1,8 +1,55 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 23:43:25 +08:00
+Last updated: 2026-05-21 00:01:19 +08:00
 
 
+
+
+## Latest Preflight Repair-Step Alignment
+
+Goal alignment / drift check:
+
+- The active goal remains: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- The current first useful blocker is still `market_bars`; no provider calls were made.
+- After the saved-file operator-step fix, `market-bars repair-plan` knew the precise next step, but `priced-in-preflight` still emitted the older generic template action. That made CLI/API/dashboard first-blocker output drift from the actual repair workflow.
+
+Fix in this slice:
+
+- `priced_in_preflight_payload(...)` now enriches the market-bar repair context with the same manual/saved-file `operator_step` used by `market-bars repair-plan`.
+- The preflight `market_bars` row, `evidence_plan`, `first_blocker`, and `operator_next_step` now carry:
+  - `operator_step`;
+  - `manual_step`;
+  - `after_manual_command`;
+  - the command/API that match the current repair state.
+- This keeps the dashboard and API first-blocker UI aligned with the concrete repair path instead of a stale template hint.
+- The change remains zero-call. It only reads local DB/files and does not import data, call providers, or reduce the scan requirement.
+
+Live DB-backed smoke from the feature worktree using the main repo cwd:
+
+```powershell
+priced-in-preflight --stocks-only --json
+```
+
+Observed:
+
+- `first_gap=market_bars`;
+- `operator_next_step.manual_step=true`;
+- `operator_next_step.operator_step.status=manual_fill_required`;
+- `operator_next_step.after_manual_command=catalyst-radar market-bars import --daily-bars data\local\manual-stock-bars-2026-05-15.csv --expected-as-of 2026-05-15 --stocks-only --complete-rows-only`;
+- `external_calls_made=0`.
+
+Validation:
+
+```powershell
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_preflight_recommends_manual_bar_template_for_missing_bars tests\integration\test_dashboard_data.py::test_priced_in_preflight_uses_saved_market_bar_operator_step tests\integration\test_dashboard_data.py::test_priced_in_preflight_payload_reports_exact_next_steps tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_preflight_cli_outputs_zero_call_plan -q
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py
+```
+
+Next useful product action:
+
+- Do not treat this as goal completion.
+- The live stock-only bar blocker remains: the manual stock-bar CSV exists but has 131 empty rows.
+- The next real data action is still either manual fill/import or explicit approval for the one Polygon/Massive saved-response capture.
 
 ## Latest Saved-File Operator Step
 
