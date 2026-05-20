@@ -922,7 +922,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Start the terminal dashboard in stock-only priced-in scan scope.",
     )
-    dashboard_tui.add_argument("--page", default="overview")
+    dashboard_tui.add_argument("--page", default="tutorial")
     dashboard_tui.add_argument("--once", action="store_true")
     dashboard_tui.add_argument("--no-clear", action="store_true")
 

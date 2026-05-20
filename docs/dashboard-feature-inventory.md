@@ -11,6 +11,7 @@ while rendering, navigating, filtering, or exporting its local JSON snapshot.
 
 ```powershell
 catalyst-radar dashboard-tui
+catalyst-radar dashboard-tui --once --page tutorial
 catalyst-radar dashboard-tui --once --page overview
 catalyst-radar dashboard-tui --once --page features
 catalyst-radar priced-in-answer
@@ -28,8 +29,9 @@ Inside `dashboard-tui`, use page numbers or names to navigate, `open <#|ticker>`
 from the candidates page, `open <#|alert-id>` from the alerts page, `ticker
 <SYMBOL|all>`, `available-at <ISO|latest>`, `alert-status <status|all>`,
 `alert-route <route|all>`, `refresh`, `json`, `run`, `run execute`,
-`clear-filters`, `help`, and `q`. The default Insights view is the full ranked
-scan. Type `ready` or press `D` in the TUI only when you intentionally want the
+`clear-filters`, `help`, and `q`. The default TUI entry page is `0 Tutorial`;
+press `1` or use `--page overview` to open the full ranked Insights scan. Type
+`ready` or press `D` in the TUI only when you intentionally want the
 decision-useful subset from that full scan; the API equivalent is
 `GET /api/radar/priced-in?decision_ready=true`; type `stocks` to focus common
 stock/ADR rows, and type `full` to return to the whole ranked universe.
