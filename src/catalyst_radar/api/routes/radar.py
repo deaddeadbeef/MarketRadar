@@ -153,6 +153,7 @@ class MarketBarsTemplateRequest(BaseModel):
     provider: str = "manual_csv"
     missing_only: bool = False
     stocks_only: bool = False
+    overwrite: bool = False
 
 
 class MarketBarsImportRequest(BaseModel):
@@ -636,6 +637,7 @@ def radar_market_bars_template(
             provider=request.provider,
             missing_only=request.missing_only,
             stocks_only=request.stocks_only,
+            overwrite=request.overwrite,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
