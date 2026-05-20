@@ -90,6 +90,30 @@ function Get-ManualTemplateNextAction {
     return $null
 }
 
+function Get-RepairPlanNextCommand {
+    param(
+        [object]$RepairPlan,
+        [string]$Fallback = $null
+    )
+
+    if ($null -ne $RepairPlan -and $null -ne $RepairPlan.operator_step) {
+        $step = $RepairPlan.operator_step
+        if (-not [string]::IsNullOrWhiteSpace([string]$step.command)) {
+            return [string]$step.command
+        }
+        if (-not [string]::IsNullOrWhiteSpace([string]$step.after_manual_command)) {
+            return [string]$step.after_manual_command
+        }
+    }
+    if (
+        $null -ne $RepairPlan -and
+        -not [string]::IsNullOrWhiteSpace([string]$RepairPlan.manual_template_command)
+    ) {
+        return [string]$RepairPlan.manual_template_command
+    }
+    return $Fallback
+}
+
 $health = Invoke-ApiJson -Path "/api/health"
 $readiness = Invoke-ApiJson -Path "/api/radar/readiness"
 $pythonExe = ".\.venv\Scripts\python.exe"
@@ -230,7 +254,9 @@ if ($Quick) {
     ) {
         $coreEvidenceStatus = "blocked"
         $coreFirstGap = "market_bars"
-        $coreEvidenceCommand = $marketBarRepairPlan.manual_template_command
+        $coreEvidenceCommand = Get-RepairPlanNextCommand `
+            -RepairPlan $marketBarRepairPlan `
+            -Fallback $marketBarRepairPlan.manual_template_command
     }
     elseif ($null -ne $marketBarRepairPlan -and $marketBarRepairPlan.status -eq "ready") {
         $coreEvidenceStatus = "market_bars_ready"
@@ -252,7 +278,9 @@ if ($Quick) {
         ) {
             $stockEvidenceStatus = "blocked"
             $stockFirstGap = "market_bars"
-            $stockEvidenceCommand = $stockMarketBarRepairPlan.manual_template_command
+            $stockEvidenceCommand = Get-RepairPlanNextCommand `
+                -RepairPlan $stockMarketBarRepairPlan `
+                -Fallback $stockMarketBarRepairPlan.manual_template_command
         }
         elseif ($stockMarketBarRepairPlan.status -eq "ready") {
             $stockEvidenceStatus = "market_bars_ready"
@@ -274,7 +302,9 @@ if ($Quick) {
             $marketBarRepairPlan.existing_as_of_bar_count,
             $marketBarRepairPlan.active_security_count,
             $marketBarRepairPlan.missing_as_of_bar_count,
-            $marketBarRepairPlan.manual_template_command
+            (Get-RepairPlanNextCommand `
+                -RepairPlan $marketBarRepairPlan `
+                -Fallback $marketBarRepairPlan.manual_template_command)
         )
         Write-Output (
             "Fast market-bar repair: status={0}; scope={1}; active={2}; existing={3}; missing={4}; external_calls={5}" -f
@@ -406,7 +436,9 @@ if ($Quick) {
             $stockMarketBarRepairPlan.existing_as_of_bar_count,
             $stockMarketBarRepairPlan.active_security_count,
             $stockMarketBarRepairPlan.missing_as_of_bar_count,
-            $stockMarketBarRepairPlan.manual_template_command
+            (Get-RepairPlanNextCommand `
+                -RepairPlan $stockMarketBarRepairPlan `
+                -Fallback $stockMarketBarRepairPlan.manual_template_command)
         )
         if ($null -ne $stockMarketBarRepairPlan.operator_step) {
             $stockStep = $stockMarketBarRepairPlan.operator_step
@@ -706,7 +738,7 @@ if ($null -ne $stockScope) {
             $coverageAction
         )
     }
-    $stockCoverageCommand = $(if ($stockBarMissing -gt 0 -and $null -ne $stockBarScope -and $stockBarScope.manual_template_command) { $stockBarScope.manual_template_command } elseif ($null -ne $stockCoverageStep) { $stockCoverageStep.command } else { $null })
+    $stockCoverageCommand = $(if ($stockBarMissing -gt 0 -and $null -ne $stockBarScope) { Get-RepairPlanNextCommand -RepairPlan $stockBarScope -Fallback $stockBarScope.manual_template_command } elseif ($null -ne $stockCoverageStep) { $stockCoverageStep.command } else { $null })
     if ($stockCoverageCommand) {
         Write-Output ("- stock coverage command: {0}" -f $stockCoverageCommand)
     }
