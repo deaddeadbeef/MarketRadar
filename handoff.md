@@ -1,8 +1,44 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 00:01:19 +08:00
+Last updated: 2026-05-21 00:16:31 +08:00
 
 
+
+
+## Latest Quick Status Strict-Step Alignment
+
+Goal alignment / drift check:
+
+- The active goal remains: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- The current first useful blocker is still `market_bars`; no provider calls were made.
+- `priced-in-preflight` and `market-bars repair-plan` now agree on the concrete repair step, but `scripts\market-radar-status.ps1 -Quick` still summarized the blocker with the older template command before showing the stricter operator step lower down.
+- That is an operator-facing mismatch: a human reading the first lines could still be nudged toward regenerating templates instead of filling/importing the current repair file.
+
+Fix in this slice:
+
+- Added a small `Get-RepairPlanNextCommand` helper to the status script.
+- The full-market and stock-only priced-in gate summary lines now prefer `operator_step.command`, then `operator_step.after_manual_command`, and only fall back to `manual_template_command` when no strict operator command exists.
+- The `Full-market next`, `Stock-market next`, and stock coverage command lines use the same strict command selection.
+- This is zero-call output alignment only. It does not import bars, call Polygon/Massive, call SEC, call Schwab, call OpenAI, or reduce the scan universe.
+
+Validation:
+
+```powershell
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\test_local_scripts.py::test_market_radar_status_script_is_zero_external_call_sitrep -q
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\market-radar-status.ps1 -Quick
+```
+
+Live smoke observed from the feature worktree script using the main repo cwd:
+
+- Top `Full-market priced-in gate` command used `catalyst-radar market-bars import --daily-bars data\local\manual-bars-2026-05-15.csv --expected-as-of 2026-05-15 --complete-rows-only`.
+- Top `Stock priced-in gate` command used `catalyst-radar market-bars import --daily-bars data\local\manual-stock-bars-2026-05-15.csv --expected-as-of 2026-05-15 --stocks-only --complete-rows-only`.
+- `External calls made: 0` remains unchanged.
+
+Next useful product action:
+
+- Do not treat this as goal completion.
+- The live stock-only bar blocker remains: the manual stock-bar CSV exists but has 131 empty rows.
+- The next real data action is still either manual fill/import or explicit approval for the one Polygon/Massive saved-response capture.
 
 
 ## Latest Preflight Repair-Step Alignment
