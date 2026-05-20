@@ -2650,6 +2650,146 @@ def test_priced_in_answer_prefers_local_artifact_gap_before_options(
     )
 
 
+def test_priced_in_answer_blocks_core_evidence_gaps_even_with_ready_rows(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    queue = {
+        "status": "ready",
+        "total_count": 2,
+        "count": 1,
+        "returned_count": 1,
+        "offset": 0,
+        "has_more": False,
+        "filters": {"status": "all", "limit": 5, "offset": 0},
+        "latest_run": {"as_of": "2026-05-15"},
+        "scan": {
+            "freshness": {
+                "active_security_count": 2,
+                "active_security_with_as_of_bar_count": 2,
+                "missing_as_of_daily_bar_count": 0,
+            }
+        },
+        "status_counts": {"bullish_not_priced_in": 1},
+        "usefulness_counts": {"decision_useful": 1},
+        "decision_gap_counts": {
+            "schema_version": "priced-in-decision-gap-counts-v1",
+            "scope": "actionable_mismatch_rows",
+            "row_count": 1,
+            "counts": {},
+            "sample_tickers": {},
+            "top_gaps": [],
+        },
+        "source_coverage": {
+            "summary": "market_bars 2/2; catalyst_events 1/2; local_text 0/2",
+            "weak_sources": ["local_text", "catalyst_events"],
+            "sources": {
+                "market_bars": {
+                    "available": 2,
+                    "stale": 0,
+                    "missing": 0,
+                    "row_count": 2,
+                    "coverage_pct": 100.0,
+                },
+                "catalyst_events": {
+                    "available": 1,
+                    "stale": 0,
+                    "missing": 1,
+                    "row_count": 2,
+                    "coverage_pct": 50.0,
+                },
+                "local_text": {
+                    "available": 0,
+                    "stale": 0,
+                    "missing": 2,
+                    "row_count": 2,
+                    "coverage_pct": 0.0,
+                },
+                "options": {
+                    "available": 2,
+                    "stale": 0,
+                    "missing": 0,
+                    "row_count": 2,
+                    "coverage_pct": 100.0,
+                },
+                "theme_peer_sector": {
+                    "available": 2,
+                    "stale": 0,
+                    "missing": 0,
+                    "row_count": 2,
+                    "coverage_pct": 100.0,
+                },
+                "broker_context": {
+                    "available": 2,
+                    "stale": 0,
+                    "missing": 0,
+                    "row_count": 2,
+                    "coverage_pct": 100.0,
+                },
+            },
+            "actions": [
+                {
+                    "source": "catalyst_events",
+                    "status": "partial",
+                    "gap_count": 1,
+                    "next_action": "Fill catalyst events.",
+                    "batch_plan_command": (
+                        "catalyst-radar priced-in-source-batches "
+                        "--source catalyst_events --all --json"
+                    ),
+                },
+                {
+                    "source": "local_text",
+                    "status": "missing",
+                    "gap_count": 2,
+                    "next_action": "Run local text after catalyst events.",
+                    "batch_plan_command": (
+                        "catalyst-radar priced-in-source-batches "
+                        "--source local_text --all --json"
+                    ),
+                },
+            ],
+        },
+        "rows": [
+            {
+                "ticker": "A",
+                "priced_in_status": "bullish_not_priced_in",
+                "emotion_reaction_gap": 65.9,
+                "emotion_score": 65.9,
+                "reaction_score": 0.0,
+                "data_sources": {"missing": [], "stale": []},
+                "usefulness": {
+                    "status": "decision_useful",
+                    "decision_ready": True,
+                },
+                "next_step": "Review priced-in evidence.",
+            }
+        ],
+    }
+
+    payload = priced_in_answer_payload(
+        engine,
+        AppConfig.from_env({}),
+        queue=queue,
+        preflight={"evidence_plan": {"steps": []}},
+    )
+
+    assert payload["status"] == "blocked"
+    assert payload["decision_ready"] is False
+    assert payload["counts"]["decision_ready_rows"] == 1
+    assert payload["evidence_completeness"]["core_sources_ready"] is False
+    assert payload["evidence_completeness"]["first_gap_source"] == "catalyst_events"
+    assert payload["decision_readiness"]["recommended_gap"]["gap"] == (
+        "catalyst_events"
+    )
+    assert "core evidence layer catalyst_events" in payload["answer"]
+    assert "catalyst_events core evidence gap" in payload["headline"]
+    assert payload["next_command"] == (
+        "catalyst-radar priced-in-source-batches "
+        "--source catalyst_events --all --json"
+    )
+
+
 def test_priced_in_answer_opens_full_scan_queue_when_decision_ready(
     tmp_path: Path,
 ) -> None:
@@ -2717,7 +2857,7 @@ def test_priced_in_answer_opens_full_scan_queue_when_decision_ready(
     assert payload["full_scan"]["ranked_rows"] == 2_429
     assert payload["full_scan"]["visible_rows"] == 1
     assert payload["full_scan"]["visible_tickers_are_sample"] is True
-    assert "not the full scan universe" in payload["full_scan"]["sample_explanation"]
+    assert "not the scan universe" in payload["full_scan"]["sample_explanation"]
 
 
 def test_priced_in_answer_keeps_trust_gaps_when_decision_ready(
