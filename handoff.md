@@ -1,9 +1,42 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 04:21:46 +08:00
+Last updated: 2026-05-21 04:36:41 +08:00
 
 
 
+
+## Latest API Point-In-Time Options Fixture Import
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- The immediate trusted-answer blocker remains `market_bars`; this slice does not fill bars, reduce the universe, call providers, change scoring, or claim the priced-in answer is trusted.
+- This slice keeps the CLI/API and dashboard aligned for the options evidence route. The TUI and CLI could already preview/import a local point-in-time options fixture; the API only exposed template and validation.
+- No Polygon/Massive, SEC, Schwab, OpenAI, broker, or provider calls were made. The new route reads local fixture JSON and persists only when `execute=true` is explicitly set.
+
+Fix in this slice:
+
+- Added `POST /api/radar/options/fixture-import`.
+- Default behavior is preview-only: validate the local options fixture, return `schema_version=options-fixture-import-v1`, `executed=false`, `external_calls_made=0`, and `db_writes_made=0`.
+- The explicit `execute=true` path validates first, rejects invalid fixtures with 422, then reuses `OptionsAggregateConnector`, `ingest_provider_records`, `ProviderRepository`, `MarketRepository`, and `FeatureRepository` to persist local option features.
+- Added API tests for preview/no-write behavior, explicit import persistence, and invalid-fixture blocking.
+- README now documents the API route next to the TUI `options template` / `options validate` / `options import` workflow.
+
+Validation observed in this slice:
+
+```powershell
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\api\routes\radar.py tests\integration\test_api_routes.py
+$env:PYTHONPATH="C:\Users\fpan1\MarketRadar\.worktrees\api-options-fixture-import\src"; C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\test_api_routes.py::test_post_radar_options_fixture_import_previews_and_executes_local_fixture tests\integration\test_api_routes.py::test_post_radar_options_fixture_import_blocks_invalid_execute tests\integration\test_api_routes.py::test_post_radar_options_fixture_validate_returns_zero_call_result tests\integration\test_api_routes.py::test_get_radar_options_fixture_template_returns_zero_call_fixture -q
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m py_compile src\catalyst_radar\api\routes\radar.py tests\integration\test_api_routes.py
+```
+
+Observed results: Ruff passed, py_compile passed, and the focused API options fixture tests passed 4 tests.
+
+Next useful product action:
+
+- Do not treat this slice as goal completion.
+- The trusted full-market answer is still blocked by missing market bars for 2026-05-15. Fill/capture/import those bars under explicit operator control, then rerun `priced-in-source-batches --source all`.
+- Once the bar gate clears, the options route can now be operated through CLI, TUI, or API without provider calls when a point-in-time fixture is available.
 
 ## Latest TUI Point-In-Time Options Fixture Actions
 

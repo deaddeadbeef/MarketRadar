@@ -409,6 +409,9 @@ current scan-date options gaps, `options validate` checks the local fixture with
 and `options import execute` explicitly persists the validated fixture to local
 option features with 0 provider calls. Add `stocks` or `full` to the command
 when you intentionally want a stock-like-only or full active-universe template.
+The matching API route is `POST /api/radar/options/fixture-import`: omit
+`execute` to preview validation with 0 provider calls and db_writes=0, then set
+`execute=true` only to persist a validated local fixture.
 
 For a manual repair, generate or reuse the local ignored CSV scaffold from the
 current database universe, fill only complete OHLCV rows, preview them, then

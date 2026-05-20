@@ -11,13 +11,20 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
-from catalyst_radar.connectors.options import validate_options_fixture_json
+from catalyst_radar.connectors.base import ConnectorRequest
+from catalyst_radar.connectors.options import (
+    OptionsAggregateConnector,
+    validate_options_fixture_json,
+)
 from catalyst_radar.connectors.polygon_fixture import (
     capture_polygon_grouped_daily_response_with_preview,
     ingest_polygon_grouped_daily_fixture,
     preview_polygon_grouped_daily_fixture,
 )
-from catalyst_radar.connectors.provider_ingest import ProviderIngestError
+from catalyst_radar.connectors.provider_ingest import (
+    ProviderIngestError,
+    ingest_provider_records,
+)
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.dashboard import data as dashboard_data
 from catalyst_radar.dashboard.source_batches import (
@@ -52,6 +59,7 @@ from catalyst_radar.security.licenses import (
 )
 from catalyst_radar.storage.db import create_schema, engine_from_url
 from catalyst_radar.storage.event_repositories import EventRepository
+from catalyst_radar.storage.feature_repositories import FeatureRepository
 from catalyst_radar.storage.job_repositories import JobLockRepository
 from catalyst_radar.storage.provider_repositories import ProviderRepository
 from catalyst_radar.storage.repositories import MarketRepository
@@ -140,6 +148,14 @@ class OptionsFixtureValidateRequest(BaseModel):
 
     fixture_path: str
     expected_as_of: Date | None = None
+
+
+class OptionsFixtureImportRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    fixture_path: str
+    expected_as_of: Date | None = None
+    execute: bool = False
 
 
 class TextFeaturesBatchRequest(BaseModel):
@@ -943,6 +959,97 @@ def radar_options_fixture_validate(
         expected_as_of=request.expected_as_of,
     )
     return redact_restricted_external_payload(result.as_payload())
+
+
+@router.post(
+    "/options/fixture-import",
+    dependencies=[Depends(require_role(Role.ANALYST))],
+)
+def radar_options_fixture_import(
+    request: OptionsFixtureImportRequest,
+):
+    fixture_path = Path(request.fixture_path)
+    validation = validate_options_fixture_json(
+        fixture_path,
+        expected_as_of=request.expected_as_of,
+    ).as_payload()
+    if not request.execute:
+        return redact_restricted_external_payload(
+            {
+                "schema_version": "options-fixture-import-v1",
+                "status": validation.get("status"),
+                "executed": False,
+                "provider": "options_fixture",
+                "fixture_path": str(fixture_path),
+                "external_calls_made": 0,
+                "db_writes_made": 0,
+                "validation": validation,
+                "write_boundary": (
+                    "Preview only; set execute=true to import the validated "
+                    "point-in-time options fixture. This path reads from disk "
+                    "and makes 0 provider calls."
+                ),
+                "next_action": (
+                    "Set execute=true only after validation is ready and the "
+                    "scan date matches your intent."
+                    if validation.get("status") == "ready"
+                    else validation.get("next_action")
+                ),
+            },
+        )
+    if validation.get("status") != "ready":
+        detail = validation.get("next_action") or "options fixture is invalid"
+        raise HTTPException(status_code=422, detail=str(detail))
+    engine = _engine()
+    connector = OptionsAggregateConnector(fixture_path=fixture_path)
+    request_model = ConnectorRequest(
+        provider="options_fixture",
+        endpoint="fixture",
+        params={"fixture": str(fixture_path)},
+        requested_at=datetime.now(UTC),
+    )
+    try:
+        result = ingest_provider_records(
+            connector=connector,
+            request=request_model,
+            market_repo=MarketRepository(engine),
+            provider_repo=ProviderRepository(engine),
+            job_type="options_fixture",
+            metadata={
+                "provider": "options_fixture",
+                "endpoint": "fixture",
+                "fixture": str(fixture_path),
+            },
+            feature_repo=FeatureRepository(engine),
+        )
+    except (ProviderIngestError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return redact_restricted_external_payload(
+        {
+            "schema_version": "options-fixture-import-v1",
+            "status": "imported",
+            "executed": True,
+            "provider": result.provider,
+            "job_id": result.job_id,
+            "requested_count": result.requested_count,
+            "raw_count": result.raw_count,
+            "normalized_count": result.normalized_count,
+            "security_count": result.security_count,
+            "daily_bar_count": result.daily_bar_count,
+            "holding_count": result.holding_count,
+            "event_count": result.event_count,
+            "option_feature_count": result.option_feature_count,
+            "rejected_count": result.rejected_count,
+            "fixture_path": str(fixture_path),
+            "external_calls_made": 0,
+            "db_writes_made": 1,
+            "validation": validation,
+            "write_boundary": (
+                "Imported from a local point-in-time options fixture. This "
+                "path made 0 provider calls."
+            ),
+        },
+    )
 
 
 @router.get(
