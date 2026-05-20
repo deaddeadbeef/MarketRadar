@@ -413,6 +413,8 @@ The matching API route is `POST /api/radar/options/fixture-import`: omit
 `execute` to preview validation with 0 provider calls and db_writes=0, then set
 `execute=true` only to persist a validated local fixture.
 
+SEC CIK repair is also available from the terminal dashboard. `cik template` creates `data\local\cik-overrides-template.csv` for catalyst-event rows that are blocked only because a company-like ticker lacks CIK metadata. `cik validate` and `cik import` are zero-provider-call previews with db_writes=0. `cik import execute` is the explicit local metadata update path; after it updates CIKs, rerun `batch catalyst_events` or `priced-in-source-batches --source catalyst_events` before approving SEC source-fill calls. API parity already exists through `GET /api/radar/sec/cik-overrides-template`, `POST /api/radar/sec/cik-overrides/validate`, and `POST /api/radar/sec/cik-overrides`. Do not guess CIKs; use exact SEC CIKs or an explicitly approved SEC company-tickers refresh.
+
 For a manual repair, generate or reuse the local ignored CSV scaffold from the
 current database universe, fill only complete OHLCV rows, preview them, then
 execute the import only after the preview is clean:

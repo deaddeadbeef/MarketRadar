@@ -51,7 +51,7 @@ from catalyst_radar.dashboard.tui import (
 )
 from catalyst_radar.storage.db import create_schema
 from catalyst_radar.storage.repositories import MarketRepository
-from catalyst_radar.storage.schema import daily_bars, option_features
+from catalyst_radar.storage.schema import daily_bars, option_features, securities
 
 
 def test_seed_dashboard_demo_populates_command_center_layers(
@@ -1734,6 +1734,129 @@ def test_dashboard_options_fixture_commands_are_zero_call_operator_actions(
     with engine.connect() as conn:
         assert conn.execute(select(func.count()).select_from(option_features)).scalar_one() == 1
 
+
+
+def test_dashboard_sec_cik_commands_are_zero_call_operator_actions(
+    tmp_path: Path,
+    monkeypatch,
+):
+    database_url = f"sqlite:///{(tmp_path / 'sec-cik.db').as_posix()}"
+    engine = create_engine(database_url, future=True)
+    create_schema(engine)
+    monkeypatch.chdir(tmp_path)
+    MarketRepository(engine).upsert_securities(
+        [
+            Security(
+                ticker="FRBA",
+                name="First Bank",
+                exchange="NASDAQ",
+                sector="Financials",
+                industry="Banks",
+                market_cap=500_000_000,
+                avg_dollar_volume_20d=5_000_000,
+                has_options=True,
+                is_active=True,
+                updated_at=datetime(2026, 5, 10, tzinfo=UTC),
+                metadata={"security_type": "CS", "type": "CS"},
+            )
+        ]
+    )
+
+    def fake_template_payload(*args, **kwargs):
+        return {
+            "schema_version": "sec-cik-override-template-v1",
+            "status": "ready",
+            "provider": "manual",
+            "live": False,
+            "external_calls_made": 0,
+            "source": "catalyst_events",
+            "stocks_only": bool(kwargs.get("stocks_only")),
+            "source_gap_rows": 1,
+            "row_count": 1,
+            "columns": [
+                "ticker",
+                "cik",
+                "sec_company_name",
+                "security_type",
+                "template_reason",
+            ],
+            "rows": [
+                {
+                    "ticker": "FRBA",
+                    "cik": "0001504008",
+                    "sec_company_name": "First Bank",
+                    "security_type": "CS",
+                    "template_reason": "missing_sec_cik_for_catalyst_events_source_gap",
+                }
+            ],
+        }
+
+    monkeypatch.setattr(
+        "catalyst_radar.dashboard.tui.dashboard_data.sec_cik_override_template_payload",
+        fake_template_payload,
+    )
+    config = AppConfig.from_env({"CATALYST_DATABASE_URL": database_url})
+
+    template = _apply_command(
+        "cik template",
+        {},
+        "run",
+        DashboardFilters(),
+        engine=engine,
+        config=config,
+    )
+    csv_path = tmp_path / "data" / "local" / "cik-overrides-template.csv"
+    assert template.page == "ops"
+    assert "SEC CIK template ready" in template.message
+    assert "rows=1" in template.message
+    assert "external_calls=0" in template.message
+    assert "db_writes=0" in template.message
+    assert csv_path.exists()
+
+    preview = _apply_command(
+        "sec cik import",
+        {},
+        "run",
+        DashboardFilters(),
+        engine=engine,
+        config=config,
+    )
+    assert "SEC CIK import preview: status=ready" in preview.message
+    assert "updates=1" in preview.message
+    assert "external_calls=0" in preview.message
+    assert "db_writes=0" in preview.message
+    assert "cik import execute" in preview.message
+
+    with engine.connect() as conn:
+        metadata = conn.execute(
+            select(securities.c.metadata).where(securities.c.ticker == "FRBA")
+        ).scalar_one()
+    assert "cik" not in metadata
+
+    executed = _apply_command(
+        "cik import execute",
+        {},
+        "run",
+        DashboardFilters(),
+        engine=engine,
+        config=config,
+    )
+    assert "SEC CIK import executed" in executed.message
+    assert "updated=1" in executed.message
+    assert "external_calls=0" in executed.message
+    assert "db_writes=1" in executed.message
+
+    with engine.connect() as conn:
+        metadata = conn.execute(
+            select(securities.c.metadata).where(securities.c.ticker == "FRBA")
+        ).scalar_one()
+    assert metadata["cik"] == "0001504008"
+    assert metadata["cik_source"] == "manual_cik_override"
+
+    help_screen = render_dashboard_tui({}, page="help", width=140)
+    assert "cik template" in help_screen
+    assert "cik validate" in help_screen
+    assert "cik import" in help_screen
 
 def test_dashboard_start_page_alias_opens_tutorial() -> None:
     screen = render_dashboard_tui({}, page="start", width=120)
