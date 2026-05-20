@@ -2149,6 +2149,21 @@ def test_dashboard_batch_message_prints_market_bar_saved_file_repair(
                 "provider_saved_file_boundary": (
                     "Capture makes one provider call only with explicit approval."
                 ),
+                "local_bar_history": {
+                    "missing_with_history": 0,
+                    "missing_without_history": 131,
+                },
+                "missing_universe": {
+                    "active_metadata_rows": 131,
+                    "acquisition_or_spac_name_count": 61,
+                    "no_composite_figi_count": 103,
+                    "zero_avg_dollar_volume_20d_count": 131,
+                    "zero_market_cap_count": 131,
+                    "operator_note": (
+                        "This context does not exclude rows from the scan."
+                    ),
+                    "external_calls_made": 0,
+                },
             },
             "batches": [],
         }
@@ -2183,6 +2198,10 @@ def test_dashboard_batch_message_prints_market_bar_saved_file_repair(
     assert "Manual bar import: catalyst-radar market-bars import" in update.message
     assert "CIK validate:" not in update.message
     assert "CIK import:" not in update.message
+    assert "Local history: 0 with local bars; 131 without" in update.message
+    assert "Universe context: active metadata 131" in update.message
+    assert "61 acquisition/SPAC-style" in update.message
+    assert "131 zero 20d dollar volume" in update.message
 
 
 def test_priced_in_source_batches_execute_next_cli_runs_one_batch(
@@ -2999,6 +3018,15 @@ def test_priced_in_source_batches_prioritize_full_market_bar_coverage(
         ]
         == 0
     )
+    assert source_rows["market_bars"]["diagnostic"]["local_bar_history"] == {
+        "missing_with_history": 0,
+        "missing_without_history": 1,
+    }
+    missing_universe = source_rows["market_bars"]["diagnostic"]["missing_universe"]
+    assert missing_universe["active_metadata_rows"] == 1
+    assert missing_universe["zero_avg_dollar_volume_20d_count"] == 0
+    assert missing_universe["zero_market_cap_count"] == 0
+    assert missing_universe["external_calls_made"] == 0
 
     assert main(["priced-in-source-batches", "--source", "all"]) == 0
     output = capsys.readouterr()
@@ -3008,6 +3036,12 @@ def test_priced_in_source_batches_prioritize_full_market_bar_coverage(
     assert "--save-response data\\local\\polygon-grouped-daily-" in output.out
     assert "provider_saved_file_validate=external_calls=0" in output.out
     assert "provider_saved_file_import=external_calls=0" in output.out
+    assert (
+        "local_bar_history=missing_with_history=0 missing_without_history=1"
+        in output.out
+    )
+    assert "missing_universe=active_metadata=1" in output.out
+    assert "zero_avg_dollar_volume_20d=0" in output.out
 
     assert main(["priced-in-source-batches", "--source", "market_bars"]) == 0
     output = capsys.readouterr()
@@ -3017,6 +3051,11 @@ def test_priced_in_source_batches_prioritize_full_market_bar_coverage(
     assert "--save-response data\\local\\polygon-grouped-daily-" in output.out
     assert "diagnostic_provider_saved_file_validate=external_calls=0" in output.out
     assert "diagnostic_provider_saved_file_import=external_calls=0" in output.out
+    assert (
+        "diagnostic_local_bar_history=missing_with_history=0 "
+        "missing_without_history=1"
+    ) in output.out
+    assert "diagnostic_missing_universe=active_metadata=1" in output.out
 
     execution = source_batch_module.execute_priced_in_source_batch(
         engine,

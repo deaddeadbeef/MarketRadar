@@ -1,6 +1,72 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 21:27:15 +08:00
+Last updated: 2026-05-20 21:39:21 +08:00
+
+## Latest Market-Bar Repair Context in Source Views
+
+Goal alignment / drift check:
+
+- The active goal remains: MarketRadar should scan the broad stock market and
+  identify stocks where market emotion/expectations have not yet been matched
+  by price.
+- The current first blocker is still `market_bars`; no provider calls were
+  made.
+- The repair plan already knew why the current 131 stock-like missing bars could
+  not be locally reconciled, but `priced-in-source-batches` and the TUI
+  `batch market_bars` path did not carry that evidence.
+- That made the human/operator UI less useful: it showed the repair commands
+  but not why a zero-call local import could not be synthesized.
+
+Fix in this slice:
+
+- The market-bar source diagnostic now includes compact repair context from the
+  zero-call manual repair plan:
+  - `local_bar_history.missing_with_history`;
+  - `local_bar_history.missing_without_history`;
+  - `missing_universe` counts for active metadata rows, acquisition/SPAC-style
+    names, missing composite FIGI, zero 20-day dollar volume, and zero market
+    cap.
+- CLI source views print this context for both:
+  - `priced-in-source-batches --source all --stocks-only`;
+  - `priced-in-source-batches --source market_bars --stocks-only`.
+- TUI `batch market_bars` now shows the same local-history and universe-quality
+  context.
+- This context is explicitly non-excluding: it does not reduce the scan
+  requirement or mark the goal complete.
+
+Live DB-backed observation:
+
+```powershell
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source market_bars --stocks-only
+```
+
+Observed for the live stock-only blocker:
+
+- `missing_with_history=0`;
+- `missing_without_history=131`;
+- `active_metadata=131`;
+- `acquisition_or_spac_names=61`;
+- `no_composite_figi=103`;
+- `zero_avg_dollar_volume_20d=131`;
+- `zero_market_cap=131`;
+- `external_calls=0`.
+
+Validation:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_source_batches_prioritize_full_market_bar_coverage tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_batch_message_prints_market_bar_saved_file_repair -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+```
+
+Next useful product action:
+
+- Do not treat this as goal completion.
+- There is still no honest zero-call local repair for the 131 stock-like
+  missing bars because none have local history.
+- Clearing that blocker still requires either explicit approval for the single
+  Polygon/Massive saved-response capture or manual fill/import of
+  `data\local\manual-stock-bars-2026-05-15.csv`.
 
 ## Latest TUI Batch Market-Bar Repair Guidance
 

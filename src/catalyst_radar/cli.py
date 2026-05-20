@@ -4487,6 +4487,31 @@ def _print_priced_in_source_diagnostic(
             f"{indent}provider_saved_file_boundary="
             f"{_compact_cli_text(saved_file_boundary)}"
         )
+    local_bar_history = diagnostic.get("local_bar_history")
+    if isinstance(local_bar_history, Mapping):
+        print(
+            f"{indent}local_bar_history="
+            "missing_with_history="
+            f"{_int_value(local_bar_history.get('missing_with_history'))} "
+            "missing_without_history="
+            f"{_int_value(local_bar_history.get('missing_without_history'))}"
+        )
+    missing_universe = diagnostic.get("missing_universe")
+    if isinstance(missing_universe, Mapping):
+        print(
+            f"{indent}missing_universe="
+            f"active_metadata={missing_universe.get('active_metadata_rows', 'n/a')} "
+            "acquisition_or_spac_names="
+            f"{missing_universe.get('acquisition_or_spac_name_count', 'n/a')} "
+            f"no_composite_figi={missing_universe.get('no_composite_figi_count', 'n/a')} "
+            "zero_avg_dollar_volume_20d="
+            f"{missing_universe.get('zero_avg_dollar_volume_20d_count', 'n/a')} "
+            f"zero_market_cap={missing_universe.get('zero_market_cap_count', 'n/a')} "
+            f"external_calls={missing_universe.get('external_calls_made', 0)}"
+        )
+        note = str(missing_universe.get("operator_note") or "").strip()
+        if note:
+            print(f"{indent}missing_universe_note={_compact_cli_text(note)}")
 
 
 def _print_priced_in_approval_checklist(
@@ -4736,6 +4761,33 @@ def _print_priced_in_source_batches(payload: Mapping[str, object]) -> None:
                 "diagnostic_provider_saved_file_boundary="
                 f"{_compact_cli_text(saved_file_boundary)}"
             )
+        local_bar_history = diagnostic.get("local_bar_history")
+        if isinstance(local_bar_history, Mapping):
+            print(
+                "diagnostic_local_bar_history="
+                "missing_with_history="
+                f"{_int_value(local_bar_history.get('missing_with_history'))} "
+                "missing_without_history="
+                f"{_int_value(local_bar_history.get('missing_without_history'))}"
+            )
+        missing_universe = diagnostic.get("missing_universe")
+        if isinstance(missing_universe, Mapping):
+            print(
+                "diagnostic_missing_universe="
+                f"active_metadata={missing_universe.get('active_metadata_rows', 'n/a')} "
+                "acquisition_or_spac_names="
+                f"{missing_universe.get('acquisition_or_spac_name_count', 'n/a')} "
+                "no_composite_figi="
+                f"{missing_universe.get('no_composite_figi_count', 'n/a')} "
+                "zero_avg_dollar_volume_20d="
+                f"{missing_universe.get('zero_avg_dollar_volume_20d_count', 'n/a')} "
+                "zero_market_cap="
+                f"{missing_universe.get('zero_market_cap_count', 'n/a')} "
+                f"external_calls={missing_universe.get('external_calls_made', 0)}"
+            )
+            note = str(missing_universe.get("operator_note") or "").strip()
+            if note:
+                print(f"diagnostic_missing_universe_note={_compact_cli_text(note)}")
         fix_api = diagnostic.get("fix_api")
         if fix_api:
             print(f"diagnostic_api={_compact_cli_text(fix_api)}")

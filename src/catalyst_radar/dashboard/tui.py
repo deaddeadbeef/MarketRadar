@@ -2479,6 +2479,7 @@ def _priced_in_source_batch_message(
         point_in_time_progress
     )
     saved_file_suffix = _source_batch_provider_saved_file_suffix(diagnostic)
+    repair_context_suffix = _source_batch_repair_context_suffix(diagnostic)
     manual_validate_command = str(
         diagnostic.get("manual_validate_command") or ""
     ).strip()
@@ -2613,6 +2614,7 @@ def _priced_in_source_batch_message(
             f"{point_in_time_suffix}"
             f"{point_in_time_progress_suffix}"
             f"{saved_file_suffix}"
+            f"{repair_context_suffix}"
             f"{manual_validate_suffix}"
             f"{manual_fix_suffix}"
             f"{full_suffix}{row_review_suffix}{row_export_suffix}{next_suffix}"
@@ -2643,6 +2645,8 @@ def _priced_in_source_batch_message(
         detail = f"{detail}{point_in_time_progress_suffix}"
     if saved_file_suffix:
         detail = f"{detail}{saved_file_suffix}"
+    if repair_context_suffix:
+        detail = f"{detail}{repair_context_suffix}"
     if manual_validate_command:
         detail = f"{detail} {manual_validate_label}: {manual_validate_command}."
     if manual_fix_command:
@@ -2661,6 +2665,43 @@ def _source_batch_manual_command_labels(source: str) -> tuple[str, str]:
     if normalized == "catalyst_events":
         return ("CIK validate", "CIK import")
     return ("Manual validate", "Manual import")
+
+
+def _source_batch_repair_context_suffix(diagnostic: Mapping[str, object]) -> str:
+    pieces: list[str] = []
+    local_history = _mapping(diagnostic.get("local_bar_history"))
+    if local_history:
+        with_history = int(_number_or_zero(local_history.get("missing_with_history")))
+        without_history = int(
+            _number_or_zero(local_history.get("missing_without_history"))
+        )
+        pieces.append(
+            f" Local history: {with_history} with local bars; "
+            f"{without_history} without."
+        )
+    missing_universe = _mapping(diagnostic.get("missing_universe"))
+    if missing_universe:
+        active = int(_number_or_zero(missing_universe.get("active_metadata_rows")))
+        acquisition = int(
+            _number_or_zero(missing_universe.get("acquisition_or_spac_name_count"))
+        )
+        no_figi = int(_number_or_zero(missing_universe.get("no_composite_figi_count")))
+        zero_volume = int(
+            _number_or_zero(missing_universe.get("zero_avg_dollar_volume_20d_count"))
+        )
+        zero_market_cap = int(
+            _number_or_zero(missing_universe.get("zero_market_cap_count"))
+        )
+        note = str(missing_universe.get("operator_note") or "").strip()
+        note_text = f" {note}" if note else ""
+        pieces.append(
+            " Universe context: "
+            f"active metadata {active}; {acquisition} acquisition/SPAC-style; "
+            f"{no_figi} without composite FIGI; "
+            f"{zero_volume} zero 20d dollar volume; "
+            f"{zero_market_cap} zero market cap.{note_text}"
+        )
+    return "".join(pieces)
 
 
 def _source_batch_provider_saved_file_suffix(
