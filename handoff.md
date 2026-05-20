@@ -1,6 +1,74 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 14:51:35 +08:00
+Last updated: 2026-05-20 15:04:00 +08:00
+
+## Latest Stock Objective Gate Clarification
+
+Goal alignment:
+
+- The active goal remains: scan the broad market and tell whether any stock's
+  price has not yet matched market emotion/expectations.
+- The latest drift check found a useful distinction: the all-instrument
+  full-universe gate is missing `523` scan-date bars, while the explicit stock
+  objective is missing `131` stock-like scan-date bars.
+- The previous quick status emphasized the all-instrument gap first. That was
+  accurate but confusing for the core "any stock" objective.
+- This slice keeps scope narrow: no provider calls, no scoring rewrite, no
+  dashboard redesign, and no source-fill execution. It only makes the stock
+  objective gate visible in the operator surfaces.
+- This slice makes 0 Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or
+  provider calls.
+
+Fix in this slice:
+
+- `scripts\market-radar-status.ps1 -Quick` now prints a stock-specific gate:
+
+  ```text
+  Stock priced-in gate: status=blocked; first_gap=market_bars; stock_like=5521/5652; missing=131; core_order=market_bars,catalyst_events,local_text; command=catalyst-radar market-bars template --expected-as-of 2026-05-15 --out data\local\manual-stock-bars-2026-05-15.csv --missing-only --stocks-only; external_calls=0
+  ```
+
+- The line is derived from the already-fetched stock market-bar repair plan, so
+  `-Quick` still avoids the slower priced-in answer path and stays zero-call.
+- The dashboard/TUI stock-only coverage summary no longer reports the
+  all-instrument missing-bar count as if it were the stock blocker. It now says
+  the stock blocker first, then keeps the all-instrument count as broader
+  context:
+
+  ```text
+  Full-scan coverage: 5521/5652 active stock-like row(s) scanned; 131 unscanned; 131 missing stock-like scan-date market bar(s); 523 all-instrument missing.
+  ```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_local_scripts.py::test_market_radar_status_script_is_zero_external_call_sitrep tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_summary_surfaces_unscanned_full_scan_rows tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_summary_surfaces_stock_scope_market_bar_gap -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_local_scripts.py
+powershell -NoProfile -Command '& { $null = [scriptblock]::Create((Get-Content -Raw .\scripts\market-radar-status.ps1)); "powershell syntax ok" }'
+git diff --check
+powershell -ExecutionPolicy Bypass -File .\scripts\market-radar-status.ps1 -Quick
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page overview --stocks-only
+```
+
+Results:
+
+- Focused pytest passed: `3 passed`.
+- Ruff passed.
+- PowerShell parse passed.
+- `git diff --check` passed.
+- Live quick status reported the new stock gate with `stock_like=5521/5652`,
+  `missing=131`, and `External calls made: 0`.
+- Live stock-only TUI overview reported stock-scope coverage first:
+  `5521/5652`, `131 unscanned`, and `131 missing stock-like scan-date` bars.
+
+Next useful product action:
+
+- The product blocker is still scan-date market-bar coverage. The stock
+  objective can move forward after the `131` stock-like missing rows are
+  repaired; the broader universe still has `523` missing active rows.
+- After stock bars are repaired, do not mark the answer decision-ready until
+  `catalyst_events` and `local_text` core evidence are complete.
+- Do not run provider/source-fill execution commands without explicit operator
+  approval.
 
 ## Latest Priced-In Answer Latency Fix
 
