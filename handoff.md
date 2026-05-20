@@ -1,6 +1,77 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 11:18:44 +08:00
+Last updated: 2026-05-20 11:31:30 +08:00
+
+## Latest Provider-Health-Aware Market-Bar Fill
+
+Goal alignment:
+
+- The full-market scan is still blocked by the same 523 missing scan-date bars.
+- The prior strict next-action slice exposed a one-call Polygon/Massive option
+  when a key was configured. Live Ops output also showed the stored Polygon
+  provider health was `down` with HTTP 403. Saying only `ready_for_approval`
+  would be misleading and could waste the next provider call.
+- This slice keeps provider calls explicit and makes the repair plan respect
+  stored provider health before recommending the grouped-daily fill.
+- This makes 0 Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or provider
+  calls.
+
+Fix in this slice:
+
+- `manual_market_bars_repair_plan(...)` accepts optional provider-health status,
+  reason, and checked-at values.
+- CLI and API repair-plan paths read stored Polygon health from the local
+  database and pass it into the repair plan.
+- `provider_fill_status` becomes `blocked_by_provider_health` when stored
+  Polygon/Massive health is `down`, even if an API key is configured.
+- Repair-plan payloads now include a redacted `provider_health` object.
+- The quick status script prints the provider health status and reason next to
+  the provider option.
+- The priced-in audit provider fill plan also carries stored provider health so
+  dashboard/API surfaces can avoid overclaiming provider readiness.
+
+Live zero-call observation:
+
+```text
+provider_option=status=blocked_by_provider_health external_calls=1 key_configured=true command=catalyst-radar ingest-polygon grouped-daily --date 2026-05-15 --confirm-external-call
+provider_health=status=down checked_at=2026-05-19T02:12:46.092338+00:00 reason=HTTP 403 from https://api.polygon.io/v2/aggs/grouped/locale/us/market/stocks/2026-05-18?adjusted=true&include_otc=false&apiKey=<redacted>; detail=NOT_AUTHORIZED: Attempted to request today's data before end of day. Please upgrade your plan at https://polygon.io/pricing
+next_action=Fill the manual CSV, or fix the Polygon/Massive provider health before requesting a grouped-daily fill.
+```
+
+Quick status now prints:
+
+```text
+- provider option: status=blocked_by_provider_health; health=down; external_calls=1; command=catalyst-radar ingest-polygon grouped-daily --date 2026-05-15 --confirm-external-call
+- provider health reason: HTTP 403 from https://api.polygon.io/v2/aggs/grouped/locale/us/market/stocks/2026-05-18?adjusted=true&include_otc=false&apiKey=<redacted>; detail=NOT_AUTHORIZED: Attempted to request today's data before end of day. Please upgrade your plan at https://polygon.io/pricing
+External calls made: 0
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_provider_ingest_cli.py::test_market_bars_repair_plan_blocks_provider_fill_when_health_is_down tests\integration\test_provider_ingest_cli.py::test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_reports_local_manual_template_progress tests\integration\test_local_scripts.py::test_market_radar_status_script_is_zero_external_call_sitrep -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\market\manual_bars.py src\catalyst_radar\cli.py src\catalyst_radar\api\routes\radar.py src\catalyst_radar\dashboard\data.py tests\integration\test_provider_ingest_cli.py tests\integration\test_dashboard_data.py tests\integration\test_local_scripts.py
+powershell -NoProfile -Command '& { $null = [scriptblock]::Create((Get-Content -Raw .\scripts\market-radar-status.ps1)); "powershell syntax ok" }'
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli market-bars repair-plan --expected-as-of 2026-05-15
+powershell -ExecutionPolicy Bypass -File .\scripts\market-radar-status.ps1 -Quick
+```
+
+Results:
+
+- Focused pytest passed.
+- Ruff passed.
+- PowerShell syntax parse passed.
+- `git diff --check` passed.
+- Live CLI and quick status both reported the stored provider health as
+  `down`, kept provider calls at `0`, and kept the strict manual next action.
+
+Next useful product action:
+
+- The immediate zero-provider-call route remains manual CSV fill/import.
+- The one-call Polygon/Massive grouped-daily path should not be run until the
+  stored provider health is no longer down, or until the operator intentionally
+  approves a retry knowing the last stored health was HTTP 403.
 
 ## Latest Strict Market-Bar Next Action
 

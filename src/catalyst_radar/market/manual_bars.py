@@ -247,6 +247,9 @@ class ManualBarsRepairPlanResult:
     generated_at: datetime
     local_template_path: Path
     local_template_preview: dict[str, object] | None = None
+    provider_health_status: str | None = None
+    provider_health_reason: str | None = None
+    provider_health_checked_at: datetime | None = None
 
     @property
     def missing_as_of_bar_count(self) -> int:
@@ -284,10 +287,22 @@ class ManualBarsRepairPlanResult:
             "catalyst-radar ingest-polygon grouped-daily "
             f"--date {self.expected_as_of.isoformat()} --confirm-external-call"
         )
+        provider_health = _manual_bar_provider_health_payload(
+            status=self.provider_health_status,
+            reason=self.provider_health_reason,
+            checked_at=self.provider_health_checked_at,
+        )
         if missing <= 0:
             status = "ready"
             provider_fill_status = "not_needed"
             next_action = "As-of market bars already cover this scope."
+        elif self.provider_health_status == "down":
+            status = "attention"
+            provider_fill_status = "blocked_by_provider_health"
+            next_action = (
+                "Fill the manual CSV, or fix the Polygon/Massive provider health "
+                "before requesting a grouped-daily fill."
+            )
         elif self.provider_key_configured:
             status = "attention"
             provider_fill_status = "ready_for_approval"
@@ -379,6 +394,7 @@ class ManualBarsRepairPlanResult:
             "provider": "polygon",
             "provider_label": "Polygon/Massive grouped daily",
             "provider_key_configured": self.provider_key_configured,
+            "provider_health": provider_health,
             "provider_fill_external_call_count": 1 if missing > 0 else 0,
             "provider_fill_command": provider_command if missing > 0 else None,
             "provider_fill_api": None,
@@ -535,6 +551,22 @@ def _int_payload_value(value: object) -> int:
         return 0
 
 
+def _manual_bar_provider_health_payload(
+    *,
+    status: str | None,
+    reason: str | None,
+    checked_at: datetime | None,
+) -> dict[str, object] | None:
+    if not status and not reason and checked_at is None:
+        return None
+    return {
+        "provider": "polygon",
+        "status": status,
+        "reason": reason,
+        "checked_at": checked_at.isoformat() if checked_at is not None else None,
+    }
+
+
 def write_manual_market_bars_template(
     engine: Engine,
     *,
@@ -625,6 +657,9 @@ def manual_market_bars_repair_plan(
     expected_as_of: date,
     stocks_only: bool = False,
     provider_key_configured: bool = False,
+    provider_health_status: str | None = None,
+    provider_health_reason: str | None = None,
+    provider_health_checked_at: datetime | None = None,
     generated_at: datetime | None = None,
 ) -> ManualBarsRepairPlanResult:
     active_rows = _active_security_rows(engine)
@@ -691,6 +726,9 @@ def manual_market_bars_repair_plan(
         provider_key_configured=provider_key_configured,
         local_template_path=template_path,
         local_template_preview=local_template_preview,
+        provider_health_status=provider_health_status,
+        provider_health_reason=provider_health_reason,
+        provider_health_checked_at=provider_health_checked_at,
         generated_at=_as_utc(generated_at or datetime.now(UTC)),
     )
 

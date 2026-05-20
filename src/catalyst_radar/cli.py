@@ -1038,11 +1038,25 @@ def main(argv: list[str] | None = None) -> int:
                     else 2
                 )
             if args.market_bars_command == "repair-plan":
+                provider_health = ProviderRepository(engine).latest_health("polygon")
                 result = manual_market_bars_repair_plan(
                     engine,
                     expected_as_of=args.expected_as_of,
                     stocks_only=args.stocks_only,
                     provider_key_configured=config.polygon_api_key_configured,
+                    provider_health_status=(
+                        provider_health.status.value
+                        if provider_health is not None
+                        else None
+                    ),
+                    provider_health_reason=(
+                        provider_health.reason if provider_health is not None else None
+                    ),
+                    provider_health_checked_at=(
+                        provider_health.checked_at
+                        if provider_health is not None
+                        else None
+                    ),
                 )
                 payload = result.as_payload()
                 if args.json:
@@ -3845,6 +3859,14 @@ def _print_manual_market_bars_repair_plan(payload: Mapping[str, object]) -> None
         f"key_configured={str(bool(payload.get('provider_key_configured'))).lower()} "
         f"command={payload.get('provider_fill_command') or 'n/a'}"
     )
+    provider_health = payload.get("provider_health")
+    if isinstance(provider_health, Mapping):
+        print(
+            "provider_health="
+            f"status={provider_health.get('status') or 'unknown'} "
+            f"checked_at={provider_health.get('checked_at') or 'n/a'} "
+            f"reason={_compact_cli_text(provider_health.get('reason'))}"
+        )
     print(f"approval_boundary={payload.get('approval_boundary')}")
     print(f"next_action={payload.get('next_action')}")
 

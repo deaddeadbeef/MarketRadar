@@ -1372,6 +1372,7 @@ def _priced_in_market_bar_source_gap_plan(
             "coverage."
         )
     provider_plan = _priced_in_market_bar_provider_fill_plan(
+        engine,
         config,
         target_as_of=target_as_of,
         missing=missing,
@@ -3890,6 +3891,7 @@ def _priced_in_audit_market_bar_repair(
         else missing
     )
     provider_fill_plan = _priced_in_market_bar_provider_fill_plan(
+        engine,
         config,
         target_as_of=target_as_of,
         missing=effective_missing,
@@ -3902,6 +3904,7 @@ def _priced_in_audit_market_bar_repair(
                 expected_as_of=target_as_of,
                 stocks_only=stocks_only,
                 provider_key_configured=config.polygon_api_key_configured,
+                **_manual_repair_provider_health_kwargs(engine),
             ).as_payload()
         except ValueError as exc:
             manual_repair_plan = {
@@ -4116,12 +4119,43 @@ def _priced_in_market_bar_stock_scope(
     }
 
 
+def _manual_repair_provider_health_kwargs(engine: Engine) -> dict[str, object]:
+    health = _latest_provider_health_payload(engine, "polygon")
+    return {
+        "provider_health_status": health.get("status"),
+        "provider_health_reason": health.get("reason"),
+        "provider_health_checked_at": _as_utc_datetime_or_none(
+            health.get("checked_at"),
+        ),
+    }
+
+
+def _latest_provider_health_payload(
+    engine: Engine,
+    provider: str,
+) -> dict[str, object]:
+    try:
+        health = ProviderRepository(engine).latest_health(provider)
+    except SQLAlchemyError:
+        return {}
+    if health is None:
+        return {}
+    return {
+        "provider": provider,
+        "status": health.status.value,
+        "reason": health.reason,
+        "checked_at": health.checked_at.isoformat(),
+    }
+
+
 def _priced_in_market_bar_provider_fill_plan(
+    engine: Engine,
     config: AppConfig,
     *,
     target_as_of: date | None,
     missing: int,
 ) -> dict[str, object]:
+    provider_health = _latest_provider_health_payload(engine, "polygon")
     target_value = _date_iso_or_none(target_as_of)
     provider_command = (
         "catalyst-radar ingest-polygon grouped-daily "
@@ -4137,6 +4171,12 @@ def _priced_in_market_bar_provider_fill_plan(
     elif target_as_of is None:
         status = "blocked"
         next_action = "Resolve the scan date before planning a provider bar fill."
+    elif provider_health.get("status") == "down":
+        status = "blocked_by_provider_health"
+        next_action = (
+            "Stored Polygon/Massive health is down; use the manual CSV path or "
+            "fix provider access before requesting the grouped-daily fill."
+        )
     elif key_configured:
         status = "ready_for_approval"
         next_action = (
@@ -4157,6 +4197,7 @@ def _priced_in_market_bar_provider_fill_plan(
         "target_as_of": target_value,
         "missing_as_of_bar": max(0, int(missing)),
         "provider_key_configured": key_configured,
+        "provider_health": provider_health or None,
         "execute_external_call_count": execute_call_count,
         "external_calls_made": 0,
         "provider_call_command": provider_command,

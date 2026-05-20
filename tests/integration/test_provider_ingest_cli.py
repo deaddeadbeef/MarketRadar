@@ -9,7 +9,7 @@ import pytest
 from sqlalchemy import create_engine, delete, func, select
 
 from catalyst_radar.cli import main
-from catalyst_radar.connectors.base import ConnectorHealthStatus
+from catalyst_radar.connectors.base import ConnectorHealth, ConnectorHealthStatus
 from catalyst_radar.core.models import DailyBar, DataQualitySeverity, JobStatus, Security
 from catalyst_radar.market.manual_bars import MANUAL_BAR_COLUMNS
 from catalyst_radar.storage.provider_repositories import ProviderRepository
@@ -613,6 +613,71 @@ def test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths(
         "--date 2026-05-15 --confirm-external-call"
     )
     assert payload["external_calls_made"] == 0
+
+
+def test_market_bars_repair_plan_blocks_provider_fill_when_health_is_down(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    database_url = _database_url(tmp_path)
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("CATALYST_POLYGON_API_KEY", "fixture-key")
+
+    assert main(["init-db"]) == 0
+    capsys.readouterr()
+    engine = create_engine(database_url, future=True)
+    MarketRepository(engine).upsert_securities([_security("AADR", "Alpha ADR", "ADRC")])
+    ProviderRepository(engine).save_health(
+        ConnectorHealth(
+            provider="polygon",
+            status=ConnectorHealthStatus.DOWN,
+            checked_at=datetime(2026, 5, 15, 21, tzinfo=UTC),
+            reason="HTTP 403 from grouped daily",
+            latency_ms=12.0,
+        )
+    )
+
+    assert (
+        main(
+            [
+                "market-bars",
+                "repair-plan",
+                "--expected-as-of",
+                "2026-05-15",
+                "--json",
+            ]
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["provider_fill_status"] == "blocked_by_provider_health"
+    assert payload["provider_health"] == {
+        "provider": "polygon",
+        "status": "down",
+        "reason": "HTTP 403 from grouped daily",
+        "checked_at": "2026-05-15T21:00:00+00:00",
+    }
+    assert "fix the Polygon/Massive provider health" in payload["next_action"]
+    assert payload["external_calls_made"] == 0
+
+    assert (
+        main(
+            [
+                "market-bars",
+                "repair-plan",
+                "--expected-as-of",
+                "2026-05-15",
+            ]
+        )
+        == 0
+    )
+    text = capsys.readouterr().out
+    assert "provider_option=status=blocked_by_provider_health" in text
+    assert "provider_health=status=down" in text
+    assert "HTTP 403 from grouped daily" in text
 
 
 def test_market_bars_repair_plan_previews_existing_local_template(
