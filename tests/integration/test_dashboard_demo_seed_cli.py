@@ -2609,6 +2609,18 @@ def test_priced_in_answer_uses_stock_scope_for_market_bar_coverage(
     assert "--stocks-only" in source_rows["market_bars"]["diagnostic"][
         "manual_template_command"
     ]
+    assert "data\\local\\manual-stock-bars-" in source_rows["market_bars"][
+        "diagnostic"
+    ]["manual_validate_command"]
+    assert "<fresh-bars.csv>" not in source_rows["market_bars"]["diagnostic"][
+        "manual_validate_command"
+    ]
+    assert "data\\local\\manual-stock-bars-" in source_rows["market_bars"][
+        "diagnostic"
+    ]["manual_fix_command"]
+    assert "<fresh-bars.csv>" not in source_rows["market_bars"]["diagnostic"][
+        "manual_fix_command"
+    ]
     assert overview["coverage_first_recommendation"]["source"] == "market_bars"
     assert "market-bars template" in overview["coverage_first_recommendation"][
         "command"
@@ -2837,6 +2849,18 @@ def test_priced_in_source_batches_prioritize_full_market_bar_coverage(
     ]
     assert "--stocks-only" not in source_rows["market_bars"]["diagnostic"][
         "manual_template_command"
+    ]
+    assert "data\\local\\manual-bars-" in source_rows["market_bars"]["diagnostic"][
+        "manual_validate_command"
+    ]
+    assert "<fresh-bars.csv>" not in source_rows["market_bars"]["diagnostic"][
+        "manual_validate_command"
+    ]
+    assert "data\\local\\manual-bars-" in source_rows["market_bars"]["diagnostic"][
+        "manual_fix_command"
+    ]
+    assert "<fresh-bars.csv>" not in source_rows["market_bars"]["diagnostic"][
+        "manual_fix_command"
     ]
 
     execution = source_batch_module.execute_priced_in_source_batch(

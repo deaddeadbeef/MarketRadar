@@ -1,6 +1,52 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 20:51:49 +08:00
+Last updated: 2026-05-20 20:58:02 +08:00
+
+## Latest Source Overview Market-Bar Import Path Fix
+
+Goal alignment / drift check:
+
+- The active goal remains: MarketRadar should scan the broad stock market and
+  identify stocks where market emotion/expectations have not yet been matched
+  by price.
+- The current first blocker is still `market_bars`; no provider calls were
+  made.
+- The zero-call source overview already identified `market_bars` as the first
+  stock-only blocker, but its market-bar `validate=` and `import=` lines still
+  used the generic `<fresh-bars.csv>` placeholder even though the default
+  missing-bar template path was known.
+- That made the CLI/API repair path less directly executable for the current
+  blocker.
+
+Fix in this slice:
+
+- Added a small shared helper for the default manual market-bar template path.
+- The market-bar source-gap planner now uses that path for its validate/import
+  commands.
+- For the live stock-only blocker, the source overview now shows:
+
+  ```powershell
+  catalyst-radar market-bars import --daily-bars data\local\manual-stock-bars-2026-05-15.csv --expected-as-of 2026-05-15 --stocks-only
+  catalyst-radar market-bars import --daily-bars data\local\manual-stock-bars-2026-05-15.csv --expected-as-of 2026-05-15 --stocks-only --execute
+  ```
+
+- This is still zero-call planning; import preview makes no DB writes and
+  `--execute` writes local daily bars only.
+
+Validation:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_source_batches_prioritize_full_market_bar_coverage -q
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-source-batches --source all --stocks-only
+```
+
+Next useful product action:
+
+- Do not treat this as goal completion.
+- The live blocker remains `market_bars`: 131 stock-like rows still need
+  scan-date bars before the stocks-only priced-in answer can be trusted.
+- Fill/import `data\local\manual-stock-bars-2026-05-15.csv` manually, or get
+  explicit approval for the single Polygon/Massive saved-response capture.
 
 ## Latest Post-Bar Source Plan Audit
 
