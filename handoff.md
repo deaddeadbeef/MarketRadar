@@ -1,6 +1,69 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 08:05:30 +08:00
+Last updated: 2026-05-20 08:27:43 +08:00
+
+## Latest Priced-In Answer Partial-Scan Guard
+
+Goal alignment:
+
+- The stocks-only source-batch and execution surfaces already blocked side
+  quests while `market_bars` remained incomplete, but the direct
+  `priced-in-answer --stocks-only` surface still printed
+  `status=decision_ready` when 9 rows inside the scanned subset looked
+  reviewable.
+- That was misleading for the product goal. A full-stock priced-in answer
+  cannot be ready while 131 stock-like rows still lack scan-date price
+  reaction.
+- This slice keeps the candidate evidence visible, but changes answer-level
+  readiness to blocked until stock-like market-bar coverage is complete. It
+  makes 0 Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or DB-write
+  calls.
+
+Fix in this slice:
+
+- `priced_in_answer_payload(...)` now inspects the market-bar action after the
+  stock-scope coverage override.
+- If `market_bars` still has a gap, answer status becomes `blocked` even when
+  `decision_ready_rows` is nonzero.
+- The answer text now says the scanned-subset rows still look reviewable, but
+  the full scan must be repaired first.
+- `decision_readiness.recommended_gap` becomes `market_bars` with the zero-call
+  missing-bar template command.
+- `trust_blockers` now puts the `market_bars` blocker first when it is the
+  answer-level blocker.
+- The dry-run agent brief now calls the ranked result list the
+  `priced-in queue` instead of saying the priced-in scan itself is ready. This
+  keeps the browseable queue distinct from the blocked answer.
+
+Live zero-call observation:
+
+```text
+priced_in_answer status=blocked decision_ready=false investment_decision_ready=false total=5521 mismatches=9 research=0 blocked=2674 external_calls=0
+answer=Stocks-only priced-in answer is not ready: 131 row(s) still lack scan-date price reaction. 9 scanned-subset row(s) still look reviewable, but the full scan must be repaired first.
+headline=Full scan blocked by 131 missing stock-like market-bar row(s); 5521 scanned row(s) are only a subset.
+decision_readiness=status=blocked actionable=9 decision_ready=9 summary=9 row(s) look decision-ready inside the scanned subset, but 131 market-bar row(s) are missing from the full scan.
+recommended_gap=market_bars count=131 command=catalyst-radar market-bars template --expected-as-of 2026-05-15 --out data\local\manual-stock-bars-2026-05-15.csv --missing-only --stocks-only
+trust_blockers:
+- market_bars status=attention next=Fill stock-like missing as-of bars first; then rerun the stocks-only priced-in scan. command=catalyst-radar market-bars template --expected-as-of 2026-05-15 --out data\local\manual-stock-bars-2026-05-15.csv --missing-only --stocks-only
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_answer_blocks_incomplete_stock_bars_even_with_ready_rows tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_answer_uses_stock_scope_for_market_bar_coverage tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_answer_cli_outputs_current_scan_answer tests\unit\test_agent_sdk_orchestrator.py::test_agent_sdk_dry_run_brief_is_multi_agent_and_zero_call -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\agents\sdk_orchestrator.py tests\integration\test_dashboard_data.py tests\unit\test_agent_sdk_orchestrator.py
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-answer --stocks-only
+```
+
+Next useful product action after merge:
+
+- This closes the last observed readiness overclaim on the direct answer
+  surface.
+- The actual blocker remains data completion: fill/import
+  `data\local\manual-stock-bars-2026-05-15.csv`, or explicitly approve the one
+  Polygon/Massive grouped-daily call.
+- Avoid additional dashboard/status polish unless it directly clears data
+  coverage or the user explicitly redirects.
 
 ## Latest Source Execution Market-Bar Guard
 

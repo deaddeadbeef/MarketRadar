@@ -2633,13 +2633,6 @@ def priced_in_answer_payload(
         _sequence_value(resolved_queue.get("rows")),
         stocks_only=stocks_only,
     )
-    answer_status = _priced_in_answer_status(
-        queue_status=str(resolved_queue.get("status") or "unknown"),
-        actionable_count=actionable_count,
-        decision_ready_count=decision_ready_count,
-        research_lead_count=research_lead_count,
-        blocked_count=blocked_count,
-    )
     source_coverage = _mapping_value(resolved_queue, "source_coverage")
     market_bars = _priced_in_audit_market_bars(
         engine,
@@ -2651,11 +2644,22 @@ def priced_in_answer_payload(
         source_coverage,
         market_bars,
     )
+    market_bar_gap = _priced_in_answer_market_bar_gap(source_coverage)
+    market_bar_gap_count = int(_finite_float(market_bar_gap.get("count")))
+    answer_status = _priced_in_answer_status(
+        queue_status=str(resolved_queue.get("status") or "unknown"),
+        actionable_count=actionable_count,
+        decision_ready_count=decision_ready_count,
+        research_lead_count=research_lead_count,
+        blocked_count=blocked_count,
+        market_bar_gap_count=market_bar_gap_count,
+    )
     decision_readiness = _priced_in_answer_decision_readiness(
         _mapping_value(resolved_queue, "decision_gap_counts"),
         source_coverage=source_coverage,
         decision_ready_count=decision_ready_count,
         scan_as_of=str(_mapping_value(resolved_queue, "latest_run").get("as_of") or ""),
+        market_bar_gap=market_bar_gap,
     )
     next_action, next_command = _priced_in_answer_next_step(
         answer_status=answer_status,
@@ -2669,6 +2673,14 @@ def priced_in_answer_payload(
         market_bars=market_bars,
     )
     decision_ready = answer_status == "decision_ready"
+    trust_blockers = _priced_in_prioritized_trust_blockers(
+        _priced_in_answer_trust_blockers(
+            resolved_preflight,
+            answer_status=answer_status,
+            source_coverage=source_coverage,
+        ),
+        primary_area="market_bars" if market_bar_gap_count > 0 else None,
+    )
     investment_decision_boundary = (
         "Priced-in answer readiness is not trade approval. Use the separate "
         "radar readiness/manual_buy_review gate before any investment decision."
@@ -2683,6 +2695,8 @@ def priced_in_answer_payload(
             decision_ready_count=decision_ready_count,
             research_lead_count=research_lead_count,
             blocked_count=blocked_count,
+            market_bar_gap_count=market_bar_gap_count,
+            stocks_only=stocks_only,
         ),
         "headline": _priced_in_answer_headline(
             answer_status=answer_status,
@@ -2691,6 +2705,8 @@ def priced_in_answer_payload(
             decision_ready_count=decision_ready_count,
             research_lead_count=research_lead_count,
             blocked_count=blocked_count,
+            market_bar_gap_count=market_bar_gap_count,
+            stocks_only=stocks_only,
         ),
         "decision_ready": decision_ready,
         "priced_in_answer_ready": decision_ready,
@@ -2714,11 +2730,7 @@ def priced_in_answer_payload(
             "summary": source_coverage.get("summary"),
             "weak_sources": list(_sequence_value(source_coverage.get("weak_sources"))),
         },
-        "trust_blockers": _priced_in_answer_trust_blockers(
-            resolved_preflight,
-            answer_status=answer_status,
-            source_coverage=source_coverage,
-        ),
+        "trust_blockers": trust_blockers,
         "next_action": next_action,
         "next_command": next_command,
         "top_rows": top_rows[:resolved_limit],
@@ -4694,12 +4706,37 @@ def _priced_in_queue_command_from_filters(
     return " ".join(parts)
 
 
+def _priced_in_answer_market_bar_gap(
+    source_coverage: Mapping[str, object],
+) -> dict[str, object]:
+    for action in _sequence_value(source_coverage.get("actions")):
+        if not isinstance(action, Mapping):
+            continue
+        if str(action.get("source") or "") != "market_bars":
+            continue
+        gap_count = int(_finite_float(action.get("gap_count")))
+        status = str(action.get("status") or "").strip()
+        if gap_count <= 0 or status in {"ready", "not_applicable"}:
+            return {}
+        return {
+            "source": "market_bars",
+            "gap": "market_bars",
+            "count": gap_count,
+            "status": status,
+            "sample_tickers": list(_sequence_value(action.get("sample_tickers"))),
+            "next_action": action.get("next_action"),
+            "command": action.get("batch_plan_command") or action.get("command"),
+        }
+    return {}
+
+
 def _priced_in_answer_decision_readiness(
     decision_gap_counts: Mapping[str, object],
     *,
     source_coverage: Mapping[str, object],
     decision_ready_count: int,
     scan_as_of: str = "",
+    market_bar_gap: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     row_count = int(_finite_float(decision_gap_counts.get("row_count")))
     count_values = _mapping_value(decision_gap_counts, "counts")
@@ -4727,8 +4764,36 @@ def _priced_in_answer_decision_readiness(
         )
         if int(_finite_float(count)) > 0
     ]
+    market_gap = _row_dict(market_bar_gap or {})
+    market_gap_count = int(_finite_float(market_gap.get("count")))
+    if market_gap_count > 0:
+        market_recommendation = {
+            "gap": "market_bars",
+            "source": "market_bars",
+            "count": market_gap_count,
+            "sample_tickers": list(_sequence_value(market_gap.get("sample_tickers"))),
+            "next_action": market_gap.get("next_action"),
+            "command": market_gap.get("command"),
+        }
+        top_gaps = [
+            market_recommendation,
+            *[gap for gap in top_gaps if gap.get("gap") != "market_bars"],
+        ]
     recommended = top_gaps[0] if top_gaps else {}
-    if decision_ready_count > 0:
+    if market_gap_count > 0:
+        status = "blocked"
+        if decision_ready_count > 0:
+            summary = (
+                f"{decision_ready_count} row(s) look decision-ready inside the "
+                f"scanned subset, but {market_gap_count} market-bar row(s) are "
+                "missing from the full scan."
+            )
+        else:
+            summary = (
+                f"The full scan is blocked by {market_gap_count} missing "
+                "market-bar row(s)."
+            )
+    elif decision_ready_count > 0:
         status = "ready"
         summary = f"{decision_ready_count} not-priced-in row(s) are decision-ready."
     elif row_count <= 0:
@@ -5010,8 +5075,11 @@ def _priced_in_answer_status(
     decision_ready_count: int,
     research_lead_count: int,
     blocked_count: int,
+    market_bar_gap_count: int = 0,
 ) -> str:
     if queue_status in {"universe_too_small", "partial_scan", "selected_universe"}:
+        return "blocked"
+    if market_bar_gap_count > 0:
         return "blocked"
     if decision_ready_count > 0:
         return "decision_ready"
@@ -5029,6 +5097,8 @@ def _priced_in_answer_text(
     decision_ready_count: int,
     research_lead_count: int,
     blocked_count: int,
+    market_bar_gap_count: int = 0,
+    stocks_only: bool = False,
 ) -> str:
     if answer_status == "decision_ready":
         return (
@@ -5041,6 +5111,19 @@ def _priced_in_answer_text(
             "none are decision-ready yet."
         )
     if answer_status == "blocked":
+        if market_bar_gap_count > 0:
+            scope = "Stocks-only" if stocks_only else "Full-market"
+            suffix = (
+                f" {decision_ready_count} scanned-subset row(s) still look "
+                "reviewable, but the full scan must be repaired first."
+                if decision_ready_count > 0
+                else ""
+            )
+            return (
+                f"{scope} priced-in answer is not ready: "
+                f"{market_bar_gap_count} row(s) still lack scan-date price "
+                f"reaction.{suffix}"
+            )
         return (
             f"{actionable_count or blocked_count} possible mismatch row(s) are blocked "
             "by missing evidence or scan readiness."
@@ -5056,6 +5139,8 @@ def _priced_in_answer_headline(
     decision_ready_count: int,
     research_lead_count: int,
     blocked_count: int,
+    market_bar_gap_count: int = 0,
+    stocks_only: bool = False,
 ) -> str:
     if answer_status == "decision_ready":
         return (
@@ -5068,6 +5153,13 @@ def _priced_in_answer_headline(
             f"{actionable_count} actionable mismatch row(s), {total_count} scanned row(s)."
         )
     if answer_status == "blocked":
+        if market_bar_gap_count > 0:
+            scope = "stock-like" if stocks_only else "active"
+            return (
+                f"Full scan blocked by {market_bar_gap_count} missing "
+                f"{scope} market-bar row(s); {total_count} scanned row(s) are "
+                "only a subset."
+            )
         return (
             f"{blocked_count or actionable_count} row(s) need evidence cleanup before "
             f"the priced-in answer is trustworthy; {total_count} scanned row(s)."
@@ -5174,6 +5266,20 @@ def _priced_in_answer_trust_blockers(
         if len(rows) >= 5:
             return rows
     return rows
+
+
+def _priced_in_prioritized_trust_blockers(
+    rows: Sequence[Mapping[str, object]],
+    *,
+    primary_area: str | None = None,
+) -> list[dict[str, object]]:
+    normalized = [_row_dict(row) for row in rows if isinstance(row, Mapping)]
+    if not primary_area:
+        return normalized
+    return sorted(
+        normalized,
+        key=lambda row: 0 if str(row.get("area") or "") == primary_area else 1,
+    )
 
 
 def priced_in_preflight_payload(

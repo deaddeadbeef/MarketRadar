@@ -979,11 +979,11 @@ def _priced_in_insight(priced_in: Mapping[str, object]) -> str | None:
     weak_sources = ", ".join(_texts(coverage.get("weak_sources"))) or "none"
     if headline:
         return (
-            f"Priced-in scan is {status}: {headline}; visible rows={returned}, "
+            f"Priced-in queue is {status}: {headline}; visible rows={returned}, "
             f"total rows={total}, weak sources={weak_sources}."
         )
     return (
-        f"Priced-in scan is {status}; visible rows={returned}, "
+        f"Priced-in queue is {status}; visible rows={returned}, "
         f"total rows={total}, weak sources={weak_sources}."
     )
 
