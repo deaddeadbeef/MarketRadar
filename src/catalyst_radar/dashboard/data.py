@@ -4408,6 +4408,11 @@ def _priced_in_market_bar_provider_fill_plan(
             if saved_file_validate_command
             else None
         ),
+        "provider_saved_file_import_api": (
+            "POST /api/radar/market-bars/provider-fixture-import"
+            if saved_file_import_command
+            else None
+        ),
         "provider_saved_file_external_call_count": 0,
         "provider_saved_file_boundary": (
             "Validate the saved Polygon/Massive grouped-daily JSON response before "

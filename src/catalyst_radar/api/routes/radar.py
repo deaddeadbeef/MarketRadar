@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from catalyst_radar.connectors.options import validate_options_fixture_json
 from catalyst_radar.connectors.polygon_fixture import (
+    ingest_polygon_grouped_daily_fixture,
     preview_polygon_grouped_daily_fixture,
 )
 from catalyst_radar.connectors.provider_ingest import ProviderIngestError
@@ -181,6 +182,14 @@ class MarketBarsProviderFixturePreviewRequest(BaseModel):
 
     expected_as_of: Date
     fixture_path: str
+
+
+class MarketBarsProviderFixtureImportRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_as_of: Date
+    fixture_path: str
+    execute: bool = False
 
 
 class SourceBatchExecuteRequest(BaseModel):
@@ -724,6 +733,81 @@ def radar_market_bars_provider_fixture_preview(
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return redact_restricted_external_payload(payload)
+
+
+@router.post(
+    "/market-bars/provider-fixture-import",
+    dependencies=[Depends(require_role(Role.ANALYST))],
+)
+def radar_market_bars_provider_fixture_import(
+    request: MarketBarsProviderFixtureImportRequest,
+) -> dict[str, object]:
+    engine = _engine()
+    config = AppConfig.from_env()
+    market_repo = MarketRepository(engine)
+    provider_repo = ProviderRepository(engine)
+    fixture_path = Path(request.fixture_path)
+    try:
+        preview = preview_polygon_grouped_daily_fixture(
+            config=config,
+            market_repo=market_repo,
+            date_value=request.expected_as_of,
+            fixture_path=fixture_path,
+        )
+        if not request.execute:
+            return redact_restricted_external_payload(
+                {
+                    **preview,
+                    "schema_version": "polygon-grouped-daily-fixture-import-v1",
+                    "executed": False,
+                    "db_writes_made": 0,
+                    "write_boundary": (
+                        "Preview only; set execute=true to import the saved "
+                        "fixture. This path reads from disk and makes 0 "
+                        "provider calls."
+                    ),
+                },
+            )
+        if preview.get("status") == "invalid":
+            raise ValueError(str(preview.get("next_action") or "fixture is invalid"))
+        result = ingest_polygon_grouped_daily_fixture(
+            config=config,
+            market_repo=market_repo,
+            provider_repo=provider_repo,
+            date_value=request.expected_as_of,
+            fixture_path=fixture_path,
+        )
+    except (FileNotFoundError, RuntimeError, ValueError, ProviderIngestError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return redact_restricted_external_payload(
+        {
+            "schema_version": "polygon-grouped-daily-fixture-import-v1",
+            "status": (
+                "imported_with_rejections"
+                if result.rejected_count > 0
+                else "imported"
+            ),
+            "executed": True,
+            "provider": result.provider,
+            "job_id": result.job_id,
+            "requested_count": result.requested_count,
+            "raw_count": result.raw_count,
+            "normalized_count": result.normalized_count,
+            "security_count": result.security_count,
+            "daily_bar_count": result.daily_bar_count,
+            "holding_count": result.holding_count,
+            "event_count": result.event_count,
+            "option_feature_count": result.option_feature_count,
+            "rejected_count": result.rejected_count,
+            "external_calls_made": 0,
+            "db_writes_made": 1,
+            "preview": preview,
+            "write_boundary": (
+                "Imported from a saved fixture on disk. This path made 0 "
+                "provider calls."
+            ),
+        },
+    )
 
 
 @router.post(

@@ -10,7 +10,12 @@ from sqlalchemy import select
 from catalyst_radar.connectors.base import ConnectorRecordKind, ConnectorRequest
 from catalyst_radar.connectors.http import FakeHttpTransport, HttpResponse, JsonHttpClient
 from catalyst_radar.connectors.polygon import PolygonEndpoint, PolygonMarketDataConnector
+from catalyst_radar.connectors.provider_ingest import (
+    ProviderIngestResult,
+    ingest_provider_records,
+)
 from catalyst_radar.core.config import AppConfig
+from catalyst_radar.storage.provider_repositories import ProviderRepository
 from catalyst_radar.storage.repositories import MarketRepository
 from catalyst_radar.storage.schema import daily_bars
 
@@ -22,29 +27,10 @@ def preview_polygon_grouped_daily_fixture(
     date_value: date,
     fixture_path: Path,
 ) -> dict[str, object]:
-    connector = PolygonMarketDataConnector(
-        api_key="fixture-key",
-        client=JsonHttpClient(
-            transport=_grouped_daily_fixture_transport(
-                config=config,
-                date_value=date_value,
-                fixture_path=fixture_path,
-            ),
-            timeout_seconds=config.http_timeout_seconds,
-        ),
-        base_url=config.polygon_base_url,
-        availability_policy=config.provider_availability_policy,
-        ticker_page_delay_seconds=config.polygon_ticker_page_delay_seconds,
-    )
-    request = ConnectorRequest(
-        provider="polygon",
-        endpoint=PolygonEndpoint.GROUPED_DAILY.value,
-        params={
-            "date": date_value.isoformat(),
-            "adjusted": True,
-            "include_otc": False,
-        },
-        requested_at=datetime.now(UTC),
+    connector, request, _, _ = build_polygon_grouped_daily_fixture_ingest(
+        config=config,
+        date_value=date_value,
+        fixture_path=fixture_path,
     )
     raw_records = connector.fetch(request)
     rejections = tuple(getattr(connector, "rejected_payloads", ()))
@@ -108,6 +94,69 @@ def preview_polygon_grouped_daily_fixture(
             coverage=coverage,
         ),
     }
+
+
+def ingest_polygon_grouped_daily_fixture(
+    *,
+    config: AppConfig,
+    market_repo: MarketRepository,
+    provider_repo: ProviderRepository,
+    date_value: date,
+    fixture_path: Path,
+) -> ProviderIngestResult:
+    connector, request, metadata, job_type = build_polygon_grouped_daily_fixture_ingest(
+        config=config,
+        date_value=date_value,
+        fixture_path=fixture_path,
+    )
+    return ingest_provider_records(
+        connector=connector,
+        request=request,
+        market_repo=market_repo,
+        provider_repo=provider_repo,
+        job_type=job_type,
+        metadata=metadata,
+    )
+
+
+def build_polygon_grouped_daily_fixture_ingest(
+    *,
+    config: AppConfig,
+    date_value: date,
+    fixture_path: Path,
+) -> tuple[PolygonMarketDataConnector, ConnectorRequest, dict[str, object], str]:
+    connector = PolygonMarketDataConnector(
+        api_key="fixture-key",
+        client=JsonHttpClient(
+            transport=_grouped_daily_fixture_transport(
+                config=config,
+                date_value=date_value,
+                fixture_path=fixture_path,
+            ),
+            timeout_seconds=config.http_timeout_seconds,
+        ),
+        base_url=config.polygon_base_url,
+        availability_policy=config.provider_availability_policy,
+        ticker_page_delay_seconds=config.polygon_ticker_page_delay_seconds,
+    )
+    request = ConnectorRequest(
+        provider="polygon",
+        endpoint=PolygonEndpoint.GROUPED_DAILY.value,
+        params={
+            "date": date_value.isoformat(),
+            "adjusted": True,
+            "include_otc": False,
+        },
+        requested_at=datetime.now(UTC),
+    )
+    metadata: dict[str, object] = {
+        "provider": "polygon",
+        "endpoint": PolygonEndpoint.GROUPED_DAILY.value,
+        "date": date_value.isoformat(),
+        "fixture": str(fixture_path),
+        "availability_policy": config.provider_availability_policy,
+    }
+    return connector, request, metadata, PolygonEndpoint.GROUPED_DAILY.value
 
 
 def _grouped_daily_fixture_transport(
@@ -243,4 +292,8 @@ def _polygon_fixture_preview_next_action(
     )
 
 
-__all__ = ["preview_polygon_grouped_daily_fixture"]
+__all__ = [
+    "build_polygon_grouped_daily_fixture_ingest",
+    "ingest_polygon_grouped_daily_fixture",
+    "preview_polygon_grouped_daily_fixture",
+]
