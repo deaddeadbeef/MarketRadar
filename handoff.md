@@ -1,6 +1,58 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 16:26:02 +08:00
+Last updated: 2026-05-20 16:34:46 +08:00
+
+## Latest TUI Saved-File Import Visibility
+
+Goal alignment:
+
+- The active goal remains: scan the broad market and tell whether any stock's
+  price has not yet matched market emotion/expectations.
+- After surfacing the saved grouped-daily JSON import path in CLI/API/status,
+  a live TUI smoke showed the Ops page still buried that command after the
+  provider-fill text. The line was too long and truncated before a human could
+  see the zero-call saved-file alternative.
+- This slice is dashboard-only and narrow: it splits the saved grouped-daily
+  file import into its own visible TUI line. It does not change ingestion,
+  evidence gates, provider execution, source coverage semantics, scoring, or
+  agent behavior.
+- This slice makes 0 Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or
+  provider calls.
+
+Fix in this slice:
+
+- Added `_market_bar_provider_saved_file_summary(...)` in the TUI renderer.
+- Overview and Ops pages now render:
+  - `Provider fill: ... explicit approval required ...`
+  - `Saved file import: 0 external call(s); command catalyst-radar ingest-polygon grouped-daily ... --fixture ...`
+- Removed the saved-file command from the already-long provider-fill summary so
+  the approval-required live provider path and zero-call saved-file path are
+  visually distinct.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_market_bar_missing_type_summary_is_human_readable -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page ops --stocks-only | Select-String -Pattern "Provider fill|Saved file import|External calls made"
+```
+
+Results:
+
+- Focused dashboard render test passed: `1 passed`.
+- Ruff passed.
+- `git diff --check` passed.
+- Live TUI smoke printed `External calls made: 0`, a separate
+  `Provider fill` line, and a separate `Saved file import` line.
+
+Next useful product action:
+
+- The first product blocker remains market bars. Clear the `131` stock-like
+  missing bars by manual CSV, saved grouped-daily JSON file import, or explicit
+  approval of the one-call Polygon/Massive grouped-daily fill.
+- Do not run provider/source-fill execution commands without explicit operator
+  approval.
 
 ## Latest Saved Grouped-Daily File Import Path
 

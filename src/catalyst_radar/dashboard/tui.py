@@ -3878,6 +3878,12 @@ def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
             "Provider fill: "
             f"{_clip(provider_fill_summary, max(20, width - 17))}"
         )
+    saved_file_summary = _market_bar_provider_saved_file_summary(payload)
+    if saved_file_summary:
+        lines.append(
+            "Saved file import: "
+            f"{_clip(saved_file_summary, max(20, width - 21))}"
+        )
     instrument_summary = _full_scan_instrument_scope_summary(payload)
     if instrument_summary:
         lines.append(f"Instrument scope: {instrument_summary}")
@@ -4129,12 +4135,23 @@ def _market_bar_provider_fill_summary(payload: Mapping[str, object]) -> str:
     if warning:
         parts.append(f"warning {warning}")
     parts.append(f"command {command}")
-    saved_file_command = str(
+    return "; ".join(parts)
+
+
+def _market_bar_provider_saved_file_summary(payload: Mapping[str, object]) -> str:
+    audit = _mapping(payload.get("priced_in_audit"))
+    market = _mapping(audit.get("market_bars"))
+    repair = _mapping(market.get("repair"))
+    provider_plan = _mapping(repair.get("provider_fill_plan"))
+    if not provider_plan:
+        return ""
+    command = str(
         provider_plan.get("provider_saved_file_import_command") or ""
     ).strip()
-    if saved_file_command:
-        parts.append(f"saved file {saved_file_command}")
-    return "; ".join(parts)
+    if not command:
+        return ""
+    calls = int(_number_or_zero(provider_plan.get("provider_saved_file_external_call_count")))
+    return f"{calls} external call(s); command {command}"
 
 
 def _full_scan_instrument_scope_summary(payload: Mapping[str, object]) -> str:
@@ -5973,6 +5990,12 @@ def _ops_lines(payload: Mapping[str, object], width: int) -> list[str]:
         lines.append(
             "Provider fill: "
             f"{_clip(provider_fill_summary, max(20, width - 17))}"
+        )
+    saved_file_summary = _market_bar_provider_saved_file_summary(payload)
+    if saved_file_summary:
+        lines.append(
+            "Saved file import: "
+            f"{_clip(saved_file_summary, max(20, width - 21))}"
         )
     source_actions = [
         {
