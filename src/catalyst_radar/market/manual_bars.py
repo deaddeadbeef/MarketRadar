@@ -505,6 +505,9 @@ def _manual_market_bars_operator_step(
     partial_rows = _int_payload_value(progress.get("partial_rows"))
     empty_rows = _int_payload_value(progress.get("empty_rows"))
     invalid_rows = _int_payload_value(local_template_preview.get("invalid_row_count"))
+    invalid_numeric = _int_payload_value(
+        local_template_preview.get("invalid_numeric_count"),
+    )
     filled_rows = complete_rows + partial_rows
 
     missing_context_columns = local_template_schema.get("missing_context_columns")
@@ -570,6 +573,24 @@ def _manual_market_bars_operator_step(
             "command": import_preview_command,
             "after_manual_command": incremental_import_preview_command,
             "manual_step": True,
+            "external_calls_made": 0,
+        }
+    if (
+        complete_rows > 0
+        and empty_rows > 0
+        and invalid_rows > 0
+        and invalid_numeric <= 0
+    ):
+        return {
+            "status": "needs_incremental_preview",
+            "kind": "preview_complete_rows_only",
+            "action": (
+                "Preview the completed rows with --complete-rows-only; blank rows "
+                "can remain blank until later."
+            ),
+            "command": incremental_import_preview_command,
+            "after_manual_command": incremental_import_execute_command,
+            "manual_step": False,
             "external_calls_made": 0,
         }
     if complete_rows <= 0 and empty_rows > 0:

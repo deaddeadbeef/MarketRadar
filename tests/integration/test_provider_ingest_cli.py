@@ -864,6 +864,140 @@ def test_market_bars_repair_plan_previews_existing_local_template(
     assert "local_template_invalid_examples=row 2 AADR 2026-05-15" in captured.out
 
 
+def test_market_bars_repair_plan_guides_complete_rows_only_preview(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    database_url = _database_url(tmp_path)
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["init-db"]) == 0
+    capsys.readouterr()
+    engine = create_engine(database_url, future=True)
+    MarketRepository(engine).upsert_securities(
+        [
+            _security("AAA", "Alpha Stock", "CS"),
+            _security("BBB", "Beta Stock", "CS"),
+        ]
+    )
+    template_path = Path("data") / "local" / "manual-stock-bars-2026-05-15.csv"
+    template_path.parent.mkdir(parents=True, exist_ok=True)
+    _write_mixed_manual_bars(
+        template_path,
+        complete_tickers=["AAA"],
+        empty_tickers=["BBB"],
+        as_of="2026-05-15",
+    )
+
+    assert (
+        main(
+            [
+                "market-bars",
+                "repair-plan",
+                "--expected-as-of",
+                "2026-05-15",
+                "--stocks-only",
+                "--json",
+            ]
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["local_template_preview"]["status"] == "invalid"
+    assert payload["local_template_preview"]["fill_progress"] == {
+        "complete_rows": 1,
+        "partial_rows": 0,
+        "empty_rows": 1,
+        "filled_rows": 1,
+    }
+    assert payload["operator_step"] == {
+        "status": "needs_incremental_preview",
+        "kind": "preview_complete_rows_only",
+        "action": (
+            "Preview the completed rows with --complete-rows-only; blank rows "
+            "can remain blank until later."
+        ),
+        "command": payload["manual_incremental_import_preview_command"],
+        "after_manual_command": payload["manual_incremental_import_execute_command"],
+        "manual_step": False,
+        "external_calls_made": 0,
+    }
+
+    assert (
+        main(
+            [
+                "market-bars",
+                "repair-plan",
+                "--expected-as-of",
+                "2026-05-15",
+                "--stocks-only",
+            ]
+        )
+        == 0
+    )
+    text = capsys.readouterr().out
+    assert "operator_step=status=needs_incremental_preview" in text
+    assert "command=catalyst-radar market-bars import" in text
+    assert "--stocks-only --complete-rows-only" in text
+
+
+def test_market_bars_repair_plan_keeps_invalid_numeric_in_fix_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    database_url = _database_url(tmp_path)
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["init-db"]) == 0
+    capsys.readouterr()
+    engine = create_engine(database_url, future=True)
+    MarketRepository(engine).upsert_securities(
+        [
+            _security("AAA", "Alpha Stock", "CS"),
+            _security("BBB", "Beta Stock", "CS"),
+        ]
+    )
+    template_path = Path("data") / "local" / "manual-stock-bars-2026-05-15.csv"
+    template_path.parent.mkdir(parents=True, exist_ok=True)
+    _write_mixed_manual_bars(
+        template_path,
+        complete_tickers=["AAA"],
+        empty_tickers=["BBB"],
+        as_of="2026-05-15",
+    )
+    rows = _read_csv_rows(template_path)
+    rows[0]["open"] = "not-a-number"
+    with template_path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=MANUAL_BAR_COLUMNS)
+        writer.writeheader()
+        writer.writerows(rows)
+
+    assert (
+        main(
+            [
+                "market-bars",
+                "repair-plan",
+                "--expected-as-of",
+                "2026-05-15",
+                "--stocks-only",
+                "--json",
+            ]
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["local_template_preview"]["invalid_numeric_count"] == 1
+    assert payload["operator_step"]["status"] == "fix_invalid_rows"
+    assert payload["operator_step"]["kind"] == "fix_csv_values"
+    assert payload["operator_step"]["command"] == payload["manual_import_preview_command"]
+
+
 def test_market_bars_repair_plan_detects_stale_blank_template_schema(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
