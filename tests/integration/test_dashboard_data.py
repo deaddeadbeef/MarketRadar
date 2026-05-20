@@ -4334,6 +4334,10 @@ def test_priced_in_preflight_uses_manual_bar_template_for_partial_full_scan_bars
     assert "--missing-only" in str(market_bars["command"])
     assert market_bars["api"] == "POST /api/radar/market-bars/template"
     assert "run-daily" not in str(market_bars["command"])
+    assert payload["evidence_plan"]["steps"][0]["area"] == "market_bars"
+    assert payload["evidence_plan"]["next_command"].startswith(
+        "catalyst-radar market-bars template"
+    )
 
 
 def test_priced_in_preflight_warns_when_latest_run_is_selected_universe(

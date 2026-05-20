@@ -63,7 +63,7 @@ def execute_priced_in_source_batch(
         stocks_only=stocks_only,
     )
     source_name = str(plan.get("source") or source).strip()
-    coverage_blocker = _stocks_only_market_bar_execution_blocker(
+    coverage_blocker = _market_bar_execution_blocker(
         engine,
         config,
         source_name=source_name,
@@ -367,7 +367,7 @@ def source_batch_execution_summary(payload: Mapping[str, object]) -> str:
     return " ".join(details) + ". Refresh to see updated full-scan coverage."
 
 
-def _stocks_only_market_bar_execution_blocker(
+def _market_bar_execution_blocker(
     engine: Engine,
     config: AppConfig,
     *,
@@ -379,7 +379,7 @@ def _stocks_only_market_bar_execution_blocker(
     min_gap: float | None,
     stocks_only: bool,
 ) -> dict[str, object] | None:
-    if not stocks_only or source_name == "market_bars":
+    if source_name == "market_bars":
         return None
     market_plan = priced_in_source_gap_batches_payload(
         engine,
@@ -391,12 +391,21 @@ def _stocks_only_market_bar_execution_blocker(
         usefulness="all",
         decision_gap=None,
         min_gap=None,
-        stocks_only=True,
+        stocks_only=stocks_only,
     )
     gaps = int(_number_or_zero(market_plan.get("total_gap_rows")))
     if gaps <= 0:
         return None
     diagnostic = _mapping(market_plan.get("diagnostic"))
+    coverage_basis = str(
+        _mapping(market_plan.get("scan_scope")).get("coverage_basis") or ""
+    )
+    row_label = (
+        "stock-like row(s)"
+        if coverage_basis == "stock_like_active_as_of_bars"
+        else "active row(s)"
+    )
+    scan_label = "stocks-only scan" if stocks_only else "full scan"
     command = (
         market_plan.get("review_rows_command")
         or diagnostic.get("manual_template_command")
@@ -410,8 +419,8 @@ def _stocks_only_market_bar_execution_blocker(
         "source": source_name,
         "reason": (
             "market_bars must be complete before executing "
-            f"{source_name} source batches for a stocks-only scan; {gaps} "
-            "stock-like row(s) still lack scan-date price reaction."
+            f"{source_name} source batches for a {scan_label}; {gaps} "
+            f"{row_label} still lack scan-date price reaction."
         ),
         "command": command,
         "external_calls_made": 0,

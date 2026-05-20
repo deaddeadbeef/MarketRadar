@@ -2357,6 +2357,78 @@ def test_priced_in_source_execution_blocks_until_stock_bars_complete(
     assert "market-bars template" in payload["execution_blocker"]["command"]
 
 
+def test_priced_in_source_batches_prioritize_full_market_bar_coverage(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["seed-dashboard-demo"]) == 0
+    capsys.readouterr()
+    engine = create_engine(database_url, future=True)
+    MarketRepository(engine).upsert_securities(
+        [
+            Security(
+                ticker="ZZZZ",
+                name="Missing Bar Stock",
+                exchange="NASDAQ",
+                sector="Technology",
+                industry="Software",
+                market_cap=1_000_000_000,
+                avg_dollar_volume_20d=20_000_000,
+                has_options=True,
+                is_active=True,
+                updated_at=DEMO_AVAILABLE_AT,
+                metadata={"type": "CS"},
+            )
+        ]
+    )
+
+    overview = priced_in_all_source_gap_batches_payload(
+        engine,
+        AppConfig.from_env({"CATALYST_DATABASE_URL": database_url}),
+    )
+    source_rows = {row["source"]: row for row in overview["sources"]}
+
+    assert overview["status"] == "attention"
+    assert overview["coverage_first_recommendation"]["source"] == "market_bars"
+    assert overview["decision_shortcut_recommendation"] is None
+    assert overview["decision_shortcut_blocker"]["blocked_by"] == "market_bars"
+    assert overview["coverage_first_recommendation"]["coverage_basis"] == (
+        "active_universe_as_of_bars"
+    )
+    assert "full-market coverage" in overview["coverage_first_recommendation"][
+        "rationale"
+    ]
+    assert "active row" in overview["decision_shortcut_blocker"]["action"]
+    assert source_rows["market_bars"]["status"] == "attention"
+    assert source_rows["market_bars"]["coverage_basis"] == "active_universe_as_of_bars"
+    assert source_rows["market_bars"]["total_gap_rows"] >= 1
+    assert source_rows["market_bars"]["diagnostic"]["blocked_reason"] == (
+        "missing_active_as_of_bars"
+    )
+    assert "market-bars template" in source_rows["market_bars"]["diagnostic"][
+        "manual_template_command"
+    ]
+    assert "--stocks-only" not in source_rows["market_bars"]["diagnostic"][
+        "manual_template_command"
+    ]
+
+    execution = source_batch_module.execute_priced_in_source_batch(
+        engine,
+        AppConfig.from_env({"CATALYST_DATABASE_URL": database_url}),
+        source="broker_context",
+    )
+
+    assert execution["status"] == "blocked"
+    assert execution["external_calls_made"] == 0
+    assert execution["execution_blocker"]["blocked_by"] == "market_bars"
+    assert execution["execution_blocker"]["blocked_gap_rows"] >= 1
+    assert "full scan" in execution["reason"]
+
+
 def test_priced_in_audit_cli_outputs_full_scan_audit(
     tmp_path: Path,
     monkeypatch,
