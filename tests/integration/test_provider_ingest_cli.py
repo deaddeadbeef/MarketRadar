@@ -853,6 +853,8 @@ def test_market_bars_repair_plan_previews_existing_local_template(
     assert preview["external_calls_made"] == 0
     assert payload["operator_step"]["status"] == "manual_fill_required"
     assert payload["operator_step"]["kind"] == "fill_first_complete_rows"
+    assert "Fill all missing OHLCV/VWAP rows" in payload["operator_step"]["action"]
+    assert "incremental checkpoint" in payload["operator_step"]["action"]
     assert payload["operator_step"]["manual_step"] is True
     assert payload["operator_step"]["command"] is None
     assert payload["operator_step"]["after_manual_command"].endswith(

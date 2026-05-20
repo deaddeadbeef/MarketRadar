@@ -654,8 +654,10 @@ def _manual_market_bars_operator_step(
             "status": "manual_fill_required",
             "kind": "fill_first_complete_rows",
             "action": (
-                "Fill at least one complete OHLCV/VWAP row in "
-                f"{local_template_path}; blank rows can wait."
+                "Fill all missing OHLCV/VWAP rows in "
+                f"{local_template_path} for full coverage; for an incremental "
+                "checkpoint, start with one complete row and preview "
+                "--complete-rows-only."
             ),
             "command": None,
             "after_manual_command": incremental_import_preview_command,
