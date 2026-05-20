@@ -75,6 +75,7 @@ if (-not (Test-Path -LiteralPath $pythonExe)) {
     $pythonExe = "py"
 }
 $marketBarRepairPlan = $null
+$stockMarketBarRepairPlan = $null
 $manualMarketBarPreview = $null
 if ($readiness.radar_run.as_of) {
     $runAsOf = [string]$readiness.radar_run.as_of
@@ -99,6 +100,32 @@ if ($readiness.radar_run.as_of) {
             status = "error"
             expected_as_of = $runAsOf
             stocks_only = $false
+            detail = $_.Exception.Message
+            external_calls_made = 0
+        }
+    }
+    try {
+        $stockRepairArgs = @(
+            "-m",
+            "catalyst_radar.cli",
+            "market-bars",
+            "repair-plan",
+            "--expected-as-of",
+            $runAsOf,
+            "--stocks-only",
+            "--json"
+        )
+        $stockRepairResponse = & $pythonExe @stockRepairArgs 2>$null
+        if ([string]::IsNullOrWhiteSpace(($stockRepairResponse -join "`n"))) {
+            throw "stock market-bar repair plan returned no JSON"
+        }
+        $stockMarketBarRepairPlan = ($stockRepairResponse -join "`n") | ConvertFrom-Json
+    }
+    catch {
+        $stockMarketBarRepairPlan = [ordered]@{
+            status = "error"
+            expected_as_of = $runAsOf
+            stocks_only = $true
             detail = $_.Exception.Message
             external_calls_made = 0
         }
@@ -152,6 +179,7 @@ if ($Quick) {
         health = $health
         readiness = $readiness
         market_bar_repair_plan = $marketBarRepairPlan
+        stock_market_bar_repair_plan = $stockMarketBarRepairPlan
         external_calls_made = 0
     }
     if ($null -ne $manualMarketBarPreview) {
@@ -238,6 +266,53 @@ if ($Quick) {
             Write-Output ("- provider boundary: {0}" -f $marketBarRepairPlan.approval_boundary)
         }
     }
+    if ($null -ne $stockMarketBarRepairPlan) {
+        Write-Output (
+            "Stock-market next: bars={0}/{1}; missing={2}; command={3}" -f
+            $stockMarketBarRepairPlan.existing_as_of_bar_count,
+            $stockMarketBarRepairPlan.active_security_count,
+            $stockMarketBarRepairPlan.missing_as_of_bar_count,
+            $stockMarketBarRepairPlan.manual_template_command
+        )
+        if ($null -ne $stockMarketBarRepairPlan.operator_step) {
+            $stockStep = $stockMarketBarRepairPlan.operator_step
+            $stockStepCommand = $(if ($stockStep.command) { $stockStep.command } else { "manual" })
+            $stockAfterManual = $(if ($stockStep.after_manual_command) { $stockStep.after_manual_command } else { "n/a" })
+            Write-Output (
+                "- stock strict next action: status={0}; manual={1}; external_calls={2}; action={3}; command={4}; after_manual={5}" -f
+                $stockStep.status,
+                $stockStep.manual_step,
+                $(if ($null -ne $stockStep.external_calls_made) { $stockStep.external_calls_made } else { 0 }),
+                $stockStep.action,
+                $stockStepCommand,
+                $stockAfterManual
+            )
+        }
+        $stockPreview = $stockMarketBarRepairPlan.local_template_preview
+        if ($null -ne $stockPreview) {
+            $stockFillProgress = $stockPreview.fill_progress
+            if ($null -ne $stockFillProgress) {
+                Write-Output (
+                    "- stock local template fill progress: complete={0}; partial={1}; empty={2}; filled={3}" -f
+                    $(if ($null -ne $stockFillProgress.complete_rows) { $stockFillProgress.complete_rows } else { 0 }),
+                    $(if ($null -ne $stockFillProgress.partial_rows) { $stockFillProgress.partial_rows } else { 0 }),
+                    $(if ($null -ne $stockFillProgress.empty_rows) { $stockFillProgress.empty_rows } else { 0 }),
+                    $(if ($null -ne $stockFillProgress.filled_rows) { $stockFillProgress.filled_rows } else { 0 })
+                )
+            }
+        }
+        if ($stockMarketBarRepairPlan.provider_fill_command) {
+            $stockProviderHealth = $stockMarketBarRepairPlan.provider_health
+            $stockProviderHealthText = $(if ($null -ne $stockProviderHealth -and $stockProviderHealth.status) { $stockProviderHealth.status } else { "unknown" })
+            Write-Output (
+                "- stock provider option: status={0}; health={1}; external_calls={2}; command={3}" -f
+                $stockMarketBarRepairPlan.provider_fill_status,
+                $stockProviderHealthText,
+                $stockMarketBarRepairPlan.provider_fill_external_call_count,
+                $stockMarketBarRepairPlan.provider_fill_command
+            )
+        }
+    }
     if ($null -ne $manualMarketBarPreview) {
         Write-Output (
             "- local template preview: status={0}; rows={1}; invalid_rows={2}; blank_required={3}; missing_after_import={4}; external_calls={5}" -f
@@ -290,6 +365,7 @@ $payload = [ordered]@{
     health = $health
     readiness = $readiness
     market_bar_repair_plan = $marketBarRepairPlan
+    stock_market_bar_repair_plan = $stockMarketBarRepairPlan
     priced_in_stock_audit = $pricedInStockAudit
     latest_run = $latestRun
     live_activation = $activation
@@ -335,6 +411,9 @@ if ($null -ne $stockCoverageStep -and $stockCoverageStep.area) {
 $stockRecommendedSource = $pricedInStockAudit.recommended_source_gap
 $stockRecommendedRepair = $null
 if ($null -ne $stockRecommendedSource) {
+    if ($stockRecommendedSource.source -eq "market_bars") {
+        $stockCoverageStep = $stockRecommendedSource
+    }
     foreach ($sourceRow in @($pricedInStockAudit.sources)) {
         if ($sourceRow.source -eq $stockRecommendedSource.source) {
             $stockRecommendedRepair = $sourceRow.repair
@@ -396,6 +475,11 @@ if ($null -ne $usefulness) {
     )
 }
 if ($null -ne $stockScope) {
+    $stockBarMissing = 0
+    if ($null -ne $stockBarScope -and $null -ne $stockBarScope.stock_like_missing_as_of_bar) {
+        $stockBarMissing = [int]$stockBarScope.stock_like_missing_as_of_bar
+    }
+    $stockCoverageArea = $(if ($stockBarMissing -gt 0) { "market_bars" } elseif ($stockCoverageStep.source) { [string]$stockCoverageStep.source } else { [string]$stockCoverageStep.area })
     Write-Output (
         "Stock priced-in scan: status={0}; ranked={1}; scanned={2}; decision_ready={3}; external_calls={4}" -f
         $pricedInStockAudit.status,
@@ -413,15 +497,24 @@ if ($null -ne $stockScope) {
         )
     }
     if ($null -ne $stockCoverageStep) {
+        if ($stockBarMissing -gt 0 -and $null -ne $stockBarScope) {
+            $coverageFinding = "stock-like bars {0}/{1}; missing={2}" -f $stockBarScope.stock_like_with_as_of_bar, $stockBarScope.stock_like_active, $stockBarMissing
+            $coverageAction = $stockBarScope.next_action
+        }
+        else {
+            $coverageFinding = $(if ($stockCoverageStep.why) { $stockCoverageStep.why } elseif ($null -ne $stockCoverageStep.gap_count) { "gap rows={0}" -f $stockCoverageStep.gap_count } else { "needs attention" })
+            $coverageAction = $(if ($stockCoverageStep.next_action) { $stockCoverageStep.next_action } else { $stockCoverageStep.action })
+        }
         Write-Output (
             "- stock coverage-first gap: {0}; {1} Next: {2}" -f
-            $stockCoverageStep.area,
-            $stockCoverageStep.why,
-            $stockCoverageStep.action
+            $stockCoverageArea,
+            $coverageFinding,
+            $coverageAction
         )
     }
-    if ($null -ne $stockCoverageStep -and $stockCoverageStep.command) {
-        Write-Output ("- stock coverage command: {0}" -f $stockCoverageStep.command)
+    $stockCoverageCommand = $(if ($stockBarMissing -gt 0 -and $null -ne $stockBarScope -and $stockBarScope.manual_template_command) { $stockBarScope.manual_template_command } elseif ($null -ne $stockCoverageStep) { $stockCoverageStep.command } else { $null })
+    if ($stockCoverageCommand) {
+        Write-Output ("- stock coverage command: {0}" -f $stockCoverageCommand)
     }
     $coverageDiagnostic = $null
     $coverageFirstBatch = $null
@@ -438,7 +531,7 @@ if ($null -ne $stockScope) {
             $coverageNextCalls = $coverageFirstBatch.external_calls_required
         }
         Write-Output (
-            "- stock coverage SEC plan: eligible={0}; blocked={1}; next_calls={2}; blocked_reason={3}" -f
+            "- stock coverage batch plan: eligible={0}; blocked={1}; next_calls={2}; blocked_reason={3}" -f
             $coverageDiagnostic.eligible_rows,
             $coverageDiagnostic.blocked_rows,
             $coverageNextCalls,
@@ -446,22 +539,60 @@ if ($null -ne $stockScope) {
         )
     }
     if ($null -ne $coverageDiagnostic -and $coverageDiagnostic.sample_blocked_tickers) {
-        Write-Output (
-            "- stock coverage missing CIK: {0}" -f
-            ((@($coverageDiagnostic.sample_blocked_tickers) | Select-Object -First 12) -join ", ")
-        )
+        $blockedTickers = ((@($coverageDiagnostic.sample_blocked_tickers) | Select-Object -First 12) -join ", ")
+        if ($stockCoverageArea -eq "market_bars") {
+            Write-Output ("- stock coverage missing bars: {0}" -f $blockedTickers)
+        }
+        elseif ($stockCoverageArea -eq "catalyst_events") {
+            Write-Output ("- stock coverage missing CIK: {0}" -f $blockedTickers)
+        }
+        else {
+            Write-Output ("- stock coverage blocked tickers: {0}" -f $blockedTickers)
+        }
     }
     if ($null -ne $coverageDiagnostic -and $coverageDiagnostic.manual_template_command) {
-        Write-Output ("- stock CIK template: {0}" -f $coverageDiagnostic.manual_template_command)
+        if ($stockCoverageArea -eq "market_bars") {
+            Write-Output ("- stock bar template: {0}" -f $coverageDiagnostic.manual_template_command)
+        }
+        elseif ($stockCoverageArea -eq "catalyst_events") {
+            Write-Output ("- stock CIK template: {0}" -f $coverageDiagnostic.manual_template_command)
+        }
+        else {
+            Write-Output ("- stock coverage template: {0}" -f $coverageDiagnostic.manual_template_command)
+        }
     }
     if ($null -ne $coverageDiagnostic -and $coverageDiagnostic.manual_validate_command) {
-        Write-Output ("- stock CIK validate: {0}" -f $coverageDiagnostic.manual_validate_command)
+        if ($stockCoverageArea -eq "market_bars") {
+            Write-Output ("- stock bar validate: {0}" -f $coverageDiagnostic.manual_validate_command)
+        }
+        elseif ($stockCoverageArea -eq "catalyst_events") {
+            Write-Output ("- stock CIK validate: {0}" -f $coverageDiagnostic.manual_validate_command)
+        }
+        else {
+            Write-Output ("- stock coverage validate: {0}" -f $coverageDiagnostic.manual_validate_command)
+        }
     }
     if ($null -ne $coverageDiagnostic -and $coverageDiagnostic.manual_fix_command) {
-        Write-Output ("- stock CIK import: {0}" -f $coverageDiagnostic.manual_fix_command)
+        if ($stockCoverageArea -eq "market_bars") {
+            Write-Output ("- stock bar import: {0}" -f $coverageDiagnostic.manual_fix_command)
+        }
+        elseif ($stockCoverageArea -eq "catalyst_events") {
+            Write-Output ("- stock CIK import: {0}" -f $coverageDiagnostic.manual_fix_command)
+        }
+        else {
+            Write-Output ("- stock coverage import: {0}" -f $coverageDiagnostic.manual_fix_command)
+        }
     }
     if ($null -ne $coverageDiagnostic -and $coverageDiagnostic.fix_command) {
-        Write-Output ("- stock CIK refresh: {0}" -f $coverageDiagnostic.fix_command)
+        if ($stockCoverageArea -eq "market_bars") {
+            Write-Output ("- stock bar refresh: {0}" -f $coverageDiagnostic.fix_command)
+        }
+        elseif ($stockCoverageArea -eq "catalyst_events") {
+            Write-Output ("- stock CIK refresh: {0}" -f $coverageDiagnostic.fix_command)
+        }
+        else {
+            Write-Output ("- stock coverage refresh: {0}" -f $coverageDiagnostic.fix_command)
+        }
     }
     if ($null -ne $stockRecommendedSource) {
         Write-Output (

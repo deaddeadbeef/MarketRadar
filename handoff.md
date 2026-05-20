@@ -1,6 +1,82 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 11:31:30 +08:00
+Last updated: 2026-05-20 12:05:10 +08:00
+
+## Latest Stock-Market Next Action Status
+
+Goal alignment:
+
+- The product goal is to find stocks where price has not matched market
+  expectations. The all-instrument scan is still useful, but it mixes common
+  stocks/ADRs with funds, preferreds, units, rights, and warrants.
+- Live state shows two separate repair scopes:
+  - full active universe: `12090/12613` bars, `523` missing;
+  - stock-like universe: `5521/5652` bars, `131` missing.
+- The stock-like gap is the next sharper blocker for the "any stock" question.
+  This slice makes that path visible in the quick status script and TUI without
+  hiding the broader all-instrument blocker.
+- This makes 0 Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or provider
+  calls.
+
+Fix in this slice:
+
+- `priced-in` market-bar stock-scope payloads now include explicit manual
+  template, preview, and execute commands for stock-like bar repair.
+- Overview/Ops TUI now show `Stock bar next: ...` when common-stock/ADR bars
+  are missing, so the dashboard tells the operator the stock-first blocker
+  separately from the all-instrument blocker.
+- `scripts\market-radar-status.ps1 -Quick` now prints:
+  - `Stock-market next: bars=5521/5652; missing=131; ...`
+  - `stock strict next action: ...`
+  - `stock local template fill progress: complete=0; partial=0; empty=131`
+  - `stock provider option: ... health=down`
+- Full status wording no longer prints market-bar repair commands as `stock CIK`
+  commands. Market-bar repair rows now use `stock bar template/validate/import`
+  labels; CIK wording remains reserved for actual SEC CIK repair.
+
+Live zero-call observation from the quick path:
+
+```text
+Stock-market next: bars=5521/5652; missing=131; command=catalyst-radar market-bars template --expected-as-of 2026-05-15 --out data\local\manual-stock-bars-2026-05-15.csv --missing-only --stocks-only
+- stock strict next action: status=manual_fill_required; manual=True; external_calls=0; action=Fill at least one complete OHLCV/VWAP row in data\local\manual-stock-bars-2026-05-15.csv; blank rows can wait.; command=manual; after_manual=catalyst-radar market-bars import --daily-bars data\local\manual-stock-bars-2026-05-15.csv --expected-as-of 2026-05-15 --stocks-only --complete-rows-only
+- stock local template fill progress: complete=0; partial=0; empty=131; filled=0
+- stock provider option: status=blocked_by_provider_health; health=down; external_calls=1; command=catalyst-radar ingest-polygon grouped-daily --date 2026-05-15 --confirm-external-call
+External calls made: 0
+```
+
+Live zero-call TUI observation:
+
+```text
+Stock bar next: 5521/5652 stock-like rows have scan-date bars; 131 missing; next Fill stock-like missing as-of bars ...
+```
+
+Validation run in this slice so far:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_local_scripts.py::test_market_radar_status_script_is_zero_external_call_sitrep tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_manual_bar_fill_progress_summary_is_human_readable tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_reports_stock_only_bar_coverage -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_dashboard_data.py tests\integration\test_local_scripts.py
+powershell -NoProfile -Command '& { $null = [scriptblock]::Create((Get-Content -Raw .\scripts\market-radar-status.ps1)); "powershell syntax ok" }'
+git diff --check
+powershell -ExecutionPolicy Bypass -File .\scripts\market-radar-status.ps1 -Quick
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page overview
+```
+
+Results so far:
+
+- Focused pytest passed.
+- Ruff passed.
+- PowerShell syntax parse passed.
+- `git diff --check` passed.
+- Quick status and TUI observations made 0 external calls.
+
+Next useful product action:
+
+- Fill/import the 131-row stock-like manual bar template first if the immediate
+  goal is answering the "any stock" priced-in question.
+- Continue tracking the remaining 392 non-stock missing bars separately for the
+  broader all-instrument scan.
+- Do not run the Polygon/Massive grouped-daily provider command without explicit
+  operator approval; stored provider health is still `down`.
 
 ## Latest Provider-Health-Aware Market-Bar Fill
 

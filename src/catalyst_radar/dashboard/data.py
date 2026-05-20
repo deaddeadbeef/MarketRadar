@@ -4094,6 +4094,21 @@ def _priced_in_market_bar_stock_scope(
             "Fill stock-like missing as-of bars first; they are required before "
             "the system can claim a complete stocks-only priced-in answer."
         )
+    manual_template_command = _csv_market_template_command(
+        target_as_of,
+        missing_only=True,
+        stocks_only=True,
+    )
+    manual_import_preview_command = _csv_market_refresh_command(
+        target_as_of,
+        execute=False,
+        stocks_only=True,
+    )
+    manual_import_execute_command = _csv_market_refresh_command(
+        target_as_of,
+        execute=True,
+        stocks_only=True,
+    )
 
     return {
         "schema_version": "priced-in-market-bar-stock-scope-v1",
@@ -4116,6 +4131,9 @@ def _priced_in_market_bar_stock_scope(
         "external_calls_made": 0,
         "answer_boundary": answer_boundary,
         "next_action": next_action,
+        "manual_template_command": manual_template_command,
+        "manual_import_preview_command": manual_import_preview_command,
+        "manual_import_execute_command": manual_import_execute_command,
     }
 
 
