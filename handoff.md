@@ -1,6 +1,81 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 09:34:02 +08:00
+Last updated: 2026-05-20 09:42:54 +08:00
+
+## Latest Full-Market Missing-Bar Type Breakdown
+
+Goal alignment:
+
+- The active goal is still the full-market priced-in scan. The current blocker
+  is not dashboard layout or new source enrichment; it is incomplete scan-date
+  market bars for the active universe.
+- The prior slice proved that all 523 missing full-market bars have no exact
+  local daily-bar history. This slice makes the blocker easier to understand
+  by showing which instrument types those 523 rows belong to.
+- This is useful because "full scan" now has an operational shape: the missing
+  rows are mostly units, warrants, common stocks, and rights. The system should
+  not silently narrow the scan, but the operator can now see what the full scan
+  still needs.
+- This makes 0 Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or provider
+  calls.
+
+Fix in this slice:
+
+- `manual_market_bars_repair_plan(...)` now includes
+  `missing_security_type_counts` in the repair-plan payload.
+- The text CLI prints `missing_security_types=...`.
+- `scripts\market-radar-status.ps1 -Quick` prints
+  `- missing security types: ...`.
+- The API route inherits the same payload through
+  `POST /api/radar/market-bars/repair-plan`.
+- Tests cover CLI payload/output, API payload, and quick-status script text.
+
+Live zero-call observation:
+
+```text
+manual_market_bars_repair_plan status=attention scope=active_universe expected_as_of=2026-05-15 active=12613 existing=12090 missing=523 external_calls=0
+missing_security_types=ADRC:8,CS:123,ETF:1,ETV:1,FUND:2,PFD:14,RIGHT:47,SP:6,UNIT:176,WARRANT:145
+local_bar_history=missing_with_history=0 missing_without_history=523
+provider_option=status=ready_for_approval external_calls=1 key_configured=true command=catalyst-radar ingest-polygon grouped-daily --date 2026-05-15 --confirm-external-call
+```
+
+Quick status observation:
+
+```text
+Full-market next: bars=12090/12613; missing=523; command=catalyst-radar market-bars template --expected-as-of 2026-05-15 --out data\local\manual-bars-2026-05-15.csv --missing-only
+- local bar history: missing_with_history=0; missing_without_history=523
+- missing security types: ADRC=8, CS=123, ETF=1, ETV=1, FUND=2, PFD=14, RIGHT=47, SP=6, UNIT=176, WARRANT=145
+External calls made: 0
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_provider_ingest_cli.py::test_market_bars_repair_plan_previews_existing_local_template tests\integration\test_provider_ingest_cli.py::test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths tests\integration\test_local_scripts.py::test_market_radar_status_script_is_zero_external_call_sitrep tests\integration\test_api_routes.py::test_post_radar_market_bars_template_and_import_can_scope_to_stocks -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\market\manual_bars.py src\catalyst_radar\cli.py tests\integration\test_provider_ingest_cli.py tests\integration\test_local_scripts.py tests\integration\test_api_routes.py
+powershell -NoProfile -Command '& { $null = [scriptblock]::Create((Get-Content -Raw .\scripts\market-radar-status.ps1)); "powershell syntax ok" }'
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli market-bars repair-plan --expected-as-of 2026-05-15
+.\.venv\Scripts\python.exe -m catalyst_radar.cli market-bars repair-plan --expected-as-of 2026-05-15 --json
+powershell -ExecutionPolicy Bypass -File .\scripts\market-radar-status.ps1 -Quick
+```
+
+Results:
+
+- Focused pytest passed.
+- Ruff passed.
+- PowerShell syntax parse passed.
+- `git diff --check` passed.
+- Repair-plan text, repair-plan JSON, and quick status all reported
+  `external_calls=0` and the same missing security-type breakdown.
+
+Next useful product action after merge:
+
+- The blocker is now transparent but unchanged: to complete the full-market
+  priced-in scan, fill/import `data\local\manual-bars-2026-05-15.csv` with real
+  OHLCV/VWAP values, or explicitly approve the one-call Polygon/Massive grouped
+  daily fill.
+- Do not run the provider command without explicit user approval.
 
 ## Latest Drift Check And Local Bar History Diagnostic
 

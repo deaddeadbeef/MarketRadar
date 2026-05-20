@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import csv
 import math
+from collections import Counter
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -195,6 +197,7 @@ class ManualBarsRepairPlanResult:
     active_security_count: int
     existing_as_of_bar_count: int
     missing_as_of_bar_tickers: tuple[str, ...]
+    missing_security_type_counts: tuple[tuple[str, int], ...]
     missing_with_local_history_tickers: tuple[str, ...]
     missing_without_local_history_tickers: tuple[str, ...]
     stocks_only: bool
@@ -260,6 +263,10 @@ class ManualBarsRepairPlanResult:
                 0,
                 missing - len(missing_sample),
             ),
+            "missing_security_type_counts": {
+                security_type: count
+                for security_type, count in self.missing_security_type_counts
+            },
             "missing_with_local_history_count": len(
                 self.missing_with_local_history_tickers
             ),
@@ -410,8 +417,14 @@ def manual_market_bars_repair_plan(
         msg = "cannot build manual market-bar repair plan: no matching active securities"
         raise ValueError(msg)
     active_tickers = {ticker for ticker, _security_type in scoped_rows}
+    security_type_by_ticker = {
+        ticker: security_type for ticker, security_type in scoped_rows
+    }
     existing = _bar_tickers_for_date(engine, expected_as_of)
     missing = tuple(sorted(active_tickers - existing))
+    missing_security_type_counts = _security_type_counts(
+        security_type_by_ticker.get(ticker, "") for ticker in missing
+    )
     tickers_with_history = _bar_tickers_with_any_history(engine)
     missing_with_history = tuple(
         ticker for ticker in missing if ticker in tickers_with_history
@@ -448,6 +461,7 @@ def manual_market_bars_repair_plan(
         active_security_count=len(active_tickers),
         existing_as_of_bar_count=len(existing & active_tickers),
         missing_as_of_bar_tickers=missing,
+        missing_security_type_counts=missing_security_type_counts,
         missing_with_local_history_tickers=missing_with_history,
         missing_without_local_history_tickers=missing_without_history,
         stocks_only=stocks_only,
@@ -654,6 +668,17 @@ def _manual_bar_security_type_priority(security_type: str) -> int:
 
 def _manual_bar_is_stock_like(security_type: str) -> bool:
     return str(security_type or "").strip().upper() in MANUAL_BAR_COMPANY_LIKE_TYPES
+
+
+def _security_type_counts(
+    security_types: Iterable[object],
+) -> tuple[tuple[str, int], ...]:
+    counts = Counter(_normalized_security_type(item) for item in security_types)
+    return tuple(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
+
+
+def _normalized_security_type(security_type: object) -> str:
+    return str(security_type or "").strip().upper() or "UNKNOWN"
 
 
 def _bar_tickers_for_date(engine: Engine, as_of_date: date) -> set[str]:

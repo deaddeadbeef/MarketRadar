@@ -186,6 +186,7 @@ def test_market_radar_status_script_is_zero_external_call_sitrep() -> None:
     assert "Format-FieldCountSummary" in text
     assert "local bar history:" in text
     assert "missing without local history:" in text
+    assert "missing security types:" in text
     assert "/api/radar/priced-in/audit?stocks_only=true&limit=1" in text
     assert "[int]$TimeoutSeconds = 15" in text
     assert "-TimeoutSeconds 90" in text

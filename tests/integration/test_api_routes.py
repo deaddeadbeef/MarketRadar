@@ -1958,6 +1958,7 @@ def test_post_radar_market_bars_template_and_import_can_scope_to_stocks(
     assert repair_payload["active_security_count"] == 2
     assert repair_payload["existing_as_of_bar_count"] == 1
     assert repair_payload["missing_as_of_bar_count"] == 1
+    assert repair_payload["missing_security_type_counts"] == {"ADRC": 1}
     assert repair_payload["manual_template_command"].endswith(
         "--missing-only --stocks-only"
     )

@@ -3724,6 +3724,9 @@ def _print_manual_market_bars_repair_plan(payload: Mapping[str, object]) -> None
             + ",".join(str(ticker) for ticker in sample)
             + suffix
         )
+    type_counts = payload.get("missing_security_type_counts")
+    if isinstance(type_counts, Mapping) and type_counts:
+        print(f"missing_security_types={_count_summary(type_counts)}")
     print(f"manual_template={payload.get('manual_template_command')}")
     print(f"preview_import={payload.get('manual_import_preview_command')}")
     print(f"execute_import={payload.get('manual_import_execute_command')}")
