@@ -1,6 +1,64 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 18:17:24 +08:00
+Last updated: 2026-05-20 18:24:34 +08:00
+
+## Latest Dashboard Full-Scan Source Data Fix
+
+Goal alignment / drift check:
+
+- The active goal remains: scan the broad market and tell whether any stock's
+  price has not yet matched market emotion/expectations.
+- The previous source-scope wording fix exposed a real data-flow bug: the TUI
+  dashboard passed the latest visible `candidate_rows` into
+  `priced_in_queue_payload`, so source coverage on Run/Ops could still be
+  computed from a subset such as `90` visible rows instead of the database scan
+  universe. That made values like `catalyst_events 9/90 (81 missing)` appear
+  where the full stocks-only source workflow should show the much larger
+  full-scan gap.
+- This slice fixes the dashboard data flow. It does not execute providers,
+  change scoring, change source semantics, change agents, change Schwab,
+  change Polygon/Massive, or enable orders.
+- It makes 0 Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or provider
+  calls.
+
+Fix in this slice:
+
+- Removed the `candidate_rows=candidate_rows` override from the TUI
+  `priced_in_queue_payload(...)` call inside `dashboard_snapshot_payload`.
+- The TUI still uses `candidate_rows` for general command-center rows,
+  readiness, actionability, and operator queues.
+- The priced-in queue/answer/audit now load their scan rows from the database
+  using the same scan-selection path as the CLI priced-in commands, so source
+  coverage is no longer limited by the visible candidate list.
+- Added a regression test that monkeypatches `priced_in_queue_payload` during
+  `dashboard_snapshot_payload(...)` and asserts the dashboard does not pass
+  `candidate_rows`, and that the resulting scan selection mode is not
+  `supplied_rows`.
+
+Validation run in this slice:
+
+```powershell
+..\..\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py
+..\..\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_snapshot_priced_in_queue_loads_scan_rows_from_database tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_tui_once_can_show_full_scan_mode tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_run_page_shows_priced_in_evidence_plan tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_snapshot_ops_page_shows_priced_in_source_actions tests\integration\test_dashboard_demo_seed_cli.py::test_modern_dashboard_tui_supports_mouse_navigation -q
+```
+
+Results:
+
+- Ruff passed.
+- Focused dashboard/TUI regression tests passed: `5 passed`.
+
+Next useful product action:
+
+- After merge, restart local services and rerun Run/Ops TUI smokes from the
+  primary checkout. Confirm that the dashboard's full-scan/source-workflow
+  numbers are no longer capped to a visible page.
+- Do not treat this as goal completion. The data blocker remains
+  `market_bars`: current status before this slice was `131` missing stock-like
+  scan-date bars and `523` all-instrument missing bars.
+- After market bars are repaired, continue with `catalyst_events`, then
+  `local_text`.
+- Do not run live provider/source-fill execution commands without explicit
+  operator approval.
 
 ## Latest Dashboard Source-Scope Drift Correction
 
