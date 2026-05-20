@@ -33,6 +33,7 @@ from catalyst_radar.dashboard.tui import (
     _market_bar_manual_fill_progress_summary,
     _market_bar_missing_type_summary,
     _market_bar_operator_step_summary,
+    _market_bar_provider_fill_summary,
     _priced_in_overview_rows,
     _priced_in_review_rows,
     _priced_in_source_workflow_payload,
@@ -1014,6 +1015,20 @@ def test_dashboard_manual_bar_fill_progress_summary_is_human_readable() -> None:
                             "2026-05-15 --complete-rows-only"
                         ),
                     },
+                    "provider_fill_plan": {
+                        "status": "ready_for_approval_with_health_warning",
+                        "provider_label": "Polygon/Massive grouped daily",
+                        "execute_external_call_count": 1,
+                        "external_calls_made": 0,
+                        "provider_health_warning": (
+                            "Stored Polygon/Massive health is a stale same-day "
+                            "EOD denial; the target date is historical."
+                        ),
+                        "provider_call_command": (
+                            "catalyst-radar ingest-polygon grouped-daily "
+                            "--date 2026-05-15 --confirm-external-call"
+                        ),
+                    },
                     "local_template_preview": {
                         "status": "invalid",
                         "row_count": 523,
@@ -1036,6 +1051,9 @@ def test_dashboard_manual_bar_fill_progress_summary_is_human_readable() -> None:
     assert _market_bar_operator_step_summary(payload).startswith(
         "Finish or clear partial OHLCV/VWAP rows"
     )
+    assert _market_bar_provider_fill_summary(payload).startswith(
+        "ready_for_approval_with_health_warning; 1 external call(s)"
+    )
     assert _stock_market_bar_next_summary(payload).startswith(
         "5521/5652 stock-like rows have scan-date bars; 131 missing"
     )
@@ -1045,6 +1063,8 @@ def test_dashboard_manual_bar_fill_progress_summary_is_human_readable() -> None:
     assert "Stock bar next: 5521/5652 stock-like rows have scan-date bars" in ops
     assert "Regenerate the blank local CSV so it includes name" in overview
     assert "Regenerate the blank local CSV so it includes name" in ops
+    assert "Provider fill: ready_for_approval_with_health_warning" in overview
+    assert "Provider fill: ready_for_approval_with_health_warning" in ops
     assert "Manual CSV progress: 12/523 complete; 3 partial; 508 empty" in overview
     assert "Manual CSV progress: 12/523 complete; 3 partial; 508 empty" in ops
     assert "Market bar next: Finish or clear partial OHLCV/VWAP rows" in overview
