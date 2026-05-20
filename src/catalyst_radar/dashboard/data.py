@@ -42,7 +42,10 @@ from catalyst_radar.jobs.step_outcomes import (
     classify_step_outcome,
 )
 from catalyst_radar.jobs.tasks import DAILY_STEP_ORDER
-from catalyst_radar.market.manual_bars import MANUAL_BAR_REQUIRED_FILL_FIELDS
+from catalyst_radar.market.manual_bars import (
+    MANUAL_BAR_REQUIRED_FILL_FIELDS,
+    manual_market_bars_repair_plan,
+)
 from catalyst_radar.scoring.priced_in import evaluate_priced_in
 from catalyst_radar.security.redaction import redact_text
 from catalyst_radar.storage.broker_repositories import BrokerRepository
@@ -3891,6 +3894,32 @@ def _priced_in_audit_market_bar_repair(
         target_as_of=target_as_of,
         missing=effective_missing,
     )
+    manual_repair_plan: dict[str, object] = {}
+    if target_as_of is not None:
+        try:
+            manual_repair_plan = manual_market_bars_repair_plan(
+                engine,
+                expected_as_of=target_as_of,
+                stocks_only=stocks_only,
+                provider_key_configured=config.polygon_api_key_configured,
+            ).as_payload()
+        except ValueError as exc:
+            manual_repair_plan = {
+                "schema_version": "manual-market-bars-repair-plan-v1",
+                "status": "invalid",
+                "expected_as_of": target_as_of.isoformat(),
+                "stocks_only": stocks_only,
+                "error": str(exc),
+                "external_calls_made": 0,
+            }
+    local_template_preview = _mapping_value(
+        manual_repair_plan,
+        "local_template_preview",
+    )
+    local_template_fill_progress = _mapping_value(
+        local_template_preview,
+        "fill_progress",
+    )
     status = (
         "ready"
         if effective_missing <= 0
@@ -3937,6 +3966,12 @@ def _priced_in_audit_market_bar_repair(
         if effective_missing > 0
         else {},
         "template_row_count": effective_missing,
+        "local_template_path": manual_repair_plan.get("local_template_path"),
+        "local_template_exists": bool(manual_repair_plan.get("local_template_exists")),
+        "local_template_preview": (
+            _row_dict(local_template_preview) if local_template_preview else None
+        ),
+        "local_template_fill_progress": _row_dict(local_template_fill_progress),
         "template_api": "POST /api/radar/market-bars/template",
         "import_api": "POST /api/radar/market-bars/import",
         "diagnostic": diagnostic,
@@ -5881,6 +5916,7 @@ def _priced_in_source_coverage_with_market_bar_scope(
         return updated
 
     provider_fill_plan = _mapping_value(repair, "provider_fill_plan")
+    local_template_preview = _mapping_value(repair, "local_template_preview")
     source_rows = {
         str(source): _row_dict(values)
         for source, values in _mapping_value(updated, "sources").items()
@@ -5911,6 +5947,10 @@ def _priced_in_source_coverage_with_market_bar_scope(
             "provider_fill_status": provider_fill_plan.get("status"),
             "provider_fill_external_call_count": provider_fill_plan.get(
                 "execute_external_call_count"
+            ),
+            "local_template_status": local_template_preview.get("status"),
+            "local_template_fill_progress": _row_dict(
+                _mapping_value(repair, "local_template_fill_progress")
             ),
         }
     )

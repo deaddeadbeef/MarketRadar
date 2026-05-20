@@ -1,6 +1,72 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 10:22:09 +08:00
+Last updated: 2026-05-20 10:43:20 +08:00
+
+## Latest Dashboard Manual CSV Progress
+
+Goal alignment:
+
+- The active full-market priced-in blocker is still the 523 missing scan-date
+  OHLCV/VWAP rows in `data\local\manual-bars-2026-05-15.csv`.
+- The previous slice exposed fill progress in CLI/API/status. This slice makes
+  the same progress visible in the human dashboard and the priced-in audit CLI,
+  so the operator can tell whether manual data repair is moving.
+- This makes 0 Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or provider
+  calls.
+
+Fix in this slice:
+
+- `priced_in_full_scan_audit_payload(...)` now carries the local manual template
+  preview and `local_template_fill_progress` into
+  `market_bars.repair`.
+- `priced-in-audit` text output prints
+  `local_template_fill_progress=complete=... partial=... empty=... filled=...`.
+- The TUI Overview and Ops pages render a compact
+  `Manual CSV progress:` line next to the missing-bar blocker.
+- Tests cover the audit payload and the TUI helper/rendered line.
+
+Live zero-call observation:
+
+```text
+Page: overview | View: Full scan | Answer: attention ready=false | Trade status: research only | Trade safe: False | External calls made: 0
+Manual CSV progress: 0/523 complete; 0 partial; 523 empty; 0 touched; preview invalid; file data\local\manual-bars-2...
+```
+
+```text
+Page: ops | View: Full scan | Answer: attention ready=false | Trade status: research only | Trade safe: False | External calls made: 0
+Manual CSV progress: 0/523 complete; 0 partial; 523 empty; 0 touched; preview invalid; file data\local\manual-bars-2...
+```
+
+```text
+local_template_fill_progress=complete=0 partial=0 empty=523 filled=0 status=invalid
+external_calls=0
+```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_full_scan_audit_reports_local_manual_template_progress tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_manual_bar_fill_progress_summary_is_human_readable tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_tui_once_can_show_full_scan_mode tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_market_bar_missing_type_summary_is_human_readable -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --scan-mode all --page overview
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page ops
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-audit
+```
+
+Results:
+
+- Focused pytest passed.
+- Ruff passed.
+- `git diff --check` passed.
+- Live Overview, Ops, and audit CLI all reported 0 external calls and showed
+  the local manual CSV fill progress as `complete=0 partial=0 empty=523`.
+
+Next useful product action:
+
+- The dashboard now makes the manual repair status obvious, but the full-market
+  priced-in answer remains blocked.
+- Fill/import `data\local\manual-bars-2026-05-15.csv`, or get explicit approval
+  before using the one-call Polygon/Massive grouped-daily fill.
 
 ## Latest Manual CSV Fill Progress
 

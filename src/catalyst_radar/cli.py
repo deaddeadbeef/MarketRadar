@@ -4740,6 +4740,20 @@ def _print_priced_in_audit(payload: Mapping[str, object]) -> None:
                 "  execute_import="
                 f"{_compact_cli_text(repair.get('import_execute_command'))}"
             )
+        local_preview = repair.get("local_template_preview")
+        if isinstance(local_preview, Mapping):
+            fill_progress = repair.get("local_template_fill_progress")
+            if not isinstance(fill_progress, Mapping):
+                fill_progress = local_preview.get("fill_progress")
+            if isinstance(fill_progress, Mapping):
+                print(
+                    "  local_template_fill_progress="
+                    f"complete={_int_value(fill_progress.get('complete_rows'))} "
+                    f"partial={_int_value(fill_progress.get('partial_rows'))} "
+                    f"empty={_int_value(fill_progress.get('empty_rows'))} "
+                    f"filled={_int_value(fill_progress.get('filled_rows'))} "
+                    f"status={local_preview.get('status')}"
+                )
         if repair.get("write_boundary"):
             print(f"  boundary={_compact_cli_text(repair.get('write_boundary'))}")
         diagnostic = repair.get("diagnostic")

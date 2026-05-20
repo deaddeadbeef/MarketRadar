@@ -3803,6 +3803,12 @@ def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
         lines.append(
             f"Missing bar types: {_clip(missing_type_summary, max(20, width - 19))}"
         )
+    manual_progress_summary = _market_bar_manual_fill_progress_summary(payload)
+    if manual_progress_summary:
+        lines.append(
+            "Manual CSV progress: "
+            f"{_clip(manual_progress_summary, max(20, width - 22))}"
+        )
     instrument_summary = _full_scan_instrument_scope_summary(payload)
     if instrument_summary:
         lines.append(f"Instrument scope: {instrument_summary}")
@@ -4062,6 +4068,41 @@ def _market_bar_missing_type_summary(payload: Mapping[str, object]) -> str:
         f"wrappers {wrappers}; unknown {unknown}"
     )
     return f"{missing} missing scan-date bars; types {', '.join(pieces)}; {route}"
+
+
+def _market_bar_manual_fill_progress_summary(payload: Mapping[str, object]) -> str:
+    audit = _mapping(payload.get("priced_in_audit"))
+    market = _mapping(audit.get("market_bars"))
+    repair = _mapping(market.get("repair"))
+    preview = _mapping(repair.get("local_template_preview"))
+    progress = _mapping(repair.get("local_template_fill_progress"))
+    if not progress:
+        progress = _mapping(preview.get("fill_progress"))
+    if not progress:
+        return ""
+
+    complete = int(_number_or_zero(progress.get("complete_rows")))
+    partial = int(_number_or_zero(progress.get("partial_rows")))
+    empty = int(_number_or_zero(progress.get("empty_rows")))
+    filled = int(_number_or_zero(progress.get("filled_rows")))
+    row_count = int(
+        _number_or_zero(
+            _first_value(preview.get("row_count"), repair.get("template_row_count"))
+        )
+    )
+    total = row_count if row_count > 0 else complete + partial + empty
+    if total <= 0:
+        return ""
+
+    status = str(preview.get("status") or "not_previewed").strip()
+    path = str(
+        repair.get("local_template_path") or preview.get("daily_bars_path") or ""
+    ).strip()
+    path_text = f"; file {path}" if path else ""
+    return (
+        f"{complete}/{total} complete; {partial} partial; {empty} empty; "
+        f"{filled} touched; preview {status}{path_text}"
+    )
 
 
 def _decision_readiness_summary(payload: Mapping[str, object]) -> str:
@@ -5672,6 +5713,12 @@ def _ops_lines(payload: Mapping[str, object], width: int) -> list[str]:
     if missing_type_summary:
         lines.append(
             f"Missing bar types: {_clip(missing_type_summary, max(20, width - 19))}"
+        )
+    manual_progress_summary = _market_bar_manual_fill_progress_summary(payload)
+    if manual_progress_summary:
+        lines.append(
+            "Manual CSV progress: "
+            f"{_clip(manual_progress_summary, max(20, width - 22))}"
         )
     source_actions = [
         {
