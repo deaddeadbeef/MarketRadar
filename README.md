@@ -68,6 +68,7 @@ without `--universe`:
 
 ```powershell
 catalyst-radar priced-in-preflight
+catalyst-radar priced-in-preflight --stocks-only
 catalyst-radar ingest-polygon tickers --confirm-external-call
 catalyst-radar ingest-polygon grouped-daily --date <LATEST_TRADING_DATE> --confirm-external-call
 catalyst-radar run-daily --as-of <LATEST_TRADING_DATE> --available-at <UTC-now> --provider polygon --json
@@ -75,11 +76,13 @@ catalyst-radar run-daily --as-of <LATEST_TRADING_DATE> --available-at <UTC-now> 
 
 `priced-in-preflight` is zero-call. It explains why the current queue may only
 show a few tickers and returns the exact commands/API routes needed before the
-next scan can count as broad-market. In Polygon/Massive mode it also exposes
-the current `CATALYST_POLYGON_TICKERS_MAX_PAGES` cap, because one ticker page is
-not the whole market. When broad grouped-daily bars are already present, it
-estimates the ticker-reference page count from the latest daily-bar ticker
-count. If your Polygon/Massive plan is rate-limited, set
+next scan can count as broad-market. Use `--stocks-only` when you want the
+preflight blockers for the stock-like priced-in answer instead of funds,
+wrappers, rights, warrants, and other instruments. In Polygon/Massive mode it
+also exposes the current `CATALYST_POLYGON_TICKERS_MAX_PAGES` cap, because one
+ticker page is not the whole market. When broad grouped-daily bars are already
+present, it estimates the ticker-reference page count from the latest daily-bar
+ticker count. If your Polygon/Massive plan is rate-limited, set
 `CATALYST_POLYGON_TICKER_PAGE_DELAY_SECONDS` before running a multi-page ticker
 seed so pagination is paced deliberately.
 
@@ -288,6 +291,7 @@ renders:
 catalyst-radar dashboard-snapshot --json
 catalyst-radar dashboard-snapshot --ticker ACME --available-at 2026-05-10T21:06:00Z
 catalyst-radar priced-in-preflight --json
+catalyst-radar priced-in-preflight --stocks-only --json
 catalyst-radar priced-in-queue --json
 catalyst-radar agent-brief --json
 ```

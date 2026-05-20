@@ -716,6 +716,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     priced_in_preflight = subparsers.add_parser("priced-in-preflight")
     priced_in_preflight.add_argument("--database-url")
+    priced_in_preflight.add_argument(
+        "--stocks-only",
+        action="store_true",
+        help=(
+            "Check preflight blockers for the stock-like priced-in answer "
+            "(common stocks and ADRs) instead of all instruments."
+        ),
+    )
     priced_in_preflight.add_argument("--json", action="store_true")
 
     priced_in_answer = subparsers.add_parser("priced-in-answer")
@@ -1466,7 +1474,11 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "priced-in-preflight":
         create_schema(engine)
-        payload = priced_in_preflight_payload(engine, config)
+        payload = priced_in_preflight_payload(
+            engine,
+            config,
+            stocks_only=args.stocks_only,
+        )
         if args.json:
             print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
         else:

@@ -1,6 +1,71 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 19:01:01 +08:00
+Last updated: 2026-05-20 19:19:50 +08:00
+
+## Latest Stock-Scoped Priced-In Preflight
+
+Goal alignment / drift check:
+
+- The active goal remains: scan the broad market and tell whether any stock's
+  price has not yet matched market emotion/expectations.
+- We are still blocked by `market_bars`; the saved Polygon/Massive grouped
+  daily file is missing and both local manual templates have 0 complete rows.
+- During the latest audit, `priced-in-answer --stocks-only` correctly blocked
+  on the 131 stock-like missing bars, but `priced-in-preflight --stocks-only`
+  did not exist. That made the CLI/API preflight weaker than the answer gate
+  for the actual stock-scoped workflow.
+- This slice is zero-call and stays in CLI/API/dashboard data plumbing. It does
+  not call providers, import data, change scoring, exclude instruments, or
+  weaken readiness.
+
+Fix in this slice:
+
+- Added `catalyst-radar priced-in-preflight --stocks-only`.
+- Added `GET /api/radar/priced-in/preflight?stocks_only=true`.
+- `priced_in_preflight_payload(..., stocks_only=True)` now:
+  - marks the payload as `stocks_only` / `instrument_filter=stocks_only`;
+  - scopes source coverage to stock-like priced-in rows;
+  - includes stock-like market-bar counts in `scan_scope`;
+  - emits stock-only market-bar template/import commands;
+  - blocks when stock-like scan-date bars are missing, matching
+    `priced-in-answer --stocks-only`.
+- `priced_in_queue_payload(..., stocks_only=True)` now embeds a stock-scoped
+  preflight instead of an all-instrument preflight.
+- README now documents the stock-scoped preflight command.
+
+Validation run in this slice:
+
+```powershell
+..\..\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py src\catalyst_radar\api\routes\radar.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py tests\integration\test_api_routes.py
+..\..\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_preflight_cli_outputs_zero_call_plan tests\integration\test_dashboard_data.py::test_priced_in_preflight_payload_reports_exact_next_steps tests\integration\test_api_routes.py::test_get_radar_priced_in_preflight_returns_zero_call_steps -q
+$line = Select-String -LiteralPath ..\..\.env.local -Pattern '^CATALYST_DATABASE_URL=' | Select-Object -First 1; if ($line) { $env:CATALYST_DATABASE_URL = ($line.Line -replace '^CATALYST_DATABASE_URL=', '').Trim('"') }; $env:PYTHONPATH = "$PWD\src"; ..\..\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-preflight --stocks-only --json
+```
+
+Results:
+
+- Ruff passed.
+- Focused preflight CLI/API/data tests passed: `3 passed`.
+- Live DB-backed stock preflight made 0 provider calls and reported:
+  - `status=blocked`;
+  - `instrument_filter=stocks_only`;
+  - `market_bars.status=blocked`;
+  - stock-like bar coverage `5521/5652`;
+  - next action: generate/fill/import the stock-only DB-backed missing-bar
+    template, then rerun the stocks-only priced-in answer.
+
+Next useful product action:
+
+- Do not treat this as goal completion. It aligns preflight with the current
+  stock answer gate, but data is still missing.
+- Merge this slice, restart local services, and verify:
+  `catalyst-radar priced-in-preflight --stocks-only --json` on the primary
+  checkout reports the 131 missing stock-like bars with 0 external calls.
+- Then actually clear `market_bars`: approve one grouped-daily saved-response
+  capture or fill/import `data\local\manual-stock-bars-2026-05-15.csv`.
+- After bars are repaired, rerun priced-in preflight/answer and continue with
+  `catalyst_events`, then `local_text`.
+- Do not run live provider/source-fill execution commands without explicit
+  operator approval.
 
 ## Latest Saved-File Status Gate
 
