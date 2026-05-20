@@ -4439,6 +4439,54 @@ def _print_priced_in_source_diagnostic(
         command = diagnostic.get(key)
         if command:
             print(f"{indent}{label}={_compact_cli_text(command)}")
+    saved_file_status = diagnostic.get("provider_saved_file_status")
+    saved_file_path = diagnostic.get("provider_saved_file_path")
+    if saved_file_status or saved_file_path:
+        print(
+            f"{indent}provider_saved_file_status="
+            f"status={saved_file_status or 'unknown'} "
+            f"exists={str(bool(diagnostic.get('provider_saved_file_exists'))).lower()} "
+            f"path={_compact_cli_text(saved_file_path)}"
+        )
+    saved_file_next_action = diagnostic.get("provider_saved_file_next_action")
+    if saved_file_next_action:
+        print(
+            f"{indent}provider_saved_file_next="
+            f"{_compact_cli_text(saved_file_next_action)}"
+        )
+    saved_file_capture = diagnostic.get("provider_saved_file_capture_command")
+    if saved_file_capture:
+        capture_calls = _int_value(
+            diagnostic.get("provider_saved_file_capture_external_call_count")
+        )
+        print(
+            f"{indent}provider_saved_file_capture="
+            f"external_calls={capture_calls} "
+            f"command={_compact_cli_text(saved_file_capture)}"
+        )
+    saved_file_calls = _int_value(
+        diagnostic.get("provider_saved_file_external_call_count")
+    )
+    saved_file_validate = diagnostic.get("provider_saved_file_validate_command")
+    if saved_file_validate:
+        print(
+            f"{indent}provider_saved_file_validate="
+            f"external_calls={saved_file_calls} "
+            f"command={_compact_cli_text(saved_file_validate)}"
+        )
+    saved_file_import = diagnostic.get("provider_saved_file_import_command")
+    if saved_file_import:
+        print(
+            f"{indent}provider_saved_file_import="
+            f"external_calls={saved_file_calls} "
+            f"command={_compact_cli_text(saved_file_import)}"
+        )
+    saved_file_boundary = diagnostic.get("provider_saved_file_boundary")
+    if saved_file_boundary:
+        print(
+            f"{indent}provider_saved_file_boundary="
+            f"{_compact_cli_text(saved_file_boundary)}"
+        )
 
 
 def _print_priced_in_approval_checklist(
@@ -4639,6 +4687,54 @@ def _print_priced_in_source_batches(payload: Mapping[str, object]) -> None:
             print(
                 "diagnostic_manual_template_api="
                 f"{_compact_cli_text(manual_template_api)}"
+            )
+        saved_file_status = diagnostic.get("provider_saved_file_status")
+        saved_file_path = diagnostic.get("provider_saved_file_path")
+        if saved_file_status or saved_file_path:
+            print(
+                "diagnostic_provider_saved_file_status="
+                f"status={saved_file_status or 'unknown'} "
+                f"exists={str(bool(diagnostic.get('provider_saved_file_exists'))).lower()} "
+                f"path={_compact_cli_text(saved_file_path)}"
+            )
+        saved_file_next_action = diagnostic.get("provider_saved_file_next_action")
+        if saved_file_next_action:
+            print(
+                "diagnostic_provider_saved_file_next="
+                f"{_compact_cli_text(saved_file_next_action)}"
+            )
+        saved_file_capture = diagnostic.get("provider_saved_file_capture_command")
+        if saved_file_capture:
+            capture_calls = _int_value(
+                diagnostic.get("provider_saved_file_capture_external_call_count")
+            )
+            print(
+                "diagnostic_provider_saved_file_capture="
+                f"external_calls={capture_calls} "
+                f"command={_compact_cli_text(saved_file_capture)}"
+            )
+        saved_file_calls = _int_value(
+            diagnostic.get("provider_saved_file_external_call_count")
+        )
+        saved_file_validate = diagnostic.get("provider_saved_file_validate_command")
+        if saved_file_validate:
+            print(
+                "diagnostic_provider_saved_file_validate="
+                f"external_calls={saved_file_calls} "
+                f"command={_compact_cli_text(saved_file_validate)}"
+            )
+        saved_file_import = diagnostic.get("provider_saved_file_import_command")
+        if saved_file_import:
+            print(
+                "diagnostic_provider_saved_file_import="
+                f"external_calls={saved_file_calls} "
+                f"command={_compact_cli_text(saved_file_import)}"
+            )
+        saved_file_boundary = diagnostic.get("provider_saved_file_boundary")
+        if saved_file_boundary:
+            print(
+                "diagnostic_provider_saved_file_boundary="
+                f"{_compact_cli_text(saved_file_boundary)}"
             )
         fix_api = diagnostic.get("fix_api")
         if fix_api:
