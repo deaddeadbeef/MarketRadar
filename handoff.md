@@ -1,6 +1,56 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 09:15:46 +08:00
+Last updated: 2026-05-20 09:20:22 +08:00
+
+## Latest Quick Status Full-Market Repair Alignment
+
+Goal alignment:
+
+- After the repair-plan preview slice, `market-bars repair-plan` correctly
+  showed the full active-universe blocker.
+- `scripts\market-radar-status.ps1 -Quick` still used the stocks-only repair
+  plan for its fast detailed block. That was a goal-drift risk because the
+  default product goal is the full-market priced-in scan.
+- This slice changes quick status so the first detailed repair block is the
+  full active-universe market-bar repair path. Stocks-only details still remain
+  available in the fuller status/audit path.
+- This makes 0 Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or provider
+  calls.
+
+Fix in this slice:
+
+- The quick-status repair-plan command no longer passes `--stocks-only`.
+- Quick status now prefers `data\local\manual-bars-<date>.csv` for local
+  preview evidence, and falls back to the stock-only template only if the
+  full-market template is absent.
+- The quick heading changed from `Stock scan next:` to `Full-market next:`.
+
+Live zero-call observation:
+
+```text
+Market Radar quick status
+API: ok; build=c3aa11878577; version=0.1.0
+Full-market next: bars=12090/12613; missing=523; command=catalyst-radar market-bars template --expected-as-of 2026-05-15 --out data\local\manual-bars-2026-05-15.csv --missing-only
+Fast market-bar repair: status=attention; scope=active_universe; active=12613; existing=12090; missing=523; external_calls=0
+- local template preview: status=invalid; rows=523; invalid_rows=523; blank_required=3138; missing_after_import=0; external_calls=0
+- local template blank fields: close=523, high=523, low=523, open=523, volume=523, vwap=523
+External calls made: 0
+```
+
+Validation run in this slice:
+
+```powershell
+powershell -NoProfile -Command '& { $null = [scriptblock]::Create((Get-Content -Raw .\scripts\market-radar-status.ps1)); "powershell syntax ok" }'
+powershell -ExecutionPolicy Bypass -File .\scripts\market-radar-status.ps1 -Quick
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_local_scripts.py::test_market_radar_status_script_is_zero_external_call_sitrep -q
+```
+
+Next useful product action after merge:
+
+- The CLI status path now points to the same full-market blocker as
+  `priced-in-answer` and `market-bars repair-plan`.
+- The real blocker remains unchanged: fill the 523-row full-market template or
+  explicitly approve the one-call Polygon/Massive grouped-daily repair.
 
 ## Latest Manual Template Preview In Repair Plan
 

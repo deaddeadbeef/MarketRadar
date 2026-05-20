@@ -86,7 +86,6 @@ if ($readiness.radar_run.as_of) {
             "repair-plan",
             "--expected-as-of",
             $runAsOf,
-            "--stocks-only",
             "--json"
         )
         $repairResponse = & $pythonExe @repairArgs 2>$null
@@ -99,7 +98,7 @@ if ($readiness.radar_run.as_of) {
         $marketBarRepairPlan = [ordered]@{
             status = "error"
             expected_as_of = $runAsOf
-            stocks_only = $true
+            stocks_only = $false
             detail = $_.Exception.Message
             external_calls_made = 0
         }
@@ -108,7 +107,10 @@ if ($readiness.radar_run.as_of) {
     $manualAllBarsPath = "data\local\manual-bars-$runAsOf.csv"
     $manualBarsPath = $manualAllBarsPath
     $manualBarsStocksOnly = $false
-    if (Test-Path -LiteralPath $manualStockBarsPath) {
+    if (
+        -not (Test-Path -LiteralPath $manualAllBarsPath) -and
+        (Test-Path -LiteralPath $manualStockBarsPath)
+    ) {
         $manualBarsPath = $manualStockBarsPath
         $manualBarsStocksOnly = $true
     }
@@ -170,7 +172,7 @@ if ($Quick) {
     )
     if ($null -ne $marketBarRepairPlan) {
         Write-Output (
-            "Stock scan next: bars={0}/{1}; missing={2}; command={3}" -f
+            "Full-market next: bars={0}/{1}; missing={2}; command={3}" -f
             $marketBarRepairPlan.existing_as_of_bar_count,
             $marketBarRepairPlan.active_security_count,
             $marketBarRepairPlan.missing_as_of_bar_count,
