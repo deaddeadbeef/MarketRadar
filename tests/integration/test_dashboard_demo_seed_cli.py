@@ -477,7 +477,8 @@ def test_dashboard_snapshot_ops_page_shows_priced_in_source_actions(
     output = capsys.readouterr()
 
     assert output.err == ""
-    assert "Priced-in Source Gaps" in output.out
+    assert "Visible Review Page Source Gaps" in output.out
+    assert "not the full scan universe" in output.out
     assert "Source Fill Workflow" in output.out
     assert "Start with broker_context" in output.out
     assert "decision-ready row(s)" in output.out
@@ -816,6 +817,8 @@ def test_dashboard_run_page_shows_priced_in_evidence_plan(
     assert output.err == ""
     assert "Priced-in Evidence Plan" in output.out
     assert "Evidence status" in output.out
+    assert "Full-scan evidence" in output.out
+    assert "Visible-page source coverage" in output.out
     assert "Inspect source blocker" in output.out
     assert "Type `batch" in output.out
     assert "exact call budget" in output.out

@@ -1,6 +1,67 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 18:05:36 +08:00
+Last updated: 2026-05-20 18:17:24 +08:00
+
+## Latest Dashboard Source-Scope Drift Correction
+
+Goal alignment / drift check:
+
+- The active goal remains: scan the broad market and tell whether any stock's
+  price has not yet matched market emotion/expectations.
+- The previous slice fixed the overview title so a visible priced-in page did
+  not look like the full scan universe. A second scope issue remained on
+  Run/Ops: visible-page source coverage could show values like
+  `catalyst_events 9/90 (81 missing)` while the full stocks-only source plan
+  correctly showed `5512` catalyst-event gaps.
+- This slice does not change source coverage math, provider execution, scoring,
+  agent behavior, Schwab behavior, Polygon/Massive behavior, or order behavior.
+  It only clarifies which dashboard rows are visible-page summaries and which
+  rows are full-scan workflow blockers.
+- It makes 0 Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or provider
+  calls.
+
+Fix in this slice:
+
+- Renamed the Ops visible source table from `Priced-in Source Gaps` to
+  `Visible Review Page Source Gaps`.
+- Added explanatory copy under that table: it is source coverage for the
+  visible review page, not the full scan universe; the Source Fill Workflow
+  below is the full-scan gap/guarded-batch path.
+- The Run page now separates:
+  - `Full-scan evidence` from `priced_in_answer.evidence_completeness`;
+  - `Visible-page source coverage` from the currently displayed queue rows.
+- The Overview context panel now labels the source hint as
+  `Full-scan source workflow`.
+- The market insight `DATA` row includes full-scan evidence completeness before
+  visible-page source-gap detail, so human readers see the actual product
+  blocker first.
+
+Validation run in this slice:
+
+```powershell
+..\..\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py
+..\..\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_run_page_shows_priced_in_evidence_plan tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_snapshot_ops_page_shows_priced_in_source_actions tests\integration\test_dashboard_demo_seed_cli.py::test_modern_dashboard_tui_supports_mouse_navigation -q
+```
+
+Results:
+
+- Ruff passed.
+- Focused dashboard/TUI regression tests passed: `3 passed`.
+- One ad-hoc TUI smoke from this worktree hit the shared editable-venv/live-DB
+  path and raised `sqlite3.OperationalError: table daily_bars already exists`
+  before rendering. Treat that as a worktree smoke setup issue, not a product
+  validation result. Rerun live smoke from the primary checkout after merging.
+
+Next useful product action:
+
+- Do not treat this as goal completion. It is only a human-clarity correction.
+- The data blocker remains `market_bars`: current status before this slice was
+  `131` missing stock-like scan-date bars and `523` all-instrument missing
+  bars.
+- After market bars are repaired, continue with `catalyst_events`, then
+  `local_text`.
+- Do not run live provider/source-fill execution commands without explicit
+  operator approval.
 
 ## Latest Dashboard Scan-Scope Drift Correction
 
