@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import csv
 import html
 import json
 from datetime import UTC, datetime, timedelta
@@ -1264,7 +1265,7 @@ def _seed_saved_file_command_universe(engine):
                 has_options=True,
                 is_active=True,
                 updated_at=updated_at,
-                metadata={"security_type": "CS"},
+                metadata={"security_type": "CS", "type": "CS"},
             ),
             Security(
                 ticker="MSFT",
@@ -1277,7 +1278,7 @@ def _seed_saved_file_command_universe(engine):
                 has_options=True,
                 is_active=True,
                 updated_at=updated_at,
-                metadata={"security_type": "CS"},
+                metadata={"security_type": "CS", "type": "CS"},
             ),
             Security(
                 ticker="GOOG",
@@ -1290,7 +1291,7 @@ def _seed_saved_file_command_universe(engine):
                 has_options=True,
                 is_active=True,
                 updated_at=updated_at,
-                metadata={"security_type": "CS"},
+                metadata={"security_type": "CS", "type": "CS"},
             ),
         ]
     )
@@ -1379,6 +1380,128 @@ def test_dashboard_bars_saved_validate_and_import_fixture_are_operator_actions(
 
     with engine.connect() as conn:
         assert conn.execute(select(func.count()).select_from(daily_bars)).scalar_one() == 6
+
+
+def _manual_bar_command_payload(template_path):
+    return {
+        "priced_in_audit": {
+            "market_bars": {
+                "repair": {
+                    "target_as_of": "2026-05-08",
+                    "local_template_path": str(template_path.with_name("manual-full.csv")),
+                    "stock_scope": {
+                        "target_as_of": "2026-05-08",
+                        "stock_like_active": 3,
+                        "stock_like_with_as_of_bar": 0,
+                        "stock_like_missing_as_of_bar": 3,
+                        "local_template_path": str(template_path),
+                    },
+                }
+            }
+        }
+    }
+
+
+def _fill_first_manual_bar(template_path):
+    with template_path.open("r", encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+        fieldnames = list(rows[0].keys())
+    rows[0].update(
+        {
+            "open": "100",
+            "high": "101",
+            "low": "99",
+            "close": "100.50",
+            "volume": "1000000",
+            "vwap": "100.25",
+        }
+    )
+    with template_path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def test_dashboard_bars_manual_template_and_import_are_zero_call_actions(
+    tmp_path: Path,
+):
+    database_url = f"sqlite:///{(tmp_path / 'manual-bars.db').as_posix()}"
+    engine = create_engine(database_url, future=True)
+    create_schema(engine)
+    _seed_saved_file_command_universe(engine)
+    template_path = tmp_path / "manual-stock-bars-2026-05-08.csv"
+    payload = _manual_bar_command_payload(template_path)
+    config = AppConfig.from_env({"CATALYST_DATABASE_URL": database_url})
+
+    template = _apply_command(
+        "bars manual template",
+        payload,
+        "run",
+        DashboardFilters(),
+        engine=engine,
+        config=config,
+    )
+    assert "Manual market-bar template ready" in template.message
+    assert "rows=3" in template.message
+    assert "stocks_only=true" in template.message
+    assert "external_calls=0" in template.message
+    assert template_path.exists()
+
+    _fill_first_manual_bar(template_path)
+    preview = _apply_command(
+        "bars manual import",
+        payload,
+        "run",
+        DashboardFilters(),
+        engine=engine,
+        config=config,
+    )
+    assert "Manual market-bar import preview: status=ready_partial" in preview.message
+    assert "complete_rows_only=true" in preview.message
+    assert "complete=1" in preview.message
+    assert "empty=2" in preview.message
+    assert "missing_after_import=2" in preview.message
+    assert "external_calls=0" in preview.message
+    assert "db_writes=0" in preview.message
+
+    execute = _apply_command(
+        "bars manual import execute",
+        payload,
+        "run",
+        DashboardFilters(),
+        engine=engine,
+        config=config,
+    )
+    assert "Manual market-bar import executed: status=partial_imported" in execute.message
+    assert "external_calls=0" in execute.message
+    assert "db_writes=1" in execute.message
+
+    with engine.connect() as conn:
+        assert conn.execute(select(func.count()).select_from(daily_bars)).scalar_one() == 1
+
+
+def test_dashboard_bars_manual_full_scope_uses_full_template_path(tmp_path: Path):
+    database_url = f"sqlite:///{(tmp_path / 'manual-full-bars.db').as_posix()}"
+    engine = create_engine(database_url, future=True)
+    create_schema(engine)
+    _seed_saved_file_command_universe(engine)
+    stock_template = tmp_path / "manual-stock-bars-2026-05-08.csv"
+    full_template = stock_template.with_name("manual-full.csv")
+    payload = _manual_bar_command_payload(stock_template)
+
+    update = _apply_command(
+        "bars manual full template",
+        payload,
+        "run",
+        DashboardFilters(),
+        engine=engine,
+        config=AppConfig.from_env({"CATALYST_DATABASE_URL": database_url}),
+    )
+
+    assert "Manual market-bar template ready" in update.message
+    assert "stocks_only=false" in update.message
+    assert full_template.exists()
+    assert not stock_template.exists()
 
 
 def test_dashboard_start_page_alias_opens_tutorial() -> None:
