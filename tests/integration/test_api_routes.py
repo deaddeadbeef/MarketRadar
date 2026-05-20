@@ -29,7 +29,11 @@ from catalyst_radar.storage.schema import (
     candidate_packets,
     candidate_states,
     daily_bars,
+    data_quality_incidents,
     decision_cards,
+    job_runs,
+    normalized_provider_records,
+    raw_provider_records,
     securities,
     signal_features,
     useful_alert_labels,
@@ -2092,6 +2096,86 @@ def test_post_radar_market_bars_template_and_import_can_scope_to_stocks(
     assert repair_payload["external_calls_made"] == 0
 
 
+def test_post_radar_market_bars_provider_fixture_preview_is_zero_write(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "radar-provider-fixture-preview.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = _create_database(database_url)
+    MarketRepository(engine).upsert_securities(
+        [
+            _security_with_type("AAPL", "CS"),
+            _security_with_type("MSFT", "CS"),
+            _security_with_type("GOOG", "CS"),
+        ]
+    )
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/radar/market-bars/provider-fixture-preview",
+        json={
+            "expected_as_of": "2026-05-08",
+            "fixture_path": "tests/fixtures/polygon/grouped_daily_2026-05-08.json",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["schema_version"] == "polygon-grouped-daily-fixture-preview-v1"
+    assert payload["status"] == "ready_with_rejections"
+    assert payload["raw_count"] == 6
+    assert payload["normalized_count"] == 6
+    assert payload["daily_bar_count"] == 6
+    assert payload["rejected_count"] == 1
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
+    assert payload["coverage"]["active_security_count"] == 3
+    assert payload["coverage"]["fixture_active_match_count"] == 2
+    assert payload["coverage"]["missing_covered_by_fixture_count"] == 2
+    assert payload["coverage"]["missing_after_import_count"] == 1
+    assert payload["coverage"]["stock_like_covered_by_fixture_count"] == 2
+    assert payload["coverage"]["stock_like_missing_after_import_count"] == 1
+
+    with engine.connect() as conn:
+        assert conn.execute(select(func.count()).select_from(job_runs)).scalar_one() == 0
+        assert (
+            conn.execute(select(func.count()).select_from(raw_provider_records)).scalar_one()
+            == 0
+        )
+        assert (
+            conn.execute(
+                select(func.count()).select_from(normalized_provider_records)
+            ).scalar_one()
+            == 0
+        )
+        assert conn.execute(select(func.count()).select_from(daily_bars)).scalar_one() == 0
+        assert (
+            conn.execute(select(func.count()).select_from(data_quality_incidents)).scalar_one()
+            == 0
+        )
+
+
+def test_post_radar_market_bars_provider_fixture_preview_rejects_missing_file(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "radar-provider-fixture-missing.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/radar/market-bars/provider-fixture-preview",
+        json={
+            "expected_as_of": "2026-05-08",
+            "fixture_path": str(tmp_path / "missing-grouped-daily.json"),
+        },
+    )
+
+    assert response.status_code == 422
+
+
 def test_post_radar_sec_submissions_batch_calls_capped_sec_executor(
     tmp_path,
     monkeypatch,
@@ -3317,6 +3401,22 @@ def _insert_active_securities(engine, tickers: list[str]) -> None:
             )
             for ticker in tickers
         ]
+    )
+
+
+def _security_with_type(ticker: str, security_type: str) -> Security:
+    return Security(
+        ticker=ticker,
+        name=f"{ticker} Inc.",
+        exchange="NASDAQ",
+        sector="Technology",
+        industry="Software",
+        market_cap=1_000_000_000,
+        avg_dollar_volume_20d=20_000_000,
+        has_options=True,
+        is_active=True,
+        updated_at=AVAILABLE_AT,
+        metadata={"type": security_type},
     )
 
 

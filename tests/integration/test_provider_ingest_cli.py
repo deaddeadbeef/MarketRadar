@@ -626,6 +626,9 @@ def test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths(
         "--fixture data\\local\\polygon-grouped-daily-2026-05-15.json "
         "--validate-only"
     )
+    assert payload["provider_saved_file_validate_api"] == (
+        "POST /api/radar/market-bars/provider-fixture-preview"
+    )
     assert payload["provider_saved_file_external_call_count"] == 0
     assert "0 provider calls" in payload["provider_saved_file_boundary"]
     assert payload["external_calls_made"] == 0

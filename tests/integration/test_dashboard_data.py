@@ -1816,6 +1816,9 @@ def test_priced_in_full_scan_audit_payload_consolidates_current_state(
         assert market_bar_provider_plan[
             "provider_saved_file_validate_command"
         ].endswith("--validate-only")
+        assert market_bar_provider_plan["provider_saved_file_validate_api"] == (
+            "POST /api/radar/market-bars/provider-fixture-preview"
+        )
     assert market_bar_provider_plan["provider_saved_file_external_call_count"] == 0
     assert "0 provider calls" in market_bar_provider_plan[
         "provider_saved_file_boundary"
@@ -2061,6 +2064,9 @@ def test_priced_in_full_scan_audit_warns_for_stale_eod_provider_health(
         "--date 2026-05-10 "
         "--fixture data\\local\\polygon-grouped-daily-2026-05-10.json "
         "--validate-only"
+    )
+    assert provider_plan["provider_saved_file_validate_api"] == (
+        "POST /api/radar/market-bars/provider-fixture-preview"
     )
     assert provider_plan["provider_saved_file_external_call_count"] == 0
 

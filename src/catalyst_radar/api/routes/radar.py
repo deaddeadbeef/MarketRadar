@@ -12,6 +12,9 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from catalyst_radar.connectors.options import validate_options_fixture_json
+from catalyst_radar.connectors.polygon_fixture import (
+    preview_polygon_grouped_daily_fixture,
+)
 from catalyst_radar.connectors.provider_ingest import ProviderIngestError
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.dashboard import data as dashboard_data
@@ -171,6 +174,13 @@ class MarketBarsRepairPlanRequest(BaseModel):
 
     expected_as_of: Date
     stocks_only: bool = False
+
+
+class MarketBarsProviderFixturePreviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_as_of: Date
+    fixture_path: str
 
 
 class SourceBatchExecuteRequest(BaseModel):
@@ -694,6 +704,26 @@ def radar_market_bars_repair_plan(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return redact_restricted_external_payload(result.as_payload())
+
+
+@router.post(
+    "/market-bars/provider-fixture-preview",
+    dependencies=[Depends(require_role(Role.ANALYST))],
+)
+def radar_market_bars_provider_fixture_preview(
+    request: MarketBarsProviderFixturePreviewRequest,
+) -> dict[str, object]:
+    engine = _engine()
+    try:
+        payload = preview_polygon_grouped_daily_fixture(
+            config=AppConfig.from_env(),
+            market_repo=MarketRepository(engine),
+            date_value=request.expected_as_of,
+            fixture_path=Path(request.fixture_path),
+        )
+    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return redact_restricted_external_payload(payload)
 
 
 @router.post(

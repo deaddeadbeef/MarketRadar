@@ -460,6 +460,11 @@ class ManualBarsRepairPlanResult:
             "provider_saved_file_validate_command": (
                 provider_saved_file_validate_command if missing > 0 else None
             ),
+            "provider_saved_file_validate_api": (
+                "POST /api/radar/market-bars/provider-fixture-preview"
+                if missing > 0
+                else None
+            ),
             "provider_saved_file_external_call_count": 0,
             "provider_saved_file_boundary": (
                 "Validate the saved Polygon/Massive grouped-daily JSON response "
