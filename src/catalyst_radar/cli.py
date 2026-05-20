@@ -4400,6 +4400,15 @@ def _print_priced_in_source_batch_execution(payload: Mapping[str, object]) -> No
             f"total_batches={plan.get('batch_count')} "
             f"batch_size={plan.get('batch_size')}"
         )
+    execution_blocker = payload.get("execution_blocker")
+    if isinstance(execution_blocker, Mapping) and execution_blocker:
+        print(
+            "execution_blocker="
+            f"blocked_by={execution_blocker.get('blocked_by') or 'n/a'} "
+            f"gaps={execution_blocker.get('blocked_gap_rows')} "
+            f"calls={_int_value(execution_blocker.get('external_calls_made'))} "
+            f"command={_compact_cli_text(execution_blocker.get('command'))}"
+        )
     print(f"summary={_compact_cli_text(source_batch_execution_summary(payload))}")
     if isinstance(batch, Mapping) and batch:
         tickers = batch.get("tickers")

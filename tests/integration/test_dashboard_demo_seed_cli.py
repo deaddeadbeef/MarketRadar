@@ -2282,6 +2282,81 @@ def test_priced_in_answer_uses_stock_scope_for_market_bar_coverage(
     ]["provider_boundary"]
 
 
+def test_priced_in_source_execution_blocks_until_stock_bars_complete(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["seed-dashboard-demo"]) == 0
+    capsys.readouterr()
+    engine = create_engine(database_url, future=True)
+    MarketRepository(engine).upsert_securities(
+        [
+            Security(
+                ticker="ACME",
+                name="Acme Corp",
+                exchange="NASDAQ",
+                sector="Technology",
+                industry="Software",
+                market_cap=1_000_000_000,
+                avg_dollar_volume_20d=20_000_000,
+                has_options=True,
+                is_active=True,
+                updated_at=DEMO_AVAILABLE_AT,
+                metadata={"type": "CS"},
+            ),
+            Security(
+                ticker="ZZZZ",
+                name="Missing Bar Stock",
+                exchange="NASDAQ",
+                sector="Technology",
+                industry="Software",
+                market_cap=1_000_000_000,
+                avg_dollar_volume_20d=20_000_000,
+                has_options=True,
+                is_active=True,
+                updated_at=DEMO_AVAILABLE_AT,
+                metadata={"type": "CS"},
+            )
+        ]
+    )
+    MarketRepository(engine).upsert_daily_bars(
+        [
+            DailyBar(
+                ticker="ACME",
+                date=DEMO_AVAILABLE_AT.date(),
+                open=100,
+                high=101,
+                low=99,
+                close=100,
+                volume=1_000_000,
+                vwap=100,
+                adjusted=True,
+                provider="manual_csv",
+                source_ts=DEMO_AVAILABLE_AT,
+                available_at=DEMO_AVAILABLE_AT,
+            )
+        ]
+    )
+
+    payload = source_batch_module.execute_priced_in_source_batch(
+        engine,
+        AppConfig.from_env(),
+        source="broker_context",
+        stocks_only=True,
+    )
+
+    assert payload["status"] == "blocked"
+    assert payload["external_calls_made"] == 0
+    assert "market_bars must be complete" in payload["reason"]
+    assert payload["execution_blocker"]["blocked_by"] == "market_bars"
+    assert payload["execution_blocker"]["blocked_gap_rows"] == 1
+    assert "market-bars template" in payload["execution_blocker"]["command"]
+
+
 def test_priced_in_audit_cli_outputs_full_scan_audit(
     tmp_path: Path,
     monkeypatch,
