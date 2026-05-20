@@ -1537,8 +1537,9 @@ def test_dashboard_bars_manual_template_and_import_are_zero_call_actions(
     engine = create_engine(database_url, future=True)
     create_schema(engine)
     _seed_saved_file_command_universe(engine)
-    template_path = tmp_path / "manual-stock-bars-2026-05-08.csv"
-    payload = _manual_bar_command_payload(template_path)
+    stock_template = tmp_path / "manual-stock-bars-2026-05-08.csv"
+    full_template = stock_template.with_name("manual-full.csv")
+    payload = _manual_bar_command_payload(stock_template)
     config = AppConfig.from_env({"CATALYST_DATABASE_URL": database_url})
 
     template = _apply_command(
@@ -1551,11 +1552,12 @@ def test_dashboard_bars_manual_template_and_import_are_zero_call_actions(
     )
     assert "Manual market-bar template ready" in template.message
     assert "rows=3" in template.message
-    assert "stocks_only=true" in template.message
+    assert "stocks_only=false" in template.message
     assert "external_calls=0" in template.message
-    assert template_path.exists()
+    assert full_template.exists()
+    assert not stock_template.exists()
 
-    _fill_first_manual_bar(template_path)
+    _fill_first_manual_bar(full_template)
     preview = _apply_command(
         "bars manual import",
         payload,
@@ -1588,7 +1590,7 @@ def test_dashboard_bars_manual_template_and_import_are_zero_call_actions(
         assert conn.execute(select(func.count()).select_from(daily_bars)).scalar_one() == 1
 
 
-def test_dashboard_bars_manual_full_scope_uses_full_template_path(tmp_path: Path):
+def test_dashboard_bars_manual_stocks_scope_uses_stock_template_path(tmp_path: Path):
     database_url = f"sqlite:///{(tmp_path / 'manual-full-bars.db').as_posix()}"
     engine = create_engine(database_url, future=True)
     create_schema(engine)
@@ -1598,7 +1600,7 @@ def test_dashboard_bars_manual_full_scope_uses_full_template_path(tmp_path: Path
     payload = _manual_bar_command_payload(stock_template)
 
     update = _apply_command(
-        "bars manual full template",
+        "bars manual stocks template",
         payload,
         "run",
         DashboardFilters(),
@@ -1607,9 +1609,9 @@ def test_dashboard_bars_manual_full_scope_uses_full_template_path(tmp_path: Path
     )
 
     assert "Manual market-bar template ready" in update.message
-    assert "stocks_only=false" in update.message
-    assert full_template.exists()
-    assert not stock_template.exists()
+    assert "stocks_only=true" in update.message
+    assert stock_template.exists()
+    assert not full_template.exists()
 
 
 def test_dashboard_options_fixture_commands_are_zero_call_operator_actions(

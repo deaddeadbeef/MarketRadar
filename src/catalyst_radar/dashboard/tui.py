@@ -2020,7 +2020,7 @@ class MarketRadarDashboardApp(App[int]):
             },
             {
                 "command": "bars manual template",
-                "meaning": "Generate the local missing-bar CSV for stock-like rows.",
+                "meaning": "Generate the full-universe missing-bar CSV.",
             },
             {
                 "command": "bars manual import",
@@ -3541,7 +3541,7 @@ def _execute_market_bar_manual_command(
     filters: DashboardFilters,
 ) -> str:
     normalized = [part for part in parts if part != "manual"]
-    stocks_only = _market_bar_manual_stocks_only(payload, normalized, filters)
+    stocks_only = _market_bar_manual_stocks_only(normalized, filters)
     command_parts = [
         part
         for part in normalized
@@ -3610,7 +3610,6 @@ def _market_bar_manual_repair(
 
 
 def _market_bar_manual_stocks_only(
-    payload: Mapping[str, object],
     parts: Sequence[str],
     filters: DashboardFilters,
 ) -> bool:
@@ -3618,15 +3617,8 @@ def _market_bar_manual_stocks_only(
         return False
     if any(part.startswith("stock") for part in parts):
         return True
-    if filters.priced_in_stocks_only:
-        return True
-    if _mapping(_market_bar_repair_payload(payload).get("stock_scope")):
-        return True
-    preflight = _mapping(payload.get("priced_in_preflight"))
-    first_blocker = _mapping(preflight.get("first_blocker"))
-    if str(first_blocker.get("area") or "") == "market_bars":
-        return bool(_mapping(first_blocker.get("stock_scope")))
-    return False
+    return bool(filters.priced_in_stocks_only)
+
 
 
 def _market_bar_manual_date(repair: Mapping[str, object]) -> date:
@@ -7573,7 +7565,7 @@ def _help_lines(width: int) -> list[str]:
         ("batch <source>", "Plan full-scan source fill and show the next safe chunk."),
         ("batch <source> execute", "Run only the next guarded source-fill chunk."),
         ("batch <source> execute 3", "Run a capped source-fill batch set."),
-        ("bars manual template", "Generate the local missing-bar CSV."),
+        ("bars manual template", "Generate the full-universe missing-bar CSV."),
         ("bars manual import", "Preview or execute complete-row manual import."),
         ("bars saved capture", "Plan saved capture; add confirm for one provider call."),
         ("bars saved validate", "Validate the saved grouped-daily file from disk."),

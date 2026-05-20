@@ -1,6 +1,38 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 04:58:01 +08:00
+Last updated: 2026-05-21 05:13:19 +08:00
+
+
+
+## Latest TUI Full-Market Bar Repair Default
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- The first trusted-answer blocker is still market_bars: the current live status still reports 523 missing full active-universe bars and 131 missing stock-like bars for 2026-05-15.
+- This slice does not fill market bars, call Polygon/Massive, call SEC, call Schwab, call OpenAI, change scoring, reduce the universe, or claim readiness.
+- This is useful because the replacement TUI must default to the full-market repair path. The previous command behavior silently chose stock-like repair whenever a stock_scope helper existed, which fought the full-scan goal.
+
+Fix in this slice:
+
+- `bars manual template`, `bars manual import`, and `bars manual import execute` now default to the full active-universe market-bar repair path.
+- Explicit `bars manual stocks ...` commands remain available for intentional stock-like repair.
+- Explicit `bars manual full ...`, `bars manual all ...`, `bars manual active ...`, and `bars manual universe ...` commands keep forcing the full active-universe path.
+- The TUI help text now says the default manual bar template is full-universe.
+- README now documents the full-scan default and shows full-universe manual CLI examples.
+
+Validation observed in this slice:
+
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py` passed with `All checks passed!`.
+- Focused pytest passed 3 tests for default full manual template/import behavior, explicit stocks template behavior, and existing manual-bar progress summary behavior.
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m py_compile src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py` exited 0.
+- `git diff --check` passed.
+- `dashboard-tui --once --page help` listed `bars manual template` as `Generate the full-universe missing-bar CSV.` and showed `External calls made: 0` against both test-default config and the local live database config.
+
+Next useful product action:
+
+- Do not treat this slice as goal completion.
+- The real blocker remains filling or capturing the missing 2026-05-15 market bars under explicit operator control, then rerunning `priced-in-source-batches --source all`.
 
 
 
