@@ -1,6 +1,95 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 13:38:16 +08:00
+Last updated: 2026-05-20 13:56:00 +08:00
+
+## Latest Evidence-Completeness Answer Gate
+
+Goal alignment:
+
+- The active goal is still to scan the broad market and decide whether any
+  stock's price has not yet matched market emotion/expectations.
+- The latest drift check found a second clarity gap after full-scan coverage:
+  the answer could show decision-ready rows while the operator still had to
+  infer whether all evidence layers were complete.
+- The product needs to show, in the API/CLI/dashboard, both:
+  - the full-scan universe coverage; and
+  - whether the priced-in answer has market bars, catalyst events, local text,
+    options, theme/peer/sector, and broker context.
+- This slice does not change the scoring model or make new provider calls. It
+  adds an explicit evidence-completeness summary so "decision-ready subset" is
+  not confused with "all data layers are complete."
+- This slice makes 0 Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or
+  provider calls.
+
+Fix in this slice:
+
+- `priced_in_answer_payload(...)` now includes:
+
+  ```text
+  evidence_completeness.schema_version=priced-in-evidence-completeness-v1
+  evidence_completeness.all_sources_ready=false
+  evidence_completeness.core_sources_ready=false
+  evidence_completeness.ready_source_count=1
+  evidence_completeness.total_source_count=6
+  evidence_completeness.required_ready_source_count=0
+  evidence_completeness.required_source_count=3
+  evidence_completeness.first_gap_source=market_bars
+  evidence_completeness.first_gap_count=523
+  evidence_completeness.gap_summary=market_bars:523, catalyst_events:5512, local_text:12075
+  ```
+
+- The API answer payload now exposes one row per priced-in evidence layer with:
+  source, status, required/core flag, available/stale/missing counts, gap count,
+  coverage percent, next action, and command.
+- The CLI now prints a single high-signal line:
+
+  ```text
+  evidence_completeness=all_sources_ready=false core_sources_ready=false ready=1/6 core=0/3 first_gap=market_bars summary=1/6 priced-in evidence layer(s) complete; core 0/3; first gaps market_bars:523, catalyst_events:5512, local_text:12075.
+  ```
+
+- Overview TUI now shows:
+
+  ```text
+  Evidence layers: 1/6 priced-in evidence layer(s) complete; core 0/3; first gaps market_bars:523, catalyst_events:5...
+  ```
+
+- Ops source workflow now includes:
+
+  ```text
+  Evidence                 : Evidence layers: 1/6 priced-in evidence layer(s) complete; core 0/3; first gaps
+                           : market_bars:523, catalyst_events:5512, local_text:12075.
+  ```
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_answer_keeps_trust_gaps_when_decision_ready tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_answer_cli_outputs_current_scan_answer tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_summary_surfaces_answer_evidence_completeness -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py
+git diff --check
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-answer
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-answer --json
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page overview
+.\.venv\Scripts\python.exe -m catalyst_radar.cli dashboard-tui --once --page ops
+```
+
+Results:
+
+- Focused pytest passed: `3 passed`.
+- Ruff passed.
+- `git diff --check` passed.
+- Live CLI, JSON answer payload, Overview TUI, and Ops TUI observations all
+  reported `external_calls=0`.
+
+Next useful product action:
+
+- The new evidence gate confirms the current answer is still not complete:
+  `1/6` evidence layers are complete and core evidence is `0/3`.
+- The first blocker remains `market_bars`, with `523` missing full-universe
+  scan-date bars.
+- After market bars are repaired and the scan is rerun, the next core blockers
+  are `catalyst_events` and then `local_text`.
+- Do not run provider/source-fill execution commands without explicit operator
+  approval.
 
 ## Latest Drift Check And Full-Scan Coverage Signal
 

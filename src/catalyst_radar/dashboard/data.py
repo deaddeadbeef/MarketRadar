@@ -2818,6 +2818,7 @@ def priced_in_answer_payload(
         scan_as_of=str(_mapping_value(resolved_queue, "latest_run").get("as_of") or ""),
         market_bar_gap=market_bar_gap,
     )
+    evidence_completeness = _priced_in_answer_evidence_completeness(source_coverage)
     next_action, next_command = _priced_in_answer_next_step(
         answer_status=answer_status,
         preflight=resolved_preflight,
@@ -2882,6 +2883,7 @@ def priced_in_answer_payload(
         "scan_scope": _priced_in_answer_scan_scope(resolved_queue),
         "full_scan": full_scan_summary,
         "decision_readiness": decision_readiness,
+        "evidence_completeness": evidence_completeness,
         "filters": _row_dict(_mapping_value(resolved_queue, "filters")),
         "source_coverage": {
             "summary": source_coverage.get("summary"),
@@ -5181,6 +5183,119 @@ def _priced_in_answer_decision_readiness(
         "recommended_gap": recommended or None,
         "top_gaps": top_gaps[:8],
         "counts": _row_dict(count_values),
+    }
+
+
+def _priced_in_answer_evidence_completeness(
+    source_coverage: Mapping[str, object],
+) -> dict[str, object]:
+    sources = _mapping_value(source_coverage, "sources")
+    actions = {
+        str(action.get("source") or ""): action
+        for action in _sequence_value(source_coverage.get("actions"))
+        if isinstance(action, Mapping)
+    }
+    source_names = (
+        PRICED_IN_SOURCE_CLASSES
+        if sources
+        else tuple(
+            source
+            for source in PRICED_IN_SOURCE_CLASSES
+            if source in actions
+        )
+    )
+    layers: list[dict[str, object]] = []
+    for source in source_names:
+        values = _mapping_value(sources, source)
+        action = _row_dict(actions.get(source, {}))
+        row_count = int(_finite_float(values.get("row_count")))
+        available = int(_finite_float(values.get("available")))
+        stale = int(_finite_float(values.get("stale")))
+        missing = int(_finite_float(values.get("missing")))
+        action_gap = action.get("gap_count")
+        gap_count = (
+            int(_finite_float(action_gap))
+            if action_gap is not None
+            else max(0, stale + missing)
+        )
+        coverage_pct = _finite_float(values.get("coverage_pct"))
+        if row_count <= 0 and available <= 0 and stale <= 0 and missing <= 0:
+            status = "not_seen"
+        elif gap_count <= 0 and stale <= 0 and missing <= 0:
+            status = "ready"
+        else:
+            status = "attention"
+        required = source not in PRICED_IN_OPTIONAL_CONTEXT_SOURCES
+        layers.append(
+            {
+                "source": source,
+                "status": status,
+                "required_for_core_answer": required,
+                "available": available,
+                "stale": stale,
+                "missing": missing,
+                "gap_count": gap_count,
+                "row_count": row_count,
+                "coverage_pct": round(coverage_pct, 1),
+                "next_action": action.get("next_action"),
+                "command": action.get("batch_plan_command") or action.get("command"),
+            }
+        )
+
+    total = len(layers)
+    ready = sum(1 for layer in layers if layer["status"] == "ready")
+    required_layers = [
+        layer for layer in layers if bool(layer.get("required_for_core_answer"))
+    ]
+    required_total = len(required_layers)
+    required_ready = sum(1 for layer in required_layers if layer["status"] == "ready")
+    gap_layers = [layer for layer in layers if layer["status"] != "ready"]
+    first_gap = gap_layers[0] if gap_layers else {}
+    first_gap_label = str(first_gap.get("source") or "")
+    first_gap_count = int(_finite_float(first_gap.get("gap_count")))
+    gap_summary = [
+        f"{layer['source']}:{int(_finite_float(layer.get('gap_count')))}"
+        for layer in gap_layers
+        if int(_finite_float(layer.get("gap_count"))) > 0
+    ][:3]
+    if total <= 0:
+        status = "not_evaluated"
+        summary = "No priced-in evidence layer coverage is available."
+    elif ready == total:
+        status = "ready"
+        summary = f"All {total} priced-in evidence layer(s) are complete."
+    elif required_ready < required_total:
+        status = "blocked"
+        gap_text = f"; first gaps {', '.join(gap_summary)}" if gap_summary else ""
+        summary = (
+            f"{ready}/{total} priced-in evidence layer(s) complete; core "
+            f"{required_ready}/{required_total}{gap_text}."
+        )
+    else:
+        status = "attention"
+        gap_text = f"; optional gaps {', '.join(gap_summary)}" if gap_summary else ""
+        summary = (
+            f"Core evidence {required_ready}/{required_total} complete; all layers "
+            f"{ready}/{total}{gap_text}."
+        )
+    return {
+        "schema_version": "priced-in-evidence-completeness-v1",
+        "status": status,
+        "all_sources_ready": ready == total and total > 0,
+        "core_sources_ready": required_ready == required_total and required_total > 0,
+        "ready_source_count": ready,
+        "total_source_count": total,
+        "required_ready_source_count": required_ready,
+        "required_source_count": required_total,
+        "gap_source_count": len(gap_layers),
+        "first_gap_source": first_gap_label or None,
+        "first_gap_count": first_gap_count,
+        "gap_summary": gap_summary,
+        "next_action": first_gap.get("next_action"),
+        "command": first_gap.get("command"),
+        "summary": summary,
+        "layers": layers,
+        "external_calls_made": 0,
     }
 
 

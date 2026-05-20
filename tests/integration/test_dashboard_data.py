@@ -2800,28 +2800,27 @@ def test_priced_in_answer_keeps_trust_gaps_when_decision_ready(
 
     assert payload["status"] == "decision_ready"
     assert payload["decision_ready"] is True
-    assert payload["trust_blockers"][:2] == [
-        {
-            "area": "options",
-            "status": "attention",
-            "depends_on": [],
-            "next_action": "Fill point-in-time options context.",
-            "command": (
-                "catalyst-radar priced-in-source-batches "
-                "--source options --all --json"
-            ),
-        },
-        {
-            "area": "options",
-            "status": "missing",
-            "gap_count": 12_087,
-            "next_action": "Inspect the options source plan.",
-            "command": (
-                "catalyst-radar priced-in-source-batches "
-                "--source options --all --json"
-            ),
-        }
+    assert payload["evidence_completeness"]["schema_version"] == (
+        "priced-in-evidence-completeness-v1"
+    )
+    assert payload["evidence_completeness"]["all_sources_ready"] is False
+    assert payload["evidence_completeness"]["gap_source_count"] > 0
+    option_layer = next(
+        layer
+        for layer in payload["evidence_completeness"]["layers"]
+        if layer["source"] == "options"
+    )
+    assert option_layer["gap_count"] == 12_087
+    option_blockers = [
+        blocker
+        for blocker in payload["trust_blockers"]
+        if blocker["area"] == "options"
     ]
+    assert option_blockers
+    assert option_blockers[0]["command"] == (
+        "catalyst-radar priced-in-source-batches "
+        "--source options --all --json"
+    )
 
 
 def test_priced_in_queue_payload_paginates_ranked_rows(tmp_path: Path) -> None:
