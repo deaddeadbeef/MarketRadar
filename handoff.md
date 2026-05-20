@@ -1,6 +1,73 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-20 19:19:50 +08:00
+Last updated: 2026-05-20 19:42:44 +08:00
+
+## Latest Stock Preflight Source-Coverage Alignment
+
+Goal alignment / drift check:
+
+- The active goal remains: scan the broad stock market and identify stocks
+  where market emotion/expectations have not yet been matched by price.
+- The current live blocker remains `market_bars`: the stocks-only scan has
+  5521/5652 stock-like rows with scan-date bars and 131 stock-like rows still
+  missing bars.
+- The latest audit found a zero-call product gap in CLI/API preflight output:
+  `priced-in-preflight --stocks-only` correctly blocked on the 131 missing
+  stock-like bars, but its embedded `source_coverage` could still report
+  `no priced-in rows` or only scanned-row market-bar coverage.
+- That made the preflight payload less useful to humans and API clients because
+  `evidence_plan` and `source_coverage` could disagree about the first blocker.
+- This slice stays narrow: it does not call providers, import data, change
+  scoring, exclude tickers, weaken readiness, or alter dashboard navigation.
+
+Fix in this slice:
+
+- `_priced_in_preflight_source_coverage(...)` now loads security metadata before
+  building priced-in rows, matching `priced_in_queue_payload(...)`.
+- Stock-only preflight source coverage can now keep common stock/ADR rows
+  instead of filtering everything out as unknown instrument rows.
+- Preflight source coverage now overlays the active-universe or stock-like
+  as-of market-bar boundary before emitting its source summary/actions.
+- For the live stocks-only preflight, the source summary now reports:
+  `market_bars 5521/5652 (131 missing)` instead of `no priced-in rows` or
+  scanned-subset-only market-bar readiness.
+- Added a regression in
+  `tests/integration/test_dashboard_data.py::test_priced_in_queue_payload_reports_full_scan_instrument_scope`
+  covering stock-only preflight metadata filtering and active stock-bar gaps.
+
+Validation run in this slice:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_queue_payload_reports_full_scan_instrument_scope -q
+.\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py tests\integration\test_dashboard_data.py
+.\.venv\Scripts\python.exe -m catalyst_radar.cli priced-in-preflight --stocks-only --json
+```
+
+Observed live DB-backed CLI smoke after the fix made 0 provider calls and
+reported:
+
+- `status=blocked`;
+- `source_coverage.row_count=5521`;
+- `source_coverage.summary` starts with
+  `market_bars 5521/5652 (131 missing)`;
+- `source_coverage.sources.market_bars.coverage_basis=stock_like_active_as_of_bars`;
+- first evidence steps remain `market_bars:blocked`,
+  `catalyst_events:attention`, `local_text:attention`.
+
+Next useful product action:
+
+- Do not treat this as goal completion. This only aligns source coverage with
+  the real market-bar blocker.
+- Merge this slice, restart local services, then rerun
+  `scripts\market-radar-status.ps1 -Quick` and the stock preflight API smoke.
+- The next actual product progress still requires clearing `market_bars`: either
+  explicit approval for one Polygon/Massive grouped-daily saved-response
+  capture, or manual fill/import of
+  `data\local\manual-stock-bars-2026-05-15.csv`.
+- After market bars are repaired, continue with `catalyst_events`, then
+  `local_text`, then agent review.
+- Do not run live provider/source-fill execution commands without explicit
+  operator approval.
 
 ## Latest Stock-Scoped Priced-In Preflight
 
