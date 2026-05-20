@@ -182,6 +182,10 @@ def test_market_radar_status_script_is_zero_external_call_sitrep() -> None:
     assert "stock_market_bar_repair_plan" in text
     assert "Market Radar quick status" in text
     assert "Global readiness:" in text
+    assert "Full-market priced-in gate:" in text
+    assert "core_order=market_bars,catalyst_events,local_text" in text
+    assert "first_gap=" in text
+    assert "catalyst-radar priced-in-answer" in text
     assert "Full-market next:" in text
     assert "Stock-market next:" in text
     assert "Fast market-bar repair:" in text
