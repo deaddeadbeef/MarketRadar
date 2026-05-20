@@ -1418,13 +1418,19 @@ def _priced_in_market_bar_source_gap_plan(
         missing_only=True,
         stocks_only=stocks_only,
     )
+    template_path = _csv_market_template_path(
+        target_as_of,
+        stocks_only=stocks_only,
+    )
     preview_command = _csv_market_refresh_command(
         target_as_of,
+        daily_bars_path=template_path,
         execute=False,
         stocks_only=stocks_only,
     )
     import_command = _csv_market_refresh_command(
         target_as_of,
+        daily_bars_path=template_path,
         execute=True,
         stocks_only=stocks_only,
     )
@@ -17009,6 +17015,7 @@ def _coverage_evidence(row: Mapping[str, object]) -> str:
 def _csv_market_refresh_command(
     as_of_date: date | None,
     *,
+    daily_bars_path: str | Path | None = None,
     execute: bool = True,
     stocks_only: bool = False,
 ) -> str:
@@ -17017,10 +17024,11 @@ def _csv_market_refresh_command(
         if as_of_date is not None
         else "<LATEST_TRADING_DATE>"
     )
+    daily_bars_value = str(daily_bars_path) if daily_bars_path else "<fresh-bars.csv>"
     execute_flag = " --execute" if execute else ""
     stocks_flag = " --stocks-only" if stocks_only else ""
     return (
-        "catalyst-radar market-bars import --daily-bars <fresh-bars.csv>"
+        f"catalyst-radar market-bars import --daily-bars {daily_bars_value}"
         f" --expected-as-of {expected_value}{stocks_flag}{execute_flag}"
     )
 
@@ -17038,12 +17046,26 @@ def _csv_market_template_command(
     )
     missing_flag = " --missing-only" if missing_only else ""
     stocks_flag = " --stocks-only" if stocks_only else ""
-    filename_prefix = "manual-stock-bars" if stocks_only else "manual-bars"
     return (
         "catalyst-radar market-bars template "
-        f"--expected-as-of {expected} --out data\\local\\{filename_prefix}-{expected}.csv"
+        f"--expected-as-of {expected} "
+        f"--out {_csv_market_template_path(as_of_date, stocks_only=stocks_only)}"
         f"{missing_flag}{stocks_flag}"
     )
+
+
+def _csv_market_template_path(
+    as_of_date: date | None,
+    *,
+    stocks_only: bool = False,
+) -> str:
+    expected = (
+        as_of_date.isoformat()
+        if as_of_date is not None
+        else "<LATEST_TRADING_DATE>"
+    )
+    filename_prefix = "manual-stock-bars" if stocks_only else "manual-bars"
+    return f"data\\local\\{filename_prefix}-{expected}.csv"
 
 
 def _csv_market_refresh_next_action(as_of_date: date | None) -> str:
