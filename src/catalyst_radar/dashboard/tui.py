@@ -1498,7 +1498,7 @@ class MarketRadarDashboardApp(App[int]):
                         f"{answer.get('answer') or 'Open Insights for current answer.'}"
                     ),
                     (
-                        f"[bold]Source coverage:[/] "
+                        f"[bold]Full-scan source workflow:[/] "
                         f"{_overview_source_workflow_hint(self.payload)}"
                     ),
                     (
@@ -3498,6 +3498,7 @@ def _market_insight_rows(payload: Mapping[str, object]) -> list[Mapping[str, obj
             freshness=freshness,
             database=database,
             source_coverage=source_coverage,
+            full_scan_evidence=_answer_evidence_completeness_summary(payload),
         )
     )
 
@@ -3606,6 +3607,7 @@ def _source_coverage_row(
     freshness: Mapping[str, object],
     database: Mapping[str, object],
     source_coverage: Mapping[str, object],
+    full_scan_evidence: str,
 ) -> Mapping[str, object]:
     freshness_gap = (
         f"bar coverage {freshness.get('active_security_with_as_of_bar_count')}/"
@@ -3613,7 +3615,16 @@ def _source_coverage_row(
         f"latest bar {database.get('latest_daily_bar_date') or 'n/a'}"
     )
     source_gap = _source_coverage_gap_text(source_coverage)
-    why_now = f"{freshness_gap}; {source_gap}" if source_gap else freshness_gap
+    visible_gap = f"visible page source gaps: {source_gap}" if source_gap else ""
+    full_scan = (
+        full_scan_evidence.replace("Evidence layers: ", "")
+        if full_scan_evidence
+        else ""
+    )
+    why_now = _join_nonempty(
+        (freshness_gap, full_scan, visible_gap),
+        separator="; ",
+    )
     return {
         "_row_key": "ops",
         "scope": "DATA",
@@ -3621,7 +3632,7 @@ def _source_coverage_row(
         "why_now": why_now,
         "next_action": _source_coverage_next_action(source_coverage),
         "target_page": "ops",
-        "status_message": "Opened Ops. Fix source coverage before trusting output.",
+        "status_message": "Opened Ops. Use the full-scan source workflow before trusting output.",
     }
 
 
@@ -4778,6 +4789,7 @@ def _run_lines(payload: Mapping[str, object], width: int) -> list[str]:
     audit = _mapping(payload.get("priced_in_audit"))
     audit_sources = _rows(audit.get("sources"))
     evidence_plan = _mapping(_mapping(payload.get("priced_in_preflight")).get("evidence_plan"))
+    full_scan_evidence = _answer_evidence_completeness_summary(payload)
     lines = [_rule("Radar Run And Call Plan", width)]
     lines.extend(
         _kv_lines(
@@ -4824,7 +4836,8 @@ def _run_lines(payload: Mapping[str, object], width: int) -> list[str]:
                 "Next evidence step",
                 blocker.get("next_action") if blocker else audit.get("next_action"),
             ),
-            ("Source coverage", coverage.get("summary")),
+            ("Full-scan evidence", full_scan_evidence),
+            ("Visible-page source coverage", coverage.get("summary")),
         ]
         blocker_hint = _run_audit_source_blocker_hint(blocker)
         if blocker_hint:
@@ -6110,7 +6123,7 @@ def _ops_lines(payload: Mapping[str, object], width: int) -> list[str]:
     ]
     if source_actions:
         lines.append("")
-        lines.append(_rule("Priced-in Source Gaps", width))
+        lines.append(_rule("Visible Review Page Source Gaps", width))
         lines.extend(
             _table_lines(
                 source_actions,
@@ -6127,9 +6140,12 @@ def _ops_lines(payload: Mapping[str, object], width: int) -> list[str]:
             )
         )
         lines.append(
-            "Examples are sample tickers only. Type `batch <source>` to show the "
-            "full-scan plan; type `batch <source> execute` to run only the next "
-            "guarded chunk, or `batch <source> execute 3` for a capped run."
+            "This table is source coverage for the visible review page, not the "
+            "full scan universe. The Source Fill Workflow below shows full-scan "
+            "gaps and guarded batch plans. Examples are sample tickers only. "
+            "Type `batch <source>` to show the full-scan plan; type "
+            "`batch <source> execute` to run only the next guarded chunk, or "
+            "`batch <source> execute 3` for a capped run."
         )
     workflow_lines = _source_workflow_lines(payload, width)
     if workflow_lines:
