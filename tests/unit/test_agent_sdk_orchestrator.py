@@ -68,6 +68,76 @@ def test_agent_sdk_dry_run_brief_is_multi_agent_and_zero_call() -> None:
     assert "Review full scan source batches." in brief["next_actions"]
 
 
+def test_agent_brief_includes_market_bar_unblock_options() -> None:
+    payload = {
+        **_dashboard_payload(),
+        "priced_in_audit": {
+            "market_bars": {
+                "repair": {
+                    "dashboard_manual_template_command": "bars manual template",
+                    "dashboard_manual_import_preview_command": "bars manual import",
+                    "provider_fill_plan": {
+                        "provider_saved_file_capture_approval_packet": {
+                            "status": "approval_required",
+                            "approval_required": True,
+                            "external_calls_if_approved": 1,
+                            "db_writes_during_capture": 0,
+                            "tui_confirm_command": "bars saved capture confirm",
+                            "question": (
+                                "Approve one Polygon/Massive grouped-daily call "
+                                "for 2026-05-15?"
+                            ),
+                            "saved_file_status": "missing",
+                            "post_capture_zero_call_steps": [
+                                {
+                                    "step": "validate_saved_file",
+                                    "tui_command": "bars saved validate",
+                                    "external_calls_made": 0,
+                                    "db_writes_made": 0,
+                                },
+                                {
+                                    "step": "preview_import",
+                                    "tui_command": "bars saved import",
+                                    "external_calls_made": 0,
+                                    "db_writes_made": 0,
+                                },
+                            ],
+                        }
+                    },
+                }
+            }
+        },
+    }
+
+    snapshot = redacted_operator_snapshot(payload)
+    options = snapshot["priced_in"]["market_bar_unblock_options"]
+    brief = run_market_radar_agents(payload, AppConfig.from_env({}))
+
+    assert [option["kind"] for option in options] == [
+        "manual_csv",
+        "saved_provider_capture",
+        "validate_saved_file",
+        "preview_import",
+    ]
+    assert options[1]["external_calls_required"] == 1
+    assert options[1]["db_writes_during_step"] == 0
+    assert options[1]["command"] == "bars saved capture confirm"
+    assert brief["external_calls_made"] == {
+        "openai": 0,
+        "market_data": 0,
+        "broker": 0,
+    }
+    assert any(
+        "Market-bar unblock options" in insight
+        and "bars saved capture confirm" in insight
+        for insight in brief["insights"]
+    )
+    assert (
+        "Approve bars saved capture confirm only if one market-data call and 0 "
+        "DB writes during capture match your intent."
+    ) in brief["next_actions"]
+
+
 def test_agent_sdk_real_mode_gate_fails_closed_without_secret_leak() -> None:
     config = AppConfig.from_env({"OPENAI_API_KEY": "sk-test-secret"})
 

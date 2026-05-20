@@ -1,6 +1,46 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 06:53:01 +08:00
+Last updated: 2026-05-21 07:08:35 +08:00
+
+
+
+## Latest Agent Brief Market-Bar Unblock Options
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- The zero-call source roadmap still reports `status=attention`, `external_calls_made=0`, next source `market_bars`, and 523 missing 2026-05-15 active-universe bars.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, import rows, change scoring, reduce the universe, or claim readiness.
+- This is useful because the OpenAI Agents SDK operator brief now sees the same market-bar unblock choices as the dashboard and source-roadmap views. The agent layer can guide the human operator toward manual CSV, saved provider capture approval, saved-file validation, or saved-file import preview without being given provider, broker, shell, filesystem, or web tools.
+
+Fix in this slice:
+
+- `redacted_operator_snapshot()` now carries the redacted `priced_in_audit.market_bars.repair` context into the priced-in agent context.
+- Agent brief priced-in context now includes `market_bar_unblock_options` when market bars are blocking the trusted full-market answer.
+- The options are deliberately small and human-reviewable:
+  - `manual_csv`, 0 external calls, 0 DB writes before execute, with template and preview commands.
+  - `saved_provider_capture`, explicit approval status, 1 market-data call if approved, 0 DB writes during capture, and `bars saved capture confirm`.
+  - `validate_saved_file`, 0 external calls and 0 DB writes.
+  - `preview_import`, 0 external calls and 0 DB writes.
+- Deterministic agent insights now summarize those options, and next actions now include the exact approval boundary for `bars saved capture confirm`.
+- README now documents that `agent-brief` may summarize redacted market-bar unblock options, but those remain instructions for the human operator. The agent still cannot call Polygon/Massive or mutate the database.
+
+Validation observed in this slice:
+
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\agents\sdk_orchestrator.py tests\unit\test_agent_sdk_orchestrator.py` passed with `All checks passed!`.
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m py_compile src\catalyst_radar\agents\sdk_orchestrator.py tests\unit\test_agent_sdk_orchestrator.py` exited 0.
+- Focused pytest passed 6 tests: `tests\unit\test_agent_sdk_orchestrator.py`, `tests\integration\test_dashboard_demo_seed_cli.py::test_agent_brief_cli_outputs_zero_call_dry_run`, and `tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_agent_page_shows_agent_brief`.
+- `git diff --check` passed.
+- Live zero-call `agent-brief --json` smoke against `schwab-live.db` showed `openai=0`, `market_data=0`, `broker=0`, plus `manual_csv`, `saved_provider_capture`, `validate_saved_file`, and `preview_import` unblock options.
+- Live zero-call `agent-brief` text smoke showed the OpenAI Agents SDK runtime boundary and the market-bar unblock insight/action lines.
+- Live zero-call `dashboard-tui --once --page agent` smoke showed `External calls made: 0`, the runtime boundary, and the market-bar unblock insight row.
+- Live zero-call source-roadmap smoke returned `status=attention`, `calls=0`, `next=market_bars`, and `gaps=523`.
+
+Next useful product action:
+
+- Do not treat this slice as goal completion.
+- The immediate trusted-answer blocker remains the same 523 missing 2026-05-15 active-universe market bars.
+- The next real unblock still requires explicit operator approval for one saved grouped-daily provider capture, or a manually supplied saved grouped-daily JSON file followed by zero-call validate/import.
 
 
 

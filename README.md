@@ -361,6 +361,11 @@ Operator. It makes 0 Polygon, SEC, Schwab, or OpenAI calls in default mode.
 The JSON payload and the TUI Agent page include a `runtime` block that names
 `openai_agents_sdk`, marks `copilot_dependency=absent`, and shows that market,
 broker, shell, filesystem, and web tools are unavailable to the agent layer.
+When market bars block the priced-in answer, the dry-run brief also summarizes
+the same redacted unblock options visible in the dashboard: manual CSV, saved
+provider capture approval, and saved-file validate/import follow-ups. Those
+items are instructions for a human operator; the agent still cannot call
+Polygon/Massive or mutate the database.
 Real Agents SDK mode is opt-in:
 
 ```powershell
@@ -553,6 +558,8 @@ order submission. The CLI/API payload and Agent TUI page expose this as
 `runtime.orchestrator=openai_agents_sdk`,
 `runtime.copilot_dependency=absent`, and zero market-data/broker/shell/web
 tool flags so the operator can verify the boundary without reading source.
+The brief may recommend `bars saved capture confirm` only as an explicit human
+approval step; it does not run the capture or import provider data.
 
 ## Verification commands
 
