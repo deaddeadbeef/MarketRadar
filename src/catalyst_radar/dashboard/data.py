@@ -1434,6 +1434,13 @@ def _priced_in_market_bar_source_gap_plan(
         execute=True,
         stocks_only=stocks_only,
     )
+    repair_context = _priced_in_market_bar_source_repair_context(
+        engine,
+        config,
+        target_as_of=target_as_of,
+        stocks_only=stocks_only,
+        missing=missing,
+    )
     status_value = (
         "no_gaps"
         if missing <= 0
@@ -1499,6 +1506,7 @@ def _priced_in_market_bar_source_gap_plan(
         "provider_saved_file_boundary": provider_plan.get(
             "provider_saved_file_boundary"
         ),
+        **repair_context,
         "external_calls_made": 0,
     }
     approval_checklist = _priced_in_source_batch_approval_checklist(
@@ -2308,6 +2316,44 @@ def _priced_in_first_source_batch_payload(
         "command": batch.get("command"),
         "api": batch.get("api"),
         "api_payload": _row_dict(_mapping_value(batch, "api_payload")),
+    }
+
+
+def _priced_in_market_bar_source_repair_context(
+    engine: Engine,
+    config: AppConfig,
+    *,
+    target_as_of: date | None,
+    stocks_only: bool,
+    missing: int,
+) -> dict[str, object]:
+    if target_as_of is None or missing <= 0:
+        return {}
+    try:
+        repair_plan = manual_market_bars_repair_plan(
+            engine,
+            expected_as_of=target_as_of,
+            stocks_only=stocks_only,
+            provider_key_configured=config.polygon_api_key_configured,
+            **_manual_repair_provider_health_kwargs(engine),
+        ).as_payload()
+    except ValueError as exc:
+        return {
+            "repair_context_status": "invalid",
+            "repair_context_error": str(exc),
+            "repair_context_external_calls_made": 0,
+        }
+    missing_universe = _mapping_value(repair_plan, "missing_universe_diagnostic")
+    return {
+        "local_bar_history": {
+            "missing_with_history": int(
+                _finite_float(repair_plan.get("missing_with_local_history_count"))
+            ),
+            "missing_without_history": int(
+                _finite_float(repair_plan.get("missing_without_local_history_count"))
+            ),
+        },
+        "missing_universe": _row_dict(missing_universe),
     }
 
 
