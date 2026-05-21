@@ -4691,7 +4691,17 @@ def _print_priced_in_mission_brief(payload: Mapping[str, object]) -> None:
             status = row.get("status")
             gaps = _int_value(row.get("gap_rows"))
             calls = _int_value(row.get("next_chunk_external_calls"))
-            parts.append(f"{source}:{status} gaps={gaps} calls={calls}")
+            plannable = _int_value(row.get("plannable_gap_rows"))
+            routed = _int_value(row.get("routed_gap_rows"))
+            unplannable = _int_value(row.get("unplannable_gap_rows"))
+            gap_parts = [f"gaps={gaps}"]
+            if plannable or routed or unplannable:
+                gap_parts.append(f"plan={plannable}")
+            if routed:
+                gap_parts.append(f"routed={routed}")
+            elif unplannable:
+                gap_parts.append(f"blocked={unplannable}")
+            parts.append(f"{source}:{status} {' '.join(gap_parts)} calls={calls}")
         if parts:
             roadmap_text = "; ".join(parts[:6])
             print(f"  roadmap={roadmap_text}")

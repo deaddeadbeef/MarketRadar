@@ -3913,6 +3913,13 @@ def test_priced_in_all_source_gap_batches_prioritizes_decision_useful_gaps(
     assert payload["goal_alignment"]["next_command"] == (
         "catalyst-radar priced-in-source-batches --source catalyst_events --all --json"
     )
+    roadmap = {row["source"]: row for row in payload["mission_brief"]["roadmap"]}
+    catalyst_roadmap = roadmap["catalyst_events"]
+    catalyst_source_row = rows["catalyst_events"]
+    assert catalyst_roadmap["gap_rows"] == catalyst_source_row["total_gap_rows"]
+    assert catalyst_roadmap["plannable_gap_rows"] == catalyst_source_row["plannable_gap_rows"]
+    assert catalyst_roadmap["unplannable_gap_rows"] == catalyst_source_row["unplannable_gap_rows"]
+    assert catalyst_roadmap["routed_gap_rows"] == catalyst_source_row["routed_gap_rows"]
     assert payload["decision_shortcut_recommendation"]["source"] == "options"
     assert "decision-ready row(s)" in payload["decision_shortcut_recommendation"]["action"]
 

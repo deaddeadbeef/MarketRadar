@@ -128,6 +128,12 @@ source, next command, call boundary, next unblock options, and roadmap of
 remaining evidence gaps. When market bars block the answer, those unblock
 options separate the zero-call manual CSV path from the saved Polygon/Massive
 capture approval path, including the expected call count before capture.
+Roadmap rows distinguish total gaps from immediately useful work:
+`gap_rows` is the broad evidence gap, `plannable_gap_rows` is the part a safe
+plan can currently address, `routed_gap_rows` is already assigned to a
+specialized follow-up, and `unplannable_gap_rows` is blocked by missing
+prerequisites. The CLI mirrors this as `gaps=`, `plan=`, `routed=`, and
+`blocked=` so a large market-wide gap does not look like a single direct action.
 `priced-in-answer` and `GET /api/radar/priced-in/answer` also include
 `full_market_trust_gate`, a zero-call yes/no contract for whether the current
 full-market priced-in answer is trustworthy yet. The TUI mission rows surface
