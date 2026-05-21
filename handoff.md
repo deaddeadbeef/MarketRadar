@@ -1,8 +1,43 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-22 03:23:20 +08:00
+Last updated: 2026-05-22 04:23:01 +08:00
 
 
+
+## Latest Source Current-Blocker Gate
+
+Last updated: 2026-05-22 04:23:01 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- The farther-road value goal remains tracked as issue #533: prove at least $40/month of attributable decision-support value, enough to offset 20% of a $200/month ChatGPT Pro subscription.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, broker, order, web, shell, or provider tools from the app.
+- This is useful because source plans were showing provider chunks as ready while market_bars was still the trusted-answer blocker. The human should see provider-source work as review-only until the price-reaction gate clears.
+
+Fix in this slice:
+
+- `priced_in_source_gap_batches_payload` now returns `current_blocker_gate` for per-source plans.
+- When market_bars still has scan-date price-reaction gaps, the gate reports `status=blocked`, `blocked_by=market_bars`, the gap count, zero external calls, a clear-first command, and a review-only prework boundary.
+- While this gate is blocked, per-source payloads suppress `execute_next_command`, `execute_batches_command`, and `execute_batches_api` so API/CLI/TUI surfaces do not imply SEC, Schwab, or other source execution is the next required step.
+- All-source rows carry the same gate and only expose executable commands when the source status is ready and the current blocker gate allows execution.
+- CLI per-source output prints the current blocker gate, reason, clear-first command, and prework boundary.
+- TUI per-source batch messages include a current-blocker note and say execution is blocked until the current blocker clears instead of offering source execution.
+- README documents that per-source plans are review-only while market bars block the trusted answer.
+
+Validation observed in this slice:
+
+- Py-compile passed for touched CLI/TUI/data/test files.
+- Ruff passed for touched CLI/TUI/data/test files.
+- `git diff --check` passed.
+- Focused regressions passed for all-source source summaries, SEC source batch planning, and the demo market-bar blocker path covering API rows, CLI output, and TUI source messages.
+- Full affected integration files passed: `tests/integration/test_dashboard_data.py` and `tests/integration/test_dashboard_demo_seed_cli.py`.
+
+Current live blocker:
+
+- The trusted full-market priced-in answer is still blocked by 523 missing market bars for 2026-05-15 until explicit guarded saved Polygon/Massive capture approval with matching counts or complete manual CSV import.
+- The stock-like answer path is still blocked by 131 stock-like missing bars.
+- After market bars clear, the next prepared blocker remains catalyst-events source fill, with 5510 plannable company-like rows and two missing-CIK blockers currently sampled as FRBA and SSBI.
 
 ## Latest Post-Bar SEC Unblock Visibility
 

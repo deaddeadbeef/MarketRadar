@@ -4374,6 +4374,16 @@ def test_priced_in_source_batches_prioritize_full_market_bar_coverage(
     assert 1 <= source_gate["blocked_gap_rows"]
     assert source_gate["external_calls_made"] == 0
     assert source_gate["command"] == overview["coverage_first_recommendation"]["command"]
+    catalyst_gate = source_rows["catalyst_events"]["current_blocker_gate"]
+    assert catalyst_gate["status"] == "blocked"
+    assert catalyst_gate["blocked_by"] == "market_bars"
+    assert catalyst_gate["execute_next_allowed"] is False
+    assert catalyst_gate["execute_batches_allowed"] is False
+    assert catalyst_gate["decision_useful_now"] is False
+    assert 1 <= catalyst_gate["blocked_gap_rows"]
+    assert source_rows["catalyst_events"]["execute_next_command"] is None
+    assert source_rows["catalyst_events"]["execute_batches_command"] is None
+    assert source_rows["catalyst_events"]["execute_next_api"] is None
     unblock_options = {
         option["kind"]: option
         for option in overview["mission_brief"]["next_unblock_options"]
@@ -4564,6 +4574,17 @@ def test_priced_in_source_batches_prioritize_full_market_bar_coverage(
     assert "missing_universe=active_metadata=1" in output.out
     assert "zero_avg_dollar_volume_20d=0" in output.out
 
+    assert main(["priced-in-source-batches", "--source", "options"]) == 0
+    output = capsys.readouterr()
+    assert output.err == ""
+    assert "current_blocker_gate=status=blocked" in output.out
+    assert "blocked_by=market_bars" in output.out
+    assert "decision_useful_now=false" in output.out
+    assert "execute_next_allowed=false" in output.out
+    assert "current_blocker_reason=market_bars has" in output.out
+    assert "current_blocker_prework=This source plan is review-only" in output.out
+    assert "execute_batches=" not in output.out
+
     tui_update = _apply_command(
         "batch all",
         {},
@@ -4577,6 +4598,21 @@ def test_priced_in_source_batches_prioritize_full_market_bar_coverage(
     assert "Recommended unblock" in tui_update.message
     assert "First executable:" not in tui_update.message
     assert "Capped run:" not in tui_update.message
+
+    tui_source_update = _apply_command(
+        "batch options",
+        {},
+        "overview",
+        DashboardFilters(),
+        engine=engine,
+        config=AppConfig.from_env({"CATALYST_DATABASE_URL": database_url}),
+    )
+    assert "Current blocker: market_bars" in tui_source_update.message
+    assert "review-only" in tui_source_update.message
+    assert "Execution is blocked until the current blocker clears." in (
+        tui_source_update.message
+    )
+    assert "batch options execute" not in tui_source_update.message
 
     assert main(["priced-in-source-batches", "--source", "market_bars"]) == 0
     output = capsys.readouterr()

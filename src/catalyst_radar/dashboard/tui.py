@@ -2622,6 +2622,9 @@ def _priced_in_source_batch_message(
     non_company_route_suffix = _non_company_route_suffix(diagnostic)
     next_batch_command = str(payload.get("next_batch_command") or "").strip()
     scan_scope = _mapping(payload.get("scan_scope"))
+    current_gate = _mapping(payload.get("current_blocker_gate"))
+    current_gate_suffix = _source_batch_current_gate_suffix(current_gate)
+    execute_next_command = str(payload.get("execute_next_command") or "").strip()
     command = ""
     all_batches_command = str(payload.get("all_batches_command") or "").strip()
     review_rows_command = str(payload.get("review_rows_command") or "").strip()
@@ -2732,10 +2735,11 @@ def _priced_in_source_batch_message(
         )
         return (
             f"first provider chunk only. {prefix} This is a full-scan plan, "
-            f"not a watchlist.{chunk_scope}"
+            f"not a watchlist.{current_gate_suffix}{chunk_scope}"
             f"{calls}{api_suffix} "
-            f"Command: {command}. Run from TUI with "
-            f"`batch {source_name} execute` if intended.{blocked_suffix}"
+            f"Command: {command}. "
+            f"{_source_batch_execution_hint(source_name, execute_next_command)}"
+            f"{blocked_suffix}"
             f"{blocker_suffix}{missing_cik_suffix}{non_company_route_suffix}"
             f"{diagnostic_suffix}{command_suffix}"
             f"{point_in_time_template_suffix}"
@@ -2784,8 +2788,36 @@ def _priced_in_source_batch_message(
         f"{detail}{blocked_suffix}{blocker_suffix}{missing_cik_suffix}"
         f"{non_company_route_suffix}{diagnostic_suffix}"
     )
-    return f"{prefix} {detail}"
+    return f"{prefix} {current_gate_suffix} {detail}".strip()
 
+
+def _source_batch_execution_hint(source_name, execute_next_command):
+    if execute_next_command:
+        return f"Run from TUI with `batch {source_name} execute` if intended."
+    return "Execution is blocked until the current blocker clears."
+
+
+def _source_batch_current_gate_suffix(gate):
+    if not gate:
+        return ""
+    if str(gate.get("status") or "").strip() != "blocked":
+        return ""
+    blocked_by = str(gate.get("blocked_by") or "source gate").strip()
+    gaps = int(_number_or_zero(gate.get("blocked_gap_rows")))
+    reason = str(gate.get("reason") or "").strip()
+    command = str(gate.get("command") or "").strip()
+    boundary = str(gate.get("prework_boundary") or "").strip()
+    text = (
+        f" Current blocker: {blocked_by} still has {gaps} gap row(s); "
+        "this source is review-only and not decision-useful yet."
+    )
+    if reason:
+        text += f" Gate: {reason}"
+    if command:
+        text += f" Clear first: {command}."
+    if boundary:
+        text += f" Boundary: {boundary}"
+    return text
 
 def _source_batch_manual_command_labels(source: str) -> tuple[str, str]:
     normalized = source.strip().lower()

@@ -239,8 +239,11 @@ catalyst-radar priced-in-source-batches --source catalyst_events --execute-next
 local text, options, theme/peer context, and broker context. It makes 0
 provider calls and cannot be combined with `--execute-next`; choose one source
 before executing a chunk. The per-source planning command also makes 0 provider
-calls. The `--execute-next` command executes only the next planned chunk. The
-API equivalents are
+calls. When market bars are the current trusted-answer blocker, per-source
+plans include `current_blocker_gate=status=blocked`, suppress source execution
+commands, and the TUI says the source is review-only until the price-reaction
+gate clears. The `--execute-next` command executes only the next planned chunk
+when that gate is clear. The API equivalents are
 `GET /api/radar/priced-in/source-batches?source=all` and
 `POST /api/radar/priced-in/source-batches/execute-next`.
 

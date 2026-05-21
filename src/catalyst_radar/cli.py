@@ -5493,6 +5493,30 @@ def _print_priced_in_source_batches(payload: Mapping[str, object]) -> None:
     boundary = payload.get("execution_boundary")
     if boundary:
         print(f"boundary={_compact_cli_text(boundary)}")
+    gate = payload.get("current_blocker_gate")
+    if isinstance(gate, Mapping):
+        print(
+            "current_blocker_gate="
+            f"status={gate.get('status') or 'n/a'} "
+            f"blocked_by={gate.get('blocked_by') or 'none'} "
+            f"gaps={_int_value(gate.get('blocked_gap_rows'))} "
+            "decision_useful_now="
+            f"{str(bool(gate.get('decision_useful_now'))).lower()} "
+            "execute_next_allowed="
+            f"{str(bool(gate.get('execute_next_allowed'))).lower()}"
+        )
+        gate_reason = gate.get("reason")
+        if gate_reason:
+            print(f"current_blocker_reason={_compact_cli_text(gate_reason)}")
+        gate_command = gate.get("command")
+        if gate_command:
+            print(f"current_blocker_command={_compact_cli_text(gate_command)}")
+        prework_boundary = gate.get("prework_boundary")
+        if prework_boundary:
+            print(
+                "current_blocker_prework="
+                f"{_compact_cli_text(prework_boundary)}"
+            )
     approval = payload.get("approval_checklist")
     if isinstance(approval, Mapping):
         _print_priced_in_approval_checklist(approval)
