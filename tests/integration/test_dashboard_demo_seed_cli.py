@@ -4137,6 +4137,13 @@ def test_priced_in_source_batches_prioritize_full_market_bar_coverage(
     assert overview["coverage_first_recommendation"]["source"] == "market_bars"
     assert overview["decision_shortcut_recommendation"] is None
     assert overview["decision_shortcut_blocker"]["blocked_by"] == "market_bars"
+    source_gate = overview["source_execution_gate"]
+    assert source_gate["status"] == "blocked"
+    assert source_gate["execute_next_allowed"] is False
+    assert source_gate["blocked_by"] == "market_bars"
+    assert 1 <= source_gate["blocked_gap_rows"]
+    assert source_gate["external_calls_made"] == 0
+    assert source_gate["command"] == overview["coverage_first_recommendation"]["command"]
     unblock_options = {
         option["kind"]: option
         for option in overview["mission_brief"]["next_unblock_options"]
@@ -4285,6 +4292,10 @@ def test_priced_in_source_batches_prioritize_full_market_bar_coverage(
     assert "question=Approve one Polygon/Massive grouped-daily call" in output.out
     assert "provider_saved_file_status=status=missing" in output.out
     assert "provider_saved_file_capture=external_calls=1" in output.out
+    assert "source_execution_gate=status=blocked" in output.out
+    assert "execute_next_allowed=false" in output.out
+    assert "blocked_by=market_bars" in output.out
+    assert "reason=Source chunks may be planned" in output.out
     assert "plannable routed blocked batches" in output.out
     assert "--out data\\local\\polygon-grouped-daily-" in output.out
     assert "plan=catalyst-radar market-bars template" in output.out
@@ -4296,6 +4307,20 @@ def test_priced_in_source_batches_prioritize_full_market_bar_coverage(
     )
     assert "missing_universe=active_metadata=1" in output.out
     assert "zero_avg_dollar_volume_20d=0" in output.out
+
+    tui_update = _apply_command(
+        "batch all",
+        {},
+        "overview",
+        DashboardFilters(),
+        engine=engine,
+        config=AppConfig.from_env({"CATALYST_DATABASE_URL": database_url}),
+    )
+    assert "Source execution blocked by market_bars" in tui_update.message
+    assert "planned source chunks are review-only" in tui_update.message
+    assert "Recommended unblock" in tui_update.message
+    assert "First executable:" not in tui_update.message
+    assert "Capped run:" not in tui_update.message
 
     assert main(["priced-in-source-batches", "--source", "market_bars"]) == 0
     output = capsys.readouterr()

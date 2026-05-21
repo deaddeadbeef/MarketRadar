@@ -4020,6 +4020,9 @@ def test_priced_in_all_source_gap_batches_payload_summarizes_next_chunks(
     )
     assert payload["coverage_first_recommendation"]["mode"] == "coverage_first"
     assert payload["decision_shortcut_recommendation"]["mode"] == "decision_shortcut"
+    assert payload["source_execution_gate"]["status"] == "ready"
+    assert payload["source_execution_gate"]["execute_next_allowed"] is True
+    assert payload["source_execution_gate"]["blocked_by"] is None
     assert "provider calls" in payload["execution_boundary"]
 
 

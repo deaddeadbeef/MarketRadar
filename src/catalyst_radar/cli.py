@@ -4928,6 +4928,20 @@ def _print_priced_in_all_source_batches(payload: Mapping[str, object]) -> None:
     boundary = payload.get("execution_boundary")
     if boundary:
         print(f"boundary={_compact_cli_text(boundary)}")
+    source_gate = payload.get("source_execution_gate")
+    if isinstance(source_gate, Mapping):
+        print(
+            "source_execution_gate="
+            f"status={source_gate.get('status') or 'n/a'} "
+            f"execute_next_allowed="
+            f"{str(bool(source_gate.get('execute_next_allowed'))).lower()} "
+            f"blocked_by={source_gate.get('blocked_by') or 'n/a'} "
+            f"gaps={_int_value(source_gate.get('blocked_gap_rows'))} "
+            f"command={_compact_cli_text(source_gate.get('command'))}"
+        )
+        reason = source_gate.get("reason")
+        if reason:
+            print(f"  reason={_compact_cli_text(reason)}")
     rows = payload.get("sources")
     if not isinstance(rows, list | tuple) or not rows:
         return

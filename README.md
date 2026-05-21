@@ -140,6 +140,10 @@ prerequisites. The CLI mirrors this as `gaps=`, `plan=`, `routed=`, and
 JSON source rows also expose `blocked_gap_rows`, the already-derived remaining
 blocked count after routed rows are removed, so API/dashboard clients do not
 need to recompute it or risk treating routed funds and benchmarks as blockers.
+The all-source API payload also includes `source_execution_gate`: when
+`market_bars` is still incomplete, source chunks may be planned but
+`execute_next_allowed=false`, and the terminal dashboard suppresses "First
+executable" wording until the market-bar gate clears.
 The terminal dashboard `batch all` response mirrors the same summary on demand,
 so it stays fast while still separating total gaps from rows that can be planned
 now.

@@ -1601,6 +1601,11 @@ def test_get_radar_priced_in_source_batches_can_return_all_source_overview(
                 "source": "options",
                 "mode": "decision_shortcut",
             },
+            "source_execution_gate": {
+                "status": "blocked",
+                "execute_next_allowed": False,
+                "blocked_by": "market_bars",
+            },
             "sources": [
                 {
                     "source": "options",
@@ -1634,6 +1639,8 @@ def test_get_radar_priced_in_source_batches_can_return_all_source_overview(
     assert payload["external_calls_made"] == 0
     assert payload["coverage_first_recommendation"]["source"] == "catalyst_events"
     assert payload["decision_shortcut_recommendation"]["source"] == "options"
+    assert payload["source_execution_gate"]["blocked_by"] == "market_bars"
+    assert payload["source_execution_gate"]["execute_next_allowed"] is False
     assert payload["sources"][0]["source"] == "options"
     assert captured["batch_size"] == 5
     assert captured["available_at"].isoformat() == "2026-05-18T16:00:00+00:00"
