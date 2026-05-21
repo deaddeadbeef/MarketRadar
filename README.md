@@ -506,7 +506,8 @@ read-only status paths use the latest stored daily-bar date and report
 `expected_as_of_source=latest_daily_bar`. Pass `--expected-as-of YYYY-MM-DD`
 or `?expected_as_of=YYYY-MM-DD` to pin the check. Those CLI/API payloads include
 the missing ticker sample, missing security-type counts, zero-call missing
-universe diagnostics, `recommended_action`, and `after_market_bars_clear`.
+universe diagnostics, `stock_scope` for the stock-like gap inside the same
+all-instrument status, `recommended_action`, and `after_market_bars_clear`.
 `recommended_action` is the UI-friendly contract for choosing the next safe
 button or command; `after_market_bars_clear` previews the next priced-in source
 blocker to inspect after the bar gap is repaired. Both fields report zero calls

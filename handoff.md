@@ -1,7 +1,43 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-22 00:19:35 +08:00
+Last updated: 2026-05-22 01:03:12 +08:00
 
+
+
+
+
+## Latest Market-Bar Stock Scope Status
+
+Last updated: 2026-05-22 01:03:12 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not narrow the full-market blocker: the all-instrument status still reports the full missing-bar count.
+- This is useful because the user goal says any stock. The default CLI/API status now shows both the full blocker and the stock-like subset in one zero-call response.
+- The farther-road value goal remains tracked as issue #533: prove at least $40/month of attributable value, enough to offset 20% of a $200/month ChatGPT Pro subscription.
+
+Fix in this slice:
+
+- `market_bars_status_payload` now adds `stock_scope` on default all-instrument status.
+- `stock_scope` reports stock-like active count, stock-like bars present, stock-like missing bars, stock-like coverage percent, missing stock-like ticker sample, non-stock missing count, manual stock-bar commands, and 0 provider calls.
+- CLI `catalyst-radar market-bars status` now prints `stock_scope ...` and `stock_scope_missing_tickers=...` without requiring the operator to know `--stocks-only` first.
+- API `GET /api/radar/market-bars/status` inherits the same `stock_scope` contract.
+- README and dashboard feature inventory now document the zero-call stock-scope visibility.
+
+Validation observed in this slice:
+
+- Focused CLI market-bar status regression passed.
+- Focused API market-bar status regression passed.
+- Ruff passed for touched CLI/status/API test files.
+- Py-compile passed for touched CLI/status/API test files.
+- `git diff --check` passed.
+- Live zero-call status smoke against the local Schwab DB, pinned to the feature worktree, showed 523 all-instrument missing bars and stock_scope coverage 5521/5652 with 131 stock-like missing bars and 392 non-stock missing bars.
+
+Current live blocker:
+
+- The trusted full-market priced-in answer remains blocked by 523 missing market bars for 2026-05-15 until explicit guarded saved Polygon/Massive capture approval with matching counts or complete manual CSV import.
+- The stock-like answer path remains blocked by 131 stock-like missing bars. This is a visible sub-scope, not a substitute for full-market completion.
 
 
 

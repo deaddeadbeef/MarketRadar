@@ -29,6 +29,14 @@ def market_bars_status_payload(
         expected_as_of=resolved_expected_as_of,
         stocks_only=stocks_only,
     )
+    stock_scope = None
+    if not stocks_only:
+        stock_scope = _stock_scope_payload(
+            engine,
+            config,
+            expected_as_of=resolved_expected_as_of,
+            full_repair=repair,
+        )
     missing = int(repair.get("missing_as_of_bar_count") or 0)
     missing_any = missing != 0
     local_preview = _mapping(repair.get("local_template_preview"))
@@ -85,6 +93,7 @@ def market_bars_status_payload(
         or {},
         "missing_universe_diagnostic": repair.get("missing_universe_diagnostic")
         or {},
+        "stock_scope": stock_scope,
         "manual": {
             "status": operator_step.get("status"),
             "action": operator_step.get("action"),
@@ -284,6 +293,69 @@ def _repair_payload(
             provider_health.checked_at if provider_health is not None else None
         ),
     ).as_payload()
+
+
+def _stock_scope_payload(
+    engine: Engine,
+    config: AppConfig,
+    *,
+    expected_as_of: date,
+    full_repair: Mapping[str, object],
+):
+    try:
+        stock_repair = _repair_payload(
+            engine,
+            config,
+            expected_as_of=expected_as_of,
+            stocks_only=True,
+        )
+    except ValueError:
+        return None
+    active = int(stock_repair.get("active_security_count") or 0)
+    with_bar = int(stock_repair.get("existing_as_of_bar_count") or 0)
+    missing = int(stock_repair.get("missing_as_of_bar_count") or 0)
+    full_missing = int(full_repair.get("missing_as_of_bar_count") or 0)
+    sample = list(stock_repair.get("missing_as_of_bar_ticker_sample") or [])
+    coverage_pct = round((with_bar / active) * 100, 2) if active else None
+    operator_step = _mapping(stock_repair.get("operator_step"))
+    return {
+        "schema_version": "market-bars-stock-scope-v1",
+        "status": "blocked" if missing else "ready",
+        "expected_as_of": expected_as_of.isoformat(),
+        "stock_like_active": active,
+        "stock_like_with_as_of_bar": with_bar,
+        "stock_like_missing_as_of_bar": missing,
+        "stock_like_coverage_pct": coverage_pct,
+        "sample_missing_stock_like_tickers": sample,
+        "sample_missing_stock_like_more": int(
+            stock_repair.get("missing_as_of_bar_ticker_more") or 0
+        ),
+        "missing_security_type_counts": stock_repair.get(
+            "missing_security_type_counts"
+        )
+        or {},
+        "non_stock_missing_as_of_bar": max(0, full_missing - missing),
+        "manual_template_command": stock_repair.get("manual_template_command"),
+        "manual_import_preview_command": stock_repair.get(
+            "manual_import_preview_command"
+        ),
+        "manual_import_execute_command": stock_repair.get(
+            "manual_import_execute_command"
+        ),
+        "saved_capture_command": stock_repair.get(
+            "provider_saved_file_capture_command"
+        ),
+        "operator_step": dict(operator_step),
+        "next_action": stock_repair.get("next_action"),
+        "answer_boundary": (
+            "A stocks-only priced-in answer remains blocked until these "
+            "stock-like bars are filled."
+            if missing
+            else "Stock-like market bars are complete for the stocks-only answer."
+        ),
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+    }
 
 
 def _resolve_expected_as_of(engine: Engine, expected_as_of: date | None) -> date:

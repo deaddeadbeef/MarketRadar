@@ -4240,6 +4240,30 @@ def _print_market_bars_status(payload: Mapping[str, object]):
             f"{diagnostic.get('zero_avg_dollar_volume_20d_count', 'n/a')} "
             f"external_calls={diagnostic.get('external_calls_made', 0)}"
         )
+    stock_scope = _mapping_value(payload.get("stock_scope"))
+    if stock_scope:
+        print(
+            "stock_scope "
+            f"status={stock_scope.get('status')} "
+            f"coverage={_int_value(stock_scope.get('stock_like_with_as_of_bar'))}/"
+            f"{_int_value(stock_scope.get('stock_like_active'))} "
+            f"missing={_int_value(stock_scope.get('stock_like_missing_as_of_bar'))} "
+            "non_stock_missing="
+            f"{_int_value(stock_scope.get('non_stock_missing_as_of_bar'))} "
+            f"template={_compact_cli_text(stock_scope.get('manual_template_command'))} "
+            f"external_calls={_int_value(stock_scope.get('external_calls_made'))}"
+        )
+        stock_sample = _sequence_value(
+            stock_scope.get("sample_missing_stock_like_tickers")
+        )
+        if stock_sample:
+            stock_more = int(stock_scope.get("sample_missing_stock_like_more") or 0)
+            stock_suffix = f" plus {stock_more} more" if stock_more else ""
+            print(
+                "stock_scope_missing_tickers="
+                + ",".join(str(ticker) for ticker in stock_sample)
+                + stock_suffix
+            )
     print(
         "manual "
         f"status={manual.get('status')} "
