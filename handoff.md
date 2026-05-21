@@ -1,6 +1,39 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 10:44:52 +08:00
+Last updated: 2026-05-21 11:05:00 +08:00
+
+
+
+## Latest Saved Provider Capture Context
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, import rows, change scoring, reduce the universe, or claim readiness.
+- This is useful because the current first blocker is still scan-date market bars. The manual CSV path is already explicit; this adds the other practical unblock path as a first-class zero-call packet so the CLI/API/TUI can tell whether saved provider capture is usable, blocked, or ready for explicit approval.
+
+Fix in this slice:
+
+- `full_market_trust_gate.blocker_detail.saved_provider_capture` now exposes the saved Polygon/Massive capture context beside `manual_csv`.
+- The packet includes status, provider/key state, expected date, missing count, saved file path/status, approval requirement, call and write counts, capture API request bodies, post-capture zero-call validate/import steps, guardrails, next action, and `external_calls_made=0`.
+- CLI text prints `trust_gate_saved_capture=` with status, approval/key state, call/write counts, saved-file path, API, command, and external-call count.
+- The TUI Run mission brief shows a `Saved capture` row so the dashboard distinguishes manual fill from the explicit one-call capture route.
+- README documents the new `blocker_detail.saved_provider_capture` contract.
+
+Validation observed in this slice:
+
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py` passed with `All checks passed!`.
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m py_compile src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py` exited 0.
+- Focused pytest passed 3 tests: `test_priced_in_answer_blocks_incomplete_stock_bars_even_with_ready_rows`, `test_priced_in_answer_cli_outputs_current_scan_answer`, and `test_dashboard_run_page_shows_priced_in_evidence_plan`.
+- Live zero-call `priced-in-answer --json` smoke against `schwab-live.db` returned trust `blocked`, first blocker `market_bars`, gap `523`, `saved_provider_capture.schema_version=priced-in-market-bar-saved-provider-capture-v1`, status `blocked_missing_api_key`, approval `False`, key `False`, calls-if-approved `0`, saved file `missing`, capture API `POST /api/radar/market-bars/provider-fixture-capture`, confirm bodies `False`/`True`, post-capture steps `validate_saved_file,preview_import,execute_import_after_preview`, and calls `0`.
+- Live zero-call text smoke printed `trust_gate_saved_capture=` while `external_calls=0`.
+- Live zero-call TUI Run smoke showed `Saved capture`, `Manual CSV`, `Trust gate`, and `External calls made: 0`.
+
+Next useful product action:
+
+- Do not treat this slice as goal completion.
+- The full-market answer remains blocked until the missing active-universe market bars are filled/imported, or an explicitly approved saved provider capture is imported.
+
 
 
 

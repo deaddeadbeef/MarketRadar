@@ -149,7 +149,11 @@ known, `after_current_blocker` previews the next source, why it matters, and
 the zero-call plan/API plus guarded execute-next affordance to use only after
 the current blocker is cleared. `blocker_detail.manual_csv` gives dashboard
 clients the fillable local CSV context: path, required fields, current complete
-/ partial / empty counts, and sample missing tickers.
+/ partial / empty counts, and sample missing tickers. `blocker_detail.saved_provider_capture`
+shows the guarded saved Polygon/Massive response path as its own zero-call
+contract: current saved-file status, whether a key and explicit approval are
+required, call/write counts, capture API request bodies, and the post-capture
+validate/import steps.
 The same answer payload includes `reviewable_subset`, a zero-call count and
 sample of scanned-subset leads that can be inspected as research-only while the
 full-market trust gate remains blocked.
