@@ -53,6 +53,7 @@ from catalyst_radar.connectors.options import (
 from catalyst_radar.connectors.polygon import PolygonEndpoint, PolygonMarketDataConnector
 from catalyst_radar.connectors.polygon_fixture import (
     capture_polygon_grouped_daily_response_with_preview,
+    ingest_polygon_grouped_daily_fixture,
     preview_polygon_grouped_daily_fixture,
 )
 from catalyst_radar.connectors.provider_ingest import (
@@ -259,6 +260,53 @@ def build_parser() -> argparse.ArgumentParser:
         help="Plan repair against stock-like active securities only.",
     )
     market_bars_repair_plan.add_argument("--json", action="store_true")
+    market_bars_saved_capture = market_bars_sub.add_parser("saved-capture")
+    market_bars_saved_capture.add_argument("--database-url")
+    market_bars_saved_capture.add_argument(
+        "--expected-as-of",
+        type=date.fromisoformat,
+        required=True,
+    )
+    market_bars_saved_capture.add_argument(
+        "--out",
+        type=Path,
+        help="Saved grouped-daily JSON path. Defaults to data/local for the date.",
+    )
+    market_bars_saved_capture.add_argument(
+        "--fixture",
+        type=Path,
+        help="Capture from an existing local response fixture for zero-call tests.",
+    )
+    market_bars_saved_capture.add_argument(
+        "--confirm-external-call",
+        action="store_true",
+        help="Approve one live Polygon/Massive grouped-daily call.",
+    )
+    market_bars_saved_capture.add_argument(
+        "--stocks-only",
+        action="store_true",
+        help="Plan approval context against stock-like active securities only.",
+    )
+    market_bars_saved_capture.add_argument("--json", action="store_true")
+    market_bars_saved_validate = market_bars_sub.add_parser("saved-validate")
+    market_bars_saved_validate.add_argument("--database-url")
+    market_bars_saved_validate.add_argument(
+        "--expected-as-of",
+        type=date.fromisoformat,
+        required=True,
+    )
+    market_bars_saved_validate.add_argument("--fixture", type=Path)
+    market_bars_saved_validate.add_argument("--json", action="store_true")
+    market_bars_saved_import = market_bars_sub.add_parser("saved-import")
+    market_bars_saved_import.add_argument("--database-url")
+    market_bars_saved_import.add_argument(
+        "--expected-as-of",
+        type=date.fromisoformat,
+        required=True,
+    )
+    market_bars_saved_import.add_argument("--fixture", type=Path)
+    market_bars_saved_import.add_argument("--execute", action="store_true")
+    market_bars_saved_import.add_argument("--json", action="store_true")
 
     polygon = subparsers.add_parser("ingest-polygon")
     polygon_sub = polygon.add_subparsers(dest="polygon_command", required=True)
@@ -1061,33 +1109,46 @@ def main(argv: list[str] | None = None) -> int:
                     else 2
                 )
             if args.market_bars_command == "repair-plan":
-                provider_health = ProviderRepository(engine).latest_health("polygon")
-                result = manual_market_bars_repair_plan(
+                payload = _manual_market_bars_repair_plan_payload(
                     engine,
+                    config,
                     expected_as_of=args.expected_as_of,
                     stocks_only=args.stocks_only,
-                    provider_key_configured=config.polygon_api_key_configured,
-                    provider_health_status=(
-                        provider_health.status.value
-                        if provider_health is not None
-                        else None
-                    ),
-                    provider_health_reason=(
-                        provider_health.reason if provider_health is not None else None
-                    ),
-                    provider_health_checked_at=(
-                        provider_health.checked_at
-                        if provider_health is not None
-                        else None
-                    ),
                 )
-                payload = result.as_payload()
                 if args.json:
                     print(json.dumps(payload, sort_keys=True))
                 else:
                     _print_manual_market_bars_repair_plan(payload)
                 return 0
-        except (FileNotFoundError, KeyError, ValueError) as exc:
+            if args.market_bars_command == "saved-capture":
+                return _market_bars_saved_capture_cli(
+                    engine=engine,
+                    config=config,
+                    expected_as_of=args.expected_as_of,
+                    output_path=args.out,
+                    fixture_path=args.fixture,
+                    confirm_external_call=args.confirm_external_call,
+                    stocks_only=args.stocks_only,
+                    json_output=args.json,
+                )
+            if args.market_bars_command == "saved-validate":
+                return _market_bars_saved_validate_cli(
+                    engine=engine,
+                    config=config,
+                    expected_as_of=args.expected_as_of,
+                    fixture_path=args.fixture,
+                    json_output=args.json,
+                )
+            if args.market_bars_command == "saved-import":
+                return _market_bars_saved_import_cli(
+                    engine=engine,
+                    config=config,
+                    expected_as_of=args.expected_as_of,
+                    fixture_path=args.fixture,
+                    execute=args.execute,
+                    json_output=args.json,
+                )
+        except (FileNotFoundError, KeyError, RuntimeError, ValueError, ProviderIngestError) as exc:
             print(f"manual market bars failed: {exc}", file=sys.stderr)
             return 1
 
@@ -3771,6 +3832,337 @@ def _print_agent_brief(payload: Mapping[str, object]) -> None:
             continue
         print(f"- {check.get('name')}: {check.get('status')} - {check.get('detail')}")
 
+
+def _default_saved_market_bars_path(expected_as_of: date):
+    return (
+        Path("data")
+        / "local"
+        / f"polygon-grouped-daily-{expected_as_of.isoformat()}.json"
+    )
+
+
+def _manual_market_bars_repair_plan_payload(
+    engine: Engine,
+    config: AppConfig,
+    *,
+    expected_as_of: date,
+    stocks_only: bool,
+):
+    provider_health = ProviderRepository(engine).latest_health("polygon")
+    result = manual_market_bars_repair_plan(
+        engine,
+        expected_as_of=expected_as_of,
+        stocks_only=stocks_only,
+        provider_key_configured=config.polygon_api_key_configured,
+        provider_health_status=(
+            provider_health.status.value if provider_health is not None else None
+        ),
+        provider_health_reason=(
+            provider_health.reason if provider_health is not None else None
+        ),
+        provider_health_checked_at=(
+            provider_health.checked_at if provider_health is not None else None
+        ),
+    )
+    return result.as_payload()
+
+
+def _market_bars_saved_capture_plan_payload(
+    engine: Engine,
+    config: AppConfig,
+    *,
+    expected_as_of: date,
+    output_path: Path,
+    stocks_only: bool,
+):
+    repair = _manual_market_bars_repair_plan_payload(
+        engine,
+        config,
+        expected_as_of=expected_as_of,
+        stocks_only=stocks_only,
+    )
+    packet = repair.get("provider_saved_file_capture_approval_packet")
+    if not isinstance(packet, Mapping):
+        packet = {}
+    request_body = {
+        "expected_as_of": expected_as_of.isoformat(),
+        "output_path": str(output_path),
+        "confirm_external_call": False,
+    }
+    confirm_body = {**request_body, "confirm_external_call": True}
+    validate_command = (
+        "catalyst-radar market-bars saved-validate "
+        f"--expected-as-of {expected_as_of.isoformat()} --fixture {output_path}"
+    )
+    import_preview_command = (
+        "catalyst-radar market-bars saved-import "
+        f"--expected-as-of {expected_as_of.isoformat()} --fixture {output_path}"
+    )
+    import_execute_command = f"{import_preview_command} --execute"
+    approval_required = bool(packet.get("approval_required"))
+    calls_if_approved = int(packet.get("external_calls_if_approved") or 0)
+    return {
+        "schema_version": "market-bars-saved-capture-cli-plan-v1",
+        "status": packet.get("status") or repair.get("provider_fill_status"),
+        "provider": "polygon",
+        "provider_label": "Polygon/Massive grouped daily",
+        "expected_as_of": expected_as_of.isoformat(),
+        "stocks_only": bool(stocks_only),
+        "missing_as_of_bar_count": packet.get("missing_as_of_bar_count")
+        or repair.get("missing_as_of_bar_count"),
+        "provider_key_configured": bool(config.polygon_api_key_configured),
+        "provider_health_warning": packet.get("provider_health_warning"),
+        "approval_required": approval_required,
+        "saved_file_path": str(output_path),
+        "saved_file_exists": output_path.exists(),
+        "saved_file_status": "available" if output_path.exists() else "missing",
+        "external_calls_without_approval": 0,
+        "external_calls_if_approved": calls_if_approved,
+        "db_writes_during_capture": 0,
+        "capture_api": "POST /api/radar/market-bars/provider-fixture-capture",
+        "capture_request_body": request_body,
+        "capture_confirm_request_body": confirm_body,
+        "confirm_command": (
+            "catalyst-radar market-bars saved-capture "
+            f"--expected-as-of {expected_as_of.isoformat()} --out {output_path} "
+            "--confirm-external-call"
+        )
+        if approval_required
+        else None,
+        "validate_command": validate_command,
+        "import_preview_command": import_preview_command,
+        "import_execute_command": import_execute_command,
+        "next_action": packet.get("next_action")
+        or repair.get("provider_saved_file_next_action"),
+        "guardrails": packet.get("guardrails") or [],
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+    }
+
+
+def _market_bars_saved_capture_cli(
+    *,
+    engine: Engine,
+    config: AppConfig,
+    expected_as_of: date,
+    output_path: Path | None,
+    fixture_path: Path | None,
+    confirm_external_call: bool,
+    stocks_only: bool,
+    json_output: bool,
+):
+    resolved_output = output_path or _default_saved_market_bars_path(expected_as_of)
+    if fixture_path is None and not confirm_external_call:
+        payload = _market_bars_saved_capture_plan_payload(
+            engine,
+            config,
+            expected_as_of=expected_as_of,
+            output_path=resolved_output,
+            stocks_only=stocks_only,
+        )
+        if json_output:
+            print(json.dumps(payload, sort_keys=True))
+        else:
+            _print_market_bars_saved_capture_plan(payload)
+        return 0
+    payload = capture_polygon_grouped_daily_response_with_preview(
+        config=config,
+        market_repo=MarketRepository(engine),
+        date_value=expected_as_of,
+        output_path=resolved_output,
+        fixture_path=fixture_path,
+        confirm_external_call=confirm_external_call,
+    )
+    if json_output:
+        print(json.dumps(payload, sort_keys=True))
+    else:
+        _print_polygon_grouped_daily_response_capture(payload)
+    return 0
+
+
+def _market_bars_saved_validate_cli(
+    *,
+    engine: Engine,
+    config: AppConfig,
+    expected_as_of: date,
+    fixture_path: Path | None,
+    json_output: bool,
+):
+    resolved_fixture = fixture_path or _default_saved_market_bars_path(expected_as_of)
+    payload = preview_polygon_grouped_daily_fixture(
+        config=config,
+        market_repo=MarketRepository(engine),
+        date_value=expected_as_of,
+        fixture_path=resolved_fixture,
+    )
+    if json_output:
+        print(json.dumps(payload, sort_keys=True))
+    else:
+        _print_polygon_grouped_daily_fixture_preview(payload)
+    return 0 if payload.get("status") != "invalid" else 1
+
+
+def _market_bars_saved_import_payload(
+    *,
+    engine: Engine,
+    config: AppConfig,
+    expected_as_of: date,
+    fixture_path: Path,
+    execute: bool,
+):
+    market_repo = MarketRepository(engine)
+    provider_repo = ProviderRepository(engine)
+    preview = preview_polygon_grouped_daily_fixture(
+        config=config,
+        market_repo=market_repo,
+        date_value=expected_as_of,
+        fixture_path=fixture_path,
+    )
+    if not execute:
+        return {
+            **preview,
+            "schema_version": "polygon-grouped-daily-fixture-import-v1",
+            "executed": False,
+            "db_writes_made": 0,
+            "write_boundary": (
+                "Preview only; add --execute to import the saved fixture. "
+                "This path reads from disk and makes 0 provider calls."
+            ),
+        }
+    if preview.get("status") == "invalid":
+        raise ValueError(str(preview.get("next_action") or "fixture is invalid"))
+    result = ingest_polygon_grouped_daily_fixture(
+        config=config,
+        market_repo=market_repo,
+        provider_repo=provider_repo,
+        date_value=expected_as_of,
+        fixture_path=fixture_path,
+    )
+    return {
+        "schema_version": "polygon-grouped-daily-fixture-import-v1",
+        "status": (
+            "imported_with_rejections" if result.rejected_count else "imported"
+        ),
+        "executed": True,
+        "provider": result.provider,
+        "date": expected_as_of.isoformat(),
+        "fixture_path": str(fixture_path),
+        "job_id": result.job_id,
+        "requested_count": result.requested_count,
+        "raw_count": result.raw_count,
+        "normalized_count": result.normalized_count,
+        "security_count": result.security_count,
+        "daily_bar_count": result.daily_bar_count,
+        "holding_count": result.holding_count,
+        "event_count": result.event_count,
+        "option_feature_count": result.option_feature_count,
+        "rejected_count": result.rejected_count,
+        "external_calls_made": 0,
+        "db_writes_made": 1,
+        "preview": preview,
+        "write_boundary": (
+            "Imported from a saved fixture on disk. This path made 0 "
+            "provider calls."
+        ),
+    }
+
+
+def _market_bars_saved_import_cli(
+    *,
+    engine: Engine,
+    config: AppConfig,
+    expected_as_of: date,
+    fixture_path: Path | None,
+    execute: bool,
+    json_output: bool,
+):
+    resolved_fixture = fixture_path or _default_saved_market_bars_path(expected_as_of)
+    payload = _market_bars_saved_import_payload(
+        engine=engine,
+        config=config,
+        expected_as_of=expected_as_of,
+        fixture_path=resolved_fixture,
+        execute=execute,
+    )
+    if json_output:
+        print(json.dumps(payload, sort_keys=True))
+    else:
+        _print_market_bars_saved_import(payload)
+    return 0
+
+
+def _print_market_bars_saved_capture_plan(payload: Mapping[str, object]):
+    print(
+        "market_bars_saved_capture_plan "
+        f"status={payload.get('status')} "
+        f"expected_as_of={payload.get('expected_as_of')} "
+        f"missing={payload.get('missing_as_of_bar_count')} "
+        f"provider_key={str(bool(payload.get('provider_key_configured'))).lower()} "
+        f"approval_required={str(bool(payload.get('approval_required'))).lower()} "
+        f"saved_file={payload.get('saved_file_path')} "
+        f"saved_file_status={payload.get('saved_file_status')} "
+        f"external_calls_without_approval={payload.get('external_calls_without_approval')} "
+        f"external_calls_if_approved={payload.get('external_calls_if_approved')} "
+        f"db_writes={payload.get('db_writes_made')}"
+    )
+    warning = str(payload.get("provider_health_warning") or "").strip()
+    if warning:
+        print(f"provider_health_warning={_compact_cli_text(warning)}")
+    print(f"capture_api={payload.get('capture_api')}")
+    print(f"capture_request_body={payload.get('capture_request_body')}")
+    print(f"capture_confirm_request_body={payload.get('capture_confirm_request_body')}")
+    if payload.get("confirm_command"):
+        print(f"confirm_command={payload.get('confirm_command')}")
+    print(f"validate_command={payload.get('validate_command')}")
+    print(f"import_preview_command={payload.get('import_preview_command')}")
+    print(f"import_execute_command={payload.get('import_execute_command')}")
+    guardrails = payload.get("guardrails")
+    if isinstance(guardrails, list | tuple) and guardrails:
+        print(
+            "guardrails="
+            + " | ".join(_compact_cli_text(str(item)) for item in guardrails)
+        )
+    print(f"next_action={payload.get('next_action')}")
+
+
+def _print_market_bars_saved_import(payload: Mapping[str, object]):
+    coverage = _mapping_value(payload.get("coverage"))
+    preview = payload.get("preview")
+    if isinstance(preview, Mapping):
+        coverage = _mapping_value(preview.get("coverage"))
+    print(
+        "market_bars_saved_import "
+        f"status={payload.get('status')} "
+        f"executed={str(bool(payload.get('executed'))).lower()} "
+        f"date={payload.get('date') or payload.get('expected_as_of') or 'n/a'} "
+        f"path={payload.get('fixture_path') or 'n/a'} "
+        f"daily_bars={payload.get('daily_bar_count')} "
+        f"rejected={payload.get('rejected_count')} "
+        f"external_calls={payload.get('external_calls_made')} "
+        f"db_writes={payload.get('db_writes_made')}"
+    )
+    if isinstance(preview, Mapping):
+        print(
+            "preview="
+            f"status={preview.get('status')} "
+            f"daily_bars={preview.get('daily_bar_count')} "
+            f"rejected={preview.get('rejected_count')}"
+        )
+    if coverage:
+        print(
+            "coverage "
+            f"active={coverage.get('active_security_count', 0)} "
+            f"existing={coverage.get('existing_as_of_bar_count', 0)} "
+            f"fixture_matches={coverage.get('fixture_active_match_count', 0)} "
+            f"covers_missing={coverage.get('missing_covered_by_fixture_count', 0)} "
+            f"missing_after={coverage.get('missing_after_import_count', 0)}"
+        )
+    boundary = str(payload.get("write_boundary") or "").strip()
+    if boundary:
+        print(f"boundary={_compact_cli_text(boundary)}")
+    next_action = str(payload.get("next_action") or "").strip()
+    if next_action:
+        print(f"next_action={next_action}")
 
 def _print_manual_market_bars_template(payload: Mapping[str, object]) -> None:
     print(

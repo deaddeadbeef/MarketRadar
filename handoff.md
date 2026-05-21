@@ -1,8 +1,40 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 11:05:00 +08:00
+Last updated: 2026-05-21 11:56:41 +08:00
 
 
+
+## Latest Saved Market Bar CLI Commands
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not run live Polygon/Massive, SEC, Schwab, OpenAI, broker, or order calls. It does not import live rows during implementation, reduce the universe, alter scoring, or claim the priced-in answer is ready.
+- This is useful because the live first blocker is still scan-date market bars. The API and TUI already expose a guarded saved-provider capture path; the CLI now has the same high-level operator path for testing and for humans who prefer terminal workflows.
+
+Fix in this slice:
+
+- Added `catalyst-radar market-bars saved-capture` as a high-level CLI wrapper around the saved Polygon/Massive grouped-daily response path.
+- Without `--confirm-external-call`, `saved-capture` is plan-only: it prints status, target date, missing-bar count, provider/key state, approval requirement, exact call count if approved, saved-file path/status, API request bodies, validate/import follow-up commands, guardrails, and `external_calls_made=0`.
+- With `--fixture`, `saved-capture` copies a local grouped-daily response to the saved path and immediately returns the existing zero-call post-capture preview. This is for tests and offline validation, not a live provider call.
+- Added `market-bars saved-validate`, which validates the saved grouped-daily JSON from disk via the same preview helper/API contract and makes 0 provider calls and 0 DB writes.
+- Added `market-bars saved-import`, which previews the local import with 0 provider calls and 0 DB writes; `--execute` imports the already-saved file into local market bars with 0 provider calls and an explicit DB-write boundary.
+- README now tells operators to prefer the high-level `market-bars saved-*` commands over the lower-level `ingest-polygon grouped-daily --save-response` path for normal dashboard/CLI work.
+
+Validation observed in this slice:
+
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\cli.py tests\integration\test_provider_ingest_cli.py` passed with `All checks passed!`.
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m py_compile src\catalyst_radar\cli.py tests\integration\test_provider_ingest_cli.py` exited 0.
+- Focused pytest passed 3 tests: `test_market_bars_saved_capture_cli_plans_without_provider_call`, `test_market_bars_saved_file_cli_validates_and_imports_fixture`, and `test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths`.
+- `git diff --check` passed.
+- Live zero-call `market-bars saved-capture --expected-as-of 2026-05-15 --json` against `schwab-live.db` returned status `approval_required`, approval `True`, provider key `True`, external calls made `0`, calls if approved `1`, DB writes `0`, saved file `missing`, and path `data\local\polygon-grouped-daily-2026-05-15.json`.
+- Live zero-call `priced-in-answer --json` against `schwab-live.db` still returned trust `blocked`, first blocker `market_bars`, gap `523`, scan `12087/12613`, manual CSV `0/523`, saved capture `approval_required`, saved capture calls made `0`, and calls if approved `1`.
+
+Next useful product action:
+
+- Do not treat this slice as goal completion.
+- The full-market answer remains blocked until scan-date market bars are actually filled/imported for the active universe, either through the manual CSV path or through one explicitly approved saved provider capture followed by saved-file validate/import.
+- The immediate operator choice is still: complete/import the manual CSV, or approve one saved Polygon/Massive grouped-daily capture for 2026-05-15 and then import only after the zero-call preview confirms coverage.
 
 ## Latest Saved Provider Capture Context
 

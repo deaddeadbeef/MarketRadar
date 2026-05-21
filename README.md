@@ -476,16 +476,24 @@ catalyst-radar market-bars import --daily-bars data/local/manual-bars-2026-05-15
 catalyst-radar market-bars import --daily-bars data/local/manual-bars-2026-05-15.csv --expected-as-of 2026-05-15 --complete-rows-only --execute
 ```
 
-For the saved-provider repair path, one explicit capture can write the raw
-grouped-daily response to disk and immediately show a zero-call post-capture
-coverage preview. Validate remains available for later re-checks, and import
-from that saved file makes 0 provider calls:
+For the saved-provider repair path, use the high-level `market-bars saved-*`
+commands. The first command is plan-only and makes 0 provider calls; add
+`--confirm-external-call` only when you intentionally approve the one
+Polygon/Massive grouped-daily capture. Validation and import read the saved JSON
+from disk and make 0 provider calls:
 
 ```powershell
-catalyst-radar ingest-polygon grouped-daily --date 2026-05-15 --save-response data/local/polygon-grouped-daily-2026-05-15.json --confirm-external-call
-catalyst-radar ingest-polygon grouped-daily --date 2026-05-15 --fixture data/local/polygon-grouped-daily-2026-05-15.json --validate-only
-catalyst-radar ingest-polygon grouped-daily --date 2026-05-15 --fixture data/local/polygon-grouped-daily-2026-05-15.json
+catalyst-radar market-bars saved-capture --expected-as-of 2026-05-15 --json
+catalyst-radar market-bars saved-capture --expected-as-of 2026-05-15 --out data/local/polygon-grouped-daily-2026-05-15.json --confirm-external-call
+catalyst-radar market-bars saved-validate --expected-as-of 2026-05-15 --fixture data/local/polygon-grouped-daily-2026-05-15.json
+catalyst-radar market-bars saved-import --expected-as-of 2026-05-15 --fixture data/local/polygon-grouped-daily-2026-05-15.json
+catalyst-radar market-bars saved-import --expected-as-of 2026-05-15 --fixture data/local/polygon-grouped-daily-2026-05-15.json --execute
 ```
+
+The lower-level `ingest-polygon grouped-daily --save-response` and fixture
+commands still exist for diagnostics, but dashboard and CLI operator flows should
+prefer the `market-bars saved-*` wrappers because they expose the same approval,
+validate, and import contract as the API/TUI.
 
 The template command writes a local ignored CSV scaffold for missing active
 tickers in the live database. Missing-only rows are sorted with stock-like
