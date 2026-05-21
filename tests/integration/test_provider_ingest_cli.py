@@ -797,6 +797,11 @@ def test_market_bars_status_cli_summarizes_zero_call_unblock(
         payload["recommended_action"]["tui_command"]
         == "bars saved capture confirm"
     )
+    after_clear = payload["after_market_bars_clear"]
+    assert after_clear["schema_version"] == "market-bars-after-clear-v1"
+    assert after_clear["current_blocker"] == "market_bars"
+    assert after_clear["current_gap_count"] == 1
+    assert after_clear["external_calls_made"] == 0
     assert payload["repair_plan"]["schema_version"] == (
         "manual-market-bars-repair-plan-v1"
     )
@@ -835,6 +840,9 @@ def test_market_bars_status_cli_summarizes_zero_call_unblock(
     assert "calls_if_approved=1" in text
     assert "recommended_action kind=saved_provider_capture" in text
     assert "tui=bars saved capture confirm" in text
+    assert "after_market_bars_clear status=" in text
+    assert "current=market_bars" in text
+    assert "external_calls=0" in text
     assert "0 provider calls and 0 database writes" in text
 
 

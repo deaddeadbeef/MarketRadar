@@ -2233,6 +2233,11 @@ def test_get_radar_market_bars_status_returns_zero_call_unblock_state(
     assert payload["recommended_action"]["kind"] == "saved_provider_capture"
     assert payload["recommended_action"]["external_calls_required"] == 1
     assert payload["recommended_action"]["db_writes_required"] == 0
+    after_clear = payload["after_market_bars_clear"]
+    assert after_clear["schema_version"] == "market-bars-after-clear-v1"
+    assert after_clear["current_blocker"] == "market_bars"
+    assert after_clear["current_gap_count"] == 1
+    assert after_clear["external_calls_made"] == 0
     assert payload["repair_plan"]["schema_version"] == (
         "manual-market-bars-repair-plan-v1"
     )

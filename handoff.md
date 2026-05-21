@@ -5,6 +5,43 @@ Last updated: 2026-05-21 22:56:09 +08:00
 
 
 
+
+## Latest Market-Bar Post-Clear Preview
+
+Last updated: 2026-05-21 23:29:26 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, broker, order, web, shell, or provider tools from the app.
+- This is useful because the operator should see both the current bar repair action and the next evidence source that becomes relevant after the bar blocker clears. That keeps action and response distinct in CLI/API/dashboard surfaces.
+
+Fix in this slice:
+
+- `market_bars_status_payload` now includes `after_market_bars_clear`, a zero-call preview derived from the existing priced-in trust gate.
+- When market bars are still missing, the preview shows the current blocker, current gap count, next source, next source status, next gap count, plan command/API, execute-next command/API, optional next-source plan summary, and `external_calls_made=0`.
+- When market bars already cover the scope, the preview tells the operator to rerun `priced-in-answer`.
+- CLI `catalyst-radar market-bars status` now prints `after_market_bars_clear=...` and, when available, `after_market_bars_next_plan=...` beside the current recommended action.
+- API `GET /api/radar/market-bars/status` inherits the same contract because it returns the shared status payload.
+- README and dashboard feature inventory now document the post-clear preview.
+
+Validation observed in this slice:
+
+- Focused CLI/API regression passed for `market-bars status` and `/api/radar/market-bars/status`.
+- Ruff passed for touched source and test files.
+- Live zero-call smoke from the main checkout with this worktree on `PYTHONPATH` showed `after_market_bars_clear status=preview current=market_bars current_gap=523 next=catalyst_events next_status=attention next_gap=5512`, plus `after_market_bars_next_plan source=catalyst_events status=ready gaps=12075 plan=5510 routed=6563 blocked=2 batches=1102 next_calls=5 ... external_calls=0`.
+
+Current live blocker:
+
+- The trusted full-market priced-in answer remains blocked by 523 missing market bars for 2026-05-15 until explicit guarded saved Polygon/Massive capture approval with matching counts or complete manual CSV import.
+- Do not treat this slice as goal completion; it clarifies what comes immediately after the bar repair but does not fill the missing bars.
+
+Roadmap update:
+
+- User added a farther-road product-value target: MarketRadar should cover at least 20% of a $200/month ChatGPT Pro cost, or $40/month of attributable value.
+- Created GitHub issue #533, `M7: Prove monthly user value offsets ChatGPT Pro cost`, and added it to the MarketRadar Priced-In Scan Roadmap project as Todo.
+
+
 ## Latest Saved-Capture Approval Guard
 
 Goal alignment / drift check:
