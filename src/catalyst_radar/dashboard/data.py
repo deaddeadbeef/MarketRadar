@@ -3308,7 +3308,12 @@ def _priced_in_market_bar_recommended_unblock_action(blocker_detail):
     manual_option = options.get("manual_csv")
     if manual_csv:
         file_exists = bool(manual_csv.get("exists"))
-        command = manual_csv.get("preview_command") if file_exists else None
+        complete_rows = int(_finite_float(manual_csv.get("complete_rows")))
+        command = (
+            manual_csv.get("preview_command")
+            if file_exists and complete_rows != 0
+            else None
+        )
         command = command or manual_csv.get("template_command")
         api = None
         request_body = None
