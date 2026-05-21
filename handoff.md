@@ -1,7 +1,38 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 10:27:28 +08:00
+Last updated: 2026-05-21 10:44:52 +08:00
 
+
+
+## Latest Manual CSV Blocker Context
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, import rows, change scoring, reduce the universe, or claim readiness.
+- This is useful because the first blocker is still missing scan-date market bars. The main answer, CLI, and dashboard now show the exact manual CSV fill context instead of forcing the operator to open a separate repair-plan view to learn the required fields and sample missing tickers.
+
+Fix in this slice:
+
+- `full_market_trust_gate.blocker_detail.manual_csv` now includes a zero-call manual fill packet with path, existence, template row count, missing row count, complete/partial/empty counts, required fill fields, sample missing tickers, commands, next action, and `external_calls_made=0`.
+- CLI text prints `trust_gate_manual_csv=` with path, completion, fields, sample tickers, and external-call count.
+- The TUI mission brief shows a `Manual CSV` row with completion, fields, sample missing tickers, and path.
+- README documents the `blocker_detail.manual_csv` contract for dashboard clients.
+
+Validation observed in this slice:
+
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py` passed with `All checks passed!`.
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m py_compile src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py` exited 0.
+- Focused pytest passed 3 tests: `test_priced_in_answer_blocks_incomplete_stock_bars_even_with_ready_rows`, `test_priced_in_answer_cli_outputs_current_scan_answer`, and `test_dashboard_run_page_shows_priced_in_evidence_plan`.
+- Live zero-call `priced-in-answer --json` smoke against `schwab-live.db` from the feature worktree returned `manual_csv.schema_version=priced-in-market-bar-manual-csv-v1`, complete `0/523`, fields `open,high,low,close,volume,vwap`, sample `AACBR,AACBU,AACIW,AACO,AACOU`, and calls `0`.
+- Live zero-call text smoke printed `trust_gate_manual_csv=` while `external_calls=0`.
+- Live zero-call TUI Run smoke showed `Manual CSV` and `External calls made: 0`.
+
+Next useful product action:
+
+- Do not treat this slice as goal completion.
+- The full-market answer remains blocked until the missing active-universe market bars are filled/imported, or an explicitly approved saved provider capture is imported.
+- The immediate operator decision is still manual CSV fill/import versus explicit one-call saved provider capture approval.
 
 
 ## Latest After-Current Blocker Preview

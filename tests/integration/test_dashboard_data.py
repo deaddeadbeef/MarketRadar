@@ -2852,6 +2852,21 @@ def test_priced_in_answer_blocks_incomplete_stock_bars_even_with_ready_rows(
     assert "market-bars template" in payload["next_command"]
     assert "--stocks-only" in payload["next_command"]
     detail = payload["full_market_trust_gate"]["blocker_detail"]
+    manual_csv = detail["manual_csv"]
+    assert manual_csv["schema_version"] == "priced-in-market-bar-manual-csv-v1"
+    assert manual_csv["path"] == "data\\local\\manual-stock-bars-2026-05-15.csv"
+    assert manual_csv["missing_row_count"] == 1
+    assert manual_csv["template_row_count"] == 1
+    assert manual_csv["required_fill_fields"] == [
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "vwap",
+    ]
+    assert manual_csv["sample_missing_tickers"] == ["MISS"]
+    assert manual_csv["external_calls_made"] == 0
     unblock_options = {
         option["kind"]: option for option in detail["unblock_options"]
     }
