@@ -1,6 +1,38 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-22 05:34:38 +08:00
+Last updated: 2026-05-22 05:54:29 +08:00
+
+## Latest Blocked Source-Run Next Command
+
+Last updated: 2026-05-22 05:54:29 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, broker, order, web, app, or provider tools from the product.
+- This is useful because source execution must not imply that retrying SEC/Schwab/local-text batches is the next step while the price-reaction gate is still blocked by missing market bars.
+
+Fix in this slice:
+
+- Multi-batch source execution now promotes a blocked child `execution_blocker` to the run-level payload.
+- When the source run is blocked by `market_bars`, `next_command` points back to the market-bar blocker repair/status command instead of another `priced-in-source-batches --execute-batches` retry.
+- CLI source batch run output prints `execution_blocker=blocked_by=market_bars ... external_calls=0` so the action/response boundary is visible in human output.
+- README documents the blocked source-execution retry boundary.
+
+Validation observed in this slice:
+
+- Ruff passed for touched source and integration files.
+- Py-compile passed for touched source and integration files.
+- Focused source-run regressions passed for direct payload and CLI output.
+- Full affected dashboard integration file passed: `tests/integration/test_dashboard_demo_seed_cli.py`.
+- API capped source-run route regression passed.
+- Live zero-call local Schwab DB smoke for `priced-in-source-batches --source catalyst_events --execute-batches 3` blocked on `market_bars`, made `external_calls=0`, promoted `execution_blocker`, and set `next_command` to the market-bar template command.
+
+Current live blocker:
+
+- The trusted full-market priced-in answer is still blocked by 523 missing market bars for 2026-05-15 until explicit guarded saved Polygon/Massive capture approval with matching counts or complete manual CSV import.
+- The stock-like answer path is still blocked by 131 stock-like missing bars.
+- After market bars clear, the next prepared blocker remains catalyst-events source fill, with 5510 plannable company-like rows and two missing-CIK blockers currently sampled as FRBA and SSBI.
 
 ## Latest Saved-Capture Verification Projection
 

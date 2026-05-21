@@ -3849,6 +3849,73 @@ def test_priced_in_source_batches_execute_batches_cli_runs_capped_batch_run(
     assert captured["decision_gap"] == ["candidate_packet"]
 
 
+def test_priced_in_source_batches_execute_batches_cli_shows_current_blocker(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+):
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    def fake_execute_batches(_engine, _config, **kwargs):
+        return {
+            "schema_version": "priced-in-source-batch-run-v1",
+            "source": kwargs["source"],
+            "status": "blocked",
+            "requested_batches": kwargs["max_batches"],
+            "executed_batches": 0,
+            "stopped_reason": "market_bars must be complete first.",
+            "external_calls_made": 0,
+            "before_plan": {
+                "total_gap_rows": 10,
+                "plannable_gap_rows": 10,
+                "batch_count": 2,
+            },
+            "after_plan": {
+                "total_gap_rows": 10,
+                "plannable_gap_rows": 10,
+                "batch_count": 2,
+            },
+            "gap_rows_resolved": 0,
+            "plannable_rows_resolved": 0,
+            "next_action": "Clear market_bars before source execution.",
+            "next_command": "catalyst-radar market-bars status --expected-as-of 2026-05-15",
+            "execution_blocker": {
+                "blocked_by": "market_bars",
+                "blocked_gap_rows": 523,
+                "command": "catalyst-radar market-bars status --expected-as-of 2026-05-15",
+                "external_calls_made": 0,
+            },
+            "executions": [],
+        }
+
+    monkeypatch.setattr(
+        "catalyst_radar.cli.execute_priced_in_source_batches",
+        fake_execute_batches,
+    )
+
+    assert (
+        main(
+            [
+                "priced-in-source-batches",
+                "--source",
+                "catalyst_events",
+                "--execute-batches",
+                "3",
+            ]
+        )
+        == 1
+    )
+    output = capsys.readouterr()
+
+    assert output.err == ""
+    assert "priced_in_source_batch_run source=catalyst_events status=blocked" in output.out
+    assert "next_command=catalyst-radar market-bars status" in output.out
+    assert "execution_blocker=blocked_by=market_bars" in output.out
+    assert "gap_rows=523" in output.out
+    assert "external_calls=0" in output.out
+
+
 def test_priced_in_answer_cli_outputs_current_scan_answer(
     tmp_path: Path,
     monkeypatch,
@@ -4330,6 +4397,22 @@ def test_priced_in_source_execution_blocks_until_stock_bars_complete(
     assert payload["execution_blocker"]["blocked_by"] == "market_bars"
     assert payload["execution_blocker"]["blocked_gap_rows"] == 1
     assert "market-bars template" in payload["execution_blocker"]["command"]
+
+    run_payload = source_batch_module.execute_priced_in_source_batches(
+        engine,
+        AppConfig.from_env(),
+        source="broker_context",
+        max_batches=3,
+        stocks_only=True,
+    )
+
+    assert run_payload["status"] == "blocked"
+    assert run_payload["executed_batches"] == 0
+    assert run_payload["external_calls_made"] == 0
+    assert run_payload["execution_blocker"]["blocked_by"] == "market_bars"
+    assert run_payload["execution_blocker"]["blocked_gap_rows"] == 1
+    assert "market-bars template" in run_payload["next_command"]
+    assert "--execute-batches" not in run_payload["next_command"]
 
 
 def test_priced_in_source_batches_prioritize_full_market_bar_coverage(

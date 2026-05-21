@@ -5967,6 +5967,15 @@ def _print_priced_in_source_batch_run(payload: Mapping[str, object]) -> None:
     next_command = payload.get("next_command")
     if next_command:
         print(f"next_command={_compact_cli_text(next_command)}")
+    execution_blocker = payload.get("execution_blocker")
+    if isinstance(execution_blocker, Mapping):
+        print(
+            "execution_blocker="
+            f"blocked_by={execution_blocker.get('blocked_by') or 'n/a'} "
+            f"gap_rows={execution_blocker.get('blocked_gap_rows') or 0} "
+            f"command={_compact_cli_text(execution_blocker.get('command'))} "
+            f"external_calls={execution_blocker.get('external_calls_made') or 0}"
+        )
     executions = payload.get("executions")
     if isinstance(executions, list | tuple) and executions:
         print("chunks:")
