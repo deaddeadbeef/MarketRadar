@@ -671,7 +671,12 @@ def test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths(
         "preview_import",
         "execute_import_after_preview",
     ]
-    assert approval_packet["post_capture_zero_call_steps"][0]["external_calls_made"] == 0
+    post_steps = approval_packet["post_capture_zero_call_steps"]
+    assert post_steps[0]["external_calls_made"] == 0
+    assert post_steps[1]["cli_command"] == payload["provider_saved_file_import_command"]
+    assert post_steps[2]["cli_command"] == (
+        f"{payload['provider_saved_file_import_command']} --execute"
+    )
     assert "0 provider calls" in " ".join(approval_packet["guardrails"])
     assert payload["provider_saved_file_import_command"] == (
         "catalyst-radar market-bars saved-import "
