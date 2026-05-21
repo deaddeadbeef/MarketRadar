@@ -2122,6 +2122,13 @@ def _priced_in_all_source_mission_brief(
         next_gaps=next_gaps,
         decision_shortcut_blocker=decision_shortcut_blocker,
     )
+    next_unblock_options = _priced_in_mission_unblock_options(
+        coverage_recommendation
+    )
+    recommended_unblock = _priced_in_mission_recommended_unblock_action(
+        coverage_recommendation,
+        next_unblock_options,
+    )
     return {
         "schema_version": "priced-in-mission-brief-v1",
         "question": (
@@ -2140,9 +2147,12 @@ def _priced_in_all_source_mission_brief(
         "next_operator_action": coverage_recommendation.get("action"),
         "next_command": coverage_recommendation.get("command"),
         "next_external_calls_required": next_calls,
-        "next_unblock_options": _priced_in_mission_unblock_options(
-            coverage_recommendation
+        **(
+            {"recommended_unblock_action": recommended_unblock}
+            if recommended_unblock
+            else {}
         ),
+        "next_unblock_options": next_unblock_options,
         "operator_boundary": (
             "Viewing this brief is zero-call. Execute only one reviewed source "
             "or repair action when the provider, date, and call budget are "
@@ -2213,6 +2223,61 @@ def _priced_in_mission_source_roadmap(
             }
         )
     return roadmap
+
+
+def _priced_in_mission_recommended_unblock_action(
+    coverage_recommendation,
+    options,
+):
+    source = str(coverage_recommendation.get("source") or "").strip()
+    gaps = int(_finite_float(coverage_recommendation.get("total_gap_rows")))
+    if source != "market_bars" or gaps <= 0:
+        return None
+    by_kind = {
+        str(option.get("kind") or ""): option
+        for option in options
+        if isinstance(option, Mapping)
+    }
+    diagnostic = _mapping_value(coverage_recommendation, "diagnostic")
+    packet = _mapping_value(
+        diagnostic,
+        "provider_saved_file_capture_approval_packet",
+    )
+    saved_status = str(
+        packet.get("saved_file_status")
+        or diagnostic.get("provider_saved_file_status")
+        or ""
+    ).strip()
+    validate_option = by_kind.get("validate_saved_file")
+    if saved_status == "available" and validate_option:
+        return _priced_in_market_bar_recommended_unblock_from_option(
+            validate_option,
+            reason="Validate the saved grouped-daily file before import.",
+        )
+    saved_capture = by_kind.get("saved_provider_capture")
+    if (
+        saved_capture
+        and bool(packet.get("approval_required"))
+        and str(packet.get("status") or "") == "approval_required"
+    ):
+        return _priced_in_market_bar_recommended_unblock_from_option(
+            saved_capture,
+            request_body_key="confirm_request_body",
+            reason=saved_capture.get("question")
+            or "Capture one saved grouped-daily provider response for review.",
+        )
+    manual_option = by_kind.get("manual_csv")
+    if manual_option:
+        return _priced_in_market_bar_recommended_unblock_from_option(
+            manual_option,
+            reason=manual_option.get("next_action")
+            or coverage_recommendation.get("action"),
+        )
+    first_option = next(iter(by_kind.values()), None)
+    if first_option:
+        return _priced_in_market_bar_recommended_unblock_from_option(first_option)
+    return None
+
 
 
 def _priced_in_mission_unblock_options(

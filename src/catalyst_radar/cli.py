@@ -4747,6 +4747,22 @@ def _print_priced_in_mission_brief(payload: Mapping[str, object]) -> None:
     command = mission.get("next_command")
     if command:
         print(f"  command={_compact_cli_text(command)}")
+    recommended = mission.get("recommended_unblock_action")
+    if isinstance(recommended, Mapping):
+        writes = recommended.get("db_writes_required")
+        print(
+            "  recommended_unblock="
+            f"{recommended.get('kind') or 'action'} "
+            f"status={recommended.get('status') or 'unknown'} "
+            f"approval_required="
+            f"{str(bool(recommended.get('approval_required'))).lower()} "
+            f"calls={_int_value(recommended.get('external_calls_required'))} "
+            f"db_writes={_int_value(writes)} "
+            f"command={_compact_cli_text(recommended.get('command'))}"
+        )
+        reason = recommended.get("reason")
+        if reason:
+            print(f"    reason={_compact_cli_text(reason)}")
     unblock_options = mission.get("next_unblock_options")
     if isinstance(unblock_options, list | tuple):
         for option in unblock_options[:5]:

@@ -2936,6 +2936,7 @@ def _priced_in_all_source_batch_message(
     )
     next_action = str(payload.get("next_action") or "").strip()
     next_action_text = f" Suggested first: {next_action}" if next_action else ""
+    recommended_unblock_text = _all_source_mission_recommended_unblock(payload)
     recommendation_text = _all_source_recommendation_detail(payload)
     scan_scope = _mapping(payload.get("scan_scope"))
     ranked_rows = int(_number_or_zero(scan_scope.get("ranked_rows")))
@@ -2961,8 +2962,27 @@ def _priced_in_all_source_batch_message(
         "Full scan is already the ranked universe; the tickers below are only "
         "first safe provider chunks. Source execution is split into safe chunks. "
         f"{scan_text}{review_text}{export_text} "
-        f"{'; '.join(pieces)}.{next_action_text}{recommendation_text}"
-        f"{command}{capped_command}"
+        f"{'; '.join(pieces)}.{next_action_text}{recommended_unblock_text}"
+        f"{recommendation_text}{command}{capped_command}"
+    )
+
+
+def _all_source_mission_recommended_unblock(payload):
+    mission = _mapping(payload.get("mission_brief"))
+    action = _mapping(mission.get("recommended_unblock_action"))
+    command = str(action.get("command") or "").strip()
+    if not command:
+        return ""
+    kind = str(action.get("kind") or "action").strip()
+    status = str(action.get("status") or "unknown").strip()
+    calls = int(_number_or_zero(action.get("external_calls_required")))
+    writes = int(_number_or_zero(action.get("db_writes_required")))
+    approval = "approval required" if bool(action.get("approval_required")) else "no approval"
+    reason = str(action.get("reason") or "").strip()
+    reason_text = f" Reason: {reason}." if reason else ""
+    return (
+        f" Recommended unblock: {kind} {status}; {approval}; "
+        f"calls {calls}; DB writes {writes}; command {command}.{reason_text}"
     )
 
 

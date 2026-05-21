@@ -650,6 +650,17 @@ def test_dashboard_batch_all_response_separates_plan_route_and_blocked_rows(
                 },
             ],
             "next_action": "Review catalyst_events.",
+            "mission_brief": {
+                "recommended_unblock_action": {
+                    "kind": "saved_provider_capture",
+                    "status": "approval_required",
+                    "approval_required": True,
+                    "external_calls_required": 1,
+                    "db_writes_required": 0,
+                    "command": "bars saved capture confirm",
+                    "reason": "Approve one Polygon/Massive grouped-daily call.",
+                }
+            },
             "coverage_first_recommendation": {},
             "decision_shortcut_recommendation": {},
         }
@@ -669,6 +680,9 @@ def test_dashboard_batch_all_response_separates_plan_route_and_blocked_rows(
     )
 
     assert update.page == "ops"
+    assert "Recommended unblock:" in update.message
+    assert "saved_provider_capture approval_required" in update.message
+    assert "bars saved capture confirm" in update.message
     assert (
         "catalyst_events=ready gaps=12 plan=5 routed=6 blocked=1 batches=1"
         in update.message
@@ -4153,6 +4167,15 @@ def test_priced_in_source_batches_prioritize_full_market_bar_coverage(
     )
     assert unblock_options["validate_saved_file"]["request_body"]["fixture_path"]
     assert unblock_options["preview_import"]["request_body"]["execute"] is False
+    recommended = overview["mission_brief"]["recommended_unblock_action"]
+    assert recommended["kind"] == "saved_provider_capture"
+    assert recommended["status"] == "approval_required"
+    assert recommended["approval_required"] is True
+    assert recommended["external_calls_required"] == 1
+    assert recommended["db_writes_required"] == 0
+    assert recommended["command"] == "bars saved capture confirm"
+    assert recommended["request_body"]["confirm_external_call"] is True
+    assert "Approve one Polygon/Massive" in recommended["reason"]
     assert overview["coverage_first_recommendation"]["coverage_basis"] == (
         "active_universe_as_of_bars"
     )
@@ -4241,6 +4264,12 @@ def test_priced_in_source_batches_prioritize_full_market_bar_coverage(
     assert main(["priced-in-source-batches", "--source", "all"]) == 0
     output = capsys.readouterr()
     assert output.err == ""
+    assert (
+        "recommended_unblock=saved_provider_capture status=approval_required "
+        "approval_required=true calls=1 db_writes=0 "
+        "command=bars saved capture confirm"
+    ) in output.out
+    assert "reason=Approve one Polygon/Massive grouped-daily call" in output.out
     assert "unblock=manual_csv status=available calls=0" in output.out
     assert (
         "unblock=saved_provider_capture status=approval_required calls=1 "

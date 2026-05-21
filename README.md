@@ -127,7 +127,10 @@ operator summary with the current trusted-answer state, scan progress, next
 source, next command, call boundary, next unblock options, and roadmap of
 remaining evidence gaps. When market bars block the answer, those unblock
 options separate the zero-call manual CSV path from the saved Polygon/Massive
-capture approval path, including the expected call count before capture.
+capture approval path, including the expected call count before capture. The
+same brief also exposes `recommended_unblock_action`, and CLI / TUI `batch all`
+print it before the option list so the source-map view agrees with the trust
+gate about the single next safe unblock step.
 Roadmap rows distinguish total gaps from immediately useful work:
 `gap_rows` is the broad evidence gap, `plannable_gap_rows` is the part a safe
 plan can currently address, `routed_gap_rows` is the already assigned subset
