@@ -1153,6 +1153,10 @@ def main(argv: list[str] | None = None) -> int:
                             executed=result.executed,
                             source="manual_csv",
                             db_changes_made=1 if result.executed else 0,
+                            projected_missing_after_import_count=(
+                                None if result.executed else len(result.missing_expected_tickers)
+                            ),
+                            projected_db_changes_made=None if result.executed else 1,
                         )
                     )
                 if args.json:
@@ -4154,6 +4158,14 @@ def _market_bars_saved_import_payload(
                 executed=False,
                 source="saved_provider_file",
                 db_changes_made=0,
+                projected_missing_after_import_count=int(
+                    _mapping_value(preview.get("coverage")).get(
+                        "missing_after_import_count",
+                        0,
+                    )
+                    or 0
+                ),
+                projected_db_changes_made=1,
             ),
             "db_writes_made": 0,
             "write_boundary": (
@@ -4516,6 +4528,8 @@ def _print_market_bars_post_import_verification(payload):
         f"status={verification.get('status')} "
         f"missing={verification.get('missing_as_of_bar_count')} "
         f"next_blocker={verification.get('next_blocker') or 'n/a'} "
+        f"projected_missing={verification.get('projected_missing_after_import_count')} "
+        f"projection={verification.get('preview_projection_status')} "
         f"command={command} "
         f"external_calls={verification.get('external_calls_made')} "
         f"db_changes={verification.get('db_changes_made')}"

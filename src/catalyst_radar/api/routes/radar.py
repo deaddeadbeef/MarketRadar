@@ -858,6 +858,10 @@ def radar_market_bars_import(
             executed=result.executed,
             source="manual_csv",
             db_changes_made=1 if result.executed else 0,
+            projected_missing_after_import_count=(
+                None if result.executed else len(result.missing_expected_tickers)
+            ),
+            projected_db_changes_made=None if result.executed else 1,
         )
     return redact_restricted_external_payload(payload)
 
@@ -1023,6 +1027,15 @@ def radar_market_bars_provider_fixture_import(
                         executed=False,
                         source="saved_provider_file",
                         db_changes_made=0,
+                        projected_missing_after_import_count=int(
+                            (
+                                preview.get("coverage")
+                                if isinstance(preview.get("coverage"), dict)
+                                else {}
+                            ).get("missing_after_import_count", 0)
+                            or 0
+                        ),
+                        projected_db_changes_made=1,
                     ),
                     "db_writes_made": 0,
                     "write_boundary": (

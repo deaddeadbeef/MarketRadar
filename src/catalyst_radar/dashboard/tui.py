@@ -3902,6 +3902,10 @@ def _execute_market_bar_manual_command(
                     executed=result.executed,
                     source="manual_csv",
                     db_changes_made=1 if result.executed else 0,
+                    projected_missing_after_import_count=(
+                        None if result.executed else len(result.missing_expected_tickers)
+                    ),
+                    projected_db_changes_made=None if result.executed else 1,
                 )
             )
             return _manual_market_bar_import_message(import_payload)
@@ -3983,10 +3987,18 @@ def _market_bar_post_import_summary(payload: Mapping[str, object]):
         or verification.get("next_blocker_action")
         or verification.get("next_action")
     )
+    projected = verification.get("projected_missing_after_import_count")
+    projection = verification.get("preview_projection_status")
+    projection_text = (
+        f"; projected_missing={projected}; projection={projection}"
+        if projected is not None
+        else ""
+    )
     return (
         "Post-import: "
         f"status={verification.get('status')}; "
-        f"missing={verification.get('missing_as_of_bar_count')}; "
+        f"missing={verification.get('missing_as_of_bar_count')}"
+        f"{projection_text}; "
         f"next={_clip(next_value or 'rerun priced-in answer', 96)}"
     )
 
@@ -4106,8 +4118,25 @@ def _execute_market_bar_saved_file_command(
                 f"{post_import}"
             )
         preview = _preview_saved_market_bar_file(engine, config, body)
+        coverage = _mapping(preview.get("coverage"))
+        verification = market_bars_import_verification_payload(
+            engine,
+            config,
+            expected_as_of=_market_bar_saved_file_date(body),
+            executed=False,
+            source="saved_provider_file",
+            db_changes_made=0,
+            projected_missing_after_import_count=int(
+                coverage.get("missing_after_import_count") or 0
+            ),
+            projected_db_changes_made=1,
+        )
+        post_import = _market_bar_post_import_summary(
+            {"post_import_verification": verification}
+        )
         return (
             f"{_saved_market_bar_preview_message('Saved-file import preview', preview)} "
+            f"{post_import}. "
             "No database writes were made; type `bars saved import execute` "
             "only after the preview covers the intended missing bars."
         )

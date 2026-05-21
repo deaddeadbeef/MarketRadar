@@ -1900,8 +1900,12 @@ def test_post_radar_market_bars_template_and_import_use_database_universe(
         "filled_rows": 3,
     }
     assert preview_payload["executed"] is False
-    assert preview_payload["post_import_verification"]["status"] == "preview_only"
-    assert preview_payload["post_import_verification"]["missing_as_of_bar_count"] == 3
+    verification = preview_payload["post_import_verification"]
+    assert verification["status"] == "preview_only"
+    assert verification["missing_as_of_bar_count"] == 3
+    assert verification["projected_missing_after_import_count"] == 0
+    assert verification["preview_projection_status"] == "would_clear_market_bars"
+    assert verification["preview_would_clear_market_bars"] is True
     assert preview_payload["external_calls_made"] == 0
 
     execute_response = client.post(
@@ -1968,6 +1972,9 @@ def test_post_radar_market_bars_import_complete_rows_only_is_incremental(
         "filled_rows": 1,
     }
     assert preview_payload["executed"] is False
+    verification = preview_payload["post_import_verification"]
+    assert verification["projected_missing_after_import_count"] == 2
+    assert verification["preview_projection_status"] == "would_still_block_market_bars"
     assert preview_payload["external_calls_made"] == 0
 
     execute_response = client.post(
@@ -2578,8 +2585,11 @@ def test_post_radar_market_bars_provider_fixture_import_previews_without_writes(
     assert payload["schema_version"] == "polygon-grouped-daily-fixture-import-v1"
     assert payload["status"] == "ready_with_rejections"
     assert payload["executed"] is False
-    assert payload["post_import_verification"]["status"] == "preview_only"
-    assert payload["post_import_verification"]["missing_as_of_bar_count"] == 3
+    verification = payload["post_import_verification"]
+    assert verification["status"] == "preview_only"
+    assert verification["missing_as_of_bar_count"] == 3
+    assert verification["projected_missing_after_import_count"] == 1
+    assert verification["preview_projection_status"] == "would_still_block_market_bars"
     assert payload["external_calls_made"] == 0
     assert payload["db_writes_made"] == 0
     assert "execute=true" in payload["write_boundary"]

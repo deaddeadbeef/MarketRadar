@@ -217,6 +217,7 @@ def test_market_bars_import_complete_rows_only_allows_incremental_import(
     )
     assert "fill_progress=complete=1 partial=0 empty=1 filled=1" in preview.out
     assert "post_import_verification status=preview_only missing=6" in preview.out
+    assert "projected_missing=5 projection=would_still_block_market_bars" in preview.out
     assert "external_calls=0" in preview.out
 
     assert (
@@ -1198,8 +1199,11 @@ def test_market_bars_saved_file_cli_validates_and_imports_fixture(
         "polygon-grouped-daily-fixture-import-v1"
     )
     assert preview_payload["executed"] is False
-    assert preview_payload["post_import_verification"]["status"] == "preview_only"
-    assert preview_payload["post_import_verification"]["missing_as_of_bar_count"] == 3
+    verification = preview_payload["post_import_verification"]
+    assert verification["status"] == "preview_only"
+    assert verification["missing_as_of_bar_count"] == 3
+    assert verification["projected_missing_after_import_count"] == 1
+    assert verification["preview_projection_status"] == "would_still_block_market_bars"
     assert preview_payload["external_calls_made"] == 0
     assert preview_payload["db_writes_made"] == 0
 
@@ -1798,6 +1802,7 @@ def test_market_bars_import_executes_without_securities_csv(
     preview = capsys.readouterr()
     assert preview_code == 0
     assert "manual_market_bars_import status=ready" in preview.out
+    assert "projected_missing=0 projection=would_clear_market_bars" in preview.out
     assert "Plan only: no database writes were made." in preview.out
 
     execute_code = main(
