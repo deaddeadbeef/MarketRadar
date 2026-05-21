@@ -1,6 +1,38 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 21:38:00 +08:00
+Last updated: 2026-05-21 21:58:16 +08:00
+
+
+
+
+## Latest Zero-Call Market-Bar Status Default
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, broker, order, web, shell, or provider tools from the app.
+- This is useful because the current hard blocker is still missing market bars; the operator should be able to run the read-only status check without remembering the latest stored bar date.
+
+Fix in this slice:
+
+- `market_bars_status_payload` now accepts an omitted `expected_as_of` and resolves it from the latest stored `daily_bars.date`.
+- CLI `catalyst-radar market-bars status` and API `GET /api/radar/market-bars/status` use that inferred date only for read-only status; provider-capture, saved-import, manual-template, and repair execution paths still keep explicit dates.
+- The payload and CLI text now expose `expected_as_of_source` as `argument` or `latest_daily_bar`.
+- If no daily bars exist and the date is omitted, the status path raises a clear error asking for `--expected-as-of YYYY-MM-DD`.
+- README documents the status default while preserving the explicit-date provider/repair commands.
+
+Validation observed in this slice:
+
+- Focused CLI/API regression passed for default and explicit `market-bars status` dates.
+- Py-compile passed for the touched status, CLI, and API route files.
+- Ruff passed for the touched source and test files.
+- `git diff --check` passed.
+- Live zero-call `market-bars status` smoke against the local Schwab DB inferred `expected_as_of=2026-05-15`, reported `expected_as_of_source=latest_daily_bar`, kept `external_calls=0` and `db_writes=0`, and still showed the saved-provider capture as approval-required with 1 call only if approved.
+
+Current live blocker:
+
+- The trusted full-market priced-in answer remains blocked by 523 missing market bars for 2026-05-15 until explicit saved Polygon/Massive capture approval or complete manual CSV import.
+- Do not treat this slice as goal completion; it reduces operator friction before the real market-bar unblock step.
 
 
 

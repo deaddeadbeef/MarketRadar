@@ -210,7 +210,7 @@ def build_parser() -> argparse.ArgumentParser:
     market_bars_status.add_argument(
         "--expected-as-of",
         type=date.fromisoformat,
-        required=True,
+        help="Defaults to the latest stored daily-bar date.",
     )
     market_bars_status.add_argument(
         "--stocks-only",
@@ -4135,6 +4135,7 @@ def _print_market_bars_status(payload: Mapping[str, object]):
         "market_bars_status "
         f"status={payload.get('status')} "
         f"expected_as_of={payload.get('expected_as_of')} "
+        f"expected_as_of_source={payload.get('expected_as_of_source')} "
         f"scope={payload.get('coverage_scope')} "
         f"active={payload.get('active_security_count')} "
         f"existing={payload.get('existing_as_of_bar_count')} "

@@ -3,26 +3,29 @@ from __future__ import annotations
 from collections.abc import Mapping
 from datetime import date
 
+from sqlalchemy import func, select
 from sqlalchemy.engine import Engine
 
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.market.manual_bars import manual_market_bars_repair_plan
 from catalyst_radar.storage.provider_repositories import ProviderRepository
+from catalyst_radar.storage.schema import daily_bars
 
 
 def market_bars_status_payload(
     engine: Engine,
     config: AppConfig,
     *,
-    expected_as_of: date,
+    expected_as_of: date | None = None,
     stocks_only: bool = False,
 ):
     """Summarize the current market-bar unblock state without provider calls."""
 
+    resolved_expected_as_of = _resolve_expected_as_of(engine, expected_as_of)
     repair = _repair_payload(
         engine,
         config,
-        expected_as_of=expected_as_of,
+        expected_as_of=resolved_expected_as_of,
         stocks_only=stocks_only,
     )
     missing = int(repair.get("missing_as_of_bar_count") or 0)
@@ -44,7 +47,7 @@ def market_bars_status_payload(
     ).strip()
     import_command = repair.get("provider_saved_file_import_command")
     recommended_action = _recommended_unblock_action(
-        expected_as_of=expected_as_of,
+        expected_as_of=resolved_expected_as_of,
         missing=missing,
         repair=repair,
         operator_step=operator_step,
@@ -56,7 +59,8 @@ def market_bars_status_payload(
         "schema_version": "market-bars-status-v1",
         "status": status,
         "first_blocker": "market_bars" if missing_any else None,
-        "expected_as_of": expected_as_of.isoformat(),
+        "expected_as_of": resolved_expected_as_of.isoformat(),
+        "expected_as_of_source": "argument" if expected_as_of else "latest_daily_bar",
         "stocks_only": bool(stocks_only),
         "coverage_scope": repair.get("coverage_scope"),
         "active_security_count": repair.get("active_security_count"),
@@ -170,6 +174,21 @@ def _repair_payload(
             provider_health.checked_at if provider_health is not None else None
         ),
     ).as_payload()
+
+
+def _resolve_expected_as_of(engine: Engine, expected_as_of: date | None) -> date:
+    if expected_as_of is not None:
+        return expected_as_of
+    with engine.connect() as connection:
+        latest = connection.execute(select(func.max(daily_bars.c.date))).scalar_one()
+    if latest is None:
+        raise ValueError(
+            "expected_as_of is required when no daily bars are stored; "
+            "pass --expected-as-of YYYY-MM-DD."
+        )
+    if isinstance(latest, date):
+        return latest
+    return date.fromisoformat(str(latest))
 
 
 def _recommended_unblock_action(

@@ -751,6 +751,8 @@ def test_market_bars_status_cli_summarizes_zero_call_unblock(
     assert payload["schema_version"] == "market-bars-status-v1"
     assert payload["status"] == "blocked"
     assert payload["first_blocker"] == "market_bars"
+    assert payload["expected_as_of"] == "2026-05-15"
+    assert payload["expected_as_of_source"] == "argument"
     assert payload["coverage_scope"] == "stock_like"
     assert payload["active_security_count"] == 2
     assert payload["existing_as_of_bar_count"] == 1
@@ -775,13 +777,20 @@ def test_market_bars_status_cli_summarizes_zero_call_unblock(
     assert payload["external_calls_made"] == 0
     assert payload["db_writes_made"] == 0
 
+    exit_code = main(["market-bars", "status", "--stocks-only", "--json"])
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    default_payload = json.loads(captured.out)
+    assert default_payload["expected_as_of"] == "2026-05-15"
+    assert default_payload["expected_as_of_source"] == "latest_daily_bar"
+    assert default_payload["external_calls_made"] == 0
+    assert default_payload["db_writes_made"] == 0
+
     assert (
         main(
             [
                 "market-bars",
                 "status",
-                "--expected-as-of",
-                "2026-05-15",
                 "--stocks-only",
             ]
         )
@@ -789,6 +798,8 @@ def test_market_bars_status_cli_summarizes_zero_call_unblock(
     )
     text = capsys.readouterr().out
     assert "market_bars_status status=blocked" in text
+    assert "expected_as_of=2026-05-15" in text
+    assert "expected_as_of_source=latest_daily_bar" in text
     assert "missing=1" in text
     assert "saved_capture status=approval_required" in text
     assert "calls_if_approved=1" in text
