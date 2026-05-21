@@ -1,6 +1,36 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 20:54:31 +08:00
+Last updated: 2026-05-21 21:38:00 +08:00
+
+
+
+
+## Latest Trust-Gate Command Boundary
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, broker, order, web, shell, or provider tools from the app.
+- This is useful because the first `priced-in-answer` view is the safest place for a human to start. It must show a copy-pasteable PowerShell command for the saved Polygon/Massive capture while keeping the short dashboard command-box alias visible.
+
+Fix in this slice:
+
+- The trust-gate market-bar unblock-options builder now preserves `cli_command` and `tui_command` for saved-provider capture and saved-file follow-up steps.
+- `priced-in-answer` text output now prefers `cli_command` for `trust_gate_unblock` and `trust_gate_saved_capture`, appending `tui=...` when the dashboard alias differs.
+- README documents that the command-boundary contract applies to both source-map mission briefs and first-answer trust-gate rows.
+
+Validation observed in this slice:
+
+- Focused regression passed for `test_priced_in_answer_cli_prints_next_source_plan` and `test_priced_in_source_batches_prioritize_full_market_bar_coverage`.
+- Ruff passed for the touched CLI/data/test files.
+- Py-compile passed for the touched CLI/data files.
+- `git diff --check` passed.
+- Live zero-call `priced-in-answer` smoke against the local Schwab DB, with this worktree pinned on `PYTHONPATH`, showed `trust_gate_recommended_action command=catalyst-radar market-bars saved-capture ... --confirm-external-call tui=bars saved capture confirm` and `external_calls=0`.
+
+Current live blocker:
+
+- The trusted full-market priced-in answer remains blocked by 523 missing market bars for 2026-05-15 until explicit saved Polygon/Massive capture approval or complete manual CSV import.
+- Do not treat this slice as goal completion; it makes the first answer view safe to operate before the real market-bar unblock step.
 
 
 

@@ -134,7 +134,9 @@ gate about the single next safe unblock step. That action keeps the legacy
 `command` field as the dashboard/TUI alias, while `cli_command` carries the
 copy-pasteable `catalyst-radar ...` command and `tui_command` carries the
 short command-box alias. CLI text output prefers `cli_command` and appends
-`tui=...` when the terminal-dashboard alias differs.
+`tui=...` when the terminal-dashboard alias differs; this applies to both the
+source-map mission brief and the first `priced-in-answer` trust-gate action /
+unblock rows.
 Roadmap rows distinguish total gaps from immediately useful work:
 `gap_rows` is the broad evidence gap, `plannable_gap_rows` is the part a safe
 plan can currently address, `routed_gap_rows` is the already assigned subset

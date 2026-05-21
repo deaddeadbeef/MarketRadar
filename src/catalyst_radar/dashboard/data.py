@@ -3396,6 +3396,8 @@ def _priced_in_market_bar_blocker_unblock_options(market_bar_repair, provider_pl
                 ),
                 "command": packet.get("tui_confirm_command")
                 or packet.get("capture_cli_command"),
+                "cli_command": packet.get("capture_cli_command"),
+                "tui_command": packet.get("tui_confirm_command"),
                 "api": packet.get("capture_api"),
                 "request_body": packet.get("capture_request_body"),
                 "confirm_request_body": packet.get("capture_confirm_request_body"),
@@ -3421,6 +3423,8 @@ def _priced_in_market_bar_blocker_unblock_options(market_bar_repair, provider_pl
                         _finite_float(step.get("db_writes_made"))
                     ),
                     "command": step.get("tui_command") or step.get("cli_command"),
+                    "cli_command": step.get("cli_command"),
+                    "tui_command": step.get("tui_command"),
                     "api": step.get("api"),
                     "request_body": step.get("request_body"),
                     "next_action": (
