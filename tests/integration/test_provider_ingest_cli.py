@@ -799,6 +799,20 @@ def test_market_bars_status_cli_summarizes_zero_call_unblock(
         payload["recommended_action"]["tui_command"]
         == "bars saved capture confirm"
     )
+    checklist = payload["unblock_checklist"]
+    assert checklist["schema_version"] == "market-bars-unblock-checklist-v1"
+    assert checklist["status"] == "approval_required"
+    assert checklist["next_step_order"] == 2
+    assert checklist["coverage_scope"] == "stock_like"
+    assert checklist["missing_as_of_bar_count"] == 1
+    assert checklist["external_calls_made"] == 0
+    assert checklist["db_changes_made"] == 0
+    assert checklist["steps"][0]["command"].endswith("--stocks-only")
+    capture_step = checklist["steps"][1]
+    assert capture_step["label"] == "Capture saved provider file"
+    assert capture_step["external_calls_required"] == 1
+    assert capture_step["db_changes_required"] == 0
+    assert capture_step["tui_command"] == "bars saved capture confirm"
     after_clear = payload["after_market_bars_clear"]
     assert after_clear["schema_version"] == "market-bars-after-clear-v1"
     assert after_clear["current_blocker"] == "market_bars"
@@ -868,6 +882,12 @@ def test_market_bars_status_cli_summarizes_zero_call_unblock(
     assert "calls_if_approved=1" in text
     assert "recommended_action kind=saved_provider_capture" in text
     assert "tui=bars saved capture confirm" in text
+    assert "unblock_checklist status=approval_required" in text
+    assert "next_step=2" in text
+    assert "action=Capture saved provider file" in text
+    assert "external_calls=1" in text
+    assert "db_writes=0" in text
+    assert "command=bars saved capture confirm" in text
     assert "after_market_bars_clear status=" in text
     assert "current=market_bars" in text
     assert "external_calls=0" in text

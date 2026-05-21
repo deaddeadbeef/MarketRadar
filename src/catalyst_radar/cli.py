@@ -4311,6 +4311,32 @@ def _print_market_bars_status(payload: Mapping[str, object]):
                 _compact_cli_text(recommended.get("command")),
             )
         )
+    checklist = _mapping_value(payload.get("unblock_checklist"))
+    if checklist:
+        steps = _sequence_value(checklist.get("steps"))
+        next_order = int(checklist.get("next_step_order") or 0)
+        next_step = next(
+            (
+                step
+                for step in steps
+                if isinstance(step, Mapping)
+                and int(step.get("order") or 0) == next_order
+            ),
+            {},
+        )
+        print(
+            "unblock_checklist "
+            f"status={checklist.get('status')} "
+            f"next_step={next_order} "
+            f"scope={checklist.get('coverage_scope')} "
+            f"missing={checklist.get('missing_as_of_bar_count')} "
+            f"action={_compact_cli_text(next_step.get('label'))} "
+            f"external_calls={next_step.get('external_calls_required', 0)} "
+            "db_writes="
+            f"{next_step.get('db_writes_required', next_step.get('db_changes_required', 0))} "
+            "command="
+            f"{_compact_cli_text(next_step.get('tui_command') or next_step.get('command'))}"
+        )
     if after_clear:
         print(
             (

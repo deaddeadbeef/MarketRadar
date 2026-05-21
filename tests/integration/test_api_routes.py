@@ -2240,6 +2240,14 @@ def test_get_radar_market_bars_status_returns_zero_call_unblock_state(
     assert payload["recommended_action"]["kind"] == "saved_provider_capture"
     assert payload["recommended_action"]["external_calls_required"] == 1
     assert payload["recommended_action"]["db_writes_required"] == 0
+    checklist = payload["unblock_checklist"]
+    assert checklist["schema_version"] == "market-bars-unblock-checklist-v1"
+    assert checklist["status"] == "approval_required"
+    assert checklist["next_step_order"] == 2
+    assert checklist["coverage_scope"] == "stock_like"
+    assert checklist["steps"][0]["command"].endswith("--stocks-only")
+    assert checklist["steps"][1]["external_calls_required"] == 1
+    assert checklist["steps"][1]["db_changes_required"] == 0
     after_clear = payload["after_market_bars_clear"]
     assert after_clear["schema_version"] == "market-bars-after-clear-v1"
     assert after_clear["current_blocker"] == "market_bars"

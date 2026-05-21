@@ -3594,6 +3594,11 @@ def _market_bar_status_message(payload: Mapping[str, object]) -> str:
     recommended = _market_bar_recommended_action_summary(payload)
     if recommended:
         parts.append(f"Recommended: {recommended}")
+        parts.append(
+            "Unblock checklist: review counts, approve/capture saved file, "
+            "validate saved file, preview import, execute import, "
+            "rerun priced-in answer"
+        )
     after_clear = _market_bar_after_clear_summary(payload)
     if after_clear:
         parts.append(f"After bars clear: {after_clear}")
