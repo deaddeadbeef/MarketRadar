@@ -1283,10 +1283,26 @@ def test_priced_in_answer_cli_prints_next_source_plan(capsys):
                     "next_chunk_external_calls": 5,
                     "sample_blocked_tickers": ["FRBA", "SSBI"],
                     "sample_routed_non_company_tickers": ["ABLVW"],
+                    "fix_command": "catalyst-radar ingest-sec company-tickers",
                     "manual_template_command": (
                         "catalyst-radar ingest-sec cik-overrides-template "
                         "--out data\\local\\cik-overrides-template.csv"
                     ),
+                    "manual_validate_command": (
+                        "catalyst-radar ingest-sec cik-overrides "
+                        "--csv <cik-overrides.csv> --validate-only"
+                    ),
+                    "manual_fix_command": (
+                        "catalyst-radar ingest-sec cik-overrides "
+                        "--csv <cik-overrides.csv>"
+                    ),
+                    "missing_cik": {
+                        "missing_cik_company_like_rows": 2,
+                        "sample_company_like_missing_cik_tickers": [
+                            "FRBA",
+                            "SSBI",
+                        ],
+                    },
                     "external_calls_made": 0,
                 },
             },
@@ -1313,6 +1329,13 @@ def test_priced_in_answer_cli_prints_next_source_plan(capsys):
     assert "blocked=2" in output.out
     assert "reason=missing_cik" in output.out
     assert "blocked_sample=FRBA,SSBI" in output.out
+    assert "trust_gate_next_source_unblock=source=catalyst_events" in output.out
+    assert "company_like_missing_cik=2" in output.out
+    assert "sample=FRBA,SSBI" in output.out
+    assert "fix=catalyst-radar ingest-sec company-tickers" in output.out
+    assert "template=catalyst-radar ingest-sec cik-overrides-template" in output.out
+    assert "validate=catalyst-radar ingest-sec cik-overrides" in output.out
+    assert "import=catalyst-radar ingest-sec cik-overrides" in output.out
     assert "external_calls=0" in output.out
 
     dashboard_payload = {"priced_in_answer": payload}
@@ -1330,6 +1353,14 @@ def test_priced_in_answer_cli_prints_next_source_plan(capsys):
         assert "plan 5510" in rendered
         assert "routed 6563" in rendered
         assert "blocked 2 missing_cik" in rendered
+
+    assert "missing CIK 2 FRBA, SSBI" in run
+    assert "CIK fix `catalyst-radar ingest-sec company-tickers`" in run
+    assert "repair `catalyst-radar ingest-sec cik-overrides-template" in run
+    assert "validate `catalyst-radar" in run
+    assert "ingest-sec cik-overrides --csv" in run
+    assert "import `catalyst-radar ingest-sec cik-overrides" in run
+
 
 def test_dashboard_source_blocker_prefers_dashboard_market_bar_actions() -> None:
     payload = {

@@ -6824,6 +6824,29 @@ def _print_priced_in_answer(payload: Mapping[str, object]) -> None:
                 f"repair={_compact_cli_text(next_plan.get('manual_template_command'))} "
                 f"external_calls={next_plan.get('external_calls_made') or 0}"
             )
+            missing_cik = next_plan.get("missing_cik")
+            if isinstance(missing_cik, Mapping):
+                missing_cik_sample = ",".join(
+                    str(ticker)
+                    for ticker in _sequence_value(
+                        missing_cik.get("sample_company_like_missing_cik_tickers")
+                    )
+                )
+                print(
+                    "trust_gate_next_source_unblock="
+                    f"source={next_plan.get('source') or 'n/a'} "
+                    f"blocked_reason={next_plan.get('blocked_reason') or 'n/a'} "
+                    "company_like_missing_cik="
+                    f"{_int_value(missing_cik.get('missing_cik_company_like_rows'))} "
+                    f"sample={_compact_cli_text(missing_cik_sample)} "
+                    f"fix={_compact_cli_text(next_plan.get('fix_command'))} "
+                    "template="
+                    f"{_compact_cli_text(next_plan.get('manual_template_command'))} "
+                    "validate="
+                    f"{_compact_cli_text(next_plan.get('manual_validate_command'))} "
+                    f"import={_compact_cli_text(next_plan.get('manual_fix_command'))} "
+                    f"external_calls={next_plan.get('external_calls_made') or 0}"
+                )
     print(f"next_action={payload.get('next_action')}")
     if payload.get("next_command"):
         print(f"next_command={_compact_cli_text(payload.get('next_command'))}")

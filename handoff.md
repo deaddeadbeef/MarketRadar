@@ -1,6 +1,45 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-22 02:36:32 +08:00
+Last updated: 2026-05-22 03:23:20 +08:00
+
+
+
+## Latest Post-Bar SEC Unblock Visibility
+
+Last updated: 2026-05-22 03:23:20 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, broker, order, web, shell, or provider tools from the app.
+- This is useful because market bars are still the first blocker, but the next blocker is already known: catalyst-event coverage has two company-like rows blocked by missing CIK metadata. The operator should see that repair path before spending provider calls after bars clear.
+- The farther-road value goal remains tracked as issue #533: prove at least $40/month of attributable decision-support value.
+
+Fix in this slice:
+
+- CLI `priced-in-answer` now prints `trust_gate_next_source_unblock` when the post-current-blocker source plan includes missing-CIK context.
+- That line includes the next source, blocked reason, company-like missing-CIK count, sample tickers, SEC company-tickers refresh command, CIK override template command, validate command, import command, and zero-call boundary.
+- TUI overview/run next-source summaries now prioritize the missing-CIK count and SEC CIK repair command before lower-priority batch details.
+- TUI Run page shows the full CIK repair command sequence after the market-bar blocker: company-tickers refresh, template, validate, and import.
+- README documents that CLI/TUI now surface the same post-bar CIK repair sequence from the existing API payload.
+
+Validation observed in this slice:
+
+- Ruff passed for touched CLI/TUI/test files.
+- Py-compile passed for touched CLI/TUI/test files.
+- Focused regression passed for CLI priced-in answer and TUI next-source rendering.
+- Full affected dashboard integration file passed: `tests/integration/test_dashboard_demo_seed_cli.py`.
+- `git diff --check` passed.
+- Live zero-call local Schwab DB `priced-in-answer` smoke showed `trust_gate_next_source_unblock`, `company_like_missing_cik=2`, FRBA/SSBI samples, CIK override commands, and `external_calls=0`.
+- Live zero-call TUI Run page smoke showed the post-bar catalyst-events path, missing CIK 2 FRBA/SSBI, company-tickers, CIK override template/validate/import commands, and no provider calls while viewing.
+
+Current live blocker:
+
+- The trusted full-market priced-in answer is still blocked by 523 missing market bars for 2026-05-15 until explicit guarded saved Polygon/Massive capture approval with matching counts or complete manual CSV import.
+- The stock-like answer path is still blocked by 131 stock-like missing bars.
+- After market bars clear, the next prepared blocker is catalyst-events source fill, with 5510 plannable company-like rows and two missing-CIK blockers currently sampled as FRBA and SSBI.
+
+
 
 
 
