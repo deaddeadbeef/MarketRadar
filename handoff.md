@@ -1,14 +1,14 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 22:56:09 +08:00
+Last updated: 2026-05-21 23:51:01 +08:00
 
 
 
 
 
-## Latest Market-Bar Post-Clear Preview
+## Latest TUI Market-Bar Post-Clear Preview
 
-Last updated: 2026-05-21 23:29:26 +08:00
+Last updated: 2026-05-21 23:51:01 +08:00
 
 Goal alignment / drift check:
 
@@ -23,13 +23,16 @@ Fix in this slice:
 - When market bars already cover the scope, the preview tells the operator to rerun `priced-in-answer`.
 - CLI `catalyst-radar market-bars status` now prints `after_market_bars_clear=...` and, when available, `after_market_bars_next_plan=...` beside the current recommended action.
 - API `GET /api/radar/market-bars/status` inherits the same contract because it returns the shared status payload.
-- README and dashboard feature inventory now document the post-clear preview.
+- TUI `bars`, `bars status`, `bars next`, and `bars plan` now append `After bars clear: ...` from the same zero-call preview, so the terminal dashboard does not stop at the current blocker.
+- README and dashboard feature inventory now document that TUI `bars status` mirrors the post-clear preview.
 
 Validation observed in this slice:
 
-- Focused CLI/API regression passed for `market-bars status` and `/api/radar/market-bars/status`.
-- Ruff passed for touched source and test files.
-- Live zero-call smoke from the main checkout with this worktree on `PYTHONPATH` showed `after_market_bars_clear status=preview current=market_bars current_gap=523 next=catalyst_events next_status=attention next_gap=5512`, plus `after_market_bars_next_plan source=catalyst_events status=ready gaps=12075 plan=5510 routed=6563 blocked=2 batches=1102 next_calls=5 ... external_calls=0`.
+- Focused TUI regression passed for `bars` and `bars status` showing the same post-bar next-source message.
+- Ruff passed for touched TUI source and dashboard integration test files.
+- Py-compile passed for touched TUI source and dashboard integration test files.
+- `git diff --check` passed.
+- No provider, broker, order, OpenAI, shell-from-app, or web call was made by the app during validation; the regression used a local fixture payload.
 
 Current live blocker:
 
