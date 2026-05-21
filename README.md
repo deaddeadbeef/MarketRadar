@@ -137,6 +137,9 @@ evidence, not that a trade should be made or skipped. When market bars are
 the first blocker, `blocker_detail` includes manual CSV fill counts and saved
 provider-file status so the CLI/TUI can show whether the local unblock file
 is actually filled yet.
+The same answer payload includes `reviewable_subset`, a zero-call count and
+sample of scanned-subset leads that can be inspected as research-only while the
+full-market trust gate remains blocked.
 The default is still the full scan. Use `ready`, press `D`, or run
 `catalyst-radar priced-in-queue --decision-ready` only when you intentionally
 want the small decision-useful subset from that full scan.

@@ -3227,6 +3227,14 @@ def priced_in_answer_payload(
         "operator_boundary": "This gate is zero-call and cannot run providers.",
         "external_calls_made": 0,
     }
+    reviewable_subset = {
+        "schema_version": "priced-in-reviewable-subset-v1",
+        "row_count": decision_ready_count,
+        "sample_tickers": [
+            row.get("ticker") for row in top_rows if row.get("decision_ready")
+        ],
+        "external_calls_made": 0,
+    }
     decision_ready = answer_status == "decision_ready"
     trust_blockers = _priced_in_prioritized_trust_blockers(
         _priced_in_answer_trust_blockers(
@@ -3282,6 +3290,7 @@ def priced_in_answer_payload(
         "scan_scope": _priced_in_answer_scan_scope(resolved_queue),
         "full_scan": full_scan_summary,
         "full_market_trust_gate": full_market_trust_gate,
+        "reviewable_subset": reviewable_subset,
         "decision_readiness": decision_readiness,
         "evidence_completeness": evidence_completeness,
         "filters": _row_dict(_mapping_value(resolved_queue, "filters")),
