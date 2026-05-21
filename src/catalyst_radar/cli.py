@@ -6309,6 +6309,18 @@ def _print_priced_in_answer(payload: Mapping[str, object]) -> None:
             f"excluded={trust_gate.get('scan_excluded_rows') or 0} "
             f"external_calls={trust_gate.get('external_calls_made') or 0}"
         )
+        recommended_action = trust_gate.get("recommended_action")
+        if isinstance(recommended_action, Mapping):
+            print(
+                "trust_gate_recommended_action="
+                f"kind={recommended_action.get('kind') or 'action'} "
+                f"status={recommended_action.get('status') or 'unknown'} "
+                "approval_required="
+                f"{str(bool(recommended_action.get('approval_required'))).lower()} "
+                f"calls={_int_value(recommended_action.get('external_calls_required'))} "
+                f"db_writes={_int_value(recommended_action.get('db_writes_required'))} "
+                f"command={_compact_cli_text(recommended_action.get('command'))}"
+            )
         blocker_detail = trust_gate.get("blocker_detail")
         if isinstance(blocker_detail, Mapping):
             print(

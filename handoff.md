@@ -1,6 +1,37 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 18:10:21 +08:00
+Last updated: 2026-05-21 18:35:14 +08:00
+
+
+## Latest First-Glance Trust-Gate Recommended Unblock
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, broker, order, web, shell, or provider tools from the app.
+- This is useful because the first dashboard/answer view should tell the operator the next safe unblock step. Before this slice, the recommendation was visible after typing `bars`, but the top priced-in answer and overview/run surfaces still required the operator to infer it.
+
+Fix in this slice:
+
+- `full_market_trust_gate` now promotes a single `recommended_action` when the current blocker is market bars. The same payload also remains inside `blocker_detail.recommended_action`.
+- The recommendation prefers a saved-provider capture when an approval-ready provider key is configured, validates an available saved file before import, and falls back to the dashboard-native manual CSV command when provider capture is unavailable.
+- CLI `priced-in-answer` now prints `trust_gate_recommended_action=...` with kind, status, approval flag, provider-call count, DB-write boundary, and command.
+- The TUI overview and run pages now show `Recommended unblock:` / `Recommended unblock` immediately, so the first-glance dashboard says what to do next without typing `bars`.
+- README now documents `full_market_trust_gate.recommended_action` as the first-view contract for CLI/API/dashboard clients.
+
+Validation observed in this slice:
+
+- Focused data regression passed for the market-bar blocker detail and promoted trust-gate recommendation.
+- Focused CLI/TUI regression passed for `trust_gate_recommended_action` plus overview/run `Recommended unblock` rendering.
+- Ruff passed for the touched source and test files.
+- Live zero-call `priced-in-answer --json` smoke against `schwab-live.db` showed `first_blocker=market_bars`, `first_gap=523`, `recommended_kind=saved_provider_capture`, `recommended_command=bars saved capture confirm`, `recommended_calls=1`, `recommended_writes=0`, and `external_calls_made=0`.
+- Live zero-call CLI text smoke printed `trust_gate_recommended_action=kind=saved_provider_capture status=approval_required approval_required=true calls=1 db_writes=0 command=bars saved capture confirm`.
+- Live zero-call TUI overview smoke printed `Recommended unblock: bars saved capture confirm; 1 provider call(s) if approved; 0 DB write(s)`.
+
+Current live blocker:
+
+- The trusted full-market priced-in answer remains blocked by 523 missing market bars for 2026-05-15 until explicit saved Polygon/Massive capture approval or complete manual CSV import.
+- Do not treat this slice as goal completion; it makes the first screen align with the real blocker and next safe action.
 
 
 ## Latest Market-Bar Recommended Action Surface

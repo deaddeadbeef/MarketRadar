@@ -1184,6 +1184,20 @@ def test_priced_in_answer_cli_prints_next_source_plan(capsys):
             "unscanned_rows": 526,
             "unscanned_blocker_rows": 523,
             "external_calls_made": 0,
+            "recommended_action": {
+                "schema_version": "priced-in-market-bar-recommended-unblock-v1",
+                "kind": "saved_provider_capture",
+                "label": "Saved provider capture",
+                "status": "approval_required",
+                "reason": "Approve one saved grouped-daily provider call.",
+                "command": "bars saved capture confirm",
+                "api": "POST /api/radar/market-bars/provider-fixture-capture",
+                "request_body": {"confirm_external_call": True},
+                "approval_required": True,
+                "external_calls_required": 1,
+                "db_writes_required": 0,
+                "external_calls_made": 0,
+            },
             "after_current_blocker": {
                 "current_blocker": "market_bars",
                 "next_source": "catalyst_events",
@@ -1224,6 +1238,11 @@ def test_priced_in_answer_cli_prints_next_source_plan(capsys):
     _print_priced_in_answer(payload)
     output = capsys.readouterr()
 
+    assert "trust_gate_recommended_action=kind=saved_provider_capture" in output.out
+    assert "approval_required=true" in output.out
+    assert "calls=1" in output.out
+    assert "db_writes=0" in output.out
+    assert "command=bars saved capture confirm" in output.out
     assert "trust_gate_next_source_plan=source=catalyst_events" in output.out
     assert "gaps=12075" in output.out
     assert "plan=5510" in output.out
@@ -1237,7 +1256,11 @@ def test_priced_in_answer_cli_prints_next_source_plan(capsys):
     overview = render_dashboard_tui(dashboard_payload, page="overview", width=320)
     run = render_dashboard_tui(dashboard_payload, page="run", width=320)
 
+    assert "Recommended unblock: bars saved capture confirm" in overview
+    assert "Recommended unblock" in run
     for rendered in (overview, run):
+        assert "bars saved capture confirm" in rendered
+        assert "1 provider call(s) if approved; 0 DB write(s)" in rendered
         assert "after market_bars: catalyst_events ready" in rendered
         assert "source plan gaps 12075" in rendered
         assert "next calls 5" in rendered

@@ -148,7 +148,9 @@ provider-file status so the CLI/TUI can show whether the local unblock file
 is actually filled yet. Its `unblock_options` list names the zero-call manual
 CSV path, the explicit saved-provider capture approval path, and zero-call
 saved-file validate/import follow-ups with command, API, request body, call,
-and write boundaries. Dashboard clients should use these option payloads rather
+and write boundaries. The trust gate also promotes one `recommended_action`
+from those options so CLI/API/dashboard clients can show the next safest unblock
+step on first view. Dashboard clients should use these option payloads rather
 than reconstructing endpoint parameters from CLI text.
 It also carries a `missing_universe` summary so the operator can see what kind
 of active rows are blocking coverage without using that context to exclude rows

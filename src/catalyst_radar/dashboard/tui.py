@@ -3577,7 +3577,9 @@ def _market_bar_status_message(payload: Mapping[str, object]) -> str:
 def _market_bar_recommended_action_summary(payload):
     recommended = _mapping(payload.get("recommended_action"))
     if recommended:
-        command = str(recommended.get("tui_command") or "").strip()
+        command = str(
+            recommended.get("tui_command") or recommended.get("command") or ""
+        ).strip()
         calls = int(_number_or_zero(recommended.get("external_calls_required")))
         writes = int(_number_or_zero(recommended.get("db_writes_required")))
         if command:
@@ -5048,6 +5050,22 @@ def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
             "Evidence layers: "
             f"{_clip(evidence_summary.replace('Evidence layers: ', ''), max(20, width - 20))}"
         )
+    recommended_unblock = _market_bar_recommended_action_summary(
+        {
+            "recommended_action": _mapping(
+                _mapping(
+                    _mapping(payload.get("priced_in_answer")).get(
+                        "full_market_trust_gate"
+                    )
+                ).get("recommended_action")
+            )
+        }
+    )
+    if recommended_unblock:
+        lines.append(
+            "Recommended unblock: "
+            f"{_clip(recommended_unblock, max(20, width - 23))}"
+        )
     if stock_bar_summary:
         lines.append(
             "Stock bar next: "
@@ -6331,6 +6349,19 @@ def _run_mission_brief_items(
                 _mapping(blocker_detail.get("missing_universe"))
             )
         items.append(("Trust gate", gate_text))
+        recommended_unblock = _market_bar_recommended_action_summary(
+            {
+                "recommended_action": _mapping(
+                    _mapping(
+                        _mapping(payload.get("priced_in_answer")).get(
+                            "full_market_trust_gate"
+                        )
+                    ).get("recommended_action")
+                )
+            }
+        )
+        if recommended_unblock:
+            items.append(("Recommended unblock", recommended_unblock))
         ladder_text = _trust_gate_blocker_ladder_summary(
             _mapping(trust_gate.get("blocker_ladder"))
         )
