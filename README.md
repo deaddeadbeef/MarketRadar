@@ -454,7 +454,10 @@ commands to show in the TUI before falling back to long CLI commands;
 preview/import bodies. The TUI exposes the same workflow from the Run page.
 For a quick operator checkpoint, type `bars` or `bars status`; it prints
 the current missing-bar count, manual CSV progress, saved-capture boundary, and
-zero-call follow-up commands without provider calls or DB writes.
+zero-call follow-up commands without provider calls or DB writes. The same
+zero-call checkpoint is available outside the TUI as
+`catalyst-radar market-bars status --expected-as-of YYYY-MM-DD` and
+`GET /api/radar/market-bars/status?expected_as_of=YYYY-MM-DD`.
 For manual zero-call repair, `bars manual template` generates the full
 active-universe missing-bar CSV by default, `bars manual import` previews
 complete rows only with 0 provider calls and 0 DB writes, and

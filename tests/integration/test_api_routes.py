@@ -2161,6 +2161,57 @@ def test_post_radar_market_bars_template_and_import_can_scope_to_stocks(
     assert repair_payload["external_calls_made"] == 0
 
 
+def test_get_radar_market_bars_status_returns_zero_call_unblock_state(
+    tmp_path,
+    monkeypatch,
+):
+    database_url = _database_url(tmp_path, "radar-market-bars-status.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("CATALYST_POLYGON_API_KEY", "fixture-key")
+    engine = _create_database(database_url)
+    MarketRepository(engine).upsert_securities(
+        [
+            _security_with_type("BSTK", "CS"),
+            _security_with_type("AADR", "ADRC"),
+        ]
+    )
+    MarketRepository(engine).upsert_daily_bars(
+        [_daily_bar("BSTK", date(2026, 5, 11))]
+    )
+    client = TestClient(create_app())
+
+    response = client.get(
+        "/api/radar/market-bars/status",
+        params={"expected_as_of": "2026-05-11", "stocks_only": "true"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["schema_version"] == "market-bars-status-v1"
+    assert payload["status"] == "blocked"
+    assert payload["first_blocker"] == "market_bars"
+    assert payload["coverage_scope"] == "stock_like"
+    assert payload["active_security_count"] == 2
+    assert payload["existing_as_of_bar_count"] == 1
+    assert payload["missing_as_of_bar_count"] == 1
+    assert payload["manual"]["status"] == "needs_template"
+    assert payload["manual"]["command"].startswith(
+        "catalyst-radar market-bars template"
+    )
+    assert payload["saved_capture"]["status"] == "approval_required"
+    assert payload["saved_capture"]["external_calls_without_approval"] == 0
+    assert payload["saved_capture"]["external_calls_if_approved"] == 1
+    assert payload["saved_capture"]["capture_api"] == (
+        "POST /api/radar/market-bars/provider-fixture-capture"
+    )
+    assert payload["saved_file"]["status"] == "missing"
+    assert payload["repair_plan"]["schema_version"] == (
+        "manual-market-bars-repair-plan-v1"
+    )
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
+
+
 def test_post_radar_market_bars_provider_fixture_preview_is_zero_write(
     tmp_path,
     monkeypatch,
