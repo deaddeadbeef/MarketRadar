@@ -170,6 +170,18 @@ def test_agent_brief_includes_market_bar_unblock_options() -> None:
     assert recommended["external_calls_required"] == 1
     assert recommended["db_writes_required"] == 0
     assert recommended["approval_required"] is True
+    assert brief["next_actions"][0].startswith(
+        "Review recommended saved_provider_capture"
+    )
+    assert "Open candidate ACME before acting." not in brief["next_actions"]
+    assert "Open ACME." not in brief["next_actions"]
+    assert any(
+        agent["agent"] == "Operator"
+        and "Review recommended saved_provider_capture" in agent["summary"]
+        for agent in brief["agents"]
+    )
+    assert brief["insights"][0].startswith("Priced-in answer")
+    assert brief["insights"][1].startswith("Recommended market-bar unblock")
     assert brief["external_calls_made"] == {
         "openai": 0,
         "market_data": 0,
