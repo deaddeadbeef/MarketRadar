@@ -1,6 +1,37 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 21:58:16 +08:00
+Last updated: 2026-05-21 22:13:32 +08:00
+
+
+
+
+## Latest Missing Market-Bar Detail Surface
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, broker, order, web, shell, or provider tools from the app.
+- This is useful because the current hard blocker is missing market bars. A human should see which tickers are missing and what kind of universe issue they represent before approving a provider capture or choosing manual repair.
+
+Fix in this slice:
+
+- `market_bars_status_payload` now promotes the missing ticker sample, remaining-sample count, security-type counts, and zero-call missing-universe diagnostic from the repair plan into the top-level status contract.
+- CLI `catalyst-radar market-bars status` now prints the missing ticker sample, security-type summary, and missing-universe diagnostic beside the existing call/write boundary.
+- TUI `bars` / `bars status` now includes a compact `Missing sample:` line, so the dashboard explains the blocker instead of only showing `missing=523`.
+- README documents that the read-only status contract includes missing detail, not only the recommended action.
+
+Validation observed in this slice:
+
+- Focused CLI/API/TUI regression passed for status JSON, status text, API status, and the dashboard `bars status` response.
+- Py-compile passed for the touched status, CLI, and TUI files.
+- Ruff passed for the touched source and test files.
+- `git diff --check` passed.
+- Live zero-call `market-bars status` smoke against the local Schwab DB showed `missing_as_of_tickers=AACBR,... plus 511 more`, security-type counts, missing-universe diagnostics, `external_calls=0`, `db_writes=0`, and the same saved-provider approval requirement.
+
+Current live blocker:
+
+- The trusted full-market priced-in answer remains blocked by 523 missing market bars for 2026-05-15 until explicit saved Polygon/Massive capture approval or complete manual CSV import.
+- Do not treat this slice as goal completion; it makes the blocker inspectable before the real market-bar unblock step.
 
 
 

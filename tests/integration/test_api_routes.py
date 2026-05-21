@@ -2203,6 +2203,11 @@ def test_get_radar_market_bars_status_returns_zero_call_unblock_state(
     assert payload["active_security_count"] == 2
     assert payload["existing_as_of_bar_count"] == 1
     assert payload["missing_as_of_bar_count"] == 1
+    assert payload["missing_as_of_bar_ticker_sample"] == ["AADR"]
+    assert payload["missing_as_of_bar_ticker_more"] == 0
+    assert payload["missing_security_type_counts"] == {"ADRC": 1}
+    assert payload["missing_universe_diagnostic"]["missing_count"] == 1
+    assert payload["missing_universe_diagnostic"]["external_calls_made"] == 0
     assert payload["manual"]["status"] == "needs_template"
     assert payload["manual"]["command"].startswith(
         "catalyst-radar market-bars template"
@@ -2231,6 +2236,7 @@ def test_get_radar_market_bars_status_returns_zero_call_unblock_state(
     default_payload = default_response.json()
     assert default_payload["expected_as_of"] == "2026-05-11"
     assert default_payload["expected_as_of_source"] == "latest_daily_bar"
+    assert default_payload["missing_as_of_bar_ticker_sample"] == ["AADR"]
     assert default_payload["external_calls_made"] == 0
     assert default_payload["db_writes_made"] == 0
 

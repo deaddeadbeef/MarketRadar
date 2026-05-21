@@ -757,6 +757,11 @@ def test_market_bars_status_cli_summarizes_zero_call_unblock(
     assert payload["active_security_count"] == 2
     assert payload["existing_as_of_bar_count"] == 1
     assert payload["missing_as_of_bar_count"] == 1
+    assert payload["missing_as_of_bar_ticker_sample"] == ["AADR"]
+    assert payload["missing_as_of_bar_ticker_more"] == 0
+    assert payload["missing_security_type_counts"] == {"ADRC": 1}
+    assert payload["missing_universe_diagnostic"]["missing_count"] == 1
+    assert payload["missing_universe_diagnostic"]["external_calls_made"] == 0
     assert payload["manual"]["command"].startswith(
         "catalyst-radar market-bars template"
     )
@@ -783,6 +788,7 @@ def test_market_bars_status_cli_summarizes_zero_call_unblock(
     default_payload = json.loads(captured.out)
     assert default_payload["expected_as_of"] == "2026-05-15"
     assert default_payload["expected_as_of_source"] == "latest_daily_bar"
+    assert default_payload["missing_as_of_bar_ticker_sample"] == ["AADR"]
     assert default_payload["external_calls_made"] == 0
     assert default_payload["db_writes_made"] == 0
 
@@ -801,6 +807,9 @@ def test_market_bars_status_cli_summarizes_zero_call_unblock(
     assert "expected_as_of=2026-05-15" in text
     assert "expected_as_of_source=latest_daily_bar" in text
     assert "missing=1" in text
+    assert "missing_as_of_tickers=AADR" in text
+    assert "missing_security_types=ADRC:1" in text
+    assert "missing_universe=active_metadata=1" in text
     assert "saved_capture status=approval_required" in text
     assert "calls_if_approved=1" in text
     assert "recommended_action kind=saved_provider_capture" in text

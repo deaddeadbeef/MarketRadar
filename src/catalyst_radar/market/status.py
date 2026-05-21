@@ -66,6 +66,18 @@ def market_bars_status_payload(
         "active_security_count": repair.get("active_security_count"),
         "existing_as_of_bar_count": repair.get("existing_as_of_bar_count"),
         "missing_as_of_bar_count": missing,
+        "missing_as_of_bar_ticker_sample": repair.get(
+            "missing_as_of_bar_ticker_sample",
+        )
+        or [],
+        "missing_as_of_bar_ticker_more": repair.get(
+            "missing_as_of_bar_ticker_more",
+        )
+        or 0,
+        "missing_security_type_counts": repair.get("missing_security_type_counts")
+        or {},
+        "missing_universe_diagnostic": repair.get("missing_universe_diagnostic")
+        or {},
         "manual": {
             "status": operator_step.get("status"),
             "action": operator_step.get("action"),

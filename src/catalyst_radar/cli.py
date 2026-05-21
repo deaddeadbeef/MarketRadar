@@ -4143,6 +4143,30 @@ def _print_market_bars_status(payload: Mapping[str, object]):
         f"external_calls={payload.get('external_calls_made')} "
         f"db_writes={payload.get('db_writes_made')}"
     )
+    sample = _sequence_value(payload.get("missing_as_of_bar_ticker_sample"))
+    if sample:
+        more = int(payload.get("missing_as_of_bar_ticker_more") or 0)
+        suffix = f" plus {more} more" if more else ""
+        print(
+            "missing_as_of_tickers="
+            + ",".join(str(ticker) for ticker in sample)
+            + suffix
+        )
+    type_counts = _mapping_value(payload.get("missing_security_type_counts"))
+    if type_counts:
+        print(f"missing_security_types={_count_summary(type_counts)}")
+    diagnostic = _mapping_value(payload.get("missing_universe_diagnostic"))
+    if diagnostic:
+        print(
+            "missing_universe="
+            f"active_metadata={diagnostic.get('active_metadata_rows', 'n/a')} "
+            "acquisition_or_spac_names="
+            f"{diagnostic.get('acquisition_or_spac_name_count', 'n/a')} "
+            f"no_composite_figi={diagnostic.get('no_composite_figi_count', 'n/a')} "
+            "zero_avg_dollar_volume_20d="
+            f"{diagnostic.get('zero_avg_dollar_volume_20d_count', 'n/a')} "
+            f"external_calls={diagnostic.get('external_calls_made', 0)}"
+        )
     print(
         "manual "
         f"status={manual.get('status')} "
