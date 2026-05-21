@@ -3594,6 +3594,9 @@ def _market_bar_status_message(payload: Mapping[str, object]) -> str:
     recommended = _market_bar_recommended_action_summary(payload)
     if recommended:
         parts.append(f"Recommended: {recommended}")
+    after_clear = _market_bar_after_clear_summary(payload)
+    if after_clear:
+        parts.append(f"After bars clear: {after_clear}")
     missing_sample = _market_bar_missing_sample_summary(payload)
     if missing_sample:
         parts.append(f"Missing sample: {missing_sample}")
@@ -3614,6 +3617,17 @@ def _market_bar_status_message(payload: Mapping[str, object]) -> str:
         parts.append(f"Saved import: {saved_import}")
     parts.append("Status check made 0 provider calls and 0 database writes.")
     return " | ".join(part for part in parts if part)
+
+
+def _market_bar_after_clear_summary(payload: Mapping[str, object]):
+    preview = _mapping(payload.get("after_market_bars_clear"))
+    if not preview:
+        answer = _mapping(payload.get("priced_in_answer"))
+        trust_gate = _mapping(answer.get("full_market_trust_gate"))
+        preview = _mapping(trust_gate.get("after_current_blocker"))
+    if str(preview.get("current_blocker") or "").strip() != "market_bars":
+        return ""
+    return _after_current_blocker_summary(preview)
 
 
 def _market_bar_missing_sample_summary(payload: Mapping[str, object]) -> str:

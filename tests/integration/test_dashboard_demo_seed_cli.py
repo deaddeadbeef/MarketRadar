@@ -1814,6 +1814,34 @@ def test_dashboard_bars_default_shows_zero_call_status(tmp_path: Path):
             "status": "blocked",
             "first_blocker": "market_bars",
             "first_gap_count": 3,
+            "after_current_blocker": {
+                "current_blocker": "market_bars",
+                "current_gap_count": 3,
+                "next_source": "catalyst_events",
+                "next_status": "ready",
+                "next_gap_count": 7,
+                "next_action": "Inspect SEC catalyst batches after bars clear.",
+                "plan_command": (
+                    "catalyst-radar priced-in-source-batches "
+                    "--source catalyst_events --all --json"
+                ),
+                "execute_next_command": (
+                    "catalyst-radar priced-in-source-batches "
+                    "--source catalyst_events --execute-next"
+                ),
+                "external_calls_made": 0,
+                "next_source_plan": {
+                    "total_gap_rows": 7,
+                    "plannable_gap_rows": 5,
+                    "routed_gap_rows": 1,
+                    "blocked_gap_rows": 1,
+                    "batch_count": 1,
+                    "next_chunk_external_calls": 5,
+                    "sample_blocked_tickers": ["FRBA"],
+                    "sample_routed_non_company_tickers": ["ABLVW"],
+                    "external_calls_made": 0,
+                },
+            },
         }
     }
 
@@ -1841,6 +1869,15 @@ def test_dashboard_bars_default_shows_zero_call_status(tmp_path: Path):
     assert "1 external call(s) if approved" in update.message
     assert "Recommended: bars saved capture confirm" in update.message
     assert "1 provider call(s) if approved; 0 DB write(s)" in update.message
+    assert (
+        "After bars clear: after market_bars: catalyst_events ready"
+        in update.message
+    )
+    assert (
+        "source plan gaps 7, next calls 5, plan 5, routed 1, blocked 1"
+        in update.message
+    )
+    assert "external calls made 0" in update.message
     assert "Missing sample: AAPL, MSFT plus 1 more" in update.message
     assert (
         "Status check made 0 provider calls and 0 database writes."

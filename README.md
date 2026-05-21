@@ -511,7 +511,8 @@ button or command; `after_market_bars_clear` previews the next priced-in source
 blocker to inspect after the bar gap is repaired. Both fields report zero calls
 while planning so a dashboard can separate the current action from the next
 response. The TUI `bars status` response mirrors the same missing-ticker sample
-so the dashboard explains the blocker, not only the count.
+and the `after_market_bars_clear` preview, so the dashboard explains both
+the current blocker and the next source to inspect after the blocker clears.
 For manual zero-call repair, `bars manual template` generates the full
 active-universe missing-bar CSV by default, `bars manual import` previews
 complete rows only with 0 provider calls and 0 DB writes, and
