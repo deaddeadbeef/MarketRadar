@@ -1,6 +1,38 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-22 06:43:18 +08:00
+Last updated: 2026-05-22 07:18:00 +08:00
+
+## Latest Agent Current-Blocker Priority
+
+Last updated: 2026-05-22 07:18:00 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- The farther-road value proof remains separate from the active implementation goal: MarketRadar should eventually show at least $40/month of attributable decision-support value, covering 20% of a $200/month ChatGPT Pro subscription. GitHub issue #533 has a fresh roadmap comment: https://github.com/deaddeadbeef/MarketRadar/issues/533#issuecomment-4513524329
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, broker, order, web, app, or provider tools from the product.
+- This is useful because the Agent page should behave like an operator brief for the current priced-in scan blocker. If market bars are the first hard gate, the first action must be the guarded market-bar unblock, not a stale generic readiness or candidate-review suggestion.
+
+Fix in this slice:
+
+- Dry-run OpenAI Agents SDK brief now leads next_actions with the current priced-in recommended_unblock_action.
+- Operator agent summary now mirrors that same current blocker action.
+- While a current blocker action exists, lower-priority readiness/work-queue suggestions are suppressed from the brief so the dashboard does not show competing first steps.
+- Agent insights now lead with the blocked priced-in answer, then the recommended market-bar unblock, then available unblock alternatives.
+- README documents that the Agent page intentionally suppresses lower-priority suggestions while a hard blocker action is active.
+
+Validation observed in this slice:
+
+- Focused agent orchestrator unit tests passed before handoff update.
+- Ruff passed for touched agent source and unit test before handoff update.
+- Live zero-call agent-brief --json showed the current recommended unblock action as the first action; in the current schwab-live.db smoke this is the manual CSV market-bar path, with OpenAI, market, and broker call counters all at 0.
+- Live zero-call TUI Agent page showed the blocked priced-in answer, recommended market-bar unblock, and Operator next human action without making provider calls.
+
+Current live blocker:
+
+- In the current schwab-live.db smoke, the product is still not decision-ready and remains in setup/manual-repair territory: no external calls while browsing, no broker actions, and no trusted priced-in answer yet.
+- The Agent page now points at the current recommended unblock action first. With this DB snapshot, that action is the zero-call manual CSV market-bar path; in populated snapshots it can be the guarded saved Polygon/Massive capture path.
+- Older handoff sections below retain the last observed populated-snapshot blocker counts; re-check them before relying on the numbers.
 
 ## Latest Saved-File Stock Scope Parity
 

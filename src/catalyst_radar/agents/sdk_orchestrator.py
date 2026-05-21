@@ -153,6 +153,18 @@ def deterministic_agent_brief(
     alerts = _rows(_mapping(snapshot.get("alerts")).get("rows"))
     next_step = _mapping(snapshot.get("operator_next_step"))
     max_provider_calls = int(_number(call_plan.get("max_external_call_count")))
+    recommended_unblock_actions = _priced_in_recommended_unblock_actions(priced_in)
+    has_current_blocker_action = bool(recommended_unblock_actions)
+    source_workflow_actions = (
+        []
+        if has_current_blocker_action
+        else [
+            _text(_mapping(priced_in.get("source_workflow")).get("coverage_first_action")),
+            _text(_mapping(priced_in.get("source_workflow")).get("coverage_first_command")),
+            _text(_mapping(priced_in.get("source_workflow")).get("decision_shortcut_action")),
+            _text(_mapping(priced_in.get("source_workflow")).get("decision_shortcut_command")),
+        ]
+    )
 
     agents = [
         AgentContribution(
@@ -176,22 +188,29 @@ def deterministic_agent_brief(
         AgentContribution(
             agent="Operator",
             role="Human next action",
-            summary=_operator_summary(next_step, operator_goal),
+            summary=_operator_summary(
+                (
+                    {"action": recommended_unblock_actions[0]}
+                    if recommended_unblock_actions
+                    else next_step
+                ),
+                operator_goal,
+            ),
             confidence="high",
         ),
     ]
 
     insights = _dedupe(
         [
-            _status_insight(readiness),
-            _call_plan_insight(call_plan),
             _priced_in_answer_insight(priced_in),
+            _priced_in_recommended_unblock_insight(priced_in),
+            _priced_in_unblock_options_insight(priced_in),
+            None if has_current_blocker_action else _status_insight(readiness),
+            _call_plan_insight(call_plan),
             _priced_in_insight(priced_in),
             _priced_in_evidence_plan_insight(priced_in),
             _priced_in_source_workflow_insight(priced_in),
-            _priced_in_recommended_unblock_insight(priced_in),
-            _priced_in_unblock_options_insight(priced_in),
-            _top_queue_insight(work_queue),
+            None if has_current_blocker_action else _top_queue_insight(work_queue),
             *[_candidate_insight(row) for row in candidates[:3]],
             *[_alert_insight(row) for row in alerts[:2]],
             issue,
@@ -199,19 +218,16 @@ def deterministic_agent_brief(
     )
     next_actions = _dedupe(
         [
-            _text(next_step.get("action")),
+            *recommended_unblock_actions,
+            *_priced_in_unblock_option_actions(priced_in),
+            None if has_current_blocker_action else _text(next_step.get("action")),
             _text(_mapping(priced_in.get("answer")).get("next_action")),
             _text(_mapping(priced_in.get("answer")).get("next_command")),
             _text(_mapping(priced_in.get("evidence_plan")).get("next_action")),
             _text(_mapping(priced_in.get("evidence_plan")).get("next_command")),
-            _text(_mapping(priced_in.get("source_workflow")).get("coverage_first_action")),
-            _text(_mapping(priced_in.get("source_workflow")).get("coverage_first_command")),
-            _text(_mapping(priced_in.get("source_workflow")).get("decision_shortcut_action")),
-            _text(_mapping(priced_in.get("source_workflow")).get("decision_shortcut_command")),
-            *_priced_in_recommended_unblock_actions(priced_in),
-            *_priced_in_unblock_option_actions(priced_in),
+            *source_workflow_actions,
             _text(priced_in.get("next_action")),
-            _text(work_queue.get("next_action")),
+            None if has_current_blocker_action else _text(work_queue.get("next_action")),
             _text(call_plan.get("next_action")) if max_provider_calls else None,
             "Keep order submission disabled; use broker context as read-only evidence.",
         ]

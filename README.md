@@ -485,9 +485,11 @@ the same redacted unblock options visible in the dashboard: manual CSV, saved
 provider capture approval, and saved-file validate/import follow-ups. It also
 lifts the trust-gate `recommended_action` into
 `priced_in.recommended_unblock_action` and leads `insights` / `next_actions`
-with that single next step before listing alternatives. Those items are
-instructions for a human operator; the agent still cannot call Polygon/Massive
-or mutate the database.
+with that single next step before listing alternatives. While that current
+blocker action exists, lower-priority readiness and work-queue suggestions are
+suppressed so the Agent page does not present competing next actions. Those
+items are instructions for a human operator; the agent still cannot call
+Polygon/Massive or mutate the database.
 Real Agents SDK mode is opt-in:
 
 ```powershell
