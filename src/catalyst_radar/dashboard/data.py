@@ -3932,8 +3932,14 @@ def priced_in_answer_payload(
         resolved_queue,
         market_bars=resolved_market_bars,
     )
+    setup_blocker = _mapping_value(resolved_preflight, "first_blocker")
+    setup_blocker_area = str(setup_blocker.get("area") or "").strip()
+    setup_blocks_market_bars = setup_blocker_area in {"universe", "scan_scope"}
     market_bar_blocker_detail: dict[str, object] | None = None
-    if str(evidence_completeness.get("first_gap_source") or "") == "market_bars":
+    if (
+        not setup_blocks_market_bars
+        and str(evidence_completeness.get("first_gap_source") or "") == "market_bars"
+    ):
         market_bar_repair = _mapping_value(resolved_market_bars, "repair")
         if market_bar_repair:
             local_progress = _mapping_value(
@@ -4029,7 +4035,8 @@ def priced_in_answer_payload(
         )
     )
     trust_gate_trusted = bool(
-        bool(evidence_completeness.get("all_sources_ready"))
+        not setup_blocks_market_bars
+        and bool(evidence_completeness.get("all_sources_ready"))
         and unscanned_blocker_rows <= 0
     )
     full_market_trust_gate = {
@@ -4038,8 +4045,16 @@ def priced_in_answer_payload(
         "status": "ready" if trust_gate_trusted else "blocked",
         "trusted_full_market_answer": trust_gate_trusted,
         "answer": evidence_completeness.get("summary"),
-        "first_blocker": evidence_completeness.get("first_gap_source"),
-        "first_gap_count": evidence_completeness.get("first_gap_count"),
+        "first_blocker": (
+            setup_blocker_area
+            if setup_blocks_market_bars
+            else evidence_completeness.get("first_gap_source")
+        ),
+        "first_gap_count": (
+            setup_blocker.get("source_gap_count")
+            if setup_blocks_market_bars
+            else evidence_completeness.get("first_gap_count")
+        ),
         "active_securities": full_scan_summary.get("active_securities"),
         "scanned_rows": full_scan_summary.get("scanned_rows"),
         "unscanned_rows": full_scan_summary.get("unscanned_rows"),
@@ -4050,12 +4065,30 @@ def priced_in_answer_payload(
         "scan_excluded_tickers": full_scan_summary.get("scan_excluded_tickers"),
         "scan_excluded_reason": full_scan_summary.get("scan_excluded_reason"),
         "ranked_rows": full_scan_summary.get("ranked_rows"),
-        "next_action": evidence_completeness.get("next_action"),
-        "next_command": evidence_completeness.get("command"),
+        "next_action": (
+            setup_blocker.get("action")
+            if setup_blocks_market_bars
+            else evidence_completeness.get("next_action")
+        ),
+        "next_command": (
+            setup_blocker.get("command")
+            if setup_blocks_market_bars
+            else evidence_completeness.get("command")
+        ),
         "blocker_detail": market_bar_blocker_detail,
         "operator_boundary": "This gate is zero-call and cannot run providers.",
         "external_calls_made": 0,
     }
+    if setup_blocks_market_bars:
+        full_market_trust_gate["setup_blocker"] = {
+            "schema_version": "priced-in-setup-blocker-v1",
+            "area": setup_blocker_area,
+            "status": setup_blocker.get("status"),
+            "action": setup_blocker.get("action"),
+            "command": setup_blocker.get("command"),
+            "api": setup_blocker.get("api"),
+            "external_calls_made": 0,
+        }
     if market_bar_blocker_detail and market_bar_blocker_detail.get(
         "recommended_action"
     ):

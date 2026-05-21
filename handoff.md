@@ -1,6 +1,35 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-22 07:18:00 +08:00
+Last updated: 2026-05-22 08:10:00 +08:00
+
+## Latest Universe-First Setup Gate
+
+Last updated: 2026-05-22 08:10:00 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, broker, order, web, app, or provider tools from the product.
+- This is useful because an empty active universe is a setup blocker, not a market-bar repair task. The operator must seed securities/bars first before MarketRadar can know which scan-date bars are missing.
+
+Fix in this slice:
+
+- Priced-in answer trust gate now lets the preflight setup blocker take precedence over market-bar source evidence when the first blocker is universe or scan_scope.
+- Agent brief no longer promotes market-bar unblock options when the current trust gate blocker is universe setup; it leads with the seed-universe action.
+- Market-bars status now returns a zero-call setup_required payload instead of failing when there are no daily bars or no active securities.
+- README documents the universe-first behavior for priced-in answer, agent brief, and market-bars status.
+
+Validation observed in this slice:
+
+- Ruff passed for touched source files after the behavior change.
+- Agent SDK unit tests passed after narrowing current-blocker suppression to explicit setup/recommended actions.
+- Live zero-call agent-brief smoke against schwab-live.db led with Seed the ticker universe, with OpenAI, market, and broker calls all at 0.
+- Live zero-call market-bars status against schwab-live.db returned status=setup_required and first_blocker=universe instead of an error.
+
+Current live blocker:
+
+- In the current schwab-live.db smoke, there are no active securities and no stored daily bars, so the first useful step is universe setup via priced-in-preflight / CSV or approved provider seed path.
+- After universe setup, market-bar coverage can be evaluated again; older populated-snapshot sections below still show prior market-bar counts but must be rechecked before use.
 
 ## Latest Agent Current-Blocker Priority
 
