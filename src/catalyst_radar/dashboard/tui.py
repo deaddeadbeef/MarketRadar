@@ -69,6 +69,7 @@ from catalyst_radar.market.manual_bars import (
     saved_capture_approval_guard_payload,
     write_manual_market_bars_template,
 )
+from catalyst_radar.market.status import market_bars_import_verification_payload
 from catalyst_radar.security.licenses import redact_restricted_external_payload
 from catalyst_radar.storage.broker_repositories import BrokerRepository
 from catalyst_radar.storage.feature_repositories import FeatureRepository
@@ -3891,7 +3892,19 @@ def _execute_market_bar_manual_command(
                 complete_rows_only=True,
                 execute=execute,
             )
-            return _manual_market_bar_import_message(result.as_payload())
+            import_payload = result.as_payload()
+            import_payload["post_import_verification"] = (
+                market_bars_import_verification_payload(
+                    engine,
+                    AppConfig.from_env(),
+                    expected_as_of=result.expected_as_of,
+                    stocks_only=result.stocks_only,
+                    executed=result.executed,
+                    source="manual_csv",
+                    db_changes_made=1 if result.executed else 0,
+                )
+            )
+            return _manual_market_bar_import_message(import_payload)
     except (FileNotFoundError, KeyError, PermissionError, ValueError) as exc:
         return f"Manual market-bar action failed: {exc}"
     return _MARKET_BAR_COMMAND_USAGE
@@ -3961,6 +3974,23 @@ def _market_bar_manual_path(repair: Mapping[str, object]) -> Path:
     return Path(value)
 
 
+def _market_bar_post_import_summary(payload: Mapping[str, object]):
+    verification = _mapping(payload.get("post_import_verification"))
+    if not verification:
+        return ""
+    next_value = (
+        verification.get("next_blocker")
+        or verification.get("next_blocker_action")
+        or verification.get("next_action")
+    )
+    return (
+        "Post-import: "
+        f"status={verification.get('status')}; "
+        f"missing={verification.get('missing_as_of_bar_count')}; "
+        f"next={_clip(next_value or 'rerun priced-in answer', 96)}"
+    )
+
+
 def _manual_market_bar_template_message(payload: Mapping[str, object]) -> str:
     return (
         "Manual market-bar template ready; "
@@ -3988,6 +4018,9 @@ def _manual_market_bar_import_message(payload: Mapping[str, object]) -> str:
         f"external_calls={payload.get('external_calls_made')}",
         f"db_writes={db_writes}",
     ]
+    post_import = _market_bar_post_import_summary(payload)
+    if post_import:
+        parts.append(post_import)
     next_action = str(payload.get("next_action") or "").strip()
     if next_action:
         parts.append(f"next={next_action}")
@@ -4054,12 +4087,23 @@ def _execute_market_bar_saved_file_command(
                 date_value=_market_bar_saved_file_date(body),
                 fixture_path=_market_bar_saved_file_path(body, "fixture_path"),
             )
+            verification = market_bars_import_verification_payload(
+                engine,
+                config,
+                expected_as_of=_market_bar_saved_file_date(body),
+                executed=True,
+                source="saved_provider_file",
+                db_changes_made=1,
+            )
+            post_import = _market_bar_post_import_summary(
+                {"post_import_verification": verification}
+            )
             return (
                 "Saved-file import executed; "
                 f"daily_bars={result.daily_bar_count}; "
                 f"rejected={result.rejected_count}; "
-                "external_calls=0; db_writes=1. Refresh the dashboard and "
-                "rerun the priced-in preflight before continuing."
+                "external_calls=0; db_writes=1. "
+                f"{post_import}"
             )
         preview = _preview_saved_market_bar_file(engine, config, body)
         return (

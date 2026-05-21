@@ -1,8 +1,43 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-22 04:23:01 +08:00
+Last updated: 2026-05-22 04:51:41 +08:00
 
 
+
+## Latest Market-Bar Post-Import Verification
+
+Last updated: 2026-05-22 04:51:41 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- The farther-road value goal is tracked as issue #533: prove at least $40/month of attributable decision-support value, enough to offset 20% of a $200/month ChatGPT Pro subscription.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, broker, order, web, app, or provider tools from the product.
+- This is useful because after a manual CSV import or saved Polygon/Massive file import, the operator should immediately know whether the market-bar blocker cleared, stayed blocked, or revealed the next blocker.
+
+Fix in this slice:
+
+- Added shared `market_bars_import_verification_payload`, a zero-call verifier that reruns local market-bar status after preview/import actions.
+- Manual CSV import and saved-file import now attach `post_import_verification` in CLI JSON, API JSON, and TUI command responses.
+- The verifier reports preview-only versus executed, remaining scan-date market-bar gaps, `market_bars_cleared` versus `market_bars_still_blocked`, next blocker context when market bars clear, the priced-in answer rerun command/API, `external_calls_made=0`, and `db_changes_made`.
+- CLI human output now prints a `post_import_verification` line after import previews/executions.
+- TUI manual and saved-file import commands append `Post-import: status=...; missing=...; next=...` so the action/response boundary is visible without reading JSON.
+- README documents that an import is operationally complete only when the post-import verifier reports `market_bars_cleared`.
+
+Validation observed in this slice:
+
+- Ruff passed for touched source and integration files.
+- Py-compile passed for touched source and integration files.
+- Focused CLI regressions passed for manual incremental import, complete manual execution, and saved-file import preview/execution.
+- Focused API regressions passed for manual import, incremental manual import, and saved-file import preview/execution.
+- Focused TUI regressions passed for manual import execution and saved-file import execution messages.
+- `git diff --check` passed.
+
+Current live blocker:
+
+- The trusted full-market priced-in answer is still blocked by 523 missing market bars for 2026-05-15 until explicit guarded saved Polygon/Massive capture approval with matching counts or complete manual CSV import.
+- The stock-like answer path is still blocked by 131 stock-like missing bars.
+- After market bars clear, the next prepared blocker remains catalyst-events source fill, with 5510 plannable company-like rows and two missing-CIK blockers currently sampled as FRBA and SSBI.
 
 ## Latest Source Current-Blocker Gate
 

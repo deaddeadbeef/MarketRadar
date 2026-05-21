@@ -2140,6 +2140,7 @@ def test_dashboard_bars_saved_validate_and_import_fixture_are_operator_actions(
     assert "rejected=1" in execute.message
     assert "external_calls=0" in execute.message
     assert "db_writes=1" in execute.message
+    assert "Post-import: status=market_bars_still_blocked; missing=1" in execute.message
 
     with engine.connect() as conn:
         assert conn.execute(select(func.count()).select_from(daily_bars)).scalar_one() == 6
@@ -2240,6 +2241,7 @@ def test_dashboard_bars_manual_template_and_import_are_zero_call_actions(
     assert "Manual market-bar import executed: status=partial_imported" in execute.message
     assert "external_calls=0" in execute.message
     assert "db_writes=1" in execute.message
+    assert "Post-import: status=market_bars_still_blocked; missing=2" in execute.message
 
     with engine.connect() as conn:
         assert conn.execute(select(func.count()).select_from(daily_bars)).scalar_one() == 1
