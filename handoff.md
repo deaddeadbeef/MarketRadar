@@ -1,6 +1,38 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 17:33:18 +08:00
+Last updated: 2026-05-21 18:10:21 +08:00
+
+
+## Latest Market-Bar Recommended Action Surface
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, broker, order, web, shell, or provider tools from the app.
+- This is useful because market bars are still the first trusted-answer blocker, and the repair/status payload had several possible paths without naming the one safest next action for a human or UI.
+
+Fix in this slice:
+
+- `market_bars_status_payload` now includes `recommended_action`, a compact UI/API contract with kind, label, status, reason, command, TUI command, API route, request body when available, approval requirement, external-call count, DB-write count, and `external_calls_made=0`.
+- CLI `market-bars status` prints a `recommended_action ...` line so a terminal user can see the one next action before reading the larger repair plan.
+- The TUI `bars` / `bars status` response now starts with `Recommended:` and shows the command plus call/write boundary. It consumes structured `recommended_action` when present and falls back to the dashboard snapshot repair plan.
+- README now documents that `bars`, `market-bars status`, and the API status payload expose this recommended action instead of forcing the UI or operator to infer it.
+
+Validation observed in this slice:
+
+- Focused CLI/API/TUI regressions passed for market-bar status and the new recommended action fields.
+- Broader focused market-bar CLI regressions passed for `market_bars_status` / `saved_capture`.
+- Focused API route regression passed for `/api/radar/market-bars/status`.
+- Ruff passed for the touched source and test files.
+- Py-compile passed for the touched source and test files.
+- `git diff --check` passed.
+- Live zero-call CLI smoke against `schwab-live.db` from the worktree showed `active=12613`, `missing=523`, `external_calls=0`, `db_writes=0`, and, with a dummy provider key to exercise the approval boundary only, `recommended_action kind=saved_provider_capture ... calls=1 db_writes=0 tui=bars saved capture confirm`. No provider call was made.
+- Live zero-call TUI command-path smoke against `schwab-live.db` showed `Recommended:` in the `bars` response. Because sibling worktrees do not carry the untracked `.env.local`, that TUI smoke saw the no-key path and recommended the manual template command.
+
+Current live blocker:
+
+- The trusted full-market priced-in answer remains blocked by 523 missing market bars for 2026-05-15 until explicit saved Polygon/Massive capture approval or complete manual CSV import.
+- Do not treat this slice as goal completion; it only makes the first unblock step unambiguous across CLI/API/TUI.
 
 
 ## Latest TUI Next-Source Plan Surface

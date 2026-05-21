@@ -1714,6 +1714,8 @@ def test_dashboard_bars_default_shows_zero_call_status(tmp_path: Path):
     assert "Command: bars manual import; execute after preview" in update.message
     assert "Saved capture: approval_required; 3 bars targeted" in update.message
     assert "1 external call(s) if approved" in update.message
+    assert "Recommended: bars saved capture confirm" in update.message
+    assert "1 provider call(s) if approved; 0 DB write(s)" in update.message
     assert (
         "Status check made 0 provider calls and 0 database writes."
         in update.message

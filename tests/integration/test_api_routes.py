@@ -2205,6 +2205,9 @@ def test_get_radar_market_bars_status_returns_zero_call_unblock_state(
         "POST /api/radar/market-bars/provider-fixture-capture"
     )
     assert payload["saved_file"]["status"] == "missing"
+    assert payload["recommended_action"]["kind"] == "saved_provider_capture"
+    assert payload["recommended_action"]["external_calls_required"] == 1
+    assert payload["recommended_action"]["db_writes_required"] == 0
     assert payload["repair_plan"]["schema_version"] == (
         "manual-market-bars-repair-plan-v1"
     )

@@ -4130,6 +4130,7 @@ def _print_market_bars_status(payload: Mapping[str, object]):
     manual = _mapping_value(payload.get("manual"))
     saved_capture = _mapping_value(payload.get("saved_capture"))
     saved_file = _mapping_value(payload.get("saved_file"))
+    recommended = _mapping_value(payload.get("recommended_action"))
     print(
         "market_bars_status "
         f"status={payload.get('status')} "
@@ -4171,6 +4172,21 @@ def _print_market_bars_status(payload: Mapping[str, object]):
         f"validate={saved_file.get('validate_command')} "
         f"import={saved_file.get('import_preview_command')}"
     )
+    if recommended:
+        print(
+            (
+                "recommended_action kind={} status={} approval_required={} "
+                "calls={} db_writes={} tui={} command={}"
+            ).format(
+                recommended.get("kind"),
+                recommended.get("status"),
+                str(bool(recommended.get("approval_required"))).lower(),
+                recommended.get("external_calls_required"),
+                recommended.get("db_writes_required"),
+                _compact_cli_text(recommended.get("tui_command")),
+                _compact_cli_text(recommended.get("command")),
+            )
+        )
     print(f"next_action={payload.get('next_action')}")
     print(f"boundary={payload.get('zero_call_boundary')}")
 

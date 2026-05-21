@@ -761,6 +761,14 @@ def test_market_bars_status_cli_summarizes_zero_call_unblock(
     assert payload["saved_capture"]["status"] == "approval_required"
     assert payload["saved_capture"]["external_calls_if_approved"] == 1
     assert payload["saved_file"]["status"] == "missing"
+    assert payload["recommended_action"]["kind"] == "saved_provider_capture"
+    assert payload["recommended_action"]["approval_required"] is True
+    assert payload["recommended_action"]["external_calls_required"] == 1
+    assert payload["recommended_action"]["db_writes_required"] == 0
+    assert (
+        payload["recommended_action"]["tui_command"]
+        == "bars saved capture confirm"
+    )
     assert payload["repair_plan"]["schema_version"] == (
         "manual-market-bars-repair-plan-v1"
     )
@@ -784,6 +792,8 @@ def test_market_bars_status_cli_summarizes_zero_call_unblock(
     assert "missing=1" in text
     assert "saved_capture status=approval_required" in text
     assert "calls_if_approved=1" in text
+    assert "recommended_action kind=saved_provider_capture" in text
+    assert "tui=bars saved capture confirm" in text
     assert "0 provider calls and 0 database writes" in text
 
 
