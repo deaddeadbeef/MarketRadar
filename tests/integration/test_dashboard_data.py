@@ -2873,6 +2873,8 @@ def test_priced_in_answer_blocks_incomplete_stock_bars_even_with_ready_rows(
     assert saved_capture["status"] == "blocked_missing_api_key"
     assert saved_capture["provider"] == "polygon"
     assert saved_capture["expected_as_of"] == "2026-05-15"
+    assert saved_capture["active_security_count"] == 2
+    assert saved_capture["existing_as_of_bar_count"] == 1
     assert saved_capture["missing_as_of_bar_count"] == 1
     assert saved_capture["provider_key_configured"] is False
     assert saved_capture["saved_file_status"] == "missing"
@@ -5168,6 +5170,14 @@ def test_priced_in_preflight_uses_manual_bar_template_for_partial_full_scan_bars
     assert "--missing-only" in str(market_bars["command"])
     assert market_bars["api"] == "POST /api/radar/market-bars/template"
     assert "run-daily" not in str(market_bars["command"])
+    market_source = payload["source_coverage"]["sources"]["market_bars"]
+    provider_plan = market_source["provider_fill_plan"]
+    assert provider_plan["coverage_scope"] == "active_universe"
+    assert provider_plan["active_security_count"] == 12_613
+    assert provider_plan["existing_as_of_bar_count"] == 12_090
+    assert provider_plan["provider_saved_file_capture_approval_packet"][
+        "active_security_count"
+    ] == 12_613
     assert payload["evidence_plan"]["steps"][0]["area"] == "market_bars"
     assert payload["evidence_plan"]["next_command"].startswith(
         "catalyst-radar market-bars template"

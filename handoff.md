@@ -1,6 +1,39 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 13:29:09 +08:00
+Last updated: 2026-05-21 13:38:47 +08:00
+
+## Latest Saved Capture Count Alignment
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, broker, order, web, shell, or filesystem tools from the app.
+- This is useful because the full-market answer already exposes the saved Polygon/Massive capture path, but one answer-path packet could show `active_security_count` and `existing_as_of_bar_count` as null even though the repair plan knew those counts. The dashboard should not require a second endpoint just to show what one approved capture is meant to cover.
+
+Fix in this slice:
+
+- `_priced_in_audit_market_bar_repair` now passes active-universe active/existing bar counts into the saved-capture provider fill plan when the scan is not stocks-only.
+- `_priced_in_market_bar_provider_fill_plan` now includes `coverage_scope`, `active_security_count`, and `existing_as_of_bar_count` in its payload.
+- `_priced_in_market_bar_saved_provider_capture_context` now falls back to the provider-plan counts if the approval packet is older or sparse.
+- README documents that saved-capture packets include active/existing/missing bar counts for the target date.
+
+Validation observed in this slice:
+
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py tests\integration\test_dashboard_data.py` passed with `All checks passed!`.
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m py_compile src\catalyst_radar\dashboard\data.py tests\integration\test_dashboard_data.py` exited 0.
+- Focused pytest passed `test_priced_in_answer_blocks_incomplete_stock_bars_even_with_ready_rows` and `test_priced_in_preflight_uses_manual_bar_template_for_partial_full_scan_bars`.
+- Live zero-call `priced-in-answer --json` against `schwab-live.db` returned status `blocked`, first blocker `market_bars`, saved-capture counts `active=12613`, `existing=12090`, `missing=523`, saved file status `missing`, calls-if-approved `1`, and `external_calls_made=0`.
+
+Current live blocker:
+
+- The full-market priced-in answer remains blocked by missing scan-date market bars.
+- Current live local evidence still shows 523 missing market-bar rows for 2026-05-15.
+- The manual CSV exists but has 0 complete rows; the saved Polygon/Massive grouped-daily JSON is still missing.
+
+Next useful product action:
+
+- Do not treat this slice as goal completion.
+- The next useful work remains the market-bar unblock: manual CSV fill/import review or explicitly approved saved Polygon/Massive capture, then saved validate/import review, then rerun the priced-in trust gate.
 
 ## Latest Dashboard Safe Plan Recommendations
 
