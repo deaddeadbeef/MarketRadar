@@ -1,6 +1,40 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 14:11:36 +08:00
+Last updated: 2026-05-21 14:28:31 +08:00
+
+## Latest Source Roadmap Gap Counts
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, broker, order, web, shell, or filesystem tools from the app.
+- This is useful because the all-source mission roadmap could show a large source gap without telling the operator how much of that gap is actually plannable now, routed to specialized follow-ups, or blocked by prerequisites.
+
+Fix in this slice:
+
+- `mission_brief.roadmap` rows now include `plannable_gap_rows`, `unplannable_gap_rows`, and `routed_gap_rows` beside total `gap_rows`.
+- CLI mission-roadmap text now prints `gaps=`, `plan=`, `routed=`, and `blocked=` so a large full-market evidence gap does not look like one immediate provider-call action.
+- README documents those roadmap fields and how to read them.
+
+Validation observed in this slice:
+
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_all_source_gap_batches_prioritizes_decision_useful_gaps -q` passed.
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py tests\integration\test_dashboard_data.py` passed with `All checks passed!`.
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m py_compile src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py tests\integration\test_dashboard_data.py` exited 0.
+- `git diff --check` exited 0.
+- Live zero-call JSON smoke against `schwab-live.db` returned catalyst-events roadmap counts: total gaps `12075`, plannable `5510`, unplannable `6565`, routed `6563`, next calls `5`, and `external_calls_made=0`.
+- Live zero-call CLI text smoke printed `market_bars:attention gaps=523 plan=0 blocked=523 calls=0` and `catalyst_events:ready gaps=12075 plan=5510 routed=6563 calls=5`.
+
+Current live blocker:
+
+- The full-market priced-in answer remains blocked by 523 missing market bars for 2026-05-15.
+- The manual CSV still has 0 complete rows and the saved grouped-daily JSON is still missing.
+- This slice improves source-roadmap clarity only; it does not capture, import, or reduce the universe.
+
+Next useful product action:
+
+- Do not treat this slice as goal completion.
+- Next real unblock remains explicit saved Polygon/Massive capture approval or manual CSV completion, then saved validate/import review and the priced-in trust gate rerun.
 
 ## Latest Manual Preview Coverage Guard
 

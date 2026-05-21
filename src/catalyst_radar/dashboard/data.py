@@ -2162,6 +2162,9 @@ def _priced_in_mission_source_roadmap(
                 "source": source,
                 "status": row.get("status"),
                 "gap_rows": gaps,
+                "plannable_gap_rows": int(_finite_float(row.get("plannable_gap_rows"))),
+                "unplannable_gap_rows": int(_finite_float(row.get("unplannable_gap_rows"))),
+                "routed_gap_rows": int(_finite_float(row.get("routed_gap_rows"))),
                 "next_chunk_external_calls": int(
                     _finite_float(first_batch.get("external_calls_required"))
                 )
