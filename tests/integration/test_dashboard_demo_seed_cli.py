@@ -39,6 +39,7 @@ from catalyst_radar.dashboard.tui import (
     _market_bar_missing_type_summary,
     _market_bar_operator_step_summary,
     _market_bar_provider_fill_summary,
+    _market_bar_saved_capture_summary,
     _priced_in_overview_rows,
     _priced_in_review_rows,
     _priced_in_source_workflow_payload,
@@ -1302,6 +1303,24 @@ def test_dashboard_manual_bar_fill_progress_summary_is_human_readable() -> None:
     )
     assert _market_bar_provider_fill_summary(payload).startswith(
         "ready_for_approval_with_health_warning; 1 external call(s)"
+    )
+    saved_capture_summary = _market_bar_saved_capture_summary(
+        {
+            "status": "approval_required",
+            "coverage_scope": "active_universe",
+            "active_security_count": 12_613,
+            "existing_as_of_bar_count": 12_090,
+            "missing_as_of_bar_count": 523,
+            "saved_file_status": "missing",
+            "approval_required": True,
+            "provider_key_configured": True,
+            "external_calls_if_approved": 1,
+            "db_writes_during_capture": 0,
+        }
+    )
+    assert saved_capture_summary.startswith(
+        "status approval_required; target scope active_universe, active 12613, "
+        "existing 12090, missing 523; saved file missing"
     )
     assert _stock_market_bar_next_summary(payload).startswith(
         "5521/5652 stock-like rows have scan-date bars; 131 missing"

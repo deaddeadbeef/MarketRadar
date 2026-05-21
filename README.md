@@ -451,7 +451,8 @@ Use `bars manual stocks template` when you intentionally want the narrower
 stock-like scope instead of the full active universe. For saved-provider repair, the dashboard prefers the saved-file capture path over
 direct live grouped-daily ingest because capture makes the one provider call and 0
 DB writes before validation/import review.
-`bars saved capture` shows the approval boundary, current missing-bar count,
+`bars saved capture` shows the approval boundary plus target scope, active,
+existing, and missing scan-date bar counts,
 the saved-capture approval packet, and the zero-call validate, preview-import,
 and explicit execute-import commands/request bodies without making provider calls;
 `bars saved capture confirm` is the explicit one-call Polygon/Massive capture
