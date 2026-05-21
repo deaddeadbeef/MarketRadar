@@ -3832,6 +3832,9 @@ def test_priced_in_answer_cli_outputs_current_scan_answer(
     assert "investment_boundary=Priced-in answer readiness is not trade approval" in output.out
     assert "decision_readiness=status=" in output.out
     assert "evidence_completeness=all_sources_ready=" in output.out
+    assert "operator_next_step=status=" in output.out
+    assert "investment_ready=false" in output.out
+    assert "operator_response=" in output.out
     assert "full_scan=mode=full_scan" in output.out
     assert "unscanned=" in output.out
     assert "unscanned_blockers=" in output.out
@@ -3879,6 +3882,12 @@ def test_priced_in_answer_cli_outputs_current_scan_answer(
         "priced-in-full-market-trust-gate-v1"
     )
     assert payload["full_market_trust_gate"]["external_calls_made"] == 0
+    assert payload["operator_next_step"]["schema_version"] == (
+        "priced-in-operator-next-step-v1"
+    )
+    assert payload["operator_next_step"]["external_calls_made"] == 0
+    assert payload["operator_next_step"]["db_writes_made"] == 0
+    assert payload["operator_next_step"]["can_use_for_investment_decision"] is False
     ladder = payload["full_market_trust_gate"]["blocker_ladder"]
     assert ladder["schema_version"] == "priced-in-full-market-blocker-ladder-v1"
     assert ladder["external_calls_made"] == 0
@@ -4912,6 +4921,49 @@ def test_tui_full_scan_row_uses_preflight_first_blocker():
 
     assert row["next_action"] == "Fill stock-like missing bars first."
     assert "first blocker market_bars blocked; gaps 131" in row["why_now"]
+
+
+def test_tui_now_command_explains_priced_in_action_and_response():
+    payload = {
+        "priced_in_answer": {
+            "operator_next_step": {
+                "schema_version": "priced-in-operator-next-step-v1",
+                "status": "blocked",
+                "trusted_priced_in_answer": False,
+                "can_use_for_investment_decision": False,
+                "investment_decision_boundary": "Decision support only.",
+                "scope": "full_market",
+                "first_blocker": "market_bars",
+                "first_gap_count": 523,
+                "action": "Capture one saved provider file.",
+                "tui_command": "bars saved capture confirm",
+                "external_calls_required": 1,
+                "db_" + "writes_required": 0,
+                "approval_required": True,
+                "response_after_action": "Validate it before import.",
+                "external_calls_made": 0,
+                "db_" + "writes_made": 0,
+            }
+        }
+    }
+
+    update = _apply_command(
+        "now",
+        payload,
+        "tutorial",
+        DashboardFilters(),
+        engine=create_engine("sqlite:///:memory:", future=True),
+        config=AppConfig.from_env({}),
+    )
+
+    assert update.page == "overview"
+    assert "Next priced-in action: Capture one saved provider file." in update.message
+    assert "run bars saved capture confirm" in update.message
+    assert "1 provider call(s) after approval" in update.message
+    assert "0 database change(s)" in update.message
+    assert "Expected response: Validate it before import." in update.message
+    assert "Decision support only." in update.message
+    assert "Viewing made 0 provider calls and 0 database changes." in update.message
 
 
 def test_agent_brief_cli_real_mode_blocks_without_explicit_gates(
