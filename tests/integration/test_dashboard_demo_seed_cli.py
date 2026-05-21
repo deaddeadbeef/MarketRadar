@@ -2537,6 +2537,10 @@ def test_priced_in_queue_cli_outputs_same_zero_call_signal(
     assert source_rows["options"]["execute_next_command"] == (
         "catalyst-radar priced-in-source-batches --source options --execute-next"
     )
+    assert source_rows["options"]["plan_command"] == (
+        "catalyst-radar priced-in-source-batches --source options --all --json"
+    )
+    assert source_rows["options"]["command"] == source_rows["options"]["plan_command"]
     assert source_rows["options"]["first_batch"]["tickers"] == ["ACME"]
     assert source_rows["options"]["approval_checklist"]["approval_required"] is True
 
@@ -3892,6 +3896,13 @@ def test_priced_in_source_batches_prioritize_full_market_bar_coverage(
     assert "<fresh-bars.csv>" not in source_rows["market_bars"]["diagnostic"][
         "manual_fix_command"
     ]
+    assert source_rows["market_bars"]["plan_command"] == source_rows["market_bars"][
+        "diagnostic"
+    ]["manual_template_command"]
+    assert source_rows["market_bars"]["command"] == source_rows["market_bars"][
+        "plan_command"
+    ]
+    assert source_rows["market_bars"]["plan_api"] is None
     assert source_rows["market_bars"]["diagnostic"][
         "provider_saved_file_status"
     ] == "missing"
@@ -3951,6 +3962,7 @@ def test_priced_in_source_batches_prioritize_full_market_bar_coverage(
     assert "provider_saved_file_status=status=missing" in output.out
     assert "provider_saved_file_capture=external_calls=1" in output.out
     assert "--out data\\local\\polygon-grouped-daily-" in output.out
+    assert "plan=catalyst-radar market-bars template" in output.out
     assert "provider_saved_file_validate=external_calls=0" in output.out
     assert "provider_saved_file_import=external_calls=0" in output.out
     assert (
@@ -3966,6 +3978,7 @@ def test_priced_in_source_batches_prioritize_full_market_bar_coverage(
     assert "diagnostic_provider_saved_file_status=status=missing" in output.out
     assert "diagnostic_provider_saved_file_capture=external_calls=1" in output.out
     assert "--out data\\local\\polygon-grouped-daily-" in output.out
+    assert "plan=catalyst-radar market-bars template" in output.out
     assert "diagnostic_provider_saved_file_validate=external_calls=0" in output.out
     assert "diagnostic_provider_saved_file_import=external_calls=0" in output.out
     assert (

@@ -4830,7 +4830,11 @@ def _print_priced_in_all_source_batches(payload: Mapping[str, object]) -> None:
         action = row.get("next_action")
         if action:
             print(f"  next={_compact_cli_text(action)}")
-        plan_command = row.get("all_batches_command")
+        plan_command = (
+            row.get("plan_command")
+            or row.get("command")
+            or row.get("all_batches_command")
+        )
         if plan_command:
             print(f"  plan={_compact_cli_text(plan_command)}")
         capped_command = row.get("execute_batches_command")
@@ -5066,6 +5070,12 @@ def _print_priced_in_source_batches(payload: Mapping[str, object]) -> None:
         if batch_note:
             print(f"ticker_scope_note={_compact_cli_text(batch_note)}")
     print(f"next_action={payload.get('next_action')}")
+    plan_command = payload.get("plan_command") or payload.get("command")
+    if plan_command:
+        print(f"plan={_compact_cli_text(plan_command)}")
+    plan_api = payload.get("plan_api")
+    if plan_api:
+        print(f"plan_api={_compact_cli_text(plan_api)}")
     boundary = payload.get("execution_boundary")
     if boundary:
         print(f"boundary={_compact_cli_text(boundary)}")

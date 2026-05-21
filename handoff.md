@@ -1,8 +1,41 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 12:48:01 +08:00
+Last updated: 2026-05-21 13:17:28 +08:00
 
+## Latest Source Batch Command Aliases
 
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice is intentionally small. It does not call Polygon/Massive, SEC, Schwab, OpenAI, broker, order, shell, web, or filesystem tools from the app.
+- This is useful because the full-source gap overview already knew several lower-level command fields, but dashboard/API clients had to guess which field was the safe human action. Each source row now has a stable zero-call planning alias.
+
+Fix in this slice:
+
+- `priced_in_source_gap_batches_payload` now returns `command`, `plan_command`, and `plan_api` for single-source plans.
+- `_priced_in_market_bar_source_gap_plan` now uses the manual market-bar template command as the safe `command` and `plan_command` while keeping import/write actions separate.
+- `_priced_in_all_source_batch_row` now exposes the same aliases on `priced-in-source-batches --source all` rows.
+- CLI text output now prints `plan=` from the stable alias, so rows like `market_bars` show the safe next planning action even when no provider batch exists.
+- README documents that `command` and `plan_command` are the safe planning/review action, while provider or DB-writing work remains behind explicit execute/import commands.
+
+Validation observed in this slice:
+
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py` passed with `All checks passed!`.
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m py_compile src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py` exited 0.
+- Focused pytest passed 5 tests: source-batch safe sync planning, all-batches full-scan plan, all-source overview chunks, priced-in queue CLI zero-call signal, and full market-bar coverage prioritization.
+- Live zero-call `priced-in-source-batches --source all --json` against `schwab-live.db` returned status `attention`, `external_calls_made=0`, `market_bars.command` set to the manual bar template command, `catalyst_events.plan_command` set to its all-batches plan command, and `broker_context.plan_command` set to its all-batches plan command.
+- Live zero-call `priced-in-source-batches --source market_bars` printed `plan=catalyst-radar market-bars template ...` and kept `external_calls=0`.
+
+Current live blocker:
+
+- The full-market priced-in answer remains blocked by missing scan-date market bars.
+- Current live local evidence still shows `market_bars_gap=523`; this slice did not fill or import bars.
+- The next useful operator path is still saved Polygon/Massive capture approval or manual CSV fill, then validate/import review, then rerun the priced-in trust gate.
+
+Next useful product action:
+
+- Do not treat this slice as goal completion.
+- After this PR is merged, the next useful work should either help the operator complete the 523 missing market-bar rows safely, or make the dashboard consume these aliases to show the exact safe plan command more prominently.
 
 ## Latest Dashboard Saved-Capture Priority
 

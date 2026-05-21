@@ -292,7 +292,10 @@ CLI/API automation can use
 `priced-in-source-batches --source all`,
 `priced-in-source-batches --source <source> --execute-next` or
 `POST /api/radar/priced-in/source-batches/execute-next` for the same one-chunk
-operation.
+operation. Source-batch JSON rows expose `command` and `plan_command` as the
+safe default planning/review action for that row; provider or DB-writing work
+stays behind explicit `execute_next_command`, `execute_batches_command`, or
+manual import execute commands.
 The broker page also supports local operator writes that do not submit real
 orders: `action <ticker> <watch|ready|simulate_entry|dismiss> [notes]`,
 `trigger <ticker> <type> <op> <threshold> [notes]`, `eval-triggers [ticker]`,
