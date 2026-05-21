@@ -1810,6 +1810,14 @@ def test_dashboard_bars_default_shows_zero_call_status(tmp_path: Path):
             "dashboard_manual_import_execute_command": "bars manual import execute",
             "missing_as_of_bar_ticker_sample": ["AAPL", "MSFT"],
             "missing_as_of_bar_ticker_more": 1,
+            "stock_scope": {
+                "stock_like_active": 2,
+                "stock_like_with_as_of_bar": 1,
+                "stock_like_missing_as_of_bar": 1,
+                "non_stock_missing_as_of_bar": 2,
+                "sample_missing_stock_like_tickers": ["MSFT"],
+                "sample_missing_stock_like_more": 1,
+            },
         }
     )
     payload["priced_in_answer"] = {
@@ -1882,6 +1890,11 @@ def test_dashboard_bars_default_shows_zero_call_status(tmp_path: Path):
     )
     assert "external calls made 0" in update.message
     assert "Missing sample: AAPL, MSFT plus 1 more" in update.message
+    assert (
+        "Stock scope: 1/2 stock-like bars present; 1 missing; "
+        "2 non-stock missing; sample MSFT plus 1 more; "
+        "command bars manual stocks template; 0 provider calls"
+    ) in update.message
     assert (
         "Status check made 0 provider calls and 0 database writes."
         in update.message

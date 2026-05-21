@@ -1,8 +1,39 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-22 01:03:12 +08:00
+Last updated: 2026-05-22 01:39:44 +08:00
 
 
+
+
+
+## Latest TUI Market-Bar Stock Scope Status
+
+Last updated: 2026-05-22 01:39:44 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, broker, order, web, shell, or provider tools from the app.
+- This is useful because CLI/API now expose the stock-like market-bar blocker, and the human TUI should show the same blocker instead of hiding it behind CLI output.
+- The farther-road value goal remains tracked as issue #533: prove at least $40/month of attributable value, enough to offset 20% of a $200/month ChatGPT Pro subscription.
+
+Fix in this slice:
+
+- TUI `bars` and `bars status` now include a `Stock scope:` segment when the dashboard payload has `stock_scope`.
+- The segment reports stock-like bars present, stock-like missing bars, non-stock missing remainder, stock-like missing ticker sample, the zero-call `bars manual stocks template` command, and 0 provider calls.
+- README and dashboard feature inventory now document that `bars status` mirrors the stock-like blocker alongside the full blocker and after-clear preview.
+
+Validation observed in this slice:
+
+- Focused TUI command regression passed for `bars` / `bars status` showing the stock-scope line while preserving zero-call status boundaries.
+- Ruff passed for touched TUI source and dashboard command test files.
+- Py-compile passed for touched TUI source and dashboard command test files.
+- Live zero-call TUI command smoke against the local Schwab DB showed `Market-bar status: blocked; as_of=2026-05-15; missing=523`, `Stock scope: 5521/5652 stock-like bars present; 131 missing; 392 non-stock missing`, and `Status check made 0 provider calls and 0 database writes.`
+
+Current live blocker:
+
+- The trusted full-market priced-in answer remains blocked by 523 missing market bars for 2026-05-15 until explicit guarded saved Polygon/Massive capture approval with matching counts or complete manual CSV import.
+- The stock-like answer path remains blocked by 131 stock-like missing bars. This dashboard slice makes that sub-scope visible to the human operator, but it does not fill the bars.
 
 
 

@@ -497,9 +497,9 @@ commands to show in the TUI before falling back to long CLI commands;
 `provider_saved_file_import_request_body` are the zero-provider-call saved-file
 preview/import bodies. The TUI exposes the same workflow from the Run page.
 For a quick operator checkpoint, type `bars` or `bars status`; it prints
-the current missing-bar count, manual CSV progress, saved-capture boundary, and
-the single recommended next unblock action with provider-call and DB-write
-boundaries. The same zero-call checkpoint is available outside the TUI as
+the current missing-bar count, stock-like sub-scope gap, manual CSV progress,
+saved-capture boundary, and the single recommended next unblock action with
+provider-call and DB-write boundaries. The same zero-call checkpoint is available outside the TUI as
 `catalyst-radar market-bars status` and
 `GET /api/radar/market-bars/status`; when `expected_as_of` is omitted, these
 read-only status paths use the latest stored daily-bar date and report
@@ -512,9 +512,10 @@ all-instrument status, `recommended_action`, and `after_market_bars_clear`.
 button or command; `after_market_bars_clear` previews the next priced-in source
 blocker to inspect after the bar gap is repaired. Both fields report zero calls
 while planning so a dashboard can separate the current action from the next
-response. The TUI `bars status` response mirrors the same missing-ticker sample
-and the `after_market_bars_clear` preview, so the dashboard explains both
-the current blocker and the next source to inspect after the blocker clears.
+response. The TUI `bars status` response mirrors the same missing-ticker sample,
+stock-like gap, non-stock remainder, and `after_market_bars_clear` preview, so
+the dashboard explains both the current blocker and the next source to inspect
+after the blocker clears.
 For manual zero-call repair, `bars manual template` generates the full
 active-universe missing-bar CSV by default, `bars manual import` previews
 complete rows only with 0 provider calls and 0 DB writes, and

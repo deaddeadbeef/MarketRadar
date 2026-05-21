@@ -3600,6 +3600,9 @@ def _market_bar_status_message(payload: Mapping[str, object]) -> str:
     missing_sample = _market_bar_missing_sample_summary(payload)
     if missing_sample:
         parts.append(f"Missing sample: {missing_sample}")
+    stock_scope = _market_bar_stock_scope_summary(payload)
+    if stock_scope:
+        parts.append(f"Stock scope: {stock_scope}")
     manual_progress = _market_bar_manual_fill_progress_summary(payload)
     if manual_progress:
         parts.append(f"Manual CSV: {manual_progress}")
@@ -3650,6 +3653,42 @@ def _market_bar_missing_sample_summary(payload: Mapping[str, object]) -> str:
     )
     suffix = f" plus {more} more" if more else ""
     return ", ".join(sample[:8]) + suffix
+
+
+def _market_bar_stock_scope_summary(payload: Mapping[str, object]):
+    repair = _market_bar_repair_payload(payload)
+    stock_scope = _mapping(payload.get("stock_scope") or repair.get("stock_scope"))
+    if not stock_scope:
+        return ""
+    active = int(_number_or_zero(stock_scope.get("stock_like_active")))
+    with_bar = int(_number_or_zero(stock_scope.get("stock_like_with_as_of_bar")))
+    missing = int(_number_or_zero(stock_scope.get("stock_like_missing_as_of_bar")))
+    if active <= 0:
+        return ""
+    parts = [f"{with_bar}/{active} stock-like bars present"]
+    parts.append(f"{missing} missing" if missing else "ready")
+    non_stock_missing = int(
+        _number_or_zero(stock_scope.get("non_stock_missing_as_of_bar"))
+    )
+    if non_stock_missing:
+        parts.append(f"{non_stock_missing} non-stock missing")
+    sample = _texts(
+        stock_scope.get("sample_missing_stock_like_tickers")
+        or stock_scope.get("sample_missing_tickers")
+    )
+    if sample:
+        more = int(
+            _number_or_zero(
+                stock_scope.get("sample_missing_stock_like_more")
+                or stock_scope.get("sample_missing_more")
+            )
+        )
+        suffix = f" plus {more} more" if more else ""
+        parts.append(f"sample {', '.join(sample[:6])}{suffix}")
+    if missing:
+        parts.append("command bars manual stocks template")
+    parts.append("0 provider calls")
+    return "; ".join(parts)
 
 
 def _market_bar_recommended_action_summary(payload):
