@@ -111,6 +111,7 @@ PRICED_IN_WRAPPER_SECURITY_TYPES = frozenset({"WARRANT", "RIGHT", "UNIT", "PFD",
 PRICED_IN_NON_COMPANY_SECURITY_TYPES = (
     PRICED_IN_FUND_LIKE_SECURITY_TYPES | PRICED_IN_WRAPPER_SECURITY_TYPES
 )
+PRICED_IN_SCAN_EXCLUDED_TICKERS = frozenset({"SPY", "XLK", "XLI"})
 _ARTIFACT_CUTOFF_UNSET = object()
 _PRICED_IN_AUDIT_CACHE_TTL_SECONDS = 180.0
 _PRICED_IN_AUDIT_CACHE_MAX_ITEMS = 12
@@ -910,6 +911,7 @@ def priced_in_queue_payload(
         source_coverage=source_coverage,
         stocks_only=stocks_only,
     )
+    scan_exclusions = _priced_in_scan_exclusions_payload(engine)
     payload = {
         "schema_version": "priced-in-queue-v1",
         "status": scan_status,
@@ -931,6 +933,7 @@ def priced_in_queue_payload(
         "external_calls_made": 0,
         "preflight": preflight,
         "scan_selection": scan_selection,
+        "scan_exclusions": scan_exclusions,
         "latest_run": _row_dict(_mapping_value(discovery, "run")),
         "scan": {
             **_row_dict(_mapping_value(discovery, "yield")),
@@ -962,6 +965,42 @@ def priced_in_queue_payload(
     if include_planning_rows:
         payload["planning_rows"] = rows
     return payload
+
+
+def _priced_in_scan_exclusions_payload(engine: Engine):
+    rows: list[dict[str, object]] = []
+    try:
+        with engine.connect() as conn:
+            rows = [
+                dict(row)
+                for row in conn.execute(
+                    select(securities.c.ticker, securities.c.name)
+                    .where(
+                        securities.c.is_active.is_(True),
+                        securities.c.ticker.in_(
+                            sorted(PRICED_IN_SCAN_EXCLUDED_TICKERS)
+                        ),
+                    )
+                    .order_by(securities.c.ticker)
+                ).mappings()
+            ]
+    except SQLAlchemyError:
+        rows = []
+    tickers = [str(row.get("ticker") or "").strip().upper() for row in rows]
+    tickers = [ticker for ticker in tickers if ticker]
+    return {
+        "schema_version": "priced-in-scan-exclusions-v1",
+        "reason": "benchmark_reference_tickers",
+        "count": len(tickers),
+        "tickers": tickers,
+        "rows": rows,
+        "operator_note": (
+            "Benchmark ETFs are used for relative-strength context and are "
+            "intentionally excluded from candidate scoring. They should not "
+            "block the trusted-answer gate when every real evidence gap is clear."
+        ),
+        "external_calls_made": 0,
+    }
 
 
 def priced_in_source_gap_batches_payload(
@@ -3429,9 +3468,16 @@ def priced_in_answer_payload(
             )
             if unblock_options:
                 market_bar_blocker_detail["unblock_options"] = unblock_options
+    unscanned_blocker_rows = int(
+        _finite_float(
+            full_scan_summary.get("unscanned_blocker_rows")
+            if "unscanned_blocker_rows" in full_scan_summary
+            else full_scan_summary.get("unscanned_rows")
+        )
+    )
     trust_gate_trusted = bool(
         bool(evidence_completeness.get("all_sources_ready"))
-        and int(_finite_float(full_scan_summary.get("unscanned_rows"))) <= 0
+        and unscanned_blocker_rows <= 0
     )
     full_market_trust_gate = {
         "schema_version": "priced-in-full-market-trust-gate-v1",
@@ -3444,6 +3490,12 @@ def priced_in_answer_payload(
         "active_securities": full_scan_summary.get("active_securities"),
         "scanned_rows": full_scan_summary.get("scanned_rows"),
         "unscanned_rows": full_scan_summary.get("unscanned_rows"),
+        "unscanned_blocker_rows": full_scan_summary.get(
+            "unscanned_blocker_rows"
+        ),
+        "scan_excluded_rows": full_scan_summary.get("scan_excluded_rows"),
+        "scan_excluded_tickers": full_scan_summary.get("scan_excluded_tickers"),
+        "scan_excluded_reason": full_scan_summary.get("scan_excluded_reason"),
         "ranked_rows": full_scan_summary.get("ranked_rows"),
         "next_action": evidence_completeness.get("next_action"),
         "next_command": evidence_completeness.get("command"),
@@ -5742,7 +5794,27 @@ def _priced_in_answer_full_scan_summary(
     active = int(_finite_float(freshness.get("active_security_count")))
     stocks_only = bool(filters.get("stocks_only"))
     scan_scope_basis = "active_universe"
-    unscanned_rows = max(0, active - (scan_total or total))
+    raw_unscanned_rows = max(0, active - (scan_total or total))
+    scan_exclusions = _mapping_value(queue, "scan_exclusions")
+    scan_exclusion_reason = str(scan_exclusions.get("reason") or "").strip() or None
+    scan_excluded_tickers = [
+        str(ticker).strip().upper()
+        for ticker in _sequence_value(scan_exclusions.get("tickers"))
+        if str(ticker).strip()
+    ]
+    scan_excluded_rows = int(_finite_float(scan_exclusions.get("count")))
+    if not scan_excluded_tickers and 0 < scan_excluded_rows:
+        scan_excluded_tickers = sorted(PRICED_IN_SCAN_EXCLUDED_TICKERS)[
+            :scan_excluded_rows
+        ]
+    if stocks_only:
+        scan_excluded_rows = 0
+        scan_excluded_tickers = []
+        scan_exclusion_reason = None
+    else:
+        scan_excluded_rows = min(raw_unscanned_rows, max(0, scan_excluded_rows))
+    unscanned_rows = raw_unscanned_rows
+    unscanned_blocker_rows = max(0, raw_unscanned_rows - scan_excluded_rows)
     if stocks_only and isinstance(market_bars, Mapping):
         stock_scope = _mapping_value(
             _mapping_value(market_bars, "repair"),
@@ -5752,11 +5824,15 @@ def _priced_in_answer_full_scan_summary(
         stock_like_with_bar = int(
             _finite_float(stock_scope.get("stock_like_with_as_of_bar"))
         )
-        if stock_like_active > 0:
+        if 0 < stock_like_active:
             active = stock_like_active
             scan_total = stock_like_with_bar or total
             scan_scope_basis = "stock_like_active_as_of_bars"
             unscanned_rows = max(0, active - scan_total)
+            unscanned_blocker_rows = unscanned_rows
+            scan_excluded_rows = 0
+            scan_excluded_tickers = []
+            scan_exclusion_reason = None
     start = offset + 1 if returned else 0
     end = offset + returned
     review_command = _priced_in_queue_command_from_filters(filters)
@@ -5779,6 +5855,10 @@ def _priced_in_answer_full_scan_summary(
         "active_securities": active,
         "scanned_rows": scan_total or total,
         "unscanned_rows": unscanned_rows,
+        "unscanned_blocker_rows": unscanned_blocker_rows,
+        "scan_excluded_rows": scan_excluded_rows,
+        "scan_excluded_tickers": scan_excluded_tickers,
+        "scan_excluded_reason": scan_exclusion_reason,
         "scan_scope_basis": scan_scope_basis,
         "ranked_rows": total,
         "visible_row_start": start,

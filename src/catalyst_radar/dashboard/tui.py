@@ -5684,12 +5684,18 @@ def _answer_full_scan_scope_summary(payload: Mapping[str, object]) -> str:
     if active <= 0 or unscanned <= 0:
         return ""
     missing = _market_bar_missing_count(payload)
+    excluded = int(_number_or_zero(full_scan.get("scan_excluded_rows")))
+    unscanned_blockers = int(
+        _number_or_zero(full_scan.get("unscanned_blocker_rows"))
+    )
+    if unscanned_blockers <= 0 and unscanned:
+        unscanned_blockers = max(0, unscanned - excluded)
     scope = str(full_scan.get("instrument_filter") or "full").strip()
     scope_label = {
         "all": "all-instrument",
         "stocks_only": "stock-like",
     }.get(scope, scope)
-    blocker = ""
+    suffixes: list[str] = []
     if scope == "stocks_only":
         audit = _mapping(payload.get("priced_in_audit"))
         market = _mapping(audit.get("market_bars"))
@@ -5699,13 +5705,24 @@ def _answer_full_scan_scope_summary(payload: Mapping[str, object]) -> str:
             _number_or_zero(stock_scope.get("stock_like_missing_as_of_bar"))
         )
         if stock_missing <= 0:
-            stock_missing = unscanned
+            stock_missing = unscanned_blockers or unscanned
         if stock_missing:
-            blocker = f"; {stock_missing} missing stock-like scan-date market bar(s)"
+            suffixes.append(
+                f"{stock_missing} missing stock-like scan-date market bar(s)"
+            )
             if missing and missing != stock_missing:
-                blocker = f"{blocker}; {missing} all-instrument missing"
+                suffixes.append(f"{missing} all-instrument missing")
     elif missing:
-        blocker = f"; {missing} missing scan-date market bar(s)"
+        suffixes.append(f"{missing} missing scan-date market bar(s)")
+    if excluded:
+        tickers = ", ".join(
+            str(ticker).strip().upper()
+            for ticker in _rows_or_values(full_scan.get("scan_excluded_tickers"))
+            if str(ticker).strip()
+        )
+        label = f"{excluded} benchmark reference row(s) intentionally excluded"
+        suffixes.append(f"{label}: {tickers}" if tickers else label)
+    blocker = "; " + "; ".join(suffixes) if suffixes else ""
     return (
         f"Full-scan coverage: {scanned}/{active} active {scope_label} row(s) scanned; "
         f"{unscanned} unscanned{blocker}."

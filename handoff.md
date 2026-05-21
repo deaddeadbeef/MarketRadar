@@ -1,6 +1,40 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 15:49:38 +08:00
+Last updated: 2026-05-21 16:12:16 +08:00
+
+
+## Latest Full-Scan Accounting Fix
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, broker, order, web, shell, or provider tools from the app.
+- This is useful because the trusted full-market answer must account for every active row. Before this slice, the answer surfaced 526 unscanned rows even though only 523 were real market-bar blockers; the other 3 were benchmark ETFs intentionally excluded from candidate scoring.
+
+Fix in this slice:
+
+- `priced_in_queue_payload` now includes a zero-call `scan_exclusions` packet for active benchmark-reference tickers that are intentionally excluded from candidate scoring.
+- `full_scan` now exposes `unscanned_blocker_rows`, `scan_excluded_rows`, `scan_excluded_tickers`, and `scan_excluded_reason` beside the raw `unscanned_rows` count.
+- `full_market_trust_gate` uses `unscanned_blocker_rows` rather than raw unscanned rows, so `SPY`, `XLK`, and `XLI` will not keep the gate blocked after real evidence gaps are clear.
+- CLI `priced-in-answer` now prints `unscanned_blockers=` and `excluded=` in both the full-scan line and trust-gate line.
+- The TUI full-scan coverage summary now says when benchmark reference rows are intentionally excluded.
+- README documents the difference between raw unscanned rows and blocker rows.
+
+Validation observed in this slice:
+
+- Focused pytest passed for the new full-scan accounting payload, trust-gate behavior, TUI summary, and CLI priced-in answer output.
+- Live zero-call CLI smoke against `schwab-live.db` printed `full_scan=... unscanned=526 unscanned_blockers=523 excluded=3 ...` and `full_market_trust_gate=... unscanned=526 unscanned_blockers=523 excluded=3 ...`, with `external_calls=0`.
+
+Current live blocker:
+
+- The trusted full-market priced-in answer remains blocked by 523 missing market bars for 2026-05-15.
+- The extra 3 raw unscanned rows are now accounted for as benchmark-reference exclusions, not data blockers.
+- This slice does not capture or import market bars. The real unblock remains explicit saved Polygon/Massive capture approval or complete manual CSV import.
+
+Next useful product action:
+
+- Do not treat this slice as goal completion.
+- After merge, rerun the live zero-call priced-in answer from the main repo and then either request explicit one-call Polygon/Massive grouped-daily capture approval or continue the next zero-call source blocker audit.
 
 ## Latest CLI/API Bars Status Parity
 

@@ -6229,6 +6229,8 @@ def _print_priced_in_answer(payload: Mapping[str, object]) -> None:
             f"active={full_scan.get('active_securities') or 'n/a'} "
             f"scanned={full_scan.get('scanned_rows') or 'n/a'} "
             f"unscanned={full_scan.get('unscanned_rows') or 0} "
+            f"unscanned_blockers={full_scan.get('unscanned_blocker_rows') or 0} "
+            f"excluded={full_scan.get('scan_excluded_rows') or 0} "
             f"ranked={full_scan.get('ranked_rows')} "
             f"basis={full_scan.get('scan_scope_basis') or 'n/a'} "
             f"visible={full_scan.get('visible_row_start')}-"
@@ -6287,6 +6289,8 @@ def _print_priced_in_answer(payload: Mapping[str, object]) -> None:
             f"scan={trust_gate.get('scanned_rows') or 0}/"
             f"{trust_gate.get('active_securities') or 0} "
             f"unscanned={trust_gate.get('unscanned_rows') or 0} "
+            f"unscanned_blockers={trust_gate.get('unscanned_blocker_rows') or 0} "
+            f"excluded={trust_gate.get('scan_excluded_rows') or 0} "
             f"external_calls={trust_gate.get('external_calls_made') or 0}"
         )
         blocker_detail = trust_gate.get("blocker_detail")
