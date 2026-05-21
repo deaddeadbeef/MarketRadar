@@ -5844,6 +5844,25 @@ def _print_priced_in_answer(payload: Mapping[str, object]) -> None:
                     f"sample={_compact_cli_text(sample)} "
                     f"external_calls={manual_csv.get('external_calls_made') or 0}"
                 )
+            saved_capture = blocker_detail.get("saved_provider_capture")
+            if isinstance(saved_capture, Mapping):
+                print(
+                    "trust_gate_saved_capture="
+                    f"status={saved_capture.get('status') or 'n/a'} "
+                    "approval_required="
+                    f"{str(bool(saved_capture.get('approval_required'))).lower()} "
+                    "provider_key="
+                    f"{str(bool(saved_capture.get('provider_key_configured'))).lower()} "
+                    f"calls_if_approved="
+                    f"{_int_value(saved_capture.get('external_calls_if_approved'))} "
+                    f"db_writes_capture="
+                    f"{_int_value(saved_capture.get('db_writes_during_capture'))} "
+                    f"saved_file={saved_capture.get('saved_file_status') or 'n/a'} "
+                    f"path={_compact_cli_text(saved_capture.get('saved_file_path'))} "
+                    f"api={_compact_cli_text(saved_capture.get('capture_api'))} "
+                    f"command={_compact_cli_text(saved_capture.get('capture_command'))} "
+                    f"external_calls={saved_capture.get('external_calls_made') or 0}"
+                )
             missing_universe = blocker_detail.get("missing_universe")
             if isinstance(missing_universe, Mapping):
                 print(

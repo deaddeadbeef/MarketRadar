@@ -3386,6 +3386,13 @@ def priced_in_answer_payload(
             )
             if manual_csv_context:
                 market_bar_blocker_detail["manual_csv"] = manual_csv_context
+            saved_capture_context = (
+                _priced_in_market_bar_saved_provider_capture_context(provider_plan)
+            )
+            if saved_capture_context:
+                market_bar_blocker_detail["saved_provider_capture"] = (
+                    saved_capture_context
+                )
             unblock_options = _priced_in_market_bar_blocker_unblock_options(
                 market_bar_repair,
                 provider_plan,
@@ -6702,6 +6709,112 @@ def _priced_in_market_bar_manual_csv_context(
         "next_action": (
             "Fill the required fields for each missing ticker, preview complete "
             "rows, then execute the local import only after review."
+        ),
+        "external_calls_made": 0,
+    }
+
+
+def _priced_in_market_bar_saved_provider_capture_context(
+    provider_plan: Mapping[str, object],
+):
+    if not provider_plan:
+        return None
+    packet = _mapping_value(
+        provider_plan,
+        "provider_saved_file_capture_approval_packet",
+    )
+    if not packet:
+        return None
+
+    post_steps = []
+    validate_command = None
+    import_preview_command = None
+    import_execute_command = None
+    for step in _sequence_value(packet.get("post_capture_zero_call_steps")):
+        if not isinstance(step, Mapping):
+            continue
+        step_name = str(step.get("step") or "").strip()
+        if not step_name:
+            continue
+        request_body = step.get("request_body")
+        step_payload = {
+            "step": step_name,
+            "command": step.get("tui_command") or step.get("cli_command"),
+            "cli_command": step.get("cli_command"),
+            "api": step.get("api"),
+            "request_body": _row_dict(request_body)
+            if isinstance(request_body, Mapping)
+            else request_body,
+            "external_calls_made": int(_finite_float(step.get("external_calls_made"))),
+            "db_writes_made": int(_finite_float(step.get("db_writes_made"))),
+            "db_writes_boundary": step.get("db_writes_boundary"),
+        }
+        post_steps.append(step_payload)
+        if step_name == "validate_saved_file":
+            validate_command = step_payload["command"]
+        elif step_name == "preview_import":
+            import_preview_command = step_payload["command"]
+        elif step_name == "execute_import_after_preview":
+            import_execute_command = step_payload["command"]
+
+    capture_request_body = packet.get("capture_request_body")
+    confirm_request_body = packet.get("capture_confirm_request_body")
+    return {
+        "schema_version": "priced-in-market-bar-saved-provider-capture-v1",
+        "status": packet.get("status") or provider_plan.get("status"),
+        "provider": packet.get("provider") or provider_plan.get("provider"),
+        "provider_label": packet.get("provider_label")
+        or provider_plan.get("provider_label"),
+        "expected_as_of": packet.get("expected_as_of")
+        or provider_plan.get("target_as_of"),
+        "coverage_scope": packet.get("coverage_scope"),
+        "active_security_count": packet.get("active_security_count"),
+        "existing_as_of_bar_count": packet.get("existing_as_of_bar_count"),
+        "missing_as_of_bar_count": packet.get("missing_as_of_bar_count")
+        or provider_plan.get("missing_as_of_bar"),
+        "provider_key_configured": bool(packet.get("provider_key_configured")),
+        "provider_health_warning": packet.get("provider_health_warning"),
+        "saved_file_status": packet.get("saved_file_status")
+        or provider_plan.get("provider_saved_file_status"),
+        "saved_file_path": packet.get("saved_file_path")
+        or provider_plan.get("provider_saved_file_path"),
+        "saved_file_exists": bool(provider_plan.get("provider_saved_file_exists")),
+        "approval_required": bool(packet.get("approval_required")),
+        "question": packet.get("question"),
+        "purpose": packet.get("purpose"),
+        "external_calls_without_approval": int(
+            _finite_float(packet.get("external_calls_without_approval"))
+        ),
+        "external_calls_if_approved": int(
+            _finite_float(packet.get("external_calls_if_approved"))
+        ),
+        "db_writes_during_capture": int(
+            _finite_float(packet.get("db_writes_during_capture"))
+        ),
+        "capture_command": packet.get("tui_confirm_command")
+        or packet.get("capture_cli_command"),
+        "capture_cli_command": packet.get("capture_cli_command"),
+        "capture_api": packet.get("capture_api"),
+        "capture_request_body": _row_dict(capture_request_body)
+        if isinstance(capture_request_body, Mapping)
+        else capture_request_body,
+        "capture_confirm_request_body": _row_dict(confirm_request_body)
+        if isinstance(confirm_request_body, Mapping)
+        else confirm_request_body,
+        "post_capture_zero_call_steps": post_steps,
+        "validate_command": validate_command,
+        "import_preview_command": import_preview_command,
+        "import_execute_command": import_execute_command,
+        "guardrails": [
+            str(item)
+            for item in _sequence_value(packet.get("guardrails"))
+            if str(item).strip()
+        ],
+        "next_action": packet.get("next_action"),
+        "operator_note": (
+            "This packet is descriptive and makes 0 provider calls. Capture "
+            "requires explicit operator approval; validation and preview import "
+            "read the saved file from disk."
         ),
         "external_calls_made": 0,
     }

@@ -6146,6 +6146,7 @@ def _run_mission_brief_items(
         gate_text = f"{trust_gate.get('status')}; {trust_gate.get('answer')}"
         blocker_detail = _mapping(trust_gate.get("blocker_detail"))
         manual_csv_text = ""
+        saved_capture_text = ""
         universe_text = ""
         if blocker_detail.get("source") == "market_bars":
             complete = int(_number_or_zero(blocker_detail.get("complete_rows")))
@@ -6160,6 +6161,9 @@ def _run_mission_brief_items(
             )
             manual_csv_text = _market_bar_manual_csv_summary(
                 _mapping(blocker_detail.get("manual_csv"))
+            )
+            saved_capture_text = _market_bar_saved_capture_summary(
+                _mapping(blocker_detail.get("saved_provider_capture"))
             )
             universe_text = _market_bar_missing_universe_summary(
                 _mapping(blocker_detail.get("missing_universe"))
@@ -6177,6 +6181,8 @@ def _run_mission_brief_items(
             items.append(("After current", after_current_text))
         if manual_csv_text:
             items.append(("Manual CSV", manual_csv_text))
+        if saved_capture_text:
+            items.append(("Saved capture", saved_capture_text))
         if universe_text:
             items.append(("Missing universe", universe_text))
     if progress_parts:
@@ -6264,6 +6270,35 @@ def _market_bar_manual_csv_summary(manual_csv: Mapping[str, object]):
         parts.append("sample " + ", ".join(sample[:5]))
     if path:
         parts.append(path)
+    return "; ".join(parts)
+
+
+def _market_bar_saved_capture_summary(saved_capture: Mapping[str, object]):
+    if not saved_capture:
+        return ""
+    status = str(saved_capture.get("status") or "unknown")
+    saved_file = str(saved_capture.get("saved_file_status") or "n/a")
+    approval = "yes" if saved_capture.get("approval_required") else "no"
+    provider_key = "yes" if saved_capture.get("provider_key_configured") else "no"
+    calls = int(_number_or_zero(saved_capture.get("external_calls_if_approved")))
+    writes = int(_number_or_zero(saved_capture.get("db_writes_during_capture")))
+    path = str(saved_capture.get("saved_file_path") or "").strip()
+    api = str(saved_capture.get("capture_api") or "").strip()
+    next_action = str(saved_capture.get("next_action") or "").strip()
+    parts = [
+        f"status {status}",
+        f"saved file {saved_file}",
+        f"approval {approval}",
+        f"key {provider_key}",
+        f"calls if approved {calls}",
+        f"db writes {writes}",
+    ]
+    if path:
+        parts.append(path)
+    if api:
+        parts.append(api)
+    if next_action:
+        parts.append(next_action)
     return "; ".join(parts)
 
 

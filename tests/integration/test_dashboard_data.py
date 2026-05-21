@@ -2867,6 +2867,43 @@ def test_priced_in_answer_blocks_incomplete_stock_bars_even_with_ready_rows(
     ]
     assert manual_csv["sample_missing_tickers"] == ["MISS"]
     assert manual_csv["external_calls_made"] == 0
+    saved_capture = detail["saved_provider_capture"]
+    assert saved_capture["schema_version"] == (
+        "priced-in-market-bar-saved-provider-capture-v1"
+    )
+    assert saved_capture["status"] == "blocked_missing_api_key"
+    assert saved_capture["provider"] == "polygon"
+    assert saved_capture["expected_as_of"] == "2026-05-15"
+    assert saved_capture["missing_as_of_bar_count"] == 1
+    assert saved_capture["provider_key_configured"] is False
+    assert saved_capture["saved_file_status"] == "missing"
+    assert saved_capture["saved_file_path"] == (
+        "data\\local\\polygon-grouped-daily-2026-05-15.json"
+    )
+    assert saved_capture["approval_required"] is False
+    assert saved_capture["external_calls_without_approval"] == 0
+    assert saved_capture["external_calls_if_approved"] == 0
+    assert saved_capture["db_writes_during_capture"] == 0
+    assert saved_capture["capture_api"] == (
+        "POST /api/radar/market-bars/provider-fixture-capture"
+    )
+    assert saved_capture["capture_request_body"]["confirm_external_call"] is False
+    assert saved_capture["capture_confirm_request_body"][
+        "confirm_external_call"
+    ] is True
+    assert [
+        step["step"] for step in saved_capture["post_capture_zero_call_steps"]
+    ] == ["validate_saved_file", "preview_import", "execute_import_after_preview"]
+    assert saved_capture["post_capture_zero_call_steps"][0]["api"] == (
+        "POST /api/radar/market-bars/provider-fixture-preview"
+    )
+    assert saved_capture["post_capture_zero_call_steps"][1]["request_body"][
+        "execute"
+    ] is False
+    assert saved_capture["post_capture_zero_call_steps"][2]["request_body"][
+        "execute"
+    ] is True
+    assert saved_capture["external_calls_made"] == 0
     unblock_options = {
         option["kind"]: option for option in detail["unblock_options"]
     }
