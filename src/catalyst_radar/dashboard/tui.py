@@ -69,7 +69,10 @@ from catalyst_radar.market.manual_bars import (
     saved_capture_approval_guard_payload,
     write_manual_market_bars_template,
 )
-from catalyst_radar.market.status import market_bars_import_verification_payload
+from catalyst_radar.market.status import (
+    market_bars_import_verification_payload,
+    market_bars_post_capture_verification_payload,
+)
 from catalyst_radar.security.licenses import redact_restricted_external_payload
 from catalyst_radar.storage.broker_repositories import BrokerRepository
 from catalyst_radar.storage.feature_repositories import FeatureRepository
@@ -3978,8 +3981,13 @@ def _market_bar_manual_path(repair: Mapping[str, object]) -> Path:
     return Path(value)
 
 
-def _market_bar_post_import_summary(payload: Mapping[str, object]):
-    verification = _mapping(payload.get("post_import_verification"))
+def _market_bar_post_import_summary(
+    payload: Mapping[str, object],
+    *,
+    payload_key: str = "post_import_verification",
+    label: str = "Post-import",
+):
+    verification = _mapping(payload.get(payload_key))
     if not verification:
         return ""
     next_value = (
@@ -3995,7 +4003,7 @@ def _market_bar_post_import_summary(payload: Mapping[str, object]):
         else ""
     )
     return (
-        "Post-import: "
+        f"{label}: "
         f"status={verification.get('status')}; "
         f"missing={verification.get('missing_as_of_bar_count')}"
         f"{projection_text}; "
@@ -4218,12 +4226,20 @@ def _market_bar_saved_file_capture_command(
     )
     if guard.get("status") != "ready":
         return _saved_capture_approval_guard_message(guard)
+    target_date = _market_bar_saved_file_date(body)
     captured = capture_polygon_grouped_daily_response_with_preview(
         config=config,
         market_repo=MarketRepository(engine),
-        date_value=_market_bar_saved_file_date(body),
+        date_value=target_date,
         output_path=output_path,
         confirm_external_call=True,
+    )
+    captured["post_capture_verification"] = market_bars_post_capture_verification_payload(
+        engine,
+        config,
+        expected_as_of=target_date,
+        capture_payload=captured,
+        stocks_only=str(plan.get("coverage_scope") or "") == "stock_like",
     )
     preview = captured.get("post_capture_preview")
     preview_message = ""
@@ -4232,6 +4248,11 @@ def _market_bar_saved_file_capture_command(
             "Post-capture preview",
             preview,
         )
+    verification_message = _market_bar_post_import_summary(
+        captured,
+        payload_key="post_capture_verification",
+        label="Post-capture verification",
+    )
     source = captured.get("source")
     bytes_written = captured.get("bytes_written")
     external_calls = captured.get("external_calls_made")
@@ -4243,6 +4264,7 @@ def _market_bar_saved_file_capture_command(
         f"external_calls={external_calls}; "
         f"output={saved_output}."
         f"{preview_message} "
+        f"{verification_message} "
         "Next: bars saved import execute only if the preview matches intent."
     )
 

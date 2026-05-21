@@ -1154,6 +1154,14 @@ def test_market_bars_saved_file_cli_validates_and_imports_fixture(
     assert capture_payload["source"] == "fixture"
     assert capture_payload["external_calls_made"] == 0
     assert capture_payload["db_writes_made"] == 0
+    capture_verification = capture_payload["post_capture_verification"]
+    assert capture_verification["status"] == "preview_only"
+    assert capture_verification["source"] == "saved_provider_capture"
+    assert capture_verification["missing_as_of_bar_count"] == 3
+    assert capture_verification["projected_missing_after_import_count"] == 1
+    assert capture_verification["preview_projection_status"] == "would_still_block_market_bars"
+    assert capture_verification["external_calls_made"] == 0
+    assert capture_verification["db_changes_made"] == 0
     assert capture_payload["validate_command"].startswith(
         "catalyst-radar market-bars saved-validate "
     )
@@ -1161,6 +1169,25 @@ def test_market_bars_saved_file_cli_validates_and_imports_fixture(
         "catalyst-radar market-bars saved-import "
     )
     assert saved_path.read_bytes() == fixture_path.read_bytes()
+
+    human_capture_code = main(
+        [
+            "market-bars",
+            "saved-capture",
+            "--expected-as-of",
+            "2026-05-08",
+            "--fixture",
+            str(fixture_path),
+            "--out",
+            str(saved_path),
+        ]
+    )
+    assert human_capture_code == 0
+    human_capture = capsys.readouterr().out
+    assert "post_capture_verification status=preview_only" in human_capture
+    assert "projected_missing=1" in human_capture
+    assert "projection=would_still_block_market_bars" in human_capture
+    assert "post_capture_next=" in human_capture
 
     validate_code = main(
         [

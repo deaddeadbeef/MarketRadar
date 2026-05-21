@@ -125,6 +125,7 @@ from catalyst_radar.market.manual_bars import (
 )
 from catalyst_radar.market.status import (
     market_bars_import_verification_payload,
+    market_bars_post_capture_verification_payload,
     market_bars_status_payload,
 )
 from catalyst_radar.pipeline.candidate_packet import build_candidate_packet
@@ -4101,6 +4102,13 @@ def _market_bars_saved_capture_cli(
         fixture_path=fixture_path,
         confirm_external_call=confirm_external_call,
     )
+    payload["post_capture_verification"] = market_bars_post_capture_verification_payload(
+        engine,
+        config,
+        expected_as_of=expected_as_of,
+        capture_payload=payload,
+        stocks_only=stocks_only,
+    )
     if json_output:
         print(json.dumps(payload, sort_keys=True))
     else:
@@ -4515,8 +4523,13 @@ def _print_saved_capture_approval_guard_failure(payload: Mapping[str, object]):
     print(f"next_action={payload.get('next_action')}")
 
 
-def _print_market_bars_post_import_verification(payload):
-    verification = _mapping_value(payload.get("post_import_verification"))
+def _print_market_bars_post_import_verification(
+    payload,
+    *,
+    payload_key: str = "post_import_verification",
+    label: str = "post_import_verification",
+):
+    verification = _mapping_value(payload.get(payload_key))
     if not verification:
         return
     command = _compact_cli_text(
@@ -4524,7 +4537,7 @@ def _print_market_bars_post_import_verification(payload):
         or verification.get("priced_in_answer_command")
     )
     print(
-        "post_import_verification "
+        f"{label} "
         f"status={verification.get('status')} "
         f"missing={verification.get('missing_as_of_bar_count')} "
         f"next_blocker={verification.get('next_blocker') or 'n/a'} "
@@ -4536,7 +4549,12 @@ def _print_market_bars_post_import_verification(payload):
     )
     next_action = str(verification.get("next_action") or "").strip()
     if next_action:
-        print(f"post_import_next={_compact_cli_text(next_action)}")
+        next_label = (
+            f"{label.rsplit('_verification', 1)[0]}_next"
+            if label.endswith("_verification")
+            else f"{label}_next"
+        )
+        print(f"{next_label}={_compact_cli_text(next_action)}")
 
 def _print_market_bars_saved_import(payload: Mapping[str, object]):
     coverage = _mapping_value(payload.get("coverage"))
@@ -7475,6 +7493,11 @@ def _print_polygon_grouped_daily_response_capture(
             f"external_calls={preview_external_calls} "
             f"db_writes={preview_db_writes}"
         )
+    _print_market_bars_post_import_verification(
+        payload,
+        payload_key="post_capture_verification",
+        label="post_capture_verification",
+    )
     validate_command = payload.get("validate_command")
     import_command = payload.get("import_command")
     next_action = payload.get("next_action")
