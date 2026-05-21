@@ -152,8 +152,8 @@ clients the fillable local CSV context: path, required fields, current complete
 / partial / empty counts, and sample missing tickers. `blocker_detail.saved_provider_capture`
 shows the guarded saved Polygon/Massive response path as its own zero-call
 contract: current saved-file status, whether a key and explicit approval are
-required, call/write counts, capture API request bodies, and the post-capture
-validate/import steps.
+required, active/existing/missing bar counts for the capture target, call/write
+counts, capture API request bodies, and the post-capture validate/import steps.
 The same answer payload includes `reviewable_subset`, a zero-call count and
 sample of scanned-subset leads that can be inspected as research-only while the
 full-market trust gate remains blocked.
@@ -328,8 +328,9 @@ decision-useful. It makes 0 Polygon, SEC, Schwab, or OpenAI calls.
 Quick mode limits the output to health, readiness, the stock-like market-bar
 repair plan, saved-capture approval packet, and any local manual-bar template
 preview. The saved-capture approval lines show whether approval is required,
-how many bars are targeted, the exact external-call count if approved, and the
-zero-call question to review before running `bars saved capture confirm`.
+the active/existing/missing bar counts for the target date, the exact
+external-call count if approved, and the zero-call question to review before
+running `bars saved capture confirm`.
 
 For functional end-to-end tests of the same command-center data the dashboard
 renders:

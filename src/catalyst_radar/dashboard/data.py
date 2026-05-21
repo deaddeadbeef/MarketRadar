@@ -4548,12 +4548,14 @@ def _priced_in_audit_market_bar_repair(
         else missing
     )
     provider_active = (
-        int(_finite_float(stock_scope.get("stock_like_active"))) if stocks_only else None
+        int(_finite_float(stock_scope.get("stock_like_active")))
+        if stocks_only
+        else active
     )
     provider_existing = (
         int(_finite_float(stock_scope.get("stock_like_with_as_of_bar")))
         if stocks_only
-        else None
+        else with_as_of_bar
     )
     provider_fill_plan = _priced_in_market_bar_provider_fill_plan(
         engine,
@@ -5110,6 +5112,9 @@ def _priced_in_market_bar_provider_fill_plan(
         "provider": "polygon",
         "provider_label": "Polygon/Massive grouped daily",
         "target_as_of": target_value,
+        "coverage_scope": coverage_scope,
+        "active_security_count": active_security_count,
+        "existing_as_of_bar_count": existing_as_of_bar_count,
         "missing_as_of_bar": max(0, int(missing)),
         "provider_key_configured": key_configured,
         "provider_health": provider_health or None,
@@ -6796,8 +6801,10 @@ def _priced_in_market_bar_saved_provider_capture_context(
         "expected_as_of": packet.get("expected_as_of")
         or provider_plan.get("target_as_of"),
         "coverage_scope": packet.get("coverage_scope"),
-        "active_security_count": packet.get("active_security_count"),
-        "existing_as_of_bar_count": packet.get("existing_as_of_bar_count"),
+        "active_security_count": packet.get("active_security_count")
+        or provider_plan.get("active_security_count"),
+        "existing_as_of_bar_count": packet.get("existing_as_of_bar_count")
+        or provider_plan.get("existing_as_of_bar_count"),
         "missing_as_of_bar_count": packet.get("missing_as_of_bar_count")
         or provider_plan.get("missing_as_of_bar"),
         "provider_key_configured": bool(packet.get("provider_key_configured")),
