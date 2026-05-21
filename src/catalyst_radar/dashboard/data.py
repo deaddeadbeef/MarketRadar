@@ -3276,6 +3276,120 @@ def _priced_in_market_bar_blocker_unblock_options(market_bar_repair, provider_pl
     return options
 
 
+def _priced_in_market_bar_recommended_unblock_action(blocker_detail):
+    if not blocker_detail:
+        return None
+    options = {
+        str(option.get("kind") or ""): option
+        for option in _sequence_value(blocker_detail.get("unblock_options"))
+        if isinstance(option, Mapping)
+    }
+    saved_capture = _mapping_value(blocker_detail, "saved_provider_capture")
+    saved_file_status = str(saved_capture.get("saved_file_status") or "").strip()
+    validate_option = options.get("validate_saved_file")
+    if saved_file_status == "available" and validate_option:
+        return _priced_in_market_bar_recommended_unblock_from_option(
+            validate_option,
+            reason="Validate the saved grouped-daily file before import.",
+        )
+    saved_capture_option = options.get("saved_provider_capture")
+    if (
+        saved_capture_option
+        and saved_capture.get("approval_required")
+        and str(saved_capture.get("status") or "") == "approval_required"
+    ):
+        return _priced_in_market_bar_recommended_unblock_from_option(
+            saved_capture_option,
+            request_body_key="confirm_request_body",
+            reason=saved_capture_option.get("question")
+            or "Capture one saved grouped-daily provider response for review.",
+        )
+    manual_csv = _mapping_value(blocker_detail, "manual_csv")
+    manual_option = options.get("manual_csv")
+    if manual_csv:
+        file_exists = bool(manual_csv.get("exists"))
+        command = manual_csv.get("preview_command") if file_exists else None
+        command = command or manual_csv.get("template_command")
+        api = None
+        request_body = None
+        if manual_option:
+            if file_exists:
+                api = manual_option.get("preview_api") or manual_option.get("api")
+                request_body = manual_option.get("preview_request_body")
+            else:
+                api = manual_option.get("api")
+                request_body = manual_option.get("request_body")
+        return _priced_in_market_bar_recommended_unblock_payload(
+            kind="manual_csv",
+            label="Manual CSV",
+            status="available" if command else "attention",
+            reason=blocker_detail.get("next_action") or manual_csv.get("next_action"),
+            command=command,
+            api=api,
+            request_body=request_body,
+            approval_required=False,
+            external_calls_required=0,
+            db_writes_required=0,
+        )
+    first_option = next(iter(options.values()), None)
+    if first_option:
+        return _priced_in_market_bar_recommended_unblock_from_option(first_option)
+    return None
+
+
+def _priced_in_market_bar_recommended_unblock_from_option(
+    option,
+    *,
+    request_body_key: str = "request_body",
+    reason=None,
+):
+    writes = option.get("db_writes_during_step")
+    if writes is None:
+        writes = option.get("db_writes_before_execute")
+    return _priced_in_market_bar_recommended_unblock_payload(
+        kind=str(option.get("kind") or "option"),
+        label=option.get("label") or str(option.get("kind") or "option"),
+        status=option.get("status") or "unknown",
+        reason=reason or option.get("next_action") or option.get("question"),
+        command=option.get("command"),
+        api=option.get("api"),
+        request_body=option.get(request_body_key) or option.get("request_body"),
+        approval_required=bool(option.get("approval_required")),
+        external_calls_required=int(_finite_float(option.get("external_calls_required"))),
+        db_writes_required=int(_finite_float(writes)),
+    )
+
+
+def _priced_in_market_bar_recommended_unblock_payload(
+    *,
+    kind: str,
+    label,
+    status,
+    reason,
+    command,
+    api,
+    request_body,
+    approval_required: bool,
+    external_calls_required: int,
+    db_writes_required: int,
+):
+    return {
+        "schema_version": "priced-in-market-bar-recommended-unblock-v1",
+        "kind": kind,
+        "label": label,
+        "status": status,
+        "reason": reason,
+        "command": command,
+        "tui_command": command,
+        "api": api,
+        "request_body": request_body,
+        "approval_required": approval_required,
+        "external_calls_required": external_calls_required,
+        "db_writes_required": db_writes_required,
+        "external_calls_made": 0,
+    }
+
+
 def priced_in_answer_payload(
     engine: Engine,
     config: AppConfig,
@@ -3469,6 +3583,11 @@ def priced_in_answer_payload(
             )
             if unblock_options:
                 market_bar_blocker_detail["unblock_options"] = unblock_options
+            recommended_action = _priced_in_market_bar_recommended_unblock_action(
+                market_bar_blocker_detail
+            )
+            if recommended_action:
+                market_bar_blocker_detail["recommended_action"] = recommended_action
     unscanned_blocker_rows = int(
         _finite_float(
             full_scan_summary.get("unscanned_blocker_rows")
@@ -3504,6 +3623,12 @@ def priced_in_answer_payload(
         "operator_boundary": "This gate is zero-call and cannot run providers.",
         "external_calls_made": 0,
     }
+    if market_bar_blocker_detail and market_bar_blocker_detail.get(
+        "recommended_action"
+    ):
+        full_market_trust_gate["recommended_action"] = market_bar_blocker_detail[
+            "recommended_action"
+        ]
     reviewable_subset = {
         "schema_version": "priced-in-reviewable-subset-v1",
         "row_count": decision_ready_count,

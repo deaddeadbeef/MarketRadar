@@ -3064,6 +3064,16 @@ def test_priced_in_answer_blocks_incomplete_stock_bars_even_with_ready_rows(
         "POST /api/radar/market-bars/provider-fixture-preview"
     )
     assert unblock_options["preview_import"]["request_body"]["execute"] is False
+    recommended = detail["recommended_action"]
+    assert recommended["schema_version"] == (
+        "priced-in-market-bar-recommended-unblock-v1"
+    )
+    assert recommended["kind"] == "manual_csv"
+    assert recommended["external_calls_required"] == 0
+    assert recommended["db_writes_required"] == 0
+    assert recommended["command"] == "bars manual stocks template"
+    assert recommended["tui_command"] == "bars manual stocks template"
+    assert payload["full_market_trust_gate"]["recommended_action"] == recommended
 
 
 def test_priced_in_answer_prefers_local_artifact_gap_before_options(
