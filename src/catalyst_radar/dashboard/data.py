@@ -3424,9 +3424,14 @@ def priced_in_answer_payload(
         ),
         primary_area="market_bars" if market_bar_gap_count > 0 else None,
     )
-    full_market_trust_gate["blocker_ladder"] = _priced_in_answer_blocker_ladder(
-        trust_blockers
+    blocker_ladder = _priced_in_answer_blocker_ladder(
+        trust_blockers,
+        stocks_only=stocks_only,
     )
+    full_market_trust_gate["blocker_ladder"] = blocker_ladder
+    after_current_blocker = _priced_in_answer_after_current_blocker(blocker_ladder)
+    if after_current_blocker:
+        full_market_trust_gate["after_current_blocker"] = after_current_blocker
     investment_decision_boundary = (
         "Priced-in answer readiness is not trade approval. Use the separate "
         "radar readiness/manual_buy_review gate before any investment decision."
@@ -6637,18 +6642,67 @@ def _priced_in_prioritized_trust_blockers(
     )
 
 
-def _priced_in_answer_blocker_ladder(rows):
+def _priced_in_answer_blocker_ladder(rows, *, stocks_only: bool = False):
     ladder_rows = []
     for index, row in enumerate(rows, start=1):
+        source = str(row.get("area") or "").strip()
+        command = row.get("command")
+        batchable = source in PRICED_IN_BATCHABLE_SOURCES
+        plan_command = (
+            _priced_in_source_batches_command(
+                source,
+                stocks_only=stocks_only,
+                all_batches=True,
+                json=True,
+            )
+            if batchable
+            else command
+        )
+        plan_api = (
+            _priced_in_source_batches_api(
+                source,
+                stocks_only=stocks_only,
+                all_batches=True,
+            )
+            if batchable
+            else None
+        )
+        execute_next_command = (
+            _priced_in_source_batches_command(
+                source,
+                stocks_only=stocks_only,
+                execute_next=True,
+            )
+            if batchable
+            else None
+        )
+        execute_next_request_body = (
+            {
+                "source": source,
+                "max_batches": 1,
+                "stocks_only": stocks_only,
+            }
+            if batchable
+            else None
+        )
         ladder_rows.append(
             {
                 "step": index,
-                "source": row.get("area"),
+                "source": source,
                 "status": row.get("status"),
                 "gap_count": int(_finite_float(row.get("gap_count"))),
                 "depends_on": list(_sequence_value(row.get("depends_on"))),
                 "next_action": row.get("next_action"),
-                "command": row.get("command"),
+                "command": command,
+                "plan_command": plan_command,
+                "plan_api": plan_api,
+                "execute_next_command": execute_next_command,
+                "execute_next_api": (
+                    "POST /api/radar/priced-in/source-batches/execute-next"
+                    if batchable
+                    else None
+                ),
+                "execute_next_request_body": execute_next_request_body,
                 "external_calls_made": 0,
             }
         )
@@ -6658,6 +6712,43 @@ def _priced_in_answer_blocker_ladder(rows):
         "operator_note": (
             "Clear blockers in order for a trusted full-market answer. This "
             "ladder is zero-call and does not execute source fills."
+        ),
+        "external_calls_made": 0,
+    }
+
+
+def _priced_in_answer_after_current_blocker(ladder: Mapping[str, object]):
+    rows = [
+        _row_dict(row)
+        for row in _sequence_value(ladder.get("rows"))
+        if isinstance(row, Mapping)
+    ]
+    if len(rows) < 2:
+        return None
+    current = rows[0]
+    upcoming = rows[1]
+    next_source = str(upcoming.get("source") or "").strip()
+    if not next_source:
+        return None
+    next_status = str(upcoming.get("status") or "").strip()
+    guidance = _priced_in_source_guidance(next_source, next_status)
+    return {
+        "schema_version": "priced-in-after-current-blocker-v1",
+        "current_blocker": current.get("source"),
+        "current_gap_count": int(_finite_float(current.get("gap_count"))),
+        "next_source": next_source,
+        "next_status": next_status or None,
+        "next_gap_count": int(_finite_float(upcoming.get("gap_count"))),
+        "why_it_matters": guidance.get("meaning"),
+        "next_action": upcoming.get("next_action"),
+        "plan_command": upcoming.get("plan_command") or upcoming.get("command"),
+        "plan_api": upcoming.get("plan_api"),
+        "execute_next_command": upcoming.get("execute_next_command"),
+        "execute_next_api": upcoming.get("execute_next_api"),
+        "execute_next_request_body": upcoming.get("execute_next_request_body"),
+        "operator_note": (
+            "Preview only. Do not execute this source until the current blocker "
+            "is cleared and the source batch plan matches your intended call budget."
         ),
         "external_calls_made": 0,
     }

@@ -3343,6 +3343,7 @@ def test_priced_in_answer_cli_outputs_current_scan_answer(
     assert "review_full_scan=catalyst-radar priced-in-queue --full-scan" in output.out
     assert "full_market_trust_gate=" in output.out
     assert "trust_gate_ladder=" in output.out
+    assert "trust_gate_after_current=" in output.out
     assert (
         "export_full_scan=catalyst-radar priced-in-queue --full-scan --all --json"
         in output.out
@@ -3385,6 +3386,9 @@ def test_priced_in_answer_cli_outputs_current_scan_answer(
     assert ladder["external_calls_made"] == 0
     assert ladder["rows"]
     assert ladder["rows"][0]["external_calls_made"] == 0
+    assert payload["full_market_trust_gate"]["after_current_blocker"][
+        "schema_version"
+    ] == "priced-in-after-current-blocker-v1"
     assert payload["reviewable_subset"]["schema_version"] == (
         "priced-in-reviewable-subset-v1"
     )

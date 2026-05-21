@@ -144,7 +144,10 @@ than reconstructing endpoint parameters from CLI text.
 It also carries a `missing_universe` summary so the operator can see what kind
 of active rows are blocking coverage without using that context to exclude rows
 or reduce the full scan. `blocker_ladder` lists the ordered evidence blockers
-that must be cleared after the first blocker.
+that must be cleared after the first blocker. When another blocker is already
+known, `after_current_blocker` previews the next source, why it matters, and
+the zero-call plan/API plus guarded execute-next affordance to use only after
+the current blocker is cleared.
 The same answer payload includes `reviewable_subset`, a zero-call count and
 sample of scanned-subset leads that can be inspected as research-only while the
 full-market trust gate remains blocked.
