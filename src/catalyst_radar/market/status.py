@@ -201,6 +201,8 @@ def market_bars_import_verification_payload(
     executed: bool,
     source: str,
     db_changes_made: int = 0,
+    projected_missing_after_import_count: int | None = None,
+    projected_db_changes_made: int | None = None,
 ):
     """Verify whether a market-bar import cleared the trusted-answer blocker."""
 
@@ -212,6 +214,17 @@ def market_bars_import_verification_payload(
         stocks_only=stocks_only,
     )
     missing = int(status_payload.get("missing_as_of_bar_count") or 0)
+    projected_missing = (
+        max(0, int(projected_missing_after_import_count))
+        if projected_missing_after_import_count is not None
+        else None
+    )
+    if projected_missing is None:
+        preview_projection_status = "unknown"
+    elif projected_missing == 0:
+        preview_projection_status = "would_clear_market_bars"
+    else:
+        preview_projection_status = "would_still_block_market_bars"
     if not executed:
         verification_status = "preview_only"
     elif missing == 0:
@@ -242,6 +255,16 @@ def market_bars_import_verification_payload(
             "Import completed, but market bars are still incomplete. Fill the "
             "remaining rows before treating the priced-in answer as trusted."
         )
+    elif preview_projection_status == "would_clear_market_bars":
+        next_action = (
+            "Preview covers the current market-bar gap. Execute only after "
+            "review; then rerun the priced-in answer."
+        )
+    elif preview_projection_status == "would_still_block_market_bars":
+        next_action = (
+            f"Preview would still leave {projected_missing} market-bar row(s) "
+            "missing. Fill or replace the import before relying on it."
+        )
     else:
         next_action = (
             "Preview only. Execute the import only after coverage matches intent, "
@@ -261,6 +284,17 @@ def market_bars_import_verification_payload(
         "active_security_count": status_payload.get("active_security_count"),
         "existing_as_of_bar_count": status_payload.get("existing_as_of_bar_count"),
         "missing_as_of_bar_count": missing,
+        "projected_missing_after_import_count": projected_missing,
+        "preview_projection_status": preview_projection_status,
+        "preview_would_clear_market_bars": bool(
+            not executed and projected_missing == 0
+        ),
+        "preview_would_still_block_market_bars": bool(
+            not executed
+            and projected_missing is not None
+            and projected_missing != 0
+        ),
+        "projected_db_changes_made": projected_db_changes_made,
         "market_bars_first_blocker": status_payload.get("first_blocker"),
         "trusted_answer_status": answer_summary.get("status"),
         "trusted_answer_ready": bool(answer_summary.get("trusted_answer_ready")),

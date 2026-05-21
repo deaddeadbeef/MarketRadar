@@ -2125,6 +2125,8 @@ def test_dashboard_bars_saved_validate_and_import_fixture_are_operator_actions(
     assert "Saved-file import preview: status=ready_with_rejections" in preview.message
     assert "external_calls=0" in preview.message
     assert "db_writes=0" in preview.message
+    assert "Post-import: status=preview_only; missing=3" in preview.message
+    assert "projected_missing=1; projection=would_still_block_market_bars" in preview.message
     assert "bars saved import execute" in preview.message
 
     execute = _apply_command(
@@ -2229,6 +2231,7 @@ def test_dashboard_bars_manual_template_and_import_are_zero_call_actions(
     assert "missing_after_import=2" in preview.message
     assert "external_calls=0" in preview.message
     assert "db_writes=0" in preview.message
+    assert "projected_missing=2; projection=would_still_block_market_bars" in preview.message
 
     execute = _apply_command(
         "bars manual import execute",

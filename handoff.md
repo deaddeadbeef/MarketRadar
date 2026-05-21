@@ -1,8 +1,41 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-22 04:51:41 +08:00
+Last updated: 2026-05-22 05:09:25 +08:00
 
 
+
+## Latest Market-Bar Preview Projection
+
+Last updated: 2026-05-22 05:09:25 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, broker, order, web, app, or provider tools from the product.
+- This is useful because previewing a manual CSV or saved provider file should tell the operator whether executing it would actually clear the market-bar blocker before any database change is made.
+
+Fix in this slice:
+
+- `market_bars_import_verification_payload` now accepts preview projection counts.
+- Manual CSV import preview and saved-file import preview now report `projected_missing_after_import_count`, `preview_projection_status`, `preview_would_clear_market_bars`, and `preview_would_still_block_market_bars`.
+- CLI human output prints projected missing rows and projection status beside the current blocker state.
+- TUI manual and saved-file import preview responses include the same projection in the `Post-import:` message.
+- README documents that preview projection is the safe way to know whether execution would clear the blocker before DB changes.
+
+Validation observed in this slice:
+
+- Ruff passed for touched source and integration files.
+- Py-compile passed for touched source and integration files.
+- Focused CLI/API/TUI import preview regressions passed.
+- Full affected integration files passed: `tests/integration/test_provider_ingest_cli.py`, `tests/integration/test_api_routes.py`, and `tests/integration/test_dashboard_demo_seed_cli.py`.
+- `git diff --check` passed.
+- Live zero-call manual CSV preview against the local 2026-05-15 blocker reported `preview_projection_status=would_still_block_market_bars`, projected missing 523, `external_calls=0`, and `db_changes=0`.
+
+Current live blocker:
+
+- The trusted full-market priced-in answer is still blocked by 523 missing market bars for 2026-05-15 until explicit guarded saved Polygon/Massive capture approval with matching counts or complete manual CSV import.
+- The stock-like answer path is still blocked by 131 stock-like missing bars.
+- After market bars clear, the next prepared blocker remains catalyst-events source fill, with 5510 plannable company-like rows and two missing-CIK blockers currently sampled as FRBA and SSBI.
 
 ## Latest Market-Bar Post-Import Verification
 

@@ -624,11 +624,15 @@ expose the same approval, validate, and import contract everywhere.
 Every manual CSV import and saved-file import response includes
 `post_import_verification`. That payload is zero-call and reports whether the
 operation was preview-only, whether `market_bars` is still blocking the trusted
-priced-in answer, or whether the market-bar blocker cleared. It also reports
-the remaining scan-date bar gap, the next blocker when known, a rerun command,
-`external_calls_made=0`, and `db_changes_made`. Treat an import as operationally
-complete only after this verifier says `market_bars_cleared`; if it says
-`market_bars_still_blocked`, fill the remaining rows before source chunks.
+priced-in answer, or whether the market-bar blocker cleared. Preview responses
+also include `projected_missing_after_import_count`, `preview_projection_status`,
+and booleans such as `preview_would_clear_market_bars`, so the operator can see
+whether executing the reviewed import would clear the blocker before making a
+database change. The verifier also reports the current scan-date bar gap, the
+next blocker when known, a rerun command, `external_calls_made=0`, and
+`db_changes_made`. Treat an import as operationally complete only after this
+verifier says `market_bars_cleared`; if it says `market_bars_still_blocked` or
+`would_still_block_market_bars`, fill the remaining rows before source chunks.
 
 The template command writes a local ignored CSV scaffold for missing active
 tickers in the live database. Missing-only rows are sorted with stock-like
