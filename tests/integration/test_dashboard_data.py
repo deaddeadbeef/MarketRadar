@@ -3086,6 +3086,20 @@ def test_priced_in_answer_blocks_incomplete_stock_bars_even_with_ready_rows(
     assert recommended["command"] == "bars manual stocks template"
     assert recommended["tui_command"] == "bars manual stocks template"
     assert payload["full_market_trust_gate"]["recommended_action"] == recommended
+    operator_step = payload["operator_next_step"]
+    assert operator_step["schema_version"] == "priced-in-operator-next-step-v1"
+    assert operator_step["status"] == "blocked"
+    assert operator_step["scope"] == "stock_like"
+    assert operator_step["first_blocker"] == "market_bars"
+    assert operator_step["first_gap_count"] == 1
+    assert operator_step["action_kind"] == "manual_csv"
+    assert operator_step["command"] == "bars manual stocks template"
+    assert operator_step["external_calls_required"] == 0
+    assert operator_step["db_writes_required"] == 0
+    assert operator_step["external_calls_made"] == 0
+    assert operator_step["db_writes_made"] == 0
+    assert operator_step["can_use_for_investment_decision"] is False
+    assert "preview the import" in operator_step["response_after_action"]
 
 
 def test_priced_in_answer_prefers_local_artifact_gap_before_options(

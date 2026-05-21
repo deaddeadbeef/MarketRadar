@@ -3560,6 +3560,127 @@ def _priced_in_market_bar_recommended_unblock_payload(
     }
 
 
+
+def _priced_in_answer_operator_next_step(
+    *,
+    answer_status: str,
+    answer_text: str,
+    full_market_trust_gate: Mapping[str, object],
+    next_action: str,
+    next_command: str,
+    stocks_only: bool,
+):
+    """Return the one operator action that advances the priced-in answer."""
+    gate = _row_dict(full_market_trust_gate)
+    recommended = _mapping_value(gate, "recommended_action")
+    trusted = bool(gate.get("trusted_full_market_answer"))
+    first_blocker = str(gate.get("first_blocker") or "").strip()
+    first_gap_count = int(_finite_float(gate.get("first_gap_count")))
+    command = str(next_command or "").strip() or None
+    tui_command = command
+    api = None
+    request_body = None
+    approval_required = False
+    calls_required = 0
+    writes_required = 0
+    action_kind = "review_priced_in_answer"
+    action_label = "Review priced-in answer"
+    action_reason = next_action or answer_text
+    response_after_action = (
+        "Review the visible priced-in rows. This is still not trade approval."
+    )
+
+    if recommended:
+        action_kind = str(recommended.get("kind") or "unblock_priced_in_answer")
+        action_label = str(recommended.get("label") or action_kind).strip()
+        action_reason = str(
+            recommended.get("reason")
+            or recommended.get("next_action")
+            or action_label
+        ).strip()
+        command = str(
+            recommended.get("cli_command")
+            or recommended.get("command")
+            or ""
+        ).strip() or None
+        tui_command = str(
+            recommended.get("tui_command")
+            or recommended.get("command")
+            or command
+            or ""
+        ).strip() or None
+        api = recommended.get("api")
+        request_body = recommended.get("request_body")
+        approval_required = bool(recommended.get("approval_required"))
+        calls_required = int(_finite_float(recommended.get("external_calls_required")))
+        writes_required = int(_finite_float(recommended.get("db_writes_required")))
+        response_after_action = _priced_in_operator_response_after_action(action_kind)
+    elif trusted:
+        action_reason = next_action or "Open decision-ready priced-in rows."
+        command = command or "catalyst-radar priced-in-queue --decision-ready"
+        tui_command = "ready"
+    elif first_blocker:
+        action_kind = f"clear_{first_blocker}"
+        action_label = f"Clear {first_blocker}"
+        action_reason = next_action or gate.get("next_action") or answer_text
+        command = command or str(gate.get("next_command") or "").strip() or None
+        tui_command = command
+        response_after_action = (
+            "Rerun `catalyst-radar priced-in-answer` after the blocker changes."
+        )
+
+    status = "ready" if trusted else "blocked"
+    priority = "review" if trusted else "must_fix"
+    if answer_status in {"none_visible", "monitor"} and not first_blocker:
+        priority = "monitor"
+
+    return {
+        "schema_version": "priced-in-operator-next-step-v1",
+        "question": "What should the operator do next for the priced-in scan?",
+        "status": status,
+        "answer_status": answer_status,
+        "trusted_priced_in_answer": trusted,
+        "can_use_for_investment_decision": False,
+        "investment_decision_boundary": (
+            "This is decision support only. It never approves a trade."
+        ),
+        "priority": priority,
+        "scope": "stock_like" if stocks_only else "full_market",
+        "first_blocker": first_blocker or None,
+        "first_gap_count": first_gap_count,
+        "action_kind": action_kind,
+        "action_label": action_label,
+        "action": action_reason,
+        "command": command,
+        "tui_command": tui_command,
+        "api": api,
+        "request_body": request_body,
+        "approval_required": approval_required,
+        "external_calls_required": calls_required,
+        "db_writes_required": writes_required,
+        "response_after_action": response_after_action,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+    }
+
+
+def _priced_in_operator_response_after_action(action_kind: str):
+    if action_kind == "saved_provider_capture":
+        return (
+            "A saved provider response should exist locally. Validate it before "
+            "previewing or executing any import."
+        )
+    if action_kind == "validate_saved_file":
+        return "If validation passes, preview the saved import before executing it."
+    if action_kind == "preview_import":
+        return "If the preview fills the intended missing bars, execute the import."
+    if action_kind == "manual_csv":
+        return (
+            "Fill or generate the local CSV, preview the import, then execute only "
+            "after the preview matches the intended bars."
+        )
+    return "Rerun `catalyst-radar priced-in-answer` after the action completes."
+
 def priced_in_answer_payload(
     engine: Engine,
     config: AppConfig,
@@ -3834,31 +3955,41 @@ def priced_in_answer_payload(
         "Priced-in answer readiness is not trade approval. Use the separate "
         "radar readiness/manual_buy_review gate before any investment decision."
     )
+    answer_text = _priced_in_answer_text(
+        answer_status=answer_status,
+        actionable_count=actionable_count,
+        decision_ready_count=decision_ready_count,
+        research_lead_count=research_lead_count,
+        blocked_count=blocked_count,
+        market_bar_gap_count=market_bar_gap_count,
+        core_evidence_gap=core_evidence_gap,
+        stocks_only=stocks_only,
+    )
+    headline_text = _priced_in_answer_headline(
+        answer_status=answer_status,
+        total_count=int(_finite_float(resolved_queue.get("total_count"))),
+        actionable_count=actionable_count,
+        decision_ready_count=decision_ready_count,
+        research_lead_count=research_lead_count,
+        blocked_count=blocked_count,
+        market_bar_gap_count=market_bar_gap_count,
+        core_evidence_gap=core_evidence_gap,
+        stocks_only=stocks_only,
+    )
+    operator_next_step = _priced_in_answer_operator_next_step(
+        answer_status=answer_status,
+        answer_text=answer_text,
+        full_market_trust_gate=full_market_trust_gate,
+        next_action=next_action,
+        next_command=next_command,
+        stocks_only=stocks_only,
+    )
     return {
         "schema_version": "priced-in-answer-v1",
         "status": answer_status,
         "question": "Has price fully matched market expectations?",
-        "answer": _priced_in_answer_text(
-            answer_status=answer_status,
-            actionable_count=actionable_count,
-            decision_ready_count=decision_ready_count,
-            research_lead_count=research_lead_count,
-            blocked_count=blocked_count,
-            market_bar_gap_count=market_bar_gap_count,
-            core_evidence_gap=core_evidence_gap,
-            stocks_only=stocks_only,
-        ),
-        "headline": _priced_in_answer_headline(
-            answer_status=answer_status,
-            total_count=int(_finite_float(resolved_queue.get("total_count"))),
-            actionable_count=actionable_count,
-            decision_ready_count=decision_ready_count,
-            research_lead_count=research_lead_count,
-            blocked_count=blocked_count,
-            market_bar_gap_count=market_bar_gap_count,
-            core_evidence_gap=core_evidence_gap,
-            stocks_only=stocks_only,
-        ),
+        "answer": answer_text,
+        "headline": headline_text,
         "decision_ready": decision_ready,
         "priced_in_answer_ready": decision_ready,
         "can_make_investment_decision": False,
@@ -3876,6 +4007,7 @@ def priced_in_answer_payload(
         "scan_scope": _priced_in_answer_scan_scope(resolved_queue),
         "full_scan": full_scan_summary,
         "full_market_trust_gate": full_market_trust_gate,
+        "operator_next_step": operator_next_step,
         "reviewable_subset": reviewable_subset,
         "decision_readiness": decision_readiness,
         "evidence_completeness": evidence_completeness,

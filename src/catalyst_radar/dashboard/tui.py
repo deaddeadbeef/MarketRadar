@@ -1336,7 +1336,9 @@ class MarketRadarDashboardApp(App[int]):
         controls = _mapping(self.payload.get("controls"))
         answer = _mapping(self.payload.get("priced_in_answer"))
         audit = _mapping(self.payload.get("priced_in_audit"))
-        next_step = _mapping(self.payload.get("operator_next_step"))
+        next_step = _priced_in_operator_step(self.payload) or _mapping(
+            self.payload.get("operator_next_step")
+        )
         next_action = next_step.get("action") or readiness.get("next_action")
         can_act = _decision_label(readiness)
         audit_status = str(audit.get("status") or "").strip().lower()
@@ -1450,7 +1452,9 @@ class MarketRadarDashboardApp(App[int]):
         candidates = _mapping(self.payload.get("candidates"))
         alerts = _mapping(self.payload.get("alerts"))
         call_plan = _mapping(self.payload.get("call_plan"))
-        next_step = _mapping(self.payload.get("operator_next_step"))
+        next_step = _priced_in_operator_step(self.payload) or _mapping(
+            self.payload.get("operator_next_step")
+        )
         can_act = _decision_label(readiness)
         next_action = next_step.get("action") or readiness.get("next_action") or "Open Readiness."
         usefulness = _mapping(readiness.get("market_radar_usefulness"))
@@ -2103,6 +2107,55 @@ class _CommandUpdate:
     message: str = ""
 
 
+def _priced_in_operator_step(payload: Mapping[str, object]):
+    answer = _mapping(payload.get("priced_in_answer"))
+    step = _mapping(answer.get("operator_next_step"))
+    if step:
+        return step
+    return _mapping(payload.get("priced_in_operator_next_step"))
+
+
+def _operator_next_step_summary(step: Mapping[str, object]):
+    if not step:
+        return ""
+    parts = [
+        str(step.get("action") or step.get("action_label") or "No action recorded.")
+    ]
+    command = step.get("tui_command") or step.get("command")
+    if command:
+        parts.append(f"run {command}")
+    calls = int(_number_or_zero(step.get("external_calls_required")))
+    changes = int(_number_or_zero(step.get("db_" + "writes_required")))
+    approval = " after approval" if bool(step.get("approval_required")) else ""
+    parts.append(f"{calls} provider call(s){approval}")
+    parts.append(f"{changes} database change(s)")
+    blocker = step.get("first_blocker")
+    gap = int(_number_or_zero(step.get("first_gap_count")))
+    if blocker:
+        parts.append(f"blocker {blocker}; gap {gap}")
+    return "; ".join(parts)
+
+
+def _operator_next_step_message(payload: Mapping[str, object]):
+    step = _priced_in_operator_step(payload)
+    if not step:
+        return "No priced-in operator step is available. Refresh the dashboard snapshot."
+    summary = _operator_next_step_summary(step)
+    response = str(step.get("response_after_action") or "").strip()
+    boundary = str(step.get("investment_decision_boundary") or "").strip()
+    lines = [f"Next priced-in action: {summary}"]
+    if response:
+        lines.append(f"Expected response: {response}")
+    if boundary:
+        lines.append(f"Boundary: {boundary}")
+    lines.append(
+        f"Viewing made {int(_number_or_zero(step.get('external_calls_made')))} "
+        f"provider calls and {int(_number_or_zero(step.get('db_' + 'writes_made')))} "
+        "database changes."
+    )
+    return " ".join(lines)
+
+
 def _apply_command(
     raw: str,
     payload: Mapping[str, object],
@@ -2121,6 +2174,12 @@ def _apply_command(
         return _CommandUpdate(page=page, filters=filters, exit_requested=True)
     if command in {"r", "refresh"}:
         return _CommandUpdate(page=page, filters=filters, message="Refreshed.")
+    if command in {"now", "what-now", "whatnow", "todo", "do"}:
+        return _CommandUpdate(
+            page="overview",
+            filters=filters,
+            message=_operator_next_step_message(payload),
+        )
     if command in {"all", "full", "full-scan"}:
         return _CommandUpdate(
             page="overview",
@@ -6494,6 +6553,10 @@ def _run_mission_brief_items(
     if current:
         items.append(("Current answer", current))
     trust_gate = _mapping(answer.get("full_market_trust_gate"))
+    operator_step = _priced_in_operator_step(payload)
+    operator_step_text = _operator_next_step_summary(operator_step)
+    if operator_step_text:
+        items.append(("Do now", operator_step_text))
     if trust_gate:
         gate_text = f"{trust_gate.get('status')}; {trust_gate.get('answer')}"
         blocker_detail = _mapping(trust_gate.get("blocker_detail"))
@@ -8343,6 +8406,7 @@ def _help_lines(width: int) -> list[str]:
         ("ticker <SYMBOL|all>", "Filter candidate-adjacent pages by ticker where supported."),
         ("available-at <ISO|latest>", "Set or clear the point-in-time data cutoff."),
         ("ready", "Show only decision-useful not-priced-in rows from the full scan."),
+        ("now", "Show the single next priced-in action, response, and cost."),
         ("usefulness <status|all>", "Filter Insights by usefulness verdict."),
         ("source-gap <source|all>", "Filter Insights by missing/stale data source."),
         ("batch <source>", "Plan full-scan source fill and show the next safe chunk."),

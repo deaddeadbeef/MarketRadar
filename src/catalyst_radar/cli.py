@@ -6594,6 +6594,35 @@ def _print_priced_in_answer(payload: Mapping[str, object]) -> None:
             f"first_gap={evidence.get('first_gap_source') or 'n/a'} "
             f"summary={_compact_cli_text(evidence.get('summary'))}"
         )
+    operator_next = payload.get("operator_next_step")
+    if isinstance(operator_next, Mapping):
+        cli_command = operator_next.get("command")
+        tui_command = operator_next.get("tui_command")
+        tui_piece = (
+            f" tui={_compact_cli_text(tui_command)}"
+            if tui_command and tui_command != cli_command
+            else ""
+        )
+        print(
+            "operator_next_step="
+            f"status={operator_next.get('status') or 'n/a'} "
+            f"trusted={str(bool(operator_next.get('trusted_priced_in_answer'))).lower()} "
+            "investment_ready="
+            f"{str(bool(operator_next.get('can_use_for_investment_decision'))).lower()} "
+            f"scope={operator_next.get('scope') or 'n/a'} "
+            f"blocker={operator_next.get('first_blocker') or 'n/a'} "
+            f"gap={_int_value(operator_next.get('first_gap_count'))} "
+            f"approval_required={str(bool(operator_next.get('approval_required'))).lower()} "
+            f"calls={_int_value(operator_next.get('external_calls_required'))} "
+            f"db_writes={_int_value(operator_next.get('db_writes_required'))} "
+            f"action={_compact_cli_text(operator_next.get('action'))} "
+            f"command={_compact_cli_text(cli_command)}{tui_piece} "
+            f"external_calls={operator_next.get('external_calls_made') or 0} "
+            f"db_writes_made={operator_next.get('db_writes_made') or 0}"
+        )
+        response = operator_next.get("response_after_action")
+        if response:
+            print(f"operator_response={_compact_cli_text(response)}")
     trust_gate = payload.get("full_market_trust_gate")
     if isinstance(trust_gate, Mapping):
         print(

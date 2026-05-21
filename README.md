@@ -339,7 +339,9 @@ plus `Enter`. The compact `KEYS` / `MOUSE` guide keeps shortcuts visible
 without adding a second navigation system. Candidate and alert rows are
 mouse-selectable in Windows Terminal. The `NEXT ACTION` card shows the useful
 operator move for the current page; the `LAST RESPONSE` card shows what the
-dashboard just did. Use `ticker <SYMBOL|all>` and `available-at <ISO|latest>`
+dashboard just did. Type `now` or `what-now` for the single priced-in action,
+expected response, approval requirement, provider-call count, and database-write
+count. Use `ticker <SYMBOL|all>` and `available-at <ISO|latest>`
 to filter, `json` to print the redacted machine-readable snapshot, `refresh`
 to reload the local database, and `q` to quit. It makes 0 Polygon, SEC, Schwab,
 or OpenAI calls while rendering, clicking, filtering, or navigating. From the
@@ -456,7 +458,10 @@ question "Has price fully matched market expectations?" Their
 `decision_ready=true` / `priced_in_answer_ready=true` fields mean the
 emotion-vs-reaction answer is ready for human review. They deliberately keep
 `can_make_investment_decision=false`; trade safety still comes only from the
-separate readiness/manual-buy-review gate.
+separate readiness/manual-buy-review gate. The same payload now includes
+`operator_next_step`, a single zero-call action card with trust status, first
+blocker, next command, TUI alias, approval flag, provider-call count,
+database-write count, and expected response after the action.
 
 `agent-brief` is the CLI surface for the OpenAI Agents SDK operator layer. By
 default it runs a deterministic dry-run brief from the same redacted dashboard

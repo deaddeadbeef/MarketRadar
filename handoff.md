@@ -1,6 +1,43 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-22 02:01:30 +08:00
+Last updated: 2026-05-22 02:36:32 +08:00
+
+
+
+## Latest Priced-In Operator Next Step
+
+Last updated: 2026-05-22 02:36:32 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, broker, order, web, shell, or provider tools from the app.
+- This is useful because the human needs one clear action/response card before approving any provider capture or database-changing import. It narrows confusion without narrowing the full-market goal.
+- The farther-road value goal remains tracked as issue #533: prove at least $40/month of attributable decision-support value.
+
+Fix in this slice:
+
+- `priced-in-answer` now returns `operator_next_step`, a zero-call priced-in action card with trust status, first blocker, gap count, command, TUI alias, API/request body when available, approval flag, provider-call count, database-change count, and expected response after the action.
+- CLI `catalyst-radar priced-in-answer` now prints `operator_next_step=...` and `operator_response=...` before the deeper trust-gate detail.
+- TUI header and mission brief prefer the priced-in operator step over the generic work queue, so the visible Do next line tracks the core priced-in scan.
+- TUI command box now supports `now`, `what-now`, `whatnow`, `todo`, and `do` to show the single priced-in action, expected response, and call/change boundary.
+- README documents the new answer payload field and TUI `now` command.
+
+Validation observed in this slice:
+
+- Ruff passed for touched source and focused integration tests.
+- Py-compile passed for touched source and focused integration tests.
+- Focused regressions passed for the stock-scope market-bar blocker answer, CLI priced-in answer output, and TUI `now` command response.
+- Full affected integration files passed: `tests/integration/test_dashboard_data.py` and `tests/integration/test_dashboard_demo_seed_cli.py`.
+- `git diff --check` passed.
+- Live zero-call local Schwab DB `priced-in-answer --json` smoke reported `status=blocked`, trust gate `blocked`, operator blocker `market_bars`, gap `523`, one provider call only if approved, 0 database changes, 0 calls made, and TUI alias `bars saved capture confirm`.
+- Live zero-call TUI render smoke on the Run page showed `Do now`, `saved capture`, one provider call after approval, 0 database changes, and the same `market_bars` gap.
+
+Current live blocker:
+
+- The trusted full-market priced-in answer is still blocked by 523 missing market bars for 2026-05-15 until explicit guarded saved Polygon/Massive capture approval with matching counts or complete manual CSV import.
+- The stock-like answer path is still blocked by 131 stock-like missing bars.
+
 
 
 
