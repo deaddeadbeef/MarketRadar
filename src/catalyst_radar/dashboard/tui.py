@@ -2907,7 +2907,7 @@ def _priced_in_all_source_batch_message(
     pieces = [
         (
             f"{row.get('source')}={row.get('status')} "
-            f"gaps={int(_number_or_zero(row.get('total_gap_rows')))} "
+            f"{_source_batch_gap_summary(row)} "
             f"batches={int(_number_or_zero(row.get('batch_count')))}"
         )
         for row in rows
@@ -7061,6 +7061,25 @@ def _source_action_gap_count(action: Mapping[str, object]) -> str:
         or _number_or_zero(action.get("missing")) + _number_or_zero(action.get("stale"))
     )
     return str(gap_count)
+
+
+def _source_batch_gap_summary(row: Mapping[str, object]) -> str:
+    total = int(_number_or_zero(row.get("total_gap_rows")))
+    plannable = int(_number_or_zero(row.get("plannable_gap_rows")))
+    routed = int(_number_or_zero(row.get("routed_gap_rows")))
+    unplannable = int(_number_or_zero(row.get("unplannable_gap_rows")))
+    diagnostic = _mapping(row.get("diagnostic"))
+    blocked = int(_number_or_zero(diagnostic.get("blocked_rows")))
+    if blocked <= 0:
+        blocked = max(0, unplannable - routed)
+    parts = [f"gaps={total}"]
+    if plannable or routed or blocked:
+        parts.append(f"plan={plannable}")
+    if routed:
+        parts.append(f"routed={routed}")
+    if blocked:
+        parts.append(f"blocked={blocked}")
+    return " ".join(parts)
 
 
 def _priced_in_source_workflow_payload(
