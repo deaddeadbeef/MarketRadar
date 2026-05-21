@@ -1,6 +1,43 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-22 01:40:30 +08:00
+Last updated: 2026-05-22 02:01:30 +08:00
+
+
+
+## Latest Market-Bar Unblock Checklist
+
+Last updated: 2026-05-22 02:01:30 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- The farther-road value goal remains tracked as issue #533: prove at least $40/month of attributable decision-support value, enough to offset 20% of a $200/month ChatGPT Pro subscription. This is a later product-value milestone, not a profit guarantee or investment advice.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, broker, order, web, shell, or provider tools from the app. Validation used local database reads and dummy in-process key checks only.
+- This is useful because the next real full-scan blocker is still market bars. A human needs a simple ordered checklist that separates action from response before approving the one saved provider-file capture.
+
+Fix in this slice:
+
+- `market_bars_status_payload` now returns `unblock_checklist`, a zero-call contract for the market-bar unblock path.
+- The checklist records current reviewed counts, scope, saved-file status, next step order, and six explicit steps: review current gap, capture saved provider file, validate saved file, preview saved import, execute saved import, and rerun the priced-in answer.
+- CLI `catalyst-radar market-bars status` now prints a compact `unblock_checklist` line with next step, scope, missing count, action label, external-call count, DB-write count, and command.
+- TUI `bars` / `bars status` now includes the same plain-language unblock checklist beside the recommended action.
+- README now documents the core priced-in product goal, the downstream $40/month value target, and the zero-call market-bar checklist surface.
+
+Validation observed in this slice:
+
+- Ruff passed for touched source and integration tests.
+- Py-compile passed for touched source and integration tests.
+- Focused CLI/API/TUI regressions passed for market-bar status checklist payload, text output, API response, and TUI response.
+- Full affected integration files passed: `tests/integration/test_provider_ingest_cli.py` and `tests/integration/test_dashboard_demo_seed_cli.py`.
+- `git diff --check` passed.
+- Live zero-call local Schwab DB smoke without a configured key reported full scope 12613 active / 12090 existing / 523 missing, stock-like 5652 active / 5521 existing / 131 missing, `unblock_checklist status=blocked_missing_api_key`, `external_calls=0`, and `db_writes=0`.
+- Live zero-call local Schwab DB smoke with a dummy in-process Polygon key reported `unblock_checklist status=approval_required next_step=2`, one external call if approved, and 0 DB writes. The stocks-only smoke preserved the 5652/5521/131 stock-like scope and `--stocks-only` guard in the generated confirm command.
+
+Current live blocker:
+
+- The trusted full-market priced-in answer remains blocked by 523 missing market bars for 2026-05-15 until explicit guarded saved Polygon/Massive capture approval with matching counts or complete manual CSV import.
+- The stock-like answer path remains blocked by 131 stock-like missing bars.
+- The next user-facing action is still to review the checklist and approve or avoid the single saved provider-file capture; this slice only makes that decision path clearer.
 
 
 

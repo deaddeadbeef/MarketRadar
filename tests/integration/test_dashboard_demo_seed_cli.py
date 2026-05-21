@@ -1881,6 +1881,11 @@ def test_dashboard_bars_default_shows_zero_call_status(tmp_path: Path):
     assert "Recommended: bars saved capture confirm" in update.message
     assert "1 provider call(s) if approved; 0 DB write(s)" in update.message
     assert (
+        "Unblock checklist: review counts, approve/capture saved file, "
+        "validate saved file, preview import, execute import, "
+        "rerun priced-in answer"
+    ) in update.message
+    assert (
         "After bars clear: after market_bars: catalyst_events ready"
         in update.message
     )

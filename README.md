@@ -2,6 +2,14 @@
 
 Catalyst Radar is a deterministic-first market radar for public-equity opportunity review.
 
+The product goal is to scan the broad stock market and highlight stocks where
+market emotion or expectations may not be fully matched by price reaction. The
+downstream value goal is to prove at least $40/month of attributable
+decision-support value, enough to offset 20% of a $200/month ChatGPT Pro
+subscription. That value must be measured with evidence such as useful surfaced
+opportunities, avoided bad decisions, time saved, and paper/live outcomes; it
+is not a profit guarantee or investment advice.
+
 Phase 1 builds the scanner, feature engine, policy gates, portfolio risk checks, validation skeleton, and dashboard without LLM calls.
 
 ## Local setup
@@ -196,6 +204,13 @@ local database before the one provider call can run. For stock-like scopes, the
 capture request body and generated confirm command preserve `stocks_only=true`
 and `--stocks-only`, so the guard checks the stock-like gap instead of falling
 back to the full active universe.
+`catalyst-radar market-bars status` and
+`GET /api/radar/market-bars/status` also return `unblock_checklist`, a
+zero-call checklist for the exact market-bar path: review counts, explicitly
+approve a saved provider-file capture when desired, validate the saved file,
+preview the import, execute the import, then rerun the priced-in answer. The
+text CLI prints the next checklist step with its call/write count so the
+operator can distinguish action from response before spending a provider call.
 The same answer payload includes `reviewable_subset`, a zero-call count and
 sample of scanned-subset leads that can be inspected as research-only while the
 full-market trust gate remains blocked.
@@ -517,6 +532,7 @@ button or command; `after_market_bars_clear` previews the next priced-in source
 blocker to inspect after the bar gap is repaired. Both fields report zero calls
 while planning so a dashboard can separate the current action from the next
 response. The TUI `bars status` response mirrors the same missing-ticker sample,
+zero-call unblock checklist,
 stock-like gap, non-stock remainder, and `after_market_bars_clear` preview, so
 the dashboard explains both the current blocker and the next source to inspect
 after the blocker clears.

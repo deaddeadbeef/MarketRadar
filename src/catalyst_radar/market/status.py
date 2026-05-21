@@ -64,6 +64,17 @@ def market_bars_status_payload(
         saved_file_path=saved_file_path,
         saved_file_status=saved_file_status,
     )
+    unblock_checklist = _market_bar_unblock_checklist(
+        expected_as_of=resolved_expected_as_of,
+        missing=missing,
+        repair=repair,
+        approval_packet=approval_packet,
+        saved_file_path=saved_file_path,
+        saved_file_status=saved_file_status,
+        import_command=import_command,
+        recommended_action=recommended_action,
+        stocks_only=stocks_only,
+    )
     after_clear = _post_market_bars_clear_payload(
         engine,
         config,
@@ -167,6 +178,7 @@ def market_bars_status_payload(
             ),
             "external_calls_made": 0,
         },
+        "unblock_checklist": unblock_checklist,
         "repair_plan": repair,
         "recommended_action": recommended_action,
         "after_market_bars_clear": after_clear,
@@ -177,6 +189,110 @@ def market_bars_status_payload(
         ),
         "external_calls_made": 0,
         "db_writes_made": 0,
+    }
+
+
+def _market_bar_unblock_checklist(
+    *,
+    expected_as_of,
+    missing,
+    repair,
+    approval_packet,
+    saved_file_path,
+    saved_file_status,
+    import_command,
+    recommended_action,
+    stocks_only,
+):
+    scope = str(repair.get("coverage_scope") or "active_universe")
+    expected_text = expected_as_of.isoformat()
+    saved_ready = str(saved_file_status or "").strip() == "available"
+    approval_required = bool(approval_packet.get("approval_required"))
+    if missing <= 0:
+        status = "ready"
+        next_step = 6
+    elif saved_ready:
+        status = "saved_file_available"
+        next_step = 3
+    elif approval_required:
+        status = "approval_required"
+        next_step = 2
+    else:
+        status = str(approval_packet.get("status") or "blocked")
+        next_step = 1
+    capture_command = approval_packet.get("capture_cli_command") or repair.get(
+        "provider_saved_file_capture_command"
+    )
+    import_execute = f"{import_command} --execute" if import_command else None
+    stock_flag = " --stocks-only" if stocks_only else ""
+    steps = [
+        {
+            "order": 1,
+            "label": "Review current gap",
+            "command": (
+                "catalyst-radar market-bars status "
+                f"--expected-as-of {expected_text}{stock_flag}"
+            ),
+            "external_calls_required": 0,
+            "db_changes_required": 0,
+        },
+        {
+            "order": 2,
+            "label": "Capture saved provider file",
+            "command": capture_command,
+            "tui_command": approval_packet.get("tui_confirm_command"),
+            "external_calls_required": int(
+                approval_packet.get("external_calls_if_approved") or 0
+            ),
+            "db_changes_required": int(
+                approval_packet.get("db_writes_during_capture") or 0
+            ),
+            "approval_required": approval_required,
+        },
+        {
+            "order": 3,
+            "label": "Validate saved file",
+            "command": repair.get("provider_saved_file_validate_command"),
+            "external_calls_required": 0,
+            "db_changes_required": 0,
+        },
+        {
+            "order": 4,
+            "label": "Preview saved import",
+            "command": import_command,
+            "external_calls_required": 0,
+            "db_changes_required": 0,
+        },
+        {
+            "order": 5,
+            "label": "Execute saved import",
+            "command": import_execute,
+            "external_calls_required": 0,
+            "db_changes_required": 1,
+        },
+        {
+            "order": 6,
+            "label": "Rerun priced-in answer",
+            "command": "catalyst-radar priced-in-answer --limit 5",
+            "external_calls_required": 0,
+            "db_changes_required": 0,
+        },
+    ]
+    return {
+        "schema_version": "market-bars-unblock-checklist-v1",
+        "status": status,
+        "next_step_order": next_step,
+        "expected_as_of": expected_text,
+        "coverage_scope": scope,
+        "active_security_count": repair.get("active_security_count"),
+        "existing_as_of_bar_count": repair.get("existing_as_of_bar_count"),
+        "missing_as_of_bar_count": missing,
+        "saved_file_status": saved_file_status,
+        "saved_file_path": saved_file_path,
+        "recommended_action_kind": recommended_action.get("kind"),
+        "steps": steps,
+        "external_calls_made": 0,
+        "db_changes_made": 0,
     }
 
 
