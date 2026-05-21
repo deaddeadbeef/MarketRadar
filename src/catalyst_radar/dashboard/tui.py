@@ -6145,6 +6145,7 @@ def _run_mission_brief_items(
     if trust_gate:
         gate_text = f"{trust_gate.get('status')}; {trust_gate.get('answer')}"
         blocker_detail = _mapping(trust_gate.get("blocker_detail"))
+        manual_csv_text = ""
         universe_text = ""
         if blocker_detail.get("source") == "market_bars":
             complete = int(_number_or_zero(blocker_detail.get("complete_rows")))
@@ -6156,6 +6157,9 @@ def _run_mission_brief_items(
             gate_text = (
                 f"{gate_text}; manual CSV {complete}/{missing} complete"
                 f", empty {empty}; saved file {saved}"
+            )
+            manual_csv_text = _market_bar_manual_csv_summary(
+                _mapping(blocker_detail.get("manual_csv"))
             )
             universe_text = _market_bar_missing_universe_summary(
                 _mapping(blocker_detail.get("missing_universe"))
@@ -6171,6 +6175,8 @@ def _run_mission_brief_items(
         )
         if after_current_text:
             items.append(("After current", after_current_text))
+        if manual_csv_text:
+            items.append(("Manual CSV", manual_csv_text))
         if universe_text:
             items.append(("Missing universe", universe_text))
     if progress_parts:
@@ -6230,6 +6236,34 @@ def _after_current_blocker_summary(preview: Mapping[str, object]):
         parts.append(f"plan `{plan}`")
     if execute:
         parts.append(f"execute later `{execute}`")
+    return "; ".join(parts)
+
+
+def _market_bar_manual_csv_summary(manual_csv: Mapping[str, object]):
+    if not manual_csv:
+        return ""
+    complete = int(_number_or_zero(manual_csv.get("complete_rows")))
+    missing = int(_number_or_zero(manual_csv.get("missing_row_count")))
+    partial = int(_number_or_zero(manual_csv.get("partial_rows")))
+    empty = int(_number_or_zero(manual_csv.get("empty_rows")))
+    fields = [
+        str(field).strip()
+        for field in _rows_or_values(manual_csv.get("required_fill_fields"))
+        if str(field).strip()
+    ]
+    sample = [
+        str(ticker).strip().upper()
+        for ticker in _rows_or_values(manual_csv.get("sample_missing_tickers"))
+        if str(ticker).strip()
+    ]
+    path = str(manual_csv.get("path") or "").strip()
+    parts = [f"{complete}/{missing} complete", f"partial {partial}", f"empty {empty}"]
+    if fields:
+        parts.append("fields " + ", ".join(fields))
+    if sample:
+        parts.append("sample " + ", ".join(sample[:5]))
+    if path:
+        parts.append(path)
     return "; ".join(parts)
 
 

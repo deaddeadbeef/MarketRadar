@@ -3379,6 +3379,13 @@ def priced_in_answer_payload(
                     "operator_note": missing_universe.get("operator_note"),
                     "external_calls_made": 0,
                 }
+            manual_csv_context = _priced_in_market_bar_manual_csv_context(
+                market_bar_repair,
+                local_progress,
+                operator_step,
+            )
+            if manual_csv_context:
+                market_bar_blocker_detail["manual_csv"] = manual_csv_context
             unblock_options = _priced_in_market_bar_blocker_unblock_options(
                 market_bar_repair,
                 provider_plan,
@@ -6640,6 +6647,64 @@ def _priced_in_prioritized_trust_blockers(
         normalized,
         key=lambda row: 0 if str(row.get("area") or "") == primary_area else 1,
     )
+
+
+def _priced_in_market_bar_manual_csv_context(
+    market_bar_repair: Mapping[str, object],
+    local_progress: Mapping[str, object],
+    operator_step: Mapping[str, object],
+):
+    stock_scope = _mapping_value(market_bar_repair, "stock_scope")
+    sample_source = (
+        market_bar_repair.get("missing_as_of_bar_ticker_sample")
+        or market_bar_repair.get("missing_as_of_bar_tickers")
+        or stock_scope.get("sample_missing_stock_like_tickers")
+        or stock_scope.get("sample_missing_tickers")
+    )
+    sample_tickers = [
+        str(ticker).strip().upper()
+        for ticker in _sequence_value(sample_source)
+        if str(ticker).strip()
+    ][:10]
+    required_fields = [
+        str(field).strip()
+        for field in _sequence_value(market_bar_repair.get("required_fill_fields"))
+        if str(field).strip()
+    ]
+    missing_count = int(
+        _finite_float(
+            market_bar_repair.get("missing_as_of_bar")
+            or market_bar_repair.get("template_row_count")
+        )
+    )
+    return {
+        "schema_version": "priced-in-market-bar-manual-csv-v1",
+        "path": market_bar_repair.get("local_template_path"),
+        "exists": bool(market_bar_repair.get("local_template_exists")),
+        "template_row_count": int(
+            _finite_float(market_bar_repair.get("template_row_count"))
+        ),
+        "missing_row_count": missing_count,
+        "complete_rows": int(_finite_float(local_progress.get("complete_rows"))),
+        "partial_rows": int(_finite_float(local_progress.get("partial_rows"))),
+        "empty_rows": int(_finite_float(local_progress.get("empty_rows"))),
+        "required_fill_fields": required_fields,
+        "sample_missing_tickers": sample_tickers,
+        "template_command": market_bar_repair.get("dashboard_manual_template_command")
+        or market_bar_repair.get("template_command"),
+        "preview_command": operator_step.get("after_manual_command")
+        or market_bar_repair.get("dashboard_manual_import_preview_command")
+        or market_bar_repair.get("import_preview_command"),
+        "execute_command": market_bar_repair.get(
+            "dashboard_manual_import_execute_command"
+        )
+        or market_bar_repair.get("import_execute_command"),
+        "next_action": (
+            "Fill the required fields for each missing ticker, preview complete "
+            "rows, then execute the local import only after review."
+        ),
+        "external_calls_made": 0,
+    }
 
 
 def _priced_in_answer_blocker_ladder(rows, *, stocks_only: bool = False):

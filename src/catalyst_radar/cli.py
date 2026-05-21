@@ -5819,6 +5819,31 @@ def _print_priced_in_answer(payload: Mapping[str, object]) -> None:
                         f"db_writes={_int_value(writes)} "
                         f"command={_compact_cli_text(option.get('command'))}"
                     )
+            manual_csv = blocker_detail.get("manual_csv")
+            if isinstance(manual_csv, Mapping):
+                fields = ",".join(
+                    str(field)
+                    for field in _sequence_value(
+                        manual_csv.get("required_fill_fields")
+                    )
+                )
+                sample = ",".join(
+                    str(ticker)
+                    for ticker in _sequence_value(
+                        manual_csv.get("sample_missing_tickers")
+                    )
+                )
+                print(
+                    "trust_gate_manual_csv="
+                    f"path={_compact_cli_text(manual_csv.get('path'))} "
+                    f"complete={manual_csv.get('complete_rows') or 0}/"
+                    f"{manual_csv.get('missing_row_count') or 0} "
+                    f"partial={manual_csv.get('partial_rows') or 0} "
+                    f"empty={manual_csv.get('empty_rows') or 0} "
+                    f"fields={_compact_cli_text(fields)} "
+                    f"sample={_compact_cli_text(sample)} "
+                    f"external_calls={manual_csv.get('external_calls_made') or 0}"
+                )
             missing_universe = blocker_detail.get("missing_universe")
             if isinstance(missing_universe, Mapping):
                 print(

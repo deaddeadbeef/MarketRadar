@@ -147,7 +147,9 @@ or reduce the full scan. `blocker_ladder` lists the ordered evidence blockers
 that must be cleared after the first blocker. When another blocker is already
 known, `after_current_blocker` previews the next source, why it matters, and
 the zero-call plan/API plus guarded execute-next affordance to use only after
-the current blocker is cleared.
+the current blocker is cleared. `blocker_detail.manual_csv` gives dashboard
+clients the fillable local CSV context: path, required fields, current complete
+/ partial / empty counts, and sample missing tickers.
 The same answer payload includes `reviewable_subset`, a zero-call count and
 sample of scanned-subset leads that can be inspected as research-only while the
 full-market trust gate remains blocked.
