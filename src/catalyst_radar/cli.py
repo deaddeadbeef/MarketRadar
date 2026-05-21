@@ -4801,7 +4801,11 @@ def _print_priced_in_mission_brief(payload: Mapping[str, object]) -> None:
             plannable = _int_value(row.get("plannable_gap_rows"))
             routed = _int_value(row.get("routed_gap_rows"))
             unplannable = _int_value(row.get("unplannable_gap_rows"))
-            blocked = max(0, unplannable - routed)
+            blocked = (
+                _int_value(row.get("blocked_gap_rows"))
+                if "blocked_gap_rows" in row
+                else max(0, unplannable - routed)
+            )
             gap_parts = [f"gaps={gaps}"]
             if plannable or routed or blocked:
                 gap_parts.append(f"plan={plannable}")
@@ -4929,7 +4933,7 @@ def _print_priced_in_all_source_batches(payload: Mapping[str, object]) -> None:
         return
     print(
         "source status gap_rows decision research actionable "
-        "plannable routed batches first_calls next_command"
+        "plannable routed blocked batches first_calls next_command"
     )
     for row in rows:
         if not isinstance(row, Mapping):
@@ -4938,6 +4942,13 @@ def _print_priced_in_all_source_batches(payload: Mapping[str, object]) -> None:
         first_calls = 0
         if isinstance(first_batch, Mapping):
             first_calls = _int_value(first_batch.get("external_calls_required"))
+        routed_gap_rows = _int_value(row.get("routed_gap_rows"))
+        unplannable_gap_rows = _int_value(row.get("unplannable_gap_rows"))
+        blocked_gap_rows = (
+            _int_value(row.get("blocked_gap_rows"))
+            if "blocked_gap_rows" in row
+            else max(0, unplannable_gap_rows - routed_gap_rows)
+        )
         print(
             f"{row.get('source')} "
             f"{row.get('status')} "
@@ -4946,7 +4957,8 @@ def _print_priced_in_all_source_batches(payload: Mapping[str, object]) -> None:
             f"{row.get('research_useful_gap_rows', 0)} "
             f"{row.get('actionable_gap_rows', 0)} "
             f"{row.get('plannable_gap_rows')} "
-            f"{row.get('routed_gap_rows')} "
+            f"{routed_gap_rows} "
+            f"{blocked_gap_rows} "
             f"{row.get('batch_count')} "
             f"{first_calls} "
             f"{_compact_cli_text(row.get('execute_next_command'))}"

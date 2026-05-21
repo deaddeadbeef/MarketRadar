@@ -1,7 +1,41 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 19:39:54 +08:00
+Last updated: 2026-05-21 20:08:06 +08:00
 
+
+
+## Latest Explicit Source Blocked Rows
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, broker, order, web, shell, or provider tools from the app.
+- This is useful because the broad source-map contract must be readable by API clients, CLI output, and the TUI without each one re-deriving blocker counts differently. Routed non-company rows are not the same thing as missing-prerequisite blockers.
+
+Fix in this slice:
+
+- Source batch payloads now include `blocked_gap_rows` beside `total_gap_rows`, `plannable_gap_rows`, `unplannable_gap_rows`, and `routed_gap_rows`.
+- Market-bar source rows set `blocked_gap_rows` equal to the missing as-of bar count because those rows are the current hard gate.
+- All-source overview rows and mission roadmap rows preserve `blocked_gap_rows`, so `catalyst_events` can report routed rows separately from the two missing-CIK blockers.
+- CLI `priced-in-source-batches --source all` now prints a `blocked` column directly from the source row contract.
+- TUI source summaries and after-current-blocker summaries prefer `blocked_gap_rows` when present, with the old calculation kept only as a fallback.
+- README documents `blocked_gap_rows` as the API/dashboard field that prevents routed rows from being mistaken for blockers.
+
+Validation observed in this slice:
+
+- Focused dashboard data regressions passed for source-batches, source workflow, and next-source summaries.
+- Focused CLI/TUI regressions passed for source-batches, dashboard batch commands, and next-source plan rendering.
+- Ruff passed for the touched source and test files.
+- Py-compile passed for the touched source and test files.
+- `git diff --check` passed.
+- Live zero-call JSON smoke against `schwab-live.db`, with the worktree source pinned on `PYTHONPATH`, returned `market_bars gaps=523 blocked=523`, `catalyst_events gaps=12075 plan=5510 routed=6563 blocked=2`, and `external_calls=0`.
+- Live zero-call CLI text smoke printed the new `blocked` table column, `market_bars ... blocked 523`, and `catalyst_events ... routed 6563 blocked 2`.
+- Live zero-call TUI command-path smoke for `batch all` showed the same market-bar and catalyst-events blocked counts, plus `Recommended unblock` and `plan-only and makes no provider calls`.
+
+Current live blocker:
+
+- The trusted full-market priced-in answer remains blocked by 523 missing market bars for 2026-05-15 until explicit saved Polygon/Massive capture approval or complete manual CSV import.
+- Do not treat this slice as goal completion; it tightens the full-market source accounting contract before the next real unblock step.
 
 ## Latest Source-Map Recommended Unblock
 

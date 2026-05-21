@@ -634,7 +634,8 @@ def test_dashboard_batch_all_response_separates_plan_route_and_blocked_rows(
                     "plannable_gap_rows": 5,
                     "unplannable_gap_rows": 7,
                     "routed_gap_rows": 6,
-                    "diagnostic": {"blocked_rows": 1},
+                    "blocked_gap_rows": 1,
+                    "diagnostic": {"blocked_rows": 99},
                     "batch_count": 1,
                     "execute_next_command": "run catalyst",
                 },
@@ -645,6 +646,7 @@ def test_dashboard_batch_all_response_separates_plan_route_and_blocked_rows(
                     "plannable_gap_rows": 0,
                     "unplannable_gap_rows": 4,
                     "routed_gap_rows": 0,
+                    "blocked_gap_rows": 4,
                     "diagnostic": {},
                     "batch_count": 0,
                 },
@@ -1232,6 +1234,7 @@ def test_priced_in_answer_cli_prints_next_source_plan(capsys):
                     "total_gap_rows": 12075,
                     "plannable_gap_rows": 5510,
                     "routed_gap_rows": 6563,
+                    "blocked_gap_rows": 2,
                     "blocked_rows": 2,
                     "blocked_reason": "missing_cik",
                     "batch_count": 1102,
@@ -2997,6 +3000,7 @@ def test_priced_in_source_batches_cli_prints_non_company_route(
             "plannable_gap_rows": 0,
             "unplannable_gap_rows": 2,
             "routed_gap_rows": 2,
+            "blocked_gap_rows": 0,
             "planned_at": "2026-05-18T16:00:00+00:00",
             "batch_size": 5,
             "count": 0,
@@ -4185,6 +4189,9 @@ def test_priced_in_source_batches_prioritize_full_market_bar_coverage(
     assert "active row" in overview["decision_shortcut_blocker"]["action"]
     assert source_rows["market_bars"]["status"] == "attention"
     assert source_rows["market_bars"]["coverage_basis"] == "active_universe_as_of_bars"
+    assert source_rows["market_bars"]["blocked_gap_rows"] == source_rows[
+        "market_bars"
+    ]["total_gap_rows"]
     assert source_rows["market_bars"]["total_gap_rows"] >= 1
     assert source_rows["market_bars"]["diagnostic"]["blocked_reason"] == (
         "missing_active_as_of_bars"
@@ -4278,6 +4285,7 @@ def test_priced_in_source_batches_prioritize_full_market_bar_coverage(
     assert "question=Approve one Polygon/Massive grouped-daily call" in output.out
     assert "provider_saved_file_status=status=missing" in output.out
     assert "provider_saved_file_capture=external_calls=1" in output.out
+    assert "plannable routed blocked batches" in output.out
     assert "--out data\\local\\polygon-grouped-daily-" in output.out
     assert "plan=catalyst-radar market-bars template" in output.out
     assert "provider_saved_file_validate=external_calls=0" in output.out

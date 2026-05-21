@@ -137,6 +137,9 @@ plan can currently address, `routed_gap_rows` is the already assigned subset
 of unplannable rows, and remaining unplannable rows are blocked by missing
 prerequisites. The CLI mirrors this as `gaps=`, `plan=`, `routed=`, and
 `blocked=` so a large market-wide gap does not look like a single direct action.
+JSON source rows also expose `blocked_gap_rows`, the already-derived remaining
+blocked count after routed rows are removed, so API/dashboard clients do not
+need to recompute it or risk treating routed funds and benchmarks as blockers.
 The terminal dashboard `batch all` response mirrors the same summary on demand,
 so it stays fast while still separating total gaps from rows that can be planned
 now.

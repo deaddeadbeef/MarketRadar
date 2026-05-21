@@ -3428,6 +3428,7 @@ def test_priced_in_answer_after_current_summarizes_next_source_plan(tmp_path: Pa
     assert plan["total_gap_rows"] == 3
     assert plan["plannable_gap_rows"] == 1
     assert plan["routed_gap_rows"] == 1
+    assert plan["blocked_gap_rows"] == 1
     assert plan["blocked_rows"] == 1
     assert plan["blocked_reason"] == "missing_cik"
     assert plan["sample_blocked_tickers"] == ["AAPL"]
@@ -4083,14 +4084,25 @@ def test_priced_in_all_source_gap_batches_prioritizes_decision_useful_gaps(
             if source == "catalyst_events"
             else {}
         )
+        total_gap_rows = 3 if source == "catalyst_events" else gap_rows
+        plannable_gap_rows = 1 if ready else 0
+        routed_gap_rows = 0
+        blocked_gap_rows = (
+            2
+            if source == "catalyst_events"
+            else max(0, total_gap_rows - plannable_gap_rows - routed_gap_rows)
+        )
+        unplannable_gap_rows = routed_gap_rows + blocked_gap_rows
         return {
             "source": source,
             "status": "ready" if ready else "blocked" if gap_rows else "no_gaps",
             "headline": f"{source} plan",
             "next_action": f"fill {source}",
-            "total_gap_rows": gap_rows,
-            "plannable_gap_rows": 1 if ready else 0,
-            "unplannable_gap_rows": 0 if ready else gap_rows,
+            "total_gap_rows": total_gap_rows,
+            "plannable_gap_rows": plannable_gap_rows,
+            "unplannable_gap_rows": unplannable_gap_rows,
+            "routed_gap_rows": routed_gap_rows,
+            "blocked_gap_rows": blocked_gap_rows,
             "batch_count": 1 if ready else 0,
             "batch_size": 5,
             "batches": [
@@ -4172,8 +4184,10 @@ def test_priced_in_all_source_gap_batches_prioritizes_decision_useful_gaps(
     catalyst_source_row = rows["catalyst_events"]
     assert catalyst_roadmap["gap_rows"] == catalyst_source_row["total_gap_rows"]
     assert catalyst_roadmap["plannable_gap_rows"] == catalyst_source_row["plannable_gap_rows"]
+    assert catalyst_source_row["blocked_gap_rows"] == 2
     assert catalyst_roadmap["unplannable_gap_rows"] == catalyst_source_row["unplannable_gap_rows"]
     assert catalyst_roadmap["routed_gap_rows"] == catalyst_source_row["routed_gap_rows"]
+    assert catalyst_roadmap["blocked_gap_rows"] == catalyst_source_row["blocked_gap_rows"]
     assert payload["decision_shortcut_recommendation"]["source"] == "options"
     assert "decision-ready row(s)" in payload["decision_shortcut_recommendation"]["action"]
 
@@ -4409,6 +4423,7 @@ def test_priced_in_source_gap_batches_payload_classifies_non_company_cik_gaps(
     assert payload["status"] == "routed"
     assert payload["plannable_gap_rows"] == 0
     assert payload["routed_gap_rows"] == 1
+    assert payload["blocked_gap_rows"] == 0
     assert diagnostic["status"] == "routed"
     assert diagnostic["blocked_reason"] is None
     assert diagnostic["missing_cik_type_counts"] == {}
