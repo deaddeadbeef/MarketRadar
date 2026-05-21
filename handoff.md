@@ -1,7 +1,38 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 08:27:51 +08:00
+Last updated: 2026-05-21 08:44:33 +08:00
 
+
+
+## Latest Trust Gate Missing-Universe Summary
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, import rows, change scoring, reduce the universe, or claim readiness.
+- This is useful because the main priced-in trust gate now explains what kind of active rows are blocking scan-date market-bar coverage, while explicitly keeping those rows in the full-market requirement.
+
+Fix in this slice:
+
+- `full_market_trust_gate.blocker_detail` now includes `missing_universe` for the market-bar blocker.
+- The summary carries active missing-row count, SPAC/acquisition-style count, no-composite-FIGI count, zero local average-volume count, operator note, and `external_calls_made=0`.
+- CLI text prints a compact `trust_gate_universe=` line.
+- The TUI mission rows show a separate `Missing universe` row under the trust gate.
+- README documents that this context is explanatory only and must not reduce the full scan.
+
+Validation observed in this slice:
+
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\integration\test_dashboard_demo_seed_cli.py` passed with `All checks passed!`.
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m py_compile src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\integration\test_dashboard_demo_seed_cli.py` exited 0.
+- Focused pytest passed 4 tests: `test_priced_in_answer_cli_prints_missing_universe_summary`, `test_dashboard_manual_bar_fill_progress_summary_is_human_readable`, `test_priced_in_answer_cli_outputs_current_scan_answer`, and `test_dashboard_tui_once_defaults_to_tutorial`.
+- `git diff --check` passed.
+- Live zero-call `priced-in-answer --json` smoke against `schwab-live.db` returned trust status `blocked`, missing-universe counts active `523`, SPAC/acquisition-style `308`, no composite FIGI `440`, zero local average volume `523`, and `external_calls_made=0`.
+- Live zero-call text and TUI smokes showed `trust_gate_universe=` and the `Missing universe` row while still reporting `External calls made: 0`.
+
+Next useful product action:
+
+- Do not treat this slice as goal completion.
+- The full-market answer remains blocked until the missing active-universe market bars are filled or an explicitly approved saved provider capture is imported.
 
 
 ## Latest Reviewable Subset Contract

@@ -136,7 +136,9 @@ The gate is a readiness contract only: `blocked` means keep collecting
 evidence, not that a trade should be made or skipped. When market bars are
 the first blocker, `blocker_detail` includes manual CSV fill counts and saved
 provider-file status so the CLI/TUI can show whether the local unblock file
-is actually filled yet.
+is actually filled yet. It also carries a `missing_universe` summary so the
+operator can see what kind of active rows are blocking coverage without using
+that context to exclude rows or reduce the full scan.
 The same answer payload includes `reviewable_subset`, a zero-call count and
 sample of scanned-subset leads that can be inspected as research-only while the
 full-market trust gate remains blocked.

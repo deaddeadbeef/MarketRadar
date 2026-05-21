@@ -6145,6 +6145,7 @@ def _run_mission_brief_items(
     if trust_gate:
         gate_text = f"{trust_gate.get('status')}; {trust_gate.get('answer')}"
         blocker_detail = _mapping(trust_gate.get("blocker_detail"))
+        universe_text = ""
         if blocker_detail.get("source") == "market_bars":
             complete = int(_number_or_zero(blocker_detail.get("complete_rows")))
             missing = int(
@@ -6156,7 +6157,12 @@ def _run_mission_brief_items(
                 f"{gate_text}; manual CSV {complete}/{missing} complete"
                 f", empty {empty}; saved file {saved}"
             )
+            universe_text = _market_bar_missing_universe_summary(
+                _mapping(blocker_detail.get("missing_universe"))
+            )
         items.append(("Trust gate", gate_text))
+        if universe_text:
+            items.append(("Missing universe", universe_text))
     if progress_parts:
         items.append(("Scan progress", "; ".join(progress_parts)))
     if blocker_text:
@@ -6177,6 +6183,34 @@ def _run_mission_brief_items(
             )
         )
     return items
+
+
+def _market_bar_missing_universe_summary(
+    missing_universe: Mapping[str, object],
+):
+    if not missing_universe:
+        return ""
+    active = int(_number_or_zero(missing_universe.get("active_metadata_rows")))
+    spac_like = int(
+        _number_or_zero(missing_universe.get("acquisition_or_spac_name_count"))
+    )
+    no_figi = int(_number_or_zero(missing_universe.get("no_composite_figi_count")))
+    zero_volume = int(
+        _number_or_zero(missing_universe.get("zero_avg_dollar_volume_20d_count"))
+    )
+    summary = str(missing_universe.get("summary") or "").strip()
+    note = str(missing_universe.get("operator_note") or "").strip()
+    parts = [
+        f"{active} active missing-bar rows",
+        f"{spac_like} SPAC/acq-style",
+        f"{no_figi} no composite FIGI",
+        f"{zero_volume} zero local avg volume",
+    ]
+    if summary:
+        parts.append(summary)
+    if note:
+        parts.append(note)
+    return "; ".join(parts)
 
 
 def _run_market_bar_unblock_summary(

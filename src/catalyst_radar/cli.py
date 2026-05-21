@@ -5801,6 +5801,17 @@ def _print_priced_in_answer(payload: Mapping[str, object]) -> None:
                 f"saved_file={blocker_detail.get('provider_saved_file_status') or 'n/a'} "
                 f"external_calls={blocker_detail.get('external_calls_made') or 0}"
             )
+            missing_universe = blocker_detail.get("missing_universe")
+            if isinstance(missing_universe, Mapping):
+                print(
+                    "trust_gate_universe="
+                    f"active={missing_universe.get('active_metadata_rows') or 0} "
+                    f"spac_like={missing_universe.get('acquisition_or_spac_name_count') or 0} "
+                    f"no_figi={missing_universe.get('no_composite_figi_count') or 0} "
+                    f"zero_volume={missing_universe.get('zero_avg_dollar_volume_20d_count') or 0} "
+                    f"external_calls={missing_universe.get('external_calls_made') or 0} "
+                    f"summary={_compact_cli_text(missing_universe.get('summary'))}"
+                )
     print(f"next_action={payload.get('next_action')}")
     if payload.get("next_command"):
         print(f"next_command={_compact_cli_text(payload.get('next_command'))}")
