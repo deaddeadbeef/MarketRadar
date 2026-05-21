@@ -479,6 +479,7 @@ def dashboard_snapshot_payload(
         source_gap=filters.priced_in_source_gap,
         decision_gap=filters.priced_in_decision_gap,
         stocks_only=filters.priced_in_stocks_only,
+        include_planning_rows=True,
         latest_run_summary=latest_run,
         broker_summary=broker_summary,
         discovery_snapshot=discovery_snapshot,
@@ -540,6 +541,8 @@ def dashboard_snapshot_payload(
         ops_health,
         limit=filters.telemetry_limit,
     )
+    display_priced_in_queue = dict(priced_in_queue)
+    display_priced_in_queue.pop("planning_rows", None)
     payload = {
         "schema_version": "dashboard-cli-snapshot-v1",
         "feature_inventory": list(DASHBOARD_FEATURES),
@@ -569,7 +572,7 @@ def dashboard_snapshot_payload(
         "operator_work_queue": operator_work_queue,
         "operator_next_step": operator_next_step,
         "priced_in_preflight": priced_in_preflight,
-        "priced_in_queue": priced_in_queue,
+        "priced_in_queue": display_priced_in_queue,
         "priced_in_answer": priced_in_answer,
         "priced_in_audit": priced_in_audit,
         "priced_in_source_coverage": priced_in_source_coverage,
@@ -4998,6 +5001,16 @@ def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
             "Stock bar next: "
             f"{_clip(stock_bar_summary, max(20, width - 17))}"
         )
+    answer = _mapping(payload.get("priced_in_answer"))
+    trust_gate = _mapping(answer.get("full_market_trust_gate"))
+    next_source_plan_summary = _after_current_blocker_summary(
+        _mapping(trust_gate.get("after_current_blocker"))
+    )
+    if next_source_plan_summary:
+        lines.append(
+            "Next source plan: "
+            f"{_clip(next_source_plan_summary, max(20, width - 22))}"
+        )
     missing_type_summary = _market_bar_missing_type_summary(payload)
     if missing_type_summary:
         lines.append(
@@ -6332,7 +6345,52 @@ def _after_current_blocker_summary(preview: Mapping[str, object]):
     action = str(preview.get("next_action") or "").strip()
     plan = str(preview.get("plan_command") or "").strip()
     execute = str(preview.get("execute_next_command") or "").strip()
-    parts = [f"after {current}: {source} {status}; gaps {gaps}"]
+    next_plan = _mapping(preview.get("next_source_plan"))
+    parts = [f"after {current}: {source} {status}"]
+    if not next_plan:
+        parts[0] = f"{parts[0]}; gaps {gaps}"
+    if next_plan:
+        total = int(_number_or_zero(next_plan.get("total_gap_rows")))
+        plannable = int(_number_or_zero(next_plan.get("plannable_gap_rows")))
+        routed = int(_number_or_zero(next_plan.get("routed_gap_rows")))
+        blocked = int(_number_or_zero(next_plan.get("blocked_rows")))
+        reason = str(next_plan.get("blocked_reason") or "").strip()
+        plan_parts = []
+        if total:
+            plan_parts.append(f"gaps {total}")
+        if "next_chunk_external_calls" in next_plan:
+            calls = int(_number_or_zero(next_plan.get("next_chunk_external_calls")))
+            plan_parts.append(f"next calls {calls}")
+        if plannable:
+            plan_parts.append(f"plan {plannable}")
+        if routed:
+            plan_parts.append(f"routed {routed}")
+        if blocked:
+            blocked_text = f"blocked {blocked}"
+            if reason:
+                blocked_text = f"{blocked_text} {reason}"
+            plan_parts.append(blocked_text)
+        if plan_parts:
+            parts.append("source plan " + ", ".join(plan_parts))
+        batches = int(_number_or_zero(next_plan.get("batch_count")))
+        if batches:
+            parts.append(f"{batches} batch(es)")
+        blocked_sample = ", ".join(
+            _texts(next_plan.get("sample_blocked_tickers"))[:3]
+        )
+        if blocked_sample:
+            parts.append(f"blocked {blocked_sample}")
+        routed_sample = ", ".join(
+            _texts(next_plan.get("sample_routed_non_company_tickers"))[:3]
+        )
+        if routed_sample:
+            parts.append(f"routed {routed_sample}")
+        repair = str(next_plan.get("manual_template_command") or "").strip()
+        if repair:
+            parts.append(f"repair `{repair}`")
+        if "external_calls_made" in next_plan:
+            made = int(_number_or_zero(next_plan.get("external_calls_made")))
+            parts.append(f"external calls made {made}")
     if action:
         parts.append(action)
     if plan:
