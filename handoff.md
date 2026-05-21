@@ -1,7 +1,35 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 18:35:14 +08:00
+Last updated: 2026-05-21 19:15:32 +08:00
 
+
+## Latest Agent-Brief Recommended Unblock
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, broker, order, web, shell, or provider tools from the app.
+- This is useful because the agent/operator layer must not invent a different next step from the trusted full-market gate. The same market-bar blocker and recommended unblock now appear in CLI/API/TUI and the agent brief.
+
+Fix in this slice:
+
+- The redacted agent snapshot now carries `priced_in.recommended_unblock_action` from `full_market_trust_gate.recommended_action`, with a fallback to `blocker_detail.recommended_action`.
+- The deterministic agent brief now emits a `Recommended market-bar unblock` insight before the broader option summary.
+- Agent `next_actions` now lead with the single recommended saved-provider approval action and avoid duplicating the same saved-capture command from the option list.
+- README documents the agent-brief contract and reiterates that the recommendation is a human approval step, not an agent-run provider call or database mutation.
+
+Validation observed in this slice:
+
+- Focused unit regressions passed for the agent SDK orchestrator and provider-boundary checks.
+- Focused CLI/API/TUI regressions passed for the dry-run agent brief and Agent TUI page.
+- Ruff passed for the touched agent orchestrator and unit test.
+- Live dry-run `agent-brief --json` against `schwab-live.db`, with the worktree source pinned on `PYTHONPATH`, reported `status=dry_run`, `runtime=openai_agents_sdk`, `copilot=absent`, `calls_openai=0`, `calls_market=0`, `calls_broker=0`, and `Recommended market-bar unblock: saved_provider_capture ... command=bars saved capture confirm`.
+- Live dry-run TUI agent page against `schwab-live.db` rendered the same recommended insight.
+
+Current live blocker:
+
+- The trusted full-market priced-in answer remains blocked by 523 missing market bars for 2026-05-15 until explicit saved Polygon/Massive capture approval or complete manual CSV import.
+- Do not treat this slice as goal completion; it aligns the agentic operator layer with the real first blocker and next safe action.
 
 ## Latest First-Glance Trust-Gate Recommended Unblock
 
