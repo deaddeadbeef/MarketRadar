@@ -759,6 +759,7 @@ def provider_saved_file_capture_approval_packet(
             {
                 "step": "preview_import",
                 "tui_command": "bars saved import",
+                "cli_command": provider_saved_file_import_command,
                 "api": "POST /api/radar/market-bars/provider-fixture-import",
                 "request_body": provider_saved_file_import_preview_request_body,
                 "external_calls_made": 0,
@@ -767,7 +768,7 @@ def provider_saved_file_capture_approval_packet(
             {
                 "step": "execute_import_after_preview",
                 "tui_command": "bars saved import execute",
-                "cli_command": provider_saved_file_import_command,
+                "cli_command": f"{provider_saved_file_import_command} --execute",
                 "api": "POST /api/radar/market-bars/provider-fixture-import",
                 "request_body": provider_saved_file_import_request_body,
                 "external_calls_made": 0,

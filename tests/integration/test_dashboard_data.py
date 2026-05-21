@@ -2899,9 +2899,16 @@ def test_priced_in_answer_blocks_incomplete_stock_bars_even_with_ready_rows(
     assert saved_capture["post_capture_zero_call_steps"][1]["request_body"][
         "execute"
     ] is False
+    assert saved_capture["import_preview_command"] == "bars saved import"
+    assert saved_capture["post_capture_zero_call_steps"][1]["cli_command"].startswith(
+        "catalyst-radar market-bars saved-import "
+    )
     assert saved_capture["post_capture_zero_call_steps"][2]["request_body"][
         "execute"
     ] is True
+    assert saved_capture["post_capture_zero_call_steps"][2]["cli_command"].endswith(
+        " --execute"
+    )
     assert saved_capture["external_calls_made"] == 0
     unblock_options = {
         option["kind"]: option for option in detail["unblock_options"]

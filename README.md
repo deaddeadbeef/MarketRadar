@@ -444,14 +444,15 @@ complete rows only with 0 provider calls and 0 DB writes, and
 Use `bars manual stocks template` when you intentionally want the narrower
 stock-like scope instead of the full active universe. For saved-provider repair,
 `bars saved capture` shows the approval boundary, current missing-bar count,
-the saved-capture approval packet, and the zero-call validate/import request
-bodies without making provider calls;
+the saved-capture approval packet, and the zero-call validate, preview-import,
+and explicit execute-import commands/request bodies without making provider calls;
 `bars saved capture confirm` is the explicit one-call Polygon/Massive capture
 and immediately prints a zero-call post-capture preview of whether the saved
 file covers current missing bars; `bars saved validate` checks the saved
 grouped-daily JSON from disk when you want to re-check it later;
-`bars saved import` previews the local import; and `bars saved import execute`
-writes that saved file into the local database with 0 provider calls.
+`bars saved import` previews the local import with 0 DB writes; and
+`bars saved import execute` writes that saved file into the local database with
+0 provider calls after review.
 
 Options evidence now has the same dashboard-native operator path.
 `options template` creates the point-in-time options JSON scaffold for the

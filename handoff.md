@@ -1,9 +1,34 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 12:23:12 +08:00
+Last updated: 2026-05-21 12:33:49 +08:00
 
 
 
+## Latest Saved Import Step Commands
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, broker, or order APIs. It only clarifies already-planned saved-file follow-up commands.
+- This is useful because the saved-capture approval packet is consumed by both humans and dashboard/API clients. Preview import and execute import must be visually distinct so an operator does not confuse a zero-write preview with the DB-write action.
+
+Fix in this slice:
+
+- Added `cli_command` to the `preview_import` post-capture step, using the zero-write saved import preview command.
+- Changed the `execute_import_after_preview` post-capture `cli_command` to append `--execute`, matching the explicit local DB-write boundary.
+- README now calls out the preview-import versus execute-import distinction.
+
+Validation observed in this slice:
+
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\market\manual_bars.py tests\integration\test_provider_ingest_cli.py tests\integration\test_dashboard_data.py` passed with `All checks passed!`.
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m py_compile src\catalyst_radar\market\manual_bars.py tests\integration\test_provider_ingest_cli.py tests\integration\test_dashboard_data.py` exited 0.
+- Focused pytest passed `test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths` and `test_priced_in_answer_blocks_incomplete_stock_bars_even_with_ready_rows`.
+- Live zero-call `priced-in-answer --json` against `schwab-live.db` returned trust `blocked`, first blocker `market_bars`, first gap `523`, preview import CLI without `--execute`, execute import CLI with `--execute`, preview request `execute=false`, execute request `execute=true`, and `external_calls_made=0`.
+
+Next useful product action:
+
+- Do not treat this slice as goal completion.
+- The full-market priced-in answer remains blocked until the missing scan-date market bars are filled/imported for the active universe.
 ## Latest Saved Command Contract Alignment
 
 Goal alignment / drift check:
