@@ -309,6 +309,7 @@ class ManualBarsRepairPlanResult:
         provider_saved_file_path = _polygon_grouped_daily_fixture_path(
             self.expected_as_of,
         )
+        saved_capture_scope_flag = " --stocks-only" if self.stocks_only else ""
         provider_saved_file_capture_command = (
             "catalyst-radar market-bars saved-capture "
             f"--expected-as-of {self.expected_as_of.isoformat()} "
@@ -317,6 +318,7 @@ class ManualBarsRepairPlanResult:
             f"--expect-existing-count {self.existing_as_of_bar_count} "
             f"--expect-missing-count {self.missing_as_of_bar_count} "
             "--confirm-external-call"
+            f"{saved_capture_scope_flag}"
         )
         provider_saved_file_import_command = (
             "catalyst-radar market-bars saved-import "
@@ -332,6 +334,7 @@ class ManualBarsRepairPlanResult:
             "expected_as_of": self.expected_as_of.isoformat(),
             "output_path": str(provider_saved_file_path),
             "confirm_external_call": False,
+            "stocks_only": self.stocks_only,
             "expected_active_security_count": self.active_security_count,
             "expected_existing_as_of_bar_count": self.existing_as_of_bar_count,
             "expected_missing_as_of_bar_count": self.missing_as_of_bar_count,
@@ -826,7 +829,10 @@ def provider_saved_file_capture_approval_packet(
             "Capture makes exactly one provider call only after explicit approval.",
             "Capture writes the raw provider response to disk and makes 0 database writes.",
             "Validate and preview import make 0 provider calls and 0 database writes.",
-            "Execute import only after saved-file coverage matches the active-universe gap.",
+            (
+                "Execute import only after saved-file coverage matches the "
+                f"{coverage_scope.replace('_', '-')} gap."
+            ),
         ],
         "next_action": next_action,
     }

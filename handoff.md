@@ -1,6 +1,41 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-22 01:39:44 +08:00
+Last updated: 2026-05-22 01:40:30 +08:00
+
+
+
+## Latest Saved-Capture Stock Scope Guard
+
+Last updated: 2026-05-22 01:40:30 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- The farther-road value goal remains tracked as issue #533: prove at least $40/month of attributable value, enough to offset 20% of a $200/month ChatGPT Pro subscription. A fresh issue comment pinned this metric and clarified that it is decision-support value, not a profit guarantee.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, broker, order, web, shell, or provider tools from the app. Validation included zero-call planning only.
+- This is useful because the next practical market-bar unblock may use a narrower stock-like saved capture first. The generated approval command and API request must preserve that stock-like scope, otherwise the human could review 131 stock-like gaps but accidentally trigger a stale full-active-universe guard.
+
+Fix in this slice:
+
+- CLI saved-capture plans now include `stocks_only` in request bodies and append `--stocks-only` to the guarded confirm command when the plan is stock-like.
+- API provider-capture approval previews now accept `stocks_only`, return stock-scope request/confirm bodies, expose an approval guard, and append `--stocks-only` to the one-call capture command when appropriate.
+- Manual repair approval packets now preserve `stocks_only` in saved-capture request bodies and describe the stock-like gap when scoped.
+- README documents that stock-like saved-capture preview and confirm keep `stocks_only=true` / `--stocks-only` through the approval guard.
+
+Validation observed in this slice:
+
+- Focused CLI/API saved-capture regressions passed for repair-plan packet fields, saved-capture CLI planning, API market-bar status, API template/import stock scoping, and API provider-capture approval preview.
+- Ruff passed for touched saved-capture source and integration tests.
+- Py-compile passed for touched saved-capture source and integration tests.
+- `git diff --check` passed.
+- Live zero-call stock-only saved-capture smoke against the local Schwab DB with a dummy configured Polygon key showed `scope=stock_like`, `active=5652`, `existing=5521`, `missing=131`, `external_calls_without_approval=0`, `external_calls_if_approved=1`, `db_writes=0`, and a confirm command ending in `--confirm-external-call --stocks-only`.
+- Live zero-call stock-only saved-capture smoke without a configured key showed the same 5652/5521/131 stock-like counts but remained blocked as `blocked_missing_api_key`, also with 0 calls and 0 writes.
+
+Current live blocker:
+
+- The trusted full-market priced-in answer remains blocked by 523 missing market bars for 2026-05-15 until explicit guarded saved Polygon/Massive capture approval with matching counts or complete manual CSV import.
+- The stock-like answer path remains blocked by 131 stock-like missing bars. This slice makes the stock-like saved-capture approval path internally consistent, but it still does not perform the provider capture or import.
+
 
 
 

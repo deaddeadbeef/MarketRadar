@@ -192,7 +192,10 @@ counts, missing ticker sample, missing security-type counts, zero-call
 missing-universe diagnostics, capture API request bodies, and the post-capture
 validate/import steps. Confirmed saved capture also carries an approval guard:
 the reviewed active, existing-bar, and missing-bar counts must still match the
-local database before the one provider call can run.
+local database before the one provider call can run. For stock-like scopes, the
+capture request body and generated confirm command preserve `stocks_only=true`
+and `--stocks-only`, so the guard checks the stock-like gap instead of falling
+back to the full active universe.
 The same answer payload includes `reviewable_subset`, a zero-call count and
 sample of scanned-subset leads that can be inspected as research-only while the
 full-market trust gate remains blocked.
@@ -379,7 +382,8 @@ the active/existing/missing bar counts for the target date, missing ticker
 sample, security-type counts, missing-universe diagnostic, the exact external
 call count if approved, and the zero-call question to review before running
 `bars saved capture confirm`. The generated confirm command and API body include
-the reviewed counts; stale or missing guard values block capture with
+the reviewed counts and scope, including `--stocks-only` / `stocks_only=true`
+when the plan is stock-like; stale or missing guard values block capture with
 `external_calls_made=0` and `db_writes_made=0`.
 
 For functional end-to-end tests of the same command-center data the dashboard
@@ -532,8 +536,11 @@ and explicit execute-import commands/request bodies without making provider call
 `bars saved capture confirm` is the explicit one-call Polygon/Massive capture
 but first rechecks the approval guard against the local DB. If active,
 existing, or missing counts changed since review, it stops before the provider
-call and asks you to review `bars saved capture` again. When the guard matches,
-it immediately prints a zero-call post-capture preview of whether the saved file
+call and asks you to review `bars saved capture` again. Stock-like saved
+capture keeps `--stocks-only` through preview and confirm so the reviewed guard
+counts do not silently switch back to full active-universe counts. When the
+guard matches, it immediately prints a zero-call post-capture preview of whether
+the saved file
 covers current missing bars; `bars saved validate` checks the saved
 grouped-daily JSON from disk when you want to re-check it later;
 `bars saved import` previews the local import with 0 DB writes; and
@@ -567,13 +574,15 @@ For the saved-provider repair path, use the high-level `market-bars saved-*`
 commands. The first command is plan-only and makes 0 provider calls; it reports
 coverage scope plus active, existing, and missing scan-date bar counts so the
 approved capture target is visible before any provider call. Use the generated
-confirm command from the plan output; it includes the reviewed count guards.
+confirm command from the plan output; it includes the reviewed count guards and
+preserves `--stocks-only` when the plan is scoped to stock-like bars.
 Add `--confirm-external-call` only when you intentionally approve the one
 Polygon/Massive grouped-daily capture. Validation and import read the saved
 JSON from disk and make 0 provider calls:
 
 ```powershell
 catalyst-radar market-bars saved-capture --expected-as-of 2026-05-15 --json
+catalyst-radar market-bars saved-capture --expected-as-of 2026-05-15 --stocks-only --json
 catalyst-radar market-bars saved-capture --expected-as-of 2026-05-15 --out data/local/polygon-grouped-daily-2026-05-15.json --expect-active-count <ACTIVE> --expect-existing-count <EXISTING> --expect-missing-count <MISSING> --confirm-external-call
 catalyst-radar market-bars saved-validate --expected-as-of 2026-05-15 --fixture data/local/polygon-grouped-daily-2026-05-15.json
 catalyst-radar market-bars saved-import --expected-as-of 2026-05-15 --fixture data/local/polygon-grouped-daily-2026-05-15.json
