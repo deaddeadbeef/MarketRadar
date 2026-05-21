@@ -6694,6 +6694,26 @@ def _after_current_blocker_summary(preview: Mapping[str, object]):
             plan_parts.append(blocked_text)
         if plan_parts:
             parts.append("source plan " + ", ".join(plan_parts))
+        missing_cik = _mapping(next_plan.get("missing_cik"))
+        if missing_cik:
+            count = int(
+                _number_or_zero(
+                    missing_cik.get("missing_cik_company_like_rows")
+                )
+            )
+            sample = ", ".join(
+                _texts(
+                    missing_cik.get("sample_company_like_missing_cik_tickers")
+                )[:3]
+            )
+            if count or sample:
+                detail = f"missing CIK {count}"
+                if sample:
+                    detail = f"{detail} {sample}"
+                parts.append(detail)
+        fix = str(next_plan.get("fix_command") or "").strip()
+        if fix:
+            parts.append(f"CIK fix `{fix}`")
         batches = int(_number_or_zero(next_plan.get("batch_count")))
         if batches:
             parts.append(f"{batches} batch(es)")
@@ -6710,6 +6730,12 @@ def _after_current_blocker_summary(preview: Mapping[str, object]):
         repair = str(next_plan.get("manual_template_command") or "").strip()
         if repair:
             parts.append(f"repair `{repair}`")
+        validate = str(next_plan.get("manual_validate_command") or "").strip()
+        if validate:
+            parts.append(f"validate `{validate}`")
+        manual_import = str(next_plan.get("manual_fix_command") or "").strip()
+        if manual_import:
+            parts.append(f"import `{manual_import}`")
         if "external_calls_made" in next_plan:
             made = int(_number_or_zero(next_plan.get("external_calls_made")))
             parts.append(f"external calls made {made}")
