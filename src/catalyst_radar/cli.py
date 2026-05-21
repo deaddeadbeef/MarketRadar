@@ -5847,6 +5847,18 @@ def _print_priced_in_answer(payload: Mapping[str, object]) -> None:
                     f"{summary} "
                     f"external_calls={ladder.get('external_calls_made') or 0}"
                 )
+        after_current = trust_gate.get("after_current_blocker")
+        if isinstance(after_current, Mapping):
+            print(
+                "trust_gate_after_current="
+                f"current={after_current.get('current_blocker') or 'n/a'} "
+                f"next={after_current.get('next_source') or 'n/a'} "
+                f"status={after_current.get('next_status') or 'n/a'} "
+                f"gap={after_current.get('next_gap_count') or 0} "
+                f"plan={_compact_cli_text(after_current.get('plan_command'))} "
+                f"execute_next={_compact_cli_text(after_current.get('execute_next_command'))} "
+                f"external_calls={after_current.get('external_calls_made') or 0}"
+            )
     print(f"next_action={payload.get('next_action')}")
     if payload.get("next_command"):
         print(f"next_command={_compact_cli_text(payload.get('next_command'))}")

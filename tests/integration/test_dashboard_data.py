@@ -3103,6 +3103,26 @@ def test_priced_in_answer_blocks_core_evidence_gaps_even_with_ready_rows(
         "catalyst-radar priced-in-source-batches "
         "--source catalyst_events --all --json"
     )
+    after_current = payload["full_market_trust_gate"]["after_current_blocker"]
+    assert after_current["schema_version"] == "priced-in-after-current-blocker-v1"
+    assert after_current["current_blocker"] == "catalyst_events"
+    assert after_current["next_source"] == "local_text"
+    assert after_current["plan_command"] == (
+        "catalyst-radar priced-in-source-batches --source local_text --all --json"
+    )
+    assert after_current["plan_api"] == (
+        "GET /api/radar/priced-in/source-batches?"
+        "source=local_text&all_batches=true"
+    )
+    assert after_current["execute_next_command"] == (
+        "catalyst-radar priced-in-source-batches --source local_text --execute-next"
+    )
+    assert after_current["execute_next_request_body"] == {
+        "source": "local_text",
+        "max_batches": 1,
+        "stocks_only": False,
+    }
+    assert after_current["external_calls_made"] == 0
 
 
 def test_priced_in_answer_opens_full_scan_queue_when_decision_ready(

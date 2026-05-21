@@ -1,7 +1,39 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 09:57:59 +08:00
+Last updated: 2026-05-21 10:27:28 +08:00
 
+
+
+## Latest After-Current Blocker Preview
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, import rows, change scoring, reduce the universe, or claim readiness.
+- This is useful because the primary priced-in answer and dashboard now explain what comes after the current trust blocker. The operator can see that market_bars must clear first, then catalyst_events becomes the next source to plan, without hunting across a separate source-roadmap view.
+
+Fix in this slice:
+
+- `full_market_trust_gate.blocker_ladder.rows` now includes zero-call plan and guarded execute-next affordances for batchable follow-up sources: `plan_command`, `plan_api`, `execute_next_command`, `execute_next_api`, and `execute_next_request_body`.
+- `full_market_trust_gate.after_current_blocker` previews the next blocker after the current one with source, gap count, why it matters, plan API, execute-next body, and an operator note that it is preview only.
+- CLI text prints `trust_gate_after_current=` next to the existing trust gate and blocker ladder lines.
+- The TUI mission brief shows an `After current` row so the Run page explains the next source after the present wall.
+- README documents the new answer payload contract.
+
+Validation observed in this slice:
+
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py` passed with `All checks passed!`.
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m py_compile src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py` exited 0.
+- Focused pytest passed 4 tests: `test_priced_in_answer_blocks_core_evidence_gaps_even_with_ready_rows`, `test_priced_in_answer_cli_outputs_current_scan_answer`, `test_dashboard_run_page_shows_priced_in_evidence_plan`, and `test_dashboard_tui_once_defaults_to_tutorial`.
+- Live zero-call `priced-in-answer --json` smoke against `schwab-live.db` returned trust status `blocked`, first blocker `market_bars`, first gap `523`, after-current preview `market_bars then catalyst_events`, next gap `5512`, plan command `catalyst-radar priced-in-source-batches --source catalyst_events --all --json`, execute-next command `catalyst-radar priced-in-source-batches --source catalyst_events --execute-next`, and calls `0/0`.
+- Live zero-call text smoke printed `trust_gate_after_current=` while `external_calls=0`.
+- Live zero-call TUI Run smoke showed `After current` and `External calls made: 0`.
+
+Next useful product action:
+
+- Do not treat this slice as goal completion.
+- The full-market answer remains blocked until the missing active-universe market bars are filled/imported, or an explicitly approved saved provider capture is imported.
+- After market bars clear, the next broad-market blocker to plan is catalyst_events, using the previewed source-batch plan and guarded execute-next API only after the operator reviews the call budget.
 
 
 ## Latest Trust Gate Unblock API Payloads

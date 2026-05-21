@@ -6166,6 +6166,11 @@ def _run_mission_brief_items(
         )
         if ladder_text:
             items.append(("Blocker ladder", ladder_text))
+        after_current_text = _after_current_blocker_summary(
+            _mapping(trust_gate.get("after_current_blocker"))
+        )
+        if after_current_text:
+            items.append(("After current", after_current_text))
         if universe_text:
             items.append(("Missing universe", universe_text))
     if progress_parts:
@@ -6203,6 +6208,28 @@ def _trust_gate_blocker_ladder_summary(ladder: Mapping[str, object]):
         gap_count = int(_number_or_zero(row.get("gap_count")))
         status = str(row.get("status") or "attention")
         parts.append(f"{step} {source} {status} gaps {gap_count}")
+    return "; ".join(parts)
+
+
+def _after_current_blocker_summary(preview: Mapping[str, object]):
+    if not preview:
+        return ""
+    current = str(preview.get("current_blocker") or "current blocker")
+    source = str(preview.get("next_source") or "").strip()
+    if not source:
+        return ""
+    status = str(preview.get("next_status") or "attention")
+    gaps = int(_number_or_zero(preview.get("next_gap_count")))
+    action = str(preview.get("next_action") or "").strip()
+    plan = str(preview.get("plan_command") or "").strip()
+    execute = str(preview.get("execute_next_command") or "").strip()
+    parts = [f"after {current}: {source} {status}; gaps {gaps}"]
+    if action:
+        parts.append(action)
+    if plan:
+        parts.append(f"plan `{plan}`")
+    if execute:
+        parts.append(f"execute later `{execute}`")
     return "; ".join(parts)
 
 
