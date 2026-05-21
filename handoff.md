@@ -1,6 +1,41 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 13:17:28 +08:00
+Last updated: 2026-05-21 13:29:09 +08:00
+
+## Latest Dashboard Safe Plan Recommendations
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, broker, order, web, shell, or filesystem tools from the app.
+- This is useful because coverage-first and decision-shortcut recommendations were still allowed to surface `execute_next_command` as the primary command. That blurred safe planning from explicit provider execution.
+
+Fix in this slice:
+
+- Coverage-first and decision-shortcut source recommendations now prefer the safe `command` / `plan_command` alias from source rows.
+- `execute_next_command` and `execute_batches_command` remain separate explicit execution fields.
+- The generic all-source next-action text now tells clients to inspect `plan_command` before any execute command.
+- README documents that dashboard recommendations use the safe plan alias as the primary displayed command.
+
+Validation observed in this slice:
+
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py tests\integration\test_dashboard_data.py` passed with `All checks passed!`.
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m py_compile src\catalyst_radar\dashboard\data.py tests\integration\test_dashboard_data.py` exited 0.
+- Focused pytest passed 3 tests: all-source decision-useful prioritization, all-source batch overview chunks, and ops-page source workflow snapshot.
+- Live zero-call `priced-in-source-batches --source all --json` against `schwab-live.db` returned status `attention`, `external_calls_made=0`, `coverage_first_source=market_bars`, and both coverage-first plus decision-blocker commands pointing at the safe manual market-bar template command.
+- Live zero-call `dashboard-tui --once --page ops` rendered Source Fill Workflow / Coverage-first while reporting `External calls made: 0`.
+- `git diff --check` passed.
+
+Current live blocker:
+
+- The full-market priced-in answer remains blocked by missing scan-date market bars.
+- Current live local evidence still shows 523 missing market-bar rows for 2026-05-15.
+- This slice improves dashboard/API action clarity only; it does not fill/import market bars.
+
+Next useful product action:
+
+- Do not treat this slice as goal completion.
+- The next useful work remains the market-bar unblock: manual CSV fill/import review or explicitly approved saved Polygon/Massive capture, then saved validate/import review, then rerun the priced-in trust gate.
 
 ## Latest Source Batch Command Aliases
 

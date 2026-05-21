@@ -3905,11 +3905,11 @@ def test_priced_in_all_source_gap_batches_prioritizes_decision_useful_gaps(
     ]
     assert "FRBA" in payload["goal_alignment"]["current_blocker"]
     assert payload["coverage_first_recommendation"]["command"] == (
-        "catalyst-radar priced-in-source-batches --source catalyst_events --execute-next"
+        "catalyst-radar priced-in-source-batches --source catalyst_events --all --json"
     )
     assert payload["goal_alignment"]["next_source"] == "catalyst_events"
     assert payload["goal_alignment"]["next_command"] == (
-        "catalyst-radar priced-in-source-batches --source catalyst_events --execute-next"
+        "catalyst-radar priced-in-source-batches --source catalyst_events --all --json"
     )
     assert payload["decision_shortcut_recommendation"]["source"] == "options"
     assert "decision-ready row(s)" in payload["decision_shortcut_recommendation"]["action"]

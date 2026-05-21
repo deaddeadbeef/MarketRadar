@@ -295,7 +295,9 @@ CLI/API automation can use
 operation. Source-batch JSON rows expose `command` and `plan_command` as the
 safe default planning/review action for that row; provider or DB-writing work
 stays behind explicit `execute_next_command`, `execute_batches_command`, or
-manual import execute commands.
+manual import execute commands. Dashboard coverage-first and decision-shortcut
+recommendations use the same safe plan alias, not the execute command, as
+their primary displayed command.
 The broker page also supports local operator writes that do not submit real
 orders: `action <ticker> <watch|ready|simulate_entry|dismiss> [notes]`,
 `trigger <ticker> <type> <op> <threshold> [notes]`, `eval-triggers [ticker]`,
