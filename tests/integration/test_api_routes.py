@@ -2197,6 +2197,8 @@ def test_get_radar_market_bars_status_returns_zero_call_unblock_state(
     assert payload["schema_version"] == "market-bars-status-v1"
     assert payload["status"] == "blocked"
     assert payload["first_blocker"] == "market_bars"
+    assert payload["expected_as_of"] == "2026-05-11"
+    assert payload["expected_as_of_source"] == "argument"
     assert payload["coverage_scope"] == "stock_like"
     assert payload["active_security_count"] == 2
     assert payload["existing_as_of_bar_count"] == 1
@@ -2220,6 +2222,17 @@ def test_get_radar_market_bars_status_returns_zero_call_unblock_state(
     )
     assert payload["external_calls_made"] == 0
     assert payload["db_writes_made"] == 0
+
+    default_response = client.get(
+        "/api/radar/market-bars/status",
+        params={"stocks_only": "true"},
+    )
+    assert default_response.status_code == 200
+    default_payload = default_response.json()
+    assert default_payload["expected_as_of"] == "2026-05-11"
+    assert default_payload["expected_as_of_source"] == "latest_daily_bar"
+    assert default_payload["external_calls_made"] == 0
+    assert default_payload["db_writes_made"] == 0
 
 
 def test_post_radar_market_bars_provider_fixture_preview_is_zero_write(

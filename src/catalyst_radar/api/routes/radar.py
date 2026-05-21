@@ -747,7 +747,7 @@ def radar_priced_in_source_batch_execute_next(
     dependencies=[Depends(require_role(Role.VIEWER))],
 )
 def radar_market_bars_status(
-    expected_as_of: Date,
+    expected_as_of: Date | None = None,
     stocks_only: bool = False,
 ):
     try:

@@ -492,11 +492,14 @@ For a quick operator checkpoint, type `bars` or `bars status`; it prints
 the current missing-bar count, manual CSV progress, saved-capture boundary, and
 the single recommended next unblock action with provider-call and DB-write
 boundaries. The same zero-call checkpoint is available outside the TUI as
-`catalyst-radar market-bars status --expected-as-of YYYY-MM-DD` and
-`GET /api/radar/market-bars/status?expected_as_of=YYYY-MM-DD`.
-Those CLI/API payloads include `recommended_action`, which is the UI-friendly
-contract for choosing the next safe button or command instead of asking a human
-to infer it from the larger repair plan.
+`catalyst-radar market-bars status` and
+`GET /api/radar/market-bars/status`; when `expected_as_of` is omitted, these
+read-only status paths use the latest stored daily-bar date and report
+`expected_as_of_source=latest_daily_bar`. Pass `--expected-as-of YYYY-MM-DD`
+or `?expected_as_of=YYYY-MM-DD` to pin the check. Those CLI/API payloads include
+`recommended_action`, which is the UI-friendly contract for choosing the next
+safe button or command instead of asking a human to infer it from the larger
+repair plan.
 For manual zero-call repair, `bars manual template` generates the full
 active-universe missing-bar CSV by default, `bars manual import` previews
 complete rows only with 0 provider calls and 0 DB writes, and
