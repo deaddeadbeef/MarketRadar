@@ -1,7 +1,39 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 07:39:53 +08:00
+Last updated: 2026-05-21 07:53:20 +08:00
 
+
+
+## Latest Trust Gate Blocker Detail
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, import rows, change scoring, reduce the universe, or claim readiness.
+- This is useful because the main priced-in trust gate now tells the operator whether the current market-bar unblock file is actually filled, instead of only saying market bars are missing.
+
+Fix in this slice:
+
+- `full_market_trust_gate` now includes `blocker_detail` when the first blocker is `market_bars`.
+- The detail includes missing scan-date bar count, manual CSV path/existence, complete/partial/empty local rows, saved provider-file path/status, next action, preview command, and `external_calls_made=0`.
+- CLI text prints a compact `trust_gate_blocker=` line under `full_market_trust_gate=`.
+- The TUI Trust gate row appends manual CSV progress and saved-file status.
+- README documents that `blocker_detail` carries manual CSV fill counts and saved provider-file status.
+
+Validation observed in this slice:
+
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\integration\test_dashboard_demo_seed_cli.py` passed with `All checks passed!`.
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m py_compile src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\integration\test_dashboard_demo_seed_cli.py` exited 0.
+- Focused pytest passed 4 tests: `test_priced_in_answer_cli_outputs_current_scan_answer`, `test_dashboard_run_page_shows_priced_in_evidence_plan`, `test_dashboard_tui_once_defaults_to_tutorial`, and `test_dashboard_manual_bar_fill_progress_summary_is_human_readable`.
+- `git diff --check` passed.
+- Live zero-call branch smoke from the primary checkout reported `full_market_trust_gate.status=blocked`, blocker `market_bars`, `local_template_exists=True`, `missing=523`, `complete=0`, `partial=0`, `empty=523`, `saved=missing`, and `calls=0`.
+- Live zero-call TUI Run smoke showed `Trust gate`, `manual CSV 0/523 complete`, `empty 523`, saved file status, and `External calls made: 0`.
+
+Next useful product action:
+
+- Do not treat this slice as goal completion.
+- The full-market priced-in answer remains blocked because `data\local\manual-bars-2026-05-15.csv` is present but has 0 complete rows, and `data\local\polygon-grouped-daily-2026-05-15.json` is missing.
+- The next real unblock still requires either filling/importing the manual CSV or explicit operator approval for one saved Polygon/Massive grouped-daily capture.
 
 
 ## Latest Full-Market Trust Gate

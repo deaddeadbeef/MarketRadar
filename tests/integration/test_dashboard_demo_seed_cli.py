@@ -1254,6 +1254,19 @@ def test_dashboard_manual_bar_fill_progress_summary_is_human_readable() -> None:
     assert _stock_market_bar_next_summary(payload).startswith(
         "5521/5652 stock-like rows have scan-date bars; 131 missing"
     )
+    payload["priced_in_answer"] = {
+        "full_market_trust_gate": {
+            "status": "blocked",
+            "answer": "1/6 evidence layers ready.",
+            "blocker_detail": {
+                "source": "market_bars",
+                "missing_as_of_bar": 523,
+                "complete_rows": 12,
+                "empty_rows": 508,
+                "provider_saved_file_status": "missing",
+            },
+        }
+    }
     overview = render_dashboard_tui(payload, page="overview", width=160)
     ops = render_dashboard_tui(payload, page="ops", width=160)
     run = render_dashboard_tui(payload, page="run", width=160)
@@ -1266,6 +1279,8 @@ def test_dashboard_manual_bar_fill_progress_summary_is_human_readable() -> None:
     assert "Saved file capture: approval_required" in overview
     assert "bars targeted; 1 external call(s) if approved" in overview
     assert "type `bars saved capture confirm`" in ops
+    assert "manual CSV 12/523 complete" in run
+    assert "saved file missing" in run
     assert "Manual CSV action" in run
     assert "bars manual import" in run
     assert "Saved file capture" in run

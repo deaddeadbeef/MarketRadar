@@ -133,7 +133,10 @@ capture approval path, including the expected call count before capture.
 full-market priced-in answer is trustworthy yet. The TUI mission rows surface
 the same gate so the dashboard starts with the answer, the blocker, and safety.
 The gate is a readiness contract only: `blocked` means keep collecting
-evidence, not that a trade should be made or skipped.
+evidence, not that a trade should be made or skipped. When market bars are
+the first blocker, `blocker_detail` includes manual CSV fill counts and saved
+provider-file status so the CLI/TUI can show whether the local unblock file
+is actually filled yet.
 The default is still the full scan. Use `ready`, press `D`, or run
 `catalyst-radar priced-in-queue --decision-ready` only when you intentionally
 want the small decision-useful subset from that full scan.

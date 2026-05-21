@@ -3169,6 +3169,42 @@ def priced_in_answer_payload(
         resolved_queue,
         market_bars=resolved_market_bars,
     )
+    market_bar_blocker_detail: dict[str, object] | None = None
+    if str(evidence_completeness.get("first_gap_source") or "") == "market_bars":
+        market_bar_repair = _mapping_value(resolved_market_bars, "repair")
+        if market_bar_repair:
+            local_progress = _mapping_value(
+                market_bar_repair,
+                "local_template_fill_progress",
+            )
+            operator_step = _mapping_value(market_bar_repair, "operator_step")
+            provider_plan = _mapping_value(market_bar_repair, "provider_fill_plan")
+            market_bar_blocker_detail = {
+                "schema_version": "priced-in-market-bar-blocker-detail-v1",
+                "source": "market_bars",
+                "status": market_bar_repair.get("status")
+                or resolved_market_bars.get("status"),
+                "missing_as_of_bar": market_bar_repair.get("missing_as_of_bar")
+                or resolved_market_bars.get("missing_as_of_bar"),
+                "local_template_path": market_bar_repair.get("local_template_path"),
+                "local_template_exists": bool(
+                    market_bar_repair.get("local_template_exists")
+                ),
+                "complete_rows": int(_finite_float(local_progress.get("complete_rows"))),
+                "partial_rows": int(_finite_float(local_progress.get("partial_rows"))),
+                "empty_rows": int(_finite_float(local_progress.get("empty_rows"))),
+                "provider_saved_file_status": provider_plan.get(
+                    "provider_saved_file_status"
+                ),
+                "provider_saved_file_path": provider_plan.get(
+                    "provider_saved_file_path"
+                ),
+                "next_action": operator_step.get("action")
+                or market_bar_repair.get("next_action"),
+                "preview_command": operator_step.get("after_manual_command")
+                or market_bar_repair.get("import_preview_command"),
+                "external_calls_made": 0,
+            }
     trust_gate_trusted = bool(
         bool(evidence_completeness.get("all_sources_ready"))
         and int(_finite_float(full_scan_summary.get("unscanned_rows"))) <= 0
@@ -3187,6 +3223,7 @@ def priced_in_answer_payload(
         "ranked_rows": full_scan_summary.get("ranked_rows"),
         "next_action": evidence_completeness.get("next_action"),
         "next_command": evidence_completeness.get("command"),
+        "blocker_detail": market_bar_blocker_detail,
         "operator_boundary": "This gate is zero-call and cannot run providers.",
         "external_calls_made": 0,
     }
