@@ -2102,6 +2102,14 @@ def test_dashboard_bars_saved_validate_and_import_fixture_are_operator_actions(
         fixture_path,
         tmp_path / "polygon-grouped-daily-2026-05-08.json",
     )
+    plan = payload["priced_in_audit"]["market_bars"]["repair"]["provider_fill_plan"]
+    plan["coverage_scope"] = "stock_like"
+    for key in (
+        "provider_saved_file_validate_request_body",
+        "provider_saved_file_import_preview_request_body",
+        "provider_saved_file_import_request_body",
+    ):
+        plan[key]["stocks_only"] = True
     config = AppConfig.from_env({"CATALYST_DATABASE_URL": database_url})
 
     validate = _apply_command(
@@ -2113,6 +2121,7 @@ def test_dashboard_bars_saved_validate_and_import_fixture_are_operator_actions(
         config=config,
     )
     assert "Saved-file validate: status=ready_with_rejections" in validate.message
+    assert "scope=stock_like" in validate.message
     assert "external_calls=0" in validate.message
     assert "db_writes=0" in validate.message
     assert "missing_after_import=1" in validate.message
@@ -2126,6 +2135,7 @@ def test_dashboard_bars_saved_validate_and_import_fixture_are_operator_actions(
         config=config,
     )
     assert "Saved-file import preview: status=ready_with_rejections" in preview.message
+    assert "scope=stock_like" in preview.message
     assert "external_calls=0" in preview.message
     assert "db_writes=0" in preview.message
     assert "Post-import: status=preview_only; missing=3" in preview.message

@@ -568,12 +568,12 @@ and explicit execute-import commands/request bodies without making provider call
 but first rechecks the approval guard against the local DB. If active,
 existing, or missing counts changed since review, it stops before the provider
 call and asks you to review `bars saved capture` again. Stock-like saved
-capture keeps `--stocks-only` through preview and confirm so the reviewed guard
-counts do not silently switch back to full active-universe counts. When the
-guard matches, it immediately prints a zero-call post-capture preview of whether
-the saved file
-covers current missing bars; `bars saved validate` checks the saved
-grouped-daily JSON from disk when you want to re-check it later;
+capture, saved validation, and saved import keep `--stocks-only` through
+CLI/API/TUI commands and request bodies, so the reviewed guard and post-import
+verification do not silently switch back to full active-universe counts. When
+the guard matches, it immediately prints a zero-call post-capture preview of
+whether the saved file covers current missing bars; `bars saved validate` checks
+the saved grouped-daily JSON from disk when you want to re-check it later;
 `bars saved import` previews the local import with 0 DB writes; and
 `bars saved import execute` writes that saved file into the local database with
 0 provider calls after review.
@@ -618,12 +618,20 @@ catalyst-radar market-bars saved-capture --expected-as-of 2026-05-15 --out data/
 catalyst-radar market-bars saved-validate --expected-as-of 2026-05-15 --fixture data/local/polygon-grouped-daily-2026-05-15.json
 catalyst-radar market-bars saved-import --expected-as-of 2026-05-15 --fixture data/local/polygon-grouped-daily-2026-05-15.json
 catalyst-radar market-bars saved-import --expected-as-of 2026-05-15 --fixture data/local/polygon-grouped-daily-2026-05-15.json --execute
+catalyst-radar market-bars saved-validate --expected-as-of 2026-05-15 --fixture data/local/polygon-grouped-daily-2026-05-15.json --stocks-only
+catalyst-radar market-bars saved-import --expected-as-of 2026-05-15 --fixture data/local/polygon-grouped-daily-2026-05-15.json --stocks-only
 ```
 
 The lower-level `ingest-polygon grouped-daily --save-response` and fixture
 commands still exist for diagnostics, but dashboard, API, TUI, and CLI
 operator flows should prefer the `market-bars saved-*` wrappers because they
 expose the same approval, validate, and import contract everywhere.
+
+The stock-like saved-file path is a narrower staged unblock, not the trusted
+full-market answer. Use `--stocks-only` only when the reviewed plan is scoped to
+stock-like bars; the verifier then uses stock-like missing counts. The default
+full-market path omits the flag and remains the gate for trusted broad-scan
+answers.
 
 Saved-capture responses include `post_capture_verification`, using the same
 zero-call projection as import previews. After a capture writes the provider

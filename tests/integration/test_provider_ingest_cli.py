@@ -707,12 +707,14 @@ def test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths(
     assert payload["provider_saved_file_import_command"] == (
         "catalyst-radar market-bars saved-import "
         "--expected-as-of 2026-05-15 "
-        "--fixture data\\local\\polygon-grouped-daily-2026-05-15.json"
+        "--fixture data\\local\\polygon-grouped-daily-2026-05-15.json "
+        "--stocks-only"
     )
     assert payload["provider_saved_file_validate_command"] == (
         "catalyst-radar market-bars saved-validate "
         "--expected-as-of 2026-05-15 "
-        "--fixture data\\local\\polygon-grouped-daily-2026-05-15.json"
+        "--fixture data\\local\\polygon-grouped-daily-2026-05-15.json "
+        "--stocks-only"
     )
     assert payload["provider_saved_file_validate_api"] == (
         "POST /api/radar/market-bars/provider-fixture-preview"
@@ -720,6 +722,7 @@ def test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths(
     assert payload["provider_saved_file_validate_request_body"] == {
         "expected_as_of": "2026-05-15",
         "fixture_path": "data\\local\\polygon-grouped-daily-2026-05-15.json",
+        "stocks_only": True,
     }
     assert payload["provider_saved_file_import_api"] == (
         "POST /api/radar/market-bars/provider-fixture-import"
@@ -1052,6 +1055,9 @@ def test_market_bars_saved_capture_cli_plans_without_provider_call(
     assert "--expect-existing-count 1" in payload["confirm_command"]
     assert "--expect-missing-count 1" in payload["confirm_command"]
     assert "--stocks-only" in payload["confirm_command"]
+    assert payload["validate_command"].endswith("--stocks-only")
+    assert payload["import_preview_command"].endswith("--stocks-only")
+    assert payload["import_execute_command"].endswith("--stocks-only --execute")
     assert payload["capture_api"] == (
         "POST /api/radar/market-bars/provider-fixture-capture"
     )
@@ -1265,6 +1271,80 @@ def test_market_bars_saved_file_cli_validates_and_imports_fixture(
     with engine.connect() as conn:
         assert conn.execute(select(func.count()).select_from(job_runs)).scalar_one() == 1
         assert conn.execute(select(func.count()).select_from(daily_bars)).scalar_one() == 6
+
+def test_market_bars_saved_file_cli_import_respects_stock_scope(
+    tmp_path,
+    monkeypatch,
+    capsys,
+):
+    monkeypatch.chdir(tmp_path)
+    database_url = _database_url(tmp_path)
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("CATALYST_POLYGON_API_KEY", "fixture-key")
+    fixture_path = (
+        Path(__file__).resolve().parents[2]
+        / "tests"
+        / "fixtures"
+        / "polygon"
+        / "grouped_daily_2026-05-08.json"
+    )
+
+    assert main(["init-db"]) == 0
+    capsys.readouterr()
+    engine = create_engine(database_url, future=True)
+    MarketRepository(engine).upsert_securities(
+        [
+            _security("AAPL", "Apple", "CS"),
+            _security("MSFT", "Microsoft", "CS"),
+            _security("EETF", "Example ETF", "ETF"),
+        ]
+    )
+
+    preview_code = main(
+        [
+            "market-bars",
+            "saved-import",
+            "--expected-as-of",
+            "2026-05-08",
+            "--fixture",
+            str(fixture_path),
+            "--stocks-only",
+            "--json",
+        ]
+    )
+
+    assert preview_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["stocks_only"] is True
+    assert payload["coverage_scope"] == "stock_like"
+    verification = payload["post_import_verification"]
+    assert verification["stocks_only"] is True
+    assert verification["coverage_scope"] == "stock_like"
+    assert verification["active_security_count"] == 2
+    assert verification["missing_as_of_bar_count"] == 2
+    assert verification["projected_missing_after_import_count"] == 0
+    assert verification["preview_projection_status"] == "would_clear_market_bars"
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
+
+    human_code = main(
+        [
+            "market-bars",
+            "saved-import",
+            "--expected-as-of",
+            "2026-05-08",
+            "--fixture",
+            str(fixture_path),
+            "--stocks-only",
+        ]
+    )
+    assert human_code == 0
+    text = capsys.readouterr().out
+    assert "stocks_only=true" in text
+    assert "scope=stock_like" in text
+    assert "projected_missing=0" in text
+    assert "projection=would_clear_market_bars" in text
+
 
 def test_market_bars_repair_plan_blocks_provider_fill_when_health_is_down(
     tmp_path: Path,

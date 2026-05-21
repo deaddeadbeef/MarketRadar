@@ -2188,6 +2188,7 @@ def test_post_radar_market_bars_template_and_import_can_scope_to_stocks(
     assert repair_payload["provider_saved_file_validate_request_body"] == {
         "expected_as_of": "2026-05-11",
         "fixture_path": "data\\local\\polygon-grouped-daily-2026-05-11.json",
+        "stocks_only": True,
     }
     assert repair_payload["provider_saved_file_import_request_body"] == {
         **repair_payload["provider_saved_file_validate_request_body"],
@@ -2346,6 +2347,19 @@ def test_post_radar_market_bars_provider_fixture_preview_is_zero_write(
     assert payload["coverage"]["stock_like_covered_by_fixture_count"] == 2
     assert payload["coverage"]["stock_like_missing_after_import_count"] == 1
 
+    stock_response = client.post(
+        "/api/radar/market-bars/provider-fixture-preview",
+        json={
+            "expected_as_of": "2026-05-08",
+            "fixture_path": "tests/fixtures/polygon/grouped_daily_2026-05-08.json",
+            "stocks_only": True,
+        },
+    )
+    assert stock_response.status_code == 200
+    stock_payload = stock_response.json()
+    assert stock_payload["stocks_only"] is True
+    assert stock_payload["coverage_scope"] == "stock_like"
+
     with engine.connect() as conn:
         assert conn.execute(select(func.count()).select_from(job_runs)).scalar_one() == 0
         assert (
@@ -2436,15 +2450,18 @@ def test_post_radar_market_bars_provider_fixture_capture_requires_approval(
     assert payload["provider_saved_file_validate_request_body"] == {
         "expected_as_of": "2026-05-08",
         "fixture_path": str(output_path),
+        "stocks_only": False,
     }
     assert payload["provider_saved_file_import_preview_request_body"] == {
         "expected_as_of": "2026-05-08",
         "fixture_path": str(output_path),
+        "stocks_only": False,
         "execute": False,
     }
     assert payload["provider_saved_file_import_request_body"] == {
         "expected_as_of": "2026-05-08",
         "fixture_path": str(output_path),
+        "stocks_only": False,
         "execute": True,
     }
     assert "--confirm-external-call" in payload["capture_command"]
@@ -2601,6 +2618,21 @@ def test_post_radar_market_bars_provider_fixture_import_previews_without_writes(
     assert payload["external_calls_made"] == 0
     assert payload["db_writes_made"] == 0
     assert "execute=true" in payload["write_boundary"]
+
+    stock_response = client.post(
+        "/api/radar/market-bars/provider-fixture-import",
+        json={
+            "expected_as_of": "2026-05-08",
+            "fixture_path": "tests/fixtures/polygon/grouped_daily_2026-05-08.json",
+            "stocks_only": True,
+        },
+    )
+    assert stock_response.status_code == 200
+    stock_payload = stock_response.json()
+    assert stock_payload["stocks_only"] is True
+    assert stock_payload["coverage_scope"] == "stock_like"
+    assert stock_payload["post_import_verification"]["stocks_only"] is True
+    assert stock_payload["post_import_verification"]["coverage_scope"] == "stock_like"
 
     with engine.connect() as conn:
         assert conn.execute(select(func.count()).select_from(job_runs)).scalar_one() == 0

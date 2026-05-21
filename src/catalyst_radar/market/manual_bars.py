@@ -310,6 +310,7 @@ class ManualBarsRepairPlanResult:
             self.expected_as_of,
         )
         saved_capture_scope_flag = " --stocks-only" if self.stocks_only else ""
+        saved_file_scope_flag = " --stocks-only" if self.stocks_only else ""
         provider_saved_file_capture_command = (
             "catalyst-radar market-bars saved-capture "
             f"--expected-as-of {self.expected_as_of.isoformat()} "
@@ -324,11 +325,13 @@ class ManualBarsRepairPlanResult:
             "catalyst-radar market-bars saved-import "
             f"--expected-as-of {self.expected_as_of.isoformat()} "
             f"--fixture {provider_saved_file_path}"
+            f"{saved_file_scope_flag}"
         )
         provider_saved_file_validate_command = (
             "catalyst-radar market-bars saved-validate "
             f"--expected-as-of {self.expected_as_of.isoformat()} "
             f"--fixture {provider_saved_file_path}"
+            f"{saved_file_scope_flag}"
         )
         provider_saved_file_capture_request_body = {
             "expected_as_of": self.expected_as_of.isoformat(),
@@ -370,6 +373,7 @@ class ManualBarsRepairPlanResult:
         provider_saved_file_validate_request_body = {
             "expected_as_of": self.expected_as_of.isoformat(),
             "fixture_path": str(provider_saved_file_path),
+            "stocks_only": self.stocks_only,
         }
         provider_saved_file_import_preview_request_body = {
             **provider_saved_file_validate_request_body,
