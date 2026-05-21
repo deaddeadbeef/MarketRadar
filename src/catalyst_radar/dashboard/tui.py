@@ -3552,6 +3552,9 @@ def _market_bar_status_message(payload: Mapping[str, object]) -> str:
     if missing:
         headline.append(f"missing={missing}")
     parts = ["; ".join(headline)]
+    recommended = _market_bar_recommended_action_summary(payload)
+    if recommended:
+        parts.append(f"Recommended: {recommended}")
     manual_progress = _market_bar_manual_fill_progress_summary(payload)
     if manual_progress:
         parts.append(f"Manual CSV: {manual_progress}")
@@ -3569,6 +3572,55 @@ def _market_bar_status_message(payload: Mapping[str, object]) -> str:
         parts.append(f"Saved import: {saved_import}")
     parts.append("Status check made 0 provider calls and 0 database writes.")
     return " | ".join(part for part in parts if part)
+
+
+def _market_bar_recommended_action_summary(payload):
+    recommended = _mapping(payload.get("recommended_action"))
+    if recommended:
+        command = str(recommended.get("tui_command") or "").strip()
+        calls = int(_number_or_zero(recommended.get("external_calls_required")))
+        writes = int(_number_or_zero(recommended.get("db_writes_required")))
+        if command:
+            return (
+                f"{command}; {calls} provider call(s) if approved; "
+                f"{writes} DB write(s)"
+            )
+    audit = _mapping(payload.get("priced_in_audit"))
+    market = _mapping(audit.get("market_bars"))
+    repair = _mapping(market.get("repair"))
+    provider_plan = _mapping(repair.get("provider_fill_plan"))
+    approval = _mapping(
+        _first_value(
+            repair.get("provider_saved_file_capture_approval_packet"),
+            provider_plan.get("provider_saved_file_capture_approval_packet"),
+        )
+    )
+    if approval.get("status") == "approval_required":
+        command = str(
+            approval.get("tui_confirm_command") or "bars saved capture confirm"
+        )
+        calls = int(_number_or_zero(approval.get("external_calls_if_approved")))
+        writes = int(_number_or_zero(approval.get("db_writes_during_capture")))
+        return (
+            f"{command}; {calls} provider call(s) if approved; "
+            f"{writes} DB write(s)"
+        )
+    saved_status = str(
+        _first_value(
+            approval.get("saved_file_status"),
+            repair.get("provider_saved_file_status"),
+        )
+        or ""
+    ).strip()
+    if saved_status == "available":
+        return "bars saved validate; 0 provider calls; 0 DB writes"
+    operator = _mapping(repair.get("operator_step"))
+    command = str(
+        operator.get("command") or operator.get("after_manual_command") or ""
+    ).strip()
+    if command:
+        return f"{command}; 0 provider calls before execute"
+    return ""
 
 _MARKET_BAR_MANUAL_SCOPE_TOKENS = {
     "stock",

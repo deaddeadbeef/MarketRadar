@@ -43,6 +43,15 @@ def market_bars_status_payload(
         or ""
     ).strip()
     import_command = repair.get("provider_saved_file_import_command")
+    recommended_action = _recommended_unblock_action(
+        expected_as_of=expected_as_of,
+        missing=missing,
+        repair=repair,
+        operator_step=operator_step,
+        approval_packet=approval_packet,
+        saved_file_path=saved_file_path,
+        saved_file_status=saved_file_status,
+    )
     return {
         "schema_version": "market-bars-status-v1",
         "status": status,
@@ -127,6 +136,7 @@ def market_bars_status_payload(
             "external_calls_made": 0,
         },
         "repair_plan": repair,
+        "recommended_action": recommended_action,
         "next_action": next_action,
         "zero_call_boundary": (
             "Status reads local database/provider-health metadata only and makes "
@@ -160,6 +170,108 @@ def _repair_payload(
             provider_health.checked_at if provider_health is not None else None
         ),
     ).as_payload()
+
+
+def _recommended_unblock_action(
+    *,
+    expected_as_of: date,
+    missing: int,
+    repair: Mapping[str, object],
+    operator_step: Mapping[str, object],
+    approval_packet: Mapping[str, object],
+    saved_file_path: object,
+    saved_file_status: object,
+):
+    if missing <= 0:
+        return _recommended_action_payload(
+            kind="rerun_priced_in_answer",
+            label="Rerun priced-in answer",
+            status="ready",
+            reason="Scan-date market bars already cover this scope.",
+            command="catalyst-radar priced-in-answer --limit 5",
+            tui_command="refresh",
+            api="GET /api/radar/priced-in/answer",
+        )
+    if str(saved_file_status or "").strip() == "available":
+        return _recommended_action_payload(
+            kind="saved_file_validate",
+            label="Validate saved provider file",
+            status="ready",
+            reason="A saved grouped-daily file already exists; validate it before import.",
+            command=repair.get("provider_saved_file_validate_command"),
+            tui_command="bars saved validate",
+            api=repair.get("provider_saved_file_validate_api"),
+            request_body=repair.get("provider_saved_file_validate_request_body"),
+        )
+    if approval_packet.get("status") == "approval_required":
+        return _recommended_action_payload(
+            kind="saved_provider_capture",
+            label="Capture saved provider file",
+            status="approval_required",
+            reason=(
+                "The manual CSV is not complete and a provider key is configured; "
+                "one saved capture can produce the file needed for zero-call validation."
+            ),
+            command=approval_packet.get("capture_cli_command")
+            or repair.get("provider_saved_file_capture_command"),
+            tui_command=approval_packet.get("tui_confirm_command"),
+            api=approval_packet.get("capture_api")
+            or repair.get("provider_saved_file_capture_api"),
+            request_body=approval_packet.get("capture_confirm_request_body"),
+            approval_required=True,
+            external_calls_required=int(
+                approval_packet.get("external_calls_if_approved") or 0
+            ),
+            db_writes_required=int(
+                approval_packet.get("db_writes_during_capture") or 0
+            ),
+            saved_file_path=saved_file_path,
+            expected_as_of=expected_as_of.isoformat(),
+        )
+    command = operator_step.get("command") or operator_step.get("after_manual_command")
+    return _recommended_action_payload(
+        kind=str(operator_step.get("kind") or "manual_csv"),
+        label="Manual market-bar repair",
+        status=operator_step.get("status") or "attention",
+        reason=operator_step.get("action") or repair.get("next_action"),
+        command=command or repair.get("manual_template_command"),
+        tui_command=repair.get("dashboard_manual_import_preview_command")
+        or repair.get("dashboard_manual_template_command"),
+        api=repair.get("manual_import_api") or repair.get("manual_template_api"),
+    )
+
+
+def _recommended_action_payload(
+    *,
+    kind: str,
+    label: str,
+    status: object,
+    reason: object,
+    command: object,
+    tui_command: object,
+    api: object,
+    request_body: object = None,
+    approval_required: bool = False,
+    external_calls_required: int = 0,
+    db_writes_required: int = 0,
+    **extra: object,
+):
+    return {
+        "schema_version": "market-bars-recommended-action-v1",
+        "kind": kind,
+        "label": label,
+        "status": status,
+        "reason": reason,
+        "command": command,
+        "tui_command": tui_command,
+        "api": api,
+        "request_body": request_body,
+        "approval_required": approval_required,
+        "external_calls_required": external_calls_required,
+        "db_writes_required": db_writes_required,
+        "external_calls_made": 0,
+        **extra,
+    }
 
 
 def _mapping(value: object):
