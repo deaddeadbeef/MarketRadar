@@ -5,6 +5,7 @@ from datetime import date
 
 from sqlalchemy import func, select
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import SQLAlchemyError
 
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.market.manual_bars import manual_market_bars_repair_plan
@@ -54,6 +55,12 @@ def market_bars_status_payload(
         approval_packet=approval_packet,
         saved_file_path=saved_file_path,
         saved_file_status=saved_file_status,
+    )
+    after_clear = _post_market_bars_clear_payload(
+        engine,
+        config,
+        missing=missing,
+        stocks_only=stocks_only,
     )
     return {
         "schema_version": "market-bars-status-v1",
@@ -153,6 +160,7 @@ def market_bars_status_payload(
         },
         "repair_plan": repair,
         "recommended_action": recommended_action,
+        "after_market_bars_clear": after_clear,
         "next_action": next_action,
         "zero_call_boundary": (
             "Status reads local database/provider-health metadata only and makes "
@@ -161,6 +169,96 @@ def market_bars_status_payload(
         "external_calls_made": 0,
         "db_writes_made": 0,
     }
+
+
+def _post_market_bars_clear_payload(
+    engine: Engine,
+    config: AppConfig,
+    *,
+    missing: int,
+    stocks_only: bool,
+):
+    if missing <= 0:
+        return {
+            "schema_version": "market-bars-after-clear-v1",
+            "status": "ready",
+            "current_blocker": None,
+            "current_gap_count": 0,
+            "next_action": "Rerun the priced-in answer against the repaired scan.",
+            "plan_command": "catalyst-radar priced-in-answer --limit 5",
+            "plan_api": "GET /api/radar/priced-in/answer",
+            "operator_note": (
+                "Market bars already cover this scope. This preview makes 0 "
+                "provider calls and does not run source fills."
+            ),
+            "external_calls_made": 0,
+        }
+    try:
+        from catalyst_radar.dashboard.data import priced_in_answer_payload
+
+        answer = priced_in_answer_payload(
+            engine,
+            config,
+            limit=1,
+            stocks_only=stocks_only,
+        )
+    except (SQLAlchemyError, ValueError):
+        return {
+            "schema_version": "market-bars-after-clear-v1",
+            "status": "unavailable",
+            "current_blocker": "market_bars",
+            "current_gap_count": missing,
+            "reason": (
+                "The post-bar priced-in source preview could not be built from "
+                "the local database state."
+            ),
+            "operator_note": (
+                "Clear market bars first, then rerun priced-in-answer or "
+                "priced-in-source-batches --source all."
+            ),
+            "external_calls_made": 0,
+        }
+    trust_gate = _mapping(answer.get("full_market_trust_gate"))
+    after_current = _mapping(trust_gate.get("after_current_blocker"))
+    if str(after_current.get("current_blocker") or "") != "market_bars":
+        return {
+            "schema_version": "market-bars-after-clear-v1",
+            "status": "unavailable",
+            "current_blocker": "market_bars",
+            "current_gap_count": missing,
+            "reason": "No downstream blocker preview is currently available.",
+            "operator_note": (
+                "Clear market bars first, then rerun priced-in-answer or "
+                "priced-in-source-batches --source all."
+            ),
+            "external_calls_made": 0,
+        }
+    plan = _mapping(after_current.get("next_source_plan"))
+    payload: dict[str, object] = {
+        "schema_version": "market-bars-after-clear-v1",
+        "status": "preview",
+        "current_blocker": "market_bars",
+        "current_gap_count": int(after_current.get("current_gap_count") or missing),
+        "next_source": after_current.get("next_source"),
+        "next_status": after_current.get("next_status"),
+        "next_gap_count": int(after_current.get("next_gap_count") or 0),
+        "why_it_matters": after_current.get("why_it_matters"),
+        "next_action": after_current.get("next_action"),
+        "plan_command": after_current.get("plan_command"),
+        "plan_api": after_current.get("plan_api"),
+        "execute_next_command": after_current.get("execute_next_command"),
+        "execute_next_api": after_current.get("execute_next_api"),
+        "execute_next_request_body": after_current.get("execute_next_request_body"),
+        "operator_note": (
+            "Preview only. This is what to inspect after market bars clear; "
+            "do not run it until the market-bar blocker is gone and the "
+            "provider call budget is intentional."
+        ),
+        "external_calls_made": 0,
+    }
+    if plan:
+        payload["next_source_plan"] = dict(plan)
+    return payload
 
 
 def _repair_payload(

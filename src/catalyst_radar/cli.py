@@ -4203,6 +4203,7 @@ def _print_market_bars_status(payload: Mapping[str, object]):
     saved_capture = _mapping_value(payload.get("saved_capture"))
     saved_file = _mapping_value(payload.get("saved_file"))
     recommended = _mapping_value(payload.get("recommended_action"))
+    after_clear = _mapping_value(payload.get("after_market_bars_clear"))
     print(
         "market_bars_status "
         f"status={payload.get('status')} "
@@ -4284,6 +4285,55 @@ def _print_market_bars_status(payload: Mapping[str, object]):
                 _compact_cli_text(recommended.get("command")),
             )
         )
+    if after_clear:
+        print(
+            (
+                "after_market_bars_clear status={} current={} current_gap={} "
+                "next={} next_status={} next_gap={} plan={} execute_next={} "
+                "external_calls={}"
+            ).format(
+                after_clear.get("status"),
+                after_clear.get("current_blocker") or "n/a",
+                _int_value(after_clear.get("current_gap_count")),
+                after_clear.get("next_source") or "n/a",
+                after_clear.get("next_status") or "n/a",
+                _int_value(after_clear.get("next_gap_count")),
+                _compact_cli_text(after_clear.get("plan_command")),
+                _compact_cli_text(after_clear.get("execute_next_command")),
+                _int_value(after_clear.get("external_calls_made")),
+            )
+        )
+        plan = _mapping_value(after_clear.get("next_source_plan"))
+        if plan:
+            blocked_sample = ",".join(
+                str(ticker)
+                for ticker in _sequence_value(plan.get("sample_blocked_tickers"))
+            )
+            routed_sample = ",".join(
+                str(ticker)
+                for ticker in _sequence_value(
+                    plan.get("sample_routed_non_company_tickers")
+                )
+            )
+            print(
+                (
+                    "after_market_bars_next_plan source={} status={} gaps={} "
+                    "plan={} routed={} blocked={} batches={} next_calls={} "
+                    "blocked_sample={} routed_sample={} external_calls={}"
+                ).format(
+                    plan.get("source") or after_clear.get("next_source") or "n/a",
+                    plan.get("status") or "n/a",
+                    _int_value(plan.get("total_gap_rows")),
+                    _int_value(plan.get("plannable_gap_rows")),
+                    _int_value(plan.get("routed_gap_rows")),
+                    _int_value(plan.get("blocked_gap_rows")),
+                    _int_value(plan.get("batch_count")),
+                    _int_value(plan.get("next_chunk_external_calls")),
+                    blocked_sample or "n/a",
+                    routed_sample or "n/a",
+                    _int_value(plan.get("external_calls_made")),
+                )
+            )
     print(f"next_action={payload.get('next_action')}")
     print(f"boundary={payload.get('zero_call_boundary')}")
 
