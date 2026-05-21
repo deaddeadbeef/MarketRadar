@@ -1340,8 +1340,10 @@ def test_dashboard_manual_bar_fill_progress_summary_is_human_readable() -> None:
     assert "Stock bar next: 5521/5652 stock-like rows have scan-date bars" in ops
     assert "Regenerate the blank local CSV so it includes name" in overview
     assert "Regenerate the blank local CSV so it includes name" in ops
-    assert "Provider fill: ready_for_approval_with_health_warning" in overview
-    assert "Provider fill: ready_for_approval_with_health_warning" in ops
+    assert "Direct provider fill: ready_for_approval_with_health_warning" in overview
+    assert "Direct provider fill: ready_for_approval_with_health_warning" in ops
+    assert overview.index("Saved file capture") < overview.index("Direct provider fill")
+    assert ops.index("Saved file capture") < ops.index("Direct provider fill")
     assert "Saved file capture: approval_required" in overview
     assert "bars targeted; 1 external call(s) if approved" in overview
     assert "type `bars saved capture confirm`" in ops

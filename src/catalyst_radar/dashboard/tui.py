@@ -4940,12 +4940,6 @@ def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
             "Market bar next: "
             f"{_clip(operator_step_summary, max(20, width - 18))}"
         )
-    provider_fill_summary = _market_bar_provider_fill_summary(payload)
-    if provider_fill_summary:
-        lines.append(
-            "Provider fill: "
-            f"{_clip(provider_fill_summary, max(20, width - 17))}"
-        )
     saved_file_capture_summary = _market_bar_provider_saved_file_capture_summary(
         payload,
     )
@@ -4967,6 +4961,12 @@ def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
         lines.append(
             "Saved file import: "
             f"{_clip(saved_file_summary, max(20, width - 21))}"
+        )
+    provider_fill_summary = _market_bar_provider_fill_summary(payload)
+    if provider_fill_summary:
+        lines.append(
+            "Direct provider fill: "
+            f"{_clip(provider_fill_summary, max(20, width - 24))}"
         )
     instrument_summary = _full_scan_instrument_scope_summary(payload)
     if instrument_summary:
@@ -5212,7 +5212,12 @@ def _market_bar_provider_fill_summary(payload: Mapping[str, object]) -> str:
         return ""
     status = str(provider_plan.get("status") or "unknown").strip()
     warning = str(provider_plan.get("provider_health_warning") or "").strip()
+    saved_command = str(
+        provider_plan.get("provider_saved_file_capture_command") or ""
+    ).strip()
     parts = [status, f"{calls} external call(s)", "explicit approval required"]
+    if saved_command:
+        parts.append("diagnostic direct ingest; prefer saved file capture")
     if warning:
         parts.append(f"warning {warning}")
     parts.append(f"command {command}")
@@ -6009,9 +6014,6 @@ def _run_lines(payload: Mapping[str, object], width: int) -> list[str]:
         manual_hint = _market_bar_manual_action_summary(payload)
         if manual_hint:
             evidence_items.append(("Manual CSV action", manual_hint))
-        provider_hint = _run_audit_provider_fill_hint(blocker)
-        if provider_hint:
-            evidence_items.append(("Provider fill option", provider_hint))
         saved_capture_hint = _market_bar_provider_saved_file_capture_summary(payload)
         if saved_capture_hint:
             evidence_items.append(("Saved file capture", saved_capture_hint))
@@ -6021,6 +6023,9 @@ def _run_lines(payload: Mapping[str, object], width: int) -> list[str]:
         saved_import_hint = _market_bar_provider_saved_file_summary(payload)
         if saved_import_hint:
             evidence_items.append(("Saved file import", saved_import_hint))
+        provider_hint = _run_audit_provider_fill_hint(blocker)
+        if provider_hint:
+            evidence_items.append(("Direct provider fill", provider_hint))
         lines.extend(_kv_lines(evidence_items, width=width))
         lines.append("")
         lines.extend(
@@ -6487,7 +6492,8 @@ def _run_audit_provider_fill_hint(blocker: Mapping[str, object] | None) -> str |
     status = str(blocker.get("provider_fill_status") or "unknown").strip()
     calls = int(_number_or_zero(blocker.get("provider_fill_external_call_count")))
     return (
-        f"{status}; {calls} external call(s) only after explicit approval: `{command}`"
+        f"{status}; {calls} external call(s) only after explicit approval; "
+        f"diagnostic direct ingest, prefer saved file capture: `{command}`"
     )
 
 
@@ -7656,12 +7662,6 @@ def _ops_lines(payload: Mapping[str, object], width: int) -> list[str]:
             "Market bar next: "
             f"{_clip(operator_step_summary, max(20, width - 18))}"
         )
-    provider_fill_summary = _market_bar_provider_fill_summary(payload)
-    if provider_fill_summary:
-        lines.append(
-            "Provider fill: "
-            f"{_clip(provider_fill_summary, max(20, width - 17))}"
-        )
     saved_file_capture_summary = _market_bar_provider_saved_file_capture_summary(
         payload,
     )
@@ -7683,6 +7683,12 @@ def _ops_lines(payload: Mapping[str, object], width: int) -> list[str]:
         lines.append(
             "Saved file import: "
             f"{_clip(saved_file_summary, max(20, width - 21))}"
+        )
+    provider_fill_summary = _market_bar_provider_fill_summary(payload)
+    if provider_fill_summary:
+        lines.append(
+            "Direct provider fill: "
+            f"{_clip(provider_fill_summary, max(20, width - 24))}"
         )
     source_actions = [
         {
