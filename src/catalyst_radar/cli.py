@@ -5812,6 +5812,23 @@ def _print_priced_in_answer(payload: Mapping[str, object]) -> None:
                     f"external_calls={missing_universe.get('external_calls_made') or 0} "
                     f"summary={_compact_cli_text(missing_universe.get('summary'))}"
                 )
+        ladder = trust_gate.get("blocker_ladder")
+        if isinstance(ladder, Mapping):
+            rows = [
+                row
+                for row in _sequence_value(ladder.get("rows"))
+                if isinstance(row, Mapping)
+            ]
+            if rows:
+                summary = ", ".join(
+                    f"{row.get('step')}.{row.get('source')}:{row.get('gap_count') or 0}"
+                    for row in rows[:5]
+                )
+                print(
+                    "trust_gate_ladder="
+                    f"{summary} "
+                    f"external_calls={ladder.get('external_calls_made') or 0}"
+                )
     print(f"next_action={payload.get('next_action')}")
     if payload.get("next_command"):
         print(f"next_command={_compact_cli_text(payload.get('next_command'))}")

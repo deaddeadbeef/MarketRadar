@@ -3272,6 +3272,9 @@ def priced_in_answer_payload(
         ),
         primary_area="market_bars" if market_bar_gap_count > 0 else None,
     )
+    full_market_trust_gate["blocker_ladder"] = _priced_in_answer_blocker_ladder(
+        trust_blockers
+    )
     investment_decision_boundary = (
         "Priced-in answer readiness is not trade approval. Use the separate "
         "radar readiness/manual_buy_review gate before any investment decision."
@@ -6480,6 +6483,32 @@ def _priced_in_prioritized_trust_blockers(
         normalized,
         key=lambda row: 0 if str(row.get("area") or "") == primary_area else 1,
     )
+
+
+def _priced_in_answer_blocker_ladder(rows):
+    ladder_rows = []
+    for index, row in enumerate(rows, start=1):
+        ladder_rows.append(
+            {
+                "step": index,
+                "source": row.get("area"),
+                "status": row.get("status"),
+                "gap_count": int(_finite_float(row.get("gap_count"))),
+                "depends_on": list(_sequence_value(row.get("depends_on"))),
+                "next_action": row.get("next_action"),
+                "command": row.get("command"),
+                "external_calls_made": 0,
+            }
+        )
+    return {
+        "schema_version": "priced-in-full-market-blocker-ladder-v1",
+        "rows": ladder_rows,
+        "operator_note": (
+            "Clear blockers in order for a trusted full-market answer. This "
+            "ladder is zero-call and does not execute source fills."
+        ),
+        "external_calls_made": 0,
+    }
 
 
 def priced_in_preflight_payload(
