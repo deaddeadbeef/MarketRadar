@@ -3829,6 +3829,9 @@ def test_priced_in_source_batches_prioritize_full_market_bar_coverage(
     }
     assert unblock_options["manual_csv"]["external_calls_required"] == 0
     assert "market-bars template" in unblock_options["manual_csv"]["command"]
+    assert unblock_options["manual_csv"]["request_body"]["missing_only"] is True
+    assert unblock_options["manual_csv"]["preview_request_body"]["execute"] is False
+    assert unblock_options["manual_csv"]["execute_request_body"]["execute"] is True
     assert unblock_options["saved_provider_capture"]["status"] == "approval_required"
     assert unblock_options["saved_provider_capture"]["approval_required"] is True
     assert unblock_options["saved_provider_capture"]["external_calls_required"] == 1
@@ -3836,10 +3839,24 @@ def test_priced_in_source_batches_prioritize_full_market_bar_coverage(
     assert unblock_options["saved_provider_capture"]["command"] == (
         "bars saved capture confirm"
     )
+    assert unblock_options["saved_provider_capture"]["api"] == (
+        "POST /api/radar/market-bars/provider-fixture-capture"
+    )
+    assert unblock_options["saved_provider_capture"]["request_body"][
+        "confirm_external_call"
+    ] is False
+    assert unblock_options["saved_provider_capture"]["confirm_request_body"][
+        "confirm_external_call"
+    ] is True
     assert "Approve one Polygon/Massive" in unblock_options[
         "saved_provider_capture"
     ]["question"]
     assert unblock_options["validate_saved_file"]["external_calls_required"] == 0
+    assert unblock_options["validate_saved_file"]["api"] == (
+        "POST /api/radar/market-bars/provider-fixture-preview"
+    )
+    assert unblock_options["validate_saved_file"]["request_body"]["fixture_path"]
+    assert unblock_options["preview_import"]["request_body"]["execute"] is False
     assert overview["coverage_first_recommendation"]["coverage_basis"] == (
         "active_universe_as_of_bars"
     )

@@ -1,7 +1,37 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 09:34:24 +08:00
+Last updated: 2026-05-21 09:57:59 +08:00
 
+
+
+## Latest Trust Gate Unblock API Payloads
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, import rows, change scoring, reduce the universe, or claim readiness.
+- This is useful because the dashboard/API can now act from the primary priced-in answer payload without reconstructing market-bar repair endpoints from CLI text. The operator still sees the same zero-call/manual path and explicit one-call saved-provider approval path.
+
+Fix in this slice:
+
+- `full_market_trust_gate.blocker_detail.unblock_options` now includes API endpoint metadata and request bodies for manual CSV template/import preview/import execute, saved provider capture approval, saved-file validation, and saved-file import preview.
+- Source-roadmap `mission_brief.next_unblock_options` now carries matching endpoint metadata for the same market-bar unblock paths.
+- README documents that dashboard clients should use the option payloads instead of guessing endpoint parameters.
+
+Validation observed in this slice:
+
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py` passed with `All checks passed!`.
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m py_compile src\catalyst_radar\dashboard\data.py tests\integration\test_dashboard_data.py tests\integration\test_dashboard_demo_seed_cli.py` exited 0.
+- Focused pytest passed `test_priced_in_answer_blocks_incomplete_stock_bars_even_with_ready_rows` and `test_priced_in_source_batches_prioritize_full_market_bar_coverage`.
+- `git diff --check` passed.
+- Live zero-call `priced-in-answer --json` smoke against `schwab-live.db` returned manual API `POST /api/radar/market-bars/template`, manual request `missing_only=True`, saved-capture API `POST /api/radar/market-bars/provider-fixture-capture`, confirm request `confirm_external_call=True`, validate API `POST /api/radar/market-bars/provider-fixture-preview`, `external_calls_made=0`, and trust status `blocked`.
+- Live zero-call `priced-in-source-batches --source all --json` smoke returned the same market-bar unblock APIs and request bodies, `external_calls_made=0`, and status `attention`.
+- Live zero-call TUI Run smoke still showed `Trust gate`, `Unblock options`, and `External calls made: 0`.
+
+Next useful product action:
+
+- Do not treat this slice as goal completion.
+- The full-market answer remains blocked until the missing active-universe market bars are filled/imported, or an explicitly approved saved provider capture is imported.
 
 
 ## Latest Trust Gate Unblock Options

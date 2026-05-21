@@ -2185,6 +2185,21 @@ def _priced_in_mission_unblock_options(
                 "external_calls_required": 0,
                 "db_writes_before_execute": 0,
                 "command": manual_template,
+                "api": diagnostic.get("template_api")
+                or "POST /api/radar/market-bars/template",
+                "request_body": _market_bar_template_request_body(diagnostic),
+                "preview_api": diagnostic.get("import_api")
+                or "POST /api/radar/market-bars/import",
+                "preview_request_body": _market_bar_import_request_body(
+                    diagnostic,
+                    execute=False,
+                ),
+                "execute_api": diagnostic.get("import_api")
+                or "POST /api/radar/market-bars/import",
+                "execute_request_body": _market_bar_import_request_body(
+                    diagnostic,
+                    execute=True,
+                ),
                 "preview_command": manual_preview or None,
                 "execute_command": manual_execute or None,
                 "next_action": (
@@ -2212,6 +2227,9 @@ def _priced_in_mission_unblock_options(
                 ),
                 "command": packet.get("tui_confirm_command")
                 or packet.get("capture_cli_command"),
+                "api": packet.get("capture_api"),
+                "request_body": packet.get("capture_request_body"),
+                "confirm_request_body": packet.get("capture_confirm_request_body"),
                 "question": packet.get("question"),
                 "next_action": packet.get("next_action"),
             }
@@ -2235,6 +2253,8 @@ def _priced_in_mission_unblock_options(
                         _finite_float(step.get("db_writes_made"))
                     ),
                     "command": step.get("tui_command") or step.get("cli_command"),
+                    "api": step.get("api"),
+                    "request_body": step.get("request_body"),
                     "next_action": (
                         "Use after the saved provider response exists on disk."
                     ),
@@ -2561,6 +2581,14 @@ def _priced_in_market_bar_source_repair_context(
         }
     missing_universe = _mapping_value(repair_plan, "missing_universe_diagnostic")
     return {
+        "target_as_of": repair_plan.get("target_as_of")
+        or repair_plan.get("expected_as_of"),
+        "stocks_only": repair_plan.get("stocks_only"),
+        "local_template_path": repair_plan.get("local_template_path"),
+        "template_api": repair_plan.get("template_api")
+        or repair_plan.get("manual_template_api"),
+        "import_api": repair_plan.get("import_api")
+        or repair_plan.get("manual_import_api"),
         "local_bar_history": {
             "missing_with_history": int(
                 _finite_float(repair_plan.get("missing_with_local_history_count"))
@@ -3061,6 +3089,35 @@ def _priced_in_source_batch_priority_key(row: Mapping[str, object]) -> tuple[int
     return (3, 0, source_order)
 
 
+def _market_bar_template_request_body(market_bar_repair):
+    target = str(market_bar_repair.get("target_as_of") or "").strip()
+    output_path = str(market_bar_repair.get("local_template_path") or "").strip()
+    if not target or not output_path:
+        return None
+    return {
+        "expected_as_of": target,
+        "output_path": output_path,
+        "provider": "manual_csv",
+        "missing_only": True,
+        "stocks_only": bool(market_bar_repair.get("stocks_only")),
+        "overwrite": False,
+    }
+
+
+def _market_bar_import_request_body(market_bar_repair, *, execute: bool):
+    target = str(market_bar_repair.get("target_as_of") or "").strip()
+    daily_bars_path = str(market_bar_repair.get("local_template_path") or "").strip()
+    if not target or not daily_bars_path:
+        return None
+    return {
+        "daily_bars_path": daily_bars_path,
+        "expected_as_of": target,
+        "stocks_only": bool(market_bar_repair.get("stocks_only")),
+        "complete_rows_only": True,
+        "execute": execute,
+    }
+
+
 def _priced_in_market_bar_blocker_unblock_options(market_bar_repair, provider_plan):
     options = []
     manual_template = str(market_bar_repair.get("template_command") or "").strip()
@@ -3075,6 +3132,21 @@ def _priced_in_market_bar_blocker_unblock_options(market_bar_repair, provider_pl
                 "external_calls_required": 0,
                 "db_writes_before_execute": 0,
                 "command": manual_template,
+                "api": market_bar_repair.get("template_api")
+                or "POST /api/radar/market-bars/template",
+                "request_body": _market_bar_template_request_body(market_bar_repair),
+                "preview_api": market_bar_repair.get("import_api")
+                or "POST /api/radar/market-bars/import",
+                "preview_request_body": _market_bar_import_request_body(
+                    market_bar_repair,
+                    execute=False,
+                ),
+                "execute_api": market_bar_repair.get("import_api")
+                or "POST /api/radar/market-bars/import",
+                "execute_request_body": _market_bar_import_request_body(
+                    market_bar_repair,
+                    execute=True,
+                ),
                 "preview_command": manual_preview or None,
                 "execute_command": manual_execute or None,
                 "next_action": (
@@ -3100,6 +3172,9 @@ def _priced_in_market_bar_blocker_unblock_options(market_bar_repair, provider_pl
                 ),
                 "command": packet.get("tui_confirm_command")
                 or packet.get("capture_cli_command"),
+                "api": packet.get("capture_api"),
+                "request_body": packet.get("capture_request_body"),
+                "confirm_request_body": packet.get("capture_confirm_request_body"),
                 "question": packet.get("question"),
                 "next_action": packet.get("next_action"),
             }
@@ -3122,6 +3197,8 @@ def _priced_in_market_bar_blocker_unblock_options(market_bar_repair, provider_pl
                         _finite_float(step.get("db_writes_made"))
                     ),
                     "command": step.get("tui_command") or step.get("cli_command"),
+                    "api": step.get("api"),
+                    "request_body": step.get("request_body"),
                     "next_action": (
                         "Use after the saved provider response exists on disk."
                     ),

@@ -138,7 +138,9 @@ the first blocker, `blocker_detail` includes manual CSV fill counts and saved
 provider-file status so the CLI/TUI can show whether the local unblock file
 is actually filled yet. Its `unblock_options` list names the zero-call manual
 CSV path, the explicit saved-provider capture approval path, and zero-call
-saved-file validate/import follow-ups with command, call, and write boundaries.
+saved-file validate/import follow-ups with command, API, request body, call,
+and write boundaries. Dashboard clients should use these option payloads rather
+than reconstructing endpoint parameters from CLI text.
 It also carries a `missing_universe` summary so the operator can see what kind
 of active rows are blocking coverage without using that context to exclude rows
 or reduce the full scan. `blocker_ladder` lists the ordered evidence blockers

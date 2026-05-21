@@ -2851,6 +2851,36 @@ def test_priced_in_answer_blocks_incomplete_stock_bars_even_with_ready_rows(
     assert payload["trust_blockers"][0]["area"] == "market_bars"
     assert "market-bars template" in payload["next_command"]
     assert "--stocks-only" in payload["next_command"]
+    detail = payload["full_market_trust_gate"]["blocker_detail"]
+    unblock_options = {
+        option["kind"]: option for option in detail["unblock_options"]
+    }
+    assert unblock_options["manual_csv"]["api"] == (
+        "POST /api/radar/market-bars/template"
+    )
+    assert unblock_options["manual_csv"]["request_body"] == {
+        "expected_as_of": "2026-05-15",
+        "output_path": "data\\local\\manual-stock-bars-2026-05-15.csv",
+        "provider": "manual_csv",
+        "missing_only": True,
+        "stocks_only": True,
+        "overwrite": False,
+    }
+    assert unblock_options["manual_csv"]["preview_request_body"]["execute"] is False
+    assert unblock_options["manual_csv"]["execute_request_body"]["execute"] is True
+    assert unblock_options["saved_provider_capture"]["api"] == (
+        "POST /api/radar/market-bars/provider-fixture-capture"
+    )
+    assert unblock_options["saved_provider_capture"]["request_body"][
+        "confirm_external_call"
+    ] is False
+    assert unblock_options["saved_provider_capture"]["confirm_request_body"][
+        "confirm_external_call"
+    ] is True
+    assert unblock_options["validate_saved_file"]["api"] == (
+        "POST /api/radar/market-bars/provider-fixture-preview"
+    )
+    assert unblock_options["preview_import"]["request_body"]["execute"] is False
 
 
 def test_priced_in_answer_prefers_local_artifact_gap_before_options(
