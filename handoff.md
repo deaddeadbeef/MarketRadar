@@ -1,7 +1,38 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 09:03:34 +08:00
+Last updated: 2026-05-21 09:34:24 +08:00
 
+
+
+## Latest Trust Gate Unblock Options
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, import rows, change scoring, reduce the universe, or claim readiness.
+- This is useful because the primary priced-in answer will now show the exact market-bar unblock choices at the same place it says the full-market answer is blocked. The operator should not need to hunt across source-roadmap or agent-brief views to find the next safe action.
+
+Fix in this slice:
+
+- `full_market_trust_gate.blocker_detail.unblock_options` now lists the manual CSV path, explicit saved provider capture approval path, and saved-file validate/import follow-ups when market bars are the first blocker.
+- CLI text prints compact `trust_gate_unblock=` rows with status, call count, write boundary, and command.
+- The TUI Run page reads those trust-gate unblock options first for the `Unblock options` row, keeping the dashboard answer and next action in the same view.
+- README documents the new `blocker_detail.unblock_options` contract.
+
+Validation observed in this slice:
+
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\integration\test_dashboard_demo_seed_cli.py` passed with `All checks passed!`.
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m py_compile src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\integration\test_dashboard_demo_seed_cli.py` exited 0.
+- Focused pytest passed 5 tests: `test_priced_in_answer_cli_prints_missing_universe_summary`, `test_dashboard_manual_bar_fill_progress_summary_is_human_readable`, `test_priced_in_source_batches_prioritize_full_market_bar_coverage`, `test_priced_in_answer_cli_outputs_current_scan_answer`, and `test_dashboard_tui_once_defaults_to_tutorial`.
+- `git diff --check` passed.
+- Live zero-call `priced-in-answer --json` smoke against `schwab-live.db` returned `options=4`, first option `manual_csv:0`, second option `saved_provider_capture:0`, and trust status `blocked`. The saved-provider option is zero-call because the live env currently lacks a Polygon/Massive API key.
+- Live zero-call text smoke printed `trust_gate_unblock=` rows for `manual_csv`, `saved_provider_capture`, `validate_saved_file`, and `preview_import`, while `full_market_trust_gate` stayed `blocked` and `external_calls=0`.
+- Live zero-call TUI Run smoke showed `Trust gate`, `Unblock options`, and `External calls made: 0`.
+
+Next useful product action:
+
+- Do not treat this slice as goal completion.
+- The full-market answer remains blocked until the missing active-universe market bars are filled/imported, or an explicitly approved saved provider capture is imported.
 
 
 ## Latest Trust Gate Blocker Ladder

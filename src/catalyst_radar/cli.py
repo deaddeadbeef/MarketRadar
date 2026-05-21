@@ -5801,6 +5801,24 @@ def _print_priced_in_answer(payload: Mapping[str, object]) -> None:
                 f"saved_file={blocker_detail.get('provider_saved_file_status') or 'n/a'} "
                 f"external_calls={blocker_detail.get('external_calls_made') or 0}"
             )
+            unblock_options = blocker_detail.get("unblock_options")
+            if isinstance(unblock_options, (list, tuple)):
+                for option in unblock_options[:5]:
+                    if not isinstance(option, Mapping):
+                        continue
+                    writes = (
+                        option.get("db_writes_during_step")
+                        if "db_writes_during_step" in option
+                        else option.get("db_writes_before_execute")
+                    )
+                    print(
+                        "trust_gate_unblock="
+                        f"{option.get('kind') or 'option'} "
+                        f"status={option.get('status') or 'unknown'} "
+                        f"calls={_int_value(option.get('external_calls_required'))} "
+                        f"db_writes={_int_value(writes)} "
+                        f"command={_compact_cli_text(option.get('command'))}"
+                    )
             missing_universe = blocker_detail.get("missing_universe")
             if isinstance(missing_universe, Mapping):
                 print(

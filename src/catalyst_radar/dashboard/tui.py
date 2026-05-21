@@ -6240,6 +6240,14 @@ def _run_market_bar_unblock_summary(
 ) -> str:
     if not blocker or str(blocker.get("source") or "") != "market_bars":
         return ""
+    answer = _mapping(payload.get("priced_in_answer"))
+    trust_gate = _mapping(answer.get("full_market_trust_gate"))
+    blocker_detail = _mapping(trust_gate.get("blocker_detail"))
+    option_text = _market_bar_unblock_option_summary(
+        _rows(blocker_detail.get("unblock_options"))
+    )
+    if option_text:
+        return option_text
     manual = _market_bar_manual_action_summary(payload)
     capture = _market_bar_provider_saved_file_capture_summary(payload)
     parts: list[str] = []
@@ -6247,6 +6255,22 @@ def _run_market_bar_unblock_summary(
         parts.append("manual CSV: 0 provider calls")
     if capture:
         parts.append(f"saved capture: {capture}")
+    return "; ".join(parts)
+
+
+def _market_bar_unblock_option_summary(options):
+    parts = []
+    for option in options[:4]:
+        if not isinstance(option, Mapping):
+            continue
+        kind = str(option.get("kind") or "option")
+        status = str(option.get("status") or "unknown")
+        calls = int(_number_or_zero(option.get("external_calls_required")))
+        command = str(option.get("command") or "").strip()
+        if command:
+            parts.append(f"{kind}: {status}, {calls} call(s), `{command}`")
+        else:
+            parts.append(f"{kind}: {status}, {calls} call(s)")
     return "; ".join(parts)
 
 

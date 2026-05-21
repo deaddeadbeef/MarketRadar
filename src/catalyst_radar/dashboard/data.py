@@ -3061,6 +3061,75 @@ def _priced_in_source_batch_priority_key(row: Mapping[str, object]) -> tuple[int
     return (3, 0, source_order)
 
 
+def _priced_in_market_bar_blocker_unblock_options(market_bar_repair, provider_plan):
+    options = []
+    manual_template = str(market_bar_repair.get("template_command") or "").strip()
+    manual_preview = str(market_bar_repair.get("import_preview_command") or "").strip()
+    manual_execute = str(market_bar_repair.get("import_execute_command") or "").strip()
+    if manual_template:
+        options.append(
+            {
+                "kind": "manual_csv",
+                "status": "available",
+                "label": "Manual CSV",
+                "external_calls_required": 0,
+                "db_writes_before_execute": 0,
+                "command": manual_template,
+                "preview_command": manual_preview or None,
+                "execute_command": manual_execute or None,
+                "next_action": (
+                    "Fill the missing-bar CSV, preview complete rows, then "
+                    "execute only after review."
+                ),
+            }
+        )
+
+    packet = _mapping_value(provider_plan, "provider_saved_file_capture_approval_packet")
+    if packet:
+        options.append(
+            {
+                "kind": "saved_provider_capture",
+                "status": packet.get("status"),
+                "label": "Saved provider capture",
+                "approval_required": bool(packet.get("approval_required")),
+                "external_calls_required": int(
+                    _finite_float(packet.get("external_calls_if_approved"))
+                ),
+                "db_writes_during_step": int(
+                    _finite_float(packet.get("db_writes_during_capture"))
+                ),
+                "command": packet.get("tui_confirm_command")
+                or packet.get("capture_cli_command"),
+                "question": packet.get("question"),
+                "next_action": packet.get("next_action"),
+            }
+        )
+        for step in _sequence_value(packet.get("post_capture_zero_call_steps")):
+            if not isinstance(step, Mapping):
+                continue
+            step_name = str(step.get("step") or "").strip()
+            if step_name not in {"validate_saved_file", "preview_import"}:
+                continue
+            options.append(
+                {
+                    "kind": step_name,
+                    "status": packet.get("saved_file_status"),
+                    "label": step_name.replace("_", " ").title(),
+                    "external_calls_required": int(
+                        _finite_float(step.get("external_calls_made"))
+                    ),
+                    "db_writes_during_step": int(
+                        _finite_float(step.get("db_writes_made"))
+                    ),
+                    "command": step.get("tui_command") or step.get("cli_command"),
+                    "next_action": (
+                        "Use after the saved provider response exists on disk."
+                    ),
+                }
+            )
+    return options
+
+
 def priced_in_answer_payload(
     engine: Engine,
     config: AppConfig,
@@ -3233,6 +3302,12 @@ def priced_in_answer_payload(
                     "operator_note": missing_universe.get("operator_note"),
                     "external_calls_made": 0,
                 }
+            unblock_options = _priced_in_market_bar_blocker_unblock_options(
+                market_bar_repair,
+                provider_plan,
+            )
+            if unblock_options:
+                market_bar_blocker_detail["unblock_options"] = unblock_options
     trust_gate_trusted = bool(
         bool(evidence_completeness.get("all_sources_ready"))
         and int(_finite_float(full_scan_summary.get("unscanned_rows"))) <= 0
