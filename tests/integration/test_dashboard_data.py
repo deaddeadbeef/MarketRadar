@@ -3574,6 +3574,9 @@ def test_priced_in_source_gap_batches_payload_plans_safe_sync_batches(
         "catalyst-radar priced-in-source-batches --source options "
         "--stocks-only --all --json"
     )
+    assert stock_payload["plan_command"] == stock_payload["all_batches_command"]
+    assert stock_payload["command"] == stock_payload["all_batches_command"]
+    assert stock_payload["plan_api"] == stock_payload["all_batches_api"]
     assert stock_payload["execute_next_command"] == (
         "catalyst-radar priced-in-source-batches --source options "
         "--stocks-only --execute-next"
@@ -3624,6 +3627,9 @@ def test_priced_in_source_gap_batches_payload_can_return_full_scan_plan(
     assert payload["all_batches_api"] == (
         "GET /api/radar/priced-in/source-batches?source=options&all_batches=true"
     )
+    assert payload["plan_command"] == payload["all_batches_command"]
+    assert payload["command"] == payload["all_batches_command"]
+    assert payload["plan_api"] == payload["all_batches_api"]
     assert [batch["tickers"] for batch in payload["batches"]] == [["AAPL"], ["MSFT"]]
 
 
@@ -3724,6 +3730,13 @@ def test_priced_in_all_source_gap_batches_payload_summarizes_next_chunks(
     assert rows["options"]["approval_checklist"]["provider"] == "schwab"
     assert rows["options"]["execute_next_command"] == (
         "catalyst-radar priced-in-source-batches --source options --execute-next"
+    )
+    assert rows["options"]["plan_command"] == (
+        "catalyst-radar priced-in-source-batches --source options --all --json"
+    )
+    assert rows["options"]["command"] == rows["options"]["plan_command"]
+    assert rows["options"]["plan_api"] == (
+        "GET /api/radar/priced-in/source-batches?source=options&all_batches=true"
     )
     assert payload["scan_scope"]["schema_version"] == (
         "priced-in-source-overview-scan-scope-v1"

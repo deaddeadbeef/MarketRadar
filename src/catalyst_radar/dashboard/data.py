@@ -1189,6 +1189,10 @@ def priced_in_source_gap_batches_payload(
         if batch_count > 0
         else None
     )
+    plan_command = all_batches_command or (
+        review_rows_command if all_gap_tickers else None
+    )
+    plan_api = all_batches_api if all_batches_command else None
     if source_name == "catalyst_events" and diagnostic.get("manual_fix_command"):
         diagnostic = {
             **diagnostic,
@@ -1307,6 +1311,9 @@ def priced_in_source_gap_batches_payload(
         "execute_batches_command": execute_batches_command,
         "execute_batches_api": execute_batches_api,
         "all_batches_api": all_batches_api,
+        "command": plan_command,
+        "plan_command": plan_command,
+        "plan_api": plan_api,
         "next_batch_command": _priced_in_source_next_batch_command(
             source_name=source_name,
             stocks_only=resolved_stocks_only,
@@ -1602,6 +1609,9 @@ def _priced_in_market_bar_source_gap_plan(
         "execute_batches_command": None,
         "execute_batches_api": None,
         "all_batches_api": None,
+        "command": template_command if missing else None,
+        "plan_command": template_command if missing else None,
+        "plan_api": None,
         "next_batch_command": None,
         "batches": [],
     }
@@ -2479,15 +2489,28 @@ def _priced_in_all_source_batch_row(
     status = str(plan.get("status") or "unknown")
     executable = status == "ready" and first_batch is not None
     priority = _row_dict(priority_counts or {})
+    total_gap_rows = int(_finite_float(plan.get("total_gap_rows")))
+    plannable_gap_rows = int(_finite_float(plan.get("plannable_gap_rows")))
+    unplannable_gap_rows = int(_finite_float(plan.get("unplannable_gap_rows")))
+    routed_gap_rows = int(_finite_float(plan.get("routed_gap_rows")))
+    batch_count = int(_finite_float(plan.get("batch_count")))
+    batch_size = int(_finite_float(plan.get("batch_size")))
+    all_batches_command = plan.get("all_batches_command")
+    all_batches_api = plan.get("all_batches_api")
+    review_rows_command = plan.get("review_rows_command")
+    plan_command = all_batches_command or (
+        review_rows_command if total_gap_rows else None
+    )
+    plan_api = all_batches_api if all_batches_command else None
     return {
         "source": source,
         "status": status,
         "headline": plan.get("headline"),
         "next_action": plan.get("next_action"),
-        "total_gap_rows": int(_finite_float(plan.get("total_gap_rows"))),
-        "plannable_gap_rows": int(_finite_float(plan.get("plannable_gap_rows"))),
-        "unplannable_gap_rows": int(_finite_float(plan.get("unplannable_gap_rows"))),
-        "routed_gap_rows": int(_finite_float(plan.get("routed_gap_rows"))),
+        "total_gap_rows": total_gap_rows,
+        "plannable_gap_rows": plannable_gap_rows,
+        "unplannable_gap_rows": unplannable_gap_rows,
+        "routed_gap_rows": routed_gap_rows,
         "decision_useful_gap_rows": int(
             _finite_float(priority.get("decision_useful_gap_rows"))
         ),
@@ -2498,8 +2521,8 @@ def _priced_in_all_source_batch_row(
         "priority_sample_tickers": list(
             _sequence_value(priority.get("priority_sample_tickers"))
         ),
-        "batch_count": int(_finite_float(plan.get("batch_count"))),
-        "batch_size": int(_finite_float(plan.get("batch_size"))),
+        "batch_count": batch_count,
+        "batch_size": batch_size,
         "scan_scope": _row_dict(_mapping_value(plan, "scan_scope")),
         "coverage_basis": plan.get("coverage_basis")
         or _mapping_value(plan, "scan_scope").get("coverage_basis"),
@@ -2507,10 +2530,13 @@ def _priced_in_all_source_batch_row(
         "approval_checklist": _row_dict(
             _mapping_value(plan, "approval_checklist")
         ),
-        "all_batches_command": plan.get("all_batches_command"),
-        "all_batches_api": plan.get("all_batches_api"),
-        "review_rows_command": plan.get("review_rows_command"),
+        "all_batches_command": all_batches_command,
+        "all_batches_api": all_batches_api,
+        "review_rows_command": review_rows_command,
         "export_rows_command": plan.get("export_rows_command"),
+        "command": plan_command,
+        "plan_command": plan_command,
+        "plan_api": plan_api,
         "execute_next_command": (
             plan.get("execute_next_command")
             if executable
