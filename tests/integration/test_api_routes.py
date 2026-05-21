@@ -2195,6 +2195,9 @@ def test_post_radar_market_bars_provider_fixture_preview_is_zero_write(
     assert payload["rejected_count"] == 1
     assert payload["external_calls_made"] == 0
     assert payload["db_writes_made"] == 0
+    assert payload["import_command"].startswith(
+        "catalyst-radar market-bars saved-import "
+    )
     assert payload["coverage"]["active_security_count"] == 3
     assert payload["coverage"]["fixture_active_match_count"] == 2
     assert payload["coverage"]["missing_covered_by_fixture_count"] == 2
@@ -2296,7 +2299,7 @@ def test_post_radar_market_bars_provider_fixture_capture_requires_approval(
         "execute": True,
     }
     assert "--confirm-external-call" in payload["capture_command"]
-    assert "--validate-only" in payload["provider_saved_file_validate_command"]
+    assert "saved-validate" in payload["provider_saved_file_validate_command"]
     assert not output_path.exists()
 
 
@@ -2333,6 +2336,12 @@ def test_post_radar_market_bars_provider_fixture_capture_uses_fixture_without_db
     assert payload["source"] == "fixture"
     assert payload["external_calls_made"] == 0
     assert payload["db_writes_made"] == 0
+    assert payload["validate_command"].startswith(
+        "catalyst-radar market-bars saved-validate "
+    )
+    assert payload["import_command"].startswith(
+        "catalyst-radar market-bars saved-import "
+    )
     preview = payload["post_capture_preview"]
     assert preview["status"] == "ready_with_rejections"
     assert preview["external_calls_made"] == 0

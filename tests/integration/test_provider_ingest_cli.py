@@ -626,9 +626,9 @@ def test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths(
     assert payload["provider_saved_file_status"] == "missing"
     assert "Capture or obtain" in payload["provider_saved_file_next_action"]
     assert payload["provider_saved_file_capture_command"] == (
-        "catalyst-radar ingest-polygon grouped-daily "
-        "--date 2026-05-15 "
-        "--save-response data\\local\\polygon-grouped-daily-2026-05-15.json "
+        "catalyst-radar market-bars saved-capture "
+        "--expected-as-of 2026-05-15 "
+        "--out data\\local\\polygon-grouped-daily-2026-05-15.json "
         "--confirm-external-call"
     )
     assert payload["provider_saved_file_capture_api"] == (
@@ -674,15 +674,14 @@ def test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths(
     assert approval_packet["post_capture_zero_call_steps"][0]["external_calls_made"] == 0
     assert "0 provider calls" in " ".join(approval_packet["guardrails"])
     assert payload["provider_saved_file_import_command"] == (
-        "catalyst-radar ingest-polygon grouped-daily "
-        "--date 2026-05-15 "
+        "catalyst-radar market-bars saved-import "
+        "--expected-as-of 2026-05-15 "
         "--fixture data\\local\\polygon-grouped-daily-2026-05-15.json"
     )
     assert payload["provider_saved_file_validate_command"] == (
-        "catalyst-radar ingest-polygon grouped-daily "
-        "--date 2026-05-15 "
-        "--fixture data\\local\\polygon-grouped-daily-2026-05-15.json "
-        "--validate-only"
+        "catalyst-radar market-bars saved-validate "
+        "--expected-as-of 2026-05-15 "
+        "--fixture data\\local\\polygon-grouped-daily-2026-05-15.json"
     )
     assert payload["provider_saved_file_validate_api"] == (
         "POST /api/radar/market-bars/provider-fixture-preview"
@@ -884,6 +883,12 @@ def test_market_bars_saved_file_cli_validates_and_imports_fixture(
     assert capture_payload["source"] == "fixture"
     assert capture_payload["external_calls_made"] == 0
     assert capture_payload["db_writes_made"] == 0
+    assert capture_payload["validate_command"].startswith(
+        "catalyst-radar market-bars saved-validate "
+    )
+    assert capture_payload["import_command"].startswith(
+        "catalyst-radar market-bars saved-import "
+    )
     assert saved_path.read_bytes() == fixture_path.read_bytes()
 
     validate_code = main(

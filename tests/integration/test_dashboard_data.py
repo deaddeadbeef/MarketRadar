@@ -1809,11 +1809,11 @@ def test_priced_in_full_scan_audit_payload_consolidates_current_state(
         assert provider_call_command.endswith("--confirm-external-call")
         assert market_bar_provider_plan[
             "provider_saved_file_import_command"
-        ].startswith("catalyst-radar ingest-polygon grouped-daily")
+        ].startswith("catalyst-radar market-bars saved-")
         assert market_bar_provider_plan[
             "provider_saved_file_capture_command"
-        ].startswith("catalyst-radar ingest-polygon grouped-daily")
-        assert "--save-response" in market_bar_provider_plan[
+        ].startswith("catalyst-radar market-bars saved-")
+        assert "--out" in market_bar_provider_plan[
             "provider_saved_file_capture_command"
         ]
         assert market_bar_provider_plan["provider_saved_file_capture_api"] == (
@@ -1845,7 +1845,7 @@ def test_priced_in_full_scan_audit_payload_consolidates_current_state(
         ]
         assert market_bar_provider_plan[
             "provider_saved_file_validate_command"
-        ].endswith("--validate-only")
+        ].startswith("catalyst-radar market-bars saved-validate")
         assert market_bar_provider_plan["provider_saved_file_validate_api"] == (
             "POST /api/radar/market-bars/provider-fixture-preview"
         )
@@ -2106,14 +2106,14 @@ def test_priced_in_full_scan_audit_warns_for_stale_eod_provider_health(
     assert provider_plan["execute_external_call_count"] == 1
     assert provider_plan["external_calls_made"] == 0
     assert provider_plan["provider_saved_file_import_command"] == (
-        "catalyst-radar ingest-polygon grouped-daily "
-        "--date 2026-05-10 "
+        "catalyst-radar market-bars saved-import "
+        "--expected-as-of 2026-05-10 "
         "--fixture data\\local\\polygon-grouped-daily-2026-05-10.json"
     )
     assert provider_plan["provider_saved_file_capture_command"] == (
-        "catalyst-radar ingest-polygon grouped-daily "
-        "--date 2026-05-10 "
-        "--save-response data\\local\\polygon-grouped-daily-2026-05-10.json "
+        "catalyst-radar market-bars saved-capture "
+        "--expected-as-of 2026-05-10 "
+        "--out data\\local\\polygon-grouped-daily-2026-05-10.json "
         "--confirm-external-call"
     )
     assert provider_plan["provider_saved_file_capture_api"] == (
@@ -2121,10 +2121,9 @@ def test_priced_in_full_scan_audit_warns_for_stale_eod_provider_health(
     )
     assert provider_plan["provider_saved_file_capture_external_call_count"] == 1
     assert provider_plan["provider_saved_file_validate_command"] == (
-        "catalyst-radar ingest-polygon grouped-daily "
-        "--date 2026-05-10 "
-        "--fixture data\\local\\polygon-grouped-daily-2026-05-10.json "
-        "--validate-only"
+        "catalyst-radar market-bars saved-validate "
+        "--expected-as-of 2026-05-10 "
+        "--fixture data\\local\\polygon-grouped-daily-2026-05-10.json"
     )
     assert provider_plan["provider_saved_file_validate_api"] == (
         "POST /api/radar/market-bars/provider-fixture-preview"
@@ -5099,9 +5098,9 @@ def test_priced_in_preflight_recommends_manual_bar_template_for_missing_bars(
     provider_plan = market_source["provider_fill_plan"]
     assert provider_plan["provider_saved_file_status"] == "missing"
     assert provider_plan["provider_saved_file_capture_command"] == (
-        "catalyst-radar ingest-polygon grouped-daily "
-        f"--date {run_as_of.isoformat()} "
-        f"--save-response data\\local\\polygon-grouped-daily-{run_as_of.isoformat()}.json "
+        "catalyst-radar market-bars saved-capture "
+        f"--expected-as-of {run_as_of.isoformat()} "
+        f"--out data\\local\\polygon-grouped-daily-{run_as_of.isoformat()}.json "
         "--confirm-external-call"
     )
     assert provider_plan["provider_saved_file_capture_external_call_count"] == 1
@@ -5238,14 +5237,13 @@ def test_priced_in_preflight_uses_saved_market_bar_operator_step(tmp_path, monke
         "saved_file_available"
     )
     assert payload["operator_next_step"]["command"] == (
-        "catalyst-radar ingest-polygon grouped-daily "
-        "--date 2026-05-10 "
-        "--fixture data\\local\\polygon-grouped-daily-2026-05-10.json "
-        "--validate-only"
+        "catalyst-radar market-bars saved-validate "
+        "--expected-as-of 2026-05-10 "
+        "--fixture data\\local\\polygon-grouped-daily-2026-05-10.json"
     )
     assert payload["operator_next_step"]["after_manual_command"] == (
-        "catalyst-radar ingest-polygon grouped-daily "
-        "--date 2026-05-10 "
+        "catalyst-radar market-bars saved-import "
+        "--expected-as-of 2026-05-10 "
         "--fixture data\\local\\polygon-grouped-daily-2026-05-10.json"
     )
     assert payload["operator_next_step"]["external_calls_made"] == 0

@@ -93,8 +93,8 @@ def preview_polygon_grouped_daily_fixture(
         "external_calls_made": 0,
         "db_writes_made": 0,
         "import_command": (
-            "catalyst-radar ingest-polygon grouped-daily "
-            f"--date {target_date} --fixture {fixture_path}"
+            "catalyst-radar market-bars saved-import "
+            f"--expected-as-of {target_date} --fixture {fixture_path}"
         ),
         "next_action": _polygon_fixture_preview_next_action(
             status=status,
@@ -192,12 +192,12 @@ def capture_polygon_grouped_daily_response(
         "external_calls_made": 0 if fixture_path is not None else 1,
         "db_writes_made": 0,
         "validate_command": (
-            "catalyst-radar ingest-polygon grouped-daily "
-            f"--date {target_date} --fixture {output_path} --validate-only"
+            "catalyst-radar market-bars saved-validate "
+            f"--expected-as-of {target_date} --fixture {output_path}"
         ),
         "import_command": (
-            "catalyst-radar ingest-polygon grouped-daily "
-            f"--date {target_date} --fixture {output_path}"
+            "catalyst-radar market-bars saved-import "
+            f"--expected-as-of {target_date} --fixture {output_path}"
         ),
         "next_action": (
             "Run the validate command, then import only if the preview covers "
@@ -391,7 +391,7 @@ def _polygon_fixture_preview_next_action(
     coverage: Mapping[str, object],
 ) -> str:
     if status == "invalid":
-        return "Fix the saved grouped-daily JSON file, then rerun --validate-only."
+        return "Fix the saved grouped-daily JSON file, then rerun saved-validate."
     covered = int(coverage.get("missing_covered_by_fixture_count") or 0)
     missing_after = int(coverage.get("missing_after_import_count") or 0)
     active_count = int(coverage.get("active_security_count") or 0)

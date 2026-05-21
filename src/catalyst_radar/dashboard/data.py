@@ -4923,21 +4923,22 @@ def _priced_in_market_bar_provider_fill_plan(
         else None
     )
     saved_file_import_command = (
-        "catalyst-radar ingest-polygon grouped-daily "
-        f"--date {target_value} --fixture {saved_file_path}"
+        "catalyst-radar market-bars saved-import "
+        f"--expected-as-of {target_value} --fixture {saved_file_path}"
         if target_value and saved_file_path is not None
         else None
     )
     saved_file_capture_command = (
-        "catalyst-radar ingest-polygon grouped-daily "
-        f"--date {target_value} --save-response {saved_file_path} "
+        "catalyst-radar market-bars saved-capture "
+        f"--expected-as-of {target_value} --out {saved_file_path} "
         "--confirm-external-call"
         if target_value and saved_file_path is not None
         else None
     )
     saved_file_validate_command = (
-        f"{saved_file_import_command} --validate-only"
-        if saved_file_import_command
+        "catalyst-radar market-bars saved-validate "
+        f"--expected-as-of {target_value} --fixture {saved_file_path}"
+        if target_value and saved_file_path is not None
         else None
     )
     saved_file_capture_request_body = (

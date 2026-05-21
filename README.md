@@ -491,9 +491,9 @@ catalyst-radar market-bars saved-import --expected-as-of 2026-05-15 --fixture da
 ```
 
 The lower-level `ingest-polygon grouped-daily --save-response` and fixture
-commands still exist for diagnostics, but dashboard and CLI operator flows should
-prefer the `market-bars saved-*` wrappers because they expose the same approval,
-validate, and import contract as the API/TUI.
+commands still exist for diagnostics, but dashboard, API, TUI, and CLI
+operator flows should prefer the `market-bars saved-*` wrappers because they
+expose the same approval, validate, and import contract everywhere.
 
 The template command writes a local ignored CSV scaffold for missing active
 tickers in the live database. Missing-only rows are sorted with stock-like
