@@ -1,6 +1,38 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 19:15:32 +08:00
+Last updated: 2026-05-21 19:39:54 +08:00
+
+
+## Latest Source-Map Recommended Unblock
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, broker, order, web, shell, or provider tools from the app.
+- This is useful because `priced-in-source-batches --source all` and TUI `batch all` are the broad source-map views. They should not imply the manual CSV template is the top move when the trust gate already recommends a saved Polygon/Massive capture approval.
+
+Fix in this slice:
+
+- `mission_brief` in the source-batches overview now includes `recommended_unblock_action` for market-bar blockers.
+- The recommendation prefers saved-file validation when a saved file exists, saved-provider capture when explicit approval is available, and manual CSV otherwise.
+- CLI `priced-in-source-batches --source all` now prints `recommended_unblock=...` before the full unblock option list.
+- TUI `batch all` now includes `Recommended unblock: ... bars saved capture confirm ...` in its plan-only response.
+- README documents that source-map views now agree with the trust gate about the single next safe unblock step.
+
+Validation observed in this slice:
+
+- Focused dashboard data regressions passed for source-batches/source-workflow.
+- Focused CLI/TUI regressions passed for source-batches and dashboard batch commands.
+- Ruff passed for the touched source and test files.
+- Py-compile passed for the touched source and test files.
+- Live zero-call JSON smoke against `schwab-live.db`, with the worktree source pinned on `PYTHONPATH`, returned `recommended=saved_provider_capture status=approval_required calls=1 writes=0 command=bars saved capture confirm`, `first=market_bars:523`, and `external_calls=0`.
+- Live zero-call CLI text smoke printed `recommended_unblock=saved_provider_capture ... command=bars saved capture confirm`.
+- Live zero-call TUI command-path smoke for `batch all` showed `Recommended unblock`, `bars saved capture confirm`, and `plan-only and makes no provider calls`.
+
+Current live blocker:
+
+- The trusted full-market priced-in answer remains blocked by 523 missing market bars for 2026-05-15 until explicit saved Polygon/Massive capture approval or complete manual CSV import.
+- Do not treat this slice as goal completion; it aligns the broad source-map UI/API with the real first blocker and next safe action.
 
 
 ## Latest Agent-Brief Recommended Unblock
