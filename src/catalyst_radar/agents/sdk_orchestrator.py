@@ -189,6 +189,7 @@ def deterministic_agent_brief(
             _priced_in_insight(priced_in),
             _priced_in_evidence_plan_insight(priced_in),
             _priced_in_source_workflow_insight(priced_in),
+            _priced_in_recommended_unblock_insight(priced_in),
             _priced_in_unblock_options_insight(priced_in),
             _top_queue_insight(work_queue),
             *[_candidate_insight(row) for row in candidates[:3]],
@@ -207,6 +208,7 @@ def deterministic_agent_brief(
             _text(_mapping(priced_in.get("source_workflow")).get("coverage_first_command")),
             _text(_mapping(priced_in.get("source_workflow")).get("decision_shortcut_action")),
             _text(_mapping(priced_in.get("source_workflow")).get("decision_shortcut_command")),
+            *_priced_in_recommended_unblock_actions(priced_in),
             *_priced_in_unblock_option_actions(priced_in),
             _text(priced_in.get("next_action")),
             _text(work_queue.get("next_action")),
@@ -535,6 +537,7 @@ def _priced_in_context(
 ) -> dict[str, object]:
     coverage = source_coverage or _mapping(queue.get("source_coverage"))
     market_bar_unblock_options = _market_bar_unblock_options_context(audit)
+    recommended_unblock_action = _market_bar_recommended_unblock_context(answer)
     return {
         **_copy_keys(
             queue,
@@ -585,6 +588,11 @@ def _priced_in_context(
         ),
         "source_workflow": _priced_in_source_workflow_context(source_workflow),
         **(
+            {"recommended_unblock_action": recommended_unblock_action}
+            if recommended_unblock_action
+            else {}
+        ),
+        **(
             {"market_bar_unblock_options": market_bar_unblock_options}
             if market_bar_unblock_options
             else {}
@@ -614,6 +622,35 @@ def _priced_in_context(
         },
         "rows": [_priced_in_row_context(item) for item in _rows(queue.get("rows"))[:8]],
     }
+
+
+def _market_bar_recommended_unblock_context(answer):
+    trust_gate = _mapping(answer.get("full_market_trust_gate"))
+    recommended = _mapping(trust_gate.get("recommended_action"))
+    if not recommended:
+        blocker_detail = _mapping(trust_gate.get("blocker_detail"))
+        recommended = _mapping(blocker_detail.get("recommended_action"))
+    if not recommended:
+        return {}
+    return _copy_keys(
+        recommended,
+        (
+            "schema_version",
+            "kind",
+            "label",
+            "status",
+            "reason",
+            "command",
+            "tui_command",
+            "api",
+            "request_body",
+            "confirm_request_body",
+            "approval_required",
+            "external_calls_required",
+            "db_writes_required",
+            "external_calls_made",
+        ),
+    )
 
 
 def _market_bar_unblock_options_context(audit: Mapping[str, object]) -> list[dict[str, object]]:
@@ -1149,6 +1186,24 @@ def _priced_in_source_workflow_insight(priced_in: Mapping[str, object]) -> str |
     )
 
 
+def _priced_in_recommended_unblock_insight(priced_in):
+    action = _mapping(priced_in.get("recommended_unblock_action"))
+    if not action:
+        return None
+    kind = _text(action.get("kind")) or "action"
+    status = _text(action.get("status")) or "unknown"
+    calls = int(_number(action.get("external_calls_required")))
+    writes = int(_number(action.get("db_writes_required")))
+    command = _text(action.get("command") or action.get("tui_command"))
+    reason = _text(action.get("reason"))
+    pieces = [f"{kind} status={status}", f"calls={calls}", f"db_writes={writes}"]
+    if command:
+        pieces.append(f"command={command}")
+    if reason:
+        pieces.append(f"reason={reason}")
+    return "Recommended market-bar unblock: " + "; ".join(pieces) + "."
+
+
 def _priced_in_unblock_options_insight(priced_in: Mapping[str, object]) -> str | None:
     options = _rows(priced_in.get("market_bar_unblock_options"))
     if not options:
@@ -1164,14 +1219,42 @@ def _priced_in_unblock_options_insight(priced_in: Mapping[str, object]) -> str |
     return "Market-bar unblock options: " + "; ".join(pieces) + "."
 
 
+def _priced_in_recommended_unblock_actions(priced_in):
+    action = _mapping(priced_in.get("recommended_unblock_action"))
+    if not action:
+        return []
+    kind = _text(action.get("kind")) or "action"
+    command = _text(action.get("command") or action.get("tui_command"))
+    if not command:
+        return []
+    calls = int(_number(action.get("external_calls_required")))
+    writes = int(_number(action.get("db_writes_required")))
+    if bool(action.get("approval_required")):
+        return [
+            f"Review recommended {kind}: approve {command} only if {calls} "
+            f"market-data call(s) and {writes} DB write(s) match your intent."
+        ]
+    return [
+        f"Run recommended {kind}: {command}; external calls={calls}; "
+        f"DB writes={writes}."
+    ]
+
+
 def _priced_in_unblock_option_actions(priced_in: Mapping[str, object]) -> list[str]:
     actions: list[str] = []
+    recommended = _mapping(priced_in.get("recommended_unblock_action"))
+    recommended_command = _text(
+        recommended.get("command") or recommended.get("tui_command")
+    )
+
     for option in _rows(priced_in.get("market_bar_unblock_options"))[:4]:
         kind = _text(option.get("kind"))
         calls = int(_number(option.get("external_calls_required")))
         writes = int(_number(option.get("db_writes_during_step")))
         command = _text(option.get("command"))
         if not kind or not command:
+            continue
+        if recommended_command and command == recommended_command:
             continue
         if kind == "saved_provider_capture":
             actions.append(

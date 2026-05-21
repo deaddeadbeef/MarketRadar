@@ -424,9 +424,12 @@ The JSON payload and the TUI Agent page include a `runtime` block that names
 broker, shell, filesystem, and web tools are unavailable to the agent layer.
 When market bars block the priced-in answer, the dry-run brief also summarizes
 the same redacted unblock options visible in the dashboard: manual CSV, saved
-provider capture approval, and saved-file validate/import follow-ups. Those
-items are instructions for a human operator; the agent still cannot call
-Polygon/Massive or mutate the database.
+provider capture approval, and saved-file validate/import follow-ups. It also
+lifts the trust-gate `recommended_action` into
+`priced_in.recommended_unblock_action` and leads `insights` / `next_actions`
+with that single next step before listing alternatives. Those items are
+instructions for a human operator; the agent still cannot call Polygon/Massive
+or mutate the database.
 Real Agents SDK mode is opt-in:
 
 ```powershell

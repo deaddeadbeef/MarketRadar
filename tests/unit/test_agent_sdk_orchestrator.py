@@ -109,6 +109,28 @@ def test_agent_brief_includes_market_bar_unblock_options() -> None:
         },
     }
 
+    payload["priced_in_answer"] = {
+        **payload["priced_in_answer"],
+        "full_market_trust_gate": {
+            "status": "blocked",
+            "first_blocker": "market_bars",
+            "recommended_action": {
+                "schema_version": "market-bars-recommended-action-v1",
+                "kind": "saved_provider_capture",
+                "label": "Capture saved provider file",
+                "status": "approval_required",
+                "reason": "Capture a saved grouped-daily file before import.",
+                "command": "bars saved capture confirm",
+                "tui_command": "bars saved capture confirm",
+                "api": "POST /api/radar/market-bars/saved-capture",
+                "approval_required": True,
+                "external_calls_required": 1,
+                "db_writes_required": 0,
+                "external_calls_made": 0,
+            },
+        },
+    }
+
     snapshot = redacted_operator_snapshot(payload)
     options = snapshot["priced_in"]["market_bar_unblock_options"]
     brief = run_market_radar_agents(payload, AppConfig.from_env({}))
@@ -122,20 +144,36 @@ def test_agent_brief_includes_market_bar_unblock_options() -> None:
     assert options[1]["external_calls_required"] == 1
     assert options[1]["db_writes_during_step"] == 0
     assert options[1]["command"] == "bars saved capture confirm"
+    recommended = snapshot["priced_in"]["recommended_unblock_action"]
+    assert recommended["kind"] == "saved_provider_capture"
+    assert recommended["command"] == "bars saved capture confirm"
+    assert recommended["external_calls_required"] == 1
+    assert recommended["db_writes_required"] == 0
+    assert recommended["approval_required"] is True
     assert brief["external_calls_made"] == {
         "openai": 0,
         "market_data": 0,
         "broker": 0,
     }
     assert any(
+        "Recommended market-bar unblock" in insight
+        and "bars saved capture confirm" in insight
+        for insight in brief["insights"]
+    )
+    assert any(
         "Market-bar unblock options" in insight
         and "bars saved capture confirm" in insight
         for insight in brief["insights"]
     )
     assert (
+        "Review recommended saved_provider_capture: approve bars saved capture "
+        "confirm only if 1 market-data call(s) and 0 DB write(s) match your "
+        "intent."
+    ) in brief["next_actions"]
+    assert (
         "Approve bars saved capture confirm only if one market-data call and 0 "
         "DB writes during capture match your intent."
-    ) in brief["next_actions"]
+    ) not in brief["next_actions"]
 
 
 def test_agent_sdk_real_mode_gate_fails_closed_without_secret_leak() -> None:
