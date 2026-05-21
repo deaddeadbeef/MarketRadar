@@ -1182,6 +1182,12 @@ def test_priced_in_answer_cli_prints_missing_universe_summary(capsys):
 
 
 def test_priced_in_answer_cli_prints_next_source_plan(capsys):
+    capture_cli_command = (
+        "catalyst-radar market-bars saved-capture "
+        "--expected-as-of 2026-05-15 "
+        "--out data\\local\\polygon-grouped-daily-2026-05-15.json "
+        "--confirm-external-call"
+    )
     payload = {
         "status": "blocked",
         "decision_ready": False,
@@ -1207,12 +1213,7 @@ def test_priced_in_answer_cli_prints_next_source_plan(capsys):
                 "status": "approval_required",
                 "reason": "Approve one saved grouped-daily provider call.",
                 "command": "bars saved capture confirm",
-                "cli_command": (
-                    "catalyst-radar market-bars saved-capture "
-                    "--expected-as-of 2026-05-15 "
-                    "--out data\\local\\polygon-grouped-daily-2026-05-15.json "
-                    "--confirm-external-call"
-                ),
+                "cli_command": capture_cli_command,
                 "tui_command": "bars saved capture confirm",
                 "api": "POST /api/radar/market-bars/provider-fixture-capture",
                 "request_body": {"confirm_external_call": True},
@@ -1220,6 +1221,37 @@ def test_priced_in_answer_cli_prints_next_source_plan(capsys):
                 "external_calls_required": 1,
                 "db_writes_required": 0,
                 "external_calls_made": 0,
+            },
+            "blocker_detail": {
+                "unblock_options": [
+                    {
+                        "kind": "saved_provider_capture",
+                        "status": "approval_required",
+                        "approval_required": True,
+                        "external_calls_required": 1,
+                        "db_writes_during_step": 0,
+                        "command": "bars saved capture confirm",
+                        "cli_command": capture_cli_command,
+                        "tui_command": "bars saved capture confirm",
+                    }
+                ],
+                "saved_provider_capture": {
+                    "status": "approval_required",
+                    "approval_required": True,
+                    "provider_key_configured": True,
+                    "external_calls_if_approved": 1,
+                    "db_writes_during_capture": 0,
+                    "saved_file_status": "missing",
+                    "saved_file_path": (
+                        "data\\local\\polygon-grouped-daily-2026-05-15.json"
+                    ),
+                    "capture_api": (
+                        "POST /api/radar/market-bars/provider-fixture-capture"
+                    ),
+                    "capture_command": "bars saved capture confirm",
+                    "capture_cli_command": capture_cli_command,
+                    "external_calls_made": 0,
+                },
             },
             "after_current_blocker": {
                 "current_blocker": "market_bars",
@@ -1269,6 +1301,8 @@ def test_priced_in_answer_cli_prints_next_source_plan(capsys):
     assert "command=catalyst-radar market-bars saved-capture" in output.out
     assert "--confirm-external-call" in output.out
     assert "tui=bars saved capture confirm" in output.out
+    assert "trust_gate_unblock=saved_provider_capture" in output.out
+    assert "trust_gate_saved_capture=status=approval_required" in output.out
     assert "trust_gate_next_source_plan=source=catalyst_events" in output.out
     assert "gaps=12075" in output.out
     assert "plan=5510" in output.out
@@ -4131,15 +4165,13 @@ def test_priced_in_source_batches_prioritize_full_market_bar_coverage(
         ]
     )
 
-    overview = priced_in_all_source_gap_batches_payload(
-        engine,
-        AppConfig.from_env(
-            {
-                "CATALYST_DATABASE_URL": database_url,
-                "CATALYST_POLYGON_API_KEY": "test-key",
-            }
-        ),
+    config = AppConfig.from_env(
+        {
+            "CATALYST_DATABASE_URL": database_url,
+            "CATALYST_POLYGON_API_KEY": "test-key",
+        }
     )
+    overview = priced_in_all_source_gap_batches_payload(engine, config)
     source_rows = {row["source"]: row for row in overview["sources"]}
 
     assert overview["status"] == "attention"
@@ -4278,6 +4310,21 @@ def test_priced_in_source_batches_prioritize_full_market_bar_coverage(
     assert approval_packet["status"] == "approval_required"
     assert approval_packet["external_calls_if_approved"] == 1
     assert approval_packet["db_writes_during_capture"] == 0
+    answer_options = (
+        dashboard_data_module._priced_in_market_bar_blocker_unblock_options(
+            {}, {"provider_saved_file_capture_approval_packet": approval_packet}
+        )
+    )
+    answer_saved_option = next(
+        option
+        for option in answer_options
+        if option["kind"] == "saved_provider_capture"
+    )
+    assert answer_saved_option["command"] == "bars saved capture confirm"
+    assert answer_saved_option["cli_command"].startswith(
+        "catalyst-radar market-bars saved-capture "
+    )
+    assert answer_saved_option["tui_command"] == "bars saved capture confirm"
     assert (
         source_rows["market_bars"]["diagnostic"][
             "provider_saved_file_external_call_count"

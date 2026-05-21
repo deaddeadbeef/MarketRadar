@@ -6408,13 +6408,20 @@ def _print_priced_in_answer(payload: Mapping[str, object]) -> None:
                         if "db_writes_during_step" in option
                         else option.get("db_writes_before_execute")
                     )
+                    cli_command = option.get("cli_command") or option.get("command")
+                    tui_command = option.get("tui_command")
+                    tui_piece = (
+                        f" tui={_compact_cli_text(tui_command)}"
+                        if tui_command and tui_command != cli_command
+                        else ""
+                    )
                     print(
                         "trust_gate_unblock="
                         f"{option.get('kind') or 'option'} "
                         f"status={option.get('status') or 'unknown'} "
                         f"calls={_int_value(option.get('external_calls_required'))} "
                         f"db_writes={_int_value(writes)} "
-                        f"command={_compact_cli_text(option.get('command'))}"
+                        f"command={_compact_cli_text(cli_command)}{tui_piece}"
                     )
             manual_csv = blocker_detail.get("manual_csv")
             if isinstance(manual_csv, Mapping):
@@ -6443,6 +6450,17 @@ def _print_priced_in_answer(payload: Mapping[str, object]) -> None:
                 )
             saved_capture = blocker_detail.get("saved_provider_capture")
             if isinstance(saved_capture, Mapping):
+                capture_cli_command = (
+                    saved_capture.get("capture_cli_command")
+                    or saved_capture.get("capture_command")
+                )
+                capture_tui_command = saved_capture.get("capture_command")
+                capture_tui_piece = (
+                    f" tui={_compact_cli_text(capture_tui_command)}"
+                    if capture_tui_command
+                    and capture_tui_command != capture_cli_command
+                    else ""
+                )
                 print(
                     "trust_gate_saved_capture="
                     f"status={saved_capture.get('status') or 'n/a'} "
@@ -6457,7 +6475,8 @@ def _print_priced_in_answer(payload: Mapping[str, object]) -> None:
                     f"saved_file={saved_capture.get('saved_file_status') or 'n/a'} "
                     f"path={_compact_cli_text(saved_capture.get('saved_file_path'))} "
                     f"api={_compact_cli_text(saved_capture.get('capture_api'))} "
-                    f"command={_compact_cli_text(saved_capture.get('capture_command'))} "
+                    f"command={_compact_cli_text(capture_cli_command)}"
+                    f"{capture_tui_piece} "
                     f"external_calls={saved_capture.get('external_calls_made') or 0}"
                 )
             missing_universe = blocker_detail.get("missing_universe")
