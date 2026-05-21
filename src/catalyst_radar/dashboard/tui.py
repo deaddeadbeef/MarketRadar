@@ -7875,6 +7875,8 @@ def _source_workflow_lines(payload: Mapping[str, object], width: int) -> list[st
         {
             **step,
             "depends_on": ",".join(_texts(step.get("depends_on"))) or "none",
+            "gap_summary": _source_workflow_gap_summary(step),
+            "inspect_command": _source_workflow_inspect_command(step),
             "useful_rows": _source_workflow_useful_rows(step),
         }
         for step in steps
@@ -7886,10 +7888,11 @@ def _source_workflow_lines(payload: Mapping[str, object], width: int) -> list[st
                 ("priority", "#", 4),
                 ("source", "Source", 14),
                 ("status", "Status", 12),
+                ("gap_summary", "Full gaps", 16),
                 ("useful_rows", "Useful rows", 18),
                 ("depends_on", "After", 18),
                 ("action", "Do this", 48),
-                ("command", "Plan command", 54),
+                ("inspect_command", "Inspect", 24),
             ],
             width=width,
             limit=8,
@@ -7906,6 +7909,23 @@ def _source_workflow_lines(payload: Mapping[str, object], width: int) -> list[st
         "rate-limited provider chunk, not the ticker universe."
     )
     return lines
+
+
+def _source_workflow_gap_summary(step: Mapping[str, object]):
+    gap_rows = int(_number_or_zero(step.get("gap_rows")))
+    if gap_rows <= 0:
+        return "none"
+    return f"{gap_rows} full-scan"
+
+
+def _source_workflow_inspect_command(step: Mapping[str, object]):
+    source = str(step.get("source") or "").strip()
+    if source == "market_bars":
+        return "bars status"
+    if source:
+        return f"batch {source}"
+    command = str(step.get("command") or "").strip()
+    return command or "n/a"
 
 
 def _source_workflow_useful_rows(step: Mapping[str, object]) -> str:

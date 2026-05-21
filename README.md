@@ -333,7 +333,8 @@ chunk. Use it repeatedly with refreshes when you intentionally want to fill the
 full scan under provider caps. Use `batch all` to see a zero-call overview of
 all source gaps and the first executable source before choosing one. The Ops
 page also shows a `Source Fill Workflow` section from the zero-call preflight
-plan so the next source to inspect is visible without remembering commands.
+plan, including full-scan gap counts and an `Inspect` command per source, so
+the next source to inspect is visible without remembering long CLI/API commands.
 CLI/API automation can use
 `priced-in-source-batches --source all`,
 `priced-in-source-batches --source <source> --execute-next` or

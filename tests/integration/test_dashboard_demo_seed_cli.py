@@ -486,9 +486,12 @@ def test_dashboard_snapshot_ops_page_shows_priced_in_source_actions(
     assert "Visible Review Page Source Gaps" in output.out
     assert "not the full scan universe" in output.out
     assert "Source Fill Workflow" in output.out
+    assert "Full gaps" in output.out
+    assert "Inspect" in output.out
     assert "Start with broker_context" in output.out
     assert "decision-ready row(s)" in output.out
     assert "options" in output.out
+    assert "batch broker_context" in output.out
     assert "priced-in-source-batches" in output.out
     assert "priced-in-source-batches --source all" in output.out
     assert "Examples are sample tickers only" in output.out

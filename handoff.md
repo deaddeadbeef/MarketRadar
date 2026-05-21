@@ -1,7 +1,39 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 23:51:01 +08:00
+Last updated: 2026-05-22 00:19:35 +08:00
 
+
+
+
+
+## Latest Source Workflow Gap Counts
+
+Last updated: 2026-05-22 00:19:35 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- The farther-road value goal is tracked as issue #533: prove at least $40/month of attributable value, enough to offset 20% of a $200/month ChatGPT Pro subscription.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, broker, order, web, shell, or provider tools from the app.
+- This is useful because the Ops dashboard should show whole-market source gaps in human terms instead of only long CLI commands.
+
+Fix in this slice:
+
+- The TUI Ops Source Fill Workflow table now includes a Full gaps column for whole-ranked-universe gap counts.
+- The same table now includes a short Inspect command per source, using bars status for market bars and batch source for other evidence sources.
+- The existing safe all-source plan command remains visible in the workflow summary; the row-level table is now easier to scan for next action.
+- README and dashboard feature inventory now document that Source Fill Workflow shows full-scan gap counts plus short inspect commands.
+
+Validation observed in this slice:
+
+- Focused dashboard snapshot regression passed for the Ops source workflow table.
+- Live zero-call dashboard snapshot smoke against the local Schwab DB, pinned to the feature worktree, showed Full gaps with 523 market-bar gaps, 5512 catalyst-event gaps, 12075 local-text gaps, and Inspect commands such as bars status and batch catalyst_events.
+- No provider, broker, order, OpenAI, or web call was made by the app during validation.
+
+Current live blocker:
+
+- The trusted full-market priced-in answer remains blocked by 523 missing market bars for 2026-05-15 until explicit guarded saved Polygon/Massive capture approval with matching counts or complete manual CSV import.
+- Do not treat this slice as goal completion; it makes the dashboard source roadmap easier to understand before the real market-bar unblock step.
 
 
 
