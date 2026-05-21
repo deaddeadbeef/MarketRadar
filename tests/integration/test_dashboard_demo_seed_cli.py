@@ -1471,6 +1471,8 @@ def test_dashboard_manual_bar_fill_progress_summary_is_human_readable() -> None:
                             ),
                             "expected_as_of": "2026-05-15",
                             "missing_as_of_bar_count": 523,
+                            "missing_as_of_bar_ticker_sample": ["AACBR", "AACBU"],
+                            "missing_as_of_bar_ticker_more": 521,
                             "external_calls_if_approved": 1,
                             "db_writes_during_capture": 0,
                             "tui_confirm_command": "bars saved capture confirm",
@@ -1663,6 +1665,8 @@ def _saved_file_command_payload(fixture_path, output_path):
                             ),
                             "expected_as_of": "2026-05-08",
                             "missing_as_of_bar_count": 3,
+                            "missing_as_of_bar_ticker_sample": ["AAPL", "MSFT"],
+                            "missing_as_of_bar_ticker_more": 1,
                             "external_calls_if_approved": 1,
                             "db_writes_during_capture": 0,
                             "tui_confirm_command": "bars saved capture confirm",
@@ -1845,6 +1849,7 @@ def test_dashboard_bars_saved_capture_requires_confirm_without_call(tmp_path: Pa
     assert "db_writes_made=0" in update.message
     assert "target=2026-05-08" in update.message
     assert "current_missing=3" in update.message
+    assert "missing_sample=AAPL, MSFT plus 1 more" in update.message
     assert "confirm_external_call=false" in update.message
     assert "bars saved import` to preview" in update.message
     assert "bars saved capture confirm" in update.message

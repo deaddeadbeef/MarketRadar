@@ -1,6 +1,40 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 22:13:32 +08:00
+Last updated: 2026-05-21 22:31:55 +08:00
+
+
+
+
+## Latest Saved-Capture Missing Detail Surface
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, broker, order, web, shell, or provider tools from the app.
+- This is useful because the practical market-bar unblock is now the saved Polygon/Massive grouped-daily capture, but a human should see exactly which tickers and instrument types are missing before approving the one provider call.
+
+Fix in this slice:
+
+- `provider_saved_file_capture_approval_packet` now carries missing ticker sample, remaining sample count, missing security-type counts, and zero-call missing-universe diagnostics.
+- CLI `catalyst-radar market-bars saved-capture` plan output now prints those missing details before the approval command and still reports `external_calls_without_approval=0` and `db_writes=0`.
+- API provider-capture approval context now exposes the same missing detail fields for dashboard/API clients.
+- TUI `bars saved capture` now includes a compact `missing_sample=...` hint in the approval-gated response even when the detail only exists in the saved-capture packet.
+- README documents the saved-capture approval packet as a human review surface, not just a call-count gate.
+- GitHub project milestone #524 is still `In Progress`; progress comment added: https://github.com/deaddeadbeef/MarketRadar/issues/524#issuecomment-4509268200
+
+Validation observed in this slice:
+
+- Focused CLI/API/TUI regression passed for repair-plan packet fields, saved-capture CLI plan, API market-bar status, API provider-capture approval context, and TUI saved-capture command response.
+- Focused preflight/source-batch regression passed for the dashboard data paths that also embed the saved-capture approval packet.
+- Py-compile passed for touched source and integration tests.
+- Ruff passed for touched source and integration tests.
+- `git diff --check` passed.
+- Live zero-call `market-bars saved-capture --expected-as-of 2026-05-15` smoke against the local Schwab DB showed `missing_as_of_tickers=AACBR,... plus 511 more`, security-type counts, missing-universe diagnostics, `external_calls_without_approval=0`, `external_calls_if_approved=1`, and `db_writes=0`.
+
+Current live blocker:
+
+- The trusted full-market priced-in answer remains blocked by 523 missing market bars for 2026-05-15 until explicit saved Polygon/Massive capture approval or complete manual CSV import.
+- Do not treat this slice as goal completion; it only makes the next approval gate reviewable enough for a human.
 
 
 

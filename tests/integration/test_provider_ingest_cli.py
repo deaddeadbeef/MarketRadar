@@ -655,6 +655,11 @@ def test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths(
     assert approval_packet["active_security_count"] == 2
     assert approval_packet["existing_as_of_bar_count"] == 1
     assert approval_packet["missing_as_of_bar_count"] == 1
+    assert approval_packet["missing_as_of_bar_ticker_sample"] == ["AADR"]
+    assert approval_packet["missing_as_of_bar_ticker_more"] == 0
+    assert approval_packet["missing_security_type_counts"] == {"ADRC": 1}
+    assert approval_packet["missing_universe_diagnostic"]["missing_count"] == 1
+    assert approval_packet["missing_universe_diagnostic"]["external_calls_made"] == 0
     assert approval_packet["external_calls_without_approval"] == 0
     assert approval_packet["external_calls_if_approved"] == 1
     assert approval_packet["db_writes_during_capture"] == 0
@@ -934,6 +939,10 @@ def test_market_bars_saved_capture_cli_plans_without_provider_call(
     assert payload["active_security_count"] == 2
     assert payload["existing_as_of_bar_count"] == 1
     assert payload["missing_as_of_bar_count"] == 1
+    assert payload["missing_as_of_bar_ticker_sample"] == ["AADR"]
+    assert payload["missing_as_of_bar_ticker_more"] == 0
+    assert payload["missing_security_type_counts"] == {"ADRC": 1}
+    assert payload["missing_universe_diagnostic"]["missing_count"] == 1
     assert payload["saved_file_path"] == (
         "data\\local\\polygon-grouped-daily-2026-05-15.json"
     )
@@ -945,6 +954,25 @@ def test_market_bars_saved_capture_cli_plans_without_provider_call(
     )
     assert not Path(payload["saved_file_path"]).exists()
 
+    assert (
+        main(
+            [
+                "market-bars",
+                "saved-capture",
+                "--expected-as-of",
+                "2026-05-15",
+                "--stocks-only",
+            ]
+        )
+        == 0
+    )
+    text = capsys.readouterr().out
+    assert "market_bars_saved_capture_plan status=approval_required" in text
+    assert "missing_as_of_tickers=AADR" in text
+    assert "missing_security_types=ADRC:1" in text
+    assert "missing_universe=active_metadata=1" in text
+    assert "external_calls_if_approved=1" in text
+    assert "db_writes=0" in text
 
 
 def test_market_bars_saved_file_cli_validates_and_imports_fixture(
