@@ -2878,7 +2878,7 @@ def _priced_in_all_source_batches_next_action(
                 f"only if the provider budget is intentional.{sample_text}"
             )
         return (
-            f"Start with {source}; inspect all_batches_command, then run "
+            f"Start with {source}; inspect plan_command, then run "
             "execute_next_command only if the provider budget is intentional."
         )
     first_blocked = blocked_rows[0] if blocked_rows else {}
@@ -3030,12 +3030,13 @@ def _priced_in_source_recommendation(
         "action": action,
         "rationale": rationale,
         "command": (
-            row.get("execute_next_command")
+            row.get("command")
+            or row.get("plan_command")
             or row.get("all_batches_command")
             or repair_command
         ),
         "capped_command": row.get("execute_batches_command"),
-        "api": row.get("execute_next_api") or row.get("all_batches_api"),
+        "api": row.get("plan_api") or row.get("all_batches_api"),
         "total_gap_rows": int(_finite_float(row.get("total_gap_rows"))),
         "coverage_basis": row.get("coverage_basis"),
         "decision_useful_gap_rows": int(
