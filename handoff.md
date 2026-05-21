@@ -1,8 +1,35 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 12:33:49 +08:00
+Last updated: 2026-05-21 12:48:01 +08:00
 
 
+
+## Latest Dashboard Saved-Capture Priority
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, broker, or order APIs. It only changes the human-facing TUI ordering/wording for the current market-bar blocker.
+- This is useful because the Run page previously put a direct live grouped-daily ingest option beside the safer saved-capture route. For a human operator, the saved-capture route should be the preferred one-call unblock because it writes a raw response to disk with 0 DB writes before validation/import review.
+
+Fix in this slice:
+
+- The overview, ops, and run pages now show saved-file capture/check/import before direct provider fill.
+- The lower-level live ingest path is still visible, but it is labeled `Direct provider fill` and described as `diagnostic direct ingest, prefer saved file capture`.
+- README documents the saved-capture preference for dashboard operation.
+
+Validation observed in this slice:
+
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py::test_dashboard_manual_bar_fill_progress_summary_is_human_readable tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_source_batches_prioritize_full_market_bar_coverage -q` passed.
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py` passed with `All checks passed!`.
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m py_compile src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py` exited 0.
+- Live zero-call `dashboard-tui --once --page run` against `schwab-live.db` showed `Saved file capture`, `Saved file check`, and `Saved file import` before `Direct provider fill`, and the direct provider row says `diagnostic direct ingest, prefer saved file capture`; external calls stayed `0`.
+
+Next useful product action:
+
+- Do not treat this slice as goal completion.
+- The full-market priced-in answer remains blocked until the 523 missing scan-date market bars are filled/imported for the active universe.
+- The immediate human-facing path should stay: saved capture approval, saved validate, saved import preview, saved import execute after review.
 
 ## Latest Saved Import Step Commands
 
