@@ -1009,6 +1009,7 @@ def test_dashboard_tui_once_defaults_to_tutorial(
     assert "Current answer" in output.out
     assert "Useful next" in output.out
     assert "Trust gate" in output.out
+    assert "Blocker ladder" in output.out
     assert "Tutorial - your first 90 seconds" in output.out
 
 
@@ -3341,6 +3342,7 @@ def test_priced_in_answer_cli_outputs_current_scan_answer(
     assert "sample=false" in output.out
     assert "review_full_scan=catalyst-radar priced-in-queue --full-scan" in output.out
     assert "full_market_trust_gate=" in output.out
+    assert "trust_gate_ladder=" in output.out
     assert (
         "export_full_scan=catalyst-radar priced-in-queue --full-scan --all --json"
         in output.out
@@ -3378,6 +3380,11 @@ def test_priced_in_answer_cli_outputs_current_scan_answer(
         "priced-in-full-market-trust-gate-v1"
     )
     assert payload["full_market_trust_gate"]["external_calls_made"] == 0
+    ladder = payload["full_market_trust_gate"]["blocker_ladder"]
+    assert ladder["schema_version"] == "priced-in-full-market-blocker-ladder-v1"
+    assert ladder["external_calls_made"] == 0
+    assert ladder["rows"]
+    assert ladder["rows"][0]["external_calls_made"] == 0
     assert payload["reviewable_subset"]["schema_version"] == (
         "priced-in-reviewable-subset-v1"
     )

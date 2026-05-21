@@ -1,7 +1,37 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 08:44:33 +08:00
+Last updated: 2026-05-21 09:03:34 +08:00
 
+
+
+## Latest Trust Gate Blocker Ladder
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, import rows, change scoring, reduce the universe, or claim readiness.
+- This is useful because the primary priced-in answer now shows the ordered blocker ladder, not only the first market-bar blocker, so the operator can see the full path toward a trusted full-market answer.
+
+Fix in this slice:
+
+- `full_market_trust_gate` now includes `blocker_ladder` with schema, ordered rows, dependencies, next actions, commands, and `external_calls_made=0`.
+- CLI text prints a compact `trust_gate_ladder=` line.
+- The TUI mission rows show a `Blocker ladder` row near the trust gate.
+- README documents that the ladder lists the ordered evidence blockers to clear after the first blocker.
+
+Validation observed in this slice:
+
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\integration\test_dashboard_demo_seed_cli.py` passed with `All checks passed!`.
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m py_compile src\catalyst_radar\dashboard\data.py src\catalyst_radar\dashboard\tui.py src\catalyst_radar\cli.py tests\integration\test_dashboard_demo_seed_cli.py` exited 0.
+- Focused pytest passed `test_priced_in_answer_cli_outputs_current_scan_answer` and `test_dashboard_tui_once_defaults_to_tutorial`.
+- `git diff --check` passed.
+- Live zero-call `priced-in-answer --json` smoke against `schwab-live.db` returned a 5-row blocker ladder: `market_bars:523`, `catalyst_events:5512`, `local_text:12075`, `options:12087`, and `broker_context:12082`, with `external_calls_made=0` and trust status `blocked`.
+- Live zero-call text and TUI smokes showed `trust_gate_ladder=` and the `Blocker ladder` row while still reporting `External calls made: 0`.
+
+Next useful product action:
+
+- Do not treat this slice as goal completion.
+- The full-market answer remains blocked, but the API/CLI/dashboard now expose the sequence of blockers to clear after market bars.
 
 
 ## Latest Trust Gate Missing-Universe Summary

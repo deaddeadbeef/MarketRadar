@@ -6161,6 +6161,11 @@ def _run_mission_brief_items(
                 _mapping(blocker_detail.get("missing_universe"))
             )
         items.append(("Trust gate", gate_text))
+        ladder_text = _trust_gate_blocker_ladder_summary(
+            _mapping(trust_gate.get("blocker_ladder"))
+        )
+        if ladder_text:
+            items.append(("Blocker ladder", ladder_text))
         if universe_text:
             items.append(("Missing universe", universe_text))
     if progress_parts:
@@ -6183,6 +6188,22 @@ def _run_mission_brief_items(
             )
         )
     return items
+
+
+def _trust_gate_blocker_ladder_summary(ladder: Mapping[str, object]):
+    rows = [
+        row for row in _rows(ladder.get("rows")) if isinstance(row, Mapping)
+    ]
+    if not rows:
+        return ""
+    parts = []
+    for row in rows[:5]:
+        step = int(_number_or_zero(row.get("step")))
+        source = str(row.get("source") or "source")
+        gap_count = int(_number_or_zero(row.get("gap_count")))
+        status = str(row.get("status") or "attention")
+        parts.append(f"{step} {source} {status} gaps {gap_count}")
+    return "; ".join(parts)
 
 
 def _market_bar_missing_universe_summary(
