@@ -3179,6 +3179,15 @@ def priced_in_answer_payload(
             )
             operator_step = _mapping_value(market_bar_repair, "operator_step")
             provider_plan = _mapping_value(market_bar_repair, "provider_fill_plan")
+            missing_universe = _mapping_value(
+                market_bar_repair,
+                "missing_universe_diagnostic",
+            )
+            if not missing_universe:
+                missing_universe = _mapping_value(
+                    _mapping_value(market_bar_repair, "diagnostic"),
+                    "missing_universe",
+                )
             market_bar_blocker_detail = {
                 "schema_version": "priced-in-market-bar-blocker-detail-v1",
                 "source": "market_bars",
@@ -3205,6 +3214,25 @@ def priced_in_answer_payload(
                 or market_bar_repair.get("import_preview_command"),
                 "external_calls_made": 0,
             }
+            if missing_universe:
+                market_bar_blocker_detail["missing_universe"] = {
+                    "schema_version": "priced-in-market-bar-missing-universe-v1",
+                    "summary": missing_universe.get("summary"),
+                    "active_metadata_rows": missing_universe.get(
+                        "active_metadata_rows"
+                    ),
+                    "acquisition_or_spac_name_count": missing_universe.get(
+                        "acquisition_or_spac_name_count"
+                    ),
+                    "no_composite_figi_count": missing_universe.get(
+                        "no_composite_figi_count"
+                    ),
+                    "zero_avg_dollar_volume_20d_count": missing_universe.get(
+                        "zero_avg_dollar_volume_20d_count"
+                    ),
+                    "operator_note": missing_universe.get("operator_note"),
+                    "external_calls_made": 0,
+                }
     trust_gate_trusted = bool(
         bool(evidence_completeness.get("all_sources_ready"))
         and int(_finite_float(full_scan_summary.get("unscanned_rows"))) <= 0
@@ -4452,6 +4480,9 @@ def _priced_in_audit_market_bar_repair(
             _row_dict(local_template_preview) if local_template_preview else None
         ),
         "local_template_fill_progress": _row_dict(local_template_fill_progress),
+        "missing_universe_diagnostic": _row_dict(
+            _mapping_value(manual_repair_plan, "missing_universe_diagnostic")
+        ),
         "operator_step": _row_dict(
             _mapping_value(manual_repair_plan, "operator_step"),
         ),

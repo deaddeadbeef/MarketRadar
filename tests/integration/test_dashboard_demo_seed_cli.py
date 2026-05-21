@@ -9,7 +9,7 @@ from pathlib import Path
 
 from sqlalchemy import create_engine, func, select
 
-from catalyst_radar.cli import main
+from catalyst_radar.cli import _print_priced_in_answer, main
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.core.models import DailyBar, Security
 from catalyst_radar.dashboard import data as dashboard_data_module
@@ -1037,6 +1037,58 @@ def test_dashboard_market_bar_missing_type_summary_is_human_readable() -> None:
     )
 
 
+def test_priced_in_answer_cli_prints_missing_universe_summary(capsys):
+    payload = {
+        "status": "blocked",
+        "decision_ready": False,
+        "can_make_investment_decision": False,
+        "total_rows": 0,
+        "mismatch_count": 0,
+        "research_only_count": 0,
+        "external_calls_made": 0,
+        "question": "Has price fully matched market expectations?",
+        "answer": "Not trusted yet.",
+        "investment_decision_boundary": "Not trade approval.",
+        "full_market_trust_gate": {
+            "status": "blocked",
+            "trusted_full_market_answer": False,
+            "first_blocker": "market_bars",
+            "first_gap_count": 523,
+            "scanned_rows": 12087,
+            "active_securities": 12613,
+            "unscanned_rows": 526,
+            "external_calls_made": 0,
+            "blocker_detail": {
+                "source": "market_bars",
+                "missing_as_of_bar": 523,
+                "complete_rows": 0,
+                "partial_rows": 0,
+                "empty_rows": 523,
+                "provider_saved_file_status": "missing",
+                "external_calls_made": 0,
+                "missing_universe": {
+                    "active_metadata_rows": 523,
+                    "acquisition_or_spac_name_count": 308,
+                    "no_composite_figi_count": 440,
+                    "zero_avg_dollar_volume_20d_count": 523,
+                    "summary": "523/523 missing ticker(s) still active locally.",
+                    "external_calls_made": 0,
+                },
+            },
+        },
+        "top_rows": [],
+    }
+
+    _print_priced_in_answer(payload)
+    output = capsys.readouterr()
+
+    assert "trust_gate_universe=active=523" in output.out
+    assert "spac_like=308" in output.out
+    assert "no_figi=440" in output.out
+    assert "zero_volume=523" in output.out
+    assert "external_calls=0" in output.out
+
+
 def test_dashboard_source_blocker_prefers_dashboard_market_bar_actions() -> None:
     payload = {
         "priced_in_audit": {
@@ -1264,6 +1316,20 @@ def test_dashboard_manual_bar_fill_progress_summary_is_human_readable() -> None:
                 "complete_rows": 12,
                 "empty_rows": 508,
                 "provider_saved_file_status": "missing",
+                "missing_universe": {
+                    "schema_version": "priced-in-market-bar-missing-universe-v1",
+                    "active_metadata_rows": 523,
+                    "acquisition_or_spac_name_count": 308,
+                    "no_composite_figi_count": 440,
+                    "zero_avg_dollar_volume_20d_count": 523,
+                    "summary": "523/523 missing ticker(s) still active locally.",
+                    "operator_note": (
+                        "This is universe-quality context only. It does not "
+                        "exclude rows from the scan or reduce the missing-bar "
+                        "requirement."
+                    ),
+                    "external_calls_made": 0,
+                },
             },
         }
     }
@@ -1281,6 +1347,8 @@ def test_dashboard_manual_bar_fill_progress_summary_is_human_readable() -> None:
     assert "type `bars saved capture confirm`" in ops
     assert "manual CSV 12/523 complete" in run
     assert "saved file missing" in run
+    assert "Missing universe" in run
+    assert "523 active missing-bar rows" in run
     assert "Manual CSV action" in run
     assert "bars manual import" in run
     assert "Saved file capture" in run
