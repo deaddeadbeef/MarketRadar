@@ -51,6 +51,7 @@ from catalyst_radar.market.manual_bars import (
     manual_market_bars_repair_plan,
     write_manual_market_bars_template,
 )
+from catalyst_radar.market.status import market_bars_status_payload
 from catalyst_radar.ops.telemetry import record_telemetry_event
 from catalyst_radar.security.access import Role, require_role
 from catalyst_radar.security.licenses import (
@@ -736,6 +737,26 @@ def radar_priced_in_source_batch_execute_next(
                 min_gap=request.min_gap,
                 stocks_only=request.stocks_only,
             )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return redact_restricted_external_payload(payload)
+
+
+@router.get(
+    "/market-bars/status",
+    dependencies=[Depends(require_role(Role.VIEWER))],
+)
+def radar_market_bars_status(
+    expected_as_of: Date,
+    stocks_only: bool = False,
+):
+    try:
+        payload = market_bars_status_payload(
+            _engine(),
+            AppConfig.from_env(),
+            expected_as_of=expected_as_of,
+            stocks_only=stocks_only,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return redact_restricted_external_payload(payload)

@@ -122,6 +122,7 @@ from catalyst_radar.market.manual_bars import (
     manual_market_bars_repair_plan,
     write_manual_market_bars_template,
 )
+from catalyst_radar.market.status import market_bars_status_payload
 from catalyst_radar.pipeline.candidate_packet import build_candidate_packet
 from catalyst_radar.pipeline.scan import run_scan
 from catalyst_radar.security.audit import AuditLogRepository
@@ -204,6 +205,19 @@ def build_parser() -> argparse.ArgumentParser:
         dest="market_bars_command",
         required=True,
     )
+    market_bars_status = market_bars_sub.add_parser("status")
+    market_bars_status.add_argument("--database-url")
+    market_bars_status.add_argument(
+        "--expected-as-of",
+        type=date.fromisoformat,
+        required=True,
+    )
+    market_bars_status.add_argument(
+        "--stocks-only",
+        action="store_true",
+        help="Summarize stock-like active securities only.",
+    )
+    market_bars_status.add_argument("--json", action="store_true")
     market_bars_template = market_bars_sub.add_parser("template")
     market_bars_template.add_argument("--database-url")
     market_bars_template.add_argument(
@@ -1072,6 +1086,18 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "market-bars":
         create_schema(engine)
         try:
+            if args.market_bars_command == "status":
+                payload = market_bars_status_payload(
+                    engine,
+                    config,
+                    expected_as_of=args.expected_as_of,
+                    stocks_only=args.stocks_only,
+                )
+                if args.json:
+                    print(json.dumps(payload, sort_keys=True))
+                else:
+                    _print_market_bars_status(payload)
+                return 0
             if args.market_bars_command == "template":
                 result = write_manual_market_bars_template(
                     engine,
@@ -4098,6 +4124,55 @@ def _market_bars_saved_import_cli(
     else:
         _print_market_bars_saved_import(payload)
     return 0
+
+
+def _print_market_bars_status(payload: Mapping[str, object]):
+    manual = _mapping_value(payload.get("manual"))
+    saved_capture = _mapping_value(payload.get("saved_capture"))
+    saved_file = _mapping_value(payload.get("saved_file"))
+    print(
+        "market_bars_status "
+        f"status={payload.get('status')} "
+        f"expected_as_of={payload.get('expected_as_of')} "
+        f"scope={payload.get('coverage_scope')} "
+        f"active={payload.get('active_security_count')} "
+        f"existing={payload.get('existing_as_of_bar_count')} "
+        f"missing={payload.get('missing_as_of_bar_count')} "
+        f"external_calls={payload.get('external_calls_made')} "
+        f"db_writes={payload.get('db_writes_made')}"
+    )
+    print(
+        "manual "
+        f"status={manual.get('status')} "
+        f"template={manual.get('template_command')} "
+        f"preview={manual.get('import_preview_command')}"
+    )
+    progress = _mapping_value(manual.get("fill_progress"))
+    if progress:
+        print(
+            "manual_progress "
+            f"complete={progress.get('complete_rows', 0)} "
+            f"partial={progress.get('partial_rows', 0)} "
+            f"empty={progress.get('empty_rows', 0)}"
+        )
+    print(
+        "saved_capture "
+        f"status={saved_capture.get('status')} "
+        f"approval_required="
+        f"{str(bool(saved_capture.get('approval_required'))).lower()} "
+        f"calls_if_approved="
+        f"{saved_capture.get('external_calls_if_approved')} "
+        f"confirm={saved_capture.get('capture_cli_command') or 'n/a'}"
+    )
+    print(
+        "saved_file "
+        f"status={saved_file.get('status')} "
+        f"path={saved_file.get('path')} "
+        f"validate={saved_file.get('validate_command')} "
+        f"import={saved_file.get('import_preview_command')}"
+    )
+    print(f"next_action={payload.get('next_action')}")
+    print(f"boundary={payload.get('zero_call_boundary')}")
 
 
 def _print_market_bars_saved_capture_plan(payload: Mapping[str, object]):

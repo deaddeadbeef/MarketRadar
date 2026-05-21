@@ -1,6 +1,44 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 15:28:14 +08:00
+Last updated: 2026-05-21 15:49:38 +08:00
+
+## Latest CLI/API Bars Status Parity
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, broker, order, web, shell, or provider tools from the app.
+- This is useful because the TUI now has `bars`, but the CLI/API replacement UI also needs the same concise zero-call checkpoint for functional testing and automation.
+
+Fix in this slice:
+
+- Added shared `market_bars_status_payload` for a concise market-bar unblock status built from the existing repair plan.
+- Added `catalyst-radar market-bars status --expected-as-of YYYY-MM-DD` with text and JSON output.
+- Added `GET /api/radar/market-bars/status?expected_as_of=YYYY-MM-DD` as a viewer-safe zero-call endpoint.
+- README documents the CLI/API checkpoint beside the TUI `bars` command.
+- Updated the API security allowlist for the new status endpoint and the pre-existing options fixture import endpoint that was present in OpenAPI but missing from the allowlist.
+
+Validation observed in this slice:
+
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\test_provider_ingest_cli.py::test_market_bars_status_cli_summarizes_zero_call_unblock tests\integration\test_api_routes.py::test_get_radar_market_bars_status_returns_zero_call_unblock_state tests\integration\test_security_boundaries.py -q` passed.
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\test_provider_ingest_cli.py -k market_bars -q` passed.
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\test_api_routes.py -k market_bars -q` passed.
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\market\status.py src\catalyst_radar\cli.py src\catalyst_radar\api\routes\radar.py tests\integration\test_provider_ingest_cli.py tests\integration\test_api_routes.py tests\integration\test_security_boundaries.py` passed with `All checks passed!`.
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m py_compile src\catalyst_radar\market\status.py src\catalyst_radar\cli.py src\catalyst_radar\api\routes\radar.py tests\integration\test_provider_ingest_cli.py tests\integration\test_api_routes.py tests\integration\test_security_boundaries.py` exited 0.
+- `git diff --check` exited 0.
+- Live zero-call CLI smoke from the main repo, with `PYTHONPATH` pinned to this worktree and `schwab-live.db`, printed `market_bars_status status=blocked expected_as_of=2026-05-15 ... missing=523 external_calls=0 db_writes=0`, `manual_progress complete=0 partial=0 empty=523`, and `saved_capture status=approval_required ... calls_if_approved=1`.
+- Live zero-call API smoke through `TestClient` against `schwab-live.db` returned HTTP 200 and `market-bars-status-v1 blocked 523 approval_required 0 0`.
+
+Current live blocker:
+
+- The full-market priced-in answer remains blocked by 523 missing market bars for 2026-05-15.
+- The manual CSV has 0 complete rows and 523 empty rows when launched from the normal repo directory.
+- The saved grouped-daily JSON is still missing. This slice exposes the blocker consistently across TUI, CLI, and API; it does not capture or import bars.
+
+Next useful product action:
+
+- Do not treat this slice as goal completion.
+- Next real unblock remains explicit saved Polygon/Massive capture approval or manual CSV completion, followed by saved validate/import review and the priced-in trust gate rerun.
 
 ## Latest TUI Bars Status Command
 
