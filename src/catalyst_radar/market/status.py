@@ -22,13 +22,31 @@ def market_bars_status_payload(
 ):
     """Summarize the current market-bar unblock state without provider calls."""
 
-    resolved_expected_as_of = _resolve_expected_as_of(engine, expected_as_of)
-    repair = _repair_payload(
-        engine,
-        config,
-        expected_as_of=resolved_expected_as_of,
-        stocks_only=stocks_only,
-    )
+    try:
+        resolved_expected_as_of = _resolve_expected_as_of(engine, expected_as_of)
+    except ValueError as exc:
+        return _setup_required_status_payload(
+            config,
+            expected_as_of=None,
+            expected_as_of_source="not_available",
+            stocks_only=stocks_only,
+            reason=str(exc),
+        )
+    try:
+        repair = _repair_payload(
+            engine,
+            config,
+            expected_as_of=resolved_expected_as_of,
+            stocks_only=stocks_only,
+        )
+    except ValueError as exc:
+        return _setup_required_status_payload(
+            config,
+            expected_as_of=resolved_expected_as_of,
+            expected_as_of_source="argument" if expected_as_of else "latest_daily_bar",
+            stocks_only=stocks_only,
+            reason=str(exc),
+        )
     stock_scope = None
     if not stocks_only:
         stock_scope = _stock_scope_payload(
@@ -676,6 +694,66 @@ def _resolve_expected_as_of(engine: Engine, expected_as_of: date | None) -> date
     if isinstance(latest, date):
         return latest
     return date.fromisoformat(str(latest))
+
+
+def _setup_required_status_payload(
+    config: AppConfig,
+    *,
+    expected_as_of: date | None,
+    expected_as_of_source: str,
+    stocks_only: bool,
+    reason: str,
+):
+    action = "Seed the active universe before market-bar repair."
+    command = "catalyst-radar priced-in-preflight --json"
+    recommended_action = _recommended_action_payload(
+        kind="seed_universe",
+        label="Seed active universe",
+        status="setup_required",
+        reason=action,
+        command=command,
+        tui_command="1",
+        api="POST /api/radar/universe/seed",
+    )
+    return {
+        "schema_version": "market-bars-status-v1",
+        "status": "setup_required",
+        "first_blocker": "universe",
+        "expected_as_of": expected_as_of.isoformat() if expected_as_of else None,
+        "expected_as_of_source": expected_as_of_source,
+        "stocks_only": bool(stocks_only),
+        "coverage_scope": "stock_like" if stocks_only else "active_universe",
+        "active_security_count": 0,
+        "existing_as_of_bar_count": 0,
+        "missing_as_of_bar_count": 0,
+        "missing_as_of_bar_ticker_sample": [],
+        "missing_security_type_counts": {},
+        "missing_universe_diagnostic": {
+            "schema_version": "market-bars-setup-required-v1",
+            "status": "setup_required",
+            "reason": reason,
+            "next_action": action,
+            "command": command,
+            "external_calls_made": 0,
+        },
+        "stock_scope": None,
+        "manual": {"status": "not_available", "command": None},
+        "saved_capture": {"status": "not_available"},
+        "saved_file": {"status": "not_available"},
+        "unblock_checklist": {
+            "schema_version": "market-bars-unblock-checklist-v1",
+            "status": "setup_required",
+            "steps": [{"step": "seed_universe", "command": command}],
+            "external_calls_made": 0,
+        },
+        "repair_plan": {},
+        "recommended_action": recommended_action,
+        "after_market_bars_clear": {},
+        "next_action": action,
+        "zero_call_boundary": "Status reads local metadata and makes 0 provider calls.",
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+    }
 
 
 def _recommended_unblock_action(

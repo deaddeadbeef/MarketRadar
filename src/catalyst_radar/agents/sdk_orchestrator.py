@@ -154,7 +154,15 @@ def deterministic_agent_brief(
     next_step = _mapping(snapshot.get("operator_next_step"))
     max_provider_calls = int(_number(call_plan.get("max_external_call_count")))
     recommended_unblock_actions = _priced_in_recommended_unblock_actions(priced_in)
-    has_current_blocker_action = bool(recommended_unblock_actions)
+    answer_context = _mapping(priced_in.get("answer"))
+    setup_blocker = _mapping(priced_in.get("setup_blocker"))
+    setup_actions = [
+        _text(setup_blocker.get("action")),
+        _text(setup_blocker.get("command")),
+    ]
+    has_current_blocker_action = bool(
+        recommended_unblock_actions or any(setup_actions)
+    )
     source_workflow_actions = (
         []
         if has_current_blocker_action
@@ -192,6 +200,8 @@ def deterministic_agent_brief(
                 (
                     {"action": recommended_unblock_actions[0]}
                     if recommended_unblock_actions
+                    else {"action": setup_actions[0]}
+                    if setup_actions[0]
                     else next_step
                 ),
                 operator_goal,
@@ -219,10 +229,15 @@ def deterministic_agent_brief(
     next_actions = _dedupe(
         [
             *recommended_unblock_actions,
-            *_priced_in_unblock_option_actions(priced_in),
+            *(
+                []
+                if has_current_blocker_action and not recommended_unblock_actions
+                else _priced_in_unblock_option_actions(priced_in)
+            ),
+            *setup_actions,
             None if has_current_blocker_action else _text(next_step.get("action")),
-            _text(_mapping(priced_in.get("answer")).get("next_action")),
-            _text(_mapping(priced_in.get("answer")).get("next_command")),
+            _text(answer_context.get("next_action")),
+            _text(answer_context.get("next_command")),
             _text(_mapping(priced_in.get("evidence_plan")).get("next_action")),
             _text(_mapping(priced_in.get("evidence_plan")).get("next_command")),
             *source_workflow_actions,
@@ -552,7 +567,14 @@ def _priced_in_context(
     audit: Mapping[str, object],
 ) -> dict[str, object]:
     coverage = source_coverage or _mapping(queue.get("source_coverage"))
-    market_bar_unblock_options = _market_bar_unblock_options_context(audit)
+    trust_gate = _mapping(answer.get("full_market_trust_gate"))
+    first_blocker = _text(trust_gate.get("first_blocker"))
+    setup_blocker = _mapping(trust_gate.get("setup_blocker"))
+    market_bar_unblock_options = (
+        _market_bar_unblock_options_context(audit)
+        if first_blocker in {"", "market_bars"}
+        else []
+    )
     recommended_unblock_action = _market_bar_recommended_unblock_context(answer)
     return {
         **_copy_keys(
@@ -599,6 +621,14 @@ def _priced_in_context(
             ("status", "headline", "next_action", "scan_status"),
         ),
         "answer": _priced_in_answer_context(answer),
+        **(
+            {"setup_blocker": _copy_keys(
+                setup_blocker,
+                ("schema_version", "area", "status", "action", "command", "api"),
+            )}
+            if setup_blocker
+            else {}
+        ),
         "evidence_plan": _priced_in_evidence_plan_context(
             _mapping(preflight.get("evidence_plan"))
         ),

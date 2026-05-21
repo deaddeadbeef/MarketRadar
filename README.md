@@ -463,6 +463,9 @@ Use `GET /api/radar/priced-in?decision_ready=true` for the API equivalent of
 the CLI/TUI decision-ready shortcut.
 Use `priced-in-preflight --json` first when the queue says `universe_too_small`
 or `partial_scan`; its API equivalent is `GET /api/radar/priced-in/preflight`.
+When the active universe is missing, `priced-in-answer`, `agent-brief`, and
+`market-bars status` now point at the universe setup step first instead of
+showing market-bar template work that cannot know which securities to repair.
 `priced-in-answer` and `GET /api/radar/priced-in/answer` answer the narrower
 question "Has price fully matched market expectations?" Their
 `decision_ready=true` / `priced_in_answer_ready=true` fields mean the
@@ -535,7 +538,10 @@ preview/import bodies. The TUI exposes the same workflow from the Run page.
 For a quick operator checkpoint, type `bars` or `bars status`; it prints
 the current missing-bar count, stock-like sub-scope gap, manual CSV progress,
 saved-capture boundary, and the single recommended next unblock action with
-provider-call and DB-write boundaries. The same zero-call checkpoint is available outside the TUI as
+provider-call and DB-write boundaries. If no active universe exists yet, it
+returns `status=setup_required` / `first_blocker=universe` and sends the
+operator back to `priced-in-preflight` instead of offering unusable bar repair.
+The same zero-call checkpoint is available outside the TUI as
 `catalyst-radar market-bars status` and
 `GET /api/radar/market-bars/status`; when `expected_as_of` is omitted, these
 read-only status paths use the latest stored daily-bar date and report
