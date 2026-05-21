@@ -497,9 +497,12 @@ boundaries. The same zero-call checkpoint is available outside the TUI as
 read-only status paths use the latest stored daily-bar date and report
 `expected_as_of_source=latest_daily_bar`. Pass `--expected-as-of YYYY-MM-DD`
 or `?expected_as_of=YYYY-MM-DD` to pin the check. Those CLI/API payloads include
-`recommended_action`, which is the UI-friendly contract for choosing the next
-safe button or command instead of asking a human to infer it from the larger
-repair plan.
+the missing ticker sample, missing security-type counts, zero-call missing
+universe diagnostics, and `recommended_action`, which is the UI-friendly
+contract for choosing the next safe button or command instead of asking a human
+to infer it from the larger repair plan. The TUI `bars status` response mirrors
+the same missing-ticker sample so the dashboard explains the blocker, not only
+the count.
 For manual zero-call repair, `bars manual template` generates the full
 active-universe missing-bar CSV by default, `bars manual import` previews
 complete rows only with 0 provider calls and 0 DB writes, and

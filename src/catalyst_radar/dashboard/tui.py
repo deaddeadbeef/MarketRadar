@@ -3593,6 +3593,9 @@ def _market_bar_status_message(payload: Mapping[str, object]) -> str:
     recommended = _market_bar_recommended_action_summary(payload)
     if recommended:
         parts.append(f"Recommended: {recommended}")
+    missing_sample = _market_bar_missing_sample_summary(payload)
+    if missing_sample:
+        parts.append(f"Missing sample: {missing_sample}")
     manual_progress = _market_bar_manual_fill_progress_summary(payload)
     if manual_progress:
         parts.append(f"Manual CSV: {manual_progress}")
@@ -3610,6 +3613,24 @@ def _market_bar_status_message(payload: Mapping[str, object]) -> str:
         parts.append(f"Saved import: {saved_import}")
     parts.append("Status check made 0 provider calls and 0 database writes.")
     return " | ".join(part for part in parts if part)
+
+
+def _market_bar_missing_sample_summary(payload: Mapping[str, object]) -> str:
+    repair = _market_bar_repair_payload(payload)
+    sample = _texts(
+        repair.get("missing_as_of_bar_ticker_sample")
+        or payload.get("missing_as_of_bar_ticker_sample")
+    )
+    if not sample:
+        return ""
+    more = int(
+        _number_or_zero(
+            repair.get("missing_as_of_bar_ticker_more")
+            or payload.get("missing_as_of_bar_ticker_more")
+        )
+    )
+    suffix = f" plus {more} more" if more else ""
+    return ", ".join(sample[:8]) + suffix
 
 
 def _market_bar_recommended_action_summary(payload):
@@ -3725,7 +3746,10 @@ def _execute_market_bar_manual_command(
 def _market_bar_repair_payload(payload: Mapping[str, object]) -> Mapping[str, object]:
     audit = _mapping(payload.get("priced_in_audit"))
     market = _mapping(audit.get("market_bars"))
-    return _mapping(market.get("repair"))
+    repair = _mapping(market.get("repair"))
+    if repair:
+        return repair
+    return _mapping(payload.get("repair_plan"))
 
 
 def _market_bar_manual_repair(

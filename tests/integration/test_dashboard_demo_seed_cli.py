@@ -1765,6 +1765,8 @@ def test_dashboard_bars_default_shows_zero_call_status(tmp_path: Path):
             },
             "dashboard_manual_import_preview_command": "bars manual import",
             "dashboard_manual_import_execute_command": "bars manual import execute",
+            "missing_as_of_bar_ticker_sample": ["AAPL", "MSFT"],
+            "missing_as_of_bar_ticker_more": 1,
         }
     )
     payload["priced_in_answer"] = {
@@ -1799,6 +1801,7 @@ def test_dashboard_bars_default_shows_zero_call_status(tmp_path: Path):
     assert "1 external call(s) if approved" in update.message
     assert "Recommended: bars saved capture confirm" in update.message
     assert "1 provider call(s) if approved; 0 DB write(s)" in update.message
+    assert "Missing sample: AAPL, MSFT plus 1 more" in update.message
     assert (
         "Status check made 0 provider calls and 0 database writes."
         in update.message
