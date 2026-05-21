@@ -1265,6 +1265,13 @@ def test_market_bars_repair_plan_guides_complete_rows_only_preview(
 
     payload = json.loads(capsys.readouterr().out)
     assert payload["local_template_preview"]["status"] == "invalid"
+    assert payload["local_template_preview"]["bars_at_expected_as_of"] == 0
+    assert payload["local_template_preview"]["coverage_after_import_count"] == 0
+    assert payload["local_template_preview"]["missing_expected_count"] == 2
+    assert payload["local_template_preview"]["missing_expected_tickers"] == [
+        "AAA",
+        "BBB",
+    ]
     assert payload["local_template_preview"]["fill_progress"] == {
         "complete_rows": 1,
         "partial_rows": 0,

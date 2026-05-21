@@ -1,6 +1,44 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 14:02:11 +08:00
+Last updated: 2026-05-21 14:11:36 +08:00
+
+## Latest Manual Preview Coverage Guard
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or provider APIs. It only fixes zero-call local manual CSV preview accounting.
+- This is useful because the current full-market blocker is still scan-date market bars. An empty or invalid manual CSV must not look like it would clear the blocker.
+
+Root cause:
+
+- `preview_manual_market_bars_import` counted tickers merely present for the expected date when the CSV had invalid rows.
+- The live `manual-bars-2026-05-15.csv` is invalid with 523 empty rows, so the repair-plan local preview could show `coverage_after_import_count=12613` and `missing_expected_count=0` even though no row was importable.
+
+Fix in this slice:
+
+- Invalid manual CSV previews now keep `coverage_after_import_count` at existing DB coverage and keep all still-missing active tickers in `missing_expected_tickers`.
+- Invalid previews set `bars_at_expected_as_of=0` because no invalid row is importable in that preview path.
+- README documents that invalid or empty manual rows do not count toward coverage-after-import, and that `--complete-rows-only` is the intended incremental path.
+
+Validation observed in this slice:
+
+- Regression first failed as expected: `test_market_bars_repair_plan_guides_complete_rows_only_preview` saw `bars_at_expected_as_of=2` before the fix.
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\test_provider_ingest_cli.py::test_market_bars_repair_plan_guides_complete_rows_only_preview -q` passed after the fix.
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\test_provider_ingest_cli.py::test_market_bars_import_complete_rows_only_allows_incremental_import -q` passed.
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\market\manual_bars.py tests\integration\test_provider_ingest_cli.py` passed with `All checks passed!`.
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m py_compile src\catalyst_radar\market\manual_bars.py tests\integration\test_provider_ingest_cli.py` exited 0.
+- Live zero-call repair-plan smoke against `schwab-live.db` showed local preview `status=invalid`, active `12613`, existing `12090`, bars-at-expected `0`, coverage-after-import `12090`, missing expected `523`, complete `0`, empty `523`, and external calls made `0`.
+
+Current live blocker:
+
+- The full-market priced-in answer remains blocked by 523 missing market bars for 2026-05-15.
+- The manual CSV still has 0 complete rows and the saved grouped-daily JSON is still missing.
+
+Next useful product action:
+
+- Do not treat this slice as goal completion.
+- Next real unblock remains explicit saved Polygon/Massive capture approval or manual CSV completion, then saved validate/import review and the priced-in trust gate rerun.
 
 ## Latest TUI Saved-Capture Target Counts
 
