@@ -46,6 +46,12 @@ MANUAL_BAR_ACQUISITION_NAME_MARKERS = (
     "liquidity opportunity vehicle",
 )
 
+SAVED_CAPTURE_GUARD_FIELD_NAMES = {
+    "active_security_count": "expected_active_security_count",
+    "existing_as_of_bar_count": "expected_existing_as_of_bar_count",
+    "missing_as_of_bar_count": "expected_missing_as_of_bar_count",
+}
+
 
 @dataclass(frozen=True)
 class ManualBarsTemplateResult:
@@ -306,7 +312,11 @@ class ManualBarsRepairPlanResult:
         provider_saved_file_capture_command = (
             "catalyst-radar market-bars saved-capture "
             f"--expected-as-of {self.expected_as_of.isoformat()} "
-            f"--out {provider_saved_file_path} --confirm-external-call"
+            f"--out {provider_saved_file_path} "
+            f"--expect-active-count {self.active_security_count} "
+            f"--expect-existing-count {self.existing_as_of_bar_count} "
+            f"--expect-missing-count {self.missing_as_of_bar_count} "
+            "--confirm-external-call"
         )
         provider_saved_file_import_command = (
             "catalyst-radar market-bars saved-import "
@@ -322,6 +332,9 @@ class ManualBarsRepairPlanResult:
             "expected_as_of": self.expected_as_of.isoformat(),
             "output_path": str(provider_saved_file_path),
             "confirm_external_call": False,
+            "expected_active_security_count": self.active_security_count,
+            "expected_existing_as_of_bar_count": self.existing_as_of_bar_count,
+            "expected_missing_as_of_bar_count": self.missing_as_of_bar_count,
         }
         provider_saved_file_capture_confirm_request_body = {
             **provider_saved_file_capture_request_body,
@@ -718,6 +731,21 @@ def provider_saved_file_capture_approval_packet(
             "target date and missing-bar count match your intent."
         )
 
+    approval_guard = saved_capture_approval_guard_expected_payload(
+        expected_as_of=expected_as_of,
+        stocks_only=coverage_scope == "stock_like",
+        active_security_count=active_security_count,
+        existing_as_of_bar_count=existing_as_of_bar_count,
+        missing_as_of_bar_count=missing_as_of_bar_count,
+    )
+    guarded_capture_request_body = _with_saved_capture_approval_guard(
+        provider_saved_file_capture_request_body,
+        approval_guard,
+    )
+    guarded_capture_confirm_request_body = _with_saved_capture_approval_guard(
+        provider_saved_file_capture_confirm_request_body,
+        approval_guard,
+    )
     return {
         "schema_version": "market-bars-saved-capture-approval-packet-v1",
         "status": status,
@@ -739,6 +767,7 @@ def provider_saved_file_capture_approval_packet(
         "missing_as_of_bar_ticker_more": max(0, missing_as_of_bar_ticker_more),
         "missing_security_type_counts": dict(missing_security_type_counts),
         "missing_universe_diagnostic": dict(missing_universe_diagnostic),
+        "approval_guard": approval_guard,
         "provider": "polygon",
         "provider_label": "Polygon/Massive grouped daily",
         "provider_key_configured": provider_key_configured,
@@ -759,8 +788,8 @@ def provider_saved_file_capture_approval_packet(
         "capture_api": "POST /api/radar/market-bars/provider-fixture-capture"
         if provider_saved_file_capture_request_body is not None
         else None,
-        "capture_request_body": provider_saved_file_capture_request_body,
-        "capture_confirm_request_body": provider_saved_file_capture_confirm_request_body,
+        "capture_request_body": guarded_capture_request_body,
+        "capture_confirm_request_body": guarded_capture_confirm_request_body,
         "post_capture_zero_call_steps": [
             {
                 "step": "validate_saved_file",
@@ -800,6 +829,109 @@ def provider_saved_file_capture_approval_packet(
             "Execute import only after saved-file coverage matches the active-universe gap.",
         ],
         "next_action": next_action,
+    }
+
+
+def saved_capture_approval_guard_expected_payload(
+    *,
+    expected_as_of: date,
+    stocks_only: bool,
+    active_security_count: int | None,
+    existing_as_of_bar_count: int | None,
+    missing_as_of_bar_count: int,
+) -> dict[str, object]:
+    return {
+        "schema_version": "market-bars-saved-capture-approval-guard-v1",
+        "expected_as_of": expected_as_of.isoformat(),
+        "stocks_only": bool(stocks_only),
+        "expected_active_security_count": active_security_count,
+        "expected_existing_as_of_bar_count": existing_as_of_bar_count,
+        "expected_missing_as_of_bar_count": max(0, int(missing_as_of_bar_count)),
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+    }
+
+
+def _with_saved_capture_approval_guard(
+    body: Mapping[str, object] | None,
+    approval_guard: Mapping[str, object],
+) -> dict[str, object] | None:
+    if body is None:
+        return None
+    guarded = dict(body)
+    for request_key in SAVED_CAPTURE_GUARD_FIELD_NAMES.values():
+        guarded[request_key] = approval_guard.get(request_key)
+    return guarded
+
+
+def saved_capture_approval_guard_payload(
+    engine: Engine,
+    *,
+    expected_as_of: date,
+    stocks_only: bool,
+    expected_active_security_count: int | None,
+    expected_existing_as_of_bar_count: int | None,
+    expected_missing_as_of_bar_count: int | None,
+) -> dict[str, object]:
+    provided = {
+        "expected_active_security_count": expected_active_security_count,
+        "expected_existing_as_of_bar_count": expected_existing_as_of_bar_count,
+        "expected_missing_as_of_bar_count": expected_missing_as_of_bar_count,
+    }
+    missing_fields = sorted(key for key, value in provided.items() if value is None)
+    current: dict[str, int] = {}
+    mismatches: dict[str, dict[str, int | None]] = {}
+    guard_error: str | None = None
+    if not missing_fields:
+        try:
+            repair = manual_market_bars_repair_plan(
+                engine,
+                expected_as_of=expected_as_of,
+                stocks_only=stocks_only,
+            )
+        except ValueError as exc:
+            guard_error = str(exc)
+        else:
+            current = {
+                "active_security_count": repair.active_security_count,
+                "existing_as_of_bar_count": repair.existing_as_of_bar_count,
+                "missing_as_of_bar_count": repair.missing_as_of_bar_count,
+            }
+            expected_by_current_key = {
+                "active_security_count": expected_active_security_count,
+                "existing_as_of_bar_count": expected_existing_as_of_bar_count,
+                "missing_as_of_bar_count": expected_missing_as_of_bar_count,
+            }
+            for current_key, expected_value in expected_by_current_key.items():
+                current_value = current[current_key]
+                if int(expected_value or 0) != current_value:
+                    mismatches[current_key] = {
+                        "expected": int(expected_value or 0),
+                        "current": current_value,
+                    }
+    status = (
+        "missing_expectations"
+        if missing_fields
+        else ("unavailable" if guard_error else ("stale_approval" if mismatches else "ready"))
+    )
+    return {
+        "schema_version": "market-bars-saved-capture-approval-guard-v1",
+        "status": status,
+        "expected_as_of": expected_as_of.isoformat(),
+        "stocks_only": bool(stocks_only),
+        **provided,
+        "current": current,
+        "mismatches": mismatches,
+        "missing_expectation_fields": missing_fields,
+        "reason": guard_error,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "next_action": (
+            "Re-run saved-capture planning and review the current approval packet "
+            "before approving a provider call."
+        )
+        if status != "ready"
+        else "Approval guard matches the current local market-bar gap.",
     }
 
 

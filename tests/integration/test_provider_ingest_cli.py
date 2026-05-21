@@ -629,6 +629,9 @@ def test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths(
         "catalyst-radar market-bars saved-capture "
         "--expected-as-of 2026-05-15 "
         "--out data\\local\\polygon-grouped-daily-2026-05-15.json "
+        "--expect-active-count 2 "
+        "--expect-existing-count 1 "
+        "--expect-missing-count 1 "
         "--confirm-external-call"
     )
     assert payload["provider_saved_file_capture_api"] == (
@@ -638,6 +641,9 @@ def test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths(
         "expected_as_of": "2026-05-15",
         "output_path": "data\\local\\polygon-grouped-daily-2026-05-15.json",
         "confirm_external_call": False,
+        "expected_active_security_count": 2,
+        "expected_existing_as_of_bar_count": 1,
+        "expected_missing_as_of_bar_count": 1,
     }
     assert payload["provider_saved_file_capture_confirm_request_body"] == {
         **payload["provider_saved_file_capture_request_body"],
@@ -660,6 +666,16 @@ def test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths(
     assert approval_packet["missing_security_type_counts"] == {"ADRC": 1}
     assert approval_packet["missing_universe_diagnostic"]["missing_count"] == 1
     assert approval_packet["missing_universe_diagnostic"]["external_calls_made"] == 0
+    assert approval_packet["approval_guard"] == {
+        "schema_version": "market-bars-saved-capture-approval-guard-v1",
+        "expected_as_of": "2026-05-15",
+        "stocks_only": True,
+        "expected_active_security_count": 2,
+        "expected_existing_as_of_bar_count": 1,
+        "expected_missing_as_of_bar_count": 1,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+    }
     assert approval_packet["external_calls_without_approval"] == 0
     assert approval_packet["external_calls_if_approved"] == 1
     assert approval_packet["db_writes_during_capture"] == 0
@@ -948,7 +964,14 @@ def test_market_bars_saved_capture_cli_plans_without_provider_call(
     )
     assert payload["saved_file_status"] == "missing"
     assert payload["capture_request_body"]["confirm_external_call"] is False
+    assert payload["capture_request_body"]["expected_active_security_count"] == 2
+    assert payload["capture_request_body"]["expected_existing_as_of_bar_count"] == 1
+    assert payload["capture_request_body"]["expected_missing_as_of_bar_count"] == 1
     assert payload["capture_confirm_request_body"]["confirm_external_call"] is True
+    assert payload["approval_guard"]["expected_missing_as_of_bar_count"] == 1
+    assert "--expect-active-count 2" in payload["confirm_command"]
+    assert "--expect-existing-count 1" in payload["confirm_command"]
+    assert "--expect-missing-count 1" in payload["confirm_command"]
     assert payload["capture_api"] == (
         "POST /api/radar/market-bars/provider-fixture-capture"
     )
@@ -973,6 +996,31 @@ def test_market_bars_saved_capture_cli_plans_without_provider_call(
     assert "missing_universe=active_metadata=1" in text
     assert "external_calls_if_approved=1" in text
     assert "db_writes=0" in text
+
+    blocked_code = main(
+        [
+            "market-bars",
+            "saved-capture",
+            "--expected-as-of",
+            "2026-05-15",
+            "--stocks-only",
+            "--out",
+            "data\\local\\polygon-grouped-daily-2026-05-15.json",
+            "--expect-active-count",
+            "2",
+            "--expect-existing-count",
+            "1",
+            "--expect-missing-count",
+            "99",
+            "--confirm-external-call",
+        ]
+    )
+    blocked_text = capsys.readouterr().out
+    assert blocked_code == 2
+    assert "market_bars_saved_capture_guard status=stale_approval" in blocked_text
+    assert "missing_as_of_bar_count:expected=99 current=1" in blocked_text
+    assert "external_calls=0" in blocked_text
+    assert not Path("data\\local\\polygon-grouped-daily-2026-05-15.json").exists()
 
 
 def test_market_bars_saved_file_cli_validates_and_imports_fixture(

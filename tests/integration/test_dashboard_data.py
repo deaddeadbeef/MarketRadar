@@ -1948,6 +1948,15 @@ def test_priced_in_full_scan_audit_payload_consolidates_current_state(
             "expected_as_of": market_bar_provider_plan["target_as_of"],
             "output_path": market_bar_provider_plan["provider_saved_file_path"],
             "confirm_external_call": False,
+            "expected_active_security_count": market_bar_provider_plan[
+                "active_security_count"
+            ],
+            "expected_existing_as_of_bar_count": market_bar_provider_plan[
+                "existing_as_of_bar_count"
+            ],
+            "expected_missing_as_of_bar_count": market_bar_provider_plan[
+                "missing_as_of_bar"
+            ],
         }
         assert market_bar_provider_plan[
             "provider_saved_file_capture_confirm_request_body"
@@ -2237,6 +2246,9 @@ def test_priced_in_full_scan_audit_warns_for_stale_eod_provider_health(
         "catalyst-radar market-bars saved-capture "
         "--expected-as-of 2026-05-10 "
         "--out data\\local\\polygon-grouped-daily-2026-05-10.json "
+        f"--expect-active-count {provider_plan['active_security_count']} "
+        f"--expect-existing-count {provider_plan['existing_as_of_bar_count']} "
+        f"--expect-missing-count {provider_plan['missing_as_of_bar']} "
         "--confirm-external-call"
     )
     assert provider_plan["provider_saved_file_capture_api"] == (
@@ -5402,6 +5414,9 @@ def test_priced_in_preflight_recommends_manual_bar_template_for_missing_bars(
         "catalyst-radar market-bars saved-capture "
         f"--expected-as-of {run_as_of.isoformat()} "
         f"--out data\\local\\polygon-grouped-daily-{run_as_of.isoformat()}.json "
+        f"--expect-active-count {provider_plan['active_security_count']} "
+        f"--expect-existing-count {provider_plan['existing_as_of_bar_count']} "
+        f"--expect-missing-count {provider_plan['missing_as_of_bar']} "
         "--confirm-external-call"
     )
     assert provider_plan["provider_saved_file_capture_external_call_count"] == 1

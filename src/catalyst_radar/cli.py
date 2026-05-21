@@ -120,6 +120,7 @@ from catalyst_radar.jobs.scheduler import (
 from catalyst_radar.market.manual_bars import (
     import_manual_market_bars,
     manual_market_bars_repair_plan,
+    saved_capture_approval_guard_payload,
     write_manual_market_bars_template,
 )
 from catalyst_radar.market.status import market_bars_status_payload
@@ -295,6 +296,21 @@ def build_parser() -> argparse.ArgumentParser:
         "--confirm-external-call",
         action="store_true",
         help="Approve one live Polygon/Massive grouped-daily call.",
+    )
+    market_bars_saved_capture.add_argument(
+        "--expect-active-count",
+        type=int,
+        help="Block live capture unless the active-security count still matches.",
+    )
+    market_bars_saved_capture.add_argument(
+        "--expect-existing-count",
+        type=int,
+        help="Block live capture unless the existing as-of bar count still matches.",
+    )
+    market_bars_saved_capture.add_argument(
+        "--expect-missing-count",
+        type=int,
+        help="Block live capture unless the missing as-of bar count still matches.",
     )
     market_bars_saved_capture.add_argument(
         "--stocks-only",
@@ -1154,6 +1170,9 @@ def main(argv: list[str] | None = None) -> int:
                     output_path=args.out,
                     fixture_path=args.fixture,
                     confirm_external_call=args.confirm_external_call,
+                    expected_active_security_count=args.expect_active_count,
+                    expected_existing_as_of_bar_count=args.expect_existing_count,
+                    expected_missing_as_of_bar_count=args.expect_missing_count,
                     stocks_only=args.stocks_only,
                     json_output=args.json,
                 )
@@ -3916,10 +3935,26 @@ def _market_bars_saved_capture_plan_payload(
     existing_as_of_bar_count = packet.get("existing_as_of_bar_count")
     if existing_as_of_bar_count is None:
         existing_as_of_bar_count = repair.get("existing_as_of_bar_count")
+    missing_as_of_bar_count = packet.get("missing_as_of_bar_count")
+    if missing_as_of_bar_count is None:
+        missing_as_of_bar_count = repair.get("missing_as_of_bar_count")
+    approval_guard = {
+        "schema_version": "market-bars-saved-capture-approval-guard-v1",
+        "expected_as_of": expected_as_of.isoformat(),
+        "stocks_only": bool(stocks_only),
+        "expected_active_security_count": active_security_count,
+        "expected_existing_as_of_bar_count": existing_as_of_bar_count,
+        "expected_missing_as_of_bar_count": missing_as_of_bar_count,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+    }
     request_body = {
         "expected_as_of": expected_as_of.isoformat(),
         "output_path": str(output_path),
         "confirm_external_call": False,
+        "expected_active_security_count": active_security_count,
+        "expected_existing_as_of_bar_count": existing_as_of_bar_count,
+        "expected_missing_as_of_bar_count": missing_as_of_bar_count,
     }
     confirm_body = {**request_body, "confirm_external_call": True}
     validate_command = (
@@ -3943,8 +3978,7 @@ def _market_bars_saved_capture_plan_payload(
         "coverage_scope": packet.get("coverage_scope") or repair.get("coverage_scope"),
         "active_security_count": active_security_count,
         "existing_as_of_bar_count": existing_as_of_bar_count,
-        "missing_as_of_bar_count": packet.get("missing_as_of_bar_count")
-        or repair.get("missing_as_of_bar_count"),
+        "missing_as_of_bar_count": missing_as_of_bar_count,
         "missing_as_of_bar_ticker_sample": packet.get(
             "missing_as_of_bar_ticker_sample",
         )
@@ -3970,12 +4004,16 @@ def _market_bars_saved_capture_plan_payload(
         "external_calls_without_approval": 0,
         "external_calls_if_approved": calls_if_approved,
         "db_writes_during_capture": 0,
+        "approval_guard": approval_guard,
         "capture_api": "POST /api/radar/market-bars/provider-fixture-capture",
         "capture_request_body": request_body,
         "capture_confirm_request_body": confirm_body,
         "confirm_command": (
             "catalyst-radar market-bars saved-capture "
             f"--expected-as-of {expected_as_of.isoformat()} --out {output_path} "
+            f"--expect-active-count {active_security_count} "
+            f"--expect-existing-count {existing_as_of_bar_count} "
+            f"--expect-missing-count {missing_as_of_bar_count} "
             "--confirm-external-call"
         )
         if approval_required
@@ -3999,6 +4037,9 @@ def _market_bars_saved_capture_cli(
     output_path: Path | None,
     fixture_path: Path | None,
     confirm_external_call: bool,
+    expected_active_security_count: int | None,
+    expected_existing_as_of_bar_count: int | None,
+    expected_missing_as_of_bar_count: int | None,
     stocks_only: bool,
     json_output: bool,
 ):
@@ -4016,6 +4057,21 @@ def _market_bars_saved_capture_cli(
         else:
             _print_market_bars_saved_capture_plan(payload)
         return 0
+    if fixture_path is None and confirm_external_call:
+        guard = saved_capture_approval_guard_payload(
+            engine,
+            expected_as_of=expected_as_of,
+            stocks_only=stocks_only,
+            expected_active_security_count=expected_active_security_count,
+            expected_existing_as_of_bar_count=expected_existing_as_of_bar_count,
+            expected_missing_as_of_bar_count=expected_missing_as_of_bar_count,
+        )
+        if guard.get("status") != "ready":
+            if json_output:
+                print(json.dumps(guard, sort_keys=True))
+            else:
+                _print_saved_capture_approval_guard_failure(guard)
+            return 2
     payload = capture_polygon_grouped_daily_response_with_preview(
         config=config,
         market_repo=MarketRepository(engine),
@@ -4288,6 +4344,29 @@ def _print_market_bars_saved_capture_plan(payload: Mapping[str, object]):
             "guardrails="
             + " | ".join(_compact_cli_text(str(item)) for item in guardrails)
         )
+    print(f"next_action={payload.get('next_action')}")
+
+
+def _print_saved_capture_approval_guard_failure(payload: Mapping[str, object]):
+    mismatches = _mapping_value(payload.get("mismatches"))
+    mismatch_parts = []
+    for key, value in sorted(mismatches.items()):
+        detail = _mapping_value(value)
+        mismatch_parts.append(
+            f"{key}:expected={detail.get('expected')} current={detail.get('current')}"
+        )
+    missing_fields = _sequence_value(payload.get("missing_expectation_fields"))
+    print(
+        "market_bars_saved_capture_guard "
+        f"status={payload.get('status')} "
+        f"expected_as_of={payload.get('expected_as_of')} "
+        f"stocks_only={str(bool(payload.get('stocks_only'))).lower()} "
+        f"mismatches={','.join(mismatch_parts) or 'none'} "
+        "missing_expectation_fields="
+        f"{','.join(str(field) for field in missing_fields) or 'none'} "
+        f"external_calls={payload.get('external_calls_made')} "
+        f"db_writes={payload.get('db_writes_made')}"
+    )
     print(f"next_action={payload.get('next_action')}")
 
 
