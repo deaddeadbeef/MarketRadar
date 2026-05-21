@@ -2256,6 +2256,23 @@ def test_get_radar_market_bars_status_returns_zero_call_unblock_state(
     assert default_payload["external_calls_made"] == 0
     assert default_payload["db_writes_made"] == 0
 
+    all_response = client.get(
+        "/api/radar/market-bars/status",
+        params={"expected_as_of": "2026-05-11"},
+    )
+    assert all_response.status_code == 200
+    all_payload = all_response.json()
+    assert all_payload["stocks_only"] is False
+    stock_scope = all_payload["stock_scope"]
+    assert stock_scope["schema_version"] == "market-bars-stock-scope-v1"
+    assert stock_scope["stock_like_active"] == 2
+    assert stock_scope["stock_like_with_as_of_bar"] == 1
+    assert stock_scope["stock_like_missing_as_of_bar"] == 1
+    assert stock_scope["sample_missing_stock_like_tickers"] == ["AADR"]
+    assert stock_scope["non_stock_missing_as_of_bar"] == 0
+    assert stock_scope["external_calls_made"] == 0
+    assert stock_scope["db_writes_made"] == 0
+
 
 def test_post_radar_market_bars_provider_fixture_preview_is_zero_write(
     tmp_path,

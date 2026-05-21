@@ -808,6 +808,32 @@ def test_market_bars_status_cli_summarizes_zero_call_unblock(
     assert payload["external_calls_made"] == 0
     assert payload["db_writes_made"] == 0
 
+    exit_code = main(
+        [
+            "market-bars",
+            "status",
+            "--expected-as-of",
+            "2026-05-15",
+            "--json",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    all_payload = json.loads(captured.out)
+    assert all_payload["stocks_only"] is False
+    stock_scope = all_payload["stock_scope"]
+    assert stock_scope["schema_version"] == "market-bars-stock-scope-v1"
+    assert stock_scope["status"] == "blocked"
+    assert stock_scope["stock_like_active"] == 2
+    assert stock_scope["stock_like_with_as_of_bar"] == 1
+    assert stock_scope["stock_like_missing_as_of_bar"] == 1
+    assert stock_scope["stock_like_coverage_pct"] == 50.0
+    assert stock_scope["sample_missing_stock_like_tickers"] == ["AADR"]
+    assert stock_scope["non_stock_missing_as_of_bar"] == 0
+    assert stock_scope["manual_template_command"].endswith("--stocks-only")
+    assert stock_scope["external_calls_made"] == 0
+    assert stock_scope["db_writes_made"] == 0
+
     exit_code = main(["market-bars", "status", "--stocks-only", "--json"])
     captured = capsys.readouterr()
     assert exit_code == 0
@@ -844,6 +870,23 @@ def test_market_bars_status_cli_summarizes_zero_call_unblock(
     assert "current=market_bars" in text
     assert "external_calls=0" in text
     assert "0 provider calls and 0 database writes" in text
+
+    assert (
+        main(
+            [
+                "market-bars",
+                "status",
+                "--expected-as-of",
+                "2026-05-15",
+            ]
+        )
+        == 0
+    )
+    text = capsys.readouterr().out
+    assert "stock_scope status=blocked coverage=1/2 missing=1" in text
+    assert "non_stock_missing=0" in text
+    assert "stock_scope_missing_tickers=AADR" in text
+    assert "manual-stock-bars-2026-05-15.csv" in text
 
 
 def test_market_bars_repair_plan_prefers_available_saved_provider_file(
