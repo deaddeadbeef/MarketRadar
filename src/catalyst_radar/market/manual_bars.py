@@ -304,17 +304,19 @@ class ManualBarsRepairPlanResult:
             self.expected_as_of,
         )
         provider_saved_file_capture_command = (
-            "catalyst-radar ingest-polygon grouped-daily "
-            f"--date {self.expected_as_of.isoformat()} "
-            f"--save-response {provider_saved_file_path} --confirm-external-call"
+            "catalyst-radar market-bars saved-capture "
+            f"--expected-as-of {self.expected_as_of.isoformat()} "
+            f"--out {provider_saved_file_path} --confirm-external-call"
         )
         provider_saved_file_import_command = (
-            "catalyst-radar ingest-polygon grouped-daily "
-            f"--date {self.expected_as_of.isoformat()} "
+            "catalyst-radar market-bars saved-import "
+            f"--expected-as-of {self.expected_as_of.isoformat()} "
             f"--fixture {provider_saved_file_path}"
         )
         provider_saved_file_validate_command = (
-            f"{provider_saved_file_import_command} --validate-only"
+            "catalyst-radar market-bars saved-validate "
+            f"--expected-as-of {self.expected_as_of.isoformat()} "
+            f"--fixture {provider_saved_file_path}"
         )
         provider_saved_file_capture_request_body = {
             "expected_as_of": self.expected_as_of.isoformat(),

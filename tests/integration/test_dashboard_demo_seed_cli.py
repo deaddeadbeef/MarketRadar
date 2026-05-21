@@ -1201,8 +1201,8 @@ def test_dashboard_manual_bar_fill_progress_summary_is_human_readable() -> None:
                             "--date 2026-05-15 --confirm-external-call"
                         ),
                         "provider_saved_file_capture_command": (
-                            "catalyst-radar ingest-polygon grouped-daily "
-                            "--date 2026-05-15 --save-response "
+                            "catalyst-radar market-bars saved-capture "
+                            "--expected-as-of 2026-05-15 --out "
                             "data\\local\\polygon-grouped-daily-2026-05-15.json "
                             "--confirm-external-call"
                         ),
@@ -1258,14 +1258,13 @@ def test_dashboard_manual_bar_fill_progress_summary_is_human_readable() -> None:
                             "execute": True,
                         },
                         "provider_saved_file_validate_command": (
-                            "catalyst-radar ingest-polygon grouped-daily "
-                            "--date 2026-05-15 --fixture "
-                            "data\\local\\polygon-grouped-daily-2026-05-15.json "
-                            "--validate-only"
+                            "catalyst-radar market-bars saved-validate "
+                            "--expected-as-of 2026-05-15 --fixture "
+                            "data\\local\\polygon-grouped-daily-2026-05-15.json"
                         ),
                         "provider_saved_file_import_command": (
-                            "catalyst-radar ingest-polygon grouped-daily "
-                            "--date 2026-05-15 --fixture "
+                            "catalyst-radar market-bars saved-import "
+                            "--expected-as-of 2026-05-15 --fixture "
                             "data\\local\\polygon-grouped-daily-2026-05-15.json"
                         ),
                         "provider_saved_file_exists": False,
@@ -2974,21 +2973,20 @@ def test_dashboard_batch_message_prints_market_bar_saved_file_repair(
                     "Capture or obtain the saved grouped-daily JSON response."
                 ),
                 "provider_saved_file_capture_command": (
-                    "catalyst-radar ingest-polygon grouped-daily "
-                    "--date 2026-05-15 --save-response "
+                    "catalyst-radar market-bars saved-capture "
+                    "--expected-as-of 2026-05-15 --out "
                     "data\\local\\polygon-grouped-daily-2026-05-15.json "
                     "--confirm-external-call"
                 ),
                 "provider_saved_file_capture_external_call_count": 1,
                 "provider_saved_file_validate_command": (
-                    "catalyst-radar ingest-polygon grouped-daily "
-                    "--date 2026-05-15 --fixture "
-                    "data\\local\\polygon-grouped-daily-2026-05-15.json "
-                    "--validate-only"
+                    "catalyst-radar market-bars saved-validate "
+                    "--expected-as-of 2026-05-15 --fixture "
+                    "data\\local\\polygon-grouped-daily-2026-05-15.json"
                 ),
                 "provider_saved_file_import_command": (
-                    "catalyst-radar ingest-polygon grouped-daily "
-                    "--date 2026-05-15 --fixture "
+                    "catalyst-radar market-bars saved-import "
+                    "--expected-as-of 2026-05-15 --fixture "
                     "data\\local\\polygon-grouped-daily-2026-05-15.json"
                 ),
                 "provider_saved_file_external_call_count": 0,
@@ -3034,7 +3032,7 @@ def test_dashboard_batch_message_prints_market_bar_saved_file_repair(
     assert "Saved file: missing; exists=false" in update.message
     assert "data\\local\\polygon-grouped-daily-2026-05-15.json" in update.message
     assert "Saved file capture: 1 external call(s); command" in update.message
-    assert "--save-response data\\local\\polygon-grouped-daily-2026-05-15.json" in (
+    assert "--out data\\local\\polygon-grouped-daily-2026-05-15.json" in (
         update.message
     )
     assert "Saved file check: 0 external call(s); command" in update.message
@@ -3902,10 +3900,10 @@ def test_priced_in_source_batches_prioritize_full_market_bar_coverage(
     assert provider_saved_file_path in source_rows["market_bars"]["diagnostic"][
         "provider_saved_file_capture_command"
     ]
-    assert "--save-response" in source_rows["market_bars"]["diagnostic"][
+    assert "--out" in source_rows["market_bars"]["diagnostic"][
         "provider_saved_file_capture_command"
     ]
-    assert "--validate-only" in source_rows["market_bars"]["diagnostic"][
+    assert "saved-validate" in source_rows["market_bars"]["diagnostic"][
         "provider_saved_file_validate_command"
     ]
     assert "--fixture" in source_rows["market_bars"]["diagnostic"][
@@ -3950,7 +3948,7 @@ def test_priced_in_source_batches_prioritize_full_market_bar_coverage(
     assert "question=Approve one Polygon/Massive grouped-daily call" in output.out
     assert "provider_saved_file_status=status=missing" in output.out
     assert "provider_saved_file_capture=external_calls=1" in output.out
-    assert "--save-response data\\local\\polygon-grouped-daily-" in output.out
+    assert "--out data\\local\\polygon-grouped-daily-" in output.out
     assert "provider_saved_file_validate=external_calls=0" in output.out
     assert "provider_saved_file_import=external_calls=0" in output.out
     assert (
@@ -3965,7 +3963,7 @@ def test_priced_in_source_batches_prioritize_full_market_bar_coverage(
     assert output.err == ""
     assert "diagnostic_provider_saved_file_status=status=missing" in output.out
     assert "diagnostic_provider_saved_file_capture=external_calls=1" in output.out
-    assert "--save-response data\\local\\polygon-grouped-daily-" in output.out
+    assert "--out data\\local\\polygon-grouped-daily-" in output.out
     assert "diagnostic_provider_saved_file_validate=external_calls=0" in output.out
     assert "diagnostic_provider_saved_file_import=external_calls=0" in output.out
     assert (

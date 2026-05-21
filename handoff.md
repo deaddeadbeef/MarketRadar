@@ -1,9 +1,40 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 11:56:41 +08:00
+Last updated: 2026-05-21 12:23:12 +08:00
 
 
 
+## Latest Saved Command Contract Alignment
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not run live Polygon/Massive, SEC, Schwab, OpenAI, broker, or order calls. It does not import provider rows, reduce the universe, alter scoring, or claim the priced-in answer is ready.
+- This is useful because the current blocker is still missing scan-date market bars. The product should expose one consistent saved-provider repair path to humans and dashboard clients instead of mixing high-level `market-bars saved-*` commands with lower-level `ingest-polygon grouped-daily` diagnostics.
+
+Fix in this slice:
+
+- Aligned manual repair plans, priced-in preflight/provider-fill plans, trust-gate saved-provider packets, API approval responses, and Polygon saved-file preview/capture payloads to surface high-level commands:
+  - `catalyst-radar market-bars saved-capture --expected-as-of DATE --out SAVED_JSON --confirm-external-call`
+  - `catalyst-radar market-bars saved-validate --expected-as-of DATE --fixture SAVED_JSON`
+  - `catalyst-radar market-bars saved-import --expected-as-of DATE --fixture SAVED_JSON`
+- Left direct live provider-fill and low-level diagnostic commands in place where they are actually direct `ingest-polygon grouped-daily` operations.
+- README now states that dashboard, API, TUI, and CLI operator flows should prefer `market-bars saved-*`, while the lower-level grouped-daily commands remain diagnostic plumbing.
+
+Validation observed in this slice:
+
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\market\manual_bars.py src\catalyst_radar\dashboard\data.py src\catalyst_radar\api\routes\radar.py src\catalyst_radar\connectors\polygon_fixture.py tests\integration\test_provider_ingest_cli.py tests\integration\test_dashboard_data.py tests\integration\test_api_routes.py tests\integration\test_dashboard_demo_seed_cli.py` passed with `All checks passed!`.
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m py_compile` on the same source and test files exited 0.
+- Focused pytest passed 13 tests across saved CLI wrappers, provider fixture API preview/capture, dashboard priced-in/provider-fill payloads, and demo-seed CLI output.
+- `git diff --check` passed.
+- Live zero-call `market-bars repair-plan --expected-as-of 2026-05-15 --json` against `schwab-live.db` from the main repo with this worktree on `PYTHONPATH` returned status `attention`, missing bars `523`, provider key configured `true`, saved file `missing`, saved capture/validate/import commands all using `market-bars saved-*`, and `external_calls_made=0`.
+- Live zero-call `priced-in-answer --json` against `schwab-live.db` returned trust `blocked`, first blocker `market_bars`, first gap `523`, scanned `12087/12613`, unscanned `526`, saved capture status `approval_required`, provider key `true`, calls if approved `1`, saved capture and validate commands using `market-bars saved-*`, and `external_calls_made=0`.
+
+Next useful product action:
+
+- Do not treat this slice as goal completion.
+- The full-market priced-in answer remains blocked until the 523 missing scan-date market bars are filled/imported for the active universe.
+- The immediate operator choice is still manual CSV fill/import versus one explicitly approved saved Polygon/Massive grouped-daily capture followed by zero-call validate/import.
 ## Latest Saved Market Bar CLI Commands
 
 Goal alignment / drift check:

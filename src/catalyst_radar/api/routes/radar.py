@@ -268,12 +268,12 @@ def _market_bars_capture_approval_context(
         "missing_as_of_bar_count": repair.get("missing_as_of_bar_count"),
         "provider_saved_file_status": repair.get("provider_saved_file_status"),
         "provider_saved_file_validate_command": (
-            "catalyst-radar ingest-polygon grouped-daily "
-            f"--date {target_date} --fixture {output_path} --validate-only"
+            "catalyst-radar market-bars saved-validate "
+            f"--expected-as-of {target_date} --fixture {output_path}"
         ),
         "provider_saved_file_import_command": (
-            "catalyst-radar ingest-polygon grouped-daily "
-            f"--date {target_date} --fixture {output_path}"
+            "catalyst-radar market-bars saved-import "
+            f"--expected-as-of {target_date} --fixture {output_path}"
         ),
         "provider_saved_file_validate_request_body": validate_body,
         "provider_saved_file_import_preview_request_body": import_preview_body,
@@ -860,8 +860,8 @@ def radar_market_bars_provider_fixture_capture(
                 "external_calls_made": 0,
                 "db_writes_made": 0,
                 "capture_command": (
-                    "catalyst-radar ingest-polygon grouped-daily "
-                    f"--date {target_date} --save-response {output_path} "
+                    "catalyst-radar market-bars saved-capture "
+                    f"--expected-as-of {target_date} --out {output_path} "
                     "--confirm-external-call"
                 ),
                 "approval_boundary": (
