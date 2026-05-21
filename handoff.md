@@ -1,7 +1,34 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 07:53:20 +08:00
+Last updated: 2026-05-21 08:27:51 +08:00
 
+
+
+## Latest Reviewable Subset Contract
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, import rows, change scoring, reduce the universe, or claim readiness.
+- This is useful because the answer payload now separates the blocked full-market answer from the scanned-subset rows that are still worth reviewing as research-only leads.
+
+Fix in this slice:
+
+- `priced_in_answer_payload` now includes `reviewable_subset` with schema, decision-ready row count, visible sample tickers, and `external_calls_made=0`.
+- README documents that the subset is zero-call and research-only while the full-market trust gate remains blocked.
+
+Validation observed in this slice:
+
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py tests\integration\test_dashboard_demo_seed_cli.py` passed with `All checks passed!`.
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m py_compile src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py tests\integration\test_dashboard_demo_seed_cli.py` exited 0.
+- Focused pytest passed `tests\integration\test_dashboard_demo_seed_cli.py::test_priced_in_answer_cli_outputs_current_scan_answer`.
+- `git diff --check` passed.
+- Live zero-call `priced-in-answer --json` smoke against `schwab-live.db` returned `reviewable_subset.row_count=10`, sample tickers `A,MSFT,AAMI,AAOI`, `external_calls_made=0`, and `full_market_trust_gate.status=blocked`.
+
+Next useful product action:
+
+- Do not treat this slice as goal completion.
+- The full-market answer remains blocked until market bars, catalyst events, and local text evidence are complete.
 
 
 ## Latest Trust Gate Blocker Detail

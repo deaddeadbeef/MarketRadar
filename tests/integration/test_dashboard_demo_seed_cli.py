@@ -3310,6 +3310,10 @@ def test_priced_in_answer_cli_outputs_current_scan_answer(
         "priced-in-full-market-trust-gate-v1"
     )
     assert payload["full_market_trust_gate"]["external_calls_made"] == 0
+    assert payload["reviewable_subset"]["schema_version"] == (
+        "priced-in-reviewable-subset-v1"
+    )
+    assert payload["reviewable_subset"]["external_calls_made"] == 0
 
 
 def test_dashboard_summary_surfaces_unscanned_full_scan_rows() -> None:
