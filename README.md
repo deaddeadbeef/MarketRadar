@@ -621,6 +621,13 @@ commands still exist for diagnostics, but dashboard, API, TUI, and CLI
 operator flows should prefer the `market-bars saved-*` wrappers because they
 expose the same approval, validate, and import contract everywhere.
 
+Saved-capture responses include `post_capture_verification`, using the same
+zero-call projection as import previews. After a capture writes the provider
+response to disk, CLI/API/TUI surfaces immediately report whether importing that
+saved file would clear the current market-bar blocker or still leave missing
+rows. The capture itself still makes 0 database changes; it only projects the
+later saved import.
+
 Every manual CSV import and saved-file import response includes
 `post_import_verification`. That payload is zero-call and reports whether the
 operation was preview-only, whether `market_bars` is still blocking the trusted

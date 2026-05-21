@@ -2035,6 +2035,9 @@ def test_dashboard_bars_saved_capture_confirm_reports_post_capture_preview(
     assert update.page == "run"
     assert "Saved-file capture completed" in update.message
     assert "Post-capture preview: status=ready" in update.message
+    assert "Post-capture verification: status=preview_only" in update.message
+    assert "projected_missing=1" in update.message
+    assert "projection=would_still_block_market_bars" in update.message
     assert "missing_covered=2" in update.message
     assert "missing_after_import=1" in update.message
     assert "external_calls=0" in update.message

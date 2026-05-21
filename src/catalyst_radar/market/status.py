@@ -309,6 +309,36 @@ def market_bars_import_verification_payload(
     }
 
 
+def market_bars_post_capture_verification_payload(
+    engine: Engine,
+    config: AppConfig,
+    *,
+    expected_as_of: date | None,
+    capture_payload: Mapping[str, object],
+    stocks_only: bool = False,
+):
+    """Project whether a saved provider capture would clear market-bar gaps."""
+
+    preview = capture_payload.get("post_capture_preview")
+    coverage = preview.get("coverage") if isinstance(preview, Mapping) else {}
+    projected_missing = (
+        int(coverage.get("missing_after_import_count") or 0)
+        if isinstance(coverage, Mapping)
+        else None
+    )
+    return market_bars_import_verification_payload(
+        engine,
+        config,
+        expected_as_of=expected_as_of,
+        stocks_only=stocks_only,
+        executed=False,
+        source="saved_provider_capture",
+        db_changes_made=0,
+        projected_missing_after_import_count=projected_missing,
+        projected_db_changes_made=1 if projected_missing is not None else None,
+    )
+
+
 def _post_import_priced_in_answer_summary(
     engine: Engine,
     config: AppConfig,

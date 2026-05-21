@@ -1,6 +1,40 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-22 05:09:25 +08:00
+Last updated: 2026-05-22 05:34:38 +08:00
+
+## Latest Saved-Capture Verification Projection
+
+Last updated: 2026-05-22 05:34:38 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- The farther-road value goal remains tracked as issue #533: prove at least $40/month of attributable decision-support value, enough to offset 20% of a $200/month ChatGPT Pro subscription. A fresh issue comment reaffirmed the M7 success contract.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, broker, order, web, app, or provider tools from the product.
+- This is useful because a saved Polygon/Massive capture should immediately tell the operator whether importing the saved file would clear the market-bar blocker, before any database-changing import is run.
+
+Fix in this slice:
+
+- Added shared `market_bars_post_capture_verification_payload`, which projects saved-capture coverage through the existing zero-call market-bar verifier.
+- CLI/API saved-capture responses now include `post_capture_verification` with `source=saved_provider_capture`, current missing bars, projected missing bars, projection status, rerun command, `external_calls_made=0`, and `db_changes_made=0`.
+- CLI human output prints `post_capture_verification` and `post_capture_next` after `post_capture_preview`.
+- TUI confirmed saved-capture responses now show `Post-capture verification: ...` so action and response are visible in the dashboard.
+- README documents that capture verification projects the later saved import while the capture itself still makes 0 database changes.
+- GitHub issue #533 received an updated downstream value-contract comment: https://github.com/deaddeadbeef/MarketRadar/issues/533#issuecomment-4512914470
+
+Validation observed in this slice:
+
+- Ruff passed for touched source and integration files.
+- Py-compile passed for touched source and integration files.
+- Focused CLI/API/TUI capture regressions passed.
+- Full affected integration files passed: `tests/integration/test_provider_ingest_cli.py`, `tests/integration/test_api_routes.py`, and `tests/integration/test_dashboard_demo_seed_cli.py`.
+- `git diff --check` passed.
+
+Current live blocker:
+
+- The trusted full-market priced-in answer is still blocked by 523 missing market bars for 2026-05-15 until explicit guarded saved Polygon/Massive capture approval with matching counts or complete manual CSV import.
+- The stock-like answer path is still blocked by 131 stock-like missing bars.
+- After market bars clear, the next prepared blocker remains catalyst-events source fill, with 5510 plannable company-like rows and two missing-CIK blockers currently sampled as FRBA and SSBI.
 
 
 

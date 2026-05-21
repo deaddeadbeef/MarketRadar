@@ -55,6 +55,7 @@ from catalyst_radar.market.manual_bars import (
 )
 from catalyst_radar.market.status import (
     market_bars_import_verification_payload,
+    market_bars_post_capture_verification_payload,
     market_bars_status_payload,
 )
 from catalyst_radar.ops.telemetry import record_telemetry_event
@@ -923,11 +924,13 @@ def radar_market_bars_provider_fixture_preview(
 def radar_market_bars_provider_fixture_capture(
     request: MarketBarsProviderFixtureCaptureRequest,
 ) -> dict[str, object]:
+    engine = _engine()
+    config = AppConfig.from_env()
     output_path = Path(request.output_path)
     if request.fixture_path is None and not request.confirm_external_call:
         target_date = request.expected_as_of.isoformat()
         approval_context = _market_bars_capture_approval_context(
-            _engine(),
+            engine,
             expected_as_of=request.expected_as_of,
             output_path=output_path,
             stocks_only=request.stocks_only,
@@ -970,7 +973,7 @@ def radar_market_bars_provider_fixture_capture(
         )
     if request.fixture_path is None and request.confirm_external_call:
         guard = saved_capture_approval_guard_payload(
-            _engine(),
+            engine,
             expected_as_of=request.expected_as_of,
             stocks_only=request.stocks_only,
             expected_active_security_count=request.expected_active_security_count,
@@ -983,12 +986,19 @@ def radar_market_bars_provider_fixture_capture(
             raise HTTPException(status_code=422, detail=guard)
     try:
         payload = capture_polygon_grouped_daily_response_with_preview(
-            config=AppConfig.from_env(),
-            market_repo=MarketRepository(_engine()),
+            config=config,
+            market_repo=MarketRepository(engine),
             date_value=request.expected_as_of,
             output_path=output_path,
             fixture_path=Path(request.fixture_path) if request.fixture_path else None,
             confirm_external_call=request.confirm_external_call,
+        )
+        payload["post_capture_verification"] = market_bars_post_capture_verification_payload(
+            engine,
+            config,
+            expected_as_of=request.expected_as_of,
+            capture_payload=payload,
+            stocks_only=request.stocks_only,
         )
     except (FileNotFoundError, PermissionError, RuntimeError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

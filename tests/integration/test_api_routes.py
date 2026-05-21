@@ -2530,6 +2530,14 @@ def test_post_radar_market_bars_provider_fixture_capture_uses_fixture_without_db
     assert payload["source"] == "fixture"
     assert payload["external_calls_made"] == 0
     assert payload["db_writes_made"] == 0
+    verification = payload["post_capture_verification"]
+    assert verification["status"] == "preview_only"
+    assert verification["source"] == "saved_provider_capture"
+    assert verification["missing_as_of_bar_count"] == 3
+    assert verification["projected_missing_after_import_count"] == 1
+    assert verification["preview_projection_status"] == "would_still_block_market_bars"
+    assert verification["external_calls_made"] == 0
+    assert verification["db_changes_made"] == 0
     assert payload["validate_command"].startswith(
         "catalyst-radar market-bars saved-validate "
     )
