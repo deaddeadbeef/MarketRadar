@@ -1,6 +1,43 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 22:31:55 +08:00
+Last updated: 2026-05-21 22:56:09 +08:00
+
+
+
+
+## Latest Saved-Capture Approval Guard
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, broker, order, web, shell, or provider tools from the app.
+- This is useful because the next real unblock is a one-call saved Polygon/Massive capture. That call should only run if the active/existing/missing market-bar counts still match the counts the human reviewed.
+
+Fix in this slice:
+
+- Saved-capture approval packets now include an `approval_guard` with the reviewed active security count, existing as-of bar count, missing as-of bar count, scan date, and scope.
+- CLI/API confirm request bodies and generated confirm commands now carry the same reviewed counts.
+- CLI `market-bars saved-capture --confirm-external-call` blocks with `status=stale_approval` or `status=missing_expectations` before any provider call when the guard is absent or stale.
+- API `POST /api/radar/market-bars/provider-fixture-capture` returns HTTP 422 with the guard payload before capture if confirmed live capture counts do not match.
+- TUI `bars saved capture confirm` checks the guard against the local DB before calling the capture helper and explains the stale state with `external_calls=0` and `db_writes=0`.
+- README documents the approval guard as part of the saved-capture workflow.
+- GitHub project milestone #524 is still `In Progress`; progress comment added: https://github.com/deaddeadbeef/MarketRadar/issues/524#issuecomment-4509488530
+
+Validation observed in this slice:
+
+- Focused CLI/API/TUI regression passed for repair-plan packet fields, saved-capture CLI plan and stale guard, API provider-capture approval and stale guard, TUI saved-capture command, TUI confirmed capture, and TUI stale guard.
+- Focused preflight/source-batch regression passed for dashboard data paths that generate saved-capture commands/request bodies.
+- OpenAPI route allowlist regression passed.
+- Py-compile passed for touched source and integration tests.
+- Ruff passed for touched source and integration tests.
+- `git diff --check` passed.
+- Live zero-call `market-bars saved-capture --expected-as-of 2026-05-15` smoke showed confirm guard counts in the command and request bodies.
+- Live zero-call stale-confirm smoke with `--expect-missing-count 999 --confirm-external-call` exited 2, reported `status=stale_approval`, showed current missing count 523, and made 0 provider calls and 0 DB writes.
+
+Current live blocker:
+
+- The trusted full-market priced-in answer remains blocked by 523 missing market bars for 2026-05-15 until explicit saved Polygon/Massive capture approval with matching guard counts or complete manual CSV import.
+- Do not treat this slice as goal completion; it makes the one-call unblock safer but does not perform the provider capture.
 
 
 

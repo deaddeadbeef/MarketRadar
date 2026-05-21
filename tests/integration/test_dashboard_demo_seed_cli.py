@@ -1451,6 +1451,9 @@ def test_dashboard_manual_bar_fill_progress_summary_is_human_readable() -> None:
                                 "data\\local\\polygon-grouped-daily-2026-05-15.json"
                             ),
                             "confirm_external_call": False,
+                            "expected_active_security_count": 12613,
+                            "expected_existing_as_of_bar_count": 12090,
+                            "expected_missing_as_of_bar_count": 523,
                         },
                         "provider_saved_file_capture_confirm_request_body": {
                             "expected_as_of": "2026-05-15",
@@ -1458,6 +1461,9 @@ def test_dashboard_manual_bar_fill_progress_summary_is_human_readable() -> None:
                                 "data\\local\\polygon-grouped-daily-2026-05-15.json"
                             ),
                             "confirm_external_call": True,
+                            "expected_active_security_count": 12613,
+                            "expected_existing_as_of_bar_count": 12090,
+                            "expected_missing_as_of_bar_count": 523,
                         },
                         "provider_saved_file_capture_approval_packet": {
                             "schema_version": (
@@ -1473,6 +1479,18 @@ def test_dashboard_manual_bar_fill_progress_summary_is_human_readable() -> None:
                             "missing_as_of_bar_count": 523,
                             "missing_as_of_bar_ticker_sample": ["AACBR", "AACBU"],
                             "missing_as_of_bar_ticker_more": 521,
+                            "approval_guard": {
+                                "schema_version": (
+                                    "market-bars-saved-capture-approval-guard-v1"
+                                ),
+                                "expected_as_of": "2026-05-15",
+                                "stocks_only": False,
+                                "expected_active_security_count": 12613,
+                                "expected_existing_as_of_bar_count": 12090,
+                                "expected_missing_as_of_bar_count": 523,
+                                "external_calls_made": 0,
+                                "db_writes_made": 0,
+                            },
                             "external_calls_if_approved": 1,
                             "db_writes_during_capture": 0,
                             "tui_confirm_command": "bars saved capture confirm",
@@ -1647,11 +1665,17 @@ def _saved_file_command_payload(fixture_path, output_path):
                             "expected_as_of": "2026-05-08",
                             "output_path": output,
                             "confirm_external_call": False,
+                            "expected_active_security_count": 3,
+                            "expected_existing_as_of_bar_count": 0,
+                            "expected_missing_as_of_bar_count": 3,
                         },
                         "provider_saved_file_capture_confirm_request_body": {
                             "expected_as_of": "2026-05-08",
                             "output_path": output,
                             "confirm_external_call": True,
+                            "expected_active_security_count": 3,
+                            "expected_existing_as_of_bar_count": 0,
+                            "expected_missing_as_of_bar_count": 3,
                         },
                         "provider_saved_file_capture_approval_packet": {
                             "schema_version": (
@@ -1667,6 +1691,18 @@ def _saved_file_command_payload(fixture_path, output_path):
                             "missing_as_of_bar_count": 3,
                             "missing_as_of_bar_ticker_sample": ["AAPL", "MSFT"],
                             "missing_as_of_bar_ticker_more": 1,
+                            "approval_guard": {
+                                "schema_version": (
+                                    "market-bars-saved-capture-approval-guard-v1"
+                                ),
+                                "expected_as_of": "2026-05-08",
+                                "stocks_only": False,
+                                "expected_active_security_count": 3,
+                                "expected_existing_as_of_bar_count": 0,
+                                "expected_missing_as_of_bar_count": 3,
+                                "external_calls_made": 0,
+                                "db_writes_made": 0,
+                            },
                             "external_calls_if_approved": 1,
                             "db_writes_during_capture": 0,
                             "tui_confirm_command": "bars saved capture confirm",
@@ -1914,6 +1950,53 @@ def test_dashboard_bars_saved_capture_confirm_reports_post_capture_preview(
     assert "missing_after_import=1" in update.message
     assert "external_calls=0" in update.message
     assert "bars saved import execute" in update.message
+
+
+def test_dashboard_bars_saved_capture_confirm_blocks_stale_approval_guard(
+    tmp_path: Path,
+    monkeypatch,
+):
+    database_url = f"sqlite:///{(tmp_path / 'capture-stale.db').as_posix()}"
+    engine = create_engine(database_url, future=True)
+    create_schema(engine)
+    _seed_saved_file_command_universe(engine)
+    output_path = tmp_path / "polygon-grouped-daily-2026-05-08.json"
+    payload = _saved_file_command_payload(
+        Path("tests/fixtures/polygon/grouped_daily_2026-05-08.json"),
+        output_path,
+    )
+    repair = payload["priced_in_audit"]["market_bars"]["repair"]
+    plan = repair["provider_fill_plan"]
+    plan["provider_saved_file_capture_confirm_request_body"][
+        "expected_missing_as_of_bar_count"
+    ] = 99
+    plan["provider_saved_file_capture_approval_packet"]["approval_guard"][
+        "expected_missing_as_of_bar_count"
+    ] = 99
+
+    def fail_capture(**kwargs):
+        raise AssertionError("provider capture should not run")
+
+    monkeypatch.setattr(
+        "catalyst_radar.dashboard.tui.capture_polygon_grouped_daily_response_with_preview",
+        fail_capture,
+    )
+    update = _apply_command(
+        "bars saved capture confirm",
+        payload,
+        "run",
+        DashboardFilters(),
+        engine=engine,
+        config=AppConfig.from_env({"CATALYST_DATABASE_URL": database_url}),
+    )
+
+    assert update.page == "run"
+    assert "blocked by stale approval guard" in update.message
+    assert "missing_as_of_bar_count expected=99 current=3" in update.message
+    assert "external_calls=0" in update.message
+    assert "db_writes=0" in update.message
+    assert not output_path.exists()
+
 
 def test_dashboard_bars_saved_validate_and_import_fixture_are_operator_actions(
     tmp_path: Path,

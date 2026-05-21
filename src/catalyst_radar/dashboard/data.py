@@ -5332,6 +5332,9 @@ def _priced_in_market_bar_provider_fill_plan(
     saved_file_capture_command = (
         "catalyst-radar market-bars saved-capture "
         f"--expected-as-of {target_value} --out {saved_file_path} "
+        f"--expect-active-count {active_security_count} "
+        f"--expect-existing-count {existing_as_of_bar_count} "
+        f"--expect-missing-count {max(0, int(missing))} "
         "--confirm-external-call"
         if target_value and saved_file_path is not None
         else None
@@ -5347,6 +5350,9 @@ def _priced_in_market_bar_provider_fill_plan(
             "expected_as_of": target_value,
             "output_path": str(saved_file_path),
             "confirm_external_call": False,
+            "expected_active_security_count": active_security_count,
+            "expected_existing_as_of_bar_count": existing_as_of_bar_count,
+            "expected_missing_as_of_bar_count": max(0, int(missing)),
         }
         if target_value and saved_file_path is not None
         else None
@@ -5553,6 +5559,10 @@ def _priced_in_market_bar_provider_fill_plan(
         else 0,
         "provider_saved_file_capture_approval_packet": (
             saved_file_capture_approval_packet
+        ),
+        "provider_saved_file_capture_approval_guard": _mapping_value(
+            saved_file_capture_approval_packet,
+            "approval_guard",
         ),
         "provider_saved_file_import_command": saved_file_import_command,
         "provider_saved_file_validate_command": saved_file_validate_command,

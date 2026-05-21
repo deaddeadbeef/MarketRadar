@@ -2134,6 +2134,9 @@ def test_post_radar_market_bars_template_and_import_can_scope_to_stocks(
         "expected_as_of": "2026-05-11",
         "output_path": "data\\local\\polygon-grouped-daily-2026-05-11.json",
         "confirm_external_call": False,
+        "expected_active_security_count": 2,
+        "expected_existing_as_of_bar_count": 1,
+        "expected_missing_as_of_bar_count": 1,
     }
     assert repair_payload["dashboard_manual_template_command"] == (
         "bars manual stocks template"
@@ -2155,6 +2158,9 @@ def test_post_radar_market_bars_template_and_import_can_scope_to_stocks(
     assert approval_packet["missing_security_type_counts"] == {"ADRC": 1}
     assert approval_packet["missing_universe_diagnostic"]["missing_count"] == 1
     assert approval_packet["missing_universe_diagnostic"]["external_calls_made"] == 0
+    assert approval_packet["approval_guard"]["expected_active_security_count"] == 2
+    assert approval_packet["approval_guard"]["expected_existing_as_of_bar_count"] == 1
+    assert approval_packet["approval_guard"]["expected_missing_as_of_bar_count"] == 1
     assert approval_packet["external_calls_without_approval"] == 0
     assert approval_packet["external_calls_if_approved"] == 1
     assert approval_packet["db_writes_during_capture"] == 0
@@ -2374,6 +2380,9 @@ def test_post_radar_market_bars_provider_fixture_capture_requires_approval(
     assert payload["missing_security_type_counts"] == {"CS": 1}
     assert payload["missing_universe_diagnostic"]["missing_count"] == 1
     assert payload["missing_universe_diagnostic"]["external_calls_made"] == 0
+    assert "--expect-active-count 2" in payload["capture_command"]
+    assert "--expect-existing-count 1" in payload["capture_command"]
+    assert "--expect-missing-count 1" in payload["capture_command"]
     assert payload["provider_saved_file_validate_request_body"] == {
         "expected_as_of": "2026-05-08",
         "fixture_path": str(output_path),
@@ -2390,6 +2399,29 @@ def test_post_radar_market_bars_provider_fixture_capture_requires_approval(
     }
     assert "--confirm-external-call" in payload["capture_command"]
     assert "saved-validate" in payload["provider_saved_file_validate_command"]
+    assert not output_path.exists()
+
+    blocked = client.post(
+        "/api/radar/market-bars/provider-fixture-capture",
+        json={
+            "expected_as_of": "2026-05-08",
+            "output_path": str(output_path),
+            "confirm_external_call": True,
+            "expected_active_security_count": 2,
+            "expected_existing_as_of_bar_count": 1,
+            "expected_missing_as_of_bar_count": 99,
+        },
+    )
+
+    assert blocked.status_code == 422
+    detail = blocked.json()["detail"]
+    assert detail["status"] == "stale_approval"
+    assert detail["mismatches"]["missing_as_of_bar_count"] == {
+        "expected": 99,
+        "current": 1,
+    }
+    assert detail["external_calls_made"] == 0
+    assert detail["db_writes_made"] == 0
     assert not output_path.exists()
 
 

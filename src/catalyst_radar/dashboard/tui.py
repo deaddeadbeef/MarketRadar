@@ -66,6 +66,7 @@ from catalyst_radar.feedback.service import (
 from catalyst_radar.jobs.scheduler import SchedulerConfig, run_once, scheduler_run_payload
 from catalyst_radar.market.manual_bars import (
     import_manual_market_bars,
+    saved_capture_approval_guard_payload,
     write_manual_market_bars_template,
 )
 from catalyst_radar.security.licenses import redact_restricted_external_payload
@@ -3972,6 +3973,29 @@ def _market_bar_saved_file_capture_command(
             "type `bars saved import` to preview the saved file, then "
             "`bars saved import execute` only if coverage matches intent."
         )
+    approval_guard = _mapping(packet.get("approval_guard"))
+    expected_active = _optional_int(
+        body.get("expected_active_security_count")
+        or approval_guard.get("expected_active_security_count")
+    )
+    expected_existing = _optional_int(
+        body.get("expected_existing_as_of_bar_count")
+        or approval_guard.get("expected_existing_as_of_bar_count")
+    )
+    expected_missing = _optional_int(
+        body.get("expected_missing_as_of_bar_count")
+        or approval_guard.get("expected_missing_as_of_bar_count")
+    )
+    guard = saved_capture_approval_guard_payload(
+        engine,
+        expected_as_of=_market_bar_saved_file_date(body),
+        stocks_only=str(plan.get("coverage_scope") or "") == "stock_like",
+        expected_active_security_count=expected_active,
+        expected_existing_as_of_bar_count=expected_existing,
+        expected_missing_as_of_bar_count=expected_missing,
+    )
+    if guard.get("status") != "ready":
+        return _saved_capture_approval_guard_message(guard)
     captured = capture_polygon_grouped_daily_response_with_preview(
         config=config,
         market_repo=MarketRepository(engine),
@@ -3999,6 +4023,28 @@ def _market_bar_saved_file_capture_command(
         f"{preview_message} "
         "Next: bars saved import execute only if the preview matches intent."
     )
+
+
+def _saved_capture_approval_guard_message(payload: Mapping[str, object]) -> str:
+    mismatches = _mapping(payload.get("mismatches"))
+    mismatch_parts = []
+    for key, value in sorted(mismatches.items()):
+        detail = _mapping(value)
+        mismatch_parts.append(
+            f"{key} expected={detail.get('expected')} current={detail.get('current')}"
+        )
+    missing_fields = _texts(payload.get("missing_expectation_fields"))
+    issue = "; ".join(mismatch_parts)
+    if missing_fields:
+        issue = f"missing guard fields={', '.join(missing_fields)}"
+    return (
+        "Saved-file capture blocked by stale approval guard; "
+        f"status={payload.get('status')}; {issue or 'review required'}; "
+        f"external_calls={payload.get('external_calls_made')}; "
+        f"db_writes={payload.get('db_writes_made')}. "
+        "Re-run `bars saved capture`, review the current counts, then confirm again."
+    )
+
 
 def _preview_saved_market_bar_file(
     engine: Engine,
@@ -8438,6 +8484,15 @@ def _first_value(*values: object) -> object:
         if value not in (None, ""):
             return value
     return None
+
+
+def _optional_int(value: object) -> int | None:
+    if value in (None, ""):
+        return None
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
 
 
 def _number_or_zero(value: object) -> float:

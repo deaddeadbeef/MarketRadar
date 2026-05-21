@@ -49,6 +49,7 @@ from catalyst_radar.jobs.step_outcomes import classify_step_outcome
 from catalyst_radar.market.manual_bars import (
     import_manual_market_bars,
     manual_market_bars_repair_plan,
+    saved_capture_approval_guard_payload,
     write_manual_market_bars_template,
 )
 from catalyst_radar.market.status import market_bars_status_payload
@@ -209,6 +210,9 @@ class MarketBarsProviderFixtureCaptureRequest(BaseModel):
     output_path: str
     fixture_path: str | None = None
     confirm_external_call: bool = False
+    expected_active_security_count: int | None = None
+    expected_existing_as_of_bar_count: int | None = None
+    expected_missing_as_of_bar_count: int | None = None
 
 
 class MarketBarsProviderFixtureImportRequest(BaseModel):
@@ -882,6 +886,9 @@ def radar_market_bars_provider_fixture_capture(
             expected_as_of=request.expected_as_of,
             output_path=output_path,
         )
+        active_count = approval_context.get("active_security_count")
+        existing_count = approval_context.get("existing_as_of_bar_count")
+        missing_count = approval_context.get("missing_as_of_bar_count")
         return redact_restricted_external_payload(
             {
                 "schema_version": "polygon-grouped-daily-response-capture-v1",
@@ -895,6 +902,9 @@ def radar_market_bars_provider_fixture_capture(
                 "capture_command": (
                     "catalyst-radar market-bars saved-capture "
                     f"--expected-as-of {target_date} --out {output_path} "
+                    f"--expect-active-count {active_count} "
+                    f"--expect-existing-count {existing_count} "
+                    f"--expect-missing-count {missing_count} "
                     "--confirm-external-call"
                 ),
                 "approval_boundary": (
@@ -909,6 +919,19 @@ def radar_market_bars_provider_fixture_capture(
                 **approval_context,
             },
         )
+    if request.fixture_path is None and request.confirm_external_call:
+        guard = saved_capture_approval_guard_payload(
+            _engine(),
+            expected_as_of=request.expected_as_of,
+            stocks_only=False,
+            expected_active_security_count=request.expected_active_security_count,
+            expected_existing_as_of_bar_count=(
+                request.expected_existing_as_of_bar_count
+            ),
+            expected_missing_as_of_bar_count=request.expected_missing_as_of_bar_count,
+        )
+        if guard.get("status") != "ready":
+            raise HTTPException(status_code=422, detail=guard)
     try:
         payload = capture_polygon_grouped_daily_response_with_preview(
             config=AppConfig.from_env(),
