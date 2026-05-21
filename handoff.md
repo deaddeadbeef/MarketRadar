@@ -1,6 +1,34 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 16:58:30 +08:00
+Last updated: 2026-05-21 17:33:18 +08:00
+
+
+## Latest TUI Next-Source Plan Surface
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, broker, order, web, shell, or provider tools from the app.
+- This is useful because the dashboard is the human replacement UI. The CLI/API already exposed the next-source split, but the overview and run pages still hid the practical after-current-blocker plan unless the operator read JSON.
+
+Fix in this slice:
+
+- The TUI overview page now adds a compact `Next source plan:` line derived from `full_market_trust_gate.after_current_blocker`.
+- The existing run-page `After current` summary now surfaces `next_source_plan` counts early: total gaps, next external calls, SEC-plannable rows, routed non-company rows, and missing-CIK blockers.
+- Dashboard snapshot assembly now requests planning rows internally for the answer/trust-gate path, then strips `planning_rows` from the display `priced_in_queue` payload.
+- The wording is kept short enough for Windows Terminal clipping: for example, `source plan gaps 12075, next calls 5, plan 5510, routed 6563, blocked 2 missing_cik`.
+- README now documents that the terminal dashboard surfaces the same compact split as the CLI/API contract and keeps planning rows internal.
+
+Validation observed in this slice:
+
+- Focused TUI/CLI regression passed for the new dashboard rendering of `next_source_plan`.
+- Focused dashboard snapshot regression passed, including `include_planning_rows=True` internally and no `planning_rows` in the returned display queue.
+- Existing focused dashboard regressions passed for non-company evidence summary and market-bar manual fill progress.
+- Live zero-call dashboard smoke against `schwab-live.db` showed `Next source plan: ... source plan gaps 12075, next calls 0, plan 5510, ...` on overview and the same source-plan phrase on run.
+
+Current live blocker:
+
+- The trusted full-market priced-in answer remains blocked by missing market bars until explicit saved Polygon/Massive capture approval or complete manual CSV import.
 
 
 ## Latest Trust-Gate Next-Source Plan Summary

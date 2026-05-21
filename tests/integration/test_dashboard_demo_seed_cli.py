@@ -943,7 +943,9 @@ def test_dashboard_snapshot_priced_in_queue_loads_scan_rows_from_database(
 
     assert captured_kwargs
     assert "candidate_rows" not in captured_kwargs[0]
+    assert captured_kwargs[0]["include_planning_rows"] is True
     assert payload["priced_in_queue"]["scan_selection"]["mode"] != "supplied_rows"
+    assert "planning_rows" not in payload["priced_in_queue"]
 
 
 def test_dashboard_agent_page_shows_agent_brief(
@@ -1230,6 +1232,18 @@ def test_priced_in_answer_cli_prints_next_source_plan(capsys):
     assert "reason=missing_cik" in output.out
     assert "blocked_sample=FRBA,SSBI" in output.out
     assert "external_calls=0" in output.out
+
+    dashboard_payload = {"priced_in_answer": payload}
+    overview = render_dashboard_tui(dashboard_payload, page="overview", width=320)
+    run = render_dashboard_tui(dashboard_payload, page="run", width=320)
+
+    for rendered in (overview, run):
+        assert "after market_bars: catalyst_events ready" in rendered
+        assert "source plan gaps 12075" in rendered
+        assert "next calls 5" in rendered
+        assert "plan 5510" in rendered
+        assert "routed 6563" in rendered
+        assert "blocked 2 missing_cik" in rendered
 
 def test_dashboard_source_blocker_prefers_dashboard_market_bar_actions() -> None:
     payload = {

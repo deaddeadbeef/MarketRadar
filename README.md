@@ -159,7 +159,11 @@ the zero-call plan/API plus guarded execute-next affordance to use only after
 the current blocker is cleared. Its `next_source_plan` is a compact zero-call
 source-batch summary for dashboard and CLI clients: total gap rows, plannable
 rows, routed non-company rows, blocked rows, missing-CIK samples, next chunk
-call count, and CIK repair commands when they apply.
+call count, and CIK repair commands when they apply. The terminal dashboard
+shows the same split on the overview and run pages as a compact next-source
+plan so a human can see what will be scanned after the current blocker. The
+snapshot keeps planning rows internal and does not return `planning_rows` in
+the display `priced_in_queue` packet.
 `blocker_detail.manual_csv` gives dashboard
 clients the fillable local CSV context: path, required fields, current complete
 / partial / empty counts, and sample missing tickers. `blocker_detail.saved_provider_capture`
