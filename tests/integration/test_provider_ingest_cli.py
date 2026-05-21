@@ -772,6 +772,188 @@ def test_market_bars_repair_plan_prefers_available_saved_provider_file(
     }
 
 
+def test_market_bars_saved_capture_cli_plans_without_provider_call(
+    tmp_path,
+    monkeypatch,
+    capsys,
+):
+    monkeypatch.chdir(tmp_path)
+    database_url = _database_url(tmp_path)
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("CATALYST_POLYGON_API_KEY", "fixture-key")
+
+    assert main(["init-db"]) == 0
+    capsys.readouterr()
+    engine = create_engine(database_url, future=True)
+    MarketRepository(engine).upsert_securities(
+        [
+            _security("BSTK", "Beta Stock", "CS"),
+            _security("AADR", "Alpha Acquisition ADR", "ADRC"),
+            _security("EETF", "Example ETF", "ETF"),
+        ]
+    )
+    MarketRepository(engine).upsert_daily_bars(
+        [
+            _daily_bar("BSTK", date(2026, 5, 15)),
+            _daily_bar("EETF", date(2026, 5, 15)),
+        ]
+    )
+
+    exit_code = main(
+        [
+            "market-bars",
+            "saved-capture",
+            "--expected-as-of",
+            "2026-05-15",
+            "--stocks-only",
+            "--json",
+        ]
+    )
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["schema_version"] == "market-bars-saved-capture-cli-plan-v1"
+    assert payload["status"] == "approval_required"
+    assert payload["approval_required"] is True
+    assert payload["provider_key_configured"] is True
+    assert payload["external_calls_without_approval"] == 0
+    assert payload["external_calls_if_approved"] == 1
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
+    assert payload["missing_as_of_bar_count"] == 1
+    assert payload["saved_file_path"] == (
+        "data\\local\\polygon-grouped-daily-2026-05-15.json"
+    )
+    assert payload["saved_file_status"] == "missing"
+    assert payload["capture_request_body"]["confirm_external_call"] is False
+    assert payload["capture_confirm_request_body"]["confirm_external_call"] is True
+    assert payload["capture_api"] == (
+        "POST /api/radar/market-bars/provider-fixture-capture"
+    )
+    assert not Path(payload["saved_file_path"]).exists()
+
+
+
+def test_market_bars_saved_file_cli_validates_and_imports_fixture(
+    tmp_path,
+    monkeypatch,
+    capsys,
+):
+    monkeypatch.chdir(tmp_path)
+    database_url = _database_url(tmp_path)
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("CATALYST_POLYGON_API_KEY", "fixture-key")
+    fixture_path = (
+        Path(__file__).resolve().parents[2]
+        / "tests"
+        / "fixtures"
+        / "polygon"
+        / "grouped_daily_2026-05-08.json"
+    )
+    saved_path = tmp_path / "polygon-grouped-daily-2026-05-08.json"
+
+    assert main(["init-db"]) == 0
+    capsys.readouterr()
+    engine = create_engine(database_url, future=True)
+    MarketRepository(engine).upsert_securities(
+        [
+            _security("AAPL", "Apple", "CS"),
+            _security("MSFT", "Microsoft", "CS"),
+            _security("GOOG", "Alphabet", "CS"),
+        ]
+    )
+
+    capture_code = main(
+        [
+            "market-bars",
+            "saved-capture",
+            "--expected-as-of",
+            "2026-05-08",
+            "--fixture",
+            str(fixture_path),
+            "--out",
+            str(saved_path),
+            "--json",
+        ]
+    )
+    assert capture_code == 0
+    capture_payload = json.loads(capsys.readouterr().out)
+    assert capture_payload["schema_version"] == (
+        "polygon-grouped-daily-response-capture-v1"
+    )
+    assert capture_payload["source"] == "fixture"
+    assert capture_payload["external_calls_made"] == 0
+    assert capture_payload["db_writes_made"] == 0
+    assert saved_path.read_bytes() == fixture_path.read_bytes()
+
+    validate_code = main(
+        [
+            "market-bars",
+            "saved-validate",
+            "--expected-as-of",
+            "2026-05-08",
+            "--fixture",
+            str(saved_path),
+            "--json",
+        ]
+    )
+    assert validate_code == 0
+    validate_payload = json.loads(capsys.readouterr().out)
+    assert validate_payload["schema_version"] == (
+        "polygon-grouped-daily-fixture-preview-v1"
+    )
+    assert validate_payload["status"] == "ready_with_rejections"
+    assert validate_payload["external_calls_made"] == 0
+    assert validate_payload["db_writes_made"] == 0
+
+    preview_code = main(
+        [
+            "market-bars",
+            "saved-import",
+            "--expected-as-of",
+            "2026-05-08",
+            "--fixture",
+            str(saved_path),
+            "--json",
+        ]
+    )
+    assert preview_code == 0
+    preview_payload = json.loads(capsys.readouterr().out)
+    assert preview_payload["schema_version"] == (
+        "polygon-grouped-daily-fixture-import-v1"
+    )
+    assert preview_payload["executed"] is False
+    assert preview_payload["external_calls_made"] == 0
+    assert preview_payload["db_writes_made"] == 0
+
+    execute_code = main(
+        [
+            "market-bars",
+            "saved-import",
+            "--expected-as-of",
+            "2026-05-08",
+            "--fixture",
+            str(saved_path),
+            "--execute",
+            "--json",
+        ]
+    )
+    assert execute_code == 0
+    execute_payload = json.loads(capsys.readouterr().out)
+    assert execute_payload["schema_version"] == (
+        "polygon-grouped-daily-fixture-import-v1"
+    )
+    assert execute_payload["status"] == "imported_with_rejections"
+    assert execute_payload["executed"] is True
+    assert execute_payload["external_calls_made"] == 0
+    assert execute_payload["db_writes_made"] == 1
+    assert execute_payload["daily_bar_count"] == 6
+    assert execute_payload["rejected_count"] == 1
+
+    with engine.connect() as conn:
+        assert conn.execute(select(func.count()).select_from(job_runs)).scalar_one() == 1
+        assert conn.execute(select(func.count()).select_from(daily_bars)).scalar_one() == 6
+
 def test_market_bars_repair_plan_blocks_provider_fill_when_health_is_down(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
