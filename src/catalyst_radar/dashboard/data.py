@@ -1219,6 +1219,26 @@ def priced_in_source_gap_batches_payload(
         if batches
         else None
     )
+    current_blocker_gate = _priced_in_source_current_blocker_gate(
+        engine,
+        config,
+        queue=resolved_queue,
+        source_name=source_name,
+        stocks_only=resolved_stocks_only,
+        source_batch_available=bool(batches),
+    )
+    current_blocker_gate_blocked = (
+        str(current_blocker_gate.get("status") or "").strip() == "blocked"
+    )
+    effective_execute_next_command = (
+        None if current_blocker_gate_blocked else execute_next_command
+    )
+    effective_execute_batches_command = (
+        None if current_blocker_gate_blocked else execute_batches_command
+    )
+    effective_execute_batches_api = (
+        None if current_blocker_gate_blocked else execute_batches_api
+    )
     all_batches_api = (
         _priced_in_source_batches_api(
             source_name,
@@ -1268,8 +1288,8 @@ def priced_in_source_gap_batches_payload(
         first_batch=first_batch,
         review_rows_command=review_rows_command,
         all_batches_command=all_batches_command,
-        execute_next_command=execute_next_command,
-        execute_batches_command=execute_batches_command,
+        execute_next_command=effective_execute_next_command,
+        execute_batches_command=effective_execute_batches_command,
     )
     return {
         "schema_version": "priced-in-source-batches-v1",
@@ -1340,6 +1360,7 @@ def priced_in_source_gap_batches_payload(
             - int(_finite_float(diagnostic.get("routed_non_company_rows"))),
         ),
         "diagnostic": diagnostic,
+        "current_blocker_gate": current_blocker_gate,
         "batch_size": resolved_batch_size,
         "batch_count": batch_count,
         "batch_offset": resolved_offset,
@@ -1351,9 +1372,9 @@ def priced_in_source_gap_batches_payload(
         "review_rows_command": review_rows_command,
         "export_rows_command": export_rows_command,
         "all_batches_command": all_batches_command,
-        "execute_next_command": execute_next_command,
-        "execute_batches_command": execute_batches_command,
-        "execute_batches_api": execute_batches_api,
+        "execute_next_command": effective_execute_next_command,
+        "execute_batches_command": effective_execute_batches_command,
+        "execute_batches_api": effective_execute_batches_api,
         "all_batches_api": all_batches_api,
         "command": plan_command,
         "plan_command": plan_command,
@@ -1955,6 +1976,120 @@ def options_fixture_template_payload(
             "available at the scan date; do not backfill current chains into an "
             "older scan."
         ),
+    }
+
+
+def _priced_in_source_current_blocker_gate(
+    engine,
+    config,
+    *,
+    queue,
+    source_name,
+    stocks_only,
+    source_batch_available,
+):
+    source = str(source_name or "").strip()
+    schema = "priced-in-current-blocker-gate-v1"
+    if source == "market_bars":
+        return {
+            "schema_version": schema,
+            "status": "current_source",
+            "source": source,
+            "blocked_by": None,
+            "blocked_gap_rows": 0,
+            "decision_useful_now": True,
+            "execute_next_allowed": False,
+            "execute_batches_allowed": False,
+            "reason": (
+                "Use the market-bar repair commands for the current "
+                "price-reaction gate."
+            ),
+            "external_calls_made": 0,
+        }
+    try:
+        market_plan = _priced_in_market_bar_source_gap_plan(
+            engine,
+            config,
+            queue=queue,
+            stocks_only=stocks_only,
+            batch_limit=1,
+            batch_offset=0,
+            batch_size=1,
+            requested_batch_size=1,
+            max_batch_size=1,
+            all_batches=False,
+        )
+    except (SQLAlchemyError, ValueError):
+        return {
+            "schema_version": schema,
+            "status": "unknown",
+            "source": source,
+            "blocked_by": None,
+            "blocked_gap_rows": 0,
+            "decision_useful_now": False,
+            "execute_next_allowed": bool(source_batch_available),
+            "execute_batches_allowed": bool(source_batch_available),
+            "reason": (
+                "Market-bar precondition could not be evaluated; review the "
+                "full source overview before executing provider chunks."
+            ),
+            "external_calls_made": 0,
+        }
+    gaps = int(_finite_float(market_plan.get("total_gap_rows")))
+    if gaps <= 0:
+        return {
+            "schema_version": schema,
+            "status": "ready",
+            "source": source,
+            "blocked_by": None,
+            "blocked_gap_rows": 0,
+            "decision_useful_now": True,
+            "execute_next_allowed": bool(source_batch_available),
+            "execute_batches_allowed": bool(source_batch_available),
+            "reason": (
+                "Market-bar price reaction is complete for this scan scope; "
+                "review provider budget before source execution."
+            ),
+            "external_calls_made": 0,
+        }
+    diagnostic = _mapping_value(market_plan, "diagnostic")
+    scan_scope = _mapping_value(market_plan, "scan_scope")
+    coverage_basis = str(scan_scope.get("coverage_basis") or "").strip()
+    row_label = (
+        "stock-like row(s)"
+        if coverage_basis == "stock_like_active_as_of_bars"
+        else "active row(s)"
+    )
+    scan_label = "stocks-only scan" if stocks_only else "full-market scan"
+    command = (
+        market_plan.get("plan_command")
+        or diagnostic.get("manual_template_command")
+        or diagnostic.get("fix_command")
+    )
+    return {
+        "schema_version": schema,
+        "status": "blocked",
+        "source": source,
+        "blocked_by": "market_bars",
+        "blocked_gap_rows": gaps,
+        "decision_useful_now": False,
+        "execute_next_allowed": False,
+        "execute_batches_allowed": False,
+        "source_batch_available": bool(source_batch_available),
+        "reason": (
+            f"market_bars has {gaps} {row_label} without scan-date price "
+            f"reaction, so {source} source execution is not the next "
+            f"required step for a trusted {scan_label}."
+        ),
+        "next_action": market_plan.get("next_action"),
+        "command": command,
+        "prework_boundary": (
+            "This source plan is review-only while market_bars is blocked; "
+            "local repair/template steps in diagnostics remain zero-call; "
+            "provider source execution stays blocked until the price-reaction "
+            "gate clears."
+        ),
+        "external_calls_made": 0,
     }
 
 
@@ -2680,7 +2815,11 @@ def _priced_in_all_source_batch_row(
     first_batch = next((batch for batch in batches if isinstance(batch, Mapping)), None)
     first_batch_payload = _priced_in_first_source_batch_payload(first_batch)
     status = str(plan.get("status") or "unknown")
-    executable = status == "ready" and first_batch is not None
+    executable = (
+        status == "ready"
+        and first_batch is not None
+        and bool(plan.get("execute_next_command"))
+    )
     priority = _row_dict(priority_counts or {})
     total_gap_rows = int(_finite_float(plan.get("total_gap_rows")))
     plannable_gap_rows = int(_finite_float(plan.get("plannable_gap_rows")))
@@ -2727,6 +2866,9 @@ def _priced_in_all_source_batch_row(
         "first_batch": first_batch_payload,
         "approval_checklist": _row_dict(
             _mapping_value(plan, "approval_checklist")
+        ),
+        "current_blocker_gate": _row_dict(
+            _mapping_value(plan, "current_blocker_gate")
         ),
         "all_batches_command": all_batches_command,
         "all_batches_api": all_batches_api,

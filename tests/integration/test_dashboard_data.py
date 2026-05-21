@@ -3860,10 +3860,14 @@ def test_priced_in_source_gap_batches_payload_plans_safe_sync_batches(
     assert stock_payload["plan_command"] == stock_payload["all_batches_command"]
     assert stock_payload["command"] == stock_payload["all_batches_command"]
     assert stock_payload["plan_api"] == stock_payload["all_batches_api"]
-    assert stock_payload["execute_next_command"] == (
-        "catalyst-radar priced-in-source-batches --source options "
-        "--stocks-only --execute-next"
-    )
+    current_gate = stock_payload["current_blocker_gate"]
+    assert current_gate["status"] == "blocked"
+    assert current_gate["blocked_by"] == "market_bars"
+    assert current_gate["execute_next_allowed"] is False
+    assert current_gate["execute_batches_allowed"] is False
+    assert stock_payload["execute_next_command"] is None
+    assert stock_payload["execute_batches_command"] is None
+    assert stock_payload["execute_batches_api"] is None
     assert stock_payload["review_rows_command"] == (
         "catalyst-radar priced-in-queue --stocks-only --full-scan "
         "--source-gap options --limit 50"
@@ -3872,10 +3876,7 @@ def test_priced_in_source_gap_batches_payload_plans_safe_sync_batches(
         "catalyst-radar priced-in-queue --stocks-only --full-scan "
         "--source-gap options --all --json"
     )
-    assert stock_payload["approval_checklist"]["execute_next_command"] == (
-        "catalyst-radar priced-in-source-batches --source options "
-        "--stocks-only --execute-next"
-    )
+    assert stock_payload["approval_checklist"]["execute_next_command"] is None
 
 
 def test_priced_in_source_gap_batches_payload_can_return_full_scan_plan(
