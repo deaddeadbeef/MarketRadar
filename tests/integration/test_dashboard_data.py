@@ -33,6 +33,7 @@ from catalyst_radar.connectors.csv_market import load_securities_csv
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.core.models import ActionState, DailyBar, Security
 from catalyst_radar.dashboard.data import (
+    _priced_in_answer_full_scan_summary,
     _priced_in_market_bar_provider_fill_plan,
     _priced_in_scan_status,
     _priced_in_source_actions_from_payload,
@@ -1568,6 +1569,128 @@ def test_priced_in_answer_payload_summarizes_current_scan(tmp_path: Path) -> Non
         assert payload["top_rows"][0]["ticker"] == "MSFT"
         assert payload["top_rows"][0]["decision_ready"] is False
         assert payload["top_rows"][0]["missing_sources"]
+
+
+def test_priced_in_full_scan_summary_accounts_for_benchmark_exclusions() -> None:
+    queue = {
+        "scan": {
+            "scanned_candidate_states": 12087,
+            "freshness": {"active_security_count": 12613},
+        },
+        "scan_exclusions": {
+            "reason": "benchmark_reference_tickers",
+            "count": 3,
+            "tickers": ["SPY", "XLI", "XLK"],
+        },
+        "filters": {
+            "status": "all",
+            "stocks_only": False,
+            "limit": 5,
+            "offset": 0,
+        },
+        "count": 5,
+        "returned_count": 5,
+        "total_count": 12087,
+        "offset": 0,
+        "has_more": True,
+    }
+
+    summary = _priced_in_answer_full_scan_summary(queue)
+
+    assert summary["unscanned_rows"] == 526
+    assert summary["unscanned_blocker_rows"] == 523
+    assert summary["scan_excluded_rows"] == 3
+    assert summary["scan_excluded_tickers"] == ["SPY", "XLI", "XLK"]
+    assert summary["scan_excluded_reason"] == "benchmark_reference_tickers"
+
+
+def test_priced_in_answer_trust_gate_ignores_benchmark_exclusions(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    source_names = (
+        "market_bars",
+        "catalyst_events",
+        "local_text",
+        "options",
+        "theme_peer_sector",
+        "broker_context",
+    )
+    queue = {
+        "schema_version": "priced-in-queue-v1",
+        "status": "ready",
+        "latest_run": {"as_of": "2026-05-15"},
+        "scan": {
+            "scanned_candidate_states": 2,
+            "freshness": {"active_security_count": 5},
+        },
+        "scan_exclusions": {
+            "reason": "benchmark_reference_tickers",
+            "count": 3,
+            "tickers": ["SPY", "XLI", "XLK"],
+        },
+        "filters": {
+            "status": "all",
+            "usefulness": "all",
+            "source_gap": [],
+            "decision_gap": [],
+            "min_gap": None,
+            "stocks_only": False,
+            "limit": 5,
+            "offset": 0,
+        },
+        "count": 0,
+        "returned_count": 0,
+        "total_count": 2,
+        "offset": 0,
+        "has_more": False,
+        "status_counts": {},
+        "usefulness_counts": {},
+        "decision_gap_counts": {"row_count": 0, "counts": {}},
+        "source_coverage": {
+            "sources": {
+                source: {
+                    "row_count": 2,
+                    "available": 2,
+                    "stale": 0,
+                    "missing": 0,
+                    "coverage_pct": 100.0,
+                }
+                for source in source_names
+            },
+            "actions": [],
+            "summary": "all sources ready",
+            "weak_sources": [],
+        },
+        "rows": [],
+        "preflight": {"rows": []},
+    }
+    market_bars = {
+        "status": "ready",
+        "active_securities": 5,
+        "with_as_of_bar": 5,
+        "missing_as_of_bar": 0,
+        "repair": {
+            "status": "ready",
+            "active_securities": 5,
+            "with_as_of_bar": 5,
+            "missing_as_of_bar": 0,
+        },
+    }
+
+    payload = priced_in_answer_payload(
+        engine,
+        AppConfig.from_env({}),
+        queue=queue,
+        preflight={"rows": []},
+        market_bars=market_bars,
+    )
+
+    assert payload["full_scan"]["unscanned_rows"] == 3
+    assert payload["full_scan"]["unscanned_blocker_rows"] == 0
+    assert payload["full_scan"]["scan_excluded_rows"] == 3
+    assert payload["full_market_trust_gate"]["trusted_full_market_answer"] is True
+    assert payload["full_market_trust_gate"]["status"] == "ready"
 
 
 def test_priced_in_source_gap_names_match_action_statuses() -> None:

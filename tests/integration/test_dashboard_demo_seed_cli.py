@@ -3517,6 +3517,8 @@ def test_priced_in_answer_cli_outputs_current_scan_answer(
     assert "evidence_completeness=all_sources_ready=" in output.out
     assert "full_scan=mode=full_scan" in output.out
     assert "unscanned=" in output.out
+    assert "unscanned_blockers=" in output.out
+    assert "excluded=" in output.out
     assert "basis=" in output.out
     assert "sample=false" in output.out
     assert "review_full_scan=catalyst-radar priced-in-queue --full-scan" in output.out
@@ -3582,6 +3584,9 @@ def test_dashboard_summary_surfaces_unscanned_full_scan_rows() -> None:
                 "active_securities": 12613,
                 "scanned_rows": 12087,
                 "unscanned_rows": 526,
+                "unscanned_blocker_rows": 523,
+                "scan_excluded_rows": 3,
+                "scan_excluded_tickers": ["SPY", "XLI", "XLK"],
             }
         },
         "priced_in_audit": {
@@ -3594,7 +3599,8 @@ def test_dashboard_summary_surfaces_unscanned_full_scan_rows() -> None:
 
     assert _answer_full_scan_scope_summary(payload) == (
         "Full-scan coverage: 12087/12613 active all-instrument row(s) scanned; "
-        "526 unscanned; 523 missing scan-date market bar(s)."
+        "526 unscanned; 523 missing scan-date market bar(s); "
+        "3 benchmark reference row(s) intentionally excluded: SPY, XLI, XLK."
     )
 
 

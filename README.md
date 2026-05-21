@@ -166,6 +166,13 @@ counts, capture API request bodies, and the post-capture validate/import steps.
 The same answer payload includes `reviewable_subset`, a zero-call count and
 sample of scanned-subset leads that can be inspected as research-only while the
 full-market trust gate remains blocked.
+The full-scan accounting also distinguishes raw unscanned rows from rows that
+actually block the answer. `full_scan.unscanned_rows` is the active universe
+minus scored rows. `full_scan.unscanned_blocker_rows` subtracts intentional
+benchmark-reference exclusions, currently `SPY`, `XLK`, and `XLI`, so those
+relative-strength helper ETFs do not keep the trust gate blocked after all real
+evidence gaps clear. The CLI mirrors this as `unscanned=`,
+`unscanned_blockers=`, and `excluded=`.
 The default is still the full scan. Use `ready`, press `D`, or run
 `catalyst-radar priced-in-queue --decision-ready` only when you intentionally
 want the small decision-useful subset from that full scan.
