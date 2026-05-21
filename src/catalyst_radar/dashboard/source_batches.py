@@ -249,6 +249,7 @@ def execute_priced_in_source_batches(
         ),
         None,
     )
+    execution_blocker = _mapping(failed.get("execution_blocker")) if failed else {}
     status_value = _source_batch_run_status(
         executed_batches=executed_batches,
         requested_batches=int(max_batches),
@@ -256,10 +257,14 @@ def execute_priced_in_source_batches(
         after_summary=after_summary,
     )
     next_command = (
-        f"catalyst-radar priced-in-source-batches --source {source_name} "
-        f"--execute-batches {int(max_batches)}"
-        if int(_number_or_zero(after_summary.get("plannable_gap_rows"))) > 0
-        else None
+        str(execution_blocker.get("command") or "").strip()
+        if execution_blocker
+        else (
+            f"catalyst-radar priced-in-source-batches --source {source_name} "
+            f"--execute-batches {int(max_batches)}"
+            if int(_number_or_zero(after_summary.get("plannable_gap_rows"))) > 0
+            else None
+        )
     )
     payload: dict[str, object] = {
         "schema_version": "priced-in-source-batch-run-v1",
@@ -293,6 +298,8 @@ def execute_priced_in_source_batches(
         ),
         "next_command": next_command,
     }
+    if execution_blocker:
+        payload["execution_blocker"] = execution_blocker
     return payload
 
 
