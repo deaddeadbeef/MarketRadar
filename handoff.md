@@ -1,8 +1,42 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 20:08:06 +08:00
+Last updated: 2026-05-21 20:31:00 +08:00
 
 
+
+
+## Latest Source Execution Gate Clarity
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, broker, order, web, shell, or provider tools from the app.
+- This is useful because the human dashboard must not imply that planned source chunks are currently executable while the hard market-bar gate is still blocking the trusted full-market answer.
+
+Fix in this slice:
+
+- `priced-in-source-batches --source all` payloads now include `source_execution_gate` with `execute_next_allowed=false` when `market_bars` still has missing scan-date bars.
+- The gate names the blocker, blocked row count, zero-call command/repair action, and `external_calls_made=0`.
+- CLI all-source output now prints `source_execution_gate=...` before the source table.
+- TUI `batch all` now says source execution is blocked by `market_bars` and suppresses misleading `First executable` / `Capped run` wording until that gate clears.
+- README documents the top-level execution gate so API/dashboard clients distinguish planned chunks from currently allowed execution.
+
+Validation observed in this slice:
+
+- Focused API route regression passed for all-source source-batches overview passthrough.
+- Focused dashboard data regressions passed for all-source source batches.
+- Focused CLI/TUI regressions passed for `batch all` and the market-bar source-map blocker case.
+- Ruff passed for the touched source and test files.
+- Py-compile passed for the touched source and test files.
+- `git diff --check` passed.
+- Live zero-call JSON smoke against `schwab-live.db`, with the worktree source pinned on `PYTHONPATH`, returned `source_execution_gate status=blocked`, `execute_next_allowed=false`, `blocked_by=market_bars`, `blocked_gap_rows=523`, and `external_calls_made=0`.
+- Live zero-call CLI text smoke printed `source_execution_gate=status=blocked execute_next_allowed=false blocked_by=market_bars gaps=523`.
+- Live zero-call TUI command-path smoke for `batch all` showed `Source execution blocked by market_bars`, `planned source chunks are review-only`, no `First executable`, no `Capped run`, and `Recommended unblock`.
+
+Current live blocker:
+
+- The trusted full-market priced-in answer remains blocked by 523 missing market bars for 2026-05-15 until explicit saved Polygon/Massive capture approval or complete manual CSV import.
+- Do not treat this slice as goal completion; it removes a misleading action hint while preserving the real next unblock path.
 
 ## Latest Explicit Source Blocked Rows
 

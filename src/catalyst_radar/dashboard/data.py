@@ -2069,6 +2069,10 @@ def priced_in_all_source_gap_batches_payload(
         decision_shortcut_blocker=decision_shortcut_blocker,
         rows=rows,
     )
+    source_execution_gate = _priced_in_all_source_execution_gate(
+        coverage_recommendation,
+        ready_rows=ready_rows,
+    )
     return {
         "schema_version": "priced-in-source-batch-overview-v1",
         "status": status_value,
@@ -2085,17 +2089,80 @@ def priced_in_all_source_gap_batches_payload(
         "coverage_first_recommendation": coverage_recommendation,
         "decision_shortcut_recommendation": decision_recommendation,
         "decision_shortcut_blocker": decision_shortcut_blocker,
+        "source_execution_gate": source_execution_gate,
         "external_calls_made": 0,
-        "execution_boundary": (
-            "Plan only. This overview makes no provider calls and never executes "
-            "every source. Pick one source and run its execute_next_command when "
-            "the call budget matches your intent."
+        "execution_boundary": _priced_in_all_source_execution_boundary(
+            source_execution_gate
         ),
         "source_count": len(rows),
         "ready_source_count": len(ready_rows),
         "blocked_source_count": len(blocked_rows),
         "total_gap_rows": total_gap_rows,
         "sources": rows,
+    }
+
+
+
+def _priced_in_all_source_execution_boundary(
+    source_execution_gate: Mapping[str, object],
+) -> str:
+    if str(source_execution_gate.get("status") or "") == "blocked":
+        blocked_by = str(source_execution_gate.get("blocked_by") or "source gate")
+        return (
+            "Plan only. This overview makes no provider calls and does not "
+            f"execute sources. Source execution is blocked by {blocked_by} "
+            "until the gate clears."
+        )
+    return (
+        "Plan only. This overview makes no provider calls and never executes "
+        "every source. Pick one source and run its execute_next_command when "
+        "the call budget matches your intent."
+    )
+
+
+
+def _priced_in_all_source_execution_gate(
+    coverage_recommendation: Mapping[str, object],
+    *,
+    ready_rows: Sequence[Mapping[str, object]],
+) -> dict[str, object]:
+    source = str(coverage_recommendation.get("source") or "").strip()
+    gaps = int(_finite_float(coverage_recommendation.get("total_gap_rows")))
+    if source == "market_bars" and gaps:
+        return {
+            "schema_version": "priced-in-source-execution-gate-v1",
+            "status": "blocked",
+            "execute_next_allowed": False,
+            "execute_batches_allowed": False,
+            "blocked_by": "market_bars",
+            "blocked_gap_rows": gaps,
+            "reason": (
+                "Source chunks may be planned, but execution is blocked until "
+                "scan-date market bars are complete."
+            ),
+            "next_action": coverage_recommendation.get("action"),
+            "command": coverage_recommendation.get("command"),
+            "external_calls_required": int(
+                _finite_float(coverage_recommendation.get("first_batch_external_calls"))
+            ),
+            "external_calls_made": 0,
+        }
+    runnable = any(
+        str(row.get("execute_next_command") or "").strip() for row in ready_rows
+    )
+    return {
+        "schema_version": "priced-in-source-execution-gate-v1",
+        "status": "ready" if runnable else "complete",
+        "execute_next_allowed": bool(runnable),
+        "execute_batches_allowed": bool(runnable),
+        "blocked_by": None,
+        "blocked_gap_rows": 0,
+        "reason": (
+            "Review one source chunk and provider budget before execution."
+            if runnable
+            else "No source chunk execution is currently needed."
+        ),
+        "external_calls_made": 0,
     }
 
 

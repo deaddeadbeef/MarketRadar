@@ -2924,16 +2924,19 @@ def _priced_in_all_source_batch_message(
     first_ready = (
         sorted(ready_rows, key=_source_batch_priority_key)[0] if ready_rows else None
     )
+    execution_gate = _mapping(payload.get("source_execution_gate"))
+    execution_blocked = str(execution_gate.get("status") or "") == "blocked"
     command = (
         f" First executable: {first_ready.get('execute_next_command')}."
-        if first_ready
+        if first_ready and not execution_blocked
         else ""
     )
     capped_command = (
         f" Capped run: {first_ready.get('execute_batches_command')}."
-        if first_ready and first_ready.get("execute_batches_command")
+        if first_ready and not execution_blocked and first_ready.get("execute_batches_command")
         else ""
     )
+    execution_gate_text = _all_source_execution_gate_text(execution_gate)
     next_action = str(payload.get("next_action") or "").strip()
     next_action_text = f" Suggested first: {next_action}" if next_action else ""
     recommended_unblock_text = _all_source_mission_recommended_unblock(payload)
@@ -2963,8 +2966,23 @@ def _priced_in_all_source_batch_message(
         "first safe provider chunks. Source execution is split into safe chunks. "
         f"{scan_text}{review_text}{export_text} "
         f"{'; '.join(pieces)}.{next_action_text}{recommended_unblock_text}"
-        f"{recommendation_text}{command}{capped_command}"
+        f"{recommendation_text}{execution_gate_text}{command}{capped_command}"
     )
+
+
+def _all_source_execution_gate_text(gate: Mapping[str, object]) -> str:
+    if str(gate.get("status") or "") != "blocked":
+        return ""
+    blocked_by = str(gate.get("blocked_by") or "source gate").strip()
+    gaps = int(_number_or_zero(gate.get("blocked_gap_rows")))
+    command = str(gate.get("command") or "").strip()
+    command_text = f" Unblock command: {command}." if command else ""
+    return (
+        f" Source execution blocked by {blocked_by} ({gaps} gap row(s)); "
+        "planned source chunks are review-only until this clears."
+        f"{command_text}"
+    )
+
 
 
 def _all_source_mission_recommended_unblock(payload):
