@@ -1259,14 +1259,13 @@ def preview_manual_market_bars_import(
     if validation.invalid_row_count:
         existing_at_expected: set[str] | None = None
         coverage_after_import: int | None = None
+        bars_at_expected: int | None = None
         missing: tuple[str, ...] = ()
         if expected_as_of is not None:
             existing_at_expected = _bar_tickers_for_date(engine, expected_as_of) & active
-            coverage_after = existing_at_expected | (
-                validation.expected_as_of_tickers & active
-            )
-            coverage_after_import = len(coverage_after)
-            missing = tuple(sorted(active - coverage_after))
+            coverage_after_import = len(existing_at_expected)
+            bars_at_expected = 0
+            missing = tuple(sorted(active - existing_at_expected))
         return ManualBarsImportResult(
             daily_bars_path=path,
             expected_as_of=expected_as_of,
@@ -1279,11 +1278,7 @@ def preview_manual_market_bars_import(
                 len(existing_at_expected) if existing_at_expected is not None else None
             ),
             coverage_after_import_count=coverage_after_import,
-            bars_at_expected_as_of=(
-                len(validation.expected_as_of_tickers)
-                if expected_as_of is not None
-                else None
-            ),
+            bars_at_expected_as_of=bars_at_expected,
             stocks_only=stocks_only,
             missing_expected_tickers=missing,
             invalid_row_count=validation.invalid_row_count,

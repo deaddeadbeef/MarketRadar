@@ -511,7 +511,10 @@ The template command writes a local ignored CSV scaffold for missing active
 tickers in the live database. Missing-only rows are sorted with stock-like
 instruments first, then unknown types, then fund/wrapper rows. Fill `open`,
 `high`, `low`, `close`, `volume`, and `vwap`; preview reports missing or
-invalid bar fields and validates active-ticker coverage before any import.
+invalid bar fields and validates active-ticker coverage before any import. Invalid
+or empty manual rows do not count toward `coverage_after_import_count`; use
+`--complete-rows-only` when you intentionally want to preview/import only the
+completed rows while leaving blank rows for later.
 Saved-file validation/import and manual CSV import make 0 Polygon, SEC, Schwab,
 or OpenAI calls. After importing, rerun `scripts/market-radar-status.ps1`, then
 use the plan-only smoke before any capped live radar cycle.
