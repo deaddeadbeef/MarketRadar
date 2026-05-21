@@ -6144,6 +6144,18 @@ def _run_mission_brief_items(
     trust_gate = _mapping(answer.get("full_market_trust_gate"))
     if trust_gate:
         gate_text = f"{trust_gate.get('status')}; {trust_gate.get('answer')}"
+        blocker_detail = _mapping(trust_gate.get("blocker_detail"))
+        if blocker_detail.get("source") == "market_bars":
+            complete = int(_number_or_zero(blocker_detail.get("complete_rows")))
+            missing = int(
+                _number_or_zero(blocker_detail.get("missing_as_of_bar"))
+            )
+            empty = int(_number_or_zero(blocker_detail.get("empty_rows")))
+            saved = blocker_detail.get("provider_saved_file_status") or "n/a"
+            gate_text = (
+                f"{gate_text}; manual CSV {complete}/{missing} complete"
+                f", empty {empty}; saved file {saved}"
+            )
         items.append(("Trust gate", gate_text))
     if progress_parts:
         items.append(("Scan progress", "; ".join(progress_parts)))

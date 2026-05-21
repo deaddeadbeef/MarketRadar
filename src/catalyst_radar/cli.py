@@ -5789,6 +5789,18 @@ def _print_priced_in_answer(payload: Mapping[str, object]) -> None:
             f"unscanned={trust_gate.get('unscanned_rows') or 0} "
             f"external_calls={trust_gate.get('external_calls_made') or 0}"
         )
+        blocker_detail = trust_gate.get("blocker_detail")
+        if isinstance(blocker_detail, Mapping):
+            print(
+                "trust_gate_blocker="
+                f"source={blocker_detail.get('source') or 'n/a'} "
+                f"missing={blocker_detail.get('missing_as_of_bar') or 0} "
+                f"manual_csv_complete={blocker_detail.get('complete_rows') or 0} "
+                f"partial={blocker_detail.get('partial_rows') or 0} "
+                f"empty={blocker_detail.get('empty_rows') or 0} "
+                f"saved_file={blocker_detail.get('provider_saved_file_status') or 'n/a'} "
+                f"external_calls={blocker_detail.get('external_calls_made') or 0}"
+            )
     print(f"next_action={payload.get('next_action')}")
     if payload.get("next_command"):
         print(f"next_command={_compact_cli_text(payload.get('next_command'))}")
