@@ -2988,7 +2988,7 @@ def _all_source_execution_gate_text(gate: Mapping[str, object]) -> str:
 def _all_source_mission_recommended_unblock(payload):
     mission = _mapping(payload.get("mission_brief"))
     action = _mapping(mission.get("recommended_unblock_action"))
-    command = str(action.get("command") or "").strip()
+    command = str(action.get("tui_command") or action.get("command") or "").strip()
     if not command:
         return ""
     kind = str(action.get("kind") or "action").strip()

@@ -641,6 +641,7 @@ def _market_bar_recommended_unblock_context(answer):
             "status",
             "reason",
             "command",
+            "cli_command",
             "tui_command",
             "api",
             "request_body",
@@ -693,6 +694,8 @@ def _market_bar_unblock_options_context(audit: Mapping[str, object]) -> list[dic
                 ),
                 "command": _text(packet.get("tui_confirm_command"))
                 or _text(packet.get("capture_cli_command")),
+                "cli_command": _text(packet.get("capture_cli_command")),
+                "tui_command": _text(packet.get("tui_confirm_command")),
                 "question": _text(packet.get("question")),
             }
         )
@@ -708,6 +711,8 @@ def _market_bar_unblock_options_context(audit: Mapping[str, object]) -> list[dic
                     "db_writes_during_step": int(_number(step.get("db_writes_made"))),
                     "command": _text(step.get("tui_command"))
                     or _text(step.get("cli_command")),
+                    "cli_command": _text(step.get("cli_command")),
+                    "tui_command": _text(step.get("tui_command")),
                 }
             )
     return options[:5]
@@ -1194,7 +1199,9 @@ def _priced_in_recommended_unblock_insight(priced_in):
     status = _text(action.get("status")) or "unknown"
     calls = int(_number(action.get("external_calls_required")))
     writes = int(_number(action.get("db_writes_required")))
-    command = _text(action.get("command") or action.get("tui_command"))
+    command = _text(
+        action.get("cli_command") or action.get("command") or action.get("tui_command")
+    )
     reason = _text(action.get("reason"))
     pieces = [f"{kind} status={status}", f"calls={calls}", f"db_writes={writes}"]
     if command:
@@ -1213,7 +1220,7 @@ def _priced_in_unblock_options_insight(priced_in: Mapping[str, object]) -> str |
         kind = _text(option.get("kind")) or "option"
         status = _text(option.get("status")) or "unknown"
         calls = int(_number(option.get("external_calls_required")))
-        command = _text(option.get("command"))
+        command = _text(option.get("cli_command") or option.get("command"))
         command_piece = f" command={command}" if command else ""
         pieces.append(f"{kind} status={status} calls={calls}{command_piece}")
     return "Market-bar unblock options: " + "; ".join(pieces) + "."
@@ -1224,7 +1231,9 @@ def _priced_in_recommended_unblock_actions(priced_in):
     if not action:
         return []
     kind = _text(action.get("kind")) or "action"
-    command = _text(action.get("command") or action.get("tui_command"))
+    command = _text(
+        action.get("cli_command") or action.get("command") or action.get("tui_command")
+    )
     if not command:
         return []
     calls = int(_number(action.get("external_calls_required")))
@@ -1244,14 +1253,16 @@ def _priced_in_unblock_option_actions(priced_in: Mapping[str, object]) -> list[s
     actions: list[str] = []
     recommended = _mapping(priced_in.get("recommended_unblock_action"))
     recommended_command = _text(
-        recommended.get("command") or recommended.get("tui_command")
+        recommended.get("cli_command")
+        or recommended.get("command")
+        or recommended.get("tui_command")
     )
 
     for option in _rows(priced_in.get("market_bar_unblock_options"))[:4]:
         kind = _text(option.get("kind"))
         calls = int(_number(option.get("external_calls_required")))
         writes = int(_number(option.get("db_writes_during_step")))
-        command = _text(option.get("command"))
+        command = _text(option.get("cli_command") or option.get("command"))
         if not kind or not command:
             continue
         if recommended_command and command == recommended_command:
