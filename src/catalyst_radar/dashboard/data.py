@@ -1334,6 +1334,11 @@ def priced_in_source_gap_batches_payload(
         "plannable_gap_rows": len(tickers),
         "unplannable_gap_rows": max(0, len(all_gap_tickers) - len(tickers)),
         "routed_gap_rows": int(_finite_float(diagnostic.get("routed_non_company_rows"))),
+        "blocked_gap_rows": max(
+            0,
+            max(0, len(all_gap_tickers) - len(tickers))
+            - int(_finite_float(diagnostic.get("routed_non_company_rows"))),
+        ),
         "diagnostic": diagnostic,
         "batch_size": resolved_batch_size,
         "batch_count": batch_count,
@@ -1632,6 +1637,7 @@ def _priced_in_market_bar_source_gap_plan(
         "plannable_gap_rows": 0,
         "unplannable_gap_rows": missing,
         "routed_gap_rows": 0,
+        "blocked_gap_rows": missing,
         "diagnostic": diagnostic,
         "batch_size": batch_size,
         "batch_count": 0,
@@ -2214,6 +2220,14 @@ def _priced_in_mission_source_roadmap(
                 "plannable_gap_rows": int(_finite_float(row.get("plannable_gap_rows"))),
                 "unplannable_gap_rows": int(_finite_float(row.get("unplannable_gap_rows"))),
                 "routed_gap_rows": int(_finite_float(row.get("routed_gap_rows"))),
+                "blocked_gap_rows": int(
+                    _finite_float(row.get("blocked_gap_rows"))
+                    or max(
+                        0,
+                        int(_finite_float(row.get("unplannable_gap_rows")))
+                        - int(_finite_float(row.get("routed_gap_rows"))),
+                    )
+                ),
                 "next_chunk_external_calls": int(
                     _finite_float(first_batch.get("external_calls_required"))
                 )
@@ -2600,6 +2614,10 @@ def _priced_in_all_source_batch_row(
     plannable_gap_rows = int(_finite_float(plan.get("plannable_gap_rows")))
     unplannable_gap_rows = int(_finite_float(plan.get("unplannable_gap_rows")))
     routed_gap_rows = int(_finite_float(plan.get("routed_gap_rows")))
+    blocked_gap_rows = int(
+        _finite_float(plan.get("blocked_gap_rows"))
+        or max(0, unplannable_gap_rows - routed_gap_rows)
+    )
     batch_count = int(_finite_float(plan.get("batch_count")))
     batch_size = int(_finite_float(plan.get("batch_size")))
     all_batches_command = plan.get("all_batches_command")
@@ -2618,6 +2636,7 @@ def _priced_in_all_source_batch_row(
         "plannable_gap_rows": plannable_gap_rows,
         "unplannable_gap_rows": unplannable_gap_rows,
         "routed_gap_rows": routed_gap_rows,
+        "blocked_gap_rows": blocked_gap_rows,
         "decision_useful_gap_rows": int(
             _finite_float(priority.get("decision_useful_gap_rows"))
         ),
@@ -4545,6 +4564,14 @@ def _priced_in_audit_source_gap_batch_action(
         "full_scan_gap_rows": total_gap_rows,
         "plannable_gap_rows": int(_finite_float(plan.get("plannable_gap_rows"))),
         "unplannable_gap_rows": int(_finite_float(plan.get("unplannable_gap_rows"))),
+        "blocked_gap_rows": int(
+            _finite_float(plan.get("blocked_gap_rows"))
+            or max(
+                0,
+                int(_finite_float(plan.get("unplannable_gap_rows")))
+                - int(_finite_float(plan.get("routed_gap_rows"))),
+            )
+        ),
         "provider_batch_count": batch_count,
         "batch_size": int(_finite_float(plan.get("batch_size"))),
         "first_batch_scope": "first_provider_batch" if first_batch_tickers else None,
@@ -7312,6 +7339,14 @@ def _priced_in_answer_next_source_plan_summary(
         "plannable_gap_rows": int(_finite_float(payload.get("plannable_gap_rows"))),
         "unplannable_gap_rows": int(_finite_float(payload.get("unplannable_gap_rows"))),
         "routed_gap_rows": int(_finite_float(payload.get("routed_gap_rows"))),
+        "blocked_gap_rows": int(
+            _finite_float(payload.get("blocked_gap_rows"))
+            or max(
+                0,
+                int(_finite_float(payload.get("unplannable_gap_rows")))
+                - int(_finite_float(payload.get("routed_gap_rows"))),
+            )
+        ),
         "blocked_rows": int(_finite_float(diagnostic.get("blocked_rows"))),
         "blocked_reason": diagnostic.get("blocked_reason"),
         "batch_count": int(_finite_float(payload.get("batch_count"))),

@@ -6456,7 +6456,11 @@ def _after_current_blocker_summary(preview: Mapping[str, object]):
         total = int(_number_or_zero(next_plan.get("total_gap_rows")))
         plannable = int(_number_or_zero(next_plan.get("plannable_gap_rows")))
         routed = int(_number_or_zero(next_plan.get("routed_gap_rows")))
-        blocked = int(_number_or_zero(next_plan.get("blocked_rows")))
+        blocked = int(
+            _number_or_zero(next_plan.get("blocked_gap_rows"))
+            if "blocked_gap_rows" in next_plan
+            else _number_or_zero(next_plan.get("blocked_rows"))
+        )
         reason = str(next_plan.get("blocked_reason") or "").strip()
         plan_parts = []
         if total:
@@ -7322,9 +7326,12 @@ def _source_batch_gap_summary(row: Mapping[str, object]) -> str:
     routed = int(_number_or_zero(row.get("routed_gap_rows")))
     unplannable = int(_number_or_zero(row.get("unplannable_gap_rows")))
     diagnostic = _mapping(row.get("diagnostic"))
-    blocked = int(_number_or_zero(diagnostic.get("blocked_rows")))
-    if blocked <= 0:
-        blocked = max(0, unplannable - routed)
+    if "blocked_gap_rows" in row:
+        blocked = int(_number_or_zero(row.get("blocked_gap_rows")))
+    else:
+        blocked = int(_number_or_zero(diagnostic.get("blocked_rows")))
+        if blocked <= 0:
+            blocked = max(0, unplannable - routed)
     parts = [f"gaps={total}"]
     if plannable or routed or blocked:
         parts.append(f"plan={plannable}")

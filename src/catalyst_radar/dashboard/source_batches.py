@@ -613,6 +613,14 @@ def _source_plan_summary(plan: Mapping[str, object]) -> dict[str, object]:
         "total_gap_rows": int(_number_or_zero(plan.get("total_gap_rows"))),
         "plannable_gap_rows": int(_number_or_zero(plan.get("plannable_gap_rows"))),
         "unplannable_gap_rows": int(_number_or_zero(plan.get("unplannable_gap_rows"))),
+        "blocked_gap_rows": int(
+            _number_or_zero(plan.get("blocked_gap_rows"))
+            or max(
+                0,
+                int(_number_or_zero(plan.get("unplannable_gap_rows")))
+                - int(_number_or_zero(plan.get("routed_gap_rows"))),
+            )
+        ),
         "batch_count": int(_number_or_zero(plan.get("batch_count"))),
         "batch_size": int(_number_or_zero(plan.get("batch_size"))),
         "next_action": plan.get("next_action"),
