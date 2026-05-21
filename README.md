@@ -156,7 +156,11 @@ or reduce the full scan. `blocker_ladder` lists the ordered evidence blockers
 that must be cleared after the first blocker. When another blocker is already
 known, `after_current_blocker` previews the next source, why it matters, and
 the zero-call plan/API plus guarded execute-next affordance to use only after
-the current blocker is cleared. `blocker_detail.manual_csv` gives dashboard
+the current blocker is cleared. Its `next_source_plan` is a compact zero-call
+source-batch summary for dashboard and CLI clients: total gap rows, plannable
+rows, routed non-company rows, blocked rows, missing-CIK samples, next chunk
+call count, and CIK repair commands when they apply.
+`blocker_detail.manual_csv` gives dashboard
 clients the fillable local CSV context: path, required fields, current complete
 / partial / empty counts, and sample missing tickers. `blocker_detail.saved_provider_capture`
 shows the guarded saved Polygon/Massive response path as its own zero-call

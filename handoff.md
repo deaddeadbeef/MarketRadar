@@ -1,8 +1,44 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 16:12:16 +08:00
+Last updated: 2026-05-21 16:43:31 +08:00
 
 
+## Latest Trust-Gate Next-Source Plan Summary
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, broker, order, web, shell, or provider tools from the app.
+- This is useful because the main `priced-in-answer` trust gate is the first payload a human dashboard or replacement CLI should read. Before this slice, it could say the next blocker was `catalyst_events` without showing the operational split between SEC-plannable rows, non-company rows that need a route, and rows blocked by missing CIK metadata.
+
+Fix in this slice:
+
+- `priced_in_answer_payload` now keeps internal planning rows when it builds its own queue, so it can compute a compact next-source batch summary without returning those planning rows to clients.
+- `full_market_trust_gate.after_current_blocker.next_source_plan` now summarizes the next batchable source with `total_gap_rows`, `plannable_gap_rows`, `routed_gap_rows`, `blocked_rows`, `blocked_reason`, `batch_count`, `next_chunk_external_calls`, sample blocked tickers, sample routed tickers, repair commands/APIs, and `external_calls_made=0`.
+- The summary reuses the existing `priced_in_source_gap_batches_payload` with the already-loaded queue, so it stays aligned with the CLI/API source-batch planner instead of inventing another interpretation.
+- CLI `priced-in-answer` now prints `trust_gate_next_source_plan=...` when that summary exists, including `gaps=`, `plan=`, `routed=`, `blocked=`, `reason=`, `batches=`, `next_calls=`, samples, repair command, and external-call count.
+- README documents `after_current_blocker.next_source_plan` as the compact dashboard/CLI contract for next-source planning.
+
+Validation observed in this slice:
+
+- Added a focused regression where market bars are the current blocker and catalyst events are next: the answer now reports 3 total catalyst gaps, 1 SEC-plannable row, 1 routed non-company row, 1 missing-CIK blocker, the MSFT next chunk, the AAPL missing-CIK sample, the ETFZ routed sample, and `external_calls_made=0`.
+- Added a CLI printer regression for the new `trust_gate_next_source_plan=` line.
+- Focused pytest passed for the new data regression, existing core-evidence answer regression, existing missing-CIK source-batch regression, new CLI printer regression, and existing priced-in answer CLI smoke.
+- Ruff passed for `src\catalyst_radar\dashboard\data.py`, `src\catalyst_radar\cli.py`, and the touched integration tests.
+- Py-compile passed for the touched source and test files.
+- `git diff --check` passed.
+- Live zero-call smoke against `schwab-live.db` printed `trust_gate_next_source_plan=source=catalyst_events status=ready gaps=12075 plan=5510 routed=6563 blocked=2 reason=missing_cik batches=1102 blocked_sample=FRBA,SSBI ... external_calls=0`. The worktree environment did not load live SEC settings, so the next chunk call count was blocked at 0 there; the planner still surfaced the exact CIK repair and route split without provider calls.
+
+Current live blocker:
+
+- The trusted full-market priced-in answer remains blocked by 523 missing market bars for 2026-05-15 until explicit saved Polygon/Massive capture approval or complete manual CSV import.
+- After that blocker clears, the currently visible next-source plan should make the catalyst-events split clearer: SEC-plannable rows can be filled in capped batches, non-company rows are routed, and missing CIK rows need metadata repair before SEC batches can cover them.
+
+Next useful product action:
+
+- Do not treat this slice as goal completion.
+- Run focused verification, then live zero-call smoke on `priced-in-answer --limit 1` to confirm the main database surfaces `trust_gate_next_source_plan` without provider calls.
+- Then PR and rebase-merge this slice.
 ## Latest Full-Scan Accounting Fix
 
 Goal alignment / drift check:

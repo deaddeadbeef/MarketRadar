@@ -1163,6 +1163,74 @@ def test_priced_in_answer_cli_prints_missing_universe_summary(capsys):
     assert "external_calls=0" in output.out
 
 
+def test_priced_in_answer_cli_prints_next_source_plan(capsys):
+    payload = {
+        "status": "blocked",
+        "decision_ready": False,
+        "can_make_investment_decision": False,
+        "external_calls_made": 0,
+        "question": "Has price fully matched market expectations?",
+        "answer": "Not trusted yet.",
+        "investment_decision_boundary": "Not trade approval.",
+        "full_market_trust_gate": {
+            "status": "blocked",
+            "trusted_full_market_answer": False,
+            "first_blocker": "market_bars",
+            "first_gap_count": 523,
+            "scanned_rows": 12087,
+            "active_securities": 12613,
+            "unscanned_rows": 526,
+            "unscanned_blocker_rows": 523,
+            "external_calls_made": 0,
+            "after_current_blocker": {
+                "current_blocker": "market_bars",
+                "next_source": "catalyst_events",
+                "next_status": "ready",
+                "next_gap_count": 5512,
+                "plan_command": (
+                    "catalyst-radar priced-in-source-batches "
+                    "--source catalyst_events --all --json"
+                ),
+                "execute_next_command": (
+                    "catalyst-radar priced-in-source-batches "
+                    "--source catalyst_events --execute-next"
+                ),
+                "external_calls_made": 0,
+                "next_source_plan": {
+                    "source": "catalyst_events",
+                    "status": "ready",
+                    "total_gap_rows": 12075,
+                    "plannable_gap_rows": 5510,
+                    "routed_gap_rows": 6563,
+                    "blocked_rows": 2,
+                    "blocked_reason": "missing_cik",
+                    "batch_count": 1102,
+                    "next_chunk_external_calls": 5,
+                    "sample_blocked_tickers": ["FRBA", "SSBI"],
+                    "sample_routed_non_company_tickers": ["ABLVW"],
+                    "manual_template_command": (
+                        "catalyst-radar ingest-sec cik-overrides-template "
+                        "--out data\\local\\cik-overrides-template.csv"
+                    ),
+                    "external_calls_made": 0,
+                },
+            },
+        },
+        "top_rows": [],
+    }
+
+    _print_priced_in_answer(payload)
+    output = capsys.readouterr()
+
+    assert "trust_gate_next_source_plan=source=catalyst_events" in output.out
+    assert "gaps=12075" in output.out
+    assert "plan=5510" in output.out
+    assert "routed=6563" in output.out
+    assert "blocked=2" in output.out
+    assert "reason=missing_cik" in output.out
+    assert "blocked_sample=FRBA,SSBI" in output.out
+    assert "external_calls=0" in output.out
+
 def test_dashboard_source_blocker_prefers_dashboard_market_bar_actions() -> None:
     payload = {
         "priced_in_audit": {

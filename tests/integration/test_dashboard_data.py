@@ -3308,6 +3308,127 @@ def test_priced_in_answer_blocks_core_evidence_gaps_even_with_ready_rows(
     assert after_current["external_calls_made"] == 0
 
 
+def test_priced_in_answer_after_current_summarizes_next_source_plan(tmp_path: Path):
+    engine = _engine(tmp_path)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(securities),
+            [
+                {
+                    "ticker": "AAPL",
+                    "name": "Apple Inc.",
+                    "exchange": "NASDAQ",
+                    "sector": "Technology",
+                    "industry": "Consumer Electronics",
+                    "market_cap": 2_000_000_000_000.0,
+                    "avg_dollar_volume_20d": 5_000_000_000.0,
+                    "has_options": True,
+                    "is_active": True,
+                    "updated_at": AVAILABLE_AT,
+                    "metadata": {"type": "CS"},
+                },
+                {
+                    "ticker": "MSFT",
+                    "name": "Microsoft Corporation",
+                    "exchange": "NASDAQ",
+                    "sector": "Technology",
+                    "industry": "Software",
+                    "market_cap": 3_000_000_000_000.0,
+                    "avg_dollar_volume_20d": 4_000_000_000.0,
+                    "has_options": True,
+                    "is_active": True,
+                    "updated_at": AVAILABLE_AT,
+                    "metadata": {"type": "CS", "cik": "0000789019"},
+                },
+                {
+                    "ticker": "ETFZ",
+                    "name": "ETFZ Thematic Fund",
+                    "exchange": "NYSEARCA",
+                    "sector": "Funds",
+                    "industry": "ETF",
+                    "market_cap": 1_000_000_000.0,
+                    "avg_dollar_volume_20d": 25_000_000.0,
+                    "has_options": True,
+                    "is_active": True,
+                    "updated_at": AVAILABLE_AT,
+                    "metadata": {"type": "ETF"},
+                },
+            ],
+        )
+    candidate_rows = [
+        {
+            "ticker": ticker,
+            "as_of": AS_OF,
+            "created_at": AVAILABLE_AT,
+            "state": ActionState.WARNING.value,
+            "final_score": 80.0,
+            "priced_in_status": "bullish_not_priced_in",
+            "priced_in_direction": "bullish",
+            "emotion_score": 80.0,
+            "reaction_score": 10.0,
+            "emotion_reaction_gap": 70.0,
+            "priced_in_score": 10.0,
+            "candidate_theme": "ai_infrastructure",
+            "data_sources": {
+                "available": ["theme_peer_sector"],
+                "missing": ["market_bars", "catalyst_events", "local_text"],
+                "stale": [],
+            },
+        }
+        for ticker in ("AAPL", "MSFT", "ETFZ")
+    ]
+    config = AppConfig(
+        daily_event_provider="sec",
+        sec_enable_live=True,
+        sec_user_agent="MarketRadar test@example.com",
+    )
+    queue = priced_in_queue_payload(
+        engine,
+        config,
+        candidate_rows=candidate_rows,
+        limit=1,
+        include_planning_rows=True,
+    )
+
+    preflight = {
+        "evidence_plan": {
+            "steps": [
+                {"area": "market_bars", "status": "attention"},
+                {"area": "catalyst_events", "status": "attention"},
+                {
+                    "area": "local_text",
+                    "status": "attention",
+                    "depends_on": ["catalyst_events"],
+                },
+            ]
+        }
+    }
+    payload = priced_in_answer_payload(
+        engine,
+        config,
+        queue=queue,
+        preflight=preflight,
+    )
+
+    after_current = payload["full_market_trust_gate"]["after_current_blocker"]
+    assert after_current["current_blocker"] == "market_bars"
+    assert after_current["next_source"] == "catalyst_events"
+    plan = after_current["next_source_plan"]
+    assert plan["schema_version"] == "priced-in-next-source-plan-summary-v1"
+    assert plan["total_gap_rows"] == 3
+    assert plan["plannable_gap_rows"] == 1
+    assert plan["routed_gap_rows"] == 1
+    assert plan["blocked_rows"] == 1
+    assert plan["blocked_reason"] == "missing_cik"
+    assert plan["sample_blocked_tickers"] == ["AAPL"]
+    assert plan["sample_routed_non_company_tickers"] == ["ETFZ"]
+    assert plan["next_chunk_sample_tickers"] == ["MSFT"]
+    assert plan["next_chunk_external_calls"] == 1
+    assert plan["manual_template_command"].startswith(
+        "catalyst-radar ingest-sec cik-overrides-template"
+    )
+    assert plan["external_calls_made"] == 0
+
 def test_priced_in_answer_opens_full_scan_queue_when_decision_ready(
     tmp_path: Path,
 ) -> None:
