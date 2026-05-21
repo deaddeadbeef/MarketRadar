@@ -1,6 +1,41 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 14:57:43 +08:00
+Last updated: 2026-05-21 15:28:14 +08:00
+
+## Latest TUI Bars Status Command
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, broker, order, web, shell, or filesystem tools from the app.
+- This is useful because the current full-market blocker is missing scan-date market bars. A human operator should be able to type one short TUI command and see whether the blocker remains, what it covers, and which safe zero-call or explicitly approved follow-up exists.
+
+Fix in this slice:
+
+- TUI `bars` and `bars status` now show a market-bar blocker summary instead of only printing usage.
+- The status summary includes the blocker status, scan date, missing-bar count, manual CSV progress when present, next manual action, saved capture approval boundary, saved validate/import state, and an explicit zero-call status-check boundary.
+- TUI help now lists `bars` as the quick market-bar blocker checkpoint.
+- README documents the quick `bars` / `bars status` operator checkpoint.
+- A stale dashboard batch-execute integration stub was adjusted to account for the current pre-execution market-bar guard check before local-text execution.
+
+Validation observed in this slice:
+
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_demo_seed_cli.py -q` passed.
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py` passed with `All checks passed!`.
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m py_compile src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py` exited 0.
+- `git diff --check` exited 0.
+- Live zero-call TUI command smoke against `schwab-live.db`, with `.env.local` loaded but without approval, printed `Market-bar status: blocked; as_of=2026-05-15; missing=523`, `Saved capture: approval_required; 523 bars targeted; 1 external call(s) if approved`, saved-file validate/import missing-file guidance, and `external_calls_made=0`.
+
+Current live blocker:
+
+- The full-market priced-in answer remains blocked by 523 missing market bars for 2026-05-15.
+- The saved grouped-daily JSON is still missing.
+- The new `bars` command makes the blocker visible in the dashboard; it does not capture, import, or reduce the universe.
+
+Next useful product action:
+
+- Do not treat this slice as goal completion.
+- Next real unblock remains explicit saved Polygon/Massive capture approval or manual CSV completion, then saved validate/import review, then rerun the priced-in trust gate.
 
 ## Latest TUI Batch-All Gap Summary
 

@@ -452,6 +452,9 @@ commands to show in the TUI before falling back to long CLI commands;
 `provider_saved_file_import_preview_request_body`, and
 `provider_saved_file_import_request_body` are the zero-provider-call saved-file
 preview/import bodies. The TUI exposes the same workflow from the Run page.
+For a quick operator checkpoint, type `bars` or `bars status`; it prints
+the current missing-bar count, manual CSV progress, saved-capture boundary, and
+zero-call follow-up commands without provider calls or DB writes.
 For manual zero-call repair, `bars manual template` generates the full
 active-universe missing-bar CSV by default, `bars manual import` previews
 complete rows only with 0 provider calls and 0 DB writes, and
