@@ -3308,6 +3308,7 @@ def priced_in_answer_payload(
             decision_gap=decision_gap,
             min_gap=min_gap,
             stocks_only=stocks_only,
+            include_planning_rows=True,
         )
     )
     queue_preflight = _mapping_value(resolved_queue, "preflight")
@@ -3525,7 +3526,13 @@ def priced_in_answer_payload(
         stocks_only=stocks_only,
     )
     full_market_trust_gate["blocker_ladder"] = blocker_ladder
-    after_current_blocker = _priced_in_answer_after_current_blocker(blocker_ladder)
+    after_current_blocker = _priced_in_answer_after_current_blocker(
+        blocker_ladder,
+        engine=engine,
+        config=config,
+        queue=resolved_queue,
+        stocks_only=stocks_only,
+    )
     if after_current_blocker:
         full_market_trust_gate["after_current_blocker"] = after_current_blocker
     investment_decision_boundary = (
@@ -7013,7 +7020,14 @@ def _priced_in_answer_blocker_ladder(rows, *, stocks_only: bool = False):
     }
 
 
-def _priced_in_answer_after_current_blocker(ladder: Mapping[str, object]):
+def _priced_in_answer_after_current_blocker(
+    ladder: Mapping[str, object],
+    *,
+    engine: Engine | None = None,
+    config: AppConfig | None = None,
+    queue: Mapping[str, object] | None = None,
+    stocks_only: bool = False,
+):
     rows = [
         _row_dict(row)
         for row in _sequence_value(ladder.get("rows"))
@@ -7028,7 +7042,7 @@ def _priced_in_answer_after_current_blocker(ladder: Mapping[str, object]):
         return None
     next_status = str(upcoming.get("status") or "").strip()
     guidance = _priced_in_source_guidance(next_source, next_status)
-    return {
+    result = {
         "schema_version": "priced-in-after-current-blocker-v1",
         "current_blocker": current.get("source"),
         "current_gap_count": int(_finite_float(current.get("gap_count"))),
@@ -7048,7 +7062,128 @@ def _priced_in_answer_after_current_blocker(ladder: Mapping[str, object]):
         ),
         "external_calls_made": 0,
     }
+    plan_summary = _priced_in_answer_next_source_plan_summary(
+        engine,
+        config,
+        queue=queue,
+        source=next_source,
+        stocks_only=stocks_only,
+    )
+    if plan_summary:
+        result["next_source_plan"] = plan_summary
+    return result
 
+
+def _priced_in_answer_next_source_plan_summary(
+    engine: Engine | None,
+    config: AppConfig | None,
+    *,
+    queue: Mapping[str, object] | None,
+    source: str,
+    stocks_only: bool = False,
+):
+    source_name = str(source or "").strip()
+    if (
+        engine is None
+        or config is None
+        or not isinstance(queue, Mapping)
+        or not isinstance(queue.get("planning_rows"), (list, tuple))
+        or source_name not in PRICED_IN_BATCHABLE_SOURCES
+    ):
+        return None
+    try:
+        payload = priced_in_source_gap_batches_payload(
+            engine,
+            config,
+            source=source_name,
+            batch_limit=1,
+            stocks_only=stocks_only,
+            queue=queue,
+        )
+    except (SQLAlchemyError, ValueError):
+        return None
+    diagnostic = _row_dict(_mapping_value(payload, "diagnostic"))
+    batches = [
+        _row_dict(batch)
+        for batch in _sequence_value(payload.get("batches"))
+        if isinstance(batch, Mapping)
+    ]
+    first_batch = batches[0] if batches else {}
+    summary = {
+        "schema_version": "priced-in-next-source-plan-summary-v1",
+        "source": payload.get("source") or source_name,
+        "status": payload.get("status"),
+        "total_gap_rows": int(_finite_float(payload.get("total_gap_rows"))),
+        "plannable_gap_rows": int(_finite_float(payload.get("plannable_gap_rows"))),
+        "unplannable_gap_rows": int(_finite_float(payload.get("unplannable_gap_rows"))),
+        "routed_gap_rows": int(_finite_float(payload.get("routed_gap_rows"))),
+        "blocked_rows": int(_finite_float(diagnostic.get("blocked_rows"))),
+        "blocked_reason": diagnostic.get("blocked_reason"),
+        "batch_count": int(_finite_float(payload.get("batch_count"))),
+        "batch_size": int(_finite_float(payload.get("batch_size"))),
+        "next_chunk_external_calls": int(
+            _finite_float(first_batch.get("external_calls_required"))
+        ),
+        "next_chunk_sample_tickers": [
+            str(ticker).strip().upper()
+            for ticker in _sequence_value(first_batch.get("tickers"))
+            if str(ticker).strip()
+        ],
+        "sample_blocked_tickers": [
+            str(ticker).strip().upper()
+            for ticker in _sequence_value(diagnostic.get("sample_blocked_tickers"))
+            if str(ticker).strip()
+        ],
+        "sample_routed_non_company_tickers": [
+            str(ticker).strip().upper()
+            for ticker in _sequence_value(
+                diagnostic.get("sample_routed_non_company_tickers")
+            )
+            if str(ticker).strip()
+        ],
+        "next_action": payload.get("next_action") or diagnostic.get("next_action"),
+        "plan_command": payload.get("plan_command") or payload.get("command"),
+        "plan_api": payload.get("plan_api"),
+        "execute_next_command": payload.get("execute_next_command"),
+        "execute_next_api": "POST /api/radar/priced-in/source-batches/execute-next",
+        "execute_next_request_body": {
+            "source": source_name,
+            "max_batches": 1,
+            "stocks_only": stocks_only,
+        },
+        "all_batches_command": payload.get("all_batches_command"),
+        "all_batches_api": payload.get("all_batches_api"),
+        "manual_template_command": diagnostic.get("manual_template_command"),
+        "manual_template_api": diagnostic.get("manual_template_api"),
+        "manual_validate_command": diagnostic.get("manual_validate_command"),
+        "manual_validate_api": diagnostic.get("manual_validate_api"),
+        "manual_fix_command": diagnostic.get("manual_fix_command"),
+        "manual_fix_api": diagnostic.get("manual_fix_api"),
+        "fix_command": diagnostic.get("fix_command"),
+        "fix_api": diagnostic.get("fix_api"),
+        "operator_boundary": (
+            "This next-source plan is zero-call. It summarizes the reviewed batch "
+            "plan only; execution remains a separate capped approval step."
+        ),
+        "external_calls_made": int(_finite_float(payload.get("external_calls_made"))),
+    }
+    missing_cik = _row_dict(
+        {
+            key: diagnostic.get(key)
+            for key in (
+                "missing_cik_company_like_rows",
+                "missing_cik_non_company_rows",
+                "missing_cik_unknown_type_rows",
+                "missing_cik_type_counts",
+                "sample_company_like_missing_cik_tickers",
+                "sample_unknown_type_missing_cik_tickers",
+            )
+            if diagnostic.get(key) is not None
+        }
+    )
+    if missing_cik:
+        summary["missing_cik"] = missing_cik
+    return summary
 
 def priced_in_preflight_payload(
     engine: Engine,

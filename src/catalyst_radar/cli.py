@@ -6407,6 +6407,38 @@ def _print_priced_in_answer(payload: Mapping[str, object]) -> None:
                 f"execute_next={_compact_cli_text(after_current.get('execute_next_command'))} "
                 f"external_calls={after_current.get('external_calls_made') or 0}"
             )
+        next_plan = (
+            after_current.get("next_source_plan")
+            if isinstance(after_current, Mapping)
+            else None
+        )
+        if isinstance(next_plan, Mapping):
+            blocked_samples = ",".join(
+                str(ticker)
+                for ticker in _sequence_value(next_plan.get("sample_blocked_tickers"))
+            )
+            routed_samples = ",".join(
+                str(ticker)
+                for ticker in _sequence_value(
+                    next_plan.get("sample_routed_non_company_tickers")
+                )
+            )
+            print(
+                "trust_gate_next_source_plan="
+                f"source={next_plan.get('source') or 'n/a'} "
+                f"status={next_plan.get('status') or 'n/a'} "
+                f"gaps={_int_value(next_plan.get('total_gap_rows'))} "
+                f"plan={_int_value(next_plan.get('plannable_gap_rows'))} "
+                f"routed={_int_value(next_plan.get('routed_gap_rows'))} "
+                f"blocked={_int_value(next_plan.get('blocked_rows'))} "
+                f"reason={next_plan.get('blocked_reason') or 'n/a'} "
+                f"batches={_int_value(next_plan.get('batch_count'))} "
+                f"next_calls={_int_value(next_plan.get('next_chunk_external_calls'))} "
+                f"blocked_sample={_compact_cli_text(blocked_samples)} "
+                f"routed_sample={_compact_cli_text(routed_samples)} "
+                f"repair={_compact_cli_text(next_plan.get('manual_template_command'))} "
+                f"external_calls={next_plan.get('external_calls_made') or 0}"
+            )
     print(f"next_action={payload.get('next_action')}")
     if payload.get("next_command"):
         print(f"next_command={_compact_cli_text(payload.get('next_command'))}")
