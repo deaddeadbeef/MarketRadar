@@ -123,7 +123,10 @@ from catalyst_radar.market.manual_bars import (
     saved_capture_approval_guard_payload,
     write_manual_market_bars_template,
 )
-from catalyst_radar.market.status import market_bars_status_payload
+from catalyst_radar.market.status import (
+    market_bars_import_verification_payload,
+    market_bars_status_payload,
+)
 from catalyst_radar.pipeline.candidate_packet import build_candidate_packet
 from catalyst_radar.pipeline.scan import run_scan
 from catalyst_radar.security.audit import AuditLogRepository
@@ -1140,6 +1143,18 @@ def main(argv: list[str] | None = None) -> int:
                     complete_rows_only=args.complete_rows_only,
                 )
                 payload = result.as_payload()
+                if result.expected_as_of is not None:
+                    payload["post_import_verification"] = (
+                        market_bars_import_verification_payload(
+                            engine,
+                            config,
+                            expected_as_of=result.expected_as_of,
+                            stocks_only=result.stocks_only,
+                            executed=result.executed,
+                            source="manual_csv",
+                            db_changes_made=1 if result.executed else 0,
+                        )
+                    )
                 if args.json:
                     print(json.dumps(payload, sort_keys=True))
                 else:
@@ -4132,6 +4147,14 @@ def _market_bars_saved_import_payload(
             **preview,
             "schema_version": "polygon-grouped-daily-fixture-import-v1",
             "executed": False,
+            "post_import_verification": market_bars_import_verification_payload(
+                engine,
+                config,
+                expected_as_of=expected_as_of,
+                executed=False,
+                source="saved_provider_file",
+                db_changes_made=0,
+            ),
             "db_writes_made": 0,
             "write_boundary": (
                 "Preview only; add --execute to import the saved fixture. "
@@ -4168,6 +4191,14 @@ def _market_bars_saved_import_payload(
         "rejected_count": result.rejected_count,
         "external_calls_made": 0,
         "db_writes_made": 1,
+        "post_import_verification": market_bars_import_verification_payload(
+            engine,
+            config,
+            expected_as_of=expected_as_of,
+            executed=True,
+            source="saved_provider_file",
+            db_changes_made=1,
+        ),
         "preview": preview,
         "write_boundary": (
             "Imported from a saved fixture on disk. This path made 0 "
@@ -4472,6 +4503,27 @@ def _print_saved_capture_approval_guard_failure(payload: Mapping[str, object]):
     print(f"next_action={payload.get('next_action')}")
 
 
+def _print_market_bars_post_import_verification(payload):
+    verification = _mapping_value(payload.get("post_import_verification"))
+    if not verification:
+        return
+    command = _compact_cli_text(
+        verification.get("next_blocker_command")
+        or verification.get("priced_in_answer_command")
+    )
+    print(
+        "post_import_verification "
+        f"status={verification.get('status')} "
+        f"missing={verification.get('missing_as_of_bar_count')} "
+        f"next_blocker={verification.get('next_blocker') or 'n/a'} "
+        f"command={command} "
+        f"external_calls={verification.get('external_calls_made')} "
+        f"db_changes={verification.get('db_changes_made')}"
+    )
+    next_action = str(verification.get("next_action") or "").strip()
+    if next_action:
+        print(f"post_import_next={_compact_cli_text(next_action)}")
+
 def _print_market_bars_saved_import(payload: Mapping[str, object]):
     coverage = _mapping_value(payload.get("coverage"))
     preview = payload.get("preview")
@@ -4507,6 +4559,7 @@ def _print_market_bars_saved_import(payload: Mapping[str, object]):
     boundary = str(payload.get("write_boundary") or "").strip()
     if boundary:
         print(f"boundary={_compact_cli_text(boundary)}")
+    _print_market_bars_post_import_verification(payload)
     next_action = str(payload.get("next_action") or "").strip()
     if next_action:
         print(f"next_action={next_action}")
@@ -4590,6 +4643,7 @@ def _print_manual_market_bars_import(payload: Mapping[str, object]) -> None:
         examples = payload.get("invalid_examples")
         if isinstance(examples, list | tuple) and examples:
             print("invalid_examples=" + " | ".join(str(item) for item in examples))
+    _print_market_bars_post_import_verification(payload)
     if payload.get("status") in {"ready", "ready_partial"}:
         print("Plan only: no database writes were made.")
     print(f"next_action={payload.get('next_action')}")

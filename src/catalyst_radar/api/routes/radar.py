@@ -53,7 +53,10 @@ from catalyst_radar.market.manual_bars import (
     saved_capture_approval_guard_payload,
     write_manual_market_bars_template,
 )
-from catalyst_radar.market.status import market_bars_status_payload
+from catalyst_radar.market.status import (
+    market_bars_import_verification_payload,
+    market_bars_status_payload,
+)
 from catalyst_radar.ops.telemetry import record_telemetry_event
 from catalyst_radar.security.access import Role, require_role
 from catalyst_radar.security.licenses import (
@@ -845,7 +848,18 @@ def radar_market_bars_import(
         )
     except (FileNotFoundError, KeyError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return redact_restricted_external_payload(result.as_payload())
+    payload = result.as_payload()
+    if result.expected_as_of is not None:
+        payload["post_import_verification"] = market_bars_import_verification_payload(
+            _engine(),
+            AppConfig.from_env(),
+            expected_as_of=result.expected_as_of,
+            stocks_only=result.stocks_only,
+            executed=result.executed,
+            source="manual_csv",
+            db_changes_made=1 if result.executed else 0,
+        )
+    return redact_restricted_external_payload(payload)
 
 
 @router.post(
@@ -1002,6 +1016,14 @@ def radar_market_bars_provider_fixture_import(
                     **preview,
                     "schema_version": "polygon-grouped-daily-fixture-import-v1",
                     "executed": False,
+                    "post_import_verification": market_bars_import_verification_payload(
+                        engine,
+                        config,
+                        expected_as_of=request.expected_as_of,
+                        executed=False,
+                        source="saved_provider_file",
+                        db_changes_made=0,
+                    ),
                     "db_writes_made": 0,
                     "write_boundary": (
                         "Preview only; set execute=true to import the saved "
@@ -1043,6 +1065,14 @@ def radar_market_bars_provider_fixture_import(
             "rejected_count": result.rejected_count,
             "external_calls_made": 0,
             "db_writes_made": 1,
+            "post_import_verification": market_bars_import_verification_payload(
+                engine,
+                config,
+                expected_as_of=request.expected_as_of,
+                executed=True,
+                source="saved_provider_file",
+                db_changes_made=1,
+            ),
             "preview": preview,
             "write_boundary": (
                 "Imported from a saved fixture on disk. This path made 0 "

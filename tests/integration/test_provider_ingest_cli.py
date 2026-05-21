@@ -216,6 +216,7 @@ def test_market_bars_import_complete_rows_only_allows_incremental_import(
         preview.out
     )
     assert "fill_progress=complete=1 partial=0 empty=1 filled=1" in preview.out
+    assert "post_import_verification status=preview_only missing=6" in preview.out
     assert "external_calls=0" in preview.out
 
     assert (
@@ -237,6 +238,7 @@ def test_market_bars_import_complete_rows_only_allows_incremental_import(
     executed = capsys.readouterr()
     assert "manual_market_bars_import status=partial_imported" in executed.out
     assert "executed=true" in executed.out
+    assert "post_import_verification status=market_bars_still_blocked missing=5" in executed.out
     engine = create_engine(database_url, future=True)
     with engine.connect() as conn:
         imported = {
@@ -1196,6 +1198,8 @@ def test_market_bars_saved_file_cli_validates_and_imports_fixture(
         "polygon-grouped-daily-fixture-import-v1"
     )
     assert preview_payload["executed"] is False
+    assert preview_payload["post_import_verification"]["status"] == "preview_only"
+    assert preview_payload["post_import_verification"]["missing_as_of_bar_count"] == 3
     assert preview_payload["external_calls_made"] == 0
     assert preview_payload["db_writes_made"] == 0
 
@@ -1222,6 +1226,10 @@ def test_market_bars_saved_file_cli_validates_and_imports_fixture(
     assert execute_payload["db_writes_made"] == 1
     assert execute_payload["daily_bar_count"] == 6
     assert execute_payload["rejected_count"] == 1
+    assert execute_payload["post_import_verification"]["status"] == "market_bars_still_blocked"
+    assert execute_payload["post_import_verification"]["missing_as_of_bar_count"] == 1
+    assert execute_payload["post_import_verification"]["external_calls_made"] == 0
+    assert execute_payload["post_import_verification"]["db_changes_made"] == 1
 
     with engine.connect() as conn:
         assert conn.execute(select(func.count()).select_from(job_runs)).scalar_one() == 1
@@ -1808,6 +1816,7 @@ def test_market_bars_import_executes_without_securities_csv(
     assert execute_code == 0
     assert "manual_market_bars_import status=imported" in executed.out
     assert "executed=true" in executed.out
+    assert "post_import_verification status=market_bars_cleared missing=0" in executed.out
     bars = MarketRepository(engine).daily_bars(
         "AAA",
         end=date(2026, 5, 11),

@@ -621,6 +621,15 @@ commands still exist for diagnostics, but dashboard, API, TUI, and CLI
 operator flows should prefer the `market-bars saved-*` wrappers because they
 expose the same approval, validate, and import contract everywhere.
 
+Every manual CSV import and saved-file import response includes
+`post_import_verification`. That payload is zero-call and reports whether the
+operation was preview-only, whether `market_bars` is still blocking the trusted
+priced-in answer, or whether the market-bar blocker cleared. It also reports
+the remaining scan-date bar gap, the next blocker when known, a rerun command,
+`external_calls_made=0`, and `db_changes_made`. Treat an import as operationally
+complete only after this verifier says `market_bars_cleared`; if it says
+`market_bars_still_blocked`, fill the remaining rows before source chunks.
+
 The template command writes a local ignored CSV scaffold for missing active
 tickers in the live database. Missing-only rows are sorted with stock-like
 instruments first, then unknown types, then fund/wrapper rows. Fill `open`,

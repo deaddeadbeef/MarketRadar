@@ -1900,6 +1900,8 @@ def test_post_radar_market_bars_template_and_import_use_database_universe(
         "filled_rows": 3,
     }
     assert preview_payload["executed"] is False
+    assert preview_payload["post_import_verification"]["status"] == "preview_only"
+    assert preview_payload["post_import_verification"]["missing_as_of_bar_count"] == 3
     assert preview_payload["external_calls_made"] == 0
 
     execute_response = client.post(
@@ -1915,6 +1917,8 @@ def test_post_radar_market_bars_template_and_import_use_database_universe(
     execute_payload = execute_response.json()
     assert execute_payload["status"] == "imported"
     assert execute_payload["executed"] is True
+    assert execute_payload["post_import_verification"]["status"] == "market_bars_cleared"
+    assert execute_payload["post_import_verification"]["missing_as_of_bar_count"] == 0
     bars = MarketRepository(engine).daily_bars(
         "BBB",
         end=date(2026, 5, 11),
@@ -1980,6 +1984,8 @@ def test_post_radar_market_bars_import_complete_rows_only_is_incremental(
     execute_payload = execute_response.json()
     assert execute_payload["status"] == "partial_imported"
     assert execute_payload["executed"] is True
+    assert execute_payload["post_import_verification"]["status"] == "market_bars_still_blocked"
+    assert execute_payload["post_import_verification"]["missing_as_of_bar_count"] == 2
     with engine.connect() as conn:
         imported = {
             str(row._mapping["ticker"])
@@ -2572,6 +2578,8 @@ def test_post_radar_market_bars_provider_fixture_import_previews_without_writes(
     assert payload["schema_version"] == "polygon-grouped-daily-fixture-import-v1"
     assert payload["status"] == "ready_with_rejections"
     assert payload["executed"] is False
+    assert payload["post_import_verification"]["status"] == "preview_only"
+    assert payload["post_import_verification"]["missing_as_of_bar_count"] == 3
     assert payload["external_calls_made"] == 0
     assert payload["db_writes_made"] == 0
     assert "execute=true" in payload["write_boundary"]
@@ -2632,6 +2640,10 @@ def test_post_radar_market_bars_provider_fixture_import_executes_saved_fixture(
     assert payload["rejected_count"] == 1
     assert payload["external_calls_made"] == 0
     assert payload["db_writes_made"] == 1
+    assert payload["post_import_verification"]["status"] == "market_bars_still_blocked"
+    assert payload["post_import_verification"]["missing_as_of_bar_count"] == 1
+    assert payload["post_import_verification"]["external_calls_made"] == 0
+    assert payload["post_import_verification"]["db_changes_made"] == 1
     assert payload["preview"]["schema_version"] == (
         "polygon-grouped-daily-fixture-preview-v1"
     )

@@ -192,6 +192,131 @@ def market_bars_status_payload(
     }
 
 
+def market_bars_import_verification_payload(
+    engine: Engine,
+    config: AppConfig,
+    *,
+    expected_as_of: date | None,
+    stocks_only: bool = False,
+    executed: bool,
+    source: str,
+    db_changes_made: int = 0,
+):
+    """Verify whether a market-bar import cleared the trusted-answer blocker."""
+
+    resolved_expected_as_of = _resolve_expected_as_of(engine, expected_as_of)
+    status_payload = market_bars_status_payload(
+        engine,
+        config,
+        expected_as_of=resolved_expected_as_of,
+        stocks_only=stocks_only,
+    )
+    missing = int(status_payload.get("missing_as_of_bar_count") or 0)
+    if not executed:
+        verification_status = "preview_only"
+    elif missing == 0:
+        verification_status = "market_bars_cleared"
+    else:
+        verification_status = "market_bars_still_blocked"
+    answer_summary = (
+        _post_import_priced_in_answer_summary(
+            engine,
+            config,
+            stocks_only=stocks_only,
+        )
+        if executed and missing == 0
+        else {}
+    )
+    next_blocker = answer_summary.get("first_blocker")
+    if executed and missing == 0 and next_blocker:
+        next_action = (
+            f"Market bars are clear; inspect the next blocker `{next_blocker}` "
+            "before running provider source chunks."
+        )
+    elif executed and missing == 0:
+        next_action = (
+            "Market bars are clear; rerun priced-in-answer for the trusted answer."
+        )
+    elif executed:
+        next_action = (
+            "Import completed, but market bars are still incomplete. Fill the "
+            "remaining rows before treating the priced-in answer as trusted."
+        )
+    else:
+        next_action = (
+            "Preview only. Execute the import only after coverage matches intent, "
+            "then verify this same post-import status."
+        )
+    priced_in_command = "catalyst-radar priced-in-answer --limit 5"
+    if stocks_only:
+        priced_in_command += " --stocks-only"
+    return {
+        "schema_version": "market-bars-post-import-verification-v1",
+        "status": verification_status,
+        "source": source,
+        "executed": bool(executed),
+        "expected_as_of": resolved_expected_as_of.isoformat(),
+        "stocks_only": bool(stocks_only),
+        "coverage_scope": status_payload.get("coverage_scope"),
+        "active_security_count": status_payload.get("active_security_count"),
+        "existing_as_of_bar_count": status_payload.get("existing_as_of_bar_count"),
+        "missing_as_of_bar_count": missing,
+        "market_bars_first_blocker": status_payload.get("first_blocker"),
+        "trusted_answer_status": answer_summary.get("status"),
+        "trusted_answer_ready": bool(answer_summary.get("trusted_answer_ready")),
+        "next_blocker": next_blocker,
+        "next_blocker_action": answer_summary.get("next_action"),
+        "next_blocker_command": answer_summary.get("command"),
+        "priced_in_answer_command": priced_in_command,
+        "priced_in_answer_api": "GET /api/radar/priced-in/answer",
+        "external_calls_made": 0,
+        "db_changes_made": db_changes_made,
+        "next_action": next_action,
+    }
+
+
+def _post_import_priced_in_answer_summary(
+    engine: Engine,
+    config: AppConfig,
+    *,
+    stocks_only: bool,
+):
+    try:
+        from catalyst_radar.dashboard.data import priced_in_answer_payload
+
+        answer = priced_in_answer_payload(
+            engine,
+            config,
+            limit=1,
+            stocks_only=stocks_only,
+        )
+    except (SQLAlchemyError, ValueError):
+        command = "catalyst-radar priced-in-answer --limit 5"
+        if stocks_only:
+            command += " --stocks-only"
+        return {
+            "status": "unavailable",
+            "next_action": "Rerun priced-in-answer to inspect the next blocker.",
+            "command": command,
+        }
+    gate = _mapping(answer.get("full_market_trust_gate"))
+    action = _mapping(gate.get("recommended_action"))
+    command = (
+        action.get("cli_command")
+        or action.get("command")
+        or "catalyst-radar priced-in-answer --limit 5"
+    )
+    if stocks_only and command == "catalyst-radar priced-in-answer --limit 5":
+        command = f"{command} --stocks-only"
+    return {
+        "status": gate.get("status"),
+        "trusted_answer_ready": bool(gate.get("trusted_full_market_answer")),
+        "first_blocker": gate.get("first_blocker"),
+        "next_action": action.get("action") or gate.get("next_action"),
+        "command": command,
+    }
+
+
 def _market_bar_unblock_checklist(
     *,
     expected_as_of,
