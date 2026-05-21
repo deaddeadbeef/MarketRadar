@@ -83,6 +83,12 @@ def test_agent_brief_includes_market_bar_unblock_options() -> None:
                             "external_calls_if_approved": 1,
                             "db_writes_during_capture": 0,
                             "tui_confirm_command": "bars saved capture confirm",
+                            "capture_cli_command": (
+                                "catalyst-radar market-bars saved-capture "
+                                "--expected-as-of 2026-05-15 "
+                                "--out data\\local\\polygon-grouped-daily-2026-05-15.json "
+                                "--confirm-external-call"
+                            ),
                             "question": (
                                 "Approve one Polygon/Massive grouped-daily call "
                                 "for 2026-05-15?"
@@ -121,6 +127,12 @@ def test_agent_brief_includes_market_bar_unblock_options() -> None:
                 "status": "approval_required",
                 "reason": "Capture a saved grouped-daily file before import.",
                 "command": "bars saved capture confirm",
+                "cli_command": (
+                    "catalyst-radar market-bars saved-capture "
+                    "--expected-as-of 2026-05-15 "
+                    "--out data\\local\\polygon-grouped-daily-2026-05-15.json "
+                    "--confirm-external-call"
+                ),
                 "tui_command": "bars saved capture confirm",
                 "api": "POST /api/radar/market-bars/saved-capture",
                 "approval_required": True,
@@ -144,9 +156,17 @@ def test_agent_brief_includes_market_bar_unblock_options() -> None:
     assert options[1]["external_calls_required"] == 1
     assert options[1]["db_writes_during_step"] == 0
     assert options[1]["command"] == "bars saved capture confirm"
+    assert options[1]["cli_command"].startswith(
+        "catalyst-radar market-bars saved-capture "
+    )
+    assert options[1]["tui_command"] == "bars saved capture confirm"
     recommended = snapshot["priced_in"]["recommended_unblock_action"]
     assert recommended["kind"] == "saved_provider_capture"
     assert recommended["command"] == "bars saved capture confirm"
+    assert recommended["cli_command"].startswith(
+        "catalyst-radar market-bars saved-capture "
+    )
+    assert recommended["tui_command"] == "bars saved capture confirm"
     assert recommended["external_calls_required"] == 1
     assert recommended["db_writes_required"] == 0
     assert recommended["approval_required"] is True
@@ -157,18 +177,20 @@ def test_agent_brief_includes_market_bar_unblock_options() -> None:
     }
     assert any(
         "Recommended market-bar unblock" in insight
-        and "bars saved capture confirm" in insight
+        and "catalyst-radar market-bars saved-capture" in insight
         for insight in brief["insights"]
     )
     assert any(
         "Market-bar unblock options" in insight
-        and "bars saved capture confirm" in insight
+        and "catalyst-radar market-bars saved-capture" in insight
         for insight in brief["insights"]
     )
     assert (
-        "Review recommended saved_provider_capture: approve bars saved capture "
-        "confirm only if 1 market-data call(s) and 0 DB write(s) match your "
-        "intent."
+        "Review recommended saved_provider_capture: approve catalyst-radar "
+        "market-bars saved-capture --expected-as-of 2026-05-15 --out "
+        "data\\local\\polygon-grouped-daily-2026-05-15.json "
+        "--confirm-external-call only if 1 market-data call(s) and 0 "
+        "DB write(s) match your intent."
     ) in brief["next_actions"]
     assert (
         "Approve bars saved capture confirm only if one market-data call and 0 "

@@ -1,6 +1,39 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 20:31:00 +08:00
+Last updated: 2026-05-21 20:54:31 +08:00
+
+
+
+
+## Latest Recommended Command Boundary
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, broker, order, web, shell, or provider tools from the app.
+- This is useful because the CLI/API and terminal dashboard must not tell the operator to paste a TUI-only alias into PowerShell. Humans need the short command in the dashboard and the full `catalyst-radar ...` command in CLI/API output.
+
+Fix in this slice:
+
+- Market-bar unblock payloads now preserve the existing `command` field as the dashboard/TUI alias for compatibility.
+- The same payloads now also expose explicit `cli_command` and `tui_command` fields where both forms exist.
+- CLI source-map and priced-in answer output now prefer `cli_command` and append `tui=...` when the dashboard alias differs.
+- The TUI still prefers `tui_command`, so command-box guidance remains short and readable.
+- The agent dry-run snapshot carries `cli_command` and `tui_command`; agent CLI insights/actions prefer `cli_command` while keeping the provider/order tool boundary unchanged.
+- README documents the command-field boundary so API/dashboard clients do not infer command semantics from display text.
+
+Validation observed in this slice:
+
+- Focused regression passed for `test_priced_in_source_batches_prioritize_full_market_bar_coverage`.
+- Focused unit regressions passed for `tests\unit\test_agent_sdk_orchestrator.py`.
+- Py-compile passed for the touched source files.
+- Ruff passed for the touched source and test files.
+- `git diff --check` passed.
+
+Current live blocker:
+
+- The trusted full-market priced-in answer remains blocked by 523 missing market bars for 2026-05-15 until explicit saved Polygon/Massive capture approval or complete manual CSV import.
+- Do not treat this slice as goal completion; it removes a CLI/TUI command ambiguity while preserving the real next unblock path.
 
 
 

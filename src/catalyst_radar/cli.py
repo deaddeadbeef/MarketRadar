@@ -4750,6 +4750,13 @@ def _print_priced_in_mission_brief(payload: Mapping[str, object]) -> None:
     recommended = mission.get("recommended_unblock_action")
     if isinstance(recommended, Mapping):
         writes = recommended.get("db_writes_required")
+        cli_command = recommended.get("cli_command") or recommended.get("command")
+        tui_command = recommended.get("tui_command")
+        tui_piece = (
+            f" tui={_compact_cli_text(tui_command)}"
+            if tui_command and tui_command != cli_command
+            else ""
+        )
         print(
             "  recommended_unblock="
             f"{recommended.get('kind') or 'action'} "
@@ -4758,7 +4765,7 @@ def _print_priced_in_mission_brief(payload: Mapping[str, object]) -> None:
             f"{str(bool(recommended.get('approval_required'))).lower()} "
             f"calls={_int_value(recommended.get('external_calls_required'))} "
             f"db_writes={_int_value(writes)} "
-            f"command={_compact_cli_text(recommended.get('command'))}"
+            f"command={_compact_cli_text(cli_command)}{tui_piece}"
         )
         reason = recommended.get("reason")
         if reason:
@@ -4776,11 +4783,18 @@ def _print_priced_in_mission_brief(payload: Mapping[str, object]) -> None:
                 if "db_writes_during_step" in option
                 else option.get("db_writes_before_execute")
             )
-            command_text = _compact_cli_text(option.get("command"))
+            cli_command = option.get("cli_command") or option.get("command")
+            tui_command = option.get("tui_command")
+            tui_piece = (
+                f" tui={_compact_cli_text(tui_command)}"
+                if tui_command and tui_command != cli_command
+                else ""
+            )
+            command_text = _compact_cli_text(cli_command)
             print(
                 "  unblock="
                 f"{kind} status={status} calls={calls} db_writes={_int_value(writes)} "
-                f"command={command_text}"
+                f"command={command_text}{tui_piece}"
             )
             question = option.get("question")
             if question:
@@ -6353,6 +6367,15 @@ def _print_priced_in_answer(payload: Mapping[str, object]) -> None:
         )
         recommended_action = trust_gate.get("recommended_action")
         if isinstance(recommended_action, Mapping):
+            cli_command = recommended_action.get("cli_command") or recommended_action.get(
+                "command"
+            )
+            tui_command = recommended_action.get("tui_command")
+            tui_piece = (
+                f" tui={_compact_cli_text(tui_command)}"
+                if tui_command and tui_command != cli_command
+                else ""
+            )
             print(
                 "trust_gate_recommended_action="
                 f"kind={recommended_action.get('kind') or 'action'} "
@@ -6361,7 +6384,7 @@ def _print_priced_in_answer(payload: Mapping[str, object]) -> None:
                 f"{str(bool(recommended_action.get('approval_required'))).lower()} "
                 f"calls={_int_value(recommended_action.get('external_calls_required'))} "
                 f"db_writes={_int_value(recommended_action.get('db_writes_required'))} "
-                f"command={_compact_cli_text(recommended_action.get('command'))}"
+                f"command={_compact_cli_text(cli_command)}{tui_piece}"
             )
         blocker_detail = trust_gate.get("blocker_detail")
         if isinstance(blocker_detail, Mapping):

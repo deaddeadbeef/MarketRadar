@@ -130,7 +130,11 @@ options separate the zero-call manual CSV path from the saved Polygon/Massive
 capture approval path, including the expected call count before capture. The
 same brief also exposes `recommended_unblock_action`, and CLI / TUI `batch all`
 print it before the option list so the source-map view agrees with the trust
-gate about the single next safe unblock step.
+gate about the single next safe unblock step. That action keeps the legacy
+`command` field as the dashboard/TUI alias, while `cli_command` carries the
+copy-pasteable `catalyst-radar ...` command and `tui_command` carries the
+short command-box alias. CLI text output prefers `cli_command` and appends
+`tui=...` when the terminal-dashboard alias differs.
 Roadmap rows distinguish total gaps from immediately useful work:
 `gap_rows` is the broad evidence gap, `plannable_gap_rows` is the part a safe
 plan can currently address, `routed_gap_rows` is the already assigned subset

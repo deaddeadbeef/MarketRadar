@@ -1207,6 +1207,13 @@ def test_priced_in_answer_cli_prints_next_source_plan(capsys):
                 "status": "approval_required",
                 "reason": "Approve one saved grouped-daily provider call.",
                 "command": "bars saved capture confirm",
+                "cli_command": (
+                    "catalyst-radar market-bars saved-capture "
+                    "--expected-as-of 2026-05-15 "
+                    "--out data\\local\\polygon-grouped-daily-2026-05-15.json "
+                    "--confirm-external-call"
+                ),
+                "tui_command": "bars saved capture confirm",
                 "api": "POST /api/radar/market-bars/provider-fixture-capture",
                 "request_body": {"confirm_external_call": True},
                 "approval_required": True,
@@ -1259,7 +1266,9 @@ def test_priced_in_answer_cli_prints_next_source_plan(capsys):
     assert "approval_required=true" in output.out
     assert "calls=1" in output.out
     assert "db_writes=0" in output.out
-    assert "command=bars saved capture confirm" in output.out
+    assert "command=catalyst-radar market-bars saved-capture" in output.out
+    assert "--confirm-external-call" in output.out
+    assert "tui=bars saved capture confirm" in output.out
     assert "trust_gate_next_source_plan=source=catalyst_events" in output.out
     assert "gaps=12075" in output.out
     assert "plan=5510" in output.out
@@ -4160,6 +4169,12 @@ def test_priced_in_source_batches_prioritize_full_market_bar_coverage(
     assert unblock_options["saved_provider_capture"]["command"] == (
         "bars saved capture confirm"
     )
+    assert unblock_options["saved_provider_capture"]["cli_command"].startswith(
+        "catalyst-radar market-bars saved-capture "
+    )
+    assert unblock_options["saved_provider_capture"]["tui_command"] == (
+        "bars saved capture confirm"
+    )
     assert unblock_options["saved_provider_capture"]["api"] == (
         "POST /api/radar/market-bars/provider-fixture-capture"
     )
@@ -4185,6 +4200,10 @@ def test_priced_in_source_batches_prioritize_full_market_bar_coverage(
     assert recommended["external_calls_required"] == 1
     assert recommended["db_writes_required"] == 0
     assert recommended["command"] == "bars saved capture confirm"
+    assert recommended["cli_command"].startswith(
+        "catalyst-radar market-bars saved-capture "
+    )
+    assert recommended["tui_command"] == "bars saved capture confirm"
     assert recommended["request_body"]["confirm_external_call"] is True
     assert "Approve one Polygon/Massive" in recommended["reason"]
     assert overview["coverage_first_recommendation"]["coverage_basis"] == (
@@ -4281,13 +4300,14 @@ def test_priced_in_source_batches_prioritize_full_market_bar_coverage(
     assert (
         "recommended_unblock=saved_provider_capture status=approval_required "
         "approval_required=true calls=1 db_writes=0 "
-        "command=bars saved capture confirm"
+        "command=catalyst-radar market-bars saved-capture"
     ) in output.out
+    assert "tui=bars saved capture confirm" in output.out
     assert "reason=Approve one Polygon/Massive grouped-daily call" in output.out
     assert "unblock=manual_csv status=available calls=0" in output.out
     assert (
         "unblock=saved_provider_capture status=approval_required calls=1 "
-        "db_writes=0 command=bars saved capture confirm"
+        "db_writes=0 command=catalyst-radar market-bars saved-capture"
     ) in output.out
     assert "question=Approve one Polygon/Massive grouped-daily call" in output.out
     assert "provider_saved_file_status=status=missing" in output.out
