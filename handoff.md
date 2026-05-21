@@ -1,6 +1,6 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 16:43:31 +08:00
+Last updated: 2026-05-21 16:58:30 +08:00
 
 
 ## Latest Trust-Gate Next-Source Plan Summary
@@ -27,18 +27,24 @@ Validation observed in this slice:
 - Ruff passed for `src\catalyst_radar\dashboard\data.py`, `src\catalyst_radar\cli.py`, and the touched integration tests.
 - Py-compile passed for the touched source and test files.
 - `git diff --check` passed.
-- Live zero-call smoke against `schwab-live.db` printed `trust_gate_next_source_plan=source=catalyst_events status=ready gaps=12075 plan=5510 routed=6563 blocked=2 reason=missing_cik batches=1102 blocked_sample=FRBA,SSBI ... external_calls=0`. The worktree environment did not load live SEC settings, so the next chunk call count was blocked at 0 there; the planner still surfaced the exact CIK repair and route split without provider calls.
+- Pre-merge worktree live zero-call smoke against `schwab-live.db` printed the same plan with `external_calls=0`; because the worktree environment did not load live SEC settings, `next_calls` was 0 there.
+- Post-merge main live zero-call smoke printed `trust_gate_next_source_plan=source=catalyst_events status=ready gaps=12075 plan=5510 routed=6563 blocked=2 reason=missing_cik batches=1102 next_calls=5 blocked_sample=FRBA,SSBI ... external_calls=0`.
 
 Current live blocker:
 
 - The trusted full-market priced-in answer remains blocked by 523 missing market bars for 2026-05-15 until explicit saved Polygon/Massive capture approval or complete manual CSV import.
 - After that blocker clears, the currently visible next-source plan should make the catalyst-events split clearer: SEC-plannable rows can be filled in capped batches, non-company rows are routed, and missing CIK rows need metadata repair before SEC batches can cover them.
 
+Merge status:
+
+- PR #509 was rebase-merged into `main` as `370cd93 Surface next source plan in trust gate`.
+- Local `main` was fast-forwarded after merge and post-merge focused tests passed from the main checkout.
+
 Next useful product action:
 
 - Do not treat this slice as goal completion.
-- Run focused verification, then live zero-call smoke on `priced-in-answer --limit 1` to confirm the main database surfaces `trust_gate_next_source_plan` without provider calls.
-- Then PR and rebase-merge this slice.
+- The real blocker remains missing market bars: use explicit one-call Polygon/Massive saved grouped-daily capture approval or complete manual CSV import, then rerun `priced-in-answer --limit 1`.
+- Once market bars clear, use the new `trust_gate_next_source_plan` split to handle catalyst events: approve capped SEC batches for the plannable rows and repair CIK metadata for `FRBA` and `SSBI` before expecting SEC coverage for those two rows.
 ## Latest Full-Scan Accounting Fix
 
 Goal alignment / drift check:
