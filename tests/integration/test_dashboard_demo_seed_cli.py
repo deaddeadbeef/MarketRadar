@@ -586,6 +586,7 @@ def test_dashboard_batch_command_opens_full_scan_source_batch_plan(
     assert "tickers ACME" in overview.message
     assert "calls 1" in overview.message
     assert "options=ready" in overview.message
+    assert "options=ready gaps=1 plan=1 batches=1" in overview.message
     assert (
         "First executable: catalyst-radar priced-in-source-batches "
         "--source local_text --execute-next"
@@ -612,6 +613,67 @@ def test_dashboard_batch_command_opens_full_scan_source_batch_plan(
     )
     assert "first provider chunk only." in full_plan.message
     assert "Command:" in full_plan.message
+
+
+def test_dashboard_batch_all_response_separates_plan_route_and_blocked_rows(
+    monkeypatch,
+):
+    def fake_payload(_engine, _config, **_kwargs):
+        return {
+            "headline": "Source map.",
+            "scan_scope": {
+                "ranked_rows": 12,
+                "review_full_scan_command": "review rows",
+                "export_full_scan_command": "export rows",
+            },
+            "sources": [
+                {
+                    "source": "catalyst_events",
+                    "status": "ready",
+                    "total_gap_rows": 12,
+                    "plannable_gap_rows": 5,
+                    "unplannable_gap_rows": 7,
+                    "routed_gap_rows": 6,
+                    "diagnostic": {"blocked_rows": 1},
+                    "batch_count": 1,
+                    "execute_next_command": "run catalyst",
+                },
+                {
+                    "source": "local_text",
+                    "status": "blocked",
+                    "total_gap_rows": 4,
+                    "plannable_gap_rows": 0,
+                    "unplannable_gap_rows": 4,
+                    "routed_gap_rows": 0,
+                    "diagnostic": {},
+                    "batch_count": 0,
+                },
+            ],
+            "next_action": "Review catalyst_events.",
+            "coverage_first_recommendation": {},
+            "decision_shortcut_recommendation": {},
+        }
+
+    monkeypatch.setattr(
+        "catalyst_radar.dashboard.tui.dashboard_data.priced_in_all_source_gap_batches_payload",
+        fake_payload,
+    )
+
+    update = _apply_command(
+        "batch all",
+        {},
+        "overview",
+        DashboardFilters(),
+        engine=create_engine("sqlite:///:memory:", future=True),
+        config=AppConfig.from_env(),
+    )
+
+    assert update.page == "ops"
+    assert (
+        "catalyst_events=ready gaps=12 plan=5 routed=6 blocked=1 batches=1"
+        in update.message
+    )
+    assert "local_text=blocked gaps=4 plan=0 blocked=4 batches=0" in update.message
 
 
 def test_dashboard_batch_command_explains_non_company_cik_gaps(
