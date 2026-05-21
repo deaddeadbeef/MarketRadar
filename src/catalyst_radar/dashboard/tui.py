@@ -3617,9 +3617,12 @@ def _market_bar_status_message(payload: Mapping[str, object]) -> str:
 
 def _market_bar_missing_sample_summary(payload: Mapping[str, object]) -> str:
     repair = _market_bar_repair_payload(payload)
+    plan = _market_bar_provider_fill_plan(payload)
+    packet = _mapping(plan.get("provider_saved_file_capture_approval_packet"))
     sample = _texts(
         repair.get("missing_as_of_bar_ticker_sample")
         or payload.get("missing_as_of_bar_ticker_sample")
+        or packet.get("missing_as_of_bar_ticker_sample")
     )
     if not sample:
         return ""
@@ -3627,6 +3630,7 @@ def _market_bar_missing_sample_summary(payload: Mapping[str, object]) -> str:
         _number_or_zero(
             repair.get("missing_as_of_bar_ticker_more")
             or payload.get("missing_as_of_bar_ticker_more")
+            or packet.get("missing_as_of_bar_ticker_more")
         )
     )
     suffix = f" plus {more} more" if more else ""
@@ -3956,9 +3960,11 @@ def _market_bar_saved_file_capture_command(
         confirm_command = str(packet.get("tui_confirm_command") or "bars saved capture confirm")
         target_text = f"target={target}; " if target else ""
         missing_text = f"current_missing={missing}; " if missing else ""
+        missing_sample = _market_bar_missing_sample_summary(payload)
+        sample_text = f"missing_sample={missing_sample}; " if missing_sample else ""
         return (
             "Saved-file capture is approval-gated; "
-            f"status={approval_status}; {target_text}{missing_text}"
+            f"status={approval_status}; {target_text}{missing_text}{sample_text}"
             "external_calls_made=0; db_writes_made=0; "
             f"safe request body confirm_external_call=false output_path={output_path}. "
             f"Type `{confirm_command}` only if you approve one "

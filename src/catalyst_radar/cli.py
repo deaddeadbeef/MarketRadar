@@ -3945,6 +3945,22 @@ def _market_bars_saved_capture_plan_payload(
         "existing_as_of_bar_count": existing_as_of_bar_count,
         "missing_as_of_bar_count": packet.get("missing_as_of_bar_count")
         or repair.get("missing_as_of_bar_count"),
+        "missing_as_of_bar_ticker_sample": packet.get(
+            "missing_as_of_bar_ticker_sample",
+        )
+        or repair.get("missing_as_of_bar_ticker_sample")
+        or [],
+        "missing_as_of_bar_ticker_more": packet.get(
+            "missing_as_of_bar_ticker_more",
+        )
+        or repair.get("missing_as_of_bar_ticker_more")
+        or 0,
+        "missing_security_type_counts": packet.get("missing_security_type_counts")
+        or repair.get("missing_security_type_counts")
+        or {},
+        "missing_universe_diagnostic": packet.get("missing_universe_diagnostic")
+        or repair.get("missing_universe_diagnostic")
+        or {},
         "provider_key_configured": bool(config.polygon_api_key_configured),
         "provider_health_warning": packet.get("provider_health_warning"),
         "approval_required": approval_required,
@@ -4236,6 +4252,28 @@ def _print_market_bars_saved_capture_plan(payload: Mapping[str, object]):
     warning = str(payload.get("provider_health_warning") or "").strip()
     if warning:
         print(f"provider_health_warning={_compact_cli_text(warning)}")
+    sample = _sequence_value(payload.get("missing_as_of_bar_ticker_sample"))
+    if sample:
+        more = int(payload.get("missing_as_of_bar_ticker_more") or 0)
+        suffix = f" plus {more} more" if more else ""
+        print(
+            "missing_as_of_tickers="
+            + ",".join(str(ticker) for ticker in sample)
+            + suffix
+        )
+    type_counts = _mapping_value(payload.get("missing_security_type_counts"))
+    if type_counts:
+        print(f"missing_security_types={_count_summary(type_counts)}")
+    diagnostic = _mapping_value(payload.get("missing_universe_diagnostic"))
+    if diagnostic:
+        print(
+            "missing_universe="
+            f"active_metadata={diagnostic.get('active_metadata_rows', 'n/a')} "
+            "acquisition_or_spac_names="
+            f"{diagnostic.get('acquisition_or_spac_name_count', 'n/a')} "
+            f"no_composite_figi={diagnostic.get('no_composite_figi_count', 'n/a')} "
+            f"external_calls={diagnostic.get('external_calls_made', 0)}"
+        )
     print(f"capture_api={payload.get('capture_api')}")
     print(f"capture_request_body={payload.get('capture_request_body')}")
     print(f"capture_confirm_request_body={payload.get('capture_confirm_request_body')}")

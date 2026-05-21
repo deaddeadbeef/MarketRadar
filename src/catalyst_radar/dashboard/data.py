@@ -1467,6 +1467,7 @@ def _priced_in_market_bar_source_gap_plan(
         active_security_count=active,
         existing_as_of_bar_count=available,
         coverage_scope="stock_like" if stocks_only else "active_universe",
+        missing_as_of_bar_ticker_sample=sample_tickers,
     )
     template_command = _csv_market_template_command(
         target_as_of,
@@ -4929,6 +4930,9 @@ def _priced_in_audit_market_bar_repair(
         active_security_count=provider_active,
         existing_as_of_bar_count=provider_existing,
         coverage_scope="stock_like" if stocks_only else "active_universe",
+        missing_as_of_bar_ticker_sample=missing_sample,
+        missing_security_type_counts=_mapping_value(diagnostic, "type_counts"),
+        missing_universe_diagnostic=diagnostic,
     )
     manual_repair_plan: dict[str, object] = {}
     stock_manual_repair_plan: dict[str, object] = {}
@@ -5301,6 +5305,10 @@ def _priced_in_market_bar_provider_fill_plan(
     active_security_count: int | None = None,
     existing_as_of_bar_count: int | None = None,
     coverage_scope: str = "active_universe",
+    missing_as_of_bar_ticker_sample: Sequence[object] | None = None,
+    missing_as_of_bar_ticker_more: int | None = None,
+    missing_security_type_counts: Mapping[str, object] | None = None,
+    missing_universe_diagnostic: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     provider_health = _latest_provider_health_payload(engine, "polygon")
     target_value = _date_iso_or_none(target_as_of)
@@ -5403,6 +5411,38 @@ def _priced_in_market_bar_provider_fill_plan(
     provider_health_warning = (
         str(provider_health_gate.get("warning") or "").strip() or None
     )
+    missing_sample = _sample_tickers(
+        [
+            str(ticker).strip().upper()
+            for ticker in _sequence_value(missing_as_of_bar_ticker_sample or [])
+            if str(ticker).strip()
+        ]
+    )
+    if missing_as_of_bar_ticker_more is None:
+        missing_more = max(0, int(missing) - len(missing_sample))
+    else:
+        missing_more = max(0, int(_finite_float(missing_as_of_bar_ticker_more)))
+    missing_diagnostic = _row_dict(missing_universe_diagnostic or {})
+    if not missing_diagnostic and target_as_of is not None and missing > 0:
+        missing_diagnostic = _priced_in_market_bar_missing_diagnostic(
+            engine,
+            target_as_of=target_as_of,
+            missing_ticker_fallback=missing_sample,
+        )
+    missing_type_counts = {
+        str(security_type).strip().upper(): int(_finite_float(count))
+        for security_type, count in dict(missing_security_type_counts or {}).items()
+        if str(security_type).strip() and int(_finite_float(count)) > 0
+    }
+    if not missing_type_counts:
+        missing_type_counts = {
+            str(security_type).strip().upper(): int(_finite_float(count))
+            for security_type, count in _mapping_value(
+                missing_diagnostic,
+                "type_counts",
+            ).items()
+            if str(security_type).strip() and int(_finite_float(count)) > 0
+        }
     if missing <= 0:
         status = "not_needed"
         next_action = "No market-bar provider fill is needed."
@@ -5448,6 +5488,10 @@ def _priced_in_market_bar_provider_fill_plan(
             active_security_count=active_security_count,
             existing_as_of_bar_count=existing_as_of_bar_count,
             missing_as_of_bar_count=max(0, int(missing)),
+            missing_as_of_bar_ticker_sample=missing_sample,
+            missing_as_of_bar_ticker_more=missing_more,
+            missing_security_type_counts=missing_type_counts,
+            missing_universe_diagnostic=missing_diagnostic,
             provider_key_configured=key_configured,
             provider_fill_status=status,
             provider_health_blocks_fill=provider_health_blocks_fill,
@@ -7610,6 +7654,19 @@ def priced_in_preflight_payload(
                     else int(_finite_float(market_bar_repair.get("with_as_of_bar")))
                 ),
                 coverage_scope="stock_like" if stocks_only else "active_universe",
+                missing_as_of_bar_ticker_sample=(
+                    manual_market_bar_repair.get("missing_as_of_bar_ticker_sample")
+                    or market_bar_repair.get("missing_as_of_bar_ticker_sample")
+                    or market_bar_repair.get("missing_as_of_bar_tickers")
+                ),
+                missing_security_type_counts=_mapping_value(
+                    manual_market_bar_repair,
+                    "missing_security_type_counts",
+                ),
+                missing_universe_diagnostic=_mapping_value(
+                    manual_market_bar_repair,
+                    "missing_universe_diagnostic",
+                ),
             ),
         }
     resolved_source_coverage = _priced_in_source_coverage_with_market_bar_scope(
