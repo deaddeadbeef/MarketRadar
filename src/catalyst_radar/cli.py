@@ -330,6 +330,11 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
     )
     market_bars_saved_validate.add_argument("--fixture", type=Path)
+    market_bars_saved_validate.add_argument(
+        "--stocks-only",
+        action="store_true",
+        help="Validate the saved file against stock-like active securities only.",
+    )
     market_bars_saved_validate.add_argument("--json", action="store_true")
     market_bars_saved_import = market_bars_sub.add_parser("saved-import")
     market_bars_saved_import.add_argument("--database-url")
@@ -340,6 +345,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     market_bars_saved_import.add_argument("--fixture", type=Path)
     market_bars_saved_import.add_argument("--execute", action="store_true")
+    market_bars_saved_import.add_argument(
+        "--stocks-only",
+        action="store_true",
+        help="Verify the saved import against stock-like active securities only.",
+    )
     market_bars_saved_import.add_argument("--json", action="store_true")
 
     polygon = subparsers.add_parser("ingest-polygon")
@@ -1202,6 +1212,7 @@ def main(argv: list[str] | None = None) -> int:
                     config=config,
                     expected_as_of=args.expected_as_of,
                     fixture_path=args.fixture,
+                    stocks_only=args.stocks_only,
                     json_output=args.json,
                 )
             if args.market_bars_command == "saved-import":
@@ -1211,6 +1222,7 @@ def main(argv: list[str] | None = None) -> int:
                     expected_as_of=args.expected_as_of,
                     fixture_path=args.fixture,
                     execute=args.execute,
+                    stocks_only=args.stocks_only,
                     json_output=args.json,
                 )
         except (FileNotFoundError, KeyError, RuntimeError, ValueError, ProviderIngestError) as exc:
@@ -3978,13 +3990,16 @@ def _market_bars_saved_capture_plan_payload(
         "expected_missing_as_of_bar_count": missing_as_of_bar_count,
     }
     confirm_body = {**request_body, "confirm_external_call": True}
+    stock_scope_flag = " --stocks-only" if stocks_only else ""
     validate_command = (
         "catalyst-radar market-bars saved-validate "
         f"--expected-as-of {expected_as_of.isoformat()} --fixture {output_path}"
+        f"{stock_scope_flag}"
     )
     import_preview_command = (
         "catalyst-radar market-bars saved-import "
         f"--expected-as-of {expected_as_of.isoformat()} --fixture {output_path}"
+        f"{stock_scope_flag}"
     )
     import_execute_command = f"{import_preview_command} --execute"
     approval_required = bool(packet.get("approval_required"))
@@ -4122,6 +4137,7 @@ def _market_bars_saved_validate_cli(
     config: AppConfig,
     expected_as_of: date,
     fixture_path: Path | None,
+    stocks_only: bool,
     json_output: bool,
 ):
     resolved_fixture = fixture_path or _default_saved_market_bars_path(expected_as_of)
@@ -4131,6 +4147,8 @@ def _market_bars_saved_validate_cli(
         date_value=expected_as_of,
         fixture_path=resolved_fixture,
     )
+    payload["stocks_only"] = bool(stocks_only)
+    payload["coverage_scope"] = "stock_like" if stocks_only else "active_universe"
     if json_output:
         print(json.dumps(payload, sort_keys=True))
     else:
@@ -4145,6 +4163,7 @@ def _market_bars_saved_import_payload(
     expected_as_of: date,
     fixture_path: Path,
     execute: bool,
+    stocks_only: bool,
 ):
     market_repo = MarketRepository(engine)
     provider_repo = ProviderRepository(engine)
@@ -4154,25 +4173,31 @@ def _market_bars_saved_import_payload(
         date_value=expected_as_of,
         fixture_path=fixture_path,
     )
+    preview["stocks_only"] = bool(stocks_only)
+    preview["coverage_scope"] = "stock_like" if stocks_only else "active_universe"
+    coverage = _mapping_value(preview.get("coverage"))
+    projected_missing_key = (
+        "stock_like_missing_after_import_count"
+        if stocks_only
+        else "missing_after_import_count"
+    )
+    projected_missing = int(coverage.get(projected_missing_key) or 0)
     if not execute:
         return {
             **preview,
             "schema_version": "polygon-grouped-daily-fixture-import-v1",
             "executed": False,
+            "stocks_only": bool(stocks_only),
+            "coverage_scope": "stock_like" if stocks_only else "active_universe",
             "post_import_verification": market_bars_import_verification_payload(
                 engine,
                 config,
                 expected_as_of=expected_as_of,
+                stocks_only=stocks_only,
                 executed=False,
                 source="saved_provider_file",
                 db_changes_made=0,
-                projected_missing_after_import_count=int(
-                    _mapping_value(preview.get("coverage")).get(
-                        "missing_after_import_count",
-                        0,
-                    )
-                    or 0
-                ),
+                projected_missing_after_import_count=projected_missing,
                 projected_db_changes_made=1,
             ),
             "db_writes_made": 0,
@@ -4199,6 +4224,8 @@ def _market_bars_saved_import_payload(
         "provider": result.provider,
         "date": expected_as_of.isoformat(),
         "fixture_path": str(fixture_path),
+        "stocks_only": bool(stocks_only),
+        "coverage_scope": "stock_like" if stocks_only else "active_universe",
         "job_id": result.job_id,
         "requested_count": result.requested_count,
         "raw_count": result.raw_count,
@@ -4215,6 +4242,7 @@ def _market_bars_saved_import_payload(
             engine,
             config,
             expected_as_of=expected_as_of,
+            stocks_only=stocks_only,
             executed=True,
             source="saved_provider_file",
             db_changes_made=1,
@@ -4234,6 +4262,7 @@ def _market_bars_saved_import_cli(
     expected_as_of: date,
     fixture_path: Path | None,
     execute: bool,
+    stocks_only: bool,
     json_output: bool,
 ):
     resolved_fixture = fixture_path or _default_saved_market_bars_path(expected_as_of)
@@ -4243,6 +4272,7 @@ def _market_bars_saved_import_cli(
         expected_as_of=expected_as_of,
         fixture_path=resolved_fixture,
         execute=execute,
+        stocks_only=stocks_only,
     )
     if json_output:
         print(json.dumps(payload, sort_keys=True))
@@ -4566,6 +4596,8 @@ def _print_market_bars_saved_import(payload: Mapping[str, object]):
         f"status={payload.get('status')} "
         f"executed={str(bool(payload.get('executed'))).lower()} "
         f"date={payload.get('date') or payload.get('expected_as_of') or 'n/a'} "
+        f"stocks_only={str(bool(payload.get('stocks_only'))).lower()} "
+        f"scope={payload.get('coverage_scope') or 'active_universe'} "
         f"path={payload.get('fixture_path') or 'n/a'} "
         f"daily_bars={payload.get('daily_bar_count')} "
         f"rejected={payload.get('rejected_count')} "
@@ -4586,7 +4618,9 @@ def _print_market_bars_saved_import(payload: Mapping[str, object]):
             f"existing={coverage.get('existing_as_of_bar_count', 0)} "
             f"fixture_matches={coverage.get('fixture_active_match_count', 0)} "
             f"covers_missing={coverage.get('missing_covered_by_fixture_count', 0)} "
-            f"missing_after={coverage.get('missing_after_import_count', 0)}"
+            f"missing_after={coverage.get('missing_after_import_count', 0)} "
+            "stock_missing_after="
+            f"{coverage.get('stock_like_missing_after_import_count', 0)}"
         )
     boundary = str(payload.get("write_boundary") or "").strip()
     if boundary:

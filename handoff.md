@@ -1,6 +1,42 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-22 05:54:29 +08:00
+Last updated: 2026-05-22 06:43:18 +08:00
+
+## Latest Saved-File Stock Scope Parity
+
+Last updated: 2026-05-22 06:43:18 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, broker, order, web, app, or provider tools from the product.
+- This is useful because a stock-like saved-provider capture must not silently switch back to full active-universe validation/import after the capture plan. The narrower stock-like path stays honest while the trusted full-market answer remains blocked until full active-universe bars clear.
+- The farther-road value goal is now a first-class GitHub milestone: M7 Monthly value proof. Issue #533 remains Todo on the MarketRadar Priced-In Scan Roadmap and tracks proving at least $40/month of attributable decision-support value, covering 20% of a $200/month ChatGPT Pro subscription.
+
+Fix in this slice:
+
+- CLI `market-bars saved-validate` and `market-bars saved-import` accept `--stocks-only`.
+- Saved-capture plan output, repair-plan output, API approval context, dashboard fill plans, and TUI saved-file actions now preserve `stocks_only` in saved validate/import commands and request bodies.
+- Saved-file validate/import payloads now report `stocks_only` and `coverage_scope`.
+- Saved-file import preview/post-import verification uses `stock_like_missing_after_import_count` when stock scope is selected, and full `missing_after_import_count` otherwise.
+- The market-bar unblock checklist rerun command keeps `--stocks-only` when the checklist is for stock-like scope.
+- README documents that stock-like saved-file repair is a narrower staged unblock, while the default full-market path remains the trusted broad-scan gate.
+
+Validation observed in this slice:
+
+- Ruff passed for touched source and integration files.
+- Py-compile passed for touched source and integration files.
+- Focused saved-capture, saved-file import, API preview/import, and TUI saved-file regressions passed.
+- Full affected integration files passed: `tests/integration/test_provider_ingest_cli.py`, `tests/integration/test_api_routes.py`, and `tests/integration/test_dashboard_demo_seed_cli.py`.
+- `git diff --check` passed.
+- Live zero-call local DB smokes showed stock-like repair-plan saved validate/import commands and request bodies keep `--stocks-only`/`stocks_only=true`, while the full active-universe repair plan omits the flag.
+- Live zero-call stock-like saved-capture plan showed `validate_command` and `import_preview_command` keeping `--stocks-only`, with `external_calls=0`.
+
+Current live blocker:
+
+- The trusted full-market priced-in answer is still blocked by 523 missing market bars for 2026-05-15 until explicit guarded saved Polygon/Massive capture approval with matching counts or complete manual CSV import.
+- The stock-like answer path is still blocked by 131 stock-like missing bars.
+- After market bars clear, the next prepared blocker remains catalyst-events source fill, with 5510 plannable company-like rows and two missing-CIK blockers currently sampled as FRBA and SSBI.
 
 ## Latest Blocked Source-Run Next Command
 

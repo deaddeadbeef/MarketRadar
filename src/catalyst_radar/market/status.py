@@ -462,7 +462,7 @@ def _market_bar_unblock_checklist(
         {
             "order": 6,
             "label": "Rerun priced-in answer",
-            "command": "catalyst-radar priced-in-answer --limit 5",
+            "command": f"catalyst-radar priced-in-answer --limit 5{stock_flag}",
             "external_calls_required": 0,
             "db_changes_required": 0,
         },

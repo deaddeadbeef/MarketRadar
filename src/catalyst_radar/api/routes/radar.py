@@ -206,6 +206,7 @@ class MarketBarsProviderFixturePreviewRequest(BaseModel):
 
     expected_as_of: Date
     fixture_path: str
+    stocks_only: bool = False
 
 
 class MarketBarsProviderFixtureCaptureRequest(BaseModel):
@@ -227,6 +228,7 @@ class MarketBarsProviderFixtureImportRequest(BaseModel):
     expected_as_of: Date
     fixture_path: str
     execute: bool = False
+    stocks_only: bool = False
 
 
 def _market_bars_capture_approval_context(
@@ -240,9 +242,11 @@ def _market_bars_capture_approval_context(
     provider_health = ProviderRepository(engine).latest_health("polygon")
     target_date = expected_as_of.isoformat()
     fixture_path = str(output_path)
+    stock_flag = " --stocks-only" if stocks_only else ""
     validate_body = {
         "expected_as_of": target_date,
         "fixture_path": fixture_path,
+        "stocks_only": bool(stocks_only),
     }
     import_preview_body = {**validate_body, "execute": False}
     import_body = {**validate_body, "execute": True}
@@ -318,10 +322,12 @@ def _market_bars_capture_approval_context(
         "provider_saved_file_validate_command": (
             "catalyst-radar market-bars saved-validate "
             f"--expected-as-of {target_date} --fixture {output_path}"
+            f"{stock_flag}"
         ),
         "provider_saved_file_import_command": (
             "catalyst-radar market-bars saved-import "
             f"--expected-as-of {target_date} --fixture {output_path}"
+            f"{stock_flag}"
         ),
         "provider_saved_file_validate_request_body": validate_body,
         "provider_saved_file_import_preview_request_body": import_preview_body,
@@ -912,6 +918,10 @@ def radar_market_bars_provider_fixture_preview(
             date_value=request.expected_as_of,
             fixture_path=Path(request.fixture_path),
         )
+        payload["stocks_only"] = bool(request.stocks_only)
+        payload["coverage_scope"] = (
+            "stock_like" if request.stocks_only else "active_universe"
+        )
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return redact_restricted_external_payload(payload)
@@ -1024,27 +1034,36 @@ def radar_market_bars_provider_fixture_import(
             date_value=request.expected_as_of,
             fixture_path=fixture_path,
         )
+        preview["stocks_only"] = bool(request.stocks_only)
+        preview["coverage_scope"] = (
+            "stock_like" if request.stocks_only else "active_universe"
+        )
+        coverage = preview.get("coverage") if isinstance(preview.get("coverage"), dict) else {}
+        projected_missing_key = (
+            "stock_like_missing_after_import_count"
+            if request.stocks_only
+            else "missing_after_import_count"
+        )
+        projected_missing = int(coverage.get(projected_missing_key, 0) or 0)
         if not request.execute:
             return redact_restricted_external_payload(
                 {
                     **preview,
                     "schema_version": "polygon-grouped-daily-fixture-import-v1",
                     "executed": False,
+                    "stocks_only": bool(request.stocks_only),
+                    "coverage_scope": (
+                        "stock_like" if request.stocks_only else "active_universe"
+                    ),
                     "post_import_verification": market_bars_import_verification_payload(
                         engine,
                         config,
                         expected_as_of=request.expected_as_of,
+                        stocks_only=request.stocks_only,
                         executed=False,
                         source="saved_provider_file",
                         db_changes_made=0,
-                        projected_missing_after_import_count=int(
-                            (
-                                preview.get("coverage")
-                                if isinstance(preview.get("coverage"), dict)
-                                else {}
-                            ).get("missing_after_import_count", 0)
-                            or 0
-                        ),
+                        projected_missing_after_import_count=projected_missing,
                         projected_db_changes_made=1,
                     ),
                     "db_writes_made": 0,
@@ -1076,6 +1095,10 @@ def radar_market_bars_provider_fixture_import(
             ),
             "executed": True,
             "provider": result.provider,
+            "stocks_only": bool(request.stocks_only),
+            "coverage_scope": (
+                "stock_like" if request.stocks_only else "active_universe"
+            ),
             "job_id": result.job_id,
             "requested_count": result.requested_count,
             "raw_count": result.raw_count,
@@ -1092,6 +1115,7 @@ def radar_market_bars_provider_fixture_import(
                 engine,
                 config,
                 expected_as_of=request.expected_as_of,
+                stocks_only=request.stocks_only,
                 executed=True,
                 source="saved_provider_file",
                 db_changes_made=1,

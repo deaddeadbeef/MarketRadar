@@ -4093,6 +4093,7 @@ def _execute_market_bar_saved_file_command(
             if execute
             else "provider_saved_file_import_preview_request_body",
         )
+        stocks_only = bool(body.get("stocks_only"))
         if execute:
             preview = _preview_saved_market_bar_file(engine, config, body)
             if str(preview.get("status") or "") == "invalid":
@@ -4111,6 +4112,7 @@ def _execute_market_bar_saved_file_command(
                 engine,
                 config,
                 expected_as_of=_market_bar_saved_file_date(body),
+                stocks_only=stocks_only,
                 executed=True,
                 source="saved_provider_file",
                 db_changes_made=1,
@@ -4127,15 +4129,21 @@ def _execute_market_bar_saved_file_command(
             )
         preview = _preview_saved_market_bar_file(engine, config, body)
         coverage = _mapping(preview.get("coverage"))
+        projected_missing_key = (
+            "stock_like_missing_after_import_count"
+            if stocks_only
+            else "missing_after_import_count"
+        )
         verification = market_bars_import_verification_payload(
             engine,
             config,
             expected_as_of=_market_bar_saved_file_date(body),
+            stocks_only=stocks_only,
             executed=False,
             source="saved_provider_file",
             db_changes_made=0,
             projected_missing_after_import_count=int(
-                coverage.get("missing_after_import_count") or 0
+                coverage.get(projected_missing_key) or 0
             ),
             projected_db_changes_made=1,
         )
@@ -4295,12 +4303,16 @@ def _preview_saved_market_bar_file(
     config: AppConfig,
     body: Mapping[str, object],
 ) -> Mapping[str, object]:
-    return preview_polygon_grouped_daily_fixture(
+    preview = preview_polygon_grouped_daily_fixture(
         config=config,
         market_repo=MarketRepository(engine),
         date_value=_market_bar_saved_file_date(body),
         fixture_path=_market_bar_saved_file_path(body, "fixture_path"),
     )
+    stocks_only = bool(body.get("stocks_only"))
+    preview["stocks_only"] = stocks_only
+    preview["coverage_scope"] = "stock_like" if stocks_only else "active_universe"
+    return preview
 
 
 def _saved_market_bar_preview_message(
@@ -4310,6 +4322,7 @@ def _saved_market_bar_preview_message(
     coverage = _mapping(preview.get("coverage"))
     parts = [
         f"{label}: status={preview.get('status')}",
+        f"scope={preview.get('coverage_scope') or 'active_universe'}",
         f"daily_bars={preview.get('daily_bar_count')}",
         f"rejected={preview.get('rejected_count')}",
         f"missing_covered={coverage.get('missing_covered_by_fixture_count')}",

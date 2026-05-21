@@ -5597,9 +5597,12 @@ def _priced_in_market_bar_provider_fill_plan(
         if target_value
         else None
     )
+    stocks_only = coverage_scope == "stock_like"
+    saved_file_scope_flag = " --stocks-only" if stocks_only else ""
     saved_file_import_command = (
         "catalyst-radar market-bars saved-import "
         f"--expected-as-of {target_value} --fixture {saved_file_path}"
+        f"{saved_file_scope_flag}"
         if target_value and saved_file_path is not None
         else None
     )
@@ -5610,12 +5613,14 @@ def _priced_in_market_bar_provider_fill_plan(
         f"--expect-existing-count {existing_as_of_bar_count} "
         f"--expect-missing-count {max(0, int(missing))} "
         "--confirm-external-call"
+        f"{saved_file_scope_flag}"
         if target_value and saved_file_path is not None
         else None
     )
     saved_file_validate_command = (
         "catalyst-radar market-bars saved-validate "
         f"--expected-as-of {target_value} --fixture {saved_file_path}"
+        f"{saved_file_scope_flag}"
         if target_value and saved_file_path is not None
         else None
     )
@@ -5624,6 +5629,7 @@ def _priced_in_market_bar_provider_fill_plan(
             "expected_as_of": target_value,
             "output_path": str(saved_file_path),
             "confirm_external_call": False,
+            "stocks_only": bool(stocks_only),
             "expected_active_security_count": active_security_count,
             "expected_existing_as_of_bar_count": existing_as_of_bar_count,
             "expected_missing_as_of_bar_count": max(0, int(missing)),
@@ -5637,7 +5643,11 @@ def _priced_in_market_bar_provider_fill_plan(
         else None
     )
     saved_file_validate_request_body = (
-        {"expected_as_of": target_value, "fixture_path": str(saved_file_path)}
+        {
+            "expected_as_of": target_value,
+            "fixture_path": str(saved_file_path),
+            "stocks_only": bool(stocks_only),
+        }
         if target_value and saved_file_path is not None
         else None
     )
