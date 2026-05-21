@@ -632,7 +632,7 @@ def test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths(
         "--expect-active-count 2 "
         "--expect-existing-count 1 "
         "--expect-missing-count 1 "
-        "--confirm-external-call"
+        "--confirm-external-call --stocks-only"
     )
     assert payload["provider_saved_file_capture_api"] == (
         "POST /api/radar/market-bars/provider-fixture-capture"
@@ -641,6 +641,7 @@ def test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths(
         "expected_as_of": "2026-05-15",
         "output_path": "data\\local\\polygon-grouped-daily-2026-05-15.json",
         "confirm_external_call": False,
+        "stocks_only": True,
         "expected_active_security_count": 2,
         "expected_existing_as_of_bar_count": 1,
         "expected_missing_as_of_bar_count": 1,
@@ -681,6 +682,7 @@ def test_market_bars_repair_plan_reports_manual_and_guarded_provider_paths(
     assert approval_packet["db_writes_during_capture"] == 0
     assert approval_packet["tui_plan_command"] == "bars saved capture"
     assert approval_packet["tui_confirm_command"] == "bars saved capture confirm"
+    assert "--stocks-only" in approval_packet["capture_cli_command"]
     assert approval_packet["capture_request_body"] == (
         payload["provider_saved_file_capture_request_body"]
     )
@@ -1015,14 +1017,18 @@ def test_market_bars_saved_capture_cli_plans_without_provider_call(
     )
     assert payload["saved_file_status"] == "missing"
     assert payload["capture_request_body"]["confirm_external_call"] is False
+    assert payload["capture_request_body"]["stocks_only"] is True
     assert payload["capture_request_body"]["expected_active_security_count"] == 2
     assert payload["capture_request_body"]["expected_existing_as_of_bar_count"] == 1
     assert payload["capture_request_body"]["expected_missing_as_of_bar_count"] == 1
     assert payload["capture_confirm_request_body"]["confirm_external_call"] is True
+    assert payload["capture_confirm_request_body"]["stocks_only"] is True
+    assert payload["approval_guard"]["stocks_only"] is True
     assert payload["approval_guard"]["expected_missing_as_of_bar_count"] == 1
     assert "--expect-active-count 2" in payload["confirm_command"]
     assert "--expect-existing-count 1" in payload["confirm_command"]
     assert "--expect-missing-count 1" in payload["confirm_command"]
+    assert "--stocks-only" in payload["confirm_command"]
     assert payload["capture_api"] == (
         "POST /api/radar/market-bars/provider-fixture-capture"
     )
@@ -1046,6 +1052,7 @@ def test_market_bars_saved_capture_cli_plans_without_provider_call(
     assert "missing_security_types=ADRC:1" in text
     assert "missing_universe=active_metadata=1" in text
     assert "external_calls_if_approved=1" in text
+    assert "--confirm-external-call --stocks-only" in text
     assert "db_writes=0" in text
 
     blocked_code = main(

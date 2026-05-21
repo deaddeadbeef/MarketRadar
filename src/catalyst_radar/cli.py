@@ -3952,6 +3952,7 @@ def _market_bars_saved_capture_plan_payload(
         "expected_as_of": expected_as_of.isoformat(),
         "output_path": str(output_path),
         "confirm_external_call": False,
+        "stocks_only": bool(stocks_only),
         "expected_active_security_count": active_security_count,
         "expected_existing_as_of_bar_count": existing_as_of_bar_count,
         "expected_missing_as_of_bar_count": missing_as_of_bar_count,
@@ -4015,6 +4016,7 @@ def _market_bars_saved_capture_plan_payload(
             f"--expect-existing-count {existing_as_of_bar_count} "
             f"--expect-missing-count {missing_as_of_bar_count} "
             "--confirm-external-call"
+            + (" --stocks-only" if stocks_only else "")
         )
         if approval_required
         else None,

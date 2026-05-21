@@ -49,6 +49,7 @@ from catalyst_radar.jobs.step_outcomes import classify_step_outcome
 from catalyst_radar.market.manual_bars import (
     import_manual_market_bars,
     manual_market_bars_repair_plan,
+    saved_capture_approval_guard_expected_payload,
     saved_capture_approval_guard_payload,
     write_manual_market_bars_template,
 )
@@ -210,6 +211,7 @@ class MarketBarsProviderFixtureCaptureRequest(BaseModel):
     output_path: str
     fixture_path: str | None = None
     confirm_external_call: bool = False
+    stocks_only: bool = False
     expected_active_security_count: int | None = None
     expected_existing_as_of_bar_count: int | None = None
     expected_missing_as_of_bar_count: int | None = None
@@ -228,6 +230,7 @@ def _market_bars_capture_approval_context(
     *,
     expected_as_of: Date,
     output_path: Path,
+    stocks_only: bool = False,
 ):
     config = AppConfig.from_env()
     provider_health = ProviderRepository(engine).latest_health("polygon")
@@ -243,7 +246,7 @@ def _market_bars_capture_approval_context(
         repair = manual_market_bars_repair_plan(
             engine,
             expected_as_of=expected_as_of,
-            stocks_only=False,
+            stocks_only=stocks_only,
             provider_key_configured=config.polygon_api_key_configured,
             provider_health_status=(
                 provider_health.status.value if provider_health is not None else None
@@ -264,13 +267,25 @@ def _market_bars_capture_approval_context(
             "provider_saved_file_import_preview_request_body": import_preview_body,
             "provider_saved_file_import_request_body": import_body,
         }
+    active_count = repair.get("active_security_count")
+    existing_count = repair.get("existing_as_of_bar_count")
+    missing_count = repair.get("missing_as_of_bar_count")
+    capture_body = {
+        "expected_as_of": target_date,
+        "output_path": str(output_path),
+        "confirm_external_call": False,
+        "stocks_only": bool(stocks_only),
+        "expected_active_security_count": active_count,
+        "expected_existing_as_of_bar_count": existing_count,
+        "expected_missing_as_of_bar_count": missing_count,
+    }
     return {
         "approval_context_status": "ready",
         "approval_context_external_calls_made": repair.get("external_calls_made", 0),
         "coverage_scope": repair.get("coverage_scope"),
-        "active_security_count": repair.get("active_security_count"),
-        "existing_as_of_bar_count": repair.get("existing_as_of_bar_count"),
-        "missing_as_of_bar_count": repair.get("missing_as_of_bar_count"),
+        "active_security_count": active_count,
+        "existing_as_of_bar_count": existing_count,
+        "missing_as_of_bar_count": missing_count,
         "missing_as_of_bar_ticker_sample": repair.get(
             "missing_as_of_bar_ticker_sample",
         )
@@ -284,6 +299,18 @@ def _market_bars_capture_approval_context(
         "missing_universe_diagnostic": repair.get("missing_universe_diagnostic")
         or {},
         "provider_saved_file_status": repair.get("provider_saved_file_status"),
+        "provider_saved_file_capture_request_body": capture_body,
+        "provider_saved_file_capture_confirm_request_body": {
+            **capture_body,
+            "confirm_external_call": True,
+        },
+        "approval_guard": saved_capture_approval_guard_expected_payload(
+            expected_as_of=expected_as_of,
+            stocks_only=stocks_only,
+            active_security_count=active_count,
+            existing_as_of_bar_count=existing_count,
+            missing_as_of_bar_count=int(missing_count or 0),
+        ),
         "provider_saved_file_validate_command": (
             "catalyst-radar market-bars saved-validate "
             f"--expected-as-of {target_date} --fixture {output_path}"
@@ -885,10 +912,12 @@ def radar_market_bars_provider_fixture_capture(
             _engine(),
             expected_as_of=request.expected_as_of,
             output_path=output_path,
+            stocks_only=request.stocks_only,
         )
         active_count = approval_context.get("active_security_count")
         existing_count = approval_context.get("existing_as_of_bar_count")
         missing_count = approval_context.get("missing_as_of_bar_count")
+        stock_flag = " --stocks-only" if request.stocks_only else ""
         return redact_restricted_external_payload(
             {
                 "schema_version": "polygon-grouped-daily-response-capture-v1",
@@ -896,6 +925,7 @@ def radar_market_bars_provider_fixture_capture(
                 "provider": "polygon",
                 "date": target_date,
                 "output_path": str(output_path),
+                "stocks_only": bool(request.stocks_only),
                 "capture_external_call_count": 1,
                 "external_calls_made": 0,
                 "db_writes_made": 0,
@@ -906,6 +936,7 @@ def radar_market_bars_provider_fixture_capture(
                     f"--expect-existing-count {existing_count} "
                     f"--expect-missing-count {missing_count} "
                     "--confirm-external-call"
+                    f"{stock_flag}"
                 ),
                 "approval_boundary": (
                     "Live grouped-daily capture makes one Polygon/Massive "
@@ -923,7 +954,7 @@ def radar_market_bars_provider_fixture_capture(
         guard = saved_capture_approval_guard_payload(
             _engine(),
             expected_as_of=request.expected_as_of,
-            stocks_only=False,
+            stocks_only=request.stocks_only,
             expected_active_security_count=request.expected_active_security_count,
             expected_existing_as_of_bar_count=(
                 request.expected_existing_as_of_bar_count
