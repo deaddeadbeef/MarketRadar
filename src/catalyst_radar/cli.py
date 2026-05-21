@@ -3884,6 +3884,12 @@ def _market_bars_saved_capture_plan_payload(
     packet = repair.get("provider_saved_file_capture_approval_packet")
     if not isinstance(packet, Mapping):
         packet = {}
+    active_security_count = packet.get("active_security_count")
+    if active_security_count is None:
+        active_security_count = repair.get("active_security_count")
+    existing_as_of_bar_count = packet.get("existing_as_of_bar_count")
+    if existing_as_of_bar_count is None:
+        existing_as_of_bar_count = repair.get("existing_as_of_bar_count")
     request_body = {
         "expected_as_of": expected_as_of.isoformat(),
         "output_path": str(output_path),
@@ -3908,6 +3914,9 @@ def _market_bars_saved_capture_plan_payload(
         "provider_label": "Polygon/Massive grouped daily",
         "expected_as_of": expected_as_of.isoformat(),
         "stocks_only": bool(stocks_only),
+        "coverage_scope": packet.get("coverage_scope") or repair.get("coverage_scope"),
+        "active_security_count": active_security_count,
+        "existing_as_of_bar_count": existing_as_of_bar_count,
         "missing_as_of_bar_count": packet.get("missing_as_of_bar_count")
         or repair.get("missing_as_of_bar_count"),
         "provider_key_configured": bool(config.polygon_api_key_configured),
@@ -4096,6 +4105,9 @@ def _print_market_bars_saved_capture_plan(payload: Mapping[str, object]):
         "market_bars_saved_capture_plan "
         f"status={payload.get('status')} "
         f"expected_as_of={payload.get('expected_as_of')} "
+        f"scope={payload.get('coverage_scope')} "
+        f"active={payload.get('active_security_count')} "
+        f"existing={payload.get('existing_as_of_bar_count')} "
         f"missing={payload.get('missing_as_of_bar_count')} "
         f"provider_key={str(bool(payload.get('provider_key_configured'))).lower()} "
         f"approval_required={str(bool(payload.get('approval_required'))).lower()} "

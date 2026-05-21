@@ -824,6 +824,9 @@ def test_market_bars_saved_capture_cli_plans_without_provider_call(
     assert payload["external_calls_if_approved"] == 1
     assert payload["external_calls_made"] == 0
     assert payload["db_writes_made"] == 0
+    assert payload["coverage_scope"] == "stock_like"
+    assert payload["active_security_count"] == 2
+    assert payload["existing_as_of_bar_count"] == 1
     assert payload["missing_as_of_bar_count"] == 1
     assert payload["saved_file_path"] == (
         "data\\local\\polygon-grouped-daily-2026-05-15.json"
