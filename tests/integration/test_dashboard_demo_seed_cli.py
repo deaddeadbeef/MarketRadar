@@ -740,8 +740,18 @@ def test_dashboard_batch_execute_runs_one_guarded_local_chunk(
 
     def fake_batches_payload(_engine, _config, **kwargs) -> dict[str, object]:
         nonlocal plan_calls
+        source = kwargs["source"]
+        if source == "market_bars":
+            return {
+                "status": "ready",
+                "source": "market_bars",
+                "total_gap_rows": 0,
+                "plannable_gap_rows": 0,
+                "batch_count": 0,
+                "batches": [],
+            }
         plan_calls += 1
-        assert kwargs["source"] == "local_text"
+        assert source == "local_text"
         remaining_rows = max(0, 125 - (plan_calls * 2))
         return {
             "status": "ready",
@@ -1461,6 +1471,11 @@ def _saved_file_command_payload(fixture_path, output_path):
                     "provider_fill_plan": {
                         "target_as_of": "2026-05-08",
                         "missing_as_of_bar": 3,
+                        "provider_saved_file_capture_command": (
+                            "catalyst-radar market-bars saved-capture "
+                            "--expected-as-of 2026-05-08 --out "
+                            f"{output} --confirm-external-call"
+                        ),
                         "provider_saved_file_capture_request_body": {
                             "expected_as_of": "2026-05-08",
                             "output_path": output,
@@ -1553,6 +1568,85 @@ def _seed_saved_file_command_universe(engine):
             ),
         ]
     )
+
+
+def test_dashboard_bars_default_shows_zero_call_status(tmp_path: Path):
+    database_url = f"sqlite:///{(tmp_path / 'status.db').as_posix()}"
+    engine = create_engine(database_url, future=True)
+    output_path = tmp_path / "polygon-grouped-daily-2026-05-08.json"
+    payload = _saved_file_command_payload(
+        Path("tests/fixtures/polygon/grouped_daily_2026-05-08.json"),
+        output_path,
+    )
+    repair = payload["priced_in_audit"]["market_bars"]["repair"]
+    repair.update(
+        {
+            "local_template_path": str(tmp_path / "manual-bars.csv"),
+            "template_row_count": 3,
+            "local_template_preview": {
+                "status": "invalid",
+                "row_count": 3,
+                "fill_progress": {
+                    "complete_rows": 1,
+                    "partial_rows": 1,
+                    "empty_rows": 1,
+                    "filled_rows": 2,
+                },
+            },
+            "operator_step": {
+                "action": "Fill or clear incomplete OHLCV/VWAP rows.",
+                "manual_step": True,
+                "external_calls_made": 0,
+            },
+            "dashboard_manual_import_preview_command": "bars manual import",
+            "dashboard_manual_import_execute_command": "bars manual import execute",
+        }
+    )
+    payload["priced_in_answer"] = {
+        "full_market_trust_gate": {
+            "status": "blocked",
+            "first_blocker": "market_bars",
+            "first_gap_count": 3,
+        }
+    }
+
+    update = _apply_command(
+        "bars",
+        payload,
+        "run",
+        DashboardFilters(),
+        engine=engine,
+        config=AppConfig.from_env({"CATALYST_DATABASE_URL": database_url}),
+    )
+
+    assert update.page == "run"
+    assert (
+        "Market-bar status: blocked; as_of=2026-05-08; missing=3"
+        in update.message
+    )
+    assert "Manual CSV: 1/3 complete; 1 partial; 1 empty" in update.message
+    assert (
+        "Next manual action: Fill or clear incomplete OHLCV/VWAP rows."
+        in update.message
+    )
+    assert "Command: bars manual import; execute after preview" in update.message
+    assert "Saved capture: approval_required; 3 bars targeted" in update.message
+    assert "1 external call(s) if approved" in update.message
+    assert (
+        "Status check made 0 provider calls and 0 database writes."
+        in update.message
+    )
+    assert not output_path.exists()
+
+    status = _apply_command(
+        "bars status",
+        payload,
+        "run",
+        DashboardFilters(),
+        engine=engine,
+        config=AppConfig.from_env({"CATALYST_DATABASE_URL": database_url}),
+    )
+    assert status.message == update.message
 
 
 def test_dashboard_bars_saved_capture_requires_confirm_without_call(tmp_path: Path):

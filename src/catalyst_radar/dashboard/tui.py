@@ -3460,7 +3460,10 @@ def _options_fixture_import_execute_message(result):
     )
 
 
-_MARKET_BAR_COMMAND_USAGE = "Usage: bars manual template/import or bars saved capture/import."
+_MARKET_BAR_COMMAND_USAGE = (
+    "Usage: bars, bars status, bars manual template/import, "
+    "or bars saved capture/import."
+)
 
 
 def _execute_market_bar_command(
@@ -3473,8 +3476,12 @@ def _execute_market_bar_command(
 ) -> str:
     parts = [part.strip().lower() for part in value.split() if part.strip()]
     if not parts:
-        return _MARKET_BAR_COMMAND_USAGE
+        return _market_bar_status_message(payload)
     head = parts[0]
+    if head in {"status", "next", "plan"}:
+        return _market_bar_status_message(payload)
+    if head in {"help", "?"}:
+        return _MARKET_BAR_COMMAND_USAGE
     if head in {"manual", "csv", "template", "preview", "validate", "import"}:
         return _execute_market_bar_manual_command(
             engine,
@@ -3491,6 +3498,74 @@ def _execute_market_bar_command(
         )
     return _MARKET_BAR_COMMAND_USAGE
 
+
+def _market_bar_status_message(payload: Mapping[str, object]) -> str:
+    answer = _mapping(payload.get("priced_in_answer"))
+    trust_gate = _mapping(answer.get("full_market_trust_gate"))
+    audit = _mapping(payload.get("priced_in_audit"))
+    market = _mapping(audit.get("market_bars"))
+    repair = _mapping(market.get("repair"))
+    provider_plan = _mapping(repair.get("provider_fill_plan"))
+    status = str(
+        _first_value(
+            trust_gate.get("status"),
+            market.get("status"),
+            repair.get("status"),
+            "unknown",
+        )
+    ).strip()
+    first_blocker = str(trust_gate.get("first_blocker") or "").strip()
+    gate_gap = (
+        trust_gate.get("first_gap_count")
+        if first_blocker == "market_bars"
+        else None
+    )
+    missing = int(
+        _number_or_zero(
+            _first_value(
+                gate_gap,
+                market.get("missing_as_of_bar"),
+                repair.get("missing_as_of_bar_count"),
+                repair.get("missing_as_of_bar"),
+                repair.get("missing_expected_count"),
+                provider_plan.get("missing_as_of_bar_count"),
+                provider_plan.get("missing_as_of_bar"),
+            )
+        )
+    )
+    target = str(
+        _first_value(
+            repair.get("target_as_of"),
+            repair.get("expected_as_of"),
+            market.get("expected_as_of"),
+            provider_plan.get("target_as_of"),
+            provider_plan.get("expected_as_of"),
+        )
+        or ""
+    ).strip()
+    headline = [f"Market-bar status: {status}"]
+    if target:
+        headline.append(f"as_of={target}")
+    if missing:
+        headline.append(f"missing={missing}")
+    parts = ["; ".join(headline)]
+    manual_progress = _market_bar_manual_fill_progress_summary(payload)
+    if manual_progress:
+        parts.append(f"Manual CSV: {manual_progress}")
+    operator_step = _market_bar_operator_step_summary(payload)
+    if operator_step:
+        parts.append(f"Next manual action: {operator_step}")
+    saved_capture = _market_bar_provider_saved_file_capture_summary(payload)
+    if saved_capture:
+        parts.append(f"Saved capture: {saved_capture}")
+    saved_validate = _market_bar_provider_saved_file_validate_summary(payload)
+    if saved_validate:
+        parts.append(f"Saved validate: {saved_validate}")
+    saved_import = _market_bar_provider_saved_file_summary(payload)
+    if saved_import:
+        parts.append(f"Saved import: {saved_import}")
+    parts.append("Status check made 0 provider calls and 0 database writes.")
+    return " | ".join(part for part in parts if part)
 
 _MARKET_BAR_MANUAL_SCOPE_TOKENS = {
     "stock",
@@ -7916,6 +7991,7 @@ def _help_lines(width: int) -> list[str]:
         ("batch <source>", "Plan full-scan source fill and show the next safe chunk."),
         ("batch <source> execute", "Run only the next guarded source-fill chunk."),
         ("batch <source> execute 3", "Run a capped source-fill batch set."),
+        ("bars", "Show market-bar blocker status and safe next actions."),
         ("bars manual template", "Generate the full-universe missing-bar CSV."),
         ("bars manual import", "Preview or execute complete-row manual import."),
         ("bars saved capture", "Plan saved capture; add confirm for one provider call."),
