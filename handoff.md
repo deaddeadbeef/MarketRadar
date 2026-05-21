@@ -1,6 +1,36 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 13:52:15 +08:00
+Last updated: 2026-05-21 14:02:11 +08:00
+
+## Latest TUI Saved-Capture Target Counts
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, broker, order, or provider APIs. It only changes TUI wording for an already-computed saved-capture packet.
+- This is useful because the dashboard is for human eyes. The saved-capture row is the approval point for the one-call market-bar unblock, so it should show the full target on that row instead of forcing the operator to find counts elsewhere.
+
+Fix in this slice:
+
+- `_market_bar_saved_capture_summary` now includes target `coverage_scope`, `active_security_count`, `existing_as_of_bar_count`, and `missing_as_of_bar_count` when those fields are present.
+- README now documents that `bars saved capture` shows target scope plus active/existing/missing scan-date bar counts.
+
+Validation observed in this slice:
+
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py` passed with `All checks passed!`.
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m py_compile src\catalyst_radar\dashboard\tui.py tests\integration\test_dashboard_demo_seed_cli.py` exited 0.
+- Focused pytest passed `test_dashboard_manual_bar_fill_progress_summary_is_human_readable`.
+- Live zero-call Run-page smoke against `schwab-live.db` printed `Saved capture: status approval_required; target scope active_universe, active 12613, existing 12090, missing 523`, with external calls still at 0.
+
+Current live blocker:
+
+- The full-market priced-in answer remains blocked by 523 missing market bars for 2026-05-15.
+- This slice makes the approval target clearer; it does not capture or import the saved grouped-daily JSON.
+
+Next useful product action:
+
+- Do not treat this slice as goal completion.
+- The next real unblock remains explicit saved Polygon/Massive capture approval or manual CSV completion, then saved validate/import review and the priced-in trust gate rerun.
 
 ## Latest Saved-Capture CLI Count Alignment
 

@@ -6290,14 +6290,31 @@ def _market_bar_saved_capture_summary(saved_capture: Mapping[str, object]):
     path = str(saved_capture.get("saved_file_path") or "").strip()
     api = str(saved_capture.get("capture_api") or "").strip()
     next_action = str(saved_capture.get("next_action") or "").strip()
-    parts = [
-        f"status {status}",
-        f"saved file {saved_file}",
-        f"approval {approval}",
-        f"key {provider_key}",
-        f"calls if approved {calls}",
-        f"db writes {writes}",
-    ]
+    scope = str(saved_capture.get("coverage_scope") or "").strip()
+    active_value = saved_capture.get("active_security_count")
+    existing_value = saved_capture.get("existing_as_of_bar_count")
+    missing_value = saved_capture.get("missing_as_of_bar_count")
+    target_parts: list[str] = []
+    if scope:
+        target_parts.append(f"scope {scope}")
+    if active_value is not None:
+        target_parts.append(f"active {int(_number_or_zero(active_value))}")
+    if existing_value is not None:
+        target_parts.append(f"existing {int(_number_or_zero(existing_value))}")
+    if missing_value is not None:
+        target_parts.append(f"missing {int(_number_or_zero(missing_value))}")
+    parts = [f"status {status}"]
+    if target_parts:
+        parts.append("target " + ", ".join(target_parts))
+    parts.extend(
+        [
+            f"saved file {saved_file}",
+            f"approval {approval}",
+            f"key {provider_key}",
+            f"calls if approved {calls}",
+            f"db writes {writes}",
+        ],
+    )
     if path:
         parts.append(path)
     if api:
