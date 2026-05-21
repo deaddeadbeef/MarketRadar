@@ -1,6 +1,40 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-21 13:38:47 +08:00
+Last updated: 2026-05-21 13:52:15 +08:00
+
+## Latest Saved-Capture CLI Count Alignment
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, broker, order, web, shell, or filesystem tools from the app.
+- This is useful because the operator-facing saved-capture command is the safe one-call unblock path for missing scan-date market bars. It must show the full scan target before asking for approval, not only the missing count.
+
+Fix in this slice:
+
+- `market-bars saved-capture --json` now includes `coverage_scope`, `active_security_count`, and `existing_as_of_bar_count` from the existing manual repair plan / approval packet.
+- Non-JSON saved-capture output now prints the same scope, active, existing, and missing counts on the first status line.
+- README now documents that the plan-only saved-capture command reports active, existing, and missing scan-date bar counts before any provider call.
+
+Validation observed in this slice:
+
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\cli.py tests\integration\test_provider_ingest_cli.py` passed with `All checks passed!`.
+- `C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m py_compile src\catalyst_radar\cli.py tests\integration\test_provider_ingest_cli.py` exited 0.
+- Focused pytest passed `test_market_bars_saved_capture_cli_plans_without_provider_call`.
+- Live zero-call `market-bars saved-capture --expected-as-of 2026-05-15 --json` against `schwab-live.db`, with `.env.local` visible but without confirmation, returned status `approval_required`, scope `active_universe`, active `12613`, existing `12090`, missing `523`, provider key `true`, calls-if-approved `1`, external calls made `0`, DB writes made `0`, and saved file status `missing`.
+- Live zero-call text smoke printed `scope=active_universe active=12613 existing=12090 missing=523` on the saved-capture status line.
+- `git diff --check` passed.
+
+Current live blocker:
+
+- The full-market priced-in answer remains blocked by missing scan-date market bars.
+- Current local evidence still shows 523 missing bars for 2026-05-15 and no saved grouped-daily JSON file.
+- This slice only makes the one-call saved-capture target explicit; it does not capture, validate, import, or reduce the universe.
+
+Next useful product action:
+
+- Do not treat this slice as goal completion.
+- After merge, the next useful work remains the market-bar unblock path: explicitly approved saved Polygon/Massive capture or manual CSV completion, then zero-call validate/import review, then rerun the priced-in trust gate.
 
 ## Latest Saved Capture Count Alignment
 

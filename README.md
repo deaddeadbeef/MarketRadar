@@ -486,7 +486,9 @@ catalyst-radar market-bars import --daily-bars data/local/manual-bars-2026-05-15
 ```
 
 For the saved-provider repair path, use the high-level `market-bars saved-*`
-commands. The first command is plan-only and makes 0 provider calls; add
+commands. The first command is plan-only and makes 0 provider calls; it reports
+coverage scope plus active, existing, and missing scan-date bar counts so the
+approved capture target is visible before any provider call. Add
 `--confirm-external-call` only when you intentionally approve the one
 Polygon/Massive grouped-daily capture. Validation and import read the saved JSON
 from disk and make 0 provider calls:
