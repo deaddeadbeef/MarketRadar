@@ -451,6 +451,7 @@ def dashboard_snapshot_payload(
         engine,
         available_at=data_available_at,
     )
+    value_outcomes = dashboard_data.load_value_outcome_summary(engine)
     broker_summary = dashboard_data.load_broker_summary(engine)
     ops_health = dashboard_data.load_ops_health(engine)
     discovery_snapshot = dashboard_data.radar_discovery_snapshot_payload(
@@ -616,6 +617,7 @@ def dashboard_snapshot_payload(
         "validation": validation_summary,
         "costs": cost_summary,
         "value_ledger": value_ledger,
+        "value_outcomes": value_outcomes,
         "live_activation": dashboard_data.live_data_activation_contract_payload(
             config,
             radar_run_summary=latest_run,
@@ -7634,6 +7636,7 @@ def _validation_lines(payload: Mapping[str, object], width: int) -> list[str]:
 def _costs_lines(payload: Mapping[str, object], width: int) -> list[str]:
     costs = _mapping(payload.get("costs"))
     value_ledger = _mapping(payload.get("value_ledger"))
+    value_outcomes = _mapping(payload.get("value_outcomes"))
     lines = [_rule("Costs", width)]
     lines.extend(
         _kv_lines(
@@ -7664,6 +7667,16 @@ def _costs_lines(payload: Mapping[str, object], width: int) -> list[str]:
     )
     lines.append("")
     lines.append(str(value_ledger.get("useful_definition") or ""))
+    lines.append("")
+    lines.extend(
+        _kv_lines(
+            (
+                ("Outcome rows", value_outcomes.get("outcome_count")),
+                ("Outcome status counts", value_outcomes.get("status_counts")),
+            ),
+            width=width,
+        )
+    )
     lines.append("")
     lines.extend(
         _table_lines(

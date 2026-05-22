@@ -15,6 +15,7 @@ from catalyst_radar.storage.schema import (
     validation_results,
     validation_runs,
     value_ledger_entries,
+    value_outcomes,
 )
 from catalyst_radar.validation.models import (
     PaperDecision,
@@ -25,6 +26,7 @@ from catalyst_radar.validation.models import (
     ValidationRun,
     ValidationRunStatus,
     ValueLedgerEntry,
+    ValueOutcome,
 )
 
 
@@ -195,6 +197,12 @@ class ValidationRepository:
             conn.execute(delete(value_ledger_entries).where(value_ledger_entries.c.id == entry.id))
             conn.execute(insert(value_ledger_entries).values(**_value_ledger_entry_row(entry)))
 
+    def value_ledger_entry(self, entry_id: str) -> ValueLedgerEntry | None:
+        stmt = select(value_ledger_entries).where(value_ledger_entries.c.id == entry_id).limit(1)
+        with self.engine.connect() as conn:
+            row = conn.execute(stmt).first()
+        return _value_ledger_entry_from_row(row._mapping) if row is not None else None
+
     def list_value_ledger_entries(
         self,
         *,
@@ -231,6 +239,45 @@ class ValidationRepository:
         )
         with self.engine.connect() as conn:
             return [_value_ledger_entry_from_row(row._mapping) for row in conn.execute(stmt)]
+
+    def upsert_value_outcome(self, outcome: ValueOutcome) -> None:
+        with self.engine.begin() as conn:
+            conn.execute(delete(value_outcomes).where(value_outcomes.c.id == outcome.id))
+            conn.execute(insert(value_outcomes).values(**_value_outcome_row(outcome)))
+
+    def list_value_outcomes(
+        self,
+        *,
+        value_ledger_entry_id: str | None = None,
+        available_at: datetime | None = None,
+        ticker: str | None = None,
+        limit: int = 200,
+    ) -> list[ValueOutcome]:
+        filters = []
+        if value_ledger_entry_id is not None and str(value_ledger_entry_id).strip():
+            filters.append(
+                value_outcomes.c.value_ledger_entry_id
+                == str(value_ledger_entry_id).strip()
+            )
+        if available_at is not None:
+            filters.append(
+                value_outcomes.c.outcome_available_at
+                <= _to_utc_datetime(available_at, "available_at")
+            )
+        if ticker is not None and str(ticker).strip():
+            filters.append(value_outcomes.c.ticker == str(ticker).strip().upper())
+        stmt = (
+            select(value_outcomes)
+            .where(*filters)
+            .order_by(
+                value_outcomes.c.outcome_available_at.desc(),
+                value_outcomes.c.ticker,
+                value_outcomes.c.id.desc(),
+            )
+            .limit(max(1, int(limit)))
+        )
+        with self.engine.connect() as conn:
+            return [_value_outcome_from_row(row._mapping) for row in conn.execute(stmt)]
 
     def decision_card_payload(
         self,
@@ -372,6 +419,47 @@ def _value_ledger_entry_row(entry: ValueLedgerEntry) -> dict[str, Any]:
     }
 
 
+def _value_outcome_row(outcome: ValueOutcome) -> dict[str, Any]:
+    return {
+        "id": outcome.id,
+        "value_ledger_entry_id": outcome.value_ledger_entry_id,
+        "ticker": outcome.ticker,
+        "as_of": outcome.as_of,
+        "outcome_available_at": outcome.outcome_available_at,
+        "status": outcome.status,
+        "entry_price": outcome.entry_price,
+        "trading_days_observed": outcome.trading_days_observed,
+        "return_5d": outcome.return_5d,
+        "return_10d": outcome.return_10d,
+        "return_20d": outcome.return_20d,
+        "return_60d": outcome.return_60d,
+        "spy_return_5d": outcome.spy_return_5d,
+        "spy_return_10d": outcome.spy_return_10d,
+        "spy_return_20d": outcome.spy_return_20d,
+        "spy_return_60d": outcome.spy_return_60d,
+        "spy_relative_return_5d": outcome.spy_relative_return_5d,
+        "spy_relative_return_10d": outcome.spy_relative_return_10d,
+        "spy_relative_return_20d": outcome.spy_relative_return_20d,
+        "spy_relative_return_60d": outcome.spy_relative_return_60d,
+        "sector_etf_ticker": outcome.sector_etf_ticker,
+        "sector_return_5d": outcome.sector_return_5d,
+        "sector_return_10d": outcome.sector_return_10d,
+        "sector_return_20d": outcome.sector_return_20d,
+        "sector_return_60d": outcome.sector_return_60d,
+        "sector_relative_return_5d": outcome.sector_relative_return_5d,
+        "sector_relative_return_10d": outcome.sector_relative_return_10d,
+        "sector_relative_return_20d": outcome.sector_relative_return_20d,
+        "sector_relative_return_60d": outcome.sector_relative_return_60d,
+        "max_adverse_excursion": outcome.max_adverse_excursion,
+        "max_favorable_excursion": outcome.max_favorable_excursion,
+        "invalidation_price": outcome.invalidation_price,
+        "invalidation_touched": outcome.invalidation_touched,
+        "payload": thaw_json_value(outcome.payload),
+        "created_at": outcome.created_at,
+        "updated_at": outcome.updated_at,
+    }
+
+
 def _validation_run_from_row(row: Any) -> ValidationRun:
     return ValidationRun(
         id=row["id"],
@@ -473,6 +561,47 @@ def _value_ledger_entry_from_row(row: Any) -> ValueLedgerEntry:
         source=row["source"],
         notes=row["notes"],
         available_at=_as_datetime(row["available_at"]),
+        payload=row["payload"],
+        created_at=_as_datetime(row["created_at"]),
+        updated_at=_as_datetime(row["updated_at"]),
+    )
+
+
+def _value_outcome_from_row(row: Any) -> ValueOutcome:
+    return ValueOutcome(
+        id=row["id"],
+        value_ledger_entry_id=row["value_ledger_entry_id"],
+        ticker=row["ticker"],
+        as_of=row["as_of"],
+        outcome_available_at=_as_datetime(row["outcome_available_at"]),
+        status=row["status"],
+        entry_price=row["entry_price"],
+        trading_days_observed=row["trading_days_observed"],
+        return_5d=row["return_5d"],
+        return_10d=row["return_10d"],
+        return_20d=row["return_20d"],
+        return_60d=row["return_60d"],
+        spy_return_5d=row["spy_return_5d"],
+        spy_return_10d=row["spy_return_10d"],
+        spy_return_20d=row["spy_return_20d"],
+        spy_return_60d=row["spy_return_60d"],
+        spy_relative_return_5d=row["spy_relative_return_5d"],
+        spy_relative_return_10d=row["spy_relative_return_10d"],
+        spy_relative_return_20d=row["spy_relative_return_20d"],
+        spy_relative_return_60d=row["spy_relative_return_60d"],
+        sector_etf_ticker=row["sector_etf_ticker"],
+        sector_return_5d=row["sector_return_5d"],
+        sector_return_10d=row["sector_return_10d"],
+        sector_return_20d=row["sector_return_20d"],
+        sector_return_60d=row["sector_return_60d"],
+        sector_relative_return_5d=row["sector_relative_return_5d"],
+        sector_relative_return_10d=row["sector_relative_return_10d"],
+        sector_relative_return_20d=row["sector_relative_return_20d"],
+        sector_relative_return_60d=row["sector_relative_return_60d"],
+        max_adverse_excursion=row["max_adverse_excursion"],
+        max_favorable_excursion=row["max_favorable_excursion"],
+        invalidation_price=row["invalidation_price"],
+        invalidation_touched=row["invalidation_touched"],
         payload=row["payload"],
         created_at=_as_datetime(row["created_at"]),
         updated_at=_as_datetime(row["updated_at"]),

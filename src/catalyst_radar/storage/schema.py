@@ -374,6 +374,47 @@ value_ledger_entries = Table(
     Column("updated_at", DateTime(timezone=True), nullable=False),
 )
 
+value_outcomes = Table(
+    "value_outcomes",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("value_ledger_entry_id", String, nullable=False),
+    Column("ticker", String, nullable=False),
+    Column("as_of", Date, nullable=False),
+    Column("outcome_available_at", DateTime(timezone=True), nullable=False),
+    Column("status", String, nullable=False),
+    Column("entry_price", Float),
+    Column("trading_days_observed", Integer, nullable=False),
+    Column("return_5d", Float),
+    Column("return_10d", Float),
+    Column("return_20d", Float),
+    Column("return_60d", Float),
+    Column("spy_return_5d", Float),
+    Column("spy_return_10d", Float),
+    Column("spy_return_20d", Float),
+    Column("spy_return_60d", Float),
+    Column("spy_relative_return_5d", Float),
+    Column("spy_relative_return_10d", Float),
+    Column("spy_relative_return_20d", Float),
+    Column("spy_relative_return_60d", Float),
+    Column("sector_etf_ticker", String),
+    Column("sector_return_5d", Float),
+    Column("sector_return_10d", Float),
+    Column("sector_return_20d", Float),
+    Column("sector_return_60d", Float),
+    Column("sector_relative_return_5d", Float),
+    Column("sector_relative_return_10d", Float),
+    Column("sector_relative_return_20d", Float),
+    Column("sector_relative_return_60d", Float),
+    Column("max_adverse_excursion", Float),
+    Column("max_favorable_excursion", Float),
+    Column("invalidation_price", Float),
+    Column("invalidation_touched", Boolean, nullable=False),
+    Column("payload", json_type, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+)
+
 holdings_snapshots = Table(
     "holdings_snapshots",
     metadata,
@@ -938,6 +979,12 @@ Index(
     value_ledger_entries.c.ticker,
     value_ledger_entries.c.entry_date,
 )
+Index(
+    "ix_value_outcomes_ledger",
+    value_outcomes.c.value_ledger_entry_id,
+    value_outcomes.c.outcome_available_at,
+)
+Index("ix_value_outcomes_ticker_as_of", value_outcomes.c.ticker, value_outcomes.c.as_of)
 Index(
     "ix_broker_connections_broker_user",
     broker_connections.c.broker,
