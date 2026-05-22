@@ -135,6 +135,7 @@ class UniverseSeedRequest(BaseModel):
     provider: str = "polygon"
     date: Date | None = None
     max_pages: int | None = Field(default=None, ge=1)
+    confirm_external_call: bool = False
 
 
 class SecSubmissionTargetRequest(BaseModel):
@@ -1728,6 +1729,7 @@ def _universe_seed_request_metadata(
         "requested_max_pages": request.max_pages,
         "configured_max_pages": config.polygon_tickers_max_pages,
         "min_interval_seconds": config.polygon_ticker_seed_min_interval_seconds,
+        "confirm_external_call": request.confirm_external_call,
     }
 
 
@@ -1738,6 +1740,14 @@ def _validate_universe_seed_request(
     provider = str(request.provider or "").strip().lower()
     if provider != "polygon":
         msg = "only provider=polygon is supported for universe seed"
+        raise ValueError(msg)
+    if not request.confirm_external_call:
+        max_pages = request.max_pages or config.polygon_tickers_max_pages
+        msg = (
+            "universe seed requires confirm_external_call=true for live provider "
+            "requests; planned_provider_calls="
+            f"{max_pages}; planned_db_writes=1"
+        )
         raise ValueError(msg)
     if (
         request.max_pages is not None

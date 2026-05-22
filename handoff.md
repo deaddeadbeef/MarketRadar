@@ -1,6 +1,34 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 03:27:13 +08:00
+Last updated: 2026-05-23 03:41:47 +08:00
+
+## Latest Universe-Seed Call/Write Boundary Slice
+
+Last updated: 2026-05-23 03:41:47 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar must scan the broad market for priced-in / not-yet-priced-in opportunities, then prove usefulness through shadow runs, value ledger rows, outcomes, baselines, and monthly value reports.
+- This slice fixes a P0 safety boundary before any real universe seed can run.
+- This is useful because the empty-universe next action is a live Polygon/Massive provider path; the operator must see provider-call and DB-write counts before approving it.
+
+Fix in this slice:
+
+- `priced-in-preflight` and `priced-in-answer` now report Polygon/Massive universe seed approval as required, with `external_calls_required=<max_pages>` and `db_writes_required=1`.
+- The setup request body now includes `confirm_external_call=true`.
+- `POST /api/radar/universe/seed` now fails closed unless `confirm_external_call=true` is supplied.
+- README now documents the API approval boundary for universe seed.
+
+Validation observed in this slice:
+
+- Focused dashboard/API tests passed for empty-universe answer, preflight counts, API confirm rejection, capped seed, seed cap rejection, seed rate limiting, priced-in answer API, and market-bars empty-universe guidance.
+- `ruff check` passed for the touched dashboard/API source and tests.
+- `git diff --check` passed.
+- Zero-call `priced-in-answer` and `priced-in-preflight` smokes against `data/schwab-live.db` both returned first blocker `universe`, `approval_required=true`, `external_calls_required=1`, `db_writes_required=1`, `confirm_external_call=true`, and `external_calls_made=0`.
+
+Current live blocker:
+
+- The real local DB still has no active universe. Do not run universe seeding until the operator explicitly approves the live provider path after reviewing the call/write counts.
 
 ## Latest Empty-Universe Next-Action Slice
 

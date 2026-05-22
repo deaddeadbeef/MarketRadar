@@ -757,7 +757,12 @@ def test_post_universe_seed_uses_capped_polygon_ingest(tmp_path, monkeypatch) ->
     response = client.post(
         "/api/radar/universe/seed",
         headers={"X-Catalyst-Actor": "tester", "X-Catalyst-Role": "analyst"},
-        json={"provider": "polygon", "max_pages": 2, "date": "2026-05-08"},
+        json={
+            "provider": "polygon",
+            "max_pages": 2,
+            "date": "2026-05-08",
+            "confirm_external_call": True,
+        },
     )
 
     assert response.status_code == 200
@@ -778,7 +783,43 @@ def test_post_universe_seed_uses_capped_polygon_ingest(tmp_path, monkeypatch) ->
     assert telemetry[0]["actor_id"] == "tester"
     assert telemetry[0]["actor_role"] == "analyst"
     assert telemetry[0]["metadata"]["configured_max_pages"] == 2
+    assert telemetry[0]["metadata"]["confirm_external_call"] is True
     assert telemetry[1]["after_payload"]["job_id"] == "job-seed"
+
+
+def test_post_universe_seed_requires_explicit_external_call_confirmation(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "universe-seed-confirm.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("CATALYST_POLYGON_API_KEY", "fixture-key")
+    monkeypatch.setenv("CATALYST_POLYGON_TICKERS_MAX_PAGES", "2")
+    engine = _create_database(database_url)
+    monkeypatch.setattr(
+        radar_routes,
+        "seed_polygon_tickers",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("seed called")),
+    )
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/radar/universe/seed",
+        json={"provider": "polygon", "max_pages": 2},
+    )
+
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert "confirm_external_call=true" in detail
+    assert "planned_provider_calls=2" in detail
+    assert "planned_db_writes=1" in detail
+    telemetry = _audit_event_rows(engine)
+    assert [row["event_type"] for row in telemetry] == [
+        "telemetry.universe_seed.requested",
+        "telemetry.universe_seed.rejected",
+    ]
+    assert telemetry[0]["metadata"]["confirm_external_call"] is False
+    assert telemetry[1]["reason"] == detail
 
 
 def test_post_universe_seed_rejects_max_pages_above_configured_cap(
@@ -799,7 +840,7 @@ def test_post_universe_seed_rejects_max_pages_above_configured_cap(
 
     response = client.post(
         "/api/radar/universe/seed",
-        json={"provider": "polygon", "max_pages": 2},
+        json={"provider": "polygon", "max_pages": 2, "confirm_external_call": True},
     )
 
     assert response.status_code == 422
@@ -841,8 +882,14 @@ def test_post_universe_seed_rate_limits_repeated_requests(
     monkeypatch.setattr(radar_routes, "seed_polygon_tickers", fake_seed)
     client = TestClient(create_app())
 
-    first = client.post("/api/radar/universe/seed", json={"provider": "polygon"})
-    second = client.post("/api/radar/universe/seed", json={"provider": "polygon"})
+    first = client.post(
+        "/api/radar/universe/seed",
+        json={"provider": "polygon", "confirm_external_call": True},
+    )
+    second = client.post(
+        "/api/radar/universe/seed",
+        json={"provider": "polygon", "confirm_external_call": True},
+    )
 
     assert first.status_code == 200
     assert second.status_code == 429

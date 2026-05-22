@@ -472,7 +472,10 @@ showing market-bar template work that cannot know which securities to repair.
 That setup step is provider-aware: CSV mode prints the exact `ingest-csv`
 command with configured file paths, while Polygon/Massive mode prints the
 guarded `ingest-polygon tickers --max-pages <cap> --confirm-external-call`
-command plus the `POST /api/radar/universe/seed` request body.
+command plus the `POST /api/radar/universe/seed` request body. The API seed
+body must include `confirm_external_call=true`; the zero-call preflight/answer
+payloads show the planned Polygon/Massive page cap and the one local DB import
+operation before any seed can run.
 `priced-in-answer` and `GET /api/radar/priced-in/answer` answer the narrower
 question "Has price fully matched market expectations?" Their
 `decision_ready=true` / `priced_in_answer_ready=true` fields mean the
