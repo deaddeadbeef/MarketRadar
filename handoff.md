@@ -1,6 +1,39 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 04:38:55 +08:00
+Last updated: 2026-05-23 05:14:28 +08:00
+
+## Latest Priced-In Residual-Gap Next-Action Slice
+
+Last updated: 2026-05-23 05:14:28 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar must reach trusted broad-market priced-in / not-yet-priced-in shadow scans, then prove usefulness with ledger rows, outcomes, baselines, and monthly value reports.
+- This slice fixes the next blocker-agreement issue after `market-bars status` learned that the saved grouped-daily file covers none of the remaining missing bars.
+- This is useful because the human-facing priced-in answer must not tell the operator to validate or import a saved provider file that cannot reduce the current full-market trust gap.
+
+Fix in this slice:
+
+- `priced-in-answer` now carries a local saved-file projection into the market-bar trust gate and blocker detail.
+- If a saved grouped-daily file is present but invalid, the saved-file validation path remains the next action.
+- If a saved grouped-daily file is present and covers at least one missing active ticker, the saved-file validation/import path remains available.
+- If a saved grouped-daily file is present and covers zero remaining missing active tickers, `priced-in-answer` now routes to manual residual CSV repair or universe-quality review.
+- The projection path remains zero-provider-call and zero-DB-write; it reads local DB state and the saved JSON file only.
+
+Validation observed in this slice:
+
+- Focused priced-in residual-gap regression passed.
+- Related priced-in dashboard tests passed: 3 passed.
+- Full `tests/integration/test_dashboard_data.py` passed: 187 passed. The full file took about 450 seconds; the earlier 300-second command timeout was not a test failure.
+- `ruff check` passed for touched dashboard source/tests.
+- `git diff --check` passed.
+- Zero-call live-DB smoke from the real repo path against `data/schwab-live.db` returned `status=blocked`, `action_kind=manual_csv`, `recommended_kind=manual_csv`, `covered=0`, `missing_after=36`, and `external_calls=0`.
+
+Current live blocker:
+
+- The live local DB still has 36 missing `2026-05-21` active-universe bars.
+- The saved Polygon/Massive grouped-daily JSON under `data/local/` covers none of those 36 residual symbols.
+- The next useful step is manual residual-bar repair or a tested universe-quality rule that explicitly excludes unscanable residual symbols while preserving the product goal of broad-market priced-in scans.
 
 ## Latest Run-Daily External-Call Approval Boundary Slice
 

@@ -40,6 +40,7 @@ from catalyst_radar.connectors.options import (
     OPTIONS_FIXTURE_TEMPLATE_RESULT_FIELDS,
     validate_options_fixture_json,
 )
+from catalyst_radar.connectors.polygon_fixture import preview_polygon_grouped_daily_fixture
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.core.models import ActionState, MarketFeatures
 from catalyst_radar.core.runtime import build_info
@@ -59,6 +60,7 @@ from catalyst_radar.security.redaction import redact_text
 from catalyst_radar.storage.broker_repositories import BrokerRepository
 from catalyst_radar.storage.budget_repositories import BudgetLedgerRepository
 from catalyst_radar.storage.provider_repositories import ProviderRepository
+from catalyst_radar.storage.repositories import MarketRepository
 from catalyst_radar.storage.schema import (
     alert_suppressions,
     alerts,
@@ -1567,6 +1569,9 @@ def _priced_in_market_bar_source_gap_plan(
         "provider_saved_file_path": provider_plan.get("provider_saved_file_path"),
         "provider_saved_file_exists": provider_plan.get("provider_saved_file_exists"),
         "provider_saved_file_status": provider_plan.get("provider_saved_file_status"),
+        "provider_saved_file_projection": provider_plan.get(
+            "provider_saved_file_projection"
+        ),
         "provider_saved_file_next_action": provider_plan.get(
             "provider_saved_file_next_action"
         ),
@@ -2470,12 +2475,39 @@ def _priced_in_mission_recommended_unblock_action(
         or diagnostic.get("provider_saved_file_status")
         or ""
     ).strip()
+    saved_projection = _mapping_value(diagnostic, "provider_saved_file_projection")
+    projected_status = str(saved_projection.get("status") or "").strip()
+    covered = int(
+        _finite_float(saved_projection.get("missing_covered_by_fixture_count"))
+    )
+    residual_saved_file_reason = (
+        "The saved grouped-daily file covers no remaining missing active tickers; "
+        "generate and fill the manual CSV or review the residual universe-quality "
+        "gap instead of reimporting the same file."
+        if (
+            saved_status == "available"
+            and saved_projection
+            and projected_status
+            and projected_status != "unavailable"
+            and covered <= 0
+        )
+        else None
+    )
     validate_option = by_kind.get("validate_saved_file")
     if saved_status == "available" and validate_option:
-        return _priced_in_market_bar_recommended_unblock_from_option(
-            validate_option,
-            reason="Validate the saved grouped-daily file before import.",
-        )
+        if projected_status == "invalid":
+            return _priced_in_market_bar_recommended_unblock_from_option(
+                validate_option,
+                reason=(
+                    "The saved grouped-daily file is present but invalid; validate "
+                    "or replace it before using the saved-file path."
+                ),
+            )
+        if not saved_projection or projected_status == "unavailable" or covered > 0:
+            return _priced_in_market_bar_recommended_unblock_from_option(
+                validate_option,
+                reason="Validate the saved grouped-daily file before import.",
+            )
     saved_capture = by_kind.get("saved_provider_capture")
     if (
         saved_capture
@@ -2492,7 +2524,8 @@ def _priced_in_mission_recommended_unblock_action(
     if manual_option:
         return _priced_in_market_bar_recommended_unblock_from_option(
             manual_option,
-            reason=manual_option.get("next_action")
+            reason=residual_saved_file_reason
+            or manual_option.get("next_action")
             or coverage_recommendation.get("action"),
         )
     first_option = next(iter(by_kind.values()), None)
@@ -3593,12 +3626,42 @@ def _priced_in_market_bar_recommended_unblock_action(blocker_detail):
     }
     saved_capture = _mapping_value(blocker_detail, "saved_provider_capture")
     saved_file_status = str(saved_capture.get("saved_file_status") or "").strip()
+    saved_file_projection = _mapping_value(
+        blocker_detail,
+        "provider_saved_file_projection",
+    ) or _mapping_value(saved_capture, "saved_file_projection")
+    projected_status = str(saved_file_projection.get("status") or "").strip()
+    covered = int(
+        _finite_float(saved_file_projection.get("missing_covered_by_fixture_count"))
+    )
+    residual_saved_file_reason = (
+        "The saved grouped-daily file covers no remaining missing active tickers; "
+        "generate and fill the manual CSV or review the residual universe-quality "
+        "gap instead of reimporting the same file."
+        if (
+            saved_file_status == "available"
+            and saved_file_projection
+            and projected_status
+            and projected_status != "unavailable"
+            and covered <= 0
+        )
+        else None
+    )
     validate_option = options.get("validate_saved_file")
     if saved_file_status == "available" and validate_option:
-        return _priced_in_market_bar_recommended_unblock_from_option(
-            validate_option,
-            reason="Validate the saved grouped-daily file before import.",
-        )
+        if projected_status == "invalid":
+            return _priced_in_market_bar_recommended_unblock_from_option(
+                validate_option,
+                reason=(
+                    "The saved grouped-daily file is present but invalid; validate "
+                    "or replace it before using the saved-file path."
+                ),
+            )
+        if not saved_file_projection or projected_status == "unavailable" or covered > 0:
+            return _priced_in_market_bar_recommended_unblock_from_option(
+                validate_option,
+                reason="Validate the saved grouped-daily file before import.",
+            )
     saved_capture_option = options.get("saved_provider_capture")
     if (
         saved_capture_option
@@ -3635,7 +3698,11 @@ def _priced_in_market_bar_recommended_unblock_action(blocker_detail):
             kind="manual_csv",
             label="Manual CSV",
             status="available" if command else "attention",
-            reason=blocker_detail.get("next_action") or manual_csv.get("next_action"),
+            reason=(
+                residual_saved_file_reason
+                or blocker_detail.get("next_action")
+                or manual_csv.get("next_action")
+            ),
             command=command,
             api=api,
             request_body=request_body,
@@ -4006,6 +4073,9 @@ def priced_in_answer_payload(
                 ),
                 "provider_saved_file_path": provider_plan.get(
                     "provider_saved_file_path"
+                ),
+                "provider_saved_file_projection": provider_plan.get(
+                    "provider_saved_file_projection"
                 ),
                 "next_action": operator_step.get("action")
                 or market_bar_repair.get("next_action"),
@@ -5877,6 +5947,13 @@ def _priced_in_market_bar_provider_fill_plan(
         if target_as_of is not None and saved_file_path is not None
         else None
     )
+    saved_file_projection = _priced_in_market_bar_saved_file_projection(
+        engine,
+        config,
+        target_as_of=target_as_of,
+        saved_file_path=saved_file_path,
+        stocks_only=stocks_only,
+    )
     return {
         "schema_version": "priced-in-market-bar-provider-fill-plan-v1",
         "status": status,
@@ -5898,6 +5975,7 @@ def _priced_in_market_bar_provider_fill_plan(
         "provider_saved_file_path": str(saved_file_path) if saved_file_path else None,
         "provider_saved_file_exists": saved_file_exists,
         "provider_saved_file_status": saved_file_status,
+        "provider_saved_file_projection": saved_file_projection,
         "provider_saved_file_next_action": saved_file_next_action,
         "provider_saved_file_capture_command": saved_file_capture_command,
         "provider_saved_file_capture_api": (
@@ -5967,6 +6045,63 @@ def _priced_in_market_bar_provider_fill_plan(
             "audit as automatically revalidated."
         ),
         "next_action": next_action,
+    }
+
+
+def _priced_in_market_bar_saved_file_projection(
+    engine: Engine,
+    config: AppConfig,
+    *,
+    target_as_of: date | None,
+    saved_file_path: Path | None,
+    stocks_only: bool,
+) -> dict[str, object]:
+    if target_as_of is None or saved_file_path is None or not saved_file_path.exists():
+        return {}
+    try:
+        preview = preview_polygon_grouped_daily_fixture(
+            config=config,
+            market_repo=MarketRepository(engine),
+            date_value=target_as_of,
+            fixture_path=saved_file_path,
+        )
+    except Exception as exc:  # fail closed for next-action planning only
+        return {
+            "schema_version": "market-bars-saved-file-projection-v1",
+            "status": "invalid",
+            "path": str(saved_file_path),
+            "reason": str(exc),
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+        }
+    coverage = _mapping_value(preview, "coverage")
+    covered_key = (
+        "stock_like_covered_by_fixture_count"
+        if stocks_only
+        else "missing_covered_by_fixture_count"
+    )
+    missing_after_key = (
+        "stock_like_missing_after_import_count"
+        if stocks_only
+        else "missing_after_import_count"
+    )
+    return {
+        "schema_version": "market-bars-saved-file-projection-v1",
+        "status": preview.get("status") or "unknown",
+        "path": str(saved_file_path),
+        "coverage_scope": "stock_like" if stocks_only else "active_universe",
+        "missing_covered_by_fixture_count": int(
+            _finite_float(coverage.get(covered_key))
+        ),
+        "missing_after_import_count": int(
+            _finite_float(coverage.get(missing_after_key))
+        ),
+        "fixture_active_match_count": int(
+            _finite_float(coverage.get("fixture_active_match_count"))
+        ),
+        "next_action": preview.get("next_action"),
+        "external_calls_made": 0,
+        "db_writes_made": 0,
     }
 
 
@@ -7616,6 +7751,9 @@ def _priced_in_market_bar_saved_provider_capture_context(
         or provider_plan.get("provider_saved_file_status"),
         "saved_file_path": packet.get("saved_file_path")
         or provider_plan.get("provider_saved_file_path"),
+        "saved_file_projection": _row_dict(
+            _mapping_value(provider_plan, "provider_saved_file_projection")
+        ),
         "saved_file_exists": bool(provider_plan.get("provider_saved_file_exists")),
         "approval_required": bool(packet.get("approval_required")),
         "question": packet.get("question"),
