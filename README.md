@@ -834,6 +834,11 @@ baselines. Baseline rows are selected using only data available at the decision
 cutoff and are labeled only from bars visible at the outcome cutoff. The report
 shows precision@5/10, false-positive rate, excursion averages, overlap/missed
 tickers, and whether MarketRadar won, lost, tied, or lacks enough evidence.
+The same report includes score-calibration buckets for `50_59`, `60_69`,
+`70_79`, `80_89`, and `90_plus`, plus score distribution groups for sector,
+market regime, setup type, priced-in status, action state, source coverage, and
+feedback label. These buckets and groups are evidence only and do not change
+scoring weights, policy thresholds, trade plans, or action gates.
 
 After editing `.env.local`, run the activation checker before making live
 provider calls:

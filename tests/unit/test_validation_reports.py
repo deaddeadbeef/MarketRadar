@@ -176,6 +176,117 @@ def test_report_builder_compares_labeled_baseline_precision() -> None:
     assert comparison["result_vs_market_radar"] == "baseline_wins"
 
 
+def test_report_builder_adds_score_calibration_buckets() -> None:
+    rows = [
+        _result(
+            "r1",
+            "AAA",
+            "Warning",
+            {
+                "target_20d_25": True,
+                "sector_outperformance": True,
+                "max_adverse_excursion": -0.02,
+                "max_favorable_excursion": 0.35,
+            },
+            final_score=92,
+            payload={
+                "sector": "Technology",
+                "market_regime": "risk_on",
+                "setup_type": "breakout",
+                "priced_in_status": "bullish_not_priced_in",
+                "source_coverage": {"sources": {"market_bars": {"missing": 0}}},
+            },
+        ),
+        _result(
+            "r2",
+            "BBB",
+            "Warning",
+            {
+                "target_20d_25": False,
+                "sector_outperformance": False,
+                "max_adverse_excursion": -0.12,
+                "max_favorable_excursion": 0.08,
+            },
+            final_score=72,
+            payload={
+                "sector": "Technology",
+                "market_regime": "risk_on",
+                "setup_type": "breakout",
+                "priced_in_status": "bullish_not_priced_in",
+                "source_coverage": {"weak_sources": ["options"]},
+            },
+        ),
+        _result(
+            "r3",
+            "CCC",
+            "Research",
+            {"target_20d_25": True, "max_adverse_excursion": -0.01},
+            final_score=67,
+            payload={
+                "sector": "Industrials",
+                "market_regime": "risk_off",
+                "setup_type": "pullback",
+                "priced_in_status": "neutral",
+                "source_coverage": {"sources": {"market_bars": {"missing": 0}}},
+            },
+        ),
+    ]
+    useful_labels = [{"artifact_id": "r1", "ticker": "AAA", "label": "useful"}]
+
+    report = validation_report_payload(
+        build_validation_report("run-1", rows, useful_alert_labels=useful_labels)
+    )
+
+    calibration = report["score_calibration"]
+    assert calibration["thresholds_changed"] is False
+    assert calibration["sample_status"] == "measured"
+    buckets = {row["bucket"]: row for row in calibration["buckets"]}
+    assert buckets["90_plus"]["precision"] == 1.0
+    assert buckets["90_plus"]["useful_label_rate"] == 1.0
+    assert buckets["70_79"]["false_positive_rate"] == 1.0
+    assert buckets["60_69"]["positive_count"] == 1
+    assert buckets["50_59"]["sample_status"] == "insufficient_evidence"
+    distribution = calibration["score_distribution"]
+    assert set(distribution) == {
+        "sector",
+        "market_regime",
+        "setup_type",
+        "priced_in_status",
+        "action_state",
+        "source_coverage",
+        "usefulness_label",
+    }
+    sectors = {row["value"]: row for row in distribution["sector"]["groups"]}
+    assert sectors["technology"]["bucket_counts"]["90_plus"] == 1
+    assert sectors["industrials"]["precision"] == 1.0
+    labels = {row["value"]: row for row in distribution["usefulness_label"]["groups"]}
+    assert labels["useful"]["candidate_count"] == 1
+    assert labels["unlabeled"]["candidate_count"] == 2
+    coverage = {row["value"]: row for row in distribution["source_coverage"]["groups"]}
+    assert coverage["complete"]["candidate_count"] == 2
+    assert coverage["gaps:options"]["candidate_count"] == 1
+
+
+def test_report_builder_flags_high_false_positive_score_bucket() -> None:
+    rows = [
+        _result(f"r{index}", f"T{index}", "Warning", {"target_20d_25": False}, final_score=75)
+        for index in range(3)
+    ]
+
+    report = validation_report_payload(build_validation_report("run-1", rows))
+
+    flags = report["score_calibration"]["threshold_review_flags"]
+    assert flags == [
+        {
+            "bucket": "70_79",
+            "reason": "false_positive_rate_at_or_above_50pct",
+            "false_positive_rate": 1.0,
+            "labeled_count": 3,
+            "action": "review_threshold_with_more_evidence_before_changing_policy",
+        }
+    ]
+
+
 def _result(
     row_id: str,
     ticker: str,
@@ -183,14 +294,18 @@ def _result(
     labels: dict[str, bool],
     leakage_flags: list[str] | None = None,
     as_of: object | None = None,
+    final_score: float = 75.0,
+    payload: dict[str, object] | None = None,
 ) -> dict[str, object]:
     return {
         "id": row_id,
         "ticker": ticker,
         "as_of": as_of,
         "state": state,
+        "final_score": final_score,
         "labels": labels,
         "leakage_flags": leakage_flags or [],
+        "payload": payload or {},
     }
 
 

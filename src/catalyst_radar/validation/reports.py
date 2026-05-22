@@ -50,6 +50,7 @@ class ValidationReport:
     leakage_failure_count: int
     state_mix: Mapping[str, int]
     baseline_comparison: Mapping[str, Any]
+    score_calibration: Mapping[str, Any]
 
     def __post_init__(self) -> None:
         if not str(self.run_id).strip():
@@ -61,6 +62,11 @@ class ValidationReport:
             self,
             "baseline_comparison",
             freeze_mapping(self.baseline_comparison, "baseline_comparison"),
+        )
+        object.__setattr__(
+            self,
+            "score_calibration",
+            freeze_mapping(self.score_calibration, "score_calibration"),
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -75,6 +81,7 @@ class ValidationReport:
             "leakage_failure_count": self.leakage_failure_count,
             "state_mix": dict(self.state_mix),
             "baseline_comparison": _thaw(self.baseline_comparison),
+            "score_calibration": _thaw(self.score_calibration),
         }
 
 
@@ -91,6 +98,7 @@ def build_validation_report(
     """Build deterministic report metrics from validation result-like rows."""
 
     result_rows = tuple(results)
+    useful_label_rows = tuple(useful_alert_labels or ())
     candidate_rows = tuple(row for row in result_rows if _baseline_name(row) is None)
     baseline_rows = tuple(row for row in result_rows if _baseline_name(row) is not None)
     baselines = (*baseline_rows, *(baseline_candidates or ()))
@@ -101,7 +109,7 @@ def build_validation_report(
     false_positive_count = candidate_count - true_positive_count
     useful_count = _useful_alert_count(
         candidate_rows,
-        useful_alert_labels,
+        useful_label_rows,
         fallback_count=true_positive_count,
     )
     useful_alert_rate = _safe_rate(useful_count, candidate_count)
@@ -110,6 +118,11 @@ def build_validation_report(
         candidate_rows,
         baselines,
         baseline_top_n=baseline_top_n,
+        positive_label=positive_label,
+    )
+    score_calibration = _score_calibration(
+        candidate_rows,
+        useful_alert_labels=useful_label_rows,
         positive_label=positive_label,
     )
 
@@ -124,6 +137,7 @@ def build_validation_report(
         leakage_failure_count=sum(1 for row in candidate_rows if _leakage_flags(row)),
         state_mix=_state_mix(candidate_rows),
         baseline_comparison=baseline_comparison,
+        score_calibration=score_calibration,
     )
 
 
@@ -359,6 +373,494 @@ def _comparison_result(
     if market_precision < baseline_precision:
         return "baseline_wins"
     return "tie"
+
+
+def _score_calibration(
+    candidate_rows: tuple[Any, ...],
+    *,
+    useful_alert_labels: Iterable[Any],
+    positive_label: str,
+) -> dict[str, Any]:
+    feedback_labels = _feedback_label_keys(useful_alert_labels)
+    useful_keys = _useful_label_keys(feedback_labels)
+    buckets = []
+    for name, lower, upper in (
+        ("below_50", None, 49.9999),
+        ("50_59", 50.0, 59.9999),
+        ("60_69", 60.0, 69.9999),
+        ("70_79", 70.0, 79.9999),
+        ("80_89", 80.0, 89.9999),
+        ("90_plus", 90.0, None),
+    ):
+        rows = tuple(
+            row
+            for row in candidate_rows
+            if _score_in_bucket(_finite_float(_read(row, "final_score")), lower, upper)
+        )
+        buckets.append(
+            _score_bucket_payload(
+                name,
+                rows,
+                useful_keys=useful_keys,
+                positive_label=positive_label,
+            )
+        )
+    measured = [bucket for bucket in buckets if bucket["labeled_count"] > 0]
+    return {
+        "schema_version": "score-calibration-v1",
+        "positive_label": positive_label,
+        "bucket_count": len(buckets),
+        "sample_status": "measured" if measured else "insufficient_evidence",
+        "monotonic_precision": _monotonic_precision(measured),
+        "buckets": buckets,
+        "score_distribution": _score_distribution_dimensions(
+            candidate_rows,
+            feedback_labels=feedback_labels,
+            useful_keys=useful_keys,
+            positive_label=positive_label,
+        ),
+        "threshold_review_flags": _threshold_review_flags(buckets),
+        "thresholds_changed": False,
+        "note": (
+            "Report-only calibration evidence. No scoring weights, policy thresholds, "
+            "trade plans, or action gates were changed."
+        ),
+    }
+
+
+def _score_bucket_payload(
+    name: str,
+    rows: tuple[Any, ...],
+    *,
+    useful_keys: set[str],
+    positive_label: str,
+) -> dict[str, Any]:
+    labeled_rows = tuple(row for row in rows if positive_label in _labels(row))
+    positive_count = sum(1 for row in labeled_rows if _labels(row).get(positive_label) is True)
+    useful_count = sum(1 for row in rows if _row_matches_useful_key(row, useful_keys))
+    return {
+        "bucket": name,
+        "score_min": _bucket_min(name),
+        "score_max": _bucket_max(name),
+        "candidate_count": len(rows),
+        "labeled_count": len(labeled_rows),
+        "positive_count": positive_count,
+        "precision": _safe_rate(positive_count, len(labeled_rows))
+        if labeled_rows
+        else None,
+        "false_positive_rate": _safe_rate(
+            len(labeled_rows) - positive_count,
+            len(labeled_rows),
+        )
+        if labeled_rows
+        else None,
+        "useful_label_count": useful_count,
+        "useful_label_rate": _safe_rate(useful_count, len(rows)) if rows else None,
+        "sector_outperformance_rate": _boolean_label_rate(
+            labeled_rows,
+            "sector_outperformance",
+        ),
+        "max_adverse_excursion_avg": _average_label(
+            labeled_rows,
+            "max_adverse_excursion",
+        ),
+        "max_favorable_excursion_avg": _average_label(
+            labeled_rows,
+            "max_favorable_excursion",
+        ),
+        "sample_status": "measured" if labeled_rows else "insufficient_evidence",
+    }
+
+
+def _score_distribution_dimensions(
+    candidate_rows: tuple[Any, ...],
+    *,
+    feedback_labels: Mapping[str, str],
+    useful_keys: set[str],
+    positive_label: str,
+) -> dict[str, Any]:
+    return {
+        dimension: _score_distribution_for_dimension(
+            candidate_rows,
+            dimension=dimension,
+            feedback_labels=feedback_labels,
+            useful_keys=useful_keys,
+            positive_label=positive_label,
+        )
+        for dimension in (
+            "sector",
+            "market_regime",
+            "setup_type",
+            "priced_in_status",
+            "action_state",
+            "source_coverage",
+            "usefulness_label",
+        )
+    }
+
+
+def _score_distribution_for_dimension(
+    candidate_rows: tuple[Any, ...],
+    *,
+    dimension: str,
+    feedback_labels: Mapping[str, str],
+    useful_keys: set[str],
+    positive_label: str,
+) -> dict[str, Any]:
+    grouped: dict[str, list[Any]] = defaultdict(list)
+    for row in candidate_rows:
+        grouped[
+            _dimension_value(row, dimension=dimension, feedback_labels=feedback_labels)
+        ].append(row)
+    groups = [
+        _score_distribution_group_payload(
+            value,
+            tuple(rows),
+            useful_keys=useful_keys,
+            positive_label=positive_label,
+        )
+        for value, rows in sorted(grouped.items())
+    ]
+    return {
+        "group_count": len(groups),
+        "sample_status": "measured"
+        if any(group["labeled_count"] > 0 for group in groups)
+        else "insufficient_evidence",
+        "groups": groups,
+    }
+
+
+def _score_distribution_group_payload(
+    value: str,
+    rows: tuple[Any, ...],
+    *,
+    useful_keys: set[str],
+    positive_label: str,
+) -> dict[str, Any]:
+    labeled_rows = tuple(row for row in rows if positive_label in _labels(row))
+    positive_count = sum(1 for row in labeled_rows if _labels(row).get(positive_label) is True)
+    useful_count = sum(1 for row in rows if _row_matches_useful_key(row, useful_keys))
+    scores = [
+        score
+        for row in rows
+        if (score := _finite_float(_read(row, "final_score"))) is not None
+    ]
+    return {
+        "value": value,
+        "candidate_count": len(rows),
+        "labeled_count": len(labeled_rows),
+        "positive_count": positive_count,
+        "average_score": (sum(scores) / len(scores)) if scores else None,
+        "precision": _safe_rate(positive_count, len(labeled_rows))
+        if labeled_rows
+        else None,
+        "false_positive_rate": _safe_rate(
+            len(labeled_rows) - positive_count,
+            len(labeled_rows),
+        )
+        if labeled_rows
+        else None,
+        "useful_label_count": useful_count,
+        "useful_label_rate": _safe_rate(useful_count, len(rows)) if rows else None,
+        "bucket_counts": _score_bucket_counts(rows),
+        "sample_status": "measured" if labeled_rows else "insufficient_evidence",
+    }
+
+
+def _score_bucket_counts(rows: tuple[Any, ...]) -> dict[str, int]:
+    counts = {name: 0 for name, _, _ in _score_bucket_defs()}
+    for row in rows:
+        score = _finite_float(_read(row, "final_score"))
+        for name, lower, upper in _score_bucket_defs():
+            if _score_in_bucket(score, lower, upper):
+                counts[name] += 1
+                break
+    return counts
+
+
+def _score_bucket_defs() -> tuple[tuple[str, float | None, float | None], ...]:
+    return (
+        ("below_50", None, 49.9999),
+        ("50_59", 50.0, 59.9999),
+        ("60_69", 60.0, 69.9999),
+        ("70_79", 70.0, 79.9999),
+        ("80_89", 80.0, 89.9999),
+        ("90_plus", 90.0, None),
+    )
+
+
+def _score_in_bucket(score: float | None, lower: float | None, upper: float | None) -> bool:
+    if score is None:
+        return False
+    if lower is not None and score < lower:
+        return False
+    if upper is not None and score > upper:
+        return False
+    return True
+
+
+def _bucket_min(name: str) -> float | None:
+    if name == "below_50":
+        return None
+    if name == "90_plus":
+        return 90.0
+    return float(name.split("_", maxsplit=1)[0])
+
+
+def _bucket_max(name: str) -> float | None:
+    if name == "below_50":
+        return 49.9999
+    if name == "90_plus":
+        return None
+    return float(name.split("_", maxsplit=1)[1]) + 0.9999
+
+
+def _boolean_label_rate(rows: tuple[Any, ...], label: str) -> float | None:
+    labeled_rows = tuple(row for row in rows if label in _labels(row))
+    if not labeled_rows:
+        return None
+    return _safe_rate(
+        sum(1 for row in labeled_rows if _labels(row).get(label) is True),
+        len(labeled_rows),
+    )
+
+
+def _feedback_label_keys(feedback_labels: Iterable[Any]) -> dict[str, str]:
+    keys: dict[str, str] = {}
+    for label in feedback_labels:
+        label_value = str(_read(label, "label") or "").strip().lower()
+        if not label_value:
+            continue
+        for field_name in ("artifact_id", "ticker"):
+            value = _read(label, field_name)
+            if value is None:
+                continue
+            text = str(value).strip()
+            if not text:
+                continue
+            keys[text] = label_value
+            keys[text.upper()] = label_value
+    return keys
+
+
+def _useful_label_keys(feedback_labels: Mapping[str, str]) -> set[str]:
+    return {
+        key
+        for key, label in feedback_labels.items()
+        if str(label).lower() in USEFUL_ALERT_LABELS
+    }
+
+
+def _dimension_value(
+    row: Any,
+    *,
+    dimension: str,
+    feedback_labels: Mapping[str, str],
+) -> str:
+    if dimension == "usefulness_label":
+        for key in _candidate_artifact_keys((row,)):
+            label = feedback_labels.get(key) or feedback_labels.get(key.upper())
+            if label:
+                return label
+        return "unlabeled"
+    if dimension == "action_state":
+        return _first_dimension_text(row, ("action_state", "state")) or "unknown"
+    if dimension == "source_coverage":
+        return _source_coverage_dimension(row)
+    lookup = {
+        "sector": ("sector", "gics_sector", "sector_etf"),
+        "market_regime": ("market_regime", "regime"),
+        "setup_type": ("setup_type", "setup"),
+        "priced_in_status": ("priced_in_status", "priced_in"),
+    }
+    return _first_dimension_text(row, lookup.get(dimension, (dimension,))) or "unknown"
+
+
+def _first_dimension_text(row: Any, names: tuple[str, ...]) -> str | None:
+    for name in names:
+        text = _dimension_text(_read(row, name))
+        if text is not None:
+            return text
+    for source in _dimension_sources(row):
+        for name in names:
+            text = _dimension_text(source.get(name))
+            if text is not None:
+                return text
+        for path in _dimension_nested_paths(names):
+            text = _dimension_text(_nested_mapping_value(source, *path))
+            if text is not None:
+                return text
+    return None
+
+
+def _dimension_nested_paths(names: tuple[str, ...]) -> tuple[tuple[str, ...], ...]:
+    return tuple(
+        path
+        for name in names
+        for path in (
+            ("candidate", name),
+            ("candidate", "metadata", name),
+            ("candidate", "features", name),
+            ("identity", name),
+            ("metadata", name),
+            ("trade_plan", name),
+            ("priced_in", name),
+            ("source_coverage", name),
+        )
+    )
+
+
+def _source_coverage_dimension(row: Any) -> str:
+    for source in _dimension_sources(row):
+        coverage = _first_mapping(source.get("source_coverage"), source)
+        if coverage:
+            weak_sources = _text_list(coverage.get("weak_sources"))
+            if weak_sources:
+                return f"gaps:{','.join(weak_sources[:3])}"
+            sources = coverage.get("sources")
+            if isinstance(sources, Mapping):
+                gap_sources = [
+                    str(name)
+                    for name, value in sources.items()
+                    if _source_row_has_gap(value)
+                ]
+                if gap_sources:
+                    return f"gaps:{','.join(sorted(gap_sources)[:3])}"
+                if sources:
+                    return "complete"
+            summary = _dimension_text(coverage.get("summary"))
+            if summary is not None:
+                return summary
+    for name in ("source_coverage", "source_coverage_summary", "source_status"):
+        text = _dimension_text(_read(row, name))
+        if text is not None:
+            return text
+    return "unknown"
+
+
+def _source_row_has_gap(value: Any) -> bool:
+    if not isinstance(value, Mapping):
+        return False
+    for name in ("missing", "stale", "gap_count", "missing_count", "stale_count"):
+        number = _finite_float(value.get(name))
+        if number is not None and number > 0:
+            return True
+    status = str(value.get("status") or "").strip().lower()
+    return status in {"missing", "stale", "blocked", "gap"}
+
+
+def _dimension_sources(row: Any) -> tuple[Mapping[str, Any], ...]:
+    row_mapping = row if isinstance(row, Mapping) else {}
+    payload = _mapping_value(_read(row, "payload"))
+    replay_payload = _mapping_value(payload.get("payload"))
+    signal_payload = _mapping_value(replay_payload.get("signal_payload"))
+    candidate = _mapping_value(signal_payload.get("candidate"))
+    packet = _mapping_value(replay_payload.get("packet"))
+    decision_card = _mapping_value(replay_payload.get("decision_card"))
+    baseline_candidate = _mapping_value(payload.get("candidate"))
+    values = (
+        row_mapping,
+        payload,
+        replay_payload,
+        signal_payload,
+        candidate,
+        _mapping_value(candidate.get("metadata")),
+        _mapping_value(candidate.get("features")),
+        packet,
+        _mapping_value(packet.get("metadata")),
+        _mapping_value(packet.get("payload")),
+        decision_card,
+        _mapping_value(decision_card.get("payload")),
+        _mapping_value(decision_card.get("trade_plan")),
+        baseline_candidate,
+        _mapping_value(baseline_candidate.get("metadata")),
+        _mapping_value(baseline_candidate.get("features")),
+        _mapping_value(payload.get("metadata")),
+    )
+    return tuple(value for value in values if value)
+
+
+def _dimension_text(value: Any) -> str | None:
+    if value is None or isinstance(value, Mapping):
+        return None
+    if isinstance(value, Iterable) and not isinstance(value, str | bytes):
+        values = [text for item in value if (text := _dimension_text(item)) is not None]
+        return ",".join(values) if values else None
+    text = str(value).strip()
+    return text.lower() if text else None
+
+
+def _text_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value.strip().lower()] if value.strip() else []
+    if isinstance(value, Iterable):
+        return [str(item).strip().lower() for item in value if str(item).strip()]
+    return [str(value).strip().lower()] if str(value).strip() else []
+
+
+def _first_mapping(*values: Any) -> Mapping[str, Any]:
+    for value in values:
+        if isinstance(value, Mapping):
+            return value
+    return {}
+
+
+def _mapping_value(value: Any) -> Mapping[str, Any]:
+    return value if isinstance(value, Mapping) else {}
+
+
+def _nested_mapping_value(source: Mapping[str, Any], *keys: str) -> Any:
+    value: Any = source
+    for key in keys:
+        if not isinstance(value, Mapping):
+            return None
+        value = value.get(key)
+    return value
+
+
+def _row_matches_useful_key(row: Any, useful_keys: set[str]) -> bool:
+    for key in _candidate_artifact_keys((row,)):
+        if key in useful_keys or key.upper() in useful_keys:
+            return True
+    return False
+
+
+def _monotonic_precision(buckets: list[Mapping[str, Any]]) -> str:
+    values = [
+        _finite_float(bucket.get("precision"))
+        for bucket in buckets
+        if _finite_float(bucket.get("precision")) is not None
+    ]
+    if len(values) < 2:
+        return "insufficient_evidence"
+    if all(left <= right for left, right in zip(values, values[1:], strict=False)):
+        return "increasing"
+    if all(left >= right for left, right in zip(values, values[1:], strict=False)):
+        return "decreasing"
+    return "mixed"
+
+
+def _threshold_review_flags(buckets: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    flags = []
+    for bucket in buckets:
+        false_positive_rate = _finite_float(bucket.get("false_positive_rate"))
+        if (
+            false_positive_rate is not None
+            and false_positive_rate >= 0.5
+            and int(bucket.get("labeled_count") or 0) >= 3
+        ):
+            flags.append(
+                {
+                    "bucket": bucket.get("bucket"),
+                    "reason": "false_positive_rate_at_or_above_50pct",
+                    "false_positive_rate": false_positive_rate,
+                    "labeled_count": bucket.get("labeled_count"),
+                    "action": "review_threshold_with_more_evidence_before_changing_policy",
+                }
+            )
+    return flags
 
 
 def _ticker_as_of_key(row: Any) -> tuple[str, str] | None:
