@@ -3303,6 +3303,154 @@ def test_priced_in_answer_blocks_incomplete_stock_bars_even_with_ready_rows(
     assert "preview the import" in operator_step["response_after_action"]
 
 
+def test_priced_in_answer_routes_saved_file_residual_gap_to_manual_repair(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    engine = _engine(tmp_path)
+    as_of = datetime(2026, 5, 8, 21, tzinfo=UTC)
+    fixture_path = (
+        Path(__file__).resolve().parents[2]
+        / "tests"
+        / "fixtures"
+        / "polygon"
+        / "grouped_daily_2026-05-08.json"
+    )
+    saved_path = Path("data") / "local" / "polygon-grouped-daily-2026-05-08.json"
+    saved_path.parent.mkdir(parents=True)
+    saved_path.write_bytes(fixture_path.read_bytes())
+
+    market_repo = MarketRepository(engine)
+    market_repo.upsert_securities(
+        [
+            Security(
+                ticker="AAPL",
+                name="Apple Inc.",
+                exchange="NASDAQ",
+                sector="Technology",
+                industry="Consumer Electronics",
+                market_cap=1_000_000_000,
+                avg_dollar_volume_20d=20_000_000,
+                has_options=True,
+                is_active=True,
+                updated_at=as_of,
+                metadata={"type": "CS"},
+            ),
+            Security(
+                ticker="MSFT",
+                name="Microsoft Corp.",
+                exchange="NASDAQ",
+                sector="Technology",
+                industry="Software",
+                market_cap=1_000_000_000,
+                avg_dollar_volume_20d=20_000_000,
+                has_options=True,
+                is_active=True,
+                updated_at=as_of,
+                metadata={"type": "CS"},
+            ),
+            Security(
+                ticker="GLW",
+                name="Gap Leftover Works",
+                exchange="NYSE",
+                sector="Industrials",
+                industry="Components",
+                market_cap=1_000_000_000,
+                avg_dollar_volume_20d=20_000_000,
+                has_options=True,
+                is_active=True,
+                updated_at=as_of,
+                metadata={"type": "CS"},
+            ),
+        ]
+    )
+    market_repo.upsert_daily_bars(
+        [
+            DailyBar(
+                ticker=ticker,
+                date=as_of.date(),
+                open=100,
+                high=101,
+                low=99,
+                close=100,
+                volume=1_000_000,
+                vwap=100,
+                adjusted=True,
+                provider="manual_csv",
+                source_ts=as_of,
+                available_at=as_of,
+            )
+            for ticker in ("AAPL", "MSFT")
+        ]
+    )
+
+    payload = priced_in_answer_payload(
+        engine,
+        AppConfig.from_env({"CATALYST_POLYGON_API_KEY": "fixture-key"}),
+        queue={
+            "status": "ready",
+            "total_count": 0,
+            "count": 0,
+            "returned_count": 0,
+            "offset": 0,
+            "has_more": False,
+            "filters": {"status": "all", "limit": 5, "offset": 0},
+            "status_counts": {},
+            "usefulness_counts": {},
+            "decision_gap_counts": {
+                "schema_version": "priced-in-decision-gap-counts-v1",
+                "scope": "actionable_mismatch_rows",
+                "row_count": 0,
+                "counts": {},
+                "sample_tickers": {},
+            },
+            "rows": [],
+            "latest_run": {"as_of": as_of.date().isoformat()},
+            "scan": {
+                "freshness": {
+                    "active_security_count": 3,
+                    "active_security_with_as_of_bar_count": 2,
+                    "missing_as_of_daily_bar_count": 1,
+                    "missing_as_of_daily_bar_tickers": ["GLW"],
+                }
+            },
+            "source_coverage": {
+                "summary": "market_bars 2/3",
+                "weak_sources": ["market_bars"],
+                "sources": {
+                    "market_bars": {
+                        "available": 2,
+                        "stale": 0,
+                        "missing": 1,
+                        "row_count": 3,
+                        "coverage_pct": 66.7,
+                    }
+                },
+                "actions": [],
+            },
+        },
+        preflight={"evidence_plan": {"steps": []}, "rows": []},
+    )
+
+    detail = payload["full_market_trust_gate"]["blocker_detail"]
+    projection = detail["provider_saved_file_projection"]
+    assert projection["missing_covered_by_fixture_count"] == 0
+    assert projection["missing_after_import_count"] == 1
+    assert detail["recommended_action"]["kind"] == "manual_csv"
+    assert "covers no remaining missing active tickers" in str(
+        detail["recommended_action"]["reason"]
+    )
+    assert detail["recommended_action"]["external_calls_required"] == 0
+    assert payload["operator_next_step"]["action_kind"] == "manual_csv"
+    assert "covers no remaining missing active tickers" in str(
+        payload["operator_next_step"]["action"]
+    )
+    assert "saved-validate" not in str(payload["operator_next_step"]["command"])
+    assert payload["operator_next_step"]["external_calls_required"] == 0
+    assert payload["external_calls_made"] == 0
+
+
 def test_priced_in_answer_prefers_local_artifact_gap_before_options(
     tmp_path: Path,
 ) -> None:
