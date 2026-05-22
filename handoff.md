@@ -1,6 +1,35 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 02:13:00 +08:00
+Last updated: 2026-05-23 02:22:00 +08:00
+
+## Latest LLM Value Accounting Slice
+
+Last updated: 2026-05-23 02:22:00 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice advances mission-brief P9 without enabling new LLM behavior.
+- This slice does not add provider, broker, order, OpenAI, SEC, Polygon/Massive, Schwab, web, or app calls from the product.
+- This is useful because monthly value reporting can now show whether LLM-reviewed ledger rows produced useful decision-support evidence and what they cost.
+
+Fix in this slice:
+
+- Monthly value reports now include `llm_reviewed_entry_count`, `useful_llm_reviewed_entry_count`, `llm_reviewed_costs_usd`, and `cost_per_useful_llm_reviewed_candidate`.
+- No-LLM months report zero counts and `null` cost per useful LLM-reviewed candidate.
+- Useful and noisy LLM-linked rows are both counted in LLM cost, but only useful labels count toward useful LLM-reviewed candidates.
+- README documents the LLM value-accounting fields because the value-report contract changed.
+- No LLM router, model, prompt, score, policy, trade-plan, action gate, broker, or order-submission behavior changed.
+
+Validation observed in this slice:
+
+- `ruff check` passed for touched value-report source/tests.
+- `git diff --check` passed.
+- Focused value-report/security regressions passed: 19 passed.
+
+Current live blocker:
+
+- This is cost/usefulness accounting only. It does not prove that real LLM calls are worth enabling, and it does not enable them.
 
 ## Latest Local Text Measurement Slice
 

@@ -817,7 +817,9 @@ and writes 0 database rows. The report returns `pass`, `fail`, or
 was plausibly met, includes uncertainty and false positives, and separates
 decision-support value from realized profit or investment advice. The terminal
 dashboard Costs page shows the current month's verdict and net
-decision-support value.
+decision-support value. If any ledger row involved LLM review, the report also
+shows LLM-reviewed entry count, useful LLM-reviewed entry count, LLM-linked
+cost, and cost per useful LLM-reviewed candidate without making model calls.
 
 To compare MarketRadar against simple deterministic baselines before tuning
 scores or adding more intelligence, run a point-in-time validation replay and

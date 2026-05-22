@@ -104,9 +104,74 @@ def test_value_report_passes_when_useful_decision_support_covers_40_usd(
     assert payload["net_decision_support_value_usd"] == 51.0
     assert payload["provider_call_count"] == 1
     assert payload["llm_call_count"] == 0
+    assert payload["llm_reviewed_entry_count"] == 0
+    assert payload["useful_llm_reviewed_entry_count"] == 0
+    assert payload["llm_reviewed_costs_usd"] == 0.0
+    assert payload["cost_per_useful_llm_reviewed_candidate"] is None
     assert payload["outcome_status_counts"] == {"computed": 1}
     assert payload["profit_calculation_included"] is False
     assert payload["investment_advice"] is False
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
+
+
+def test_value_report_counts_useful_llm_reviewed_candidate_cost(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'value-report-llm.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = engine_from_url(database_url)
+    create_schema(engine)
+    _seed_entry(
+        engine,
+        artifact_type="decision_card",
+        artifact_id="card-LLM1",
+        label="useful",
+        ticker="LLM1",
+        estimated_value_usd=30,
+        confidence=1,
+        cost_to_produce_usd=2.5,
+        llm_call_count=1,
+    )
+    _seed_entry(
+        engine,
+        artifact_type="decision_card",
+        artifact_id="card-LLM2",
+        label="false-positive",
+        ticker="LLM2",
+        estimated_value_usd=30,
+        confidence=1,
+        cost_to_produce_usd=1.5,
+        llm_call_count=1,
+    )
+    _seed_entry(
+        engine,
+        artifact_type="decision_card",
+        artifact_id="card-NOLLM",
+        label="useful",
+        ticker="NOLLM",
+        estimated_value_usd=20,
+        confidence=1,
+        cost_to_produce_usd=0.5,
+        llm_call_count=0,
+    )
+
+    response = TestClient(create_app()).get(
+        "/api/value-report/monthly",
+        params={
+            "month": "2026-05",
+            "available_at": "2026-05-31T21:00:00+00:00",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["llm_call_count"] == 2
+    assert payload["llm_reviewed_entry_count"] == 2
+    assert payload["useful_llm_reviewed_entry_count"] == 1
+    assert payload["llm_reviewed_costs_usd"] == 4.0
+    assert payload["cost_per_useful_llm_reviewed_candidate"] == 4.0
     assert payload["external_calls_made"] == 0
     assert payload["db_writes_made"] == 0
 
