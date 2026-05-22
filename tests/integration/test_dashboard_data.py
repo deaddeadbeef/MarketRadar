@@ -1194,6 +1194,64 @@ def test_shadow_readiness_payload_reports_latest_market_bar_gap_without_run(
     assert payload["db_writes_made"] == 0
 
 
+def test_shadow_readiness_payload_reuses_market_bar_blocker_detail(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    inputs = _shadow_ready_inputs()
+    inputs["ops_health"]["database"].update(
+        {
+            "active_security_count": 3,
+            "active_security_with_daily_bar_count": 2,
+            "active_security_with_latest_daily_bar_count": 2,
+        }
+    )
+    freshness = inputs["radar_readiness"]["discovery_snapshot"]["freshness"]
+    freshness.update(
+        {
+            "active_security_count": 3,
+            "active_security_with_as_of_bar_count": 2,
+            "missing_as_of_daily_bar_count": 1,
+        }
+    )
+    inputs["priced_in_answer"]["full_market_trust_gate"] = {
+        "status": "blocked",
+        "trusted_full_market_answer": False,
+        "first_blocker": "market_bars",
+        "first_gap_count": 1,
+        "unscanned_blocker_rows": 0,
+        "next_action": "Fill or route the residual bar gap.",
+        "blocker_detail": {
+            "source": "market_bars",
+            "recommended_action": {
+                "reason": "Review zero-liquidity residuals before another provider capture."
+            },
+            "missing_security_type_counts": {"UNIT": 1},
+            "missing_universe": {
+                "active_metadata_rows": 1,
+                "zero_avg_dollar_volume_20d_count": 1,
+                "zero_market_cap_count": 1,
+            },
+        },
+    }
+
+    payload = shadow_readiness_payload(engine, AppConfig.from_env({}), **inputs)
+
+    latest_bars = next(
+        row for row in payload["checks"] if row["code"] == "latest_market_bars"
+    )
+    assert latest_bars["status"] == "blocked"
+    assert latest_bars["next_action"] == (
+        "Review zero-liquidity residuals before another provider capture."
+    )
+    assert latest_bars["metric"]["missing_security_type_counts"] == {"UNIT": 1}
+    assert latest_bars["metric"]["missing_universe_diagnostic"][
+        "zero_market_cap_count"
+    ] == 1
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
+
+
 def test_shadow_readiness_payload_accepts_safe_precomputed_shadow_contract(
     tmp_path: Path,
 ) -> None:
@@ -3064,6 +3122,98 @@ def test_priced_in_answer_blocks_selected_universe_even_with_ready_rows(
     assert "did not scan all 12613 active securities" in (
         payload["scan_scope"]["explanation"]
     )
+
+
+def test_priced_in_answer_prioritizes_market_bar_gap_over_selected_universe(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    payload = priced_in_answer_payload(
+        engine,
+        AppConfig.from_env({}),
+        queue={
+            "status": "selected_universe",
+            "total_count": 2_429,
+            "count": 0,
+            "returned_count": 0,
+            "offset": 0,
+            "filters": {"status": "all", "limit": 5, "offset": 0},
+            "status_counts": {"bullish_not_priced_in": 4},
+            "usefulness_counts": {"decision_useful": 4},
+            "decision_gap_counts": {},
+            "rows": [],
+            "latest_run": {"as_of": "2026-05-15", "universe": "liquid-us"},
+            "scan": {"freshness": {"active_security_count": 12_669}},
+            "source_coverage": {
+                "schema_version": "priced-in-source-coverage-v1",
+                "sources": {},
+                "actions": [],
+                "summary": "",
+            },
+        },
+        preflight={
+            "first_blocker": {
+                "area": "scan_scope",
+                "status": "attention",
+                "action": "Run the radar without --universe.",
+                "command": "catalyst-radar priced-in-queue --full-scan --all --json",
+                "source_gap_count": 10_240,
+            },
+            "evidence_plan": {
+                "next_action": "Run the radar without --universe.",
+                "next_command": "catalyst-radar priced-in-queue --full-scan --all --json",
+                "steps": [],
+            },
+        },
+        market_bars={
+            "status": "blocked",
+            "repair": {
+                "status": "attention",
+                "active_securities": 12_669,
+                "with_as_of_bar": 12_090,
+                "missing_as_of_bar": 579,
+                "missing_as_of_bar_ticker_sample": ["AACBU"],
+                "missing_security_type_counts": {
+                    "UNIT": 179,
+                    "WARRANT": 150,
+                    "CS": 144,
+                },
+                "missing_universe_diagnostic": {
+                    "summary": (
+                        "579/579 missing ticker(s) still active locally; "
+                        "579 with zero local avg dollar volume."
+                    ),
+                    "active_metadata_rows": 579,
+                    "zero_avg_dollar_volume_20d_count": 579,
+                    "zero_market_cap_count": 579,
+                    "operator_note": "Universe-quality context only.",
+                },
+                "operator_step": {
+                    "action": (
+                        "Review the residual universe-quality gap before another "
+                        "provider capture."
+                    ),
+                    "command": (
+                        "catalyst-radar market-bars template "
+                        "--expected-as-of 2026-05-15 --missing-only"
+                    ),
+                },
+            },
+        },
+    )
+
+    gate = payload["full_market_trust_gate"]
+    assert payload["status"] == "blocked"
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
+    assert payload["scan_scope"]["mode"] == "selected_universe"
+    assert gate["first_blocker"] == "market_bars"
+    assert gate["blocker_detail"]["missing_as_of_bar"] == 579
+    assert gate["blocker_detail"]["missing_security_type_counts"]["UNIT"] == 179
+    missing_universe = gate["blocker_detail"]["missing_universe"]
+    assert missing_universe["zero_avg_dollar_volume_20d_count"] == 579
+    assert missing_universe["zero_market_cap_count"] == 579
+    assert gate["unscanned_blocker_rows"] > 0
 
 
 def test_priced_in_answer_blocks_incomplete_stock_bars_even_with_ready_rows(

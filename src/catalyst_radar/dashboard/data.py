@@ -4020,7 +4020,9 @@ def priced_in_answer_payload(
     )
     setup_blocker = _mapping_value(resolved_preflight, "first_blocker")
     setup_blocker_area = str(setup_blocker.get("area") or "").strip()
-    setup_blocks_market_bars = setup_blocker_area in {"universe", "scan_scope"}
+    setup_blocks_market_bars = setup_blocker_area == "universe" or (
+        setup_blocker_area == "scan_scope" and market_bar_gap_count <= 0
+    )
     if setup_blocks_market_bars:
         evidence_completeness = {
             **evidence_completeness,
@@ -4065,6 +4067,9 @@ def priced_in_answer_payload(
                 or resolved_market_bars.get("with_as_of_bar"),
                 "missing_as_of_bar": market_bar_repair.get("missing_as_of_bar")
                 or resolved_market_bars.get("missing_as_of_bar"),
+                "missing_security_type_counts": _row_dict(
+                    _mapping_value(market_bar_repair, "missing_security_type_counts")
+                ),
                 "local_template_path": market_bar_repair.get("local_template_path"),
                 "local_template_exists": bool(
                     market_bar_repair.get("local_template_exists")
@@ -4102,6 +4107,9 @@ def priced_in_answer_payload(
                     ),
                     "zero_avg_dollar_volume_20d_count": missing_universe.get(
                         "zero_avg_dollar_volume_20d_count"
+                    ),
+                    "zero_market_cap_count": missing_universe.get(
+                        "zero_market_cap_count"
                     ),
                     "operator_note": missing_universe.get("operator_note"),
                     "external_calls_made": 0,
@@ -4285,6 +4293,7 @@ def priced_in_answer_payload(
         "manual_investment_decision_ready": False,
         "investment_decision_boundary": investment_decision_boundary,
         "external_calls_made": 0,
+        "db_writes_made": 0,
         "counts": {
             "total_rows": int(_finite_float(resolved_queue.get("total_count"))),
             "visible_rows": int(_finite_float(resolved_queue.get("count"))),
@@ -5487,6 +5496,10 @@ def _priced_in_audit_market_bar_repair(
         "missing_universe_diagnostic": _row_dict(
             _mapping_value(manual_repair_plan, "missing_universe_diagnostic")
         ),
+        "missing_security_type_counts": _row_dict(
+            _mapping_value(manual_repair_plan, "missing_security_type_counts")
+        )
+        or _row_dict(_mapping_value(diagnostic, "type_counts")),
         "operator_step": _row_dict(
             _mapping_value(manual_repair_plan, "operator_step"),
         ),
@@ -10236,6 +10249,7 @@ def _shadow_readiness_checks(
     trust_gate = _mapping_value(priced_in_answer, "full_market_trust_gate")
     scan_scope = _mapping_value(priced_in_answer, "scan_scope")
     full_scan = _mapping_value(priced_in_answer, "full_scan")
+    market_bar_blocker = _shadow_market_bar_blocker_context(trust_gate)
     plan_rows = [
         _row_dict(row)
         for row in _sequence_value(call_plan.get("rows"))
@@ -10304,7 +10318,8 @@ def _shadow_readiness_checks(
                 f"as_of={as_of_bar_count}/{as_of_active_count or active_count}."
             ),
             next_action=(
-                "Fill or import the missing market bars before running shadow scans."
+                str(market_bar_blocker.get("next_action") or "").strip()
+                or "Fill or import the missing market bars before running shadow scans."
             ),
             evidence=str(
                 freshness.get("latest_daily_bar_date")
@@ -10322,6 +10337,12 @@ def _shadow_readiness_checks(
                 "missing_latest_daily_bar_count": max(
                     active_count - with_latest_daily_bar_count,
                     0,
+                ),
+                "missing_security_type_counts": _row_dict(
+                    _mapping_value(market_bar_blocker, "missing_security_type_counts")
+                ),
+                "missing_universe_diagnostic": _row_dict(
+                    _mapping_value(market_bar_blocker, "missing_universe")
                 ),
             },
         ),
@@ -10470,6 +10491,30 @@ def _shadow_readiness_checks(
         _shadow_validation_check(validation_summary),
     ]
     return checks
+
+
+def _shadow_market_bar_blocker_context(
+    trust_gate: Mapping[str, object],
+) -> dict[str, object]:
+    blocker = _mapping_value(trust_gate, "blocker_detail")
+    if str(blocker.get("source") or "") != "market_bars":
+        return {}
+    recommended = _mapping_value(blocker, "recommended_action") or _mapping_value(
+        trust_gate,
+        "recommended_action",
+    )
+    return {
+        "next_action": (
+            recommended.get("reason")
+            or recommended.get("next_action")
+            or blocker.get("next_action")
+            or trust_gate.get("next_action")
+        ),
+        "missing_security_type_counts": _row_dict(
+            _mapping_value(blocker, "missing_security_type_counts")
+        ),
+        "missing_universe": _row_dict(_mapping_value(blocker, "missing_universe")),
+    }
 
 
 def _shadow_validation_check(

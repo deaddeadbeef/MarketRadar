@@ -57,10 +57,15 @@ def shadow_mode_status_payload(
     config: AppConfig,
     *,
     available_at: datetime | None = None,
+    shadow_readiness: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     cutoff = _to_utc(available_at, "available_at") if available_at is not None else None
     latest = ValidationRepository(engine).latest_shadow_mode_run(available_at=cutoff)
-    readiness = _local_shadow_readiness(engine, config)
+    readiness = (
+        dict(shadow_readiness)
+        if isinstance(shadow_readiness, Mapping)
+        else _local_shadow_readiness(engine, config)
+    )
     latest_payload = shadow_mode_run_to_payload(latest) if latest is not None else None
     return {
         "schema_version": "shadow-mode-status-v1",
