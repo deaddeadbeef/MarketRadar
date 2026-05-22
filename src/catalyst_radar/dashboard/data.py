@@ -4059,6 +4059,10 @@ def priced_in_answer_payload(
                 "source": "market_bars",
                 "status": market_bar_repair.get("status")
                 or resolved_market_bars.get("status"),
+                "active_securities": market_bar_repair.get("active_securities")
+                or resolved_market_bars.get("active_securities"),
+                "with_as_of_bar": market_bar_repair.get("with_as_of_bar")
+                or resolved_market_bars.get("with_as_of_bar"),
                 "missing_as_of_bar": market_bar_repair.get("missing_as_of_bar")
                 or resolved_market_bars.get("missing_as_of_bar"),
                 "local_template_path": market_bar_repair.get("local_template_path"),
@@ -5232,15 +5236,6 @@ def _priced_in_audit_market_bars(
     scan = _mapping_value(queue, "scan")
     freshness = _mapping_value(scan, "freshness")
     latest_run = _mapping_value(queue, "latest_run")
-    active = int(_finite_float(freshness.get("active_security_count")))
-    if active <= 0:
-        active = int(_finite_float(queue.get("total_count")))
-    with_as_of_bar = int(
-        _finite_float(freshness.get("active_security_with_as_of_bar_count"))
-    )
-    missing = int(_finite_float(freshness.get("missing_as_of_daily_bar_count")))
-    if with_as_of_bar <= 0 and missing <= 0 and active > 0:
-        with_as_of_bar = active
     rows_by_area = {
         str(row.get("area") or ""): row
         for row in _sequence_value(preflight.get("rows"))
@@ -5254,6 +5249,29 @@ def _priced_in_audit_market_bars(
         or _parse_date(freshness.get("latest_candidate_session_date"))
         or _parse_date(freshness.get("latest_daily_bar_date"))
     )
+    if stocks_only:
+        stock_scope = _priced_in_market_bar_stock_scope(
+            engine,
+            target_as_of=target_as_of,
+        )
+        active = int(_finite_float(stock_scope.get("stock_like_active")))
+        with_as_of_bar = int(
+            _finite_float(stock_scope.get("stock_like_with_as_of_bar"))
+        )
+        missing = int(_finite_float(stock_scope.get("stock_like_missing_as_of_bar")))
+        missing_tickers = _sequence_value(
+            stock_scope.get("sample_missing_stock_like_tickers")
+        )
+    else:
+        active_scope = _priced_in_active_market_bar_scope(
+            engine,
+            queue=queue,
+            target_as_of=target_as_of,
+        )
+        active = int(_finite_float(active_scope.get("active_securities")))
+        with_as_of_bar = int(_finite_float(active_scope.get("with_as_of_bar")))
+        missing = int(_finite_float(active_scope.get("missing_as_of_bar")))
+        missing_tickers = _sequence_value(active_scope.get("sample_missing_tickers"))
     repair = _priced_in_audit_market_bar_repair(
         engine=engine,
         config=config,
@@ -5262,9 +5280,7 @@ def _priced_in_audit_market_bars(
         missing=missing,
         target_as_of=target_as_of,
         market_row=market_row,
-        missing_tickers=_sequence_value(
-            freshness.get("missing_as_of_daily_bar_tickers")
-        ),
+        missing_tickers=missing_tickers,
         stocks_only=stocks_only,
     )
     return {
