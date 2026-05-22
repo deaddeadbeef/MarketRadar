@@ -8,7 +8,14 @@ from datetime import datetime
 from typing import Any
 
 from catalyst_radar.core.immutability import freeze_mapping
-from catalyst_radar.validation.baselines import BaselineCandidate
+from catalyst_radar.validation.baselines import (
+    NEWS_EVENT_ONLY_SCREENER,
+    RANDOM_SECTOR_MATCHED_BASKET,
+    RELATIVE_STRENGTH_SCREENER,
+    SECTOR_ETF_ROTATION_SCREENER,
+    VOLUME_BREAKOUT_SCREENER,
+    BaselineCandidate,
+)
 from catalyst_radar.validation.outcomes import OutcomeLabels
 
 DEFAULT_POSITIVE_LABEL = "target_20d_25"
@@ -19,6 +26,13 @@ KNOWN_BOOLEAN_LABELS = (
     "target_60d_40",
     "sector_outperformance",
     "invalidated",
+)
+MISSION_BRIEF_BASELINES = (
+    RELATIVE_STRENGTH_SCREENER,
+    VOLUME_BREAKOUT_SCREENER,
+    SECTOR_ETF_ROTATION_SCREENER,
+    NEWS_EVENT_ONLY_SCREENER,
+    RANDOM_SECTOR_MATCHED_BASKET,
 )
 
 
@@ -96,6 +110,7 @@ def build_validation_report(
         candidate_rows,
         baselines,
         baseline_top_n=baseline_top_n,
+        positive_label=positive_label,
     )
 
     return ValidationReport(
@@ -171,10 +186,13 @@ def _baseline_comparison(
     baselines: Iterable[Any],
     *,
     baseline_top_n: int | None,
+    positive_label: str,
 ) -> dict[str, Any]:
     candidate_keys = {
         key for row in candidate_rows if (key := _ticker_as_of_key(row)) is not None
     }
+    marketradar_rows = _ranked_market_radar_rows(candidate_rows, limit=baseline_top_n)
+    marketradar_stats = _selection_stats(marketradar_rows, positive_label=positive_label)
     grouped: dict[str, list[Any]] = defaultdict(list)
     for row in baselines:
         name = _baseline_name(row)
@@ -188,14 +206,18 @@ def _baseline_comparison(
 
     comparison = {}
     for name, rows in sorted(grouped.items()):
+        sorted_rows = tuple(
+            sorted(rows, key=lambda item: (_rank(item) or 10**9, _read(item, "ticker")))
+        )
         baseline_keys = [
             key
-            for row in sorted(rows, key=lambda item: (_rank(item) or 10**9, _read(item, "ticker")))
+            for row in sorted_rows
             if (key := _ticker_as_of_key(row)) is not None
         ]
         unique_keys = tuple(dict.fromkeys(baseline_keys))
         overlap = tuple(key for key in unique_keys if key in candidate_keys)
         missed = tuple(key for key in unique_keys if key not in candidate_keys)
+        baseline_stats = _selection_stats(sorted_rows, positive_label=positive_label)
         comparison[name] = {
             "baseline_candidate_count": len(unique_keys),
             "overlap_count": len(overlap),
@@ -204,8 +226,139 @@ def _baseline_comparison(
             "missed_tickers": [key[0] for key in missed],
             "overlap_keys": [_format_ticker_as_of_key(key) for key in overlap],
             "missed_keys": [_format_ticker_as_of_key(key) for key in missed],
+            "marketradar_candidate_count": len(marketradar_rows),
+            "marketradar_precision_at_5": marketradar_stats["precision_at_5"],
+            "marketradar_precision_at_10": marketradar_stats["precision_at_10"],
+            "baseline_precision_at_5": baseline_stats["precision_at_5"],
+            "baseline_precision_at_10": baseline_stats["precision_at_10"],
+            "baseline_false_positive_rate": baseline_stats["false_positive_rate"],
+            "baseline_max_adverse_excursion_avg": baseline_stats[
+                "max_adverse_excursion_avg"
+            ],
+            "baseline_max_favorable_excursion_avg": baseline_stats[
+                "max_favorable_excursion_avg"
+            ],
+            "baseline_labeled_count": baseline_stats["labeled_count"],
+            "sample_status": _comparison_sample_status(marketradar_stats, baseline_stats),
+            "result_vs_market_radar": _comparison_result(
+                marketradar_stats,
+                baseline_stats,
+            ),
         }
+    for name in MISSION_BRIEF_BASELINES:
+        if name not in comparison:
+            comparison[name] = _empty_baseline_comparison(marketradar_stats)
     return comparison
+
+
+def _empty_baseline_comparison(marketradar_stats: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "baseline_candidate_count": 0,
+        "overlap_count": 0,
+        "missed_opportunity_count": 0,
+        "overlap_tickers": [],
+        "missed_tickers": [],
+        "overlap_keys": [],
+        "missed_keys": [],
+        "marketradar_candidate_count": marketradar_stats["candidate_count"],
+        "marketradar_precision_at_5": marketradar_stats["precision_at_5"],
+        "marketradar_precision_at_10": marketradar_stats["precision_at_10"],
+        "baseline_precision_at_5": None,
+        "baseline_precision_at_10": None,
+        "baseline_false_positive_rate": 0.0,
+        "baseline_max_adverse_excursion_avg": None,
+        "baseline_max_favorable_excursion_avg": None,
+        "baseline_labeled_count": 0,
+        "sample_status": "insufficient_evidence",
+        "result_vs_market_radar": "insufficient_evidence",
+    }
+
+
+def _ranked_market_radar_rows(rows: tuple[Any, ...], *, limit: int | None) -> tuple[Any, ...]:
+    ordered = sorted(
+        rows,
+        key=lambda row: (
+            -(_finite_float(_read(row, "final_score")) or 0.0),
+            _maybe_ticker(_read(row, "ticker")) or "",
+            _as_of_key(_read(row, "as_of")),
+        ),
+    )
+    if limit is not None:
+        ordered = ordered[: max(0, int(limit))]
+    return tuple(ordered)
+
+
+def _selection_stats(rows: Iterable[Any], *, positive_label: str) -> dict[str, Any]:
+    row_tuple = tuple(rows)
+    labeled_rows = tuple(row for row in row_tuple if positive_label in _labels(row))
+    positive_count = sum(1 for row in labeled_rows if _labels(row).get(positive_label) is True)
+    return {
+        "candidate_count": len(row_tuple),
+        "labeled_count": len(labeled_rows),
+        "positive_count": positive_count,
+        "precision_at_5": _precision_at(row_tuple, positive_label=positive_label, n=5),
+        "precision_at_10": _precision_at(row_tuple, positive_label=positive_label, n=10),
+        "false_positive_rate": _safe_rate(
+            len(labeled_rows) - positive_count,
+            len(labeled_rows),
+        ),
+        "max_adverse_excursion_avg": _average_label(
+            labeled_rows,
+            "max_adverse_excursion",
+        ),
+        "max_favorable_excursion_avg": _average_label(
+            labeled_rows,
+            "max_favorable_excursion",
+        ),
+    }
+
+
+def _precision_at(rows: tuple[Any, ...], *, positive_label: str, n: int) -> float | None:
+    top_rows = rows[:n]
+    labeled_rows = tuple(row for row in top_rows if positive_label in _labels(row))
+    if not labeled_rows:
+        return None
+    return _safe_rate(
+        sum(1 for row in labeled_rows if _labels(row).get(positive_label) is True),
+        len(labeled_rows),
+    )
+
+
+def _average_label(rows: tuple[Any, ...], label: str) -> float | None:
+    values = [
+        number
+        for row in rows
+        if (number := _finite_float(_labels(row).get(label))) is not None
+    ]
+    if not values:
+        return None
+    return sum(values) / len(values)
+
+
+def _comparison_sample_status(
+    marketradar_stats: Mapping[str, Any],
+    baseline_stats: Mapping[str, Any],
+) -> str:
+    if not marketradar_stats.get("labeled_count") or not baseline_stats.get("labeled_count"):
+        return "insufficient_evidence"
+    return "measured"
+
+
+def _comparison_result(
+    marketradar_stats: Mapping[str, Any],
+    baseline_stats: Mapping[str, Any],
+) -> str:
+    if _comparison_sample_status(marketradar_stats, baseline_stats) != "measured":
+        return "insufficient_evidence"
+    market_precision = _finite_float(marketradar_stats.get("precision_at_10"))
+    baseline_precision = _finite_float(baseline_stats.get("precision_at_10"))
+    if market_precision is None or baseline_precision is None:
+        return "insufficient_evidence"
+    if market_precision > baseline_precision:
+        return "marketradar_wins"
+    if market_precision < baseline_precision:
+        return "baseline_wins"
+    return "tie"
 
 
 def _ticker_as_of_key(row: Any) -> tuple[str, str] | None:

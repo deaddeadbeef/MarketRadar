@@ -67,7 +67,19 @@ def test_report_builder_counts_missed_opportunities_from_baseline_winners() -> N
     )
 
     assert report["missed_opportunity_count"] == 2
-    assert report["baseline_comparison"]["spy_relative_momentum"] == {
+    spy_comparison = report["baseline_comparison"]["spy_relative_momentum"]
+    assert {
+        key: spy_comparison[key]
+        for key in (
+            "baseline_candidate_count",
+            "overlap_count",
+            "missed_opportunity_count",
+            "overlap_tickers",
+            "missed_tickers",
+            "overlap_keys",
+            "missed_keys",
+        )
+    } == {
         "baseline_candidate_count": 2,
         "overlap_count": 1,
         "missed_opportunity_count": 1,
@@ -76,6 +88,8 @@ def test_report_builder_counts_missed_opportunities_from_baseline_winners() -> N
         "overlap_keys": ["AAA:unknown"],
         "missed_keys": ["DDD:unknown"],
     }
+    assert spy_comparison["sample_status"] == "insufficient_evidence"
+    assert spy_comparison["result_vs_market_radar"] == "insufficient_evidence"
     assert report["baseline_comparison"]["sector_relative_momentum"][
         "missed_tickers"
     ] == ["EEE"]
@@ -118,6 +132,48 @@ def test_report_builder_compares_baselines_by_ticker_and_as_of() -> None:
     assert comparison["overlap_keys"] == ["AAA:2026-05-10"]
     assert comparison["missed_keys"] == ["AAA:2026-05-11"]
     assert comparison["missed_opportunity_count"] == 1
+
+
+def test_report_builder_marks_baseline_comparison_insufficient_without_labels() -> None:
+    report = validation_report_payload(
+        build_validation_report(
+            "run-1",
+            [_result("r1", "AAA", "Warning", {})],
+            baseline_candidates=[_baseline("volume_breakout_screener", "BBB", 1)],
+        )
+    )
+
+    comparison = report["baseline_comparison"]["volume_breakout_screener"]
+    assert comparison["baseline_precision_at_5"] is None
+    assert comparison["sample_status"] == "insufficient_evidence"
+    assert comparison["result_vs_market_radar"] == "insufficient_evidence"
+
+
+def test_report_builder_compares_labeled_baseline_precision() -> None:
+    rows = [
+        _result("r1", "AAA", "Warning", {"target_20d_25": True}),
+        _result("r2", "BBB", "Warning", {"target_20d_25": False}),
+        {
+            "baseline": "volume_breakout_screener",
+            "ticker": "CCC",
+            "rank": 1,
+            "labels": {
+                "target_20d_25": True,
+                "max_adverse_excursion": -0.03,
+                "max_favorable_excursion": 0.32,
+            },
+        },
+    ]
+
+    report = validation_report_payload(build_validation_report("run-1", rows))
+
+    comparison = report["baseline_comparison"]["volume_breakout_screener"]
+    assert comparison["marketradar_precision_at_10"] == pytest.approx(0.5)
+    assert comparison["baseline_precision_at_10"] == 1.0
+    assert comparison["baseline_false_positive_rate"] == 0.0
+    assert comparison["baseline_max_favorable_excursion_avg"] == 0.32
+    assert comparison["sample_status"] == "measured"
+    assert comparison["result_vs_market_radar"] == "baseline_wins"
 
 
 def _result(
