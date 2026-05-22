@@ -582,6 +582,14 @@ def radar_readiness() -> dict[str, object]:
     )
 
 
+@router.get("/shadow/readiness", dependencies=[Depends(require_role(Role.VIEWER))])
+def radar_shadow_readiness() -> dict[str, object]:
+    readiness_payload = _dashboard_helper("shadow_readiness_payload")
+    return redact_restricted_external_payload(
+        readiness_payload(_engine(), AppConfig.from_env())
+    )
+
+
 @router.get("/live-activation", dependencies=[Depends(require_role(Role.VIEWER))])
 def radar_live_activation() -> dict[str, object]:
     activation_payload = _dashboard_helper("live_data_activation_contract_payload")

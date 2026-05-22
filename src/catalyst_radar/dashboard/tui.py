@@ -546,6 +546,16 @@ def dashboard_snapshot_payload(
         ops_health,
         limit=filters.telemetry_limit,
     )
+    call_plan = dashboard_data.radar_run_call_plan_payload(engine, config)
+    shadow_readiness = dashboard_data.shadow_readiness_payload(
+        engine,
+        config,
+        radar_readiness=readiness_payload,
+        priced_in_answer=priced_in_answer,
+        call_plan=call_plan,
+        ops_health=ops_health,
+        validation_summary=validation_summary,
+    )
     display_priced_in_queue = dict(priced_in_queue)
     display_priced_in_queue.pop("planning_rows", None)
     payload = {
@@ -569,6 +579,7 @@ def dashboard_snapshot_payload(
         },
         "runtime_context": runtime_context,
         "readiness": readiness_payload,
+        "shadow_readiness": shadow_readiness,
         "radar_run_cooldown": dashboard_data.radar_run_cooldown_payload(engine, config),
         "latest_run": latest_run,
         "discovery_snapshot": discovery_snapshot,
@@ -605,7 +616,7 @@ def dashboard_snapshot_payload(
             radar_run_summary=latest_run,
             broker_summary=broker_summary,
         ),
-        "call_plan": dashboard_data.radar_run_call_plan_payload(engine, config),
+        "call_plan": call_plan,
         "broker": broker_summary,
         "ops_health": ops_health,
         "telemetry": telemetry,
@@ -6444,6 +6455,8 @@ def _decision_gap_filter_summary(queue: Mapping[str, object]) -> str:
 
 def _readiness_lines(payload: Mapping[str, object], width: int) -> list[str]:
     readiness = _mapping(payload.get("readiness"))
+    shadow = _mapping(payload.get("shadow_readiness"))
+    boundary = _mapping(shadow.get("call_boundary"))
     queue = _mapping(payload.get("operator_work_queue"))
     lines = [_rule("Readiness And Work Queue", width)]
     lines.extend(
@@ -6460,6 +6473,37 @@ def _readiness_lines(payload: Mapping[str, object], width: int) -> list[str]:
         )
     )
     lines.append("")
+    if shadow:
+        lines.extend(
+            _kv_lines(
+                (
+                    ("Shadow gate", f"{shadow.get('status')}; ready={shadow.get('ready')}"),
+                    ("Shadow next", shadow.get("canonical_next_action")),
+                    (
+                        "Shadow calls",
+                        "assert=0; writes=0; planned_run_max="
+                        f"{boundary.get('planned_run_external_call_count_max') or 0}",
+                    ),
+                    ("Useful means", shadow.get("useful_definition")),
+                ),
+                width=width,
+            )
+        )
+        lines.append("")
+        lines.extend(
+            _table_lines(
+                _rows(shadow.get("checks")),
+                [
+                    ("code", "Check", 24),
+                    ("status", "Status", 10),
+                    ("finding", "Finding", 48),
+                    ("next_action", "Next Action", 38),
+                ],
+                width=width,
+                limit=12,
+            )
+        )
+        lines.append("")
     lines.extend(
         _table_lines(
             _rows(readiness.get("readiness_checklist")),

@@ -642,6 +642,10 @@ commands still exist for diagnostics, but dashboard, API, TUI, and CLI
 operator flows should prefer the `market-bars saved-*` wrappers because they
 expose the same approval, validate, and import contract everywhere.
 
+```powershell
+catalyst-radar ingest-polygon grouped-daily --date 2026-05-15 --save-response data/local/polygon-grouped-daily-2026-05-15.json --confirm-external-call
+```
+
 The stock-like saved-file path is a narrower staged unblock, not the trusted
 full-market answer. Use `--stocks-only` only when the reviewed plan is scoped to
 stock-like bars; the verifier then uses stock-like missing counts. The default
@@ -729,6 +733,19 @@ powershell -ExecutionPolicy Bypass -File scripts/assert-investable-readiness.ps1
 This checks local readiness, live activation, call-plan, and telemetry state. It
 makes 0 Polygon, SEC, Schwab, or OpenAI calls and is expected to fail closed
 while required live credentials or data-quality gates are missing.
+
+For the stricter daily shadow-mode gate, use:
+
+```powershell
+catalyst-radar assert-shadow-ready --json
+```
+
+The same payload is available at `GET /api/radar/shadow/readiness` and in the
+terminal dashboard Readiness page. It checks active universe, latest market-bar
+coverage, full-scan trust gate, candidate packets, Decision Cards, provider-call
+boundaries, alert dry-run state, broker-order kill switch, and validation
+readiness. The command itself makes 0 provider calls and 0 database writes; it
+prints those counters plus the planned run's maximum external-call count.
 
 After editing `.env.local`, run the activation checker before making live
 provider calls:

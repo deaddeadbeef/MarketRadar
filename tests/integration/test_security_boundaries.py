@@ -133,6 +133,10 @@ EXPECTED_API_ROUTES = {
     ): ("catalyst_radar.api.routes.radar", "radar_readiness", ("radar",)),
     (
         "GET",
+        "/api/radar/shadow/readiness",
+    ): ("catalyst_radar.api.routes.radar", "radar_shadow_readiness", ("radar",)),
+    (
+        "GET",
         "/api/radar/live-activation",
     ): ("catalyst_radar.api.routes.radar", "radar_live_activation", ("radar",)),
     (
