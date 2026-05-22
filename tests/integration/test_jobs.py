@@ -1607,6 +1607,97 @@ def test_cli_run_daily_json_smoke(monkeypatch, tmp_path, capsys):
     assert payload["daily_result"]["steps"]["llm_review"]["status"] == "skipped"
 
 
+def test_cli_run_daily_blocks_live_provider_plan_without_confirm(
+    monkeypatch,
+    tmp_path,
+    capsys,
+):
+    database_path = tmp_path / "scheduler-cli-live-blocked.db"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("CATALYST_DAILY_MARKET_PROVIDER", "polygon")
+    monkeypatch.setenv("CATALYST_DAILY_EVENT_PROVIDER", "sec")
+    monkeypatch.setenv("CATALYST_POLYGON_API_KEY", "fixture-key")
+    monkeypatch.setenv("CATALYST_SEC_ENABLE_LIVE", "1")
+    monkeypatch.setenv("CATALYST_SEC_USER_AGENT", "CatalystRadar/0.1 test@example.com")
+    monkeypatch.setenv("CATALYST_SEC_DAILY_MAX_TICKERS", "3")
+
+    def fail_run_once(**_kwargs):
+        raise AssertionError("run_once should not be called before approval")
+
+    monkeypatch.setattr("catalyst_radar.cli.run_once", fail_run_once)
+
+    exit_code = cli_main(
+        [
+            "run-daily",
+            "--as-of",
+            "2026-05-08",
+            "--available-at",
+            "2026-05-08T21:30:00+00:00",
+            "--json",
+        ]
+    )
+
+    assert exit_code == 2
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["status"] == "approval_required"
+    assert payload["approval_flag"] == "--confirm-external-call"
+    assert payload["external_calls_planned"] == 4
+    assert payload["db_writes_planned"] == 1
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
+    assert "--confirm-external-call" in payload["command"]
+    assert payload["scope"]["market_provider"] == "polygon"
+    assert payload["scope"]["event_provider"] == "sec"
+    assert database_path.exists() is False
+
+
+def test_cli_run_daily_confirm_external_call_allows_scheduler(
+    monkeypatch,
+    tmp_path,
+    capsys,
+):
+    database_url = f"sqlite:///{(tmp_path / 'scheduler-cli-live-confirmed.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("CATALYST_DAILY_MARKET_PROVIDER", "polygon")
+    monkeypatch.setenv("CATALYST_DAILY_EVENT_PROVIDER", "sec")
+    monkeypatch.setenv("CATALYST_POLYGON_API_KEY", "fixture-key")
+    monkeypatch.setenv("CATALYST_SEC_ENABLE_LIVE", "1")
+    monkeypatch.setenv("CATALYST_SEC_USER_AGENT", "CatalystRadar/0.1 test@example.com")
+
+    captured_config = {}
+
+    def fake_run_once(*, engine, config):
+        del engine
+        captured_config["config"] = config
+        return SchedulerRunResult(
+            acquired_lock=False,
+            reason="lock_held",
+            daily_result=None,
+        )
+
+    monkeypatch.setattr("catalyst_radar.cli.run_once", fake_run_once)
+
+    exit_code = cli_main(
+        [
+            "run-daily",
+            "--as-of",
+            "2026-05-08",
+            "--available-at",
+            "2026-05-08T21:30:00+00:00",
+            "--confirm-external-call",
+            "--json",
+        ]
+    )
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["reason"] == "lock_held"
+    assert captured_config["config"].provider is None
+    assert captured_config["config"].provider_override is False
+
+
 def test_cli_run_daily_csv_provider_override_stays_zero_call(
     monkeypatch,
     tmp_path,

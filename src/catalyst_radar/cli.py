@@ -119,6 +119,14 @@ from catalyst_radar.jobs.scheduler import (
     run_once,
     scheduler_run_payload,
 )
+from catalyst_radar.jobs.tasks import (
+    CSV_SCHEDULED_PROVIDER_NAMES,
+    DISABLED_SCHEDULED_PROVIDER_NAMES,
+    EVENT_SCHEDULED_PROVIDER_NAMES,
+    MARKET_SCHEDULED_PROVIDER_NAMES,
+    POLYGON_SCHEDULED_PROVIDER_NAMES,
+    SEC_SCHEDULED_EVENT_PROVIDER_NAMES,
+)
 from catalyst_radar.market.manual_bars import (
     import_manual_market_bars,
     manual_market_bars_repair_plan,
@@ -223,6 +231,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_daily.add_argument("--run-llm", action="store_true")
     run_daily.add_argument("--real-llm", action="store_true")
     run_daily.add_argument("--deliver-alerts", action="store_true")
+    run_daily.add_argument("--confirm-external-call", action="store_true")
     run_daily.add_argument("--json", action="store_true")
 
     ingest = subparsers.add_parser("ingest-csv")
@@ -1222,6 +1231,13 @@ def main(argv: list[str] | None = None) -> int:
                 "run-daily --deliver-alerts is not supported; use send-alerts --dry-run",
                 file=sys.stderr,
             )
+            return 2
+        approval = _run_daily_external_call_approval_payload(config, args)
+        if approval["approval_required"] and not args.confirm_external_call:
+            if args.json:
+                print(json.dumps(approval, sort_keys=True))
+            else:
+                print(_format_run_daily_approval_required(approval), file=sys.stderr)
             return 2
         create_schema(engine)
         scheduler_config = SchedulerConfig(
@@ -3591,6 +3607,183 @@ def _scheduler_exit_code(result: SchedulerRunResult) -> int:
     if result.daily_result is None:
         return 0
     return 0 if result.daily_result.status == "success" else 1
+
+
+def _run_daily_external_call_approval_payload(
+    config: AppConfig,
+    args: argparse.Namespace,
+) -> dict[str, object]:
+    scope = _run_daily_provider_scope(config, args)
+    market_provider = str(scope["market_provider"])
+    event_provider = str(scope["event_provider"])
+    market_calls = (
+        1
+        if market_provider in POLYGON_SCHEDULED_PROVIDER_NAMES
+        and config.polygon_api_key_configured
+        else 0
+    )
+    event_calls = (
+        config.sec_daily_max_tickers
+        if event_provider in SEC_SCHEDULED_EVENT_PROVIDER_NAMES
+        and config.sec_enable_live
+        and config.sec_user_agent_configured
+        else 0
+    )
+    rows = [
+        _run_daily_call_row(
+            "Market data",
+            market_provider,
+            market_calls,
+            live_provider_names=POLYGON_SCHEDULED_PROVIDER_NAMES,
+            local_provider_names=CSV_SCHEDULED_PROVIDER_NAMES,
+        ),
+        _run_daily_call_row(
+            "News/events",
+            event_provider,
+            event_calls,
+            live_provider_names=SEC_SCHEDULED_EVENT_PROVIDER_NAMES,
+            local_provider_names=frozenset({"news_fixture", "sample", "fixture"}),
+        ),
+        _run_daily_call_row("LLM review", config.llm_provider or "none", 0),
+        _run_daily_call_row("Alert delivery", "internal", 0),
+        _run_daily_call_row("Broker", "schwab", 0),
+    ]
+    planned_calls = market_calls + event_calls
+    planned_writes = 1 if planned_calls else 0
+    return {
+        "schema_version": "run-daily-external-call-approval-v1",
+        "status": "approval_required" if planned_calls else "not_required",
+        "approval_required": planned_calls > 0,
+        "approval_flag": "--confirm-external-call",
+        "external_calls_planned": planned_calls,
+        "external_calls_made": 0,
+        "db_writes_planned": planned_writes,
+        "db_writes_count_kind": "operation",
+        "db_writes_made": 0,
+        "command": _run_daily_approval_command(args),
+        "next_action": (
+            "Review the call and write counts, then rerun with "
+            "--confirm-external-call only if this live run is intentional."
+            if planned_calls
+            else "No live provider approval is required for this local/dry-run scope."
+        ),
+        "scope": scope,
+        "rows": rows,
+    }
+
+
+def _run_daily_call_row(
+    layer: str,
+    provider: str,
+    external_call_count_max: int,
+    *,
+    live_provider_names: frozenset[str] = frozenset(),
+    local_provider_names: frozenset[str] = frozenset(),
+) -> dict[str, object]:
+    if external_call_count_max:
+        status = "live_call_planned"
+    elif provider in DISABLED_SCHEDULED_PROVIDER_NAMES:
+        status = "skipped"
+    elif provider in local_provider_names:
+        status = "local_only"
+    elif provider in live_provider_names:
+        status = "blocked_or_not_configured"
+    else:
+        status = "not_called"
+    return {
+        "layer": layer,
+        "provider": provider or "disabled",
+        "status": status,
+        "external_call_count_max": int(external_call_count_max),
+    }
+
+
+def _run_daily_provider_scope(
+    config: AppConfig,
+    args: argparse.Namespace,
+) -> dict[str, object]:
+    scheduled_market = _run_daily_provider_name(
+        config.daily_market_provider,
+        default="csv",
+    )
+    scheduled_event = _run_daily_provider_name(
+        config.daily_event_provider,
+        default="news_fixture",
+    )
+    override = _run_daily_provider_name(args.provider, default="")
+    has_override = bool(str(args.provider or "").strip())
+    market_provider = scheduled_market
+    event_provider = scheduled_event
+    if has_override:
+        if override in MARKET_SCHEDULED_PROVIDER_NAMES:
+            market_provider = override
+        elif override in DISABLED_SCHEDULED_PROVIDER_NAMES:
+            market_provider = override or "disabled"
+        if override in EVENT_SCHEDULED_PROVIDER_NAMES:
+            event_provider = override
+        elif override in CSV_SCHEDULED_PROVIDER_NAMES:
+            event_provider = "news_fixture"
+        elif override in DISABLED_SCHEDULED_PROVIDER_NAMES:
+            event_provider = override or "disabled"
+    return {
+        "as_of": args.as_of.isoformat(),
+        "available_at": args.available_at.isoformat(),
+        "outcome_available_at": (
+            args.outcome_available_at.isoformat()
+            if args.outcome_available_at is not None
+            else None
+        ),
+        "provider_override": override or None,
+        "scheduled_market_provider": scheduled_market,
+        "scheduled_event_provider": scheduled_event,
+        "market_provider": market_provider,
+        "event_provider": event_provider,
+        "universe": args.universe,
+        "tickers": list(args.ticker or ()),
+    }
+
+
+def _run_daily_provider_name(value: object, *, default: str) -> str:
+    text = str(value or "").strip().lower()
+    return text if text else default
+
+
+def _run_daily_approval_command(args: argparse.Namespace) -> str:
+    parts = [
+        "catalyst-radar",
+        "run-daily",
+        "--as-of",
+        args.as_of.isoformat(),
+        "--available-at",
+        args.available_at.isoformat(),
+    ]
+    if args.database_url:
+        parts.extend(["--database-url", str(args.database_url)])
+    if args.outcome_available_at is not None:
+        parts.extend(["--outcome-available-at", args.outcome_available_at.isoformat()])
+    if args.provider:
+        parts.extend(["--provider", str(args.provider)])
+    if args.universe:
+        parts.extend(["--universe", str(args.universe)])
+    for ticker in args.ticker or ():
+        parts.extend(["--ticker", str(ticker)])
+    if args.run_llm:
+        parts.append("--run-llm")
+    parts.append("--confirm-external-call")
+    if args.json:
+        parts.append("--json")
+    return " ".join(parts)
+
+
+def _format_run_daily_approval_required(payload: Mapping[str, object]) -> str:
+    return (
+        "run-daily requires --confirm-external-call for this live provider scope: "
+        f"planned_external_calls={payload.get('external_calls_planned')} "
+        f"planned_db_writes={payload.get('db_writes_planned')} "
+        f"external_calls_made={payload.get('external_calls_made')} "
+        f"db_writes_made={payload.get('db_writes_made')}. "
+        f"Rerun only after review: {payload.get('command')}"
+    )
 
 
 def _future_price_rows(
