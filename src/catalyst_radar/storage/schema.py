@@ -415,6 +415,35 @@ value_outcomes = Table(
     Column("updated_at", DateTime(timezone=True), nullable=False),
 )
 
+shadow_mode_runs = Table(
+    "shadow_mode_runs",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("run_date", Date, nullable=False),
+    Column("as_of", Date),
+    Column("available_at", DateTime(timezone=True), nullable=False),
+    Column("status", String, nullable=False),
+    Column("validation_status", String, nullable=False),
+    Column("scan_scope", String, nullable=False),
+    Column("universe_size", Integer, nullable=False),
+    Column("requested_securities", Integer, nullable=False),
+    Column("scanned_securities", Integer, nullable=False),
+    Column("missing_market_bar_count", Integer, nullable=False),
+    Column("candidate_count", Integer, nullable=False),
+    Column("warning_count", Integer, nullable=False),
+    Column("manual_review_count", Integer, nullable=False),
+    Column("blocker_count", Integer, nullable=False),
+    Column("provider_calls_planned", Integer, nullable=False),
+    Column("provider_calls_made", Integer, nullable=False),
+    Column("db_writes_planned", Integer, nullable=False),
+    Column("db_writes_made", Integer, nullable=False),
+    Column("estimated_cost_usd", Float, nullable=False),
+    Column("actual_cost_usd", Float, nullable=False),
+    Column("payload", json_type, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+)
+
 holdings_snapshots = Table(
     "holdings_snapshots",
     metadata,
@@ -985,6 +1014,8 @@ Index(
     value_outcomes.c.outcome_available_at,
 )
 Index("ix_value_outcomes_ticker_as_of", value_outcomes.c.ticker, value_outcomes.c.as_of)
+Index("ix_shadow_mode_runs_run_date", shadow_mode_runs.c.run_date, shadow_mode_runs.c.available_at)
+Index("ix_shadow_mode_runs_status", shadow_mode_runs.c.status, shadow_mode_runs.c.run_date)
 Index(
     "ix_broker_connections_broker_user",
     broker_connections.c.broker,

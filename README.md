@@ -747,6 +747,23 @@ boundaries, alert dry-run state, broker-order kill switch, and validation
 readiness. The command itself makes 0 provider calls and 0 database writes; it
 prints those counters plus the planned run's maximum external-call count.
 
+To persist a daily shadow-mode audit row from local data only:
+
+```powershell
+catalyst-radar shadow-mode status --json
+catalyst-radar shadow-mode run --available-at <UTC-cutoff> --preview --json
+catalyst-radar shadow-mode run --available-at <UTC-cutoff> --execute --json
+catalyst-radar shadow-mode latest --json
+```
+
+`GET /api/radar/shadow/status`, `POST /api/radar/shadow/runs`, and
+`GET /api/radar/shadow/runs/latest` expose the same contract. Preview makes
+0 provider calls and 0 database writes. Execute makes 0 provider calls and writes
+one `shadow_mode_runs` audit row that classifies the current local scan as
+`valid_full_scan`, `valid_selected_universe_scan`, `partial_scan`,
+`blocked_scan`, or `setup_required`. This is a shadow evidence record, not an
+order, alert-delivery, or live-provider command.
+
 To track whether Market Radar is paying for itself, record local value evidence
 with the value ledger. The default `add` command is a preview and writes nothing;
 add `--execute` only after the displayed entry is correct:
