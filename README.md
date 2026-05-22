@@ -466,6 +466,10 @@ or `partial_scan`; its API equivalent is `GET /api/radar/priced-in/preflight`.
 When the active universe is missing, `priced-in-answer`, `agent-brief`, and
 `market-bars status` now point at the universe setup step first instead of
 showing market-bar template work that cannot know which securities to repair.
+That setup step is provider-aware: CSV mode prints the exact `ingest-csv`
+command with configured file paths, while Polygon/Massive mode prints the
+guarded `ingest-polygon tickers --max-pages <cap> --confirm-external-call`
+command plus the `POST /api/radar/universe/seed` request body.
 `priced-in-answer` and `GET /api/radar/priced-in/answer` answer the narrower
 question "Has price fully matched market expectations?" Their
 `decision_ready=true` / `priced_in_answer_ready=true` fields mean the
@@ -540,7 +544,10 @@ the current missing-bar count, stock-like sub-scope gap, manual CSV progress,
 saved-capture boundary, and the single recommended next unblock action with
 provider-call and DB-write boundaries. If no active universe exists yet, it
 returns `status=setup_required` / `first_blocker=universe` and sends the
-operator back to `priced-in-preflight` instead of offering unusable bar repair.
+operator to the exact CSV or Polygon/Massive universe seed command instead of
+offering unusable bar repair. The readiness checklist also surfaces a separate
+`Scan universe` row, so a configured live provider cannot hide the missing
+local universe.
 The same zero-call checkpoint is available outside the TUI as
 `catalyst-radar market-bars status` and
 `GET /api/radar/market-bars/status`; when `expected_as_of` is omitted, these
