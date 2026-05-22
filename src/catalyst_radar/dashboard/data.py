@@ -88,6 +88,7 @@ from catalyst_radar.validation.reports import (
 )
 from catalyst_radar.validation.value_ledger import load_value_ledger_summary_payload
 from catalyst_radar.validation.value_outcomes import value_outcome_summary_payload
+from catalyst_radar.validation.value_report import monthly_value_report_payload
 
 RADAR_RUN_COOLDOWN_LOCK_NAME = "manual_radar_run_cooldown"
 DAILY_WORKER_LOCK_NAME = "daily-run"
@@ -10806,6 +10807,16 @@ def load_value_ledger_summary(
 
 def load_value_outcome_summary(engine: Engine) -> dict[str, object]:
     return value_outcome_summary_payload(engine)
+
+
+def load_monthly_value_report(
+    engine: Engine,
+    *,
+    available_at: datetime | None = None,
+) -> dict[str, object]:
+    cutoff = _as_utc_datetime_or_none(available_at) or datetime.now(UTC)
+    month = cutoff.strftime("%Y-%m")
+    return monthly_value_report_payload(engine, month=month, available_at=cutoff)
 
 
 def load_agent_review_history(

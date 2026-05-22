@@ -189,6 +189,7 @@ from catalyst_radar.validation.value_outcomes import (
     load_value_outcomes_payload,
     value_outcome_update_payload,
 )
+from catalyst_radar.validation.value_report import monthly_value_report_payload
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -680,6 +681,14 @@ def build_parser() -> argparse.ArgumentParser:
     value_ledger_summary.add_argument("--period-end", type=date.fromisoformat)
     value_ledger_summary.add_argument("--target-monthly-value-usd", type=float, default=40.0)
     value_ledger_summary.add_argument("--json", action="store_true")
+
+    value_report = subparsers.add_parser("value-report")
+    value_report.add_argument("--database-url")
+    value_report.add_argument("--month", required=True)
+    value_report.add_argument("--available-at", type=_parse_aware_datetime)
+    value_report.add_argument("--target-monthly-value-usd", type=float, default=40.0)
+    value_report.add_argument("--min-useful-evidence-count", type=int, default=2)
+    value_report.add_argument("--json", action="store_true")
 
     value_outcome = subparsers.add_parser("value-outcome")
     value_outcome_sub = value_outcome.add_subparsers(
@@ -2715,6 +2724,24 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
         except (TypeError, ValueError) as exc:
             print(f"value outcome failed: {exc}", file=sys.stderr)
+            return 1
+
+    if args.command == "value-report":
+        try:
+            payload = monthly_value_report_payload(
+                engine,
+                month=args.month,
+                available_at=args.available_at,
+                target_monthly_value_usd=args.target_monthly_value_usd,
+                min_useful_evidence_count=args.min_useful_evidence_count,
+            )
+            if args.json:
+                print(json.dumps(payload, sort_keys=True))
+                return 0
+            _print_value_report(payload)
+            return 0
+        except (TypeError, ValueError) as exc:
+            print(f"value report failed: {exc}", file=sys.stderr)
             return 1
 
     if args.command == "build-universe":
@@ -7621,6 +7648,48 @@ def _print_value_outcomes(payload: Mapping[str, object]) -> None:
             f"{row.get('return_20d')} "
             f"{row.get('spy_relative_return_20d')}"
         )
+
+
+def _print_value_report(payload: Mapping[str, object]) -> None:
+    print(
+        "monthly_value_report "
+        f"month={payload.get('month')} "
+        f"verdict={payload.get('verdict')} "
+        f"plausibly_met_40_usd={payload.get('plausibly_earned_at_least_40_usd')} "
+        f"net_decision_support_value_usd={payload.get('net_decision_support_value_usd')} "
+        f"target_monthly_value_usd={payload.get('target_monthly_value_usd')} "
+        f"useful_insights={payload.get('useful_insights_count') or 0} "
+        f"noisy_insights={payload.get('noisy_insights_count') or 0} "
+        f"false_positives={payload.get('false_positive_count') or 0} "
+        f"provider_calls={payload.get('provider_call_count') or 0} "
+        f"llm_calls={payload.get('llm_call_count') or 0} "
+        f"external_calls_made={payload.get('external_calls_made') or 0} "
+        f"db_writes_made={payload.get('db_writes_made') or 0}"
+    )
+    print(f"reason={_compact_cli_text(payload.get('verdict_reason'))}")
+    print(
+        "decision_support_value_not_profit="
+        f"{payload.get('decision_support_value_not_profit')} "
+        f"investment_advice={payload.get('investment_advice')}"
+    )
+    uncertainty = payload.get("confidence_uncertainty_band_usd")
+    if isinstance(uncertainty, Mapping):
+        print(
+            "uncertainty "
+            f"lower={uncertainty.get('lower_net_value_usd')} "
+            f"base={uncertainty.get('base_net_value_usd')} "
+            f"upper={uncertainty.get('upper_net_value_usd')} "
+            f"method={uncertainty.get('method')}"
+        )
+    print(
+        "costs "
+        f"provider_api_model={payload.get('provider_api_model_costs_usd')} "
+        f"operating_time={payload.get('operating_time_cost_usd')} "
+        f"total={payload.get('total_cost_usd')} "
+        f"cost_per_useful_alert={payload.get('cost_per_useful_alert')} "
+        "cost_per_useful_decision_card="
+        f"{payload.get('cost_per_useful_decision_card')}"
+    )
 
 
 def _print_priced_in_preflight(payload: Mapping[str, object]) -> None:

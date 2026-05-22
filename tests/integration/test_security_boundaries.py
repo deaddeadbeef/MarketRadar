@@ -121,6 +121,10 @@ EXPECTED_API_ROUTES = {
         "value_outcome_update",
         ("value-outcomes",),
     ),
+    (
+        "GET",
+        "/api/value-report/monthly",
+    ): ("catalyst_radar.api.routes.value_report", "monthly_value_report", ("value-report",)),
     ("GET", "/api/health"): ("apps.api.main", "health", ()),
     ("GET", "/api/ops/health"): ("catalyst_radar.api.routes.ops", "health", ("ops",)),
     (
