@@ -150,6 +150,9 @@ def test_validation_report_label_and_paper_cli_workflow(
     assert report["precision"]["target_20d_25"] == 1.0
     assert report["useful_alert_rate"] == 1.0
     assert report["leakage_failure_count"] == 0
+    assert report["score_calibration"]["thresholds_changed"] is False
+    assert report["score_calibration"]["buckets"]
+    assert "setup_type" in report["score_calibration"]["score_distribution"]
     assert "random_eligible_universe" in report["baseline_comparison"]
     for baseline in (
         "relative_strength_screener",

@@ -1,6 +1,38 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 01:55:00 +08:00
+Last updated: 2026-05-23 02:10:00 +08:00
+
+## Latest Score Calibration Report Slice
+
+Last updated: 2026-05-23 02:10:00 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice advances mission-brief P7 by measuring whether higher deterministic scores actually correspond to better forward outcomes.
+- This slice does not add provider, broker, order, OpenAI, SEC, Polygon/Massive, Schwab, web, or app calls from the product.
+- This is useful because future threshold changes can be based on bucketed evidence instead of intuition.
+
+Fix in this slice:
+
+- `validation-report --json` now includes `score_calibration`.
+- Buckets cover `below_50`, `50_59`, `60_69`, `70_79`, `80_89`, and `90_plus`.
+- Score distribution groups cover sector, market regime, setup type, priced-in status, action state, source coverage, and feedback label.
+- Each bucket reports candidate count, labeled count, precision, false-positive rate, useful-label rate, sector-outperformance rate, average max adverse excursion, and average max favorable excursion.
+- High false-positive buckets are flagged for threshold review, but scoring weights, thresholds, policy states, trade plans, and action gates are not changed.
+- README documents that score calibration buckets are evidence only.
+
+Validation observed in this slice:
+
+- `ruff check` passed for touched validation/CLI/tests.
+- `git diff --check` passed.
+- Focused validation CLI and report regressions passed: 14 passed.
+- Broader validation/baseline/value/security regressions passed: 39 passed.
+
+Current live blocker:
+
+- The report can identify score buckets that need review, but it does not prove readiness for capital and does not change thresholds.
+- The next mission-brief slices are measuring local text intelligence and sparse LLM value only after enough validation outcomes exist.
 
 ## Latest Baseline Comparison Slice
 
