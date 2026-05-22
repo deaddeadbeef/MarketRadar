@@ -4936,6 +4936,35 @@ def _print_market_bars_status(payload: Mapping[str, object]):
                 + ",".join(str(ticker) for ticker in stock_sample)
                 + stock_suffix
             )
+    configured_universe = _mapping_value(payload.get("configured_universe_scope"))
+    if configured_universe and configured_universe.get("snapshot_id"):
+        print(
+            "configured_universe "
+            f"status={configured_universe.get('status')} "
+            f"name={configured_universe.get('universe')} "
+            f"coverage={_int_value(configured_universe.get('with_as_of_bar_count'))}/"
+            f"{_int_value(configured_universe.get('member_count'))} "
+            f"missing={_int_value(configured_universe.get('missing_as_of_bar_count'))} "
+            "all_active_missing="
+            f"{_int_value(configured_universe.get('active_universe_missing_as_of_bar_count'))} "
+            f"external_calls={_int_value(configured_universe.get('external_calls_made'))}"
+        )
+        configured_sample = _sequence_value(
+            configured_universe.get("sample_missing_tickers")
+        )
+        if configured_sample:
+            configured_more = int(
+                configured_universe.get("sample_missing_ticker_more") or 0
+            )
+            configured_suffix = f" plus {configured_more} more" if configured_more else ""
+            print(
+                "configured_universe_missing_tickers="
+                + ",".join(str(ticker) for ticker in configured_sample)
+                + configured_suffix
+            )
+        boundary = str(configured_universe.get("answer_boundary") or "").strip()
+        if boundary:
+            print(f"configured_universe_boundary={_compact_cli_text(boundary)}")
     print(
         "manual "
         f"status={manual.get('status')} "

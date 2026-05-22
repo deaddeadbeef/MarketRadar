@@ -959,6 +959,98 @@ def test_market_bars_status_cli_keeps_seeded_universe_on_market_bar_blocker(
     assert payload["db_writes_made"] == 0
 
 
+def test_market_bars_status_cli_exposes_configured_universe_without_clearing_all_active(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+):
+    monkeypatch.chdir(tmp_path)
+    database_url = _database_url(tmp_path)
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("CATALYST_UNIVERSE_NAME", "liquid-us")
+
+    assert main(["init-db"]) == 0
+    capsys.readouterr()
+    engine = create_engine(database_url, future=True)
+    MarketRepository(engine).upsert_securities(
+        [
+            _security("AAPL", "Apple Inc.", "CS"),
+            _security("MSFT", "Microsoft Corporation", "CS"),
+            _security("AACBU", "Acme Acquisition Unit", "UNIT"),
+        ]
+    )
+    MarketRepository(engine).upsert_daily_bars(
+        [
+            _daily_bar("AAPL", date(2026, 5, 15)),
+            _daily_bar("MSFT", date(2026, 5, 15)),
+        ]
+    )
+    ProviderRepository(engine).save_universe_snapshot(
+        name="liquid-us",
+        as_of=datetime(2026, 5, 15, 21, tzinfo=UTC),
+        provider="polygon",
+        source_ts=datetime(2026, 5, 15, 21, tzinfo=UTC),
+        available_at=datetime(2026, 5, 15, 22, tzinfo=UTC),
+        members=[
+            {"ticker": "AAPL", "reason": "eligible", "rank": 1, "metadata": {}},
+            {"ticker": "MSFT", "reason": "eligible", "rank": 2, "metadata": {}},
+        ],
+        metadata={"eligible_count": 2, "excluded_count": 1},
+    )
+
+    exit_code = main(
+        [
+            "market-bars",
+            "status",
+            "--expected-as-of",
+            "2026-05-15",
+            "--json",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    payload = json.loads(captured.out)
+    assert payload["status"] == "blocked"
+    assert payload["first_blocker"] == "market_bars"
+    assert payload["coverage_scope"] == "active_universe"
+    assert payload["active_security_count"] == 3
+    assert payload["existing_as_of_bar_count"] == 2
+    assert payload["missing_as_of_bar_count"] == 1
+    configured = payload["configured_universe_scope"]
+    assert configured["schema_version"] == "market-bars-configured-universe-scope-v1"
+    assert configured["status"] == "ready"
+    assert configured["universe"] == "liquid-us"
+    assert configured["member_count"] == 2
+    assert configured["with_as_of_bar_count"] == 2
+    assert configured["missing_as_of_bar_count"] == 0
+    assert configured["active_universe_missing_as_of_bar_count"] == 1
+    assert configured["external_calls_made"] == 0
+    assert configured["db_writes_made"] == 0
+    assert "does not clear the all-active market-bar gate" in configured[
+        "answer_boundary"
+    ]
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
+
+    assert (
+        main(
+            [
+                "market-bars",
+                "status",
+                "--expected-as-of",
+                "2026-05-15",
+            ]
+        )
+        == 0
+    )
+    text = capsys.readouterr().out
+    assert "market_bars_status status=blocked" in text
+    assert "configured_universe status=ready name=liquid-us coverage=2/2 missing=0" in text
+    assert "all_active_missing=1" in text
+    assert "does not clear the all-active market-bar gate" in text
+
+
 def test_market_bars_repair_plan_prefers_available_saved_provider_file(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

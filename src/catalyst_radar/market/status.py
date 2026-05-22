@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from datetime import date
+from datetime import UTC, date, datetime, time
 from pathlib import Path
 
 from sqlalchemy import func, select
@@ -72,6 +72,14 @@ def market_bars_status_payload(
             full_repair=repair,
         )
     missing = int(repair.get("missing_as_of_bar_count") or 0)
+    configured_universe_scope = None
+    if not stocks_only:
+        configured_universe_scope = _configured_universe_scope_payload(
+            engine,
+            config,
+            expected_as_of=resolved_expected_as_of,
+            active_universe_missing=missing,
+        )
     missing_any = missing != 0
     local_preview = _mapping(repair.get("local_template_preview"))
     fill_progress = _mapping(local_preview.get("fill_progress"))
@@ -149,6 +157,7 @@ def market_bars_status_payload(
         "missing_universe_diagnostic": repair.get("missing_universe_diagnostic")
         or {},
         "stock_scope": stock_scope,
+        "configured_universe_scope": configured_universe_scope,
         "manual": {
             "status": operator_step.get("status"),
             "action": operator_step.get("action"),
@@ -723,6 +732,91 @@ def _stock_scope_payload(
     }
 
 
+def _configured_universe_scope_payload(
+    engine: Engine,
+    config: AppConfig,
+    *,
+    expected_as_of: date,
+    active_universe_missing: int,
+):
+    universe_name = str(config.universe_name or "").strip()
+    if not universe_name:
+        return {
+            "schema_version": "market-bars-configured-universe-scope-v1",
+            "status": "not_configured",
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+        }
+    provider_repo = ProviderRepository(engine)
+    snapshot = provider_repo.latest_universe_snapshot(
+        name=universe_name,
+        as_of=datetime.combine(expected_as_of, time.max, tzinfo=UTC),
+        available_at=datetime.now(UTC),
+    )
+    if snapshot is None:
+        return {
+            "schema_version": "market-bars-configured-universe-scope-v1",
+            "status": "not_configured",
+            "universe": universe_name,
+            "expected_as_of": expected_as_of.isoformat(),
+            "next_action": (
+                "Build the configured universe before treating it as a scan boundary."
+            ),
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+        }
+    member_rows = provider_repo.list_universe_member_rows(snapshot.id)
+    members = tuple(
+        sorted(
+            {
+                str(row.ticker or "").strip().upper()
+                for row in member_rows
+                if str(row.ticker or "").strip()
+            }
+        )
+    )
+    member_set = set(members)
+    with_bar = _bar_tickers_for_date(engine, expected_as_of) & member_set
+    missing = tuple(sorted(member_set - with_bar))
+    member_count = len(members)
+    with_bar_count = len(with_bar)
+    coverage_pct = (
+        round((with_bar_count / member_count) * 100, 2) if member_count else None
+    )
+    status = "ready" if member_count > 0 and not missing else "blocked"
+    if member_count == 0:
+        status = "empty"
+    return {
+        "schema_version": "market-bars-configured-universe-scope-v1",
+        "status": status,
+        "universe": universe_name,
+        "snapshot_id": snapshot.id,
+        "snapshot_as_of": snapshot.as_of.date().isoformat(),
+        "snapshot_available_at": snapshot.available_at.isoformat(),
+        "provider": snapshot.provider,
+        "expected_as_of": expected_as_of.isoformat(),
+        "member_count": member_count,
+        "with_as_of_bar_count": with_bar_count,
+        "missing_as_of_bar_count": len(missing),
+        "coverage_pct": coverage_pct,
+        "sample_missing_tickers": list(missing[:12]),
+        "sample_missing_ticker_more": max(0, len(missing) - 12),
+        "active_universe_missing_as_of_bar_count": max(0, int(active_universe_missing)),
+        "answer_boundary": (
+            "Configured-universe bar coverage is a separate investable-universe "
+            "readiness signal. It does not clear the all-active market-bar gate."
+        ),
+        "next_action": (
+            "Run a configured-universe shadow scan only if this scope matches the "
+            "intended review universe; keep all-active status separate."
+        )
+        if status == "ready"
+        else "Fill configured-universe market bars before relying on this scan boundary.",
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+    }
+
+
 def _resolve_expected_as_of(engine: Engine, expected_as_of: date | None) -> date:
     if expected_as_of is not None:
         return expected_as_of
@@ -754,6 +848,17 @@ def _active_security_count(engine: Engine, *, stocks_only: bool) -> int:
         if security_type in MANUAL_BAR_COMPANY_LIKE_TYPES:
             count += 1
     return count
+
+
+def _bar_tickers_for_date(engine: Engine, as_of_date: date) -> set[str]:
+    with engine.connect() as connection:
+        return {
+            str(row._mapping["ticker"]).strip().upper()
+            for row in connection.execute(
+                select(daily_bars.c.ticker).where(daily_bars.c.date == as_of_date)
+            )
+            if str(row._mapping["ticker"]).strip()
+        }
 
 
 def _expected_as_of_required_status_payload(

@@ -569,7 +569,11 @@ the operator back to universe setup. Pass `--expected-as-of YYYY-MM-DD`
 or `?expected_as_of=YYYY-MM-DD` to pin the check. Those CLI/API payloads include
 the missing ticker sample, missing security-type counts, zero-call missing
 universe diagnostics, `stock_scope` for the stock-like gap inside the same
-all-instrument status, `recommended_action`, and `after_market_bars_clear`.
+all-instrument status, `configured_universe_scope` for the latest configured
+universe snapshot, `recommended_action`, and `after_market_bars_clear`.
+Configured-universe coverage is separate from the all-active market-bar gate:
+it can show that a built investable universe such as `liquid-us` has complete
+bars while the full active universe remains blocked.
 `recommended_action` is the UI-friendly contract for choosing the next safe
 button or command; `after_market_bars_clear` previews the next priced-in source
 blocker to inspect after the bar gap is repaired. Both fields report zero calls
