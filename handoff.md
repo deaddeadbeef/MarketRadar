@@ -1,6 +1,39 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 00:58:14 +08:00
+Last updated: 2026-05-23 01:28:00 +08:00
+
+## Latest Monthly Value Report Slice
+
+Last updated: 2026-05-23 01:28:00 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice advances the M7 value-proof path by answering whether local value-ledger evidence plausibly covers at least $40/month of decision-support value.
+- This slice does not add provider, broker, order, OpenAI, SEC, Polygon/Massive, Schwab, web, or app calls from the product.
+- This is useful because the product can now report `pass`, `fail`, or `insufficient_evidence` for the monthly value question without live trades, hidden calls, scoring changes, or LLM behavior.
+
+Fix in this slice:
+
+- Added a read-only monthly value report payload over local `value_ledger_entries` and linked `value_outcomes`.
+- Added CLI `catalyst-radar value-report --month YYYY-MM` plus `--json`, target override, and minimum useful-evidence override.
+- Added API route `GET /api/value-report/monthly?month=YYYY-MM`.
+- Added TUI Costs-page visibility for the current month's verdict, net decision-support value, useful/noisy counts, and false-positive count.
+- Noisy and false-positive ledger rows are counted for evidence quality but do not increase the monthly decision-support value threshold.
+- README now documents the monthly value report operator contract because the CLI/API/TUI surface changed.
+
+Validation observed in this slice:
+
+- `ruff check` passed for touched source/tests.
+- `git diff --check` passed.
+- Focused monthly value/value-ledger/value-outcome/security/API/local-script regressions passed: 42 passed.
+- Tests cover `insufficient_evidence`, `pass`, `fail`, conservative handling of positive ignored entries, API output, and TUI rendering.
+
+Current live blocker:
+
+- This report is a value-evidence layer, not investment readiness. It separates decision-support value from realized profit and investment advice.
+- The report reads local ledger/outcome rows only. It makes `external_calls_made=0` and `db_writes_made=0`; seeding evidence and outcome rows remains a separate explicit workflow.
+- After this lands, the next mission-brief slice is baseline comparison before scoring calibration or any new LLM expansion.
 
 ## Latest Shadow-Mode Run Record Slice
 

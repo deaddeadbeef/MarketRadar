@@ -453,6 +453,10 @@ def dashboard_snapshot_payload(
         available_at=data_available_at,
     )
     value_outcomes = dashboard_data.load_value_outcome_summary(engine)
+    value_report = dashboard_data.load_monthly_value_report(
+        engine,
+        available_at=data_available_at,
+    )
     broker_summary = dashboard_data.load_broker_summary(engine)
     ops_health = dashboard_data.load_ops_health(engine)
     discovery_snapshot = dashboard_data.radar_discovery_snapshot_payload(
@@ -625,6 +629,7 @@ def dashboard_snapshot_payload(
         "costs": cost_summary,
         "value_ledger": value_ledger,
         "value_outcomes": value_outcomes,
+        "value_report": value_report,
         "live_activation": dashboard_data.live_data_activation_contract_payload(
             config,
             radar_run_summary=latest_run,
@@ -7656,6 +7661,7 @@ def _costs_lines(payload: Mapping[str, object], width: int) -> list[str]:
     costs = _mapping(payload.get("costs"))
     value_ledger = _mapping(payload.get("value_ledger"))
     value_outcomes = _mapping(payload.get("value_outcomes"))
+    value_report = _mapping(payload.get("value_report"))
     lines = [_rule("Costs", width)]
     lines.extend(
         _kv_lines(
@@ -7684,6 +7690,26 @@ def _costs_lines(payload: Mapping[str, object], width: int) -> list[str]:
             width=width,
         )
     )
+    lines.append("")
+    lines.extend(
+        _kv_lines(
+            (
+                ("Monthly value verdict", value_report.get("verdict") or "n/a"),
+                ("Report month", value_report.get("month") or "n/a"),
+                (
+                    "Net decision-support value",
+                    value_report.get("net_decision_support_value_usd"),
+                ),
+                ("$40 threshold met", value_report.get("plausibly_earned_at_least_40_usd")),
+                ("Useful insights", value_report.get("useful_insights_count")),
+                ("Noisy insights", value_report.get("noisy_insights_count")),
+                ("False positives", value_report.get("false_positive_count")),
+            ),
+            width=width,
+        )
+    )
+    if value_report:
+        lines.extend(_wrap(str(value_report.get("decision_support_note") or ""), width))
     lines.append("")
     lines.append(str(value_ledger.get("useful_definition") or ""))
     lines.append("")

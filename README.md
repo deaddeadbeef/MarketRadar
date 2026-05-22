@@ -803,6 +803,22 @@ packet, decision card, score, or policy output. When fewer than 60 future
 trading bars are visible at the supplied cutoff, the outcome row is marked
 `insufficient_data` and only available horizons are populated.
 
+To answer the monthly value-proof question, generate a read-only value report:
+
+```powershell
+catalyst-radar value-report --month YYYY-MM
+catalyst-radar value-report --month YYYY-MM --json
+```
+
+`GET /api/value-report/monthly?month=YYYY-MM` exposes the same report. It reads
+local value-ledger and outcome rows only, makes 0 provider/broker/model calls,
+and writes 0 database rows. The report returns `pass`, `fail`, or
+`insufficient_evidence`, states whether the $40/month decision-support threshold
+was plausibly met, includes uncertainty and false positives, and separates
+decision-support value from realized profit or investment advice. The terminal
+dashboard Costs page shows the current month's verdict and net
+decision-support value.
+
 After editing `.env.local`, run the activation checker before making live
 provider calls:
 
