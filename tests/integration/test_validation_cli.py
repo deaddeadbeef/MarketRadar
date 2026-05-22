@@ -153,6 +153,8 @@ def test_validation_report_label_and_paper_cli_workflow(
     assert report["score_calibration"]["thresholds_changed"] is False
     assert report["score_calibration"]["buckets"]
     assert "setup_type" in report["score_calibration"]["score_distribution"]
+    assert report["local_text_intelligence"]["models_changed"] is False
+    assert "local_narrative_score" in report["local_text_intelligence"]["features"]
     assert "random_eligible_universe" in report["baseline_comparison"]
     for baseline in (
         "relative_strength_screener",

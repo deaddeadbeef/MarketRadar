@@ -1,6 +1,38 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 02:10:00 +08:00
+Last updated: 2026-05-23 02:13:00 +08:00
+
+## Latest Local Text Measurement Slice
+
+Last updated: 2026-05-23 02:13:00 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice advances mission-brief P8 by measuring existing local text signals before any NLP/model upgrade.
+- This slice does not add provider, broker, order, OpenAI, SEC, Polygon/Massive, Schwab, web, or app calls from the product.
+- This is useful because MarketRadar can now ask whether local narrative, novelty, source quality, sentiment, and theme evidence are actually associated with better outcomes or useful feedback before changing scoring.
+
+Fix in this slice:
+
+- `validation-report --json` now includes `local_text_intelligence`.
+- The report measures existing local text fields: `local_narrative_score`, `novelty_score`, `source_quality_score`, `sentiment_score`, `theme_match_score`, `theme_velocity_score`, and theme-hit presence.
+- Each feature reports low/mid/high or present/absent buckets with precision, false-positive rate, useful-label rate, and high-vs-low deltas.
+- Missing local text evidence is reported as `insufficient_evidence` instead of implying the signal worked.
+- The payload is report-only: `thresholds_changed=false`, `models_changed=false`, and no deterministic score, policy, trade-plan, or action gate changes.
+- README documents the local text measurement contract because the validation report output changed.
+
+Validation observed in this slice:
+
+- `ruff check` passed for touched validation/CLI/tests.
+- `git diff --check` passed.
+- Focused validation CLI and report regressions passed: 16 passed.
+- Broader validation/baseline/value/security regressions passed: 41 passed.
+
+Current live blocker:
+
+- This measures whether existing text signals are useful; it does not replace sentiment, embeddings, ontology matching, or scoring weights.
+- The next step after this slice is sparse LLM value measurement only if deterministic and local-text evidence justify it.
 
 ## Latest Score Calibration Report Slice
 
