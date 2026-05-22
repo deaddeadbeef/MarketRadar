@@ -1,6 +1,37 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 01:28:00 +08:00
+Last updated: 2026-05-23 01:55:00 +08:00
+
+## Latest Baseline Comparison Slice
+
+Last updated: 2026-05-23 01:55:00 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice advances the mission-brief P5 baseline comparison gate before scoring calibration, NLP upgrades, or LLM expansion.
+- This slice does not add provider, broker, order, OpenAI, SEC, Polygon/Massive, Schwab, web, or app calls from the product.
+- This is useful because validation reports can now say whether MarketRadar beat, lost to, tied, or lacks evidence against simple deterministic alternatives.
+
+Fix in this slice:
+
+- Added the five named mission-brief baselines to the existing validation replay/report path: relative strength, volume breakout, sector ETF rotation, news/event-only, and random sector-matched basket.
+- Baseline rows are selected from point-in-time local rows visible at the decision cutoff, then labeled with the same forward outcome labels at the outcome cutoff.
+- `validation-report --json` now includes per-baseline precision@5/10, false-positive rate, excursion averages, overlap/missed tickers, sample status, and `result_vs_market_radar`.
+- Reports keep empty mission-brief baselines visible as `insufficient_evidence` instead of omitting them.
+- README now documents how to run validation replay/report for baseline comparison because the operator report contract changed.
+
+Validation observed in this slice:
+
+- `ruff check` passed for touched validation/CLI/tests.
+- `git diff --check` passed.
+- Focused validation, monthly value, and security-boundary regressions passed: 37 passed.
+- Unit tests cover the new baseline selectors and measured/insufficient baseline comparison outcomes; integration tests cover the CLI validation report surface.
+
+Current live blocker:
+
+- Baseline comparison is still evidence, not investment readiness. It depends on stored local bars and candidate artifacts; missing sample size is reported as `insufficient_evidence`.
+- The next mission-brief slice after this is score calibration reporting, using these measured outcomes rather than changing thresholds blindly.
 
 ## Latest Monthly Value Report Slice
 

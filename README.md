@@ -819,6 +819,22 @@ decision-support value from realized profit or investment advice. The terminal
 dashboard Costs page shows the current month's verdict and net
 decision-support value.
 
+To compare MarketRadar against simple deterministic baselines before tuning
+scores or adding more intelligence, run a point-in-time validation replay and
+then inspect the report:
+
+```powershell
+catalyst-radar validation-replay --as-of-start YYYY-MM-DD --as-of-end YYYY-MM-DD --available-at <UTC-decision-cutoff> --outcome-available-at <UTC-outcome-cutoff>
+catalyst-radar validation-report --run-id <printed-run-id> --json
+```
+
+The report compares MarketRadar candidates with relative strength, volume
+breakout, sector ETF rotation, news/event-only, and random sector-matched
+baselines. Baseline rows are selected using only data available at the decision
+cutoff and are labeled only from bars visible at the outcome cutoff. The report
+shows precision@5/10, false-positive rate, excursion averages, overlap/missed
+tickers, and whether MarketRadar won, lost, tied, or lacks enough evidence.
+
 After editing `.env.local`, run the activation checker before making live
 provider calls:
 

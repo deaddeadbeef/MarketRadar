@@ -7,10 +7,15 @@ import pytest
 from catalyst_radar.validation.baselines import (
     BaselineCandidate,
     event_only_watchlist,
+    news_event_only_screener,
     random_eligible_universe,
+    random_sector_matched_basket,
+    relative_strength_screener,
+    sector_etf_rotation_screener,
     sector_relative_momentum,
     spy_relative_momentum,
     user_watchlist,
+    volume_breakout_screener,
 )
 
 AS_OF = datetime(2026, 5, 10, 21, tzinfo=UTC)
@@ -90,6 +95,50 @@ def test_user_watchlist_returns_configured_present_tickers_and_empty_without_con
     assert [candidate.ticker for candidate in candidates] == ["CCC", "AAA"]
     assert [candidate.rank for candidate in candidates] == [1, 2]
     assert user_watchlist(rows) == ()
+
+
+def test_mission_brief_baselines_cover_strength_volume_sector_event_and_random() -> None:
+    rows = [
+        _row(
+            "AAA",
+            ret_20d=0.20,
+            ret_60d=0.10,
+            spy_return_20d=0.05,
+            spy_return_60d=0.02,
+            latest_volume=300,
+            avg_volume_20d=100,
+            sector_rotation_score=0.3,
+            sector="tech",
+            event_support_score=8,
+        ),
+        _row(
+            "BBB",
+            ret_20d=0.15,
+            ret_60d=0.05,
+            spy_return_20d=0.05,
+            spy_return_60d=0.02,
+            latest_volume=500,
+            avg_volume_20d=100,
+            sector_rotation_score=0.1,
+            sector="healthcare",
+            event_support_score=3,
+        ),
+        _row("CCC", sector="tech"),
+    ]
+
+    assert relative_strength_screener(rows)[0].baseline == "relative_strength_screener"
+    assert volume_breakout_screener(rows)[0].ticker == "BBB"
+    assert sector_etf_rotation_screener(rows)[0].ticker == "AAA"
+    assert news_event_only_screener(rows)[0].ticker == "AAA"
+    matched = random_sector_matched_basket(
+        rows,
+        reference_rows=[_row("REF", sector="tech")],
+        seed="demo",
+        limit=1,
+    )
+    assert len(matched) == 1
+    assert matched[0].baseline == "random_sector_matched_basket"
+    assert matched[0].payload["sector"] == "TECH"
 
 
 def test_baseline_candidate_freezes_payload_and_uppercases_ticker() -> None:

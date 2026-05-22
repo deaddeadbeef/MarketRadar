@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, fields, is_dataclass
 from datetime import datetime
@@ -14,6 +15,11 @@ SECTOR_RELATIVE_MOMENTUM = "sector_relative_momentum"
 EVENT_ONLY_WATCHLIST = "event_only_watchlist"
 RANDOM_ELIGIBLE_UNIVERSE = "random_eligible_universe"
 USER_WATCHLIST = "user_watchlist"
+RELATIVE_STRENGTH_SCREENER = "relative_strength_screener"
+VOLUME_BREAKOUT_SCREENER = "volume_breakout_screener"
+SECTOR_ETF_ROTATION_SCREENER = "sector_etf_rotation_screener"
+NEWS_EVENT_ONLY_SCREENER = "news_event_only_screener"
+RANDOM_SECTOR_MATCHED_BASKET = "random_sector_matched_basket"
 
 
 @dataclass(frozen=True)
@@ -93,6 +99,20 @@ def spy_relative_momentum(
     return _ranked_candidates(scored, SPY_RELATIVE_MOMENTUM, limit=limit)
 
 
+def relative_strength_screener(
+    rows: Iterable[Any],
+    *,
+    limit: int | None = None,
+) -> tuple[BaselineCandidate, ...]:
+    """Mission-brief relative-strength baseline using stored SPY-relative returns."""
+
+    return _rename_candidates(
+        spy_relative_momentum(rows, limit=limit),
+        baseline=RELATIVE_STRENGTH_SCREENER,
+        reason_prefix="Relative-strength",
+    )
+
+
 def sector_relative_momentum(
     rows: Iterable[Any],
     *,
@@ -131,6 +151,77 @@ def sector_relative_momentum(
     return _ranked_candidates(scored, SECTOR_RELATIVE_MOMENTUM, limit=limit)
 
 
+def volume_breakout_screener(
+    rows: Iterable[Any],
+    *,
+    limit: int | None = None,
+) -> tuple[BaselineCandidate, ...]:
+    """Rank eligible rows by stored relative-volume or current/average volume."""
+
+    scored: list[tuple[float, str, Any, Mapping[str, Any], str]] = []
+    for row in rows:
+        if not _is_eligible(row):
+            continue
+        ticker = _ticker(row)
+        if ticker is None:
+            continue
+        score = _first_float(
+            row,
+            "volume_breakout_ratio",
+            "relative_volume",
+            "volume_ratio",
+            "volume_vs_avg_20d",
+        )
+        latest_volume = _first_float(row, "latest_volume", "volume", "current_volume")
+        average_volume = _first_float(row, "avg_volume_20d", "average_volume_20d")
+        if score is None and latest_volume is not None and average_volume not in {None, 0}:
+            score = latest_volume / float(average_volume)
+        if score is None or score <= 0:
+            continue
+        payload = {
+            "volume_breakout_ratio": score,
+            "latest_volume": latest_volume,
+            "average_volume_20d": average_volume,
+        }
+        reason = f"Volume breakout ratio={score:.4f}"
+        scored.append((score, ticker, _as_of(row), payload, reason))
+    return _ranked_candidates(scored, VOLUME_BREAKOUT_SCREENER, limit=limit)
+
+
+def sector_etf_rotation_screener(
+    rows: Iterable[Any],
+    *,
+    limit: int | None = None,
+) -> tuple[BaselineCandidate, ...]:
+    """Rank eligible rows by stored sector/ETF rotation evidence."""
+
+    scored: list[tuple[float, str, Any, Mapping[str, Any], str]] = []
+    for row in rows:
+        if not _is_eligible(row):
+            continue
+        ticker = _ticker(row)
+        if ticker is None:
+            continue
+        score = _first_float(
+            row,
+            "sector_rotation_score",
+            "sector_etf_return_20d",
+            "sector_return_20d",
+            "sector_relative_score",
+            "rs_20_sector",
+        )
+        if score is None:
+            continue
+        payload = {
+            "sector": _sector(row),
+            "sector_rotation_score": score,
+            "sector_etf": _maybe_text(_lookup(row, "sector_etf")),
+        }
+        reason = f"Sector ETF rotation score={score:.4f}"
+        scored.append((score, ticker, _as_of(row), payload, reason))
+    return _ranked_candidates(scored, SECTOR_ETF_ROTATION_SCREENER, limit=limit)
+
+
 def event_only_watchlist(
     rows: Iterable[Any],
     *,
@@ -158,6 +249,20 @@ def event_only_watchlist(
     return _ranked_candidates(scored, EVENT_ONLY_WATCHLIST, limit=limit)
 
 
+def news_event_only_screener(
+    rows: Iterable[Any],
+    *,
+    limit: int | None = None,
+) -> tuple[BaselineCandidate, ...]:
+    """Mission-brief news/event-only baseline independent of price momentum."""
+
+    return _rename_candidates(
+        event_only_watchlist(rows, limit=limit),
+        baseline=NEWS_EVENT_ONLY_SCREENER,
+        reason_prefix="News/event-only",
+    )
+
+
 def random_eligible_universe(
     rows: Iterable[Any],
     *,
@@ -180,6 +285,73 @@ def random_eligible_universe(
         reason = f"Deterministic seeded eligible-universe sample seed={seed_text}"
         scored.append((random_score, ticker, as_of, payload, reason))
     return _ranked_candidates(scored, RANDOM_ELIGIBLE_UNIVERSE, limit=limit)
+
+
+def random_sector_matched_basket(
+    rows: Iterable[Any],
+    *,
+    seed: int | str,
+    reference_rows: Iterable[Any] | None = None,
+    limit: int | None = None,
+) -> tuple[BaselineCandidate, ...]:
+    """Return a deterministic random sample with the reference sector mix."""
+
+    row_tuple = tuple(row for row in rows if _is_eligible(row) and _ticker(row) is not None)
+    if limit is not None and limit <= 0:
+        return ()
+    target = max(0, limit if limit is not None else 10)
+    sector_counts = _sector_counts(reference_rows or (), fallback_count=target)
+    if not sector_counts:
+        return _rename_candidates(
+            random_eligible_universe(row_tuple, seed=seed, limit=limit),
+            baseline=RANDOM_SECTOR_MATCHED_BASKET,
+            reason_prefix="Random sector-matched",
+        )
+    groups: dict[str, list[Any]] = defaultdict(list)
+    for row in row_tuple:
+        groups[_sector(row)].append(row)
+    selected: list[tuple[float, str, Any, Mapping[str, Any], str]] = []
+    selected_tickers: set[str] = set()
+    seed_text = str(seed)
+    for sector, count in sorted(sector_counts.items()):
+        group = sorted(
+            groups.get(sector, ()),
+            key=lambda row: _deterministic_random(seed_text, _ticker(row) or "", _as_of(row)),
+            reverse=True,
+        )
+        for row in group[:count]:
+            ticker = _ticker(row)
+            if ticker is None or ticker in selected_tickers:
+                continue
+            score = _deterministic_random(seed_text, ticker, _as_of(row))
+            selected_tickers.add(ticker)
+            selected.append(
+                (
+                    score,
+                    ticker,
+                    _as_of(row),
+                    {"seed": seed_text, "sector": sector, "matched_sector": True},
+                    f"Deterministic random sector-matched sample sector={sector}",
+                )
+            )
+    if len(selected) < target:
+        remaining = [row for row in row_tuple if (_ticker(row) or "") not in selected_tickers]
+        fill = random_eligible_universe(
+            remaining,
+            seed=f"{seed_text}:fill",
+            limit=target - len(selected),
+        )
+        selected.extend(
+            (
+                candidate.score,
+                candidate.ticker,
+                candidate.as_of,
+                {**candidate.payload, "matched_sector": False},
+                "Deterministic random fill after sector matching",
+            )
+            for candidate in fill
+        )
+    return _ranked_candidates(selected, RANDOM_SECTOR_MATCHED_BASKET, limit=limit)
 
 
 def user_watchlist(
@@ -243,6 +415,54 @@ def _ranked_candidates(
         )
         for rank, (score, ticker, as_of, payload, reason) in enumerate(ordered, start=1)
     )
+
+
+def _rename_candidates(
+    candidates: Iterable[BaselineCandidate],
+    *,
+    baseline: str,
+    reason_prefix: str,
+) -> tuple[BaselineCandidate, ...]:
+    return tuple(
+        BaselineCandidate(
+            baseline=baseline,
+            ticker=candidate.ticker,
+            as_of=candidate.as_of,
+            rank=candidate.rank,
+            score=candidate.score,
+            reason=f"{reason_prefix}: {candidate.reason}",
+            payload=candidate.payload,
+        )
+        for candidate in candidates
+    )
+
+
+def _sector_counts(
+    rows: Iterable[Any],
+    *,
+    fallback_count: int,
+) -> dict[str, int]:
+    counts = Counter(
+        _sector(row)
+        for row in rows
+        if _is_eligible(row) and _ticker(row) is not None
+    )
+    if counts:
+        return dict(counts)
+    return {"UNKNOWN": fallback_count} if fallback_count > 0 else {}
+
+
+def _sector(row: Any) -> str:
+    return (
+        _maybe_text(
+            _first_present(
+                _lookup(row, "sector"),
+                _lookup(row, "gics_sector"),
+                _lookup(row, "sector_name"),
+            )
+        )
+        or "UNKNOWN"
+    ).upper()
 
 
 def _relative_return(row: Any, *, horizon: str, benchmark: str) -> float | None:
@@ -490,14 +710,24 @@ def _format_score(value: float | None) -> str:
 
 __all__ = [
     "EVENT_ONLY_WATCHLIST",
+    "NEWS_EVENT_ONLY_SCREENER",
     "RANDOM_ELIGIBLE_UNIVERSE",
+    "RANDOM_SECTOR_MATCHED_BASKET",
+    "RELATIVE_STRENGTH_SCREENER",
     "SECTOR_RELATIVE_MOMENTUM",
+    "SECTOR_ETF_ROTATION_SCREENER",
     "SPY_RELATIVE_MOMENTUM",
     "USER_WATCHLIST",
+    "VOLUME_BREAKOUT_SCREENER",
     "BaselineCandidate",
     "event_only_watchlist",
+    "news_event_only_screener",
     "random_eligible_universe",
+    "random_sector_matched_basket",
+    "relative_strength_screener",
+    "sector_etf_rotation_screener",
     "sector_relative_momentum",
     "spy_relative_momentum",
     "user_watchlist",
+    "volume_breakout_screener",
 ]

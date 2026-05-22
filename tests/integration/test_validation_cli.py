@@ -151,6 +151,17 @@ def test_validation_report_label_and_paper_cli_workflow(
     assert report["useful_alert_rate"] == 1.0
     assert report["leakage_failure_count"] == 0
     assert "random_eligible_universe" in report["baseline_comparison"]
+    for baseline in (
+        "relative_strength_screener",
+        "volume_breakout_screener",
+        "sector_etf_rotation_screener",
+        "news_event_only_screener",
+        "random_sector_matched_basket",
+    ):
+        comparison = report["baseline_comparison"][baseline]
+        assert comparison["sample_status"] in {"measured", "insufficient_evidence"}
+        assert "baseline_precision_at_10" in comparison
+        assert "result_vs_market_radar" in comparison
     assert report["missed_opportunity_count"] > 0
     assert main(["validation-report", "--run-id", run_id, "--available-at", AVAILABLE_AT_TEXT]) == 0
     captured = capsys.readouterr()

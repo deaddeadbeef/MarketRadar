@@ -155,10 +155,15 @@ from catalyst_radar.universe.builder import UniverseBuilder
 from catalyst_radar.universe.filters import UniverseFilterConfig
 from catalyst_radar.validation.baselines import (
     event_only_watchlist,
+    news_event_only_screener,
     random_eligible_universe,
+    random_sector_matched_basket,
+    relative_strength_screener,
+    sector_etf_rotation_screener,
     sector_relative_momentum,
     spy_relative_momentum,
     user_watchlist,
+    volume_breakout_screener,
 )
 from catalyst_radar.validation.models import (
     PaperDecision,
@@ -2413,7 +2418,12 @@ def main(argv: list[str] | None = None) -> int:
                 as_of_end=as_of_end,
                 available_at=available_at,
             )
-            all_results = [*labeled_results, *baseline_results]
+            labeled_baseline_results = _with_outcome_labels(
+                engine,
+                baseline_results,
+                available_at=outcome_available_at,
+            )
+            all_results = [*labeled_results, *labeled_baseline_results]
             count = validation_repo.upsert_validation_results(all_results)
             report = build_validation_report(
                 run_id,
@@ -2438,7 +2448,7 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print(
             f"validation_replay run_id={run_id} candidate_results={len(labeled_results)} "
-            f"baseline_results={len(baseline_results)} results={count} "
+            f"baseline_results={len(labeled_baseline_results)} results={count} "
             f"decision_available_at={available_at.isoformat()} "
             f"outcome_available_at={outcome_available_at.isoformat()} "
             f"leakage_failures={metrics['leakage_failure_count']} "
@@ -3754,6 +3764,16 @@ def _baseline_validation_results(
             available_at=available_at,
         )
         candidates = [
+            *relative_strength_screener(baseline_rows, limit=10),
+            *volume_breakout_screener(baseline_rows, limit=10),
+            *sector_etf_rotation_screener(baseline_rows, limit=10),
+            *news_event_only_screener(baseline_rows, limit=10),
+            *random_sector_matched_basket(
+                baseline_rows,
+                reference_rows=rows_for_day,
+                seed=f"{run_id}:{as_of.isoformat()}:sector",
+                limit=10,
+            ),
             *spy_relative_momentum(baseline_rows, limit=10),
             *sector_relative_momentum(baseline_rows, limit=10),
             *event_only_watchlist(baseline_rows, limit=10),
@@ -3846,6 +3866,7 @@ def _historical_bar_baseline_rows(
             daily_bars.c.ticker,
             daily_bars.c.date,
             daily_bars.c.close,
+            daily_bars.c.volume,
         )
         .where(
             daily_bars.c.date <= as_of,
@@ -3853,14 +3874,15 @@ def _historical_bar_baseline_rows(
         )
         .order_by(daily_bars.c.ticker, daily_bars.c.date.desc())
     )
-    by_ticker: dict[str, list[tuple[date, float]]] = {}
+    by_ticker: dict[str, list[tuple[date, float, float | None]]] = {}
     with engine.connect() as conn:
         for row in conn.execute(stmt):
             close = _float_or_none(row.close)
             if close is None or close <= 0:
                 continue
+            volume = _float_or_none(row.volume)
             ticker = str(row.ticker).upper()
-            by_ticker.setdefault(ticker, []).append((row.date, close))
+            by_ticker.setdefault(ticker, []).append((row.date, close, volume))
 
     spy_bars = by_ticker.get("SPY", [])
     spy_return_20d = _window_return(spy_bars, lookback=20)
@@ -3873,6 +3895,8 @@ def _historical_bar_baseline_rows(
         ret_60d = _window_return(bars, lookback=60)
         if ret_20d is None and ret_60d is None:
             continue
+        latest_volume = bars[0][2]
+        average_volume = _average_volume(bars[:20])
         result.append(
             {
                 "ticker": ticker,
@@ -3883,6 +3907,8 @@ def _historical_bar_baseline_rows(
                 "spy_return_20d": spy_return_20d,
                 "spy_return_60d": spy_return_60d,
                 "sector_relative_score": ret_20d,
+                "latest_volume": latest_volume,
+                "avg_volume_20d": average_volume,
                 "payload": {
                     "baseline_source": "daily_bars",
                     "bar_count": len(bars),
@@ -3893,7 +3919,7 @@ def _historical_bar_baseline_rows(
 
 
 def _window_return(
-    bars_desc: list[tuple[date, float]],
+    bars_desc: list[tuple[date, float, float | None]],
     *,
     lookback: int,
 ) -> float | None:
@@ -3905,6 +3931,13 @@ def _window_return(
     if earliest <= 0:
         return None
     return (latest / earliest) - 1
+
+
+def _average_volume(bars_desc: list[tuple[date, float, float | None]]) -> float | None:
+    volumes = [volume for (_, _, volume) in bars_desc if volume is not None and volume > 0]
+    if not volumes:
+        return None
+    return sum(volumes) / len(volumes)
 
 
 def _baseline_row_from_result(row: ValidationResult) -> dict[str, object]:
@@ -3955,8 +3988,20 @@ def _baseline_row_from_result(row: ValidationResult) -> dict[str, object]:
         "sector_relative_score",
         "sector_momentum_score",
         "rs_20_sector",
+        "volume_breakout_ratio",
+        "relative_volume",
+        "volume_ratio",
+        "latest_volume",
+        "avg_volume_20d",
+        "sector_rotation_score",
+        "sector_etf_return_20d",
+        "sector_return_20d",
     ):
         value = _float_or_none(merged.get(name))
+        if value is not None:
+            baseline_row[name] = value
+    for name in ("sector", "gics_sector", "sector_etf"):
+        value = merged.get(name)
         if value is not None:
             baseline_row[name] = value
     if event_support is not None:
