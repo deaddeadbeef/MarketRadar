@@ -70,6 +70,10 @@ that scheduled provider.
 For one-off local fixture checks, `run-daily --provider csv` is stricter: it
 pins the run to CSV market bars and the bundled news fixture even if your
 scheduled environment is configured for Polygon/Massive or SEC.
+For live scheduled providers, `run-daily` fails closed unless
+`--confirm-external-call` is present. The unconfirmed JSON output reports
+`external_calls_planned`, `db_writes_planned`, `external_calls_made=0`, and
+`db_writes_made=0` before any provider call or database write.
 
 A full-market scan means all active securities currently stored locally, not the
 few demo tickers and not the smaller `liquid-us` liquidity filter. Polygon/Massive
@@ -82,7 +86,7 @@ catalyst-radar priced-in-preflight
 catalyst-radar priced-in-preflight --stocks-only
 catalyst-radar ingest-polygon tickers --confirm-external-call
 catalyst-radar ingest-polygon grouped-daily --date <LATEST_TRADING_DATE> --confirm-external-call
-catalyst-radar run-daily --as-of <LATEST_TRADING_DATE> --available-at <UTC-now> --provider polygon --json
+catalyst-radar run-daily --as-of <LATEST_TRADING_DATE> --available-at <UTC-now> --provider polygon --confirm-external-call --json
 ```
 
 `priced-in-preflight` is zero-call. It explains why the current queue may only

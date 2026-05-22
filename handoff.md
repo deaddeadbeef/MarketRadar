@@ -1,6 +1,36 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 04:24:58 +08:00
+Last updated: 2026-05-23 04:38:55 +08:00
+
+## Latest Run-Daily External-Call Approval Boundary Slice
+
+Last updated: 2026-05-23 04:38:55 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar must reach trusted broad-market priced-in / not-yet-priced-in shadow scans, then prove usefulness with ledger rows, outcomes, baselines, and monthly value reports.
+- This slice closes a P0 no-hidden-call boundary before continuing shadow/value work.
+- This is useful because `run-daily` is the command that eventually executes broad-market shadow scans; it must not silently call Polygon/Massive or SEC just because the operator's environment is configured for live providers.
+
+Fix in this slice:
+
+- `run-daily` now accepts `--confirm-external-call`.
+- Before creating schema or calling the scheduler, `run-daily` computes a provider-scope approval packet from the resolved scheduled providers.
+- If Polygon/Massive or SEC live calls are planned and `--confirm-external-call` is absent, the command exits 2 with `status=approval_required`, `external_calls_planned`, `db_writes_planned`, `external_calls_made=0`, `db_writes_made=0`, and a rerun command containing the approval flag.
+- `run-daily --provider csv` remains the local zero-call override path even when the scheduled environment is configured for Polygon/Massive or SEC.
+
+Validation observed in this slice:
+
+- With this worktree pinned through `PYTHONPATH`, focused run-daily CLI tests passed: 5 passed.
+- With this worktree pinned through `PYTHONPATH`, focused run-daily live-plan regressions passed: 3 passed.
+- `ruff check` passed for touched CLI source and tests.
+- `git diff --check` passed.
+- A zero-call smoke against a throwaway temp DB and live-provider-looking environment returned `status=approval_required`, `external_calls_planned=3`, `db_writes_planned=1`, `external_calls_made=0`, `db_writes_made=0`, exit code 2, and `db_exists=False`.
+
+Operator note:
+
+- The shared virtualenv is editable-installed to the main checkout. When testing an isolated worktree with that venv, set `PYTHONPATH` to the worktree's `src` path or the command may import `C:\Users\fpan1\MarketRadar\src` instead of the branch under test.
+- One attempted smoke before that `PYTHONPATH` correction imported main instead of this worktree and made one Polygon/Massive grouped-daily HTTP request with a dummy key, receiving HTTP 401. No SEC, Schwab, OpenAI, broker, order, or app calls were made in that mistaken smoke. Treat that as evidence that this boundary is necessary.
 
 ## Latest Saved-File Residual-Gap Status Slice
 
