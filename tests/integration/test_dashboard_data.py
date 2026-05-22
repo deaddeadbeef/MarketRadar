@@ -1710,9 +1710,22 @@ def test_priced_in_answer_empty_universe_keeps_universe_as_next_action(
     assert payload["evidence_completeness"]["next_action"] == payload["next_action"]
     assert payload["full_market_trust_gate"]["first_blocker"] == "universe"
     assert payload["full_market_trust_gate"]["next_action"] == payload["next_action"]
+    assert payload["full_market_trust_gate"]["setup_blocker"]["approval_required"] is True
+    assert payload["full_market_trust_gate"]["setup_blocker"][
+        "external_calls_required"
+    ] == 1
+    assert payload["full_market_trust_gate"]["setup_blocker"]["db_writes_required"] == 1
     assert "after_current_blocker" not in payload["full_market_trust_gate"]
     assert payload["operator_next_step"]["first_blocker"] == "universe"
     assert payload["operator_next_step"]["command"] == payload["next_command"]
+    assert payload["operator_next_step"]["approval_required"] is True
+    assert payload["operator_next_step"]["external_calls_required"] == 1
+    assert payload["operator_next_step"]["db_writes_required"] == 1
+    assert payload["operator_next_step"]["request_body"] == {
+        "provider": "polygon",
+        "max_pages": 1,
+        "confirm_external_call": True,
+    }
 
 
 def test_priced_in_full_scan_summary_accounts_for_benchmark_exclusions() -> None:
@@ -5384,12 +5397,24 @@ def test_priced_in_preflight_payload_reports_exact_next_steps(tmp_path: Path) ->
     assert payload["status"] in {"blocked", "attention", "ready"}
     assert payload["first_blocker"]["schema_version"] == "priced-in-first-blocker-v1"
     assert payload["first_blocker"]["area"] == "universe"
+    assert payload["first_blocker"]["approval_required"] is True
+    assert payload["first_blocker"]["external_calls_required"] == 2
+    assert payload["first_blocker"]["db_writes_required"] == 1
     assert payload["first_gap"] == payload["first_blocker"]["area"]
     assert payload["operator_next_step"]["schema_version"] == (
         "priced-in-preflight-next-step-v1"
     )
     assert payload["operator_next_step"]["area"] == payload["first_blocker"]["area"]
+    assert payload["operator_next_step"]["approval_required"] is True
+    assert payload["operator_next_step"]["external_calls_required"] == 2
+    assert payload["operator_next_step"]["db_writes_required"] == 1
+    assert payload["operator_next_step"]["request_body"] == {
+        "provider": "polygon",
+        "max_pages": 2,
+        "confirm_external_call": True,
+    }
     assert payload["operator_next_step"]["external_calls_made"] == 0
+    assert payload["operator_next_step"]["db_writes_made"] == 0
     assert payload["target_as_of"] == AS_OF.date().isoformat()
     assert payload["target_as_of_source"] == "latest_daily_bar"
     assert payload["latest_run_as_of"] is None

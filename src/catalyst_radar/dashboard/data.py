@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
@@ -3719,6 +3720,7 @@ def _priced_in_answer_operator_next_step(
     """Return the one operator action that advances the priced-in answer."""
     gate = _row_dict(full_market_trust_gate)
     recommended = _mapping_value(gate, "recommended_action")
+    setup_blocker = _mapping_value(gate, "setup_blocker")
     trusted = bool(gate.get("trusted_full_market_answer"))
     first_blocker = str(gate.get("first_blocker") or "").strip()
     first_gap_count = int(_finite_float(gate.get("first_gap_count")))
@@ -3771,6 +3773,16 @@ def _priced_in_answer_operator_next_step(
         action_reason = next_action or gate.get("next_action") or answer_text
         command = command or str(gate.get("next_command") or "").strip() or None
         tui_command = command
+        if setup_blocker:
+            api = setup_blocker.get("api") or api
+            request_body = setup_blocker.get("request_body") or request_body
+            approval_required = bool(setup_blocker.get("approval_required"))
+            calls_required = int(
+                _finite_float(setup_blocker.get("external_calls_required"))
+            )
+            writes_required = int(
+                _finite_float(setup_blocker.get("db_writes_required"))
+            )
         response_after_action = (
             "Rerun `catalyst-radar priced-in-answer` after the blocker changes."
         )
@@ -3804,6 +3816,9 @@ def _priced_in_answer_operator_next_step(
         "approval_required": approval_required,
         "external_calls_required": calls_required,
         "db_writes_required": writes_required,
+        "call_write_boundary": (
+            setup_blocker.get("call_write_boundary") if setup_blocker else None
+        ),
         "response_after_action": response_after_action,
         "external_calls_made": 0,
         "db_writes_made": 0,
@@ -4102,7 +4117,17 @@ def priced_in_answer_payload(
             "action": setup_blocker.get("action"),
             "command": setup_blocker.get("command"),
             "api": setup_blocker.get("api"),
+            "request_body": setup_blocker.get("request_body"),
+            "approval_required": bool(setup_blocker.get("approval_required")),
+            "external_calls_required": int(
+                _finite_float(setup_blocker.get("external_calls_required"))
+            ),
+            "db_writes_required": int(
+                _finite_float(setup_blocker.get("db_writes_required"))
+            ),
+            "call_write_boundary": setup_blocker.get("call_write_boundary"),
             "external_calls_made": 0,
+            "db_writes_made": 0,
         }
     if market_bar_blocker_detail and market_bar_blocker_detail.get(
         "recommended_action"
@@ -8041,6 +8066,10 @@ def priced_in_preflight_payload(
         evidence_plan,
         resolved_source_coverage,
     )
+    first_blocker = _priced_in_setup_blocker_with_call_write_boundary(
+        first_blocker,
+        config,
+    )
     operator_next_step = _priced_in_preflight_operator_next_step(
         first_blocker,
         evidence_plan,
@@ -8194,6 +8223,81 @@ def _priced_in_preflight_first_blocker(
     }
 
 
+def _priced_in_setup_blocker_with_call_write_boundary(
+    first_blocker: Mapping[str, object],
+    config: AppConfig,
+) -> dict[str, object]:
+    blocker = _row_dict(first_blocker)
+    area = str(blocker.get("area") or "").strip()
+    if area != "universe":
+        return blocker
+
+    command = str(blocker.get("command") or "").strip()
+    provider = _provider_name(config.daily_market_provider, default="csv")
+    if provider == "polygon" or "ingest-polygon tickers" in command:
+        max_pages = _cli_int_option(command, "--max-pages") or max(
+            1,
+            int(config.polygon_tickers_max_pages),
+        )
+        return {
+            **blocker,
+            "approval_required": True,
+            "external_calls_required": max_pages,
+            "db_writes_required": 1,
+            "db_writes_count_kind": "operation",
+            "provider_calls_count_kind": "polygon_ticker_page_cap",
+            "call_write_boundary": (
+                "Executing this universe seed may call Polygon/Massive for up to "
+                f"{max_pages} ticker page(s) and perform one local DB import job "
+                "that writes returned security/provider rows."
+            ),
+            "request_body": {
+                "provider": "polygon",
+                "max_pages": max_pages,
+                "confirm_external_call": True,
+            },
+        }
+
+    if "ingest-csv" in command:
+        return {
+            **blocker,
+            "approval_required": False,
+            "external_calls_required": 0,
+            "db_writes_required": 1,
+            "db_writes_count_kind": "operation",
+            "provider_calls_count_kind": "none",
+            "call_write_boundary": (
+                "Executing this local CSV universe seed performs one local DB "
+                "import job and makes zero provider calls."
+            ),
+            "request_body": None,
+        }
+
+    return blocker
+
+
+def _cli_int_option(command: str, option: str) -> int | None:
+    if not command:
+        return None
+    try:
+        parts = shlex.split(command)
+    except ValueError:
+        parts = command.split()
+    prefix = f"{option}="
+    for index, part in enumerate(parts):
+        if part == option and index + 1 < len(parts):
+            try:
+                return int(parts[index + 1])
+            except ValueError:
+                return None
+        if part.startswith(prefix):
+            try:
+                return int(part[len(prefix) :])
+            except ValueError:
+                return None
+    return None
+
+
 def _priced_in_preflight_operator_next_step(
     first_blocker: Mapping[str, object],
     evidence_plan: Mapping[str, object],
@@ -8207,10 +8311,18 @@ def _priced_in_preflight_operator_next_step(
         "action": action,
         "command": command,
         "api": first_blocker.get("api"),
+        "request_body": first_blocker.get("request_body"),
         "manual_step": bool(first_blocker.get("manual_step")),
         "after_manual_command": first_blocker.get("after_manual_command"),
         "operator_step": _row_dict(_mapping_value(first_blocker, "operator_step")),
+        "approval_required": bool(first_blocker.get("approval_required")),
+        "external_calls_required": int(
+            _finite_float(first_blocker.get("external_calls_required"))
+        ),
+        "db_writes_required": int(_finite_float(first_blocker.get("db_writes_required"))),
+        "call_write_boundary": first_blocker.get("call_write_boundary"),
         "external_calls_made": 0,
+        "db_writes_made": 0,
     }
 
 def _priced_in_evidence_plan(rows: Sequence[Mapping[str, object]]) -> dict[str, object]:
