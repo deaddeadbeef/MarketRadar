@@ -1,6 +1,37 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 02:22:00 +08:00
+Last updated: 2026-05-23 02:43:00 +08:00
+
+## Latest Battle-Test Investable Readiness Gate Slice
+
+Last updated: 2026-05-23 02:43:00 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice advances mission-brief P10 by defining the strict release gate before any limited-capital pilot.
+- This slice does not add provider, broker, order, OpenAI, SEC, Polygon/Massive, Schwab, web, or app calls from the product.
+- This is useful because MarketRadar can now state exactly why it is not capital-ready even when shadow readiness or current candidate readiness improves.
+
+Fix in this slice:
+
+- Added a zero-call `investable-readiness-v1` payload behind `catalyst-radar assert-investable-readiness --json`.
+- Added API route `GET /api/radar/investable/readiness` and pointed `scripts/assert-investable-readiness.ps1` at the stricter gate.
+- The gate remains stricter than `assert-shadow-ready` and fails closed until 30 valid full-scan shadow days, complete market-bar coverage, outcome tracking, baseline comparisons, precision@5/10, false-positive feedback, cost per useful alert, monthly value proof, balanced Decision Cards, paper-trading logs, disabled broker orders, disabled real LLM modes, and exportable audit paths are present.
+- The payload includes a canonical next action, blockers, call/write counters, export commands, and an explicit decision-support-only boundary.
+- README documents the updated operator contract because the readiness command contract changed.
+
+Validation observed in this slice:
+
+- Focused investable/shadow readiness CLI/API/dashboard/security/local-script tests passed: 9 passed.
+- `ruff check` passed for touched source and tests.
+- `git diff --check` passed.
+- A source-tree CLI smoke returned `schema_version=investable-readiness-v1`, `status=blocked`, `decision_support_only=True`, `external_calls_made=0`, `db_writes_made=0`, and exit code 1 as expected for an unproven local DB.
+- A broader five-file integration run was attempted but exceeded the 300-second tool timeout before producing a result, so it is not counted as passing.
+
+Current live blocker:
+
+- This gate is expected to fail closed today. It defines battle-test readiness; it does not make MarketRadar investment-ready and does not authorize capital, order submission, or investment advice.
 
 ## Latest LLM Value Accounting Slice
 

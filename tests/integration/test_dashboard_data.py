@@ -49,6 +49,7 @@ from catalyst_radar.dashboard.data import (
     candidate_rows_with_market_context,
     data_source_coverage_payload,
     dotenv_activation_status_payload,
+    investable_readiness_payload,
     investment_readiness_payload,
     live_activation_plan_payload,
     live_data_activation_contract_payload,
@@ -136,6 +137,7 @@ FUTURE_AT = AVAILABLE_AT + timedelta(days=30)
 def _isolate_llm_config_env(monkeypatch) -> None:
     for key in (
         "CATALYST_ENABLE_PREMIUM_LLM",
+        "CATALYST_ENABLE_AGENT_SDK",
         "CATALYST_LLM_DAILY_BUDGET_USD",
         "CATALYST_LLM_MONTHLY_BUDGET_USD",
         "CATALYST_LLM_TASK_DAILY_CAPS",
@@ -1182,6 +1184,66 @@ def test_shadow_readiness_payload_blocks_enabled_broker_orders(
     assert payload["ready"] is False
     assert [row["code"] for row in payload["blockers"]] == ["broker_orders_disabled"]
     assert payload["safety"]["broker_order_submission_enabled"] is True
+
+
+def test_investable_readiness_payload_stays_stricter_than_shadow_ready(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+
+    payload = investable_readiness_payload(
+        engine,
+        AppConfig.from_env({}),
+        month="2026-05",
+        available_at=AVAILABLE_AT,
+        radar_readiness={
+            "status": "ready",
+            "safe_to_make_investment_decision": True,
+            "headline": "Current candidate gate is clear.",
+            "next_action": "Review manually.",
+        },
+        shadow_readiness={
+            "status": "ready",
+            "ready": True,
+            "headline": "Shadow gate is clear.",
+            "canonical_next_action": "Run shadow scan.",
+        },
+        validation_summary={
+            "latest_run": {"id": "validation-1", "status": "success"},
+            "report": {
+                "run_id": "validation-1",
+                "candidate_count": 1,
+                "false_positive_count": 0,
+                "cost_per_useful_alert": 1.5,
+                "baseline_comparison": {},
+            },
+        },
+        value_report={
+            "verdict": "pass",
+            "verdict_reason": "Seeded value evidence passed.",
+            "decision_support_note": "Decision-support value, not profit.",
+            "entry_count": 2,
+            "useful_insights_count": 2,
+            "label_counts": {"useful": 2},
+            "cost_per_useful_alert": 1.5,
+            "net_decision_support_value_usd": 45.0,
+            "target_monthly_value_usd": 40.0,
+        },
+    )
+
+    assert payload["schema_version"] == "investable-readiness-v1"
+    assert payload["status"] == "blocked"
+    assert payload["ready"] is False
+    assert payload["decision_support_only"] is True
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
+    blocker_codes = {row["code"] for row in payload["blockers"]}
+    assert "shadow_gate_ready" not in blocker_codes
+    assert "thirty_valid_full_shadow_days" in blocker_codes
+    assert "baseline_comparisons" in blocker_codes
+    assert "outcome_tracking" in blocker_codes
+    assert payload["call_boundary"]["assert_external_calls_required"] == 0
+    assert payload["limited_capital_pilot_status"] == "future_milestone"
 
 
 def test_operator_next_step_payload_uses_top_queue_row() -> None:

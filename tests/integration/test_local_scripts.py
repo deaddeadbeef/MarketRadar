@@ -389,18 +389,15 @@ def test_assert_investable_readiness_script_fails_closed_without_external_calls(
     text = script.read_text(encoding="utf-8")
 
     assert script.is_file()
-    assert "/api/radar/readiness" in text
-    assert "/api/radar/live-activation" in text
-    assert "/api/radar/runs/call-plan" in text
-    assert "/api/ops/telemetry?limit={0}" in text
-    assert "[int]$TelemetryLimit = 8" in text
-    assert "telemetry_limit" in text
-    assert "[string]::IsNullOrWhiteSpace($Body)" in text
-    assert "safe_to_make_investment_decision" in text
-    assert "Live activation is" in text
-    assert "Call plan is blocked" in text
-    assert "Telemetry has attention events" in text
-    assert "External calls made: 0" in text
+    assert "/api/radar/investable/readiness" in text
+    assert "[string]$Month = \"\"" in text
+    assert "[string]$AvailableAt = \"\"" in text
+    assert "[Uri]::EscapeDataString" in text
+    assert "decision_support_only" in text
+    assert "highest_allowed_action_state" in text
+    assert "limited_capital_pilot_status" in text
+    assert "External calls made:" in text
+    assert "DB writes made" in text
     assert "exit 1" in text
     assert "CATALYST_POLYGON_API_KEY=" not in text
     assert "OPENAI_API_KEY=" not in text

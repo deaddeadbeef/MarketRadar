@@ -723,18 +723,30 @@ powershell -ExecutionPolicy Bypass -File scripts/export-pr-ledger.ps1 -OutputPat
 `scripts/export-operator-evidence.ps1` prefers that ignored current snapshot
 when it exists, then falls back to the checked-in ledger.
 
-For a zero-call deployment/readiness gate that exits non-zero until Market Radar
-is safe to use for investment decisions:
+For the zero-call battle-test release gate that exits non-zero until Market
+Radar has enough evidence for a future limited-capital manual review:
+
+```powershell
+catalyst-radar assert-investable-readiness --json
+```
+
+The same payload is available at `GET /api/radar/investable/readiness`; the
+PowerShell wrapper below calls that endpoint:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/assert-investable-readiness.ps1
 ```
 
-This checks local readiness, live activation, call-plan, and telemetry state. It
-makes 0 Polygon, SEC, Schwab, or OpenAI calls and is expected to fail closed
-while required live credentials or data-quality gates are missing.
+This gate is stricter than shadow readiness. It requires 30 valid full-scan
+shadow days, complete market-bar coverage, forward outcomes, baseline
+comparisons, precision@5/10, false-positive feedback, cost per useful alert,
+monthly value evidence, balanced Decision Cards, paper-trading logs, disabled
+broker order submission, and disabled real LLM modes. It makes 0 Polygon, SEC,
+Schwab, OpenAI, broker, order, or web calls and 0 database writes. Passing this
+gate still means decision support only; the highest allowed product state is
+`EligibleForManualBuyReview`, not autonomous trading or investment advice.
 
-For the stricter daily shadow-mode gate, use:
+For the daily shadow-mode gate, use:
 
 ```powershell
 catalyst-radar assert-shadow-ready --json

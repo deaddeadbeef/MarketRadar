@@ -82,6 +82,7 @@ from catalyst_radar.storage.schema import (
 )
 from catalyst_radar.storage.validation_repositories import ValidationRepository
 from catalyst_radar.validation.reports import (
+    MISSION_BRIEF_BASELINES,
     USEFUL_ALERT_LABELS,
     build_validation_report,
     validation_report_payload,
@@ -9816,6 +9817,129 @@ def shadow_readiness_payload(
     }
 
 
+def investable_readiness_payload(
+    engine: Engine,
+    config: AppConfig,
+    *,
+    month: str | None = None,
+    available_at: datetime | None = None,
+    radar_readiness: Mapping[str, object] | None = None,
+    shadow_readiness: Mapping[str, object] | None = None,
+    validation_summary: Mapping[str, object] | None = None,
+    value_report: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    """Return the local-only battle-test gate for future capital pilots."""
+    cutoff = _as_utc_datetime_or_none(available_at) or datetime.now(UTC)
+    report_month = month or cutoff.strftime("%Y-%m")
+    readiness = (
+        _row_dict(radar_readiness)
+        if isinstance(radar_readiness, Mapping)
+        else radar_readiness_payload(engine, config)
+    )
+    validation = (
+        _row_dict(validation_summary)
+        if isinstance(validation_summary, Mapping)
+        else load_validation_summary(engine)
+    )
+    shadow = (
+        _row_dict(shadow_readiness)
+        if isinstance(shadow_readiness, Mapping)
+        else shadow_readiness_payload(
+            engine,
+            config,
+            radar_readiness=readiness,
+            validation_summary=validation,
+        )
+    )
+    monthly_value = (
+        _row_dict(value_report)
+        if isinstance(value_report, Mapping)
+        else monthly_value_report_payload(
+            engine,
+            month=report_month,
+            available_at=cutoff,
+        )
+    )
+    repo = ValidationRepository(engine)
+    shadow_runs = repo.list_shadow_mode_runs(available_at=cutoff, limit=120)
+    value_entries = repo.list_value_ledger_entries(available_at=cutoff, limit=10_000)
+    value_outcomes = repo.list_value_outcomes(available_at=cutoff, limit=10_000)
+    paper_trades = repo.list_paper_trades(available_at=cutoff)
+    decision_card_evidence = _decision_card_evidence_summary(engine, available_at=cutoff)
+    checks = _investable_readiness_checks(
+        config,
+        radar_readiness=readiness,
+        shadow_readiness=shadow,
+        validation_summary=validation,
+        monthly_value_report=monthly_value,
+        shadow_runs=[_dataclass_dict(run) for run in shadow_runs],
+        value_entries=[_dataclass_dict(entry) for entry in value_entries],
+        value_outcomes=[_dataclass_dict(outcome) for outcome in value_outcomes],
+        paper_trades=[_dataclass_dict(trade) for trade in paper_trades],
+        decision_card_evidence=decision_card_evidence,
+    )
+    blockers = [row for row in checks if row.get("status") == "blocked"]
+    first_blocker = blockers[0] if blockers else {}
+    ready = not blockers
+    return {
+        "schema_version": "investable-readiness-v1",
+        "status": "ready" if ready else "blocked",
+        "ready": ready,
+        "decision_support_only": True,
+        "investment_advice": False,
+        "autonomous_trading_enabled": False,
+        "limited_capital_pilot_status": (
+            "future_milestone" if not ready else "manual_review_required"
+        ),
+        "highest_allowed_action_state": "EligibleForManualBuyReview",
+        "headline": (
+            "Battle-test evidence supports future limited-capital manual review."
+            if ready
+            else f"{len(blockers)} blocker(s) prevent any capital-readiness claim."
+        ),
+        "canonical_next_action": (
+            "Keep order submission disabled and run a human trading-safety review."
+            if ready
+            else str(first_blocker.get("next_action") or "Clear the first blocker.")
+        ),
+        "useful_definition": (
+            "Useful means MarketRadar repeatedly scans the intended broad universe, "
+            "labels surfaced insights, tracks forward outcomes, beats or explains "
+            "simple baselines, shows cost per useful alert, and plausibly clears "
+            "the $40/month decision-support value target without hidden calls or "
+            "autonomous trading."
+        ),
+        "month": report_month,
+        "available_at": cutoff.isoformat(),
+        "checks": checks,
+        "blockers": blockers,
+        "call_boundary": {
+            "schema_version": "investable-call-boundary-v1",
+            "assert_external_calls_required": 0,
+            "assert_db_writes_required": 0,
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+            "provider_calls_allowed_by_gate": False,
+            "broker_order_submission_allowed_by_gate": False,
+            "openai_calls_allowed_by_gate": False,
+        },
+        "exports": {
+            "shadow_runs": "catalyst-radar shadow-mode list --json",
+            "paper_and_validation": "catalyst-radar dashboard-snapshot --json",
+            "monthly_value": f"catalyst-radar value-report --month {report_month} --json",
+        },
+        "snapshots": {
+            "radar_readiness_status": readiness.get("status") or "unknown",
+            "shadow_readiness_status": shadow.get("status") or "unknown",
+            "validation_run": _row_dict(_mapping_value(validation, "latest_run")),
+            "monthly_value_verdict": monthly_value.get("verdict") or "unknown",
+            "decision_card_evidence": decision_card_evidence,
+        },
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+    }
+
+
 def _shadow_readiness_checks(
     config: AppConfig,
     *,
@@ -10116,6 +10240,514 @@ def _shadow_call_plan_row_status(
     layer: str,
 ) -> str:
     return str(_shadow_call_plan_row(rows, layer).get("status") or "")
+
+
+def _investable_readiness_checks(
+    config: AppConfig,
+    *,
+    radar_readiness: Mapping[str, object],
+    shadow_readiness: Mapping[str, object],
+    validation_summary: Mapping[str, object],
+    monthly_value_report: Mapping[str, object],
+    shadow_runs: Sequence[Mapping[str, object]],
+    value_entries: Sequence[Mapping[str, object]],
+    value_outcomes: Sequence[Mapping[str, object]],
+    paper_trades: Sequence[Mapping[str, object]],
+    decision_card_evidence: Mapping[str, object],
+) -> list[dict[str, object]]:
+    report = _mapping_value(validation_summary, "report")
+    baseline_summary = _baseline_gate_summary(report)
+    precision_summary = _precision_gate_summary(report)
+    valid_full_runs = _valid_full_shadow_runs(shadow_runs)
+    recent_full_runs = valid_full_runs[:30]
+    coverage_failures = [
+        row
+        for row in recent_full_runs
+        if int(_finite_float(row.get("missing_market_bar_count"))) > 0
+        or int(_finite_float(row.get("scanned_securities")))
+        < int(_finite_float(row.get("universe_size")))
+        or int(_finite_float(row.get("universe_size"))) <= 0
+    ]
+    validation_candidate_count = int(_finite_float(report.get("candidate_count")))
+    validation_false_positive_count = int(
+        _finite_float(report.get("false_positive_count"))
+    )
+    label_counts = _mapping_value(monthly_value_report, "label_counts")
+    monthly_verdict = str(monthly_value_report.get("verdict") or "unknown")
+    cost_per_useful_alert = _first_present(
+        monthly_value_report.get("cost_per_useful_alert"),
+        report.get("cost_per_useful_alert"),
+    )
+    return [
+        _shadow_check_row(
+            code="shadow_gate_ready",
+            area="Shadow gate",
+            status="ready" if shadow_readiness.get("ready") is True else "blocked",
+            finding=str(
+                shadow_readiness.get("headline")
+                or "Shadow-mode readiness has not passed."
+            ),
+            next_action=str(
+                shadow_readiness.get("canonical_next_action")
+                or "Run catalyst-radar assert-shadow-ready --json first."
+            ),
+            evidence=f"status={shadow_readiness.get('status') or 'unknown'}",
+            metric={"shadow_ready": bool(shadow_readiness.get("ready"))},
+        ),
+        _shadow_check_row(
+            code="thirty_valid_full_shadow_days",
+            area="30 trading-day shadow proof",
+            status="ready" if len(valid_full_runs) >= 30 else "blocked",
+            finding=f"{len(valid_full_runs)}/30 valid full-scan shadow day(s).",
+            next_action=(
+                "Run one shadow-mode execute after each close until 30 valid full "
+                "stock-like scan days exist."
+            ),
+            evidence=_shadow_run_date_evidence(valid_full_runs),
+            metric={
+                "valid_full_scan_day_count": len(valid_full_runs),
+                "required_valid_full_scan_days": 30,
+            },
+        ),
+        _shadow_check_row(
+            code="consistent_market_bar_coverage",
+            area="Market-bar coverage",
+            status=(
+                "ready"
+                if len(recent_full_runs) >= 30 and not coverage_failures
+                else "blocked"
+            ),
+            finding=(
+                f"{len(coverage_failures)} coverage failure(s) in the latest "
+                f"{len(recent_full_runs)} valid full-scan shadow day(s)."
+            ),
+            next_action=(
+                "Keep full-scan market bars complete for 30 valid shadow days "
+                "before any capital-readiness claim."
+            ),
+            evidence=_market_coverage_evidence(recent_full_runs),
+            metric={
+                "checked_full_scan_days": len(recent_full_runs),
+                "coverage_failure_count": len(coverage_failures),
+            },
+        ),
+        _shadow_check_row(
+            code="current_signal_gate",
+            area="Current signal gate",
+            status=(
+                "ready"
+                if radar_readiness.get("safe_to_make_investment_decision") is True
+                else "blocked"
+            ),
+            finding=str(
+                radar_readiness.get("headline")
+                or "Current candidates are not safe for investment decisions."
+            ),
+            next_action=str(
+                radar_readiness.get("next_action")
+                or "Clear stale data, missing evidence, and trade-plan blockers."
+            ),
+            evidence=f"status={radar_readiness.get('status') or 'unknown'}",
+            metric={
+                "safe_to_make_investment_decision": bool(
+                    radar_readiness.get("safe_to_make_investment_decision")
+                )
+            },
+        ),
+        _shadow_check_row(
+            code="outcome_tracking",
+            area="Forward outcomes",
+            status=(
+                "ready" if value_entries and value_outcomes else "blocked"
+            ),
+            finding=(
+                f"{len(value_outcomes)} outcome row(s) linked from "
+                f"{len(value_entries)} value-ledger row(s)."
+            ),
+            next_action=(
+                "Record value-ledger entries and run value-outcome update after "
+                "the review horizon has enough stored bars."
+            ),
+            evidence="value_outcomes are deterministic and local-only.",
+            metric={
+                "value_ledger_entry_count": len(value_entries),
+                "value_outcome_count": len(value_outcomes),
+            },
+        ),
+        _shadow_check_row(
+            code="baseline_comparisons",
+            area="Baseline comparisons",
+            status="ready" if baseline_summary["ready"] else "blocked",
+            finding=str(baseline_summary["finding"]),
+            next_action=(
+                "Run validation replay/report until every mission-brief baseline "
+                "has enough point-in-time sample evidence."
+            ),
+            evidence=str(baseline_summary["evidence"]),
+            metric=baseline_summary["metric"],
+        ),
+        _shadow_check_row(
+            code="precision_at_5_10",
+            area="Precision@5/10",
+            status="ready" if precision_summary["ready"] else "blocked",
+            finding=str(precision_summary["finding"]),
+            next_action="Collect enough labeled validation rows to measure precision@5/10.",
+            evidence=str(precision_summary["evidence"]),
+            metric=precision_summary["metric"],
+        ),
+        _shadow_check_row(
+            code="false_positive_feedback",
+            area="False-positive feedback",
+            status=(
+                "ready"
+                if validation_candidate_count > 0
+                and (
+                    validation_false_positive_count <= 0
+                    or int(_finite_float(label_counts.get("false-positive"))) > 0
+                )
+                else "blocked"
+            ),
+            finding=(
+                f"validation_false_positives={validation_false_positive_count}; "
+                f"ledger_false_positive_labels="
+                f"{int(_finite_float(label_counts.get('false-positive')))}."
+            ),
+            next_action=(
+                "Label noisy surfaced insights in the value ledger, including "
+                "false-positive when applicable."
+            ),
+            evidence=f"validation_candidate_count={validation_candidate_count}",
+            metric={
+                "validation_candidate_count": validation_candidate_count,
+                "validation_false_positive_count": validation_false_positive_count,
+                "ledger_false_positive_label_count": int(
+                    _finite_float(label_counts.get("false-positive"))
+                ),
+            },
+        ),
+        _shadow_check_row(
+            code="cost_per_useful_alert",
+            area="Cost per useful alert",
+            status="ready" if cost_per_useful_alert is not None else "blocked",
+            finding=(
+                f"cost_per_useful_alert="
+                f"{cost_per_useful_alert if cost_per_useful_alert is not None else 'n/a'}."
+            ),
+            next_action="Record useful/noisy value-ledger labels until alert cost is measurable.",
+            evidence=f"monthly_value_verdict={monthly_verdict}",
+            metric={"cost_per_useful_alert": cost_per_useful_alert},
+        ),
+        _shadow_check_row(
+            code="monthly_value_report",
+            area="Monthly value report",
+            status=(
+                "ready" if monthly_verdict in {"pass", "fail"} else "blocked"
+            ),
+            finding=f"monthly value verdict is {monthly_verdict}.",
+            next_action=(
+                "Generate value-report evidence with enough useful/noisy labels "
+                "for a pass/fail result."
+            ),
+            evidence=str(monthly_value_report.get("verdict_reason") or ""),
+            metric={
+                "verdict": monthly_verdict,
+                "entry_count": monthly_value_report.get("entry_count"),
+                "useful_insights_count": monthly_value_report.get(
+                    "useful_insights_count"
+                ),
+            },
+        ),
+        _shadow_check_row(
+            code="monthly_value_threshold",
+            area="$40 value threshold",
+            status="ready" if monthly_verdict == "pass" else "blocked",
+            finding=(
+                "$40/month decision-support threshold "
+                f"{'passed' if monthly_verdict == 'pass' else 'has not passed'}."
+            ),
+            next_action=(
+                "Keep gathering attributable value evidence until the monthly "
+                "report plausibly clears $40 after costs."
+            ),
+            evidence=str(monthly_value_report.get("decision_support_note") or ""),
+            metric={
+                "net_decision_support_value_usd": monthly_value_report.get(
+                    "net_decision_support_value_usd"
+                ),
+                "target_monthly_value_usd": monthly_value_report.get(
+                    "target_monthly_value_usd"
+                ),
+            },
+        ),
+        _shadow_check_row(
+            code="decision_card_evidence",
+            area="Decision-card evidence",
+            status=(
+                "ready"
+                if int(_finite_float(decision_card_evidence.get("total_count"))) > 0
+                and int(_finite_float(decision_card_evidence.get("incomplete_count"))) == 0
+                else "blocked"
+            ),
+            finding=str(decision_card_evidence.get("finding") or ""),
+            next_action=(
+                "Build Decision Cards with both supporting and disconfirming "
+                "evidence before manual buy review."
+            ),
+            evidence=str(decision_card_evidence.get("evidence") or ""),
+            metric=decision_card_evidence,
+        ),
+        _shadow_check_row(
+            code="paper_trading_logs",
+            area="Paper-trading logs",
+            status="ready" if paper_trades else "blocked",
+            finding=f"{len(paper_trades)} paper-trade log row(s) are stored.",
+            next_action=(
+                "Use paper-decision and paper-update-outcomes before any "
+                "limited real-capital pilot."
+            ),
+            evidence="Paper rows are local validation artifacts.",
+            metric={"paper_trade_count": len(paper_trades)},
+        ),
+        _shadow_check_row(
+            code="broker_orders_disabled",
+            area="Broker order kill switch",
+            status="blocked" if config.schwab_order_submission_enabled else "ready",
+            finding=(
+                "Broker order submission is enabled."
+                if config.schwab_order_submission_enabled
+                else "Broker order submission is disabled."
+            ),
+            next_action=(
+                "Disable broker order submission before using MarketRadar."
+                if config.schwab_order_submission_enabled
+                else "Keep Schwab read-only until a separate trading-safety review."
+            ),
+            evidence="CATALYST_SCHWAB_ORDER_SUBMISSION_ENABLED="
+            f"{str(config.schwab_order_submission_enabled).lower()}",
+            metric={
+                "schwab_order_submission_enabled": bool(
+                    config.schwab_order_submission_enabled
+                )
+            },
+        ),
+        _shadow_check_row(
+            code="llm_boundary",
+            area="LLM boundary",
+            status=(
+                "blocked"
+                if config.enable_premium_llm or config.enable_agent_sdk
+                else "ready"
+            ),
+            finding=(
+                "Real LLM/Agents SDK mode is enabled."
+                if config.enable_premium_llm or config.enable_agent_sdk
+                else "Real LLM/Agents SDK mode is disabled for this gate."
+            ),
+            next_action=(
+                "Disable real LLM modes or add a separate budgeted LLM "
+                "readiness review."
+            ),
+            evidence=(
+                f"premium_llm={str(config.enable_premium_llm).lower()}; "
+                f"agent_sdk={str(config.enable_agent_sdk).lower()}"
+            ),
+            metric={
+                "enable_premium_llm": bool(config.enable_premium_llm),
+                "enable_agent_sdk": bool(config.enable_agent_sdk),
+            },
+        ),
+        _shadow_check_row(
+            code="logs_exportable",
+            area="Audit export",
+            status="ready",
+            finding="Shadow, validation, paper, and value evidence have JSON export paths.",
+            next_action="Use the export commands before any release review.",
+            evidence=(
+                "shadow-mode list --json; dashboard-snapshot --json; "
+                "value-report --json"
+            ),
+            metric={
+                "shadow_export": "catalyst-radar shadow-mode list --json",
+                "paper_validation_export": "catalyst-radar dashboard-snapshot --json",
+            },
+        ),
+    ]
+
+
+def _valid_full_shadow_runs(
+    shadow_runs: Sequence[Mapping[str, object]],
+) -> list[dict[str, object]]:
+    latest_by_date: dict[str, dict[str, object]] = {}
+    sorted_rows = sorted(
+        [_row_dict(row) for row in shadow_runs if isinstance(row, Mapping)],
+        key=lambda row: (
+            str(row.get("run_date") or ""),
+            str(row.get("available_at") or ""),
+        ),
+        reverse=True,
+    )
+    for row in sorted_rows:
+        if row.get("status") != "valid_full_scan":
+            continue
+        if row.get("validation_status") != "ready":
+            continue
+        run_date = str(row.get("run_date") or "")
+        if not run_date:
+            continue
+        latest_by_date.setdefault(run_date, row)
+    return list(latest_by_date.values())
+
+
+def _shadow_run_date_evidence(runs: Sequence[Mapping[str, object]]) -> str:
+    if not runs:
+        return "no valid full-scan shadow runs"
+    dates = [str(row.get("run_date") or "") for row in runs if row.get("run_date")]
+    return f"latest={dates[0]}; oldest={dates[-1]}; days={len(dates)}"
+
+
+def _market_coverage_evidence(runs: Sequence[Mapping[str, object]]) -> str:
+    if not runs:
+        return "no valid full-scan shadow runs to inspect"
+    minimum = min(
+        (
+            _coverage_ratio(
+                scanned=row.get("scanned_securities"),
+                universe=row.get("universe_size"),
+            )
+            for row in runs
+        ),
+        default=0.0,
+    )
+    return f"minimum_scanned_universe_ratio={minimum:.4f}"
+
+
+def _coverage_ratio(*, scanned: object, universe: object) -> float:
+    denominator = int(_finite_float(universe))
+    if denominator <= 0:
+        return 0.0
+    return min(1.0, int(_finite_float(scanned)) / denominator)
+
+
+def _baseline_gate_summary(report: Mapping[str, object]) -> dict[str, object]:
+    comparison = _mapping_value(report, "baseline_comparison")
+    measured = []
+    missing = []
+    insufficient = []
+    for name in MISSION_BRIEF_BASELINES:
+        row = _mapping_value(comparison, name)
+        if not row:
+            missing.append(name)
+            continue
+        if row.get("sample_status") == "insufficient_evidence":
+            insufficient.append(name)
+            continue
+        measured.append(name)
+    ready = not missing and not insufficient and len(measured) == len(
+        MISSION_BRIEF_BASELINES
+    )
+    return {
+        "ready": ready,
+        "finding": (
+            f"{len(measured)}/{len(MISSION_BRIEF_BASELINES)} baseline(s) measured."
+        ),
+        "evidence": (
+            f"missing={', '.join(missing) or 'none'}; "
+            f"insufficient={', '.join(insufficient) or 'none'}"
+        ),
+        "metric": {
+            "required_baselines": list(MISSION_BRIEF_BASELINES),
+            "measured_baselines": measured,
+            "missing_baselines": missing,
+            "insufficient_baselines": insufficient,
+        },
+    }
+
+
+def _precision_gate_summary(report: Mapping[str, object]) -> dict[str, object]:
+    comparison = _mapping_value(report, "baseline_comparison")
+    precision_at_5 = None
+    precision_at_10 = None
+    for value in comparison.values():
+        if not isinstance(value, Mapping):
+            continue
+        if precision_at_5 is None:
+            precision_at_5 = value.get("marketradar_precision_at_5")
+        if precision_at_10 is None:
+            precision_at_10 = value.get("marketradar_precision_at_10")
+    ready = precision_at_5 is not None and precision_at_10 is not None
+    return {
+        "ready": ready,
+        "finding": (
+            f"precision_at_5={precision_at_5 if precision_at_5 is not None else 'n/a'}; "
+            f"precision_at_10={precision_at_10 if precision_at_10 is not None else 'n/a'}."
+        ),
+        "evidence": f"validation_run_id={report.get('run_id') or 'n/a'}",
+        "metric": {
+            "precision_at_5": precision_at_5,
+            "precision_at_10": precision_at_10,
+        },
+    }
+
+
+def _decision_card_evidence_summary(
+    engine: Engine,
+    *,
+    available_at: datetime,
+) -> dict[str, object]:
+    filters = [decision_cards.c.available_at <= available_at]
+    stmt = (
+        select(
+            decision_cards.c.id,
+            decision_cards.c.ticker,
+            decision_cards.c.payload,
+        )
+        .where(*filters)
+        .order_by(
+            decision_cards.c.available_at.desc(),
+            decision_cards.c.created_at.desc(),
+            decision_cards.c.id.desc(),
+        )
+        .limit(1000)
+    )
+    total = 0
+    complete = 0
+    incomplete_samples: list[str] = []
+    with engine.connect() as conn:
+        for row in conn.execute(stmt):
+            total += 1
+            values = row._mapping
+            payload = values["payload"] if isinstance(values["payload"], Mapping) else {}
+            has_supporting = _has_evidence_items(payload.get("supporting_evidence"))
+            has_disconfirming = _has_evidence_items(payload.get("disconfirming_evidence"))
+            if has_supporting and has_disconfirming:
+                complete += 1
+                continue
+            if len(incomplete_samples) < 5:
+                incomplete_samples.append(str(values["id"]))
+    incomplete = total - complete
+    return {
+        "total_count": total,
+        "complete_count": complete,
+        "incomplete_count": incomplete,
+        "sample_incomplete_ids": incomplete_samples,
+        "finding": (
+            f"{complete}/{total} Decision Card(s) include both supporting and "
+            "disconfirming evidence."
+        ),
+        "evidence": (
+            "Decision Cards must be balanced before manual buy-review readiness."
+        ),
+    }
+
+
+def _has_evidence_items(value: object) -> bool:
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, Mapping):
+        return bool(value)
+    if isinstance(value, Sequence):
+        return bool(value)
+    return False
 
 
 def radar_research_shortlist_payload(

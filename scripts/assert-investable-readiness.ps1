@@ -1,7 +1,8 @@
 param(
     [string]$ApiHost = "127.0.0.1",
     [int]$ApiPort = 8443,
-    [int]$TelemetryLimit = 8,
+    [string]$Month = "",
+    [string]$AvailableAt = "",
     [switch]$Json
 )
 
@@ -10,26 +11,17 @@ $baseUrl = "https://$ApiHost`:$ApiPort"
 
 function Invoke-ApiJson {
     param(
-        [string]$Method = "GET",
-        [string]$Path,
-        [string]$Body = $null
+        [string]$Path
     )
 
-    $args = @(
-        "--insecure",
-        "--silent",
-        "--show-error",
-        "--fail",
-        "--max-time",
-        "15",
-        "--request",
-        $Method,
+    $response = & curl.exe `
+        --insecure `
+        --silent `
+        --show-error `
+        --fail `
+        --max-time 15 `
+        --request GET `
         "$baseUrl$Path"
-    )
-    if ([string]::IsNullOrWhiteSpace($Body) -eq $false) {
-        $args += @("--header", "Content-Type: application/json", "--data", $Body)
-    }
-    $response = & curl.exe @args
     if ($LASTEXITCODE -ne 0) {
         throw "Could not read local API state from $baseUrl$Path. Start services with scripts\restart-local.ps1."
     }
@@ -41,71 +33,48 @@ function Invoke-ApiJson {
     }
 }
 
-$readiness = Invoke-ApiJson -Path "/api/radar/readiness"
-$activation = Invoke-ApiJson -Path "/api/radar/live-activation"
-$callPlan = Invoke-ApiJson -Method "POST" -Path "/api/radar/runs/call-plan" -Body "{}"
-$resolvedTelemetryLimit = [Math]::Max(1, $TelemetryLimit)
-$telemetry = Invoke-ApiJson -Path ("/api/ops/telemetry?limit={0}" -f $resolvedTelemetryLimit)
-
-$blockers = New-Object System.Collections.Generic.List[string]
-if ($readiness.safe_to_make_investment_decision -ne $true) {
-    $blockers.Add("Readiness is $($readiness.status); next=$($readiness.next_action)")
-}
-if ($activation.status -ne "ready") {
-    $missing = @($activation.missing_env) -join ", "
-    if ([string]::IsNullOrWhiteSpace($missing)) {
-        $missing = "n/a"
+function Add-QueryPart {
+    param(
+        [System.Collections.Generic.List[string]]$Parts,
+        [string]$Name,
+        [string]$Value
+    )
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return
     }
-    $blockers.Add("Live activation is $($activation.status); missing=$missing")
-}
-if ($callPlan.status -eq "blocked") {
-    $blockers.Add("Call plan is blocked; next=$($callPlan.next_action)")
-}
-if ($null -ne $telemetry.attention_count -and [int]$telemetry.attention_count -gt 0) {
-    $blockers.Add("Telemetry has attention events; attention=$($telemetry.attention_count)")
+    $Parts.Add(("{0}={1}" -f $Name, [Uri]::EscapeDataString($Value)))
 }
 
-$ready = $blockers.Count -eq 0
-$payload = [ordered]@{
-    ready = $ready
-    status = $(if ($ready) { "ready" } else { "blocked" })
-    safe_to_make_investment_decision = $readiness.safe_to_make_investment_decision
-    readiness_status = $readiness.status
-    live_activation_status = $activation.status
-    call_plan_status = $callPlan.status
-    telemetry_status = $telemetry.status
-    telemetry_limit = $resolvedTelemetryLimit
-    telemetry_attention_count = $telemetry.attention_count
-    telemetry_guarded_count = $telemetry.guarded_count
-    blockers = @($blockers)
-    next_action = $(if ($ready) { "Run the capped live smoke, then review candidates." } else { $blockers[0] })
-    external_calls_made = 0
+$query = [System.Collections.Generic.List[string]]::new()
+Add-QueryPart -Parts $query -Name "month" -Value $Month
+Add-QueryPart -Parts $query -Name "available_at" -Value $AvailableAt
+$path = "/api/radar/investable/readiness"
+if ($query.Count -gt 0) {
+    $path = "{0}?{1}" -f $path, ($query -join "&")
 }
+
+$payload = Invoke-ApiJson -Path $path
 
 if ($Json) {
-    $payload | ConvertTo-Json -Depth 8
+    $payload | ConvertTo-Json -Depth 50
 }
 else {
-    Write-Output ("Product readiness gate: {0}" -f $payload.status)
-    Write-Output ("Investable: {0}" -f $payload.safe_to_make_investment_decision)
-    Write-Output ("Readiness: {0}" -f $payload.readiness_status)
-    Write-Output ("Live activation: {0}" -f $payload.live_activation_status)
-    Write-Output ("Call plan: {0}" -f $payload.call_plan_status)
-    Write-Output (
-        "Telemetry: {0}; attention={1}; guarded={2}" -f
-        $payload.telemetry_status,
-        $payload.telemetry_attention_count,
-        $payload.telemetry_guarded_count
-    )
-    if (-not $ready) {
+    Write-Output ("Investable readiness gate: {0}" -f $payload.status)
+    Write-Output ("Ready: {0}" -f $payload.ready)
+    Write-Output ("Decision support only: {0}" -f $payload.decision_support_only)
+    Write-Output ("Highest allowed action: {0}" -f $payload.highest_allowed_action_state)
+    Write-Output ("Limited-capital pilot: {0}" -f $payload.limited_capital_pilot_status)
+    Write-Output ("Next: {0}" -f $payload.canonical_next_action)
+    if ($payload.ready -ne $true) {
         Write-Output "Blockers:"
-        foreach ($blocker in $blockers) {
-            Write-Output ("- {0}" -f $blocker)
+        foreach ($blocker in @($payload.blockers)) {
+            Write-Output ("- {0}: {1}" -f $blocker.code, $blocker.finding)
         }
     }
-    Write-Output "External calls made: 0"
+    Write-Output ("External calls made: {0}" -f $payload.external_calls_made)
+    Write-Output ("DB writes made: {0}" -f $payload.db_writes_made)
 }
 
-if (-not $ready) {
+if ($payload.ready -ne $true) {
     exit 1
 }

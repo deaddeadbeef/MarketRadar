@@ -1144,6 +1144,57 @@ def test_get_radar_shadow_readiness_returns_zero_call_gate(
     }
 
 
+def test_get_radar_investable_readiness_returns_battle_test_gate(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "radar-investable-readiness.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+    monkeypatch.setattr(
+        dashboard_data,
+        "investable_readiness_payload",
+        lambda _engine, _config, *, month=None, available_at=None: {
+            "schema_version": "investable-readiness-v1",
+            "status": "blocked",
+            "ready": False,
+            "decision_support_only": True,
+            "canonical_next_action": "Collect 30 valid shadow days.",
+            "call_boundary": {
+                "assert_external_calls_required": 0,
+                "assert_db_writes_required": 0,
+                "external_calls_made": 0,
+                "db_writes_made": 0,
+            },
+            "blockers": [{"code": "thirty_valid_full_shadow_days"}],
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+        },
+        raising=False,
+    )
+    client = TestClient(create_app())
+
+    response = client.get("/api/radar/investable/readiness?month=2026-05")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "schema_version": "investable-readiness-v1",
+        "status": "blocked",
+        "ready": False,
+        "decision_support_only": True,
+        "canonical_next_action": "Collect 30 valid shadow days.",
+        "call_boundary": {
+            "assert_external_calls_required": 0,
+            "assert_db_writes_required": 0,
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+        },
+        "blockers": [{"code": "thirty_valid_full_shadow_days"}],
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+    }
+
+
 def test_get_radar_live_activation_returns_read_only_contract(
     tmp_path,
     monkeypatch,

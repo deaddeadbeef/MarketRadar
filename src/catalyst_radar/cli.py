@@ -65,6 +65,7 @@ from catalyst_radar.core.config import AppConfig
 from catalyst_radar.core.immutability import thaw_json_value
 from catalyst_radar.core.models import ActionState
 from catalyst_radar.dashboard.data import (
+    investable_readiness_payload,
     load_ticker_detail,
     options_fixture_template_payload,
     priced_in_all_source_gap_batches_payload,
@@ -729,6 +730,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     provider_health = subparsers.add_parser("provider-health")
     provider_health.add_argument("--provider", required=True)
+
+    assert_investable_ready = subparsers.add_parser("assert-investable-readiness")
+    assert_investable_ready.add_argument("--database-url")
+    assert_investable_ready.add_argument("--month")
+    assert_investable_ready.add_argument("--available-at", type=_parse_aware_datetime)
+    assert_investable_ready.add_argument("--json", action="store_true")
 
     assert_shadow_ready = subparsers.add_parser("assert-shadow-ready")
     assert_shadow_ready.add_argument("--database-url")
@@ -1590,6 +1597,20 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print(f"provider={health.provider} status={health.status.value}")
         return 0
+
+    if args.command == "assert-investable-readiness":
+        create_schema(engine)
+        payload = investable_readiness_payload(
+            engine,
+            config,
+            month=args.month,
+            available_at=args.available_at,
+        )
+        if args.json:
+            print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
+        else:
+            _print_investable_readiness(payload)
+        return 0 if payload.get("ready") is True else 1
 
     if args.command == "assert-shadow-ready":
         create_schema(engine)
@@ -7415,6 +7436,46 @@ def _print_priced_in_answer(payload: Mapping[str, object]) -> None:
             f"{row.get('emotion_score')} "
             f"{row.get('reaction_score')} "
             f"{_compact_cli_text(row.get('next_step'))}"
+        )
+
+
+def _print_investable_readiness(payload: Mapping[str, object]) -> None:
+    boundary = payload.get("call_boundary")
+    boundary = boundary if isinstance(boundary, Mapping) else {}
+    print(
+        "investable_readiness "
+        f"status={payload.get('status')} "
+        f"ready={str(bool(payload.get('ready'))).lower()} "
+        f"decision_support_only={str(bool(payload.get('decision_support_only'))).lower()} "
+        f"external_calls_made={payload.get('external_calls_made') or 0} "
+        f"db_writes_made={payload.get('db_writes_made') or 0} "
+        "assert_external_calls_required="
+        f"{boundary.get('assert_external_calls_required') or 0} "
+        f"assert_db_writes_required={boundary.get('assert_db_writes_required') or 0}"
+    )
+    print(f"headline={_compact_cli_text(payload.get('headline'))}")
+    print(f"next_action={_compact_cli_text(payload.get('canonical_next_action'))}")
+    print(f"useful_definition={_compact_cli_text(payload.get('useful_definition'))}")
+    print(
+        "highest_allowed_action_state="
+        f"{payload.get('highest_allowed_action_state') or 'n/a'}"
+    )
+    blockers = payload.get("blockers")
+    blocker_rows = blockers if isinstance(blockers, Sequence) else ()
+    if not blocker_rows:
+        print("blockers=none")
+        return
+    for row in blocker_rows:
+        if not isinstance(row, Mapping):
+            continue
+        print(
+            "blocker="
+            f"{row.get('code')} "
+            f"area={_compact_cli_text(row.get('area'))} "
+            f"finding={_compact_cli_text(row.get('finding'))} "
+            f"next={_compact_cli_text(row.get('next_action'))} "
+            f"external_calls={row.get('external_calls_made') or 0} "
+            f"db_writes={row.get('db_writes_made') or 0}"
         )
 
 
