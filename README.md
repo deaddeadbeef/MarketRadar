@@ -558,7 +558,10 @@ The same zero-call checkpoint is available outside the TUI as
 `catalyst-radar market-bars status` and
 `GET /api/radar/market-bars/status`; when `expected_as_of` is omitted, these
 read-only status paths use the latest stored daily-bar date and report
-`expected_as_of_source=latest_daily_bar`. Pass `--expected-as-of YYYY-MM-DD`
+`expected_as_of_source=latest_daily_bar`. If the active universe exists but no
+daily bars are stored yet, they keep `first_blocker=market_bars` and ask for
+`--expected-as-of YYYY-MM-DD` / `?expected_as_of=YYYY-MM-DD` instead of sending
+the operator back to universe setup. Pass `--expected-as-of YYYY-MM-DD`
 or `?expected_as_of=YYYY-MM-DD` to pin the check. Those CLI/API payloads include
 the missing ticker sample, missing security-type counts, zero-call missing
 universe diagnostics, `stock_scope` for the stock-like gap inside the same

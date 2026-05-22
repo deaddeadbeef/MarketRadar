@@ -1,6 +1,37 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 03:41:47 +08:00
+Last updated: 2026-05-23 03:52:30 +08:00
+
+## Latest Seeded-Universe Market-Bar Status Slice
+
+Last updated: 2026-05-23 03:52:30 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar must get to a trusted broad-market priced-in scan, then prove value through shadow records, value ledger rows, outcomes, baselines, and monthly reports.
+- This slice fixes the next P0 blocker-agreement issue found after the first live universe seed.
+- This is useful because a seeded universe with no bars should route the operator to market-bar date/repair work, not back to universe setup.
+
+Observed live local DB state before this slice:
+
+- A guarded Polygon/Massive ticker seed was executed against `data/schwab-live.db` with `--max-pages 1 --confirm-external-call`.
+- Result: `raw=1000`, `normalized=1000`, `securities=1000`, `daily_bars=0`, `holdings=0`, `events=0`, `rejected=0`.
+- Follow-up zero-call gates showed `priced-in-preflight` and `assert-shadow-ready` correctly moved the first blocker to `market_bars`.
+- `market-bars status --json` still reported `first_blocker=universe` only because no `expected_as_of` could be inferred from stored bars. This slice corrects that.
+
+Fix in this slice:
+
+- When active securities exist but no daily bars are stored, `market-bars status` now returns `status=blocked`, `first_blocker=market_bars`, active count, missing count, and a zero-call `provide_expected_as_of` next action.
+- True empty-universe status still routes to the CSV or Polygon/Massive universe seed path.
+- README now documents the no-bars-but-seeded behavior.
+
+Validation observed in this slice:
+
+- Focused market-bars status tests passed for normal missing-bar repair and seeded-universe/no-bars/no-date behavior.
+- `ruff check` passed for touched market status source/tests.
+- `git diff --check` passed.
+- Zero-call `market-bars status` smoke against `data/schwab-live.db` now returns `status=blocked`, `first_blocker=market_bars`, `active=1000`, `missing=1000`, `recommended=provide_expected_as_of`, `external_calls_made=0`, and `db_writes_made=0`.
+- Zero-call `priced-in-preflight` smoke against the same DB still returns `first_gap=market_bars`.
 
 ## Latest Universe-Seed Call/Write Boundary Slice
 
