@@ -770,6 +770,22 @@ are validated against the first supported set: `useful`, `noisy`, `acted`,
 page shows weighted value, the $40/month target, and the percent offset against
 the $200/month ChatGPT Pro cost.
 
+Forward outcomes are computed from already stored point-in-time daily bars:
+
+```powershell
+catalyst-radar value-outcome update --ledger-id <VALUE_LEDGER_ID> --outcome-available-at <UTC-outcome-cutoff> --json
+catalyst-radar value-outcome update --ledger-id <VALUE_LEDGER_ID> --outcome-available-at <UTC-outcome-cutoff> --execute --json
+catalyst-radar value-outcome list --ledger-id <VALUE_LEDGER_ID> --json
+```
+
+`POST /api/value-outcomes/update` and `GET /api/value-outcomes` expose the
+same contract. Outcome preview makes 0 provider calls and 0 database writes;
+execute makes 0 provider calls and writes only a `value_outcomes` row. The
+update never mutates the source value-ledger row, candidate state, candidate
+packet, decision card, score, or policy output. When fewer than 60 future
+trading bars are visible at the supplied cutoff, the outcome row is marked
+`insufficient_data` and only available horizons are populated.
+
 After editing `.env.local`, run the activation checker before making live
 provider calls:
 

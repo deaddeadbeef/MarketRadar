@@ -1,6 +1,37 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 00:15:12 +08:00
+Last updated: 2026-05-23 00:35:29 +08:00
+
+## Latest Value Outcome Slice
+
+Last updated: 2026-05-23 00:35:29 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice advances the value-proof path by measuring what happened after a value-ledger insight using point-in-time local bars.
+- This slice does not add provider, broker, order, OpenAI, SEC, Polygon/Massive, Schwab, web, or app calls from the product.
+- This is useful because a ledger row can now move from claimed decision-support value toward measurable forward evidence without mutating scoring or policy state.
+
+Fix in this slice:
+
+- Added `value_outcomes` schema/model/repository support linked to `value_ledger_entries`.
+- Added deterministic outcome computation from stored `daily_bars`: 5d/10d/20d/60d returns, SPY-relative returns, optional sector ETF-relative returns, max adverse/favorable excursion, and invalidation touch.
+- Added CLI `catalyst-radar value-outcome update/list`; update previews by default and writes only with `--execute`.
+- Added API routes `POST /api/value-outcomes/update` and `GET /api/value-outcomes`; POST previews by default and writes only with `execute=true`.
+- Added TUI Costs-page outcome counts and README operator-contract documentation.
+
+Validation observed in this slice:
+
+- `ruff check` passed for touched source/tests.
+- `git diff --check` passed.
+- Focused value-outcome/value-ledger/security/shadow readiness/cost-summary regressions passed: 24 passed.
+- Tests cover computed outcomes, insufficient future bars, future bars hidden after the outcome cutoff, and no mutation of source ledger rows.
+
+Current live blocker:
+
+- This still does not make MarketRadar investment-ready. It supplies the forward evidence layer needed before baselines, monthly value reports, and any scoring calibration.
+- Next mission-brief slice is monthly value reporting and then baseline comparisons/calibration after enough outcomes exist.
 
 ## Latest Value Ledger Slice
 

@@ -376,6 +376,114 @@ class ValueLedgerEntry:
         )
 
 
+@dataclass(frozen=True)
+class ValueOutcome:
+    id: str
+    value_ledger_entry_id: str
+    ticker: str
+    as_of: date
+    outcome_available_at: datetime
+    status: str
+    trading_days_observed: int
+    entry_price: float | None = None
+    return_5d: float | None = None
+    return_10d: float | None = None
+    return_20d: float | None = None
+    return_60d: float | None = None
+    spy_return_5d: float | None = None
+    spy_return_10d: float | None = None
+    spy_return_20d: float | None = None
+    spy_return_60d: float | None = None
+    spy_relative_return_5d: float | None = None
+    spy_relative_return_10d: float | None = None
+    spy_relative_return_20d: float | None = None
+    spy_relative_return_60d: float | None = None
+    sector_etf_ticker: str | None = None
+    sector_return_5d: float | None = None
+    sector_return_10d: float | None = None
+    sector_return_20d: float | None = None
+    sector_return_60d: float | None = None
+    sector_relative_return_5d: float | None = None
+    sector_relative_return_10d: float | None = None
+    sector_relative_return_20d: float | None = None
+    sector_relative_return_60d: float | None = None
+    max_adverse_excursion: float | None = None
+    max_favorable_excursion: float | None = None
+    invalidation_price: float | None = None
+    invalidation_touched: bool = False
+    payload: Mapping[str, Any] = field(default_factory=dict)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "id", _required_text(self.id, "id"))
+        object.__setattr__(
+            self,
+            "value_ledger_entry_id",
+            _required_text(self.value_ledger_entry_id, "value_ledger_entry_id"),
+        )
+        object.__setattr__(self, "ticker", _required_text(self.ticker, "ticker").upper())
+        object.__setattr__(self, "as_of", _require_date(self.as_of, "as_of"))
+        object.__setattr__(
+            self,
+            "outcome_available_at",
+            _require_aware_utc(self.outcome_available_at, "outcome_available_at"),
+        )
+        object.__setattr__(self, "status", _required_text(self.status, "status"))
+        object.__setattr__(
+            self,
+            "trading_days_observed",
+            _nonnegative_int(self.trading_days_observed, "trading_days_observed"),
+        )
+        if self.sector_etf_ticker is not None:
+            object.__setattr__(
+                self,
+                "sector_etf_ticker",
+                _required_text(self.sector_etf_ticker, "sector_etf_ticker").upper(),
+            )
+        for field_name in (
+            "entry_price",
+            "return_5d",
+            "return_10d",
+            "return_20d",
+            "return_60d",
+            "spy_return_5d",
+            "spy_return_10d",
+            "spy_return_20d",
+            "spy_return_60d",
+            "spy_relative_return_5d",
+            "spy_relative_return_10d",
+            "spy_relative_return_20d",
+            "spy_relative_return_60d",
+            "sector_return_5d",
+            "sector_return_10d",
+            "sector_return_20d",
+            "sector_return_60d",
+            "sector_relative_return_5d",
+            "sector_relative_return_10d",
+            "sector_relative_return_20d",
+            "sector_relative_return_60d",
+            "max_adverse_excursion",
+            "max_favorable_excursion",
+            "invalidation_price",
+        ):
+            value = getattr(self, field_name)
+            if value is not None:
+                object.__setattr__(self, field_name, _finite_float(value, field_name))
+        object.__setattr__(self, "invalidation_touched", bool(self.invalidation_touched))
+        object.__setattr__(self, "payload", freeze_mapping(self.payload, "payload"))
+        object.__setattr__(
+            self,
+            "created_at",
+            _require_aware_utc(self.created_at, "created_at"),
+        )
+        object.__setattr__(
+            self,
+            "updated_at",
+            _require_aware_utc(self.updated_at, "updated_at"),
+        )
+
+
 def validation_run_id(
     *,
     run_type: str,
@@ -442,6 +550,18 @@ def value_ledger_entry_id(
         f"{_required_text(label, 'label')}:"
         f"{_require_date(entry_date, 'entry_date').isoformat()}:"
         f"{_required_text(source, 'source')}"
+    )
+
+
+def value_outcome_id(
+    *,
+    value_ledger_entry_id: str,
+    outcome_available_at: datetime,
+) -> str:
+    return (
+        "value-outcome-v1:"
+        f"{_required_text(value_ledger_entry_id, 'value_ledger_entry_id')}:"
+        f"{_require_aware_utc(outcome_available_at, 'outcome_available_at').isoformat()}"
     )
 
 
@@ -515,9 +635,11 @@ __all__ = [
     "ValidationRun",
     "ValidationRunStatus",
     "ValueLedgerEntry",
+    "ValueOutcome",
     "paper_trade_id",
     "useful_alert_label_id",
     "value_ledger_entry_id",
+    "value_outcome_id",
     "validation_result_id",
     "validation_run_id",
 ]

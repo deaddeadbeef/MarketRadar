@@ -179,6 +179,10 @@ from catalyst_radar.validation.value_ledger import (
     value_ledger_artifact_context,
     value_ledger_write_payload,
 )
+from catalyst_radar.validation.value_outcomes import (
+    load_value_outcomes_payload,
+    value_outcome_update_payload,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -670,6 +674,32 @@ def build_parser() -> argparse.ArgumentParser:
     value_ledger_summary.add_argument("--period-end", type=date.fromisoformat)
     value_ledger_summary.add_argument("--target-monthly-value-usd", type=float, default=40.0)
     value_ledger_summary.add_argument("--json", action="store_true")
+
+    value_outcome = subparsers.add_parser("value-outcome")
+    value_outcome_sub = value_outcome.add_subparsers(
+        dest="value_outcome_command",
+        required=True,
+    )
+    value_outcome_update = value_outcome_sub.add_parser("update")
+    value_outcome_update.add_argument("--database-url")
+    value_outcome_update.add_argument("--ledger-id", required=True)
+    value_outcome_update.add_argument(
+        "--outcome-available-at",
+        type=_parse_aware_datetime,
+        required=True,
+    )
+    value_outcome_update.add_argument("--sector-etf")
+    value_outcome_update.add_argument("--invalidation-price", type=float)
+    value_outcome_update.add_argument("--execute", action="store_true")
+    value_outcome_update.add_argument("--json", action="store_true")
+
+    value_outcome_list = value_outcome_sub.add_parser("list")
+    value_outcome_list.add_argument("--database-url")
+    value_outcome_list.add_argument("--ledger-id")
+    value_outcome_list.add_argument("--available-at", type=_parse_aware_datetime)
+    value_outcome_list.add_argument("--ticker")
+    value_outcome_list.add_argument("--limit", type=int, default=200)
+    value_outcome_list.add_argument("--json", action="store_true")
 
     build_universe = subparsers.add_parser("build-universe")
     build_universe.add_argument("--name")
@@ -2573,6 +2603,40 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
         except (TypeError, ValueError) as exc:
             print(f"value ledger failed: {exc}", file=sys.stderr)
+            return 1
+
+    if args.command == "value-outcome":
+        create_schema(engine)
+        try:
+            if args.value_outcome_command == "update":
+                payload = value_outcome_update_payload(
+                    engine,
+                    value_ledger_entry_id=args.ledger_id,
+                    outcome_available_at=args.outcome_available_at,
+                    sector_etf_ticker=args.sector_etf,
+                    invalidation_price=args.invalidation_price,
+                    execute=args.execute,
+                )
+                if args.json:
+                    print(json.dumps(payload, sort_keys=True))
+                    return 0
+                _print_value_outcome_update(payload)
+                return 0
+            if args.value_outcome_command == "list":
+                payload = load_value_outcomes_payload(
+                    engine,
+                    value_ledger_entry_id=args.ledger_id,
+                    available_at=args.available_at,
+                    ticker=args.ticker,
+                    limit=args.limit,
+                )
+                if args.json:
+                    print(json.dumps(payload, sort_keys=True))
+                    return 0
+                _print_value_outcomes(payload)
+                return 0
+        except (TypeError, ValueError) as exc:
+            print(f"value outcome failed: {exc}", file=sys.stderr)
             return 1
 
     if args.command == "build-universe":
@@ -7327,6 +7391,53 @@ def _print_value_ledger_summary(payload: Mapping[str, object]) -> None:
                 "weighted_value_usd="
                 f"{row.get('confidence_weighted_value_usd')}"
             )
+
+
+def _print_value_outcome_update(payload: Mapping[str, object]) -> None:
+    outcome = payload.get("outcome")
+    outcome = outcome if isinstance(outcome, Mapping) else {}
+    print(
+        "value_outcome "
+        f"mode={payload.get('mode')} "
+        f"status={outcome.get('status')} "
+        f"ticker={outcome.get('ticker')} "
+        f"observed={outcome.get('trading_days_observed')} "
+        f"return_5d={outcome.get('return_5d')} "
+        f"return_10d={outcome.get('return_10d')} "
+        f"return_20d={outcome.get('return_20d')} "
+        f"return_60d={outcome.get('return_60d')} "
+        f"external_calls_made={payload.get('external_calls_made') or 0} "
+        f"db_writes_made={payload.get('db_writes_made') or 0}"
+    )
+    print(f"next_action={_compact_cli_text(payload.get('next_action'))}")
+
+
+def _print_value_outcomes(payload: Mapping[str, object]) -> None:
+    print(
+        "value_outcomes "
+        f"count={payload.get('count') or 0} "
+        f"status_counts={payload.get('status_counts') or {}} "
+        f"external_calls_made={payload.get('external_calls_made') or 0} "
+        f"db_writes_made={payload.get('db_writes_made') or 0}"
+    )
+    rows = payload.get("outcomes")
+    rows = rows if isinstance(rows, Sequence) else ()
+    if not rows:
+        print("No value outcomes.")
+        return
+    print("ticker as_of status observed return_5d return_20d spy_relative_20d")
+    for row in rows:
+        if not isinstance(row, Mapping):
+            continue
+        print(
+            f"{row.get('ticker')} "
+            f"{row.get('as_of')} "
+            f"{row.get('status')} "
+            f"{row.get('trading_days_observed')} "
+            f"{row.get('return_5d')} "
+            f"{row.get('return_20d')} "
+            f"{row.get('spy_relative_return_20d')}"
+        )
 
 
 def _print_priced_in_preflight(payload: Mapping[str, object]) -> None:
