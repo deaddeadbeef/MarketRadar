@@ -73,6 +73,10 @@ def monthly_value_report_payload(
     avoided_entries = [entry for entry in entries if _is_avoided_entry(entry)]
     acted_entries = [entry for entry in entries if _is_acted_entry(entry)]
     ignored_entries = [entry for entry in entries if _is_ignored_entry(entry)]
+    llm_reviewed_entries = [entry for entry in entries if entry.llm_call_count > 0]
+    useful_llm_reviewed_entries = [
+        entry for entry in llm_reviewed_entries if _is_useful_entry(entry)
+    ]
     useful_decision_cards = [
         entry for entry in useful_entries if entry.artifact_type == "decision_card"
     ]
@@ -81,6 +85,7 @@ def monthly_value_report_payload(
     ledger_cost = sum(entry.cost_to_produce_usd for entry in entries)
     operating_time_cost = sum(_payload_float(entry, "operating_time_cost_usd") for entry in entries)
     provider_api_model_cost = ledger_cost
+    llm_reviewed_cost = sum(entry.cost_to_produce_usd for entry in llm_reviewed_entries)
     total_cost = provider_api_model_cost + operating_time_cost
     net_value = weighted_value - total_cost
     uncertainty = _uncertainty_band(entries, total_cost=total_cost)
@@ -144,11 +149,18 @@ def monthly_value_report_payload(
         "total_estimated_value_usd": round(total_estimated_value, 4),
         "confidence_weighted_value_usd": round(weighted_value, 4),
         "provider_api_model_costs_usd": round(provider_api_model_cost, 4),
+        "llm_reviewed_costs_usd": round(llm_reviewed_cost, 4),
         "operating_time_cost_usd": round(operating_time_cost, 4),
         "total_cost_usd": round(total_cost, 4),
         "net_decision_support_value_usd": round(net_value, 4),
         "cost_per_useful_alert": _ratio(total_cost, len(useful_entries)),
         "cost_per_useful_decision_card": _ratio(total_cost, len(useful_decision_cards)),
+        "llm_reviewed_entry_count": len(llm_reviewed_entries),
+        "useful_llm_reviewed_entry_count": len(useful_llm_reviewed_entries),
+        "cost_per_useful_llm_reviewed_candidate": _ratio(
+            llm_reviewed_cost,
+            len(useful_llm_reviewed_entries),
+        ),
         "provider_call_count": sum(entry.provider_call_count for entry in entries),
         "llm_call_count": sum(entry.llm_call_count for entry in entries),
         "chatgpt_pro_monthly_cost_usd": CHATGPT_PRO_MONTHLY_COST_USD,
