@@ -447,6 +447,10 @@ def dashboard_snapshot_payload(
         engine,
         available_at=data_available_at,
     )
+    value_ledger = dashboard_data.load_value_ledger_summary(
+        engine,
+        available_at=data_available_at,
+    )
     broker_summary = dashboard_data.load_broker_summary(engine)
     ops_health = dashboard_data.load_ops_health(engine)
     discovery_snapshot = dashboard_data.radar_discovery_snapshot_payload(
@@ -611,6 +615,7 @@ def dashboard_snapshot_payload(
         },
         "validation": validation_summary,
         "costs": cost_summary,
+        "value_ledger": value_ledger,
         "live_activation": dashboard_data.live_data_activation_contract_payload(
             config,
             radar_run_summary=latest_run,
@@ -7628,6 +7633,7 @@ def _validation_lines(payload: Mapping[str, object], width: int) -> list[str]:
 
 def _costs_lines(payload: Mapping[str, object], width: int) -> list[str]:
     costs = _mapping(payload.get("costs"))
+    value_ledger = _mapping(payload.get("value_ledger"))
     lines = [_rule("Costs", width)]
     lines.extend(
         _kv_lines(
@@ -7641,6 +7647,42 @@ def _costs_lines(payload: Mapping[str, object], width: int) -> list[str]:
             width=width,
         )
     )
+    lines.append("")
+    lines.extend(
+        _kv_lines(
+            (
+                ("Value ledger entries", value_ledger.get("entry_count")),
+                ("Weighted value", value_ledger.get("confidence_weighted_value_usd")),
+                ("Ledger cost", value_ledger.get("cost_to_produce_usd")),
+                ("Net weighted value", value_ledger.get("net_confidence_weighted_value_usd")),
+                ("Monthly target", value_ledger.get("target_monthly_value_usd")),
+                ("Target coverage pct", value_ledger.get("target_coverage_pct")),
+                ("ChatGPT Pro offset pct", value_ledger.get("chatgpt_pro_offset_pct")),
+            ),
+            width=width,
+        )
+    )
+    lines.append("")
+    lines.append(str(value_ledger.get("useful_definition") or ""))
+    lines.append("")
+    lines.extend(
+        _table_lines(
+            _rows(value_ledger.get("top_entries")),
+            [
+                ("entry_date", "Date", 12),
+                ("ticker", "Ticker", 8),
+                ("label", "Label", 20),
+                ("supported_action", "Action", 14),
+                ("user_decision", "Decision", 14),
+                ("confidence_weighted_value_usd", "Weighted", 12),
+                ("outcome_status", "Outcome", 12),
+                ("artifact_id", "Artifact", 36),
+            ],
+            width=width,
+            limit=8,
+        )
+    )
+    lines.append("")
     lines.extend(
         _table_lines(
             _mapping_items(_mapping(costs.get("status_counts"))),

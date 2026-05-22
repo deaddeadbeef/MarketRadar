@@ -9,6 +9,7 @@ from catalyst_radar.api.routes.costs import router as costs_router
 from catalyst_radar.api.routes.feedback import router as feedback_router
 from catalyst_radar.api.routes.ops import router as ops_router
 from catalyst_radar.api.routes.radar import router as radar_router
+from catalyst_radar.api.routes.value_ledger import router as value_ledger_router
 from catalyst_radar.core.runtime import APP_VERSION, SERVICE_NAME, build_info
 from catalyst_radar.security.secrets import load_app_dotenv
 
@@ -30,6 +31,7 @@ def create_app() -> FastAPI:
     app.include_router(ops_router)
     app.include_router(costs_router)
     app.include_router(feedback_router)
+    app.include_router(value_ledger_router)
     app.include_router(alerts_router)
     app.include_router(brokers_router)
     app.include_router(agents_router)

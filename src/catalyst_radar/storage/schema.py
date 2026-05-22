@@ -336,6 +336,44 @@ useful_alert_labels = Table(
     Column("created_at", DateTime(timezone=True), nullable=False),
 )
 
+value_ledger_entries = Table(
+    "value_ledger_entries",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("entry_date", Date, nullable=False),
+    Column("as_of", Date),
+    Column("scan_run_id", String),
+    Column("candidate_state_id", String),
+    Column("candidate_packet_id", String),
+    Column("decision_card_id", String),
+    Column("artifact_type", String, nullable=False),
+    Column("artifact_id", String, nullable=False),
+    Column("ticker", String),
+    Column("label", String, nullable=False),
+    Column("action_state", String),
+    Column("priced_in_status", String),
+    Column("priced_in_direction", String),
+    Column("emotion_score", Float),
+    Column("reaction_score", Float),
+    Column("emotion_reaction_gap", Float),
+    Column("final_score", Float),
+    Column("setup_type", String),
+    Column("supported_action", String),
+    Column("user_decision", String),
+    Column("estimated_value_usd", Float, nullable=False),
+    Column("confidence", Float, nullable=False),
+    Column("cost_to_produce_usd", Float, nullable=False),
+    Column("provider_call_count", Integer, nullable=False),
+    Column("llm_call_count", Integer, nullable=False),
+    Column("outcome_status", String, nullable=False),
+    Column("source", String, nullable=False),
+    Column("notes", Text),
+    Column("available_at", DateTime(timezone=True), nullable=False),
+    Column("payload", json_type, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+)
+
 holdings_snapshots = Table(
     "holdings_snapshots",
     metadata,
@@ -884,6 +922,21 @@ Index(
     "ix_useful_alert_labels_artifact",
     useful_alert_labels.c.artifact_type,
     useful_alert_labels.c.artifact_id,
+)
+Index(
+    "ix_value_ledger_entries_entry_date",
+    value_ledger_entries.c.entry_date,
+    value_ledger_entries.c.available_at,
+)
+Index(
+    "ix_value_ledger_entries_artifact",
+    value_ledger_entries.c.artifact_type,
+    value_ledger_entries.c.artifact_id,
+)
+Index(
+    "ix_value_ledger_entries_ticker",
+    value_ledger_entries.c.ticker,
+    value_ledger_entries.c.entry_date,
 )
 Index(
     "ix_broker_connections_broker_user",

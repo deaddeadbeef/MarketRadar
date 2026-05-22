@@ -1,0 +1,344 @@
+from __future__ import annotations
+
+import json
+from datetime import UTC, datetime
+
+from fastapi.testclient import TestClient
+from sqlalchemy import func, insert, select
+
+from apps.api.main import create_app
+from catalyst_radar.cli import main
+from catalyst_radar.dashboard.tui import render_dashboard_tui
+from catalyst_radar.storage.db import create_schema, engine_from_url
+from catalyst_radar.storage.schema import candidate_states, value_ledger_entries
+
+
+def test_value_ledger_cli_preview_execute_and_summary(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'value-ledger-cli.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = engine_from_url(database_url)
+    create_schema(engine)
+    _insert_candidate_state(engine)
+
+    preview_exit = main(
+        [
+            "value-ledger",
+            "record",
+            "--artifact-type",
+            "candidate_state",
+            "--artifact-id",
+            "state-MSFT",
+            "--label",
+            "good-research",
+            "--supported-action",
+            "research",
+            "--user-decision",
+            "accepted",
+            "--estimated-value-usd",
+            "50",
+            "--confidence",
+            "0.8",
+            "--cost-to-produce-usd",
+            "2",
+            "--provider-call-count",
+            "0",
+            "--llm-call-count",
+            "0",
+            "--entry-date",
+            "2026-05-15",
+            "--available-at",
+            "2026-05-22T12:00:00+00:00",
+            "--json",
+        ]
+    )
+
+    assert preview_exit == 0
+    preview = json.loads(capsys.readouterr().out)
+    assert preview["mode"] == "preview"
+    assert preview["external_calls_required"] == 0
+    assert preview["external_calls_made"] == 0
+    assert preview["db_writes_required"] == 1
+    assert preview["db_writes_made"] == 0
+    assert preview["entry"]["ticker"] == "MSFT"
+    assert preview["entry"]["candidate_state_id"] == "state-MSFT"
+    assert preview["entry"]["action_state"] == "warning"
+    assert preview["entry"]["final_score"] == 72.0
+    with engine.connect() as conn:
+        assert (
+            conn.execute(select(func.count()).select_from(value_ledger_entries)).scalar_one()
+            == 0
+        )
+
+    execute_exit = main(
+        [
+            "value-ledger",
+            "record",
+            "--artifact-type",
+            "candidate_state",
+            "--artifact-id",
+            "state-MSFT",
+            "--label",
+            "good-research",
+            "--supported-action",
+            "research",
+            "--user-decision",
+            "accepted",
+            "--estimated-value-usd",
+            "50",
+            "--confidence",
+            "0.8",
+            "--cost-to-produce-usd",
+            "2",
+            "--entry-date",
+            "2026-05-15",
+            "--available-at",
+            "2026-05-22T12:00:00+00:00",
+            "--execute",
+            "--json",
+        ]
+    )
+
+    assert execute_exit == 0
+    executed = json.loads(capsys.readouterr().out)
+    assert executed["mode"] == "executed"
+    assert executed["db_writes_made"] == 1
+    with engine.connect() as conn:
+        stored = conn.execute(select(value_ledger_entries)).first()
+    assert stored is not None
+    stored_row = stored._mapping
+    assert stored_row["ticker"] == "MSFT"
+    assert stored_row["candidate_state_id"] == "state-MSFT"
+    assert stored_row["supported_action"] == "research"
+    assert stored_row["user_decision"] == "accepted"
+    assert stored_row["estimated_value_usd"] == 50.0
+    assert stored_row["confidence"] == 0.8
+    assert stored_row["cost_to_produce_usd"] == 2.0
+
+    summary_exit = main(
+        [
+            "value-ledger",
+            "summary",
+            "--available-at",
+            "2026-05-22T12:00:00+00:00",
+            "--json",
+        ]
+    )
+
+    assert summary_exit == 0
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["schema_version"] == "value-ledger-summary-v1"
+    assert summary["external_calls_made"] == 0
+    assert summary["db_writes_made"] == 0
+    assert summary["entry_count"] == 1
+    assert summary["confidence_weighted_value_usd"] == 40.0
+    assert summary["cost_to_produce_usd"] == 2.0
+    assert summary["net_confidence_weighted_value_usd"] == 38.0
+    assert summary["target_coverage_pct"] == 100.0
+    assert summary["chatgpt_pro_offset_pct"] == 20.0
+
+
+def test_value_ledger_api_preview_execute_and_read(tmp_path, monkeypatch) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'value-ledger-api.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = engine_from_url(database_url)
+    create_schema(engine)
+    _insert_candidate_state(engine, ticker="AAPL", state_id="state-AAPL")
+    client = TestClient(create_app())
+
+    body = {
+        "artifact_type": "candidate_state",
+        "artifact_id": "state-AAPL",
+        "label": "avoided-loss",
+        "supported_action": "avoid",
+        "user_decision": "avoided",
+        "estimated_value_usd": 20,
+        "confidence": 0.5,
+        "entry_date": "2026-05-15",
+        "available_at": "2026-05-22T12:00:00+00:00",
+    }
+
+    preview_response = client.post("/api/value-ledger/entries", json=body)
+
+    assert preview_response.status_code == 200
+    preview = preview_response.json()
+    assert preview["mode"] == "preview"
+    assert preview["db_writes_made"] == 0
+    with engine.connect() as conn:
+        assert (
+            conn.execute(select(func.count()).select_from(value_ledger_entries)).scalar_one()
+            == 0
+        )
+
+    execute_response = client.post(
+        "/api/value-ledger/entries",
+        json={**body, "execute": True},
+    )
+
+    assert execute_response.status_code == 200
+    assert execute_response.json()["db_writes_made"] == 1
+    list_response = client.get(
+        "/api/value-ledger/entries",
+        params={"available_at": "2026-05-22T12:00:00+00:00", "ticker": "AAPL"},
+    )
+    assert list_response.status_code == 200
+    entries_payload = list_response.json()
+    assert entries_payload["external_calls_made"] == 0
+    assert entries_payload["db_writes_made"] == 0
+    assert entries_payload["count"] == 1
+    assert entries_payload["entries"][0]["ticker"] == "AAPL"
+    assert entries_payload["entries"][0]["supported_action"] == "avoid"
+
+    summary_response = client.get(
+        "/api/value-ledger/summary",
+        params={"available_at": "2026-05-22T12:00:00+00:00"},
+    )
+
+    assert summary_response.status_code == 200
+    summary = summary_response.json()
+    assert summary["confidence_weighted_value_usd"] == 10.0
+    assert summary["target_coverage_pct"] == 25.0
+
+
+def test_value_ledger_rejects_unknown_label_and_missing_artifact(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'value-ledger-invalid.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = engine_from_url(database_url)
+    create_schema(engine)
+    _insert_candidate_state(engine)
+    client = TestClient(create_app())
+
+    bad_label = client.post(
+        "/api/value-ledger/entries",
+        json={
+            "artifact_type": "candidate_state",
+            "artifact_id": "state-MSFT",
+            "label": "maybe",
+            "estimated_value_usd": 1,
+            "confidence": 1,
+        },
+    )
+    missing_artifact = client.post(
+        "/api/value-ledger/entries",
+        json={
+            "artifact_type": "candidate_state",
+            "artifact_id": "missing-state",
+            "label": "useful",
+            "estimated_value_usd": 1,
+            "confidence": 1,
+        },
+    )
+
+    assert bad_label.status_code == 422
+    assert missing_artifact.status_code == 422
+    with engine.connect() as conn:
+        assert (
+            conn.execute(select(func.count()).select_from(value_ledger_entries)).scalar_one()
+            == 0
+        )
+
+
+def test_value_ledger_feedback_does_not_mutate_candidate_state(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'value-ledger-no-mutate.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = engine_from_url(database_url)
+    create_schema(engine)
+    _insert_candidate_state(engine)
+    with engine.connect() as conn:
+        before = conn.execute(select(candidate_states).limit(1)).first()
+    assert before is not None
+
+    response = TestClient(create_app()).post(
+        "/api/value-ledger/entries",
+        json={
+            "artifact_type": "candidate_state",
+            "artifact_id": "state-MSFT",
+            "label": "useful",
+            "estimated_value_usd": 5,
+            "confidence": 0.5,
+            "execute": True,
+        },
+    )
+
+    assert response.status_code == 200
+    with engine.connect() as conn:
+        after = conn.execute(select(candidate_states).limit(1)).first()
+        ledger_count = (
+            conn.execute(select(func.count()).select_from(value_ledger_entries)).scalar_one()
+        )
+    assert after is not None
+    assert dict(after._mapping) == dict(before._mapping)
+    assert ledger_count == 1
+
+
+def test_cost_page_renders_value_ledger_target_progress() -> None:
+    text = render_dashboard_tui(
+        {
+            "costs": {
+                "attempt_count": 0,
+                "total_actual_cost_usd": 0.0,
+                "total_estimated_cost_usd": 0.0,
+                "useful_alert_count": 0,
+                "cost_per_useful_alert": None,
+                "status_counts": {},
+            },
+            "value_ledger": {
+                "entry_count": 1,
+                "confidence_weighted_value_usd": 40.0,
+                "target_monthly_value_usd": 40.0,
+                "target_coverage_pct": 100.0,
+                "chatgpt_pro_offset_pct": 20.0,
+                "useful_definition": "Useful means a logged artifact changed a decision.",
+                "top_entries": [
+                    {
+                        "entry_date": "2026-05-15",
+                        "ticker": "MSFT",
+                        "label": "good-research",
+                        "confidence_weighted_value_usd": 40.0,
+                        "artifact_id": "card-MSFT",
+                    }
+                ],
+            },
+        },
+        page="costs",
+        width=140,
+    )
+
+    assert "Value ledger entries" in text
+    assert "ChatGPT Pro offset pct" in text
+    assert "good-research" in text
+
+
+def _insert_candidate_state(
+    engine,
+    *,
+    ticker: str = "MSFT",
+    state_id: str = "state-MSFT",
+) -> None:
+    as_of = datetime(2026, 5, 15, 20, 0, tzinfo=UTC)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(candidate_states).values(
+                id=state_id,
+                ticker=ticker,
+                as_of=as_of,
+                state="warning",
+                previous_state=None,
+                final_score=72.0,
+                score_delta_5d=4.0,
+                hard_blocks=[],
+                transition_reasons=["priced-in gap"],
+                feature_version="test",
+                policy_version="test",
+                created_at=as_of,
+            )
+        )

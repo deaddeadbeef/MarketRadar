@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 
 from sqlalchemy import Engine, delete, insert, select, update
@@ -14,6 +14,7 @@ from catalyst_radar.storage.schema import (
     useful_alert_labels,
     validation_results,
     validation_runs,
+    value_ledger_entries,
 )
 from catalyst_radar.validation.models import (
     PaperDecision,
@@ -23,6 +24,7 @@ from catalyst_radar.validation.models import (
     ValidationResult,
     ValidationRun,
     ValidationRunStatus,
+    ValueLedgerEntry,
 )
 
 
@@ -188,6 +190,48 @@ class ValidationRepository:
                 latest.setdefault((label.artifact_type, label.artifact_id), label)
             return sorted(latest.values(), key=lambda label: label.created_at)
 
+    def upsert_value_ledger_entry(self, entry: ValueLedgerEntry) -> None:
+        with self.engine.begin() as conn:
+            conn.execute(delete(value_ledger_entries).where(value_ledger_entries.c.id == entry.id))
+            conn.execute(insert(value_ledger_entries).values(**_value_ledger_entry_row(entry)))
+
+    def list_value_ledger_entries(
+        self,
+        *,
+        available_at: datetime | None = None,
+        period_start: date | None = None,
+        period_end: date | None = None,
+        ticker: str | None = None,
+        label: str | None = None,
+        limit: int = 200,
+    ) -> list[ValueLedgerEntry]:
+        filters = []
+        if available_at is not None:
+            filters.append(
+                value_ledger_entries.c.available_at
+                <= _to_utc_datetime(available_at, "available_at")
+            )
+        if period_start is not None:
+            filters.append(value_ledger_entries.c.entry_date >= period_start)
+        if period_end is not None:
+            filters.append(value_ledger_entries.c.entry_date <= period_end)
+        if ticker is not None and str(ticker).strip():
+            filters.append(value_ledger_entries.c.ticker == str(ticker).strip().upper())
+        if label is not None and str(label).strip():
+            filters.append(value_ledger_entries.c.label == str(label).strip())
+        stmt = (
+            select(value_ledger_entries)
+            .where(*filters)
+            .order_by(
+                value_ledger_entries.c.entry_date.desc(),
+                value_ledger_entries.c.created_at.desc(),
+                value_ledger_entries.c.id.desc(),
+            )
+            .limit(max(1, int(limit)))
+        )
+        with self.engine.connect() as conn:
+            return [_value_ledger_entry_from_row(row._mapping) for row in conn.execute(stmt)]
+
     def decision_card_payload(
         self,
         decision_card_id: str,
@@ -290,6 +334,44 @@ def _useful_alert_label_row(label: UsefulAlertLabel) -> dict[str, Any]:
     }
 
 
+def _value_ledger_entry_row(entry: ValueLedgerEntry) -> dict[str, Any]:
+    return {
+        "id": entry.id,
+        "entry_date": entry.entry_date,
+        "as_of": entry.as_of,
+        "scan_run_id": entry.scan_run_id,
+        "candidate_state_id": entry.candidate_state_id,
+        "candidate_packet_id": entry.candidate_packet_id,
+        "decision_card_id": entry.decision_card_id,
+        "artifact_type": entry.artifact_type,
+        "artifact_id": entry.artifact_id,
+        "ticker": entry.ticker,
+        "label": entry.label,
+        "action_state": entry.action_state,
+        "priced_in_status": entry.priced_in_status,
+        "priced_in_direction": entry.priced_in_direction,
+        "emotion_score": entry.emotion_score,
+        "reaction_score": entry.reaction_score,
+        "emotion_reaction_gap": entry.emotion_reaction_gap,
+        "final_score": entry.final_score,
+        "setup_type": entry.setup_type,
+        "supported_action": entry.supported_action,
+        "user_decision": entry.user_decision,
+        "estimated_value_usd": entry.estimated_value_usd,
+        "confidence": entry.confidence,
+        "cost_to_produce_usd": entry.cost_to_produce_usd,
+        "provider_call_count": entry.provider_call_count,
+        "llm_call_count": entry.llm_call_count,
+        "outcome_status": entry.outcome_status,
+        "source": entry.source,
+        "notes": entry.notes,
+        "available_at": entry.available_at,
+        "payload": thaw_json_value(entry.payload),
+        "created_at": entry.created_at,
+        "updated_at": entry.updated_at,
+    }
+
+
 def _validation_run_from_row(row: Any) -> ValidationRun:
     return ValidationRun(
         id=row["id"],
@@ -356,6 +438,44 @@ def _useful_alert_label_from_row(row: Any) -> UsefulAlertLabel:
         label=row["label"],
         notes=row["notes"],
         created_at=_as_datetime(row["created_at"]),
+    )
+
+
+def _value_ledger_entry_from_row(row: Any) -> ValueLedgerEntry:
+    return ValueLedgerEntry(
+        id=row["id"],
+        entry_date=row["entry_date"],
+        as_of=row["as_of"],
+        scan_run_id=row["scan_run_id"],
+        candidate_state_id=row["candidate_state_id"],
+        candidate_packet_id=row["candidate_packet_id"],
+        decision_card_id=row["decision_card_id"],
+        artifact_type=row["artifact_type"],
+        artifact_id=row["artifact_id"],
+        ticker=row["ticker"],
+        label=row["label"],
+        action_state=row["action_state"],
+        priced_in_status=row["priced_in_status"],
+        priced_in_direction=row["priced_in_direction"],
+        emotion_score=row["emotion_score"],
+        reaction_score=row["reaction_score"],
+        emotion_reaction_gap=row["emotion_reaction_gap"],
+        final_score=row["final_score"],
+        setup_type=row["setup_type"],
+        supported_action=row["supported_action"],
+        user_decision=row["user_decision"],
+        estimated_value_usd=row["estimated_value_usd"],
+        confidence=row["confidence"],
+        cost_to_produce_usd=row["cost_to_produce_usd"],
+        provider_call_count=row["provider_call_count"],
+        llm_call_count=row["llm_call_count"],
+        outcome_status=row["outcome_status"],
+        source=row["source"],
+        notes=row["notes"],
+        available_at=_as_datetime(row["available_at"]),
+        payload=row["payload"],
+        created_at=_as_datetime(row["created_at"]),
+        updated_at=_as_datetime(row["updated_at"]),
     )
 
 
