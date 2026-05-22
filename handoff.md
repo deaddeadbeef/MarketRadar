@@ -1,6 +1,33 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 03:12:51 +08:00
+Last updated: 2026-05-23 03:27:13 +08:00
+
+## Latest Empty-Universe Next-Action Slice
+
+Last updated: 2026-05-23 03:27:13 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice advances mission-brief P0 by keeping empty-universe blockers from routing the operator into market-bar repair before any securities exist.
+- This is useful because the user sees one first blocker and one next action: seed the universe first, then deal with market bars.
+
+Fix in this slice:
+
+- When `priced-in-answer` sees a setup blocker of `universe` or `scan_scope`, its evidence-completeness first gap, full-market trust gate, and operator next step now point at that setup blocker.
+- The `after_current_blocker` preview is suppressed for `universe` and `scan_scope`, so an empty DB no longer shows a nested market-bar repair action as the next source to work.
+- The market-bar blocker behavior is preserved once an active universe exists.
+
+Validation observed in this slice:
+
+- Focused dashboard-data tests passed: empty universe, preflight first blocker, incomplete stock bars, core evidence gaps, and after-current source-plan behavior.
+- `ruff check` passed for `dashboard/data.py` and the touched dashboard-data tests.
+- `git diff --check` passed.
+- A zero-call source-tree smoke against `data/schwab-live.db` with Polygon provider env returned `status=blocked`, `evidence_first_gap_source=universe`, `trust_first_blocker=universe`, `operator_command=catalyst-radar ingest-polygon tickers --max-pages 1 --confirm-external-call`, `has_after_current_blocker=false`, and `external_calls_made=0`.
+
+Current live blocker:
+
+- The real local DB still has no active universe. The next real operation is universe seeding, which is a live provider/database-write action and must be run only with explicit operator intent and reviewed call/write counts.
 
 ## Latest Zero-Call Sample and Provider Boundary Slice
 
