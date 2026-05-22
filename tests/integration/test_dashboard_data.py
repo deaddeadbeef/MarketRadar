@@ -1672,6 +1672,19 @@ def test_priced_in_scan_status_marks_small_named_universe_as_selected() -> None:
     assert _priced_in_scan_status(discovery) == "selected_universe"
 
 
+def test_priced_in_scan_status_keeps_selected_universe_when_provider_request_is_large() -> None:
+    discovery = {
+        "run": {"universe": "liquid-us"},
+        "freshness": {"active_security_count": 12_669},
+        "yield": {
+            "requested_securities": 12_104,
+            "scanned_securities": 2_429,
+        },
+    }
+
+    assert _priced_in_scan_status(discovery) == "selected_universe"
+
+
 def test_priced_in_scan_status_accepts_named_universe_when_it_covers_active_scope() -> None:
     discovery = {
         "run": {"universe": "all-active"},
@@ -6109,7 +6122,7 @@ def test_priced_in_preflight_warns_when_latest_run_is_selected_universe(
                 "missing_as_of_daily_bar_count": 523,
             },
             "yield": {
-                "requested_securities": 2_429,
+                "requested_securities": 12_104,
                 "scanned_securities": 2_429,
             },
         },
