@@ -86,6 +86,7 @@ from catalyst_radar.validation.reports import (
     build_validation_report,
     validation_report_payload,
 )
+from catalyst_radar.validation.value_ledger import load_value_ledger_summary_payload
 
 RADAR_RUN_COOLDOWN_LOCK_NAME = "manual_radar_run_cooldown"
 DAILY_WORKER_LOCK_NAME = "daily-run"
@@ -10792,6 +10793,14 @@ def load_cost_summary(
         "useful_labels": [_dataclass_dict(label) for label in useful_labels],
         "source": "budget_ledger",
     }
+
+
+def load_value_ledger_summary(
+    engine: Engine,
+    *,
+    available_at: datetime | None = None,
+) -> dict[str, object]:
+    return load_value_ledger_summary_payload(engine, available_at=available_at)
 
 
 def load_agent_review_history(

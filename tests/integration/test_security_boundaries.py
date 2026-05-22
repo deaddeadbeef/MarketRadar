@@ -97,6 +97,18 @@ EXPECTED_API_ROUTES = {
         "POST",
         "/api/feedback",
     ): ("catalyst_radar.api.routes.feedback", "record_feedback", ("feedback",)),
+    (
+        "GET",
+        "/api/value-ledger/summary",
+    ): ("catalyst_radar.api.routes.value_ledger", "value_ledger_summary", ("value-ledger",)),
+    (
+        "GET",
+        "/api/value-ledger/entries",
+    ): ("catalyst_radar.api.routes.value_ledger", "value_ledger_entries", ("value-ledger",)),
+    (
+        "POST",
+        "/api/value-ledger/entries",
+    ): ("catalyst_radar.api.routes.value_ledger", "value_ledger_record", ("value-ledger",)),
     ("GET", "/api/health"): ("apps.api.main", "health", ()),
     ("GET", "/api/ops/health"): ("catalyst_radar.api.routes.ops", "health", ("ops",)),
     (

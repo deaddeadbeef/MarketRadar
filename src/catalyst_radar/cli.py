@@ -172,6 +172,13 @@ from catalyst_radar.validation.outcomes import compute_forward_outcomes, outcome
 from catalyst_radar.validation.paper import create_paper_trade_from_card, update_trade_outcome
 from catalyst_radar.validation.replay import build_replay_results, deterministic_replay_run_id
 from catalyst_radar.validation.reports import build_validation_report, validation_report_payload
+from catalyst_radar.validation.value_ledger import (
+    build_value_ledger_entry,
+    load_value_ledger_entries_payload,
+    load_value_ledger_summary_payload,
+    value_ledger_artifact_context,
+    value_ledger_write_payload,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -607,6 +614,62 @@ def build_parser() -> argparse.ArgumentParser:
     useful_label.add_argument("--label", required=True)
     useful_label.add_argument("--notes")
     useful_label.add_argument("--created-at", type=_parse_aware_datetime)
+
+    value_ledger = subparsers.add_parser("value-ledger")
+    value_ledger_sub = value_ledger.add_subparsers(
+        dest="value_ledger_command",
+        required=True,
+    )
+    value_ledger_add = value_ledger_sub.add_parser("record", aliases=["add"])
+    value_ledger_add.add_argument("--database-url")
+    value_ledger_add.add_argument("--artifact-type", required=True)
+    value_ledger_add.add_argument("--artifact-id", required=True)
+    value_ledger_add.add_argument("--as-of", type=date.fromisoformat)
+    value_ledger_add.add_argument("--scan-run-id")
+    value_ledger_add.add_argument("--candidate-state-id")
+    value_ledger_add.add_argument("--candidate-packet-id")
+    value_ledger_add.add_argument("--decision-card-id")
+    value_ledger_add.add_argument("--ticker")
+    value_ledger_add.add_argument("--label", required=True)
+    value_ledger_add.add_argument("--action-state")
+    value_ledger_add.add_argument("--priced-in-status")
+    value_ledger_add.add_argument("--priced-in-direction")
+    value_ledger_add.add_argument("--emotion-score", type=float)
+    value_ledger_add.add_argument("--reaction-score", type=float)
+    value_ledger_add.add_argument("--emotion-reaction-gap", type=float)
+    value_ledger_add.add_argument("--final-score", type=float)
+    value_ledger_add.add_argument("--setup-type")
+    value_ledger_add.add_argument("--supported-action")
+    value_ledger_add.add_argument("--user-decision")
+    value_ledger_add.add_argument("--estimated-value-usd", type=float, required=True)
+    value_ledger_add.add_argument("--confidence", type=float, default=1.0)
+    value_ledger_add.add_argument("--cost-to-produce-usd", type=float, default=0.0)
+    value_ledger_add.add_argument("--provider-call-count", type=int, default=0)
+    value_ledger_add.add_argument("--llm-call-count", type=int, default=0)
+    value_ledger_add.add_argument("--outcome-status", default="pending")
+    value_ledger_add.add_argument("--notes")
+    value_ledger_add.add_argument("--entry-date", type=date.fromisoformat)
+    value_ledger_add.add_argument("--available-at", type=_parse_aware_datetime)
+    value_ledger_add.add_argument("--execute", action="store_true")
+    value_ledger_add.add_argument("--json", action="store_true")
+
+    value_ledger_list = value_ledger_sub.add_parser("list")
+    value_ledger_list.add_argument("--database-url")
+    value_ledger_list.add_argument("--available-at", type=_parse_aware_datetime)
+    value_ledger_list.add_argument("--period-start", type=date.fromisoformat)
+    value_ledger_list.add_argument("--period-end", type=date.fromisoformat)
+    value_ledger_list.add_argument("--ticker")
+    value_ledger_list.add_argument("--label")
+    value_ledger_list.add_argument("--limit", type=int, default=200)
+    value_ledger_list.add_argument("--json", action="store_true")
+
+    value_ledger_summary = value_ledger_sub.add_parser("summary")
+    value_ledger_summary.add_argument("--database-url")
+    value_ledger_summary.add_argument("--available-at", type=_parse_aware_datetime)
+    value_ledger_summary.add_argument("--period-start", type=date.fromisoformat)
+    value_ledger_summary.add_argument("--period-end", type=date.fromisoformat)
+    value_ledger_summary.add_argument("--target-monthly-value-usd", type=float, default=40.0)
+    value_ledger_summary.add_argument("--json", action="store_true")
 
     build_universe = subparsers.add_parser("build-universe")
     build_universe.add_argument("--name")
@@ -2428,6 +2491,89 @@ def main(argv: list[str] | None = None) -> int:
             f"artifact_id={label.artifact_id} ticker={label.ticker} label={label.label}"
         )
         return 0
+
+    if args.command == "value-ledger":
+        create_schema(engine)
+        try:
+            if args.value_ledger_command in {"add", "record"}:
+                available_at = args.available_at or datetime.now(UTC)
+                artifact_context = value_ledger_artifact_context(
+                    engine,
+                    artifact_type=args.artifact_type,
+                    artifact_id=args.artifact_id,
+                    available_at=available_at,
+                )
+                entry = build_value_ledger_entry(
+                    artifact_type=args.artifact_type,
+                    artifact_id=args.artifact_id,
+                    as_of=args.as_of,
+                    scan_run_id=args.scan_run_id,
+                    candidate_state_id=args.candidate_state_id,
+                    candidate_packet_id=args.candidate_packet_id,
+                    decision_card_id=args.decision_card_id,
+                    ticker=args.ticker,
+                    label=args.label,
+                    action_state=args.action_state,
+                    priced_in_status=args.priced_in_status,
+                    priced_in_direction=args.priced_in_direction,
+                    emotion_score=args.emotion_score,
+                    reaction_score=args.reaction_score,
+                    emotion_reaction_gap=args.emotion_reaction_gap,
+                    final_score=args.final_score,
+                    setup_type=args.setup_type,
+                    supported_action=args.supported_action,
+                    user_decision=args.user_decision,
+                    estimated_value_usd=args.estimated_value_usd,
+                    confidence=args.confidence,
+                    cost_to_produce_usd=args.cost_to_produce_usd,
+                    provider_call_count=args.provider_call_count,
+                    llm_call_count=args.llm_call_count,
+                    outcome_status=args.outcome_status,
+                    source="cli",
+                    entry_date=args.entry_date,
+                    available_at=available_at,
+                    notes=args.notes,
+                    artifact_context=artifact_context,
+                )
+                if args.execute:
+                    ValidationRepository(engine).upsert_value_ledger_entry(entry)
+                payload = value_ledger_write_payload(entry, execute=args.execute)
+                if args.json:
+                    print(json.dumps(payload, sort_keys=True))
+                    return 0
+                _print_value_ledger_write(payload)
+                return 0
+            if args.value_ledger_command == "list":
+                payload = load_value_ledger_entries_payload(
+                    engine,
+                    available_at=args.available_at,
+                    period_start=args.period_start,
+                    period_end=args.period_end,
+                    ticker=args.ticker,
+                    label=args.label,
+                    limit=args.limit,
+                )
+                if args.json:
+                    print(json.dumps(payload, sort_keys=True))
+                    return 0
+                _print_value_ledger_entries(payload)
+                return 0
+            if args.value_ledger_command == "summary":
+                payload = load_value_ledger_summary_payload(
+                    engine,
+                    available_at=args.available_at,
+                    period_start=args.period_start,
+                    period_end=args.period_end,
+                    target_monthly_value_usd=args.target_monthly_value_usd,
+                )
+                if args.json:
+                    print(json.dumps(payload, sort_keys=True))
+                    return 0
+                _print_value_ledger_summary(payload)
+                return 0
+        except (TypeError, ValueError) as exc:
+            print(f"value ledger failed: {exc}", file=sys.stderr)
+            return 1
 
     if args.command == "build-universe":
         create_schema(engine)
@@ -7093,6 +7239,94 @@ def _print_shadow_readiness(payload: Mapping[str, object]) -> None:
             f"external_calls={row.get('external_calls_made') or 0} "
             f"db_writes={row.get('db_writes_made') or 0}"
         )
+
+
+def _print_value_ledger_write(payload: Mapping[str, object]) -> None:
+    entry = payload.get("entry")
+    entry = entry if isinstance(entry, Mapping) else {}
+    print(
+        "value_ledger "
+        f"mode={payload.get('mode')} "
+        f"external_calls_required={payload.get('external_calls_required') or 0} "
+        f"external_calls_made={payload.get('external_calls_made') or 0} "
+        f"db_writes_required={payload.get('db_writes_required') or 0} "
+        f"db_writes_made={payload.get('db_writes_made') or 0}"
+    )
+    print(
+        "entry "
+        f"id={entry.get('id')} "
+        f"date={entry.get('entry_date')} "
+        f"ticker={entry.get('ticker') or 'n/a'} "
+        f"label={entry.get('label')} "
+        f"supported_action={entry.get('supported_action') or 'n/a'} "
+        f"user_decision={entry.get('user_decision') or 'n/a'} "
+        f"estimated_value_usd={entry.get('estimated_value_usd')} "
+        f"confidence={entry.get('confidence')} "
+        f"weighted_value_usd={entry.get('confidence_weighted_value_usd')} "
+        f"outcome_status={entry.get('outcome_status')}"
+    )
+    print(f"next_action={_compact_cli_text(payload.get('next_action'))}")
+    print(f"useful_definition={_compact_cli_text(payload.get('useful_definition'))}")
+
+
+def _print_value_ledger_entries(payload: Mapping[str, object]) -> None:
+    print(
+        "value_ledger_entries "
+        f"count={payload.get('count') or 0} "
+        f"external_calls_made={payload.get('external_calls_made') or 0} "
+        f"db_writes_made={payload.get('db_writes_made') or 0}"
+    )
+    rows = payload.get("entries")
+    rows = rows if isinstance(rows, Sequence) else ()
+    if not rows:
+        print("No value ledger entries.")
+        return
+    print("date ticker label action decision weighted_value_usd outcome artifact")
+    for row in rows:
+        if not isinstance(row, Mapping):
+            continue
+        print(
+            f"{row.get('entry_date')} "
+            f"{row.get('ticker') or 'n/a'} "
+            f"{row.get('label')} "
+            f"{row.get('supported_action') or 'n/a'} "
+            f"{row.get('user_decision') or 'n/a'} "
+            f"{row.get('confidence_weighted_value_usd')} "
+            f"{row.get('outcome_status')} "
+            f"{row.get('artifact_type')}:{row.get('artifact_id')}"
+        )
+
+
+def _print_value_ledger_summary(payload: Mapping[str, object]) -> None:
+    print(
+        "value_ledger_summary "
+        f"period={payload.get('period_start')}..{payload.get('period_end')} "
+        f"entries={payload.get('entry_count') or 0} "
+        f"weighted_value_usd={payload.get('confidence_weighted_value_usd')} "
+        f"cost_to_produce_usd={payload.get('cost_to_produce_usd')} "
+        f"net_weighted_value_usd={payload.get('net_confidence_weighted_value_usd')} "
+        f"target_monthly_value_usd={payload.get('target_monthly_value_usd')} "
+        f"target_coverage_pct={payload.get('target_coverage_pct')} "
+        f"chatgpt_pro_offset_pct={payload.get('chatgpt_pro_offset_pct')} "
+        f"provider_calls={payload.get('provider_call_count') or 0} "
+        f"llm_calls={payload.get('llm_call_count') or 0} "
+        f"external_calls_made={payload.get('external_calls_made') or 0} "
+        f"db_writes_made={payload.get('db_writes_made') or 0}"
+    )
+    print(f"useful_definition={_compact_cli_text(payload.get('useful_definition'))}")
+    labels = payload.get("labels")
+    labels = labels if isinstance(labels, Sequence) else ()
+    if labels:
+        print("labels:")
+        for row in labels:
+            if not isinstance(row, Mapping):
+                continue
+            print(
+                "- "
+                f"{row.get('label')} entries={row.get('entry_count')} "
+                "weighted_value_usd="
+                f"{row.get('confidence_weighted_value_usd')}"
+            )
 
 
 def _print_priced_in_preflight(payload: Mapping[str, object]) -> None:

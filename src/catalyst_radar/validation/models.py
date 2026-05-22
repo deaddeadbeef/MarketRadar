@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from enum import StrEnum
 from typing import Any
 
@@ -254,6 +254,128 @@ class UsefulAlertLabel:
         )
 
 
+@dataclass(frozen=True)
+class ValueLedgerEntry:
+    id: str
+    entry_date: date
+    artifact_type: str
+    artifact_id: str
+    label: str
+    estimated_value_usd: float
+    confidence: float
+    source: str
+    available_at: datetime
+    as_of: date | None = None
+    scan_run_id: str | None = None
+    candidate_state_id: str | None = None
+    candidate_packet_id: str | None = None
+    decision_card_id: str | None = None
+    ticker: str | None = None
+    action_state: str | None = None
+    priced_in_status: str | None = None
+    priced_in_direction: str | None = None
+    emotion_score: float | None = None
+    reaction_score: float | None = None
+    emotion_reaction_gap: float | None = None
+    final_score: float | None = None
+    setup_type: str | None = None
+    supported_action: str | None = None
+    user_decision: str | None = None
+    cost_to_produce_usd: float = 0.0
+    provider_call_count: int = 0
+    llm_call_count: int = 0
+    outcome_status: str = "pending"
+    notes: str | None = None
+    payload: Mapping[str, Any] = field(default_factory=dict)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "id", _required_text(self.id, "id"))
+        object.__setattr__(self, "entry_date", _require_date(self.entry_date, "entry_date"))
+        object.__setattr__(
+            self,
+            "artifact_type",
+            _required_text(self.artifact_type, "artifact_type"),
+        )
+        object.__setattr__(
+            self,
+            "artifact_id",
+            _required_text(self.artifact_id, "artifact_id"),
+        )
+        object.__setattr__(self, "label", _required_text(self.label, "label"))
+        object.__setattr__(
+            self,
+            "estimated_value_usd",
+            _nonnegative_float(self.estimated_value_usd, "estimated_value_usd"),
+        )
+        object.__setattr__(self, "confidence", _ratio_float(self.confidence, "confidence"))
+        object.__setattr__(self, "source", _required_text(self.source, "source"))
+        object.__setattr__(
+            self,
+            "available_at",
+            _require_aware_utc(self.available_at, "available_at"),
+        )
+        if self.as_of is not None:
+            object.__setattr__(self, "as_of", _require_date(self.as_of, "as_of"))
+        for field_name in (
+            "scan_run_id",
+            "candidate_state_id",
+            "candidate_packet_id",
+            "decision_card_id",
+            "action_state",
+            "priced_in_status",
+            "priced_in_direction",
+            "setup_type",
+            "supported_action",
+            "user_decision",
+            "outcome_status",
+        ):
+            value = getattr(self, field_name)
+            if value is not None:
+                object.__setattr__(self, field_name, _required_text(value, field_name))
+        if self.ticker is not None:
+            ticker = str(self.ticker).strip()
+            object.__setattr__(self, "ticker", ticker.upper() if ticker else None)
+        for field_name in (
+            "emotion_score",
+            "reaction_score",
+            "emotion_reaction_gap",
+            "final_score",
+        ):
+            value = getattr(self, field_name)
+            if value is not None:
+                object.__setattr__(self, field_name, _finite_float(value, field_name))
+        object.__setattr__(
+            self,
+            "cost_to_produce_usd",
+            _nonnegative_float(self.cost_to_produce_usd, "cost_to_produce_usd"),
+        )
+        object.__setattr__(
+            self,
+            "provider_call_count",
+            _nonnegative_int(self.provider_call_count, "provider_call_count"),
+        )
+        object.__setattr__(
+            self,
+            "llm_call_count",
+            _nonnegative_int(self.llm_call_count, "llm_call_count"),
+        )
+        if self.notes is not None:
+            object.__setattr__(self, "notes", str(self.notes).strip() or None)
+        object.__setattr__(self, "payload", freeze_mapping(self.payload, "payload"))
+        object.__setattr__(
+            self,
+            "created_at",
+            _require_aware_utc(self.created_at, "created_at"),
+        )
+        object.__setattr__(
+            self,
+            "updated_at",
+            _require_aware_utc(self.updated_at, "updated_at"),
+        )
+
+
 def validation_run_id(
     *,
     run_type: str,
@@ -306,12 +428,70 @@ def useful_alert_label_id(
     )
 
 
+def value_ledger_entry_id(
+    *,
+    artifact_type: str,
+    artifact_id: str,
+    label: str,
+    entry_date: date,
+    source: str,
+) -> str:
+    return (
+        f"value-ledger-v1:{_required_text(artifact_type, 'artifact_type')}:"
+        f"{_required_text(artifact_id, 'artifact_id')}:"
+        f"{_required_text(label, 'label')}:"
+        f"{_require_date(entry_date, 'entry_date').isoformat()}:"
+        f"{_required_text(source, 'source')}"
+    )
+
+
 def _required_text(value: object, field_name: str) -> str:
     text = str(value).strip()
     if not text:
         msg = f"{field_name} must not be blank"
         raise ValueError(msg)
     return text
+
+
+def _require_date(value: date, field_name: str) -> date:
+    if isinstance(value, datetime):
+        value = value.date()
+    if not isinstance(value, date):
+        msg = f"{field_name} must be a date"
+        raise TypeError(msg)
+    return value
+
+
+def _nonnegative_float(value: object, field_name: str) -> float:
+    number = _finite_float(value, field_name)
+    if number < 0:
+        msg = f"{field_name} must be a finite non-negative number"
+        raise ValueError(msg)
+    return number
+
+
+def _finite_float(value: object, field_name: str) -> float:
+    number = float(value)
+    if number != number or number in {float("inf"), float("-inf")}:
+        msg = f"{field_name} must be finite"
+        raise ValueError(msg)
+    return number
+
+
+def _ratio_float(value: object, field_name: str) -> float:
+    number = float(value)
+    if number < 0 or number > 1 or number != number:
+        msg = f"{field_name} must be between 0 and 1"
+        raise ValueError(msg)
+    return number
+
+
+def _nonnegative_int(value: object, field_name: str) -> int:
+    number = int(value)
+    if number < 0:
+        msg = f"{field_name} must be non-negative"
+        raise ValueError(msg)
+    return number
 
 
 def _require_aware_utc(value: datetime, field_name: str) -> datetime:
@@ -334,8 +514,10 @@ __all__ = [
     "ValidationResult",
     "ValidationRun",
     "ValidationRunStatus",
+    "ValueLedgerEntry",
     "paper_trade_id",
     "useful_alert_label_id",
+    "value_ledger_entry_id",
     "validation_result_id",
     "validation_run_id",
 ]

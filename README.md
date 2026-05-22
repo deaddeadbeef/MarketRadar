@@ -747,6 +747,29 @@ boundaries, alert dry-run state, broker-order kill switch, and validation
 readiness. The command itself makes 0 provider calls and 0 database writes; it
 prints those counters plus the planned run's maximum external-call count.
 
+To track whether Market Radar is paying for itself, record local value evidence
+with the value ledger. The default `add` command is a preview and writes nothing;
+add `--execute` only after the displayed entry is correct:
+
+```powershell
+catalyst-radar value-ledger record --artifact-type candidate_state --artifact-id <ID> --label good-research --supported-action research --user-decision accepted --estimated-value-usd 10 --confidence 0.5 --notes "screened faster" --json
+catalyst-radar value-ledger record --artifact-type candidate_state --artifact-id <ID> --label good-research --supported-action research --user-decision accepted --estimated-value-usd 10 --confidence 0.5 --execute --json
+catalyst-radar value-ledger summary --json
+```
+
+`GET /api/value-ledger/summary`, `GET /api/value-ledger/entries`, and
+`POST /api/value-ledger/entries` expose the same local ledger contract. These
+endpoints make 0 provider calls. The POST endpoint defaults to preview mode and
+requires `execute=true` before it writes one ledger row. Known artifact types
+such as `candidate_state`, `candidate_packet`, `decision_card`, `paper_trade`,
+and `alert` must reference an existing local artifact. Ledger feedback labels
+are validated against the first supported set: `useful`, `noisy`, `acted`,
+`ignored`, `avoided-loss`, `missed`, `false-positive`, `false-negative`,
+`too-late`, `too-early`, `good-research`, `duplicate`,
+`not-understandable`, and `blocked-correctly`. The terminal dashboard Costs
+page shows weighted value, the $40/month target, and the percent offset against
+the $200/month ChatGPT Pro cost.
+
 After editing `.env.local`, run the activation checker before making live
 provider calls:
 

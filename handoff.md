@@ -1,6 +1,38 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-22 21:20:00 +08:00
+Last updated: 2026-05-23 00:15:12 +08:00
+
+## Latest Value Ledger Slice
+
+Last updated: 2026-05-23 00:15:12 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice advances the M7 value-proof path by making surfaced insight usefulness measurable before capital is involved.
+- This slice does not add provider, broker, order, OpenAI, SEC, Polygon/Massive, Schwab, web, or app calls from the product.
+- This is useful because MarketRadar can now answer the first value-ledger question: what artifact was surfaced, what action did it support, what did the operator do, what did it cost to produce, and how much decision-support value is being claimed before outcomes are computed.
+
+Fix in this slice:
+
+- Added `value_ledger_entries` schema/repository/model support with artifact links, action/priced-in context, supported action, user decision, feedback label, attribution estimate, production cost, provider/LLM call counts, and pending outcome status.
+- Added validated feedback labels from the mission brief and artifact scoping for known local artifacts (`candidate_state`, `candidate_packet`, `decision_card`, `paper_trade`, `alert`).
+- Added CLI `catalyst-radar value-ledger record` plus `list` and `summary`; `record` previews by default and writes only with `--execute`.
+- Added API routes `GET /api/value-ledger/summary`, `GET /api/value-ledger/entries`, and `POST /api/value-ledger/entries`; POST previews by default and writes only with `execute=true`.
+- Added TUI Costs-page value ledger visibility with weighted value, ledger cost, net value, $40/month target coverage, and ChatGPT Pro offset percent.
+- README documents the operator contract because the CLI/API contract changed.
+
+Validation observed in this slice:
+
+- `ruff check` passed for touched source/tests.
+- `git diff --check` passed.
+- Focused value-ledger/API/security/shadow readiness/cost-summary regression tests passed: 27 passed.
+- CLI smoke for a value-ledger preview returned `external_calls_required=0`, `external_calls_made=0`, `db_writes_required=1`, `db_writes_made=0`.
+
+Current live blocker:
+
+- This does not make the product investment-ready. It creates the ledger required before forward outcome tracking and monthly value reporting.
+- Next mission-brief slice is forward outcome tracking for value-ledger rows using point-in-time daily bars.
 
 ## Latest Universe Setup Visibility
 
