@@ -704,8 +704,9 @@ def _setup_required_status_payload(
     stocks_only: bool,
     reason: str,
 ):
-    action = "Seed the active universe before market-bar repair."
-    command = "catalyst-radar priced-in-preflight --json"
+    setup = _universe_setup_action(config)
+    action = str(setup["action"])
+    command = str(setup["command"])
     recommended_action = _recommended_action_payload(
         kind="seed_universe",
         label="Seed active universe",
@@ -713,7 +714,11 @@ def _setup_required_status_payload(
         reason=action,
         command=command,
         tui_command="1",
-        api="POST /api/radar/universe/seed",
+        api=setup.get("api"),
+        request_body=setup.get("request_body"),
+        approval_required=bool(setup["approval_required"]),
+        external_calls_required=int(setup["external_calls_required"]),
+        db_writes_required=int(setup["db_writes_required"]),
     )
     return {
         "schema_version": "market-bars-status-v1",
@@ -734,6 +739,12 @@ def _setup_required_status_payload(
             "reason": reason,
             "next_action": action,
             "command": command,
+            "api": setup.get("api"),
+            "request_body": setup.get("request_body"),
+            "approval_required": bool(setup["approval_required"]),
+            "external_calls_required": int(setup["external_calls_required"]),
+            "db_writes_required": int(setup["db_writes_required"]),
+            "provider": setup["provider"],
             "external_calls_made": 0,
         },
         "stock_scope": None,
@@ -743,7 +754,28 @@ def _setup_required_status_payload(
         "unblock_checklist": {
             "schema_version": "market-bars-unblock-checklist-v1",
             "status": "setup_required",
-            "steps": [{"step": "seed_universe", "command": command}],
+            "next_step_order": 1,
+            "steps": [
+                {
+                    "order": 1,
+                    "step": "seed_universe",
+                    "label": "Seed active universe",
+                    "command": command,
+                    "api": setup.get("api"),
+                    "request_body": setup.get("request_body"),
+                    "approval_required": bool(setup["approval_required"]),
+                    "external_calls_required": int(setup["external_calls_required"]),
+                    "db_changes_required": int(setup["db_writes_required"]),
+                },
+                {
+                    "order": 2,
+                    "step": "rerun_status",
+                    "label": "Rerun market-bar status",
+                    "command": "catalyst-radar market-bars status",
+                    "external_calls_required": 0,
+                    "db_changes_required": 0,
+                },
+            ],
             "external_calls_made": 0,
         },
         "repair_plan": {},
@@ -753,6 +785,42 @@ def _setup_required_status_payload(
         "zero_call_boundary": "Status reads local metadata and makes 0 provider calls.",
         "external_calls_made": 0,
         "db_writes_made": 0,
+    }
+
+
+def _universe_setup_action(config: AppConfig) -> dict[str, object]:
+    provider = str(config.daily_market_provider or config.market_provider or "csv").strip().lower()
+    if provider == "polygon":
+        max_pages = max(1, int(config.polygon_tickers_max_pages))
+        return {
+            "provider": "polygon",
+            "action": "Seed the active universe from Polygon/Massive before market-bar repair.",
+            "command": (
+                "catalyst-radar ingest-polygon tickers "
+                f"--max-pages {max_pages} --confirm-external-call"
+            ),
+            "api": "POST /api/radar/universe/seed",
+            "request_body": {"provider": "polygon", "max_pages": max_pages},
+            "approval_required": True,
+            "external_calls_required": max_pages,
+            "db_writes_required": 1,
+        }
+    command = (
+        "catalyst-radar ingest-csv "
+        f"--securities {config.csv_securities_path} "
+        f"--daily-bars {config.csv_daily_bars_path}"
+    )
+    if config.csv_holdings_path:
+        command = f"{command} --holdings {config.csv_holdings_path}"
+    return {
+        "provider": provider or "csv",
+        "action": "Load the CSV securities and daily bars before market-bar repair.",
+        "command": command,
+        "api": None,
+        "request_body": None,
+        "approval_required": False,
+        "external_calls_required": 0,
+        "db_writes_required": 1,
     }
 
 

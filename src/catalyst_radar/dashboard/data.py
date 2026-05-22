@@ -9622,6 +9622,7 @@ def radar_readiness_payload(
         config,
         radar_run_summary=radar_run_summary,
         broker_summary=broker_summary,
+        ops_health=ops_health,
     )
     alert_diagnostics = alert_planning_diagnostics_payload(
         engine,
@@ -11938,8 +11939,7 @@ def universe_coverage_payload(
         "detail": detail,
         "next_action": (
             "Seed or refresh the universe with "
-            f"`python -m catalyst_radar.cli ingest-polygon tickers --max-pages "
-            f"{config.polygon_tickers_max_pages} --confirm-external-call` "
+            f"`{_universe_setup_command(config)}` "
             "before relying on broad discovery."
             if status in {"blocked", "thin", "partial"}
             else "Monitor daily-bar coverage and rejected provider records after each run."
@@ -11950,6 +11950,24 @@ def universe_coverage_payload(
             f"latest_daily_bar={database.get('latest_daily_bar_date') or 'n/a'}"
         ),
     }
+
+
+def _universe_setup_command(config: AppConfig) -> str:
+    provider = _provider_name(config.daily_market_provider, default="csv")
+    if provider == "polygon":
+        return (
+            "catalyst-radar ingest-polygon tickers "
+            f"--max-pages {max(1, int(config.polygon_tickers_max_pages))} "
+            "--confirm-external-call"
+        )
+    command = (
+        "catalyst-radar ingest-csv "
+        f"--securities {config.csv_securities_path} "
+        f"--daily-bars {config.csv_daily_bars_path}"
+    )
+    if config.csv_holdings_path:
+        command = f"{command} --holdings {config.csv_holdings_path}"
+    return command
 
 
 def _daily_bar_coverage_for_date(
@@ -12229,6 +12247,7 @@ def readiness_checklist_payload(
     *,
     radar_run_summary: Mapping[str, object] | None = None,
     broker_summary: Mapping[str, object] | None = None,
+    ops_health: Mapping[str, object] | None = None,
 ) -> list[dict[str, object]]:
     coverage_rows = data_source_coverage_payload(config, broker_summary=broker_summary)
     coverage = {str(row.get("layer") or ""): row for row in coverage_rows}
@@ -12236,6 +12255,22 @@ def readiness_checklist_payload(
     run_as_of = _parse_date(run_summary.get("as_of"))
     steps = _radar_steps_by_name(radar_run_summary)
     rows: list[dict[str, object]] = []
+
+    if isinstance(ops_health, Mapping):
+        universe = universe_coverage_payload(config, ops_health)
+        universe_status = str(universe.get("status") or "blocked")
+        rows.append(
+            _readiness_row(
+                "Scan universe",
+                {
+                    "ready": "ready",
+                    "attention": "attention",
+                }.get(universe_status, "blocked"),
+                str(universe.get("headline") or "Scan universe is not ready."),
+                str(universe.get("next_action") or "Seed the scan universe."),
+                str(universe.get("evidence") or universe.get("detail") or ""),
+            )
+        )
 
     market = coverage.get("Market data", {})
     market_mode = str(market.get("mode") or "unknown")

@@ -6999,7 +6999,11 @@ def test_worker_status_payload_reports_no_worker_activity(
 
 
 def test_universe_coverage_payload_warns_on_thin_sample_universe() -> None:
-    config = AppConfig(scan_batch_size=500, polygon_tickers_max_pages=1)
+    config = AppConfig(
+        scan_batch_size=500,
+        daily_market_provider="polygon",
+        polygon_tickers_max_pages=1,
+    )
     health = {
         "database": {
             "active_security_count": 6,
@@ -7014,6 +7018,30 @@ def test_universe_coverage_payload_warns_on_thin_sample_universe() -> None:
     assert "6 active securities" in str(summary["headline"])
     assert "not broad US-market discovery" in str(summary["detail"])
     assert "--max-pages 1" in str(summary["next_action"])
+
+
+def test_universe_coverage_payload_uses_csv_ingest_for_empty_csv_universe() -> None:
+    config = AppConfig(
+        daily_market_provider="csv",
+        csv_securities_path="data/custom/securities.csv",
+        csv_daily_bars_path="data/custom/daily_bars.csv",
+        csv_holdings_path=None,
+    )
+    health = {
+        "database": {
+            "active_security_count": 0,
+            "active_security_with_daily_bar_count": 0,
+            "latest_daily_bar_date": None,
+        }
+    }
+
+    summary = universe_coverage_payload(config, health)
+
+    assert summary["status"] == "blocked"
+    assert "No active scan universe" in str(summary["headline"])
+    assert "ingest-csv" in str(summary["next_action"])
+    assert "data/custom/securities.csv" in str(summary["next_action"])
+    assert "ingest-polygon" not in str(summary["next_action"])
 
 
 def test_universe_coverage_payload_reports_ready_covered_universe() -> None:
@@ -7481,6 +7509,27 @@ def test_readiness_checklist_blocks_polygon_without_api_key() -> None:
     assert market["status"] == "blocked"
     assert "API key is missing" in str(market["finding"])
     assert "grouped daily" in str(market["evidence"])
+
+
+def test_readiness_checklist_surfaces_empty_scan_universe() -> None:
+    config = AppConfig(daily_market_provider="csv", daily_event_provider="news_fixture")
+    rows = readiness_checklist_payload(
+        config,
+        radar_run_summary={"steps": []},
+        ops_health={
+            "database": {
+                "active_security_count": 0,
+                "active_security_with_daily_bar_count": 0,
+                "latest_daily_bar_date": None,
+            }
+        },
+    )
+
+    universe = next(row for row in rows if row["area"] == "Scan universe")
+    assert universe["status"] == "blocked"
+    assert "No active scan universe" in str(universe["finding"])
+    assert "ingest-csv" in str(universe["next_action"])
+    assert "active=0" in str(universe["evidence"])
 
 
 def test_readiness_checklist_blocks_sec_without_live_settings() -> None:

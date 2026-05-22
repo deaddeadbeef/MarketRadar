@@ -2303,6 +2303,51 @@ def test_get_radar_market_bars_status_returns_zero_call_unblock_state(
     assert stock_scope["db_writes_made"] == 0
 
 
+def test_get_radar_market_bars_status_guides_empty_universe_setup(
+    tmp_path,
+    monkeypatch,
+):
+    database_url = _database_url(tmp_path, "radar-market-bars-empty-universe.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("CATALYST_DAILY_MARKET_PROVIDER", "polygon")
+    monkeypatch.setenv("CATALYST_POLYGON_API_KEY", "fixture-key")
+    monkeypatch.setenv("CATALYST_POLYGON_TICKERS_MAX_PAGES", "2")
+    _create_database(database_url)
+    client = TestClient(create_app())
+
+    response = client.get(
+        "/api/radar/market-bars/status",
+        params={"expected_as_of": "2026-05-11"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "setup_required"
+    assert payload["first_blocker"] == "universe"
+    assert payload["recommended_action"]["kind"] == "seed_universe"
+    assert payload["recommended_action"]["command"] == (
+        "catalyst-radar ingest-polygon tickers "
+        "--max-pages 2 --confirm-external-call"
+    )
+    assert payload["recommended_action"]["api"] == "POST /api/radar/universe/seed"
+    assert payload["recommended_action"]["request_body"] == {
+        "provider": "polygon",
+        "max_pages": 2,
+    }
+    assert payload["recommended_action"]["approval_required"] is True
+    assert payload["recommended_action"]["external_calls_required"] == 2
+    diagnostic = payload["missing_universe_diagnostic"]
+    assert diagnostic["api"] == "POST /api/radar/universe/seed"
+    assert diagnostic["request_body"] == {"provider": "polygon", "max_pages": 2}
+    assert diagnostic["external_calls_made"] == 0
+    checklist = payload["unblock_checklist"]
+    assert checklist["steps"][0]["label"] == "Seed active universe"
+    assert checklist["steps"][0]["api"] == "POST /api/radar/universe/seed"
+    assert checklist["steps"][0]["external_calls_required"] == 2
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
+
+
 def test_post_radar_market_bars_provider_fixture_preview_is_zero_write(
     tmp_path,
     monkeypatch,

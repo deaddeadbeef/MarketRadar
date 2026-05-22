@@ -1,6 +1,36 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-22 08:10:00 +08:00
+Last updated: 2026-05-22 21:20:00 +08:00
+
+## Latest Universe Setup Visibility
+
+Last updated: 2026-05-22 21:20:00 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice does not call Polygon/Massive, SEC, Schwab, OpenAI, broker, order, web, app, or provider tools from the product.
+- This is useful because the dashboard/status must tell a human operator exactly how to create the scan universe before discussing market-bar repair. A configured provider is not enough; the local active universe still has to exist.
+
+Fix in this slice:
+
+- `market-bars status` setup-required payloads now use provider-aware universe setup guidance instead of looping back to `priced-in-preflight --json`.
+- CSV mode points at `catalyst-radar ingest-csv --securities ... --daily-bars ...`; Polygon/Massive mode points at guarded `catalyst-radar ingest-polygon tickers --max-pages <cap> --confirm-external-call` and includes `POST /api/radar/universe/seed` request body metadata.
+- Dashboard readiness now adds a `Scan universe` row when ops health is available, so an empty active universe is visible even when the market provider itself is configured.
+- README documents the exact universe setup behavior.
+
+Validation observed in this slice:
+
+- Focused dashboard/API status tests passed.
+- Full `tests/integration/test_dashboard_data.py` passed.
+- Focused API/CLI market-bar status regressions passed.
+- Ruff passed for touched source and integration files.
+- Py-compile passed for touched source and integration files.
+- Zero-call local schwab-live.db smoke with a Polygon provider override returned `status=setup_required`, `first_blocker=universe`, and the guarded `ingest-polygon tickers --max-pages 2 --confirm-external-call` setup command, with provider/API/broker/LLM calls all at 0.
+
+Current live blocker:
+
+- In the current schwab-live.db smoke, there are still no active securities and no stored daily bars. The first useful product step remains universe setup; after that, market-bar coverage can be evaluated.
 
 ## Latest Universe-First Setup Gate
 
