@@ -3451,6 +3451,149 @@ def test_priced_in_answer_routes_saved_file_residual_gap_to_manual_repair(
     assert payload["external_calls_made"] == 0
 
 
+def test_priced_in_answer_uses_current_db_market_bar_counts_with_stale_template(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    engine = _engine(tmp_path)
+    as_of = datetime(2026, 5, 8, 21, tzinfo=UTC)
+    market_repo = MarketRepository(engine)
+    market_repo.upsert_securities(
+        [
+            Security(
+                ticker=ticker,
+                name=f"{ticker} Corp.",
+                exchange="NYSE",
+                sector="Industrials",
+                industry="Components",
+                market_cap=1_000_000_000,
+                avg_dollar_volume_20d=20_000_000,
+                has_options=True,
+                is_active=True,
+                updated_at=as_of,
+                metadata={"type": "CS"},
+            )
+            for ticker in ("AAPL", "MSFT", "GLW")
+        ]
+    )
+    market_repo.upsert_daily_bars(
+        [
+            DailyBar(
+                ticker=ticker,
+                date=as_of.date(),
+                open=100,
+                high=101,
+                low=99,
+                close=100,
+                volume=1_000_000,
+                vwap=100,
+                adjusted=True,
+                provider="manual_csv",
+                source_ts=as_of,
+                available_at=as_of,
+            )
+            for ticker in ("AAPL", "MSFT")
+        ]
+    )
+    template_path = Path("data") / "local" / "manual-bars-2026-05-08.csv"
+    template_path.parent.mkdir(parents=True)
+    template_path.write_text(
+        "\n".join(
+            [
+                (
+                    "ticker,date,security_type,name,template_reason,open,high,low,"
+                    "close,volume,vwap,adjusted,provider,source_ts,available_at"
+                ),
+                (
+                    "AAPL,2026-05-08,CS,AAPL Corp.,stale_template,,,,,,,true,"
+                    "manual_csv,2026-05-08T21:00:00+00:00,"
+                    "2026-05-08T21:00:00+00:00"
+                ),
+                (
+                    "MSFT,2026-05-08,CS,MSFT Corp.,stale_template,,,,,,,true,"
+                    "manual_csv,2026-05-08T21:00:00+00:00,"
+                    "2026-05-08T21:00:00+00:00"
+                ),
+                (
+                    "GLW,2026-05-08,CS,GLW Corp.,missing_as_of_bar,,,,,,,true,"
+                    "manual_csv,2026-05-08T21:00:00+00:00,"
+                    "2026-05-08T21:00:00+00:00"
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    payload = priced_in_answer_payload(
+        engine,
+        AppConfig.from_env({"CATALYST_POLYGON_API_KEY": "fixture-key"}),
+        queue={
+            "status": "ready",
+            "total_count": 0,
+            "count": 0,
+            "returned_count": 0,
+            "offset": 0,
+            "has_more": False,
+            "filters": {"status": "all", "limit": 5, "offset": 0},
+            "status_counts": {},
+            "usefulness_counts": {},
+            "decision_gap_counts": {
+                "schema_version": "priced-in-decision-gap-counts-v1",
+                "scope": "actionable_mismatch_rows",
+                "row_count": 0,
+                "counts": {},
+                "sample_tickers": {},
+            },
+            "rows": [],
+            "latest_run": {"as_of": as_of.date().isoformat()},
+            "scan": {
+                "freshness": {
+                    "active_security_count": 3,
+                    "active_security_with_as_of_bar_count": 0,
+                    "missing_as_of_daily_bar_count": 3,
+                    "missing_as_of_daily_bar_tickers": ["AAPL", "MSFT", "GLW"],
+                }
+            },
+            "source_coverage": {
+                "summary": "market_bars 0/3",
+                "weak_sources": ["market_bars"],
+                "sources": {
+                    "market_bars": {
+                        "available": 0,
+                        "stale": 0,
+                        "missing": 3,
+                        "row_count": 3,
+                        "coverage_pct": 0.0,
+                    }
+                },
+                "actions": [],
+            },
+        },
+        preflight={"evidence_plan": {"steps": []}, "rows": []},
+    )
+
+    detail = payload["full_market_trust_gate"]["blocker_detail"]
+    assert detail["active_securities"] == 3
+    assert detail["with_as_of_bar"] == 2
+    assert detail["missing_as_of_bar"] == 1
+    assert detail["manual_csv"]["missing_row_count"] == 1
+    assert detail["manual_csv"]["template_row_count"] == 1
+    assert detail["manual_csv"]["empty_rows"] == 3
+    assert detail["saved_provider_capture"]["active_security_count"] == 3
+    assert detail["saved_provider_capture"]["existing_as_of_bar_count"] == 2
+    assert detail["saved_provider_capture"]["missing_as_of_bar_count"] == 1
+    assert "--expect-existing-count 2" in str(
+        detail["recommended_action"]["cli_command"]
+    )
+    assert "--expect-missing-count 1" in str(
+        detail["recommended_action"]["cli_command"]
+    )
+    assert payload["operator_next_step"]["first_gap_count"] == 1
+    assert payload["external_calls_made"] == 0
+
+
 def test_priced_in_answer_prefers_local_artifact_gap_before_options(
     tmp_path: Path,
 ) -> None:

@@ -1,6 +1,42 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 05:14:28 +08:00
+Last updated: 2026-05-23 05:37:46 +08:00
+
+## Latest Current-DB Market-Bar Count Alignment Slice
+
+Last updated: 2026-05-23 05:37:46 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar must reach trusted broad-market priced-in / not-yet-priced-in shadow scans, then prove usefulness with ledger rows, outcomes, baselines, and monthly value reports.
+- This slice fixes a P0 approval-guard risk before any more live provider work: `priced-in-answer` could reuse stale queue/template market-bar counts while `market-bars status` had the current DB counts.
+- This is useful because saved provider capture approval must be based on the actual current active/existing/missing market-bar counts, not on stale scan freshness or an old manual template.
+
+Fix in this slice:
+
+- `priced-in-answer` now recomputes active-universe or stock-like market-bar coverage from the current DB for the target as-of date before building the market-bar trust gate.
+- Market-bar blocker detail now includes `active_securities` and `with_as_of_bar` next to `missing_as_of_bar`.
+- A stale local manual template can still be shown as stale/empty progress, but it no longer controls the canonical missing count or saved-capture approval guard.
+
+Validation observed in this slice:
+
+- Red/green regression added for stale queue freshness plus stale manual template: before the fix, the test failed because `priced-in-answer` reported all rows missing; after the fix it reports the single current DB gap.
+- Related priced-in dashboard tests passed: 4 passed.
+- Full `tests/integration/test_dashboard_data.py` passed: 188 passed.
+- `ruff check` passed for touched dashboard source/tests.
+- `git diff --check` passed.
+- Zero-call operator-DB smoke with `.env.local` and this worktree pinned through `PYTHONPATH` returned `status=blocked`, `first=market_bars`, `detail_active=12613`, `detail_existing=12090`, `detail_missing=523`, `capture_existing=12090`, `capture_missing=523`, and `external_calls=0`.
+
+Operator/live data note:
+
+- `.env.local` is currently the operator source of truth and points to `sqlite:///C:/Users/fpan1/MarketRadar/data/local/schwab-live.db`.
+- A separate untracked `data/schwab-live.db` also exists from earlier work and has a smaller 1000-row universe. Do not use it for dashboard/operator readiness unless the operator intentionally changes `CATALYST_DATABASE_URL`.
+- One explicit live Polygon/Massive grouped-daily call was run against the `.env.local` DB in this slice: `ingest-polygon grouped-daily --date 2026-05-15 --confirm-external-call`. It returned `raw=12104`, `daily_bars=12104`, made no SEC/Schwab/OpenAI/broker/order calls, and did not reduce the current 523-row residual market-bar gap.
+
+Current live blocker:
+
+- The operator DB still has 12,613 active securities and 12,090 bars for `2026-05-15`; 523 active securities remain missing bars.
+- Running the same grouped-daily endpoint again is not expected to clear those 523 gaps. Next useful work should either repair the residual rows, classify/route unscanable active symbols with tests, or intentionally define a trusted stock-like/full-scan boundary without confusing it with all active instruments.
 
 ## Latest Priced-In Residual-Gap Next-Action Slice
 
