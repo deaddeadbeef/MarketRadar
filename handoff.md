@@ -1,6 +1,36 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 04:11:19 +08:00
+Last updated: 2026-05-23 04:24:58 +08:00
+
+## Latest Saved-File Residual-Gap Status Slice
+
+Last updated: 2026-05-23 04:24:58 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar must reach trusted broad-market priced-in / not-yet-priced-in shadow scans, then prove usefulness with ledger rows, outcomes, baselines, and monthly value reports.
+- This slice fixes the next P0 operator-risk issue after the first saved Polygon/Massive grouped-daily import.
+- This is useful because the status path must not keep telling the operator to reimport the same saved provider file after that file can no longer fill any of the remaining market-bar gaps.
+
+Fix in this slice:
+
+- `market-bars status` now locally previews an available saved grouped-daily JSON file and includes a `saved_file.projection` block with missing-covered and missing-after counts.
+- If the saved file covers remaining missing tickers, status can still recommend a saved-file import preview, explicitly labeling partial residual gaps when applicable.
+- If the saved file covers no remaining missing active tickers, status now recommends manual residual repair / universe-quality review instead of looping on saved-file validate/import.
+- The status path remains zero-provider-call and zero-DB-write; it only reads local DB rows and the saved JSON fixture.
+
+Validation observed in this slice:
+
+- Focused residual-loop regression passed.
+- Focused affected market-bar status / repair-plan / saved-file import tests passed: 4 passed.
+- `ruff check` passed for touched market status source/tests.
+- `git diff --check` passed.
+- Zero-call live-DB smoke from the real repo path against `data/schwab-live.db` for `2026-05-21` returned `recommended=manual_csv`, `covered=0`, `missing_after=36`, `external_calls_made=0`, and `db_writes_made=0`.
+
+Current live blocker:
+
+- The live local DB still has 36 missing `2026-05-21` active-universe bars after the saved grouped-daily import.
+- The next useful step is not another saved-file import. It is either manual residual-bar repair or a tested universe-quality rule that explicitly excludes unscanable residual symbols without confusing full active-universe and selected/stock-like scopes.
 
 ## Latest Shadow Market-Bar Gap Accounting Slice
 
