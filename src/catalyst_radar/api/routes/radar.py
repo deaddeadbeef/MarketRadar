@@ -73,6 +73,11 @@ from catalyst_radar.storage.repositories import MarketRepository
 from catalyst_radar.storage.text_repositories import TextRepository
 from catalyst_radar.textint.pipeline import run_text_pipeline
 from catalyst_radar.universe.seed import seed_polygon_tickers
+from catalyst_radar.validation.shadow_mode import (
+    shadow_mode_latest_payload,
+    shadow_mode_run_payload,
+    shadow_mode_status_payload,
+)
 
 router = APIRouter(prefix="/api/radar", tags=["radar"])
 RADAR_RUN_COOLDOWN_LOCK_NAME = "manual_radar_run_cooldown"
@@ -113,6 +118,15 @@ class RadarRunRequest(BaseModel):
     run_llm: bool = False
     llm_dry_run: bool = True
     dry_run_alerts: bool = True
+
+
+class ShadowModeRunRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    run_date: Date | None = None
+    as_of: Date | None = None
+    available_at: datetime | None = None
+    execute: bool = False
 
 
 class UniverseSeedRequest(BaseModel):
@@ -587,6 +601,35 @@ def radar_shadow_readiness() -> dict[str, object]:
     readiness_payload = _dashboard_helper("shadow_readiness_payload")
     return redact_restricted_external_payload(
         readiness_payload(_engine(), AppConfig.from_env())
+    )
+
+
+@router.get("/shadow/status", dependencies=[Depends(require_role(Role.VIEWER))])
+def radar_shadow_status(available_at: datetime | None = None) -> dict[str, object]:
+    return shadow_mode_status_payload(
+        _engine(),
+        AppConfig.from_env(),
+        available_at=_parse_api_datetime(available_at),
+    )
+
+
+@router.post("/shadow/runs", dependencies=[Depends(require_role(Role.ANALYST))])
+def radar_shadow_run(request: ShadowModeRunRequest) -> dict[str, object]:
+    return shadow_mode_run_payload(
+        _engine(),
+        AppConfig.from_env(),
+        run_date=request.run_date,
+        as_of=request.as_of,
+        available_at=_parse_api_datetime(request.available_at),
+        execute=request.execute,
+    )
+
+
+@router.get("/shadow/runs/latest", dependencies=[Depends(require_role(Role.VIEWER))])
+def radar_shadow_latest(available_at: datetime | None = None) -> dict[str, object]:
+    return shadow_mode_latest_payload(
+        _engine(),
+        available_at=_parse_api_datetime(available_at),
     )
 
 

@@ -11,6 +11,7 @@ from catalyst_radar.core.models import ActionState
 from catalyst_radar.storage.schema import (
     decision_cards,
     paper_trades,
+    shadow_mode_runs,
     useful_alert_labels,
     validation_results,
     validation_runs,
@@ -21,6 +22,7 @@ from catalyst_radar.validation.models import (
     PaperDecision,
     PaperTrade,
     PaperTradeState,
+    ShadowModeRun,
     UsefulAlertLabel,
     ValidationResult,
     ValidationRun,
@@ -279,6 +281,44 @@ class ValidationRepository:
         with self.engine.connect() as conn:
             return [_value_outcome_from_row(row._mapping) for row in conn.execute(stmt)]
 
+    def upsert_shadow_mode_run(self, run: ShadowModeRun) -> None:
+        with self.engine.begin() as conn:
+            conn.execute(delete(shadow_mode_runs).where(shadow_mode_runs.c.id == run.id))
+            conn.execute(insert(shadow_mode_runs).values(**_shadow_mode_run_row(run)))
+
+    def list_shadow_mode_runs(
+        self,
+        *,
+        available_at: datetime | None = None,
+        limit: int = 30,
+    ) -> list[ShadowModeRun]:
+        filters = []
+        if available_at is not None:
+            filters.append(
+                shadow_mode_runs.c.available_at
+                <= _to_utc_datetime(available_at, "available_at")
+            )
+        stmt = (
+            select(shadow_mode_runs)
+            .where(*filters)
+            .order_by(
+                shadow_mode_runs.c.run_date.desc(),
+                shadow_mode_runs.c.available_at.desc(),
+                shadow_mode_runs.c.id.desc(),
+            )
+            .limit(max(1, int(limit)))
+        )
+        with self.engine.connect() as conn:
+            return [_shadow_mode_run_from_row(row._mapping) for row in conn.execute(stmt)]
+
+    def latest_shadow_mode_run(
+        self,
+        *,
+        available_at: datetime | None = None,
+    ) -> ShadowModeRun | None:
+        rows = self.list_shadow_mode_runs(available_at=available_at, limit=1)
+        return rows[0] if rows else None
+
     def decision_card_payload(
         self,
         decision_card_id: str,
@@ -460,6 +500,35 @@ def _value_outcome_row(outcome: ValueOutcome) -> dict[str, Any]:
     }
 
 
+def _shadow_mode_run_row(run: ShadowModeRun) -> dict[str, Any]:
+    return {
+        "id": run.id,
+        "run_date": run.run_date,
+        "as_of": run.as_of,
+        "available_at": run.available_at,
+        "status": run.status,
+        "validation_status": run.validation_status,
+        "scan_scope": run.scan_scope,
+        "universe_size": run.universe_size,
+        "requested_securities": run.requested_securities,
+        "scanned_securities": run.scanned_securities,
+        "missing_market_bar_count": run.missing_market_bar_count,
+        "candidate_count": run.candidate_count,
+        "warning_count": run.warning_count,
+        "manual_review_count": run.manual_review_count,
+        "blocker_count": run.blocker_count,
+        "provider_calls_planned": run.provider_calls_planned,
+        "provider_calls_made": run.provider_calls_made,
+        "db_writes_planned": run.db_writes_planned,
+        "db_writes_made": run.db_writes_made,
+        "estimated_cost_usd": run.estimated_cost_usd,
+        "actual_cost_usd": run.actual_cost_usd,
+        "payload": thaw_json_value(run.payload),
+        "created_at": run.created_at,
+        "updated_at": run.updated_at,
+    }
+
+
 def _validation_run_from_row(row: Any) -> ValidationRun:
     return ValidationRun(
         id=row["id"],
@@ -602,6 +671,35 @@ def _value_outcome_from_row(row: Any) -> ValueOutcome:
         max_favorable_excursion=row["max_favorable_excursion"],
         invalidation_price=row["invalidation_price"],
         invalidation_touched=row["invalidation_touched"],
+        payload=row["payload"],
+        created_at=_as_datetime(row["created_at"]),
+        updated_at=_as_datetime(row["updated_at"]),
+    )
+
+
+def _shadow_mode_run_from_row(row: Any) -> ShadowModeRun:
+    return ShadowModeRun(
+        id=row["id"],
+        run_date=row["run_date"],
+        as_of=row["as_of"],
+        available_at=_as_datetime(row["available_at"]),
+        status=row["status"],
+        validation_status=row["validation_status"],
+        scan_scope=row["scan_scope"],
+        universe_size=row["universe_size"],
+        requested_securities=row["requested_securities"],
+        scanned_securities=row["scanned_securities"],
+        missing_market_bar_count=row["missing_market_bar_count"],
+        candidate_count=row["candidate_count"],
+        warning_count=row["warning_count"],
+        manual_review_count=row["manual_review_count"],
+        blocker_count=row["blocker_count"],
+        provider_calls_planned=row["provider_calls_planned"],
+        provider_calls_made=row["provider_calls_made"],
+        db_writes_planned=row["db_writes_planned"],
+        db_writes_made=row["db_writes_made"],
+        estimated_cost_usd=row["estimated_cost_usd"],
+        actual_cost_usd=row["actual_cost_usd"],
         payload=row["payload"],
         created_at=_as_datetime(row["created_at"]),
         updated_at=_as_datetime(row["updated_at"]),

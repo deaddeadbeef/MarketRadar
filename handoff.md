@@ -1,6 +1,37 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 00:35:29 +08:00
+Last updated: 2026-05-23 00:58:14 +08:00
+
+## Latest Shadow-Mode Run Record Slice
+
+Last updated: 2026-05-23 00:58:14 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice fills the missing daily shadow-mode record layer before monthly value reporting.
+- This slice does not add provider, broker, order, OpenAI, SEC, Polygon/Massive, Schwab, web, or app calls from the product.
+- This is useful because a daily local scan can now be classified and persisted as `valid_full_scan`, `valid_selected_universe_scan`, `partial_scan`, `blocked_scan`, or `setup_required` without hidden calls or capital risk.
+
+Fix in this slice:
+
+- Added `shadow_mode_runs` schema/model/repository support.
+- Added CLI `catalyst-radar shadow-mode status/run/latest/list`; `run` previews by default and writes only with `--execute`.
+- Added API routes `GET /api/radar/shadow/status`, `POST /api/radar/shadow/runs`, and `GET /api/radar/shadow/runs/latest`.
+- Added TUI Readiness visibility for the latest persisted shadow run.
+- README now documents the local-only shadow-run operator contract because the CLI/API contract changes.
+
+Validation observed in this slice:
+
+- Focused tests cover preview counters, execute persistence, latest lookup, status classification, API routing, and security-boundary registration.
+- `ruff check` passed for touched source/tests.
+- `git diff --check` passed.
+- Focused shadow-mode/shadow-readiness/security/API regressions passed: 20 passed.
+
+Current live blocker:
+
+- This still does not run provider ingestion or make MarketRadar investment-ready. It records whether the existing local evidence is usable for shadow testing.
+- After this lands, the next mission-brief slice is monthly value reporting for the M7 `$40/month` value question.
 
 ## Latest Value Outcome Slice
 

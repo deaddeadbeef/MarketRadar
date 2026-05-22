@@ -172,6 +172,12 @@ from catalyst_radar.validation.outcomes import compute_forward_outcomes, outcome
 from catalyst_radar.validation.paper import create_paper_trade_from_card, update_trade_outcome
 from catalyst_radar.validation.replay import build_replay_results, deterministic_replay_run_id
 from catalyst_radar.validation.reports import build_validation_report, validation_report_payload
+from catalyst_radar.validation.shadow_mode import (
+    shadow_mode_latest_payload,
+    shadow_mode_list_payload,
+    shadow_mode_run_payload,
+    shadow_mode_status_payload,
+)
 from catalyst_radar.validation.value_ledger import (
     build_value_ledger_entry,
     load_value_ledger_entries_payload,
@@ -713,6 +719,32 @@ def build_parser() -> argparse.ArgumentParser:
     assert_shadow_ready = subparsers.add_parser("assert-shadow-ready")
     assert_shadow_ready.add_argument("--database-url")
     assert_shadow_ready.add_argument("--json", action="store_true")
+
+    shadow_mode = subparsers.add_parser("shadow-mode")
+    shadow_sub = shadow_mode.add_subparsers(dest="shadow_mode_command", required=True)
+    shadow_status = shadow_sub.add_parser("status")
+    shadow_status.add_argument("--database-url")
+    shadow_status.add_argument("--available-at", type=_parse_aware_datetime)
+    shadow_status.add_argument("--json", action="store_true")
+    shadow_run = shadow_sub.add_parser("run")
+    shadow_run.add_argument("--database-url")
+    shadow_run.add_argument("--run-date", type=date.fromisoformat)
+    shadow_run.add_argument("--as-of", type=date.fromisoformat)
+    shadow_run.add_argument("--available-at", type=_parse_aware_datetime)
+    shadow_run_mode = shadow_run.add_mutually_exclusive_group()
+    shadow_run_mode.add_argument("--preview", dest="execute", action="store_false")
+    shadow_run_mode.add_argument("--execute", action="store_true")
+    shadow_run.set_defaults(execute=False)
+    shadow_run.add_argument("--json", action="store_true")
+    shadow_latest = shadow_sub.add_parser("latest")
+    shadow_latest.add_argument("--database-url")
+    shadow_latest.add_argument("--available-at", type=_parse_aware_datetime)
+    shadow_latest.add_argument("--json", action="store_true")
+    shadow_list = shadow_sub.add_parser("list")
+    shadow_list.add_argument("--database-url")
+    shadow_list.add_argument("--available-at", type=_parse_aware_datetime)
+    shadow_list.add_argument("--limit", type=int, default=30)
+    shadow_list.add_argument("--json", action="store_true")
 
     dashboard_snapshot = subparsers.add_parser("dashboard-snapshot")
     dashboard_snapshot.add_argument("--database-url")
@@ -1553,6 +1585,52 @@ def main(argv: list[str] | None = None) -> int:
         else:
             _print_shadow_readiness(payload)
         return 0 if payload.get("ready") is True else 1
+
+    if args.command == "shadow-mode":
+        create_schema(engine)
+        if args.shadow_mode_command == "status":
+            payload = shadow_mode_status_payload(
+                engine,
+                config,
+                available_at=args.available_at,
+            )
+            if args.json:
+                print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
+            else:
+                _print_shadow_mode_status(payload)
+            return 0
+        if args.shadow_mode_command == "run":
+            payload = shadow_mode_run_payload(
+                engine,
+                config,
+                run_date=args.run_date,
+                as_of=args.as_of,
+                available_at=args.available_at,
+                execute=args.execute,
+            )
+            if args.json:
+                print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
+            else:
+                _print_shadow_mode_run(payload)
+            return 0
+        if args.shadow_mode_command == "latest":
+            payload = shadow_mode_latest_payload(engine, available_at=args.available_at)
+            if args.json:
+                print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
+            else:
+                _print_shadow_mode_latest(payload)
+            return 0 if payload.get("run") else 1
+        if args.shadow_mode_command == "list":
+            payload = shadow_mode_list_payload(
+                engine,
+                available_at=args.available_at,
+                limit=args.limit,
+            )
+            if args.json:
+                print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
+            else:
+                _print_shadow_mode_list(payload)
+            return 0
 
     if args.command == "dashboard-snapshot":
         create_schema(engine)
@@ -7302,6 +7380,111 @@ def _print_shadow_readiness(payload: Mapping[str, object]) -> None:
             f"next={_compact_cli_text(row.get('next_action'))} "
             f"external_calls={row.get('external_calls_made') or 0} "
             f"db_writes={row.get('db_writes_made') or 0}"
+        )
+
+
+def _print_shadow_mode_status(payload: Mapping[str, object]) -> None:
+    run = payload.get("latest")
+    run = run if isinstance(run, Mapping) else {}
+    print(
+        "shadow_mode_status "
+        f"status={payload.get('status')} "
+        f"readiness={payload.get('shadow_readiness_status')} "
+        f"ready_for_shadow_run={str(bool(payload.get('ready_for_shadow_run'))).lower()} "
+        f"external_calls_made={payload.get('external_calls_made') or 0} "
+        f"db_writes_made={payload.get('db_writes_made') or 0}"
+    )
+    if run:
+        print(
+            "latest "
+            f"id={run.get('id')} "
+            f"run_date={run.get('run_date')} "
+            f"status={run.get('status')} "
+            f"scope={run.get('scan_scope')} "
+            f"candidates={run.get('candidate_count')} "
+            f"blockers={run.get('blocker_count')}"
+        )
+    print(f"next_action={_compact_cli_text(payload.get('next_action'))}")
+
+
+def _print_shadow_mode_run(payload: Mapping[str, object]) -> None:
+    run = payload.get("run")
+    run = run if isinstance(run, Mapping) else {}
+    print(
+        "shadow_mode_run "
+        f"mode={payload.get('mode')} "
+        f"status={run.get('status')} "
+        f"run_date={run.get('run_date')} "
+        f"as_of={run.get('as_of') or 'n/a'} "
+        f"external_calls_required={payload.get('external_calls_required') or 0} "
+        f"external_calls_made={payload.get('external_calls_made') or 0} "
+        f"db_writes_required={payload.get('db_writes_required') or 0} "
+        f"db_writes_made={payload.get('db_writes_made') or 0}"
+    )
+    print(
+        "evidence "
+        f"scope={run.get('scan_scope')} "
+        f"universe={run.get('universe_size')} "
+        f"requested={run.get('requested_securities')} "
+        f"scanned={run.get('scanned_securities')} "
+        f"missing_bars={run.get('missing_market_bar_count')} "
+        f"candidates={run.get('candidate_count')} "
+        f"warnings={run.get('warning_count')} "
+        f"manual_review={run.get('manual_review_count')} "
+        f"blockers={run.get('blocker_count')} "
+        f"validation={run.get('validation_status')}"
+    )
+    print(f"next_action={_compact_cli_text(payload.get('next_action'))}")
+    print(f"useful_definition={_compact_cli_text(payload.get('useful_definition'))}")
+
+
+def _print_shadow_mode_latest(payload: Mapping[str, object]) -> None:
+    run = payload.get("run")
+    if not isinstance(run, Mapping):
+        print(
+            "shadow_mode_latest status=not_found "
+            f"external_calls_made={payload.get('external_calls_made') or 0} "
+            f"db_writes_made={payload.get('db_writes_made') or 0}"
+        )
+        return
+    print(
+        "shadow_mode_latest "
+        f"status={run.get('status')} "
+        f"id={run.get('id')} "
+        f"run_date={run.get('run_date')} "
+        f"as_of={run.get('as_of') or 'n/a'} "
+        f"scope={run.get('scan_scope')} "
+        f"external_calls_made={payload.get('external_calls_made') or 0} "
+        f"db_writes_made={payload.get('db_writes_made') or 0}"
+    )
+
+
+def _print_shadow_mode_list(payload: Mapping[str, object]) -> None:
+    print(
+        "shadow_mode_runs "
+        f"count={payload.get('count') or 0} "
+        f"status_counts={payload.get('status_counts') or {}} "
+        f"external_calls_made={payload.get('external_calls_made') or 0} "
+        f"db_writes_made={payload.get('db_writes_made') or 0}"
+    )
+    rows = payload.get("runs")
+    rows = rows if isinstance(rows, Sequence) else ()
+    if not rows:
+        print("No shadow-mode runs.")
+        return
+    print("run_date as_of status scope candidates warnings manual_review blockers")
+    for row in rows:
+        if not isinstance(row, Mapping):
+            continue
+        print(
+            f"{row.get('run_date')} "
+            f"{row.get('as_of') or 'n/a'} "
+            f"{row.get('status')} "
+            f"{row.get('scan_scope')} "
+            f"{row.get('candidate_count')} "
+            f"{row.get('warning_count')} "
+            f"{row.get('manual_review_count')} "
+            f"{row.get('blocker_count')}"
         )
 
 

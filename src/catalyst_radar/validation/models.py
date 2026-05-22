@@ -484,6 +484,92 @@ class ValueOutcome:
         )
 
 
+@dataclass(frozen=True)
+class ShadowModeRun:
+    id: str
+    run_date: date
+    available_at: datetime
+    status: str
+    validation_status: str
+    scan_scope: str
+    universe_size: int
+    requested_securities: int
+    scanned_securities: int
+    missing_market_bar_count: int
+    candidate_count: int
+    warning_count: int
+    manual_review_count: int
+    blocker_count: int
+    provider_calls_planned: int
+    provider_calls_made: int
+    db_writes_planned: int
+    db_writes_made: int
+    estimated_cost_usd: float
+    actual_cost_usd: float
+    as_of: date | None = None
+    payload: Mapping[str, Any] = field(default_factory=dict)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "id", _required_text(self.id, "id"))
+        object.__setattr__(self, "run_date", _require_date(self.run_date, "run_date"))
+        if self.as_of is not None:
+            object.__setattr__(self, "as_of", _require_date(self.as_of, "as_of"))
+        object.__setattr__(
+            self,
+            "available_at",
+            _require_aware_utc(self.available_at, "available_at"),
+        )
+        object.__setattr__(self, "status", _required_text(self.status, "status"))
+        object.__setattr__(
+            self,
+            "validation_status",
+            _required_text(self.validation_status, "validation_status"),
+        )
+        object.__setattr__(
+            self,
+            "scan_scope",
+            _required_text(self.scan_scope, "scan_scope"),
+        )
+        for field_name in (
+            "universe_size",
+            "requested_securities",
+            "scanned_securities",
+            "missing_market_bar_count",
+            "candidate_count",
+            "warning_count",
+            "manual_review_count",
+            "blocker_count",
+            "provider_calls_planned",
+            "provider_calls_made",
+            "db_writes_planned",
+            "db_writes_made",
+        ):
+            object.__setattr__(
+                self,
+                field_name,
+                _nonnegative_int(getattr(self, field_name), field_name),
+            )
+        for field_name in ("estimated_cost_usd", "actual_cost_usd"):
+            object.__setattr__(
+                self,
+                field_name,
+                _nonnegative_float(getattr(self, field_name), field_name),
+            )
+        object.__setattr__(self, "payload", freeze_mapping(self.payload, "payload"))
+        object.__setattr__(
+            self,
+            "created_at",
+            _require_aware_utc(self.created_at, "created_at"),
+        )
+        object.__setattr__(
+            self,
+            "updated_at",
+            _require_aware_utc(self.updated_at, "updated_at"),
+        )
+
+
 def validation_run_id(
     *,
     run_type: str,
@@ -565,6 +651,18 @@ def value_outcome_id(
     )
 
 
+def shadow_mode_run_id(
+    *,
+    run_date: date,
+    available_at: datetime,
+) -> str:
+    return (
+        "shadow-mode-run-v1:"
+        f"{_require_date(run_date, 'run_date').isoformat()}:"
+        f"{_require_aware_utc(available_at, 'available_at').isoformat()}"
+    )
+
+
 def _required_text(value: object, field_name: str) -> str:
     text = str(value).strip()
     if not text:
@@ -630,6 +728,7 @@ __all__ = [
     "PaperDecision",
     "PaperTrade",
     "PaperTradeState",
+    "ShadowModeRun",
     "UsefulAlertLabel",
     "ValidationResult",
     "ValidationRun",
@@ -637,6 +736,7 @@ __all__ = [
     "ValueLedgerEntry",
     "ValueOutcome",
     "paper_trade_id",
+    "shadow_mode_run_id",
     "useful_alert_label_id",
     "value_ledger_entry_id",
     "value_outcome_id",

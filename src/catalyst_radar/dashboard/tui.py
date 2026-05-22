@@ -79,6 +79,7 @@ from catalyst_radar.storage.feature_repositories import FeatureRepository
 from catalyst_radar.storage.job_repositories import JobLockRepository
 from catalyst_radar.storage.provider_repositories import ProviderRepository
 from catalyst_radar.storage.repositories import MarketRepository
+from catalyst_radar.validation.shadow_mode import shadow_mode_status_payload
 
 RADAR_RUN_COOLDOWN_LOCK_NAME = "manual_radar_run_cooldown"
 
@@ -561,6 +562,11 @@ def dashboard_snapshot_payload(
         ops_health=ops_health,
         validation_summary=validation_summary,
     )
+    shadow_status = shadow_mode_status_payload(
+        engine,
+        config,
+        available_at=data_available_at,
+    )
     display_priced_in_queue = dict(priced_in_queue)
     display_priced_in_queue.pop("planning_rows", None)
     payload = {
@@ -585,6 +591,7 @@ def dashboard_snapshot_payload(
         "runtime_context": runtime_context,
         "readiness": readiness_payload,
         "shadow_readiness": shadow_readiness,
+        "shadow_mode": shadow_status,
         "radar_run_cooldown": dashboard_data.radar_run_cooldown_payload(engine, config),
         "latest_run": latest_run,
         "discovery_snapshot": discovery_snapshot,
@@ -6463,6 +6470,8 @@ def _decision_gap_filter_summary(queue: Mapping[str, object]) -> str:
 def _readiness_lines(payload: Mapping[str, object], width: int) -> list[str]:
     readiness = _mapping(payload.get("readiness"))
     shadow = _mapping(payload.get("shadow_readiness"))
+    shadow_mode = _mapping(payload.get("shadow_mode"))
+    latest_shadow = _mapping(shadow_mode.get("latest"))
     boundary = _mapping(shadow.get("call_boundary"))
     queue = _mapping(payload.get("operator_work_queue"))
     lines = [_rule("Readiness And Work Queue", width)]
@@ -6490,6 +6499,16 @@ def _readiness_lines(payload: Mapping[str, object], width: int) -> list[str]:
                         "Shadow calls",
                         "assert=0; writes=0; planned_run_max="
                         f"{boundary.get('planned_run_external_call_count_max') or 0}",
+                    ),
+                    (
+                        "Latest shadow run",
+                        (
+                            f"{latest_shadow.get('status')}; "
+                            f"run_date={latest_shadow.get('run_date') or 'n/a'}; "
+                            f"writes={latest_shadow.get('db_writes_made') or 0}"
+                        )
+                        if latest_shadow
+                        else "none recorded",
                     ),
                     ("Useful means", shadow.get("useful_definition")),
                 ),
