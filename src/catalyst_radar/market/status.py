@@ -8,9 +8,12 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 
 from catalyst_radar.core.config import AppConfig
-from catalyst_radar.market.manual_bars import manual_market_bars_repair_plan
+from catalyst_radar.market.manual_bars import (
+    MANUAL_BAR_COMPANY_LIKE_TYPES,
+    manual_market_bars_repair_plan,
+)
 from catalyst_radar.storage.provider_repositories import ProviderRepository
-from catalyst_radar.storage.schema import daily_bars
+from catalyst_radar.storage.schema import daily_bars, securities
 
 
 def market_bars_status_payload(
@@ -25,6 +28,14 @@ def market_bars_status_payload(
     try:
         resolved_expected_as_of = _resolve_expected_as_of(engine, expected_as_of)
     except ValueError as exc:
+        active_count = _active_security_count(engine, stocks_only=stocks_only)
+        if active_count > 0:
+            return _expected_as_of_required_status_payload(
+                expected_as_of_source="not_available",
+                stocks_only=stocks_only,
+                reason=str(exc),
+                active_security_count=active_count,
+            )
         return _setup_required_status_payload(
             config,
             expected_as_of=None,
@@ -694,6 +705,112 @@ def _resolve_expected_as_of(engine: Engine, expected_as_of: date | None) -> date
     if isinstance(latest, date):
         return latest
     return date.fromisoformat(str(latest))
+
+
+def _active_security_count(engine: Engine, *, stocks_only: bool) -> int:
+    with engine.connect() as connection:
+        rows = connection.execute(
+            select(securities.c.metadata).where(securities.c.is_active.is_(True))
+        ).all()
+    if not stocks_only:
+        return len(rows)
+    count = 0
+    for row in rows:
+        metadata = row._mapping["metadata"]
+        if not isinstance(metadata, Mapping):
+            metadata = {}
+        security_type = str(metadata.get("type") or "").strip().upper()
+        if security_type in MANUAL_BAR_COMPANY_LIKE_TYPES:
+            count += 1
+    return count
+
+
+def _expected_as_of_required_status_payload(
+    *,
+    expected_as_of_source: str,
+    stocks_only: bool,
+    reason: str,
+    active_security_count: int,
+):
+    scope = "stock_like" if stocks_only else "active_universe"
+    status_command = "catalyst-radar market-bars status --expected-as-of YYYY-MM-DD"
+    if stocks_only:
+        status_command = f"{status_command} --stocks-only"
+    action = (
+        "Choose the target trading date, then rerun market-bars status with "
+        "`--expected-as-of YYYY-MM-DD` before repairing or importing bars."
+    )
+    recommended_action = _recommended_action_payload(
+        kind="provide_expected_as_of",
+        label="Set market-bar date",
+        status="blocked",
+        reason=action,
+        command=status_command,
+        tui_command="bars status --expected-as-of YYYY-MM-DD",
+        api="GET /api/radar/market-bars/status",
+        request_body={"expected_as_of": "YYYY-MM-DD", "stocks_only": bool(stocks_only)},
+    )
+    return {
+        "schema_version": "market-bars-status-v1",
+        "status": "blocked",
+        "first_blocker": "market_bars",
+        "expected_as_of": None,
+        "expected_as_of_source": expected_as_of_source,
+        "stocks_only": bool(stocks_only),
+        "coverage_scope": scope,
+        "active_security_count": active_security_count,
+        "existing_as_of_bar_count": 0,
+        "missing_as_of_bar_count": active_security_count,
+        "missing_as_of_bar_ticker_sample": [],
+        "missing_security_type_counts": {},
+        "missing_universe_diagnostic": {},
+        "stock_scope": None,
+        "manual": {
+            "status": "expected_as_of_required",
+            "action": action,
+            "command": status_command,
+            "external_calls_made": 0,
+        },
+        "saved_capture": {"status": "not_available"},
+        "saved_file": {"status": "not_available"},
+        "unblock_checklist": {
+            "schema_version": "market-bars-unblock-checklist-v1",
+            "status": "blocked",
+            "next_step_order": 1,
+            "coverage_scope": scope,
+            "active_security_count": active_security_count,
+            "existing_as_of_bar_count": 0,
+            "missing_as_of_bar_count": active_security_count,
+            "steps": [
+                {
+                    "order": 1,
+                    "step": "set_expected_as_of",
+                    "label": "Choose target trading date",
+                    "command": status_command,
+                    "api": "GET /api/radar/market-bars/status",
+                    "request_body": {
+                        "expected_as_of": "YYYY-MM-DD",
+                        "stocks_only": bool(stocks_only),
+                    },
+                    "external_calls_required": 0,
+                    "db_changes_required": 0,
+                }
+            ],
+            "external_calls_made": 0,
+            "db_changes_made": 0,
+        },
+        "repair_plan": {},
+        "recommended_action": recommended_action,
+        "after_market_bars_clear": {},
+        "next_action": action,
+        "zero_call_boundary": (
+            "Status reads local metadata and makes 0 provider calls and "
+            "0 database writes."
+        ),
+        "reason": reason,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+    }
 
 
 def _setup_required_status_payload(

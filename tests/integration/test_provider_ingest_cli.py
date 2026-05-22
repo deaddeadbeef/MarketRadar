@@ -917,6 +917,48 @@ def test_market_bars_status_cli_summarizes_zero_call_unblock(
     assert "manual-stock-bars-2026-05-15.csv" in text
 
 
+def test_market_bars_status_cli_keeps_seeded_universe_on_market_bar_blocker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+):
+    monkeypatch.chdir(tmp_path)
+    database_url = _database_url(tmp_path)
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("CATALYST_POLYGON_API_KEY", "fixture-key")
+
+    assert main(["init-db"]) == 0
+    capsys.readouterr()
+    engine = create_engine(database_url, future=True)
+    MarketRepository(engine).upsert_securities(
+        [
+            _security("AAPL", "Apple Inc.", "CS"),
+            _security("MSFT", "Microsoft Corporation", "CS"),
+        ]
+    )
+
+    exit_code = main(["market-bars", "status", "--json"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    payload = json.loads(captured.out)
+    assert payload["schema_version"] == "market-bars-status-v1"
+    assert payload["status"] == "blocked"
+    assert payload["first_blocker"] == "market_bars"
+    assert payload["expected_as_of"] is None
+    assert payload["expected_as_of_source"] == "not_available"
+    assert payload["active_security_count"] == 2
+    assert payload["existing_as_of_bar_count"] == 0
+    assert payload["missing_as_of_bar_count"] == 2
+    assert payload["missing_universe_diagnostic"] == {}
+    assert payload["recommended_action"]["kind"] == "provide_expected_as_of"
+    assert payload["recommended_action"]["external_calls_required"] == 0
+    assert payload["recommended_action"]["db_writes_required"] == 0
+    assert payload["unblock_checklist"]["steps"][0]["step"] == "set_expected_as_of"
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
+
+
 def test_market_bars_repair_plan_prefers_available_saved_provider_file(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
