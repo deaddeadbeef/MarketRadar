@@ -230,6 +230,24 @@ def load_value_outcomes_payload(
     }
 
 
+def load_value_outcome_payload(
+    engine: Engine,
+    *,
+    outcome_id: str,
+) -> dict[str, object]:
+    resolved_id = _required_text(outcome_id, "outcome_id")
+    outcome = ValidationRepository(engine).value_outcome(resolved_id)
+    if outcome is None:
+        msg = f"value outcome not found: {resolved_id}"
+        raise ValueError(msg)
+    return {
+        "schema_version": "value-outcome-v1",
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "outcome": value_outcome_payload(outcome),
+    }
+
+
 def value_outcome_summary_payload(engine: Engine) -> dict[str, object]:
     rows = ValidationRepository(engine).list_value_outcomes(limit=1000)
     return {

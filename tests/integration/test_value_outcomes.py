@@ -83,6 +83,15 @@ def test_value_outcome_cli_preview_execute_and_list(
     listed = json.loads(capsys.readouterr().out)
     assert listed["count"] == 1
     assert listed["status_counts"] == {"computed": 1}
+    outcome_id = executed["outcome"]["id"]
+    show_exit = main(["value-outcome", "show", outcome_id, "--json"])
+    assert show_exit == 0
+    shown = json.loads(capsys.readouterr().out)
+    assert shown["schema_version"] == "value-outcome-v1"
+    assert shown["external_calls_made"] == 0
+    assert shown["db_writes_made"] == 0
+    assert shown["outcome"]["id"] == outcome_id
+    assert shown["outcome"]["status"] == "computed"
 
 
 def test_value_outcome_api_rejects_missing_future_bars_without_mutating_ledger(
@@ -115,6 +124,16 @@ def test_value_outcome_api_rejects_missing_future_bars_without_mutating_ledger(
     assert outcome["status"] == "insufficient_data"
     assert outcome["trading_days_observed"] == 4
     assert outcome["return_5d"] is None
+    outcome_id = outcome["id"]
+    show_response = TestClient(create_app()).get(f"/api/value-outcomes/{outcome_id}")
+    assert show_response.status_code == 200
+    shown = show_response.json()
+    assert shown["external_calls_made"] == 0
+    assert shown["db_writes_made"] == 0
+    assert shown["outcome"]["id"] == outcome_id
+    assert shown["outcome"]["status"] == "insufficient_data"
+    missing_response = TestClient(create_app()).get("/api/value-outcomes/missing-outcome")
+    assert missing_response.status_code == 404
     with engine.connect() as conn:
         after = conn.execute(select(value_ledger_entries).limit(1)).first()
     assert after is not None

@@ -1,6 +1,35 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 06:49:59 +08:00
+Last updated: 2026-05-23 06:58:55 +08:00
+
+## Latest Value-Outcome Show Surface Slice
+
+Last updated: 2026-05-23 06:58:55 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar must measure what happened after surfaced insights before changing scoring, NLP, LLM behavior, or real-capital posture.
+- This slice advances forward outcome auditability, not UI polish: an operator can directly inspect one stored value outcome by ID instead of filtering the list output.
+- Outcome reads remain local and deterministic. They do not call providers, brokers, OpenAI, SEC, Polygon/Massive, Schwab, web, or order paths.
+
+Fix in this slice:
+
+- `value-outcome show <VALUE_OUTCOME_ID>` now returns one stored outcome with `external_calls_made=0` and `db_writes_made=0`.
+- `GET /api/value-outcomes/{id}` exposes the same direct read path and returns 404 for missing IDs.
+- README documents the new CLI/API contract.
+
+Validation observed in this slice:
+
+- Focused outcome/security tests passed: 16 passed.
+- Adjacent value ledger/outcome/report/security tests passed: 28 passed.
+- `ruff check` passed for touched outcome, CLI, API, repository, and test files.
+- `compileall` passed for `src` and touched tests.
+- `git diff --check` passed.
+- Zero-call operator-DB smoke returned `value-outcome list --json` with `count=0`, `external_calls_made=0`, and `db_writes_made=0`.
+
+Current live blocker:
+
+- This does not create new outcome rows by itself. Operators still need executed value-ledger rows plus enough future point-in-time daily bars before outcome evidence becomes meaningful.
 
 ## Latest Value-Ledger Show/Label Surface Slice
 

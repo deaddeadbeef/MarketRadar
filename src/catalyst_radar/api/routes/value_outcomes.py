@@ -3,13 +3,14 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import BaseModel, ConfigDict
 
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.security.access import Role, require_role
 from catalyst_radar.storage.db import engine_from_url
 from catalyst_radar.validation.value_outcomes import (
+    load_value_outcome_payload,
     load_value_outcomes_payload,
     value_outcome_update_payload,
 )
@@ -45,6 +46,16 @@ def value_outcomes(
         ticker=ticker,
         limit=limit,
     )
+
+
+@router.get("/{outcome_id}", dependencies=[Depends(require_role(Role.VIEWER))])
+def value_outcome(
+    outcome_id: Annotated[str, Path(min_length=1)],
+) -> dict[str, object]:
+    try:
+        return load_value_outcome_payload(_engine(), outcome_id=outcome_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.post("/update", dependencies=[Depends(require_role(Role.ANALYST))])

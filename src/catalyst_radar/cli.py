@@ -201,6 +201,7 @@ from catalyst_radar.validation.value_ledger import (
     value_ledger_write_payload,
 )
 from catalyst_radar.validation.value_outcomes import (
+    load_value_outcome_payload,
     load_value_outcomes_payload,
     value_outcome_update_payload,
 )
@@ -743,6 +744,10 @@ def build_parser() -> argparse.ArgumentParser:
     value_outcome_list.add_argument("--ticker")
     value_outcome_list.add_argument("--limit", type=int, default=200)
     value_outcome_list.add_argument("--json", action="store_true")
+    value_outcome_show = value_outcome_sub.add_parser("show")
+    value_outcome_show.add_argument("outcome_id")
+    value_outcome_show.add_argument("--database-url")
+    value_outcome_show.add_argument("--json", action="store_true")
 
     build_universe = subparsers.add_parser("build-universe")
     build_universe.add_argument("--name")
@@ -2792,6 +2797,16 @@ def main(argv: list[str] | None = None) -> int:
                     print(json.dumps(payload, sort_keys=True))
                     return 0
                 _print_value_outcomes(payload)
+                return 0
+            if args.value_outcome_command == "show":
+                payload = load_value_outcome_payload(
+                    engine,
+                    outcome_id=args.outcome_id,
+                )
+                if args.json:
+                    print(json.dumps(payload, sort_keys=True))
+                    return 0
+                _print_value_outcome(payload)
                 return 0
         except (TypeError, ValueError) as exc:
             print(f"value outcome failed: {exc}", file=sys.stderr)
@@ -7994,6 +8009,24 @@ def _print_value_outcome_update(payload: Mapping[str, object]) -> None:
         f"db_writes_made={payload.get('db_writes_made') or 0}"
     )
     print(f"next_action={_compact_cli_text(payload.get('next_action'))}")
+
+
+def _print_value_outcome(payload: Mapping[str, object]) -> None:
+    outcome = payload.get("outcome")
+    outcome = outcome if isinstance(outcome, Mapping) else {}
+    print(
+        "value_outcome "
+        f"id={outcome.get('id')} "
+        f"status={outcome.get('status')} "
+        f"ticker={outcome.get('ticker')} "
+        f"observed={outcome.get('trading_days_observed')} "
+        f"return_5d={outcome.get('return_5d')} "
+        f"return_10d={outcome.get('return_10d')} "
+        f"return_20d={outcome.get('return_20d')} "
+        f"return_60d={outcome.get('return_60d')} "
+        f"external_calls_made={payload.get('external_calls_made') or 0} "
+        f"db_writes_made={payload.get('db_writes_made') or 0}"
+    )
 
 
 def _print_value_outcomes(payload: Mapping[str, object]) -> None:

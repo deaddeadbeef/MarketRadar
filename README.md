@@ -825,15 +825,17 @@ Forward outcomes are computed from already stored point-in-time daily bars:
 catalyst-radar value-outcome update --ledger-id <VALUE_LEDGER_ID> --outcome-available-at <UTC-outcome-cutoff> --json
 catalyst-radar value-outcome update --ledger-id <VALUE_LEDGER_ID> --outcome-available-at <UTC-outcome-cutoff> --execute --json
 catalyst-radar value-outcome list --ledger-id <VALUE_LEDGER_ID> --json
+catalyst-radar value-outcome show <VALUE_OUTCOME_ID> --json
 ```
 
-`POST /api/value-outcomes/update` and `GET /api/value-outcomes` expose the
-same contract. Outcome preview makes 0 provider calls and 0 database writes;
-execute makes 0 provider calls and writes only a `value_outcomes` row. The
-update never mutates the source value-ledger row, candidate state, candidate
-packet, decision card, score, or policy output. When fewer than 60 future
-trading bars are visible at the supplied cutoff, the outcome row is marked
-`insufficient_data` and only available horizons are populated.
+`POST /api/value-outcomes/update`, `GET /api/value-outcomes`, and
+`GET /api/value-outcomes/{id}` expose the same contract. Outcome preview makes 0
+provider calls and 0 database writes; execute makes 0 provider calls and writes
+only a `value_outcomes` row. The update never mutates the source value-ledger
+row, candidate state, candidate packet, decision card, score, or policy output.
+When fewer than 60 future trading bars are visible at the supplied cutoff, the
+outcome row is marked `insufficient_data` and only available horizons are
+populated.
 
 To answer the monthly value-proof question, generate a read-only value report:
 
