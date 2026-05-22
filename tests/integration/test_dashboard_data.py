@@ -89,6 +89,7 @@ from catalyst_radar.dashboard.data import (
     research_shortlist_payload,
     runtime_context_payload,
     sec_cik_override_template_payload,
+    shadow_readiness_payload,
     telemetry_coverage_payload,
     telemetry_tape_payload,
     universe_coverage_payload,
@@ -1126,6 +1127,61 @@ def test_radar_readiness_payload_summarizes_operator_decision_gate(
     assert payload["candidate_decision_labels"][0]["audit"]["provider_license_policy"][
         "external_export_allowed"
     ] is False
+
+
+def test_shadow_readiness_payload_fails_closed_without_universe(tmp_path: Path) -> None:
+    engine = _engine(tmp_path)
+
+    payload = shadow_readiness_payload(engine, AppConfig.from_env({}))
+
+    assert payload["schema_version"] == "shadow-readiness-v1"
+    assert payload["status"] == "setup_required"
+    assert payload["ready"] is False
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
+    assert payload["call_boundary"]["assert_external_calls_required"] == 0
+    assert payload["call_boundary"]["assert_db_writes_required"] == 0
+    blocker_codes = {row["code"] for row in payload["blockers"]}
+    assert "active_universe" in blocker_codes
+    assert "latest_market_bars" in blocker_codes
+    assert "validation_ready" in blocker_codes
+    assert payload["canonical_next_action"]
+
+
+def test_shadow_readiness_payload_accepts_safe_precomputed_shadow_contract(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+
+    payload = shadow_readiness_payload(
+        engine,
+        AppConfig.from_env({}),
+        **_shadow_ready_inputs(),
+    )
+
+    assert payload["status"] == "ready"
+    assert payload["ready"] is True
+    assert payload["blockers"] == []
+    assert payload["call_boundary"]["external_calls_made"] == 0
+    assert payload["call_boundary"]["db_writes_made"] == 0
+    assert payload["call_boundary"]["planned_run_external_call_count_max"] == 1
+    assert payload["safety"]["autonomous_trading_enabled"] is False
+    assert payload["safety"]["broker_order_submission_enabled"] is False
+    assert "fresh market bars" in payload["useful_definition"]
+
+
+def test_shadow_readiness_payload_blocks_enabled_broker_orders(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    config = AppConfig.from_env({"SCHWAB_ORDER_SUBMISSION_ENABLED": "true"})
+
+    payload = shadow_readiness_payload(engine, config, **_shadow_ready_inputs())
+
+    assert payload["status"] == "blocked"
+    assert payload["ready"] is False
+    assert [row["code"] for row in payload["blockers"]] == ["broker_orders_disabled"]
+    assert payload["safety"]["broker_order_submission_enabled"] is True
 
 
 def test_operator_next_step_payload_uses_top_queue_row() -> None:
@@ -9637,6 +9693,88 @@ def _run_step(
         "raw_count": raw,
         "normalized_count": normalized,
         "reason": reason,
+    }
+
+
+def _shadow_ready_inputs() -> dict[str, object]:
+    return {
+        "ops_health": {
+            "database": {
+                "active_security_count": 500,
+                "active_security_with_daily_bar_count": 500,
+                "latest_daily_bar_date": "2026-05-10",
+            }
+        },
+        "radar_readiness": {
+            "status": "research_only",
+            "discovery_snapshot": {
+                "status": "ready",
+                "detail": "market=live; events=live; packets=1; cards=1",
+                "evidence": "as_of=2026-05-10; market=polygon/live",
+                "freshness": {
+                    "active_security_count": 500,
+                    "active_security_with_as_of_bar_count": 500,
+                    "missing_as_of_daily_bar_count": 0,
+                    "latest_daily_bar_date": "2026-05-10",
+                },
+                "yield": {
+                    "candidate_packets": 1,
+                    "decision_cards": 1,
+                },
+            },
+        },
+        "priced_in_answer": {
+            "status": "research_ready",
+            "scan_scope": {
+                "mode": "full_scan",
+                "explanation": "Full active universe scan.",
+                "full_scan_export_command": "catalyst-radar priced-in-queue --all --json",
+            },
+            "full_scan": {
+                "active_securities": 500,
+                "scanned_rows": 500,
+                "ranked_rows": 25,
+            },
+            "full_market_trust_gate": {
+                "status": "ready",
+                "trusted_full_market_answer": True,
+                "answer": "All required sources are ready.",
+                "first_blocker": None,
+                "first_gap_count": 0,
+                "unscanned_blocker_rows": 0,
+            },
+        },
+        "call_plan": {
+            "status": "live_calls_planned",
+            "next_action": "Run only after reviewing the call plan.",
+            "max_external_call_count": 1,
+            "rows": [
+                {
+                    "layer": "Market data",
+                    "status": "live_call_planned",
+                    "external_call_count_max": 1,
+                },
+                {
+                    "layer": "Alert delivery",
+                    "status": "dry_run",
+                    "external_call_count_max": 0,
+                },
+                {
+                    "layer": "Schwab",
+                    "status": "not_called",
+                    "external_call_count_max": 0,
+                },
+            ],
+        },
+        "validation_summary": {
+            "latest_run": {
+                "id": "validation-run-latest",
+                "run_type": "point_in_time_replay",
+                "status": "success",
+                "finished_at": AVAILABLE_AT.isoformat(),
+            },
+            "report": {"schema_version": "validation-report-v1"},
+        },
     }
 
 

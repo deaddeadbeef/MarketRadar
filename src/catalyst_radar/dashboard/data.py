@@ -9687,6 +9687,434 @@ def radar_readiness_payload(
     }
 
 
+def shadow_readiness_payload(
+    engine: Engine,
+    config: AppConfig,
+    *,
+    radar_readiness: Mapping[str, object] | None = None,
+    priced_in_answer: Mapping[str, object] | None = None,
+    call_plan: Mapping[str, object] | None = None,
+    ops_health: Mapping[str, object] | None = None,
+    validation_summary: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    """Return the local-only release gate for daily shadow-mode operation."""
+    health = (
+        _row_dict(ops_health)
+        if isinstance(ops_health, Mapping)
+        else load_ops_health(engine)
+    )
+    readiness = (
+        _row_dict(radar_readiness)
+        if isinstance(radar_readiness, Mapping)
+        else radar_readiness_payload(engine, config, ops_health=health)
+    )
+    answer = (
+        _row_dict(priced_in_answer)
+        if isinstance(priced_in_answer, Mapping)
+        else priced_in_answer_payload(engine, config, limit=1, status="all")
+    )
+    plan = (
+        _row_dict(call_plan)
+        if isinstance(call_plan, Mapping)
+        else radar_run_call_plan_payload(engine, config)
+    )
+    validation = (
+        _row_dict(validation_summary)
+        if isinstance(validation_summary, Mapping)
+        else load_validation_summary(engine)
+    )
+
+    checks = _shadow_readiness_checks(
+        config,
+        ops_health=health,
+        readiness=readiness,
+        priced_in_answer=answer,
+        call_plan=plan,
+        validation_summary=validation,
+    )
+    blockers = [row for row in checks if str(row.get("status") or "") == "blocked"]
+    setup_codes = {
+        "active_universe",
+        "latest_market_bars",
+        "scan_scope",
+    }
+    status = (
+        "ready"
+        if not blockers
+        else (
+            "setup_required"
+            if any(str(row.get("code") or "") in setup_codes for row in blockers)
+            else "blocked"
+        )
+    )
+    first_blocker = blockers[0] if blockers else {}
+    planned_external_calls = int(_finite_float(plan.get("max_external_call_count")))
+    call_boundary = {
+        "schema_version": "shadow-call-boundary-v1",
+        "assert_external_calls_required": 0,
+        "assert_db_writes_required": 0,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "planned_run_external_call_count_max": planned_external_calls,
+        "planned_run_status": plan.get("status") or "unknown",
+        "planned_run_requires_explicit_execute": True,
+        "provider_rows": [
+            _row_dict(row)
+            for row in _sequence_value(plan.get("rows"))
+            if isinstance(row, Mapping)
+        ],
+    }
+    ready = status == "ready"
+    return {
+        "schema_version": "shadow-readiness-v1",
+        "status": status,
+        "ready": ready,
+        "headline": (
+            "Shadow-mode scan is ready for a guarded daily run."
+            if ready
+            else f"{len(blockers)} blocker(s) prevent trustworthy shadow-mode runs."
+        ),
+        "canonical_next_action": (
+            "Run one capped shadow scan only after reviewing the call boundary."
+            if ready
+            else str(first_blocker.get("next_action") or "Clear the first blocker.")
+        ),
+        "useful_definition": (
+            "Useful means the scanner covers the intended active universe with fresh "
+            "market bars, can explain the priced-in trust gate, has candidate packets "
+            "and decision cards for review, remains dry-run/read-only for alerts and "
+            "broker orders, and has validation evidence to judge signal quality before "
+            "capital is considered."
+        ),
+        "mode": "shadow_only",
+        "checks": checks,
+        "blockers": blockers,
+        "call_boundary": call_boundary,
+        "safety": {
+            "autonomous_trading_enabled": False,
+            "broker_order_submission_enabled": bool(config.schwab_order_submission_enabled),
+            "llm_required": False,
+            "gate_makes_provider_calls": False,
+            "no_investment_advice": True,
+        },
+        "snapshots": {
+            "radar_status": readiness.get("status") or "unknown",
+            "priced_in_status": answer.get("status") or "unknown",
+            "trust_gate": _row_dict(
+                _mapping_value(answer, "full_market_trust_gate")
+            ),
+            "scan_scope": _row_dict(_mapping_value(answer, "scan_scope")),
+            "latest_validation_run": _row_dict(
+                _mapping_value(validation, "latest_run")
+            ),
+        },
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+    }
+
+
+def _shadow_readiness_checks(
+    config: AppConfig,
+    *,
+    ops_health: Mapping[str, object],
+    readiness: Mapping[str, object],
+    priced_in_answer: Mapping[str, object],
+    call_plan: Mapping[str, object],
+    validation_summary: Mapping[str, object],
+) -> list[dict[str, object]]:
+    database = _mapping_value(ops_health, "database")
+    discovery = _mapping_value(readiness, "discovery_snapshot")
+    freshness = _mapping_value(discovery, "freshness")
+    discovery_yield = _mapping_value(discovery, "yield")
+    trust_gate = _mapping_value(priced_in_answer, "full_market_trust_gate")
+    scan_scope = _mapping_value(priced_in_answer, "scan_scope")
+    full_scan = _mapping_value(priced_in_answer, "full_scan")
+    plan_rows = [
+        _row_dict(row)
+        for row in _sequence_value(call_plan.get("rows"))
+        if isinstance(row, Mapping)
+    ]
+    active_count = int(_finite_float(database.get("active_security_count")))
+    with_daily_bar_count = int(
+        _finite_float(database.get("active_security_with_daily_bar_count"))
+    )
+    latest_daily_bar = database.get("latest_daily_bar_date")
+    latest_as_of_missing = freshness.get("missing_as_of_daily_bar_count")
+    latest_as_of_missing_count = int(_finite_float(latest_as_of_missing))
+    as_of_bar_count = int(
+        _finite_float(freshness.get("active_security_with_as_of_bar_count"))
+    )
+    as_of_active_count = int(_finite_float(freshness.get("active_security_count")))
+    universe = universe_coverage_payload(config, ops_health)
+    universe_status = str(universe.get("status") or "blocked")
+    checks = [
+        _shadow_check_row(
+            code="active_universe",
+            area="Active universe",
+            status=(
+                "ready"
+                if universe_status in {"ready", "attention"}
+                else "blocked"
+            ),
+            finding=str(universe.get("headline") or "No active universe is loaded."),
+            next_action=str(universe.get("next_action") or _universe_setup_command(config)),
+            evidence=str(universe.get("evidence") or ""),
+            metric={
+                "active_security_count": active_count,
+                "scan_batch_size": int(config.scan_batch_size),
+            },
+        ),
+        _shadow_check_row(
+            code="latest_market_bars",
+            area="Latest market bars",
+            status=(
+                "ready"
+                if active_count > 0
+                and bool(latest_daily_bar)
+                and with_daily_bar_count >= active_count
+                and (latest_as_of_missing is None or latest_as_of_missing_count <= 0)
+                else "blocked"
+            ),
+            finding=(
+                f"{with_daily_bar_count}/{active_count} active securities have "
+                f"stored daily bars; latest={latest_daily_bar or 'n/a'}; "
+                f"as_of={as_of_bar_count}/{as_of_active_count or active_count}."
+            ),
+            next_action=(
+                "Fill or import the missing market bars before running shadow scans."
+            ),
+            evidence=str(
+                freshness.get("latest_daily_bar_date")
+                or database.get("latest_daily_bar_date")
+                or "no latest bar date"
+            ),
+            metric={
+                "active_security_count": active_count,
+                "active_security_with_daily_bar_count": with_daily_bar_count,
+                "latest_daily_bar_date": latest_daily_bar,
+                "missing_as_of_daily_bar_count": latest_as_of_missing_count,
+            },
+        ),
+        _shadow_check_row(
+            code="scan_scope",
+            area="Scan scope",
+            status=(
+                "ready"
+                if str(scan_scope.get("mode") or "") == "full_scan"
+                and int(_finite_float(full_scan.get("active_securities"))) > 0
+                and int(_finite_float(trust_gate.get("unscanned_blocker_rows"))) <= 0
+                else "blocked"
+            ),
+            finding=str(scan_scope.get("explanation") or "Full-scan scope is unavailable."),
+            next_action=str(
+                scan_scope.get("full_scan_export_command")
+                or scan_scope.get("review_full_scan_command")
+                or "Run the priced-in full-scan preview before shadow execution."
+            ),
+            evidence=(
+                f"mode={scan_scope.get('mode') or 'unknown'}; "
+                f"active={full_scan.get('active_securities') or 'n/a'}; "
+                f"scanned={full_scan.get('scanned_rows') or 'n/a'}; "
+                f"unscanned_blockers={trust_gate.get('unscanned_blocker_rows') or 0}"
+            ),
+            metric={
+                "active_securities": full_scan.get("active_securities"),
+                "scanned_rows": full_scan.get("scanned_rows"),
+                "ranked_rows": full_scan.get("ranked_rows"),
+                "unscanned_blocker_rows": trust_gate.get("unscanned_blocker_rows"),
+            },
+        ),
+        _shadow_check_row(
+            code="trust_gate",
+            area="Priced-in trust gate",
+            status="ready" if trust_gate.get("status") == "ready" else "blocked",
+            finding=str(
+                trust_gate.get("answer")
+                or "Full-market priced-in answer is not trustworthy yet."
+            ),
+            next_action=str(
+                trust_gate.get("next_action")
+                or trust_gate.get("recommended_action")
+                or "Clear the first priced-in trust blocker."
+            ),
+            evidence=(
+                f"first_blocker={trust_gate.get('first_blocker') or 'n/a'}; "
+                f"first_gap_count={trust_gate.get('first_gap_count') or 0}"
+            ),
+            metric={
+                "trusted_full_market_answer": bool(
+                    trust_gate.get("trusted_full_market_answer")
+                ),
+                "first_blocker": trust_gate.get("first_blocker"),
+                "first_gap_count": trust_gate.get("first_gap_count"),
+            },
+        ),
+        _shadow_check_row(
+            code="candidate_packets",
+            area="Candidate packets",
+            status=(
+                "ready"
+                if int(_finite_float(discovery_yield.get("candidate_packets"))) > 0
+                else "blocked"
+            ),
+            finding=(
+                f"{int(_finite_float(discovery_yield.get('candidate_packets')))} "
+                "packet(s) available."
+            ),
+            next_action="Build candidate packets from the latest full scan.",
+            evidence=str(discovery.get("evidence") or ""),
+            metric={"candidate_packets": discovery_yield.get("candidate_packets")},
+        ),
+        _shadow_check_row(
+            code="decision_cards",
+            area="Decision cards",
+            status=(
+                "ready"
+                if int(_finite_float(discovery_yield.get("decision_cards"))) > 0
+                else "blocked"
+            ),
+            finding=(
+                f"{int(_finite_float(discovery_yield.get('decision_cards')))} "
+                "card(s) available."
+            ),
+            next_action="Build Decision Cards before using shadow output for review.",
+            evidence=str(discovery.get("detail") or ""),
+            metric={"decision_cards": discovery_yield.get("decision_cards")},
+        ),
+        _shadow_check_row(
+            code="provider_call_boundary",
+            area="Provider-call boundary",
+            status="blocked" if call_plan.get("status") == "blocked" else "ready",
+            finding=(
+                f"Run plan status={call_plan.get('status') or 'unknown'}; "
+                f"max_external_calls={call_plan.get('max_external_call_count') or 0}."
+            ),
+            next_action=str(call_plan.get("next_action") or "Review the run call plan."),
+            evidence="; ".join(
+                f"{row.get('layer')}={row.get('status')}:{row.get('external_call_count_max')}"
+                for row in plan_rows
+            ),
+            metric={
+                "planned_run_external_call_count_max": call_plan.get(
+                    "max_external_call_count"
+                ),
+                "assert_external_calls_required": 0,
+                "assert_db_writes_required": 0,
+            },
+        ),
+        _shadow_check_row(
+            code="alert_dry_run",
+            area="Alert dry-run",
+            status=(
+                "ready"
+                if _shadow_call_plan_row_status(plan_rows, "Alert delivery") == "dry_run"
+                else "blocked"
+            ),
+            finding="Daily alert delivery is dry-run only.",
+            next_action="Keep shadow runs in dry-run alert mode.",
+            evidence=str(_shadow_call_plan_row(plan_rows, "Alert delivery")),
+            metric={"dry_run_alerts": True},
+        ),
+        _shadow_check_row(
+            code="broker_orders_disabled",
+            area="Broker order safety",
+            status="blocked" if config.schwab_order_submission_enabled else "ready",
+            finding=(
+                "Schwab order submission is enabled."
+                if config.schwab_order_submission_enabled
+                else "Broker order submission is disabled."
+            ),
+            next_action=(
+                "Disable Schwab order submission before shadow-mode operation."
+                if config.schwab_order_submission_enabled
+                else "Use broker sync/read-only context only."
+            ),
+            evidence="CATALYST_SCHWAB_ORDER_SUBMISSION_ENABLED="
+            f"{str(config.schwab_order_submission_enabled).lower()}",
+            metric={
+                "schwab_order_submission_enabled": bool(
+                    config.schwab_order_submission_enabled
+                )
+            },
+        ),
+        _shadow_validation_check(validation_summary),
+    ]
+    return checks
+
+
+def _shadow_validation_check(
+    validation_summary: Mapping[str, object],
+) -> dict[str, object]:
+    latest_run = _mapping_value(validation_summary, "latest_run")
+    report = _mapping_value(validation_summary, "report")
+    status = str(latest_run.get("status") or "").strip()
+    ready = bool(latest_run) and bool(report) and status in {"success", "completed"}
+    return _shadow_check_row(
+        code="validation_ready",
+        area="Validation readiness",
+        status="ready" if ready else "blocked",
+        finding=(
+            f"Latest validation run {latest_run.get('id')} is {status}."
+            if latest_run
+            else "No validation run is available."
+        ),
+        next_action=(
+            "Run validation replay/report before treating shadow alerts as useful."
+            if not ready
+            else "Track forward outcomes and usefulness labels after the next shadow run."
+        ),
+        evidence=(
+            f"run_type={latest_run.get('run_type') or 'n/a'}; "
+            f"finished_at={latest_run.get('finished_at') or 'n/a'}"
+        ),
+        metric={
+            "latest_validation_run_id": latest_run.get("id"),
+            "latest_validation_status": latest_run.get("status"),
+            "report_available": bool(report),
+        },
+    )
+
+
+def _shadow_check_row(
+    *,
+    code: str,
+    area: str,
+    status: str,
+    finding: str,
+    next_action: str,
+    evidence: str,
+    metric: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    return {
+        "code": code,
+        "area": area,
+        "status": status,
+        "finding": finding,
+        "next_action": next_action,
+        "evidence": evidence,
+        "metric": _row_dict(metric) if isinstance(metric, Mapping) else {},
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+    }
+
+
+def _shadow_call_plan_row(
+    rows: Sequence[Mapping[str, object]],
+    layer: str,
+) -> dict[str, object]:
+    for row in rows:
+        if str(row.get("layer") or "") == layer:
+            return _row_dict(row)
+    return {}
+
+
+def _shadow_call_plan_row_status(
+    rows: Sequence[Mapping[str, object]],
+    layer: str,
+) -> str:
+    return str(_shadow_call_plan_row(rows, layer).get("status") or "")
+
+
 def radar_research_shortlist_payload(
     engine: Engine,
     config: AppConfig,

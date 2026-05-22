@@ -1093,6 +1093,57 @@ def test_get_radar_readiness_redacts_restricted_discovery_snapshot(
     ]
 
 
+def test_get_radar_shadow_readiness_returns_zero_call_gate(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "radar-shadow-readiness.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+    monkeypatch.setattr(
+        dashboard_data,
+        "shadow_readiness_payload",
+        lambda _engine, _config: {
+            "schema_version": "shadow-readiness-v1",
+            "status": "setup_required",
+            "ready": False,
+            "canonical_next_action": "Seed the scan universe.",
+            "call_boundary": {
+                "assert_external_calls_required": 0,
+                "assert_db_writes_required": 0,
+                "external_calls_made": 0,
+                "db_writes_made": 0,
+                "planned_run_external_call_count_max": 0,
+            },
+            "blockers": [{"code": "active_universe"}],
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+        },
+        raising=False,
+    )
+    client = TestClient(create_app())
+
+    response = client.get("/api/radar/shadow/readiness")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "schema_version": "shadow-readiness-v1",
+        "status": "setup_required",
+        "ready": False,
+        "canonical_next_action": "Seed the scan universe.",
+        "call_boundary": {
+            "assert_external_calls_required": 0,
+            "assert_db_writes_required": 0,
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+            "planned_run_external_call_count_max": 0,
+        },
+        "blockers": [{"code": "active_universe"}],
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+    }
+
+
 def test_get_radar_live_activation_returns_read_only_contract(
     tmp_path,
     monkeypatch,

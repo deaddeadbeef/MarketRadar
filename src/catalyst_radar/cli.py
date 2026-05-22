@@ -74,6 +74,7 @@ from catalyst_radar.dashboard.data import (
     priced_in_queue_payload,
     priced_in_source_gap_batches_payload,
     sec_cik_override_template_payload,
+    shadow_readiness_payload,
 )
 from catalyst_radar.dashboard.demo_seed import (
     default_sec_document_fixture_path,
@@ -615,6 +616,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     provider_health = subparsers.add_parser("provider-health")
     provider_health.add_argument("--provider", required=True)
+
+    assert_shadow_ready = subparsers.add_parser("assert-shadow-ready")
+    assert_shadow_ready.add_argument("--database-url")
+    assert_shadow_ready.add_argument("--json", action="store_true")
 
     dashboard_snapshot = subparsers.add_parser("dashboard-snapshot")
     dashboard_snapshot.add_argument("--database-url")
@@ -1446,6 +1451,15 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print(f"provider={health.provider} status={health.status.value}")
         return 0
+
+    if args.command == "assert-shadow-ready":
+        create_schema(engine)
+        payload = shadow_readiness_payload(engine, config)
+        if args.json:
+            print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
+        else:
+            _print_shadow_readiness(payload)
+        return 0 if payload.get("ready") is True else 1
 
     if args.command == "dashboard-snapshot":
         create_schema(engine)
@@ -7041,6 +7055,43 @@ def _print_priced_in_answer(payload: Mapping[str, object]) -> None:
             f"{row.get('emotion_score')} "
             f"{row.get('reaction_score')} "
             f"{_compact_cli_text(row.get('next_step'))}"
+        )
+
+
+def _print_shadow_readiness(payload: Mapping[str, object]) -> None:
+    boundary = payload.get("call_boundary")
+    boundary = boundary if isinstance(boundary, Mapping) else {}
+    print(
+        "shadow_readiness "
+        f"status={payload.get('status')} "
+        f"ready={str(bool(payload.get('ready'))).lower()} "
+        f"external_calls_made={payload.get('external_calls_made') or 0} "
+        f"db_writes_made={payload.get('db_writes_made') or 0} "
+        "assert_external_calls_required="
+        f"{boundary.get('assert_external_calls_required') or 0} "
+        f"assert_db_writes_required={boundary.get('assert_db_writes_required') or 0} "
+        "planned_run_external_calls_max="
+        f"{boundary.get('planned_run_external_call_count_max') or 0}"
+    )
+    print(f"headline={_compact_cli_text(payload.get('headline'))}")
+    print(f"next_action={_compact_cli_text(payload.get('canonical_next_action'))}")
+    print(f"useful_definition={_compact_cli_text(payload.get('useful_definition'))}")
+    blockers = payload.get("blockers")
+    blocker_rows = blockers if isinstance(blockers, Sequence) else ()
+    if not blocker_rows:
+        print("blockers=none")
+        return
+    for row in blocker_rows:
+        if not isinstance(row, Mapping):
+            continue
+        print(
+            "blocker="
+            f"{row.get('code')} "
+            f"area={_compact_cli_text(row.get('area'))} "
+            f"finding={_compact_cli_text(row.get('finding'))} "
+            f"next={_compact_cli_text(row.get('next_action'))} "
+            f"external_calls={row.get('external_calls_made') or 0} "
+            f"db_writes={row.get('db_writes_made') or 0}"
         )
 
 
