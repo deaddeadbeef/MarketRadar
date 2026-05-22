@@ -67,6 +67,9 @@ broad-market bars.
 `CATALYST_DAILY_MARKET_PROVIDER` controls scheduled daily bar ingest; the
 `CATALYST_DAILY_PROVIDER` override keeps manual/default radar runs aligned with
 that scheduled provider.
+For one-off local fixture checks, `run-daily --provider csv` is stricter: it
+pins the run to CSV market bars and the bundled news fixture even if your
+scheduled environment is configured for Polygon/Massive or SEC.
 
 A full-market scan means all active securities currently stored locally, not the
 few demo tickers and not the smaller `liquid-us` liquidity filter. Polygon/Massive

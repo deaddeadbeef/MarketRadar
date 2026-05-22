@@ -31,6 +31,53 @@ def test_assert_shadow_ready_cli_fails_closed_without_calls_or_writes(
     }
 
 
+def test_sample_csv_ingest_reaches_market_bar_ready_state(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'sample-ready.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["init-db"]) == 0
+    capsys.readouterr()
+    assert (
+        main(
+            [
+                "ingest-csv",
+                "--securities",
+                "data/sample/securities.csv",
+                "--daily-bars",
+                "data/sample/daily_bars.csv",
+                "--holdings",
+                "data/sample/holdings.csv",
+            ]
+        )
+        == 0
+    )
+    assert "daily_bars=48" in capsys.readouterr().out
+
+    exit_code = main(
+        [
+            "market-bars",
+            "status",
+            "--expected-as-of",
+            "2026-05-08",
+            "--json",
+        ]
+    )
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "ready"
+    assert payload["first_blocker"] is None
+    assert payload["active_security_count"] == 8
+    assert payload["existing_as_of_bar_count"] == 8
+    assert payload["missing_as_of_bar_count"] == 0
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
+
+
 def test_assert_investable_readiness_cli_fails_closed_stricter_than_shadow(
     tmp_path,
     monkeypatch,

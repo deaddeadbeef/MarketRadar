@@ -20,9 +20,9 @@ def test_dry_run_connector_fetches_raw_securities_and_daily_bars() -> None:
     records = connector.fetch(_request())
     second_records = connector.fetch(_request())
 
-    assert len(records) == 45
+    assert len(records) == 57
     assert sum(record.kind == ConnectorRecordKind.SECURITY for record in records) == 8
-    assert sum(record.kind == ConnectorRecordKind.DAILY_BAR for record in records) == 36
+    assert sum(record.kind == ConnectorRecordKind.DAILY_BAR for record in records) == 48
     assert sum(record.kind == ConnectorRecordKind.HOLDING for record in records) == 1
     assert all(record.provider == "csv" for record in records)
     assert all(record.payload_hash for record in records)
@@ -60,11 +60,34 @@ def test_dry_run_connector_normalizes_payloads_for_current_domain_models() -> No
     by_ticker = {security.ticker: security for security in securities}
     assert by_ticker["AAPL"].metadata["cik"] == "0000320193"
     assert by_ticker["MSFT"].metadata["cik"] == "0000789019"
-    assert len(daily_bars) == 36
+    assert len(daily_bars) == 48
     assert daily_bars[0].ticker == "AAA"
     assert daily_bars[0].available_at == datetime(2026, 5, 1, 21, tzinfo=UTC)
     assert len(holdings) == 1
     assert holdings[0].ticker == "AAA"
+
+
+def test_sample_csv_daily_bars_cover_active_universe_at_latest_date() -> None:
+    connector = _connector()
+
+    normalized = replay_normalized_records(connector.fetch(_request()), connector)
+    securities = [
+        _security_from_payload(record.payload)
+        for record in normalized
+        if record.kind == ConnectorRecordKind.SECURITY
+    ]
+    daily_bars = [
+        _daily_bar_from_payload(record.payload)
+        for record in normalized
+        if record.kind == ConnectorRecordKind.DAILY_BAR
+    ]
+
+    active_tickers = {security.ticker for security in securities if security.is_active}
+    latest_bar_date = max(bar.date for bar in daily_bars)
+    covered_tickers = {bar.ticker for bar in daily_bars if bar.date == latest_bar_date}
+
+    assert latest_bar_date.isoformat() == "2026-05-08"
+    assert active_tickers - covered_tickers == set()
 
 
 def test_missing_daily_bars_path_produces_down_health(tmp_path: Path) -> None:
