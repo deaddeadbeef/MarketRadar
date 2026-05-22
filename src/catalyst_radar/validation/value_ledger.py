@@ -287,6 +287,24 @@ def load_value_ledger_entries_payload(
     }
 
 
+def load_value_ledger_entry_payload(
+    engine: Engine,
+    *,
+    entry_id: str,
+) -> dict[str, object]:
+    resolved_id = _required_text(entry_id, "entry_id")
+    entry = ValidationRepository(engine).value_ledger_entry(resolved_id)
+    if entry is None:
+        msg = f"value ledger entry not found: {resolved_id}"
+        raise ValueError(msg)
+    return {
+        "schema_version": "value-ledger-entry-v1",
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "entry": value_ledger_entry_payload(entry),
+    }
+
+
 def load_value_ledger_summary_payload(
     engine: Engine,
     *,

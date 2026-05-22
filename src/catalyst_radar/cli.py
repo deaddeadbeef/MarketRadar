@@ -195,6 +195,7 @@ from catalyst_radar.validation.shadow_mode import (
 from catalyst_radar.validation.value_ledger import (
     build_value_ledger_entry,
     load_value_ledger_entries_payload,
+    load_value_ledger_entry_payload,
     load_value_ledger_summary_payload,
     value_ledger_artifact_context,
     value_ledger_write_payload,
@@ -646,38 +647,50 @@ def build_parser() -> argparse.ArgumentParser:
         dest="value_ledger_command",
         required=True,
     )
+
+    def add_value_ledger_record_args(target: argparse.ArgumentParser) -> None:
+        target.add_argument("--database-url")
+        target.add_argument("--artifact-type", required=True)
+        target.add_argument("--artifact-id", required=True)
+        target.add_argument("--as-of", type=date.fromisoformat)
+        target.add_argument("--scan-run-id")
+        target.add_argument("--candidate-state-id")
+        target.add_argument("--candidate-packet-id")
+        target.add_argument("--decision-card-id")
+        target.add_argument("--ticker")
+        target.add_argument("--label", required=True)
+        target.add_argument("--action-state")
+        target.add_argument("--priced-in-status")
+        target.add_argument("--priced-in-direction")
+        target.add_argument("--emotion-score", type=float)
+        target.add_argument("--reaction-score", type=float)
+        target.add_argument("--emotion-reaction-gap", type=float)
+        target.add_argument("--final-score", type=float)
+        target.add_argument("--setup-type")
+        target.add_argument("--supported-action")
+        target.add_argument("--user-decision")
+        target.add_argument("--estimated-value-usd", type=float, required=True)
+        target.add_argument("--confidence", type=float, default=1.0)
+        target.add_argument("--cost-to-produce-usd", type=float, default=0.0)
+        target.add_argument("--provider-call-count", type=int, default=0)
+        target.add_argument("--llm-call-count", type=int, default=0)
+        target.add_argument("--outcome-status", default="pending")
+        target.add_argument("--notes")
+        target.add_argument("--entry-date", type=date.fromisoformat)
+        target.add_argument("--available-at", type=_parse_aware_datetime)
+        target.add_argument("--execute", action="store_true")
+        target.add_argument("--json", action="store_true")
+
     value_ledger_add = value_ledger_sub.add_parser("record", aliases=["add"])
-    value_ledger_add.add_argument("--database-url")
-    value_ledger_add.add_argument("--artifact-type", required=True)
-    value_ledger_add.add_argument("--artifact-id", required=True)
-    value_ledger_add.add_argument("--as-of", type=date.fromisoformat)
-    value_ledger_add.add_argument("--scan-run-id")
-    value_ledger_add.add_argument("--candidate-state-id")
-    value_ledger_add.add_argument("--candidate-packet-id")
-    value_ledger_add.add_argument("--decision-card-id")
-    value_ledger_add.add_argument("--ticker")
-    value_ledger_add.add_argument("--label", required=True)
-    value_ledger_add.add_argument("--action-state")
-    value_ledger_add.add_argument("--priced-in-status")
-    value_ledger_add.add_argument("--priced-in-direction")
-    value_ledger_add.add_argument("--emotion-score", type=float)
-    value_ledger_add.add_argument("--reaction-score", type=float)
-    value_ledger_add.add_argument("--emotion-reaction-gap", type=float)
-    value_ledger_add.add_argument("--final-score", type=float)
-    value_ledger_add.add_argument("--setup-type")
-    value_ledger_add.add_argument("--supported-action")
-    value_ledger_add.add_argument("--user-decision")
-    value_ledger_add.add_argument("--estimated-value-usd", type=float, required=True)
-    value_ledger_add.add_argument("--confidence", type=float, default=1.0)
-    value_ledger_add.add_argument("--cost-to-produce-usd", type=float, default=0.0)
-    value_ledger_add.add_argument("--provider-call-count", type=int, default=0)
-    value_ledger_add.add_argument("--llm-call-count", type=int, default=0)
-    value_ledger_add.add_argument("--outcome-status", default="pending")
-    value_ledger_add.add_argument("--notes")
-    value_ledger_add.add_argument("--entry-date", type=date.fromisoformat)
-    value_ledger_add.add_argument("--available-at", type=_parse_aware_datetime)
-    value_ledger_add.add_argument("--execute", action="store_true")
-    value_ledger_add.add_argument("--json", action="store_true")
+    add_value_ledger_record_args(value_ledger_add)
+
+    value_ledger_label = value_ledger_sub.add_parser("label")
+    add_value_ledger_record_args(value_ledger_label)
+
+    value_ledger_show = value_ledger_sub.add_parser("show")
+    value_ledger_show.add_argument("entry_id")
+    value_ledger_show.add_argument("--database-url")
+    value_ledger_show.add_argument("--json", action="store_true")
 
     value_ledger_list = value_ledger_sub.add_parser("list")
     value_ledger_list.add_argument("--database-url")
@@ -2660,7 +2673,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "value-ledger":
         create_schema(engine)
         try:
-            if args.value_ledger_command in {"add", "record"}:
+            if args.value_ledger_command in {"add", "label", "record"}:
                 available_at = args.available_at or datetime.now(UTC)
                 artifact_context = value_ledger_artifact_context(
                     engine,
@@ -2707,6 +2720,16 @@ def main(argv: list[str] | None = None) -> int:
                     print(json.dumps(payload, sort_keys=True))
                     return 0
                 _print_value_ledger_write(payload)
+                return 0
+            if args.value_ledger_command == "show":
+                payload = load_value_ledger_entry_payload(
+                    engine,
+                    entry_id=args.entry_id,
+                )
+                if args.json:
+                    print(json.dumps(payload, sort_keys=True))
+                    return 0
+                _print_value_ledger_entry(payload)
                 return 0
             if args.value_ledger_command == "list":
                 payload = load_value_ledger_entries_payload(
@@ -7870,6 +7893,28 @@ def _print_value_ledger_write(payload: Mapping[str, object]) -> None:
     )
     print(f"next_action={_compact_cli_text(payload.get('next_action'))}")
     print(f"useful_definition={_compact_cli_text(payload.get('useful_definition'))}")
+
+
+def _print_value_ledger_entry(payload: Mapping[str, object]) -> None:
+    entry = payload.get("entry")
+    entry = entry if isinstance(entry, Mapping) else {}
+    print(
+        "value_ledger_entry "
+        f"external_calls_made={payload.get('external_calls_made') or 0} "
+        f"db_writes_made={payload.get('db_writes_made') or 0}"
+    )
+    print(
+        "entry "
+        f"id={entry.get('id')} "
+        f"date={entry.get('entry_date')} "
+        f"ticker={entry.get('ticker') or 'n/a'} "
+        f"label={entry.get('label')} "
+        f"supported_action={entry.get('supported_action') or 'n/a'} "
+        f"user_decision={entry.get('user_decision') or 'n/a'} "
+        f"weighted_value_usd={entry.get('confidence_weighted_value_usd')} "
+        f"outcome_status={entry.get('outcome_status')} "
+        f"artifact={entry.get('artifact_type')}:{entry.get('artifact_id')}"
+    )
 
 
 def _print_value_ledger_entries(payload: Mapping[str, object]) -> None:

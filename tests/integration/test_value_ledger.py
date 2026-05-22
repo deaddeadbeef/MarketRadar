@@ -140,6 +140,68 @@ def test_value_ledger_cli_preview_execute_and_summary(
     assert summary["target_coverage_pct"] == 100.0
     assert summary["chatgpt_pro_offset_pct"] == 20.0
 
+    show_exit = main(["value-ledger", "show", executed["entry"]["id"], "--json"])
+
+    assert show_exit == 0
+    shown = json.loads(capsys.readouterr().out)
+    assert shown["schema_version"] == "value-ledger-entry-v1"
+    assert shown["external_calls_made"] == 0
+    assert shown["db_writes_made"] == 0
+    assert shown["entry"]["id"] == executed["entry"]["id"]
+
+
+def test_value_ledger_cli_label_command_writes_auditable_entry(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'value-ledger-label.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = engine_from_url(database_url)
+    create_schema(engine)
+    _insert_candidate_state(engine)
+
+    label_exit = main(
+        [
+            "value-ledger",
+            "label",
+            "--artifact-type",
+            "candidate_state",
+            "--artifact-id",
+            "state-MSFT",
+            "--label",
+            "useful",
+            "--supported-action",
+            "research",
+            "--user-decision",
+            "accepted",
+            "--estimated-value-usd",
+            "12",
+            "--confidence",
+            "0.5",
+            "--entry-date",
+            "2026-05-15",
+            "--available-at",
+            "2026-05-22T12:00:00+00:00",
+            "--execute",
+            "--json",
+        ]
+    )
+
+    assert label_exit == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["mode"] == "executed"
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 1
+    assert payload["entry"]["label"] == "useful"
+    assert payload["entry"]["confidence_weighted_value_usd"] == 6.0
+
+    show_exit = main(["value-ledger", "show", payload["entry"]["id"], "--json"])
+
+    assert show_exit == 0
+    shown = json.loads(capsys.readouterr().out)
+    assert shown["entry"]["label"] == "useful"
+
 
 def test_value_ledger_api_preview_execute_and_read(tmp_path, monkeypatch) -> None:
     database_url = f"sqlite:///{(tmp_path / 'value-ledger-api.db').as_posix()}"
@@ -191,6 +253,17 @@ def test_value_ledger_api_preview_execute_and_read(tmp_path, monkeypatch) -> Non
     assert entries_payload["count"] == 1
     assert entries_payload["entries"][0]["ticker"] == "AAPL"
     assert entries_payload["entries"][0]["supported_action"] == "avoid"
+    entry_id = execute_response.json()["entry"]["id"]
+    show_response = client.get(f"/api/value-ledger/entries/{entry_id}")
+    assert show_response.status_code == 200
+    shown = show_response.json()
+    assert shown["external_calls_made"] == 0
+    assert shown["db_writes_made"] == 0
+    assert shown["entry"]["id"] == entry_id
+    assert shown["entry"]["ticker"] == "AAPL"
+
+    missing_response = client.get("/api/value-ledger/entries/missing-entry")
+    assert missing_response.status_code == 404
 
     summary_response = client.get(
         "/api/value-ledger/summary",

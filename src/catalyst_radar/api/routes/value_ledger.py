@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from catalyst_radar.core.config import AppConfig
@@ -13,6 +13,7 @@ from catalyst_radar.storage.validation_repositories import ValidationRepository
 from catalyst_radar.validation.value_ledger import (
     build_value_ledger_entry,
     load_value_ledger_entries_payload,
+    load_value_ledger_entry_payload,
     load_value_ledger_summary_payload,
     value_ledger_artifact_context,
     value_ledger_write_payload,
@@ -95,6 +96,16 @@ def value_ledger_entries(
         label=label,
         limit=limit,
     )
+
+
+@router.get("/entries/{entry_id}", dependencies=[Depends(require_role(Role.VIEWER))])
+def value_ledger_entry(
+    entry_id: Annotated[str, Path(min_length=1)],
+) -> dict[str, object]:
+    try:
+        return load_value_ledger_entry_payload(_engine(), entry_id=entry_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.post("/entries", dependencies=[Depends(require_role(Role.ANALYST))])
