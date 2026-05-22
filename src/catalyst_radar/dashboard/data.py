@@ -3939,6 +3939,17 @@ def priced_in_answer_payload(
     setup_blocker = _mapping_value(resolved_preflight, "first_blocker")
     setup_blocker_area = str(setup_blocker.get("area") or "").strip()
     setup_blocks_market_bars = setup_blocker_area in {"universe", "scan_scope"}
+    if setup_blocks_market_bars:
+        evidence_completeness = {
+            **evidence_completeness,
+            "status": "blocked",
+            "first_gap_source": setup_blocker_area,
+            "first_gap_count": int(
+                _finite_float(setup_blocker.get("source_gap_count"))
+            ),
+            "next_action": setup_blocker.get("action"),
+            "command": setup_blocker.get("command"),
+        }
     market_bar_blocker_detail: dict[str, object] | None = None
     if (
         not setup_blocks_market_bars
@@ -7713,6 +7724,9 @@ def _priced_in_answer_after_current_blocker(
     if len(rows) < 2:
         return None
     current = rows[0]
+    current_source = str(current.get("source") or "").strip()
+    if current_source in {"universe", "scan_scope"}:
+        return None
     upcoming = rows[1]
     next_source = str(upcoming.get("source") or "").strip()
     if not next_source:

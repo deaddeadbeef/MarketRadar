@@ -1689,6 +1689,32 @@ def test_priced_in_answer_payload_summarizes_current_scan(tmp_path: Path) -> Non
         assert payload["top_rows"][0]["missing_sources"]
 
 
+def test_priced_in_answer_empty_universe_keeps_universe_as_next_action(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+
+    payload = priced_in_answer_payload(
+        engine,
+        AppConfig(daily_market_provider="polygon", polygon_tickers_max_pages=1),
+        limit=5,
+    )
+
+    assert payload["schema_version"] == "priced-in-answer-v1"
+    assert payload["external_calls_made"] == 0
+    assert payload["status"] == "blocked"
+    assert payload["next_command"] == (
+        "catalyst-radar ingest-polygon tickers --max-pages 1 --confirm-external-call"
+    )
+    assert payload["evidence_completeness"]["first_gap_source"] == "universe"
+    assert payload["evidence_completeness"]["next_action"] == payload["next_action"]
+    assert payload["full_market_trust_gate"]["first_blocker"] == "universe"
+    assert payload["full_market_trust_gate"]["next_action"] == payload["next_action"]
+    assert "after_current_blocker" not in payload["full_market_trust_gate"]
+    assert payload["operator_next_step"]["first_blocker"] == "universe"
+    assert payload["operator_next_step"]["command"] == payload["next_command"]
+
+
 def test_priced_in_full_scan_summary_accounts_for_benchmark_exclusions() -> None:
     queue = {
         "scan": {
@@ -5357,6 +5383,7 @@ def test_priced_in_preflight_payload_reports_exact_next_steps(tmp_path: Path) ->
     assert payload["external_calls_made"] == 0
     assert payload["status"] in {"blocked", "attention", "ready"}
     assert payload["first_blocker"]["schema_version"] == "priced-in-first-blocker-v1"
+    assert payload["first_blocker"]["area"] == "universe"
     assert payload["first_gap"] == payload["first_blocker"]["area"]
     assert payload["operator_next_step"]["schema_version"] == (
         "priced-in-preflight-next-step-v1"
