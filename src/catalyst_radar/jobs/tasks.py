@@ -94,6 +94,7 @@ class DailyRunSpec:
     decision_available_at: datetime
     outcome_available_at: datetime | None = None
     provider: str | None = None
+    provider_override: bool = False
     universe: str | None = None
     tickers: tuple[str, ...] = ()
     dry_run_alerts: bool = True
@@ -1187,6 +1188,7 @@ def _step_metadata(spec: DailyRunSpec, step_name: str) -> dict[str, Any]:
         "run_llm": spec.run_llm,
         "llm_dry_run": spec.llm_dry_run,
         "provider": spec.provider,
+        "provider_override": spec.provider_override,
         "universe": spec.universe,
         "tickers": list(spec.tickers),
     }
@@ -1308,13 +1310,26 @@ def _degraded_payload(context: _DailyRunContext) -> dict[str, Any]:
 
 
 def _scheduled_market_provider(context: _DailyRunContext) -> str:
+    override = _explicit_daily_provider(context)
+    if context.spec.provider_override and (
+        override in MARKET_SCHEDULED_PROVIDER_NAMES
+        or override in DISABLED_SCHEDULED_PROVIDER_NAMES
+    ):
+        return override if override else "csv"
     provider = context.config.daily_market_provider.strip().lower()
     return provider if provider else "csv"
 
 
 def _scan_provider(context: _DailyRunContext) -> str | None:
-    if context.spec.provider:
-        return context.spec.provider.strip().lower()
+    override = _explicit_daily_provider(context)
+    if override in DISABLED_SCHEDULED_PROVIDER_NAMES:
+        return None
+    if override in POLYGON_SCHEDULED_PROVIDER_NAMES or override == "sample":
+        return override
+    if override == "csv":
+        return None
+    if override:
+        return override
     scheduled = _scheduled_market_provider(context)
     if scheduled in DISABLED_SCHEDULED_PROVIDER_NAMES:
         return None
@@ -1326,7 +1341,19 @@ def _scan_provider(context: _DailyRunContext) -> str | None:
 
 
 def _scheduled_event_provider(context: _DailyRunContext) -> str:
+    override = _explicit_daily_provider(context)
+    if context.spec.provider_override and (
+        override in EVENT_SCHEDULED_PROVIDER_NAMES
+        or override in DISABLED_SCHEDULED_PROVIDER_NAMES
+    ):
+        return override
+    if context.spec.provider_override and override in CSV_SCHEDULED_PROVIDER_NAMES:
+        return "news_fixture"
     return context.config.daily_event_provider.strip().lower()
+
+
+def _explicit_daily_provider(context: _DailyRunContext) -> str:
+    return (context.spec.provider or "").strip().lower()
 
 
 def _scheduled_sec_targets(context: _DailyRunContext) -> tuple[tuple[Security, str], ...]:

@@ -321,7 +321,7 @@ def test_daily_run_ingests_default_csv_market_data(monkeypatch):
     assert ingest_step.status == "success"
     assert ingest_step.payload["provider"] == "csv"
     assert ingest_step.payload["security_count"] == 8
-    assert ingest_step.payload["daily_bar_count"] == 36
+    assert ingest_step.payload["daily_bar_count"] == 48
     assert result.step("feature_scan").status == "success"
     assert result.step("scoring_policy").status == "success"
     assert result.step("event_ingest").status == "success"
@@ -333,17 +333,17 @@ def test_daily_run_ingests_default_csv_market_data(monkeypatch):
     assert result.step("decision_cards").reason == "no_manual_buy_review_inputs"
     assert result.step("llm_review").reason == "llm_disabled"
     assert result.step("alert_planning").status == "success"
-    assert result.step("alert_planning").payload["alert_count"] == 1
+    assert result.step("alert_planning").payload["alert_count"] == 3
     assert result.step("alert_planning").payload["suppression_count"] == 2
     assert result.step("alert_planning").payload["external_delivery"] is False
     assert result.step("digest").status == "success"
-    assert result.step("digest").payload["digest_alert_count"] == 1
+    assert result.step("digest").payload["digest_alert_count"] == 3
     assert result.step("digest").payload["channel_filter"] == "digest"
 
     alert_rows = AlertRepository(engine).list_alerts(
         available_at=datetime(2026, 5, 8, 21, 0, tzinfo=UTC),
     )
-    assert len(alert_rows) == 1
+    assert len(alert_rows) == 3
     assert alert_rows[0].status.value == "planned"
     assert alert_rows[0].channel.value == "digest"
 
@@ -365,7 +365,7 @@ def test_daily_run_ingests_default_csv_market_data(monkeypatch):
         }
 
     assert jobs["daily_bar_ingest"].status == "success"
-    assert jobs["daily_bar_ingest"].metadata["result_payload"]["daily_bar_count"] == 36
+    assert jobs["daily_bar_ingest"].metadata["result_payload"]["daily_bar_count"] == 48
     assert jobs["scheduled_csv_ingest"].status == "success"
     assert jobs["event_ingest"].status == "success"
     assert jobs["event_ingest"].metadata["result_payload"]["event_count"] == 1
@@ -385,20 +385,20 @@ def test_daily_run_alert_planning_dedupes_repeated_run(monkeypatch):
     first = run_daily(spec, engine=engine)
     second = run_daily(spec, engine=engine)
 
-    assert first.step("alert_planning").payload["alert_count"] == 1
+    assert first.step("alert_planning").payload["alert_count"] == 3
     assert first.step("alert_planning").payload["suppression_count"] == 2
     assert second.step("alert_planning").payload["alert_count"] == 0
-    assert second.step("alert_planning").payload["suppression_count"] == 3
+    assert second.step("alert_planning").payload["suppression_count"] == 5
     assert second.step("alert_planning").payload["suppression_reason_counts"][
         "duplicate_trigger"
-    ] == 1
+    ] == 3
     assert second.step("digest").status == "skipped"
     assert second.step("digest").reason == "no_alerts"
 
     alerts = AlertRepository(engine).list_alerts(
         available_at=datetime(2026, 5, 8, 21, 0, tzinfo=UTC),
     )
-    assert len(alerts) == 1
+    assert len(alerts) == 3
     assert alerts[0].status.value == "planned"
 
 
@@ -746,7 +746,7 @@ def test_daily_run_records_step_telemetry(monkeypatch):
     assert all(row.artifact_id for row in started_rows)
     by_step = {row.metadata["step"]: row for row in rows}
     assert by_step["daily_bar_ingest"].status == result.step("daily_bar_ingest").status
-    assert by_step["daily_bar_ingest"].metadata["normalized_count"] == 45
+    assert by_step["daily_bar_ingest"].metadata["normalized_count"] == 57
     assert by_step["daily_bar_ingest"].metadata["decision_available_at"] == (
         "2026-05-08T21:00:00+00:00"
     )
@@ -844,13 +844,13 @@ def test_daily_run_runs_validation_update_when_outcome_cutoff_is_supplied():
     validation_step = result.step("validation_update")
     assert validation_step.status == "success"
     assert validation_step.reason is None
-    assert validation_step.payload["candidate_count"] == 3
+    assert validation_step.payload["candidate_count"] == 5
     with engine.connect() as conn:
         run = conn.execute(select(validation_runs)).one()
 
     assert run.status == "success"
     assert run.config["outcome_available_at"] == outcome_available_at.isoformat()
-    assert run.metrics["candidate_count"] == 3
+    assert run.metrics["candidate_count"] == 5
 
 
 def test_daily_run_caps_high_states_and_blocks_decision_work_when_degraded(monkeypatch):
@@ -1605,6 +1605,63 @@ def test_cli_run_daily_json_smoke(monkeypatch, tmp_path, capsys):
     assert payload["daily_result"]["status"] == "success"
     assert payload["daily_result"]["spec"]["tickers"] == ["AAPL", "MSFT"]
     assert payload["daily_result"]["steps"]["llm_review"]["status"] == "skipped"
+
+
+def test_cli_run_daily_csv_provider_override_stays_zero_call(
+    monkeypatch,
+    tmp_path,
+    capsys,
+):
+    class NoLiveTransport:
+        def get(self, url, *, headers, timeout_seconds):
+            del headers, timeout_seconds
+            raise AssertionError(f"live provider should not be called: {url}")
+
+        def post(self, url, *, headers, body, timeout_seconds):
+            del headers, body, timeout_seconds
+            raise AssertionError(f"live provider should not be called: {url}")
+
+    database_url = f"sqlite:///{(tmp_path / 'scheduler-cli-provider.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("CATALYST_DAILY_MARKET_PROVIDER", "polygon")
+    monkeypatch.setenv("CATALYST_DAILY_EVENT_PROVIDER", "sec")
+    monkeypatch.setenv("CATALYST_POLYGON_API_KEY", "fixture-key")
+    monkeypatch.setenv("CATALYST_SEC_ENABLE_LIVE", "1")
+    monkeypatch.setenv("CATALYST_SEC_USER_AGENT", "CatalystRadar/0.1 test@example.com")
+    monkeypatch.setattr("catalyst_radar.jobs.tasks.UrlLibHttpTransport", NoLiveTransport)
+
+    exit_code = cli_main(
+        [
+            "run-daily",
+            "--as-of",
+            "2026-05-08",
+            "--available-at",
+            "2026-05-08T21:30:00+00:00",
+            "--provider",
+            "csv",
+            "--json",
+        ]
+    )
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    steps = payload["daily_result"]["steps"]
+    assert payload["daily_result"]["spec"]["provider"] == "csv"
+    assert steps["daily_bar_ingest"]["payload"]["provider"] == "csv"
+    assert steps["daily_bar_ingest"]["payload"]["daily_bar_count"] == 48
+    assert steps["event_ingest"]["payload"]["provider"] == "news_fixture"
+    assert steps["event_ingest"]["payload"]["event_count"] == 1
+
+    engine = create_engine(database_url, future=True)
+    with engine.connect() as conn:
+        live_jobs = conn.execute(
+            select(job_runs.c.job_type).where(
+                job_runs.c.job_type.in_(
+                    ["polygon_grouped_daily", "scheduled_sec_submissions"]
+                )
+            )
+        ).all()
+    assert live_jobs == []
 
 
 def test_cli_run_daily_rejects_unsupported_real_llm_and_delivery(monkeypatch, tmp_path, capsys):

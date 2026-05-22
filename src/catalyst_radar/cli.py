@@ -1231,6 +1231,7 @@ def main(argv: list[str] | None = None) -> int:
             decision_available_at=args.available_at,
             outcome_available_at=args.outcome_available_at,
             provider=args.provider,
+            provider_override=args.provider is not None,
             universe=args.universe,
             tickers=tuple(args.ticker or ()),
             run_llm=args.run_llm,

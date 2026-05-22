@@ -28,6 +28,7 @@ class SchedulerConfig:
     decision_available_at: datetime | None = None
     outcome_available_at: datetime | None = None
     provider: str | None = None
+    provider_override: bool = False
     universe: str | None = None
     tickers: tuple[str, ...] = ()
     run_llm: bool = False
@@ -113,6 +114,7 @@ def build_daily_spec(
         decision_available_at=config.decision_available_at or resolved_now,
         outcome_available_at=config.outcome_available_at,
         provider=config.provider,
+        provider_override=config.provider_override,
         universe=config.universe,
         tickers=config.tickers,
         dry_run_alerts=config.dry_run_alerts,
@@ -212,6 +214,7 @@ def daily_spec_payload(spec: DailyRunSpec) -> dict[str, Any]:
             else None
         ),
         "provider": spec.provider,
+        "provider_override": spec.provider_override,
         "universe": spec.universe,
         "tickers": list(spec.tickers),
         "dry_run_alerts": spec.dry_run_alerts,
@@ -254,6 +257,7 @@ def _lock_metadata(config: SchedulerConfig, spec: DailyRunSpec) -> dict[str, Any
         "run_llm": spec.run_llm,
         "llm_dry_run": spec.llm_dry_run,
         "provider": spec.provider,
+        "provider_override": spec.provider_override,
         "universe": spec.universe,
         "tickers": list(spec.tickers),
     }

@@ -1,6 +1,34 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 02:43:00 +08:00
+Last updated: 2026-05-23 03:12:51 +08:00
+
+## Latest Zero-Call Sample and Provider Boundary Slice
+
+Last updated: 2026-05-23 03:12:51 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar should scan the broad stock market and identify stocks where market emotion or expectations have not yet been matched by price.
+- This slice advances mission-brief P0 by making the bundled local sample path able to clear its own active-universe market-bar gate.
+- This slice also closes an operator-risk gap: a manual `run-daily --provider csv` check must not silently inherit live Polygon/Massive or SEC scheduled providers.
+- This is useful because a clean local DB can now prove the seed -> market-bar-ready transition without provider access before full-market live ingestion is attempted.
+
+Fix in this slice:
+
+- Added missing AAPL/MSFT sample daily bars for the existing active sample universe.
+- `run-daily --provider csv` now pins explicit one-off CLI runs to CSV market bars and the bundled news fixture, even when the scheduled environment is configured for live Polygon/Massive or SEC.
+- `CATALYST_DAILY_PROVIDER=csv` scheduling remains compatible with separate `CATALYST_DAILY_EVENT_PROVIDER=sec`; the stricter behavior is for explicit CLI provider overrides.
+- README documents the manual override boundary because the operator contract changed.
+
+Validation target for this slice:
+
+- Prove `data/sample/securities.csv` and `data/sample/daily_bars.csv` cover the same active universe on 2026-05-08.
+- Prove a clean local DB reaches `market-bars status=ready`, `first_blocker=null`, `missing_as_of_bar_count=0`, `external_calls_made=0`, `db_writes_made=0` after sample CSV ingest.
+- Prove `run-daily --provider csv` makes no live provider job when live scheduled providers are configured.
+
+Safety note:
+
+- During investigation before this fix, one manual diagnostic command was pointed at a temp SQLite DB but did not pin the provider environment; it used configured Polygon/Massive and SEC providers. No broker/order/OpenAI/Schwab calls were made, and the main `data/schwab-live.db` was not touched. This slice is intentionally preventing that misuse path from recurring.
 
 ## Latest Battle-Test Investable Readiness Gate Slice
 
