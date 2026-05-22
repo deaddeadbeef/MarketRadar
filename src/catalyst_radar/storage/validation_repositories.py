@@ -247,6 +247,12 @@ class ValidationRepository:
             conn.execute(delete(value_outcomes).where(value_outcomes.c.id == outcome.id))
             conn.execute(insert(value_outcomes).values(**_value_outcome_row(outcome)))
 
+    def value_outcome(self, outcome_id: str) -> ValueOutcome | None:
+        stmt = select(value_outcomes).where(value_outcomes.c.id == str(outcome_id).strip()).limit(1)
+        with self.engine.connect() as conn:
+            row = conn.execute(stmt).first()
+        return _value_outcome_from_row(row._mapping) if row is not None else None
+
     def list_value_outcomes(
         self,
         *,
