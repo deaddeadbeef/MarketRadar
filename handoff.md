@@ -1,6 +1,34 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 03:52:30 +08:00
+Last updated: 2026-05-23 04:11:19 +08:00
+
+## Latest Shadow Market-Bar Gap Accounting Slice
+
+Last updated: 2026-05-23 04:11:19 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar must produce trusted broad-market priced-in / not-yet-priced-in shadow scans, then prove value through ledger rows, outcomes, baselines, and monthly reports.
+- This slice fixes a P0/P1 audit-risk bug: `market-bars status` correctly showed 36 missing bars for `2026-05-21`, but `assert-shadow-ready` and `shadow-mode run --preview` reported the missing market-bar count as 0.
+- This is useful because shadow-mode records are supposed to be the evidence trail. A blocked shadow record must say exactly why it is blocked, including the true market-bar gap.
+
+Fix in this slice:
+
+- `radar_discovery_snapshot_payload` now uses the latest local daily-bar date as the coverage date when no completed radar run exists yet, while still honoring an explicit `available_at` cutoff from shadow-mode preview/execute.
+- `assert-shadow-ready` now uses latest-date bar coverage from ops health when no run-as-of coverage exists, reports `active_security_with_latest_daily_bar_count`, and derives the true missing latest-bar count.
+- `shadow-mode run` now persists/previews `missing_market_bar_count` from the discovery freshness payload or, if needed, the `latest_market_bars` readiness metric.
+
+Validation observed in this slice:
+
+- Focused regression tests passed for shadow readiness and shadow-mode preview/execute: 9 passed.
+- `ruff check` passed for touched shadow readiness/shadow-mode source and tests.
+- Zero-call live-DB `assert-shadow-ready --json` smoke against `data/schwab-live.db` now returns `latest_status=blocked`, finding `964/1000 active securities have latest daily bars; latest=2026-05-21; as_of=964/1000`, `missing=36`, `external_calls_made=0`, and `db_writes_made=0`.
+- Zero-call live-DB `shadow-mode run --preview --as-of 2026-05-21 --available-at 2026-05-23T00:00:00Z --json` now returns `status=setup_required`, `missing_market_bar_count=36`, `external_calls_made=0`, `db_writes_made=0`, and `db_writes_required=1` for a future execute.
+
+Current live blocker:
+
+- The local active universe has 1000 active securities and 964 bars for `2026-05-21`; 36 tickers remain missing, mostly SPAC/unit/warrant/right/share-class style instruments with zero local average dollar volume.
+- Do not treat this as a trusted full active-universe scan until those 36 are repaired, explicitly excluded by a tested universe-quality rule, or the operator intentionally runs a clearly labeled selected/stock-like shadow scan.
 
 ## Latest Seeded-Universe Market-Bar Status Slice
 

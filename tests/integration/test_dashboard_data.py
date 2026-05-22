@@ -1150,6 +1150,50 @@ def test_shadow_readiness_payload_fails_closed_without_universe(tmp_path: Path) 
     assert payload["canonical_next_action"]
 
 
+def test_shadow_readiness_payload_reports_latest_market_bar_gap_without_run(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    _insert_active_security_for_call_plan(engine, "AAPL", cik="0000320193")
+    _insert_active_security_for_call_plan(engine, "MSFT", cik="0000789019")
+    MarketRepository(engine).upsert_daily_bars(
+        [
+            DailyBar(
+                ticker="AAPL",
+                date=AS_OF.date(),
+                open=100,
+                high=101,
+                low=99,
+                close=100.5,
+                volume=1_000_000,
+                vwap=100.25,
+                adjusted=True,
+                provider="polygon",
+                source_ts=SOURCE_TS,
+                available_at=AVAILABLE_AT,
+            )
+        ]
+    )
+
+    payload = shadow_readiness_payload(
+        engine,
+        AppConfig.from_env({"DAILY_MARKET_PROVIDER": "polygon"}),
+    )
+
+    latest_bars = next(
+        row for row in payload["checks"] if row["code"] == "latest_market_bars"
+    )
+    assert latest_bars["status"] == "blocked"
+    assert "as_of=1/2" in latest_bars["finding"]
+    assert latest_bars["metric"]["active_security_count"] == 2
+    assert latest_bars["metric"]["active_security_with_latest_daily_bar_count"] == 1
+    assert latest_bars["metric"]["missing_as_of_daily_bar_count"] == 1
+    assert latest_bars["metric"]["missing_latest_daily_bar_count"] == 1
+    assert "latest_market_bars" in {row["code"] for row in payload["blockers"]}
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
+
+
 def test_shadow_readiness_payload_accepts_safe_precomputed_shadow_contract(
     tmp_path: Path,
 ) -> None:

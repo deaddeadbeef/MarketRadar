@@ -131,6 +131,8 @@ def build_shadow_mode_run(
     freshness = _mapping(discovery.get("freshness"))
     snapshots = _mapping(shadow.get("snapshots"))
     scan_scope_payload = _mapping(snapshots.get("scan_scope"))
+    latest_market_bar_check = _first_check(shadow, "latest_market_bars")
+    latest_market_bar_metric = _mapping(latest_market_bar_check.get("metric"))
     scan_scope = str(scan_scope_payload.get("mode") or "unknown")
     candidate_rows = [
         row for row in _sequence(snapshot.get("candidate_rows")) if isinstance(row, Mapping)
@@ -147,7 +149,11 @@ def build_shadow_mode_run(
     )
     requested = _int(discovered_yield.get("requested_securities"), universe_size)
     scanned = _int(discovered_yield.get("scanned_securities"))
-    missing_bars = _int(freshness.get("missing_as_of_daily_bar_count"))
+    missing_bars = _first_int(
+        freshness.get("missing_as_of_daily_bar_count"),
+        latest_market_bar_metric.get("missing_as_of_daily_bar_count"),
+        latest_market_bar_metric.get("missing_latest_daily_bar_count"),
+    )
     candidate_count = _int(discovered_yield.get("candidate_states"), len(candidate_rows))
     blocker_count = len(
         [row for row in _sequence(shadow.get("blockers")) if isinstance(row, Mapping)]
@@ -289,6 +295,7 @@ def _local_shadow_snapshot(
         radar_run_summary=latest_run,
         ops_health=ops_health,
         candidate_rows=candidate_rows,
+        available_at=available_at,
     )
     readiness = dashboard_data.radar_readiness_payload(
         engine,
@@ -341,6 +348,13 @@ def _validation_status(shadow_readiness: Mapping[str, object]) -> str:
     return "unknown"
 
 
+def _first_check(payload: Mapping[str, object], code: str) -> dict[str, object]:
+    for row in _sequence(payload.get("checks")):
+        if isinstance(row, Mapping) and row.get("code") == code:
+            return dict(row)
+    return {}
+
+
 def _mapping(value: object) -> dict[str, object]:
     return dict(value) if isinstance(value, Mapping) else {}
 
@@ -353,6 +367,19 @@ def _int(value: object, fallback: object = 0) -> int:
     for candidate in (value, fallback):
         try:
             number = float(candidate)
+        except (TypeError, ValueError):
+            continue
+        if isfinite(number):
+            return max(0, int(number))
+    return 0
+
+
+def _first_int(*values: object) -> int:
+    for value in values:
+        if value is None:
+            continue
+        try:
+            number = float(value)
         except (TypeError, ValueError):
             continue
         if isfinite(number):
