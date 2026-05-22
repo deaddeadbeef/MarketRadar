@@ -17532,7 +17532,9 @@ def _priced_in_scan_status(discovery: Mapping[str, object]) -> str:
     has_named_universe = bool(str(run.get("universe") or "").strip())
     all_active_denominator = active_count or requested or scanned
     if has_named_universe:
-        selected_denominator = requested or scanned
+        # Provider ingest can request a broad response while the feature scan only
+        # evaluates the selected universe; classify the scan by evaluated rows.
+        selected_denominator = scanned or requested
         if (
             all_active_denominator >= 500
             and selected_denominator
@@ -17743,7 +17745,7 @@ def _priced_in_preflight_rows(
             )
         )
 
-    selected_scan_count = requested or scanned
+    selected_scan_count = scanned or requested
     if (
         run_universe
         and active >= 500

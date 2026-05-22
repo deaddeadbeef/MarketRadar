@@ -1,6 +1,33 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 06:07:55 +08:00
+Last updated: 2026-05-23 06:29:23 +08:00
+
+## Latest Selected-Universe Shadow-Scope Safety Slice
+
+Last updated: 2026-05-23 06:29:23 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar must produce trusted priced-in / not-yet-priced-in market emotion scans, then prove usefulness through shadow runs, outcomes, baselines, and monthly value reports.
+- This slice fixes a P0/P1 safety-label issue discovered after an approved `liquid-us` provider run: the selected-universe scan evaluated 2,429 rows out of 12,669 active securities, but `shadow-mode run --preview` labeled the scope as `full_scan`.
+- The fix does not make the selected-universe run decision-ready. It preserves the fail-closed state and makes the boundary explicit: `liquid-us` is an investable/configured-universe scan, not the all-active broad-market answer.
+
+Fix in this slice:
+
+- `_priced_in_scan_status` now classifies named-universe scope from evaluated/scanned rows before falling back to provider-requested rows.
+- Priced-in preflight uses the same evaluated-row denominator, so the scan-scope warning is not hidden when provider ingest requested a broader response.
+- Regression coverage now models the real operator-DB shape: `active=12669`, `requested=12104`, `scanned=2429`, `universe=liquid-us`.
+
+Validation observed in this slice:
+
+- The new regression failed before the fix with `partial_scan` instead of `selected_universe`.
+- Focused integration tests passed after the fix: 4 passed.
+- Zero-call operator-DB smoke through worktree code returned `shadow-mode run --preview` with `mode=preview`, `external_calls_made=0`, `db_writes_made=0`, `run_status=setup_required`, `scan_scope=selected_universe`, and `validation_status=blocked`.
+
+Current live blocker:
+
+- The all-active trusted answer remains blocked by 579 missing `2026-05-15` market bars.
+- The latest approved `liquid-us` run is useful only as selected-universe / configured-universe evidence until the operator intentionally accepts that scope or clears the all-active residual.
 
 ## Latest Configured-Universe Market-Bar Coverage Slice
 
