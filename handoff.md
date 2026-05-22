@@ -1,6 +1,36 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 05:37:46 +08:00
+Last updated: 2026-05-23 06:07:55 +08:00
+
+## Latest Configured-Universe Market-Bar Coverage Slice
+
+Last updated: 2026-05-23 06:07:55 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar must reach trusted broad-market priced-in / not-yet-priced-in shadow scans, then prove usefulness with ledger rows, outcomes, baselines, and monthly value reports.
+- This slice advances M1/P0 without changing the all-active trust gate: operators can now see whether the configured investable universe is bar-ready while the all-active residual remains blocked.
+- This is useful because the current Polygon/Massive grouped-daily data covers the built `liquid-us` universe, but the all-active instrument list still contains unsupported/zero-liquidity residual rows. Those two facts must be visible without pretending they are the same scan boundary.
+
+Fix in this slice:
+
+- `market-bars status` now includes `configured_universe_scope` when a latest configured universe snapshot exists.
+- The payload reports universe name, snapshot ID, member count, bars present at the requested as-of date, missing configured-universe bars, all-active missing-bar count, call/write counters, and an explicit boundary note.
+- CLI text prints a compact `configured_universe` line only when a configured snapshot exists.
+- All-active `status=blocked`, `first_blocker=market_bars`, and missing counts are preserved; configured-universe readiness does not clear the all-active gate.
+- README documents the new operator contract.
+
+Validation observed in this slice:
+
+- Focused CLI/API market-bar status regressions passed: 5 passed.
+- `ruff check` passed for touched market status, CLI, and tests.
+- Zero-call operator-DB smoke with `.env.local` and this worktree pinned through `PYTHONPATH` returned all-active `active=12669`, `existing=12090`, `missing=579`, stock-like `active=5673`, `missing=152`, and configured universe `liquid-us` `members=2429`, `existing=2429`, `missing=0`, with `external_calls_made=0` and `db_writes_made=0`.
+
+Current live blocker:
+
+- The all-active trusted answer is still blocked by 579 missing `2026-05-15` market bars.
+- The configured `liquid-us` universe has complete market bars for `2026-05-15`, but the most recent selected-universe run was provider-off/degraded and is not a trusted broad-market answer.
+- Next useful work should use this boundary to run or validate a configured-universe shadow scan only if the operator intentionally accepts that scan boundary; otherwise continue resolving the all-active residual.
 
 ## Latest Current-DB Market-Bar Count Alignment Slice
 

@@ -21,6 +21,7 @@ from catalyst_radar.market.manual_bars import MANUAL_BAR_COLUMNS
 from catalyst_radar.security.audit import AuditLogRepository
 from catalyst_radar.storage.alert_repositories import AlertRepository
 from catalyst_radar.storage.db import create_schema, engine_from_url
+from catalyst_radar.storage.provider_repositories import ProviderRepository
 from catalyst_radar.storage.repositories import MarketRepository
 from catalyst_radar.storage.schema import (
     alerts,
@@ -2450,6 +2451,70 @@ def test_get_radar_market_bars_status_returns_zero_call_unblock_state(
     assert stock_scope["non_stock_missing_as_of_bar"] == 0
     assert stock_scope["external_calls_made"] == 0
     assert stock_scope["db_writes_made"] == 0
+
+
+def test_get_radar_market_bars_status_exposes_configured_universe_scope(
+    tmp_path,
+    monkeypatch,
+):
+    database_url = _database_url(tmp_path, "radar-market-bars-configured-universe.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("CATALYST_UNIVERSE_NAME", "liquid-us")
+    engine = _create_database(database_url)
+    MarketRepository(engine).upsert_securities(
+        [
+            _security_with_type("AAPL", "CS"),
+            _security_with_type("MSFT", "CS"),
+            _security_with_type("AACBU", "UNIT"),
+        ]
+    )
+    MarketRepository(engine).upsert_daily_bars(
+        [
+            _daily_bar("AAPL", date(2026, 5, 11)),
+            _daily_bar("MSFT", date(2026, 5, 11)),
+        ]
+    )
+    ProviderRepository(engine).save_universe_snapshot(
+        name="liquid-us",
+        as_of=datetime(2026, 5, 11, 21, tzinfo=UTC),
+        provider="polygon",
+        source_ts=datetime(2026, 5, 11, 21, tzinfo=UTC),
+        available_at=datetime(2026, 5, 11, 22, tzinfo=UTC),
+        members=[
+            {"ticker": "AAPL", "reason": "eligible", "rank": 1, "metadata": {}},
+            {"ticker": "MSFT", "reason": "eligible", "rank": 2, "metadata": {}},
+        ],
+        metadata={"eligible_count": 2, "excluded_count": 1},
+    )
+    client = TestClient(create_app())
+
+    response = client.get(
+        "/api/radar/market-bars/status",
+        params={"expected_as_of": "2026-05-11"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "blocked"
+    assert payload["first_blocker"] == "market_bars"
+    assert payload["active_security_count"] == 3
+    assert payload["existing_as_of_bar_count"] == 2
+    assert payload["missing_as_of_bar_count"] == 1
+    configured = payload["configured_universe_scope"]
+    assert configured["schema_version"] == "market-bars-configured-universe-scope-v1"
+    assert configured["status"] == "ready"
+    assert configured["universe"] == "liquid-us"
+    assert configured["member_count"] == 2
+    assert configured["with_as_of_bar_count"] == 2
+    assert configured["missing_as_of_bar_count"] == 0
+    assert configured["active_universe_missing_as_of_bar_count"] == 1
+    assert configured["external_calls_made"] == 0
+    assert configured["db_writes_made"] == 0
+    assert "does not clear the all-active market-bar gate" in configured[
+        "answer_boundary"
+    ]
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
 
 
 def test_get_radar_market_bars_status_guides_empty_universe_setup(
