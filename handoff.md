@@ -1,6 +1,33 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 06:29:23 +08:00
+Last updated: 2026-05-23 06:49:59 +08:00
+
+## Latest Value-Ledger Show/Label Surface Slice
+
+Last updated: 2026-05-23 06:49:59 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains unchanged: MarketRadar must prove that priced-in / not-yet-priced-in insights are repeatable, measurable, and useful before any smarter automation or real-capital pilot work.
+- This slice advances the mission brief's value-ledger contract, not UI polish: an operator can now label one artifact through an explicit ledger command and directly show one ledger row by ID for audit.
+- This remains decision support only. Ledger labels and feedback stay separate from deterministic candidate states, scores, policies, trade plans, and outcomes.
+
+Fix in this slice:
+
+- `value-ledger label` is now a first-class CLI operation with the same preview/execute guardrails and call/write counters as `value-ledger record`.
+- `value-ledger show <VALUE_LEDGER_ID>` now reads one local ledger entry by ID with `external_calls_made=0` and `db_writes_made=0`.
+- `GET /api/value-ledger/entries/{id}` exposes the same direct read path and returns 404 for missing IDs.
+- README documents the new CLI/API contract.
+
+Validation observed in this slice:
+
+- Focused value-ledger integration tests passed: 6 passed.
+- No provider, broker, OpenAI, SEC, Polygon/Massive, Schwab, web, or app calls were made while validating this slice.
+
+Current live blocker:
+
+- This does not clear the all-active market-bar blocker or make the current selected-universe run a trusted broad-market answer.
+- The next useful value-proof work is still outcome/validation evidence on real shadow rows after readiness gates produce repeatable scans.
 
 ## Latest Selected-Universe Shadow-Scope Safety Slice
 

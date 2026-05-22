@@ -106,6 +106,10 @@ EXPECTED_API_ROUTES = {
         "/api/value-ledger/entries",
     ): ("catalyst_radar.api.routes.value_ledger", "value_ledger_entries", ("value-ledger",)),
     (
+        "GET",
+        "/api/value-ledger/entries/{entry_id}",
+    ): ("catalyst_radar.api.routes.value_ledger", "value_ledger_entry", ("value-ledger",)),
+    (
         "POST",
         "/api/value-ledger/entries",
     ): ("catalyst_radar.api.routes.value_ledger", "value_ledger_record", ("value-ledger",)),
