@@ -2,17 +2,22 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import date
+from pathlib import Path
 
 from sqlalchemy import func, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 
+from catalyst_radar.connectors.polygon_fixture import (
+    preview_polygon_grouped_daily_fixture,
+)
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.market.manual_bars import (
     MANUAL_BAR_COMPANY_LIKE_TYPES,
     manual_market_bars_repair_plan,
 )
 from catalyst_radar.storage.provider_repositories import ProviderRepository
+from catalyst_radar.storage.repositories import MarketRepository
 from catalyst_radar.storage.schema import daily_bars, securities
 
 
@@ -77,13 +82,14 @@ def market_bars_status_payload(
     status = "blocked" if missing_any else "ready"
     saved_file_path = repair.get("provider_saved_file_path")
     saved_file_status = repair.get("provider_saved_file_status")
-    next_action = str(
-        operator_step.get("action")
-        or approval_packet.get("next_action")
-        or repair.get("next_action")
-        or ""
-    ).strip()
     import_command = repair.get("provider_saved_file_import_command")
+    saved_file_projection = _saved_file_projection(
+        engine,
+        config,
+        expected_as_of=resolved_expected_as_of,
+        saved_file_path=saved_file_path,
+        stocks_only=stocks_only,
+    )
     recommended_action = _recommended_unblock_action(
         expected_as_of=resolved_expected_as_of,
         missing=missing,
@@ -92,7 +98,15 @@ def market_bars_status_payload(
         approval_packet=approval_packet,
         saved_file_path=saved_file_path,
         saved_file_status=saved_file_status,
+        saved_file_projection=saved_file_projection,
     )
+    next_action = str(
+        recommended_action.get("reason")
+        or operator_step.get("action")
+        or approval_packet.get("next_action")
+        or repair.get("next_action")
+        or ""
+    ).strip()
     unblock_checklist = _market_bar_unblock_checklist(
         expected_as_of=resolved_expected_as_of,
         missing=missing,
@@ -100,6 +114,7 @@ def market_bars_status_payload(
         approval_packet=approval_packet,
         saved_file_path=saved_file_path,
         saved_file_status=saved_file_status,
+        saved_file_projection=saved_file_projection,
         import_command=import_command,
         recommended_action=recommended_action,
         stocks_only=stocks_only,
@@ -205,6 +220,7 @@ def market_bars_status_payload(
             "import_request_body": repair.get(
                 "provider_saved_file_import_request_body"
             ),
+            "projection": saved_file_projection,
             "external_calls_made": 0,
         },
         "unblock_checklist": unblock_checklist,
@@ -418,6 +434,7 @@ def _market_bar_unblock_checklist(
     approval_packet,
     saved_file_path,
     saved_file_status,
+    saved_file_projection,
     import_command,
     recommended_action,
     stocks_only,
@@ -425,13 +442,26 @@ def _market_bar_unblock_checklist(
     scope = str(repair.get("coverage_scope") or "active_universe")
     expected_text = expected_as_of.isoformat()
     saved_ready = str(saved_file_status or "").strip() == "available"
+    projection = _mapping(saved_file_projection)
+    projected_covered = int(projection.get("missing_covered_by_fixture_count") or 0)
+    saved_file_can_advance = bool(
+        saved_ready
+        and (
+            not projection
+            or str(projection.get("status") or "") == "unavailable"
+            or projected_covered > 0
+        )
+    )
     approval_required = bool(approval_packet.get("approval_required"))
     if missing <= 0:
         status = "ready"
         next_step = 6
-    elif saved_ready:
+    elif saved_file_can_advance:
         status = "saved_file_available"
         next_step = 3
+    elif saved_ready:
+        status = "saved_file_residual_gap"
+        next_step = 1
     elif approval_required:
         status = "approval_required"
         next_step = 2
@@ -507,6 +537,7 @@ def _market_bar_unblock_checklist(
         "missing_as_of_bar_count": missing,
         "saved_file_status": saved_file_status,
         "saved_file_path": saved_file_path,
+        "saved_file_projection": dict(projection),
         "recommended_action_kind": recommended_action.get("kind"),
         "steps": steps,
         "external_calls_made": 0,
@@ -950,6 +981,7 @@ def _recommended_unblock_action(
     approval_packet: Mapping[str, object],
     saved_file_path: object,
     saved_file_status: object,
+    saved_file_projection: Mapping[str, object],
 ):
     if missing <= 0:
         return _recommended_action_payload(
@@ -962,6 +994,74 @@ def _recommended_unblock_action(
             api="GET /api/radar/priced-in/answer",
         )
     if str(saved_file_status or "").strip() == "available":
+        projection = _mapping(saved_file_projection)
+        projected_status = str(projection.get("status") or "").strip()
+        covered = int(projection.get("missing_covered_by_fixture_count") or 0)
+        missing_after = int(projection.get("missing_after_import_count") or 0)
+        if projected_status == "invalid":
+            return _recommended_action_payload(
+                kind="saved_file_validate",
+                label="Fix saved provider file",
+                status="blocked",
+                reason=(
+                    "The saved grouped-daily file is present but invalid; validate "
+                    "or replace it before using the saved-file path."
+                ),
+                command=repair.get("provider_saved_file_validate_command"),
+                tui_command="bars saved validate",
+                api=repair.get("provider_saved_file_validate_api"),
+                request_body=repair.get("provider_saved_file_validate_request_body"),
+                saved_file_path=saved_file_path,
+                expected_as_of=expected_as_of.isoformat(),
+            )
+        if projected_status and projected_status != "unavailable" and covered <= 0:
+            return _recommended_action_payload(
+                kind="manual_csv",
+                label="Manual residual repair",
+                status="attention",
+                reason=(
+                    "The saved grouped-daily file covers no remaining missing active "
+                    "tickers; generate and fill the manual CSV or review the residual "
+                    "universe-quality gap instead of reimporting the same file."
+                ),
+                command=repair.get("manual_template_command"),
+                tui_command=repair.get("dashboard_manual_template_command")
+                or "bars manual template",
+                api=repair.get("manual_template_api"),
+                request_body={
+                    "expected_as_of": expected_as_of.isoformat(),
+                    "output_path": repair.get("local_template_path"),
+                    "missing_only": True,
+                    "stocks_only": bool(repair.get("stocks_only")),
+                },
+                saved_file_path=saved_file_path,
+                expected_as_of=expected_as_of.isoformat(),
+                projected_missing_after_import_count=missing_after,
+            )
+        if covered > 0:
+            reason = (
+                f"The saved grouped-daily file covers {covered} missing active "
+                "ticker(s); preview the import before executing."
+            )
+            if missing_after > 0:
+                reason = (
+                    f"The saved grouped-daily file covers {covered} missing active "
+                    f"ticker(s) but would still leave {missing_after}; use it only "
+                    "as an incremental repair, then fix the residual gap."
+                )
+            return _recommended_action_payload(
+                kind="saved_file_import_preview",
+                label="Preview saved import",
+                status="attention" if missing_after > 0 else "ready",
+                reason=reason,
+                command=repair.get("provider_saved_file_import_command"),
+                tui_command="bars saved import",
+                api=repair.get("provider_saved_file_import_api"),
+                request_body=repair.get("provider_saved_file_import_preview_request_body"),
+                saved_file_path=saved_file_path,
+                expected_as_of=expected_as_of.isoformat(),
+                projected_missing_after_import_count=missing_after,
+            )
         return _recommended_action_payload(
             kind="saved_file_validate",
             label="Validate saved provider file",
@@ -1040,6 +1140,63 @@ def _recommended_action_payload(
         "db_writes_required": db_writes_required,
         "external_calls_made": 0,
         **extra,
+    }
+
+
+def _saved_file_projection(
+    engine: Engine,
+    config: AppConfig,
+    *,
+    expected_as_of: date,
+    saved_file_path: object,
+    stocks_only: bool,
+):
+    path_text = str(saved_file_path or "").strip()
+    if not path_text:
+        return {}
+    path = Path(path_text)
+    if not path.exists():
+        return {}
+    try:
+        preview = preview_polygon_grouped_daily_fixture(
+            config=config,
+            market_repo=MarketRepository(engine),
+            date_value=expected_as_of,
+            fixture_path=path,
+        )
+    except Exception as exc:  # fail closed for status planning only
+        return {
+            "schema_version": "market-bars-saved-file-projection-v1",
+            "status": "invalid",
+            "path": str(path),
+            "reason": str(exc),
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+        }
+    coverage = _mapping(preview.get("coverage"))
+    missing_after_key = (
+        "stock_like_missing_after_import_count"
+        if stocks_only
+        else "missing_after_import_count"
+    )
+    covered_key = (
+        "stock_like_covered_by_fixture_count"
+        if stocks_only
+        else "missing_covered_by_fixture_count"
+    )
+    return {
+        "schema_version": "market-bars-saved-file-projection-v1",
+        "status": preview.get("status") or "unknown",
+        "path": str(path),
+        "coverage_scope": "stock_like" if stocks_only else "active_universe",
+        "missing_covered_by_fixture_count": int(coverage.get(covered_key) or 0),
+        "missing_after_import_count": int(coverage.get(missing_after_key) or 0),
+        "fixture_active_match_count": int(
+            coverage.get("fixture_active_match_count") or 0
+        ),
+        "next_action": preview.get("next_action"),
+        "external_calls_made": 0,
+        "db_writes_made": 0,
     }
 
 

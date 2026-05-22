@@ -1314,6 +1314,83 @@ def test_market_bars_saved_file_cli_validates_and_imports_fixture(
         assert conn.execute(select(func.count()).select_from(job_runs)).scalar_one() == 1
         assert conn.execute(select(func.count()).select_from(daily_bars)).scalar_one() == 6
 
+
+def test_market_bars_status_stops_looping_on_insufficient_saved_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    database_url = _database_url(tmp_path)
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("CATALYST_POLYGON_API_KEY", "fixture-key")
+    fixture_path = (
+        Path(__file__).resolve().parents[2]
+        / "tests"
+        / "fixtures"
+        / "polygon"
+        / "grouped_daily_2026-05-08.json"
+    )
+    saved_path = tmp_path / "data" / "local" / "polygon-grouped-daily-2026-05-08.json"
+    saved_path.parent.mkdir(parents=True)
+    saved_path.write_bytes(fixture_path.read_bytes())
+
+    assert main(["init-db"]) == 0
+    capsys.readouterr()
+    engine = create_engine(database_url, future=True)
+    MarketRepository(engine).upsert_securities(
+        [
+            _security("AAPL", "Apple Inc.", "CS"),
+            _security("MSFT", "Microsoft Corp.", "CS"),
+            _security("GLW", "Gap Leftover Works", "CS"),
+        ]
+    )
+
+    execute_code = main(
+        [
+            "market-bars",
+            "saved-import",
+            "--expected-as-of",
+            "2026-05-08",
+            "--fixture",
+            str(saved_path),
+            "--execute",
+            "--json",
+        ]
+    )
+    assert execute_code == 0
+    execute_payload = json.loads(capsys.readouterr().out)
+    assert execute_payload["post_import_verification"]["missing_as_of_bar_count"] == 1
+    assert execute_payload["external_calls_made"] == 0
+
+    status_code = main(
+        [
+            "market-bars",
+            "status",
+            "--expected-as-of",
+            "2026-05-08",
+            "--json",
+        ]
+    )
+
+    assert status_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "blocked"
+    assert payload["missing_as_of_bar_count"] == 1
+    assert payload["saved_file"]["status"] == "available"
+    projection = payload["saved_file"]["projection"]
+    assert projection["missing_covered_by_fixture_count"] == 0
+    assert projection["missing_after_import_count"] == 1
+    assert payload["recommended_action"]["kind"] == "manual_csv"
+    assert payload["recommended_action"]["external_calls_required"] == 0
+    assert "covers no remaining missing active tickers" in payload["next_action"]
+    assert "saved grouped-daily file covers no remaining" in str(
+        payload["recommended_action"]["reason"]
+    )
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
+
+
 def test_market_bars_saved_file_cli_import_respects_stock_scope(
     tmp_path,
     monkeypatch,
