@@ -183,13 +183,20 @@ and write boundaries. The trust gate also promotes one `recommended_action`
 from those options so CLI/API/dashboard clients can show the next safest unblock
 step on first view. Dashboard clients should use these option payloads rather
 than reconstructing endpoint parameters from CLI text.
-It also carries a `missing_universe` summary so the operator can see what kind
-of active rows are blocking coverage without using that context to exclude rows
-or reduce the full scan. `blocker_ladder` lists the ordered evidence blockers
-that must be cleared after the first blocker. When another blocker is already
-known, `after_current_blocker` previews the next source, why it matters, and
-the zero-call plan/API plus guarded execute-next affordance to use only after
-the current blocker is cleared. Its `next_source_plan` is a compact zero-call
+If active-universe bars are incomplete, `market_bars` remains the first
+full-market blocker even when the latest visible scan was a selected-universe
+run; the separate `scan_scope` payload still says that the latest run was
+selected and is not the all-active answer. The answer payload includes
+`external_calls_made=0` and `db_writes_made=0`.
+It also carries a `missing_universe` summary plus
+`missing_security_type_counts`, zero-volume counts, and zero-market-cap counts
+so the operator can see what kind of active rows are blocking coverage without
+using that context to exclude rows or reduce the full scan. `blocker_ladder`
+lists the ordered evidence blockers that must be cleared after the first
+blocker. When another blocker is already known, `after_current_blocker`
+previews the next source, why it matters, and the zero-call plan/API plus
+guarded execute-next affordance to use only after the current blocker is
+cleared. Its `next_source_plan` is a compact zero-call
 source-batch summary for dashboard and CLI clients: total gap rows, plannable
 rows, routed non-company rows, blocked rows, missing-CIK samples, next chunk
 call count, and CIK repair commands when they apply. The text CLI also prints a

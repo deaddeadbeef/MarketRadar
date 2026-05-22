@@ -1,6 +1,46 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 06:58:55 +08:00
+Last updated: 2026-05-23 07:20:39 +08:00
+
+## Latest Market-Bar Residual Gate Alignment Slice
+
+Last updated: 2026-05-23 07:20:39 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains the broad priced-in scan: MarketRadar must produce a trusted answer about where market emotion has or has not priced into stocks, then prove usefulness with shadow runs, ledger rows, outcomes, baselines, and monthly value reports.
+- This slice is P0/M1 data-readiness work, not UI polish. It aligns the first blocker across `market-bars status`, `priced-in-answer`, and `assert-shadow-ready` so the operator is not sent to scan-scope work while active-universe bars are still incomplete.
+- The selected-universe boundary remains explicit. A `liquid-us` run still does not become the all-active broad-market answer.
+- All changed paths remain local read-only previews: no provider, broker, OpenAI, SEC, Polygon/Massive, Schwab, web, app, or order calls; no database writes.
+
+Fix in this slice:
+
+- `priced-in-answer` now keeps `market_bars` as the first full-market trust blocker when active-universe bars are incomplete, even if the latest visible scan was a selected-universe run.
+- `priced-in-answer` still exposes `scan_scope.mode=selected_universe` so the scope boundary is visible instead of hidden.
+- The trust-gate market-bar blocker now carries `missing_security_type_counts`, `zero_avg_dollar_volume_20d_count`, and `zero_market_cap_count`.
+- `assert-shadow-ready` now reuses the same market-bar blocker detail for the `latest_market_bars` check, including the residual diagnostic and the recommended residual action.
+- `priced-in-answer` now includes `db_writes_made=0` alongside `external_calls_made=0`.
+- README documents the operator contract change.
+
+Validation observed in this slice:
+
+- Focused dashboard regressions passed: 9 passed.
+- Full dashboard-data integration suite passed: 191 passed.
+- Shadow readiness, shadow-mode, API route, and dashboard-entrypoint tests passed: 130 passed.
+- Shadow-readiness TUI / dashboard-demo market-bar focused tests passed: 9 passed.
+- `ruff check` passed for touched dashboard, TUI, shadow-mode, and test files.
+- `compileall` passed for `src` and touched integration tests.
+- `git diff --check` passed.
+- Zero-call operator-DB smoke with this worktree pinned through `PYTHONPATH` and run from the main checkout returned:
+  - `priced-in-answer`: `status=blocked`, `trust_first=market_bars`, `scan_mode=selected_universe`, `missing=579`, `zero_volume=579`, `zero_mcap=579`, `external_calls_made=0`.
+  - `assert-shadow-ready`: exit 1, `status=setup_required`, canonical next action is the saved-file residual message, `missing=579`, `zero_volume=579`, `zero_mcap=579`, `external_calls_made=0`, `db_writes_made=0`.
+  - `market-bars status`: `status=blocked`, same saved-file residual next action, `missing=579`, `zero_volume=579`, `zero_mcap=579`, `external_calls_made=0`, `db_writes_made=0`.
+
+Current live blocker:
+
+- The all-active trusted answer remains blocked by 579 missing `2026-05-15` bars in the operator DB.
+- Those missing rows are residual active instruments with zero local avg dollar volume and zero market cap. Running the same saved grouped-daily file again will not clear them.
+- The next useful M1 step is still an explicit residual-universe decision: fill/import the missing bars, or add a tested operator-approved route/exclusion policy that does not confuse all-active, stock-like, configured-universe, and selected-universe scopes.
 
 ## Latest Value-Outcome Show Surface Slice
 

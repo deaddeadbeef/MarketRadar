@@ -570,6 +570,7 @@ def dashboard_snapshot_payload(
         engine,
         config,
         available_at=data_available_at,
+        shadow_readiness=shadow_readiness,
     )
     display_priced_in_queue = dict(priced_in_queue)
     display_priced_in_queue.pop("planning_rows", None)
