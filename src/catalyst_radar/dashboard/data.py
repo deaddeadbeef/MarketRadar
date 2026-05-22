@@ -10091,13 +10091,29 @@ def _shadow_readiness_checks(
     with_daily_bar_count = int(
         _finite_float(database.get("active_security_with_daily_bar_count"))
     )
+    with_latest_daily_bar_value = database.get(
+        "active_security_with_latest_daily_bar_count"
+    )
+    with_latest_daily_bar_count = (
+        with_daily_bar_count
+        if with_latest_daily_bar_value is None
+        else int(_finite_float(with_latest_daily_bar_value))
+    )
     latest_daily_bar = database.get("latest_daily_bar_date")
     latest_as_of_missing = freshness.get("missing_as_of_daily_bar_count")
-    latest_as_of_missing_count = int(_finite_float(latest_as_of_missing))
+    latest_as_of_missing_count = (
+        max(active_count - with_latest_daily_bar_count, 0)
+        if latest_as_of_missing is None
+        else int(_finite_float(latest_as_of_missing))
+    )
     as_of_bar_count = int(
         _finite_float(freshness.get("active_security_with_as_of_bar_count"))
     )
     as_of_active_count = int(_finite_float(freshness.get("active_security_count")))
+    if freshness.get("active_security_with_as_of_bar_count") is None:
+        as_of_bar_count = with_latest_daily_bar_count
+    if as_of_active_count <= 0:
+        as_of_active_count = active_count
     universe = universe_coverage_payload(config, ops_health)
     universe_status = str(universe.get("status") or "blocked")
     checks = [
@@ -10124,13 +10140,13 @@ def _shadow_readiness_checks(
                 "ready"
                 if active_count > 0
                 and bool(latest_daily_bar)
-                and with_daily_bar_count >= active_count
-                and (latest_as_of_missing is None or latest_as_of_missing_count <= 0)
+                and with_latest_daily_bar_count >= active_count
+                and latest_as_of_missing_count <= 0
                 else "blocked"
             ),
             finding=(
-                f"{with_daily_bar_count}/{active_count} active securities have "
-                f"stored daily bars; latest={latest_daily_bar or 'n/a'}; "
+                f"{with_latest_daily_bar_count}/{active_count} active securities have "
+                f"latest daily bars; latest={latest_daily_bar or 'n/a'}; "
                 f"as_of={as_of_bar_count}/{as_of_active_count or active_count}."
             ),
             next_action=(
@@ -10144,8 +10160,15 @@ def _shadow_readiness_checks(
             metric={
                 "active_security_count": active_count,
                 "active_security_with_daily_bar_count": with_daily_bar_count,
+                "active_security_with_latest_daily_bar_count": (
+                    with_latest_daily_bar_count
+                ),
                 "latest_daily_bar_date": latest_daily_bar,
                 "missing_as_of_daily_bar_count": latest_as_of_missing_count,
+                "missing_latest_daily_bar_count": max(
+                    active_count - with_latest_daily_bar_count,
+                    0,
+                ),
             },
         ),
         _shadow_check_row(
@@ -13255,6 +13278,7 @@ def radar_discovery_snapshot_payload(
     radar_run_summary: Mapping[str, object] | None = None,
     ops_health: Mapping[str, object] | None = None,
     candidate_rows: Sequence[Mapping[str, object]] | None = None,
+    available_at: datetime | None = None,
     limit: int = 5,
 ) -> dict[str, object]:
     """Summarize latest persisted discovery yield without touching providers."""
@@ -13265,11 +13289,16 @@ def radar_discovery_snapshot_payload(
     )
     as_of_date = _parse_date(summary.get("as_of"))
     cutoff = _parse_utc_datetime(summary.get("decision_available_at"))
-    artifact_cutoff = _parse_utc_datetime(summary.get("finished_at")) or cutoff
+    requested_cutoff = _as_utc_datetime_or_none(available_at)
+    artifact_cutoff = (
+        _parse_utc_datetime(summary.get("finished_at"))
+        or cutoff
+        or requested_cutoff
+    )
     health = (
         _row_dict(ops_health)
         if isinstance(ops_health, Mapping)
-        else load_ops_health(engine, now=artifact_cutoff or cutoff)
+        else load_ops_health(engine, now=artifact_cutoff or cutoff or requested_cutoff)
     )
     if candidate_rows is not None:
         run_candidate_rows = [
@@ -13303,9 +13332,10 @@ def radar_discovery_snapshot_payload(
     database = _mapping_value(health, "database")
     run_path = _radar_run_path_summary(summary)
     latest_bar_date = _parse_date(database.get("latest_daily_bar_date"))
+    coverage_as_of_date = as_of_date or latest_bar_date
     as_of_bar_coverage = _daily_bar_coverage_for_date(
         engine,
-        as_of_date=as_of_date,
+        as_of_date=coverage_as_of_date,
         available_at=artifact_cutoff,
     )
     latest_candidate_at = _latest_candidate_as_of(context_candidates)
@@ -13414,6 +13444,7 @@ def radar_discovery_snapshot_payload(
             "latest_daily_bar_date": (
                 latest_bar_date.isoformat() if latest_bar_date is not None else None
             ),
+            "as_of_daily_bar_date": _date_iso_or_none(coverage_as_of_date),
             "latest_bars_older_than_as_of": bool(
                 as_of_date is not None
                 and latest_bar_date is not None

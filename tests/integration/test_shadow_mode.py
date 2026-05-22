@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select
+from sqlalchemy import func, insert, select
 
 from apps.api.main import create_app
 from catalyst_radar.cli import main
 from catalyst_radar.storage.db import create_schema, engine_from_url
-from catalyst_radar.storage.schema import shadow_mode_runs
+from catalyst_radar.storage.schema import daily_bars, securities, shadow_mode_runs
 from catalyst_radar.validation.shadow_mode import classify_shadow_run_status
 
 AVAILABLE_AT = "2026-05-22T21:00:00+00:00"
@@ -118,6 +118,94 @@ def test_shadow_mode_api_preview_and_latest(tmp_path, monkeypatch) -> None:
     assert latest["run"]["id"] == executed["run"]["id"]
     assert latest["external_calls_made"] == 0
     assert latest["db_writes_made"] == 0
+
+
+def test_shadow_mode_preview_records_latest_market_bar_gap_without_radar_run(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'shadow-mode-gap.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = engine_from_url(database_url)
+    create_schema(engine)
+    cutoff = datetime.fromisoformat(AVAILABLE_AT)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(securities),
+            [
+                {
+                    "ticker": "AAPL",
+                    "name": "Apple Inc.",
+                    "exchange": "NASDAQ",
+                    "sector": "Technology",
+                    "industry": "Consumer Electronics",
+                    "market_cap": 3_000_000_000_000.0,
+                    "avg_dollar_volume_20d": 1_000_000_000.0,
+                    "has_options": True,
+                    "is_active": True,
+                    "updated_at": cutoff,
+                    "metadata": {"type": "CS"},
+                },
+                {
+                    "ticker": "MSFT",
+                    "name": "Microsoft Corp.",
+                    "exchange": "NASDAQ",
+                    "sector": "Technology",
+                    "industry": "Software",
+                    "market_cap": 3_000_000_000_000.0,
+                    "avg_dollar_volume_20d": 1_000_000_000.0,
+                    "has_options": True,
+                    "is_active": True,
+                    "updated_at": cutoff,
+                    "metadata": {"type": "CS"},
+                },
+            ],
+        )
+        conn.execute(
+            insert(daily_bars),
+            {
+                "ticker": "AAPL",
+                "date": date(2026, 5, 21),
+                "provider": "polygon",
+                "open": 100.0,
+                "high": 101.0,
+                "low": 99.0,
+                "close": 100.5,
+                "volume": 1_000_000,
+                "vwap": 100.25,
+                "adjusted": True,
+                "source_ts": cutoff,
+                "available_at": cutoff,
+            },
+        )
+
+    preview_exit = main(
+        [
+            "shadow-mode",
+            "run",
+            "--available-at",
+            AVAILABLE_AT,
+            "--preview",
+            "--json",
+        ]
+    )
+
+    assert preview_exit == 0
+    preview = json.loads(capsys.readouterr().out)
+    assert preview["external_calls_made"] == 0
+    assert preview["db_writes_made"] == 0
+    assert preview["run"]["missing_market_bar_count"] == 1
+    freshness = preview["run"]["payload"]["discovery_snapshot"]["freshness"]
+    assert freshness["as_of_daily_bar_date"] == "2026-05-21"
+    assert freshness["active_security_with_as_of_bar_count"] == 1
+    assert freshness["missing_as_of_daily_bar_count"] == 1
+    latest_bars = next(
+        row
+        for row in preview["run"]["payload"]["shadow_readiness"]["checks"]
+        if row["code"] == "latest_market_bars"
+    )
+    assert latest_bars["metric"]["missing_as_of_daily_bar_count"] == 1
 
 
 def test_shadow_mode_classification_distinguishes_ready_partial_and_blocked() -> None:
