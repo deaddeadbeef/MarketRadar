@@ -839,6 +839,10 @@ The same report includes score-calibration buckets for `50_59`, `60_69`,
 market regime, setup type, priced-in status, action state, source coverage, and
 feedback label. These buckets and groups are evidence only and do not change
 scoring weights, policy thresholds, trade plans, or action gates.
+It also reports local text measurement for the existing narrative, novelty,
+source quality, sentiment, theme match, theme velocity, and theme-hit signals.
+Those measurements are evidence only; they do not replace the local text model
+or change scoring until validation evidence justifies a separate policy change.
 
 After editing `.env.local`, run the activation checker before making live
 provider calls:

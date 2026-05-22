@@ -51,6 +51,7 @@ class ValidationReport:
     state_mix: Mapping[str, int]
     baseline_comparison: Mapping[str, Any]
     score_calibration: Mapping[str, Any]
+    local_text_intelligence: Mapping[str, Any]
 
     def __post_init__(self) -> None:
         if not str(self.run_id).strip():
@@ -68,6 +69,11 @@ class ValidationReport:
             "score_calibration",
             freeze_mapping(self.score_calibration, "score_calibration"),
         )
+        object.__setattr__(
+            self,
+            "local_text_intelligence",
+            freeze_mapping(self.local_text_intelligence, "local_text_intelligence"),
+        )
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -82,6 +88,7 @@ class ValidationReport:
             "state_mix": dict(self.state_mix),
             "baseline_comparison": _thaw(self.baseline_comparison),
             "score_calibration": _thaw(self.score_calibration),
+            "local_text_intelligence": _thaw(self.local_text_intelligence),
         }
 
 
@@ -125,6 +132,11 @@ def build_validation_report(
         useful_alert_labels=useful_label_rows,
         positive_label=positive_label,
     )
+    local_text_intelligence = _local_text_intelligence(
+        candidate_rows,
+        feedback_label_rows=useful_label_rows,
+        positive_label=positive_label,
+    )
 
     return ValidationReport(
         run_id=run_id,
@@ -138,6 +150,7 @@ def build_validation_report(
         state_mix=_state_mix(candidate_rows),
         baseline_comparison=baseline_comparison,
         score_calibration=score_calibration,
+        local_text_intelligence=local_text_intelligence,
     )
 
 
@@ -373,6 +386,263 @@ def _comparison_result(
     if market_precision < baseline_precision:
         return "baseline_wins"
     return "tie"
+
+
+def _local_text_intelligence(
+    candidate_rows: tuple[Any, ...],
+    *,
+    feedback_label_rows: Iterable[Any],
+    positive_label: str,
+) -> dict[str, Any]:
+    feedback_labels = _feedback_label_keys(feedback_label_rows)
+    useful_keys = _useful_label_keys(feedback_labels)
+    numeric_features = {
+        "local_narrative_score": ("local_narrative_score",),
+        "novelty_score": ("novelty_score",),
+        "source_quality_score": ("source_quality_score",),
+        "sentiment_score": ("sentiment_score",),
+        "theme_match_score": ("theme_match_score",),
+        "theme_velocity_score": ("theme_velocity_score",),
+    }
+    features = {
+        name: _local_text_numeric_feature_payload(
+            candidate_rows,
+            feature_name=name,
+            field_names=field_names,
+            useful_keys=useful_keys,
+            positive_label=positive_label,
+        )
+        for name, field_names in numeric_features.items()
+    }
+    features["theme_hit_presence"] = _local_text_presence_feature_payload(
+        candidate_rows,
+        feature_name="theme_hit_presence",
+        useful_keys=useful_keys,
+        positive_label=positive_label,
+    )
+    measured_features = [
+        payload for payload in features.values() if payload["sample_status"] == "measured"
+    ]
+    return {
+        "schema_version": "local-text-measurement-v1",
+        "sample_status": "measured" if measured_features else "insufficient_evidence",
+        "feature_count": len(features),
+        "measured_feature_count": len(measured_features),
+        "features": features,
+        "upgrade_recommendation": _local_text_upgrade_recommendation(measured_features),
+        "thresholds_changed": False,
+        "models_changed": False,
+        "note": (
+            "Report-only local text evidence. No sentiment model, embedding model, "
+            "ontology, scoring weight, policy threshold, trade plan, or action gate "
+            "was changed."
+        ),
+    }
+
+
+def _local_text_numeric_feature_payload(
+    rows: tuple[Any, ...],
+    *,
+    feature_name: str,
+    field_names: tuple[str, ...],
+    useful_keys: set[str],
+    positive_label: str,
+) -> dict[str, Any]:
+    rows_with_values = tuple(
+        (row, value)
+        for row in rows
+        if (value := _local_text_feature_float(row, field_names)) is not None
+    )
+    bucket_rows = {
+        "low": tuple(row for row, value in rows_with_values if value < 50.0),
+        "mid": tuple(row for row, value in rows_with_values if 50.0 <= value < 75.0),
+        "high": tuple(row for row, value in rows_with_values if value >= 75.0),
+    }
+    buckets = [
+        _local_text_bucket_payload(
+            name,
+            bucket_rows[name],
+            useful_keys=useful_keys,
+            positive_label=positive_label,
+        )
+        for name in ("low", "mid", "high")
+    ]
+    high = buckets[2]
+    low = buckets[0]
+    return {
+        "feature": feature_name,
+        "kind": "numeric_score",
+        "sample_count": len(rows_with_values),
+        "missing_count": len(rows) - len(rows_with_values),
+        "sample_status": "measured" if rows_with_values else "insufficient_evidence",
+        "buckets": buckets,
+        "high_vs_low": _local_text_high_vs_low(high, low),
+    }
+
+
+def _local_text_presence_feature_payload(
+    rows: tuple[Any, ...],
+    *,
+    feature_name: str,
+    useful_keys: set[str],
+    positive_label: str,
+) -> dict[str, Any]:
+    present_rows = tuple(row for row in rows if _theme_hits_present(row) is True)
+    absent_rows = tuple(row for row in rows if _theme_hits_present(row) is False)
+    unknown_count = len(rows) - len(present_rows) - len(absent_rows)
+    buckets = [
+        _local_text_bucket_payload(
+            "absent",
+            absent_rows,
+            useful_keys=useful_keys,
+            positive_label=positive_label,
+        ),
+        _local_text_bucket_payload(
+            "present",
+            present_rows,
+            useful_keys=useful_keys,
+            positive_label=positive_label,
+        ),
+    ]
+    return {
+        "feature": feature_name,
+        "kind": "presence",
+        "sample_count": len(present_rows) + len(absent_rows),
+        "missing_count": unknown_count,
+        "sample_status": "measured"
+        if present_rows or absent_rows
+        else "insufficient_evidence",
+        "buckets": buckets,
+        "present_vs_absent": _local_text_high_vs_low(buckets[1], buckets[0]),
+    }
+
+
+def _local_text_bucket_payload(
+    name: str,
+    rows: tuple[Any, ...],
+    *,
+    useful_keys: set[str],
+    positive_label: str,
+) -> dict[str, Any]:
+    labeled_rows = tuple(row for row in rows if positive_label in _labels(row))
+    positive_count = sum(1 for row in labeled_rows if _labels(row).get(positive_label) is True)
+    useful_count = sum(1 for row in rows if _row_matches_useful_key(row, useful_keys))
+    return {
+        "bucket": name,
+        "candidate_count": len(rows),
+        "labeled_count": len(labeled_rows),
+        "positive_count": positive_count,
+        "precision": _safe_rate(positive_count, len(labeled_rows))
+        if labeled_rows
+        else None,
+        "false_positive_rate": _safe_rate(
+            len(labeled_rows) - positive_count,
+            len(labeled_rows),
+        )
+        if labeled_rows
+        else None,
+        "useful_label_count": useful_count,
+        "useful_label_rate": _safe_rate(useful_count, len(rows)) if rows else None,
+        "sample_status": "measured" if labeled_rows else "insufficient_evidence",
+    }
+
+
+def _local_text_high_vs_low(
+    high: Mapping[str, Any],
+    low: Mapping[str, Any],
+) -> dict[str, Any]:
+    precision_delta = _optional_delta(high.get("precision"), low.get("precision"))
+    false_positive_delta = _optional_delta(
+        low.get("false_positive_rate"),
+        high.get("false_positive_rate"),
+    )
+    useful_delta = _optional_delta(high.get("useful_label_rate"), low.get("useful_label_rate"))
+    return {
+        "precision_delta": precision_delta,
+        "false_positive_reduction_delta": false_positive_delta,
+        "useful_label_rate_delta": useful_delta,
+        "sample_status": "measured"
+        if precision_delta is not None or useful_delta is not None
+        else "insufficient_evidence",
+        "interpretation": _local_text_delta_interpretation(
+            precision_delta,
+            false_positive_delta,
+            useful_delta,
+        ),
+    }
+
+
+def _local_text_delta_interpretation(
+    precision_delta: float | None,
+    false_positive_delta: float | None,
+    useful_delta: float | None,
+) -> str:
+    values = [value for value in (precision_delta, false_positive_delta, useful_delta) if value]
+    if not values:
+        return "insufficient_evidence"
+    positive = sum(1 for value in values if value > 0)
+    negative = sum(1 for value in values if value < 0)
+    if positive and not negative:
+        return "supports_existing_local_text_signal"
+    if negative and not positive:
+        return "possible_noise_or_overweighting"
+    return "mixed"
+
+
+def _local_text_upgrade_recommendation(measured_features: list[Mapping[str, Any]]) -> str:
+    if not measured_features:
+        return "insufficient_evidence"
+    supportive = 0
+    noisy = 0
+    for payload in measured_features:
+        comparison = payload.get("high_vs_low") or payload.get("present_vs_absent") or {}
+        interpretation = str(_read(comparison, "interpretation") or "")
+        if interpretation == "supports_existing_local_text_signal":
+            supportive += 1
+        elif interpretation == "possible_noise_or_overweighting":
+            noisy += 1
+    if supportive and not noisy:
+        return "collect_more_samples_before_upgrading"
+    if noisy:
+        return "review_local_text_weighting_before_upgrading"
+    return "continue_measuring"
+
+
+def _local_text_feature_float(row: Any, field_names: tuple[str, ...]) -> float | None:
+    for name in field_names:
+        value = _finite_float(_read(row, name))
+        if value is not None:
+            return value
+    for source in _dimension_sources(row):
+        for name in field_names:
+            value = _finite_float(source.get(name))
+            if value is not None:
+                return value
+        for path in _dimension_nested_paths(field_names):
+            value = _finite_float(_nested_mapping_value(source, *path))
+            if value is not None:
+                return value
+    return None
+
+
+def _theme_hits_present(row: Any) -> bool | None:
+    for source in _dimension_sources(row):
+        for name in ("theme_hits", "ontology_hits"):
+            value = source.get(name)
+            if value is not None:
+                return bool(_text_list(value))
+        theme_match = _finite_float(source.get("theme_match_score"))
+        if theme_match is not None:
+            return theme_match > 0
+    return None
+
+
+def _optional_delta(left: Any, right: Any) -> float | None:
+    left_value = _finite_float(left)
+    right_value = _finite_float(right)
+    if left_value is None or right_value is None:
+        return None
+    return left_value - right_value
 
 
 def _score_calibration(

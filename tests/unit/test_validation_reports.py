@@ -287,6 +287,81 @@ def test_report_builder_flags_high_false_positive_score_bucket() -> None:
     ]
 
 
+def test_report_builder_measures_local_text_intelligence() -> None:
+    rows = [
+        _result(
+            "r1",
+            "AAA",
+            "Warning",
+            {"target_20d_25": True},
+            final_score=82,
+            payload={
+                "local_narrative_score": 88.0,
+                "novelty_score": 80.0,
+                "source_quality_score": 95.0,
+                "sentiment_score": 45.0,
+                "theme_match_score": 75.0,
+                "theme_velocity_score": 60.0,
+                "theme_hits": [{"theme_id": "ai_infrastructure"}],
+            },
+        ),
+        _result(
+            "r2",
+            "BBB",
+            "Warning",
+            {"target_20d_25": False},
+            final_score=68,
+            payload={
+                "local_narrative_score": 20.0,
+                "novelty_score": 15.0,
+                "source_quality_score": 35.0,
+                "sentiment_score": -30.0,
+                "theme_match_score": 0.0,
+                "theme_velocity_score": 0.0,
+                "theme_hits": [],
+            },
+        ),
+    ]
+    useful_labels = [{"artifact_id": "r1", "ticker": "AAA", "label": "useful"}]
+
+    report = validation_report_payload(
+        build_validation_report("run-1", rows, useful_alert_labels=useful_labels)
+    )
+
+    local_text = report["local_text_intelligence"]
+    assert local_text["thresholds_changed"] is False
+    assert local_text["models_changed"] is False
+    assert local_text["sample_status"] == "measured"
+    narrative = local_text["features"]["local_narrative_score"]
+    buckets = {row["bucket"]: row for row in narrative["buckets"]}
+    assert buckets["high"]["precision"] == 1.0
+    assert buckets["low"]["false_positive_rate"] == 1.0
+    assert narrative["high_vs_low"]["precision_delta"] == 1.0
+    assert narrative["high_vs_low"]["false_positive_reduction_delta"] == 1.0
+    assert narrative["high_vs_low"]["useful_label_rate_delta"] == 1.0
+    assert narrative["high_vs_low"]["interpretation"] == (
+        "supports_existing_local_text_signal"
+    )
+    theme_presence = local_text["features"]["theme_hit_presence"]
+    presence = {row["bucket"]: row for row in theme_presence["buckets"]}
+    assert presence["present"]["useful_label_rate"] == 1.0
+    assert theme_presence["present_vs_absent"]["precision_delta"] == 1.0
+
+
+def test_report_builder_marks_local_text_measurement_insufficient_without_features() -> None:
+    rows = [_result("r1", "AAA", "Warning", {"target_20d_25": True}, final_score=82)]
+
+    report = validation_report_payload(build_validation_report("run-1", rows))
+
+    local_text = report["local_text_intelligence"]
+    assert local_text["sample_status"] == "insufficient_evidence"
+    assert local_text["measured_feature_count"] == 0
+    assert local_text["upgrade_recommendation"] == "insufficient_evidence"
+    narrative = local_text["features"]["local_narrative_score"]
+    assert narrative["sample_count"] == 0
+    assert narrative["missing_count"] == 1
+
+
 def _result(
     row_id: str,
     ticker: str,
