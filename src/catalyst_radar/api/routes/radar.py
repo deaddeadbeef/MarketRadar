@@ -604,6 +604,22 @@ def radar_shadow_readiness() -> dict[str, object]:
     )
 
 
+@router.get("/investable/readiness", dependencies=[Depends(require_role(Role.VIEWER))])
+def radar_investable_readiness(
+    month: str | None = None,
+    available_at: datetime | None = None,
+) -> dict[str, object]:
+    readiness_payload = _dashboard_helper("investable_readiness_payload")
+    return redact_restricted_external_payload(
+        readiness_payload(
+            _engine(),
+            AppConfig.from_env(),
+            month=month,
+            available_at=_parse_api_datetime(available_at),
+        )
+    )
+
+
 @router.get("/shadow/status", dependencies=[Depends(require_role(Role.VIEWER))])
 def radar_shadow_status(available_at: datetime | None = None) -> dict[str, object]:
     return shadow_mode_status_payload(
