@@ -920,7 +920,10 @@ outcome row is marked `insufficient_data` and only available horizons are
 populated. The outcome payload includes `expected_review_horizon_days` and
 `expected_review_horizon_expired` so clients can distinguish a fully elapsed
 review window from a still-pending one without inferring that from return
-fields.
+fields. It also includes `setup_follow_through` using the 20-trading-day
+bullish/bearish direction check and `gap_outcome` / `gap_return` from the first
+available post-entry bar, so outcome review can separate follow-through from
+initial gap behavior.
 
 To answer the monthly value-proof question, generate a read-only value report:
 

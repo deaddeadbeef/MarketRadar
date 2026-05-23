@@ -23,6 +23,7 @@ HORIZONS = (5, 10, 20, 60)
 @dataclass(frozen=True)
 class _BarPoint:
     date: date
+    open: float
     close: float
     high: float
     low: float
@@ -157,6 +158,8 @@ def compute_value_outcome(
     resolved_invalidation = _resolved_invalidation_price(entry, invalidation_price)
     expected_review_horizon_days = max(HORIZONS)
     expected_review_horizon_expired = len(future) >= expected_review_horizon_days
+    setup_follow_through = _setup_follow_through_status(entry, returns)
+    gap_outcome, gap_return = _gap_outcome(entry_bar.close, future)
     status = "computed" if expected_review_horizon_expired else "insufficient_data"
     return ValueOutcome(
         id=value_outcome_id(
@@ -200,6 +203,11 @@ def compute_value_outcome(
             "missing_horizons": [horizon for horizon in HORIZONS if len(future) < horizon],
             "expected_review_horizon_days": expected_review_horizon_days,
             "expected_review_horizon_expired": expected_review_horizon_expired,
+            "setup_follow_through": setup_follow_through,
+            "setup_follow_through_horizon_days": 20,
+            "setup_follow_through_direction": _expected_direction(entry),
+            "gap_outcome": gap_outcome,
+            "gap_return": gap_return,
             "spy_available": spy_entry is not None and bool(spy_future),
             "sector_available": sector_entry is not None and bool(sector_future),
             "no_future_leakage": True,
@@ -324,6 +332,9 @@ def value_outcome_summary_payload(engine: Engine) -> dict[str, object]:
 
 
 def value_outcome_payload(outcome: ValueOutcome) -> dict[str, object]:
+    payload = thaw_json_value(outcome.payload)
+    if not isinstance(payload, Mapping):
+        payload = {}
     return {
         "id": outcome.id,
         "value_ledger_entry_id": outcome.value_ledger_entry_id,
@@ -358,7 +369,16 @@ def value_outcome_payload(outcome: ValueOutcome) -> dict[str, object]:
         "max_favorable_excursion": outcome.max_favorable_excursion,
         "invalidation_price": outcome.invalidation_price,
         "invalidation_touched": outcome.invalidation_touched,
-        "payload": thaw_json_value(outcome.payload),
+        "setup_follow_through": payload.get("setup_follow_through"),
+        "setup_follow_through_horizon_days": payload.get(
+            "setup_follow_through_horizon_days"
+        ),
+        "setup_follow_through_direction": payload.get(
+            "setup_follow_through_direction"
+        ),
+        "gap_outcome": payload.get("gap_outcome"),
+        "gap_return": payload.get("gap_return"),
+        "payload": payload,
         "created_at": outcome.created_at.isoformat(),
         "updated_at": outcome.updated_at.isoformat(),
     }
@@ -436,6 +456,7 @@ def _future_bars(
 def _bar_point(row: Mapping[str, Any]) -> _BarPoint:
     return _BarPoint(
         date=row["date"],
+        open=float(row["open"]),
         close=float(row["close"]),
         high=float(row["high"]),
         low=float(row["low"]),
@@ -466,6 +487,47 @@ def _relative(primary: float | None, benchmark: float | None) -> float | None:
     if primary is None or benchmark is None:
         return None
     return primary - benchmark
+
+
+def _expected_direction(entry: ValueLedgerEntry) -> str | None:
+    direction = str(entry.priced_in_direction or "").strip().lower()
+    if direction in {"bullish", "bearish"}:
+        return direction
+    status = str(entry.priced_in_status or "").strip().lower()
+    if status.startswith("bullish"):
+        return "bullish"
+    if status.startswith("bearish"):
+        return "bearish"
+    return None
+
+
+def _setup_follow_through_status(
+    entry: ValueLedgerEntry,
+    returns: Mapping[int, float],
+) -> str:
+    direction = _expected_direction(entry)
+    if direction is None:
+        return "not_applicable"
+    return_20d = returns.get(20)
+    if return_20d is None:
+        return "insufficient_data"
+    if direction == "bullish":
+        return "followed_through" if return_20d > 0 else "failed"
+    return "followed_through" if return_20d < 0 else "failed"
+
+
+def _gap_outcome(
+    entry_close: float,
+    future: list[_BarPoint],
+) -> tuple[str, float | None]:
+    if not future:
+        return "unavailable", None
+    gap_return = (future[0].open / entry_close) - 1
+    if gap_return > 0:
+        return "gap_up", gap_return
+    if gap_return < 0:
+        return "gap_down", gap_return
+    return "gap_flat", gap_return
 
 
 def _resolved_invalidation_price(
@@ -507,6 +569,7 @@ def _value_outcome_coverage_row(
     outcome: ValueOutcome | None,
     outcome_available_at: datetime,
 ) -> dict[str, object]:
+    outcome_payload = value_outcome_payload(outcome) if outcome is not None else {}
     row = {
         "value_ledger_entry_id": entry.id,
         "ticker": entry.ticker,
@@ -528,6 +591,8 @@ def _value_outcome_coverage_row(
         "spy_relative_return_20d": (
             outcome.spy_relative_return_20d if outcome is not None else None
         ),
+        "setup_follow_through": outcome_payload.get("setup_follow_through"),
+        "gap_outcome": outcome_payload.get("gap_outcome"),
         "preview_update_command": None,
     }
     if outcome is None:
