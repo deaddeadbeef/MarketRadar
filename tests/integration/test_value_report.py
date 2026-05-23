@@ -140,6 +140,7 @@ def test_value_report_surfaces_missing_candidate_ledger_coverage(
     assert payload["first_blocker"] == "candidate_ledger_coverage"
     assert payload["first_gap_count"] == 1
     assert "--artifact-id state-AAPL" in payload["canonical_next_command"]
+    assert "--preview" in payload["canonical_next_command"]
     assert "--execute" not in payload["canonical_next_command"]
     assert payload["next_action"] == payload["canonical_next_action"]
     assert payload["entry_count"] == 0
@@ -151,11 +152,13 @@ def test_value_report_surfaces_missing_candidate_ledger_coverage(
     assert coverage["first_missing_candidate_state_id"] == "state-AAPL"
     assert coverage["first_missing_ticker"] == "AAPL"
     assert "--artifact-id state-AAPL" in coverage["canonical_next_command"]
+    assert "--preview" in coverage["canonical_next_command"]
     assert "--execute" not in coverage["canonical_next_command"]
     assert coverage["external_calls_made"] == 0
     assert coverage["db_writes_made"] == 0
     assert coverage["rows"][0]["candidate_state_id"] == "state-AAPL"
     assert "--artifact-id state-AAPL" in coverage["rows"][0]["record_command"]
+    assert "--preview" in coverage["rows"][0]["record_command"]
     outcome_coverage = payload["value_outcome_coverage"]
     assert outcome_coverage["status"] == "no_ledger_entries"
     assert outcome_coverage["ledger_entry_count"] == 0

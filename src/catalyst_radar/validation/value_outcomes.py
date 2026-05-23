@@ -610,7 +610,8 @@ def _value_outcome_coverage_row(
         row["preview_update_command"] = (
             "catalyst-radar value-outcome update "
             f"--ledger-id {entry.id} "
-            f"--outcome-available-at {outcome_available_at.isoformat()} --json"
+            f"--outcome-available-at {outcome_available_at.isoformat()} "
+            "--preview --json"
         )
     return row
 
