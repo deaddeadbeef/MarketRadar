@@ -23708,3 +23708,72 @@ catalyst-radar market-bars residual-review --expected-as-of 2026-05-15
 
 Do not run residual repair execute or any provider/order execution without
 explicit approval.
+
+## 2026-05-24 Dashboard Operator Command Alignment Slice
+
+Branch/worktree at implementation time:
+
+```text
+branch: codex/dashboard-operator-command
+worktree: C:\Users\fpan1\MarketRadar\.worktrees\dashboard-operator-command
+base: main after PR #727 / 852fa7a
+```
+
+Why this slice exists:
+
+- Priority 0 in the goals brief requires CLI/API/TUI/dashboard surfaces to
+  agree on the first setup/data blocker and the next safe action.
+- `priced-in-answer` and `market-bars status` already exposed the residual
+  review command for the live root DB.
+- The top-level `dashboard-snapshot --json.operator_next_step` still carried
+  only prose action text for the same blocker, forcing clients to parse a
+  backticked command or inspect nested priced-in payloads.
+
+Implemented behavior:
+
+- Discovery blockers for incomplete latest-bar coverage now carry structured:
+  - `next_command`
+  - `external_calls_required`
+  - `db_writes_required`
+  - `approval_required`
+- The operator work queue carries those command boundaries from the first
+  full-scan market-bar blocker.
+- `operator_next_step_payload` propagates the top queue row command and
+  call/write/approval boundary when present.
+- README documents that `dashboard-snapshot --json.operator_next_step.command`
+  is populated when market bars are the first operator blocker.
+
+Live root DB smoke, using worktree code and root venv:
+
+```text
+command: catalyst-radar dashboard-snapshot --json
+exit_code: 0
+readiness_status: research_only
+operator_area: Full scan market bars
+operator_command: catalyst-radar market-bars residual-review --expected-as-of 2026-05-15
+external_calls_made: 0
+operator_external_required: 0
+operator_db_writes_required: 0
+approval_required: false
+```
+
+Verification already run:
+
+```powershell
+$env:PYTHONPATH='C:\Users\fpan1\MarketRadar\.worktrees\dashboard-operator-command\src'
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_operator_next_step_payload_uses_top_queue_row tests\integration\test_dashboard_data.py::test_operator_next_step_payload_carries_command_boundaries tests\integration\test_dashboard_data.py::test_operator_next_step_payload_summarizes_multiple_setup_blockers tests\integration\test_dashboard_data.py::test_radar_discovery_snapshot_flags_incomplete_latest_bar_coverage tests\integration\test_dashboard_data.py::test_radar_readiness_telemetry_uses_current_ops_cutoff tests\integration\test_dashboard_data.py::test_priced_in_answer_routes_zero_liquidity_residual_gap_to_review tests\integration\test_dashboard_data.py::test_priced_in_answer_routes_missing_saved_file_zero_liquidity_residual_to_review tests\integration\test_shadow_mode.py::test_shadow_mode_latest_without_run_surfaces_readiness_next_step -q
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py tests\integration\test_dashboard_data.py README.md
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m compileall -q src\catalyst_radar\dashboard\data.py tests\integration\test_dashboard_data.py
+git diff --check
+```
+
+Current live blocker remains unchanged:
+
+- Safe read-only research remains usable.
+- Full-market shadow/investable readiness still blocks on 579 missing active
+  2026-05-15 market-bar rows.
+- The safe zero-call next command remains:
+
+```powershell
+catalyst-radar market-bars residual-review --expected-as-of 2026-05-15
+```

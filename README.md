@@ -805,7 +805,10 @@ path. The terminal dashboard mission brief uses the same operator step for its
 snapshots and shadow-mode run payloads also use residual review as the first
 action for incomplete latest-bar coverage, so daily audit records do not route
 operators directly to manual bar filling before the residual rows have been
-reviewed.
+reviewed. Discovery blockers carry the structured residual-review
+`next_command` and zero-call/write boundary, and `dashboard-snapshot --json`
+propagates that command into top-level `operator_next_step` when it is the first
+operator blocker.
 The `priced-in-answer --json` payload also exposes the same first unblock step
 at top level as `first_blocker`, `first_gap_count`, `canonical_next_action`, and
 `canonical_next_command`, so CLI/API/TUI clients can consume one canonical

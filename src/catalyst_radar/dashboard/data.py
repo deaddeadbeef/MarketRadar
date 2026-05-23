@@ -9580,6 +9580,17 @@ def operator_work_queue_payload(
                 ),
                 evidence=str(full_scan_market_blocker.get("code") or "market_bars"),
                 source="discovery_snapshot",
+                command=_first_text(
+                    full_scan_market_blocker.get("next_command"),
+                    full_scan_market_blocker.get("command"),
+                ),
+                external_calls_required=int(
+                    _finite_float(full_scan_market_blocker.get("external_calls_required"))
+                ),
+                db_writes_required=int(
+                    _finite_float(full_scan_market_blocker.get("db_writes_required"))
+                ),
+                approval_required=bool(full_scan_market_blocker.get("approval_required")),
             )
         )
     for row in readiness_rows:
@@ -9740,7 +9751,7 @@ def operator_next_step_payload(
             "No operator action required.",
         )
     )
-    return {
+    payload = {
         "schema_version": "operator-next-step-v1",
         "status": top.get("status") or queue.get("status") or "empty",
         "priority": top.get("priority") or "none",
@@ -9760,6 +9771,19 @@ def operator_next_step_payload(
         "source": top.get("source") or "operator_work_queue",
         "external_calls_made": 0,
     }
+    command = _first_text(top.get("command"), top.get("next_command"))
+    if command:
+        payload["command"] = command
+        payload["external_calls_required"] = int(
+            _finite_float(top.get("external_calls_required"))
+        )
+        payload["db_writes_required"] = int(
+            _finite_float(
+                _first_present(top.get("db_writes_required"), top.get("db_changes_required"))
+            )
+        )
+        payload["approval_required"] = bool(top.get("approval_required"))
+    return payload
 
 
 def market_radar_usefulness_payload(
@@ -19801,6 +19825,10 @@ def _operator_work_queue_row(
     evidence: str,
     source: str,
     ticker: str | None = None,
+    command: str | None = None,
+    external_calls_required: int | None = None,
+    db_writes_required: int | None = None,
+    approval_required: bool | None = None,
 ) -> dict[str, object]:
     row: dict[str, object] = {
         "sequence": sequence,
@@ -19815,6 +19843,14 @@ def _operator_work_queue_row(
     }
     if ticker:
         row["ticker"] = ticker
+    if command:
+        row["command"] = command
+    if external_calls_required is not None:
+        row["external_calls_required"] = external_calls_required
+    if db_writes_required is not None:
+        row["db_writes_required"] = db_writes_required
+    if approval_required is not None:
+        row["approval_required"] = approval_required
     return row
 
 
@@ -21647,6 +21683,12 @@ def _discovery_blockers(
                     f"{missing_sample}"
                 ),
                 _market_bar_residual_review_next_action(as_of_date or latest_bar_date),
+                next_command=_market_bar_residual_review_command(
+                    as_of_date or latest_bar_date
+                ),
+                external_calls_required=0,
+                db_writes_required=0,
+                approval_required=False,
             )
         )
     if int(run_path.get("blocking_count") or 0) > 0:
@@ -21672,8 +21714,26 @@ def _discovery_blocker(
     code: str,
     finding: str,
     next_action: str,
+    *,
+    next_command: str | None = None,
+    external_calls_required: int | None = None,
+    db_writes_required: int | None = None,
+    approval_required: bool | None = None,
 ) -> dict[str, object]:
-    return {"code": code, "finding": finding, "next_action": next_action}
+    payload: dict[str, object] = {
+        "code": code,
+        "finding": finding,
+        "next_action": next_action,
+    }
+    if next_command:
+        payload["next_command"] = next_command
+    if external_calls_required is not None:
+        payload["external_calls_required"] = external_calls_required
+    if db_writes_required is not None:
+        payload["db_writes_required"] = db_writes_required
+    if approval_required is not None:
+        payload["approval_required"] = approval_required
+    return payload
 
 
 def _discovery_status(
@@ -21970,17 +22030,21 @@ def _csv_market_template_path(
 
 
 def _market_bar_residual_review_next_action(as_of_date: date | None) -> str:
-    expected = (
-        as_of_date.isoformat()
-        if as_of_date is not None
-        else "<LATEST_TRADING_DATE>"
-    )
-    command = f"catalyst-radar market-bars residual-review --expected-as-of {expected}"
+    command = _market_bar_residual_review_command(as_of_date)
     return (
         f"Review residual market-bar rows first with `{command}`. Fill manual "
         "bars only if the residual rows are real tradable securities; otherwise "
         "fix the active-universe source or keep the full-market gate blocked."
     )
+
+
+def _market_bar_residual_review_command(as_of_date: date | None) -> str:
+    expected = (
+        as_of_date.isoformat()
+        if as_of_date is not None
+        else "<LATEST_TRADING_DATE>"
+    )
+    return f"catalyst-radar market-bars residual-review --expected-as-of {expected}"
 
 
 def _csv_market_refresh_next_action(as_of_date: date | None) -> str:

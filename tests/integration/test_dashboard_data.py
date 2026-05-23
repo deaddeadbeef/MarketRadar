@@ -1651,6 +1651,42 @@ def test_operator_next_step_payload_uses_top_queue_row() -> None:
     }
 
 
+def test_operator_next_step_payload_carries_command_boundaries() -> None:
+    next_step = operator_next_step_payload(
+        {
+            "schema_version": "operator-work-queue-v1",
+            "status": "blocked",
+            "headline": "Setup blocked.",
+            "rows": [
+                {
+                    "priority": "must_fix",
+                    "area": "Full scan market bars",
+                    "item": "579 rows missing bars.",
+                    "status": "blocked",
+                    "next_action": "Review residual rows.",
+                    "command": (
+                        "catalyst-radar market-bars residual-review "
+                        "--expected-as-of 2026-05-15"
+                    ),
+                    "external_calls_required": 0,
+                    "db_writes_required": 0,
+                    "approval_required": False,
+                    "evidence": "incomplete_daily_bar_coverage",
+                    "source": "discovery_snapshot",
+                }
+            ],
+        }
+    )
+
+    assert next_step["command"] == (
+        "catalyst-radar market-bars residual-review --expected-as-of 2026-05-15"
+    )
+    assert next_step["external_calls_required"] == 0
+    assert next_step["db_writes_required"] == 0
+    assert next_step["approval_required"] is False
+    assert next_step["external_calls_made"] == 0
+
+
 def test_operator_next_step_payload_summarizes_multiple_setup_blockers() -> None:
     next_step = operator_next_step_payload(
         {
@@ -10809,6 +10845,12 @@ def test_radar_discovery_snapshot_flags_incomplete_latest_bar_coverage(
     assert "Missing: AAPL, MSFT" in str(coverage["finding"])
     assert "catalyst-radar market-bars residual-review" in str(coverage["next_action"])
     assert "--expected-as-of 2026-05-10" in str(coverage["next_action"])
+    assert coverage["next_command"] == (
+        "catalyst-radar market-bars residual-review --expected-as-of 2026-05-10"
+    )
+    assert coverage["external_calls_required"] == 0
+    assert coverage["db_writes_required"] == 0
+    assert coverage["approval_required"] is False
     assert "manual bars" in str(coverage["next_action"])
     assert "fresh-bars.csv" not in str(coverage["next_action"])
 
