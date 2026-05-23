@@ -365,6 +365,19 @@ def _monthly_value_first_evidence_gap(
             command=value_outcome_coverage.get("canonical_next_command"),
         )
 
+    if verdict == "insufficient_evidence":
+        missing = max(0, min_useful_evidence_count - useful_count)
+        if missing > 0:
+            return _monthly_value_gap(
+                first_blocker="useful_evidence",
+                first_gap_count=missing,
+                action=(
+                    "Record enough useful/noisy value-ledger evidence for a monthly "
+                    "pass/fail verdict."
+                ),
+                command=None,
+            )
+
     if validation_evidence.get("ready") is not True:
         missing_baselines = validation_evidence.get("missing_baselines")
         insufficient_baselines = validation_evidence.get("insufficient_baselines")
@@ -381,18 +394,6 @@ def _monthly_value_first_evidence_gap(
                 or "Run validation evidence before claiming monthly value proof."
             ),
             command=validation_evidence.get("canonical_next_command"),
-        )
-
-    if verdict == "insufficient_evidence":
-        missing = max(0, min_useful_evidence_count - useful_count)
-        return _monthly_value_gap(
-            first_blocker="useful_evidence",
-            first_gap_count=missing,
-            action=(
-                "Record enough useful/noisy value-ledger evidence for a monthly "
-                "pass/fail verdict."
-            ),
-            command=None,
         )
 
     return _monthly_value_gap(

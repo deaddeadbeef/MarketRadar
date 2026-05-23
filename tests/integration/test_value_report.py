@@ -58,16 +58,17 @@ def test_value_report_cli_empty_month_is_insufficient_evidence(
     assert payload["entry_count"] == 0
     assert payload["plausibly_earned_at_least_40_usd"] is False
     assert payload["decision_support_value_not_profit"] is True
-    assert payload["first_blocker"] == "validation_evidence"
-    assert payload["first_gap_count"] == len(MISSION_BASELINES)
-    assert "validation-replay" in payload["canonical_next_command"]
-    assert "--preview" in payload["canonical_next_command"]
-    assert "--execute" not in payload["canonical_next_command"]
+    assert payload["first_blocker"] == "useful_evidence"
+    assert payload["first_gap_count"] == 2
+    assert payload["canonical_next_command"] is None
+    assert "Record enough useful/noisy value-ledger evidence" in payload["next_action"]
     assert payload["next_action"] == payload["canonical_next_action"]
     validation = payload["validation_evidence"]
     assert validation["status"] == "no_validation_runs"
     assert validation["ready"] is False
-    assert validation["canonical_next_command"] == payload["canonical_next_command"]
+    assert "validation-replay" in validation["canonical_next_command"]
+    assert "--preview" in validation["canonical_next_command"]
+    assert "--execute" not in validation["canonical_next_command"]
     assert validation["external_calls_made"] == 0
     assert validation["db_writes_made"] == 0
     assert "validation-replay" in validation["next_action"]
