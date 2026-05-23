@@ -878,6 +878,19 @@ catalyst-radar value-ledger show <VALUE_LEDGER_ID> --json
 catalyst-radar value-ledger summary --json
 ```
 
+The terminal dashboard accepts the same local workflow without shelling out:
+
+```text
+ledger coverage
+ledger record <candidate-id|ticker|#> <label> <supported-action> <user-decision> <value-usd> <confidence> [--execute] [notes]
+ledger list [limit]
+ledger show <VALUE_LEDGER_ID>
+ledger summary
+```
+
+`ledger record` previews by default and writes one row only when `--execute` is
+present. It makes 0 provider calls in both modes.
+
 `GET /api/value-ledger/summary`, `GET /api/value-ledger/coverage`,
 `GET /api/value-ledger/entries`, `GET /api/value-ledger/entries/{id}`, and
 `POST /api/value-ledger/entries` expose the same local ledger contract. These
@@ -906,6 +919,18 @@ catalyst-radar value-outcome coverage --available-at <UTC-outcome-cutoff> --json
 catalyst-radar value-outcome list --ledger-id <VALUE_LEDGER_ID> --json
 catalyst-radar value-outcome show <VALUE_OUTCOME_ID> --json
 ```
+
+The terminal dashboard also supports local outcome review:
+
+```text
+outcome coverage
+outcome update <VALUE_LEDGER_ID> <UTC-outcome-cutoff|filter> [--execute]
+outcome list [VALUE_LEDGER_ID|all] [limit]
+outcome show <VALUE_OUTCOME_ID>
+```
+
+`outcome update` previews by default and writes one `value_outcomes` row only
+when `--execute` is present. It makes 0 provider calls in both modes.
 
 `POST /api/value-outcomes/update`, `GET /api/value-outcomes`,
 `GET /api/value-outcomes/coverage`, and `GET /api/value-outcomes/{id}` expose

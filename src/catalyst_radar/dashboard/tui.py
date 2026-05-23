@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 import shutil
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
@@ -79,7 +80,23 @@ from catalyst_radar.storage.feature_repositories import FeatureRepository
 from catalyst_radar.storage.job_repositories import JobLockRepository
 from catalyst_radar.storage.provider_repositories import ProviderRepository
 from catalyst_radar.storage.repositories import MarketRepository
+from catalyst_radar.storage.validation_repositories import ValidationRepository
 from catalyst_radar.validation.shadow_mode import shadow_mode_status_payload
+from catalyst_radar.validation.value_ledger import (
+    build_value_ledger_entry,
+    load_value_ledger_candidate_coverage_payload,
+    load_value_ledger_entries_payload,
+    load_value_ledger_entry_payload,
+    load_value_ledger_summary_payload,
+    value_ledger_artifact_context,
+    value_ledger_write_payload,
+)
+from catalyst_radar.validation.value_outcomes import (
+    load_value_outcome_coverage_payload,
+    load_value_outcome_payload,
+    load_value_outcomes_payload,
+    value_outcome_update_payload,
+)
 
 RADAR_RUN_COOLDOWN_LOCK_NAME = "manual_radar_run_cooldown"
 
@@ -2063,6 +2080,20 @@ class MarketRadarDashboardApp(App[int]):
                 "command": "feedback <alert-id|#> <label>",
                 "meaning": "Record useful/noisy/acted alert feedback.",
             },
+            {
+                "command": "ledger coverage / record",
+                "meaning": (
+                    "Review or save local value-ledger rows; --execute is "
+                    "required to write."
+                ),
+            },
+            {
+                "command": "outcome coverage / update",
+                "meaning": (
+                    "Review or compute local forward outcomes; --execute is "
+                    "required to write."
+                ),
+            },
             {"command": "r or Refresh", "meaning": "Reload local database state."},
             {"command": "q", "meaning": "Quit."},
         ]
@@ -2521,6 +2552,27 @@ def _apply_command(
             page="alerts",
             filters=filters,
             message=_record_alert_feedback(engine, payload, value),
+        )
+    if command in {"ledger", "value-ledger", "value_ledger"}:
+        return _CommandUpdate(
+            page="costs",
+            filters=filters,
+            message=_execute_value_ledger_command(
+                engine,
+                payload,
+                value,
+                filters=filters,
+            ),
+        )
+    if command in {"outcome", "outcomes", "value-outcome", "value_outcome"}:
+        return _CommandUpdate(
+            page="costs",
+            filters=filters,
+            message=_execute_value_outcome_command(
+                engine,
+                value,
+                filters=filters,
+            ),
         )
     if command in {"clear", "clear-filters", "reset"}:
         return _CommandUpdate(
@@ -4668,6 +4720,406 @@ def _record_alert_feedback(
     return (
         "Saved alert feedback: "
         f"{useful_label.artifact_id} {useful_label.ticker} {useful_label.label}"
+    )
+
+
+def _execute_value_ledger_command(
+    engine: Engine,
+    payload: Mapping[str, object],
+    value: str,
+    *,
+    filters: DashboardFilters,
+) -> str:
+    tokens_or_error = _command_tokens(value)
+    if isinstance(tokens_or_error, str):
+        return tokens_or_error
+    tokens = tokens_or_error
+    if not tokens:
+        return _value_ledger_usage()
+    subcommand = tokens[0].lower()
+    args = tokens[1:]
+    available_at = filters.available_at or datetime.now(UTC)
+    if subcommand in {"coverage", "cov"}:
+        coverage = load_value_ledger_candidate_coverage_payload(
+            engine,
+            available_at=available_at,
+        )
+        return _value_ledger_coverage_message(coverage)
+    if subcommand in {"summary", "sum"}:
+        summary = load_value_ledger_summary_payload(engine, available_at=available_at)
+        return _value_ledger_summary_message(summary)
+    if subcommand == "list":
+        limit = _first_positive_int(args, default=10)
+        entries = load_value_ledger_entries_payload(
+            engine,
+            available_at=available_at,
+            ticker=filters.ticker,
+            limit=limit,
+        )
+        return _value_ledger_list_message(entries)
+    if subcommand == "show":
+        if not args:
+            return "Usage: ledger show <value-ledger-id>"
+        try:
+            entry = load_value_ledger_entry_payload(engine, entry_id=args[0])
+        except ValueError as exc:
+            return f"Value ledger show rejected: {exc}"
+        return _value_ledger_entry_message(entry)
+    if subcommand in {"record", "label", "add"}:
+        return _record_value_ledger_from_tui(
+            engine,
+            payload,
+            args,
+            available_at=available_at,
+        )
+    return _value_ledger_usage()
+
+
+def _execute_value_outcome_command(
+    engine: Engine,
+    value: str,
+    *,
+    filters: DashboardFilters,
+) -> str:
+    tokens_or_error = _command_tokens(value)
+    if isinstance(tokens_or_error, str):
+        return tokens_or_error
+    tokens = tokens_or_error
+    if not tokens:
+        return _value_outcome_usage()
+    subcommand = tokens[0].lower()
+    args = tokens[1:]
+    available_at = filters.available_at or datetime.now(UTC)
+    if subcommand in {"coverage", "cov"}:
+        coverage = load_value_outcome_coverage_payload(
+            engine,
+            available_at=available_at,
+        )
+        return _value_outcome_coverage_message(coverage)
+    if subcommand == "list":
+        ledger_id = args[0] if args and args[0].lower() not in {"all", "*"} else None
+        limit = _first_positive_int(args[1:] if ledger_id else args, default=10)
+        outcomes = load_value_outcomes_payload(
+            engine,
+            value_ledger_entry_id=ledger_id,
+            available_at=available_at,
+            ticker=filters.ticker,
+            limit=limit,
+        )
+        return _value_outcome_list_message(outcomes)
+    if subcommand == "show":
+        if not args:
+            return "Usage: outcome show <value-outcome-id>"
+        try:
+            outcome = load_value_outcome_payload(engine, outcome_id=args[0])
+        except ValueError as exc:
+            return f"Value outcome show rejected: {exc}"
+        return _value_outcome_message(outcome)
+    if subcommand == "update":
+        return _update_value_outcome_from_tui(
+            engine,
+            args,
+            fallback_available_at=available_at,
+        )
+    return _value_outcome_usage()
+
+
+def _record_value_ledger_from_tui(
+    engine: Engine,
+    payload: Mapping[str, object],
+    args: Sequence[str],
+    *,
+    available_at: datetime,
+) -> str:
+    args, execute = _strip_flag(args, "--execute")
+    if len(args) < 6:
+        return (
+            "Usage: ledger record <candidate-id|ticker|#> <label> "
+            "<watch|research|avoid|paper_trade|reject|live_review|no_action> "
+            "<accepted|rejected|wait|ignored|paper-only|avoided|unknown> "
+            "<value-usd> <confidence> [--execute] [notes]"
+        )
+    selector, label, supported_action, user_decision, value_text, confidence_text = (
+        args[0],
+        args[1],
+        args[2],
+        args[3],
+        args[4],
+        args[5],
+    )
+    notes = " ".join(args[6:]).strip() or None
+    try:
+        estimated_value = float(value_text)
+        confidence = float(confidence_text)
+    except ValueError:
+        return "Value ledger record rejected: value-usd and confidence must be numbers."
+    artifact_id = _candidate_state_id_from_tui_selector(payload, selector)
+    if artifact_id is None:
+        return "Value ledger record rejected: candidate row not found."
+    try:
+        artifact_context = value_ledger_artifact_context(
+            engine,
+            artifact_type="candidate_state",
+            artifact_id=artifact_id,
+            available_at=available_at,
+        )
+        entry = build_value_ledger_entry(
+            artifact_type="candidate_state",
+            artifact_id=artifact_id,
+            label=label,
+            supported_action=supported_action,
+            user_decision=user_decision,
+            estimated_value_usd=estimated_value,
+            confidence=confidence,
+            source="dashboard_tui",
+            available_at=available_at,
+            notes=notes,
+            artifact_context=artifact_context,
+        )
+        if execute:
+            ValidationRepository(engine).upsert_value_ledger_entry(entry)
+        plan = value_ledger_write_payload(entry, execute=execute)
+    except ValueError as exc:
+        return f"Value ledger record rejected: {exc}"
+    entry_payload = _mapping(plan.get("entry"))
+    return (
+        f"Value ledger {plan.get('mode')}: "
+        f"{entry_payload.get('ticker') or 'n/a'} {entry_payload.get('label')} "
+        f"{entry_payload.get('supported_action') or 'n/a'} "
+        f"value={entry_payload.get('estimated_value_usd')} "
+        f"confidence={entry_payload.get('confidence')}; "
+        f"id={entry_payload.get('id')}; "
+        f"external_calls={plan.get('external_calls_made')} "
+        f"db_writes={plan.get('db_writes_made')}. "
+        f"{plan.get('next_action')}"
+    )
+
+
+def _update_value_outcome_from_tui(
+    engine: Engine,
+    args: Sequence[str],
+    *,
+    fallback_available_at: datetime,
+) -> str:
+    args, execute = _strip_flag(args, "--execute")
+    if not args:
+        return (
+            "Usage: outcome update <value-ledger-id> "
+            "<outcome-available-at|filter> [--execute] [sector <ETF>] "
+            "[invalidation <price>]"
+        )
+    ledger_id = args[0]
+    remainder = list(args[1:])
+    outcome_available_at = fallback_available_at
+    if remainder and remainder[0].lower() not in {"filter", "current"}:
+        parsed = _datetime_or_none(remainder[0])
+        if parsed is None:
+            return "Value outcome update rejected: invalid outcome-available-at."
+        outcome_available_at = parsed
+        remainder = remainder[1:]
+    elif remainder:
+        remainder = remainder[1:]
+    sector_etf: str | None = None
+    invalidation_price: float | None = None
+    index = 0
+    while index < len(remainder):
+        token = remainder[index].lower()
+        if token in {"sector", "--sector-etf", "--sector"} and index + 1 < len(remainder):
+            sector_etf = remainder[index + 1].upper()
+            index += 2
+            continue
+        if (
+            token in {"invalidation", "--invalidation-price", "--invalidation"}
+            and index + 1 < len(remainder)
+        ):
+            try:
+                invalidation_price = float(remainder[index + 1])
+            except ValueError:
+                return "Value outcome update rejected: invalidation price must be numeric."
+            index += 2
+            continue
+        return f"Value outcome update rejected: unknown option {remainder[index]}."
+    try:
+        plan = value_outcome_update_payload(
+            engine,
+            value_ledger_entry_id=ledger_id,
+            outcome_available_at=outcome_available_at,
+            execute=execute,
+            sector_etf_ticker=sector_etf,
+            invalidation_price=invalidation_price,
+        )
+    except ValueError as exc:
+        return f"Value outcome update rejected: {exc}"
+    outcome = _mapping(plan.get("outcome"))
+    return (
+        f"Value outcome {plan.get('mode')}: "
+        f"{outcome.get('ticker') or 'n/a'} status={outcome.get('status')} "
+        f"observed={outcome.get('trading_days_observed')} "
+        f"20d={outcome.get('return_20d')} "
+        f"follow_through={outcome.get('setup_follow_through')} "
+        f"gap={outcome.get('gap_outcome')}; "
+        f"id={outcome.get('id')}; "
+        f"external_calls={plan.get('external_calls_made')} "
+        f"db_writes={plan.get('db_writes_made')}. "
+        f"{plan.get('next_action')}"
+    )
+
+
+def _value_ledger_coverage_message(payload: Mapping[str, object]) -> str:
+    return (
+        "Value-ledger coverage: "
+        f"status={payload.get('status')} "
+        f"surfaced={payload.get('surfaced_candidate_count')} "
+        f"logged={payload.get('logged_candidate_count')} "
+        f"missing={payload.get('missing_ledger_count')} "
+        f"coverage={payload.get('coverage_pct')}%; "
+        f"external_calls={payload.get('external_calls_made')} "
+        f"db_writes={payload.get('db_writes_made')}. "
+        f"{payload.get('next_action')}"
+    )
+
+
+def _value_ledger_summary_message(payload: Mapping[str, object]) -> str:
+    return (
+        "Value-ledger summary: "
+        f"entries={payload.get('entry_count')} "
+        f"useful={payload.get('useful_entry_count')} "
+        f"weighted_value={payload.get('confidence_weighted_value_usd')} "
+        f"net={payload.get('net_confidence_weighted_value_usd')} "
+        f"target_coverage={payload.get('target_coverage_pct')}%; "
+        f"external_calls={payload.get('external_calls_made')} "
+        f"db_writes={payload.get('db_writes_made')}."
+    )
+
+
+def _value_ledger_list_message(payload: Mapping[str, object]) -> str:
+    entries = _rows(payload.get("entries"))
+    ids = ", ".join(str(row.get("id") or "") for row in entries[:3] if row.get("id"))
+    return (
+        "Value-ledger list: "
+        f"count={payload.get('count')} "
+        f"shown={len(entries)} "
+        f"first={ids or 'none'}; "
+        f"external_calls={payload.get('external_calls_made')} "
+        f"db_writes={payload.get('db_writes_made')}."
+    )
+
+
+def _value_ledger_entry_message(payload: Mapping[str, object]) -> str:
+    entry = _mapping(payload.get("entry"))
+    return (
+        "Value-ledger entry: "
+        f"{entry.get('ticker') or 'n/a'} {entry.get('label')} "
+        f"action={entry.get('supported_action') or 'n/a'} "
+        f"decision={entry.get('user_decision') or 'n/a'} "
+        f"value={entry.get('estimated_value_usd')} "
+        f"outcome={entry.get('outcome_status')}; "
+        f"external_calls={payload.get('external_calls_made')} "
+        f"db_writes={payload.get('db_writes_made')}."
+    )
+
+
+def _value_outcome_coverage_message(payload: Mapping[str, object]) -> str:
+    return (
+        "Value-outcome coverage: "
+        f"status={payload.get('status')} "
+        f"ledger={payload.get('ledger_entry_count')} "
+        f"linked={payload.get('linked_outcome_count')} "
+        f"missing={payload.get('missing_outcome_count')} "
+        f"coverage={payload.get('coverage_pct')}%; "
+        f"external_calls={payload.get('external_calls_made')} "
+        f"db_writes={payload.get('db_writes_made')}. "
+        f"{payload.get('next_action')}"
+    )
+
+
+def _value_outcome_list_message(payload: Mapping[str, object]) -> str:
+    outcomes = _rows(payload.get("outcomes"))
+    ids = ", ".join(str(row.get("id") or "") for row in outcomes[:3] if row.get("id"))
+    return (
+        "Value-outcome list: "
+        f"count={payload.get('count')} "
+        f"status_counts={payload.get('status_counts')} "
+        f"first={ids or 'none'}; "
+        f"external_calls={payload.get('external_calls_made')} "
+        f"db_writes={payload.get('db_writes_made')}."
+    )
+
+
+def _value_outcome_message(payload: Mapping[str, object]) -> str:
+    outcome = _mapping(payload.get("outcome"))
+    return (
+        "Value outcome: "
+        f"{outcome.get('ticker') or 'n/a'} status={outcome.get('status')} "
+        f"5d={outcome.get('return_5d')} 20d={outcome.get('return_20d')} "
+        f"follow_through={outcome.get('setup_follow_through')} "
+        f"gap={outcome.get('gap_outcome')}; "
+        f"external_calls={payload.get('external_calls_made')} "
+        f"db_writes={payload.get('db_writes_made')}."
+    )
+
+
+def _candidate_state_id_from_tui_selector(
+    payload: Mapping[str, object],
+    selector: str,
+) -> str | None:
+    rows = _candidate_rows(payload)
+    if selector.isdigit():
+        index = int(selector) - 1
+        if 0 <= index < len(rows):
+            return str(rows[index].get("id") or "").strip() or None
+    selector_upper = selector.strip().upper()
+    for row in rows:
+        row_id = str(row.get("id") or "").strip()
+        ticker = str(row.get("ticker") or "").strip().upper()
+        if selector == row_id or selector_upper == ticker:
+            return row_id or None
+    return selector.strip() or None
+
+
+def _command_tokens(value: str) -> list[str] | str:
+    try:
+        return shlex.split(value)
+    except ValueError as exc:
+        return f"Command parse rejected: {exc}"
+
+
+def _strip_flag(args: Sequence[str], flag: str) -> tuple[list[str], bool]:
+    values: list[str] = []
+    found = False
+    for arg in args:
+        if arg == flag:
+            found = True
+            continue
+        values.append(arg)
+    return values, found
+
+
+def _first_positive_int(args: Sequence[str], *, default: int) -> int:
+    for arg in args:
+        try:
+            value = int(arg)
+        except ValueError:
+            continue
+        if value > 0:
+            return value
+    return default
+
+
+def _value_ledger_usage() -> str:
+    return (
+        "Usage: ledger coverage | ledger summary | ledger list [limit] | "
+        "ledger show <id> | ledger record <candidate-id|ticker|#> <label> "
+        "<supported-action> <user-decision> <value-usd> <confidence> "
+        "[--execute] [notes]"
+    )
+
+
+def _value_outcome_usage() -> str:
+    return (
+        "Usage: outcome coverage | outcome list [ledger-id|all] [limit] | "
+        "outcome show <id> | outcome update <ledger-id> "
+        "<outcome-available-at|filter> [--execute]"
     )
 
 
@@ -8822,6 +9274,16 @@ def _help_lines(width: int) -> list[str]:
         ("eval-triggers [ticker]", "Evaluate saved triggers against stored market context."),
         ("ticket <ticker> <side> <entry> <stop>", "Save a blocked order-preview ticket."),
         ("feedback <alert-id|#> <label>", "Record alert feedback from current alert rows."),
+        ("ledger coverage", "Show Warning/manual-review rows missing value-ledger entries."),
+        (
+            "ledger record <#|id|ticker> <label> <action> <decision> <value> <confidence>",
+            "Preview a value-ledger entry; add --execute to write it.",
+        ),
+        ("outcome coverage", "Show value-ledger rows missing forward outcomes."),
+        (
+            "outcome update <ledger-id> <available-at|filter>",
+            "Preview a deterministic outcome; add --execute to write it.",
+        ),
         ("clear-filters", "Reset filters."),
         ("q", "Quit."),
     ]
