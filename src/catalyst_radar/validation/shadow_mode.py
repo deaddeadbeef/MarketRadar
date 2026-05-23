@@ -273,6 +273,7 @@ def shadow_mode_run_to_payload(run: ShadowModeRun | None) -> dict[str, object] |
         "candidate_count": run.candidate_count,
         "warning_count": run.warning_count,
         "manual_review_count": run.manual_review_count,
+        "eligible_for_manual_review_count": run.manual_review_count,
         "blocker_count": run.blocker_count,
         "provider_calls_planned": run.provider_calls_planned,
         "provider_calls_made": run.provider_calls_made,

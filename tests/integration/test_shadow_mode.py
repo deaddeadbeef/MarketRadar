@@ -57,6 +57,10 @@ def test_shadow_mode_cli_preview_execute_and_latest(
     assert preview["canonical_next_command"] is None
     assert preview["run"]["status"] == "setup_required"
     assert preview["run"]["provider_calls_made"] == 0
+    assert (
+        preview["run"]["eligible_for_manual_review_count"]
+        == preview["run"]["manual_review_count"]
+    )
     with engine.connect() as conn:
         assert conn.execute(select(func.count()).select_from(shadow_mode_runs)).scalar_one() == 0
 
@@ -81,6 +85,10 @@ def test_shadow_mode_cli_preview_execute_and_latest(
     assert executed["canonical_next_command"] is None
     assert executed["run"]["db_writes_made"] == 1
     assert executed["run"]["status"] == "setup_required"
+    assert (
+        executed["run"]["eligible_for_manual_review_count"]
+        == executed["run"]["manual_review_count"]
+    )
     with engine.connect() as conn:
         assert conn.execute(select(func.count()).select_from(shadow_mode_runs)).scalar_one() == 1
 
@@ -126,6 +134,10 @@ def test_shadow_mode_api_preview_and_latest(tmp_path, monkeypatch) -> None:
     assert preview["canonical_next_command"] is None
     assert preview["external_calls_made"] == 0
     assert preview["db_writes_made"] == 0
+    assert (
+        preview["run"]["eligible_for_manual_review_count"]
+        == preview["run"]["manual_review_count"]
+    )
     with engine.connect() as conn:
         assert conn.execute(select(func.count()).select_from(shadow_mode_runs)).scalar_one() == 0
 
@@ -141,6 +153,10 @@ def test_shadow_mode_api_preview_and_latest(tmp_path, monkeypatch) -> None:
     assert executed["canonical_next_action"] == executed["next_action"]
     assert executed["canonical_next_command"] is None
     assert executed["db_writes_made"] == 1
+    assert (
+        executed["run"]["eligible_for_manual_review_count"]
+        == executed["run"]["manual_review_count"]
+    )
     latest_response = client.get("/api/radar/shadow/runs/latest")
     assert latest_response.status_code == 200
     latest = latest_response.json()
