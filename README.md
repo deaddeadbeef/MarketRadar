@@ -590,6 +590,21 @@ zero-call unblock checklist,
 stock-like gap, non-stock remainder, and `after_market_bars_clear` preview, so
 the dashboard explains both the current blocker and the next source to inspect
 after the blocker clears.
+If a saved grouped-daily file exists but covers none of the remaining missing
+rows, and the residual set looks like zero-liquidity universe-quality data,
+`recommended_action.kind` becomes `residual_universe_review`. Use the zero-call
+review command before filling bars or changing scan scope:
+
+```powershell
+catalyst-radar market-bars residual-review --expected-as-of 2026-05-15 --json
+catalyst-radar market-bars residual-review --expected-as-of 2026-05-15 --stocks-only --json
+```
+
+The matching API route is `GET /api/radar/market-bars/residual-review`.
+Residual review does not clear the market-bar gate. It reports stock-like versus
+non-stock residual counts, security-type counts, saved-file projection,
+zero-volume/zero-market-cap evidence, manual repair commands, and explicit
+decision options while keeping `external_calls_made=0` and `db_writes_made=0`.
 For manual zero-call repair, `bars manual template` generates the full
 active-universe missing-bar CSV by default, `bars manual import` previews
 complete rows only with 0 provider calls and 0 DB writes, and

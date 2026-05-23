@@ -56,6 +56,7 @@ from catalyst_radar.market.manual_bars import (
 from catalyst_radar.market.status import (
     market_bars_import_verification_payload,
     market_bars_post_capture_verification_payload,
+    market_bars_residual_review_payload,
     market_bars_status_payload,
 )
 from catalyst_radar.ops.telemetry import record_telemetry_event
@@ -873,6 +874,26 @@ def radar_market_bars_status(
 ):
     try:
         payload = market_bars_status_payload(
+            _engine(),
+            AppConfig.from_env(),
+            expected_as_of=expected_as_of,
+            stocks_only=stocks_only,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return redact_restricted_external_payload(payload)
+
+
+@router.get(
+    "/market-bars/residual-review",
+    dependencies=[Depends(require_role(Role.VIEWER))],
+)
+def radar_market_bars_residual_review(
+    expected_as_of: Date | None = None,
+    stocks_only: bool = False,
+):
+    try:
+        payload = market_bars_residual_review_payload(
             _engine(),
             AppConfig.from_env(),
             expected_as_of=expected_as_of,

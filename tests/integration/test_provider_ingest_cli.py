@@ -1483,6 +1483,111 @@ def test_market_bars_status_stops_looping_on_insufficient_saved_file(
     assert payload["db_writes_made"] == 0
 
 
+def test_market_bars_residual_review_cli_flags_zero_liquidity_saved_gap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    database_url = _database_url(tmp_path)
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("CATALYST_POLYGON_API_KEY", "fixture-key")
+    fixture_path = (
+        Path(__file__).resolve().parents[2]
+        / "tests"
+        / "fixtures"
+        / "polygon"
+        / "grouped_daily_2026-05-08.json"
+    )
+    saved_path = tmp_path / "data" / "local" / "polygon-grouped-daily-2026-05-08.json"
+    saved_path.parent.mkdir(parents=True)
+    saved_path.write_bytes(fixture_path.read_bytes())
+
+    assert main(["init-db"]) == 0
+    capsys.readouterr()
+    engine = create_engine(database_url, future=True)
+    MarketRepository(engine).upsert_securities(
+        [
+            _security("AAPL", "Apple Inc.", "CS"),
+            _security("MSFT", "Microsoft Corp.", "CS"),
+            Security(
+                ticker="AACO",
+                name="Alpha Acquisition Corp.",
+                exchange="NASDAQ",
+                sector="Unknown",
+                industry="Unknown",
+                market_cap=0,
+                avg_dollar_volume_20d=0,
+                has_options=False,
+                is_active=True,
+                updated_at=datetime(2026, 5, 8, 20, tzinfo=UTC),
+                metadata={"type": "CS"},
+            ),
+        ]
+    )
+    MarketRepository(engine).upsert_daily_bars(
+        [
+            _daily_bar("AAPL", date(2026, 5, 8)),
+            _daily_bar("MSFT", date(2026, 5, 8)),
+        ]
+    )
+
+    status_code = main(
+        [
+            "market-bars",
+            "status",
+            "--expected-as-of",
+            "2026-05-08",
+            "--json",
+        ]
+    )
+
+    assert status_code == 0
+    status_payload = json.loads(capsys.readouterr().out)
+    assert status_payload["recommended_action"]["kind"] == (
+        "residual_universe_review"
+    )
+    assert status_payload["recommended_action"]["external_calls_required"] == 0
+    assert "residual-review" in status_payload["recommended_action"]["command"]
+    assert status_payload["external_calls_made"] == 0
+    assert status_payload["db_writes_made"] == 0
+
+    review_code = main(
+        [
+            "market-bars",
+            "residual-review",
+            "--expected-as-of",
+            "2026-05-08",
+            "--json",
+        ]
+    )
+
+    assert review_code == 0
+    review_payload = json.loads(capsys.readouterr().out)
+    assert review_payload["schema_version"] == "market-bars-residual-review-v1"
+    assert review_payload["status"] == "universe_review_required"
+    assert review_payload["clears_market_bar_gate"] is False
+    assert review_payload["stock_like_missing_as_of_bar_count"] == 1
+    assert review_payload["non_stock_missing_as_of_bar_count"] == 0
+    assert review_payload["saved_file_projection"][
+        "missing_covered_by_fixture_count"
+    ] == 0
+    assert review_payload["residual_evidence"]["zero_market_cap_count"] == 1
+    assert review_payload["residual_evidence"][
+        "zero_avg_dollar_volume_20d_count"
+    ] == 1
+    assert review_payload["residual_evidence"][
+        "missing_without_local_history_count"
+    ] == 1
+    assert {option["kind"] for option in review_payload["decision_options"]} >= {
+        "manual_bar_repair",
+        "active_universe_repair",
+        "keep_blocked",
+    }
+    assert review_payload["external_calls_made"] == 0
+    assert review_payload["db_writes_made"] == 0
+
+
 def test_market_bars_saved_file_cli_import_respects_stock_scope(
     tmp_path,
     monkeypatch,
