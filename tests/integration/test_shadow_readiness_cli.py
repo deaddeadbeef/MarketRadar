@@ -24,6 +24,20 @@ def test_assert_shadow_ready_cli_fails_closed_without_calls_or_writes(
     assert payload["db_writes_made"] == 0
     assert payload["call_boundary"]["assert_external_calls_required"] == 0
     assert payload["call_boundary"]["assert_db_writes_required"] == 0
+    check_codes = {row["code"] for row in payload["checks"]}
+    assert check_codes >= {
+        "value_ledger_table",
+        "outcome_tracking_table",
+        "llm_real_mode_disabled",
+    }
+    checks = {row["code"]: row for row in payload["checks"]}
+    assert checks["value_ledger_table"]["status"] == "ready"
+    assert checks["outcome_tracking_table"]["status"] == "ready"
+    assert checks["llm_real_mode_disabled"]["status"] == "ready"
+    assert checks["llm_real_mode_disabled"]["metric"] == {
+        "enable_premium_llm": False,
+        "llm_provider": "none",
+    }
     assert {row["code"] for row in payload["blockers"]} >= {
         "active_universe",
         "latest_market_bars",
@@ -107,3 +121,30 @@ def test_assert_investable_readiness_cli_fails_closed_stricter_than_shadow(
     assert "thirty_valid_full_shadow_days" in blocker_codes
     assert "monthly_value_report" in blocker_codes
     assert "monthly_value_threshold" in blocker_codes
+
+
+def test_assert_shadow_ready_blocks_when_premium_llm_real_mode_enabled(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'shadow-llm.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    monkeypatch.setenv("CATALYST_ENABLE_PREMIUM_LLM", "true")
+    monkeypatch.setenv("CATALYST_LLM_PROVIDER", "openai")
+
+    exit_code = main(["assert-shadow-ready", "--json"])
+
+    assert exit_code == 1
+    payload = json.loads(capsys.readouterr().out)
+    checks = {row["code"]: row for row in payload["checks"]}
+    assert checks["llm_real_mode_disabled"]["status"] == "blocked"
+    assert checks["llm_real_mode_disabled"]["metric"] == {
+        "enable_premium_llm": True,
+        "llm_provider": "openai",
+    }
+    assert "llm_real_mode_disabled" in {
+        row["code"] for row in payload["blockers"]
+    }
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0

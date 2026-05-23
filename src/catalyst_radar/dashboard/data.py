@@ -15,6 +15,7 @@ from time import monotonic
 from typing import Any
 
 from sqlalchemy import Engine, and_, func, select
+from sqlalchemy import inspect as inspect_db
 from sqlalchemy.exc import SQLAlchemyError
 
 from catalyst_radar.agents.models import BudgetLedgerEntry
@@ -82,6 +83,8 @@ from catalyst_radar.storage.schema import (
     user_feedback,
     validation_results,
     validation_runs,
+    value_ledger_entries,
+    value_outcomes,
 )
 from catalyst_radar.storage.validation_repositories import ValidationRepository
 from catalyst_radar.validation.reports import (
@@ -10246,6 +10249,7 @@ def shadow_readiness_payload(
     )
 
     checks = _shadow_readiness_checks(
+        engine,
         config,
         ops_health=health,
         readiness=readiness,
@@ -10304,8 +10308,9 @@ def shadow_readiness_payload(
             "Useful means the scanner covers the intended active universe with fresh "
             "market bars, can explain the priced-in trust gate, has candidate packets "
             "and decision cards for review, remains dry-run/read-only for alerts and "
-            "broker orders, and has validation evidence to judge signal quality before "
-            "capital is considered."
+            "broker orders, has local value/outcome evidence tables, keeps real LLM "
+            "mode disabled unless separately approved, and has validation evidence to "
+            "judge signal quality before capital is considered."
         ),
         "mode": "shadow_only",
         "checks": checks,
@@ -10458,6 +10463,7 @@ def investable_readiness_payload(
 
 
 def _shadow_readiness_checks(
+    engine: Engine,
     config: AppConfig,
     *,
     ops_health: Mapping[str, object],
@@ -10656,6 +10662,27 @@ def _shadow_readiness_checks(
             evidence=str(discovery.get("detail") or ""),
             metric={"decision_cards": discovery_yield.get("decision_cards")},
         ),
+        _shadow_local_table_check(
+            engine,
+            value_ledger_entries,
+            code="value_ledger_table",
+            area="Value ledger table",
+            next_action=(
+                "Initialize the local schema before shadow runs can record "
+                "human value labels."
+            ),
+        ),
+        _shadow_local_table_check(
+            engine,
+            value_outcomes,
+            code="outcome_tracking_table",
+            area="Outcome tracking table",
+            next_action=(
+                "Initialize the local schema before shadow runs can track "
+                "forward outcomes."
+            ),
+        ),
+        _shadow_llm_real_mode_check(config),
         _shadow_check_row(
             code="provider_call_boundary",
             area="Provider-call boundary",
@@ -10739,6 +10766,94 @@ def _shadow_market_bar_blocker_context(
         ),
         "missing_universe": _row_dict(_mapping_value(blocker, "missing_universe")),
     }
+
+
+def _shadow_local_table_check(
+    engine: Engine,
+    table: Any,
+    *,
+    code: str,
+    area: str,
+    next_action: str,
+) -> dict[str, object]:
+    table_name = str(table.name)
+    try:
+        table_exists = bool(inspect_db(engine).has_table(table_name))
+        row_count = 0
+        if table_exists:
+            with engine.connect() as conn:
+                row_count = int(
+                    conn.execute(
+                        select(func.count()).select_from(table)
+                    ).scalar_one()
+                    or 0
+                )
+    except SQLAlchemyError as exc:
+        return _shadow_check_row(
+            code=code,
+            area=area,
+            status="blocked",
+            finding=f"{area} check failed.",
+            next_action=next_action,
+            evidence=f"table={table_name}; error={type(exc).__name__}",
+            metric={
+                "table": table_name,
+                "table_exists": False,
+                "error": type(exc).__name__,
+            },
+        )
+
+    return _shadow_check_row(
+        code=code,
+        area=area,
+        status="ready" if table_exists else "blocked",
+        finding=(
+            f"{area} is available."
+            if table_exists
+            else f"{area} is missing from the local schema."
+        ),
+        next_action=(
+            "Use the initialized local schema for shadow evidence."
+            if table_exists
+            else next_action
+        ),
+        evidence=(
+            f"table={table_name}; rows={row_count}"
+            if table_exists
+            else f"table={table_name}; missing"
+        ),
+        metric={
+            "table": table_name,
+            "table_exists": table_exists,
+            "row_count": row_count,
+        },
+    )
+
+
+def _shadow_llm_real_mode_check(config: AppConfig) -> dict[str, object]:
+    enabled = bool(config.enable_premium_llm)
+    provider = str(config.llm_provider or "none").strip().lower() or "none"
+    return _shadow_check_row(
+        code="llm_real_mode_disabled",
+        area="LLM real-mode safety",
+        status="blocked" if enabled else "ready",
+        finding=(
+            "Premium LLM real mode is enabled."
+            if enabled
+            else "Premium LLM real mode is disabled."
+        ),
+        next_action=(
+            "Disable premium LLM mode before shadow readiness, unless a separate "
+            "operator-approved LLM run is intended."
+            if enabled
+            else "Keep shadow readiness local-only; review LLM call plans separately."
+        ),
+        evidence=(
+            "CATALYST_ENABLE_PREMIUM_LLM="
+            f"{str(enabled).lower()}; CATALYST_LLM_PROVIDER={provider}"
+        ),
+        metric={"enable_premium_llm": enabled, "llm_provider": provider},
+    )
 
 
 def _shadow_validation_check(
