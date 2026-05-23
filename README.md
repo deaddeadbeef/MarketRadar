@@ -1191,9 +1191,13 @@ of `ready`, because outcome evidence cannot exist before feedback is logged. The
 top-level report exposes `first_blocker`, `first_gap_count`,
 `canonical_next_action`, and `canonical_next_command` for the first missing
 value-proof evidence step.
-`validation_evidence` section shows whether the latest successful validation run
-has measured the mission-brief baselines and precision@5/10 evidence, or gives
-the next validation-replay action when no validation run exists. The terminal
+`validation_evidence` section only treats successful validation runs whose
+as-of window is inside the reported month as monthly evidence. If the latest
+successful run is for another month, the report fails closed with
+`status=run_period_mismatch` and points to a preview-only `validation-replay`
+command for the requested month. When the in-month run exists, the section
+shows whether it has measured the mission-brief baselines and precision@5/10
+evidence; otherwise it gives the next validation-replay action. The terminal
 dashboard Costs page surfaces the same candidate ledger coverage and
 missing-ledger count for human review.
 

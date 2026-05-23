@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 from fastapi.testclient import TestClient
 from sqlalchemy import insert
@@ -107,6 +107,80 @@ def test_value_report_surfaces_latest_validation_baseline_evidence(
     assert validation["precision_at_5"] == 1.0
     assert validation["precision_at_10"] == 1.0
     assert validation["canonical_next_command"] is None
+    assert validation["external_calls_made"] == 0
+    assert validation["db_writes_made"] == 0
+
+
+def test_value_report_rejects_validation_run_outside_report_month(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'value-report-stale-validation.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = engine_from_url(database_url)
+    create_schema(engine)
+    _seed_successful_validation_run(engine)
+
+    response = TestClient(create_app()).get(
+        "/api/value-report/monthly",
+        params={
+            "month": "2026-06",
+            "available_at": "2026-06-30T21:00:00+00:00",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    validation = payload["validation_evidence"]
+    assert validation["status"] == "run_period_mismatch"
+    assert validation["ready"] is False
+    assert validation["selected_run_id"] == "validation-run-ready"
+    assert validation["validation_run"]["as_of_start"] == "2026-05-15T21:00:00+00:00"
+    assert validation["period_start"] == "2026-06-01"
+    assert validation["period_end"] == "2026-06-30"
+    assert payload["first_blocker"] == "validation_evidence"
+    assert "validation-replay --as-of-start 2026-06-01" in payload[
+        "canonical_next_command"
+    ]
+    assert "--preview" in payload["canonical_next_command"]
+    assert "--execute" not in payload["canonical_next_command"]
+    assert validation["external_calls_made"] == 0
+    assert validation["db_writes_made"] == 0
+
+
+def test_value_report_prefers_in_month_validation_over_newer_other_month_run(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'value-report-month-run.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = engine_from_url(database_url)
+    create_schema(engine)
+    _seed_successful_validation_run(engine)
+    _seed_successful_validation_run(
+        engine,
+        run_id="validation-run-june",
+        as_of=date(2026, 6, 15),
+        started_at=datetime(2026, 6, 30, 20, tzinfo=UTC),
+        finished_at=datetime(2026, 6, 30, 20, 30, tzinfo=UTC),
+    )
+
+    response = TestClient(create_app()).get(
+        "/api/value-report/monthly",
+        params={
+            "month": "2026-05",
+            "available_at": "2026-06-30T21:00:00+00:00",
+        },
+    )
+
+    assert response.status_code == 200
+    validation = response.json()["validation_evidence"]
+    assert validation["status"] == "ready"
+    assert validation["ready"] is True
+    assert validation["selected_run_id"] == "validation-run-ready"
+    assert validation["period_start"] == "2026-05-01"
+    assert validation["period_end"] == "2026-05-31"
+    assert validation["validation_run"]["as_of_start"] == "2026-05-15T21:00:00+00:00"
     assert validation["external_calls_made"] == 0
     assert validation["db_writes_made"] == 0
 
@@ -541,15 +615,24 @@ def _seed_candidate_state(
         )
 
 
-def _seed_successful_validation_run(engine) -> None:
-    started_at = datetime(2026, 5, 31, 20, tzinfo=UTC)
-    finished_at = datetime(2026, 5, 31, 20, 30, tzinfo=UTC)
+def _seed_successful_validation_run(
+    engine,
+    *,
+    run_id: str = "validation-run-ready",
+    as_of: date = date(2026, 5, 15),
+    started_at: datetime | None = None,
+    finished_at: datetime | None = None,
+) -> None:
+    started_at = started_at or datetime(2026, 5, 31, 20, tzinfo=UTC)
+    finished_at = finished_at or datetime(2026, 5, 31, 20, 30, tzinfo=UTC)
+    as_of_dt = datetime(as_of.year, as_of.month, as_of.day, 21, tzinfo=UTC)
+    decision_available_at = as_of_dt + timedelta(days=1)
     run = ValidationRun(
-        id="validation-run-ready",
+        id=run_id,
         run_type="replay",
-        as_of_start=datetime(2026, 5, 15, 21, tzinfo=UTC),
-        as_of_end=datetime(2026, 5, 15, 21, tzinfo=UTC),
-        decision_available_at=datetime(2026, 5, 16, 21, tzinfo=UTC),
+        as_of_start=as_of_dt,
+        as_of_end=as_of_dt,
+        decision_available_at=decision_available_at,
         status=ValidationRunStatus.SUCCESS,
         started_at=started_at,
         finished_at=finished_at,
@@ -559,17 +642,19 @@ def _seed_successful_validation_run(engine) -> None:
     repo.upsert_validation_results(
         [
             _validation_result(
-                "validation-run-ready",
+                run_id,
                 ticker="MRDR",
                 baseline=None,
                 rank=None,
+                as_of=as_of_dt,
             ),
             *[
                 _validation_result(
-                    "validation-run-ready",
+                    run_id,
                     ticker=f"BL{index}",
                     baseline=baseline,
                     rank=1,
+                    as_of=as_of_dt,
                 )
                 for index, baseline in enumerate(MISSION_BASELINES, start=1)
             ],
@@ -583,14 +668,15 @@ def _validation_result(
     ticker: str,
     baseline: str | None,
     rank: int | None,
+    as_of: datetime | None = None,
 ) -> ValidationResult:
-    as_of = datetime(2026, 5, 15, 21, tzinfo=UTC)
+    as_of = as_of or datetime(2026, 5, 15, 21, tzinfo=UTC)
     return ValidationResult(
         id=f"{run_id}:{baseline or 'candidate'}:{ticker}",
         run_id=run_id,
         ticker=ticker,
         as_of=as_of,
-        available_at=datetime(2026, 5, 16, 21, tzinfo=UTC),
+        available_at=as_of + timedelta(days=1),
         state=ActionState.WARNING,
         final_score=90,
         baseline=baseline,

@@ -16,7 +16,7 @@ from catalyst_radar.validation.baselines import (
     SECTOR_ETF_ROTATION_SCREENER,
     VOLUME_BREAKOUT_SCREENER,
 )
-from catalyst_radar.validation.models import ValueLedgerEntry, ValueOutcome
+from catalyst_radar.validation.models import ValidationRun, ValueLedgerEntry, ValueOutcome
 from catalyst_radar.validation.reports import build_validation_report, validation_report_payload
 from catalyst_radar.validation.value_ledger import (
     CHATGPT_PRO_MONTHLY_COST_USD,
@@ -434,8 +434,20 @@ def _validation_evidence_summary(
         period_end=period_end,
         available_at=available_at,
     )
-    run = repo.latest_successful_validation_run(available_at=available_at)
+    run = repo.latest_successful_validation_run(
+        available_at=available_at,
+        period_start=period_start,
+        period_end=period_end,
+    )
     if run is None:
+        latest_run = repo.latest_successful_validation_run(available_at=available_at)
+        if latest_run is not None:
+            return _validation_period_mismatch_evidence(
+                run=latest_run,
+                period_start=period_start,
+                period_end=period_end,
+                canonical_next_command=replay_command,
+            )
         return _missing_validation_evidence(
             status="no_validation_runs",
             selected_run_id=None,
@@ -488,16 +500,10 @@ def _validation_evidence_summary(
         "schema_version": "monthly-value-validation-evidence-v1",
         "status": "ready" if ready else "insufficient_evidence",
         "ready": ready,
+        "period_start": period_start.isoformat(),
+        "period_end": period_end.isoformat(),
         "selected_run_id": run.id,
-        "validation_run": {
-            "id": run.id,
-            "run_type": run.run_type,
-            "as_of_start": run.as_of_start.isoformat(),
-            "as_of_end": run.as_of_end.isoformat(),
-            "decision_available_at": run.decision_available_at.isoformat(),
-            "started_at": run.started_at.isoformat(),
-            "finished_at": run.finished_at.isoformat() if run.finished_at else None,
-        },
+        "validation_run": _validation_run_payload(run),
         "candidate_result_count": sum(1 for result in results if result.baseline is None),
         "baseline_result_count": sum(1 for result in results if result.baseline is not None),
         "required_baselines": list(MISSION_BRIEF_BASELINES),
@@ -517,6 +523,51 @@ def _validation_evidence_summary(
                 "baseline is measured."
             )
         ),
+    }
+
+
+def _validation_period_mismatch_evidence(
+    *,
+    run: ValidationRun,
+    period_start: date,
+    period_end: date,
+    canonical_next_command: str,
+) -> dict[str, object]:
+    return {
+        "schema_version": "monthly-value-validation-evidence-v1",
+        "status": "run_period_mismatch",
+        "ready": False,
+        "period_start": period_start.isoformat(),
+        "period_end": period_end.isoformat(),
+        "selected_run_id": run.id,
+        "validation_run": _validation_run_payload(run),
+        "candidate_result_count": 0,
+        "baseline_result_count": 0,
+        "required_baselines": list(MISSION_BRIEF_BASELINES),
+        "measured_baselines": [],
+        "insufficient_baselines": list(MISSION_BRIEF_BASELINES),
+        "missing_baselines": [],
+        "precision_at_5": None,
+        "precision_at_10": None,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "canonical_next_command": canonical_next_command,
+        "next_action": (
+            "Run validation-replay for this report month before claiming monthly "
+            "value proof."
+        ),
+    }
+
+
+def _validation_run_payload(run: ValidationRun) -> dict[str, object]:
+    return {
+        "id": run.id,
+        "run_type": run.run_type,
+        "as_of_start": run.as_of_start.isoformat(),
+        "as_of_end": run.as_of_end.isoformat(),
+        "decision_available_at": run.decision_available_at.isoformat(),
+        "started_at": run.started_at.isoformat(),
+        "finished_at": run.finished_at.isoformat() if run.finished_at else None,
     }
 
 
