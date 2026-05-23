@@ -1,6 +1,49 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 14:57:52 +08:00
+Last updated: 2026-05-23 15:19:59 +08:00
+
+## Latest Value Ledger Priced-In Context Slice
+
+Last updated: 2026-05-23 15:19:59 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains making MarketRadar useful by preserving evidence for
+  priced-in hypotheses and monthly value proof, not changing scoring or adding
+  live calls.
+- Value-ledger rows already had priced-in fields, but a candidate-state ledger
+  record only auto-filled ticker/state/final score from `candidate_states`.
+- The useful definition for this slice is concrete: when a user logs a surfaced
+  candidate, the ledger should preserve the local priced-in context that
+  explains what MarketRadar found, what the user did, and what can be checked
+  later.
+
+Fix in this slice:
+
+- `value_ledger_artifact_context()` enriches `candidate_state` artifacts from
+  the matching local `signal_features` payload for the same ticker/as-of.
+- `build_value_ledger_entry()` now defaults `setup_type`,
+  `priced_in_status`, `priced_in_direction`, `emotion_score`,
+  `reaction_score`, and `emotion_reaction_gap` from that context when the
+  caller did not pass explicit values.
+- CLI/API/TUI value-ledger flows share this code path, so the behavior is the
+  same across UIs.
+
+Validation observed so far:
+
+```powershell
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\test_value_ledger.py::test_value_ledger_cli_autofills_priced_in_context_from_signal_features -q
+```
+
+Safety:
+
+- This reads only local `candidate_states` and `signal_features` rows.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls.
+- It does not mutate candidate state, signal features, deterministic scores,
+  policy gates, alert delivery, LLM behavior, or broker/order controls.
+- A ledger write still requires the existing explicit `--execute` /
+  `execute=true` path and writes only the value-ledger row.
 
 ## Latest Shadow Readiness First Blocker Slice
 

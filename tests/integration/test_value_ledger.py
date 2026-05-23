@@ -11,7 +11,11 @@ from catalyst_radar.cli import main
 from catalyst_radar.core.models import ActionState
 from catalyst_radar.dashboard.tui import render_dashboard_tui
 from catalyst_radar.storage.db import create_schema, engine_from_url
-from catalyst_radar.storage.schema import candidate_states, value_ledger_entries
+from catalyst_radar.storage.schema import (
+    candidate_states,
+    signal_features,
+    value_ledger_entries,
+)
 
 
 def test_value_ledger_cli_preview_execute_and_summary(
@@ -302,6 +306,73 @@ def test_value_ledger_cli_label_command_writes_auditable_entry(
     assert shown["entry"]["label"] == "useful"
 
 
+def test_value_ledger_cli_autofills_priced_in_context_from_signal_features(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'value-ledger-context.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = engine_from_url(database_url)
+    create_schema(engine)
+    _insert_candidate_state(engine)
+    _insert_signal_features_with_priced_in_context(engine)
+    with engine.connect() as conn:
+        candidate_before = dict(conn.execute(select(candidate_states)).first()._mapping)
+        signal_before = dict(conn.execute(select(signal_features)).first()._mapping)
+
+    exit_code = main(
+        [
+            "value-ledger",
+            "record",
+            "--artifact-type",
+            "candidate_state",
+            "--artifact-id",
+            "state-MSFT",
+            "--label",
+            "good-research",
+            "--supported-action",
+            "research",
+            "--user-decision",
+            "accepted",
+            "--estimated-value-usd",
+            "25",
+            "--confidence",
+            "0.5",
+            "--entry-date",
+            "2026-05-15",
+            "--available-at",
+            "2026-05-22T12:00:00+00:00",
+            "--execute",
+            "--json",
+        ]
+    )
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    entry = payload["entry"]
+    assert entry["priced_in_status"] == "bullish_not_priced_in"
+    assert entry["priced_in_direction"] == "bullish"
+    assert entry["emotion_score"] == 82.0
+    assert entry["reaction_score"] == 35.0
+    assert entry["emotion_reaction_gap"] == 47.0
+    assert entry["setup_type"] == "earnings_reaction_gap"
+    with engine.connect() as conn:
+        stored = conn.execute(select(value_ledger_entries)).first()
+        candidate_after = dict(conn.execute(select(candidate_states)).first()._mapping)
+        signal_after = dict(conn.execute(select(signal_features)).first()._mapping)
+    assert stored is not None
+    stored_row = stored._mapping
+    assert stored_row["priced_in_status"] == "bullish_not_priced_in"
+    assert stored_row["priced_in_direction"] == "bullish"
+    assert stored_row["emotion_score"] == 82.0
+    assert stored_row["reaction_score"] == 35.0
+    assert stored_row["emotion_reaction_gap"] == 47.0
+    assert stored_row["setup_type"] == "earnings_reaction_gap"
+    assert candidate_after == candidate_before
+    assert signal_after == signal_before
+
+
 def test_value_ledger_api_preview_execute_and_read(tmp_path, monkeypatch) -> None:
     database_url = f"sqlite:///{(tmp_path / 'value-ledger-api.db').as_posix()}"
     monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
@@ -524,5 +595,39 @@ def _insert_candidate_state(
                 feature_version="test",
                 policy_version="test",
                 created_at=as_of,
+            )
+        )
+
+
+def _insert_signal_features_with_priced_in_context(engine) -> None:
+    as_of = datetime(2026, 5, 15, 20, 0, tzinfo=UTC)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(signal_features).values(
+                ticker="MSFT",
+                as_of=as_of,
+                feature_version="test",
+                price_strength=70.0,
+                volume_score=65.0,
+                liquidity_score=90.0,
+                risk_penalty=0.0,
+                portfolio_penalty=0.0,
+                final_score=72.0,
+                payload={
+                    "candidate": {
+                        "ticker": "MSFT",
+                        "as_of": as_of.isoformat(),
+                        "metadata": {
+                            "setup_type": "earnings_reaction_gap",
+                            "priced_in": {
+                                "status": "bullish_not_priced_in",
+                                "direction": "bullish",
+                                "emotion_score": 82.0,
+                                "reaction_score": 35.0,
+                                "emotion_reaction_gap": 47.0,
+                            },
+                        },
+                    },
+                },
             )
         )

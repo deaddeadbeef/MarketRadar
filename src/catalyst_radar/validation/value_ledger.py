@@ -14,6 +14,7 @@ from catalyst_radar.storage.schema import (
     candidate_states,
     decision_cards,
     paper_trades,
+    signal_features,
     value_ledger_entries,
 )
 from catalyst_radar.storage.validation_repositories import ValidationRepository
@@ -143,6 +144,27 @@ def build_value_ledger_entry(
     if resolved_final_score is None and context.get("final_score") is not None:
         resolved_final_score = float(context["final_score"])
     resolved_setup_type = setup_type or _optional_text(context.get("setup_type"))
+    resolved_priced_in_status = priced_in_status or _optional_text(
+        context.get("priced_in_status")
+    )
+    resolved_priced_in_direction = priced_in_direction or _optional_text(
+        context.get("priced_in_direction")
+    )
+    resolved_emotion_score = (
+        emotion_score
+        if emotion_score is not None
+        else _optional_float(context.get("emotion_score"))
+    )
+    resolved_reaction_score = (
+        reaction_score
+        if reaction_score is not None
+        else _optional_float(context.get("reaction_score"))
+    )
+    resolved_emotion_reaction_gap = (
+        emotion_reaction_gap
+        if emotion_reaction_gap is not None
+        else _optional_float(context.get("emotion_reaction_gap"))
+    )
     resolved_supported_action = _optional_allowed_value(
         supported_action,
         allowed=ALLOWED_SUPPORTED_ACTIONS,
@@ -172,11 +194,11 @@ def build_value_ledger_entry(
         ticker=resolved_ticker,
         label=resolved_label,
         action_state=resolved_action_state,
-        priced_in_status=priced_in_status,
-        priced_in_direction=priced_in_direction,
-        emotion_score=emotion_score,
-        reaction_score=reaction_score,
-        emotion_reaction_gap=emotion_reaction_gap,
+        priced_in_status=resolved_priced_in_status,
+        priced_in_direction=resolved_priced_in_direction,
+        emotion_score=resolved_emotion_score,
+        reaction_score=resolved_reaction_score,
+        emotion_reaction_gap=resolved_emotion_reaction_gap,
         final_score=resolved_final_score,
         setup_type=resolved_setup_type,
         supported_action=resolved_supported_action,
@@ -476,10 +498,83 @@ def value_ledger_artifact_context(
         filters.append(table.c.created_at <= cutoff)
     with engine.connect() as conn:
         row = conn.execute(select(table).where(*filters).limit(1)).first()
+        if row is None:
+            msg = f"referenced {resolved_type} artifact not found"
+            raise ValueError(msg)
+        context = dict(row._mapping)
+        if resolved_type == "candidate_state":
+            context.update(_candidate_state_priced_in_context(conn, context))
+        return context
+
+
+def _candidate_state_priced_in_context(
+    conn,
+    candidate: Mapping[str, Any],
+) -> dict[str, Any]:
+    ticker = _optional_text(candidate.get("ticker"))
+    as_of = candidate.get("as_of")
+    if ticker is None or as_of is None:
+        return {}
+    row = conn.execute(
+        select(signal_features)
+        .where(
+            signal_features.c.ticker == ticker.upper(),
+            signal_features.c.as_of == as_of,
+        )
+        .order_by(signal_features.c.feature_version.desc())
+        .limit(1)
+    ).first()
     if row is None:
-        msg = f"referenced {resolved_type} artifact not found"
-        raise ValueError(msg)
-    return dict(row._mapping)
+        return {}
+    payload = thaw_json_value(dict(row._mapping).get("payload"))
+    if not isinstance(payload, Mapping):
+        return {}
+    candidate_payload = _mapping_or_empty(payload.get("candidate"))
+    metadata = _mapping_or_empty(
+        candidate_payload.get("metadata") or payload.get("metadata")
+    )
+    priced_in = _mapping_or_empty(
+        metadata.get("priced_in")
+        or candidate_payload.get("priced_in")
+        or payload.get("priced_in")
+    )
+    context: dict[str, Any] = {}
+    setup_type = _first_text(
+        metadata.get("setup_type"),
+        candidate_payload.get("setup_type"),
+        payload.get("setup_type"),
+    )
+    if setup_type is not None:
+        context["setup_type"] = setup_type
+    priced_in_status = _first_text(
+        priced_in.get("status"),
+        metadata.get("priced_in_status"),
+        candidate_payload.get("priced_in_status"),
+        payload.get("priced_in_status"),
+    )
+    if priced_in_status is not None:
+        context["priced_in_status"] = priced_in_status
+    priced_in_direction = _first_text(
+        priced_in.get("direction"),
+        metadata.get("priced_in_direction"),
+        candidate_payload.get("priced_in_direction"),
+        payload.get("priced_in_direction"),
+    )
+    if priced_in_direction is not None:
+        context["priced_in_direction"] = priced_in_direction
+    for field_name in ("emotion_score", "reaction_score", "emotion_reaction_gap"):
+        number = _optional_float(
+            priced_in.get(field_name)
+            if field_name in priced_in
+            else metadata.get(field_name)
+            if field_name in metadata
+            else candidate_payload.get(field_name)
+            if field_name in candidate_payload
+            else payload.get(field_name)
+        )
+        if number is not None:
+            context[field_name] = number
+    return context
 
 
 def _surfaced_candidate_state_rows(
@@ -686,6 +781,32 @@ def _optional_text(value: object | None) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _first_text(*values: object | None) -> str | None:
+    for value in values:
+        text = _optional_text(value)
+        if text is not None:
+            return text
+    return None
+
+
+def _optional_float(value: object | None) -> float | None:
+    if value is None:
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if number != number or number in {float("inf"), float("-inf")}:
+        return None
+    return number
+
+
+def _mapping_or_empty(value: object | None) -> Mapping[str, Any]:
+    if isinstance(value, Mapping):
+        return value
+    return {}
 
 
 def _date_from_context(value: object | None) -> date | None:

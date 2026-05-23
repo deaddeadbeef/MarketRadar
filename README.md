@@ -901,6 +901,12 @@ ledger summary
 `ledger record` previews by default and writes one row only when `--execute` is
 present. It makes 0 provider calls in both modes.
 
+For `candidate_state` artifacts, value-ledger record/label also copies any
+matching local priced-in context already stored in `signal_features`: setup
+type, priced-in status/direction, emotion score, reaction score, and
+emotion-minus-reaction gap. This preserves the hypothesis MarketRadar surfaced
+without recalculating scores or calling any provider.
+
 `GET /api/value-ledger/summary`, `GET /api/value-ledger/coverage`,
 `GET /api/value-ledger/entries`, `GET /api/value-ledger/entries/{id}`, and
 `POST /api/value-ledger/entries` expose the same local ledger contract. These
