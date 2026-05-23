@@ -589,6 +589,14 @@ def dashboard_snapshot_payload(
         available_at=data_available_at,
         shadow_readiness=shadow_readiness,
     )
+    trial_readiness = dashboard_data.trial_readiness_payload(
+        engine,
+        config,
+        available_at=data_available_at,
+        priced_in_answer=priced_in_answer,
+        shadow_readiness=shadow_readiness,
+        value_report=value_report,
+    )
     display_priced_in_queue = dict(priced_in_queue)
     display_priced_in_queue.pop("planning_rows", None)
     payload = {
@@ -612,6 +620,7 @@ def dashboard_snapshot_payload(
         },
         "runtime_context": runtime_context,
         "readiness": readiness_payload,
+        "trial_readiness": trial_readiness,
         "shadow_readiness": shadow_readiness,
         "shadow_mode": shadow_status,
         "radar_run_cooldown": dashboard_data.radar_run_cooldown_payload(engine, config),
@@ -1529,6 +1538,7 @@ class MarketRadarDashboardApp(App[int]):
             scan_yield = _mapping(discovery.get("yield"))
             queue = _mapping(self.payload.get("priced_in_queue"))
             answer = _mapping(self.payload.get("priced_in_answer"))
+            trial = _mapping(self.payload.get("trial_readiness"))
             full_scan = _mapping(answer.get("full_scan"))
             scan_scope = _mapping(answer.get("scan_scope"))
             status_filter = _priced_in_status_filter(queue)
@@ -1583,6 +1593,13 @@ class MarketRadarDashboardApp(App[int]):
                     (
                         f"[bold]Priced-in answer:[/] "
                         f"{answer.get('answer') or 'Open Insights for current answer.'}"
+                    ),
+                    (
+                        f"[bold]Trial gate:[/] "
+                        f"{trial.get('status') or 'unknown'}; "
+                        f"read-only safe="
+                        f"{str(bool(trial.get('safe_to_try_read_only'))).lower()}; "
+                        "investment-ready=false."
                     ),
                     (
                         f"[bold]Full-scan source workflow:[/] "

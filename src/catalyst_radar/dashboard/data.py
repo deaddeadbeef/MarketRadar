@@ -10419,6 +10419,155 @@ def shadow_readiness_payload(
     }
 
 
+def trial_readiness_payload(
+    engine: Engine,
+    config: AppConfig,
+    *,
+    month: str | None = None,
+    available_at: datetime | None = None,
+    priced_in_answer: Mapping[str, object] | None = None,
+    shadow_readiness: Mapping[str, object] | None = None,
+    value_report: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    """Return the local-only gate for a read-only human trial."""
+    cutoff = _as_utc_datetime_or_none(available_at) or datetime.now(UTC)
+    report_month = month or cutoff.strftime("%Y-%m")
+    answer = (
+        _row_dict(priced_in_answer)
+        if isinstance(priced_in_answer, Mapping)
+        else priced_in_answer_payload(engine, config, limit=5, status="all")
+    )
+    shadow = (
+        _row_dict(shadow_readiness)
+        if isinstance(shadow_readiness, Mapping)
+        else shadow_readiness_payload(engine, config, priced_in_answer=answer)
+    )
+    monthly_value = (
+        _row_dict(value_report)
+        if isinstance(value_report, Mapping)
+        else monthly_value_report_payload(
+            engine,
+            month=report_month,
+            available_at=cutoff,
+        )
+    )
+    checks = _trial_readiness_checks(
+        config,
+        priced_in_answer=answer,
+        shadow_readiness=shadow,
+        value_report=monthly_value,
+    )
+    blockers = [row for row in checks if str(row.get("status") or "") == "blocked"]
+    blocker_codes = {str(row.get("code") or "") for row in blockers}
+    safe_to_try = not blockers
+    status = (
+        "safe_read_only"
+        if safe_to_try
+        else (
+            "setup_required"
+            if "read_only_scan_surface" in blocker_codes
+            else "blocked"
+        )
+    )
+    first_blocker = blockers[0] if blockers else {}
+    trial_command = "catalyst-radar dashboard-tui"
+    next_action = (
+        "Open the dashboard for read-only research; do not use it for investment decisions."
+        if safe_to_try
+        else str(first_blocker.get("next_action") or "Clear the first trial blocker.")
+    )
+    return {
+        "schema_version": "trial-readiness-v1",
+        "status": status,
+        "safe_to_try_read_only": safe_to_try,
+        "ready_for_shadow_mode": bool(shadow.get("ready")),
+        "ready_for_investment_decision": False,
+        "decision_support_only": True,
+        "investment_advice": False,
+        "highest_allowed_use": "read_only_research",
+        "headline": (
+            "Safe for a read-only product trial; shadow/investment gates remain separate."
+            if safe_to_try
+            else f"{len(blockers)} blocker(s) prevent a useful read-only trial."
+        ),
+        "first_blocker": str(first_blocker.get("code") or "").strip() or None,
+        "first_gap_count": _shadow_readiness_first_gap_count(first_blocker),
+        "canonical_next_action": next_action,
+        "canonical_next_command": trial_command if safe_to_try else None,
+        "useful_definition": (
+            "Useful for trial means a human can open the dashboard, inspect the "
+            "priced-in answer and first blocker, run zero-call preview commands, "
+            "and record local value evidence without hidden provider, OpenAI, "
+            "broker, order, or database-write side effects."
+        ),
+        "minimum_features_required": {
+            "read_only_priced_in_answer": _trial_check_ready(
+                checks, "read_only_scan_surface"
+            ),
+            "canonical_next_step": _trial_check_ready(checks, "canonical_next_step"),
+            "zero_hidden_calls_or_writes": _trial_check_ready(
+                checks, "zero_call_zero_write_gate"
+            ),
+            "broker_orders_disabled": _trial_check_ready(
+                checks, "broker_orders_disabled"
+            ),
+            "alerts_dry_run": _trial_check_ready(checks, "alert_dry_run"),
+            "real_llm_disabled": _trial_check_ready(checks, "llm_real_mode_disabled"),
+            "value_report_available": _trial_check_ready(
+                checks, "value_report_surface"
+            ),
+        },
+        "allowed_commands": [
+            trial_command,
+            "catalyst-radar priced-in-answer --json",
+            "catalyst-radar assert-trial-ready --json",
+            "catalyst-radar assert-shadow-ready --json",
+            "catalyst-radar shadow-mode run --preview --json",
+            f"catalyst-radar value-report --month {report_month} --json",
+        ],
+        "blocked_until_explicit_approval": [
+            "Any command with --execute",
+            "Any command with --confirm-external-call",
+            "Real LLM mode",
+            "Schwab broker writes or order submission",
+        ],
+        "limitations": [
+            {
+                "area": "shadow_mode",
+                "status": shadow.get("status") or "unknown",
+                "ready": bool(shadow.get("ready")),
+                "first_blocker": shadow.get("first_blocker"),
+                "next_command": shadow.get("canonical_next_command"),
+            },
+            {
+                "area": "monthly_value",
+                "status": monthly_value.get("verdict") or "unknown",
+                "first_blocker": monthly_value.get("first_blocker"),
+                "next_command": monthly_value.get("canonical_next_command"),
+            },
+            {
+                "area": "priced_in_answer",
+                "status": answer.get("status") or "unknown",
+                "decision_ready": bool(answer.get("decision_ready")),
+                "first_blocker": answer.get("first_blocker"),
+                "next_command": answer.get("canonical_next_command")
+                or answer.get("next_command"),
+            },
+        ],
+        "checks": checks,
+        "blockers": blockers,
+        "snapshots": {
+            "priced_in_status": answer.get("status") or "unknown",
+            "priced_in_answer": answer.get("answer"),
+            "priced_in_first_blocker": answer.get("first_blocker"),
+            "shadow_readiness_status": shadow.get("status") or "unknown",
+            "monthly_value_verdict": monthly_value.get("verdict") or "unknown",
+        },
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+    }
+
+
 def investable_readiness_payload(
     engine: Engine,
     config: AppConfig,
@@ -10545,6 +10694,239 @@ def investable_readiness_payload(
         "external_calls_made": 0,
         "db_writes_made": 0,
     }
+
+
+def _trial_readiness_checks(
+    config: AppConfig,
+    *,
+    priced_in_answer: Mapping[str, object],
+    shadow_readiness: Mapping[str, object],
+    value_report: Mapping[str, object],
+) -> list[dict[str, object]]:
+    counts = _mapping_value(priced_in_answer, "counts")
+    full_scan = _mapping_value(priced_in_answer, "full_scan")
+    scan_scope = _mapping_value(priced_in_answer, "scan_scope")
+    total_rows = int(
+        _finite_float(
+            counts.get("total_rows")
+            or full_scan.get("ranked_rows")
+            or scan_scope.get("total_rows")
+        )
+    )
+    answer_status = str(priced_in_answer.get("status") or "unknown")
+    answer_next_command = (
+        priced_in_answer.get("canonical_next_command")
+        or priced_in_answer.get("next_command")
+    )
+    answer_next_action = (
+        priced_in_answer.get("canonical_next_action")
+        or priced_in_answer.get("next_action")
+    )
+    shadow_checks = {
+        str(row.get("code") or ""): row
+        for row in _sequence_value(shadow_readiness.get("checks"))
+        if isinstance(row, Mapping)
+    }
+    llm_check = _row_dict(shadow_checks.get("llm_real_mode_disabled"))
+    alert_check = _row_dict(shadow_checks.get("alert_dry_run"))
+    broker_check = _row_dict(shadow_checks.get("broker_orders_disabled"))
+    answer_calls = int(_finite_float(priced_in_answer.get("external_calls_made")))
+    answer_writes = int(_finite_float(priced_in_answer.get("db_writes_made")))
+    shadow_calls = int(_finite_float(shadow_readiness.get("external_calls_made")))
+    shadow_writes = int(_finite_float(shadow_readiness.get("db_writes_made")))
+    value_calls = int(_finite_float(value_report.get("external_calls_made")))
+    value_writes = int(_finite_float(value_report.get("db_writes_made")))
+    value_verdict = str(value_report.get("verdict") or "unknown")
+    return [
+        _trial_readiness_row(
+            code="read_only_scan_surface",
+            area="Read-only priced-in answer",
+            status="ready" if total_rows > 0 else "blocked",
+            finding=(
+                f"{total_rows} priced-in row(s) available for read-only review."
+                if total_rows > 0
+                else "No priced-in rows are available for read-only review."
+            ),
+            next_action=(
+                "Use the priced-in answer only as research context."
+                if total_rows > 0
+                else "Seed or run the local scan before trying the product."
+            ),
+            evidence=f"status={answer_status}; total_rows={total_rows}",
+            metric={"total_rows": total_rows, "status": answer_status},
+        ),
+        _trial_readiness_row(
+            code="canonical_next_step",
+            area="Operator next step",
+            status="ready" if answer_next_action and answer_next_command else "blocked",
+            finding=(
+                "The priced-in answer exposes one next command."
+                if answer_next_action and answer_next_command
+                else "The priced-in answer does not expose a concrete next command."
+            ),
+            next_action=str(answer_next_action or "Fix the priced-in answer next step."),
+            evidence=str(answer_next_command or ""),
+            metric={"command": answer_next_command},
+        ),
+        _trial_readiness_row(
+            code="zero_call_zero_write_gate",
+            area="Hidden side effects",
+            status=(
+                "ready"
+                if answer_calls
+                + answer_writes
+                + shadow_calls
+                + shadow_writes
+                + value_calls
+                + value_writes
+                == 0
+                else "blocked"
+            ),
+            finding="Trial gate composed read-only surfaces with 0 calls and 0 writes.",
+            next_action="Keep browsing on preview/read-only commands.",
+            evidence=(
+                f"priced_in={answer_calls}/{answer_writes}; "
+                f"shadow={shadow_calls}/{shadow_writes}; "
+                f"value={value_calls}/{value_writes}"
+            ),
+            metric={
+                "priced_in_external_calls": answer_calls,
+                "priced_in_db_writes": answer_writes,
+                "shadow_external_calls": shadow_calls,
+                "shadow_db_writes": shadow_writes,
+                "value_external_calls": value_calls,
+                "value_db_writes": value_writes,
+            },
+        ),
+        _trial_readiness_row(
+            code="broker_orders_disabled",
+            area="Broker/order safety",
+            status=(
+                "ready"
+                if not bool(config.schwab_order_submission_enabled)
+                and str(broker_check.get("status") or "ready") != "blocked"
+                else "blocked"
+            ),
+            finding=str(
+                broker_check.get("finding")
+                or "Broker order submission is disabled."
+            ),
+            next_action=str(
+                broker_check.get("next_action")
+                or "Keep broker/order submission disabled during trial."
+            ),
+            evidence=str(
+                broker_check.get("evidence")
+                or "CATALYST_SCHWAB_ORDER_SUBMISSION_ENABLED=false"
+            ),
+            metric={
+                "schwab_order_submission_enabled": bool(
+                    config.schwab_order_submission_enabled
+                )
+            },
+        ),
+        _trial_readiness_row(
+            code="alert_dry_run",
+            area="Alert delivery safety",
+            status=(
+                "ready"
+                if str(alert_check.get("status") or "ready") != "blocked"
+                else "blocked"
+            ),
+            finding=str(
+                alert_check.get("finding") or "Alert delivery is dry-run or disabled."
+            ),
+            next_action=str(
+                alert_check.get("next_action")
+                or "Keep alert delivery in dry-run during trial."
+            ),
+            evidence=str(alert_check.get("evidence") or ""),
+            metric=_row_dict(alert_check.get("metric")),
+        ),
+        _trial_readiness_row(
+            code="llm_real_mode_disabled",
+            area="LLM cost safety",
+            status=(
+                "ready"
+                if str(llm_check.get("status") or "ready") != "blocked"
+                else "blocked"
+            ),
+            finding=str(llm_check.get("finding") or "Real LLM mode is disabled."),
+            next_action=str(
+                llm_check.get("next_action")
+                or "Keep LLM review dry-run or disabled during trial."
+            ),
+            evidence=str(llm_check.get("evidence") or ""),
+            metric=_row_dict(llm_check.get("metric")),
+        ),
+        _trial_readiness_row(
+            code="shadow_gate_surface",
+            area="Shadow gate visibility",
+            status="ready",
+            finding="Shadow readiness is visible and separate from read-only trial.",
+            next_action=str(
+                shadow_readiness.get("canonical_next_action")
+                or "Use assert-shadow-ready for the stricter daily-run gate."
+            ),
+            evidence=f"status={shadow_readiness.get('status') or 'unknown'}",
+            metric={
+                "ready": bool(shadow_readiness.get("ready")),
+                "first_blocker": shadow_readiness.get("first_blocker"),
+            },
+        ),
+        _trial_readiness_row(
+            code="value_report_surface",
+            area="Value report visibility",
+            status="ready" if value_verdict else "blocked",
+            finding=(
+                f"Monthly value report is available: {value_verdict}."
+                if value_verdict
+                else "Monthly value report is unavailable."
+            ),
+            next_action=str(
+                value_report.get("canonical_next_action")
+                or "Use value-report to inspect evidence gaps."
+            ),
+            evidence=str(value_report.get("verdict_reason") or ""),
+            metric={
+                "verdict": value_report.get("verdict"),
+                "first_blocker": value_report.get("first_blocker"),
+            },
+        ),
+    ]
+
+
+def _trial_readiness_row(
+    *,
+    code: str,
+    area: str,
+    status: str,
+    finding: str,
+    next_action: str,
+    evidence: str,
+    metric: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    return {
+        "code": code,
+        "area": area,
+        "status": status,
+        "finding": finding,
+        "next_action": next_action,
+        "evidence": evidence,
+        "metric": _row_dict(metric),
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+    }
+
+
+def _trial_check_ready(
+    checks: Sequence[Mapping[str, object]],
+    code: str,
+) -> bool:
+    for row in checks:
+        if str(row.get("code") or "") == code:
+            return str(row.get("status") or "") == "ready"
+    return False
 
 
 def _shadow_readiness_checks(

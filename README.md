@@ -37,6 +37,9 @@ decision-support value. That is the measured target for offsetting 20% of a
   readiness checks, previews, explicit local ledger/outcome writes, and monthly
   value reports. Real-capital decisions remain blocked until full-market data
   and validation evidence clear.
+- `catalyst-radar assert-trial-ready --json` is the source-of-truth gate for
+  this read-only product-trial boundary. It can pass while
+  `assert-shadow-ready` and `assert-investable-readiness` still fail.
 
 ### Safe Trial Boundary
 
@@ -47,6 +50,7 @@ Safe to run:
 
 ```powershell
 catalyst-radar priced-in-answer --json
+catalyst-radar assert-trial-ready --json
 catalyst-radar assert-shadow-ready --json
 catalyst-radar market-bars residual-review --expected-as-of 2026-05-15
 catalyst-radar shadow-mode run --available-at <UTC-now> --preview --json

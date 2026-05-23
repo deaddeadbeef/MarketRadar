@@ -76,6 +76,7 @@ from catalyst_radar.dashboard.data import (
     priced_in_source_gap_batches_payload,
     sec_cik_override_template_payload,
     shadow_readiness_payload,
+    trial_readiness_payload,
 )
 from catalyst_radar.dashboard.demo_seed import (
     default_sec_document_fixture_path,
@@ -834,6 +835,12 @@ def build_parser() -> argparse.ArgumentParser:
     assert_shadow_ready = subparsers.add_parser("assert-shadow-ready")
     assert_shadow_ready.add_argument("--database-url")
     assert_shadow_ready.add_argument("--json", action="store_true")
+
+    assert_trial_ready = subparsers.add_parser("assert-trial-ready")
+    assert_trial_ready.add_argument("--database-url")
+    assert_trial_ready.add_argument("--month")
+    assert_trial_ready.add_argument("--available-at", type=_parse_aware_datetime)
+    assert_trial_ready.add_argument("--json", action="store_true")
 
     shadow_mode = subparsers.add_parser("shadow-mode")
     shadow_sub = shadow_mode.add_subparsers(dest="shadow_mode_command", required=True)
@@ -1749,6 +1756,20 @@ def main(argv: list[str] | None = None) -> int:
         else:
             _print_shadow_readiness(payload)
         return 0 if payload.get("ready") is True else 1
+
+    if args.command == "assert-trial-ready":
+        create_schema(engine)
+        payload = trial_readiness_payload(
+            engine,
+            config,
+            month=args.month,
+            available_at=args.available_at,
+        )
+        if args.json:
+            print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
+        else:
+            _print_trial_readiness(payload)
+        return 0 if payload.get("safe_to_try_read_only") is True else 1
 
     if args.command == "shadow-mode":
         create_schema(engine)
@@ -8261,6 +8282,58 @@ def _print_shadow_readiness(payload: Mapping[str, object]) -> None:
             f"next={_compact_cli_text(row.get('next_action'))} "
             f"external_calls={row.get('external_calls_made') or 0} "
             f"db_writes={row.get('db_writes_made') or 0}"
+        )
+
+
+def _print_trial_readiness(payload: Mapping[str, object]) -> None:
+    print(
+        "trial_readiness "
+        f"status={payload.get('status')} "
+        f"safe_to_try_read_only={str(bool(payload.get('safe_to_try_read_only'))).lower()} "
+        f"ready_for_shadow_mode={str(bool(payload.get('ready_for_shadow_mode'))).lower()} "
+        "ready_for_investment_decision="
+        f"{str(bool(payload.get('ready_for_investment_decision'))).lower()} "
+        f"external_calls_made={payload.get('external_calls_made') or 0} "
+        f"db_writes_made={payload.get('db_writes_made') or 0}"
+    )
+    print(f"headline={_compact_cli_text(payload.get('headline'))}")
+    print(f"next_action={_compact_cli_text(payload.get('canonical_next_action'))}")
+    print(f"next_command={_compact_cli_text(payload.get('canonical_next_command'))}")
+    print(f"useful_definition={_compact_cli_text(payload.get('useful_definition'))}")
+    minimum = payload.get("minimum_features_required")
+    if isinstance(minimum, Mapping):
+        print(
+            "minimum_features="
+            + ", ".join(
+                f"{key}={str(bool(value)).lower()}"
+                for key, value in sorted(minimum.items())
+            )
+        )
+    blockers = payload.get("blockers")
+    blocker_rows = blockers if isinstance(blockers, Sequence) else ()
+    if blocker_rows:
+        for row in blocker_rows:
+            if not isinstance(row, Mapping):
+                continue
+            print(
+                "blocker="
+                f"{row.get('code')} "
+                f"area={_compact_cli_text(row.get('area'))} "
+                f"finding={_compact_cli_text(row.get('finding'))} "
+                f"next={_compact_cli_text(row.get('next_action'))}"
+            )
+        return
+    print("blockers=none")
+    limitations = payload.get("limitations")
+    for row in limitations if isinstance(limitations, Sequence) else ():
+        if not isinstance(row, Mapping):
+            continue
+        print(
+            "limitation="
+            f"{row.get('area')} "
+            f"status={row.get('status')} "
+            f"first_blocker={row.get('first_blocker') or 'none'} "
+            f"next={_compact_cli_text(row.get('next_command'))}"
         )
 
 

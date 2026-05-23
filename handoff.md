@@ -1,6 +1,43 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 20:33:03 +08:00
+Last updated: 2026-05-23 20:52:58 +08:00
+
+## Latest Read-Only Trial Readiness Gate Slice
+
+Last updated: 2026-05-23 20:52:58 +08:00
+
+Goal alignment / drift check:
+
+- The user wants to try MarketRadar soon, but the product must not imply it is
+  investment-ready before full-market bars, shadow runs, validation, and value
+  proof clear.
+- The useful definition for this slice is concrete: one command/API/snapshot
+  field answers whether MarketRadar is safe for a read-only human trial, while
+  keeping shadow readiness and investment readiness as stricter gates.
+
+Fix in this slice:
+
+- Added `catalyst-radar assert-trial-ready`.
+- Added `trial_readiness_payload()` and API route
+  `GET /api/radar/trial/readiness`.
+- Added `trial_readiness` to `dashboard-snapshot --json` and a compact trial
+  gate line on the TUI overview guide.
+- The gate can pass for read-only use when a priced-in answer surface exists,
+  one canonical next step exists, broker orders are disabled, alerts are
+  dry-run/disabled, real LLM mode is disabled, value reporting is visible, and
+  the composed gate makes 0 calls and 0 writes.
+- The gate still reports `ready_for_shadow_mode=false` and
+  `ready_for_investment_decision=false` when stricter evidence is missing.
+
+Safety:
+
+- This is a local readiness/reporting surface only.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls and writes 0 database rows.
+- It does not execute residual repair, import market bars, change scan scope,
+  alter scoring, alter policy gates, mutate candidate states, mutate
+  value-ledger/outcome rows, run LLMs, deliver real alerts, submit orders, or
+  weaken shadow/investable readiness.
 
 ## Latest Direction-Aware Outcome Excursion Slice
 
