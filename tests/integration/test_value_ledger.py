@@ -271,6 +271,24 @@ def test_value_ledger_coverage_reports_unlogged_surfaced_candidates(
     assert after == before
     assert ledger_count == 1
 
+    human_exit = main(
+        [
+            "value-ledger",
+            "coverage",
+            "--available-at",
+            "2026-05-22T12:00:00+00:00",
+            "--period-start",
+            "2026-05-01",
+            "--period-end",
+            "2026-05-31",
+        ]
+    )
+
+    assert human_exit == 0
+    human_output = capsys.readouterr().out
+    assert "next_command=catalyst-radar value-ledger record" in human_output
+    assert "--preview --json" in human_output
+
 
 def test_value_ledger_cli_label_command_writes_auditable_entry(
     tmp_path,
