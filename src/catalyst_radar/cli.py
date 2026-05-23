@@ -2652,7 +2652,7 @@ def main(argv: list[str] | None = None) -> int:
                         f"baseline_results={len(labeled_baseline_results)} "
                         f"results={len(all_results)} external_calls=0 db_writes=0 "
                         f"next_action={payload['next_action']} "
-                        f"execute_command={payload['execute_command']}"
+                        f"execute_command={payload.get('execute_command') or 'n/a'}"
                     )
                 return 0
             count = validation_repo.upsert_validation_results(all_results)
@@ -4246,6 +4246,11 @@ def _validation_replay_cli_payload(
     execute_command += " --execute --json"
     preview_command = execute_command.replace(" --execute --json", " --preview --json")
     status = _validation_replay_status(mode=mode, result_count=result_count)
+    db_writes_required = (
+        result_count + 2
+        if mode != "preview" or status == "ready_to_execute"
+        else 0
+    )
     return {
         "schema_version": "validation-replay-cli-v1",
         "mode": mode,
@@ -4260,9 +4265,11 @@ def _validation_replay_cli_payload(
         "result_count": result_count,
         "external_calls_required": 0,
         "external_calls_made": 0,
-        "db_writes_required": result_count + 2,
+        "db_writes_required": db_writes_required,
         "db_writes_made": db_writes_made,
-        "execute_command": execute_command if mode == "preview" else None,
+        "execute_command": (
+            execute_command if mode == "preview" and status == "ready_to_execute" else None
+        ),
         "preview_command": preview_command,
         "leakage_failure_count": int(metrics.get("leakage_failure_count") or 0),
         "precision": (
@@ -4277,7 +4284,7 @@ def _validation_replay_cli_payload(
         ),
         "next_action": _validation_replay_next_action(
             status=status,
-            db_writes_required=result_count + 2,
+            db_writes_required=db_writes_required,
         ),
     }
 
