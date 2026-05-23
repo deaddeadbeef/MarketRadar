@@ -1,6 +1,39 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 16:36:30 +08:00
+Last updated: 2026-05-23 16:49:42 +08:00
+
+## Latest Shadow Status First Blocker Slice
+
+Last updated: 2026-05-23 16:49:42 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains repeatable shadow-mode operation with a clear,
+  zero-call first unblock step.
+- A zero-call configured-DB check showed `shadow-mode status --json` returned
+  the correct market-bar residual-review next action but did not expose
+  `first_blocker`, `first_gap_count`, or `canonical_next_command` at top level.
+- The useful definition for this slice is concrete: the daily shadow status
+  command should tell automation and the TUI the current first blocker without
+  forcing clients to parse nested readiness payloads or stale latest-run rows.
+
+Fix in this slice:
+
+- `shadow-mode-status-v1` now includes top-level `first_blocker`.
+- It also includes `first_gap_count`, `canonical_next_action`, and
+  `canonical_next_command`.
+- When current readiness is not ready, these fields come from current
+  readiness, so stale persisted runs cannot hide today's first unblock command.
+- README documents these fields for CLI/API clients.
+
+Safety:
+
+- This is payload-only shadow-status behavior over local status data.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls.
+- It writes 0 database rows and does not change scores, thresholds, policy
+  gates, action states, trade plans, LLM behavior, broker/order controls,
+  ledger rows, outcome rows, shadow-run persistence, or readiness criteria.
 
 ## Latest Investable Gate First Blocker Slice
 
