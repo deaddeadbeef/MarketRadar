@@ -3749,6 +3749,21 @@ def test_priced_in_answer_routes_zero_liquidity_residual_gap_to_review(
     assert projection["missing_covered_by_fixture_count"] == 0
     assert detail["missing_universe"]["zero_market_cap_count"] == 1
     assert detail["missing_universe"]["zero_avg_dollar_volume_20d_count"] == 1
+    manual_csv = detail["manual_csv"]
+    assert "market-bars import" in str(manual_csv["preview_command"])
+    assert "saved-import" not in str(manual_csv["preview_command"])
+    unblock_options = {
+        option["kind"]: option for option in detail["unblock_options"]
+    }
+    assert "market-bars import" in str(
+        unblock_options["manual_csv"]["preview_command"]
+    )
+    assert "saved-import" not in str(
+        unblock_options["manual_csv"]["preview_command"]
+    )
+    assert "saved-import" in str(
+        unblock_options["preview_import"]["cli_command"]
+    )
     assert detail["recommended_action"]["kind"] == "residual_universe_review"
     assert "residual-review" in str(detail["recommended_action"]["command"])
     assert detail["recommended_action"]["external_calls_required"] == 0
