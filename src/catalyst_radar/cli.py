@@ -840,6 +840,14 @@ def build_parser() -> argparse.ArgumentParser:
     assert_trial_ready.add_argument("--database-url")
     assert_trial_ready.add_argument("--month")
     assert_trial_ready.add_argument("--available-at", type=_parse_aware_datetime)
+    assert_trial_ready.add_argument(
+        "--minimum-product",
+        action="store_true",
+        help=(
+            "Exit successfully only when the stricter minimum_useful_product "
+            "gate is ready. Default mode only checks safe read-only trial access."
+        ),
+    )
     assert_trial_ready.add_argument("--json", action="store_true")
 
     shadow_mode = subparsers.add_parser("shadow-mode")
@@ -1769,6 +1777,12 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
         else:
             _print_trial_readiness(payload)
+        if args.minimum_product:
+            product_gate = payload.get("minimum_useful_product")
+            product_ready = (
+                isinstance(product_gate, Mapping) and product_gate.get("ready") is True
+            )
+            return 0 if product_ready else 1
         return 0 if payload.get("safe_to_try_read_only") is True else 1
 
     if args.command == "shadow-mode":
