@@ -1625,6 +1625,28 @@ def _recommended_unblock_action(
             api=repair.get("provider_saved_file_validate_api"),
             request_body=repair.get("provider_saved_file_validate_request_body"),
         )
+    if _repair_payload_has_universe_quality_residual(repair, missing):
+        return _recommended_action_payload(
+            kind="residual_universe_review",
+            label="Review residual universe",
+            status="blocked",
+            reason=(
+                "The remaining missing active tickers look like a zero-liquidity "
+                "universe-quality gap. Review residual rows before filling bars, "
+                "capturing provider data, or changing scan scope."
+            ),
+            command=_residual_review_command(
+                expected_as_of,
+                stocks_only=bool(repair.get("stocks_only")),
+            ),
+            tui_command="bars residual review",
+            api="GET /api/radar/market-bars/residual-review",
+            request_body={
+                "expected_as_of": expected_as_of.isoformat(),
+                "stocks_only": bool(repair.get("stocks_only")),
+            },
+            expected_as_of=expected_as_of.isoformat(),
+        )
     if approval_packet.get("status") == "approval_required":
         return _recommended_action_payload(
             kind="saved_provider_capture",

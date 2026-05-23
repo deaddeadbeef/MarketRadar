@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -6317,6 +6317,7 @@ def test_priced_in_preflight_payload_reports_exact_next_steps(tmp_path: Path) ->
 
     assert payload["schema_version"] == "priced-in-preflight-v1"
     assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
     assert payload["status"] in {"blocked", "attention", "ready"}
     assert payload["first_blocker"]["schema_version"] == "priced-in-first-blocker-v1"
     assert payload["first_blocker"]["area"] == "universe"
@@ -6706,9 +6707,112 @@ def test_priced_in_preflight_warns_when_latest_run_is_selected_universe(
 
     by_area = {row["area"]: row for row in payload["rows"]}
     assert payload["scan_status"] == "selected_universe"
+    assert payload["first_gap"] == "market_bars"
+    assert payload["first_blocker"]["area"] == "market_bars"
+    assert payload["operator_next_step"]["area"] == "market_bars"
+    assert payload["evidence_plan"]["steps"][0]["area"] == "market_bars"
     assert by_area["scan_scope"]["status"] == "attention"
     assert "liquid-us" in by_area["scan_scope"]["finding"]
     assert "--universe" not in by_area["scan_scope"]["command"]
+
+
+def test_priced_in_preflight_routes_zero_liquidity_residual_gap_to_review(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    as_of = date(2026, 5, 8)
+    market_repo = MarketRepository(engine)
+    market_repo.upsert_securities(
+        [
+            Security(
+                ticker="AAPL",
+                name="Apple Inc.",
+                exchange="NASDAQ",
+                sector="Technology",
+                industry="Consumer Electronics",
+                market_cap=1_000_000_000,
+                avg_dollar_volume_20d=20_000_000,
+                has_options=True,
+                is_active=True,
+                updated_at=AVAILABLE_AT,
+                metadata={"type": "CS"},
+            ),
+            Security(
+                ticker="MSFT",
+                name="Microsoft Corp.",
+                exchange="NASDAQ",
+                sector="Technology",
+                industry="Software",
+                market_cap=1_000_000_000,
+                avg_dollar_volume_20d=20_000_000,
+                has_options=True,
+                is_active=True,
+                updated_at=AVAILABLE_AT,
+                metadata={"type": "CS"},
+            ),
+            Security(
+                ticker="AACO",
+                name="Alpha Acquisition Corp.",
+                exchange="NASDAQ",
+                sector="Unknown",
+                industry="Unknown",
+                market_cap=0,
+                avg_dollar_volume_20d=0,
+                has_options=False,
+                is_active=True,
+                updated_at=AVAILABLE_AT,
+                metadata={"type": "CS"},
+            ),
+        ]
+    )
+    market_repo.upsert_daily_bars(
+        [
+            DailyBar(
+                ticker=ticker,
+                date=as_of,
+                open=100,
+                high=101,
+                low=99,
+                close=100,
+                volume=1_000_000,
+                vwap=100,
+                adjusted=True,
+                provider="manual_csv",
+                source_ts=AVAILABLE_AT,
+                available_at=AVAILABLE_AT,
+            )
+            for ticker in ("AAPL", "MSFT")
+        ]
+    )
+
+    payload = priced_in_preflight_payload(
+        engine,
+        AppConfig(daily_market_provider="polygon"),
+        latest_run={"universe": None, "as_of": as_of.isoformat()},
+        discovery_snapshot={
+            "run": {"universe": None, "as_of": as_of.isoformat()},
+            "freshness": {
+                "active_security_count": 1_000,
+                "active_security_with_as_of_bar_count": 999,
+                "missing_as_of_daily_bar_count": 1,
+            },
+            "yield": {
+                "requested_securities": 1_000,
+                "scanned_securities": 999,
+            },
+        },
+        source_coverage={"schema_version": "priced-in-source-coverage-v1", "actions": []},
+    )
+
+    assert payload["first_gap"] == "market_bars"
+    assert payload["first_blocker"]["area"] == "market_bars"
+    assert "residual-review" in str(payload["first_blocker"]["command"])
+    assert payload["operator_next_step"]["area"] == "market_bars"
+    assert "residual-review" in str(payload["operator_next_step"]["command"])
+    assert payload["evidence_plan"]["steps"][0]["area"] == "market_bars"
+    assert "residual-review" in str(payload["evidence_plan"]["steps"][0]["command"])
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
 
 
 def test_operator_work_queue_prioritizes_setup_blockers_and_candidate_context(

@@ -608,6 +608,9 @@ Residual review does not clear the market-bar gate. It reports stock-like versus
 non-stock residual counts, security-type counts, saved-file projection,
 zero-volume/zero-market-cap evidence, manual repair commands, and explicit
 decision options while keeping `external_calls_made=0` and `db_writes_made=0`.
+`priced-in-preflight --json` uses the same market-bar residual-review command as
+its `first_blocker` when this is the current blocker, and includes
+`external_calls_made=0` plus `db_writes_made=0` at top level.
 When `priced-in-answer` reaches this residual state, its top-level
 `next_action` / `next_command`, `full_market_trust_gate`, and
 `operator_next_step` all point at the same residual-review action. The same
