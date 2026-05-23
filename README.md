@@ -610,8 +610,11 @@ zero-volume/zero-market-cap evidence, manual repair commands, and explicit
 decision options while keeping `external_calls_made=0` and `db_writes_made=0`.
 When `priced-in-answer` reaches this residual state, its top-level
 `next_action` / `next_command`, `full_market_trust_gate`, and
-`operator_next_step` all point at the same residual-review action so clients do
-not mix it with the older manual-bar template path.
+`operator_next_step` all point at the same residual-review action. The same
+residual-review command is also propagated into the first market-bar entries in
+`decision_readiness`, `evidence_completeness`, `trust_blockers`, and
+`blocker_ladder`, so clients do not mix it with the older manual-bar template
+path.
 If the review shows strict zero-liquidity/no-history rows that should not remain
 active, use `market-bars residual-repair` as a guarded local-universe repair.
 It previews by default with 0 provider calls and 0 DB writes. Execution requires

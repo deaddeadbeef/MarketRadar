@@ -1,6 +1,56 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 10:05:00 +08:00
+Last updated: 2026-05-23 10:30:00 +08:00
+
+## Latest Residual Subpayload Next-Action Slice
+
+Last updated: 2026-05-23 10:30:00 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains broad priced-in scan readiness. This slice removes a
+  concrete P0 "what do I do next?" ambiguity; it is not UI polish, scoring,
+  LLM expansion, or provider work.
+- After the canonical residual-review fix, top-level `priced-in-answer`,
+  `operator_next_step`, and `full_market_trust_gate.next_command` agreed, but
+  nested first-blocker subpayloads could still point at the older manual
+  market-bar template command.
+
+Fix in this slice:
+
+- When `recommended_action.kind` is `residual_universe_review`,
+  `decision_readiness.recommended_gap`, `evidence_completeness`,
+  `trust_blockers[0]`, and `blocker_ladder.rows[0]` now use the same
+  residual-review action/command as the top-level operator step.
+- Manual CSV and saved-file commands remain available only as explicit unblock
+  options; the canonical first action stays residual review.
+- README documents that client contract.
+
+Validation observed in this slice:
+
+- The focused regression failed before the fix with
+  `decision_readiness.recommended_gap.command` still pointing at
+  `market-bars template`.
+- Focused regression passed after the fix.
+- Adjacent residual/current-count regression selection passed: 3 passed.
+- Broader priced-in / market-bar / operator-next-step regression selection
+  passed: 22 passed.
+- `ruff check` passed for touched dashboard data and dashboard integration
+  tests.
+- `compileall` passed for `src` and touched dashboard tests.
+- `git diff --check` passed.
+- Operator-DB zero-call smoke with this worktree pinned through `PYTHONPATH`
+  returned residual-review for top-level, decision-readiness, evidence,
+  trust-blocker, and blocker-ladder commands, plus manual CSV preview as
+  `market-bars import`, saved preview as `market-bars saved-import`,
+  `external_calls=0`, and `db_writes=0`.
+
+Current live blocker:
+
+- The all-active trusted answer remains blocked by 579 missing `2026-05-15`
+  market bars until the operator explicitly fills real residual bars or approves
+  the guarded local residual repair. Do not execute the repair against the
+  operator DB without separate explicit instruction.
 
 ## Latest Manual CSV Command Boundary Slice
 

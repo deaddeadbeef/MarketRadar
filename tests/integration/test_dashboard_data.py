@@ -3547,7 +3547,6 @@ def test_priced_in_answer_routes_saved_file_residual_gap_to_manual_repair(
             for ticker in ("AAPL", "MSFT")
         ]
     )
-
     payload = priced_in_answer_payload(
         engine,
         AppConfig.from_env({"CATALYST_POLYGON_API_KEY": "fixture-key"}),
@@ -3695,6 +3694,14 @@ def test_priced_in_answer_routes_zero_liquidity_residual_gap_to_review(
             for ticker in ("AAPL", "MSFT")
         ]
     )
+    stale_template_command = (
+        "catalyst-radar market-bars template --expected-as-of 2026-05-08 "
+        "--out data\\local\\manual-bars-2026-05-08.csv --missing-only"
+    )
+    stale_template_action = (
+        "Fill missing as-of bars for the active universe; then rerun the full "
+        "priced-in scan."
+    )
 
     payload = priced_in_answer_payload(
         engine,
@@ -3738,10 +3745,32 @@ def test_priced_in_answer_routes_zero_liquidity_residual_gap_to_review(
                         "coverage_pct": 66.7,
                     }
                 },
-                "actions": [],
+                "actions": [
+                    {
+                        "source": "market_bars",
+                        "status": "attention",
+                        "gap_count": 1,
+                        "sample_tickers": ["AACO"],
+                        "next_action": stale_template_action,
+                        "command": stale_template_command,
+                    }
+                ],
             },
         },
-        preflight={"evidence_plan": {"steps": []}, "rows": []},
+        preflight={
+            "evidence_plan": {
+                "steps": [
+                    {
+                        "area": "market_bars",
+                        "status": "attention",
+                        "action": stale_template_action,
+                        "command": stale_template_command,
+                        "depends_on": [],
+                    }
+                ]
+            },
+            "rows": [],
+        },
     )
 
     detail = payload["full_market_trust_gate"]["blocker_detail"]
@@ -3780,6 +3809,19 @@ def test_priced_in_answer_routes_zero_liquidity_residual_gap_to_review(
     assert payload["full_market_trust_gate"]["next_command"] == (
         payload["operator_next_step"]["command"]
     )
+    assert "residual-review" in str(
+        payload["decision_readiness"]["recommended_gap"]["command"]
+    )
+    assert "residual-review" in str(payload["evidence_completeness"]["command"])
+    market_layer = payload["evidence_completeness"]["layers"][0]
+    assert market_layer["source"] == "market_bars"
+    assert "residual-review" in str(market_layer["command"])
+    first_trust_blocker = payload["trust_blockers"][0]
+    assert first_trust_blocker["area"] == "market_bars"
+    assert "residual-review" in str(first_trust_blocker["command"])
+    first_ladder_row = payload["full_market_trust_gate"]["blocker_ladder"]["rows"][0]
+    assert first_ladder_row["source"] == "market_bars"
+    assert "residual-review" in str(first_ladder_row["command"])
     assert payload["external_calls_made"] == 0
 
 
