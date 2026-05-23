@@ -1019,8 +1019,9 @@ baselines. Baseline rows are selected using only data available at the decision
 cutoff and are labeled only from bars visible at the outcome cutoff. The report
 shows precision@5/10, false-positive rate, average 5/10/20/60 day returns,
 SPY-relative and sector-relative return averages, sector outperformance rate,
-excursion averages, overlap/missed tickers, and whether MarketRadar won, lost,
-tied, or lacks enough evidence.
+MarketRadar and baseline excursion averages, MarketRadar cost per candidate,
+baseline incremental cost per candidate, overlap/missed tickers, and whether
+MarketRadar won, lost, tied, or lacks enough evidence.
 `validation-report --latest --json` selects the latest successful stored
 validation run, makes 0 provider calls and 0 database writes, and returns
 `status=no_validation_runs` when no replay evidence exists yet.

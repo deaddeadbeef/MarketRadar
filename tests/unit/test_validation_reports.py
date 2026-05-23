@@ -35,6 +35,7 @@ def test_report_builder_computes_core_metrics() -> None:
     assert payload["false_positive_count"] == 1
     assert payload["useful_alert_rate"] == pytest.approx(2 / 3)
     assert payload["cost_per_useful_alert"] == pytest.approx(6.0)
+    assert payload["cost_per_candidate"] == pytest.approx(4.0)
     assert payload["leakage_failure_count"] == 1
     assert payload["state_mix"] == {"Blocked": 1, "Warning": 2}
 
@@ -48,6 +49,7 @@ def test_report_builder_handles_zero_cost_without_division_failure() -> None:
     )
 
     assert report.cost_per_useful_alert == 0.0
+    assert report.cost_per_candidate == 0.0
     assert report.useful_alert_rate == 0.0
 
 
@@ -161,6 +163,8 @@ def test_report_builder_compares_labeled_baseline_precision() -> None:
                 "spy_relative_return_20d": 0.22,
                 "sector_return_20d": 0.10,
                 "sector_outperformance": True,
+                "max_adverse_excursion": -0.02,
+                "max_favorable_excursion": 0.36,
             },
         ),
         _result(
@@ -173,6 +177,8 @@ def test_report_builder_compares_labeled_baseline_precision() -> None:
                 "spy_return_20d": 0.02,
                 "sector_relative_return_20d": -0.10,
                 "sector_outperformance": False,
+                "max_adverse_excursion": -0.11,
+                "max_favorable_excursion": 0.04,
             },
         ),
         {
@@ -191,13 +197,19 @@ def test_report_builder_compares_labeled_baseline_precision() -> None:
         },
     ]
 
-    report = validation_report_payload(build_validation_report("run-1", rows))
+    report = validation_report_payload(build_validation_report("run-1", rows, total_cost=4.0))
 
     comparison = report["baseline_comparison"]["volume_breakout_screener"]
     assert comparison["marketradar_precision_at_10"] == pytest.approx(0.5)
+    assert comparison["marketradar_false_positive_rate"] == pytest.approx(0.5)
+    assert comparison["marketradar_max_adverse_excursion_avg"] == pytest.approx(-0.065)
+    assert comparison["marketradar_max_favorable_excursion_avg"] == pytest.approx(0.2)
+    assert comparison["marketradar_labeled_count"] == 2
+    assert comparison["marketradar_cost_per_candidate"] == pytest.approx(2.0)
     assert comparison["baseline_precision_at_10"] == 1.0
     assert comparison["baseline_false_positive_rate"] == 0.0
     assert comparison["baseline_max_favorable_excursion_avg"] == 0.32
+    assert comparison["baseline_cost_per_candidate"] == 0.0
     assert comparison["marketradar_return_20d_avg"] == pytest.approx(0.125)
     assert comparison["marketradar_spy_relative_return_20d_avg"] == pytest.approx(
         0.075
