@@ -1,6 +1,76 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-24 07:21:45 +08:00
+Last updated: 2026-05-24 07:38:12 +08:00
+
+## Latest Dashboard Approval Packet Slice
+
+Goal alignment / drift check:
+
+- Priority 0/1 still requires top-level read-only surfaces to agree on the
+  current setup blocker before daily shadow-mode testing can become routine.
+- The approval-gated local DB repair remains blocked without explicit operator
+  approval, so this slice did not run it.
+- A live zero-call audit showed `assert-shadow-ready --json` exposed the
+  guarded market-bar residual repair packet, while
+  `dashboard-snapshot --json.operator_next_step` only showed the safe residual
+  review command. The dashboard snapshot still had nested readiness context, but
+  automation had no top-level approval packet to pair with the top-level
+  operator command.
+
+Useful definition:
+
+- `dashboard-snapshot --json` is useful only if it preserves both pieces of the
+  current blocker contract:
+  - the zero-call `operator_next_step` command to inspect first;
+  - the approval-required local-write packet that must not execute without
+    operator approval.
+
+Fix in this slice:
+
+- `dashboard_snapshot_payload` now exposes top-level
+  `approval_required_unblock`.
+- The value is copied from `shadow_readiness.approval_required_unblock` when
+  present, otherwise from the trial minimum-product approval packet when
+  present.
+- `operator_next_step` remains unchanged and still points at the safe
+  zero-call residual-review command.
+- README documents that `dashboard-snapshot --json` surfaces the descriptive
+  approval packet without executing it.
+
+Safety:
+
+- Read-only JSON contract change.
+- No Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or provider
+  calls were made.
+- No operator database writes were made.
+- No approval-only commands were executed.
+
+Verification completed before PR/merge:
+
+- Focused regression passed:
+  `test_dashboard_snapshot_exposes_market_bar_approval_packet`.
+- Related dashboard/shadow approval regressions passed:
+  `test_overview_renders_minimum_product_approval_stop_line`,
+  `test_shadow_readiness_payload_surfaces_market_bar_approval_packet_without_writes`,
+  `test_shadow_mode_latest_surfaces_approval_packet_without_run`, and
+  `test_shadow_mode_run_surfaces_approval_packet_without_execute`.
+- Full dashboard command-center snapshot regression passed:
+  `test_dashboard_snapshot_cli_outputs_dashboard_command_center_json`.
+- Ruff passed for touched dashboard source, dashboard tests, and README.
+- Compileall passed for touched dashboard source and tests.
+- `git diff --check` passed.
+- Live root-launch-context smokes using worktree code and the normal root
+  `.env.local` showed:
+  - `dashboard-snapshot --json`: top-level
+    `approval_required_unblock.status=ready_to_execute`, approval command
+    `catalyst-radar market-bars residual-repair --expected-as-of 2026-05-15
+    --expect-missing-count 579 --expect-eligible-count 579 --execute --json`,
+    0 required provider calls, 0 provider calls made, 579 DB writes required to
+    execute, 0 DB writes made, and `operator_next_step.command` still equal to
+    the safe residual-review command.
+  - `assert-shadow-ready --json`: `status=setup_required`,
+    `first_blocker=market_bars`, the same approval command, and 0 external
+    calls / 0 DB writes made.
 
 ## Latest Value-Proof Recovery Boundary Slice
 

@@ -353,6 +353,75 @@ def test_overview_renders_minimum_product_approval_stop_line() -> None:
     assert "residual-repair --expected-as-of 2026-05-15" in text
 
 
+def test_dashboard_snapshot_exposes_market_bar_approval_packet(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'dashboard-approval.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = create_engine(database_url, future=True)
+    create_schema(engine)
+    approval = {
+        "schema_version": "shadow-readiness-approval-required-v1",
+        "area": "market_bars",
+        "status": "ready_to_execute",
+        "approval_required": True,
+        "expected_missing_count": 1,
+        "expected_eligible_count": 1,
+        "external_calls_required": 0,
+        "external_calls_made": 0,
+        "db_writes_required_to_execute": 1,
+        "db_writes_made": 0,
+        "preview_command": (
+            "catalyst-radar market-bars residual-repair "
+            "--expected-as-of 2026-05-08 --json"
+        ),
+        "approval_command": (
+            "catalyst-radar market-bars residual-repair "
+            "--expected-as-of 2026-05-08 --expect-missing-count 1 "
+            "--expect-eligible-count 1 --execute --json"
+        ),
+    }
+
+    def fake_shadow_readiness_payload(*_args, **_kwargs) -> dict[str, object]:
+        return {
+            "schema_version": "shadow-readiness-v1",
+            "status": "setup_required",
+            "ready": False,
+            "first_blocker": "market_bars",
+            "first_gap_count": 1,
+            "canonical_next_action": "Review residual market-bar rows.",
+            "canonical_next_command": (
+                "catalyst-radar market-bars residual-review "
+                "--expected-as-of 2026-05-08"
+            ),
+            "checks": [],
+            "approval_required_unblock": approval,
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+        }
+
+    monkeypatch.setattr(
+        dashboard_data_module,
+        "shadow_readiness_payload",
+        fake_shadow_readiness_payload,
+    )
+
+    payload = dashboard_snapshot_payload(
+        engine=engine,
+        config=AppConfig.from_env({"CATALYST_SCAN_BATCH_SIZE": "2"}),
+        dotenv_loaded=False,
+        filters=DashboardFilters(available_at=datetime(2026, 5, 8, 21, tzinfo=UTC)),
+    )
+
+    assert payload["approval_required_unblock"] == approval
+    assert payload["shadow_readiness"]["approval_required_unblock"] == approval
+    assert payload["approval_required_unblock"]["approval_required"] is True
+    assert payload["approval_required_unblock"]["external_calls_required"] == 0
+    assert payload["approval_required_unblock"]["db_writes_required_to_execute"] == 1
+    assert payload["external_calls_made"] == 0
+
+
 def test_source_workflow_skips_non_point_in_time_options_shortcut() -> None:
     preflight = {
         "evidence_plan": {
