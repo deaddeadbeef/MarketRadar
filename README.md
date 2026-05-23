@@ -1136,6 +1136,8 @@ payload exposes `first_missing_candidate_state_id`, `first_missing_ticker`, and
 `canonical_next_command` for the first non-executing ledger-record command.
 The human CLI output prints the same `next_command=` line so shell users do not
 need to switch to JSON just to find the safe preview command.
+The TUI `ledger coverage` command also includes that `next_command=` value when
+coverage has gaps.
 
 ### Forward outcomes
 
@@ -1181,6 +1183,7 @@ coverage has gaps, the payload exposes `first_missing_value_ledger_entry_id`,
 `first_missing_ticker`, and the preview-only `canonical_next_command` for the
 first non-executing outcome update; generated update commands include explicit
 `--preview`.
+The TUI `outcome coverage` command prints the same `next_command=` value.
 Execute makes 0 provider calls and writes only a `value_outcomes` row. The
 update never mutates the source value-ledger row, candidate state, candidate
 packet, decision card, score, or policy output.
