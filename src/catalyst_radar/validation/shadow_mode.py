@@ -38,6 +38,7 @@ def shadow_mode_run_payload(
     return {
         "schema_version": "shadow-mode-run-v1",
         "mode": mode,
+        "status": run.status,
         "run": shadow_mode_run_to_payload(run),
         "external_calls_required": 0,
         "external_calls_made": 0,
