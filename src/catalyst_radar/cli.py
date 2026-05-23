@@ -5531,6 +5531,20 @@ def _print_market_bars_residual_review(payload: Mapping[str, object]):
             str(_mapping_value(item).get("kind")) for item in options
         )
         print(f"decision_options={option_kinds}")
+        for item in options:
+            option = _mapping_value(item)
+            if option.get("kind") != "active_universe_repair":
+                continue
+            print(
+                "active_universe_repair "
+                f"preview={_compact_cli_text(option.get('preview_command'))} "
+                f"execute={_compact_cli_text(option.get('execute_command'))} "
+                f"expected_missing={option.get('expected_missing_count')} "
+                f"expected_eligible={option.get('expected_eligible_count')} "
+                "db_writes_if_execute="
+                f"{option.get('db_writes_required_to_execute')} "
+                f"external_calls={option.get('external_calls_required')}"
+            )
     print(f"safe_default={payload.get('safe_default')}")
     print(f"next_action={payload.get('next_action')}")
     print(f"boundary={payload.get('zero_call_boundary')}")

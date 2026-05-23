@@ -731,6 +731,10 @@ Residual review does not clear the market-bar gate. It reports stock-like versus
 non-stock residual counts, security-type counts, saved-file projection,
 zero-volume/zero-market-cap evidence, manual repair commands, and explicit
 decision options while keeping `external_calls_made=0` and `db_writes_made=0`.
+The `active_universe_repair` decision option includes a zero-write
+`preview_command`, a guarded `execute_command` with `--expect-missing-count`
+and `--expect-eligible-count`, matching API request bodies, and the local DB
+write count that would be required only if the operator approves execute.
 `priced-in-preflight --json` uses the same market-bar residual-review command as
 its `first_blocker` when this is the current blocker, and includes
 `external_calls_made=0` plus `db_writes_made=0` at top level. It also exposes

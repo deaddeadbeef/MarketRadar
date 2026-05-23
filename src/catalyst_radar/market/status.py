@@ -381,6 +381,7 @@ def market_bars_residual_review_payload(
             "external_calls_made": 0,
         },
         "decision_options": _residual_review_decision_options(
+            engine,
             status_payload,
             expected_as_of_text=expected_text,
             stocks_only=stocks_only,
@@ -1731,6 +1732,7 @@ def _recommended_action_payload(
 
 
 def _residual_review_decision_options(
+    engine: Engine,
     status_payload: Mapping[str, object],
     *,
     expected_as_of_text: str,
@@ -1738,6 +1740,7 @@ def _residual_review_decision_options(
 ) -> list[dict[str, object]]:
     manual = _mapping(status_payload.get("manual"))
     configured = _mapping(status_payload.get("configured_universe_scope"))
+    missing = _int_payload_value(status_payload.get("missing_as_of_bar_count"))
     command_date = date.fromisoformat(expected_as_of_text) if expected_as_of_text else None
     options: list[dict[str, object]] = []
     if manual.get("template_command"):
@@ -1755,6 +1758,32 @@ def _residual_review_decision_options(
                 "db_writes_required": 0,
             }
         )
+    eligible_count = 0
+    if command_date is not None:
+        eligible_count = len(
+            [
+                row
+                for row in _residual_repair_candidate_rows(
+                    engine,
+                    expected_as_of=command_date,
+                    stocks_only=stocks_only,
+                )
+                if bool(row.get("eligible"))
+            ]
+        )
+    preview_command = _residual_repair_command(
+        command_date,
+        stocks_only=stocks_only,
+        json=True,
+    )
+    execute_command = _residual_repair_command(
+        command_date,
+        stocks_only=stocks_only,
+        expected_missing_count=missing,
+        expected_eligible_count=eligible_count,
+        execute=True,
+        json=True,
+    )
     options.append(
         {
             "kind": "active_universe_repair",
@@ -1763,9 +1792,28 @@ def _residual_review_decision_options(
                 "Use when residual rows are stale, unsupported, or not part of "
                 "the intended stock-market scan boundary."
             ),
-            "command": _residual_repair_command(command_date, stocks_only=stocks_only),
+            "command": preview_command,
+            "preview_command": preview_command,
+            "execute_command": execute_command,
+            "api": "POST /api/radar/market-bars/residual-repair",
+            "api_preview_request_body": {
+                "expected_as_of": expected_as_of_text or None,
+                "stocks_only": bool(stocks_only),
+                "execute": False,
+            },
+            "api_execute_request_body": {
+                "expected_as_of": expected_as_of_text or None,
+                "stocks_only": bool(stocks_only),
+                "execute": True,
+                "expected_missing_count": missing,
+                "expected_eligible_count": eligible_count,
+            },
+            "expected_missing_count": missing,
+            "expected_eligible_count": eligible_count,
+            "preview_would_clear_market_bars": bool(missing > 0 and eligible_count == missing),
             "external_calls_required": 0,
             "db_writes_required": 0,
+            "db_writes_required_to_execute": eligible_count,
             "note": (
                 "Preview first. Execute requires explicit count guards and only "
                 "changes local active-universe rows."
@@ -1819,6 +1867,7 @@ def _residual_repair_command(
     execute: bool = False,
     expected_missing_count: int | None = None,
     expected_eligible_count: int | None = None,
+    json: bool = False,
 ) -> str:
     parts = ["catalyst-radar market-bars residual-repair"]
     if expected_as_of is not None:
@@ -1831,6 +1880,8 @@ def _residual_repair_command(
         parts.append(f"--expect-eligible-count {expected_eligible_count}")
     if execute:
         parts.append("--execute")
+    if json:
+        parts.append("--json")
     return " ".join(parts)
 
 

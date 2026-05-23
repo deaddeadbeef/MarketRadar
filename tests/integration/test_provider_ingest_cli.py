@@ -1593,8 +1593,56 @@ def test_market_bars_residual_review_cli_flags_zero_liquidity_saved_gap(
         "active_universe_repair",
         "keep_blocked",
     }
+    active_repair = next(
+        option
+        for option in review_payload["decision_options"]
+        if option["kind"] == "active_universe_repair"
+    )
+    assert active_repair["preview_command"] == (
+        "catalyst-radar market-bars residual-repair "
+        "--expected-as-of 2026-05-08 --json"
+    )
+    assert active_repair["execute_command"] == (
+        "catalyst-radar market-bars residual-repair "
+        "--expected-as-of 2026-05-08 --expect-missing-count 1 "
+        "--expect-eligible-count 1 --execute --json"
+    )
+    assert active_repair["api"] == "POST /api/radar/market-bars/residual-repair"
+    assert active_repair["api_preview_request_body"] == {
+        "expected_as_of": "2026-05-08",
+        "stocks_only": False,
+        "execute": False,
+    }
+    assert active_repair["api_execute_request_body"] == {
+        "expected_as_of": "2026-05-08",
+        "stocks_only": False,
+        "execute": True,
+        "expected_missing_count": 1,
+        "expected_eligible_count": 1,
+    }
+    assert active_repair["expected_missing_count"] == 1
+    assert active_repair["expected_eligible_count"] == 1
+    assert active_repair["preview_would_clear_market_bars"] is True
+    assert active_repair["db_writes_required"] == 0
+    assert active_repair["db_writes_required_to_execute"] == 1
     assert review_payload["external_calls_made"] == 0
     assert review_payload["db_writes_made"] == 0
+
+    human_code = main(
+        [
+            "market-bars",
+            "residual-review",
+            "--expected-as-of",
+            "2026-05-08",
+        ]
+    )
+
+    assert human_code == 0
+    human_output = capsys.readouterr().out
+    assert "active_universe_repair" in human_output
+    assert "--expect-missing-count 1 --expect-eligible-count 1 --execute --json" in (
+        human_output
+    )
 
 
 def test_market_bars_status_routes_zero_liquidity_gap_to_residual_review_without_saved_file(
