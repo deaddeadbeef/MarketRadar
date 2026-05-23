@@ -69,6 +69,15 @@ def test_value_ledger_cli_preview_execute_and_summary(
     assert preview["external_calls_made"] == 0
     assert preview["db_writes_required"] == 1
     assert preview["db_writes_made"] == 0
+    assert "value-ledger record" in preview["preview_command"]
+    assert "--preview" in preview["preview_command"]
+    assert "--execute" not in preview["preview_command"]
+    assert "value-ledger record" in preview["execute_command"]
+    assert "--execute" in preview["execute_command"]
+    assert "--preview" not in preview["execute_command"]
+    assert preview["api"] == "POST /api/value-ledger/entries"
+    assert preview["api_preview_request_body"]["execute"] is False
+    assert preview["api_execute_request_body"]["execute"] is True
     assert preview["entry"]["ticker"] == "MSFT"
     assert preview["entry"]["candidate_state_id"] == "state-MSFT"
     assert preview["entry"]["action_state"] == "warning"
@@ -112,6 +121,9 @@ def test_value_ledger_cli_preview_execute_and_summary(
     executed = json.loads(capsys.readouterr().out)
     assert executed["mode"] == "executed"
     assert executed["db_writes_made"] == 1
+    assert "--preview" in executed["preview_command"]
+    assert executed["execute_command"] is None
+    assert executed["api_execute_request_body"] is None
     with engine.connect() as conn:
         stored = conn.execute(select(value_ledger_entries)).first()
     assert stored is not None
@@ -303,6 +315,8 @@ def test_value_ledger_cli_label_command_writes_auditable_entry(
     assert payload["mode"] == "executed"
     assert payload["external_calls_made"] == 0
     assert payload["db_writes_made"] == 1
+    assert "value-ledger label" in payload["preview_command"]
+    assert payload["execute_command"] is None
     assert payload["entry"]["label"] == "useful"
     assert payload["entry"]["confidence_weighted_value_usd"] == 6.0
 
@@ -509,6 +523,12 @@ def test_value_ledger_api_preview_execute_and_read(tmp_path, monkeypatch) -> Non
     preview = preview_response.json()
     assert preview["mode"] == "preview"
     assert preview["db_writes_made"] == 0
+    assert preview["preview_command"].startswith("catalyst-radar value-ledger record")
+    assert "--preview" in preview["preview_command"]
+    assert "--execute" in preview["execute_command"]
+    assert preview["api_preview_request_body"]["execute"] is False
+    assert preview["api_execute_request_body"]["execute"] is True
+    assert preview["api_execute_request_body"]["artifact_id"] == "state-AAPL"
     with engine.connect() as conn:
         assert (
             conn.execute(select(func.count()).select_from(value_ledger_entries)).scalar_one()
