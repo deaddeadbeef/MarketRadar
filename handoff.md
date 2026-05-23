@@ -1,6 +1,58 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-24 04:19:20 +08:00
+Last updated: 2026-05-24 04:29:39 +08:00
+
+## Latest Duplicate Blocker Preview Slice
+
+Last updated: 2026-05-24 04:29:39 +08:00
+
+Goal alignment / drift check:
+
+- Priority 0 requires setup/data blockers to be clear and not contradictory
+  before the daily shadow/value loop can be trusted.
+- The live residual-repair preview against `data/schwab-live.db` said a guarded
+  execute would clear `market_bars`, but its nested after-clear projection still
+  named `market_bars` as the next blocker because the priced-in blocker ladder
+  contained two `market_bars` rows.
+- That made the approval-gated local DB repair harder to review safely.
+
+Useful definition:
+
+- A residual-repair preview is useful only if the projected next blocker is not
+  a duplicate of the blocker it says it would clear.
+- If no downstream blocker can be projected without executing the local repair,
+  the preview should tell the operator to rerun the zero-call gates after the
+  approved repair.
+
+Fix in this slice:
+
+- `_priced_in_answer_after_current_blocker()` now skips duplicate same-source
+  ladder rows when choosing the "after current blocker" preview.
+- If the ladder contains only duplicate `market_bars` entries, it does not emit
+  a fake downstream blocker.
+- Regression coverage proves duplicate-only market-bar ladders do not expose
+  `after_current_blocker`, while real downstream source previews still work.
+- README documents the residual-repair projection contract.
+
+Safety:
+
+- Read-only projection/reporting change.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls and writes 0 operator database rows.
+- It does not execute residual repair, saved imports, validation replay,
+  value-ledger writes, outcome writes, imports, source batches, LLMs, alert
+  delivery, or orders.
+
+Live zero-call smoke using the root `data/schwab-live.db`:
+
+- `market-bars residual-repair --expected-as-of 2026-05-21 --json` still returns
+  `status=ready_to_execute`, `execute_would_clear_market_bar_gate=true`, and
+  `projected_missing_after_repair_count=0`.
+- Its `post_repair_projection.projected_next_blocker` is now `null`, and
+  `projected_next_action` says to rerun `assert-shadow-ready` and
+  `priced-in-answer` after execution instead of repeating the stale
+  `market_bars` blocker.
+- The smoke made `external_calls_made=0` and `db_writes_made=0`.
 
 ## Latest Trial Gate Next-Command Slice
 

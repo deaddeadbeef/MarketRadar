@@ -8164,7 +8164,16 @@ def _priced_in_answer_after_current_blocker(
     current_source = str(current.get("source") or "").strip()
     if current_source in {"universe", "scan_scope"}:
         return None
-    upcoming = rows[1]
+    upcoming = next(
+        (
+            row
+            for row in rows[1:]
+            if str(row.get("source") or "").strip() != current_source
+        ),
+        None,
+    )
+    if upcoming is None:
+        return None
     next_source = str(upcoming.get("source") or "").strip()
     if not next_source:
         return None
