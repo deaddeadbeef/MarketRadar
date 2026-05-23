@@ -12,6 +12,7 @@ from catalyst_radar.storage.db import engine_from_url
 from catalyst_radar.storage.validation_repositories import ValidationRepository
 from catalyst_radar.validation.value_ledger import (
     build_value_ledger_entry,
+    load_value_ledger_candidate_coverage_payload,
     load_value_ledger_entries_payload,
     load_value_ledger_entry_payload,
     load_value_ledger_summary_payload,
@@ -96,6 +97,25 @@ def value_ledger_entries(
         label=label,
         limit=limit,
     )
+
+
+@router.get("/coverage", dependencies=[Depends(require_role(Role.VIEWER))])
+def value_ledger_candidate_coverage(
+    available_at: Annotated[datetime | None, Query()] = None,
+    period_start: Annotated[date | None, Query()] = None,
+    period_end: Annotated[date | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 200,
+) -> dict[str, object]:
+    try:
+        return load_value_ledger_candidate_coverage_payload(
+            _engine(),
+            available_at=available_at,
+            period_start=period_start,
+            period_end=period_end,
+            limit=limit,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get("/entries/{entry_id}", dependencies=[Depends(require_role(Role.VIEWER))])

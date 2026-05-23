@@ -1,6 +1,54 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 11:45:00 +08:00
+Last updated: 2026-05-23 12:05:00 +08:00
+
+## Latest Value Ledger Candidate Coverage Slice
+
+Last updated: 2026-05-23 12:05:00 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains value-proof instrumentation, not UI wording polish.
+- The value ledger could record individual artifacts, but the operator had no
+  zero-call way to see which surfaced Warning-or-higher candidate states were
+  still missing ledger coverage.
+- The useful definition for this slice is concrete: before monthly value reports
+  can mean anything, MarketRadar must show which surfaced candidate states have
+  not been logged with human feedback/value evidence.
+
+Fix in this slice:
+
+- Added `value-ledger coverage --json`, a read-only command that reports
+  surfaced Warning/Eligible-for-manual-review candidate states, linked
+  candidate-state ledger rows, missing ledger rows, and coverage percentage.
+- Added `GET /api/value-ledger/coverage` with the same zero-call/read-only
+  payload.
+- Missing rows include conservative zero-value `value-ledger record` commands
+  without `--execute`, so the operator can review or edit subjective labels and
+  value estimates before writing anything.
+- README documents the new coverage command/API contract.
+- The API route allowlist now includes the new coverage route and the existing
+  residual market-bar review/repair routes.
+
+Validation observed in this slice:
+
+- Baseline `tests/integration/test_value_ledger.py` passed before edits.
+- Focused coverage regression passed after implementation.
+- Broader value-ledger plus API route allowlist selection passed: 8 tests.
+- Ruff passed for touched value-ledger, CLI, API route, and tests.
+- Compileall passed for `src` and touched tests.
+- `git diff --check` passed.
+- Configured operator-DB `value-ledger coverage --json` smoke returned
+  `status=gaps`, `surfaced=1`, `logged=0`, `missing=1`,
+  `external_calls_made=0`, and `db_writes_made=0`.
+
+Safety:
+
+- This change makes 0 Polygon/Massive, SEC, Schwab, broker, OpenAI, web, app,
+  or provider calls.
+- The coverage command/API writes 0 database rows.
+- It does not mutate candidate states, deterministic scores, policy output,
+  value outcomes, validation results, alert delivery, or broker/order paths.
 
 ## Latest Shadow Run Canonical Next-Action Slice
 

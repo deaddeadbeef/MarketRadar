@@ -196,6 +196,7 @@ from catalyst_radar.validation.shadow_mode import (
 )
 from catalyst_radar.validation.value_ledger import (
     build_value_ledger_entry,
+    load_value_ledger_candidate_coverage_payload,
     load_value_ledger_entries_payload,
     load_value_ledger_entry_payload,
     load_value_ledger_summary_payload,
@@ -750,6 +751,14 @@ def build_parser() -> argparse.ArgumentParser:
     value_ledger_summary.add_argument("--period-end", type=date.fromisoformat)
     value_ledger_summary.add_argument("--target-monthly-value-usd", type=float, default=40.0)
     value_ledger_summary.add_argument("--json", action="store_true")
+
+    value_ledger_coverage = value_ledger_sub.add_parser("coverage")
+    value_ledger_coverage.add_argument("--database-url")
+    value_ledger_coverage.add_argument("--available-at", type=_parse_aware_datetime)
+    value_ledger_coverage.add_argument("--period-start", type=date.fromisoformat)
+    value_ledger_coverage.add_argument("--period-end", type=date.fromisoformat)
+    value_ledger_coverage.add_argument("--limit", type=int, default=200)
+    value_ledger_coverage.add_argument("--json", action="store_true")
 
     value_report = subparsers.add_parser("value-report")
     value_report.add_argument("--database-url")
@@ -2889,6 +2898,19 @@ def main(argv: list[str] | None = None) -> int:
                     print(json.dumps(payload, sort_keys=True))
                     return 0
                 _print_value_ledger_summary(payload)
+                return 0
+            if args.value_ledger_command == "coverage":
+                payload = load_value_ledger_candidate_coverage_payload(
+                    engine,
+                    available_at=args.available_at,
+                    period_start=args.period_start,
+                    period_end=args.period_end,
+                    limit=args.limit,
+                )
+                if args.json:
+                    print(json.dumps(payload, sort_keys=True))
+                    return 0
+                _print_value_ledger_coverage(payload)
                 return 0
         except (TypeError, ValueError) as exc:
             print(f"value ledger failed: {exc}", file=sys.stderr)
@@ -8277,6 +8299,37 @@ def _print_value_ledger_summary(payload: Mapping[str, object]) -> None:
                 "weighted_value_usd="
                 f"{row.get('confidence_weighted_value_usd')}"
             )
+
+
+def _print_value_ledger_coverage(payload: Mapping[str, object]) -> None:
+    print(
+        "value_ledger_coverage "
+        f"status={payload.get('status')} "
+        f"period={payload.get('period_start')}..{payload.get('period_end')} "
+        f"surfaced={payload.get('surfaced_candidate_count') or 0} "
+        f"logged={payload.get('logged_candidate_count') or 0} "
+        f"missing={payload.get('missing_ledger_count') or 0} "
+        f"coverage_pct={payload.get('coverage_pct')} "
+        f"external_calls_made={payload.get('external_calls_made') or 0} "
+        f"db_writes_made={payload.get('db_writes_made') or 0}"
+    )
+    rows = payload.get("rows")
+    rows = rows if isinstance(rows, Sequence) else ()
+    if rows:
+        print("ticker state score as_of ledger_status candidate_state_id ledger_entry_id")
+        for row in rows:
+            if not isinstance(row, Mapping):
+                continue
+            print(
+                f"{row.get('ticker') or 'n/a'} "
+                f"{row.get('state') or 'n/a'} "
+                f"{row.get('final_score') or 'n/a'} "
+                f"{row.get('as_of') or 'n/a'} "
+                f"{row.get('ledger_status')} "
+                f"{row.get('candidate_state_id')} "
+                f"{row.get('ledger_entry_id') or 'n/a'}"
+            )
+    print(f"next_action={_compact_cli_text(payload.get('next_action'))}")
 
 
 def _print_value_outcome_update(payload: Mapping[str, object]) -> None:

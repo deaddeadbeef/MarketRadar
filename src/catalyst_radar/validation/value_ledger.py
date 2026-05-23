@@ -7,12 +7,14 @@ from typing import Any
 from sqlalchemy import Engine, select
 
 from catalyst_radar.core.immutability import thaw_json_value
+from catalyst_radar.core.models import ActionState
 from catalyst_radar.storage.schema import (
     alerts,
     candidate_packets,
     candidate_states,
     decision_cards,
     paper_trades,
+    value_ledger_entries,
 )
 from catalyst_radar.storage.validation_repositories import ValidationRepository
 from catalyst_radar.validation.models import ValueLedgerEntry, value_ledger_entry_id
@@ -59,6 +61,12 @@ USEFUL_DEFINITION = (
     "Useful means a logged MarketRadar artifact changed a manual review decision, "
     "saved research time, avoided a bad action, or created a forward-testable "
     "market-emotion/priced-in hypothesis."
+)
+SURFACED_CANDIDATE_STATES = frozenset(
+    {
+        ActionState.WARNING.value,
+        ActionState.ELIGIBLE_FOR_MANUAL_BUY_REVIEW.value,
+    }
 )
 
 
@@ -383,6 +391,62 @@ def load_value_ledger_summary_payload(
     }
 
 
+def load_value_ledger_candidate_coverage_payload(
+    engine: Engine,
+    *,
+    available_at: datetime | None = None,
+    period_start: date | None = None,
+    period_end: date | None = None,
+    limit: int = 200,
+) -> dict[str, object]:
+    cutoff = _to_utc_datetime(available_at or datetime.now(UTC), "available_at")
+    resolved_start, resolved_end = _resolved_period(
+        cutoff.date(),
+        period_start=period_start,
+        period_end=period_end,
+    )
+    surfaced = _surfaced_candidate_state_rows(
+        engine,
+        available_at=cutoff,
+        period_start=resolved_start,
+        period_end=resolved_end,
+    )
+    ledger_by_candidate = _ledger_entries_by_candidate_state(
+        engine,
+        available_at=cutoff,
+    )
+    rows = [
+        _candidate_coverage_row(row, ledger_by_candidate.get(str(row["id"])), cutoff)
+        for row in surfaced
+    ]
+    missing = [row for row in rows if row["ledger_status"] == "missing"]
+    logged = len(rows) - len(missing)
+    coverage_pct = round((logged / len(rows)) * 100, 2) if rows else 100.0
+    return {
+        "schema_version": "value-ledger-candidate-coverage-v1",
+        "status": "gaps" if missing else "ready",
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "available_at": cutoff.isoformat(),
+        "period_start": resolved_start.isoformat(),
+        "period_end": resolved_end.isoformat(),
+        "surfaced_candidate_states": sorted(SURFACED_CANDIDATE_STATES),
+        "surfaced_candidate_count": len(rows),
+        "logged_candidate_count": logged,
+        "missing_ledger_count": len(missing),
+        "coverage_pct": coverage_pct,
+        "rows": rows[: max(1, int(limit))],
+        "next_action": (
+            "Review missing rows and record value-ledger entries before claiming "
+            "monthly value evidence."
+            if missing
+            else "All surfaced Warning-or-higher candidate states in this period "
+            "have value-ledger coverage."
+        ),
+        "useful_definition": USEFUL_DEFINITION,
+    }
+
+
 def value_ledger_artifact_context(
     engine: Engine,
     *,
@@ -416,6 +480,105 @@ def value_ledger_artifact_context(
         msg = f"referenced {resolved_type} artifact not found"
         raise ValueError(msg)
     return dict(row._mapping)
+
+
+def _surfaced_candidate_state_rows(
+    engine: Engine,
+    *,
+    available_at: datetime,
+    period_start: date,
+    period_end: date,
+) -> list[dict[str, Any]]:
+    with engine.connect() as conn:
+        rows = conn.execute(
+            select(candidate_states)
+            .where(candidate_states.c.created_at <= available_at)
+            .order_by(
+                candidate_states.c.as_of.desc(),
+                candidate_states.c.final_score.desc(),
+                candidate_states.c.id,
+            )
+        ).all()
+    surfaced: list[dict[str, Any]] = []
+    for row in rows:
+        values = dict(row._mapping)
+        if not _is_surfaced_candidate_state(values.get("state")):
+            continue
+        as_of = _date_from_context(values.get("as_of"))
+        if as_of is None or as_of < period_start or as_of > period_end:
+            continue
+        surfaced.append(values)
+    return surfaced
+
+
+def _ledger_entries_by_candidate_state(
+    engine: Engine,
+    *,
+    available_at: datetime,
+) -> dict[str, dict[str, Any]]:
+    with engine.connect() as conn:
+        rows = conn.execute(
+            select(value_ledger_entries)
+            .where(
+                value_ledger_entries.c.available_at <= available_at,
+            )
+            .order_by(
+                value_ledger_entries.c.available_at.desc(),
+                value_ledger_entries.c.id.desc(),
+            )
+        ).all()
+    entries: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        values = dict(row._mapping)
+        candidate_id = str(values.get("candidate_state_id") or "").strip()
+        if not candidate_id and values.get("artifact_type") == "candidate_state":
+            candidate_id = str(values.get("artifact_id") or "").strip()
+        if candidate_id and candidate_id not in entries:
+            entries[candidate_id] = values
+    return entries
+
+
+def _candidate_coverage_row(
+    candidate: Mapping[str, Any],
+    ledger_entry: Mapping[str, Any] | None,
+    available_at: datetime,
+) -> dict[str, object]:
+    as_of = _date_from_context(candidate.get("as_of"))
+    candidate_id = str(candidate.get("id") or "").strip()
+    row = {
+        "candidate_state_id": candidate_id,
+        "ticker": str(candidate.get("ticker") or "").strip().upper(),
+        "as_of": as_of.isoformat() if as_of is not None else None,
+        "state": candidate.get("state"),
+        "final_score": candidate.get("final_score"),
+        "ledger_status": "logged" if ledger_entry else "missing",
+        "ledger_entry_id": ledger_entry.get("id") if ledger_entry else None,
+        "record_command": None,
+    }
+    if not ledger_entry:
+        row["record_command"] = _candidate_coverage_record_command(
+            candidate_id,
+            available_at,
+        )
+    return row
+
+
+def _candidate_coverage_record_command(
+    candidate_state_id: str,
+    available_at: datetime,
+) -> str:
+    return (
+        "catalyst-radar value-ledger record --artifact-type candidate_state "
+        f"--artifact-id {candidate_state_id} --label ignored "
+        "--supported-action research --user-decision unknown "
+        "--estimated-value-usd 0 --confidence 0 "
+        f"--available-at {available_at.isoformat()} --json"
+    )
+
+
+def _is_surfaced_candidate_state(value: object) -> bool:
+    normalized = str(value or "").strip().lower()
+    return normalized in {state.lower() for state in SURFACED_CANDIDATE_STATES}
 
 
 def _resolved_period(
