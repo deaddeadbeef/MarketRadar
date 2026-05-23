@@ -526,11 +526,20 @@ def market_bars_residual_repair_payload(
         expected_missing_count=missing,
         expected_eligible_count=eligible_count,
         execute=True,
+        json=True,
     )
     preview_command = _residual_repair_command(
         resolved_expected_as_of,
         stocks_only=stocks_only,
         execute=False,
+        json=True,
+    )
+    actual_market_bar_gate_cleared = bool(
+        deactivated_count > 0
+        and _int_payload_value(post_status.get("missing_as_of_bar_count")) == 0
+    )
+    projected_market_bar_gate_cleared = bool(
+        post_repair_projection.get("projected_market_bar_gate_cleared")
     )
     return {
         "schema_version": "market-bars-residual-repair-v1",
@@ -550,11 +559,11 @@ def market_bars_residual_repair_payload(
         "deactivated_count": deactivated_count,
         "projected_missing_after_repair_count": projected_missing_after,
         "preview_would_clear_market_bars": would_clear,
+        "execute_would_clear_market_bar_gate": would_clear,
+        "projected_market_bar_gate_cleared": projected_market_bar_gate_cleared,
         "post_repair_projection": post_repair_projection,
-        "clears_market_bar_gate": bool(
-            deactivated_count > 0
-            and _int_payload_value(post_status.get("missing_as_of_bar_count")) == 0
-        ),
+        "clears_market_bar_gate": actual_market_bar_gate_cleared,
+        "actual_market_bar_gate_cleared": actual_market_bar_gate_cleared,
         "eligible_security_type_counts": _security_type_count_mapping(
             row.get("security_type") for row in eligible
         ),
@@ -587,6 +596,7 @@ def market_bars_residual_repair_payload(
         },
         "preview_command": preview_command,
         "execute_command": execute_command,
+        "db_writes_required_to_execute": eligible_count,
         "api": "POST /api/radar/market-bars/residual-repair",
         "api_preview_request_body": {
             "expected_as_of": resolved_expected_as_of.isoformat(),

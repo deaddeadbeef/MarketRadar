@@ -1,6 +1,50 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-24 00:36:00 +08:00
+Last updated: 2026-05-24 00:45:00 +08:00
+
+## Latest Residual Repair Preview Contract Slice
+
+Last updated: 2026-05-24 00:45:00 +08:00
+
+Goal alignment / drift check:
+
+- The current hard product blocker remains M1 market bars.
+- A live zero-call `market-bars residual-repair --expected-as-of 2026-05-15
+  --json` preview showed `status=ready_to_execute` and
+  `preview_would_clear_market_bars=true`, but the same top-level payload also
+  exposed `clears_market_bar_gate=false`.
+- That is technically the current/actual gate state, but it is easy to confuse
+  with the projected post-execute state at the exact approval point that would
+  unblock market bars.
+
+Useful definition:
+
+- Residual-repair preview must distinguish current actual gate state from the
+  projected post-execute gate state.
+- Suggested preview/execute commands inside JSON payloads must preserve
+  `--json` so scripts can round-trip the approval packet without guessing.
+
+Fix in this slice:
+
+- `market-bars residual-repair` now includes
+  `actual_market_bar_gate_cleared`,
+  `execute_would_clear_market_bar_gate`,
+  `projected_market_bar_gate_cleared`, and
+  `db_writes_required_to_execute` at the top level.
+- Existing `clears_market_bar_gate` remains the actual post-execute gate result
+  for compatibility.
+- `preview_command` and `execute_command` in the JSON payload now include
+  `--json`.
+- README documents the actual-vs-projected gate contract.
+
+Safety:
+
+- This is residual-repair preview/contract clarity only.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls.
+- It does not execute residual repair, deactivate securities, import bars,
+  change scan scope, build packets/cards, mutate candidate state, write value
+  rows/outcomes, run LLMs, deliver alerts, or submit orders.
 
 ## Latest Demo CLI Trust-Gate Test Slice
 

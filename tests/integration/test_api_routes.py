@@ -2672,6 +2672,13 @@ def test_post_radar_market_bars_residual_repair_previews_and_executes(
     assert preview["mode"] == "preview"
     assert preview["eligible_count"] == 1
     assert preview["preview_would_clear_market_bars"] is True
+    assert preview["execute_would_clear_market_bar_gate"] is True
+    assert preview["projected_market_bar_gate_cleared"] is True
+    assert preview["actual_market_bar_gate_cleared"] is False
+    assert preview["clears_market_bar_gate"] is False
+    assert preview["db_writes_required_to_execute"] == 1
+    assert preview["preview_command"].endswith("--json")
+    assert preview["execute_command"].endswith("--execute --json")
     projection = preview["post_repair_projection"]
     assert projection["schema_version"] == "market-bars-residual-repair-projection-v1"
     assert projection["status"] == "would_clear_market_bars"
@@ -2701,6 +2708,8 @@ def test_post_radar_market_bars_residual_repair_previews_and_executes(
     assert executed["status"] == "executed"
     assert executed["deactivated_count"] == 1
     assert executed["db_writes_made"] == 1
+    assert executed["actual_market_bar_gate_cleared"] is True
+    assert executed["clears_market_bar_gate"] is True
     assert executed["post_repair_status"]["status"] == "ready"
     with engine.connect() as conn:
         active = conn.execute(
