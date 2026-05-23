@@ -93,6 +93,8 @@ def test_assert_trial_ready_allows_read_only_demo_without_claiming_investment_re
     assert product_gate["ready"] is False
     assert product_gate["status"] == "blocked"
     assert product_gate["highest_allowed_use"] == "safe_browsing_only"
+    assert product_gate["canonical_next_action"] == product_gate["next_action"]
+    assert product_gate["canonical_next_command"] == product_gate["next_command"]
     assert product_gate["minimum_features_required"]["safe_read_only_gate"] is True
     assert product_gate["minimum_features_required"]["zero_hidden_calls_or_writes"] is True
     assert (
@@ -137,6 +139,66 @@ def test_assert_trial_ready_blocks_when_real_llm_mode_is_enabled(
     assert product_gate["first_blocker"] == "llm_real_mode_disabled"
     assert payload["external_calls_made"] == 0
     assert payload["db_writes_made"] == 0
+
+
+def test_trial_minimum_product_gate_preserves_priced_in_blocker_command() -> None:
+    payload = trial_readiness_payload(
+        create_engine("sqlite:///:memory:"),
+        AppConfig(),
+        available_at=datetime(2026, 5, 23, 12, tzinfo=UTC),
+        priced_in_answer={
+            "schema_version": "priced-in-answer-v1",
+            "status": "blocked",
+            "counts": {"total_rows": 5},
+            "first_blocker": "market_bars",
+            "canonical_next_action": "Review residual market-bar rows.",
+            "canonical_next_command": (
+                "catalyst-radar market-bars residual-review "
+                "--expected-as-of 2026-05-15"
+            ),
+            "full_market_trust_gate": {
+                "trusted_full_market_answer": False,
+                "first_blocker": "market_bars",
+            },
+            "full_scan": {
+                "mode": "selected_universe",
+                "active_securities": 12669,
+                "scanned_rows": 2429,
+                "ranked_rows": 2429,
+            },
+            "scan_scope": {"mode": "selected_universe", "total_rows": 2429},
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+        },
+        shadow_readiness={
+            "schema_version": "shadow-readiness-v1",
+            "status": "setup_required",
+            "ready": False,
+            "first_blocker": "market_bars",
+            "checks": [],
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+        },
+        value_report={
+            "schema_version": "monthly-value-report-v1",
+            "verdict": "insufficient_evidence",
+            "first_blocker": "candidate_ledger_coverage",
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+        },
+    )
+
+    assert payload["safe_to_try_read_only"] is True
+    product_gate = payload["minimum_useful_product"]
+    assert product_gate["ready"] is False
+    assert product_gate["first_blocker"] == "market_bars"
+    assert product_gate["canonical_next_action"] == "Review residual market-bar rows."
+    assert product_gate["canonical_next_command"] == (
+        "catalyst-radar market-bars residual-review --expected-as-of 2026-05-15"
+    )
+    assert product_gate["next_command"] == product_gate["canonical_next_command"]
+    assert product_gate["external_calls_made"] == 0
+    assert product_gate["db_writes_made"] == 0
 
 
 def test_trial_readiness_marks_minimum_useful_product_ready_only_after_trusted_answer() -> None:
@@ -192,6 +254,9 @@ def test_trial_readiness_marks_minimum_useful_product_ready_only_after_trusted_a
     assert product_gate["status"] == "ready"
     assert product_gate["highest_allowed_use"] == "read_only_decision_support"
     assert product_gate["first_blocker"] is None
+    assert product_gate["canonical_next_action"] == product_gate["next_action"]
+    assert product_gate["canonical_next_command"] == product_gate["next_command"]
+    assert product_gate["canonical_next_command"] == "catalyst-radar dashboard-tui"
     assert product_gate["minimum_features_required"] == {
         "safe_read_only_gate": True,
         "shadow_gate_visible": True,
