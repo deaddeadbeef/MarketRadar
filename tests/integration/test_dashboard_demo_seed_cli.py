@@ -416,6 +416,15 @@ def test_dashboard_snapshot_exposes_market_bar_approval_packet(
 
     assert payload["approval_required_unblock"] == approval
     assert payload["shadow_readiness"]["approval_required_unblock"] == approval
+    assert payload["status"] == "setup_required"
+    assert payload["first_blocker"] == "market_bars"
+    assert payload["first_gap_count"] == 1
+    assert payload["canonical_next_action"] == "Review residual market-bar rows."
+    assert payload["canonical_next_command"] == (
+        "catalyst-radar market-bars residual-review --expected-as-of 2026-05-08"
+    )
+    assert payload["next_action"] == payload["canonical_next_action"]
+    assert payload["next_command"] == payload["canonical_next_command"]
     assert payload["approval_required_unblock"]["approval_required"] is True
     assert payload["approval_required_unblock"]["external_calls_required"] == 0
     assert payload["approval_required_unblock"]["db_writes_required_to_execute"] == 1

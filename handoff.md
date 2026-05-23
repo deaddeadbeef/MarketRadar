@@ -1,6 +1,72 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-24 07:38:12 +08:00
+Last updated: 2026-05-24 07:48:40 +08:00
+
+## Latest Dashboard Top-Level Blocker Contract Slice
+
+Goal alignment / drift check:
+
+- Priority 0 requires `priced-in-preflight`, `priced-in-answer`,
+  `market-bars status`, `dashboard-snapshot`, API, and TUI/scriptable surfaces
+  to agree on the first blocker.
+- The approval-gated market-bar residual repair is still not executed without
+  explicit operator approval.
+- A live zero-call audit showed the nested `shadow_readiness` and
+  `priced_in_answer` sections agreed on `first_blocker=market_bars`, but
+  `dashboard-snapshot --json` top-level fields were null. That made the
+  scriptable dashboard less useful than the readiness commands for automation.
+
+Useful definition:
+
+- `dashboard-snapshot --json` is useful as a replacement dashboard UI only if
+  automation can read `status`, `first_blocker`, `first_gap_count`,
+  `canonical_next_action`, and `canonical_next_command` without parsing nested
+  sections.
+- The promoted fields should prefer the daily shadow-readiness gate, then fall
+  back to the priced-in answer and operator-next-step card.
+
+Fix in this slice:
+
+- `dashboard_snapshot_payload` now promotes top-level `status`,
+  `first_blocker`, `first_gap_count`, `canonical_next_action`,
+  `canonical_next_command`, `next_action`, and `next_command`.
+- These fields are sourced from `shadow_readiness` first, then
+  `priced_in_answer`, then `operator_next_step`.
+- The existing top-level `operator_next_step` and `approval_required_unblock`
+  contracts remain unchanged.
+- README documents the top-level blocker/action fields for
+  `dashboard-snapshot --json`.
+
+Safety:
+
+- Read-only JSON contract change.
+- No Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or provider
+  calls were made.
+- No operator database writes were made.
+- No approval-only commands were executed.
+
+Verification completed before PR/merge:
+
+- Focused dashboard snapshot tests passed:
+  `test_dashboard_snapshot_exposes_market_bar_approval_packet` and
+  `test_dashboard_snapshot_cli_outputs_dashboard_command_center_json`.
+- Ruff passed for touched dashboard source, dashboard tests, and README.
+- Compileall passed for touched dashboard source and tests.
+- `git diff --check` passed.
+- Live root-launch-context smokes using worktree code and the normal root
+  `.env.local` showed:
+  - `dashboard-snapshot --json`: top-level `status=setup_required`,
+    `first_blocker=market_bars`, `first_gap_count=579`, and
+    `canonical_next_command=catalyst-radar market-bars residual-review
+    --expected-as-of 2026-05-15`.
+  - The same snapshot nested `shadow_readiness` had the same blocker, gap count,
+    and command; nested `priced_in_answer` also matched, with
+    `status=blocked`.
+  - The snapshot still made 0 external calls and exposed the existing
+    approval packet with `approval_writes_required=579` and
+    `approval_writes_made=0`.
+  - `assert-shadow-ready --json` and `priced-in-answer --json` matched the same
+    blocker/gap/command and made 0 external calls / 0 DB writes.
 
 ## Latest Dashboard Approval Packet Slice
 

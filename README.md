@@ -608,10 +608,13 @@ The snapshot uses the dashboard data helpers for readiness, latest run,
 candidate rows, alerts, IPO/S-1 rows, themes, validation, costs, broker context,
 ops health, telemetry, telemetry coverage, live activation, and call planning.
 It is read-only, redacts restricted provider payloads, and makes 0 Polygon, SEC,
-Schwab, or OpenAI calls. If the underlying shadow or trial readiness gate has an
-approval-only local unblock packet, such as guarded market-bar residual repair,
-`dashboard-snapshot --json` also exposes it as top-level
-`approval_required_unblock` without executing it.
+Schwab, or OpenAI calls. It also promotes the current status, first blocker,
+gap count, next action, and next command to top-level fields so script clients
+can compare it directly with `assert-shadow-ready` and `priced-in-answer`
+without parsing nested dashboard sections. If the underlying shadow or trial
+readiness gate has an approval-only local unblock packet, such as guarded
+market-bar residual repair, `dashboard-snapshot --json` also exposes it as
+top-level `approval_required_unblock` without executing it.
 
 `priced-in-queue` is the scriptable replacement for the TUI insight table. It
 returns the same full-scan boundary and ranked emotion-vs-reaction rows used by
