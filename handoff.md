@@ -1,6 +1,48 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 12:20:00 +08:00
+Last updated: 2026-05-23 12:40:00 +08:00
+
+## Latest Shadow Run Planned-Call Audit Slice
+
+Last updated: 2026-05-23 12:40:00 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains repeatable shadow-mode operation with auditable call
+  boundaries. This slice closes a Priority 1 shadow-run record gap.
+- Shadow-mode run payloads already carried the readiness call-boundary max in
+  nested payload, but the persisted/top-level `provider_calls_planned` field was
+  always `0`.
+
+Fix in this slice:
+
+- `build_shadow_mode_run` now persists
+  `call_boundary.planned_run_external_call_count_max` into
+  `provider_calls_planned`.
+- `provider_calls_made` remains `0` for shadow-mode preview/execute.
+- The nested call-boundary payload remains unchanged.
+
+Validation observed in this slice:
+
+- The focused regression failed before implementation because
+  `provider_calls_planned` was `0` while the boundary max was `3`.
+- Full shadow-mode regression passed after the fix: 6 passed.
+- Adjacent shadow readiness/API regression selection passed: 5 passed.
+- Ruff passed for touched shadow-mode source/tests.
+- Compileall passed for `src` and touched shadow-mode tests.
+- `git diff --check` passed.
+- Configured operator-DB preview smoke against `.env.local`'s
+  `data/local/schwab-live.db` returned `mode=preview`,
+  `status=setup_required`, `provider_calls_planned=6`,
+  `provider_calls_made=0`, `external_calls_made=0`, and `db_writes_made=0`.
+
+Safety:
+
+- The audit fix makes 0 provider, broker, model, order, or web calls.
+- Preview writes 0 database rows; execute behavior is unchanged and writes one
+  shadow audit row only when `--execute` is supplied.
+- The live operator DB residual repair remains blocked until the operator
+  explicitly approves the guarded write command.
 
 ## Latest Shadow Readiness Not-Configured Status Slice
 
