@@ -620,6 +620,10 @@ snapshots and shadow-mode run payloads also use residual review as the first
 action for incomplete latest-bar coverage, so daily audit records do not route
 operators directly to manual bar filling before the residual rows have been
 reviewed.
+The `priced-in-answer --json` payload also exposes the same first unblock step
+at top level as `first_blocker`, `first_gap_count`, `canonical_next_action`, and
+`canonical_next_command`, so CLI/API/TUI clients can consume one canonical
+blocker/action pair without digging through nested trust-gate details.
 If the review shows strict zero-liquidity/no-history rows that should not remain
 active, use `market-bars residual-repair` as a guarded local-universe repair.
 It previews by default with 0 provider calls and 0 DB writes. Execution requires

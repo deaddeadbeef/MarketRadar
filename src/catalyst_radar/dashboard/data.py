@@ -4525,6 +4525,15 @@ def priced_in_answer_payload(
         next_command=next_command,
         stocks_only=stocks_only,
     )
+    canonical_first_blocker = (
+        full_market_trust_gate.get("first_blocker")
+        or operator_next_step.get("first_blocker")
+    )
+    canonical_first_gap_count = (
+        full_market_trust_gate.get("first_gap_count")
+        if canonical_first_blocker
+        else None
+    )
     return {
         "schema_version": "priced-in-answer-v1",
         "status": answer_status,
@@ -4538,6 +4547,10 @@ def priced_in_answer_payload(
         "investment_decision_boundary": investment_decision_boundary,
         "external_calls_made": 0,
         "db_writes_made": 0,
+        "first_blocker": canonical_first_blocker,
+        "first_gap_count": canonical_first_gap_count,
+        "canonical_next_action": next_action,
+        "canonical_next_command": next_command,
         "counts": {
             "total_rows": int(_finite_float(resolved_queue.get("total_count"))),
             "visible_rows": int(_finite_float(resolved_queue.get("count"))),
