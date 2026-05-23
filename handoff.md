@@ -1,6 +1,48 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 23:27:00 +08:00
+Last updated: 2026-05-23 23:58:00 +08:00
+
+## Latest Shadow Blocked Scope Slice
+
+Last updated: 2026-05-23 23:58:00 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains repeatable shadow-mode evidence for the full-market
+  priced-in scan.
+- A live zero-call preview showed `shadow-mode run --preview` was correctly
+  blocked by `market_bars`, but the run record still displayed
+  `scan_scope=selected_universe` because it reused the latest selected-universe
+  scan scope. That could make a blocked full-market gate look like intentional
+  selected-universe shadow evidence.
+
+Useful definition:
+
+- A shadow-mode run record must not label a blocked setup state as valid
+  selected-universe evidence.
+- If the current readiness gate is blocked by missing market bars, the run's
+  scope should say `blocked_full_market_gate` while the status remains
+  `setup_required`.
+
+Fix in this slice:
+
+- `build_shadow_mode_run()` now derives an effective shadow run scope from the
+  current shadow-readiness gate.
+- When current readiness is `setup_required` and missing market bars block the
+  gate, the run stores `scan_scope=blocked_full_market_gate` instead of stale
+  `selected_universe`.
+- Added a regression test for the live failure shape: selected-universe scan
+  scope in the snapshot plus current `market_bars` blocker and 579 missing bars.
+- README documents the blocked-scope contract.
+
+Safety:
+
+- This is local shadow-run classification only.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls.
+- It does not run residual repair, import bars, change scan scope, write the
+  operator DB, mutate candidate state, write value rows/outcomes, run LLMs,
+  deliver alerts, or submit orders.
 
 ## Latest Local Text Human Verdict Slice
 

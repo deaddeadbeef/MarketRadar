@@ -1042,7 +1042,9 @@ snapshot data. It also includes explicit `preview_command` and
 write command contains `--execute`. `shadow-mode status` also uses the current
 readiness canonical next action whenever current readiness is not ready, so a
 stale persisted run cannot hide today's first unblock command. The status
-payload exposes the same first-blocker fields.
+payload exposes the same first-blocker fields. If the current readiness gate is
+blocked by market bars, shadow run records use `scan_scope=blocked_full_market_gate`
+instead of reusing a stale `selected_universe` scope from an older scan.
 
 ### Value ledger
 

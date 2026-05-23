@@ -165,7 +165,7 @@ def build_shadow_mode_run(
     planned_external_calls = _int(
         call_boundary.get("planned_run_external_call_count_max")
     )
-    scan_scope = str(scan_scope_payload.get("mode") or "unknown")
+    raw_scan_scope = str(scan_scope_payload.get("mode") or "unknown")
     candidate_rows = [
         row for row in _sequence(snapshot.get("candidate_rows")) if isinstance(row, Mapping)
     ]
@@ -189,6 +189,14 @@ def build_shadow_mode_run(
     candidate_count = _int(discovered_yield.get("candidate_states"), len(candidate_rows))
     blocker_count = len(
         [row for row in _sequence(shadow.get("blockers")) if isinstance(row, Mapping)]
+    )
+    scan_scope = _effective_shadow_scan_scope(
+        shadow,
+        raw_scan_scope=raw_scan_scope,
+        candidate_count=candidate_count,
+        scanned_securities=scanned,
+        missing_market_bar_count=missing_bars,
+        blocker_count=blocker_count,
     )
     resolved_as_of = as_of or _parse_date(latest_run.get("as_of")) or _parse_date(
         freshness.get("latest_daily_bar_date")
@@ -267,6 +275,33 @@ def classify_shadow_run_status(
     if blocker_count > 0:
         return "blocked_scan"
     return "blocked_scan"
+
+
+def _effective_shadow_scan_scope(
+    shadow_readiness: Mapping[str, object],
+    *,
+    raw_scan_scope: str,
+    candidate_count: int,
+    scanned_securities: int,
+    missing_market_bar_count: int,
+    blocker_count: int,
+) -> str:
+    readiness = str(shadow_readiness.get("status") or "").strip().lower()
+    scope = raw_scan_scope.strip().lower() or "unknown"
+    if readiness == "ready":
+        return scope
+    if (
+        readiness == "setup_required"
+        and missing_market_bar_count > 0
+        and _shadow_mode_status_first_blocker(shadow_readiness)
+        in {"market_bars", "latest_market_bars", "active_universe"}
+    ):
+        return "blocked_full_market_gate"
+    if candidate_count > 0 or scanned_securities > 0:
+        return scope
+    if blocker_count > 0:
+        return "blocked"
+    return "setup_required" if readiness == "setup_required" else "unknown"
 
 
 def shadow_mode_run_to_payload(run: ShadowModeRun | None) -> dict[str, object] | None:
