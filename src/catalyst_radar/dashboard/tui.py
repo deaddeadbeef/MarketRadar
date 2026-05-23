@@ -8292,6 +8292,12 @@ def _costs_lines(payload: Mapping[str, object], width: int) -> list[str]:
                     "Precision at 5 / 10",
                     _precision_pair_text(validation_evidence),
                 ),
+                ("Monthly value blocker", value_report.get("first_blocker") or "none"),
+                ("Value next action", value_report.get("canonical_next_action") or "n/a"),
+                (
+                    "Value next command",
+                    value_report.get("canonical_next_command") or "n/a",
+                ),
             ),
             width=width,
         )

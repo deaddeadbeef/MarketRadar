@@ -1,6 +1,53 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-24 03:25:36 +08:00
+Last updated: 2026-05-24 03:48:47 +08:00
+
+## Latest TUI Monthly Value Next Command Slice
+
+Last updated: 2026-05-24 03:48:47 +08:00
+
+Goal alignment / drift check:
+
+- The mission brief prioritizes value-ledger, outcome, validation, and monthly
+  value proof loops over general UI copy.
+- `value-report`, JSON, and human CLI already exposed the first value-proof
+  blocker plus safe canonical next command, but the terminal dashboard Costs
+  page summarized the monthly verdict without that next command.
+- That left the TUI weaker than CLI/JSON for the M7 workflow when a dashboard
+  operator needed to continue from candidate-ledger coverage into preview-first
+  value evidence.
+
+Useful definition:
+
+- The Costs page should name the monthly value blocker, next action, and same
+  canonical next command as `value-report`.
+- The next command must remain the existing preview-first command from the
+  report; the dashboard must not execute writes or provider calls while
+  rendering.
+
+Fix in this slice:
+
+- Costs page monthly value details now include `Monthly value blocker`, `Value
+  next action`, and `Value next command`.
+- Regression coverage verifies the rendered Costs page includes the
+  candidate-ledger blocker and preview-only `value-ledger record ... --preview
+  --json` command.
+- README documents the TUI monthly value next-command parity.
+
+Safety:
+
+- Presentation-only TUI/report rendering change.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls and writes 0 operator database rows.
+- It does not execute value-ledger writes, outcome writes, validation replay,
+  residual repair, imports, source batches, LLMs, alert delivery, or orders.
+
+Live zero-call smoke using the root `data/schwab-live.db`:
+
+- `dashboard-snapshot --page costs --available-at 2026-05-23T16:00:00+00:00`
+  now shows `Monthly value blocker=validation_evidence`, the preview-only
+  `validation-replay ... --preview --json` next command, and
+  `External calls made: 0`.
 
 ## Latest Validation Replay Preview Status Slice
 

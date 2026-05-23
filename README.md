@@ -1263,7 +1263,10 @@ top-level report exposes `first_blocker`, `first_gap_count`,
 `canonical_next_action`, and `canonical_next_command` for the first missing
 value-proof evidence step. Human `value-report` output prints the same
 `evidence_gap`, `next_action`, and `next_command` lines so the CLI surface can
-drive the same safe preview-first workflow as JSON/API clients.
+drive the same safe preview-first workflow as JSON/API clients. The terminal
+dashboard Costs page also shows the report's first blocker, next action, and
+same next command, so a dashboard-only operator can continue the value-proof
+loop without switching to JSON first.
 `validation_evidence` section only treats successful validation runs whose
 as-of window is inside the reported month as monthly evidence. If the latest
 successful run is for another month, the report fails closed with
