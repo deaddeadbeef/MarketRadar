@@ -17,7 +17,10 @@ from catalyst_radar.validation.value_ledger import (
     load_value_ledger_candidate_coverage_payload,
     value_ledger_entry_payload,
 )
-from catalyst_radar.validation.value_outcomes import value_outcome_payload
+from catalyst_radar.validation.value_outcomes import (
+    load_value_outcome_coverage_payload,
+    value_outcome_payload,
+)
 
 USEFUL_LABELS = frozenset(
     {"useful", "good-research", "acted", "avoided-loss", "blocked-correctly"}
@@ -58,6 +61,13 @@ def monthly_value_report_payload(
         limit=10_000,
     )
     candidate_coverage = load_value_ledger_candidate_coverage_payload(
+        engine,
+        available_at=cutoff,
+        period_start=start,
+        period_end=end,
+        limit=20,
+    )
+    outcome_coverage = load_value_outcome_coverage_payload(
         engine,
         available_at=cutoff,
         period_start=start,
@@ -125,6 +135,7 @@ def monthly_value_report_payload(
         "candidate_ledger_coverage": _candidate_ledger_coverage_summary(
             candidate_coverage
         ),
+        "value_outcome_coverage": _value_outcome_coverage_summary(outcome_coverage),
         "useful_insights_count": len(useful_entries),
         "noisy_insights_count": len(noisy_entries),
         "acted_insights_count": len(acted_entries),
@@ -249,6 +260,27 @@ def _candidate_ledger_coverage_summary(
         "surfaced_candidate_count": int(coverage.get("surfaced_candidate_count") or 0),
         "logged_candidate_count": int(coverage.get("logged_candidate_count") or 0),
         "missing_ledger_count": int(coverage.get("missing_ledger_count") or 0),
+        "coverage_pct": coverage.get("coverage_pct"),
+        "rows": [row for row in rows if isinstance(row, Mapping)],
+        "next_action": coverage.get("next_action"),
+        "external_calls_made": int(coverage.get("external_calls_made") or 0),
+        "db_writes_made": int(coverage.get("db_writes_made") or 0),
+    }
+
+
+def _value_outcome_coverage_summary(
+    coverage: Mapping[str, object],
+) -> dict[str, object]:
+    rows = coverage.get("rows")
+    rows = rows if isinstance(rows, Iterable) else ()
+    return {
+        "schema_version": "monthly-value-outcome-coverage-v1",
+        "status": coverage.get("status") or "unknown",
+        "ledger_entry_count": int(coverage.get("ledger_entry_count") or 0),
+        "linked_outcome_count": int(coverage.get("linked_outcome_count") or 0),
+        "missing_outcome_count": int(coverage.get("missing_outcome_count") or 0),
+        "computed_outcome_count": int(coverage.get("computed_outcome_count") or 0),
+        "insufficient_data_count": int(coverage.get("insufficient_data_count") or 0),
         "coverage_pct": coverage.get("coverage_pct"),
         "rows": [row for row in rows if isinstance(row, Mapping)],
         "next_action": coverage.get("next_action"),

@@ -1,6 +1,61 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 12:40:00 +08:00
+Last updated: 2026-05-23 12:50:00 +08:00
+
+## Latest Value Outcome Coverage Slice
+
+Last updated: 2026-05-23 12:50:00 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains monthly value proof and forward outcome tracking, not
+  dashboard copy polish.
+- Value outcomes could be computed and listed, but the operator had no zero-call
+  way to see which value-ledger rows in a month still lacked outcome rows.
+- The useful definition for this slice is concrete: before claiming monthly
+  value, MarketRadar should show every ledger entry in the period, whether it
+  has a linked value outcome, and a preview-only command for missing outcomes.
+
+Fix in this slice:
+
+- Added `value-outcome coverage --json`, a read-only command that reports
+  ledger-entry count, linked outcome count, missing outcome count, computed
+  outcome count, insufficient-data count, coverage percent, and missing rows.
+- Missing rows include non-executing `value-outcome update` preview commands
+  without `--execute`.
+- Added `GET /api/value-outcomes/coverage` with the same read-only payload.
+- Monthly `value-report --month ... --json` now includes
+  `value_outcome_coverage`, so missing forward outcomes are visible before
+  claiming monthly value evidence.
+- README documents the new outcome-coverage command/API/report contract.
+
+Validation observed in this slice:
+
+- Baseline value-outcome/value-report integration tests passed before edits.
+- The new CLI coverage regression failed before implementation because the
+  `coverage` subcommand did not exist.
+- Focused CLI and API/monthly-report outcome-coverage regressions passed after
+  implementation.
+- Value outcome and value report integration files passed: 12 tests.
+- API route allowlist test passed for the new coverage route.
+- Ruff passed for touched value-outcome, value-report, API, CLI, and tests.
+- Compileall passed for `src` and touched tests.
+- `git diff --check` passed.
+- Configured operator-DB `value-outcome coverage --json` smoke returned
+  `status=ready`, `ledger=0`, `linked=0`, `missing=0`,
+  `external_calls_made=0`, and `db_writes_made=0`.
+- Configured operator-DB `value-report --month 2026-05 --json` smoke returned
+  `verdict=insufficient_evidence`, `value_outcome_coverage.status=ready`,
+  `ledger=0`, `missing=0`, `external_calls_made=0`, and `db_writes_made=0`.
+
+Safety:
+
+- This change makes 0 Polygon/Massive, SEC, Schwab, broker, OpenAI, web, app,
+  or provider calls.
+- The new coverage command/API writes 0 database rows.
+- It does not mutate value-ledger rows, value outcomes, deterministic candidate
+  state, scores, policy output, Decision Cards, alert delivery, validation
+  results, or broker/order paths.
 
 ## Latest Shadow Status Current-Readiness Slice
 

@@ -897,15 +897,19 @@ Forward outcomes are computed from already stored point-in-time daily bars:
 ```powershell
 catalyst-radar value-outcome update --ledger-id <VALUE_LEDGER_ID> --outcome-available-at <UTC-outcome-cutoff> --json
 catalyst-radar value-outcome update --ledger-id <VALUE_LEDGER_ID> --outcome-available-at <UTC-outcome-cutoff> --execute --json
+catalyst-radar value-outcome coverage --available-at <UTC-outcome-cutoff> --json
 catalyst-radar value-outcome list --ledger-id <VALUE_LEDGER_ID> --json
 catalyst-radar value-outcome show <VALUE_OUTCOME_ID> --json
 ```
 
-`POST /api/value-outcomes/update`, `GET /api/value-outcomes`, and
-`GET /api/value-outcomes/{id}` expose the same contract. Outcome preview makes 0
-provider calls and 0 database writes; execute makes 0 provider calls and writes
-only a `value_outcomes` row. The update never mutates the source value-ledger
-row, candidate state, candidate packet, decision card, score, or policy output.
+`POST /api/value-outcomes/update`, `GET /api/value-outcomes`,
+`GET /api/value-outcomes/coverage`, and `GET /api/value-outcomes/{id}` expose
+the same contract. Outcome preview makes 0 provider calls and 0 database writes;
+coverage is read-only and shows which value-ledger rows in the period still
+need an outcome row before monthly value evidence is treated as measured.
+Execute makes 0 provider calls and writes only a `value_outcomes` row. The
+update never mutates the source value-ledger row, candidate state, candidate
+packet, decision card, score, or policy output.
 When fewer than 60 future trading bars are visible at the supplied cutoff, the
 outcome row is marked `insufficient_data` and only available horizons are
 populated. The outcome payload includes `expected_review_horizon_days` and
@@ -935,8 +939,11 @@ Warning-or-higher candidate states surfaced in the month versus candidate-state
 ledger rows recorded for them. If coverage has gaps, the report includes the
 same conservative non-executing `value-ledger record` commands shown by
 `value-ledger coverage`, so missing human feedback is visible before claiming
-monthly value evidence. The terminal dashboard Costs page surfaces the same
-candidate ledger coverage and missing-ledger count for human review.
+monthly value evidence. It also includes `value_outcome_coverage`, a read-only
+summary of value-ledger rows versus linked outcome rows, including non-executing
+`value-outcome update` preview commands for missing outcomes. The terminal
+dashboard Costs page surfaces the same candidate ledger coverage and
+missing-ledger count for human review.
 
 To compare MarketRadar against simple deterministic baselines before tuning
 scores or adding more intelligence, run a point-in-time validation replay and

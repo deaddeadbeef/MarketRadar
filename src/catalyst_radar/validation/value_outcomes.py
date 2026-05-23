@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import Engine, select
@@ -234,6 +235,65 @@ def load_value_outcomes_payload(
     }
 
 
+def load_value_outcome_coverage_payload(
+    engine: Engine,
+    *,
+    available_at: datetime | None = None,
+    period_start: date | None = None,
+    period_end: date | None = None,
+    limit: int = 200,
+) -> dict[str, object]:
+    cutoff = _to_utc_datetime(available_at or datetime.now(UTC), "available_at")
+    resolved_start, resolved_end = _resolved_period(
+        cutoff.date(),
+        period_start=period_start,
+        period_end=period_end,
+    )
+    repo = ValidationRepository(engine)
+    entries = repo.list_value_ledger_entries(
+        available_at=cutoff,
+        period_start=resolved_start,
+        period_end=resolved_end,
+        limit=10_000,
+    )
+    outcomes = repo.list_value_outcomes(available_at=cutoff, limit=10_000)
+    latest_outcome_by_ledger = _latest_outcomes_by_ledger(outcomes)
+    rows = [
+        _value_outcome_coverage_row(
+            entry,
+            latest_outcome_by_ledger.get(entry.id),
+            cutoff,
+        )
+        for entry in entries
+    ]
+    missing = [row for row in rows if row["outcome_status"] == "missing"]
+    linked = len(rows) - len(missing)
+    status_counts = Counter(str(row["outcome_status"]) for row in rows)
+    coverage_pct = round((linked / len(rows)) * 100, 2) if rows else 100.0
+    status = _value_outcome_coverage_status(
+        missing_count=len(missing),
+        status_counts=status_counts,
+    )
+    return {
+        "schema_version": "value-outcome-coverage-v1",
+        "status": status,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "available_at": cutoff.isoformat(),
+        "period_start": resolved_start.isoformat(),
+        "period_end": resolved_end.isoformat(),
+        "ledger_entry_count": len(rows),
+        "linked_outcome_count": linked,
+        "missing_outcome_count": len(missing),
+        "computed_outcome_count": int(status_counts.get("computed") or 0),
+        "insufficient_data_count": int(status_counts.get("insufficient_data") or 0),
+        "outcome_status_counts": dict(sorted(status_counts.items())),
+        "coverage_pct": coverage_pct,
+        "rows": rows[: max(1, int(limit))],
+        "next_action": _value_outcome_coverage_next_action(status),
+    }
+
+
 def load_value_outcome_payload(
     engine: Engine,
     *,
@@ -431,6 +491,98 @@ def _status_counts(rows: list[ValueOutcome]) -> dict[str, int]:
     for row in rows:
         counts[row.status] = counts.get(row.status, 0) + 1
     return dict(sorted(counts.items()))
+
+
+def _latest_outcomes_by_ledger(
+    outcomes: list[ValueOutcome],
+) -> dict[str, ValueOutcome]:
+    latest: dict[str, ValueOutcome] = {}
+    for outcome in outcomes:
+        latest.setdefault(outcome.value_ledger_entry_id, outcome)
+    return latest
+
+
+def _value_outcome_coverage_row(
+    entry: ValueLedgerEntry,
+    outcome: ValueOutcome | None,
+    outcome_available_at: datetime,
+) -> dict[str, object]:
+    row = {
+        "value_ledger_entry_id": entry.id,
+        "ticker": entry.ticker,
+        "entry_date": entry.entry_date.isoformat(),
+        "as_of": entry.as_of.isoformat() if entry.as_of is not None else None,
+        "label": entry.label,
+        "supported_action": entry.supported_action,
+        "user_decision": entry.user_decision,
+        "outcome_status": outcome.status if outcome is not None else "missing",
+        "value_outcome_id": outcome.id if outcome is not None else None,
+        "outcome_available_at": (
+            outcome.outcome_available_at.isoformat() if outcome is not None else None
+        ),
+        "trading_days_observed": (
+            outcome.trading_days_observed if outcome is not None else None
+        ),
+        "return_5d": outcome.return_5d if outcome is not None else None,
+        "return_20d": outcome.return_20d if outcome is not None else None,
+        "spy_relative_return_20d": (
+            outcome.spy_relative_return_20d if outcome is not None else None
+        ),
+        "preview_update_command": None,
+    }
+    if outcome is None:
+        row["preview_update_command"] = (
+            "catalyst-radar value-outcome update "
+            f"--ledger-id {entry.id} "
+            f"--outcome-available-at {outcome_available_at.isoformat()} --json"
+        )
+    return row
+
+
+def _value_outcome_coverage_status(
+    *,
+    missing_count: int,
+    status_counts: Counter[str],
+) -> str:
+    if missing_count:
+        return "gaps"
+    if any(status != "computed" for status in status_counts):
+        return "incomplete"
+    return "ready"
+
+
+def _value_outcome_coverage_next_action(status: str) -> str:
+    if status == "gaps":
+        return (
+            "Preview or record missing value outcomes before claiming monthly "
+            "value evidence."
+        )
+    if status == "incomplete":
+        return (
+            "Review insufficient or missing-context outcomes before treating the "
+            "month as measured."
+        )
+    return "All value-ledger entries in this period have computed value outcomes."
+
+
+def _resolved_period(
+    reference_date: date,
+    *,
+    period_start: date | None,
+    period_end: date | None,
+) -> tuple[date, date]:
+    start = period_start or reference_date.replace(day=1)
+    end = period_end or _month_end(start)
+    if end < start:
+        msg = "period_end must be greater than or equal to period_start"
+        raise ValueError(msg)
+    return start, end
+
+
+def _month_end(start: date) -> date:
+    if start.month == 12:
+        return start.replace(year=start.year + 1, month=1, day=1) - timedelta(days=1)
+    return start.replace(month=start.month + 1, day=1) - timedelta(days=1)
 
 
 def _required_text(value: object, field_name: str) -> str:

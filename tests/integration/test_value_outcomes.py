@@ -96,6 +96,129 @@ def test_value_outcome_cli_preview_execute_and_list(
     assert shown["outcome"]["status"] == "computed"
 
 
+def test_value_outcome_coverage_reports_ledger_rows_missing_outcomes(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'value-outcome-coverage.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = engine_from_url(database_url)
+    create_schema(engine)
+    covered_entry_id = _seed_ledger_and_bars(engine)
+    missing_entry_id = _seed_value_ledger_entry(
+        engine,
+        artifact_id="note-AAPL",
+        ticker="AAPL",
+    )
+    execute_exit = main(
+        [
+            "value-outcome",
+            "update",
+            "--ledger-id",
+            covered_entry_id,
+            "--outcome-available-at",
+            "2026-08-20T21:00:00+00:00",
+            "--execute",
+            "--json",
+        ]
+    )
+    assert execute_exit == 0
+    _ = capsys.readouterr()
+    with engine.connect() as conn:
+        ledger_before = [
+            dict(row._mapping)
+            for row in conn.execute(select(value_ledger_entries))
+        ]
+        assert conn.execute(select(func.count()).select_from(value_outcomes)).scalar_one() == 1
+
+    coverage_exit = main(
+        [
+            "value-outcome",
+            "coverage",
+            "--available-at",
+            "2026-08-20T21:00:00+00:00",
+            "--period-start",
+            "2026-05-01",
+            "--period-end",
+            "2026-05-31",
+            "--json",
+        ]
+    )
+
+    assert coverage_exit == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["schema_version"] == "value-outcome-coverage-v1"
+    assert payload["status"] == "gaps"
+    assert payload["ledger_entry_count"] == 2
+    assert payload["linked_outcome_count"] == 1
+    assert payload["computed_outcome_count"] == 1
+    assert payload["missing_outcome_count"] == 1
+    assert payload["coverage_pct"] == 50.0
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
+    missing = next(
+        row
+        for row in payload["rows"]
+        if row["value_ledger_entry_id"] == missing_entry_id
+    )
+    assert missing["outcome_status"] == "missing"
+    assert "value-outcome update" in missing["preview_update_command"]
+    assert "--execute" not in missing["preview_update_command"]
+    with engine.connect() as conn:
+        ledger_after = [
+            dict(row._mapping)
+            for row in conn.execute(select(value_ledger_entries))
+        ]
+        assert conn.execute(select(func.count()).select_from(value_outcomes)).scalar_one() == 1
+    assert ledger_after == ledger_before
+
+
+def test_value_outcome_coverage_api_and_monthly_report_surface_missing_rows(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'value-outcome-coverage-api.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = engine_from_url(database_url)
+    create_schema(engine)
+    entry_id = _seed_value_ledger_entry(engine, artifact_id="note-NVDA", ticker="NVDA")
+    client = TestClient(create_app())
+
+    coverage_response = client.get(
+        "/api/value-outcomes/coverage",
+        params={
+            "available_at": "2026-05-31T21:00:00+00:00",
+            "period_start": "2026-05-01",
+            "period_end": "2026-05-31",
+        },
+    )
+
+    assert coverage_response.status_code == 200
+    coverage = coverage_response.json()
+    assert coverage["ledger_entry_count"] == 1
+    assert coverage["missing_outcome_count"] == 1
+    assert coverage["external_calls_made"] == 0
+    assert coverage["db_writes_made"] == 0
+    assert coverage["rows"][0]["value_ledger_entry_id"] == entry_id
+
+    report_response = client.get(
+        "/api/value-report/monthly",
+        params={
+            "month": "2026-05",
+            "available_at": "2026-05-31T21:00:00+00:00",
+        },
+    )
+
+    assert report_response.status_code == 200
+    outcome_coverage = report_response.json()["value_outcome_coverage"]
+    assert outcome_coverage["status"] == "gaps"
+    assert outcome_coverage["ledger_entry_count"] == 1
+    assert outcome_coverage["missing_outcome_count"] == 1
+    assert outcome_coverage["external_calls_made"] == 0
+    assert outcome_coverage["db_writes_made"] == 0
+
+
 def test_value_outcome_api_rejects_missing_future_bars_without_mutating_ledger(
     tmp_path,
     monkeypatch,
@@ -179,19 +302,11 @@ def _seed_ledger_and_bars(
     future_count: int = 60,
     late_future_bar_index: int | None = None,
 ) -> str:
-    entry = build_value_ledger_entry(
-        artifact_type="manual_note",
+    entry_id = _seed_value_ledger_entry(
+        engine,
         artifact_id="note-MSFT",
-        label="useful",
         ticker="MSFT",
-        as_of=date(2026, 5, 15),
-        estimated_value_usd=10,
-        confidence=1,
-        source="test",
-        available_at=datetime(2026, 5, 15, 21, tzinfo=UTC),
-        payload={"invalidation_price": 95},
     )
-    ValidationRepository(engine).upsert_value_ledger_entry(entry)
     MarketRepository(engine).upsert_daily_bars(
         [
             _bar("MSFT", date(2026, 5, 15), 100),
@@ -217,6 +332,28 @@ def _seed_ledger_and_bars(
             ],
         ]
     )
+    return entry_id
+
+
+def _seed_value_ledger_entry(
+    engine,
+    *,
+    artifact_id: str,
+    ticker: str,
+) -> str:
+    entry = build_value_ledger_entry(
+        artifact_type="manual_note",
+        artifact_id=artifact_id,
+        label="useful",
+        ticker=ticker,
+        as_of=date(2026, 5, 15),
+        estimated_value_usd=10,
+        confidence=1,
+        source="test",
+        available_at=datetime(2026, 5, 15, 21, tzinfo=UTC),
+        payload={"invalidation_price": 95},
+    )
+    ValidationRepository(engine).upsert_value_ledger_entry(entry)
     return entry.id
 
 

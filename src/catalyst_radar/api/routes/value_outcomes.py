@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
@@ -10,6 +10,7 @@ from catalyst_radar.core.config import AppConfig
 from catalyst_radar.security.access import Role, require_role
 from catalyst_radar.storage.db import engine_from_url
 from catalyst_radar.validation.value_outcomes import (
+    load_value_outcome_coverage_payload,
     load_value_outcome_payload,
     load_value_outcomes_payload,
     value_outcome_update_payload,
@@ -44,6 +45,22 @@ def value_outcomes(
         value_ledger_entry_id=value_ledger_entry_id,
         available_at=available_at,
         ticker=ticker,
+        limit=limit,
+    )
+
+
+@router.get("/coverage", dependencies=[Depends(require_role(Role.VIEWER))])
+def value_outcome_coverage(
+    available_at: Annotated[datetime | None, Query()] = None,
+    period_start: Annotated[date | None, Query()] = None,
+    period_end: Annotated[date | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 200,
+) -> dict[str, object]:
+    return load_value_outcome_coverage_payload(
+        _engine(),
+        available_at=available_at,
+        period_start=period_start,
+        period_end=period_end,
         limit=limit,
     )
 

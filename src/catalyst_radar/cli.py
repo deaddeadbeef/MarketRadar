@@ -204,6 +204,7 @@ from catalyst_radar.validation.value_ledger import (
     value_ledger_write_payload,
 )
 from catalyst_radar.validation.value_outcomes import (
+    load_value_outcome_coverage_payload,
     load_value_outcome_payload,
     load_value_outcomes_payload,
     value_outcome_update_payload,
@@ -793,6 +794,13 @@ def build_parser() -> argparse.ArgumentParser:
     value_outcome_list.add_argument("--ticker")
     value_outcome_list.add_argument("--limit", type=int, default=200)
     value_outcome_list.add_argument("--json", action="store_true")
+    value_outcome_coverage = value_outcome_sub.add_parser("coverage")
+    value_outcome_coverage.add_argument("--database-url")
+    value_outcome_coverage.add_argument("--available-at", type=_parse_aware_datetime)
+    value_outcome_coverage.add_argument("--period-start", type=date.fromisoformat)
+    value_outcome_coverage.add_argument("--period-end", type=date.fromisoformat)
+    value_outcome_coverage.add_argument("--limit", type=int, default=200)
+    value_outcome_coverage.add_argument("--json", action="store_true")
     value_outcome_show = value_outcome_sub.add_parser("show")
     value_outcome_show.add_argument("outcome_id")
     value_outcome_show.add_argument("--database-url")
@@ -2945,6 +2953,19 @@ def main(argv: list[str] | None = None) -> int:
                     print(json.dumps(payload, sort_keys=True))
                     return 0
                 _print_value_outcomes(payload)
+                return 0
+            if args.value_outcome_command == "coverage":
+                payload = load_value_outcome_coverage_payload(
+                    engine,
+                    available_at=args.available_at,
+                    period_start=args.period_start,
+                    period_end=args.period_end,
+                    limit=args.limit,
+                )
+                if args.json:
+                    print(json.dumps(payload, sort_keys=True))
+                    return 0
+                _print_value_outcome_coverage(payload)
                 return 0
             if args.value_outcome_command == "show":
                 payload = load_value_outcome_payload(
@@ -8395,6 +8416,35 @@ def _print_value_outcomes(payload: Mapping[str, object]) -> None:
             f"{row.get('return_20d')} "
             f"{row.get('spy_relative_return_20d')}"
         )
+
+
+def _print_value_outcome_coverage(payload: Mapping[str, object]) -> None:
+    print(
+        "value_outcome_coverage "
+        f"status={payload.get('status')} "
+        f"ledger_entries={payload.get('ledger_entry_count') or 0} "
+        f"linked={payload.get('linked_outcome_count') or 0} "
+        f"missing={payload.get('missing_outcome_count') or 0} "
+        f"computed={payload.get('computed_outcome_count') or 0} "
+        f"coverage_pct={payload.get('coverage_pct')} "
+        f"external_calls_made={payload.get('external_calls_made') or 0} "
+        f"db_writes_made={payload.get('db_writes_made') or 0}"
+    )
+    rows = payload.get("rows")
+    rows = rows if isinstance(rows, Sequence) else ()
+    if rows:
+        print("ticker as_of outcome_status ledger_entry value_outcome")
+    for row in rows:
+        if not isinstance(row, Mapping):
+            continue
+        print(
+            f"{row.get('ticker') or 'n/a'} "
+            f"{row.get('as_of') or 'n/a'} "
+            f"{row.get('outcome_status')} "
+            f"{row.get('value_ledger_entry_id')} "
+            f"{row.get('value_outcome_id') or 'n/a'}"
+        )
+    print(f"next_action={_compact_cli_text(payload.get('next_action'))}")
 
 
 def _print_value_report(payload: Mapping[str, object]) -> None:
