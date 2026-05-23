@@ -1271,6 +1271,12 @@ def test_shadow_readiness_payload_accepts_safe_precomputed_shadow_contract(
     assert payload["call_boundary"]["planned_run_external_call_count_max"] == 1
     assert payload["safety"]["autonomous_trading_enabled"] is False
     assert payload["safety"]["broker_order_submission_enabled"] is False
+    checks = {row["code"]: row for row in payload["checks"]}
+    assert checks["candidate_state_pipeline"]["status"] == "ready"
+    assert checks["candidate_state_pipeline"]["metric"] == {
+        "candidate_states": 1,
+        "scanned_candidate_states": 1,
+    }
     assert "fresh market bars" in payload["useful_definition"]
 
 
@@ -10541,6 +10547,8 @@ def _shadow_ready_inputs() -> dict[str, object]:
                     "latest_daily_bar_date": "2026-05-10",
                 },
                 "yield": {
+                    "candidate_states": 1,
+                    "scanned_candidate_states": 1,
                     "candidate_packets": 1,
                     "decision_cards": 1,
                 },

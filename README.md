@@ -821,9 +821,10 @@ catalyst-radar assert-shadow-ready --json
 
 The same payload is available at `GET /api/radar/shadow/readiness` and in the
 terminal dashboard Readiness page. It checks active universe, latest market-bar
-coverage, full-scan trust gate, candidate packets, Decision Cards, provider-call
-boundaries, alert dry-run state, broker-order kill switch, value-ledger/outcome
-schema availability, disabled real LLM mode, and validation readiness. The
+coverage, full-scan trust gate, candidate-state pipeline, candidate packets,
+Decision Cards, provider-call boundaries, alert dry-run state, broker-order kill
+switch, value-ledger/outcome schema availability, disabled real LLM mode, and
+validation readiness. The
 command itself makes 0 provider calls and 0 database writes; it prints those
 counters plus the planned run's maximum external-call count.
 

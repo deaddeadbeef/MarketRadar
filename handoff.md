@@ -1,6 +1,49 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 11:10:00 +08:00
+Last updated: 2026-05-23 11:30:00 +08:00
+
+## Latest Shadow Readiness Candidate-State Gate Slice
+
+Last updated: 2026-05-23 11:30:00 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains repeatable, measurable full-market priced-in shadow
+  scans. This slice closes an explicit readiness-contract gap from the brief;
+  it is not UI polish, scoring expansion, provider work, or LLM expansion.
+- Shadow readiness previously checked downstream candidate packets and Decision
+  Cards, but not the candidate-state pipeline itself.
+
+Fix in this slice:
+
+- `assert-shadow-ready` now includes `candidate_state_pipeline`.
+- The check uses the existing local discovery yield only and blocks when no
+  candidate states are available.
+- The readiness useful definition and README now include candidate states as a
+  required local layer before shadow output can be considered useful.
+
+Validation observed in this slice:
+
+- The focused CLI and dashboard regressions failed before implementation
+  because `candidate_state_pipeline` was absent.
+- Focused readiness CLI regression passed after the fix: 4 passed.
+- Focused dashboard shadow-readiness regression passed after the fix: 1 passed.
+- Adjacent shadow/API regression selection passed: 6 passed.
+- Ruff passed for touched dashboard data and readiness/dashboard tests.
+- Compileall passed for `src` and touched tests.
+- `git diff --check` passed.
+- Configured operator-DB smoke against `.env.local`'s
+  `data/local/schwab-live.db` returned `status=setup_required`,
+  `external_calls_made=0`, `db_writes_made=0`,
+  `candidate_state_pipeline=ready`, `candidate_states=200`, and
+  `scanned_candidate_states=2429`.
+
+Safety:
+
+- The new check makes 0 provider, broker, model, order, or web calls.
+- The new check writes 0 database rows.
+- The live operator DB residual repair remains blocked until the operator
+  explicitly approves the guarded write command.
 
 ## Latest Shadow Readiness Value-Proof Gate Slice
 

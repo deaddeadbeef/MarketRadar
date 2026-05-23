@@ -10306,11 +10306,12 @@ def shadow_readiness_payload(
         ),
         "useful_definition": (
             "Useful means the scanner covers the intended active universe with fresh "
-            "market bars, can explain the priced-in trust gate, has candidate packets "
-            "and decision cards for review, remains dry-run/read-only for alerts and "
-            "broker orders, has local value/outcome evidence tables, keeps real LLM "
-            "mode disabled unless separately approved, and has validation evidence to "
-            "judge signal quality before capital is considered."
+            "market bars, can explain the priced-in trust gate, has candidate states, "
+            "candidate packets, and decision cards for review, remains "
+            "dry-run/read-only for alerts and broker orders, has local value/outcome "
+            "evidence tables, keeps real LLM mode disabled unless separately "
+            "approved, and has validation evidence to judge signal quality before "
+            "capital is considered."
         ),
         "mode": "shadow_only",
         "checks": checks,
@@ -10628,6 +10629,32 @@ def _shadow_readiness_checks(
                 ),
                 "first_blocker": trust_gate.get("first_blocker"),
                 "first_gap_count": trust_gate.get("first_gap_count"),
+            },
+        ),
+        _shadow_check_row(
+            code="candidate_state_pipeline",
+            area="Candidate-state pipeline",
+            status=(
+                "ready"
+                if int(_finite_float(discovery_yield.get("candidate_states"))) > 0
+                else "blocked"
+            ),
+            finding=(
+                f"{int(_finite_float(discovery_yield.get('candidate_states')))} "
+                "candidate state(s) available."
+            ),
+            next_action="Run a radar scan that produces candidate states.",
+            evidence=(
+                f"requested={discovery_yield.get('requested_securities') or 'n/a'}; "
+                f"scanned={discovery_yield.get('scanned_securities') or 'n/a'}"
+            ),
+            metric={
+                "candidate_states": int(
+                    _finite_float(discovery_yield.get("candidate_states"))
+                ),
+                "scanned_candidate_states": int(
+                    _finite_float(discovery_yield.get("scanned_candidate_states"))
+                ),
             },
         ),
         _shadow_check_row(
