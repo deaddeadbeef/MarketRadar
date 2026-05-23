@@ -6758,10 +6758,12 @@ def _run_mission_brief_items(
         gaps = int(_number_or_zero(blocker.get("gap_count")))
         status = blocker.get("status") or "attention"
         blocker_text = f"{source} {status}; gaps {gaps}"
+    operator_step = _priced_in_operator_step(payload)
     next_action = (
-        blocker.get("next_action")
-        if blocker
-        else audit.get("next_action") or answer.get("next_action")
+        operator_step.get("action")
+        or answer.get("next_action")
+        or audit.get("next_action")
+        or (blocker.get("next_action") if blocker else None)
     )
     items: list[tuple[str, object]] = []
     if question:
@@ -6769,7 +6771,6 @@ def _run_mission_brief_items(
     if current:
         items.append(("Current answer", current))
     trust_gate = _mapping(answer.get("full_market_trust_gate"))
-    operator_step = _priced_in_operator_step(payload)
     operator_step_text = _operator_next_step_summary(operator_step)
     if operator_step_text:
         items.append(("Do now", operator_step_text))

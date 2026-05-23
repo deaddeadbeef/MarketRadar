@@ -44,6 +44,7 @@ from catalyst_radar.dashboard.tui import (
     _priced_in_review_rows,
     _priced_in_source_workflow_payload,
     _run_audit_source_blocker_hint,
+    _run_mission_brief_items,
     _stock_market_bar_next_summary,
     dashboard_filters_for_page,
     dashboard_snapshot_payload,
@@ -1105,6 +1106,56 @@ def test_dashboard_tui_once_defaults_to_tutorial(
     assert "Trust gate" in output.out
     assert "Blocker ladder" in output.out
     assert "Tutorial - your first 90 seconds" in output.out
+
+
+def test_run_mission_brief_useful_next_prefers_operator_step() -> None:
+    payload = {
+        "priced_in_answer": {
+            "question": "Has price fully matched market expectations?",
+            "answer": "Full-market priced-in answer is not ready.",
+            "next_action": "Review residual rows before filling bars.",
+            "operator_next_step": {
+                "action": "Review residual rows before filling bars.",
+                "command": (
+                    "catalyst-radar market-bars residual-review "
+                    "--expected-as-of 2026-05-15"
+                ),
+                "external_calls_required": 0,
+                "db_writes_required": 0,
+            },
+            "full_market_trust_gate": {
+                "status": "blocked",
+                "answer": "market bars incomplete",
+                "recommended_action": {
+                    "kind": "residual_universe_review",
+                    "status": "blocked",
+                    "reason": "Review residual rows before filling bars.",
+                    "cli_command": (
+                        "catalyst-radar market-bars residual-review "
+                        "--expected-as-of 2026-05-15"
+                    ),
+                    "external_calls_required": 0,
+                    "db_writes_required": 0,
+                },
+            },
+        },
+        "priced_in_audit": {
+            "sources": [
+                {
+                    "source": "market_bars",
+                    "status": "attention",
+                    "gap_count": 579,
+                    "next_action": "Fill missing as-of bars.",
+                }
+            ],
+            "source_coverage": {"summary": "market_bars 12090/12669"},
+        },
+    }
+
+    items = dict(_run_mission_brief_items(payload))
+
+    assert items["Useful next"] == "Review residual rows before filling bars."
+    assert "Fill missing" not in items["Useful next"]
 
 
 def test_dashboard_market_bar_missing_type_summary_is_human_readable() -> None:

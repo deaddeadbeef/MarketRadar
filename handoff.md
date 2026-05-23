@@ -1,6 +1,47 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 10:30:00 +08:00
+Last updated: 2026-05-23 10:50:00 +08:00
+
+## Latest TUI Useful-Next Alignment Slice
+
+Last updated: 2026-05-23 10:50:00 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains broad priced-in scan readiness and M0/M1 safety. This
+  slice fixes a human-facing next-step ambiguity in the TUI; it does not add UI
+  polish, scoring changes, LLM behavior, provider calls, or DB writes.
+- After the residual-review payload alignment, the terminal dashboard still
+  showed `Recommended unblock: residual-review` and a separate `Useful next:
+  Fill missing as-of bars...` line on the tutorial/start page.
+
+Fix in this slice:
+
+- TUI mission-brief `Useful next` now prefers the priced-in operator step /
+  answer next action before falling back to audit-blocker text.
+- README documents that the terminal dashboard mission brief follows the same
+  operator-step contract.
+
+Validation observed in this slice:
+
+- The focused regression failed before the fix with `Useful next` set to the
+  stale audit-blocker text.
+- Focused regression passed after the fix.
+- TUI live smoke with this worktree pinned through `PYTHONPATH` showed
+  `Recommended unblock` and `Useful next` aligned to residual review with
+  `External calls made: 0`.
+- Focused TUI/tutorial checks passed: 2 passed.
+- Broader dashboard TUI mission/source-batch selection passed: 9 passed.
+- `ruff check` passed for touched TUI and demo-seed integration tests.
+- `compileall` passed for `src` and touched TUI tests.
+- `git diff --check` passed.
+
+Current live blocker:
+
+- The all-active trusted answer remains blocked by 579 missing `2026-05-15`
+  market bars until the operator explicitly fills real residual bars or approves
+  the guarded local residual repair. Do not execute the repair against the
+  operator DB without separate explicit instruction.
 
 ## Latest Residual Subpayload Next-Action Slice
 
