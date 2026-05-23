@@ -234,6 +234,11 @@ def compute_value_outcome(
     expected_review_horizon_expired = len(future) >= expected_review_horizon_days
     setup_follow_through = _setup_follow_through_status(entry, returns)
     expected_direction = _expected_direction(entry)
+    max_adverse, max_favorable = _directional_excursions(
+        entry_bar.close,
+        future,
+        direction=expected_direction,
+    )
     gap_outcome, gap_return = _gap_outcome(entry_bar.close, future)
     status = "computed" if expected_review_horizon_expired else "insufficient_data"
     return ValueOutcome(
@@ -269,8 +274,8 @@ def compute_value_outcome(
         sector_relative_return_10d=_relative(returns.get(10), sector_returns.get(10)),
         sector_relative_return_20d=_relative(returns.get(20), sector_returns.get(20)),
         sector_relative_return_60d=_relative(returns.get(60), sector_returns.get(60)),
-        max_adverse_excursion=_min_return(entry_bar.close, future),
-        max_favorable_excursion=_max_return(entry_bar.close, future),
+        max_adverse_excursion=max_adverse,
+        max_favorable_excursion=max_favorable,
         invalidation_price=resolved_invalidation,
         invalidation_touched=_invalidation_touched(
             future,
@@ -286,6 +291,7 @@ def compute_value_outcome(
             "setup_follow_through_horizon_days": 20,
             "setup_follow_through_direction": expected_direction,
             "invalidation_touch_direction": expected_direction or "long_stop",
+            "excursion_direction": expected_direction or "bullish",
             "gap_outcome": gap_outcome,
             "gap_return": gap_return,
             "spy_available": spy_entry is not None and bool(spy_future),
@@ -572,6 +578,19 @@ def _max_return(entry_price: float, rows: list[_BarPoint]) -> float | None:
     if not rows:
         return None
     return (max(row.high for row in rows) / entry_price) - 1
+
+
+def _directional_excursions(
+    entry_price: float,
+    rows: list[_BarPoint],
+    *,
+    direction: str | None,
+) -> tuple[float | None, float | None]:
+    downside = _min_return(entry_price, rows)
+    upside = _max_return(entry_price, rows)
+    if direction == "bearish":
+        return upside, downside
+    return downside, upside
 
 
 def _relative(primary: float | None, benchmark: float | None) -> float | None:
