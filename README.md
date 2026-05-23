@@ -922,6 +922,7 @@ then inspect the report:
 
 ```powershell
 catalyst-radar validation-replay --as-of-start YYYY-MM-DD --as-of-end YYYY-MM-DD --available-at <UTC-decision-cutoff> --outcome-available-at <UTC-outcome-cutoff>
+catalyst-radar validation-report --latest --json
 catalyst-radar validation-report --run-id <printed-run-id> --json
 ```
 
@@ -931,6 +932,9 @@ baselines. Baseline rows are selected using only data available at the decision
 cutoff and are labeled only from bars visible at the outcome cutoff. The report
 shows precision@5/10, false-positive rate, excursion averages, overlap/missed
 tickers, and whether MarketRadar won, lost, tied, or lacks enough evidence.
+`validation-report --latest --json` selects the latest successful stored
+validation run, makes 0 provider calls and 0 database writes, and returns
+`status=no_validation_runs` when no replay evidence exists yet.
 The same report includes score-calibration buckets for `50_59`, `60_69`,
 `70_79`, `80_89`, and `90_plus`, plus score distribution groups for sector,
 market regime, setup type, priced-in status, action state, source coverage, and

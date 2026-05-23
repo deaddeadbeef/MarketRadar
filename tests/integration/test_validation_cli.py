@@ -20,6 +20,7 @@ from catalyst_radar.storage.schema import (
     signal_features,
     user_feedback,
     validation_results,
+    validation_runs,
 )
 
 AS_OF = datetime(2026, 5, 10, 21, tzinfo=UTC)
@@ -146,6 +147,11 @@ def test_validation_report_label_and_paper_cli_workflow(
     assert main(["validation-report", "--run-id", run_id, "--json"]) == 0
     captured = capsys.readouterr()
     report = json.loads(captured.out)
+    assert report["schema_version"] == "validation-report-cli-v1"
+    assert report["status"] == "ready"
+    assert report["selection"] == "run_id"
+    assert report["external_calls_made"] == 0
+    assert report["db_writes_made"] == 0
     assert report["candidate_count"] == 1
     assert report["precision"]["target_20d_25"] == 1.0
     assert report["useful_alert_rate"] == 1.0
@@ -168,9 +174,21 @@ def test_validation_report_label_and_paper_cli_workflow(
         assert "baseline_precision_at_10" in comparison
         assert "result_vs_market_radar" in comparison
     assert report["missed_opportunity_count"] > 0
+    assert main(["validation-report", "--latest", "--json"]) == 0
+    captured = capsys.readouterr()
+    latest_report = json.loads(captured.out)
+    assert latest_report["schema_version"] == "validation-report-cli-v1"
+    assert latest_report["status"] == "ready"
+    assert latest_report["selection"] == "latest"
+    assert latest_report["selected_run_id"] == run_id
+    assert latest_report["validation_run"]["id"] == run_id
+    assert latest_report["external_calls_made"] == 0
+    assert latest_report["db_writes_made"] == 0
     assert main(["validation-report", "--run-id", run_id, "--available-at", AVAILABLE_AT_TEXT]) == 0
     captured = capsys.readouterr()
     assert "candidates=0" in captured.out
+    assert "external_calls=0" in captured.out
+    assert "db_writes=0" in captured.out
     assert "precision_target_20d_25=0.00" in captured.out
     assert (
         main(
@@ -224,7 +242,6 @@ def test_validation_report_label_and_paper_cli_workflow(
     )
     captured = capsys.readouterr()
     assert "referenced artifact not found" in captured.err
-
     assert (
         main(
             [
@@ -340,6 +357,71 @@ def test_validation_report_label_and_paper_cli_workflow(
         "invalidated": False,
         "target_20d_25": False,
     }
+
+
+def test_validation_report_latest_empty_state_is_zero_call(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'validation-empty.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    assert main(["init-db"]) == 0
+    capsys.readouterr()
+
+    assert main(["validation-report", "--latest", "--json"]) == 1
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["schema_version"] == "validation-report-cli-v1"
+    assert payload["status"] == "no_validation_runs"
+    assert payload["selection"] == "latest"
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
+    assert "validation-replay" in payload["next_action"]
+
+
+def test_validation_report_latest_selects_newest_successful_run(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'validation-latest.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    assert main(["init-db"]) == 0
+    capsys.readouterr()
+    _insert_validation_run_with_result(
+        database_url,
+        run_id="run-old",
+        finished_at=datetime(2026, 5, 11, 21, tzinfo=UTC),
+        ticker="AAA",
+        positive=False,
+    )
+    _insert_validation_run_with_result(
+        database_url,
+        run_id="run-new",
+        finished_at=datetime(2026, 5, 12, 21, tzinfo=UTC),
+        ticker="BBB",
+        positive=True,
+    )
+    _insert_validation_run_with_result(
+        database_url,
+        run_id="run-failed-later",
+        finished_at=datetime(2026, 5, 13, 21, tzinfo=UTC),
+        ticker="CCC",
+        positive=True,
+        status="failed",
+    )
+
+    assert main(["validation-report", "--latest", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["status"] == "ready"
+    assert payload["selected_run_id"] == "run-new"
+    assert payload["validation_run"]["id"] == "run-new"
+    assert payload["candidate_count"] == 1
+    assert payload["precision"]["target_20d_25"] == 1.0
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
 
 
 def test_validation_replay_counts_future_packet_and_card_leakage(
@@ -515,6 +597,53 @@ def test_validation_replay_baselines_use_decision_cutoff_not_outcome_cutoff(
             )
         }
     assert "LATE" not in tickers
+
+
+def _insert_validation_run_with_result(
+    database_url: str,
+    *,
+    run_id: str,
+    finished_at: datetime,
+    ticker: str,
+    positive: bool,
+    status: str = "success",
+) -> None:
+    engine = create_engine(database_url, future=True)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(validation_runs).values(
+                id=run_id,
+                run_type="point_in_time_replay",
+                as_of_start=AS_OF,
+                as_of_end=AS_OF,
+                decision_available_at=AVAILABLE_AT,
+                status=status,
+                config={"no_external_calls": True},
+                metrics={},
+                started_at=finished_at - timedelta(minutes=5),
+                finished_at=finished_at,
+                created_at=finished_at - timedelta(minutes=5),
+            )
+        )
+        conn.execute(
+            insert(validation_results).values(
+                id=f"result-{run_id}",
+                run_id=run_id,
+                ticker=ticker,
+                as_of=AS_OF,
+                available_at=finished_at,
+                state=ActionState.WARNING.value,
+                final_score=75.0,
+                candidate_state_id=f"state-{ticker.lower()}",
+                candidate_packet_id=None,
+                decision_card_id=None,
+                baseline=None,
+                labels={"target_20d_25": positive},
+                leakage_flags=[],
+                payload={},
+                created_at=finished_at,
+            )
+        )
 
 
 def _insert_warning_candidate(database_url: str) -> None:
