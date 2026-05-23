@@ -136,6 +136,7 @@ from catalyst_radar.market.manual_bars import (
 from catalyst_radar.market.status import (
     market_bars_import_verification_payload,
     market_bars_post_capture_verification_payload,
+    market_bars_residual_repair_payload,
     market_bars_residual_review_payload,
     market_bars_status_payload,
 )
@@ -273,6 +274,30 @@ def build_parser() -> argparse.ArgumentParser:
         help="Review residual stock-like active securities only.",
     )
     market_bars_residual_review.add_argument("--json", action="store_true")
+    market_bars_residual_repair = market_bars_sub.add_parser("residual-repair")
+    market_bars_residual_repair.add_argument("--database-url")
+    market_bars_residual_repair.add_argument(
+        "--expected-as-of",
+        type=date.fromisoformat,
+        help="Defaults to the latest stored daily-bar date.",
+    )
+    market_bars_residual_repair.add_argument(
+        "--stocks-only",
+        action="store_true",
+        help="Repair residual stock-like active securities only.",
+    )
+    market_bars_residual_repair.add_argument(
+        "--expect-missing-count",
+        type=int,
+        help="Required with --execute; must match the preview missing count.",
+    )
+    market_bars_residual_repair.add_argument(
+        "--expect-eligible-count",
+        type=int,
+        help="Required with --execute; must match the preview eligible count.",
+    )
+    market_bars_residual_repair.add_argument("--execute", action="store_true")
+    market_bars_residual_repair.add_argument("--json", action="store_true")
     market_bars_template = market_bars_sub.add_parser("template")
     market_bars_template.add_argument("--database-url")
     market_bars_template.add_argument(
@@ -1339,6 +1364,21 @@ def main(argv: list[str] | None = None) -> int:
                     print(json.dumps(payload, sort_keys=True))
                 else:
                     _print_market_bars_residual_review(payload)
+                return 0
+            if args.market_bars_command == "residual-repair":
+                payload = market_bars_residual_repair_payload(
+                    engine,
+                    config,
+                    expected_as_of=args.expected_as_of,
+                    stocks_only=args.stocks_only,
+                    execute=args.execute,
+                    expected_missing_count=args.expect_missing_count,
+                    expected_eligible_count=args.expect_eligible_count,
+                )
+                if args.json:
+                    print(json.dumps(payload, sort_keys=True))
+                else:
+                    _print_market_bars_residual_repair(payload)
                 return 0
             if args.market_bars_command == "template":
                 result = write_manual_market_bars_template(
@@ -5210,6 +5250,47 @@ def _print_market_bars_residual_review(payload: Mapping[str, object]):
     print(f"safe_default={payload.get('safe_default')}")
     print(f"next_action={payload.get('next_action')}")
     print(f"boundary={payload.get('zero_call_boundary')}")
+
+
+def _print_market_bars_residual_repair(payload: Mapping[str, object]):
+    print(
+        "market_bars_residual_repair "
+        f"status={payload.get('status')} "
+        f"mode={payload.get('mode')} "
+        f"expected_as_of={payload.get('expected_as_of')} "
+        f"scope={payload.get('coverage_scope')} "
+        f"active={payload.get('active_security_count')} "
+        f"existing={payload.get('existing_as_of_bar_count')} "
+        f"missing={payload.get('missing_as_of_bar_count')} "
+        f"eligible={payload.get('eligible_count')} "
+        f"ineligible={payload.get('ineligible_count')} "
+        f"would_clear={str(bool(payload.get('preview_would_clear_market_bars'))).lower()} "
+        f"deactivated={payload.get('deactivated_count')} "
+        f"external_calls={payload.get('external_calls_made')} "
+        f"db_writes={payload.get('db_writes_made')}"
+    )
+    type_counts = _mapping_value(payload.get("eligible_security_type_counts"))
+    if type_counts:
+        print(f"eligible_security_types={_count_summary(type_counts)}")
+    reason_counts = _mapping_value(payload.get("ineligible_reason_counts"))
+    if reason_counts:
+        print(f"ineligible_reasons={_count_summary(reason_counts)}")
+    guard = _mapping_value(payload.get("guard"))
+    if guard:
+        errors = _sequence_value(guard.get("errors"))
+        print(
+            "guard "
+            f"passed={str(bool(guard.get('passed'))).lower()} "
+            f"expected_missing={guard.get('expected_missing_count')} "
+            f"actual_missing={guard.get('actual_missing_count')} "
+            f"expected_eligible={guard.get('expected_eligible_count')} "
+            f"actual_eligible={guard.get('actual_eligible_count')} "
+            f"errors={','.join(str(item) for item in errors) if errors else 'none'}"
+        )
+    print(f"preview_command={payload.get('preview_command')}")
+    print(f"execute_command={payload.get('execute_command')}")
+    print(f"safe_default={payload.get('safe_default')}")
+    print(f"next_action={payload.get('next_action')}")
 
 
 def _print_market_bars_saved_capture_plan(payload: Mapping[str, object]):

@@ -20,6 +20,7 @@ from catalyst_radar.storage.schema import (
     job_runs,
     normalized_provider_records,
     raw_provider_records,
+    securities,
 )
 
 
@@ -1586,6 +1587,114 @@ def test_market_bars_residual_review_cli_flags_zero_liquidity_saved_gap(
     }
     assert review_payload["external_calls_made"] == 0
     assert review_payload["db_writes_made"] == 0
+
+
+def test_market_bars_residual_repair_cli_preview_and_execute_with_guards(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    database_url = _database_url(tmp_path)
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["init-db"]) == 0
+    capsys.readouterr()
+    engine = create_engine(database_url, future=True)
+    MarketRepository(engine).upsert_securities(
+        [
+            _security("AAPL", "Apple Inc.", "CS"),
+            Security(
+                ticker="AACO",
+                name="Alpha Acquisition Corp.",
+                exchange="NASDAQ",
+                sector="Unknown",
+                industry="Unknown",
+                market_cap=0,
+                avg_dollar_volume_20d=0,
+                has_options=False,
+                is_active=True,
+                updated_at=datetime(2026, 5, 8, 20, tzinfo=UTC),
+                metadata={"type": "CS"},
+            ),
+        ]
+    )
+    MarketRepository(engine).upsert_daily_bars([_daily_bar("AAPL", date(2026, 5, 8))])
+
+    preview_code = main(
+        [
+            "market-bars",
+            "residual-repair",
+            "--expected-as-of",
+            "2026-05-08",
+            "--json",
+        ]
+    )
+
+    assert preview_code == 0
+    preview = json.loads(capsys.readouterr().out)
+    assert preview["schema_version"] == "market-bars-residual-repair-v1"
+    assert preview["status"] == "ready_to_execute"
+    assert preview["mode"] == "preview"
+    assert preview["missing_as_of_bar_count"] == 1
+    assert preview["eligible_count"] == 1
+    assert preview["preview_would_clear_market_bars"] is True
+    assert preview["external_calls_made"] == 0
+    assert preview["db_writes_made"] == 0
+
+    stale_code = main(
+        [
+            "market-bars",
+            "residual-repair",
+            "--expected-as-of",
+            "2026-05-08",
+            "--expect-missing-count",
+            "2",
+            "--expect-eligible-count",
+            "1",
+            "--execute",
+            "--json",
+        ]
+    )
+
+    assert stale_code == 0
+    stale = json.loads(capsys.readouterr().out)
+    assert stale["status"] == "stale_approval"
+    assert stale["deactivated_count"] == 0
+    assert stale["db_writes_made"] == 0
+
+    execute_code = main(
+        [
+            "market-bars",
+            "residual-repair",
+            "--expected-as-of",
+            "2026-05-08",
+            "--expect-missing-count",
+            "1",
+            "--expect-eligible-count",
+            "1",
+            "--execute",
+            "--json",
+        ]
+    )
+
+    assert execute_code == 0
+    executed = json.loads(capsys.readouterr().out)
+    assert executed["status"] == "executed"
+    assert executed["deactivated_count"] == 1
+    assert executed["db_writes_made"] == 1
+    assert executed["post_repair_status"]["status"] == "ready"
+    assert executed["post_repair_status"]["missing_as_of_bar_count"] == 0
+    with engine.connect() as conn:
+        row = conn.execute(
+            select(securities).where(securities.c.ticker == "AACO")
+        ).one()
+    assert row.is_active is False
+    marker = row._mapping["metadata"]["market_bar_residual_repair"]
+    assert marker["expected_as_of"] == "2026-05-08"
+    assert marker["reason"] == (
+        "zero_liquidity_zero_market_cap_no_history_missing_as_of_bar"
+    )
 
 
 def test_market_bars_saved_file_cli_import_respects_stock_scope(
