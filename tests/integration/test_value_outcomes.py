@@ -459,6 +459,37 @@ def test_value_outcome_uses_bearish_high_for_invalidation_touch(
     assert outcome["payload"]["invalidation_touch_direction"] == "bearish"
 
 
+def test_value_outcome_uses_bearish_direction_for_excursions(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'value-outcome-bearish-excursion.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = engine_from_url(database_url)
+    create_schema(engine)
+    entry_id = _seed_ledger_and_bars(
+        engine,
+        future_count=4,
+        priced_in_direction="bearish",
+        invalidation_price=105,
+    )
+
+    response = TestClient(create_app()).post(
+        "/api/value-outcomes/update",
+        json={
+            "value_ledger_entry_id": entry_id,
+            "outcome_available_at": "2026-05-25T21:00:00+00:00",
+        },
+    )
+
+    assert response.status_code == 200
+    outcome = response.json()["outcome"]
+    assert outcome["setup_follow_through_direction"] == "bearish"
+    assert round(outcome["max_adverse_excursion"], 6) == 0.04
+    assert round(outcome["max_favorable_excursion"], 6) == -0.06
+    assert outcome["payload"]["excursion_direction"] == "bearish"
+
+
 def _seed_ledger_and_bars(
     engine,
     *,

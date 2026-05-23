@@ -1,6 +1,36 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 20:22:35 +08:00
+Last updated: 2026-05-23 20:33:03 +08:00
+
+## Latest Direction-Aware Outcome Excursion Slice
+
+Last updated: 2026-05-23 20:33:03 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains measured value proof for priced-in signals.
+- This slice fixes outcome evidence quality, not UI wording: bearish outcomes
+  must not report downside movement as adverse and upside movement as favorable.
+
+Fix in this slice:
+
+- `value_outcome` max adverse/favorable excursions are now direction-aware.
+- Bullish or unknown direction continues to treat downside lows as adverse and
+  upside highs as favorable.
+- Bearish direction treats upside highs as adverse and downside lows as
+  favorable.
+- Outcome payloads include `excursion_direction` for audit.
+- README documents the direction-aware excursion rule.
+
+Safety:
+
+- This is deterministic local outcome math over stored daily bars and
+  value-ledger rows.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls and writes 0 database rows in preview.
+- It does not change candidate scoring, policy gates, candidate states,
+  market-bar data, value-ledger rows, alert delivery, broker controls, or LLM
+  behavior.
 
 ## Latest Direction-Aware Outcome Invalidation Slice
 
