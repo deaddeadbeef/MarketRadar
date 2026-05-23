@@ -234,6 +234,15 @@ def compute_value_outcome(
     expected_review_horizon_expired = len(future) >= expected_review_horizon_days
     setup_follow_through = _setup_follow_through_status(entry, returns)
     expected_direction = _expected_direction(entry)
+    directional_returns = _directional_returns(returns, direction=expected_direction)
+    directional_spy_returns = _directional_returns(
+        spy_returns,
+        direction=expected_direction,
+    )
+    directional_sector_returns = _directional_returns(
+        sector_returns,
+        direction=expected_direction,
+    )
     max_adverse, max_favorable = _directional_excursions(
         entry_bar.close,
         future,
@@ -285,6 +294,16 @@ def compute_value_outcome(
         payload={
             "horizons": list(HORIZONS),
             "missing_horizons": [horizon for horizon in HORIZONS if len(future) < horizon],
+            "outcome_direction": expected_direction or "unknown",
+            **_payload_horizon_fields("directional_return", directional_returns),
+            **_payload_horizon_fields(
+                "directional_spy_relative_return",
+                _relative_returns(directional_returns, directional_spy_returns),
+            ),
+            **_payload_horizon_fields(
+                "directional_sector_relative_return",
+                _relative_returns(directional_returns, directional_sector_returns),
+            ),
             "expected_review_horizon_days": expected_review_horizon_days,
             "expected_review_horizon_expired": expected_review_horizon_expired,
             "setup_follow_through": setup_follow_through,
@@ -445,6 +464,11 @@ def value_outcome_payload(outcome: ValueOutcome) -> dict[str, object]:
         "return_10d": outcome.return_10d,
         "return_20d": outcome.return_20d,
         "return_60d": outcome.return_60d,
+        "outcome_direction": payload.get("outcome_direction"),
+        "directional_return_5d": payload.get("directional_return_5d"),
+        "directional_return_10d": payload.get("directional_return_10d"),
+        "directional_return_20d": payload.get("directional_return_20d"),
+        "directional_return_60d": payload.get("directional_return_60d"),
         "spy_return_5d": outcome.spy_return_5d,
         "spy_return_10d": outcome.spy_return_10d,
         "spy_return_20d": outcome.spy_return_20d,
@@ -453,6 +477,18 @@ def value_outcome_payload(outcome: ValueOutcome) -> dict[str, object]:
         "spy_relative_return_10d": outcome.spy_relative_return_10d,
         "spy_relative_return_20d": outcome.spy_relative_return_20d,
         "spy_relative_return_60d": outcome.spy_relative_return_60d,
+        "directional_spy_relative_return_5d": payload.get(
+            "directional_spy_relative_return_5d"
+        ),
+        "directional_spy_relative_return_10d": payload.get(
+            "directional_spy_relative_return_10d"
+        ),
+        "directional_spy_relative_return_20d": payload.get(
+            "directional_spy_relative_return_20d"
+        ),
+        "directional_spy_relative_return_60d": payload.get(
+            "directional_spy_relative_return_60d"
+        ),
         "sector_etf_ticker": outcome.sector_etf_ticker,
         "sector_return_5d": outcome.sector_return_5d,
         "sector_return_10d": outcome.sector_return_10d,
@@ -462,6 +498,18 @@ def value_outcome_payload(outcome: ValueOutcome) -> dict[str, object]:
         "sector_relative_return_10d": outcome.sector_relative_return_10d,
         "sector_relative_return_20d": outcome.sector_relative_return_20d,
         "sector_relative_return_60d": outcome.sector_relative_return_60d,
+        "directional_sector_relative_return_5d": payload.get(
+            "directional_sector_relative_return_5d"
+        ),
+        "directional_sector_relative_return_10d": payload.get(
+            "directional_sector_relative_return_10d"
+        ),
+        "directional_sector_relative_return_20d": payload.get(
+            "directional_sector_relative_return_20d"
+        ),
+        "directional_sector_relative_return_60d": payload.get(
+            "directional_sector_relative_return_60d"
+        ),
         "max_adverse_excursion": outcome.max_adverse_excursion,
         "max_favorable_excursion": outcome.max_favorable_excursion,
         "invalidation_price": outcome.invalidation_price,
@@ -599,6 +647,37 @@ def _relative(primary: float | None, benchmark: float | None) -> float | None:
     return primary - benchmark
 
 
+def _directional_returns(
+    returns: Mapping[int, float],
+    *,
+    direction: str | None,
+) -> dict[int, float]:
+    multiplier = -1.0 if direction == "bearish" else 1.0
+    return {horizon: value * multiplier for horizon, value in returns.items()}
+
+
+def _relative_returns(
+    primary: Mapping[int, float],
+    benchmark: Mapping[int, float],
+) -> dict[int, float]:
+    return {
+        horizon: value
+        for horizon in HORIZONS
+        if (value := _relative(primary.get(horizon), benchmark.get(horizon))) is not None
+    }
+
+
+def _payload_horizon_fields(
+    prefix: str,
+    values: Mapping[int, float],
+) -> dict[str, float]:
+    return {
+        f"{prefix}_{horizon}d": values[horizon]
+        for horizon in HORIZONS
+        if horizon in values
+    }
+
+
 def _expected_direction(entry: ValueLedgerEntry) -> str | None:
     direction = str(entry.priced_in_direction or "").strip().lower()
     if direction in {"bullish", "bearish"}:
@@ -705,8 +784,13 @@ def _value_outcome_coverage_row(
         ),
         "return_5d": outcome.return_5d if outcome is not None else None,
         "return_20d": outcome.return_20d if outcome is not None else None,
+        "outcome_direction": outcome_payload.get("outcome_direction"),
+        "directional_return_20d": outcome_payload.get("directional_return_20d"),
         "spy_relative_return_20d": (
             outcome.spy_relative_return_20d if outcome is not None else None
+        ),
+        "directional_spy_relative_return_20d": outcome_payload.get(
+            "directional_spy_relative_return_20d"
         ),
         "setup_follow_through": outcome_payload.get("setup_follow_through"),
         "gap_outcome": outcome_payload.get("gap_outcome"),

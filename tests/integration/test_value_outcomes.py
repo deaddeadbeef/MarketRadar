@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, date, datetime, timedelta
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
@@ -68,10 +69,13 @@ def test_value_outcome_cli_preview_execute_and_list(
     assert outcome["payload"]["setup_follow_through"] == "followed_through"
     assert outcome["setup_follow_through_horizon_days"] == 20
     assert outcome["setup_follow_through_direction"] == "bullish"
+    assert outcome["outcome_direction"] == "bullish"
     assert outcome["gap_outcome"] == "gap_up"
     assert round(outcome["gap_return"], 6) == 0.01
     assert round(outcome["return_5d"], 6) == 0.1
+    assert round(outcome["directional_return_5d"], 6) == 0.1
     assert round(outcome["spy_relative_return_20d"], 6) == 0.25
+    assert round(outcome["directional_spy_relative_return_20d"], 6) == 0.25
     assert outcome["sector_etf_ticker"] == "XLK"
     assert outcome["invalidation_touched"] is True
     with engine.connect() as conn:
@@ -185,6 +189,10 @@ def test_value_outcome_coverage_reports_ledger_rows_missing_outcomes(
         if row["value_ledger_entry_id"] == covered_entry_id
     )
     assert covered["setup_follow_through"] == "followed_through"
+    assert round(covered["directional_return_20d"], 6) == round(
+        covered["return_20d"],
+        6,
+    )
     assert covered["gap_outcome"] == "gap_up"
     missing = next(
         row
@@ -426,6 +434,53 @@ def test_value_outcome_marks_failed_bearish_follow_through_and_gap_down(
     assert round(outcome["gap_return"], 6) == -0.01
 
 
+def test_value_outcome_exposes_directional_returns_for_bearish_follow_through(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'value-outcome-bearish-returns.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = engine_from_url(database_url)
+    create_schema(engine)
+    entry_id = _seed_ledger_and_bars(
+        engine,
+        priced_in_direction="bearish",
+        first_future_open=99,
+        invalidation_price=105,
+        msft_close_fn=_bearish_msft_close,
+    )
+
+    response = TestClient(create_app()).post(
+        "/api/value-outcomes/update",
+        json={
+            "value_ledger_entry_id": entry_id,
+            "outcome_available_at": "2026-08-20T21:00:00+00:00",
+            "sector_etf_ticker": "XLK",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
+    outcome = payload["outcome"]
+    assert outcome["status"] == "computed"
+    assert outcome["setup_follow_through"] == "followed_through"
+    assert outcome["outcome_direction"] == "bearish"
+    assert round(outcome["return_20d"], 6) == -0.2
+    assert round(outcome["directional_return_20d"], 6) == 0.2
+    assert round(outcome["spy_relative_return_20d"], 6) == -0.25
+    assert round(outcome["directional_spy_relative_return_20d"], 6) == 0.25
+    assert round(outcome["sector_relative_return_20d"], 6) == pytest.approx(-0.222222)
+    assert round(outcome["directional_sector_relative_return_20d"], 6) == pytest.approx(
+        0.222222
+    )
+    assert outcome["payload"]["directional_return_20d"] == outcome[
+        "directional_return_20d"
+    ]
+    assert outcome["payload"]["outcome_direction"] == "bearish"
+
+
 def test_value_outcome_uses_bearish_high_for_invalidation_touch(
     tmp_path,
     monkeypatch,
@@ -498,7 +553,9 @@ def _seed_ledger_and_bars(
     priced_in_direction: str = "bullish",
     first_future_open: float | None = None,
     invalidation_price: float = 95,
+    msft_close_fn=None,
 ) -> str:
+    msft_close_fn = msft_close_fn or _msft_close
     entry_id = _seed_value_ledger_entry(
         engine,
         artifact_id="note-MSFT",
@@ -515,7 +572,7 @@ def _seed_ledger_and_bars(
                 _bar(
                     "MSFT",
                     date(2026, 5, 15) + timedelta(days=offset),
-                    _msft_close(offset),
+                    msft_close_fn(offset),
                     open_price=first_future_open if offset == 1 else None,
                     low=94 if offset == 2 else None,
                     late=late_future_bar_index == offset,
@@ -571,6 +628,10 @@ def _msft_close(offset: int) -> float:
     if offset == 60:
         return 150
     return 100 + offset
+
+
+def _bearish_msft_close(offset: int) -> float:
+    return 100 - offset
 
 
 def _bar(
