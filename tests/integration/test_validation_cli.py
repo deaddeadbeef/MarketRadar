@@ -383,7 +383,13 @@ def test_validation_report_latest_empty_state_is_zero_call(
     assert payload["schema_version"] == "validation-report-cli-v1"
     assert payload["status"] == "no_validation_runs"
     assert payload["selection"] == "latest"
+    assert payload["canonical_next_action"] == payload["next_action"]
+    assert payload["canonical_next_command"] == payload["next_command"]
+    assert payload["next_command"].startswith("catalyst-radar validation-replay")
+    assert "--preview --json" in payload["next_command"]
+    assert payload["external_calls_required"] == 0
     assert payload["external_calls_made"] == 0
+    assert payload["db_writes_required"] == 0
     assert payload["db_writes_made"] == 0
     assert "validation-replay" in payload["next_action"]
 

@@ -1372,7 +1372,10 @@ follow-through and upside invalidation. Baseline screeners remain long-only
 unless a baseline explicitly carries a direction.
 `validation-report --latest --json` selects the latest successful stored
 validation run, makes 0 provider calls and 0 database writes, and returns
-`status=no_validation_runs` when no replay evidence exists yet.
+`status=no_validation_runs` when no replay evidence exists yet. Missing-report
+payloads include `canonical_next_command`, pointing at the zero-call
+`validation-replay --preview --json` template to run after enough candidate
+outcomes are available.
 The same report includes score-calibration buckets for `50_59`, `60_69`,
 `70_79`, `80_89`, and `90_plus`, plus score distribution groups for sector,
 market regime, setup type, priced-in status, action state, source coverage, and
