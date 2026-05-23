@@ -34,6 +34,17 @@ MISSION_BRIEF_BASELINES = (
     NEWS_EVENT_ONLY_SCREENER,
     RANDOM_SECTOR_MATCHED_BASKET,
 )
+FORWARD_RETURN_HORIZONS = (5, 10, 20, 60)
+RELATIVE_RETURN_BENCHMARKS = ("spy", "sector")
+COMPARISON_RETURN_METRICS = (
+    *(f"return_{horizon}d_avg" for horizon in FORWARD_RETURN_HORIZONS),
+    *(
+        f"{benchmark}_relative_return_{horizon}d_avg"
+        for benchmark in RELATIVE_RETURN_BENCHMARKS
+        for horizon in FORWARD_RETURN_HORIZONS
+    ),
+    "sector_outperformance_rate",
+)
 
 
 @dataclass(frozen=True)
@@ -265,6 +276,8 @@ def _baseline_comparison(
             "baseline_max_favorable_excursion_avg": baseline_stats[
                 "max_favorable_excursion_avg"
             ],
+            **_prefixed_metrics("marketradar", marketradar_stats),
+            **_prefixed_metrics("baseline", baseline_stats),
             "baseline_labeled_count": baseline_stats["labeled_count"],
             "sample_status": _comparison_sample_status(marketradar_stats, baseline_stats),
             "result_vs_market_radar": _comparison_result(
@@ -295,6 +308,8 @@ def _empty_baseline_comparison(marketradar_stats: Mapping[str, Any]) -> dict[str
         "baseline_false_positive_rate": 0.0,
         "baseline_max_adverse_excursion_avg": None,
         "baseline_max_favorable_excursion_avg": None,
+        **_prefixed_metrics("marketradar", marketradar_stats),
+        **_prefixed_metrics("baseline", {}),
         "baseline_labeled_count": 0,
         "sample_status": "insufficient_evidence",
         "result_vs_market_radar": "insufficient_evidence",
@@ -337,6 +352,7 @@ def _selection_stats(rows: Iterable[Any], *, positive_label: str) -> dict[str, A
             labeled_rows,
             "max_favorable_excursion",
         ),
+        **_selection_return_stats(row_tuple),
     }
 
 
@@ -360,6 +376,55 @@ def _average_label(rows: tuple[Any, ...], label: str) -> float | None:
     if not values:
         return None
     return sum(values) / len(values)
+
+
+def _selection_return_stats(rows: tuple[Any, ...]) -> dict[str, float | None]:
+    stats: dict[str, float | None] = {}
+    for horizon in FORWARD_RETURN_HORIZONS:
+        stats[f"return_{horizon}d_avg"] = _average_label(
+            rows,
+            f"return_{horizon}d",
+        )
+    for benchmark in RELATIVE_RETURN_BENCHMARKS:
+        for horizon in FORWARD_RETURN_HORIZONS:
+            stats[f"{benchmark}_relative_return_{horizon}d_avg"] = (
+                _average_relative_return(rows, benchmark=benchmark, horizon=horizon)
+            )
+    stats["sector_outperformance_rate"] = _boolean_label_rate(
+        rows,
+        "sector_outperformance",
+    )
+    return stats
+
+
+def _average_relative_return(
+    rows: tuple[Any, ...],
+    *,
+    benchmark: str,
+    horizon: int,
+) -> float | None:
+    label = f"{benchmark}_relative_return_{horizon}d"
+    values = []
+    for row in rows:
+        labels = _labels(row)
+        value = _finite_float(labels.get(label))
+        if value is None:
+            candidate_return = _finite_float(labels.get(f"return_{horizon}d"))
+            benchmark_return = _finite_float(labels.get(f"{benchmark}_return_{horizon}d"))
+            if candidate_return is not None and benchmark_return is not None:
+                value = candidate_return - benchmark_return
+        if value is not None:
+            values.append(value)
+    if not values:
+        return None
+    return sum(values) / len(values)
+
+
+def _prefixed_metrics(prefix: str, stats: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        f"{prefix}_{metric}": stats.get(metric)
+        for metric in COMPARISON_RETURN_METRICS
+    }
 
 
 def _comparison_sample_status(

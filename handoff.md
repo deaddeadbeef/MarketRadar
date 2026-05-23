@@ -1,6 +1,38 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 15:19:59 +08:00
+Last updated: 2026-05-23 15:33:55 +08:00
+
+## Latest Validation Baseline Outcome Metrics Slice
+
+Last updated: 2026-05-23 15:33:55 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains proving the priced-in scan is repeatable, measurable,
+  and useful before adding more UI polish or LLM behavior.
+- Mission Priority 5 requires baseline comparisons to include forward returns
+  and returns versus SPY/sector, but the validation report baseline rows only
+  exposed precision, false-positive rate, and excursion averages.
+- The useful definition for this slice is concrete: a validation report should
+  let the operator compare MarketRadar against simple baselines on the same
+  forward-return and benchmark-relative metrics, not only hit rate.
+
+Fix in this slice:
+
+- Validation baseline comparison rows now include MarketRadar and baseline
+  average 5/10/20/60 day returns when labels are present.
+- They also include SPY-relative and sector-relative average returns, with a
+  deterministic fallback from raw candidate and benchmark returns.
+- They expose sector-outperformance rate for both MarketRadar and each baseline.
+- README documents the expanded validation-report metric contract.
+
+Safety:
+
+- This is report-only validation math over already stored labels/results.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls.
+- It writes 0 database rows and does not change scores, thresholds, policy
+  gates, action states, trade plans, LLM behavior, or broker/order controls.
 
 ## Latest Value Ledger Priced-In Context Slice
 
