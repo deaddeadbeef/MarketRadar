@@ -1,6 +1,56 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-24 03:58:48 +08:00
+Last updated: 2026-05-24 04:07:34 +08:00
+
+## Latest Monthly Value Useful-Evidence Blocker Slice
+
+Last updated: 2026-05-24 04:07:34 +08:00
+
+Goal alignment / drift check:
+
+- The mission brief requires monthly value proof to answer whether MarketRadar
+  provided attributable decision-support value.
+- A live zero-call report against `data/schwab-live.db` had `entry_count=0`,
+  no surfaced candidate coverage gaps, no outcome rows, and a validation replay
+  preview with `status=no_results`, but `value-report` still surfaced
+  `first_blocker=validation_evidence`.
+- That sent the operator toward validation before any useful/noisy value
+  evidence existed to validate.
+
+Useful definition:
+
+- Monthly value reporting should not direct the operator to validation replay
+  until there is enough useful value-ledger evidence to support a monthly
+  pass/fail attempt.
+- If useful evidence is below the configured minimum, `first_blocker` should be
+  `useful_evidence` with no execute/write command.
+
+Fix in this slice:
+
+- `_monthly_value_first_evidence_gap()` now prefers `useful_evidence` before
+  `validation_evidence` when useful value-ledger evidence is below the monthly
+  minimum and there are no earlier candidate-ledger or outcome blockers.
+- Empty-month value reports now return `first_blocker=useful_evidence`,
+  `first_gap_count=2`, and `canonical_next_command=null`.
+- Validation evidence remains visible in the nested report, with its own
+  preview-only validation command for later.
+- README documents that empty months should not jump ahead to validation replay.
+
+Safety:
+
+- Read-only value-report ordering change.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls and writes 0 operator database rows.
+- It does not execute validation replay, value-ledger writes, outcome writes,
+  residual repair, imports, source batches, LLMs, alert delivery, or orders.
+
+Live zero-call smoke using the root `data/schwab-live.db`:
+
+- `value-report --month 2026-05 --available-at 2026-05-23T16:00:00+00:00`
+  now returns `verdict=insufficient_evidence`,
+  `first_blocker=useful_evidence`, `first_gap_count=2`,
+  `canonical_next_command=null`, `external_calls_made=0`, and
+  `db_writes_made=0`.
 
 ## Latest Validation Replay Empty Preview Guard Slice
 
