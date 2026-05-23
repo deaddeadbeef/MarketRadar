@@ -49,6 +49,9 @@ def test_shadow_mode_cli_preview_execute_and_latest(
     preview = json.loads(capsys.readouterr().out)
     assert preview["mode"] == "preview"
     assert preview["status"] == "setup_required"
+    assert preview["provider_calls_planned"] == 0
+    assert preview["provider_calls_made"] == 0
+    assert preview["db_writes_planned"] == 1
     assert preview["external_calls_made"] == 0
     assert preview["db_writes_made"] == 0
     assert preview["preview_command"].startswith("catalyst-radar shadow-mode run")
@@ -62,7 +65,9 @@ def test_shadow_mode_cli_preview_execute_and_latest(
     assert preview["canonical_next_action"] == preview["next_action"]
     assert preview["canonical_next_command"] is None
     assert preview["run"]["status"] == "setup_required"
+    assert preview["run"]["provider_calls_planned"] == preview["provider_calls_planned"]
     assert preview["run"]["provider_calls_made"] == 0
+    assert preview["run"]["db_writes_planned"] == preview["db_writes_planned"]
     assert (
         preview["run"]["eligible_for_manual_review_count"]
         == preview["run"]["manual_review_count"]
@@ -85,6 +90,9 @@ def test_shadow_mode_cli_preview_execute_and_latest(
     executed = json.loads(capsys.readouterr().out)
     assert executed["mode"] == "execute"
     assert executed["status"] == "setup_required"
+    assert executed["provider_calls_planned"] == 0
+    assert executed["provider_calls_made"] == 0
+    assert executed["db_writes_planned"] == 1
     assert executed["db_writes_made"] == 1
     assert executed["preview_command"].startswith("catalyst-radar shadow-mode run")
     assert "--preview" in executed["preview_command"]
@@ -94,6 +102,8 @@ def test_shadow_mode_cli_preview_execute_and_latest(
     assert executed["canonical_next_action"] == executed["next_action"]
     assert executed["canonical_next_command"] is None
     assert executed["run"]["db_writes_made"] == 1
+    assert executed["run"]["provider_calls_planned"] == executed["provider_calls_planned"]
+    assert executed["run"]["db_writes_planned"] == executed["db_writes_planned"]
     assert executed["run"]["status"] == "setup_required"
     assert (
         executed["run"]["eligible_for_manual_review_count"]
@@ -122,6 +132,23 @@ def test_shadow_mode_cli_preview_execute_and_latest(
     assert status["external_calls_made"] == 0
     assert status["db_writes_made"] == 0
 
+    human_exit = main(
+        [
+            "shadow-mode",
+            "run",
+            "--available-at",
+            AVAILABLE_AT,
+            "--preview",
+        ]
+    )
+    assert human_exit == 0
+    human_output = capsys.readouterr().out
+    assert "provider_calls_planned=0" in human_output
+    assert "provider_calls_made=0" in human_output
+    assert "db_writes_planned=1" in human_output
+    assert "external_calls_made=0" in human_output
+    assert "db_writes_made=0" in human_output
+
 
 def test_shadow_mode_api_preview_and_latest(tmp_path, monkeypatch) -> None:
     database_url = f"sqlite:///{(tmp_path / 'shadow-mode-api.db').as_posix()}"
@@ -142,6 +169,9 @@ def test_shadow_mode_api_preview_and_latest(tmp_path, monkeypatch) -> None:
     assert preview["first_blocker"] == "universe"
     assert preview["canonical_next_action"] == preview["next_action"]
     assert preview["canonical_next_command"] is None
+    assert preview["provider_calls_planned"] == preview["run"]["provider_calls_planned"]
+    assert preview["provider_calls_made"] == preview["run"]["provider_calls_made"]
+    assert preview["db_writes_planned"] == preview["run"]["db_writes_planned"]
     assert preview["external_calls_made"] == 0
     assert preview["db_writes_made"] == 0
     assert "--preview" in preview["preview_command"]
@@ -164,6 +194,9 @@ def test_shadow_mode_api_preview_and_latest(tmp_path, monkeypatch) -> None:
     assert executed["first_blocker"] == "universe"
     assert executed["canonical_next_action"] == executed["next_action"]
     assert executed["canonical_next_command"] is None
+    assert executed["provider_calls_planned"] == executed["run"]["provider_calls_planned"]
+    assert executed["provider_calls_made"] == executed["run"]["provider_calls_made"]
+    assert executed["db_writes_planned"] == executed["run"]["db_writes_planned"]
     assert executed["db_writes_made"] == 1
     assert "--preview" in executed["preview_command"]
     assert executed["execute_command"] is None
@@ -262,6 +295,9 @@ def test_shadow_mode_preview_records_latest_market_bar_gap_without_radar_run(
 
     assert preview_exit == 0
     preview = json.loads(capsys.readouterr().out)
+    assert preview["provider_calls_planned"] == preview["run"]["provider_calls_planned"]
+    assert preview["provider_calls_made"] == 0
+    assert preview["db_writes_planned"] == preview["run"]["db_writes_planned"]
     assert preview["external_calls_made"] == 0
     assert preview["db_writes_made"] == 0
     assert preview["run"]["missing_market_bar_count"] == 1

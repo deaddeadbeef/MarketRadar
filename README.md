@@ -1064,11 +1064,15 @@ command behind a generic setup message. The run response also exposes
 clients can route the operator to the same unblock step without parsing nested
 snapshot data. It also includes explicit `preview_command` and
 `execute_command` fields; the preview command contains `--preview`, and the
-write command contains `--execute`. `shadow-mode status` also uses the current
-readiness canonical next action whenever current readiness is not ready, so a
-stale persisted run cannot hide today's first unblock command. The status
-payload exposes the same first-blocker fields. If the current readiness gate is
-blocked by market bars, shadow run records use `scan_scope=blocked_full_market_gate`
+write command contains `--execute`. The run response mirrors the audit counters
+at the top level as `provider_calls_planned`, `provider_calls_made`,
+`db_writes_planned`, and `db_writes_made`, even when the run is blocked or
+setup-required, so automation does not have to infer no-hidden-call behavior
+from nested run data. `shadow-mode status` also uses the current readiness
+canonical next action whenever current readiness is not ready, so a stale
+persisted run cannot hide today's first unblock command. The status payload
+exposes the same first-blocker fields. If the current readiness gate is blocked
+by market bars, shadow run records use `scan_scope=blocked_full_market_gate`
 instead of reusing a stale `selected_universe` scope from an older scan.
 `shadow-mode status` also fails closed at the top level: when current readiness
 is not ready, top-level `status` follows the current readiness status while

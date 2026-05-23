@@ -1,6 +1,47 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-24 02:41:53 +08:00
+Last updated: 2026-05-24 02:57:02 +08:00
+
+## Latest Shadow Preview Counter Parity Slice
+
+Last updated: 2026-05-24 02:57:02 +08:00
+
+Goal alignment / drift check:
+
+- The mission brief requires shadow-mode run records to expose provider-call
+  and database-write counts for every daily run.
+- The persisted nested `run` object already carried those counts, but the
+  blocked/setup top-level `shadow-mode run --preview --json` contract forced
+  automation to inspect nested data and left `provider_calls_planned` /
+  `db_writes_planned` absent at the response level.
+- That weakened the no-hidden-call/no-hidden-write audit surface exactly where
+  a daily shadow operator first checks whether it is safe to proceed.
+
+Useful definition:
+
+- A shadow-mode preview is useful only if a human or script can see planned and
+  made provider calls / DB writes without guessing or parsing nested payloads.
+- The counters must remain explicit zeroes when setup is blocked.
+- Preview must still make 0 provider calls and 0 DB writes.
+
+Fix in this slice:
+
+- `shadow-mode run` now mirrors `provider_calls_planned`,
+  `provider_calls_made`, `db_writes_planned`, and `db_writes_made` at the
+  top-level JSON/API response.
+- Human CLI output prints the same planned/made counter fields.
+- Regression coverage checks CLI/API preview and execute responses keep the
+  top-level counters aligned with the nested audit row.
+- README documents the top-level shadow counter contract.
+
+Safety:
+
+- This is shadow-mode run contract clarity only.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls and writes 0 database rows in preview.
+- It does not execute residual repair, import bars, run source batches, mutate
+  candidates, write value rows/outcomes, run LLMs, deliver alerts, or submit
+  orders.
 
 ## Latest TUI Value Coverage Next Commands Slice
 
