@@ -1,6 +1,44 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 16:57:52 +08:00
+Last updated: 2026-05-23 17:09:24 +08:00
+
+## Latest Monthly Value First Evidence Gap Slice
+
+Last updated: 2026-05-23 17:09:24 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains producing monthly value proof that says what is
+  missing before MarketRadar can claim pass/fail value evidence.
+- A zero-call configured-DB check showed `value-report --json` returned
+  `verdict=insufficient_evidence`, but had no top-level first blocker or
+  command. Clients had to inspect nested coverage/validation sections to find
+  the first missing evidence step.
+- The useful definition for this slice is concrete: the monthly value report
+  can tell scripts and dashboards the first value-proof blocker and a safe
+  preview command when one exists.
+
+Fix in this slice:
+
+- `monthly-value-report-v1` now includes top-level `first_blocker`,
+  `first_gap_count`, `canonical_next_action`, `canonical_next_command`, and
+  `next_action`.
+- Missing candidate value-ledger coverage takes precedence and exposes the
+  preview-only ledger record command.
+- Existing value-outcome and validation evidence summaries remain nested, but
+  the report can now route to them as the first blocker when they are the first
+  missing value-proof layer.
+- README documents the new top-level report fields.
+
+Safety:
+
+- This is read-only monthly report behavior over local ledger, outcome, and
+  validation rows.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls.
+- It writes 0 database rows and does not change scores, thresholds, policy
+  gates, action states, trade plans, LLM behavior, broker/order controls,
+  candidate rows, ledger rows, outcome rows, or readiness criteria.
 
 ## Latest Value Ledger Coverage First Command Slice
 

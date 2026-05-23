@@ -1006,6 +1006,9 @@ summary of value-ledger rows versus linked outcome rows, including non-executing
 `value-outcome update` preview commands for missing outcomes. When there are no
 ledger rows in the period, outcome coverage reports `no_ledger_entries` instead
 of `ready`, because outcome evidence cannot exist before feedback is logged. The
+top-level report exposes `first_blocker`, `first_gap_count`,
+`canonical_next_action`, and `canonical_next_command` for the first missing
+value-proof evidence step.
 `validation_evidence` section shows whether the latest successful validation run
 has measured the mission-brief baselines and precision@5/10 evidence, or gives
 the next validation-replay action when no validation run exists. The terminal
