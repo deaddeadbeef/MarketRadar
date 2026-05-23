@@ -1,6 +1,81 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-24 01:43:59 +08:00
+Last updated: 2026-05-24 02:05:04 +08:00
+
+## Latest Dashboard Minimum-Product Stop-Line Slice
+
+Last updated: 2026-05-24 02:05:04 +08:00
+
+Goal alignment / drift check:
+
+- The user wants to try MarketRadar soon, but only at a point that is safe to
+  treat like a real minimum shipped product.
+- The product's current useful purpose is still read-only market decision
+  support: scan the market, surface priced-in/emotion mismatch candidates,
+  explain blockers, and never hide provider calls, DB writes, LLM calls, broker
+  calls, or order actions.
+- The strict shipped-product gate is still not clear. That is correct because
+  the local full-market market-bar gate requires an explicit approval step
+  before the product can claim minimum-product readiness.
+- The CLI already exposed the strict approval packet, but the dashboard overview
+  could still make the product feel usable without putting the hard stop line in
+  the operator's face.
+
+Useful definition:
+
+- The dashboard overview must answer the first operator question immediately:
+  "Can I use this as a shipped product right now?"
+- If the answer is no, the same screen must show the first blocker, the safe
+  inspection command, and any explicit approval-required unblock packet.
+- The approval packet must remain descriptive only: it may show the exact
+  guarded command and expected writes/calls, but it must not execute anything.
+- The static CLI/TUI render must not clip away the approval count or command so
+  agents and humans can verify the same stop line.
+
+Fix in this slice:
+
+- The overview guide now includes a `Shipped-product stop` line sourced from
+  `trial_readiness.minimum_useful_product`.
+- The static overview render now prints separate lines for:
+  `Shipped-product stop`, `Approval required`, and `Approval command`.
+- Approval counts and the guarded command are shown only when the strict gate
+  includes `approval_required_unblock`.
+- A regression test renders a minimal blocked gate and asserts that the
+  dashboard exposes the market-bars blocker, 579 required DB writes, 0 provider
+  calls, and the residual-repair approval command.
+
+Safety:
+
+- This is presentation/readiness UX only.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls and writes 0 operator DB rows.
+- It does not execute residual repair, import bars, run source batches, mutate
+  candidate state, write value rows/outcomes, run LLMs, deliver alerts, or
+  submit orders.
+
+Live zero-call smoke using the root operator config and this worktree's code:
+
+- `assert-trial-ready --minimum-product --available-at
+  2026-05-23T16:00:00+00:00 --json` still exits nonzero because
+  `minimum_useful_product.ready=false`.
+- Current first blocker: `market_bars`.
+- Current approval command:
+  `catalyst-radar market-bars residual-repair --expected-as-of 2026-05-15
+  --expect-missing-count 579 --expect-eligible-count 579 --execute --json`.
+- Required explicit local DB writes to clear this blocker: `579`.
+- Calls/writes made by the gate: `external_calls_made=0`,
+  `db_writes_made=0`.
+- `dashboard-snapshot --page overview` now prints:
+  `Shipped-product stop: blocked; blocker market_bars`,
+  `Approval required: 579 DB write(s), 0 provider call(s)`, and the guarded
+  `Approval command`.
+
+Operator stop point:
+
+- Safe to try now: read-only dashboard/CLI exploration and blocker review.
+- Not safe to call "shipped minimum product" yet: the strict gate still blocks.
+- Do not run the residual-repair `--execute` command unless the operator
+  explicitly approves the 579 local DB writes.
 
 ## Latest Minimum-Product Approval Packet Slice
 
