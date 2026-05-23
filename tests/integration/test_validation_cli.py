@@ -194,6 +194,10 @@ def test_validation_report_label_and_paper_cli_workflow(
     assert "db_writes=0" in captured.out
     assert "precision_target_20d_25=0.00" in captured.out
     assert "score_ordering=insufficient_evidence" in captured.out
+    assert "local_text_status=insufficient_evidence" in captured.out
+    assert "local_text_upgrade=insufficient_evidence" in captured.out
+    assert "local_text_models_changed=false" in captured.out
+    assert "local_text_thresholds_changed=false" in captured.out
     assert (
         main(
             [

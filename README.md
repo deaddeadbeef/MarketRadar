@@ -1270,6 +1270,11 @@ It also reports local text measurement for the existing narrative, novelty,
 source quality, sentiment, theme match, theme velocity, and theme-hit signals.
 Those measurements are evidence only; they do not replace the local text model
 or change scoring until validation evidence justifies a separate policy change.
+Human `validation-report` output prints the compact local-text verdict:
+`local_text_status`, `local_text_measured_features`, `local_text_upgrade`,
+`local_text_models_changed`, and `local_text_thresholds_changed`. A useful
+local-text upgrade still requires measured evidence first; this report does not
+enable new NLP models or change thresholds by itself.
 
 ### Live activation reminder
 

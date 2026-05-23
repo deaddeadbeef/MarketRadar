@@ -2757,6 +2757,8 @@ def main(argv: list[str] | None = None) -> int:
         else:
             calibration = payload.get("score_calibration")
             calibration = calibration if isinstance(calibration, Mapping) else {}
+            local_text = payload.get("local_text_intelligence")
+            local_text = local_text if isinstance(local_text, Mapping) else {}
             print(
                 f"validation_report status=ready run_id={run_id} "
                 f"selection={selection} "
@@ -2769,6 +2771,15 @@ def main(argv: list[str] | None = None) -> int:
                 f"score_ordering={calibration.get('score_ordering_verdict') or 'unknown'} "
                 "threshold_review_required="
                 f"{str(bool(calibration.get('threshold_review_required'))).lower()} "
+                f"local_text_status={local_text.get('sample_status') or 'unknown'} "
+                "local_text_measured_features="
+                f"{local_text.get('measured_feature_count') or 0} "
+                "local_text_upgrade="
+                f"{local_text.get('upgrade_recommendation') or 'unknown'} "
+                "local_text_models_changed="
+                f"{str(bool(local_text.get('models_changed'))).lower()} "
+                "local_text_thresholds_changed="
+                f"{str(bool(local_text.get('thresholds_changed'))).lower()} "
                 "external_calls=0 db_writes=0"
             )
         return 0
