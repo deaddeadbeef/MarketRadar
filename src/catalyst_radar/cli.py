@@ -5451,6 +5451,25 @@ def _print_market_bars_residual_repair(payload: Mapping[str, object]):
             f"actual_eligible={guard.get('actual_eligible_count')} "
             f"errors={','.join(str(item) for item in errors) if errors else 'none'}"
         )
+    projection = _mapping_value(payload.get("post_repair_projection"))
+    if projection:
+        print(
+            "post_repair_projection "
+            f"status={projection.get('status')} "
+            f"projected_active={projection.get('projected_active_security_count')} "
+            f"projected_missing={projection.get('projected_missing_as_of_bar_count')} "
+            "market_bar_gate_cleared="
+            f"{str(bool(projection.get('projected_market_bar_gate_cleared'))).lower()} "
+            f"next_blocker={projection.get('projected_next_blocker') or 'none'} "
+            f"db_writes_if_execute={projection.get('db_writes_required_to_execute')} "
+            f"external_calls={projection.get('external_calls_made')} "
+            f"db_writes={projection.get('db_writes_made')}"
+        )
+        projected_next_action = str(
+            projection.get("projected_next_action") or ""
+        ).strip()
+        if projected_next_action:
+            print(f"post_repair_next_action={_compact_cli_text(projected_next_action)}")
     print(f"preview_command={payload.get('preview_command')}")
     print(f"execute_command={payload.get('execute_command')}")
     print(f"safe_default={payload.get('safe_default')}")

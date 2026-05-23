@@ -2573,6 +2573,17 @@ def test_post_radar_market_bars_residual_repair_previews_and_executes(
     assert preview["mode"] == "preview"
     assert preview["eligible_count"] == 1
     assert preview["preview_would_clear_market_bars"] is True
+    projection = preview["post_repair_projection"]
+    assert projection["schema_version"] == "market-bars-residual-repair-projection-v1"
+    assert projection["status"] == "would_clear_market_bars"
+    assert projection["current_first_blocker"] == "market_bars"
+    assert projection["projected_active_security_count"] == 1
+    assert projection["projected_existing_as_of_bar_count"] == 1
+    assert projection["projected_missing_as_of_bar_count"] == 0
+    assert projection["projected_market_bar_gate_cleared"] is True
+    assert projection["db_writes_required_to_execute"] == 1
+    assert projection["external_calls_made"] == 0
+    assert projection["db_writes_made"] == 0
     assert preview["external_calls_made"] == 0
     assert preview["db_writes_made"] == 0
 

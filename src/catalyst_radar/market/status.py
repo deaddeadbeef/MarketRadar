@@ -439,6 +439,12 @@ def market_bars_residual_repair_payload(
     eligible_count = len(eligible)
     projected_missing_after = max(0, missing - eligible_count)
     would_clear = bool(missing > 0 and eligible_count == missing)
+    post_repair_projection = _residual_repair_projection(
+        status_payload,
+        missing=missing,
+        eligible_count=eligible_count,
+        projected_missing_after=projected_missing_after,
+    )
     guard_errors = _residual_repair_guard_errors(
         missing=missing,
         eligible_count=eligible_count,
@@ -539,6 +545,7 @@ def market_bars_residual_repair_payload(
         "deactivated_count": deactivated_count,
         "projected_missing_after_repair_count": projected_missing_after,
         "preview_would_clear_market_bars": would_clear,
+        "post_repair_projection": post_repair_projection,
         "clears_market_bar_gate": bool(
             deactivated_count > 0
             and _int_payload_value(post_status.get("missing_as_of_bar_count")) == 0
@@ -597,6 +604,68 @@ def market_bars_residual_repair_payload(
         "next_action": next_action,
         "external_calls_made": 0,
         "db_writes_made": db_writes_made,
+    }
+
+
+def _residual_repair_projection(
+    status_payload: Mapping[str, object],
+    *,
+    missing: int,
+    eligible_count: int,
+    projected_missing_after: int,
+) -> dict[str, object]:
+    active_count = _int_payload_value(status_payload.get("active_security_count"))
+    existing_count = _int_payload_value(status_payload.get("existing_as_of_bar_count"))
+    after_clear = _mapping(status_payload.get("after_market_bars_clear"))
+    projected_active = max(0, active_count - eligible_count)
+    market_bar_gate_cleared = projected_missing_after <= 0
+    if missing <= 0:
+        status = "already_clear"
+    elif market_bar_gate_cleared and eligible_count > 0:
+        status = "would_clear_market_bars"
+    elif eligible_count > 0:
+        status = "would_reduce_market_bar_gap"
+    else:
+        status = "would_leave_market_bars_blocked"
+
+    if market_bar_gate_cleared:
+        projected_next_blocker = after_clear.get("next_source")
+        projected_next_action = str(after_clear.get("next_action") or "").strip()
+        if not projected_next_action:
+            projected_next_action = (
+                "After execution, rerun assert-shadow-ready and priced-in-answer "
+                "to inspect the next blocker."
+            )
+    else:
+        projected_next_blocker = "market_bars"
+        projected_next_action = str(status_payload.get("next_action") or "").strip()
+        if not projected_next_action:
+            projected_next_action = (
+                "Market bars would remain blocked; repair or review the remaining "
+                "missing rows before trusting the full scan."
+            )
+
+    return {
+        "schema_version": "market-bars-residual-repair-projection-v1",
+        "status": status,
+        "current_first_blocker": status_payload.get("first_blocker"),
+        "current_missing_as_of_bar_count": missing,
+        "eligible_deactivation_count": eligible_count,
+        "projected_active_security_count": projected_active,
+        "projected_existing_as_of_bar_count": existing_count,
+        "projected_missing_as_of_bar_count": projected_missing_after,
+        "projected_market_bar_gate_cleared": bool(market_bar_gate_cleared),
+        "projected_next_blocker": projected_next_blocker,
+        "projected_next_action": projected_next_action,
+        "after_market_bars_clear": dict(after_clear),
+        "db_writes_required_to_execute": eligible_count,
+        "operator_note": (
+            "Projection only. Preview makes 0 provider calls and 0 DB writes; "
+            "execution only deactivates the reviewed local residual rows when "
+            "the expected counts still match."
+        ),
+        "external_calls_made": 0,
+        "db_writes_made": 0,
     }
 
 

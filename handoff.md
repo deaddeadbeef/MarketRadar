@@ -1,6 +1,40 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 13:05:00 +08:00
+Last updated: 2026-05-23 13:07:32 +08:00
+
+## Latest Residual Repair Projection Slice
+
+Last updated: 2026-05-23 13:07:32 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains clearing setup/data blockers before more UI or LLM
+  work.
+- The operator DB remains blocked by 579 missing `2026-05-15` market bars. A
+  guarded residual repair preview showed 579 strict zero-liquidity/no-history
+  rows eligible for local deactivation, but preview output did not show the
+  next blocker expected after that write.
+- The useful definition for this slice is concrete: before approving any local
+  DB write, the operator should see whether residual repair would clear the
+  market-bar gate and what next blocker/action would remain.
+
+Fix in this slice:
+
+- `market-bars residual-repair` preview/execute payloads now include
+  `post_repair_projection`.
+- The projection reports current first blocker, projected active universe
+  count, projected missing bar count, whether the market-bar gate would clear,
+  the next blocker/action after market bars, write count required to execute,
+  and explicit zero-call/zero-write preview counters.
+- Human CLI output now prints the projection line and projected next action.
+- README documents the new residual-repair preview contract.
+
+Safety:
+
+- Preview remains zero-call and zero-write.
+- This slice does not execute residual repair against the operator DB and does
+  not fill bars, call providers, submit orders, change scoring, or alter
+  candidate/value/outcome state.
 
 ## Latest Costs Page Measurement Evidence Slice
 
