@@ -601,10 +601,22 @@ def dashboard_snapshot_payload(
         shadow_readiness=shadow_readiness,
         trial_readiness=trial_readiness,
     )
+    top_level_blocker = _dashboard_top_level_blocker_contract(
+        shadow_readiness=shadow_readiness,
+        priced_in_answer=priced_in_answer,
+        operator_next_step=operator_next_step,
+    )
     display_priced_in_queue = dict(priced_in_queue)
     display_priced_in_queue.pop("planning_rows", None)
     payload = {
         "schema_version": "dashboard-cli-snapshot-v1",
+        "status": top_level_blocker["status"],
+        "first_blocker": top_level_blocker["first_blocker"],
+        "first_gap_count": top_level_blocker["first_gap_count"],
+        "canonical_next_action": top_level_blocker["canonical_next_action"],
+        "canonical_next_command": top_level_blocker["canonical_next_command"],
+        "next_action": top_level_blocker["canonical_next_action"],
+        "next_command": top_level_blocker["canonical_next_command"],
         "feature_inventory": list(DASHBOARD_FEATURES),
         "controls": {
             "ticker": filters.ticker,
@@ -677,6 +689,72 @@ def dashboard_snapshot_payload(
     payload["agent_brief"] = run_market_radar_agents(payload, config, real=False)
     redacted = redact_restricted_external_payload(payload)
     return redacted if isinstance(redacted, dict) else payload
+
+
+def _dashboard_top_level_blocker_contract(
+    *,
+    shadow_readiness: Mapping[str, object],
+    priced_in_answer: Mapping[str, object],
+    operator_next_step: Mapping[str, object],
+) -> dict[str, object]:
+    first_blocker = _first_nonblank(
+        shadow_readiness.get("first_blocker"),
+        priced_in_answer.get("first_blocker"),
+        operator_next_step.get("first_blocker"),
+    )
+    action = _first_nonblank(
+        shadow_readiness.get("canonical_next_action"),
+        shadow_readiness.get("next_action"),
+        priced_in_answer.get("canonical_next_action"),
+        priced_in_answer.get("next_action"),
+        operator_next_step.get("action"),
+    )
+    command = _first_nonblank(
+        shadow_readiness.get("canonical_next_command"),
+        shadow_readiness.get("next_command"),
+        priced_in_answer.get("canonical_next_command"),
+        priced_in_answer.get("next_command"),
+        operator_next_step.get("command"),
+    )
+    return {
+        "status": _first_nonblank(
+            shadow_readiness.get("status"),
+            priced_in_answer.get("status"),
+            operator_next_step.get("status"),
+        )
+        or "unknown",
+        "first_blocker": first_blocker,
+        "first_gap_count": _first_nonnegative_int(
+            shadow_readiness.get("first_gap_count"),
+            priced_in_answer.get("first_gap_count"),
+            operator_next_step.get("first_gap_count"),
+        ),
+        "canonical_next_action": action,
+        "canonical_next_command": command,
+    }
+
+
+def _first_nonblank(*values: object) -> object | None:
+    for value in values:
+        if isinstance(value, str):
+            text = value.strip()
+            if text:
+                return text
+        elif value is not None:
+            return value
+    return None
+
+
+def _first_nonnegative_int(*values: object) -> int:
+    for value in values:
+        if value is None:
+            continue
+        if isinstance(value, str) and not value.strip():
+            continue
+        number = int(_number_or_zero(value))
+        if number >= 0:
+            return number
+    return 0
 
 
 def _dashboard_approval_required_unblock(
