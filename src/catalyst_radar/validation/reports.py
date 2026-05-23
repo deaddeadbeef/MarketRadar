@@ -832,10 +832,6 @@ def _score_bucket_payload(
         else None,
         "useful_label_count": useful_count,
         "useful_label_rate": _safe_rate(useful_count, len(rows)) if rows else None,
-        "sector_outperformance_rate": _boolean_label_rate(
-            labeled_rows,
-            "sector_outperformance",
-        ),
         "max_adverse_excursion_avg": _average_label(
             labeled_rows,
             "max_adverse_excursion",
@@ -844,6 +840,7 @@ def _score_bucket_payload(
             labeled_rows,
             "max_favorable_excursion",
         ),
+        **_selection_return_stats(labeled_rows),
         "sample_status": "measured" if labeled_rows else "insufficient_evidence",
     }
 
@@ -939,6 +936,7 @@ def _score_distribution_group_payload(
         "useful_label_count": useful_count,
         "useful_label_rate": _safe_rate(useful_count, len(rows)) if rows else None,
         "bucket_counts": _score_bucket_counts(rows),
+        **_selection_return_stats(labeled_rows),
         "sample_status": "measured" if labeled_rows else "insufficient_evidence",
     }
 

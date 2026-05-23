@@ -1028,8 +1028,11 @@ validation run, makes 0 provider calls and 0 database writes, and returns
 The same report includes score-calibration buckets for `50_59`, `60_69`,
 `70_79`, `80_89`, and `90_plus`, plus score distribution groups for sector,
 market regime, setup type, priced-in status, action state, source coverage, and
-feedback label. These buckets and groups are evidence only and do not change
-scoring weights, policy thresholds, trade plans, or action gates.
+feedback label. These buckets and groups include precision, false-positive
+rate, useful-label rate, average forward returns, SPY-relative and
+sector-relative return averages, and excursion averages. They are evidence only
+and do not change scoring weights, policy thresholds, trade plans, or action
+gates.
 It also reports local text measurement for the existing narrative, novelty,
 source quality, sentiment, theme match, theme velocity, and theme-hit signals.
 Those measurements are evidence only; they do not replace the local text model
