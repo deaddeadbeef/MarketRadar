@@ -20,6 +20,7 @@ from catalyst_radar.validation.models import ValueLedgerEntry, ValueOutcome
 from catalyst_radar.validation.reports import build_validation_report, validation_report_payload
 from catalyst_radar.validation.value_ledger import (
     CHATGPT_PRO_MONTHLY_COST_USD,
+    CLAIMABLE_VALUE_LABELS,
     TARGET_MONTHLY_VALUE_USD,
     USEFUL_DEFINITION,
     load_value_ledger_candidate_coverage_payload,
@@ -30,9 +31,7 @@ from catalyst_radar.validation.value_outcomes import (
     value_outcome_payload,
 )
 
-USEFUL_LABELS = frozenset(
-    {"useful", "good-research", "acted", "avoided-loss", "blocked-correctly"}
-)
+USEFUL_LABELS = CLAIMABLE_VALUE_LABELS
 NOISY_LABELS = frozenset(
     {
         "noisy",

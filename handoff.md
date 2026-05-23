@@ -1,6 +1,45 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 18:12:42 +08:00
+Last updated: 2026-05-23 18:20:57 +08:00
+
+## Latest Value Summary Claimable Labels Slice
+
+Last updated: 2026-05-23 18:20:57 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains measured value proof, not more UI polish.
+- `value-report` already counted claimable decision-support value by useful
+  feedback labels, but `value-ledger summary` counted any row with positive
+  estimated value as useful.
+- That could inflate the $40/month coverage if a noisy or false-positive row
+  carried an estimate.
+- The useful definition for this slice is concrete: summary value metrics only
+  count claimable labels, while noisy/false-positive rows still count toward
+  costs and label diagnostics.
+
+Fix in this slice:
+
+- Added `CLAIMABLE_VALUE_LABELS` to the value-ledger summary path.
+- Monthly value reporting now imports the same claimable-label set to avoid
+  summary/report drift.
+- `value-ledger summary` now computes `useful_entry_count`,
+  `total_estimated_value_usd`, `confidence_weighted_value_usd`,
+  `net_confidence_weighted_value_usd`, `target_coverage_pct`,
+  `chatgpt_pro_offset_pct`, and `top_entries` from claimable useful labels.
+- Costs, entry count, provider calls, LLM calls, label counts, user-decision
+  counts, and outcome-status counts still include all ledger rows.
+- Regression coverage proves a `false-positive` row with a large estimate does
+  not inflate claimable value.
+
+Safety:
+
+- This is read-only summary math over local value-ledger rows.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls and writes 0 database rows.
+- It does not change scores, thresholds, policy gates, action states, trade
+  plans, LLM behavior, broker/order controls, candidate rows, ledger writes,
+  outcome writes, validation rows, or readiness criteria.
 
 ## Latest Shadow Manual-Review Count Alias Slice
 

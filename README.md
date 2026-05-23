@@ -1034,7 +1034,9 @@ first supported set: `useful`, `noisy`, `acted`, `ignored`, `avoided-loss`,
 `good-research`, `duplicate`,
 `not-understandable`, and `blocked-correctly`. The terminal dashboard Costs
 page shows weighted value, the $40/month target, and the percent offset against
-the $200/month ChatGPT Pro cost.
+the $200/month ChatGPT Pro cost. Summary claimable value counts only useful
+feedback labels; noisy and false-positive rows remain visible in counts and
+costs but do not inflate weighted value or target coverage.
 `value-ledger coverage` is read-only. It lists Warning-or-higher candidate
 states in the selected period, shows which ones already have candidate-state
 ledger rows, and provides conservative zero-value `value-ledger record` commands
