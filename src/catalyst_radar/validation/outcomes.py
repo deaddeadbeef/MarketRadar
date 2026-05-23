@@ -63,6 +63,7 @@ def compute_forward_outcomes(
     future_prices: Sequence[Any] | Iterable[Any],
     sector_future_prices: Sequence[Any] | Iterable[Any] | None = None,
     invalidation_price: float | None = None,
+    direction: str | None = None,
 ) -> OutcomeLabels:
     """Compute target, excursion, invalidation, and sector labels from future prices.
 
@@ -73,18 +74,23 @@ def compute_forward_outcomes(
     entry = _positive_price(entry_price, "entry_price")
     points = _price_points(future_prices)
     sector_points = _price_points(sector_future_prices or ())
+    resolved_direction = _direction(direction)
 
-    return_10d = _max_return(entry, points[:10])
-    return_20d = _max_return(entry, points[:20])
-    return_60d = _max_return(entry, points[:60])
+    return_10d = _favorable_return(entry, points[:10], direction=resolved_direction)
+    return_20d = _favorable_return(entry, points[:20], direction=resolved_direction)
+    return_60d = _favorable_return(entry, points[:60], direction=resolved_direction)
     sector_return_60d = _sector_return(sector_points[:60])
+    directional_sector_return_60d = _directional_return(
+        sector_return_60d,
+        direction=resolved_direction,
+    )
     sector_outperformance = (
-        sector_return_60d is not None and (return_60d - sector_return_60d) >= 0.20
+        directional_sector_return_60d is not None
+        and (return_60d - directional_sector_return_60d) >= 0.20
     )
 
-    mae = _min_return(entry, points)
-    mfe = _max_return(entry, points)
-    invalidated = _invalidated(points, invalidation_price)
+    mae, mfe = _directional_excursions(entry, points, direction=resolved_direction)
+    invalidated = _invalidated(points, invalidation_price, direction=resolved_direction)
 
     return OutcomeLabels(
         target_10d_15=return_10d >= 0.15,
@@ -139,6 +145,30 @@ def _min_return(entry_price: float, points: Sequence[_PricePoint]) -> float:
     return (min(point.low for point in points) / entry_price) - 1
 
 
+def _favorable_return(
+    entry_price: float,
+    points: Sequence[_PricePoint],
+    *,
+    direction: str,
+) -> float:
+    if direction == "bearish":
+        return -_min_return(entry_price, points)
+    return _max_return(entry_price, points)
+
+
+def _directional_excursions(
+    entry_price: float,
+    points: Sequence[_PricePoint],
+    *,
+    direction: str,
+) -> tuple[float, float]:
+    downside = _min_return(entry_price, points)
+    upside = _max_return(entry_price, points)
+    if direction == "bearish":
+        return upside, downside
+    return downside, upside
+
+
 def _sector_return(points: Sequence[_PricePoint]) -> float | None:
     if len(points) < 2:
         return None
@@ -148,11 +178,33 @@ def _sector_return(points: Sequence[_PricePoint]) -> float | None:
     return (points[-1].close / start) - 1
 
 
-def _invalidated(points: Sequence[_PricePoint], invalidation_price: float | None) -> bool:
+def _directional_return(value: float | None, *, direction: str) -> float | None:
+    if value is None:
+        return None
+    if direction == "bearish":
+        return -value
+    return value
+
+
+def _invalidated(
+    points: Sequence[_PricePoint],
+    invalidation_price: float | None,
+    *,
+    direction: str,
+) -> bool:
     invalidation = _finite_float(invalidation_price)
     if invalidation is None or invalidation <= 0:
         return False
+    if direction == "bearish":
+        return any(point.high >= invalidation for point in points)
     return any(point.low <= invalidation for point in points)
+
+
+def _direction(value: str | None) -> str:
+    resolved = str(value or "").strip().lower()
+    if resolved == "bearish":
+        return "bearish"
+    return "bullish"
 
 
 def _positive_price(value: Any, field_name: str) -> float:

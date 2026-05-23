@@ -1,6 +1,39 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 20:52:58 +08:00
+Last updated: 2026-05-23 21:12:14 +08:00
+
+## Latest Direction-Aware Validation Outcome Slice
+
+Last updated: 2026-05-23 21:12:14 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains measured value proof for priced-in signals.
+- This slice fixes validation evidence quality, not UI wording: bearish
+  priced-in signals must not be scored as misses when price correctly follows
+  through downward.
+
+Fix in this slice:
+
+- `compute_forward_outcomes()` now accepts an optional `direction`.
+- Bullish or unspecified validation labels preserve the previous long-side
+  behavior.
+- Bearish validation labels use downside movement as favorable follow-through,
+  upside movement as adverse excursion, and upside stop touches as
+  invalidation.
+- `validation-replay` now extracts priced-in direction from replay payloads and
+  records that direction in `outcome_audit`.
+- README documents the validation direction rule.
+
+Safety:
+
+- This is deterministic local validation math over stored candidate artifacts
+  and stored daily bars.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls and writes 0 database rows in preview.
+- It does not change scoring, policy gates, candidate states, market-bar data,
+  value-ledger rows, value-outcome rows, alert delivery, broker controls, LLM
+  behavior, or validation replay execute boundaries.
 
 ## Latest Read-Only Trial Readiness Gate Slice
 

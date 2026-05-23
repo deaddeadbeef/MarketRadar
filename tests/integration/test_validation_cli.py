@@ -429,6 +429,60 @@ def test_validation_replay_preview_is_zero_write(
         assert list(conn.execute(select(validation_results))) == []
 
 
+def test_validation_replay_labels_bearish_priced_in_outcomes_directionally(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'validation-bearish.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    assert main(["init-db"]) == 0
+    capsys.readouterr()
+    _insert_bearish_warning_candidate(database_url)
+    _insert_bearish_future_daily_bars(database_url)
+
+    assert (
+        main(
+            [
+                "validation-replay",
+                "--as-of-start",
+                "2026-05-10",
+                "--as-of-end",
+                "2026-05-10",
+                "--available-at",
+                AVAILABLE_AT_TEXT,
+                "--outcome-available-at",
+                OUTCOME_AVAILABLE_AT_TEXT,
+                "--execute",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+
+    labels = _scalar(
+        database_url,
+        select(validation_results.c.labels).where(
+            validation_results.c.baseline.is_(None)
+        ),
+    )
+    payload = _scalar(
+        database_url,
+        select(validation_results.c.payload).where(
+            validation_results.c.baseline.is_(None)
+        ),
+    )
+    assert labels["target_10d_15"] is True
+    assert labels["target_20d_25"] is True
+    assert labels["target_60d_40"] is True
+    assert labels["sector_outperformance"] is True
+    assert labels["invalidated"] is False
+    assert labels["max_adverse_excursion"] == pytest.approx(0.04)
+    assert labels["max_favorable_excursion"] == pytest.approx(-0.42)
+    assert payload["outcome_audit"]["direction"] == "bearish"
+
+
 def test_validation_report_latest_selects_newest_successful_run(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -783,6 +837,75 @@ def _insert_warning_candidate(database_url: str) -> None:
         )
 
 
+def _insert_bearish_warning_candidate(database_url: str) -> None:
+    engine = create_engine(database_url, future=True)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(candidate_states).values(
+                id="state-bear",
+                ticker="BEAR",
+                as_of=AS_OF,
+                state=ActionState.WARNING.value,
+                previous_state=None,
+                final_score=80.0,
+                score_delta_5d=5.0,
+                hard_blocks=[],
+                transition_reasons=["bearish_not_priced_in"],
+                feature_version="score-v4-options-theme",
+                policy_version="policy-v2-events",
+                created_at=AVAILABLE_AT,
+            )
+        )
+        conn.execute(
+            insert(signal_features).values(
+                ticker="BEAR",
+                as_of=AS_OF,
+                feature_version="score-v4-options-theme",
+                price_strength=20.0,
+                volume_score=74.0,
+                liquidity_score=91.0,
+                risk_penalty=4.0,
+                portfolio_penalty=1.0,
+                final_score=80.0,
+                payload={
+                    "candidate": {
+                        "ticker": "BEAR",
+                        "as_of": AS_OF.isoformat(),
+                        "features": {
+                            "ticker": "BEAR",
+                            "as_of": AS_OF.isoformat(),
+                            "feature_version": "score-v4-options-theme",
+                        },
+                        "final_score": 80.0,
+                        "risk_penalty": 4.0,
+                        "portfolio_penalty": 1.0,
+                        "entry_zone": [100.0, 100.0],
+                        "invalidation_price": 105.0,
+                        "reward_risk": 2.7,
+                        "metadata": {
+                            "source_ts": SOURCE_TS.isoformat(),
+                            "available_at": AVAILABLE_AT.isoformat(),
+                            "setup_type": "bearish_reversal",
+                            "priced_in_status": "bearish_not_priced_in",
+                            "priced_in_direction": "bearish",
+                            "priced_in": {
+                                "status": "bearish_not_priced_in",
+                                "direction": "bearish",
+                            },
+                        },
+                    },
+                    "policy": {
+                        "state": ActionState.WARNING.value,
+                        "hard_blocks": [],
+                        "reasons": ["bearish_not_priced_in"],
+                        "missing_trade_plan": [],
+                        "policy_version": "policy-v2-events",
+                    },
+                },
+            )
+        )
+
+
 def _insert_future_daily_bars(database_url: str) -> None:
     engine = create_engine(database_url, future=True)
     with engine.begin() as conn:
@@ -827,6 +950,46 @@ def _insert_future_daily_bars(database_url: str) -> None:
                     close=102.0,
                     volume=1_000_000,
                     vwap=101.0,
+                    adjusted=True,
+                    source_ts=datetime.combine(bar_date, datetime.min.time(), tzinfo=UTC),
+                    available_at=OUTCOME_AVAILABLE_AT,
+                )
+            )
+
+
+def _insert_bearish_future_daily_bars(database_url: str) -> None:
+    engine = create_engine(database_url, future=True)
+    with engine.begin() as conn:
+        for offset in range(1, 61):
+            bar_date = date(2026, 5, 10) + timedelta(days=offset)
+            low = 58.0 if offset == 55 else 74.0 if offset == 20 else 84.0
+            conn.execute(
+                insert(daily_bars).values(
+                    ticker="BEAR",
+                    date=bar_date,
+                    provider="fixture",
+                    open=100.0,
+                    high=104.0,
+                    low=low,
+                    close=low + 1.0,
+                    volume=1_000_000,
+                    vwap=low + 1.0,
+                    adjusted=True,
+                    source_ts=datetime.combine(bar_date, datetime.min.time(), tzinfo=UTC),
+                    available_at=OUTCOME_AVAILABLE_AT,
+                )
+            )
+            conn.execute(
+                insert(daily_bars).values(
+                    ticker="SPY",
+                    date=bar_date,
+                    provider="fixture",
+                    open=100.0,
+                    high=101.0,
+                    low=94.0,
+                    close=95.0,
+                    volume=1_000_000,
+                    vwap=95.0,
                     adjusted=True,
                     source_ts=datetime.combine(bar_date, datetime.min.time(), tzinfo=UTC),
                     available_at=OUTCOME_AVAILABLE_AT,

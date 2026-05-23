@@ -1217,7 +1217,11 @@ shows precision@5/10, false-positive rate, average 5/10/20/60 day returns,
 SPY-relative and sector-relative return averages, sector outperformance rate,
 MarketRadar and baseline excursion averages, MarketRadar cost per candidate,
 baseline incremental cost per candidate, overlap/missed tickers, and whether
-MarketRadar won, lost, tied, or lacks enough evidence.
+MarketRadar won, lost, tied, or lacks enough evidence. Validation outcome labels
+are direction-aware for MarketRadar priced-in signals: bullish rows use upside
+follow-through and downside invalidation, while bearish rows use downside
+follow-through and upside invalidation. Baseline screeners remain long-only
+unless a baseline explicitly carries a direction.
 `validation-report --latest --json` selects the latest successful stored
 validation run, makes 0 provider calls and 0 database writes, and returns
 `status=no_validation_runs` when no replay evidence exists yet.

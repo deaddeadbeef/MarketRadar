@@ -67,6 +67,34 @@ def test_compute_forward_outcomes_accepts_float_prices_and_handles_missing_secto
     assert outcome_labels_as_dict(labels)["invalidated"] is False
 
 
+def test_compute_forward_outcomes_labels_bearish_follow_through_directionally() -> None:
+    future_prices = [
+        {
+            "close": 99.0,
+            "high": 104.0,
+            "low": 58.0 if index == 55 else 74.0 if index == 18 else 84.0,
+        }
+        for index in range(60)
+    ]
+    sector_prices = [{"close": 100.0 - (5.0 * index / 59)} for index in range(60)]
+
+    labels = compute_forward_outcomes(
+        entry_price=100,
+        future_prices=future_prices,
+        sector_future_prices=sector_prices,
+        invalidation_price=105,
+        direction="bearish",
+    )
+
+    assert labels.target_10d_15 is True
+    assert labels.target_20d_25 is True
+    assert labels.target_60d_40 is True
+    assert labels.sector_outperformance is True
+    assert labels.max_adverse_excursion == pytest.approx(0.04)
+    assert labels.max_favorable_excursion == pytest.approx(-0.42)
+    assert labels.invalidated is False
+
+
 def test_compute_forward_outcomes_rejects_non_positive_entry() -> None:
     with pytest.raises(ValueError, match="entry_price"):
         compute_forward_outcomes(entry_price=0, future_prices=[101])

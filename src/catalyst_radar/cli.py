@@ -4314,6 +4314,7 @@ def _with_outcome_labels(
                 future_prices,
                 sector_future_prices=sector_prices,
                 invalidation_price=_invalidation_price_for_validation_result(row),
+                direction=_direction_for_validation_result(row),
             )
         )
         payload = thaw_json_value(row.payload)
@@ -4324,6 +4325,7 @@ def _with_outcome_labels(
             "future_price_count": len(future_prices),
             "outcome_available_at": available_at.isoformat(),
             "sector_proxy": "SPY" if sector_prices else None,
+            "direction": _direction_for_validation_result(row),
             "label_only_not_candidate_input": True,
         }
         labeled.append(replace(row, available_at=available_at, labels=labels, payload=payload))
@@ -4370,6 +4372,47 @@ def _invalidation_price_for_validation_result(row: ValidationResult) -> float | 
         price = _float_or_none(value)
         if price is not None:
             return price
+    return None
+
+
+def _direction_for_validation_result(row: ValidationResult) -> str | None:
+    payload = thaw_json_value(row.payload)
+    if not isinstance(payload, Mapping):
+        return None
+    replay_payload = _mapping_value(payload.get("payload"))
+    for path in (
+        ("signal_payload", "candidate", "metadata", "priced_in_direction"),
+        ("signal_payload", "candidate", "metadata", "priced_in", "direction"),
+        ("signal_payload", "candidate", "priced_in_direction"),
+        ("signal_payload", "candidate", "priced_in", "direction"),
+        ("decision_card", "priced_in_direction"),
+        ("packet", "priced_in_direction"),
+    ):
+        direction = _normalized_outcome_direction(
+            _nested_mapping_value(replay_payload, *path)
+        )
+        if direction is not None:
+            return direction
+    for path in (
+        ("signal_payload", "candidate", "metadata", "priced_in_status"),
+        ("signal_payload", "candidate", "metadata", "priced_in", "status"),
+        ("signal_payload", "candidate", "priced_in_status"),
+        ("signal_payload", "candidate", "priced_in", "status"),
+        ("decision_card", "priced_in_status"),
+        ("packet", "priced_in_status"),
+    ):
+        status = str(_nested_mapping_value(replay_payload, *path) or "").lower()
+        if status.startswith("bearish"):
+            return "bearish"
+        if status.startswith("bullish"):
+            return "bullish"
+    return None
+
+
+def _normalized_outcome_direction(value: object) -> str | None:
+    direction = str(value or "").strip().lower()
+    if direction in {"bullish", "bearish"}:
+        return direction
     return None
 
 
