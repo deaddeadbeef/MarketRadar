@@ -235,6 +235,9 @@ def test_report_builder_adds_score_calibration_buckets() -> None:
                 "sector_outperformance": True,
                 "max_adverse_excursion": -0.02,
                 "max_favorable_excursion": 0.35,
+                "return_20d": 0.31,
+                "spy_return_20d": 0.08,
+                "sector_relative_return_20d": 0.14,
             },
             final_score=92,
             payload={
@@ -254,6 +257,9 @@ def test_report_builder_adds_score_calibration_buckets() -> None:
                 "sector_outperformance": False,
                 "max_adverse_excursion": -0.12,
                 "max_favorable_excursion": 0.08,
+                "return_20d": -0.04,
+                "spy_relative_return_20d": -0.09,
+                "sector_return_20d": 0.03,
             },
             final_score=72,
             payload={
@@ -268,7 +274,12 @@ def test_report_builder_adds_score_calibration_buckets() -> None:
             "r3",
             "CCC",
             "Research",
-            {"target_20d_25": True, "max_adverse_excursion": -0.01},
+            {
+                "target_20d_25": True,
+                "max_adverse_excursion": -0.01,
+                "return_20d": 0.18,
+                "spy_relative_return_20d": 0.05,
+            },
             final_score=67,
             payload={
                 "sector": "Industrials",
@@ -291,8 +302,15 @@ def test_report_builder_adds_score_calibration_buckets() -> None:
     buckets = {row["bucket"]: row for row in calibration["buckets"]}
     assert buckets["90_plus"]["precision"] == 1.0
     assert buckets["90_plus"]["useful_label_rate"] == 1.0
+    assert buckets["90_plus"]["return_20d_avg"] == pytest.approx(0.31)
+    assert buckets["90_plus"]["spy_relative_return_20d_avg"] == pytest.approx(0.23)
+    assert buckets["90_plus"]["sector_relative_return_20d_avg"] == pytest.approx(0.14)
     assert buckets["70_79"]["false_positive_rate"] == 1.0
+    assert buckets["70_79"]["return_20d_avg"] == pytest.approx(-0.04)
+    assert buckets["70_79"]["spy_relative_return_20d_avg"] == pytest.approx(-0.09)
+    assert buckets["70_79"]["sector_relative_return_20d_avg"] == pytest.approx(-0.07)
     assert buckets["60_69"]["positive_count"] == 1
+    assert buckets["60_69"]["return_20d_avg"] == pytest.approx(0.18)
     assert buckets["50_59"]["sample_status"] == "insufficient_evidence"
     distribution = calibration["score_distribution"]
     assert set(distribution) == {
@@ -306,7 +324,10 @@ def test_report_builder_adds_score_calibration_buckets() -> None:
     }
     sectors = {row["value"]: row for row in distribution["sector"]["groups"]}
     assert sectors["technology"]["bucket_counts"]["90_plus"] == 1
+    assert sectors["technology"]["return_20d_avg"] == pytest.approx(0.135)
+    assert sectors["technology"]["sector_outperformance_rate"] == pytest.approx(0.5)
     assert sectors["industrials"]["precision"] == 1.0
+    assert sectors["industrials"]["return_20d_avg"] == pytest.approx(0.18)
     labels = {row["value"]: row for row in distribution["usefulness_label"]["groups"]}
     assert labels["useful"]["candidate_count"] == 1
     assert labels["unlabeled"]["candidate_count"] == 2

@@ -1,6 +1,38 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 16:00:33 +08:00
+Last updated: 2026-05-23 16:10:57 +08:00
+
+## Latest Score Calibration Return Metrics Slice
+
+Last updated: 2026-05-23 16:10:57 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains measured validation before tuning scores or adding
+  more intelligence.
+- Priority 7 requires score calibration buckets to track average returns by
+  bucket. Existing calibration buckets had precision, false-positive rate,
+  useful-label rate, and excursions, but not forward-return averages.
+- The useful definition for this slice is concrete: a validation report can
+  show whether higher score buckets and score-distribution groups actually
+  correspond to better 5/10/20/60 day returns and benchmark-relative returns.
+
+Fix in this slice:
+
+- Score calibration buckets now include average 5/10/20/60 day returns when
+  outcome labels are present.
+- Buckets and distribution groups also include SPY-relative and sector-relative
+  return averages plus sector-outperformance rate.
+- README documents that calibration buckets/groups include return evidence while
+  remaining report-only.
+
+Safety:
+
+- This is report-only validation math over already stored results/labels.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls.
+- It writes 0 database rows and does not change scores, thresholds, policy
+  gates, action states, trade plans, LLM behavior, or broker/order controls.
 
 ## Latest Validation Report Cost And False-Positive Metrics Slice
 
