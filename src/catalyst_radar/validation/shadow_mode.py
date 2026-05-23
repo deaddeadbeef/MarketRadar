@@ -138,6 +138,10 @@ def build_shadow_mode_run(
     scan_scope_payload = _mapping(snapshots.get("scan_scope"))
     latest_market_bar_check = _first_check(shadow, "latest_market_bars")
     latest_market_bar_metric = _mapping(latest_market_bar_check.get("metric"))
+    call_boundary = _mapping(shadow.get("call_boundary"))
+    planned_external_calls = _int(
+        call_boundary.get("planned_run_external_call_count_max")
+    )
     scan_scope = str(scan_scope_payload.get("mode") or "unknown")
     candidate_rows = [
         row for row in _sequence(snapshot.get("candidate_rows")) if isinstance(row, Mapping)
@@ -194,7 +198,7 @@ def build_shadow_mode_run(
             0,
         ),
         blocker_count=blocker_count,
-        provider_calls_planned=0,
+        provider_calls_planned=planned_external_calls,
         provider_calls_made=0,
         db_writes_planned=1,
         db_writes_made=db_writes_made,
@@ -206,9 +210,7 @@ def build_shadow_mode_run(
             "shadow_readiness": _json_value(shadow),
             "discovery_snapshot": _json_value(discovery),
             "call_plan_external_call_count_max": _int(
-                _mapping(shadow.get("call_boundary")).get(
-                    "planned_run_external_call_count_max"
-                )
+                call_boundary.get("planned_run_external_call_count_max")
             ),
             "no_provider_calls_by_shadow_mode": True,
             "no_broker_orders": True,

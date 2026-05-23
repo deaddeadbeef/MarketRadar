@@ -9,9 +9,13 @@ from sqlalchemy import func, insert, select
 
 from apps.api.main import create_app
 from catalyst_radar.cli import main
+from catalyst_radar.core.models import ActionState
 from catalyst_radar.storage.db import create_schema, engine_from_url
 from catalyst_radar.storage.schema import daily_bars, securities, shadow_mode_runs
-from catalyst_radar.validation.shadow_mode import classify_shadow_run_status
+from catalyst_radar.validation.shadow_mode import (
+    build_shadow_mode_run,
+    classify_shadow_run_status,
+)
 
 AVAILABLE_AT = "2026-05-22T21:00:00+00:00"
 
@@ -259,6 +263,57 @@ def test_shadow_mode_classification_distinguishes_ready_partial_and_blocked() ->
         )
         == "blocked_scan"
     )
+
+
+def test_shadow_mode_run_persists_planned_provider_call_boundary() -> None:
+    available_at = datetime.fromisoformat(AVAILABLE_AT)
+
+    run = build_shadow_mode_run(
+        {
+            "shadow_readiness": {
+                "status": "ready",
+                "blockers": [],
+                "call_boundary": {
+                    "planned_run_external_call_count_max": 3,
+                },
+                "snapshots": {
+                    "scan_scope": {"mode": "full_scan"},
+                },
+                "checks": [
+                    {
+                        "code": "latest_market_bars",
+                        "metric": {"missing_as_of_daily_bar_count": 0},
+                    },
+                    {"code": "validation_ready", "status": "ready"},
+                ],
+            },
+            "discovery_snapshot": {
+                "yield": {
+                    "candidate_states": 2,
+                    "requested_securities": 10,
+                    "scanned_securities": 10,
+                },
+                "freshness": {
+                    "active_security_count": 10,
+                    "missing_as_of_daily_bar_count": 0,
+                    "latest_daily_bar_date": "2026-05-22",
+                },
+            },
+            "latest_run": {"as_of": "2026-05-22"},
+            "candidate_rows": [
+                {"state": ActionState.WARNING.value},
+                {"state": ActionState.ELIGIBLE_FOR_MANUAL_BUY_REVIEW.value},
+            ],
+        },
+        run_date=available_at.date(),
+        as_of=None,
+        available_at=available_at,
+        db_writes_made=0,
+    )
+
+    assert run.provider_calls_planned == 3
+    assert run.provider_calls_made == 0
+    assert run.payload["call_plan_external_call_count_max"] == 3
 
 
 def test_shadow_mode_requires_timezone_aware_cutoff(tmp_path, monkeypatch) -> None:
