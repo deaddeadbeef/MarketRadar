@@ -4557,6 +4557,82 @@ def test_priced_in_answer_after_current_summarizes_next_source_plan(tmp_path: Pa
     )
     assert plan["external_calls_made"] == 0
 
+
+def test_priced_in_answer_after_current_skips_duplicate_current_blocker(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    queue = {
+        "status": "blocked",
+        "total_count": 0,
+        "count": 0,
+        "returned_count": 0,
+        "offset": 0,
+        "has_more": False,
+        "filters": {"status": "all", "limit": 5, "offset": 0},
+        "latest_run": {"as_of": "2026-05-15", "universe": "all"},
+        "status_counts": {},
+        "usefulness_counts": {},
+        "decision_gap_counts": {
+            "schema_version": "priced-in-decision-gap-counts-v1",
+            "scope": "actionable_mismatch_rows",
+            "row_count": 0,
+            "counts": {},
+            "sample_tickers": {},
+            "top_gaps": [],
+        },
+        "source_coverage": {
+            "summary": "market_bars 964/1000",
+            "weak_sources": ["market_bars"],
+            "actions": [
+                {
+                    "source": "market_bars",
+                    "status": "partial",
+                    "gap_count": 36,
+                    "next_action": "Review residual market-bar rows.",
+                    "command": (
+                        "catalyst-radar market-bars residual-review "
+                        "--expected-as-of 2026-05-21"
+                    ),
+                }
+            ],
+        },
+        "rows": [],
+    }
+    preflight = {
+        "evidence_plan": {
+            "steps": [
+                {
+                    "area": "market_bars",
+                    "status": "attention",
+                    "action": "Repair market bars first.",
+                    "command": (
+                        "catalyst-radar market-bars status "
+                        "--expected-as-of 2026-05-21"
+                    ),
+                }
+            ]
+        }
+    }
+
+    payload = priced_in_answer_payload(
+        engine,
+        AppConfig.from_env({}),
+        queue=queue,
+        preflight=preflight,
+        market_bars={},
+    )
+
+    ladder_rows = payload["full_market_trust_gate"]["blocker_ladder"]["rows"]
+    assert [row["source"] for row in ladder_rows] == [
+        "market_bars",
+        "market_bars",
+    ]
+    assert "after_current_blocker" not in payload["full_market_trust_gate"]
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
+
+
 def test_priced_in_answer_opens_full_scan_queue_when_decision_ready(
     tmp_path: Path,
 ) -> None:

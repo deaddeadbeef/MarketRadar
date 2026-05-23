@@ -803,6 +803,10 @@ The preview also includes `post_repair_projection`, a zero-call/zero-write view
 of the projected active universe, projected missing-bar count, and next blocker
 to inspect after the guarded local repair. This lets operators review whether
 the repair would clear `market_bars` before approving any local DB write.
+When the blocker ladder contains only duplicate `market_bars` rows, the
+projection does not invent `market_bars` as the next blocker after a repair that
+would clear market bars; it tells the operator to rerun `assert-shadow-ready`
+and `priced-in-answer` to inspect the next real blocker.
 For automation, preview payloads keep actual and projected gates separate:
 `clears_market_bar_gate` / `actual_market_bar_gate_cleared` describe the current
 run result, while `execute_would_clear_market_bar_gate` and
