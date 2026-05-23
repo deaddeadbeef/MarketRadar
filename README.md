@@ -1172,6 +1172,9 @@ local row is persisted.
 the same contract. Outcome preview makes 0 provider calls and 0 database writes;
 coverage is read-only and shows which value-ledger rows in the period still
 need an outcome row before monthly value evidence is treated as measured. When
+there are no value-ledger rows yet, coverage returns a `canonical_next_command`
+for `value-ledger coverage` so the operator can create the prerequisite
+ledger evidence before outcome updates are attempted. When
 coverage has gaps, the payload exposes `first_missing_value_ledger_entry_id`,
 `first_missing_ticker`, and the preview-only `canonical_next_command` for the
 first non-executing outcome update; generated update commands include explicit

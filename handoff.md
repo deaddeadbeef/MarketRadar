@@ -1,6 +1,61 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-24 02:05:04 +08:00
+Last updated: 2026-05-24 02:21:52 +08:00
+
+## Latest Outcome Coverage Prerequisite Command Slice
+
+Last updated: 2026-05-24 02:21:52 +08:00
+
+Goal alignment / drift check:
+
+- The mission brief says to prefer repeatable, measurable value evidence over
+  more explanatory UI copy.
+- `value-outcome coverage` already failed safely when no value-ledger entries
+  existed, but the machine-readable contract had no canonical command for the
+  next prerequisite step.
+- That made the ledger-to-outcome workflow less scriptable: an agent or human
+  could see that outcomes were impossible, but had to infer that the next safe
+  step was value-ledger coverage/recording.
+
+Useful definition:
+
+- Outcome coverage should always point at the next measurable prerequisite.
+- If there are no value-ledger rows, the canonical next command should be a
+  read-only `value-ledger coverage` command for the same period/cutoff.
+- If ledger rows exist but outcomes are missing, the canonical next command
+  remains the preview-only `value-outcome update` command for the first missing
+  row.
+- Human CLI output should show the same next command as JSON.
+
+Fix in this slice:
+
+- `value-outcome coverage` now includes `canonical_next_action` and a
+  `canonical_next_command` in the `no_ledger_entries` state.
+- The no-ledger command is:
+  `catalyst-radar value-ledger coverage --available-at <cutoff>
+  --period-start <date> --period-end <date> --json`.
+- Human `value-outcome coverage` output now prints `next_command=` whenever a
+  canonical command exists.
+- README documents the no-ledger coverage contract.
+- Regression coverage verifies the no-ledger JSON contract, human CLI command
+  output, existing missing-outcome preview behavior, and monthly report linkage.
+
+Safety:
+
+- This is read-only outcome/ledger workflow contract clarity only.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls and writes 0 database rows.
+- It does not execute value-ledger writes, outcome writes, residual repair,
+  imports, source batches, LLMs, alert delivery, or orders.
+
+Live zero-call smoke:
+
+- `value-outcome coverage --available-at 2026-05-23T16:00:00+00:00 --json`
+  returns `status=no_ledger_entries`,
+  `canonical_next_command=catalyst-radar value-ledger coverage --available-at
+  2026-05-23T16:00:00+00:00 --period-start 2026-05-01 --period-end
+  2026-05-31 --json`, `external_calls_made=0`, and `db_writes_made=0`.
+- Human output prints the same `next_command=...` line.
 
 ## Latest Dashboard Minimum-Product Stop-Line Slice
 

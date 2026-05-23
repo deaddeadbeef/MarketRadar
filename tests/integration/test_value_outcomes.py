@@ -316,12 +316,33 @@ def test_value_outcome_coverage_reports_no_ledger_entries(
     assert payload["computed_outcome_count"] == 0
     assert payload["first_missing_value_ledger_entry_id"] is None
     assert payload["first_missing_ticker"] is None
-    assert payload["canonical_next_command"] is None
+    assert payload["canonical_next_action"] == payload["next_action"]
+    assert payload["canonical_next_command"] == (
+        "catalyst-radar value-ledger coverage "
+        "--available-at 2026-05-31T21:00:00+00:00 "
+        "--period-start 2026-05-01 --period-end 2026-05-31 --json"
+    )
     assert payload["coverage_pct"] is None
     assert "value-ledger entries" in payload["next_action"]
     assert payload["external_calls_made"] == 0
     assert payload["db_writes_made"] == 0
     assert payload["rows"] == []
+
+    human_exit = main(
+        [
+            "value-outcome",
+            "coverage",
+            "--available-at",
+            "2026-05-31T21:00:00+00:00",
+            "--period-start",
+            "2026-05-01",
+            "--period-end",
+            "2026-05-31",
+        ]
+    )
+
+    assert human_exit == 0
+    assert "next_command=catalyst-radar value-ledger coverage" in capsys.readouterr().out
 
 
 def test_value_outcome_coverage_api_and_monthly_report_surface_missing_rows(
