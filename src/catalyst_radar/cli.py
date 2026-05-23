@@ -8357,6 +8357,15 @@ def _print_trial_readiness(payload: Mapping[str, object]) -> None:
                 for key, value in sorted(minimum.items())
             )
         )
+    product_gate = payload.get("minimum_useful_product")
+    if isinstance(product_gate, Mapping):
+        print(
+            "minimum_useful_product "
+            f"status={product_gate.get('status')} "
+            f"ready={str(bool(product_gate.get('ready'))).lower()} "
+            f"first_blocker={product_gate.get('first_blocker') or 'none'} "
+            f"next={_compact_cli_text(product_gate.get('next_command'))}"
+        )
     blockers = payload.get("blockers")
     blocker_rows = blockers if isinstance(blockers, Sequence) else ()
     if blocker_rows:

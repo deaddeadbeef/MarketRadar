@@ -1220,6 +1220,12 @@ def test_get_radar_trial_readiness_returns_read_only_gate(
                 "read_only_priced_in_answer": True,
                 "zero_hidden_calls_or_writes": True,
             },
+            "minimum_useful_product": {
+                "schema_version": "trial-minimum-useful-product-v1",
+                "status": "blocked",
+                "ready": False,
+                "first_blocker": "market_bars",
+            },
             "blockers": [],
             "external_calls_made": 0,
             "db_writes_made": 0,
@@ -1242,6 +1248,12 @@ def test_get_radar_trial_readiness_returns_read_only_gate(
         "minimum_features_required": {
             "read_only_priced_in_answer": True,
             "zero_hidden_calls_or_writes": True,
+        },
+        "minimum_useful_product": {
+            "schema_version": "trial-minimum-useful-product-v1",
+            "status": "blocked",
+            "ready": False,
+            "first_blocker": "market_bars",
         },
         "blockers": [],
         "external_calls_made": 0,
