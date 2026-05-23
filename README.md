@@ -893,7 +893,10 @@ only a `value_outcomes` row. The update never mutates the source value-ledger
 row, candidate state, candidate packet, decision card, score, or policy output.
 When fewer than 60 future trading bars are visible at the supplied cutoff, the
 outcome row is marked `insufficient_data` and only available horizons are
-populated.
+populated. The outcome payload includes `expected_review_horizon_days` and
+`expected_review_horizon_expired` so clients can distinguish a fully elapsed
+review window from a still-pending one without inferring that from return
+fields.
 
 To answer the monthly value-proof question, generate a read-only value report:
 

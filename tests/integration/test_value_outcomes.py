@@ -51,6 +51,8 @@ def test_value_outcome_cli_preview_execute_and_list(
     outcome = preview["outcome"]
     assert outcome["status"] == "computed"
     assert outcome["trading_days_observed"] == 60
+    assert outcome["payload"]["expected_review_horizon_days"] == 60
+    assert outcome["payload"]["expected_review_horizon_expired"] is True
     assert round(outcome["return_5d"], 6) == 0.1
     assert round(outcome["spy_relative_return_20d"], 6) == 0.25
     assert outcome["sector_etf_ticker"] == "XLK"
@@ -123,6 +125,8 @@ def test_value_outcome_api_rejects_missing_future_bars_without_mutating_ledger(
     outcome = payload["outcome"]
     assert outcome["status"] == "insufficient_data"
     assert outcome["trading_days_observed"] == 4
+    assert outcome["payload"]["expected_review_horizon_days"] == 60
+    assert outcome["payload"]["expected_review_horizon_expired"] is False
     assert outcome["return_5d"] is None
     outcome_id = outcome["id"]
     show_response = TestClient(create_app()).get(f"/api/value-outcomes/{outcome_id}")
@@ -164,6 +168,8 @@ def test_value_outcome_ignores_future_bars_after_cutoff(tmp_path, monkeypatch) -
     assert outcome["status"] == "insufficient_data"
     assert outcome["trading_days_observed"] == 4
     assert outcome["return_5d"] is None
+    assert outcome["payload"]["expected_review_horizon_days"] == 60
+    assert outcome["payload"]["expected_review_horizon_expired"] is False
     assert outcome["payload"]["no_future_leakage"] is True
 
 
