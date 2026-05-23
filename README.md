@@ -1058,7 +1058,10 @@ ledger summary
 
 `ledger record` previews by default; `--preview` makes that intent explicit and
 writes one row only when `--execute` is present. It makes 0 provider calls in
-both modes.
+both modes. Preview payloads include `preview_command`, `execute_command`,
+`api_preview_request_body`, and `api_execute_request_body` so CLI, API, and TUI
+clients can show the exact zero-write replay and the exact deliberate local
+write request without inferring flags.
 
 For `candidate_state` artifacts, value-ledger record/label also copies any
 matching local priced-in context already stored in `signal_features`: setup
@@ -1113,7 +1116,11 @@ outcome show <VALUE_OUTCOME_ID>
 ```
 
 `outcome update` previews by default and writes one `value_outcomes` row only
-when `--execute` is present. It makes 0 provider calls in both modes.
+when `--execute` is present. It makes 0 provider calls in both modes. Preview
+payloads include `preview_command`, `execute_command`,
+`api_preview_request_body`, and `api_execute_request_body` so the operator can
+see the exact zero-write replay and explicit outcome-write request before any
+local row is persisted.
 
 `POST /api/value-outcomes/update`, `GET /api/value-outcomes`,
 `GET /api/value-outcomes/coverage`, and `GET /api/value-outcomes/{id}` expose

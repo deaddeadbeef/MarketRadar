@@ -49,6 +49,16 @@ def test_value_outcome_cli_preview_execute_and_list(
     assert preview["mode"] == "preview"
     assert preview["external_calls_made"] == 0
     assert preview["db_writes_made"] == 0
+    assert "value-outcome update" in preview["preview_command"]
+    assert "--preview" in preview["preview_command"]
+    assert "--execute" not in preview["preview_command"]
+    assert "value-outcome update" in preview["execute_command"]
+    assert "--execute" in preview["execute_command"]
+    assert "--preview" not in preview["execute_command"]
+    assert preview["api"] == "POST /api/value-outcomes/update"
+    assert preview["api_preview_request_body"]["execute"] is False
+    assert preview["api_execute_request_body"]["execute"] is True
+    assert preview["api_execute_request_body"]["value_ledger_entry_id"] == entry_id
     outcome = preview["outcome"]
     assert outcome["status"] == "computed"
     assert outcome["trading_days_observed"] == 60
@@ -87,6 +97,9 @@ def test_value_outcome_cli_preview_execute_and_list(
     assert execute_exit == 0
     executed = json.loads(capsys.readouterr().out)
     assert executed["db_writes_made"] == 1
+    assert "--preview" in executed["preview_command"]
+    assert executed["execute_command"] is None
+    assert executed["api_execute_request_body"] is None
     list_exit = main(["value-outcome", "list", "--ledger-id", entry_id, "--json"])
     assert list_exit == 0
     listed = json.loads(capsys.readouterr().out)
@@ -320,6 +333,11 @@ def test_value_outcome_api_rejects_missing_future_bars_without_mutating_ledger(
     payload = response.json()
     assert payload["external_calls_made"] == 0
     assert payload["db_writes_made"] == 1
+    assert "--preview" in payload["preview_command"]
+    assert payload["execute_command"] is None
+    assert payload["api"] == "POST /api/value-outcomes/update"
+    assert payload["api_preview_request_body"]["execute"] is False
+    assert payload["api_execute_request_body"] is None
     outcome = payload["outcome"]
     assert outcome["status"] == "insufficient_data"
     assert outcome["trading_days_observed"] == 4

@@ -1,6 +1,44 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 19:48:44 +08:00
+Last updated: 2026-05-23 20:11:45 +08:00
+
+## Latest Value Write Explicit Commands Slice
+
+Last updated: 2026-05-23 20:11:45 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains measured shadow operation and monthly value proof,
+  not UI wording.
+- M1 is still blocked by the guarded local market-bar repair, which requires
+  explicit operator approval before any operator DB write.
+- The useful definition for this slice is concrete: value-ledger and
+  value-outcome write previews must show the exact zero-write replay command,
+  the exact explicit local execute command, and matching API request bodies so
+  CLI/API/TUI clients do not infer write flags.
+
+Fix in this slice:
+
+- `value-ledger record`, `value-ledger add`, and `value-ledger label` payloads
+  now include `preview_command`, `execute_command`,
+  `api_preview_request_body`, and `api_execute_request_body`.
+- `value-outcome update` payloads now include the same explicit command/body
+  contract.
+- Executed write responses keep the replayable `preview_command` and set the
+  next execute command/body to `null`, because the write already occurred.
+- Human CLI output prints the preview and execute command lines for these
+  write-like workflows.
+- README documents the contract.
+
+Safety:
+
+- Preview mode still makes 0 Polygon/Massive, SEC, Schwab, broker, order,
+  OpenAI, web, app, or provider calls and writes 0 database rows.
+- Execute mode still makes 0 provider calls and writes only the one local
+  value-ledger row or value-outcome row that the operator explicitly approved.
+- This does not execute residual repair, fill market bars, change scan scope,
+  alter scoring, alter thresholds, mutate candidate states outside the local
+  evidence row, submit orders, or enable real alerts/LLMs.
 
 ## Latest Residual Review Guarded Command Slice
 

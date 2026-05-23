@@ -52,6 +52,20 @@ def value_outcome_update_payload(
     )
     if execute:
         repo.upsert_value_outcome(outcome)
+    preview_command = _value_outcome_update_command(
+        value_ledger_entry_id=entry.id,
+        outcome_available_at=outcome.outcome_available_at,
+        sector_etf_ticker=sector_etf_ticker,
+        invalidation_price=invalidation_price,
+        execute=False,
+    )
+    execute_command = _value_outcome_update_command(
+        value_ledger_entry_id=entry.id,
+        outcome_available_at=outcome.outcome_available_at,
+        sector_etf_ticker=sector_etf_ticker,
+        invalidation_price=invalidation_price,
+        execute=True,
+    )
     return {
         "schema_version": "value-outcome-update-v1",
         "mode": "executed" if execute else "preview",
@@ -59,12 +73,72 @@ def value_outcome_update_payload(
         "external_calls_made": 0,
         "db_writes_required": 1,
         "db_writes_made": 1 if execute else 0,
+        "preview_command": preview_command,
+        "execute_command": execute_command if not execute else None,
+        "api": "POST /api/value-outcomes/update",
+        "api_preview_request_body": _value_outcome_update_request_body(
+            value_ledger_entry_id=entry.id,
+            outcome_available_at=outcome.outcome_available_at,
+            sector_etf_ticker=sector_etf_ticker,
+            invalidation_price=invalidation_price,
+            execute=False,
+        ),
+        "api_execute_request_body": (
+            _value_outcome_update_request_body(
+                value_ledger_entry_id=entry.id,
+                outcome_available_at=outcome.outcome_available_at,
+                sector_etf_ticker=sector_etf_ticker,
+                invalidation_price=invalidation_price,
+                execute=True,
+            )
+            if not execute
+            else None
+        ),
         "outcome": value_outcome_payload(outcome),
         "next_action": (
             "Value outcome saved."
             if execute
             else "Preview only. Re-run with --execute to write this outcome row."
         ),
+    }
+
+
+def _value_outcome_update_command(
+    *,
+    value_ledger_entry_id: str,
+    outcome_available_at: datetime,
+    sector_etf_ticker: str | None,
+    invalidation_price: float | None,
+    execute: bool,
+) -> str:
+    parts = ["catalyst-radar", "value-outcome", "update"]
+    _append_command_option(parts, "--ledger-id", value_ledger_entry_id)
+    _append_command_option(
+        parts,
+        "--outcome-available-at",
+        outcome_available_at.isoformat(),
+    )
+    _append_command_option(parts, "--sector-etf", sector_etf_ticker)
+    _append_command_option(parts, "--invalidation-price", invalidation_price)
+    parts.append("--execute" if execute else "--preview")
+    parts.append("--json")
+    return " ".join(parts)
+
+
+def _value_outcome_update_request_body(
+    *,
+    value_ledger_entry_id: str,
+    outcome_available_at: datetime,
+    sector_etf_ticker: str | None,
+    invalidation_price: float | None,
+    execute: bool,
+) -> dict[str, object]:
+    return {
+        "value_ledger_entry_id": value_ledger_entry_id,
+        "outcome_available_at": outcome_available_at.isoformat(),
+        "sector_etf_ticker": sector_etf_ticker,
+        "invalidation_price": invalidation_price,
+        "execute": execute,
     }
 
 
@@ -680,6 +754,26 @@ def _month_end(start: date) -> date:
     if start.month == 12:
         return start.replace(year=start.year + 1, month=1, day=1) - timedelta(days=1)
     return start.replace(month=start.month + 1, day=1) - timedelta(days=1)
+
+
+def _append_command_option(
+    parts: list[str],
+    flag: str,
+    value: object | None,
+) -> None:
+    if value is None:
+        return
+    text = str(value).strip()
+    if not text:
+        return
+    parts.extend([flag, _command_arg(text)])
+
+
+def _command_arg(value: str) -> str:
+    safe_chars = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_./:@+-")
+    if value and all(char in safe_chars for char in value):
+        return value
+    return "'" + value.replace("'", "''") + "'"
 
 
 def _required_text(value: object, field_name: str) -> str:

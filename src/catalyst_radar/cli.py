@@ -2923,7 +2923,11 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 if args.execute:
                     ValidationRepository(engine).upsert_value_ledger_entry(entry)
-                payload = value_ledger_write_payload(entry, execute=args.execute)
+                payload = value_ledger_write_payload(
+                    entry,
+                    execute=args.execute,
+                    command_name=args.value_ledger_command,
+                )
                 if args.json:
                     print(json.dumps(payload, sort_keys=True))
                     return 0
@@ -8390,6 +8394,8 @@ def _print_value_ledger_write(payload: Mapping[str, object]) -> None:
         f"outcome_status={entry.get('outcome_status')}"
     )
     print(f"next_action={_compact_cli_text(payload.get('next_action'))}")
+    print(f"preview_command={payload.get('preview_command') or 'n/a'}")
+    print(f"execute_command={payload.get('execute_command') or 'n/a'}")
     print(f"useful_definition={_compact_cli_text(payload.get('useful_definition'))}")
 
 
@@ -8523,6 +8529,8 @@ def _print_value_outcome_update(payload: Mapping[str, object]) -> None:
         f"db_writes_made={payload.get('db_writes_made') or 0}"
     )
     print(f"next_action={_compact_cli_text(payload.get('next_action'))}")
+    print(f"preview_command={payload.get('preview_command') or 'n/a'}")
+    print(f"execute_command={payload.get('execute_command') or 'n/a'}")
 
 
 def _print_value_outcome(payload: Mapping[str, object]) -> None:

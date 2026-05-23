@@ -225,7 +225,18 @@ def value_ledger_write_payload(
     entry: ValueLedgerEntry,
     *,
     execute: bool,
+    command_name: str = "record",
 ) -> dict[str, object]:
+    preview_command = _value_ledger_command(
+        entry,
+        execute=False,
+        command_name=command_name,
+    )
+    execute_command = _value_ledger_command(
+        entry,
+        execute=True,
+        command_name=command_name,
+    )
     return {
         "schema_version": "value-ledger-entry-plan-v1",
         "mode": "executed" if execute else "preview",
@@ -233,6 +244,13 @@ def value_ledger_write_payload(
         "external_calls_made": 0,
         "db_writes_required": 1,
         "db_writes_made": 1 if execute else 0,
+        "preview_command": preview_command,
+        "execute_command": execute_command if not execute else None,
+        "api": "POST /api/value-ledger/entries",
+        "api_preview_request_body": _value_ledger_request_body(entry, execute=False),
+        "api_execute_request_body": (
+            _value_ledger_request_body(entry, execute=True) if not execute else None
+        ),
         "entry": value_ledger_entry_payload(entry),
         "next_action": (
             "Value ledger entry saved."
@@ -241,6 +259,87 @@ def value_ledger_write_payload(
         ),
         "useful_definition": USEFUL_DEFINITION,
         "allowed_feedback_labels": sorted(ALLOWED_FEEDBACK_LABELS),
+    }
+
+
+def _value_ledger_command(
+    entry: ValueLedgerEntry,
+    *,
+    execute: bool,
+    command_name: str,
+) -> str:
+    resolved_command = "label" if command_name == "label" else "record"
+    parts = ["catalyst-radar", "value-ledger", resolved_command]
+    _append_command_option(parts, "--artifact-type", entry.artifact_type)
+    _append_command_option(parts, "--artifact-id", entry.artifact_id)
+    _append_command_option(parts, "--as-of", entry.as_of.isoformat() if entry.as_of else None)
+    _append_command_option(parts, "--scan-run-id", entry.scan_run_id)
+    _append_command_option(parts, "--candidate-state-id", entry.candidate_state_id)
+    _append_command_option(parts, "--candidate-packet-id", entry.candidate_packet_id)
+    _append_command_option(parts, "--decision-card-id", entry.decision_card_id)
+    _append_command_option(parts, "--ticker", entry.ticker)
+    _append_command_option(parts, "--label", entry.label)
+    _append_command_option(parts, "--action-state", entry.action_state)
+    _append_command_option(parts, "--priced-in-status", entry.priced_in_status)
+    _append_command_option(parts, "--priced-in-direction", entry.priced_in_direction)
+    _append_command_option(parts, "--emotion-score", entry.emotion_score)
+    _append_command_option(parts, "--reaction-score", entry.reaction_score)
+    _append_command_option(parts, "--emotion-reaction-gap", entry.emotion_reaction_gap)
+    _append_command_option(parts, "--final-score", entry.final_score)
+    _append_command_option(parts, "--setup-type", entry.setup_type)
+    _append_command_option(parts, "--supported-action", entry.supported_action)
+    _append_command_option(parts, "--user-decision", entry.user_decision)
+    _append_command_option(parts, "--estimated-value-usd", entry.estimated_value_usd)
+    _append_command_option(parts, "--confidence", entry.confidence)
+    _append_command_option(parts, "--cost-to-produce-usd", entry.cost_to_produce_usd)
+    _append_command_option(parts, "--provider-call-count", entry.provider_call_count)
+    _append_command_option(parts, "--llm-call-count", entry.llm_call_count)
+    _append_command_option(parts, "--outcome-status", entry.outcome_status)
+    _append_command_option(parts, "--notes", entry.notes)
+    _append_command_option(parts, "--entry-date", entry.entry_date.isoformat())
+    _append_command_option(parts, "--available-at", entry.available_at.isoformat())
+    parts.append("--execute" if execute else "--preview")
+    parts.append("--json")
+    return " ".join(parts)
+
+
+def _value_ledger_request_body(
+    entry: ValueLedgerEntry,
+    *,
+    execute: bool,
+) -> dict[str, object]:
+    payload = thaw_json_value(entry.payload)
+    return {
+        "artifact_type": entry.artifact_type,
+        "artifact_id": entry.artifact_id,
+        "label": entry.label,
+        "estimated_value_usd": entry.estimated_value_usd,
+        "confidence": entry.confidence,
+        "as_of": entry.as_of.isoformat() if entry.as_of else None,
+        "scan_run_id": entry.scan_run_id,
+        "candidate_state_id": entry.candidate_state_id,
+        "candidate_packet_id": entry.candidate_packet_id,
+        "decision_card_id": entry.decision_card_id,
+        "ticker": entry.ticker,
+        "action_state": entry.action_state,
+        "priced_in_status": entry.priced_in_status,
+        "priced_in_direction": entry.priced_in_direction,
+        "emotion_score": entry.emotion_score,
+        "reaction_score": entry.reaction_score,
+        "emotion_reaction_gap": entry.emotion_reaction_gap,
+        "final_score": entry.final_score,
+        "setup_type": entry.setup_type,
+        "supported_action": entry.supported_action,
+        "user_decision": entry.user_decision,
+        "cost_to_produce_usd": entry.cost_to_produce_usd,
+        "provider_call_count": entry.provider_call_count,
+        "llm_call_count": entry.llm_call_count,
+        "outcome_status": entry.outcome_status,
+        "notes": entry.notes,
+        "entry_date": entry.entry_date.isoformat(),
+        "available_at": entry.available_at.isoformat(),
+        "payload": payload if isinstance(payload, Mapping) else {},
+        "execute": execute,
     }
 
 
@@ -750,6 +849,26 @@ def _string_counts(values: object) -> dict[str, int]:
         key = str(value).strip() or "unknown"
         counts[key] = counts.get(key, 0) + 1
     return dict(sorted(counts.items()))
+
+
+def _append_command_option(
+    parts: list[str],
+    flag: str,
+    value: object | None,
+) -> None:
+    if value is None:
+        return
+    text = str(value).strip()
+    if not text:
+        return
+    parts.extend([flag, _command_arg(text)])
+
+
+def _command_arg(value: str) -> str:
+    safe_chars = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_./:@+-")
+    if value and all(char in safe_chars for char in value):
+        return value
+    return "'" + value.replace("'", "''") + "'"
 
 
 def _allowed_value(
