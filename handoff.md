@@ -1,6 +1,43 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 18:36:46 +08:00
+Last updated: 2026-05-23 18:49:40 +08:00
+
+## Latest Explicit Generated Preview Commands Slice
+
+Last updated: 2026-05-23 18:49:40 +08:00
+
+Goal alignment / drift check:
+
+- The user wants to try MarketRadar soon, so the safe stop point is a shipped
+  shadow/read-only MVP: browsing, readiness checks, previews, deliberate local
+  ledger/outcome writes, and monthly value reports.
+- The product is still not investment-ready while full-market bars and
+  validation evidence are incomplete.
+- The useful definition for this slice is concrete: generated next commands for
+  value-ledger coverage and value-outcome coverage must visibly include
+  `--preview`, not merely rely on preview-by-default parser behavior.
+
+Fix in this slice:
+
+- Missing candidate-state ledger coverage now generates
+  `value-ledger record ... --preview --json`.
+- Missing value-outcome coverage now generates
+  `value-outcome update ... --preview --json`.
+- Monthly value reports inherit those explicit preview commands when candidate
+  ledger coverage or outcome coverage is the first value-proof blocker.
+- README documents the safe shipped MVP boundary and the generated preview
+  command contract.
+
+Safety:
+
+- This is command-string and documentation behavior over existing read-only
+  coverage surfaces.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls.
+- It writes 0 database rows and does not change execute semantics, scores,
+  thresholds, policy gates, action states, trade plans, LLM behavior,
+  broker/order controls, candidate rows, ledger row contents, outcome math,
+  validation rows, or readiness criteria.
 
 ## Latest Explicit Value Preview Flags Slice
 

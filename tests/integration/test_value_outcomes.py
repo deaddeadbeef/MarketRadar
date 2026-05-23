@@ -180,8 +180,10 @@ def test_value_outcome_coverage_reports_ledger_rows_missing_outcomes(
     )
     assert missing["outcome_status"] == "missing"
     assert "value-outcome update" in missing["preview_update_command"]
+    assert "--preview" in missing["preview_update_command"]
     assert "--execute" not in missing["preview_update_command"]
     assert payload["canonical_next_command"] == missing["preview_update_command"]
+    assert "--preview" in payload["canonical_next_command"]
     assert "--execute" not in payload["canonical_next_command"]
     with engine.connect() as conn:
         ledger_after = [
@@ -261,6 +263,7 @@ def test_value_outcome_coverage_api_and_monthly_report_surface_missing_rows(
     assert coverage["first_missing_value_ledger_entry_id"] == entry_id
     assert coverage["first_missing_ticker"] == "NVDA"
     assert "value-outcome update" in coverage["canonical_next_command"]
+    assert "--preview" in coverage["canonical_next_command"]
     assert "--execute" not in coverage["canonical_next_command"]
     assert coverage["external_calls_made"] == 0
     assert coverage["db_writes_made"] == 0
@@ -285,6 +288,7 @@ def test_value_outcome_coverage_api_and_monthly_report_surface_missing_rows(
     assert outcome_coverage["first_missing_ticker"] == "NVDA"
     assert outcome_coverage["canonical_next_command"] == coverage["canonical_next_command"]
     assert report["canonical_next_command"] == coverage["canonical_next_command"]
+    assert "--preview" in report["canonical_next_command"]
     assert "--execute" not in report["canonical_next_command"]
     assert outcome_coverage["external_calls_made"] == 0
     assert outcome_coverage["db_writes_made"] == 0

@@ -241,12 +241,14 @@ def test_value_ledger_coverage_reports_unlogged_surfaced_candidates(
     assert payload["first_missing_candidate_state_id"] == "state-AAPL"
     assert payload["first_missing_ticker"] == "AAPL"
     assert "--artifact-id state-AAPL" in payload["canonical_next_command"]
+    assert "--preview" in payload["canonical_next_command"]
     assert "--execute" not in payload["canonical_next_command"]
     rows = {row["candidate_state_id"]: row for row in payload["rows"]}
     assert rows["state-MSFT"]["ledger_status"] == "logged"
     assert rows["state-MSFT"]["ledger_entry_id"]
     assert rows["state-AAPL"]["ledger_status"] == "missing"
     assert "--artifact-id state-AAPL" in rows["state-AAPL"]["record_command"]
+    assert "--preview" in rows["state-AAPL"]["record_command"]
     assert "--execute" not in rows["state-AAPL"]["record_command"]
     assert "state-GLW" not in rows
     with engine.connect() as conn:

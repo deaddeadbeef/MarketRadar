@@ -33,6 +33,10 @@ decision-support value. That is the measured target for offsetting 20% of a
   status instead of trusting stale README counts.
 - Full market means the local active universe, not the small demo ticker set and
   not the narrower `liquid-us` configured universe.
+- The minimum safe shipped shape is shadow/read-only decision support: browsing,
+  readiness checks, previews, explicit local ledger/outcome writes, and monthly
+  value reports. Real-capital decisions remain blocked until full-market data
+  and validation evidence clear.
 
 ### For Humans
 
@@ -995,7 +999,7 @@ with the value ledger. The default `add` command is a preview and writes nothing
 add `--execute` only after the displayed entry is correct:
 
 ```powershell
-catalyst-radar value-ledger record --artifact-type candidate_state --artifact-id <ID> --label good-research --supported-action research --user-decision accepted --estimated-value-usd 10 --confidence 0.5 --notes "screened faster" --json
+catalyst-radar value-ledger record --artifact-type candidate_state --artifact-id <ID> --label good-research --supported-action research --user-decision accepted --estimated-value-usd 10 --confidence 0.5 --notes "screened faster" --preview --json
 catalyst-radar value-ledger record --artifact-type candidate_state --artifact-id <ID> --label good-research --supported-action research --user-decision accepted --estimated-value-usd 10 --confidence 0.5 --execute --json
 catalyst-radar value-ledger label --artifact-type candidate_state --artifact-id <ID> --label useful --supported-action research --user-decision accepted --estimated-value-usd 10 --confidence 0.5 --execute --json
 catalyst-radar value-ledger coverage --available-at <UTC-cutoff> --json
@@ -1041,9 +1045,9 @@ costs but do not inflate weighted value or target coverage.
 `value-ledger coverage` is read-only. It lists Warning-or-higher candidate
 states in the selected period, shows which ones already have candidate-state
 ledger rows, and provides conservative zero-value `value-ledger record` commands
-for missing rows so the operator can review or edit subjective label/value
-before writing anything. When coverage has gaps, the payload exposes
-`first_missing_candidate_state_id`, `first_missing_ticker`, and
+with explicit `--preview` for missing rows so the operator can review or edit
+subjective label/value before writing anything. When coverage has gaps, the
+payload exposes `first_missing_candidate_state_id`, `first_missing_ticker`, and
 `canonical_next_command` for the first non-executing ledger-record command.
 
 ### Forward outcomes
@@ -1079,7 +1083,8 @@ coverage is read-only and shows which value-ledger rows in the period still
 need an outcome row before monthly value evidence is treated as measured. When
 coverage has gaps, the payload exposes `first_missing_value_ledger_entry_id`,
 `first_missing_ticker`, and the preview-only `canonical_next_command` for the
-first non-executing outcome update.
+first non-executing outcome update; generated update commands include explicit
+`--preview`.
 Execute makes 0 provider calls and writes only a `value_outcomes` row. The
 update never mutates the source value-ledger row, candidate state, candidate
 packet, decision card, score, or policy output.
@@ -1116,11 +1121,12 @@ The report also includes `candidate_ledger_coverage`, a read-only summary of
 Warning-or-higher candidate states surfaced in the month versus candidate-state
 ledger rows recorded for them. If coverage has gaps, the report includes the
 same conservative non-executing `value-ledger record` commands shown by
-`value-ledger coverage`, so missing human feedback is visible before claiming
-monthly value evidence. It also includes `value_outcome_coverage`, a read-only
-summary of value-ledger rows versus linked outcome rows, including the same
-first-missing outcome fields and non-executing `value-outcome update` preview
-commands for missing outcomes. When there are no ledger rows in the period,
+`value-ledger coverage`, with explicit `--preview`, so missing human feedback is
+visible before claiming monthly value evidence. It also includes
+`value_outcome_coverage`, a read-only summary of value-ledger rows versus linked
+outcome rows, including the same first-missing outcome fields and
+non-executing `value-outcome update --preview` commands for missing outcomes.
+When there are no ledger rows in the period,
 outcome coverage reports `no_ledger_entries` instead
 of `ready`, because outcome evidence cannot exist before feedback is logged. The
 top-level report exposes `first_blocker`, `first_gap_count`,

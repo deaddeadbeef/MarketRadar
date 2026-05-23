@@ -675,7 +675,7 @@ def _candidate_coverage_record_command(
         f"--artifact-id {candidate_state_id} --label ignored "
         "--supported-action research --user-decision unknown "
         "--estimated-value-usd 0 --confidence 0 "
-        f"--available-at {available_at.isoformat()} --json"
+        f"--available-at {available_at.isoformat()} --preview --json"
     )
 
 
