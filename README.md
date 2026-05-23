@@ -1204,9 +1204,12 @@ successful run is for another month, the report fails closed with
 `status=run_period_mismatch` and points to a preview-only `validation-replay`
 command for the requested month. When the in-month run exists, the section
 shows whether it has measured the mission-brief baselines and precision@5/10
-evidence; otherwise it gives the next validation-replay action. The terminal
-dashboard Costs page surfaces the same candidate ledger coverage and
-missing-ledger count for human review.
+evidence; otherwise it gives the next validation-replay action. It also
+summarizes each required baseline as `marketradar_wins`, `baseline_wins`,
+`tie`, `insufficient_evidence`, or `missing`, so the monthly report can say
+plainly whether measured validation favored MarketRadar or a boring baseline.
+The terminal dashboard Costs page surfaces the same candidate ledger coverage,
+missing-ledger count, and baseline win/loss counts for human review.
 
 ### Validation and calibration reports
 
