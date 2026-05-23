@@ -151,14 +151,40 @@ def test_report_builder_marks_baseline_comparison_insufficient_without_labels() 
 
 def test_report_builder_compares_labeled_baseline_precision() -> None:
     rows = [
-        _result("r1", "AAA", "Warning", {"target_20d_25": True}),
-        _result("r2", "BBB", "Warning", {"target_20d_25": False}),
+        _result(
+            "r1",
+            "AAA",
+            "Warning",
+            {
+                "target_20d_25": True,
+                "return_20d": 0.30,
+                "spy_relative_return_20d": 0.22,
+                "sector_return_20d": 0.10,
+                "sector_outperformance": True,
+            },
+        ),
+        _result(
+            "r2",
+            "BBB",
+            "Warning",
+            {
+                "target_20d_25": False,
+                "return_20d": -0.05,
+                "spy_return_20d": 0.02,
+                "sector_relative_return_20d": -0.10,
+                "sector_outperformance": False,
+            },
+        ),
         {
             "baseline": "volume_breakout_screener",
             "ticker": "CCC",
             "rank": 1,
             "labels": {
                 "target_20d_25": True,
+                "return_20d": 0.42,
+                "spy_return_20d": 0.10,
+                "sector_relative_return_20d": 0.27,
+                "sector_outperformance": True,
                 "max_adverse_excursion": -0.03,
                 "max_favorable_excursion": 0.32,
             },
@@ -172,6 +198,16 @@ def test_report_builder_compares_labeled_baseline_precision() -> None:
     assert comparison["baseline_precision_at_10"] == 1.0
     assert comparison["baseline_false_positive_rate"] == 0.0
     assert comparison["baseline_max_favorable_excursion_avg"] == 0.32
+    assert comparison["marketradar_return_20d_avg"] == pytest.approx(0.125)
+    assert comparison["marketradar_spy_relative_return_20d_avg"] == pytest.approx(
+        0.075
+    )
+    assert comparison["marketradar_sector_relative_return_20d_avg"] == pytest.approx(0.05)
+    assert comparison["marketradar_sector_outperformance_rate"] == pytest.approx(0.5)
+    assert comparison["baseline_return_20d_avg"] == pytest.approx(0.42)
+    assert comparison["baseline_spy_relative_return_20d_avg"] == pytest.approx(0.32)
+    assert comparison["baseline_sector_relative_return_20d_avg"] == pytest.approx(0.27)
+    assert comparison["baseline_sector_outperformance_rate"] == pytest.approx(1.0)
     assert comparison["sample_status"] == "measured"
     assert comparison["result_vs_market_radar"] == "baseline_wins"
 
