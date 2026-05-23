@@ -10962,7 +10962,10 @@ def investable_readiness_payload(
         "first_blocker": first_blocker_code,
         "first_gap_count": _shadow_readiness_first_gap_count(first_blocker),
         "canonical_next_action": canonical_next_action,
-        "canonical_next_command": _shadow_readiness_command(canonical_next_action),
+        "canonical_next_command": _investable_readiness_next_command(
+            first_blocker,
+            canonical_next_action,
+        ),
         "useful_definition": (
             "Useful means MarketRadar repeatedly scans the intended broad universe, "
             "labels surfaced insights, tracks forward outcomes, beats or explains "
@@ -11199,6 +11202,16 @@ def _trial_readiness_checks(
             },
         ),
     ]
+
+
+def _investable_readiness_next_command(
+    first_blocker: Mapping[str, object],
+    next_action: str,
+) -> str | None:
+    command = first_blocker.get("next_command")
+    if isinstance(command, str) and command.strip():
+        return command.strip()
+    return _shadow_readiness_command(next_action)
 
 
 def _trial_readiness_row(
@@ -11820,6 +11833,8 @@ def _investable_readiness_checks(
     )
     label_counts = _mapping_value(monthly_value_report, "label_counts")
     monthly_verdict = str(monthly_value_report.get("verdict") or "unknown")
+    report_month = str(monthly_value_report.get("month") or "<YYYY-MM>")
+    monthly_report_command = f"catalyst-radar value-report --month {report_month} --json"
     cost_per_useful_alert = _first_present(
         monthly_value_report.get("cost_per_useful_alert"),
         report.get("cost_per_useful_alert"),
@@ -11837,6 +11852,11 @@ def _investable_readiness_checks(
                 shadow_readiness.get("canonical_next_action")
                 or "Run catalyst-radar assert-shadow-ready --json first."
             ),
+            next_command=_first_text(
+                shadow_readiness.get("canonical_next_command"),
+                shadow_readiness.get("next_command"),
+                "catalyst-radar assert-shadow-ready --json",
+            ),
             evidence=f"status={shadow_readiness.get('status') or 'unknown'}",
             metric={"shadow_ready": bool(shadow_readiness.get("ready"))},
         ),
@@ -11849,6 +11869,7 @@ def _investable_readiness_checks(
                 "Run one shadow-mode execute after each close until 30 valid full "
                 "stock-like scan days exist."
             ),
+            next_command="catalyst-radar shadow-mode run --preview --json",
             evidence=_shadow_run_date_evidence(valid_full_runs),
             metric={
                 "valid_full_scan_day_count": len(valid_full_runs),
@@ -11871,6 +11892,7 @@ def _investable_readiness_checks(
                 "Keep full-scan market bars complete for 30 valid shadow days "
                 "before any capital-readiness claim."
             ),
+            next_command="catalyst-radar shadow-mode run --preview --json",
             evidence=_market_coverage_evidence(recent_full_runs),
             metric={
                 "checked_full_scan_days": len(recent_full_runs),
@@ -11893,6 +11915,10 @@ def _investable_readiness_checks(
                 radar_readiness.get("next_action")
                 or "Clear stale data, missing evidence, and trade-plan blockers."
             ),
+            next_command=_first_text(
+                radar_readiness.get("canonical_next_command"),
+                radar_readiness.get("next_command"),
+            ),
             evidence=f"status={radar_readiness.get('status') or 'unknown'}",
             metric={
                 "safe_to_make_investment_decision": bool(
@@ -11914,6 +11940,7 @@ def _investable_readiness_checks(
                 "Record value-ledger entries and run value-outcome update after "
                 "the review horizon has enough stored bars."
             ),
+            next_command="catalyst-radar value-outcome coverage --json",
             evidence="value_outcomes are deterministic and local-only.",
             metric={
                 "value_ledger_entry_count": len(value_entries),
@@ -11929,6 +11956,7 @@ def _investable_readiness_checks(
                 "Run validation replay/report until every mission-brief baseline "
                 "has enough point-in-time sample evidence."
             ),
+            next_command="catalyst-radar validation-report --latest --json",
             evidence=str(baseline_summary["evidence"]),
             metric=baseline_summary["metric"],
         ),
@@ -11938,6 +11966,7 @@ def _investable_readiness_checks(
             status="ready" if precision_summary["ready"] else "blocked",
             finding=str(precision_summary["finding"]),
             next_action="Collect enough labeled validation rows to measure precision@5/10.",
+            next_command="catalyst-radar validation-report --latest --json",
             evidence=str(precision_summary["evidence"]),
             metric=precision_summary["metric"],
         ),
@@ -11962,6 +11991,7 @@ def _investable_readiness_checks(
                 "Label noisy surfaced insights in the value ledger, including "
                 "false-positive when applicable."
             ),
+            next_command="catalyst-radar value-ledger coverage --json",
             evidence=f"validation_candidate_count={validation_candidate_count}",
             metric={
                 "validation_candidate_count": validation_candidate_count,
@@ -11980,6 +12010,7 @@ def _investable_readiness_checks(
                 f"{cost_per_useful_alert if cost_per_useful_alert is not None else 'n/a'}."
             ),
             next_action="Record useful/noisy value-ledger labels until alert cost is measurable.",
+            next_command=monthly_report_command,
             evidence=f"monthly_value_verdict={monthly_verdict}",
             metric={"cost_per_useful_alert": cost_per_useful_alert},
         ),
@@ -11994,6 +12025,7 @@ def _investable_readiness_checks(
                 "Generate value-report evidence with enough useful/noisy labels "
                 "for a pass/fail result."
             ),
+            next_command=monthly_report_command,
             evidence=str(monthly_value_report.get("verdict_reason") or ""),
             metric={
                 "verdict": monthly_verdict,
@@ -12015,6 +12047,7 @@ def _investable_readiness_checks(
                 "Keep gathering attributable value evidence until the monthly "
                 "report plausibly clears $40 after costs."
             ),
+            next_command=monthly_report_command,
             evidence=str(monthly_value_report.get("decision_support_note") or ""),
             metric={
                 "net_decision_support_value_usd": monthly_value_report.get(
@@ -12039,6 +12072,7 @@ def _investable_readiness_checks(
                 "Build Decision Cards with both supporting and disconfirming "
                 "evidence before manual buy review."
             ),
+            next_command="catalyst-radar build-decision-cards --help",
             evidence=str(decision_card_evidence.get("evidence") or ""),
             metric=decision_card_evidence,
         ),
@@ -12051,6 +12085,7 @@ def _investable_readiness_checks(
                 "Use paper-decision and paper-update-outcomes before any "
                 "limited real-capital pilot."
             ),
+            next_command="catalyst-radar dashboard-snapshot --json",
             evidence="Paper rows are local validation artifacts.",
             metric={"paper_trade_count": len(paper_trades)},
         ),
@@ -12068,6 +12103,7 @@ def _investable_readiness_checks(
                 if config.schwab_order_submission_enabled
                 else "Keep Schwab read-only until a separate trading-safety review."
             ),
+            next_command="catalyst-radar assert-investable-readiness --json",
             evidence="CATALYST_SCHWAB_ORDER_SUBMISSION_ENABLED="
             f"{str(config.schwab_order_submission_enabled).lower()}",
             metric={
@@ -12093,6 +12129,7 @@ def _investable_readiness_checks(
                 "Disable real LLM modes or add a separate budgeted LLM "
                 "readiness review."
             ),
+            next_command="catalyst-radar assert-investable-readiness --json",
             evidence=(
                 f"premium_llm={str(config.enable_premium_llm).lower()}; "
                 f"agent_sdk={str(config.enable_agent_sdk).lower()}"
@@ -12108,6 +12145,7 @@ def _investable_readiness_checks(
             status="ready",
             finding="Shadow, validation, paper, and value evidence have JSON export paths.",
             next_action="Use the export commands before any release review.",
+            next_command="catalyst-radar shadow-mode list --json",
             evidence=(
                 "shadow-mode list --json; dashboard-snapshot --json; "
                 "value-report --json"
@@ -22565,6 +22603,13 @@ def _first_present(*values: object) -> object:
     for value in values:
         if value is not None and value != "" and value != [] and value != {}:
             return value
+    return None
+
+
+def _first_text(*values: object) -> str | None:
+    for value in values:
+        if isinstance(value, str) and value.strip():
+            return value.strip()
     return None
 
 

@@ -8345,6 +8345,9 @@ def _print_investable_readiness(payload: Mapping[str, object]) -> None:
     )
     print(f"headline={_compact_cli_text(payload.get('headline'))}")
     print(f"next_action={_compact_cli_text(payload.get('canonical_next_action'))}")
+    command = payload.get("canonical_next_command")
+    if command:
+        print(f"next_command={_compact_cli_text(command)}")
     print(f"useful_definition={_compact_cli_text(payload.get('useful_definition'))}")
     print(
         "highest_allowed_action_state="
@@ -8364,6 +8367,7 @@ def _print_investable_readiness(payload: Mapping[str, object]) -> None:
             f"area={_compact_cli_text(row.get('area'))} "
             f"finding={_compact_cli_text(row.get('finding'))} "
             f"next={_compact_cli_text(row.get('next_action'))} "
+            f"command={_compact_cli_text(row.get('next_command'))} "
             f"external_calls={row.get('external_calls_made') or 0} "
             f"db_writes={row.get('db_writes_made') or 0}"
         )
