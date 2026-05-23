@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from collections import Counter, defaultdict
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, fields, is_dataclass
 from datetime import datetime
 from typing import Any
@@ -782,12 +782,21 @@ def _score_calibration(
             )
         )
     measured = [bucket for bucket in buckets if bucket["labeled_count"] > 0]
+    monotonic_precision = _monotonic_precision(measured)
+    threshold_review_flags = _threshold_review_flags(buckets)
     return {
         "schema_version": "score-calibration-v1",
         "positive_label": positive_label,
         "bucket_count": len(buckets),
         "sample_status": "measured" if measured else "insufficient_evidence",
-        "monotonic_precision": _monotonic_precision(measured),
+        "monotonic_precision": monotonic_precision,
+        "score_ordering_verdict": _score_ordering_verdict(
+            monotonic_precision=monotonic_precision,
+            threshold_review_flags=threshold_review_flags,
+        ),
+        "higher_scores_correlate_with_outcomes": _higher_scores_correlate_with_outcomes(
+            monotonic_precision
+        ),
         "buckets": buckets,
         "score_distribution": _score_distribution_dimensions(
             candidate_rows,
@@ -795,7 +804,8 @@ def _score_calibration(
             useful_keys=useful_keys,
             positive_label=positive_label,
         ),
-        "threshold_review_flags": _threshold_review_flags(buckets),
+        "threshold_review_flags": threshold_review_flags,
+        "threshold_review_required": bool(threshold_review_flags),
         "thresholds_changed": False,
         "note": (
             "Report-only calibration evidence. No scoring weights, policy thresholds, "
@@ -1235,6 +1245,30 @@ def _threshold_review_flags(buckets: list[Mapping[str, Any]]) -> list[dict[str, 
                 }
             )
     return flags
+
+
+def _score_ordering_verdict(
+    *,
+    monotonic_precision: str,
+    threshold_review_flags: Sequence[Mapping[str, Any]],
+) -> str:
+    if threshold_review_flags:
+        return "review_thresholds"
+    if monotonic_precision == "increasing":
+        return "supports_higher_scores"
+    if monotonic_precision == "decreasing":
+        return "contradicts_higher_scores"
+    if monotonic_precision == "mixed":
+        return "mixed_evidence"
+    return "insufficient_evidence"
+
+
+def _higher_scores_correlate_with_outcomes(monotonic_precision: str) -> bool | None:
+    if monotonic_precision == "increasing":
+        return True
+    if monotonic_precision == "decreasing":
+        return False
+    return None
 
 
 def _ticker_as_of_key(row: Any) -> tuple[str, str] | None:

@@ -159,6 +159,8 @@ def test_validation_report_label_and_paper_cli_workflow(
     assert report["leakage_failure_count"] == 0
     assert report["score_calibration"]["thresholds_changed"] is False
     assert report["score_calibration"]["buckets"]
+    assert "score_ordering_verdict" in report["score_calibration"]
+    assert "higher_scores_correlate_with_outcomes" in report["score_calibration"]
     assert "setup_type" in report["score_calibration"]["score_distribution"]
     assert report["local_text_intelligence"]["models_changed"] is False
     assert "local_narrative_score" in report["local_text_intelligence"]["features"]
@@ -191,6 +193,7 @@ def test_validation_report_label_and_paper_cli_workflow(
     assert "external_calls=0" in captured.out
     assert "db_writes=0" in captured.out
     assert "precision_target_20d_25=0.00" in captured.out
+    assert "score_ordering=insufficient_evidence" in captured.out
     assert (
         main(
             [

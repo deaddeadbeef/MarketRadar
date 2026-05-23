@@ -2755,6 +2755,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.json:
             print(json.dumps(payload, sort_keys=True))
         else:
+            calibration = payload.get("score_calibration")
+            calibration = calibration if isinstance(calibration, Mapping) else {}
             print(
                 f"validation_report status=ready run_id={run_id} "
                 f"selection={selection} "
@@ -2764,6 +2766,9 @@ def main(argv: list[str] | None = None) -> int:
                 f"false_positives={payload['false_positive_count']} "
                 f"missed_opportunities={payload['missed_opportunity_count']} "
                 f"leakage_failures={payload['leakage_failure_count']} "
+                f"score_ordering={calibration.get('score_ordering_verdict') or 'unknown'} "
+                "threshold_review_required="
+                f"{str(bool(calibration.get('threshold_review_required'))).lower()} "
                 "external_calls=0 db_writes=0"
             )
         return 0

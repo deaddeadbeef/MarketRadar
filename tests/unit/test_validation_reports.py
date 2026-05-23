@@ -299,6 +299,9 @@ def test_report_builder_adds_score_calibration_buckets() -> None:
     calibration = report["score_calibration"]
     assert calibration["thresholds_changed"] is False
     assert calibration["sample_status"] == "measured"
+    assert calibration["score_ordering_verdict"] == "mixed_evidence"
+    assert calibration["higher_scores_correlate_with_outcomes"] is None
+    assert calibration["threshold_review_required"] is False
     buckets = {row["bucket"]: row for row in calibration["buckets"]}
     assert buckets["90_plus"]["precision"] == 1.0
     assert buckets["90_plus"]["useful_label_rate"] == 1.0
@@ -345,6 +348,9 @@ def test_report_builder_flags_high_false_positive_score_bucket() -> None:
     report = validation_report_payload(build_validation_report("run-1", rows))
 
     flags = report["score_calibration"]["threshold_review_flags"]
+    assert report["score_calibration"]["score_ordering_verdict"] == "review_thresholds"
+    assert report["score_calibration"]["higher_scores_correlate_with_outcomes"] is None
+    assert report["score_calibration"]["threshold_review_required"] is True
     assert flags == [
         {
             "bucket": "70_79",
@@ -354,6 +360,44 @@ def test_report_builder_flags_high_false_positive_score_bucket() -> None:
             "action": "review_threshold_with_more_evidence_before_changing_policy",
         }
     ]
+
+
+def test_report_builder_marks_supported_score_ordering() -> None:
+    report = validation_report_payload(
+        build_validation_report(
+            "run-1",
+            [
+                _result("r1", "LOW", "Warning", {"target_20d_25": False}, final_score=55),
+                _result("r2", "MID", "Warning", {"target_20d_25": True}, final_score=75),
+                _result("r3", "HIGH", "Warning", {"target_20d_25": True}, final_score=92),
+            ],
+        )
+    )
+
+    calibration = report["score_calibration"]
+    assert calibration["monotonic_precision"] == "increasing"
+    assert calibration["score_ordering_verdict"] == "supports_higher_scores"
+    assert calibration["higher_scores_correlate_with_outcomes"] is True
+    assert calibration["threshold_review_required"] is False
+
+
+def test_report_builder_marks_contradictory_score_ordering() -> None:
+    report = validation_report_payload(
+        build_validation_report(
+            "run-1",
+            [
+                _result("r1", "LOW", "Warning", {"target_20d_25": True}, final_score=55),
+                _result("r2", "MID", "Warning", {"target_20d_25": False}, final_score=75),
+                _result("r3", "HIGH", "Warning", {"target_20d_25": False}, final_score=92),
+            ],
+        )
+    )
+
+    calibration = report["score_calibration"]
+    assert calibration["monotonic_precision"] == "decreasing"
+    assert calibration["score_ordering_verdict"] == "contradicts_higher_scores"
+    assert calibration["higher_scores_correlate_with_outcomes"] is False
+    assert calibration["threshold_review_required"] is False
 
 
 def test_report_builder_measures_local_text_intelligence() -> None:
