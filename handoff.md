@@ -1,6 +1,42 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 16:10:57 +08:00
+Last updated: 2026-05-23 16:26:13 +08:00
+
+## Latest Empty Outcome Coverage State Slice
+
+Last updated: 2026-05-23 16:26:13 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains measured monthly value proof before new intelligence.
+- A zero-call configured-DB coverage check showed `value-outcome coverage`
+  reported `status=ready` when the period had 0 value-ledger entries. That is
+  technically true for missing outcomes but misleading for the mission brief:
+  no ledger rows means there is no outcome evidence to measure.
+- The useful definition for this slice is concrete: monthly value and outcome
+  coverage surfaces must distinguish "nothing missing because nothing was
+  logged" from "all logged insights have measured outcomes."
+
+Fix in this slice:
+
+- `value-outcome coverage` now reports `status=no_ledger_entries` when the
+  period has no value-ledger rows.
+- Empty-period outcome coverage now returns `coverage_pct=null` instead of
+  `100.0`.
+- The next action tells the operator to record value-ledger entries before
+  outcome coverage can be measured.
+- The monthly value report surfaces the same state through
+  `value_outcome_coverage`.
+
+Safety:
+
+- This is read-only coverage/report behavior over local ledger and outcome
+  rows.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls.
+- It writes 0 database rows and does not change scores, thresholds, policy
+  gates, action states, trade plans, LLM behavior, broker/order controls,
+  ledger rows, or outcome rows.
 
 ## Latest Score Calibration Return Metrics Slice
 

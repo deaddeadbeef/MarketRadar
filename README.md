@@ -996,7 +996,9 @@ same conservative non-executing `value-ledger record` commands shown by
 `value-ledger coverage`, so missing human feedback is visible before claiming
 monthly value evidence. It also includes `value_outcome_coverage`, a read-only
 summary of value-ledger rows versus linked outcome rows, including non-executing
-`value-outcome update` preview commands for missing outcomes. The
+`value-outcome update` preview commands for missing outcomes. When there are no
+ledger rows in the period, outcome coverage reports `no_ledger_entries` instead
+of `ready`, because outcome evidence cannot exist before feedback is logged. The
 `validation_evidence` section shows whether the latest successful validation run
 has measured the mission-brief baselines and precision@5/10 evidence, or gives
 the next validation-replay action when no validation run exists. The terminal
