@@ -687,10 +687,22 @@ def test_cost_page_renders_monthly_value_report() -> None:
             },
             "value_outcomes": {"outcome_count": 1, "status_counts": {"computed": 1}},
             "value_report": {
-                "verdict": "pass",
+                "verdict": "insufficient_evidence",
                 "month": "2026-05",
                 "net_decision_support_value_usd": 51.0,
-                "plausibly_earned_at_least_40_usd": True,
+                "plausibly_earned_at_least_40_usd": False,
+                "first_blocker": "candidate_ledger_coverage",
+                "first_gap_count": 1,
+                "canonical_next_action": (
+                    "Record the first missing value-ledger row before claiming "
+                    "monthly value evidence."
+                ),
+                "canonical_next_command": (
+                    "catalyst-radar value-ledger record --artifact-type "
+                    "candidate_state --artifact-id state-AAPL --label ignored "
+                    "--supported-action research --user-decision unknown "
+                    "--estimated-value-usd 0 --confidence 0 --preview --json"
+                ),
                 "useful_insights_count": 2,
                 "noisy_insights_count": 0,
                 "false_positive_count": 0,
@@ -763,6 +775,13 @@ def test_cost_page_renders_monthly_value_report() -> None:
     assert "MR wins=1, baseline wins=1" in text
     assert "Precision at 5 / 10" in text
     assert "0.4 / 0.3" in text
+    assert "Monthly value blocker" in text
+    assert "candidate_ledger_coverage" in text
+    assert "Value next action" in text
+    assert "Record the first missing value-ledger row" in text
+    assert "Value next command" in text
+    assert "catalyst-radar value-ledger record" in text
+    assert "--preview --json" in text
     assert "Monthly evidence examples" in text
     assert "MSFT" in text
     assert "10d:0.1000" in text
