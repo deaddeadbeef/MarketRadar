@@ -1,6 +1,49 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 22:24:09 +08:00
+Last updated: 2026-05-23 22:42:01 +08:00
+
+## Latest Score Calibration Verdict Slice
+
+Last updated: 2026-05-23 22:42:01 +08:00
+
+Goal alignment / drift check:
+
+- The active goal has reached the measurement layer after shadow readiness,
+  shadow-run records, value ledger, outcomes, validation baselines, and monthly
+  reporting were implemented.
+- This slice advances Priority 7 calibration: the validation report should say
+  whether higher scores currently correspond to better outcomes before any
+  scoring or policy threshold changes are considered.
+
+Useful definition:
+
+- Score calibration must produce a direct report-only verdict for whether
+  higher scores are supported, contradicted, mixed, or insufficient based on
+  measured validation buckets.
+- The human `validation-report` output must show that verdict without requiring
+  JSON parsing.
+
+Fix in this slice:
+
+- `score-calibration-v1` now includes `score_ordering_verdict`.
+- It now includes `higher_scores_correlate_with_outcomes` as `true`, `false`,
+  or `null` for mixed/insufficient evidence.
+- It now includes `threshold_review_required`, derived from existing high
+  false-positive bucket flags.
+- Human `validation-report` output prints `score_ordering=...` and
+  `threshold_review_required=...`.
+- Tests cover supported, contradictory, mixed, and threshold-review cases.
+- README documents the report-only score calibration verdict contract.
+
+Safety:
+
+- This is read-only validation report summarization over local validation rows.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls and writes 0 database rows.
+- It does not change scoring weights, policy thresholds, trade plans, action
+  gates, validation replay execution, candidate states, market-bar data,
+  value-ledger rows, value-outcome rows, alert delivery, broker controls, LLM
+  behavior, or readiness gates.
 
 ## Latest Monthly Baseline Result Summary Slice
 

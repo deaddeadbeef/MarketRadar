@@ -1252,7 +1252,11 @@ feedback label. These buckets and groups include precision, false-positive
 rate, useful-label rate, average forward returns, SPY-relative and
 sector-relative return averages, and excursion averages. They are evidence only
 and do not change scoring weights, policy thresholds, trade plans, or action
-gates.
+gates. The report also includes `score_ordering_verdict` and
+`higher_scores_correlate_with_outcomes` so a human can see whether higher
+scores are currently supported by measured outcomes, contradicted by measured
+outcomes, mixed, or still insufficient. High-false-positive buckets set
+`threshold_review_required=true`, but still do not change thresholds.
 It also reports local text measurement for the existing narrative, novelty,
 source quality, sentiment, theme match, theme velocity, and theme-hit signals.
 Those measurements are evidence only; they do not replace the local text model
