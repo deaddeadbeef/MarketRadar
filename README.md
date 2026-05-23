@@ -965,7 +965,10 @@ when `--execute` is present. It makes 0 provider calls in both modes.
 `GET /api/value-outcomes/coverage`, and `GET /api/value-outcomes/{id}` expose
 the same contract. Outcome preview makes 0 provider calls and 0 database writes;
 coverage is read-only and shows which value-ledger rows in the period still
-need an outcome row before monthly value evidence is treated as measured.
+need an outcome row before monthly value evidence is treated as measured. When
+coverage has gaps, the payload exposes `first_missing_value_ledger_entry_id`,
+`first_missing_ticker`, and the preview-only `canonical_next_command` for the
+first non-executing outcome update.
 Execute makes 0 provider calls and writes only a `value_outcomes` row. The
 update never mutates the source value-ledger row, candidate state, candidate
 packet, decision card, score, or policy output.
@@ -1002,9 +1005,10 @@ ledger rows recorded for them. If coverage has gaps, the report includes the
 same conservative non-executing `value-ledger record` commands shown by
 `value-ledger coverage`, so missing human feedback is visible before claiming
 monthly value evidence. It also includes `value_outcome_coverage`, a read-only
-summary of value-ledger rows versus linked outcome rows, including non-executing
-`value-outcome update` preview commands for missing outcomes. When there are no
-ledger rows in the period, outcome coverage reports `no_ledger_entries` instead
+summary of value-ledger rows versus linked outcome rows, including the same
+first-missing outcome fields and non-executing `value-outcome update` preview
+commands for missing outcomes. When there are no ledger rows in the period,
+outcome coverage reports `no_ledger_entries` instead
 of `ready`, because outcome evidence cannot exist before feedback is logged. The
 top-level report exposes `first_blocker`, `first_gap_count`,
 `canonical_next_action`, and `canonical_next_command` for the first missing

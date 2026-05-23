@@ -275,6 +275,7 @@ def load_value_outcome_coverage_payload(
         for entry in entries
     ]
     missing = [row for row in rows if row["outcome_status"] == "missing"]
+    first_missing = missing[0] if missing else None
     linked = len(rows) - len(missing)
     status_counts = Counter(str(row["outcome_status"]) for row in rows)
     coverage_pct = round((linked / len(rows)) * 100, 2) if rows else None
@@ -294,6 +295,15 @@ def load_value_outcome_coverage_payload(
         "ledger_entry_count": len(rows),
         "linked_outcome_count": linked,
         "missing_outcome_count": len(missing),
+        "first_missing_value_ledger_entry_id": _first_missing_outcome_field(
+            first_missing,
+            "value_ledger_entry_id",
+        ),
+        "first_missing_ticker": _first_missing_outcome_field(first_missing, "ticker"),
+        "canonical_next_command": _first_missing_outcome_field(
+            first_missing,
+            "preview_update_command",
+        ),
         "computed_outcome_count": int(status_counts.get("computed") or 0),
         "insufficient_data_count": int(status_counts.get("insufficient_data") or 0),
         "outcome_status_counts": dict(sorted(status_counts.items())),
@@ -603,6 +613,18 @@ def _value_outcome_coverage_row(
             f"--outcome-available-at {outcome_available_at.isoformat()} --json"
         )
     return row
+
+
+def _first_missing_outcome_field(
+    row: Mapping[str, object] | None,
+    field: str,
+) -> str | None:
+    if row is None:
+        return None
+    value = row.get(field)
+    if isinstance(value, str) and value.strip():
+        return value
+    return None
 
 
 def _value_outcome_coverage_status(

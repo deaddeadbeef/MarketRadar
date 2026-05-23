@@ -160,6 +160,8 @@ def test_value_outcome_coverage_reports_ledger_rows_missing_outcomes(
     assert payload["linked_outcome_count"] == 1
     assert payload["computed_outcome_count"] == 1
     assert payload["missing_outcome_count"] == 1
+    assert payload["first_missing_value_ledger_entry_id"] == missing_entry_id
+    assert payload["first_missing_ticker"] == "AAPL"
     assert payload["coverage_pct"] == 50.0
     assert payload["external_calls_made"] == 0
     assert payload["db_writes_made"] == 0
@@ -178,6 +180,8 @@ def test_value_outcome_coverage_reports_ledger_rows_missing_outcomes(
     assert missing["outcome_status"] == "missing"
     assert "value-outcome update" in missing["preview_update_command"]
     assert "--execute" not in missing["preview_update_command"]
+    assert payload["canonical_next_command"] == missing["preview_update_command"]
+    assert "--execute" not in payload["canonical_next_command"]
     with engine.connect() as conn:
         ledger_after = [
             dict(row._mapping)
@@ -219,6 +223,9 @@ def test_value_outcome_coverage_reports_no_ledger_entries(
     assert payload["linked_outcome_count"] == 0
     assert payload["missing_outcome_count"] == 0
     assert payload["computed_outcome_count"] == 0
+    assert payload["first_missing_value_ledger_entry_id"] is None
+    assert payload["first_missing_ticker"] is None
+    assert payload["canonical_next_command"] is None
     assert payload["coverage_pct"] is None
     assert "value-ledger entries" in payload["next_action"]
     assert payload["external_calls_made"] == 0
@@ -250,6 +257,10 @@ def test_value_outcome_coverage_api_and_monthly_report_surface_missing_rows(
     coverage = coverage_response.json()
     assert coverage["ledger_entry_count"] == 1
     assert coverage["missing_outcome_count"] == 1
+    assert coverage["first_missing_value_ledger_entry_id"] == entry_id
+    assert coverage["first_missing_ticker"] == "NVDA"
+    assert "value-outcome update" in coverage["canonical_next_command"]
+    assert "--execute" not in coverage["canonical_next_command"]
     assert coverage["external_calls_made"] == 0
     assert coverage["db_writes_made"] == 0
     assert coverage["rows"][0]["value_ledger_entry_id"] == entry_id
@@ -263,10 +274,17 @@ def test_value_outcome_coverage_api_and_monthly_report_surface_missing_rows(
     )
 
     assert report_response.status_code == 200
-    outcome_coverage = report_response.json()["value_outcome_coverage"]
+    report = report_response.json()
+    assert report["first_blocker"] == "value_outcome_coverage"
+    outcome_coverage = report["value_outcome_coverage"]
     assert outcome_coverage["status"] == "gaps"
     assert outcome_coverage["ledger_entry_count"] == 1
     assert outcome_coverage["missing_outcome_count"] == 1
+    assert outcome_coverage["first_missing_value_ledger_entry_id"] == entry_id
+    assert outcome_coverage["first_missing_ticker"] == "NVDA"
+    assert outcome_coverage["canonical_next_command"] == coverage["canonical_next_command"]
+    assert report["canonical_next_command"] == coverage["canonical_next_command"]
+    assert "--execute" not in report["canonical_next_command"]
     assert outcome_coverage["external_calls_made"] == 0
     assert outcome_coverage["db_writes_made"] == 0
 
