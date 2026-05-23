@@ -1293,8 +1293,11 @@ catalyst-radar validation-report --run-id <printed-run-id> --json
 `validation-replay` defaults to preview mode. `validation-replay --preview
 --json` computes the planned candidate and baseline result counts with 0
 provider calls and 0 database writes, and prints the matching `--execute`
-command. Use `--execute` only when you intentionally want to write the
-validation run and result rows. The report compares MarketRadar candidates with
+command. Preview payloads also expose `status=ready_to_execute` or
+`status=no_results` plus `next_action`, so automation can distinguish a useful
+local validation write plan from an empty replay window. Use `--execute` only
+when you intentionally want to write the validation run and result rows. The
+report compares MarketRadar candidates with
 relative strength, volume
 breakout, sector ETF rotation, news/event-only, and random sector-matched
 baselines. Baseline rows are selected using only data available at the decision
