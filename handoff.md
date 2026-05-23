@@ -1,6 +1,47 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 21:43:11 +08:00
+Last updated: 2026-05-23 22:00:13 +08:00
+
+## Latest Monthly Value Evidence Verdict Slice
+
+Last updated: 2026-05-23 22:00:13 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains safe monthly value proof for priced-in signals.
+- This slice is directly tied to the user-trial stopping bar: MarketRadar must
+  not tell a human that it plausibly covered the `$40/month` target until the
+  evidence chain is actually complete.
+
+Useful definition:
+
+- Raw local value math may still report `threshold_met=true`.
+- The top-level monthly `verdict` and
+  `plausibly_earned_at_least_40_usd` must fail closed to
+  `insufficient_evidence` / `false` while the report has any first blocker:
+  candidate ledger coverage, value outcome coverage, validation evidence, or
+  minimum useful-evidence count.
+
+Fix in this slice:
+
+- `value-report` now computes the raw value verdict first, evaluates evidence
+  blockers, and only exposes `pass` / `fail` when `first_blocker` is `null`.
+- `verdict_reason` now names non-useful-count evidence blockers instead of
+  claiming the only issue is too few useful evidence rows.
+- Regression coverage proves a report with enough local value math and linked
+  outcomes still cannot pass when validation evidence is missing.
+- The pass/fail tests now seed complete validation evidence and complete value
+  outcomes, so they represent evidence-ready reports.
+- README documents the fail-closed monthly verdict contract.
+
+Safety:
+
+- This is read-only report semantics over local ledger/outcome/validation rows.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls and writes 0 database rows.
+- It does not change ledger/outcome write commands, validation replay
+  execution, candidate scoring, policy gates, candidate states, market-bar data,
+  alert delivery, broker controls, LLM behavior, or readiness gates.
 
 ## Latest Monthly Validation Period Gate Slice
 
