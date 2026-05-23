@@ -784,6 +784,11 @@ The preview also includes `post_repair_projection`, a zero-call/zero-write view
 of the projected active universe, projected missing-bar count, and next blocker
 to inspect after the guarded local repair. This lets operators review whether
 the repair would clear `market_bars` before approving any local DB write.
+For automation, preview payloads keep actual and projected gates separate:
+`clears_market_bar_gate` / `actual_market_bar_gate_cleared` describe the current
+run result, while `execute_would_clear_market_bar_gate` and
+`projected_market_bar_gate_cleared` describe the guarded execute projection.
+The payload's `preview_command` and `execute_command` both include `--json`.
 
 ```powershell
 catalyst-radar market-bars residual-repair --expected-as-of 2026-05-15 --json
