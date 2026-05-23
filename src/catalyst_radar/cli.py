@@ -649,7 +649,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     validation_report = subparsers.add_parser("validation-report")
-    validation_report.add_argument("--run-id", required=True)
+    validation_report.add_argument("--run-id")
+    validation_report.add_argument("--latest", action="store_true")
     validation_report.add_argument("--available-at", type=_parse_aware_datetime)
     validation_report.add_argument("--json", action="store_true")
 
@@ -2581,32 +2582,91 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "validation-report":
         create_schema(engine)
         validation_repo = ValidationRepository(engine)
+        if args.run_id and args.latest:
+            print("choose either --run-id or --latest, not both", file=sys.stderr)
+            return 1
+        selection = "run_id" if args.run_id else "latest"
+        run_id = args.run_id
+        validation_run: ValidationRun | None = None
+        if run_id is None:
+            validation_run = validation_repo.latest_successful_validation_run(
+                available_at=args.available_at,
+            )
+            if validation_run is None:
+                payload = _validation_report_missing_payload(
+                    status="no_validation_runs",
+                    selection=selection,
+                    available_at=args.available_at,
+                    next_action=(
+                        "Run validation-replay after candidate outcomes are available, "
+                        "then rerun validation-report."
+                    ),
+                )
+                if args.json:
+                    print(json.dumps(payload, sort_keys=True))
+                else:
+                    print(
+                        "validation_report status=no_validation_runs "
+                        "selection=latest external_calls=0 db_writes=0 "
+                        f"next_action={payload['next_action']}",
+                        file=sys.stderr,
+                    )
+                return 1
+            run_id = validation_run.id
+        else:
+            validation_run = validation_repo.latest_validation_run(run_id)
         results = validation_repo.list_validation_results(
-            args.run_id,
+            run_id,
             available_at=args.available_at,
         )
         if not results:
-            print(f"validation results not found: {args.run_id}", file=sys.stderr)
+            payload = _validation_report_missing_payload(
+                status="validation_results_not_found",
+                selection=selection,
+                available_at=args.available_at,
+                run_id=run_id,
+                validation_run=validation_run,
+                next_action=(
+                    "Check the run id or run validation-replay to create stored "
+                    "validation results."
+                ),
+            )
+            if args.json:
+                print(json.dumps(payload, sort_keys=True))
+            else:
+                print(
+                    f"validation_report status=validation_results_not_found "
+                    f"run_id={run_id} selection={selection} external_calls=0 "
+                    "db_writes=0",
+                    file=sys.stderr,
+                )
             return 1
         report = build_validation_report(
-            args.run_id,
+            run_id,
             results,
             useful_alert_labels=validation_repo.list_useful_alert_labels(
                 available_at=args.available_at,
             ),
         )
-        payload = validation_report_payload(report)
+        payload = _validation_report_cli_payload(
+            validation_report_payload(report),
+            selection=selection,
+            validation_run=validation_run,
+            available_at=args.available_at,
+        )
         if args.json:
             print(json.dumps(payload, sort_keys=True))
         else:
             print(
-                f"validation_report run_id={args.run_id} "
+                f"validation_report status=ready run_id={run_id} "
+                f"selection={selection} "
                 f"candidates={payload['candidate_count']} "
                 f"useful_alert_rate={payload['useful_alert_rate']:.2f} "
                 f"precision_target_20d_25={payload['precision'].get('target_20d_25', 0.0):.2f} "
                 f"false_positives={payload['false_positive_count']} "
                 f"missed_opportunities={payload['missed_opportunity_count']} "
-                f"leakage_failures={payload['leakage_failure_count']}"
+                f"leakage_failures={payload['leakage_failure_count']} "
+                "external_calls=0 db_writes=0"
             )
         return 0
 
@@ -3966,6 +4026,67 @@ def _historical_close_on_or_before(
     with engine.connect() as conn:
         value = conn.execute(stmt).scalar_one_or_none()
     return _float_or_none(value)
+
+
+def _validation_report_cli_payload(
+    report: Mapping[str, object],
+    *,
+    selection: str,
+    validation_run: ValidationRun | None,
+    available_at: datetime | None,
+) -> dict[str, object]:
+    payload = dict(report)
+    payload.update(
+        {
+            "schema_version": "validation-report-cli-v1",
+            "status": "ready",
+            "selection": selection,
+            "selected_run_id": payload.get("run_id"),
+            "available_at": available_at.isoformat() if available_at else None,
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+            "validation_run": _validation_run_cli_payload(validation_run),
+        }
+    )
+    return payload
+
+
+def _validation_report_missing_payload(
+    *,
+    status: str,
+    selection: str,
+    available_at: datetime | None,
+    next_action: str,
+    run_id: str | None = None,
+    validation_run: ValidationRun | None = None,
+) -> dict[str, object]:
+    return {
+        "schema_version": "validation-report-cli-v1",
+        "status": status,
+        "run_id": run_id,
+        "selected_run_id": run_id,
+        "selection": selection,
+        "available_at": available_at.isoformat() if available_at else None,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "validation_run": _validation_run_cli_payload(validation_run),
+        "next_action": next_action,
+    }
+
+
+def _validation_run_cli_payload(run: ValidationRun | None) -> dict[str, object] | None:
+    if run is None:
+        return None
+    return {
+        "id": run.id,
+        "run_type": run.run_type,
+        "as_of_start": run.as_of_start.isoformat(),
+        "as_of_end": run.as_of_end.isoformat(),
+        "decision_available_at": run.decision_available_at.isoformat(),
+        "status": run.status.value,
+        "started_at": run.started_at.isoformat(),
+        "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+    }
 
 
 def _with_outcome_labels(

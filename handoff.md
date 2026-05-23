@@ -1,6 +1,68 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 10:50:00 +08:00
+Last updated: 2026-05-23 11:05:00 +08:00
+
+## Latest Validation Report Lookup Slice
+
+Last updated: 2026-05-23 11:05:00 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains measurable validation before smarter scoring, NLP, or
+  LLM behavior. This slice advances Priority 5 / M5 validation reporting.
+- Existing validation replay/report and mission-brief baselines already exist.
+  The concrete operator gap was discoverability: `validation-report` required a
+  remembered `--run-id`, so a human could not ask for the latest validation
+  status directly.
+- The useful definition for this slice is narrow: a zero-call, read-only CLI
+  path can answer "what is the latest stored validation report?" or "there are
+  no validation runs yet" without DB spelunking.
+
+Fix in this slice:
+
+- `validation-report --latest --json` now selects the latest successful stored
+  validation run.
+- `validation-report --json` without `--run-id` also uses latest-run selection.
+- `validation-report --run-id ... --json` now includes
+  `schema_version=validation-report-cli-v1`, `status`, `selection`,
+  `external_calls_made=0`, `db_writes_made=0`, and a compact validation-run
+  summary.
+- Empty latest selection returns a fail-closed `no_validation_runs` payload with
+  `external_calls_made=0`, `db_writes_made=0`, and a next action to run
+  validation replay after outcomes are available.
+
+Validation observed in this slice:
+
+- Baseline `tests/integration/test_validation_cli.py` passed before edits.
+- Focused validation CLI regression passed after the fix: 7 tests.
+- Broader validation CLI/report selection passed after the fix: 18 tests.
+- Ruff passed for touched CLI, validation repository, and validation CLI tests.
+- Compileall passed for `src` and touched validation CLI tests.
+- `git diff --check` passed.
+- Configured operator-DB read-only smoke against
+  `sqlite:///C:/Users/fpan1/MarketRadar/data/local/schwab-live.db` returned
+  `status=no_validation_runs`, `external_calls_made=0`, `db_writes_made=0`,
+  and process `exit=1`, which is the expected fail-closed empty state.
+
+Validation commands:
+
+```powershell
+$env:PYTHONPATH='src'; C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\test_validation_cli.py -q
+$env:PYTHONPATH='src'; C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\test_validation_cli.py tests\unit\test_validation_reports.py -q
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\cli.py src\catalyst_radar\storage\validation_repositories.py tests\integration\test_validation_cli.py
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m compileall -q src tests\integration\test_validation_cli.py
+git diff --check
+$env:PYTHONPATH='C:\Users\fpan1\MarketRadar\.worktrees\validation-report-latest\src'; $env:CATALYST_DATABASE_URL='sqlite:///C:/Users/fpan1/MarketRadar/data/local/schwab-live.db'; C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m catalyst_radar.cli validation-report --latest --json; "exit=$LASTEXITCODE"
+```
+
+Safety:
+
+- The latest-report path makes 0 Polygon/Massive, SEC, Schwab, broker, OpenAI,
+  web, app, or provider calls.
+- The latest-report path writes 0 database rows.
+- It does not run validation replay; replay remains the explicit write command.
+- It does not change scoring, thresholds, labels, paper trades, candidate state,
+  baseline logic, or action gates.
 
 ## Latest Value Outcome Review-Horizon Slice
 

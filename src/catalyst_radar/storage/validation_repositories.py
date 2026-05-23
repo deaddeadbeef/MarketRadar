@@ -71,6 +71,35 @@ class ValidationRepository:
             row = conn.execute(stmt).first()
         return _validation_run_from_row(row._mapping) if row is not None else None
 
+    def latest_successful_validation_run(
+        self,
+        *,
+        available_at: datetime | None = None,
+    ) -> ValidationRun | None:
+        filters = [
+            validation_runs.c.status == ValidationRunStatus.SUCCESS.value,
+            validation_runs.c.finished_at.is_not(None),
+        ]
+        if available_at is not None:
+            filters.append(
+                validation_runs.c.finished_at
+                <= _to_utc_datetime(available_at, "available_at")
+            )
+        stmt = (
+            select(validation_runs)
+            .where(*filters)
+            .order_by(
+                validation_runs.c.finished_at.desc(),
+                validation_runs.c.started_at.desc(),
+                validation_runs.c.created_at.desc(),
+                validation_runs.c.id.desc(),
+            )
+            .limit(1)
+        )
+        with self.engine.connect() as conn:
+            row = conn.execute(stmt).first()
+        return _validation_run_from_row(row._mapping) if row is not None else None
+
     def upsert_validation_results(self, rows: Iterable[ValidationResult]) -> int:
         count = 0
         with self.engine.begin() as conn:
