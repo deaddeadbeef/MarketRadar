@@ -14,6 +14,7 @@ from catalyst_radar.validation.value_ledger import (
     CHATGPT_PRO_MONTHLY_COST_USD,
     TARGET_MONTHLY_VALUE_USD,
     USEFUL_DEFINITION,
+    load_value_ledger_candidate_coverage_payload,
     value_ledger_entry_payload,
 )
 from catalyst_radar.validation.value_outcomes import value_outcome_payload
@@ -55,6 +56,13 @@ def monthly_value_report_payload(
         period_start=start,
         period_end=end,
         limit=10_000,
+    )
+    candidate_coverage = load_value_ledger_candidate_coverage_payload(
+        engine,
+        available_at=cutoff,
+        period_start=start,
+        period_end=end,
+        limit=20,
     )
     entry_ids = {entry.id for entry in entries}
     outcomes = [
@@ -114,6 +122,9 @@ def monthly_value_report_payload(
         "profit_usd": None,
         "investment_advice": False,
         "entry_count": len(entries),
+        "candidate_ledger_coverage": _candidate_ledger_coverage_summary(
+            candidate_coverage
+        ),
         "useful_insights_count": len(useful_entries),
         "noisy_insights_count": len(noisy_entries),
         "acted_insights_count": len(acted_entries),
@@ -225,6 +236,25 @@ def _monthly_value_verdict(
     if useful_count < min_useful_evidence_count:
         return "insufficient_evidence"
     return "pass" if net_value >= target else "fail"
+
+
+def _candidate_ledger_coverage_summary(
+    coverage: Mapping[str, object],
+) -> dict[str, object]:
+    rows = coverage.get("rows")
+    rows = rows if isinstance(rows, Iterable) else ()
+    return {
+        "schema_version": "monthly-value-candidate-ledger-coverage-v1",
+        "status": coverage.get("status") or "unknown",
+        "surfaced_candidate_count": int(coverage.get("surfaced_candidate_count") or 0),
+        "logged_candidate_count": int(coverage.get("logged_candidate_count") or 0),
+        "missing_ledger_count": int(coverage.get("missing_ledger_count") or 0),
+        "coverage_pct": coverage.get("coverage_pct"),
+        "rows": [row for row in rows if isinstance(row, Mapping)],
+        "next_action": coverage.get("next_action"),
+        "external_calls_made": int(coverage.get("external_calls_made") or 0),
+        "db_writes_made": int(coverage.get("db_writes_made") or 0),
+    }
 
 
 def _verdict_reason(

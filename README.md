@@ -928,6 +928,12 @@ dashboard Costs page shows the current month's verdict and net
 decision-support value. If any ledger row involved LLM review, the report also
 shows LLM-reviewed entry count, useful LLM-reviewed entry count, LLM-linked
 cost, and cost per useful LLM-reviewed candidate without making model calls.
+The report also includes `candidate_ledger_coverage`, a read-only summary of
+Warning-or-higher candidate states surfaced in the month versus candidate-state
+ledger rows recorded for them. If coverage has gaps, the report includes the
+same conservative non-executing `value-ledger record` commands shown by
+`value-ledger coverage`, so missing human feedback is visible before claiming
+monthly value evidence.
 
 To compare MarketRadar against simple deterministic baselines before tuning
 scores or adding more intelligence, run a point-in-time validation replay and
