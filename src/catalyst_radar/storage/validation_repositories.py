@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
 from sqlalchemy import Engine, delete, insert, select, update
@@ -75,6 +75,8 @@ class ValidationRepository:
         self,
         *,
         available_at: datetime | None = None,
+        period_start: date | None = None,
+        period_end: date | None = None,
     ) -> ValidationRun | None:
         filters = [
             validation_runs.c.status == ValidationRunStatus.SUCCESS.value,
@@ -84,6 +86,16 @@ class ValidationRepository:
             filters.append(
                 validation_runs.c.finished_at
                 <= _to_utc_datetime(available_at, "available_at")
+            )
+        if period_start is not None:
+            filters.append(
+                validation_runs.c.as_of_start
+                >= datetime.combine(period_start, time.min, tzinfo=UTC)
+            )
+        if period_end is not None:
+            filters.append(
+                validation_runs.c.as_of_end
+                < datetime.combine(period_end + timedelta(days=1), time.min, tzinfo=UTC)
             )
         stmt = (
             select(validation_runs)

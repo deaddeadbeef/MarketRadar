@@ -1,6 +1,48 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 21:29:29 +08:00
+Last updated: 2026-05-23 21:43:11 +08:00
+
+## Latest Monthly Validation Period Gate Slice
+
+Last updated: 2026-05-23 21:43:11 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains monthly value proof for priced-in signals.
+- This slice fixes validation evidence quality, not UI wording: a monthly
+  value report must not claim validation readiness from a successful run whose
+  as-of window is outside the reported month.
+
+Useful definition:
+
+- A monthly report can use a validation run only when the run's as-of window is
+  inside the report month.
+- If only out-of-month validation evidence exists, the report fails closed with
+  a preview-only validation replay command for the requested month.
+
+Fix in this slice:
+
+- `ValidationRepository.latest_successful_validation_run()` now accepts
+  optional `period_start` and `period_end` filters.
+- `value-report` now selects the latest successful in-month validation run.
+- If no in-month run exists but an older/newer successful run does,
+  `validation_evidence.status` is `run_period_mismatch`.
+- The mismatch payload includes the selected out-of-month run, the requested
+  period, `ready=false`, 0 call/write counters, and a `validation-replay
+  --preview --json` command for the report month.
+- Tests prove a June report rejects a May validation run and that a May report
+  still chooses the in-month run even when a newer June run exists.
+- README documents the month-matched validation evidence contract.
+
+Safety:
+
+- This is read-only validation evidence selection over local validation rows.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls and writes 0 database rows.
+- It does not change validation replay execution, validation labels, candidate
+  scoring, policy gates, candidate states, market-bar data, value-ledger rows,
+  value-outcome rows, alert delivery, broker controls, LLM behavior, or
+  readiness gates.
 
 ## Latest Direction-Adjusted Value Outcome Return Slice
 
