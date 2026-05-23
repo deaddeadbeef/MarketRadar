@@ -37,6 +37,18 @@ def shadow_mode_run_payload(
     mode = "execute" if execute else "preview"
     readiness = _mapping(snapshot.get("shadow_readiness"))
     next_action = _shadow_mode_next_action(run)
+    preview_command = _shadow_mode_run_command(
+        run_date=run.run_date,
+        as_of=run.as_of,
+        available_at=cutoff,
+        execute=False,
+    )
+    execute_command = _shadow_mode_run_command(
+        run_date=run.run_date,
+        as_of=run.as_of,
+        available_at=cutoff,
+        execute=True,
+    )
     return {
         "schema_version": "shadow-mode-run-v1",
         "mode": mode,
@@ -46,6 +58,8 @@ def shadow_mode_run_payload(
         "external_calls_made": 0,
         "db_writes_required": 1,
         "db_writes_made": 1 if execute else 0,
+        "preview_command": preview_command,
+        "execute_command": execute_command if not execute else None,
         "first_blocker": _shadow_mode_status_first_blocker(readiness),
         "first_gap_count": _shadow_mode_status_first_gap_count(readiness),
         "canonical_next_action": next_action,
@@ -401,6 +415,28 @@ def _canonical_command(action: object) -> str | None:
         return None
     text = action.strip()
     return text if text.startswith("catalyst-radar ") else None
+
+
+def _shadow_mode_run_command(
+    *,
+    run_date: date | None,
+    as_of: date | None,
+    available_at: datetime,
+    execute: bool,
+) -> str:
+    parts = [
+        "catalyst-radar",
+        "shadow-mode",
+        "run",
+    ]
+    if run_date is not None:
+        parts.extend(["--run-date", run_date.isoformat()])
+    if as_of is not None:
+        parts.extend(["--as-of", as_of.isoformat()])
+    parts.extend(["--available-at", available_at.isoformat()])
+    parts.append("--execute" if execute else "--preview")
+    parts.append("--json")
+    return " ".join(parts)
 
 
 def _shadow_readiness_canonical_next_action(run: ShadowModeRun) -> str | None:

@@ -51,6 +51,12 @@ def test_shadow_mode_cli_preview_execute_and_latest(
     assert preview["status"] == "setup_required"
     assert preview["external_calls_made"] == 0
     assert preview["db_writes_made"] == 0
+    assert preview["preview_command"].startswith("catalyst-radar shadow-mode run")
+    assert "--preview" in preview["preview_command"]
+    assert "--execute" not in preview["preview_command"]
+    assert preview["execute_command"].startswith("catalyst-radar shadow-mode run")
+    assert "--execute" in preview["execute_command"]
+    assert "--preview" not in preview["execute_command"]
     assert preview["first_blocker"] == "universe"
     assert preview["first_gap_count"] == 0
     assert preview["canonical_next_action"] == preview["next_action"]
@@ -80,6 +86,10 @@ def test_shadow_mode_cli_preview_execute_and_latest(
     assert executed["mode"] == "execute"
     assert executed["status"] == "setup_required"
     assert executed["db_writes_made"] == 1
+    assert executed["preview_command"].startswith("catalyst-radar shadow-mode run")
+    assert "--preview" in executed["preview_command"]
+    assert "--execute" not in executed["preview_command"]
+    assert executed["execute_command"] is None
     assert executed["first_blocker"] == "universe"
     assert executed["canonical_next_action"] == executed["next_action"]
     assert executed["canonical_next_command"] is None
@@ -134,6 +144,8 @@ def test_shadow_mode_api_preview_and_latest(tmp_path, monkeypatch) -> None:
     assert preview["canonical_next_command"] is None
     assert preview["external_calls_made"] == 0
     assert preview["db_writes_made"] == 0
+    assert "--preview" in preview["preview_command"]
+    assert "--execute" in preview["execute_command"]
     assert (
         preview["run"]["eligible_for_manual_review_count"]
         == preview["run"]["manual_review_count"]
@@ -153,6 +165,8 @@ def test_shadow_mode_api_preview_and_latest(tmp_path, monkeypatch) -> None:
     assert executed["canonical_next_action"] == executed["next_action"]
     assert executed["canonical_next_command"] is None
     assert executed["db_writes_made"] == 1
+    assert "--preview" in executed["preview_command"]
+    assert executed["execute_command"] is None
     assert (
         executed["run"]["eligible_for_manual_review_count"]
         == executed["run"]["manual_review_count"]
