@@ -1,6 +1,48 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 15:33:55 +08:00
+Last updated: 2026-05-23 15:49:17 +08:00
+
+## Latest P0 Canonical Blocker Surface Slice
+
+Last updated: 2026-05-23 15:49:17 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains clearing setup/data blockers and making every
+  operator surface agree on the first unblock step for trusted broad-market
+  priced-in scans.
+- A zero-call configured-DB check showed `priced-in-answer` and
+  `assert-shadow-ready` exposed top-level `market_bars` plus the residual-review
+  command, while `priced-in-preflight` kept the blocker only as a nested object
+  and `market-bars status` had no top-level canonical command.
+- The useful definition for this slice is concrete: scripts, API clients, and
+  the TUI should read the same canonical blocker/action pair from preflight,
+  answer, market-bars status, and shadow readiness without special parsing.
+
+Fix in this slice:
+
+- `priced-in-preflight --json` now preserves its nested `first_blocker` object
+  and also exposes top-level `canonical_first_blocker`, `first_gap_count`,
+  `canonical_next_action`, and `canonical_next_command`.
+- `market-bars status --json` now exposes `canonical_first_blocker`,
+  `first_gap_count`, `canonical_next_action`, and `canonical_next_command`
+  derived from its recommended unblock action.
+- README documents the shared canonical blocker/action contract.
+
+Validation observed so far:
+
+```powershell
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_priced_in_preflight_payload_reports_exact_next_steps tests\integration\test_dashboard_data.py::test_priced_in_preflight_recommends_manual_bar_template_for_missing_bars tests\integration\test_dashboard_data.py::test_priced_in_preflight_routes_zero_liquidity_residual_gap_to_review tests\integration\test_provider_ingest_cli.py::test_market_bars_status_cli_summarizes_zero_call_unblock tests\integration\test_provider_ingest_cli.py::test_market_bars_status_cli_keeps_seeded_universe_on_market_bar_blocker tests\integration\test_provider_ingest_cli.py::test_market_bars_status_routes_zero_liquidity_gap_to_residual_review_without_saved_file -q
+```
+
+Safety:
+
+- This is payload-only status/preflight behavior.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls and writes 0 database rows.
+- It does not execute residual repair, fill market bars, change scan scope,
+  mutate scoring, candidate states, value-ledger rows, outcomes, alert
+  delivery, LLM behavior, or broker/order paths.
 
 ## Latest Validation Baseline Outcome Metrics Slice
 

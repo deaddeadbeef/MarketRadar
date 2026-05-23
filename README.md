@@ -610,7 +610,13 @@ zero-volume/zero-market-cap evidence, manual repair commands, and explicit
 decision options while keeping `external_calls_made=0` and `db_writes_made=0`.
 `priced-in-preflight --json` uses the same market-bar residual-review command as
 its `first_blocker` when this is the current blocker, and includes
-`external_calls_made=0` plus `db_writes_made=0` at top level.
+`external_calls_made=0` plus `db_writes_made=0` at top level. It also exposes
+top-level `canonical_first_blocker`, `first_gap_count`,
+`canonical_next_action`, and `canonical_next_command`, preserving the nested
+`first_blocker` object while giving CLI/API/TUI clients the same canonical
+blocker/action contract as `priced-in-answer` and `assert-shadow-ready`.
+`market-bars status --json` exposes the same canonical fields from its
+recommended unblock action.
 When `priced-in-answer` reaches this residual state, its top-level
 `next_action` / `next_command`, `full_market_trust_gate`, and
 `operator_next_step` all point at the same residual-review action. The same

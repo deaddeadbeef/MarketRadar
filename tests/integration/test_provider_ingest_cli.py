@@ -781,6 +781,8 @@ def test_market_bars_status_cli_summarizes_zero_call_unblock(
     assert payload["schema_version"] == "market-bars-status-v1"
     assert payload["status"] == "blocked"
     assert payload["first_blocker"] == "market_bars"
+    assert payload["canonical_first_blocker"] == "market_bars"
+    assert payload["first_gap_count"] == 1
     assert payload["expected_as_of"] == "2026-05-15"
     assert payload["expected_as_of_source"] == "argument"
     assert payload["coverage_scope"] == "stock_like"
@@ -799,6 +801,8 @@ def test_market_bars_status_cli_summarizes_zero_call_unblock(
     assert payload["saved_capture"]["external_calls_if_approved"] == 1
     assert payload["saved_file"]["status"] == "missing"
     assert payload["recommended_action"]["kind"] == "saved_provider_capture"
+    assert payload["canonical_next_action"] == payload["next_action"]
+    assert payload["canonical_next_command"] == payload["recommended_action"]["command"]
     assert payload["recommended_action"]["approval_required"] is True
     assert payload["recommended_action"]["external_calls_required"] == 1
     assert payload["recommended_action"]["db_writes_required"] == 0
@@ -946,6 +950,10 @@ def test_market_bars_status_cli_keeps_seeded_universe_on_market_bar_blocker(
     assert payload["schema_version"] == "market-bars-status-v1"
     assert payload["status"] == "blocked"
     assert payload["first_blocker"] == "market_bars"
+    assert payload["canonical_first_blocker"] == "market_bars"
+    assert payload["first_gap_count"] == 2
+    assert payload["canonical_next_action"] == payload["next_action"]
+    assert payload["canonical_next_command"] == payload["recommended_action"]["command"]
     assert payload["expected_as_of"] is None
     assert payload["expected_as_of_source"] == "not_available"
     assert payload["active_security_count"] == 2
@@ -1640,6 +1648,10 @@ def test_market_bars_status_routes_zero_liquidity_gap_to_residual_review_without
     payload = json.loads(capsys.readouterr().out)
     assert payload["recommended_action"]["kind"] == "residual_universe_review"
     assert "residual-review" in payload["recommended_action"]["command"]
+    assert payload["canonical_first_blocker"] == "market_bars"
+    assert payload["first_gap_count"] == 1
+    assert payload["canonical_next_action"] == payload["next_action"]
+    assert payload["canonical_next_command"] == payload["recommended_action"]["command"]
     assert payload["recommended_action"]["external_calls_required"] == 0
     assert payload["external_calls_made"] == 0
     assert payload["db_writes_made"] == 0

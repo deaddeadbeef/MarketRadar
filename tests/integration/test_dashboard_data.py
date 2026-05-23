@@ -6334,6 +6334,10 @@ def test_priced_in_preflight_payload_reports_exact_next_steps(tmp_path: Path) ->
     assert payload["first_blocker"]["external_calls_required"] == 2
     assert payload["first_blocker"]["db_writes_required"] == 1
     assert payload["first_gap"] == payload["first_blocker"]["area"]
+    assert payload["canonical_first_blocker"] == "universe"
+    assert payload["first_gap_count"] == 0
+    assert payload["canonical_next_action"] == payload["operator_next_step"]["action"]
+    assert payload["canonical_next_command"] == payload["operator_next_step"]["command"]
     assert payload["operator_next_step"]["schema_version"] == (
         "priced-in-preflight-next-step-v1"
     )
@@ -6518,6 +6522,10 @@ def test_priced_in_preflight_recommends_manual_bar_template_for_missing_bars(
     assert market_bars["status"] == "blocked"
     assert payload["first_gap"] == "market_bars"
     assert payload["first_blocker"]["area"] == "market_bars"
+    assert payload["canonical_first_blocker"] == "market_bars"
+    assert payload["first_gap_count"] == 12_613
+    assert payload["canonical_next_action"] == payload["operator_next_step"]["action"]
+    assert payload["canonical_next_command"] == payload["operator_next_step"]["command"]
     assert payload["first_blocker"]["status"] == "blocked"
     assert payload["operator_next_step"]["area"] == "market_bars"
     assert payload["operator_next_step"]["action"] == market_bars["next_action"]
@@ -6815,9 +6823,13 @@ def test_priced_in_preflight_routes_zero_liquidity_residual_gap_to_review(
 
     assert payload["first_gap"] == "market_bars"
     assert payload["first_blocker"]["area"] == "market_bars"
+    assert payload["canonical_first_blocker"] == "market_bars"
+    assert payload["first_gap_count"] == 1
     assert "residual-review" in str(payload["first_blocker"]["command"])
     assert payload["operator_next_step"]["area"] == "market_bars"
     assert "residual-review" in str(payload["operator_next_step"]["command"])
+    assert payload["canonical_next_action"] == payload["operator_next_step"]["action"]
+    assert payload["canonical_next_command"] == payload["operator_next_step"]["command"]
     assert payload["evidence_plan"]["steps"][0]["area"] == "market_bars"
     assert "residual-review" in str(payload["evidence_plan"]["steps"][0]["command"])
     assert payload["external_calls_made"] == 0
