@@ -1098,6 +1098,11 @@ instead of reusing a stale `selected_universe` scope from an older scan.
 `shadow-mode status` also fails closed at the top level: when current readiness
 is not ready, top-level `status` follows the current readiness status while
 `latest.status` keeps the persisted run classification for audit.
+When no shadow run has been recorded yet, `shadow-mode latest --json` returns
+`status=not_found` and still includes the current zero-call readiness status,
+first blocker, next action, and canonical next command. It remains a read-only
+inspection command with 0 provider calls and 0 database writes, so operators can
+use it after market close without dead-ending on an empty history table.
 
 ### Value ledger
 

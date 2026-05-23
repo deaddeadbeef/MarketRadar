@@ -1818,7 +1818,11 @@ def main(argv: list[str] | None = None) -> int:
                 _print_shadow_mode_run(payload)
             return 0
         if args.shadow_mode_command == "latest":
-            payload = shadow_mode_latest_payload(engine, available_at=args.available_at)
+            payload = shadow_mode_latest_payload(
+                engine,
+                config,
+                available_at=args.available_at,
+            )
             if args.json:
                 print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
             else:
@@ -8538,9 +8542,18 @@ def _print_shadow_mode_latest(payload: Mapping[str, object]) -> None:
     if not isinstance(run, Mapping):
         print(
             "shadow_mode_latest status=not_found "
+            f"readiness={payload.get('shadow_readiness_status') or 'unknown'} "
+            f"first_blocker={payload.get('first_blocker') or 'n/a'} "
+            f"first_gap_count={payload.get('first_gap_count') or 0} "
             f"external_calls_made={payload.get('external_calls_made') or 0} "
             f"db_writes_made={payload.get('db_writes_made') or 0}"
         )
+        print(f"next_action={_compact_cli_text(payload.get('next_action'))}")
+        if payload.get("canonical_next_command"):
+            print(
+                "next_command="
+                f"{_compact_cli_text(payload.get('canonical_next_command'))}"
+            )
         return
     print(
         "shadow_mode_latest "
@@ -8549,9 +8562,16 @@ def _print_shadow_mode_latest(payload: Mapping[str, object]) -> None:
         f"run_date={run.get('run_date')} "
         f"as_of={run.get('as_of') or 'n/a'} "
         f"scope={run.get('scan_scope')} "
+        f"first_blocker={payload.get('first_blocker') or 'n/a'} "
         f"external_calls_made={payload.get('external_calls_made') or 0} "
         f"db_writes_made={payload.get('db_writes_made') or 0}"
     )
+    print(f"next_action={_compact_cli_text(payload.get('next_action'))}")
+    if payload.get("canonical_next_command"):
+        print(
+            "next_command="
+            f"{_compact_cli_text(payload.get('canonical_next_command'))}"
+        )
 
 
 def _print_shadow_mode_list(payload: Mapping[str, object]) -> None:

@@ -113,15 +113,26 @@ def shadow_mode_status_payload(
 
 def shadow_mode_latest_payload(
     engine: Engine,
+    config: AppConfig | None = None,
     *,
     available_at: datetime | None = None,
 ) -> dict[str, object]:
     cutoff = _to_utc(available_at, "available_at") if available_at is not None else None
     latest = ValidationRepository(engine).latest_shadow_mode_run(available_at=cutoff)
+    readiness = _local_shadow_readiness(engine, config) if config is not None else {}
+    next_action = _shadow_mode_status_next_action(latest, readiness)
+    next_command = _shadow_mode_status_next_command(latest, readiness, next_action)
     return {
         "schema_version": "shadow-mode-latest-v1",
         "run": shadow_mode_run_to_payload(latest) if latest is not None else None,
         "status": latest.status if latest is not None else "not_found",
+        "shadow_readiness_status": readiness.get("status") or None,
+        "ready_for_shadow_run": bool(readiness.get("ready")),
+        "first_blocker": _shadow_mode_status_first_blocker(readiness),
+        "first_gap_count": _shadow_mode_status_first_gap_count(readiness),
+        "canonical_next_action": next_action,
+        "canonical_next_command": next_command,
+        "next_action": next_action,
         "external_calls_made": 0,
         "db_writes_made": 0,
     }

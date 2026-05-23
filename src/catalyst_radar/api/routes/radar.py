@@ -678,6 +678,7 @@ def radar_shadow_run(request: ShadowModeRunRequest) -> dict[str, object]:
 def radar_shadow_latest(available_at: datetime | None = None) -> dict[str, object]:
     return shadow_mode_latest_payload(
         _engine(),
+        AppConfig.from_env(),
         available_at=_parse_api_datetime(available_at),
     )
 

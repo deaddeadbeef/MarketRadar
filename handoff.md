@@ -1,6 +1,60 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-24 05:09:44 +08:00
+Last updated: 2026-05-24 05:24:48 +08:00
+
+## Latest Shadow Latest No-Run Guidance Slice
+
+Last updated: 2026-05-24 05:24:48 +08:00
+
+Goal alignment / drift check:
+
+- Priority 1 requires daily shadow-mode operation to tell the operator whether
+  the day produced a valid, partial, blocked, or setup-required shadow scan.
+- A live `shadow-mode latest --json` against `data/schwab-live.db` returned only
+  `status=not_found`, `run=null`, and zero call/write counters.
+- That made the latest-run command a dead end before the first audit row
+  exists, even though `shadow-mode status` and `assert-shadow-ready` already
+  know the first safe unblock step.
+
+Useful definition:
+
+- `shadow-mode latest` is useful only if a no-run response still tells the
+  operator the current readiness state, first blocker, next action, and safe
+  next command.
+- It must remain an inspection command: 0 provider calls, 0 DB writes.
+
+Fix in this slice:
+
+- `shadow_mode_latest_payload` now accepts `AppConfig` and, when called from
+  CLI/API, includes local shadow-readiness context.
+- No-run latest payloads include `shadow_readiness_status`,
+  `ready_for_shadow_run`, `first_blocker`, `first_gap_count`,
+  `canonical_next_action`, `canonical_next_command`, and `next_action`.
+- Human CLI output prints the no-run readiness status, first blocker, next
+  action, and next command when one exists.
+- API latest route passes config so JSON clients get the same local context.
+- README documents the no-run latest contract.
+
+Safety:
+
+- Read-only reporting/status change.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls and writes 0 operator database rows.
+- It does not execute residual repair, shadow runs, value-ledger writes,
+  outcome writes, validation replay, imports, source batches, LLMs, alert
+  delivery, or orders.
+
+Verification completed before PR/merge:
+
+- Focused shadow-mode latest CLI/API regressions passed.
+- Full `tests/integration/test_shadow_mode.py` and
+  `tests/integration/test_shadow_readiness_cli.py` passed.
+- Ruff, compileall, and `git diff --check` passed.
+- Live zero-call smoke against root `data/schwab-live.db` showed
+  `shadow-mode latest --json` exits nonzero with `status=not_found`,
+  `shadow_readiness_status=setup_required`, `first_blocker=market_bars`,
+  `first_gap_count=36`, `canonical_next_command="catalyst-radar market-bars
+  residual-review --expected-as-of 2026-05-21"`, and 0 calls / 0 writes.
 
 ## Latest Value-Ledger No-Candidates Status Slice
 
