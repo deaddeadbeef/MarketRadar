@@ -39,6 +39,7 @@ def test_value_outcome_cli_preview_execute_and_list(
             "XLK",
             "--invalidation-price",
             "95",
+            "--preview",
             "--json",
         ]
     )

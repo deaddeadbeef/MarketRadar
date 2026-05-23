@@ -1,6 +1,43 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 18:20:57 +08:00
+Last updated: 2026-05-23 18:36:46 +08:00
+
+## Latest Explicit Value Preview Flags Slice
+
+Last updated: 2026-05-23 18:36:46 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains safe value-ledger and outcome measurement before any
+  investment-ready claims.
+- `value-ledger record` and `value-outcome update` were already preview by
+  default, but the mission brief explicitly names preview commands for those
+  write-like workflows.
+- The useful definition for this slice is concrete: the operator can type the
+  explicit `--preview` flag on value ledger and value outcome update commands,
+  and it remains mutually exclusive with `--execute`.
+
+Fix in this slice:
+
+- `value-ledger record`, `value-ledger add`, and `value-ledger label` now accept
+  `--preview` as an explicit zero-write mode.
+- `value-outcome update` now accepts `--preview` as an explicit zero-write mode.
+- `--preview` and `--execute` are mutually exclusive; default behavior remains
+  preview.
+- Focused CLI tests exercise the explicit preview flags for ledger and outcome
+  updates.
+- README documents the explicit preview flags for both workflows.
+
+Safety:
+
+- This is CLI parser and documentation behavior for existing preview paths.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls.
+- Explicit preview writes 0 database rows.
+- It does not change execute semantics, scores, thresholds, policy gates,
+  action states, trade plans, LLM behavior, broker/order controls, candidate
+  rows, ledger row contents, outcome math, validation rows, or readiness
+  criteria.
 
 ## Latest Value Summary Claimable Labels Slice
 
