@@ -209,7 +209,10 @@ planning rows internal and does not return `planning_rows` in
 the display `priced_in_queue` packet.
 `blocker_detail.manual_csv` gives dashboard
 clients the fillable local CSV context: path, required fields, current complete
-/ partial / empty counts, and sample missing tickers. `blocker_detail.saved_provider_capture`
+/ partial / empty counts, sample missing tickers, and a full manual
+`market-bars import` preview command. Saved-file `saved-import` commands stay
+under the saved-provider options, not the manual CSV context.
+`blocker_detail.saved_provider_capture`
 shows the guarded saved Polygon/Massive response path as its own zero-call
 contract: current saved-file status, whether a key and explicit approval are
 required, active/existing/missing bar counts for the capture target, call/write

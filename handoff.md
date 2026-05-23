@@ -1,6 +1,54 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 09:48:00 +08:00
+Last updated: 2026-05-23 10:05:00 +08:00
+
+## Latest Manual CSV Command Boundary Slice
+
+Last updated: 2026-05-23 10:05:00 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains the broad priced-in scan and M1 data-readiness. This
+  slice fixes an operator contract bug inside the current market-bar blocker;
+  it does not change scoring, UI polish, LLM behavior, provider calls, or
+  execution gates.
+- On the operator DB, the canonical first action was residual review, but
+  `blocker_detail.manual_csv.preview_command` still displayed the saved-file
+  `market-bars saved-import` command. That could send a human down the wrong
+  local repair path.
+
+Fix in this slice:
+
+- `blocker_detail.manual_csv.preview_command` now prefers the full manual
+  `market-bars import` command from the market-bar repair plan.
+- Saved-file `saved-import` guidance remains only under the saved provider-file
+  unblock option and saved capture context.
+- README documents the command-boundary contract for dashboard/API clients.
+
+Validation observed in this slice:
+
+- The new regression failed before the fix with a `market-bars saved-import`
+  command in `manual_csv.preview_command`.
+- Focused regression passed after the fix.
+- Adjacent priced-in / market-bar / operator-next-step regression selection
+  passed: 22 passed.
+- `ruff check` passed for touched dashboard data and dashboard integration
+  tests.
+- `compileall` passed for `src` and touched dashboard tests.
+- `git diff --check` passed.
+- Operator-DB zero-call smoke with this worktree pinned through `PYTHONPATH`
+  returned `manual_preview=catalyst-radar market-bars import --daily-bars
+  <fresh-bars.csv> --expected-as-of 2026-05-15`,
+  `saved_preview=catalyst-radar market-bars saved-import --expected-as-of
+  2026-05-15 --fixture data\local\polygon-grouped-daily-2026-05-15.json`,
+  `external_calls=0`, and `db_writes=0`.
+
+Current live blocker:
+
+- The all-active trusted answer remains blocked by 579 missing `2026-05-15`
+  market bars until the operator explicitly fills real residual bars or approves
+  the guarded local residual repair. Do not execute the repair against the
+  operator DB without separate explicit instruction.
 
 ## Latest Priced-In Canonical Next-Action Slice
 

@@ -7818,9 +7818,9 @@ def _priced_in_market_bar_manual_csv_context(
         "sample_missing_tickers": sample_tickers,
         "template_command": market_bar_repair.get("dashboard_manual_template_command")
         or market_bar_repair.get("template_command"),
-        "preview_command": operator_step.get("after_manual_command")
+        "preview_command": market_bar_repair.get("import_preview_command")
         or market_bar_repair.get("dashboard_manual_import_preview_command")
-        or market_bar_repair.get("import_preview_command"),
+        or operator_step.get("after_manual_command"),
         "execute_command": market_bar_repair.get(
             "dashboard_manual_import_execute_command"
         )
