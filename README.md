@@ -1136,6 +1136,8 @@ catalyst-radar value-outcome show <VALUE_OUTCOME_ID> --json
 
 The `value-outcome update` command previews by default; `--preview` makes the
 zero-write mode explicit and `--execute` is required to write one outcome row.
+The CLI also accepts `outcome update`, `outcome list`, `outcome coverage`, and
+`outcome show` as aliases for the same local value-outcome contract.
 The terminal dashboard also supports local outcome review:
 
 ```text
