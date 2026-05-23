@@ -244,6 +244,8 @@ def test_value_ledger_coverage_reports_unlogged_surfaced_candidates(
     payload = json.loads(capsys.readouterr().out)
     assert payload["schema_version"] == "value-ledger-candidate-coverage-v1"
     assert payload["status"] == "gaps"
+    assert payload["external_calls_required"] == 0
+    assert payload["db_writes_required"] == 0
     assert payload["external_calls_made"] == 0
     assert payload["db_writes_made"] == 0
     assert payload["surfaced_candidate_count"] == 2
@@ -262,6 +264,8 @@ def test_value_ledger_coverage_reports_unlogged_surfaced_candidates(
     assert "--artifact-id state-AAPL" in rows["state-AAPL"]["record_command"]
     assert "--preview" in rows["state-AAPL"]["record_command"]
     assert "--execute" not in rows["state-AAPL"]["record_command"]
+    assert rows["state-AAPL"]["record_external_calls_required"] == 0
+    assert rows["state-AAPL"]["record_db_writes_required"] == 0
     assert "state-GLW" not in rows
     with engine.connect() as conn:
         after = [dict(row._mapping) for row in conn.execute(select(candidate_states))]
@@ -324,6 +328,8 @@ def test_value_ledger_coverage_reports_no_candidates_as_not_measured(
     assert payload["coverage_pct"] is None
     assert payload["canonical_next_command"] == "catalyst-radar assert-shadow-ready --json"
     assert "No Warning-or-higher candidate states exist" in payload["next_action"]
+    assert payload["external_calls_required"] == 0
+    assert payload["db_writes_required"] == 0
     assert payload["external_calls_made"] == 0
     assert payload["db_writes_made"] == 0
     assert payload["rows"] == []

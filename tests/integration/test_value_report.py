@@ -69,15 +69,21 @@ def test_value_report_cli_empty_month_is_insufficient_evidence(
     assert coverage["canonical_next_command"] == (
         "catalyst-radar assert-shadow-ready --json"
     )
+    assert coverage["external_calls_required"] == 0
+    assert coverage["db_writes_required"] == 0
     validation = payload["validation_evidence"]
     assert validation["status"] == "no_validation_runs"
     assert validation["ready"] is False
     assert "validation-replay" in validation["canonical_next_command"]
     assert "--preview" in validation["canonical_next_command"]
     assert "--execute" not in validation["canonical_next_command"]
+    assert validation["external_calls_required"] == 0
+    assert validation["db_writes_required"] == 0
     assert validation["external_calls_made"] == 0
     assert validation["db_writes_made"] == 0
     assert "validation-replay" in validation["next_action"]
+    assert payload["external_calls_required"] == 0
+    assert payload["db_writes_required"] == 0
     assert payload["external_calls_made"] == 0
     assert payload["db_writes_made"] == 0
 
@@ -287,15 +293,23 @@ def test_value_report_surfaces_missing_candidate_ledger_coverage(
     assert "--execute" not in coverage["canonical_next_command"]
     assert coverage["external_calls_made"] == 0
     assert coverage["db_writes_made"] == 0
+    assert coverage["external_calls_required"] == 0
+    assert coverage["db_writes_required"] == 0
     assert coverage["rows"][0]["candidate_state_id"] == "state-AAPL"
     assert "--artifact-id state-AAPL" in coverage["rows"][0]["record_command"]
     assert "--preview" in coverage["rows"][0]["record_command"]
+    assert coverage["rows"][0]["record_external_calls_required"] == 0
+    assert coverage["rows"][0]["record_db_writes_required"] == 0
     outcome_coverage = payload["value_outcome_coverage"]
     assert outcome_coverage["status"] == "no_ledger_entries"
     assert outcome_coverage["ledger_entry_count"] == 0
     assert outcome_coverage["coverage_pct"] is None
     assert outcome_coverage["external_calls_made"] == 0
     assert outcome_coverage["db_writes_made"] == 0
+    assert outcome_coverage["external_calls_required"] == 0
+    assert outcome_coverage["db_writes_required"] == 0
+    assert payload["external_calls_required"] == 0
+    assert payload["db_writes_required"] == 0
     assert payload["external_calls_made"] == 0
     assert payload["db_writes_made"] == 0
 

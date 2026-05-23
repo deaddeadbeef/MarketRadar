@@ -1,6 +1,73 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-24 06:10:00 +08:00
+Last updated: 2026-05-24 07:21:45 +08:00
+
+## Latest Value-Proof Recovery Boundary Slice
+
+Goal alignment / drift check:
+
+- The operator wants to try MarketRadar soon, but only at a safe stop point.
+- The correct stop point remains read-only trial, not investment-decision use.
+- The app already separates read-only trial from strict minimum-product
+  readiness. This slice tightened one remaining machine-readable safety gap in
+  the value-proof recovery path.
+
+Useful definition:
+
+- A recovery command is useful only when it tells both humans and automation
+  whether the displayed next step requires provider calls or database writes.
+- Coverage and monthly value-report surfaces should not require readers to infer
+  that `--preview --json` commands are zero-call and zero-write.
+
+Fix in this slice:
+
+- `value-ledger coverage --json` now includes
+  `external_calls_required=0` and `db_writes_required=0` for its displayed
+  recovery command.
+- Missing candidate coverage rows now include
+  `record_external_calls_required=0` and `record_db_writes_required=0` beside
+  the row-level preview record command.
+- `value-outcome coverage --json` now includes
+  `external_calls_required=0` and `db_writes_required=0`.
+- Missing/incomplete outcome rows now include zero-call/zero-write required
+  fields beside their preview update commands.
+- `value-report --month ... --json` now includes top-level
+  `external_calls_required=0` and `db_writes_required=0` for the first value
+  evidence recovery step and propagates the same fields through candidate,
+  outcome, and validation evidence sections.
+- README documents the explicit required-call/write boundary on these recovery
+  surfaces.
+
+Safety:
+
+- Read-only reporting/status contract change.
+- No Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or provider
+  calls were made.
+- No operator database writes were made.
+- No approval-only commands were executed.
+
+Verification completed before PR/merge:
+
+- Focused integration suite passed:
+  `tests/integration/test_value_ledger.py`,
+  `tests/integration/test_value_outcomes.py`, and
+  `tests/integration/test_value_report.py` all passed, 34 tests total.
+- Ruff passed for touched value-ledger/value-outcome/value-report source,
+  touched tests, and README.
+- Compileall passed for touched source and tests.
+- `git diff --check` passed.
+- Live root-launch-context smokes using worktree code and the normal root
+  `.env.local` showed:
+  - `value-ledger coverage --json`: `status=gaps`, required 0/0, made 0/0.
+  - `value-outcome coverage --json`: `status=no_ledger_entries`, required 0/0,
+    made 0/0.
+  - `value-report --month 2026-05 --json`: verdict `insufficient_evidence`,
+    first blocker `candidate_ledger_coverage`, required 0/0, made 0/0, and all
+    nested value-proof sections required 0/0.
+  - `assert-trial-ready --json`: `status=safe_read_only`,
+    `safe_to_try_read_only=true`, `ready_for_investment_decision=false`,
+    `highest_allowed_use=read_only_research`, minimum product still blocked by
+    `market_bars`, and made 0 external calls / 0 DB writes.
 
 ## Latest Safe Trial Stop-Point Audit
 
