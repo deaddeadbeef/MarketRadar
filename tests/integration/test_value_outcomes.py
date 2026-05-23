@@ -120,6 +120,73 @@ def test_value_outcome_cli_preview_execute_and_list(
     assert shown["outcome"]["status"] == "computed"
 
 
+def test_outcome_cli_alias_uses_value_outcome_contract(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'outcome-cli-alias.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = engine_from_url(database_url)
+    create_schema(engine)
+    entry_id = _seed_ledger_and_bars(engine)
+
+    preview_exit = main(
+        [
+            "outcome",
+            "update",
+            "--ledger-id",
+            entry_id,
+            "--outcome-available-at",
+            "2026-08-20T21:00:00+00:00",
+            "--preview",
+            "--json",
+        ]
+    )
+
+    assert preview_exit == 0
+    preview = json.loads(capsys.readouterr().out)
+    assert preview["schema_version"] == "value-outcome-update-v1"
+    assert preview["mode"] == "preview"
+    assert preview["external_calls_made"] == 0
+    assert preview["db_writes_made"] == 0
+    assert preview["outcome"]["status"] == "computed"
+    assert "value-outcome update" in preview["preview_command"]
+    with engine.connect() as conn:
+        assert conn.execute(select(func.count()).select_from(value_outcomes)).scalar_one() == 0
+
+    list_exit = main(["outcome", "list", "--ledger-id", entry_id, "--json"])
+
+    assert list_exit == 0
+    listed = json.loads(capsys.readouterr().out)
+    assert listed["schema_version"] == "value-outcomes-v1"
+    assert listed["count"] == 0
+    assert listed["external_calls_made"] == 0
+    assert listed["db_writes_made"] == 0
+
+    coverage_exit = main(
+        [
+            "outcome",
+            "coverage",
+            "--available-at",
+            "2026-08-20T21:00:00+00:00",
+            "--period-start",
+            "2026-05-01",
+            "--period-end",
+            "2026-05-31",
+            "--json",
+        ]
+    )
+
+    assert coverage_exit == 0
+    coverage = json.loads(capsys.readouterr().out)
+    assert coverage["schema_version"] == "value-outcome-coverage-v1"
+    assert coverage["ledger_entry_count"] == 1
+    assert coverage["missing_outcome_count"] == 1
+    assert coverage["external_calls_made"] == 0
+    assert coverage["db_writes_made"] == 0
+
+
 def test_value_outcome_coverage_reports_ledger_rows_missing_outcomes(
     tmp_path,
     monkeypatch,

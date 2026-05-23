@@ -1,6 +1,44 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-24 00:55:00 +08:00
+Last updated: 2026-05-24 01:05:00 +08:00
+
+## Latest Outcome CLI Alias Slice
+
+Last updated: 2026-05-24 01:05:00 +08:00
+
+Goal alignment / drift check:
+
+- The active goal includes forward outcome tracking as a first-class workflow.
+- The validation/outcome implementation already exposes `value-outcome`
+  commands, API routes, and TUI `outcome` commands.
+- The mission brief names `outcome update`, `outcome list`, and `outcome show`;
+  the CLI rejected `outcome` even though the TUI accepted it. That made the CLI
+  version less usable as a replacement UI and test surface for the same
+  workflow.
+
+Useful definition:
+
+- `outcome` should be a thin CLI alias for the existing `value-outcome`
+  implementation.
+- The alias must not duplicate logic, change payload schemas, change generated
+  canonical commands, or alter call/write safety.
+
+Fix in this slice:
+
+- Added top-level CLI alias `outcome` for `value-outcome`.
+- The same subcommands now work through either `catalyst-radar value-outcome ...`
+  or `catalyst-radar outcome ...`.
+- Integration coverage proves alias preview/list/coverage make 0 provider calls
+  and 0 DB writes in preview/read-only paths.
+- README documents the alias.
+
+Safety:
+
+- This is CLI routing only.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls and writes 0 operator DB rows.
+- It does not execute outcome writes on the operator DB, mutate ledger rows,
+  candidate state, scoring, policy gates, LLM behavior, alerts, or orders.
 
 ## Latest Trial Gate Canonical Next Command Slice
 

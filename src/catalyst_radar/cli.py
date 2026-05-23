@@ -777,7 +777,7 @@ def build_parser() -> argparse.ArgumentParser:
     value_report.add_argument("--min-useful-evidence-count", type=int, default=2)
     value_report.add_argument("--json", action="store_true")
 
-    value_outcome = subparsers.add_parser("value-outcome")
+    value_outcome = subparsers.add_parser("value-outcome", aliases=["outcome"])
     value_outcome_sub = value_outcome.add_subparsers(
         dest="value_outcome_command",
         required=True,
@@ -3025,7 +3025,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"value ledger failed: {exc}", file=sys.stderr)
             return 1
 
-    if args.command == "value-outcome":
+    if args.command in {"value-outcome", "outcome"}:
         create_schema(engine)
         try:
             if args.value_outcome_command == "update":
