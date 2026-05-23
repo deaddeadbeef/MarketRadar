@@ -1589,6 +1589,62 @@ def test_market_bars_residual_review_cli_flags_zero_liquidity_saved_gap(
     assert review_payload["db_writes_made"] == 0
 
 
+def test_market_bars_status_routes_zero_liquidity_gap_to_residual_review_without_saved_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    database_url = _database_url(tmp_path)
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["init-db"]) == 0
+    capsys.readouterr()
+    engine = create_engine(database_url, future=True)
+    MarketRepository(engine).upsert_securities(
+        [
+            _security("AAPL", "Apple Inc.", "CS"),
+            _security("MSFT", "Microsoft Corp.", "CS"),
+            Security(
+                ticker="AACO",
+                name="Alpha Acquisition Corp.",
+                exchange="NASDAQ",
+                sector="Unknown",
+                industry="Unknown",
+                market_cap=0,
+                avg_dollar_volume_20d=0,
+                has_options=False,
+                is_active=True,
+                updated_at=datetime(2026, 5, 8, 20, tzinfo=UTC),
+                metadata={"type": "CS"},
+            ),
+        ]
+    )
+    MarketRepository(engine).upsert_daily_bars(
+        [
+            _daily_bar("AAPL", date(2026, 5, 8)),
+            _daily_bar("MSFT", date(2026, 5, 8)),
+        ]
+    )
+
+    status_code = main(
+        [
+            "market-bars",
+            "status",
+            "--expected-as-of",
+            "2026-05-08",
+            "--json",
+        ]
+    )
+
+    assert status_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["recommended_action"]["kind"] == "residual_universe_review"
+    assert "residual-review" in payload["recommended_action"]["command"]
+    assert payload["recommended_action"]["external_calls_required"] == 0
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
+
+
 def test_market_bars_residual_repair_cli_preview_and_execute_with_guards(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

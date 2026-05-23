@@ -8553,6 +8553,7 @@ def priced_in_preflight_payload(
         "scan_scope": scan_scope,
         "provider_blocker": provider_blocker,
         "external_calls_made": 0,
+        "db_writes_made": 0,
         "scan_status": _priced_in_scan_status(discovery),
         "provider": {
             "market_provider": _provider_name(config.daily_market_provider, default="csv"),
@@ -8779,18 +8780,32 @@ def _priced_in_evidence_plan(rows: Sequence[Mapping[str, object]]) -> dict[str, 
     )
     steps: list[dict[str, object]] = []
     added: set[str] = set()
-    for area in blocked_order:
+
+    def add_step(area: str) -> None:
         row = by_area.get(area)
-        if row is None or str(row.get("status") or "") != "blocked":
-            continue
+        if row is None or area in added:
+            return
+        if str(row.get("status") or "") not in {"blocked", "attention"}:
+            return
         steps.append(_priced_in_evidence_plan_step(len(steps) + 1, row))
         added.add(area)
+
+    add_step("universe")
+    add_step("market_bars")
+    for area in blocked_order:
+        row = by_area.get(area)
+        if (
+            row is None
+            or area in added
+            or str(row.get("status") or "") != "blocked"
+        ):
+            continue
+        add_step(area)
     for area in attention_order:
         row = by_area.get(area)
         if row is None or area in added or str(row.get("status") or "") != "attention":
             continue
-        steps.append(_priced_in_evidence_plan_step(len(steps) + 1, row))
-        added.add(area)
+        add_step(area)
     for row in actionable_rows:
         area = str(row.get("area") or "")
         if area not in added:
@@ -8961,6 +8976,15 @@ def _priced_in_preflight_manual_market_bar_repair(
         "local_template_path": plan.get("local_template_path"),
         "local_template_exists": bool(plan.get("local_template_exists")),
         "local_template_preview": _row_dict(_mapping_value(plan, "local_template_preview")),
+        "missing_universe_diagnostic": _row_dict(
+            _mapping_value(plan, "missing_universe_diagnostic")
+        ),
+        "missing_security_type_counts": _row_dict(
+            _mapping_value(plan, "missing_security_type_counts")
+        ),
+        "missing_without_local_history_count": plan.get(
+            "missing_without_local_history_count"
+        ),
         "external_calls_made": 0,
     }
 
@@ -18159,6 +18183,22 @@ def _priced_in_preflight_rows(
         market_bar_repair or {},
         "operator_step",
     )
+    if _priced_in_residual_universe_review_needed(
+        market_bar_repair or {},
+        missing_bars,
+    ):
+        market_bar_operator_step = {
+            "kind": "residual_universe_review",
+            "status": "blocked",
+            "action": (
+                "The remaining missing active tickers look like a zero-liquidity "
+                "universe-quality gap. Review residual rows before filling bars, "
+                "capturing provider data, or changing scan scope."
+            ),
+            "command": _priced_in_residual_review_command(market_bar_repair or {}),
+            "manual_step": False,
+            "external_calls_made": 0,
+        }
 
     if (active or requested or scanned) < 500:
         cap_note = ""

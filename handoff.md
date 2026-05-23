@@ -1,6 +1,43 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 14:18:25 +08:00
+Last updated: 2026-05-23 14:37:31 +08:00
+
+## Latest Preflight Market-Bar First Blocker Slice
+
+Last updated: 2026-05-23 14:37:31 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains P0 blocker agreement for trusted broad-market
+  priced-in scans.
+- A zero-call configured-DB check showed `priced-in-preflight --json` could
+  choose `scan_scope`/run-plan work while `priced-in-answer`,
+  `market-bars status`, and `assert-shadow-ready` were all blocked on
+  `market_bars`.
+- The useful definition for this slice is concrete: when active-universe bars
+  are incomplete, preflight's first blocker and command must be the same
+  market-bar residual-review path as the other readiness surfaces.
+
+Fix in this slice:
+
+- Preflight evidence planning now prioritizes `universe`, then `market_bars`,
+  before scan-scope/source/run-plan work.
+- Preflight carries manual market-bar residual diagnostics into the source
+  coverage plan, so zero-liquidity residual gaps route to
+  `market-bars residual-review`.
+- `market-bars status` now also routes zero-liquidity residual gaps to
+  `residual_universe_review` even when no saved provider file exists yet.
+- `priced-in-preflight --json` now includes top-level `db_writes_made=0`.
+- README documents the preflight residual-review and call/write contract.
+
+Safety:
+
+- This is zero-call planning/status behavior only.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls and writes 0 database rows.
+- It does not execute residual repair, fill market bars, change scan scope,
+  mutate scoring, candidate states, value-ledger rows, outcomes, alert delivery,
+  LLM behavior, or broker/order paths.
 
 ## Latest Priced-In Answer Canonical Blocker Slice
 
