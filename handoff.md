@@ -1,6 +1,47 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 21:12:14 +08:00
+Last updated: 2026-05-23 21:29:29 +08:00
+
+## Latest Direction-Adjusted Value Outcome Return Slice
+
+Last updated: 2026-05-23 21:29:29 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains measured value proof for priced-in signals.
+- This slice fixes outcome interpretability, not UI wording: a successful
+  bearish priced-in thesis should not look like a failed outcome merely because
+  raw ticker returns are negative.
+
+Useful definition:
+
+- Raw market returns stay unchanged for audit.
+- Value outcome payloads now also expose direction-adjusted return fields that
+  answer whether price moved in the intended bullish or bearish direction.
+
+Fix in this slice:
+
+- `value-outcome update/list/show` payloads now include `outcome_direction`.
+- Payloads now include `directional_return_5d/10d/20d/60d`.
+- Payloads now include `directional_spy_relative_return_5d/10d/20d/60d` and
+  `directional_sector_relative_return_5d/10d/20d/60d` when the benchmark data
+  is available.
+- `value-outcome coverage` rows now expose the 20-day directional return and
+  directional SPY-relative return next to the raw fields.
+- For bullish or unknown direction, directional returns match the raw ticker
+  returns. For bearish direction, directional returns flip the sign so
+  favorable downside follow-through is positive.
+- README documents the raw-vs-directional outcome contract.
+
+Safety:
+
+- This is deterministic local outcome math over stored daily bars and
+  value-ledger rows.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls and writes 0 database rows in preview.
+- It does not change candidate scoring, policy gates, candidate states,
+  market-bar data, value-ledger rows, alert delivery, broker controls, LLM
+  behavior, readiness gates, or raw return columns.
 
 ## Latest Direction-Aware Validation Outcome Slice
 

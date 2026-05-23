@@ -1149,7 +1149,13 @@ available post-entry bar, so outcome review can separate follow-through from
 initial gap behavior. Invalidation touch and adverse/favorable excursions are
 direction-aware: bullish outcomes check downside lows as adverse and upside
 highs as favorable, while bearish outcomes check upside highs as adverse and
-downside lows as favorable.
+downside lows as favorable. Raw `return_*`, `spy_relative_return_*`, and
+`sector_relative_return_*` fields remain unmodified ticker returns. Use
+`outcome_direction`, `directional_return_*`,
+`directional_spy_relative_return_*`, and
+`directional_sector_relative_return_*` when judging whether a bullish or
+bearish priced-in thesis followed through in the intended direction; bearish
+outcomes flip the sign so favorable downside follow-through is positive.
 
 ### Monthly value report
 
