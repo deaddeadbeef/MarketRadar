@@ -53,6 +53,12 @@ def test_value_outcome_cli_preview_execute_and_list(
     assert outcome["trading_days_observed"] == 60
     assert outcome["payload"]["expected_review_horizon_days"] == 60
     assert outcome["payload"]["expected_review_horizon_expired"] is True
+    assert outcome["setup_follow_through"] == "followed_through"
+    assert outcome["payload"]["setup_follow_through"] == "followed_through"
+    assert outcome["setup_follow_through_horizon_days"] == 20
+    assert outcome["setup_follow_through_direction"] == "bullish"
+    assert outcome["gap_outcome"] == "gap_up"
+    assert round(outcome["gap_return"], 6) == 0.01
     assert round(outcome["return_5d"], 6) == 0.1
     assert round(outcome["spy_relative_return_20d"], 6) == 0.25
     assert outcome["sector_etf_ticker"] == "XLK"
@@ -157,6 +163,13 @@ def test_value_outcome_coverage_reports_ledger_rows_missing_outcomes(
     assert payload["coverage_pct"] == 50.0
     assert payload["external_calls_made"] == 0
     assert payload["db_writes_made"] == 0
+    covered = next(
+        row
+        for row in payload["rows"]
+        if row["value_ledger_entry_id"] == covered_entry_id
+    )
+    assert covered["setup_follow_through"] == "followed_through"
+    assert covered["gap_outcome"] == "gap_up"
     missing = next(
         row
         for row in payload["rows"]
@@ -250,6 +263,8 @@ def test_value_outcome_api_rejects_missing_future_bars_without_mutating_ledger(
     assert outcome["trading_days_observed"] == 4
     assert outcome["payload"]["expected_review_horizon_days"] == 60
     assert outcome["payload"]["expected_review_horizon_expired"] is False
+    assert outcome["setup_follow_through"] == "insufficient_data"
+    assert outcome["gap_outcome"] == "gap_up"
     assert outcome["return_5d"] is None
     outcome_id = outcome["id"]
     show_response = TestClient(create_app()).get(f"/api/value-outcomes/{outcome_id}")
@@ -296,16 +311,54 @@ def test_value_outcome_ignores_future_bars_after_cutoff(tmp_path, monkeypatch) -
     assert outcome["payload"]["no_future_leakage"] is True
 
 
+def test_value_outcome_marks_failed_bearish_follow_through_and_gap_down(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'value-outcome-follow-through.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = engine_from_url(database_url)
+    create_schema(engine)
+    entry_id = _seed_ledger_and_bars(
+        engine,
+        priced_in_direction="bearish",
+        first_future_open=99,
+    )
+
+    response = TestClient(create_app()).post(
+        "/api/value-outcomes/update",
+        json={
+            "value_ledger_entry_id": entry_id,
+            "outcome_available_at": "2026-08-20T21:00:00+00:00",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
+    outcome = payload["outcome"]
+    assert outcome["status"] == "computed"
+    assert outcome["setup_follow_through"] == "failed"
+    assert outcome["payload"]["setup_follow_through"] == "failed"
+    assert outcome["setup_follow_through_direction"] == "bearish"
+    assert outcome["gap_outcome"] == "gap_down"
+    assert round(outcome["gap_return"], 6) == -0.01
+
+
 def _seed_ledger_and_bars(
     engine,
     *,
     future_count: int = 60,
     late_future_bar_index: int | None = None,
+    priced_in_direction: str = "bullish",
+    first_future_open: float | None = None,
 ) -> str:
     entry_id = _seed_value_ledger_entry(
         engine,
         artifact_id="note-MSFT",
         ticker="MSFT",
+        priced_in_direction=priced_in_direction,
     )
     MarketRepository(engine).upsert_daily_bars(
         [
@@ -317,6 +370,7 @@ def _seed_ledger_and_bars(
                     "MSFT",
                     date(2026, 5, 15) + timedelta(days=offset),
                     _msft_close(offset),
+                    open_price=first_future_open if offset == 1 else None,
                     low=94 if offset == 2 else None,
                     late=late_future_bar_index == offset,
                 )
@@ -340,12 +394,15 @@ def _seed_value_ledger_entry(
     *,
     artifact_id: str,
     ticker: str,
+    priced_in_direction: str = "bullish",
 ) -> str:
     entry = build_value_ledger_entry(
         artifact_type="manual_note",
         artifact_id=artifact_id,
         label="useful",
         ticker=ticker,
+        priced_in_status=f"{priced_in_direction}_not_priced_in",
+        priced_in_direction=priced_in_direction,
         as_of=date(2026, 5, 15),
         estimated_value_usd=10,
         confidence=1,
@@ -374,6 +431,7 @@ def _bar(
     bar_date: date,
     close: float,
     *,
+    open_price: float | None = None,
     low: float | None = None,
     late: bool = False,
 ) -> DailyBar:
@@ -385,7 +443,7 @@ def _bar(
     return DailyBar(
         ticker=ticker,
         date=bar_date,
-        open=close,
+        open=open_price if open_price is not None else close,
         high=close,
         low=low if low is not None else close,
         close=close,

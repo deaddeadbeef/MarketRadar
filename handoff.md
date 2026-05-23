@@ -1,6 +1,39 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 13:24:08 +08:00
+Last updated: 2026-05-23 13:34:17 +08:00
+
+## Latest Value Outcome Follow-Through Slice
+
+Last updated: 2026-05-23 13:34:17 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains measured forward outcome tracking before more scoring,
+  NLP, or LLM expansion.
+- Value outcomes already computed returns, SPY/sector comparisons, excursions,
+  invalidation touch, no-future-leakage evidence, and review-horizon expiry.
+- The mission brief also requires setup follow-through and gap-up/gap-down
+  outcome evidence.
+- The useful definition for this slice is concrete: a value outcome should say
+  whether the bullish/bearish setup followed through at the 20-trading-day
+  horizon and whether the first post-entry bar gapped up, down, or flat.
+
+Fix in this slice:
+
+- Value outcome payloads now expose `setup_follow_through`,
+  `setup_follow_through_horizon_days`, `setup_follow_through_direction`,
+  `gap_outcome`, and `gap_return`.
+- The same fields are stored in the deterministic outcome payload and surfaced
+  in coverage rows for linked outcomes.
+- README documents the outcome follow-through/gap contract.
+
+Safety:
+
+- This change reads only local daily bars and value-ledger rows.
+- Outcome preview remains zero-call and zero-write.
+- This slice does not mutate candidate state, scores, policy gates,
+  value-ledger rows, alert delivery, provider workflows, LLM behavior, or
+  broker/order controls.
 
 ## Latest Shadow Run Top-Level Status Slice
 
