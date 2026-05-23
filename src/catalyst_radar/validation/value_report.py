@@ -127,7 +127,7 @@ def monthly_value_report_payload(
     total_cost = provider_api_model_cost + operating_time_cost
     net_value = weighted_value - total_cost
     uncertainty = _uncertainty_band(entries, total_cost=total_cost)
-    verdict = _monthly_value_verdict(
+    raw_value_verdict = _monthly_value_verdict(
         net_value=net_value,
         target=target,
         useful_count=len(useful_entries),
@@ -139,9 +139,14 @@ def monthly_value_report_payload(
         candidate_ledger_coverage=candidate_ledger_coverage,
         value_outcome_coverage=value_outcome_coverage,
         validation_evidence=validation_evidence,
-        verdict=verdict,
+        verdict=raw_value_verdict,
         useful_count=len(useful_entries),
         min_useful_evidence_count=min_evidence,
+    )
+    verdict = (
+        raw_value_verdict
+        if first_evidence_gap["first_blocker"] is None
+        else "insufficient_evidence"
     )
     report = {
         "schema_version": "monthly-value-report-v1",
@@ -247,6 +252,8 @@ def monthly_value_report_payload(
             target=target,
             useful_count=len(useful_entries),
             min_useful_evidence_count=min_evidence,
+            first_blocker=first_evidence_gap["first_blocker"],
+            first_gap_count=int(first_evidence_gap["first_gap_count"] or 0),
         ),
         "external_calls_made": 0,
         "db_writes_made": 0,
@@ -646,8 +653,16 @@ def _verdict_reason(
     target: float,
     useful_count: int,
     min_useful_evidence_count: int,
+    first_blocker: object = None,
+    first_gap_count: int = 0,
 ) -> str:
     if verdict == "insufficient_evidence":
+        blocker = str(first_blocker or "")
+        if blocker and blocker != "useful_evidence":
+            return (
+                f"Evidence incomplete: {blocker} has {first_gap_count} gap(s) "
+                "before pass/fail."
+            )
         return (
             f"Only {useful_count} useful evidence row(s); "
             f"{min_useful_evidence_count} required before pass/fail."

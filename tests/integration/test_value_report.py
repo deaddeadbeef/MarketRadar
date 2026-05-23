@@ -251,7 +251,8 @@ def test_value_report_passes_when_useful_decision_support_covers_40_usd(
     monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
     engine = engine_from_url(database_url)
     create_schema(engine)
-    _seed_entry(
+    _seed_successful_validation_run(engine)
+    decision_card_entry_id = _seed_entry(
         engine,
         artifact_type="decision_card",
         artifact_id="card-MSFT",
@@ -278,6 +279,7 @@ def test_value_report_passes_when_useful_decision_support_covers_40_usd(
         provider_call_count=1,
         payload={"operating_time_cost_usd": 2},
     )
+    _seed_outcome(engine, ledger_id=decision_card_entry_id, ticker="MSFT")
     _seed_outcome(engine, ledger_id=paper_entry_id, ticker="AAPL")
 
     response = TestClient(create_app()).get(
@@ -306,9 +308,68 @@ def test_value_report_passes_when_useful_decision_support_covers_40_usd(
     assert payload["useful_llm_reviewed_entry_count"] == 0
     assert payload["llm_reviewed_costs_usd"] == 0.0
     assert payload["cost_per_useful_llm_reviewed_candidate"] is None
-    assert payload["outcome_status_counts"] == {"computed": 1}
+    assert payload["outcome_status_counts"] == {"computed": 2}
     assert payload["profit_calculation_included"] is False
     assert payload["investment_advice"] is False
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
+
+
+def test_value_report_cannot_pass_with_missing_validation_evidence(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'value-report-evidence-gap.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = engine_from_url(database_url)
+    create_schema(engine)
+    decision_card_entry_id = _seed_entry(
+        engine,
+        artifact_type="decision_card",
+        artifact_id="card-MSFT",
+        label="good-research",
+        ticker="MSFT",
+        estimated_value_usd=40,
+        confidence=1,
+        cost_to_produce_usd=1,
+        supported_action="research",
+        user_decision="accepted",
+        payload={"research_time_saved_minutes": 30, "research_time_saved_usd": 25},
+    )
+    paper_entry_id = _seed_entry(
+        engine,
+        artifact_type="manual_note",
+        artifact_id="note-AAPL",
+        label="avoided-loss",
+        ticker="AAPL",
+        estimated_value_usd=20,
+        confidence=0.75,
+        cost_to_produce_usd=1,
+        supported_action="paper_trade",
+        user_decision="avoided",
+        provider_call_count=1,
+        payload={"operating_time_cost_usd": 2},
+    )
+    _seed_outcome(engine, ledger_id=decision_card_entry_id, ticker="MSFT")
+    _seed_outcome(engine, ledger_id=paper_entry_id, ticker="AAPL")
+
+    response = TestClient(create_app()).get(
+        "/api/value-report/monthly",
+        params={
+            "month": "2026-05",
+            "available_at": "2026-05-31T21:00:00+00:00",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["threshold_met"] is True
+    assert payload["net_decision_support_value_usd"] == 51.0
+    assert payload["verdict"] == "insufficient_evidence"
+    assert payload["plausibly_met_40_usd_threshold"] is False
+    assert payload["plausibly_earned_at_least_40_usd"] is False
+    assert payload["first_blocker"] == "validation_evidence"
+    assert payload["validation_evidence"]["ready"] is False
     assert payload["external_calls_made"] == 0
     assert payload["db_writes_made"] == 0
 
@@ -383,7 +444,8 @@ def test_value_report_fails_below_threshold_and_counts_noise(
     monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
     engine = engine_from_url(database_url)
     create_schema(engine)
-    _seed_entry(
+    _seed_successful_validation_run(engine)
+    low1_entry_id = _seed_entry(
         engine,
         artifact_id="note-LOW1",
         label="useful",
@@ -392,7 +454,7 @@ def test_value_report_fails_below_threshold_and_counts_noise(
         confidence=0.5,
         cost_to_produce_usd=1,
     )
-    _seed_entry(
+    low2_entry_id = _seed_entry(
         engine,
         artifact_id="note-LOW2",
         label="good-research",
@@ -401,7 +463,7 @@ def test_value_report_fails_below_threshold_and_counts_noise(
         confidence=0.5,
         cost_to_produce_usd=1,
     )
-    _seed_entry(
+    noise_entry_id = _seed_entry(
         engine,
         artifact_id="note-NOISE",
         label="false-positive",
@@ -410,6 +472,9 @@ def test_value_report_fails_below_threshold_and_counts_noise(
         confidence=1,
         cost_to_produce_usd=1,
     )
+    _seed_outcome(engine, ledger_id=low1_entry_id, ticker="LOW1")
+    _seed_outcome(engine, ledger_id=low2_entry_id, ticker="LOW2")
+    _seed_outcome(engine, ledger_id=noise_entry_id, ticker="NOISE")
 
     exit_code = main(
         [

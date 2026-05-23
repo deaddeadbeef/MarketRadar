@@ -1176,6 +1176,13 @@ dashboard Costs page shows the current month's verdict and net
 decision-support value. If any ledger row involved LLM review, the report also
 shows LLM-reviewed entry count, useful LLM-reviewed entry count, LLM-linked
 cost, and cost per useful LLM-reviewed candidate without making model calls.
+The raw `threshold_met` field only answers whether local value math reached the
+monthly target. The top-level `verdict` and
+`plausibly_earned_at_least_40_usd` fail closed to `insufficient_evidence` /
+`false` until candidate ledger coverage, value outcome coverage, and
+month-matched validation evidence are all ready. This keeps a raw value estimate
+from being presented as proven product value before the evidence chain is
+complete.
 The report also includes `candidate_ledger_coverage`, a read-only summary of
 Warning-or-higher candidate states surfaced in the month versus candidate-state
 ledger rows recorded for them. If coverage has gaps, the report includes the
