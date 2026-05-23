@@ -1,6 +1,61 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-24 05:24:48 +08:00
+Last updated: 2026-05-24 05:36:23 +08:00
+
+## Latest Shadow-Mode Approval Packet Propagation Slice
+
+Last updated: 2026-05-24 05:36:23 +08:00
+
+Goal alignment / drift check:
+
+- The daily shadow-mode surfaces should be the operator's main after-close
+  status loop, not a weaker copy of `assert-shadow-ready`.
+- Live zero-call smokes showed `assert-shadow-ready` exposed the
+  approval-required market-bar residual repair packet, but `shadow-mode
+  status`, `shadow-mode latest`, and the top-level `shadow-mode run --preview`
+  did not.
+- That could hide that the next unblock is an explicit local-write approval
+  step unless the operator knew to switch commands.
+
+Useful definition:
+
+- A shadow-mode surface is useful only if it preserves both the safe read-only
+  next command and any approval-required local-write unblock packet from the
+  readiness gate.
+- The packet must remain descriptive on status/latest/preview surfaces: 0
+  provider calls and 0 DB writes.
+
+Fix in this slice:
+
+- `shadow-mode status`, `shadow-mode latest`, and `shadow-mode run` now expose
+  top-level `approval_required_unblock` copied from the underlying
+  `shadow_readiness_payload` when present.
+- Human CLI output prints the approval area, status, DB-write requirement, and
+  guarded approval command when such a packet exists.
+- README documents the approval packet propagation contract.
+
+Safety:
+
+- Read-only reporting/status propagation change.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls and writes 0 operator database rows.
+- It does not execute residual repair, shadow runs, value-ledger writes,
+  outcome writes, validation replay, imports, source batches, LLMs, alert
+  delivery, or orders.
+
+Verification completed before PR/merge:
+
+- Focused shadow-mode approval packet regressions passed.
+- Full `tests/integration/test_shadow_mode.py` and
+  `tests/integration/test_shadow_readiness_cli.py` passed.
+- Ruff, compileall, and `git diff --check` passed.
+- Live zero-call smoke against root `data/schwab-live.db` showed
+  `shadow-mode status --json`, `shadow-mode latest --json`, and
+  `shadow-mode run --preview --json` now expose
+  `approval_required_unblock.status=ready_to_execute`,
+  `approval_command="catalyst-radar market-bars residual-repair
+  --expected-as-of 2026-05-21 --expect-missing-count 36
+  --expect-eligible-count 36 --execute --json"`, and 0 calls / 0 writes.
 
 ## Latest Shadow Latest No-Run Guidance Slice
 

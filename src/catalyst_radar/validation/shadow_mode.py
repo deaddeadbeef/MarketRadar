@@ -68,6 +68,7 @@ def shadow_mode_run_payload(
         "first_gap_count": _shadow_mode_status_first_gap_count(readiness),
         "canonical_next_action": next_action,
         "canonical_next_command": next_command,
+        "approval_required_unblock": _shadow_mode_approval_required_unblock(readiness),
         "next_action": next_action,
         "useful_definition": (
             "A useful shadow run records whether the current local scan is valid, "
@@ -105,6 +106,7 @@ def shadow_mode_status_payload(
         "first_gap_count": _shadow_mode_status_first_gap_count(readiness),
         "canonical_next_action": next_action,
         "canonical_next_command": next_command,
+        "approval_required_unblock": _shadow_mode_approval_required_unblock(readiness),
         "next_action": next_action,
         "external_calls_made": 0,
         "db_writes_made": 0,
@@ -132,6 +134,7 @@ def shadow_mode_latest_payload(
         "first_gap_count": _shadow_mode_status_first_gap_count(readiness),
         "canonical_next_action": next_action,
         "canonical_next_command": next_command,
+        "approval_required_unblock": _shadow_mode_approval_required_unblock(readiness),
         "next_action": next_action,
         "external_calls_made": 0,
         "db_writes_made": 0,
@@ -460,6 +463,13 @@ def _shadow_mode_status_next_command(
     if latest is not None:
         return _shadow_mode_next_command(latest, next_action)
     return _canonical_command(next_action)
+
+
+def _shadow_mode_approval_required_unblock(
+    readiness: Mapping[str, object],
+) -> dict[str, object] | None:
+    approval = readiness.get("approval_required_unblock")
+    return dict(approval) if isinstance(approval, Mapping) else None
 
 
 def _shadow_mode_status_label(

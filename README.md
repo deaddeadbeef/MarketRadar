@@ -1103,6 +1103,12 @@ When no shadow run has been recorded yet, `shadow-mode latest --json` returns
 first blocker, next action, and canonical next command. It remains a read-only
 inspection command with 0 provider calls and 0 database writes, so operators can
 use it after market close without dead-ending on an empty history table.
+`shadow-mode status`, `shadow-mode latest`, and `shadow-mode run --preview`
+also surface `approval_required_unblock` when the underlying shadow-readiness
+gate has an approval-required local unblock packet, such as guarded market-bar
+residual repair. That packet is descriptive only on these surfaces; it does not
+execute the repair, write a shadow run, call providers, submit orders, or send
+alerts.
 
 ### Value ledger
 
