@@ -649,6 +649,8 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         choices=[state.value for state in ActionState],
     )
+    validation_replay.add_argument("--preview", action="store_true")
+    validation_replay.add_argument("--json", action="store_true")
 
     validation_report = subparsers.add_parser("validation-report")
     validation_report.add_argument("--run-id")
@@ -2497,7 +2499,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "validation-replay":
-        create_schema(engine)
+        if not args.preview:
+            create_schema(engine)
         packet_repo = CandidatePacketRepository(engine)
         validation_repo = ValidationRepository(engine)
         as_of_start = _scan_timestamp(args.as_of_start)
@@ -2533,7 +2536,8 @@ def main(argv: list[str] | None = None) -> int:
                 "no_external_calls": True,
             },
         )
-        validation_repo.upsert_validation_run(run)
+        if not args.preview:
+            validation_repo.upsert_validation_run(run)
         try:
             results = build_replay_results(
                 packet_repo,
@@ -2564,7 +2568,6 @@ def main(argv: list[str] | None = None) -> int:
                 available_at=outcome_available_at,
             )
             all_results = [*labeled_results, *labeled_baseline_results]
-            count = validation_repo.upsert_validation_results(all_results)
             report = build_validation_report(
                 run_id,
                 all_results,
@@ -2573,19 +2576,66 @@ def main(argv: list[str] | None = None) -> int:
                 ),
             )
             metrics = validation_report_payload(report)
+            if args.preview:
+                payload = _validation_replay_cli_payload(
+                    run_id=run_id,
+                    mode="preview",
+                    as_of_start=args.as_of_start,
+                    as_of_end=args.as_of_end,
+                    decision_available_at=available_at,
+                    outcome_available_at=outcome_available_at,
+                    candidate_result_count=len(labeled_results),
+                    baseline_result_count=len(labeled_baseline_results),
+                    result_count=len(all_results),
+                    db_writes_made=0,
+                    metrics=metrics,
+                    states=states,
+                    tickers=tickers,
+                )
+                if args.json:
+                    print(json.dumps(payload, sort_keys=True))
+                else:
+                    print(
+                        f"validation_replay mode=preview run_id={run_id} "
+                        f"candidate_results={len(labeled_results)} "
+                        f"baseline_results={len(labeled_baseline_results)} "
+                        f"results={len(all_results)} external_calls=0 db_writes=0 "
+                        f"execute_command={payload['execute_command']}"
+                    )
+                return 0
+            count = validation_repo.upsert_validation_results(all_results)
             validation_repo.finish_validation_run(
                 run_id,
                 ValidationRunStatus.SUCCESS,
                 metrics,
             )
         except Exception as exc:
-            validation_repo.finish_validation_run(
-                run_id,
-                ValidationRunStatus.FAILED,
-                {"error": str(exc)},
-            )
+            if not args.preview:
+                validation_repo.finish_validation_run(
+                    run_id,
+                    ValidationRunStatus.FAILED,
+                    {"error": str(exc)},
+                )
             print(f"validation replay failed: {exc}", file=sys.stderr)
             return 1
+        payload = _validation_replay_cli_payload(
+            run_id=run_id,
+            mode="executed",
+            as_of_start=args.as_of_start,
+            as_of_end=args.as_of_end,
+            decision_available_at=available_at,
+            outcome_available_at=outcome_available_at,
+            candidate_result_count=len(labeled_results),
+            baseline_result_count=len(labeled_baseline_results),
+            result_count=count,
+            db_writes_made=count + 2,
+            metrics=metrics,
+            states=states,
+            tickers=tickers,
+        )
+        if args.json:
+            print(json.dumps(payload, sort_keys=True))
+            return 0
         print(
             f"validation_replay run_id={run_id} candidate_results={len(labeled_results)} "
             f"baseline_results={len(labeled_baseline_results)} results={count} "
@@ -4092,6 +4142,65 @@ def _validation_report_cli_payload(
         }
     )
     return payload
+
+
+def _validation_replay_cli_payload(
+    *,
+    run_id: str,
+    mode: str,
+    as_of_start: date,
+    as_of_end: date,
+    decision_available_at: datetime,
+    outcome_available_at: datetime,
+    candidate_result_count: int,
+    baseline_result_count: int,
+    result_count: int,
+    db_writes_made: int,
+    metrics: Mapping[str, object],
+    states: tuple[ActionState, ...],
+    tickers: tuple[str, ...],
+) -> dict[str, object]:
+    execute_command = (
+        "catalyst-radar validation-replay "
+        f"--as-of-start {as_of_start.isoformat()} "
+        f"--as-of-end {as_of_end.isoformat()} "
+        f"--available-at {decision_available_at.isoformat()} "
+        f"--outcome-available-at {outcome_available_at.isoformat()}"
+    )
+    for state in states:
+        execute_command += f" --state {state.value}"
+    for ticker in tickers:
+        execute_command += f" --ticker {ticker}"
+    execute_command += " --json"
+    return {
+        "schema_version": "validation-replay-cli-v1",
+        "mode": mode,
+        "run_id": run_id,
+        "as_of_start": as_of_start.isoformat(),
+        "as_of_end": as_of_end.isoformat(),
+        "decision_available_at": decision_available_at.isoformat(),
+        "outcome_available_at": outcome_available_at.isoformat(),
+        "candidate_result_count": candidate_result_count,
+        "baseline_result_count": baseline_result_count,
+        "result_count": result_count,
+        "external_calls_required": 0,
+        "external_calls_made": 0,
+        "db_writes_required": result_count + 2,
+        "db_writes_made": db_writes_made,
+        "execute_command": execute_command if mode == "preview" else None,
+        "preview_command": execute_command.replace(" --json", " --preview --json"),
+        "leakage_failure_count": int(metrics.get("leakage_failure_count") or 0),
+        "precision": (
+            metrics.get("precision")
+            if isinstance(metrics.get("precision"), Mapping)
+            else {}
+        ),
+        "baseline_comparison_count": len(
+            metrics.get("baseline_comparison")
+            if isinstance(metrics.get("baseline_comparison"), Mapping)
+            else {}
+        ),
+    }
 
 
 def _validation_report_missing_payload(
