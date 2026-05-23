@@ -127,6 +127,14 @@ EXPECTED_API_ROUTES = {
     ): ("catalyst_radar.api.routes.value_outcomes", "value_outcomes", ("value-outcomes",)),
     (
         "GET",
+        "/api/value-outcomes/coverage",
+    ): (
+        "catalyst_radar.api.routes.value_outcomes",
+        "value_outcome_coverage",
+        ("value-outcomes",),
+    ),
+    (
+        "GET",
         "/api/value-outcomes/{outcome_id}",
     ): ("catalyst_radar.api.routes.value_outcomes", "value_outcome", ("value-outcomes",)),
     (
