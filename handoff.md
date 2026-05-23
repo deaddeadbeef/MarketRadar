@@ -1,6 +1,43 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 19:03:53 +08:00
+Last updated: 2026-05-23 19:18:08 +08:00
+
+## Latest Shadow Run Explicit Commands Slice
+
+Last updated: 2026-05-23 19:18:08 +08:00
+
+Goal alignment / drift check:
+
+- The active goal still requires repeatable shadow-mode run records before any
+  investment-ready claim.
+- `shadow-mode run` already defaulted to preview and required `--execute` to
+  persist one local audit row, but the JSON/API payload did not expose exact
+  preview and execute commands.
+- The useful definition for this slice is concrete: a CLI/API/TUI client can
+  show the operator the exact zero-write preview command and the exact explicit
+  audit-row write command without inferring flags.
+
+Fix in this slice:
+
+- `shadow-mode run` responses now include `preview_command`.
+- Preview responses now include `execute_command` containing explicit
+  `--execute`.
+- Execute responses keep `execute_command=null` after the write has already
+  happened and still include the reproducible `preview_command`.
+- The generated commands include the resolved run date, resolved as-of date when
+  known, cutoff timestamp, explicit mode flag, and `--json`.
+- README documents the command fields.
+
+Safety:
+
+- Preview still makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI,
+  web, app, or provider calls and writes 0 database rows.
+- Execute still makes 0 provider calls and writes exactly one local
+  `shadow_mode_runs` audit row.
+- This does not change readiness checks, scores, thresholds, policy gates,
+  action states, trade plans, LLM behavior, broker/order controls, candidate
+  rows, ledger rows, outcome rows, validation rows, or shadow-run
+  classification.
 
 ## Latest Validation Replay Explicit Execute Slice
 

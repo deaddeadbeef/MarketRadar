@@ -987,10 +987,12 @@ command behind a generic setup message. The run response also exposes
 `first_blocker`, `first_gap_count`, `canonical_next_action`, and
 `canonical_next_command` for the current readiness gate, so preview/execute
 clients can route the operator to the same unblock step without parsing nested
-snapshot data. `shadow-mode status` also uses the current readiness canonical
-next action whenever current readiness is not ready, so a stale persisted run
-cannot hide today's first unblock command. The status payload exposes the same
-first-blocker fields.
+snapshot data. It also includes explicit `preview_command` and
+`execute_command` fields; the preview command contains `--preview`, and the
+write command contains `--execute`. `shadow-mode status` also uses the current
+readiness canonical next action whenever current readiness is not ready, so a
+stale persisted run cannot hide today's first unblock command. The status
+payload exposes the same first-blocker fields.
 
 ### Value ledger
 
