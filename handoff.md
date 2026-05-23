@@ -1,6 +1,57 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 22:42:01 +08:00
+Last updated: 2026-05-23 23:12:00 +08:00
+
+## Latest Minimum Useful Product Stop Gate Slice
+
+Last updated: 2026-05-23 23:12:00 +08:00
+
+Goal alignment / drift check:
+
+- The user wants to try MarketRadar soon, but "safe to browse" must not be
+  confused with "minimum useful shipped product."
+- This slice does not add UI polish or new surface area. It adds a stricter
+  verdict inside the existing `assert-trial-ready` surface so future stopping
+  decisions are concrete and testable.
+
+Useful definition:
+
+- `safe_to_try_read_only=true` means the dashboard and zero-call previews are
+  safe to browse without hidden provider, OpenAI, broker, order, or database
+  side effects.
+- `minimum_useful_product.ready=true` is stricter: it requires the safe
+  read-only gate, a trusted full-market priced-in answer, visible shadow/value
+  gates, and zero hidden calls or writes.
+- If `minimum_useful_product.ready=false`, MarketRadar may be safe to inspect,
+  but it should not be described as a shipped decision-support product yet.
+
+Fix in this slice:
+
+- `assert-trial-ready --json` now includes
+  `minimum_useful_product` with schema
+  `trial-minimum-useful-product-v1`.
+- Human `assert-trial-ready` output prints
+  `minimum_useful_product status=... ready=... first_blocker=...`.
+- README documents the distinction between safe browsing and the stricter
+  shipped-product stop line.
+- Tests cover empty DB, demo safe-browsing false shipped gate, real-LLM block,
+  API passthrough, and the positive trusted-answer gate.
+
+Current local interpretation:
+
+- The root operator DB still passes `safe_to_try_read_only=true`.
+- The stricter shipped-product stop line remains blocked because the current
+  full-market priced-in answer is blocked by `market_bars` with 579 missing
+  scan-date rows.
+
+Safety:
+
+- This is a read-only readiness verdict over existing local readiness payloads.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls and writes 0 database rows.
+- It does not execute residual repair, import bars, change scan scope, alter
+  scoring, mutate candidate state, write value rows/outcomes, run LLMs, deliver
+  alerts, or submit orders.
 
 ## Latest Score Calibration Verdict Slice
 

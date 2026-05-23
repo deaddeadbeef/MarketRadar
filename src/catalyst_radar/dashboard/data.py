@@ -10476,6 +10476,13 @@ def trial_readiness_payload(
         if safe_to_try
         else str(first_blocker.get("next_action") or "Clear the first trial blocker.")
     )
+    minimum_useful_product = _trial_minimum_useful_product_gate(
+        safe_to_try=safe_to_try,
+        first_trial_blocker=first_blocker,
+        priced_in_answer=answer,
+        shadow_readiness=shadow,
+        value_report=monthly_value,
+    )
     return {
         "schema_version": "trial-readiness-v1",
         "status": status,
@@ -10517,6 +10524,7 @@ def trial_readiness_payload(
                 checks, "value_report_surface"
             ),
         },
+        "minimum_useful_product": minimum_useful_product,
         "allowed_commands": [
             trial_command,
             "catalyst-radar priced-in-answer --json",
@@ -10562,6 +10570,117 @@ def trial_readiness_payload(
             "priced_in_first_blocker": answer.get("first_blocker"),
             "shadow_readiness_status": shadow.get("status") or "unknown",
             "monthly_value_verdict": monthly_value.get("verdict") or "unknown",
+        },
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+    }
+
+
+def _trial_minimum_useful_product_gate(
+    *,
+    safe_to_try: bool,
+    first_trial_blocker: Mapping[str, object],
+    priced_in_answer: Mapping[str, object],
+    shadow_readiness: Mapping[str, object],
+    value_report: Mapping[str, object],
+) -> dict[str, object]:
+    trust_gate = _mapping_value(priced_in_answer, "full_market_trust_gate")
+    full_scan = _mapping_value(priced_in_answer, "full_scan")
+    scan_scope = _mapping_value(priced_in_answer, "scan_scope")
+    answer_status = str(priced_in_answer.get("status") or "unknown")
+    trusted_full_market_answer = bool(trust_gate.get("trusted_full_market_answer"))
+    answer_not_blocked = answer_status not in {"blocked", "setup_required"}
+    shadow_gate_visible = bool(shadow_readiness.get("schema_version"))
+    value_report_visible = bool(value_report.get("schema_version")) or bool(
+        value_report.get("verdict")
+    )
+    call_write_clean = (
+        int(_finite_float(priced_in_answer.get("external_calls_made")))
+        + int(_finite_float(priced_in_answer.get("db_writes_made")))
+        + int(_finite_float(shadow_readiness.get("external_calls_made")))
+        + int(_finite_float(shadow_readiness.get("db_writes_made")))
+        + int(_finite_float(value_report.get("external_calls_made")))
+        + int(_finite_float(value_report.get("db_writes_made")))
+        == 0
+    )
+    features = {
+        "safe_read_only_gate": safe_to_try,
+        "trusted_full_market_priced_in_answer": (
+            trusted_full_market_answer and answer_not_blocked
+        ),
+        "shadow_gate_visible": shadow_gate_visible,
+        "value_report_visible": value_report_visible,
+        "zero_hidden_calls_or_writes": call_write_clean,
+    }
+    ready = all(features.values())
+    first_blocker: str | None = None
+    next_action = "Open the dashboard and use MarketRadar as read-only decision support."
+    next_command = "catalyst-radar dashboard-tui"
+    if not safe_to_try:
+        first_blocker = str(first_trial_blocker.get("code") or "trial_gate")
+        next_action = str(
+            first_trial_blocker.get("next_action")
+            or "Clear the first read-only trial blocker."
+        )
+        next_command = str(first_trial_blocker.get("evidence") or "").strip() or None
+    elif not features["trusted_full_market_priced_in_answer"]:
+        first_blocker = str(
+            priced_in_answer.get("first_blocker")
+            or trust_gate.get("first_blocker")
+            or "priced_in_answer"
+        )
+        next_action = str(
+            priced_in_answer.get("canonical_next_action")
+            or priced_in_answer.get("next_action")
+            or trust_gate.get("next_action")
+            or "Clear the priced-in answer blocker."
+        )
+        next_command = (
+            str(
+                priced_in_answer.get("canonical_next_command")
+                or priced_in_answer.get("next_command")
+                or trust_gate.get("next_command")
+                or ""
+            ).strip()
+            or None
+        )
+    elif not shadow_gate_visible:
+        first_blocker = "shadow_gate_visible"
+        next_action = "Expose the shadow readiness gate before shipping the preview."
+        next_command = "catalyst-radar assert-shadow-ready --json"
+    elif not value_report_visible:
+        first_blocker = "value_report_visible"
+        next_action = "Expose monthly value reporting before shipping the preview."
+        next_command = "catalyst-radar value-report --month <YYYY-MM> --json"
+    elif not call_write_clean:
+        first_blocker = "zero_hidden_calls_or_writes"
+        next_action = "Keep the product-trial gate zero-call and zero-write."
+        next_command = "catalyst-radar assert-trial-ready --json"
+    return {
+        "schema_version": "trial-minimum-useful-product-v1",
+        "ready": ready,
+        "status": "ready" if ready else "blocked",
+        "highest_allowed_use": "read_only_decision_support"
+        if ready
+        else "safe_browsing_only",
+        "headline": (
+            "Minimum useful shipped product gate is ready for read-only decision support."
+            if ready
+            else (
+                "Safe browsing may be available, but the minimum useful shipped "
+                "product gate is still blocked."
+            )
+        ),
+        "first_blocker": first_blocker,
+        "next_action": next_action,
+        "next_command": next_command,
+        "minimum_features_required": features,
+        "priced_in_status": answer_status,
+        "scan_scope": {
+            "mode": scan_scope.get("mode") or full_scan.get("mode"),
+            "active_securities": full_scan.get("active_securities"),
+            "scanned_rows": full_scan.get("scanned_rows"),
+            "ranked_rows": full_scan.get("ranked_rows"),
         },
         "external_calls_made": 0,
         "db_writes_made": 0,

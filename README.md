@@ -40,11 +40,15 @@ decision-support value. That is the measured target for offsetting 20% of a
 - `catalyst-radar assert-trial-ready --json` is the source-of-truth gate for
   this read-only product-trial boundary. It can pass while
   `assert-shadow-ready` and `assert-investable-readiness` still fail.
+- The same payload includes `minimum_useful_product`. Treat that as the stop
+  line for a real shipped read-only product: it requires a trusted full-market
+  priced-in answer, visible shadow/value gates, and zero hidden calls or writes.
 
 ### Safe Trial Boundary
 
-As of the local database checked on 2026-05-23, MarketRadar is safe to try as a
-read-only shadow product, not as an investment-decision product.
+As of the local database checked on 2026-05-23, MarketRadar is safe to browse as
+a read-only trial, not as a minimum useful shipped product and not as an
+investment-decision product.
 
 Safe to run:
 
@@ -74,6 +78,11 @@ read-only commands, review the first blocker, and record local value evidence
 only when you intentionally choose a label. Do not run `--execute`,
 `--confirm-external-call`, real LLM mode, Schwab writes, or broker/order paths
 unless you are deliberately approving that one action.
+
+The stricter shipped-product stop point is
+`assert-trial-ready --json` with `minimum_useful_product.ready=true`. If that
+field is false, MarketRadar may still be safe to browse, but it is not yet a
+real product for decision support.
 
 ### For Humans
 
