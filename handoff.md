@@ -1,6 +1,43 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-24 00:28:00 +08:00
+Last updated: 2026-05-24 00:36:00 +08:00
+
+## Latest Demo CLI Trust-Gate Test Slice
+
+Last updated: 2026-05-24 00:36:00 +08:00
+
+Goal alignment / drift check:
+
+- While verifying the full-scan artifact-command slice, the focused demo CLI
+  test failed on `main`.
+- Root cause: the demo seed is blocked at the setup/universe gate, so
+  `full_market_trust_gate.after_current_blocker` is intentionally absent.
+- The test incorrectly required the human CLI to print
+  `trust_gate_after_current=` even when there is no after-current blocker.
+
+Useful definition:
+
+- CLI tests should require `trust_gate_after_current=` only when the JSON
+  payload actually contains `after_current_blocker`.
+- When the demo is blocked at `universe`, absence of the line is correct and
+  should be verified explicitly.
+
+Fix in this slice:
+
+- Updated `test_priced_in_answer_cli_outputs_current_scan_answer` to branch on
+  the JSON payload's `after_current_blocker` field.
+- The test still asserts the line and schema when the field exists.
+- The universe-blocked demo path now asserts `first_blocker=universe` and no
+  stale after-current line in human output.
+
+Safety:
+
+- This is test-only verification alignment.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls and writes only temporary pytest/demo databases.
+- It does not change product runtime behavior, readiness gates, scan scope,
+  provider execution, candidate state, value rows/outcomes, LLMs, alerts, or
+  orders.
 
 ## Latest Full-Scan Local Artifact Command Slice
 
