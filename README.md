@@ -55,6 +55,11 @@ decision-support value. That is the measured target for offsetting 20% of a
   guarded command, expected missing/eligible counts, projected gate result, and
   DB writes required. It is still descriptive only; run the command only after
   explicit operator approval.
+- `assert-shadow-ready --json` uses the same approval-required pattern when the
+  current shadow blocker is the market-bar gate. Its
+  `approval_required_unblock` packet is still read-only and makes zero calls and
+  zero writes; it only tells the operator which guarded local repair would need
+  explicit approval.
 - When the read-only trial surface has no priced-in rows yet, the strict gate
   still uses the underlying `priced-in-answer` diagnostic command as
   `minimum_useful_product.canonical_next_command`; it must not emit a status
@@ -62,11 +67,14 @@ decision-support value. That is the measured target for offsetting 20% of a
 
 ### Safe Trial Boundary
 
-As of the local database checked on 2026-05-23, MarketRadar is safe to browse as
-a read-only trial, not as a minimum useful shipped product and not as an
-investment-decision product.
+As of the root local database checked on 2026-05-24, MarketRadar is safe to
+inspect with zero-call status commands, but it is not yet safe to call a real
+shipped product. `assert-trial-ready --json` exits nonzero with
+`safe_to_try_read_only=false`, and
+`assert-trial-ready --minimum-product --json` exits nonzero with
+`minimum_useful_product.ready=false`.
 
-Safe to run:
+Safe to inspect:
 
 ```powershell
 catalyst-radar priced-in-answer --json
@@ -80,20 +88,23 @@ catalyst-radar dashboard-tui
 
 Do not treat the output as ready for capital until these blockers clear:
 
-- 579 active securities still lack 2026-05-15 bars.
-- The latest scan is selected-universe scope: 2,429 scanned out of 12,669 active
-  securities.
+- 36 active securities still lack 2026-05-21 bars.
+- The current priced-in surface is blocked before review rows are available:
+  the local active universe is 1,000 securities and `scanned_rows=0`.
+- Clearing the current market-bar blocker requires explicit operator approval
+  for a guarded local residual repair command. The preview makes zero calls and
+  zero writes; the guarded execute path would write 36 local active-universe
+  rows.
 - Candidate packets and decision cards are not built for the current full-scan
   gate.
 - There is no validation replay/report evidence yet.
 - The value ledger and forward outcomes do not yet prove the `$40/month`
   decision-support target.
 
-This is the intended user-trial stop point: inspect the dashboard, run the
-read-only commands, review the first blocker, and record local value evidence
-only when you intentionally choose a label. Do not run `--execute`,
-`--confirm-external-call`, real LLM mode, Schwab writes, or broker/order paths
-unless you are deliberately approving that one action.
+This is the current safe stop point: inspect the status commands, review the
+first blocker, and do not call it a shipped decision-support product yet. Do not
+run `--execute`, `--confirm-external-call`, real LLM mode, Schwab writes, or
+broker/order paths unless you are deliberately approving that one action.
 
 The stricter shipped-product stop point is
 `assert-trial-ready --minimum-product --json`. That command exits successfully

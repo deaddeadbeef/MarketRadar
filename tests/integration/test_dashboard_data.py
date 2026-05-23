@@ -1270,6 +1270,142 @@ def test_shadow_readiness_payload_reuses_market_bar_blocker_detail(
     assert payload["db_writes_made"] == 0
 
 
+def test_shadow_readiness_payload_surfaces_market_bar_approval_packet_without_writes(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(securities),
+            [
+                {
+                    "ticker": "AAPL",
+                    "name": "Apple Inc.",
+                    "exchange": "NASDAQ",
+                    "sector": "Technology",
+                    "industry": "Consumer Electronics",
+                    "market_cap": 3_000_000_000.0,
+                    "avg_dollar_volume_20d": 500_000_000.0,
+                    "has_options": True,
+                    "is_active": True,
+                    "updated_at": AVAILABLE_AT,
+                    "metadata": {"type": "CS"},
+                },
+                {
+                    "ticker": "AACO",
+                    "name": "Residual Unit",
+                    "exchange": "NASDAQ",
+                    "sector": "Financial Services",
+                    "industry": "Shell Companies",
+                    "market_cap": 0.0,
+                    "avg_dollar_volume_20d": 0.0,
+                    "has_options": False,
+                    "is_active": True,
+                    "updated_at": AVAILABLE_AT,
+                    "metadata": {"type": "UNIT"},
+                },
+            ],
+        )
+    MarketRepository(engine).upsert_daily_bars(
+        [
+            DailyBar(
+                ticker="AAPL",
+                date=date(2026, 5, 8),
+                open=100,
+                high=101,
+                low=99,
+                close=100.5,
+                volume=1_000_000,
+                vwap=100.25,
+                adjusted=True,
+                provider="polygon",
+                source_ts=SOURCE_TS,
+                available_at=AVAILABLE_AT,
+            )
+        ]
+    )
+    inputs = _shadow_ready_inputs()
+    inputs["ops_health"]["database"].update(
+        {
+            "active_security_count": 2,
+            "active_security_with_daily_bar_count": 1,
+            "active_security_with_latest_daily_bar_count": 1,
+            "latest_daily_bar_date": "2026-05-08",
+        }
+    )
+    inputs["radar_readiness"]["discovery_snapshot"]["freshness"].update(
+        {
+            "active_security_count": 2,
+            "active_security_with_as_of_bar_count": 1,
+            "missing_as_of_daily_bar_count": 1,
+            "latest_daily_bar_date": "2026-05-08",
+        }
+    )
+    inputs["priced_in_answer"].update(
+        {
+            "status": "blocked",
+            "first_blocker": "market_bars",
+            "canonical_next_action": "Review residual market-bar rows.",
+            "canonical_next_command": (
+                "catalyst-radar market-bars residual-review "
+                "--expected-as-of 2026-05-08"
+            ),
+        }
+    )
+    inputs["priced_in_answer"]["full_market_trust_gate"] = {
+        "schema_version": "priced-in-market-trust-gate-v1",
+        "status": "blocked",
+        "trusted_full_market_answer": False,
+        "first_blocker": "market_bars",
+        "first_gap_count": 1,
+        "next_action": "Review residual market-bar rows.",
+        "blocker_detail": {
+            "schema_version": "priced-in-market-bar-blocker-detail-v1",
+            "source": "market_bars",
+            "expected_as_of": "2026-05-08",
+            "missing_as_of_bar": 1,
+            "stocks_only": False,
+            "recommended_action": {
+                "command": (
+                    "catalyst-radar market-bars residual-review "
+                    "--expected-as-of 2026-05-08"
+                ),
+                "reason": "Review residual market-bar rows.",
+            },
+        },
+    }
+
+    payload = shadow_readiness_payload(
+        engine,
+        AppConfig.from_env({"CATALYST_SCAN_BATCH_SIZE": "2"}),
+        **inputs,
+    )
+
+    approval = payload["approval_required_unblock"]
+    assert payload["status"] == "setup_required"
+    assert payload["first_blocker"] == "market_bars"
+    assert payload["canonical_next_command"] == (
+        "catalyst-radar market-bars residual-review --expected-as-of 2026-05-08"
+    )
+    assert approval["schema_version"] == "shadow-readiness-approval-required-v1"
+    assert approval["area"] == "market_bars"
+    assert approval["status"] == "ready_to_execute"
+    assert approval["approval_required"] is True
+    assert approval["expected_missing_count"] == 1
+    assert approval["expected_eligible_count"] == 1
+    assert approval["db_writes_required_to_execute"] == 1
+    assert approval["projected_market_bar_gate_cleared"] is True
+    assert approval["execute_would_clear_market_bar_gate"] is True
+    assert "--expect-missing-count 1" in approval["approval_command"]
+    assert "--expect-eligible-count 1" in approval["approval_command"]
+    assert approval["approval_command"].endswith("--execute --json")
+    assert approval["external_calls_required"] == 0
+    assert approval["external_calls_made"] == 0
+    assert approval["db_writes_made"] == 0
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
+
+
 def test_shadow_readiness_payload_returns_partial_only_for_selected_scan_scope(
     tmp_path: Path,
 ) -> None:

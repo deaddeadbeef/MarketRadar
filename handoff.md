@@ -1,6 +1,74 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-24 04:43:23 +08:00
+Last updated: 2026-05-24 04:55:19 +08:00
+
+## Latest Shadow Readiness Approval Packet Slice
+
+Last updated: 2026-05-24 04:55:19 +08:00
+
+Goal alignment / drift check:
+
+- The operator wants a stop point where MarketRadar is safe to try soon as a
+  real minimum product, not just a confusing dashboard.
+- The current safe shipped-product blocker is still the market-bar gate. The
+  gate can be inspected with zero calls and zero writes, but clearing it
+  requires an explicit local DB write to deactivate strict residual active
+  universe rows.
+- `assert-trial-ready --minimum-product --json` already exposed that
+  approval-required packet. `assert-shadow-ready --json`, which is the daily
+  shadow gate operators will inspect first, did not.
+
+Useful definition:
+
+- A blocked shadow-readiness gate is useful only if it separates safe browsing
+  from approval-required unblock work.
+- If the first blocker is market bars and a zero-call residual-repair preview
+  can identify the guarded local repair, the gate should surface the approval
+  packet without executing anything.
+
+Fix in this slice:
+
+- `shadow_readiness_payload` now adds top-level
+  `approval_required_unblock` when the current blocker is the market-bar gate
+  and residual repair preview can produce a guarded execute command.
+- The packet has schema
+  `shadow-readiness-approval-required-v1`, names the preview and approval
+  commands/API payload, expected missing/eligible counts, projected gate result,
+  required guard flags, and call/write counters.
+- Trial minimum-product approval packet generation now shares the same
+  market-bar packet builder with its own existing schema/reason.
+
+Safety:
+
+- Read-only gate/reporting change.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls and writes 0 operator database rows.
+- It does not execute residual repair, saved imports, validation replay,
+  value-ledger writes, outcome writes, imports, source batches, LLMs, alert
+  delivery, shadow-run writes, or orders.
+
+Verification completed before PR/merge:
+
+- Focused dashboard-data regression for the new approval packet passed.
+- Existing trial approval-packet regression passed.
+- `tests/integration/test_shadow_readiness_cli.py` plus the two approval packet
+  regressions passed.
+- Ruff, compileall, and `git diff --check` passed.
+- Live zero-call smoke against root `data/schwab-live.db` showed
+  `assert-shadow-ready --json` exits nonzero with
+  `status=setup_required`, `first_blocker=market_bars`, `first_gap_count=36`,
+  `approval_required_unblock.status=ready_to_execute`, and 0 calls / 0 writes.
+- Live strict product gate smoke showed `assert-trial-ready --minimum-product
+  --json` exits nonzero with `minimum_useful_product.ready=false`,
+  `approval_required_unblock.status=ready_to_execute`, and 0 calls / 0 writes.
+
+Current safe stop:
+
+- MarketRadar is safe to inspect with zero-call status commands.
+- It is not safe to call a real shipped product yet. The next unblock is an
+  explicit approval-required local residual repair for 36 rows:
+  `catalyst-radar market-bars residual-repair --expected-as-of 2026-05-21
+  --expect-missing-count 36 --expect-eligible-count 36 --execute --json`.
 
 ## Latest Shadow Readiness Action/Command Split Slice
 

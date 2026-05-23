@@ -10382,6 +10382,12 @@ def shadow_readiness_payload(
         if isinstance(first_blocker.get("next_command"), str)
         else None
     ) or _shadow_readiness_command(canonical_next_action)
+    approval_required_unblock = _shadow_readiness_approval_required_unblock(
+        engine,
+        config,
+        priced_in_answer=answer,
+        first_blocker=first_blocker,
+    )
     return {
         "schema_version": "shadow-readiness-v1",
         "status": status,
@@ -10429,6 +10435,7 @@ def shadow_readiness_payload(
         },
         "external_calls_made": 0,
         "db_writes_made": 0,
+        "approval_required_unblock": approval_required_unblock,
     }
 
 
@@ -10754,6 +10761,57 @@ def _trial_minimum_product_approval_required_unblock(
     priced_in_answer: Mapping[str, object],
     first_blocker: str | None,
 ) -> dict[str, object] | None:
+    return _market_bar_residual_repair_approval_packet(
+        engine,
+        config,
+        priced_in_answer=priced_in_answer,
+        first_blocker=first_blocker,
+        schema_version="trial-minimum-product-approval-required-v1",
+        reason=(
+            "Clearing the current minimum-product blocker requires explicit "
+            "operator approval because it writes local active-universe rows."
+        ),
+    )
+
+
+def _shadow_readiness_approval_required_unblock(
+    engine: Engine,
+    config: AppConfig,
+    *,
+    priced_in_answer: Mapping[str, object],
+    first_blocker: Mapping[str, object],
+) -> dict[str, object] | None:
+    blocker_code = str(first_blocker.get("code") or "").strip()
+    trust_gate = _mapping_value(priced_in_answer, "full_market_trust_gate")
+    priced_in_blocker = str(
+        priced_in_answer.get("first_blocker")
+        or trust_gate.get("first_blocker")
+        or ""
+    ).strip()
+    if blocker_code != "latest_market_bars" and priced_in_blocker != "market_bars":
+        return None
+    return _market_bar_residual_repair_approval_packet(
+        engine,
+        config,
+        priced_in_answer=priced_in_answer,
+        first_blocker="market_bars",
+        schema_version="shadow-readiness-approval-required-v1",
+        reason=(
+            "Clearing the current shadow-readiness blocker requires explicit "
+            "operator approval because it writes local active-universe rows."
+        ),
+    )
+
+
+def _market_bar_residual_repair_approval_packet(
+    engine: Engine,
+    config: AppConfig,
+    *,
+    priced_in_answer: Mapping[str, object],
+    first_blocker: str | None,
+    schema_version: str,
+    reason: str,
+) -> dict[str, object] | None:
     if first_blocker != "market_bars":
         return None
     trust_gate = _mapping_value(priced_in_answer, "full_market_trust_gate")
@@ -10778,12 +10836,9 @@ def _trial_minimum_product_approval_required_unblock(
         return None
     guard = _mapping_value(preview, "guard")
     return {
-        "schema_version": "trial-minimum-product-approval-required-v1",
+        "schema_version": schema_version,
         "area": "market_bars",
-        "reason": (
-            "Clearing the current minimum-product blocker requires explicit "
-            "operator approval because it writes local active-universe rows."
-        ),
+        "reason": reason,
         "status": preview.get("status"),
         "approval_required": True,
         "safe_default": "Do not execute without explicit operator approval.",
