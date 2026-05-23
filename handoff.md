@@ -1,6 +1,68 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 12:40:00 +08:00
+Last updated: 2026-05-23 10:50:00 +08:00
+
+## Latest Value Outcome Review-Horizon Slice
+
+Last updated: 2026-05-23 10:50:00 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains measurable, point-in-time validation for broad
+  priced-in scans. This slice advances Priority 4 / M5 outcome tracking.
+- The change is intentionally narrow: it does not alter scoring, action gates,
+  candidate state, value-ledger rows, provider access, broker access, order
+  controls, LLM behavior, or dashboard layout.
+- The useful definition for this slice is concrete: a stored/previewed outcome
+  row must tell a human or automation client whether the configured maximum
+  review horizon has actually elapsed, without inferring that from nullable
+  return fields.
+
+Fix in this slice:
+
+- `compute_value_outcome` now adds these payload fields:
+  - `expected_review_horizon_days`, currently `60`.
+  - `expected_review_horizon_expired`, `true` only when at least 60 future bars
+    are visible at the supplied point-in-time cutoff.
+- The existing `computed` versus `insufficient_data` status still follows the
+  same maximum-horizon rule.
+- README documents the payload contract for CLI/API clients.
+
+Validation observed in this slice:
+
+- Focused outcome tests failed before implementation because the new payload
+  fields were absent.
+- Focused outcome tests passed after the fix.
+- Broader value validation selection passed: 15 tests.
+- Ruff passed for touched value-outcome source/tests.
+- Compileall passed for `src` and touched value-outcome tests.
+- `git diff --check` passed.
+- Configured operator-DB read-only smoke against
+  `sqlite:///C:/Users/fpan1/MarketRadar/data/local/schwab-live.db` returned
+  `schema_version=value-outcomes-v1`, `count=0`, `external_calls_made=0`, and
+  `db_writes_made=0`.
+
+Validation commands:
+
+```powershell
+$env:PYTHONPATH='src'; C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\test_value_outcomes.py -q
+$env:PYTHONPATH='src'; C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\test_value_outcomes.py tests\integration\test_value_report.py tests\integration\test_value_ledger.py -q
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\validation\value_outcomes.py tests\integration\test_value_outcomes.py
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m compileall -q src tests\integration\test_value_outcomes.py
+git diff --check
+$env:PYTHONPATH='C:\Users\fpan1\MarketRadar\.worktrees\value-outcome-review-horizon\src'; $env:CATALYST_DATABASE_URL='sqlite:///C:/Users/fpan1/MarketRadar/data/local/schwab-live.db'; C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m catalyst_radar.cli value-outcome list --json
+```
+
+Safety:
+
+- The implementation makes 0 Polygon/Massive, SEC, Schwab, broker, OpenAI,
+  web, app, or provider calls.
+- Preview/list paths write 0 database rows.
+- `value-outcome update --execute` behavior is unchanged: it writes only the
+  deterministic value-outcome row when the operator explicitly supplies
+  `--execute`.
+- Source value-ledger entries, candidate artifacts, deterministic scores, and
+  policy outputs remain immutable under outcome updates.
 
 ## Latest Shadow Run Planned-Call Audit Slice
 

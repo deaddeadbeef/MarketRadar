@@ -154,7 +154,9 @@ def compute_value_outcome(
         else {}
     )
     resolved_invalidation = _resolved_invalidation_price(entry, invalidation_price)
-    status = "computed" if len(future) >= max(HORIZONS) else "insufficient_data"
+    expected_review_horizon_days = max(HORIZONS)
+    expected_review_horizon_expired = len(future) >= expected_review_horizon_days
+    status = "computed" if expected_review_horizon_expired else "insufficient_data"
     return ValueOutcome(
         id=value_outcome_id(
             value_ledger_entry_id=entry.id,
@@ -195,6 +197,8 @@ def compute_value_outcome(
         payload={
             "horizons": list(HORIZONS),
             "missing_horizons": [horizon for horizon in HORIZONS if len(future) < horizon],
+            "expected_review_horizon_days": expected_review_horizon_days,
+            "expected_review_horizon_expired": expected_review_horizon_expired,
             "spy_available": spy_entry is not None and bool(spy_future),
             "sector_available": sector_entry is not None and bool(sector_future),
             "no_future_leakage": True,
