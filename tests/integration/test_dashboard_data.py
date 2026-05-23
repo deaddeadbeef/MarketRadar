@@ -1415,6 +1415,9 @@ def test_investable_readiness_payload_stays_stricter_than_shadow_ready(
     assert "thirty_valid_full_shadow_days" in blocker_codes
     assert "baseline_comparisons" in blocker_codes
     assert "outcome_tracking" in blocker_codes
+    assert payload["first_blocker"] == "thirty_valid_full_shadow_days"
+    assert payload["first_gap_count"] == 0
+    assert payload["canonical_next_command"] is None
     assert payload["call_boundary"]["assert_external_calls_required"] == 0
     assert payload["limited_capital_pilot_status"] == "future_milestone"
 

@@ -1,6 +1,37 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 16:26:13 +08:00
+Last updated: 2026-05-23 16:36:30 +08:00
+
+## Latest Investable Gate First Blocker Slice
+
+Last updated: 2026-05-23 16:36:30 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains fail-closed battle-test readiness after measured
+  shadow, ledger, outcome, validation, and monthly value evidence exists.
+- A zero-call configured-DB check showed `assert-investable-readiness --json`
+  had the right canonical next action but no top-level `first_blocker`, forcing
+  clients to infer the first blocked gate from the full checks array.
+- The useful definition for this slice is concrete: release-gate scripts and
+  dashboards can identify the first battle-test blocker and command directly
+  without weakening any readiness criteria.
+
+Fix in this slice:
+
+- `investable-readiness-v1` now includes top-level `first_blocker`.
+- It also includes `first_gap_count` and `canonical_next_command`, matching the
+  zero-call blocker/action pattern used by shadow readiness.
+- README documents these fields for operator automation.
+
+Safety:
+
+- This is payload-only release-gate behavior over local status data.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls.
+- It writes 0 database rows and does not change scores, thresholds, policy
+  gates, action states, trade plans, LLM behavior, broker/order controls,
+  ledger rows, outcome rows, or readiness criteria.
 
 ## Latest Empty Outcome Coverage State Slice
 

@@ -833,6 +833,9 @@ broker order submission, and disabled real LLM modes. It makes 0 Polygon, SEC,
 Schwab, OpenAI, broker, order, or web calls and 0 database writes. Passing this
 gate still means decision support only; the highest allowed product state is
 `EligibleForManualBuyReview`, not autonomous trading or investment advice.
+The JSON payload exposes `first_blocker`, `first_gap_count`,
+`canonical_next_action`, and `canonical_next_command` so scripts can identify
+the first battle-test blocker without parsing the full check list.
 
 For the daily shadow-mode gate, use:
 
