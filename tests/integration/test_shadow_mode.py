@@ -284,6 +284,59 @@ def test_shadow_mode_preview_records_latest_market_bar_gap_without_radar_run(
     assert latest_bars["metric"]["missing_as_of_daily_bar_count"] == 1
 
 
+def test_shadow_mode_setup_blocker_does_not_reuse_selected_universe_scope() -> None:
+    available_at = datetime.fromisoformat(AVAILABLE_AT)
+
+    run = build_shadow_mode_run(
+        {
+            "shadow_readiness": {
+                "status": "setup_required",
+                "first_blocker": "market_bars",
+                "first_gap_count": 579,
+                "canonical_next_action": (
+                    "catalyst-radar market-bars residual-review "
+                    "--expected-as-of 2026-05-15"
+                ),
+                "blockers": [{"code": "latest_market_bars"}],
+                "call_boundary": {"planned_run_external_call_count_max": 0},
+                "snapshots": {"scan_scope": {"mode": "selected_universe"}},
+                "checks": [
+                    {
+                        "code": "latest_market_bars",
+                        "status": "blocked",
+                        "metric": {"missing_as_of_daily_bar_count": 579},
+                    },
+                    {"code": "validation_ready", "status": "blocked"},
+                ],
+            },
+            "discovery_snapshot": {
+                "yield": {
+                    "candidate_states": 3,
+                    "requested_securities": 2429,
+                    "scanned_securities": 2429,
+                },
+                "freshness": {
+                    "active_security_count": 12669,
+                    "missing_as_of_daily_bar_count": 579,
+                    "latest_daily_bar_date": "2026-05-15",
+                },
+            },
+            "latest_run": {"as_of": "2026-05-15"},
+            "candidate_rows": [{"state": ActionState.WARNING.value}],
+        },
+        run_date=available_at.date(),
+        as_of=None,
+        available_at=available_at,
+        db_writes_made=0,
+    )
+
+    assert run.status == "setup_required"
+    assert run.scan_scope == "blocked_full_market_gate"
+    assert _shadow_mode_next_action(run) == (
+        "catalyst-radar market-bars residual-review --expected-as-of 2026-05-15"
+    )
+
+
 def test_shadow_mode_classification_distinguishes_ready_partial_and_blocked() -> None:
     assert (
         classify_shadow_run_status(
