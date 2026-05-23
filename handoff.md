@@ -1,6 +1,51 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 19:30:57 +08:00
+Last updated: 2026-05-23 19:48:44 +08:00
+
+## Latest Residual Review Guarded Command Slice
+
+Last updated: 2026-05-23 19:48:44 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains the full-market priced-in scan and measurable shadow
+  operation, not UI copy.
+- Current M1/P0 blocker is still `market_bars`; clearing it requires explicit
+  operator approval for a local DB write, so this slice does not execute
+  repair.
+- The useful definition for this slice is concrete: `market-bars
+  residual-review` must expose the exact zero-write preview command and the
+  exact guarded execute command for local residual repair, including expected
+  counts, so CLI/API/TUI clients do not infer a dangerous command.
+
+Fix in this slice:
+
+- The `active_universe_repair` decision option in residual-review now includes
+  `preview_command`, `execute_command`, API preview/execute request bodies,
+  expected missing/eligible counts, `preview_would_clear_market_bars`, and
+  `db_writes_required_to_execute`.
+- Human CLI residual-review output now prints the active-universe repair
+  preview/execute commands and count guards.
+- README documents the residual-review guarded command contract.
+
+Current local DB smoke:
+
+- `market-bars residual-review --expected-as-of 2026-05-15 --json` returned
+  `missing=579`, `expected_eligible=579`, `preview_would_clear_market_bars=true`,
+  `external_calls_made=0`, and `db_writes_made=0`.
+- Generated execute command:
+  `catalyst-radar market-bars residual-repair --expected-as-of 2026-05-15 --expect-missing-count 579 --expect-eligible-count 579 --execute --json`.
+
+Safety:
+
+- This slice is preview/contract behavior only.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls and writes 0 database rows.
+- It does not execute residual repair, fill market bars, change scan scope,
+  alter scoring, alter thresholds, mutate candidate state, mutate value
+  ledger/outcomes/validation rows, submit orders, or enable real alerts/LLMs.
+- The live operator DB residual repair remains blocked until the operator
+  explicitly approves the guarded execute command.
 
 ## Latest Safe User-Trial Boundary Slice
 

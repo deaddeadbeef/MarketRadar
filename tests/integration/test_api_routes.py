@@ -2535,6 +2535,36 @@ def test_get_radar_market_bars_residual_review_flags_zero_liquidity_gap(
     assert payload["residual_evidence"]["zero_market_cap_count"] == 1
     assert payload["residual_evidence"]["zero_avg_dollar_volume_20d_count"] == 1
     assert payload["residual_evidence"]["missing_without_local_history_count"] == 1
+    active_repair = next(
+        option
+        for option in payload["decision_options"]
+        if option["kind"] == "active_universe_repair"
+    )
+    assert active_repair["preview_command"] == (
+        "catalyst-radar market-bars residual-repair "
+        "--expected-as-of 2026-05-08 --json"
+    )
+    assert active_repair["execute_command"] == (
+        "catalyst-radar market-bars residual-repair "
+        "--expected-as-of 2026-05-08 --expect-missing-count 1 "
+        "--expect-eligible-count 1 --execute --json"
+    )
+    assert active_repair["api"] == "POST /api/radar/market-bars/residual-repair"
+    assert active_repair["api_preview_request_body"] == {
+        "expected_as_of": "2026-05-08",
+        "stocks_only": False,
+        "execute": False,
+    }
+    assert active_repair["api_execute_request_body"] == {
+        "expected_as_of": "2026-05-08",
+        "stocks_only": False,
+        "execute": True,
+        "expected_missing_count": 1,
+        "expected_eligible_count": 1,
+    }
+    assert active_repair["preview_would_clear_market_bars"] is True
+    assert active_repair["db_writes_required"] == 0
+    assert active_repair["db_writes_required_to_execute"] == 1
     assert payload["external_calls_made"] == 0
     assert payload["db_writes_made"] == 0
 
