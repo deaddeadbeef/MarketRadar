@@ -1,6 +1,59 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 14:37:31 +08:00
+Last updated: 2026-05-23 14:57:52 +08:00
+
+## Latest Shadow Readiness First Blocker Slice
+
+Last updated: 2026-05-23 14:57:52 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains P0/P2 blocker agreement for trusted broad-market
+  priced-in scans and shadow-mode readiness.
+- A zero-call configured-DB check showed `assert-shadow-ready` and
+  `GET /api/radar/shadow/readiness` already knew the first blocker row was
+  `latest_market_bars` and already used the residual-review command, but the
+  payload had no top-level canonical blocker/command fields.
+- The useful definition for this slice is concrete: CLI/API/TUI clients should
+  be able to read the current first unblock step from top-level shadow-readiness
+  fields without reverse-engineering nested check rows.
+
+Fix in this slice:
+
+- `shadow_readiness_payload()` now promotes the first blocker to top-level
+  `first_blocker`, mapping `latest_market_bars` to canonical `market_bars` and
+  `active_universe` to canonical `universe`.
+- The payload now includes top-level `first_gap_count`.
+- The payload now includes top-level `canonical_next_command` when the canonical
+  next action is a `catalyst-radar ...` command.
+- README documents the shadow-readiness top-level blocker/action contract.
+
+Current zero-call configured-DB evidence before PR:
+
+```text
+assert shadow payload: setup_required market_bars 579 catalyst-radar market-bars residual-review --expected-as-of 2026-05-15 0 0
+```
+
+Validation observed so far:
+
+```powershell
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\test_dashboard_data.py::test_shadow_readiness_payload_fails_closed_without_universe tests\integration\test_dashboard_data.py::test_shadow_readiness_payload_reuses_market_bar_blocker_detail tests\integration\test_dashboard_data.py::test_shadow_readiness_payload_accepts_safe_precomputed_shadow_contract tests\integration\test_shadow_readiness_cli.py::test_assert_shadow_ready_cli_fails_closed_without_calls_or_writes tests\integration\test_api_routes.py::test_get_radar_shadow_readiness_returns_zero_call_gate -q
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\test_shadow_mode.py -q
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py tests\integration\test_dashboard_data.py tests\integration\test_shadow_readiness_cli.py tests\integration\test_api_routes.py
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m compileall -q src tests\integration\test_dashboard_data.py tests\integration\test_shadow_readiness_cli.py tests\integration\test_api_routes.py
+git diff --check
+```
+
+All passed before PR creation.
+
+Safety:
+
+- This is payload-only and makes 0 Polygon/Massive, SEC, Schwab, broker, order,
+  OpenAI, web, app, or provider calls.
+- It writes 0 database rows.
+- It does not execute residual repair, fill market bars, change scan scope,
+  mutate scoring, candidate states, value-ledger rows, outcomes, alert delivery,
+  LLM behavior, or broker/order paths.
 
 ## Latest Preflight Market-Bar First Blocker Slice
 

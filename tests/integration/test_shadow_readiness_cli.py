@@ -24,6 +24,9 @@ def test_assert_shadow_ready_cli_fails_closed_without_calls_or_writes(
     assert payload["db_writes_made"] == 0
     assert payload["call_boundary"]["assert_external_calls_required"] == 0
     assert payload["call_boundary"]["assert_db_writes_required"] == 0
+    assert payload["first_blocker"] == "universe"
+    assert payload["first_gap_count"] == 0
+    assert payload["canonical_next_command"] is None
     check_codes = {row["code"] for row in payload["checks"]}
     assert check_codes >= {
         "candidate_state_pipeline",

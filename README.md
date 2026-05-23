@@ -843,7 +843,10 @@ validation readiness. The
 command itself makes 0 provider calls and 0 database writes; it prints those
 counters plus the planned run's maximum external-call count. When the first
 blocker exposes a zero-call review command, the readiness next action uses that
-command instead of only the prose explanation. A selected-universe or partial
+command instead of only the prose explanation. The payload also promotes the
+current blocker at top level as `first_blocker`, `first_gap_count`, and
+`canonical_next_command`, so CLI/API/TUI clients do not need to infer the first
+unblock step from nested rows. A selected-universe or partial
 scan is reported as `partial_only` only after the active universe and market-bar
 setup checks are otherwise clear; empty universe or missing market bars still
 return `setup_required`. Config-only safety blockers such as enabled broker

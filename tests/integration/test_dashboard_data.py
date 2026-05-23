@@ -1147,7 +1147,10 @@ def test_shadow_readiness_payload_fails_closed_without_universe(tmp_path: Path) 
     assert "active_universe" in blocker_codes
     assert "latest_market_bars" in blocker_codes
     assert "validation_ready" in blocker_codes
+    assert payload["first_blocker"] == "universe"
+    assert payload["first_gap_count"] == 0
     assert payload["canonical_next_action"]
+    assert payload["canonical_next_command"] is None
 
 
 def test_shadow_readiness_payload_reports_latest_market_bar_gap_without_run(
@@ -1252,7 +1255,10 @@ def test_shadow_readiness_payload_reuses_market_bar_blocker_detail(
     assert latest_bars["next_action"] == (
         "catalyst-radar market-bars residual-review --expected-as-of 2026-05-10"
     )
+    assert payload["first_blocker"] == "market_bars"
+    assert payload["first_gap_count"] == 1
     assert payload["canonical_next_action"] == latest_bars["next_action"]
+    assert payload["canonical_next_command"] == latest_bars["next_action"]
     assert latest_bars["metric"]["missing_security_type_counts"] == {"UNIT": 1}
     assert latest_bars["metric"]["missing_universe_diagnostic"][
         "zero_market_cap_count"
@@ -1321,6 +1327,9 @@ def test_shadow_readiness_payload_accepts_safe_precomputed_shadow_contract(
 
     assert payload["status"] == "ready"
     assert payload["ready"] is True
+    assert payload["first_blocker"] is None
+    assert payload["first_gap_count"] == 0
+    assert payload["canonical_next_command"] is None
     assert payload["blockers"] == []
     assert payload["call_boundary"]["external_calls_made"] == 0
     assert payload["call_boundary"]["db_writes_made"] == 0
