@@ -625,6 +625,10 @@ active, use `market-bars residual-repair` as a guarded local-universe repair.
 It previews by default with 0 provider calls and 0 DB writes. Execution requires
 `--execute` plus the exact missing and eligible counts from the reviewed preview;
 if those counts changed, it writes nothing and returns `status=stale_approval`.
+The preview also includes `post_repair_projection`, a zero-call/zero-write view
+of the projected active universe, projected missing-bar count, and next blocker
+to inspect after the guarded local repair. This lets operators review whether
+the repair would clear `market_bars` before approving any local DB write.
 
 ```powershell
 catalyst-radar market-bars residual-repair --expected-as-of 2026-05-15 --json
