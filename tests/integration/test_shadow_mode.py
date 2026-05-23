@@ -48,6 +48,7 @@ def test_shadow_mode_cli_preview_execute_and_latest(
     assert preview_exit == 0
     preview = json.loads(capsys.readouterr().out)
     assert preview["mode"] == "preview"
+    assert preview["status"] == "setup_required"
     assert preview["external_calls_made"] == 0
     assert preview["db_writes_made"] == 0
     assert preview["run"]["status"] == "setup_required"
@@ -69,6 +70,7 @@ def test_shadow_mode_cli_preview_execute_and_latest(
     assert execute_exit == 0
     executed = json.loads(capsys.readouterr().out)
     assert executed["mode"] == "execute"
+    assert executed["status"] == "setup_required"
     assert executed["db_writes_made"] == 1
     assert executed["run"]["db_writes_made"] == 1
     assert executed["run"]["status"] == "setup_required"
@@ -107,6 +109,7 @@ def test_shadow_mode_api_preview_and_latest(tmp_path, monkeypatch) -> None:
     assert preview_response.status_code == 200
     preview = preview_response.json()
     assert preview["mode"] == "preview"
+    assert preview["status"] == "setup_required"
     assert preview["external_calls_made"] == 0
     assert preview["db_writes_made"] == 0
     with engine.connect() as conn:
@@ -119,6 +122,7 @@ def test_shadow_mode_api_preview_and_latest(tmp_path, monkeypatch) -> None:
 
     assert execute_response.status_code == 200
     executed = execute_response.json()
+    assert executed["status"] == "setup_required"
     assert executed["db_writes_made"] == 1
     latest_response = client.get("/api/radar/shadow/runs/latest")
     assert latest_response.status_code == 200

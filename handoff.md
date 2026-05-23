@@ -1,6 +1,34 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 13:07:32 +08:00
+Last updated: 2026-05-23 13:24:08 +08:00
+
+## Latest Shadow Run Top-Level Status Slice
+
+Last updated: 2026-05-23 13:24:08 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains repeatable shadow-mode operation and measurement.
+- Human shadow-mode output already printed the run classification, but JSON
+  clients had to inspect nested `run.status`.
+- The useful definition for this slice is concrete: one shadow-mode run JSON
+  response should say at top level whether the run is `valid_full_scan`,
+  `valid_selected_universe_scan`, `partial_scan`, `blocked_scan`, or
+  `setup_required`.
+
+Fix in this slice:
+
+- `shadow-mode run --preview --json` and execute/API payloads now include
+  top-level `status` matching `run.status`.
+- README documents the top-level status contract.
+
+Safety:
+
+- This change is payload-only. It makes 0 provider, broker, order, OpenAI, SEC,
+  Polygon/Massive, Schwab, web, or app calls.
+- It does not change shadow-mode persistence semantics, planned/made call
+  counters, DB write counters, scoring, candidate states, value/outcome rows,
+  alerts, or broker/order controls.
 
 ## Latest Residual Repair Projection Slice
 
