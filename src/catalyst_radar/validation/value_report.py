@@ -403,6 +403,11 @@ def _value_outcome_coverage_summary(
         "ledger_entry_count": int(coverage.get("ledger_entry_count") or 0),
         "linked_outcome_count": int(coverage.get("linked_outcome_count") or 0),
         "missing_outcome_count": int(coverage.get("missing_outcome_count") or 0),
+        "first_missing_value_ledger_entry_id": coverage.get(
+            "first_missing_value_ledger_entry_id"
+        ),
+        "first_missing_ticker": coverage.get("first_missing_ticker"),
+        "canonical_next_command": coverage.get("canonical_next_command"),
         "computed_outcome_count": int(coverage.get("computed_outcome_count") or 0),
         "insufficient_data_count": int(coverage.get("insufficient_data_count") or 0),
         "coverage_pct": coverage.get("coverage_pct"),

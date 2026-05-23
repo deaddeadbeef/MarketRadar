@@ -1,6 +1,43 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 17:09:24 +08:00
+Last updated: 2026-05-23 17:20:55 +08:00
+
+## Latest Value Outcome Coverage First Command Slice
+
+Last updated: 2026-05-23 17:20:55 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains monthly value proof with explicit evidence gaps before
+  MarketRadar can claim useful decision-support value.
+- A zero-call coverage check showed missing value-outcome preview commands lived
+  only inside `value-outcome coverage` row details. Scripts, API clients, and
+  the monthly report needed to parse the rows to find the first missing outcome.
+- The useful definition for this slice is concrete: outcome coverage and monthly
+  value reporting can surface the first missing outcome row and safe preview
+  update command directly.
+
+Fix in this slice:
+
+- `value-outcome-coverage-v1` now includes
+  `first_missing_value_ledger_entry_id`, `first_missing_ticker`, and
+  `canonical_next_command`.
+- `monthly-value-outcome-coverage-v1` preserves the same fields inside
+  `value-report --json`.
+- When value outcomes are the first monthly evidence blocker, the top-level
+  monthly report now has a directly usable preview-only `value-outcome update`
+  command.
+- README documents the new outcome coverage fields.
+
+Safety:
+
+- This is read-only outcome coverage/report behavior over local ledger and
+  outcome rows.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls.
+- It writes 0 database rows and does not change scores, thresholds, policy
+  gates, action states, trade plans, LLM behavior, broker/order controls,
+  candidate rows, ledger rows, outcome rows, or readiness criteria.
 
 ## Latest Monthly Value First Evidence Gap Slice
 
