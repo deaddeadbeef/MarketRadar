@@ -1,6 +1,44 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 12:20:00 +08:00
+Last updated: 2026-05-23 12:30:00 +08:00
+
+## Latest Dashboard Ledger Coverage Slice
+
+Last updated: 2026-05-23 12:30:00 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains monthly value proof for human eyes.
+- The monthly value report JSON exposed candidate ledger coverage, but the TUI
+  Costs page still hid that missing-feedback count.
+- The useful definition for this slice is concrete: when checking monthly value
+  evidence in the dashboard, the operator should see whether surfaced
+  Warning-or-higher candidates are still missing value-ledger rows.
+
+Fix in this slice:
+
+- The Costs page now renders candidate ledger coverage as logged/surfaced plus
+  coverage percent.
+- The Costs page also renders missing candidate-ledger count.
+- README documents that the Costs page surfaces the same candidate coverage
+  signal as the monthly value report.
+
+Validation observed in this slice:
+
+- Baseline focused Costs page rendering test passed before edits.
+- Focused rendering regression passed after implementation.
+- Ruff passed for touched TUI and value-report test.
+- Compileall passed for `src` and the touched value-report test.
+- `git diff --check` passed.
+
+Safety:
+
+- This change is display-only and makes 0 Polygon/Massive, SEC, Schwab, broker,
+  OpenAI, web, app, or provider calls.
+- This change writes 0 database rows.
+- It does not mutate candidate states, deterministic scores, policy output,
+  value-ledger rows, value outcomes, validation results, alert delivery, or
+  broker/order paths.
 
 ## Latest Monthly Value Report Coverage Slice
 

@@ -933,7 +933,8 @@ Warning-or-higher candidate states surfaced in the month versus candidate-state
 ledger rows recorded for them. If coverage has gaps, the report includes the
 same conservative non-executing `value-ledger record` commands shown by
 `value-ledger coverage`, so missing human feedback is visible before claiming
-monthly value evidence.
+monthly value evidence. The terminal dashboard Costs page surfaces the same
+candidate ledger coverage and missing-ledger count for human review.
 
 To compare MarketRadar against simple deterministic baselines before tuning
 scores or adding more intelligence, run a point-in-time validation replay and
