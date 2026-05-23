@@ -3658,6 +3658,11 @@ def _priced_in_market_bar_recommended_unblock_action(blocker_detail):
     covered = int(
         _finite_float(saved_file_projection.get("missing_covered_by_fixture_count"))
     )
+    missing = int(_finite_float(blocker_detail.get("missing_as_of_bar")))
+    residual_review_needed = _priced_in_residual_universe_review_needed(
+        blocker_detail,
+        missing,
+    )
     residual_saved_file_reason = (
         "The saved grouped-daily file covers no remaining missing active tickers; "
         "generate and fill the manual CSV or review the residual universe-quality "
@@ -3671,15 +3676,27 @@ def _priced_in_market_bar_recommended_unblock_action(blocker_detail):
         )
         else None
     )
-    if residual_saved_file_reason and _priced_in_residual_universe_review_needed(
-        blocker_detail,
-        int(_finite_float(blocker_detail.get("missing_as_of_bar"))),
-    ):
+    residual_missing_file_reason = (
+        "The remaining missing active tickers look like a zero-liquidity "
+        "universe-quality gap. Review residual rows before filling bars, "
+        "capturing provider data, or changing scan scope."
+        if (
+            residual_review_needed
+            and (
+                saved_file_status != "available"
+                or not saved_file_projection
+                or covered <= 0
+            )
+        )
+        else None
+    )
+    if residual_review_needed and (residual_saved_file_reason or residual_missing_file_reason):
         return _priced_in_market_bar_recommended_unblock_payload(
             kind="residual_universe_review",
             label="Review residual universe",
             status="blocked",
-            reason=(
+            reason=residual_missing_file_reason
+            or (
                 "The saved grouped-daily file covers no remaining missing active "
                 "tickers, and the residual set looks like a zero-liquidity "
                 "universe-quality gap. Review residual rows before filling bars "

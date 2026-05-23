@@ -13,6 +13,7 @@ from catalyst_radar.core.models import ActionState
 from catalyst_radar.storage.db import create_schema, engine_from_url
 from catalyst_radar.storage.schema import daily_bars, securities, shadow_mode_runs
 from catalyst_radar.validation.shadow_mode import (
+    _shadow_mode_next_action,
     build_shadow_mode_run,
     classify_shadow_run_status,
 )
@@ -279,6 +280,7 @@ def test_shadow_mode_run_persists_planned_provider_call_boundary() -> None:
         {
             "shadow_readiness": {
                 "status": "ready",
+                "canonical_next_action": "do not use for valid runs",
                 "blockers": [],
                 "call_boundary": {
                     "planned_run_external_call_count_max": 3,
@@ -321,6 +323,57 @@ def test_shadow_mode_run_persists_planned_provider_call_boundary() -> None:
     assert run.provider_calls_planned == 3
     assert run.provider_calls_made == 0
     assert run.payload["call_plan_external_call_count_max"] == 3
+    assert run.status == "valid_full_scan"
+    assert _shadow_mode_next_action(run) == (
+        "Record value-ledger entries for surfaced Warning or manual-review candidates."
+    )
+
+
+def test_shadow_mode_next_action_uses_shadow_readiness_canonical_action() -> None:
+    available_at = datetime.fromisoformat(AVAILABLE_AT)
+    run = build_shadow_mode_run(
+        {
+            "shadow_readiness": {
+                "status": "setup_required",
+                "canonical_next_action": (
+                    "catalyst-radar market-bars residual-review "
+                    "--expected-as-of 2026-05-15"
+                ),
+                "blockers": [{"code": "latest_market_bars"}],
+                "call_boundary": {"planned_run_external_call_count_max": 0},
+                "snapshots": {"scan_scope": {"mode": "unknown"}},
+                "checks": [
+                    {
+                        "code": "latest_market_bars",
+                        "metric": {"missing_as_of_daily_bar_count": 1},
+                    },
+                    {"code": "validation_ready", "status": "blocked"},
+                ],
+            },
+            "discovery_snapshot": {
+                "yield": {
+                    "candidate_states": 0,
+                    "requested_securities": 2,
+                    "scanned_securities": 0,
+                },
+                "freshness": {
+                    "active_security_count": 2,
+                    "missing_as_of_daily_bar_count": 1,
+                    "latest_daily_bar_date": "2026-05-15",
+                },
+            },
+            "latest_run": {"as_of": "2026-05-15"},
+            "candidate_rows": [],
+        },
+        run_date=available_at.date(),
+        as_of=None,
+        available_at=available_at,
+        db_writes_made=0,
+    )
+
+    assert _shadow_mode_next_action(run) == (
+        "catalyst-radar market-bars residual-review --expected-as-of 2026-05-15"
+    )
 
 
 def test_shadow_mode_requires_timezone_aware_cutoff(tmp_path, monkeypatch) -> None:

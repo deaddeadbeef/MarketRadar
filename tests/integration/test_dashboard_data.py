@@ -3887,6 +3887,150 @@ def test_priced_in_answer_routes_zero_liquidity_residual_gap_to_review(
     assert payload["external_calls_made"] == 0
 
 
+def test_priced_in_answer_routes_missing_saved_file_zero_liquidity_residual_to_review(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    engine = _engine(tmp_path)
+    as_of = datetime(2026, 5, 8, 21, tzinfo=UTC)
+    market_repo = MarketRepository(engine)
+    market_repo.upsert_securities(
+        [
+            Security(
+                ticker="AAPL",
+                name="Apple Inc.",
+                exchange="NASDAQ",
+                sector="Technology",
+                industry="Consumer Electronics",
+                market_cap=1_000_000_000,
+                avg_dollar_volume_20d=20_000_000,
+                has_options=True,
+                is_active=True,
+                updated_at=as_of,
+                metadata={"type": "CS"},
+            ),
+            Security(
+                ticker="MSFT",
+                name="Microsoft Corp.",
+                exchange="NASDAQ",
+                sector="Technology",
+                industry="Software",
+                market_cap=1_000_000_000,
+                avg_dollar_volume_20d=20_000_000,
+                has_options=True,
+                is_active=True,
+                updated_at=as_of,
+                metadata={"type": "CS"},
+            ),
+            Security(
+                ticker="AACO",
+                name="Alpha Acquisition Corp.",
+                exchange="NASDAQ",
+                sector="Unknown",
+                industry="Unknown",
+                market_cap=0,
+                avg_dollar_volume_20d=0,
+                has_options=False,
+                is_active=True,
+                updated_at=as_of,
+                metadata={"type": "CS"},
+            ),
+        ]
+    )
+    market_repo.upsert_daily_bars(
+        [
+            DailyBar(
+                ticker=ticker,
+                date=as_of.date(),
+                open=100,
+                high=101,
+                low=99,
+                close=100,
+                volume=1_000_000,
+                vwap=100,
+                adjusted=True,
+                provider="manual_csv",
+                source_ts=as_of,
+                available_at=as_of,
+            )
+            for ticker in ("AAPL", "MSFT")
+        ]
+    )
+
+    payload = priced_in_answer_payload(
+        engine,
+        AppConfig.from_env({"CATALYST_POLYGON_API_KEY": "fixture-key"}),
+        queue={
+            "status": "ready",
+            "total_count": 0,
+            "count": 0,
+            "returned_count": 0,
+            "offset": 0,
+            "has_more": False,
+            "filters": {"status": "all", "limit": 5, "offset": 0},
+            "status_counts": {},
+            "usefulness_counts": {},
+            "decision_gap_counts": {
+                "schema_version": "priced-in-decision-gap-counts-v1",
+                "scope": "actionable_mismatch_rows",
+                "row_count": 0,
+                "counts": {},
+                "sample_tickers": {},
+            },
+            "rows": [],
+            "latest_run": {"as_of": as_of.date().isoformat()},
+            "scan": {
+                "freshness": {
+                    "active_security_count": 3,
+                    "active_security_with_as_of_bar_count": 2,
+                    "missing_as_of_daily_bar_count": 1,
+                    "missing_as_of_daily_bar_tickers": ["AACO"],
+                }
+            },
+            "source_coverage": {
+                "summary": "market_bars 2/3",
+                "weak_sources": ["market_bars"],
+                "sources": {
+                    "market_bars": {
+                        "available": 2,
+                        "stale": 0,
+                        "missing": 1,
+                        "row_count": 3,
+                        "coverage_pct": 66.7,
+                    }
+                },
+                "actions": [],
+            },
+        },
+        preflight={"evidence_plan": {"steps": []}, "rows": []},
+    )
+
+    command = "catalyst-radar market-bars residual-review --expected-as-of 2026-05-08"
+    detail = payload["full_market_trust_gate"]["blocker_detail"]
+    assert detail["provider_saved_file_status"] == "missing"
+    assert detail["missing_universe"]["zero_market_cap_count"] == 1
+    assert detail["missing_universe"]["zero_avg_dollar_volume_20d_count"] == 1
+    assert detail["recommended_action"]["kind"] == "residual_universe_review"
+    assert detail["recommended_action"]["command"] == command
+    assert payload["operator_next_step"]["action_kind"] == "residual_universe_review"
+    assert payload["operator_next_step"]["command"] == command
+
+    shadow = shadow_readiness_payload(
+        engine,
+        AppConfig.from_env({"CATALYST_SCAN_BATCH_SIZE": "3"}),
+        priced_in_answer=payload,
+    )
+    latest_bars = next(
+        row for row in shadow["checks"] if row["code"] == "latest_market_bars"
+    )
+    assert latest_bars["next_action"] == command
+    assert shadow["canonical_next_action"] == command
+    assert payload["external_calls_made"] == 0
+    assert shadow["external_calls_made"] == 0
+    assert shadow["db_writes_made"] == 0
+
+
 def test_priced_in_answer_uses_current_db_market_bar_counts_with_stale_template(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

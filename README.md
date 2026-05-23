@@ -593,10 +593,10 @@ zero-call unblock checklist,
 stock-like gap, non-stock remainder, and `after_market_bars_clear` preview, so
 the dashboard explains both the current blocker and the next source to inspect
 after the blocker clears.
-If a saved grouped-daily file exists but covers none of the remaining missing
-rows, and the residual set looks like zero-liquidity universe-quality data,
-`recommended_action.kind` becomes `residual_universe_review`. Use the zero-call
-review command before filling bars or changing scan scope:
+If the remaining missing rows look like zero-liquidity universe-quality data,
+`recommended_action.kind` becomes `residual_universe_review` even when no saved
+provider file exists yet. Use the zero-call review command before provider
+capture, manual bar filling, or changing scan scope:
 
 ```powershell
 catalyst-radar market-bars residual-review --expected-as-of 2026-05-15 --json
@@ -853,7 +853,10 @@ catalyst-radar shadow-mode latest --json
 one `shadow_mode_runs` audit row that classifies the current local scan as
 `valid_full_scan`, `valid_selected_universe_scan`, `partial_scan`,
 `blocked_scan`, or `setup_required`. This is a shadow evidence record, not an
-order, alert-delivery, or live-provider command.
+order, alert-delivery, or live-provider command. When a shadow run is not valid
+yet, the run response's top-level `next_action` uses the same canonical next
+action as `assert-shadow-ready`, so the audit response does not hide the first
+unblock command behind a generic setup message.
 
 To track whether Market Radar is paying for itself, record local value evidence
 with the value ledger. The default `add` command is a preview and writes nothing;
