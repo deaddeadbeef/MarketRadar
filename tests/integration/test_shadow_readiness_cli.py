@@ -26,11 +26,13 @@ def test_assert_shadow_ready_cli_fails_closed_without_calls_or_writes(
     assert payload["call_boundary"]["assert_db_writes_required"] == 0
     check_codes = {row["code"] for row in payload["checks"]}
     assert check_codes >= {
+        "candidate_state_pipeline",
         "value_ledger_table",
         "outcome_tracking_table",
         "llm_real_mode_disabled",
     }
     checks = {row["code"]: row for row in payload["checks"]}
+    assert checks["candidate_state_pipeline"]["status"] == "blocked"
     assert checks["value_ledger_table"]["status"] == "ready"
     assert checks["outcome_tracking_table"]["status"] == "ready"
     assert checks["llm_real_mode_disabled"]["status"] == "ready"
@@ -41,6 +43,7 @@ def test_assert_shadow_ready_cli_fails_closed_without_calls_or_writes(
     assert {row["code"] for row in payload["blockers"]} >= {
         "active_universe",
         "latest_market_bars",
+        "candidate_state_pipeline",
         "validation_ready",
     }
 
