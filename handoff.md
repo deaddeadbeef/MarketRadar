@@ -1,6 +1,46 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 23:12:00 +08:00
+Last updated: 2026-05-23 23:27:00 +08:00
+
+## Latest Local Text Human Verdict Slice
+
+Last updated: 2026-05-23 23:27:00 +08:00
+
+Goal alignment / drift check:
+
+- The active goal has moved past monthly value reporting and score calibration
+  into measured local text intelligence.
+- Priority 8 says local NLP should be upgraded only after measurement. The JSON
+  validation report already measured local text signals, but the human
+  `validation-report` output did not expose the verdict, so an operator had to
+  parse JSON to know whether an NLP upgrade was justified.
+
+Useful definition:
+
+- Human `validation-report` output must show the report-only local-text
+  measurement status, measured feature count, upgrade recommendation, and
+  whether models or thresholds changed.
+- The output must not enable new NLP models, change scoring weights, change
+  thresholds, alter policy gates, or run LLMs.
+
+Fix in this slice:
+
+- Human `validation-report` output now prints
+  `local_text_status`, `local_text_measured_features`,
+  `local_text_upgrade`, `local_text_models_changed`, and
+  `local_text_thresholds_changed`.
+- The integration test now asserts those fields appear in human output.
+- README documents the compact local-text verdict contract.
+
+Safety:
+
+- This is read-only validation report presentation over existing local
+  validation rows.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls and writes 0 database rows.
+- It does not change local text models, sentiment logic, embeddings, ontology,
+  scoring weights, policy thresholds, trade plans, action gates, value rows,
+  outcomes, alerts, broker controls, or LLM behavior.
 
 ## Latest Minimum Useful Product Stop Gate Slice
 
