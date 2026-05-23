@@ -1,6 +1,55 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-24 02:29:41 +08:00
+Last updated: 2026-05-24 02:41:53 +08:00
+
+## Latest TUI Value Coverage Next Commands Slice
+
+Last updated: 2026-05-24 02:41:53 +08:00
+
+Goal alignment / drift check:
+
+- The mission brief requires the TUI to be a replacement UI for the same
+  measurable value-ledger and forward-outcome workflows.
+- CLI/JSON coverage commands now expose safe canonical next commands, but the
+  TUI `ledger coverage` and `outcome coverage` responses still only showed
+  status and next-action prose.
+- That meant a TUI-only operator could see that monthly value proof was blocked
+  but could not copy or evaluate the exact safe preview command from the TUI.
+
+Useful definition:
+
+- TUI coverage commands should expose the same safe next command as CLI/JSON
+  whenever the payload includes `canonical_next_command`.
+- Ledger coverage should point to a preview-only `value-ledger record`.
+- Outcome coverage should point to either `value-ledger coverage` when no
+  ledger rows exist, or a preview-only `value-outcome update` when outcomes are
+  missing for existing ledger rows.
+
+Fix in this slice:
+
+- `ledger coverage` now appends `next_command=<canonical_next_command>` when
+  value-ledger coverage has a safe next command.
+- `outcome coverage` now appends the same for outcome coverage.
+- Regression coverage verifies both TUI messages preserve preview-only commands
+  and zero-call/zero-write behavior.
+- README documents the TUI parity.
+
+Safety:
+
+- This is read-only TUI command output parity only.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls and writes 0 database rows.
+- It does not execute value-ledger writes, outcome writes, residual repair,
+  imports, source batches, LLMs, alert delivery, or orders.
+
+Live zero-call smoke using the root operator config and this branch's code:
+
+- `ledger coverage` through the TUI command executor returns `status=gaps`,
+  `external_calls=0`, `db_writes=0`, and a preview-only
+  `next_command=catalyst-radar value-ledger record ... --preview --json`.
+- `outcome coverage` returns `status=no_ledger_entries`, `external_calls=0`,
+  `db_writes=0`, and
+  `next_command=catalyst-radar value-ledger coverage ... --json`.
 
 ## Latest Value Ledger Coverage CLI Command Slice
 

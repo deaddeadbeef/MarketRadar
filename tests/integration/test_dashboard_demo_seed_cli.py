@@ -696,6 +696,8 @@ def test_dashboard_tui_value_ledger_and_outcome_commands_are_preview_first(
     assert coverage.page == "costs"
     assert "Value-ledger coverage: status=gaps" in coverage.message
     assert "external_calls=0 db_writes=0" in coverage.message
+    assert "next_command=catalyst-radar value-ledger record" in coverage.message
+    assert "--preview --json" in coverage.message
 
     preview = _apply_command(
         "ledger record 1 useful research accepted 12 0.5 preview-note",
@@ -736,6 +738,10 @@ def test_dashboard_tui_value_ledger_and_outcome_commands_are_preview_first(
     assert "Value-outcome coverage: status=gaps" in outcome_coverage.message
     assert "ledger=1 linked=0 missing=1" in outcome_coverage.message
     assert "external_calls=0 db_writes=0" in outcome_coverage.message
+    assert "next_command=catalyst-radar value-outcome update" in (
+        outcome_coverage.message
+    )
+    assert "--preview --json" in outcome_coverage.message
 
     outcome_preview = _apply_command(
         f"outcome update {entries[0].id} filter",

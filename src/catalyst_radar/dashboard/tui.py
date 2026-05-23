@@ -5040,6 +5040,8 @@ def _update_value_outcome_from_tui(
 
 
 def _value_ledger_coverage_message(payload: Mapping[str, object]) -> str:
+    next_command = str(payload.get("canonical_next_command") or "").strip()
+    command_text = f" next_command={next_command}" if next_command else ""
     return (
         "Value-ledger coverage: "
         f"status={payload.get('status')} "
@@ -5050,6 +5052,7 @@ def _value_ledger_coverage_message(payload: Mapping[str, object]) -> str:
         f"external_calls={payload.get('external_calls_made')} "
         f"db_writes={payload.get('db_writes_made')}. "
         f"{payload.get('next_action')}"
+        f"{command_text}"
     )
 
 
@@ -5094,6 +5097,8 @@ def _value_ledger_entry_message(payload: Mapping[str, object]) -> str:
 
 
 def _value_outcome_coverage_message(payload: Mapping[str, object]) -> str:
+    next_command = str(payload.get("canonical_next_command") or "").strip()
+    command_text = f" next_command={next_command}" if next_command else ""
     return (
         "Value-outcome coverage: "
         f"status={payload.get('status')} "
@@ -5104,6 +5109,7 @@ def _value_outcome_coverage_message(payload: Mapping[str, object]) -> str:
         f"external_calls={payload.get('external_calls_made')} "
         f"db_writes={payload.get('db_writes_made')}. "
         f"{payload.get('next_action')}"
+        f"{command_text}"
     )
 
 
