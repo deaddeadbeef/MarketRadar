@@ -567,6 +567,79 @@ def test_shadow_mode_status_prefers_current_readiness_action_over_stale_latest(
     assert payload["db_writes_made"] == 0
 
 
+def test_shadow_mode_status_does_not_mask_current_blocker_with_valid_latest(
+    tmp_path,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'shadow-status-valid-stale.db').as_posix()}"
+    engine = engine_from_url(database_url)
+    create_schema(engine)
+    available_at = datetime.fromisoformat(AVAILABLE_AT)
+    latest_run = build_shadow_mode_run(
+        {
+            "shadow_readiness": {
+                "status": "ready",
+                "canonical_next_action": "do not use for blocked current gate",
+                "blockers": [],
+                "call_boundary": {"planned_run_external_call_count_max": 3},
+                "snapshots": {"scan_scope": {"mode": "full_scan"}},
+                "checks": [
+                    {
+                        "code": "latest_market_bars",
+                        "metric": {"missing_as_of_daily_bar_count": 0},
+                    },
+                    {"code": "validation_ready", "status": "ready"},
+                ],
+            },
+            "discovery_snapshot": {
+                "yield": {
+                    "candidate_states": 1,
+                    "requested_securities": 10,
+                    "scanned_securities": 10,
+                },
+                "freshness": {
+                    "active_security_count": 10,
+                    "missing_as_of_daily_bar_count": 0,
+                    "latest_daily_bar_date": "2026-05-22",
+                },
+            },
+            "latest_run": {"as_of": "2026-05-22"},
+            "candidate_rows": [{"state": ActionState.WARNING.value}],
+        },
+        run_date=available_at.date(),
+        as_of=None,
+        available_at=available_at,
+        db_writes_made=1,
+    )
+    ValidationRepository(engine).upsert_shadow_mode_run(latest_run)
+
+    payload = shadow_mode_status_payload(
+        engine,
+        AppConfig(database_url=database_url),
+        available_at=available_at,
+        shadow_readiness={
+            "status": "setup_required",
+            "ready": False,
+            "first_blocker": "market_bars",
+            "first_gap_count": 579,
+            "canonical_next_action": (
+                "catalyst-radar market-bars residual-review "
+                "--expected-as-of 2026-05-15"
+            ),
+        },
+    )
+
+    assert payload["status"] == "setup_required"
+    assert payload["latest"]["status"] == "valid_full_scan"
+    assert payload["ready_for_shadow_run"] is False
+    assert payload["first_blocker"] == "market_bars"
+    assert payload["first_gap_count"] == 579
+    assert payload["canonical_next_command"] == (
+        "catalyst-radar market-bars residual-review --expected-as-of 2026-05-15"
+    )
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
+
+
 def test_shadow_mode_status_keeps_latest_action_when_current_readiness_is_ready(
     tmp_path,
 ) -> None:

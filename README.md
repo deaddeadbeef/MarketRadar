@@ -1045,6 +1045,9 @@ stale persisted run cannot hide today's first unblock command. The status
 payload exposes the same first-blocker fields. If the current readiness gate is
 blocked by market bars, shadow run records use `scan_scope=blocked_full_market_gate`
 instead of reusing a stale `selected_universe` scope from an older scan.
+`shadow-mode status` also fails closed at the top level: when current readiness
+is not ready, top-level `status` follows the current readiness status while
+`latest.status` keeps the persisted run classification for audit.
 
 ### Value ledger
 

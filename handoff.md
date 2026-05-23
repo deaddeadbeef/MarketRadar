@@ -1,6 +1,45 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 23:58:00 +08:00
+Last updated: 2026-05-24 00:18:00 +08:00
+
+## Latest Shadow Status Current Gate Slice
+
+Last updated: 2026-05-24 00:18:00 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains repeatable shadow-mode evidence and fail-closed
+  daily operation.
+- A local proof showed `shadow-mode status` could report
+  `status=valid_full_scan` from a stored latest run while current readiness was
+  `ready_for_shadow_run=false` and `first_blocker=market_bars`.
+- That can make a stale valid run mask today's blocked shadow gate.
+
+Useful definition:
+
+- `shadow-mode status.status` must describe whether the current shadow workflow
+  is ready now.
+- The persisted audit result remains visible as `latest.status`, but it must
+  not override current blockers.
+
+Fix in this slice:
+
+- `shadow_mode_status_payload()` now derives top-level `status` from current
+  readiness whenever a latest run exists but current readiness is not ready.
+- If current readiness is ready, top-level `status` continues to use the latest
+  run classification such as `valid_full_scan`.
+- Added a regression test where the latest persisted run is `valid_full_scan`
+  but current readiness is `setup_required` with `market_bars` as first blocker.
+- README documents the status-vs-latest contract.
+
+Safety:
+
+- This is local shadow status classification only.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls.
+- It does not run residual repair, import bars, change scan scope, write the
+  operator DB, mutate candidate state, write value rows/outcomes, run LLMs,
+  deliver alerts, or submit orders.
 
 ## Latest Shadow Blocked Scope Slice
 
