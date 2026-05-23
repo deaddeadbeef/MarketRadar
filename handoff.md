@@ -1,6 +1,49 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 11:30:00 +08:00
+Last updated: 2026-05-23 11:45:00 +08:00
+
+## Latest Shadow Readiness Command-Next Slice
+
+Last updated: 2026-05-23 11:45:00 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains clearing M1/P2 blockers for repeatable shadow scans.
+  This slice fixes a real operator-risk mismatch, not UI copy polish.
+- `priced-in-answer` exposed the residual-review command, but
+  `assert-shadow-ready` could promote the prose reason as its canonical next
+  action for the same market-bar blocker.
+
+Fix in this slice:
+
+- Shadow readiness now prefers residual recommended-action command fields
+  (`command`, `cli_command`, `tui_command`) before prose fallback text.
+- The first market-bar blocker and the shadow readiness canonical next action
+  can now point to the same zero-call residual-review command.
+- README documents that command-first next-action contract.
+
+Validation observed in this slice:
+
+- The focused dashboard regression failed before implementation because
+  `latest_market_bars.next_action` used prose instead of the residual-review
+  command.
+- Focused dashboard regression passed after the fix: 1 passed.
+- Focused safe shadow-readiness dashboard regression also passed: 1 passed.
+- Adjacent shadow CLI/API regression selection passed: 10 passed.
+- Ruff passed for touched dashboard data and dashboard tests.
+- Compileall passed for `src` and touched dashboard tests.
+- `git diff --check` passed.
+- Configured operator-DB smoke against `.env.local`'s
+  `data/local/schwab-live.db` returned `status=setup_required`,
+  `external_calls_made=0`, `db_writes_made=0`, and
+  `canonical_next_action=catalyst-radar market-bars residual-review --expected-as-of 2026-05-15`.
+
+Safety:
+
+- This selector change makes 0 provider, broker, model, order, or web calls.
+- This selector change writes 0 database rows.
+- The live operator DB residual repair remains blocked until the operator
+  explicitly approves the guarded write command.
 
 ## Latest Shadow Readiness Candidate-State Gate Slice
 

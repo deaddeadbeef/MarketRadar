@@ -1224,7 +1224,11 @@ def test_shadow_readiness_payload_reuses_market_bar_blocker_detail(
         "blocker_detail": {
             "source": "market_bars",
             "recommended_action": {
-                "reason": "Review zero-liquidity residuals before another provider capture."
+                "command": (
+                    "catalyst-radar market-bars residual-review "
+                    "--expected-as-of 2026-05-10"
+                ),
+                "reason": "Review zero-liquidity residuals before another provider capture.",
             },
             "missing_security_type_counts": {"UNIT": 1},
             "missing_universe": {
@@ -1235,15 +1239,20 @@ def test_shadow_readiness_payload_reuses_market_bar_blocker_detail(
         },
     }
 
-    payload = shadow_readiness_payload(engine, AppConfig.from_env({}), **inputs)
+    payload = shadow_readiness_payload(
+        engine,
+        AppConfig.from_env({"CATALYST_SCAN_BATCH_SIZE": "3"}),
+        **inputs,
+    )
 
     latest_bars = next(
         row for row in payload["checks"] if row["code"] == "latest_market_bars"
     )
     assert latest_bars["status"] == "blocked"
     assert latest_bars["next_action"] == (
-        "Review zero-liquidity residuals before another provider capture."
+        "catalyst-radar market-bars residual-review --expected-as-of 2026-05-10"
     )
+    assert payload["canonical_next_action"] == latest_bars["next_action"]
     assert latest_bars["metric"]["missing_security_type_counts"] == {"UNIT": 1}
     assert latest_bars["metric"]["missing_universe_diagnostic"][
         "zero_market_cap_count"
