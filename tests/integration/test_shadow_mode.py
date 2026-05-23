@@ -153,12 +153,61 @@ def test_shadow_mode_cli_preview_execute_and_latest(
     assert "db_writes_made=0" in human_output
 
 
+def test_shadow_mode_latest_without_run_surfaces_readiness_next_step(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'shadow-mode-latest-empty.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    create_schema(engine_from_url(database_url))
+
+    latest_exit = main(["shadow-mode", "latest", "--json"])
+
+    assert latest_exit == 1
+    latest = json.loads(capsys.readouterr().out)
+    assert latest["schema_version"] == "shadow-mode-latest-v1"
+    assert latest["status"] == "not_found"
+    assert latest["run"] is None
+    assert latest["shadow_readiness_status"] == "setup_required"
+    assert latest["ready_for_shadow_run"] is False
+    assert latest["first_blocker"] == "universe"
+    assert latest["first_gap_count"] == 0
+    assert latest["canonical_next_action"] == latest["next_action"]
+    assert latest["canonical_next_command"] is None
+    assert latest["external_calls_made"] == 0
+    assert latest["db_writes_made"] == 0
+    with engine_from_url(database_url).connect() as conn:
+        assert conn.execute(select(func.count()).select_from(shadow_mode_runs)).scalar_one() == 0
+
+    human_exit = main(["shadow-mode", "latest"])
+
+    assert human_exit == 1
+    human_output = capsys.readouterr().out
+    assert "shadow_mode_latest status=not_found" in human_output
+    assert "readiness=setup_required" in human_output
+    assert "first_blocker=universe" in human_output
+    assert "external_calls_made=0" in human_output
+    assert "db_writes_made=0" in human_output
+    assert "next_action=" in human_output
+
+
 def test_shadow_mode_api_preview_and_latest(tmp_path, monkeypatch) -> None:
     database_url = f"sqlite:///{(tmp_path / 'shadow-mode-api.db').as_posix()}"
     monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
     engine = engine_from_url(database_url)
     create_schema(engine)
     client = TestClient(create_app())
+
+    empty_latest_response = client.get("/api/radar/shadow/runs/latest")
+    assert empty_latest_response.status_code == 200
+    empty_latest = empty_latest_response.json()
+    assert empty_latest["status"] == "not_found"
+    assert empty_latest["run"] is None
+    assert empty_latest["shadow_readiness_status"] == "setup_required"
+    assert empty_latest["first_blocker"] == "universe"
+    assert empty_latest["external_calls_made"] == 0
+    assert empty_latest["db_writes_made"] == 0
 
     preview_response = client.post(
         "/api/radar/shadow/runs",
