@@ -1159,6 +1159,10 @@ with explicit `--preview` for missing rows so the operator can review or edit
 subjective label/value before writing anything. When coverage has gaps, the
 payload exposes `first_missing_candidate_state_id`, `first_missing_ticker`, and
 `canonical_next_command` for the first non-executing ledger-record command.
+When no Warning-or-higher candidates exist in the period, coverage returns
+`status=no_candidates`, `coverage_pct=null`, and a zero-call
+`canonical_next_command` for `assert-shadow-ready --json` instead of reporting
+vacuous 100% coverage.
 The human CLI output prints the same `next_command=` line so shell users do not
 need to switch to JSON just to find the safe preview command.
 The TUI `ledger coverage` command also includes that `next_command=` value when
@@ -1277,16 +1281,21 @@ visible before claiming monthly value evidence. It also includes
 `value_outcome_coverage`, a read-only summary of value-ledger rows versus linked
 outcome rows, including the same first-missing outcome fields and
 non-executing `value-outcome update --preview` commands for missing outcomes.
+When no Warning-or-higher candidates exist in the report period, candidate
+coverage is `no_candidates` and the report's first blocker is
+`candidate_evidence`, pointing back to `assert-shadow-ready --json` before
+ledger or outcome evidence is claimed.
 When there are no ledger rows in the period,
 outcome coverage reports `no_ledger_entries` instead
 of `ready`, because outcome evidence cannot exist before feedback is logged. The
 top-level report exposes `first_blocker`, `first_gap_count`,
 `canonical_next_action`, and `canonical_next_command` for the first missing
 value-proof evidence step. If the month has fewer useful value-ledger evidence
-rows than the configured minimum, the first blocker remains `useful_evidence`
-instead of jumping ahead to validation replay; this avoids telling the operator
-to validate an empty month with no rows to measure. Human `value-report` output
-prints the same `evidence_gap`, `next_action`, and `next_command` lines so the
+rows than the configured minimum after candidate evidence exists, the first
+blocker remains `useful_evidence` instead of jumping ahead to validation
+replay; this avoids telling the operator to validate an empty month with no rows
+to measure. Human `value-report` output prints the same `evidence_gap`,
+`next_action`, and `next_command` lines so the
 CLI surface can drive the same safe preview-first workflow as JSON/API clients.
 The terminal dashboard Costs page also shows the report's first blocker, next
 action, and same next command, so a dashboard-only operator can continue the
