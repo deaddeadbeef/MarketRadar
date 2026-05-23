@@ -259,6 +259,7 @@ def test_dashboard_snapshot_cli_outputs_dashboard_command_center_json(
     assert payload["telemetry_coverage"]["schema_version"] == (
         "ops-telemetry-coverage-v1"
     )
+
     assert payload["candidates"]["count"] == 1
     assert payload["candidates"]["rows"][0]["ticker"] == "ACME"
     assert payload["alerts"]["count"] == 1
@@ -309,6 +310,47 @@ def test_dashboard_snapshot_cli_outputs_dashboard_command_center_json(
     assert payload["readiness"]["market_radar_usefulness"]["status"] == (
         direct_readiness["market_radar_usefulness"]["status"]
     )
+
+
+def test_overview_renders_minimum_product_approval_stop_line() -> None:
+    text = render_dashboard_tui(
+        {
+            "trial_readiness": {
+                "status": "safe_read_only",
+                "safe_to_try_read_only": True,
+                "minimum_useful_product": {
+                    "status": "blocked",
+                    "ready": False,
+                    "first_blocker": "market_bars",
+                    "next_command": (
+                        "catalyst-radar market-bars residual-review "
+                        "--expected-as-of 2026-05-15"
+                    ),
+                    "approval_required_unblock": {
+                        "status": "ready_to_execute",
+                        "approval_required": True,
+                        "external_calls_required": 0,
+                        "db_writes_required_to_execute": 579,
+                        "approval_command": (
+                            "catalyst-radar market-bars residual-repair "
+                            "--expected-as-of 2026-05-15 "
+                            "--expect-missing-count 579 "
+                            "--expect-eligible-count 579 --execute --json"
+                        ),
+                    },
+                },
+            },
+            "priced_in_answer": {"full_market_trust_gate": {}},
+            "priced_in_queue": {"rows": []},
+        },
+        page="overview",
+        width=220,
+    )
+
+    assert "Shipped-product stop" in text
+    assert "blocked; blocker market_bars" in text
+    assert "Approval required: 579 DB write(s), 0 provider call(s)" in text
+    assert "residual-repair --expected-as-of 2026-05-15" in text
 
 
 def test_source_workflow_skips_non_point_in_time_options_shortcut() -> None:

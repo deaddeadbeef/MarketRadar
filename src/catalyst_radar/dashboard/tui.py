@@ -1539,6 +1539,16 @@ class MarketRadarDashboardApp(App[int]):
             queue = _mapping(self.payload.get("priced_in_queue"))
             answer = _mapping(self.payload.get("priced_in_answer"))
             trial = _mapping(self.payload.get("trial_readiness"))
+            minimum_stop = _minimum_product_stop_line_summary(self.payload)
+            approval_summary = _minimum_product_approval_summary(self.payload)
+            approval_command = _minimum_product_approval_command(self.payload)
+            minimum_stop_detail = minimum_stop
+            if minimum_stop_detail and approval_summary:
+                minimum_stop_detail = f"{minimum_stop_detail}; {approval_summary}"
+            if minimum_stop_detail and approval_command:
+                minimum_stop_detail = (
+                    f"{minimum_stop_detail}; command `{approval_command}`"
+                )
             full_scan = _mapping(answer.get("full_scan"))
             scan_scope = _mapping(answer.get("scan_scope"))
             status_filter = _priced_in_status_filter(queue)
@@ -1600,6 +1610,11 @@ class MarketRadarDashboardApp(App[int]):
                         f"read-only safe="
                         f"{str(bool(trial.get('safe_to_try_read_only'))).lower()}; "
                         "investment-ready=false."
+                    ),
+                    (
+                        f"[bold]Shipped-product stop:[/] {minimum_stop_detail}"
+                        if minimum_stop_detail
+                        else "[bold]Shipped-product stop:[/] not available."
                     ),
                     (
                         f"[bold]Full-scan source workflow:[/] "
@@ -2237,6 +2252,48 @@ def _operator_next_step_message(payload: Mapping[str, object]):
         "database changes."
     )
     return " ".join(lines)
+
+
+def _minimum_product_stop_line_summary(payload: Mapping[str, object]) -> str:
+    trial = _mapping(payload.get("trial_readiness"))
+    gate = _mapping(trial.get("minimum_useful_product"))
+    if not gate:
+        return ""
+    if bool(gate.get("ready")):
+        return "ready for read-only decision support; still not trade approval."
+    blocker = gate.get("first_blocker") or "unknown"
+    command = str(gate.get("next_command") or "").strip()
+    parts = [
+        f"{gate.get('status') or 'blocked'}; blocker {blocker}",
+    ]
+    if command:
+        parts.append(f"inspect `{command}`")
+    return "; ".join(parts)
+
+
+def _minimum_product_approval_summary(payload: Mapping[str, object]) -> str:
+    approval = _minimum_product_approval_unblock(payload)
+    if not approval:
+        return ""
+    writes = int(_number_or_zero(approval.get("db_writes_required_to_execute")))
+    calls = int(_number_or_zero(approval.get("external_calls_required")))
+    return f"approval required: {writes} DB write(s), {calls} provider call(s)"
+
+
+def _minimum_product_approval_command(payload: Mapping[str, object]) -> str:
+    approval = _minimum_product_approval_unblock(payload)
+    if not approval:
+        return ""
+    return str(approval.get("approval_command") or "").strip()
+
+
+def _minimum_product_approval_unblock(
+    payload: Mapping[str, object],
+) -> Mapping[str, object]:
+    trial = _mapping(payload.get("trial_readiness"))
+    gate = _mapping(trial.get("minimum_useful_product"))
+    approval = _mapping(gate.get("approval_required_unblock"))
+    return approval
 
 
 def _apply_command(
@@ -5905,6 +5962,25 @@ def _priced_in_mismatch_text(emotion: object, reaction: object, gap: object) -> 
 
 def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
     lines = [_rule(_overview_title(payload), width)]
+    minimum_stop = _minimum_product_stop_line_summary(payload)
+    if minimum_stop:
+        lines.append(
+            "Shipped-product stop: "
+            f"{_clip(minimum_stop, max(20, width - 24))}"
+        )
+        approval_summary = _minimum_product_approval_summary(payload)
+        if approval_summary:
+            approval_body = approval_summary.removeprefix("approval required: ")
+            lines.append(
+                "Approval required: "
+                f"{_clip(approval_body, max(20, width - 19))}"
+            )
+        approval_command = _minimum_product_approval_command(payload)
+        if approval_command:
+            lines.append(
+                "Approval command: "
+                f"{_clip(approval_command, max(20, width - 18))}"
+            )
     audit_summary = _full_scan_audit_summary(payload)
     if audit_summary:
         lines.append(f"Full scan audit: {audit_summary}")
