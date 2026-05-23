@@ -973,7 +973,9 @@ catalyst-radar shadow-mode latest --json
 one `shadow_mode_runs` audit row that classifies the current local scan as
 `valid_full_scan`, `valid_selected_universe_scan`, `partial_scan`,
 `blocked_scan`, or `setup_required`. This is a shadow evidence record, not an
-order, alert-delivery, or live-provider command. When a shadow run is not valid
+order, alert-delivery, or live-provider command. Shadow run payloads expose the
+mission-brief count as `eligible_for_manual_review_count` while preserving the
+older `manual_review_count` field for compatibility. When a shadow run is not valid
 yet, the run response exposes the classification as top-level `status` and its
 top-level `next_action` uses the same canonical next action as
 `assert-shadow-ready`, so the audit response does not hide the first unblock

@@ -1,6 +1,40 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 17:59:33 +08:00
+Last updated: 2026-05-23 18:12:42 +08:00
+
+## Latest Shadow Manual-Review Count Alias Slice
+
+Last updated: 2026-05-23 18:12:42 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains repeatable daily shadow-mode testing with auditable
+  records before any investment-ready claims.
+- The shadow run model already stored the count of candidates eligible for
+  manual buy review, but JSON clients only saw the older
+  `manual_review_count` name.
+- The useful definition for this slice is concrete: a shadow run payload exposes
+  the mission-brief field name directly, without changing storage, scoring,
+  gates, or provider behavior.
+
+Fix in this slice:
+
+- `shadow_mode_run_to_payload()` now includes
+  `eligible_for_manual_review_count`.
+- The value is a backward-compatible alias of `manual_review_count`.
+- CLI/API preview and execute tests assert the alias matches the existing
+  stored count.
+- README documents the alias in the shadow-mode run record contract.
+
+Safety:
+
+- This is payload-only shadow-run behavior over local status data.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls.
+- It writes 0 database rows in preview and does not change execute write
+  semantics, scores, thresholds, policy gates, action states, trade plans,
+  LLM behavior, broker/order controls, candidate rows, ledger rows, outcome
+  rows, validation rows, or readiness criteria.
 
 ## Latest Shadow Run First Blocker Slice
 
