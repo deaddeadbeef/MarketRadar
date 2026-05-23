@@ -1,6 +1,48 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 13:00:00 +08:00
+Last updated: 2026-05-23 13:05:00 +08:00
+
+## Latest Costs Page Measurement Evidence Slice
+
+Last updated: 2026-05-23 13:05:00 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains measured monthly value proof for human eyes.
+- The monthly value report JSON now exposes value-outcome coverage and
+  validation evidence, but the dashboard Costs page still only rendered
+  candidate ledger coverage.
+- The useful definition for this slice is concrete: the human dashboard should
+  show whether monthly value evidence has linked outcomes and validation/baseline
+  evidence without requiring raw JSON inspection.
+
+Fix in this slice:
+
+- The Costs page now renders value-outcome coverage as linked/ledger plus
+  coverage percent.
+- The Costs page now renders missing value-outcome count.
+- The Costs page now renders validation evidence status, mission baselines
+  measured/required, and precision@5/10 from the monthly value report.
+
+Validation observed in this slice:
+
+- Baseline Costs page rendering test passed before edits.
+- The expanded rendering regression failed before implementation because the
+  Costs page ignored value-outcome coverage and validation evidence.
+- Focused Costs page rendering regression passed after implementation.
+- Full value-report integration file passed: 8 tests.
+- Ruff passed for touched TUI and value-report test.
+- Compileall passed for `src` and the touched value-report test.
+- `git diff --check` passed.
+
+Safety:
+
+- This change is display-only and makes 0 Polygon/Massive, SEC, Schwab, broker,
+  OpenAI, web, app, or provider calls.
+- This change writes 0 database rows.
+- It does not mutate value-ledger rows, value outcomes, validation results,
+  deterministic candidate state, scores, policy output, Decision Cards, alert
+  delivery, or broker/order paths.
 
 ## Latest Monthly Validation Evidence Slice
 

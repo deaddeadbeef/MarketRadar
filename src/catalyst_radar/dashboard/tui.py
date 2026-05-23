@@ -7665,6 +7665,8 @@ def _costs_lines(payload: Mapping[str, object], width: int) -> list[str]:
     value_outcomes = _mapping(payload.get("value_outcomes"))
     value_report = _mapping(payload.get("value_report"))
     candidate_coverage = _mapping(value_report.get("candidate_ledger_coverage"))
+    outcome_coverage = _mapping(value_report.get("value_outcome_coverage"))
+    validation_evidence = _mapping(value_report.get("validation_evidence"))
     lines = [_rule("Costs", width)]
     lines.extend(
         _kv_lines(
@@ -7714,6 +7716,26 @@ def _costs_lines(payload: Mapping[str, object], width: int) -> list[str]:
                 (
                     "Missing candidate ledgers",
                     candidate_coverage.get("missing_ledger_count"),
+                ),
+                (
+                    "Value outcome coverage",
+                    _value_outcome_coverage_text(outcome_coverage),
+                ),
+                (
+                    "Missing value outcomes",
+                    outcome_coverage.get("missing_outcome_count"),
+                ),
+                (
+                    "Validation evidence",
+                    validation_evidence.get("status") or "n/a",
+                ),
+                (
+                    "Mission baselines measured",
+                    _baseline_coverage_text(validation_evidence),
+                ),
+                (
+                    "Precision at 5 / 10",
+                    _precision_pair_text(validation_evidence),
                 ),
             ),
             width=width,
@@ -7770,6 +7792,37 @@ def _candidate_ledger_coverage_text(coverage: Mapping[str, object]) -> str:
     surfaced = coverage.get("surfaced_candidate_count")
     pct = coverage.get("coverage_pct")
     return f"{logged or 0}/{surfaced or 0} ({pct if pct is not None else 'n/a'}%)"
+
+
+def _value_outcome_coverage_text(coverage: Mapping[str, object]) -> str:
+    if not coverage:
+        return "n/a"
+    linked = coverage.get("linked_outcome_count")
+    entries = coverage.get("ledger_entry_count")
+    pct = coverage.get("coverage_pct")
+    return f"{linked or 0}/{entries or 0} ({pct if pct is not None else 'n/a'}%)"
+
+
+def _baseline_coverage_text(validation: Mapping[str, object]) -> str:
+    if not validation:
+        return "n/a"
+    measured = _sequence_count(validation.get("measured_baselines"))
+    required = _sequence_count(validation.get("required_baselines"))
+    return f"{measured}/{required}"
+
+
+def _precision_pair_text(validation: Mapping[str, object]) -> str:
+    if not validation:
+        return "n/a"
+    at_5 = validation.get("precision_at_5")
+    at_10 = validation.get("precision_at_10")
+    return f"{at_5 if at_5 is not None else 'n/a'} / {at_10 if at_10 is not None else 'n/a'}"
+
+
+def _sequence_count(value: object) -> int:
+    if isinstance(value, Sequence) and not isinstance(value, str):
+        return len(value)
+    return 0
 
 
 def _broker_lines(payload: Mapping[str, object], width: int) -> list[str]:

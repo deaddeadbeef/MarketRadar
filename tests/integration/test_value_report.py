@@ -405,6 +405,29 @@ def test_cost_page_renders_monthly_value_report() -> None:
                     "missing_ledger_count": 1,
                     "coverage_pct": 66.67,
                 },
+                "value_outcome_coverage": {
+                    "ledger_entry_count": 2,
+                    "linked_outcome_count": 1,
+                    "missing_outcome_count": 1,
+                    "coverage_pct": 50.0,
+                },
+                "validation_evidence": {
+                    "status": "insufficient_evidence",
+                    "selected_run_id": "validation-run-1",
+                    "required_baselines": [
+                        "relative_strength_screener",
+                        "volume_breakout_screener",
+                        "sector_etf_rotation_screener",
+                        "news_event_only_screener",
+                        "random_sector_matched_basket",
+                    ],
+                    "measured_baselines": [
+                        "relative_strength_screener",
+                        "volume_breakout_screener",
+                    ],
+                    "precision_at_5": 0.4,
+                    "precision_at_10": 0.3,
+                },
             },
         },
         page="costs",
@@ -416,6 +439,15 @@ def test_cost_page_renders_monthly_value_report() -> None:
     assert "Candidate ledger coverage" in text
     assert "2/3 (66.67%)" in text
     assert "Missing candidate ledgers" in text
+    assert "Value outcome coverage" in text
+    assert "1/2 (50.0%)" in text
+    assert "Missing value outcomes" in text
+    assert "Validation evidence" in text
+    assert "insufficient_evidence" in text
+    assert "Mission baselines measured" in text
+    assert "2/5" in text
+    assert "Precision at 5 / 10" in text
+    assert "0.4 / 0.3" in text
     assert "Decision-support value, not realized profit." in text
 
 
