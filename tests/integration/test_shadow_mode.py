@@ -9,13 +9,16 @@ from sqlalchemy import func, insert, select
 
 from apps.api.main import create_app
 from catalyst_radar.cli import main
+from catalyst_radar.core.config import AppConfig
 from catalyst_radar.core.models import ActionState
 from catalyst_radar.storage.db import create_schema, engine_from_url
 from catalyst_radar.storage.schema import daily_bars, securities, shadow_mode_runs
+from catalyst_radar.storage.validation_repositories import ValidationRepository
 from catalyst_radar.validation.shadow_mode import (
     _shadow_mode_next_action,
     build_shadow_mode_run,
     classify_shadow_run_status,
+    shadow_mode_status_payload,
 )
 
 AVAILABLE_AT = "2026-05-22T21:00:00+00:00"
@@ -374,6 +377,139 @@ def test_shadow_mode_next_action_uses_shadow_readiness_canonical_action() -> Non
     assert _shadow_mode_next_action(run) == (
         "catalyst-radar market-bars residual-review --expected-as-of 2026-05-15"
     )
+
+
+def test_shadow_mode_status_prefers_current_readiness_action_over_stale_latest(
+    tmp_path,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'shadow-status-stale.db').as_posix()}"
+    engine = engine_from_url(database_url)
+    create_schema(engine)
+    available_at = datetime.fromisoformat(AVAILABLE_AT)
+    stale_run = build_shadow_mode_run(
+        {
+            "shadow_readiness": {
+                "status": "setup_required",
+                "canonical_next_action": "old stale setup action",
+                "blockers": [{"code": "latest_market_bars"}],
+                "call_boundary": {"planned_run_external_call_count_max": 0},
+                "snapshots": {"scan_scope": {"mode": "unknown"}},
+                "checks": [
+                    {
+                        "code": "latest_market_bars",
+                        "metric": {"missing_as_of_daily_bar_count": 1},
+                    },
+                    {"code": "validation_ready", "status": "blocked"},
+                ],
+            },
+            "discovery_snapshot": {
+                "yield": {
+                    "candidate_states": 0,
+                    "requested_securities": 2,
+                    "scanned_securities": 0,
+                },
+                "freshness": {
+                    "active_security_count": 2,
+                    "missing_as_of_daily_bar_count": 1,
+                    "latest_daily_bar_date": "2026-05-15",
+                },
+            },
+            "latest_run": {"as_of": "2026-05-15"},
+            "candidate_rows": [],
+        },
+        run_date=available_at.date(),
+        as_of=None,
+        available_at=available_at,
+        db_writes_made=1,
+    )
+    ValidationRepository(engine).upsert_shadow_mode_run(stale_run)
+
+    payload = shadow_mode_status_payload(
+        engine,
+        AppConfig(database_url=database_url),
+        available_at=available_at,
+        shadow_readiness={
+            "status": "setup_required",
+            "ready": False,
+            "canonical_next_action": (
+                "catalyst-radar market-bars residual-review "
+                "--expected-as-of 2026-05-15"
+            ),
+        },
+    )
+
+    assert payload["status"] == "setup_required"
+    assert payload["latest"]["id"] == stale_run.id
+    assert payload["next_action"] == (
+        "catalyst-radar market-bars residual-review --expected-as-of 2026-05-15"
+    )
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
+
+
+def test_shadow_mode_status_keeps_latest_action_when_current_readiness_is_ready(
+    tmp_path,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'shadow-status-ready.db').as_posix()}"
+    engine = engine_from_url(database_url)
+    create_schema(engine)
+    available_at = datetime.fromisoformat(AVAILABLE_AT)
+    latest_run = build_shadow_mode_run(
+        {
+            "shadow_readiness": {
+                "status": "ready",
+                "canonical_next_action": "do not override valid run",
+                "blockers": [],
+                "call_boundary": {"planned_run_external_call_count_max": 3},
+                "snapshots": {"scan_scope": {"mode": "full_scan"}},
+                "checks": [
+                    {
+                        "code": "latest_market_bars",
+                        "metric": {"missing_as_of_daily_bar_count": 0},
+                    },
+                    {"code": "validation_ready", "status": "ready"},
+                ],
+            },
+            "discovery_snapshot": {
+                "yield": {
+                    "candidate_states": 1,
+                    "requested_securities": 10,
+                    "scanned_securities": 10,
+                },
+                "freshness": {
+                    "active_security_count": 10,
+                    "missing_as_of_daily_bar_count": 0,
+                    "latest_daily_bar_date": "2026-05-22",
+                },
+            },
+            "latest_run": {"as_of": "2026-05-22"},
+            "candidate_rows": [{"state": ActionState.WARNING.value}],
+        },
+        run_date=available_at.date(),
+        as_of=None,
+        available_at=available_at,
+        db_writes_made=1,
+    )
+    ValidationRepository(engine).upsert_shadow_mode_run(latest_run)
+
+    payload = shadow_mode_status_payload(
+        engine,
+        AppConfig(database_url=database_url),
+        available_at=available_at,
+        shadow_readiness={
+            "status": "ready",
+            "ready": True,
+            "canonical_next_action": "do not override valid run",
+        },
+    )
+
+    assert payload["status"] == "valid_full_scan"
+    assert payload["latest"]["id"] == latest_run.id
+    assert payload["next_action"] == (
+        "Record value-ledger entries for surfaced Warning or manual-review candidates."
+    )
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
 
 
 def test_shadow_mode_requires_timezone_aware_cutoff(tmp_path, monkeypatch) -> None:

@@ -1,6 +1,56 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 12:30:00 +08:00
+Last updated: 2026-05-23 12:40:00 +08:00
+
+## Latest Shadow Status Current-Readiness Slice
+
+Last updated: 2026-05-23 12:40:00 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains safe regular shadow operation toward full-market
+  priced-in scanning.
+- A configured-DB smoke showed `assert-shadow-ready` and
+  `shadow-mode run --preview` pointed to the current canonical residual-review
+  command, but `shadow-mode status --json` could still return stale latest-run
+  advice.
+- The useful definition for this slice is concrete: the operator should see
+  today's first unblock command from `shadow-mode status`, even when an older
+  shadow audit row exists.
+
+Fix in this slice:
+
+- `shadow-mode status` now prefers the current readiness
+  `canonical_next_action` whenever current readiness is not `ready`.
+- Ready current readiness still preserves the latest valid run guidance, such
+  as recording value-ledger entries for surfaced candidates.
+- README documents that `shadow-mode status` cannot let a stale persisted run
+  hide today's first unblock command.
+
+Validation observed in this slice:
+
+- The new stale-status regression failed before implementation because status
+  returned `old stale setup action`.
+- The focused stale-status and ready-status regressions passed after the fix.
+- Full shadow-mode integration file passed: 9 tests.
+- Ruff passed for touched shadow-mode source and test file.
+- Compileall passed for `src` and the touched shadow-mode test.
+- `git diff --check` passed.
+- Configured operator-DB `shadow-mode status --json` smoke returned
+  `status=setup_required`, `ready=False`, `external_calls_made=0`,
+  `db_writes_made=0`, and
+  `next_action=catalyst-radar market-bars residual-review --expected-as-of 2026-05-15`.
+
+Safety:
+
+- This change makes 0 Polygon/Massive, SEC, Schwab, broker, OpenAI, web, app,
+  or provider calls.
+- This change writes 0 database rows.
+- It does not execute residual repair, market-bar import, saved-file import,
+  provider capture, validation replay, scoring changes, alert delivery, or any
+  broker/order path.
+- The live operator DB residual repair remains blocked until the operator
+  explicitly approves the guarded write command.
 
 ## Latest Dashboard Ledger Coverage Slice
 
