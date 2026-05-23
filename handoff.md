@@ -1,6 +1,58 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-24 01:20:00 +08:00
+Last updated: 2026-05-24 01:29:12 +08:00
+
+## Latest Monthly Value Evidence Examples Slice
+
+Last updated: 2026-05-24 01:29:12 +08:00
+
+Goal alignment / drift check:
+
+- The user wants to try MarketRadar soon, but the minimum shipped-product line
+  is still stricter than safe read-only browsing.
+- Issue #533 requires the product to answer: what MarketRadar found, what the
+  user did, what happened afterward, and how much decision-support value is
+  reasonably attributable.
+- `value-report` already had raw ledger examples and separate linked outcomes,
+  but a human or agent had to join those lists mentally.
+
+Useful definition:
+
+- A monthly value report is more useful when one row connects the logged insight,
+  supported action, user decision, latest linked forward outcome, primary return,
+  and confidence-weighted attributed value.
+- The contract must remain local/read-only and make 0 provider, broker, model,
+  app, web, or order calls and 0 database writes.
+
+Fix in this slice:
+
+- `monthly_value_report_payload()` now adds joined evidence rows:
+  `value_evidence_examples`, `best_useful_evidence_examples`, and
+  `noisy_or_false_positive_evidence_examples`.
+- Each evidence example includes the ledger entry, ticker, supported action,
+  user decision, feedback label, latest linked outcome status, primary return,
+  forward return fields, attribution value, costs, call counts, and a compact
+  human summary.
+- Human `value-report` output prints those joined evidence rows when present.
+- The TUI Costs page shows monthly evidence examples in a compact table.
+- README documents the new monthly value evidence contract.
+
+Safety:
+
+- This is read-only report composition and presentation only.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls and writes 0 database rows.
+- It does not execute residual repair, import bars, run source batches, mutate
+  candidate state, write value rows/outcomes, run LLMs, deliver alerts, or
+  submit orders.
+
+Live zero-call smoke:
+
+- `value-report --month 2026-05 --available-at 2026-05-23T16:00:00+00:00 --json`
+  on the operator DB returned `verdict=insufficient_evidence`,
+  `first_blocker=candidate_ledger_coverage`, 0 external calls, and 0 DB writes.
+  It now also exposes empty joined evidence arrays until value-ledger rows are
+  recorded.
 
 ## Latest Shadow Readiness Cutoff Slice
 

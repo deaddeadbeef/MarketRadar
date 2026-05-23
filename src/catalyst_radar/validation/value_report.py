@@ -94,6 +94,7 @@ def monthly_value_report_payload(
         for outcome in repo.list_value_outcomes(available_at=cutoff, limit=10_000)
         if outcome.value_ledger_entry_id in entry_ids
     ]
+    outcomes_by_entry_id = _latest_outcomes_by_entry_id(outcomes)
     validation_evidence = _validation_evidence_summary(
         repo,
         available_at=cutoff,
@@ -118,6 +119,18 @@ def monthly_value_report_payload(
     useful_decision_cards = [
         entry for entry in useful_entries if entry.artifact_type == "decision_card"
     ]
+    useful_evidence_examples = _value_evidence_examples(
+        _top_entries(useful_entries, reverse=True),
+        outcomes_by_entry_id=outcomes_by_entry_id,
+        category="useful",
+        limit=5,
+    )
+    noisy_evidence_examples = _value_evidence_examples(
+        _top_entries(_dedupe_entries(noisy_entries + false_positive_entries)),
+        outcomes_by_entry_id=outcomes_by_entry_id,
+        category="noisy_or_false_positive",
+        limit=5,
+    )
     total_estimated_value = sum(entry.estimated_value_usd for entry in useful_entries)
     weighted_value = sum(_claimable_weighted_value(entry) for entry in entries)
     ledger_cost = sum(entry.cost_to_produce_usd for entry in entries)
@@ -240,6 +253,9 @@ def monthly_value_report_payload(
                 :5
             ]
         ],
+        "best_useful_evidence_examples": useful_evidence_examples,
+        "noisy_or_false_positive_evidence_examples": noisy_evidence_examples,
+        "value_evidence_examples": useful_evidence_examples + noisy_evidence_examples,
         "linked_outcomes": [value_outcome_payload(outcome) for outcome in outcomes[:20]],
         "useful_definition": USEFUL_DEFINITION,
         "decision_support_note": (
@@ -767,6 +783,168 @@ def _paper_trade_outcome_count(
         if entry.artifact_type == "paper_trade" or entry.supported_action == "paper_trade"
     }
     return sum(1 for outcome in outcomes if outcome.value_ledger_entry_id in paper_trade_entry_ids)
+
+
+def _latest_outcomes_by_entry_id(
+    outcomes: Iterable[ValueOutcome],
+) -> dict[str, ValueOutcome]:
+    latest: dict[str, ValueOutcome] = {}
+    for outcome in outcomes:
+        existing = latest.get(outcome.value_ledger_entry_id)
+        if existing is None or outcome.outcome_available_at > existing.outcome_available_at:
+            latest[outcome.value_ledger_entry_id] = outcome
+    return latest
+
+
+def _value_evidence_examples(
+    entries: Iterable[ValueLedgerEntry],
+    *,
+    outcomes_by_entry_id: Mapping[str, ValueOutcome],
+    category: str,
+    limit: int,
+) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for entry in entries:
+        if len(rows) >= limit:
+            break
+        rows.append(
+            _value_evidence_example(
+                entry,
+                outcome=outcomes_by_entry_id.get(entry.id),
+                category=category,
+            )
+        )
+    return rows
+
+
+def _value_evidence_example(
+    entry: ValueLedgerEntry,
+    *,
+    outcome: ValueOutcome | None,
+    category: str,
+) -> dict[str, object]:
+    outcome_payload = value_outcome_payload(outcome) if outcome is not None else None
+    weighted_value = _claimable_weighted_value(entry)
+    return {
+        "category": category,
+        "ledger_entry_id": entry.id,
+        "ticker": entry.ticker,
+        "as_of": entry.as_of.isoformat() if entry.as_of is not None else None,
+        "entry_date": entry.entry_date.isoformat(),
+        "artifact_type": entry.artifact_type,
+        "artifact_id": entry.artifact_id,
+        "feedback_label": entry.label,
+        "supported_action": entry.supported_action,
+        "user_decision": entry.user_decision,
+        "what_found": _what_found(entry),
+        "what_happened": _what_happened(outcome),
+        "outcome_status": outcome.status if outcome is not None else "pending",
+        "outcome_available_at": (
+            outcome.outcome_available_at.isoformat() if outcome is not None else None
+        ),
+        "trading_days_observed": (
+            outcome.trading_days_observed if outcome is not None else None
+        ),
+        "primary_return": _primary_outcome_return(outcome),
+        "primary_return_text": _primary_outcome_return_text(outcome),
+        "return_5d": outcome.return_5d if outcome is not None else None,
+        "return_10d": outcome.return_10d if outcome is not None else None,
+        "return_20d": outcome.return_20d if outcome is not None else None,
+        "return_60d": outcome.return_60d if outcome is not None else None,
+        "spy_relative_return_20d": (
+            outcome.spy_relative_return_20d if outcome is not None else None
+        ),
+        "sector_relative_return_20d": (
+            outcome.sector_relative_return_20d if outcome is not None else None
+        ),
+        "max_adverse_excursion": (
+            outcome.max_adverse_excursion if outcome is not None else None
+        ),
+        "max_favorable_excursion": (
+            outcome.max_favorable_excursion if outcome is not None else None
+        ),
+        "invalidation_touched": (
+            outcome.invalidation_touched if outcome is not None else None
+        ),
+        "setup_follow_through": (
+            outcome_payload.get("setup_follow_through")
+            if isinstance(outcome_payload, Mapping)
+            else None
+        ),
+        "estimated_value_usd": round(entry.estimated_value_usd, 4),
+        "confidence": entry.confidence,
+        "attributed_value_usd": round(weighted_value, 4),
+        "cost_to_produce_usd": round(entry.cost_to_produce_usd, 4),
+        "provider_call_count": entry.provider_call_count,
+        "llm_call_count": entry.llm_call_count,
+        "summary": _value_evidence_summary(
+            entry,
+            what_found=_what_found(entry),
+            what_happened=_what_happened(outcome),
+            attributed_value_usd=weighted_value,
+        ),
+    }
+
+
+def _what_found(entry: ValueLedgerEntry) -> str:
+    parts = [
+        entry.priced_in_status,
+        entry.priced_in_direction,
+        entry.action_state,
+        entry.setup_type,
+    ]
+    text = " / ".join(str(part) for part in parts if part)
+    return text or f"{entry.artifact_type}:{entry.artifact_id}"
+
+
+def _what_happened(outcome: ValueOutcome | None) -> str:
+    if outcome is None:
+        return "Outcome pending."
+    primary = _primary_outcome_return(outcome)
+    if primary is None:
+        return f"Outcome {outcome.status}; {outcome.trading_days_observed} trading day(s) observed."
+    return (
+        f"Outcome {outcome.status}; {primary['horizon']} return "
+        f"{primary['return']:.4f} after {outcome.trading_days_observed} trading day(s)."
+    )
+
+
+def _primary_outcome_return(outcome: ValueOutcome | None) -> dict[str, object] | None:
+    if outcome is None:
+        return None
+    for horizon, value in (
+        ("60d", outcome.return_60d),
+        ("20d", outcome.return_20d),
+        ("10d", outcome.return_10d),
+        ("5d", outcome.return_5d),
+    ):
+        if value is not None:
+            return {"horizon": horizon, "return": value}
+    return None
+
+
+def _primary_outcome_return_text(outcome: ValueOutcome | None) -> str:
+    primary = _primary_outcome_return(outcome)
+    if primary is None:
+        return "n/a"
+    return f"{primary['horizon']}:{primary['return']:.4f}"
+
+
+def _value_evidence_summary(
+    entry: ValueLedgerEntry,
+    *,
+    what_found: str,
+    what_happened: str,
+    attributed_value_usd: float,
+) -> str:
+    ticker = entry.ticker or "UNKNOWN"
+    action = entry.supported_action or "unknown action"
+    decision = entry.user_decision or "unknown decision"
+    return (
+        f"{ticker}: found {what_found}; supported {action}; user chose "
+        f"{decision}; {what_happened} Attributed decision-support value "
+        f"${attributed_value_usd:.2f}."
+    )
 
 
 def _outcome_status_counts(outcomes: Iterable[ValueOutcome]) -> dict[str, int]:

@@ -8808,6 +8808,45 @@ def _print_value_report(payload: Mapping[str, object]) -> None:
         "cost_per_useful_decision_card="
         f"{payload.get('cost_per_useful_decision_card')}"
     )
+    _print_value_report_examples(payload.get("value_evidence_examples"))
+
+
+def _print_value_report_examples(value: object) -> None:
+    examples = value if isinstance(value, Sequence) else ()
+    if not examples:
+        return
+    print(
+        "value_evidence_examples "
+        "category ticker label action decision outcome attributed_value_usd primary_return artifact"
+    )
+    for row in examples[:8]:
+        if not isinstance(row, Mapping):
+            continue
+        print(
+            f"{_compact_cli_text(row.get('category'))} "
+            f"{_compact_cli_text(row.get('ticker'))} "
+            f"{_compact_cli_text(row.get('feedback_label'))} "
+            f"{_compact_cli_text(row.get('supported_action'))} "
+            f"{_compact_cli_text(row.get('user_decision'))} "
+            f"{_compact_cli_text(row.get('outcome_status'))} "
+            f"{row.get('attributed_value_usd')} "
+            f"{_compact_cli_text(_value_example_primary_return(row))} "
+            f"{_compact_cli_text(row.get('artifact_type'))}:"
+            f"{_compact_cli_text(row.get('artifact_id'))}"
+        )
+        print(f"  summary={_compact_cli_text(row.get('summary'))}")
+
+
+def _value_example_primary_return(row: Mapping[str, object]) -> str:
+    text = row.get("primary_return_text")
+    if isinstance(text, str) and text.strip():
+        return text
+    primary = row.get("primary_return")
+    if not isinstance(primary, Mapping):
+        return "n/a"
+    horizon = primary.get("horizon") or "n/a"
+    value = primary.get("return")
+    return f"{horizon}:{value}"
 
 
 def _print_priced_in_preflight(payload: Mapping[str, object]) -> None:

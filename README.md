@@ -1208,9 +1208,15 @@ and writes 0 database rows. The report returns `pass`, `fail`, or
 was plausibly met, includes uncertainty and false positives, and separates
 decision-support value from realized profit or investment advice. The terminal
 dashboard Costs page shows the current month's verdict and net
-decision-support value. If any ledger row involved LLM review, the report also
-shows LLM-reviewed entry count, useful LLM-reviewed entry count, LLM-linked
-cost, and cost per useful LLM-reviewed candidate without making model calls.
+decision-support value, plus joined monthly evidence examples that tie each
+logged insight to its supported action, user decision, forward outcome, and
+attributed decision-support value. JSON exposes the same rows as
+`value_evidence_examples`, with useful examples also mirrored under
+`best_useful_evidence_examples` and noisy/false-positive examples mirrored
+under `noisy_or_false_positive_evidence_examples`. If any ledger row involved
+LLM review, the report also shows LLM-reviewed entry count, useful LLM-reviewed
+entry count, LLM-linked cost, and cost per useful LLM-reviewed candidate without
+making model calls.
 The raw `threshold_met` field only answers whether local value math reached the
 monthly target. The top-level `verdict` and
 `plausibly_earned_at_least_40_usd` fail closed to `insufficient_evidence` /
