@@ -1,6 +1,42 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 15:49:17 +08:00
+Last updated: 2026-05-23 16:00:33 +08:00
+
+## Latest Validation Report Cost And False-Positive Metrics Slice
+
+Last updated: 2026-05-23 16:00:33 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains measurable signal validation before score changes,
+  NLP upgrades, or LLM expansion.
+- Priority 5 asks validation reports to compare MarketRadar and simple
+  baselines on false-positive rate, excursions, and cost/candidate metrics.
+  Baseline rows had baseline false-positive/excursion data but did not show the
+  matching MarketRadar false-positive/excursion fields beside them, and the
+  report lacked cost per candidate.
+- The useful definition for this slice is concrete: one validation report row
+  should show both sides of the baseline comparison plus MarketRadar cost per
+  candidate without changing any scoring behavior.
+
+Fix in this slice:
+
+- `ValidationReport` now includes top-level `cost_per_candidate`.
+- Each `baseline_comparison` row now includes MarketRadar false-positive rate,
+  MarketRadar max adverse/favorable excursion averages, MarketRadar labeled
+  count, and MarketRadar cost per candidate.
+- Each baseline row now includes `baseline_cost_per_candidate=0.0` to make clear
+  these simple deterministic baselines add no incremental provider/model cost
+  inside the stored validation report.
+- README documents the expanded validation-report metric contract.
+
+Safety:
+
+- This is report-only validation math over already stored results/labels.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls.
+- It writes 0 database rows and does not change scores, thresholds, policy
+  gates, action states, trade plans, LLM behavior, or broker/order controls.
 
 ## Latest P0 Canonical Blocker Surface Slice
 

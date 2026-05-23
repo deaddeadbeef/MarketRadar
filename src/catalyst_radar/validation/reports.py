@@ -57,6 +57,7 @@ class ValidationReport:
     false_positive_count: int
     useful_alert_rate: float
     cost_per_useful_alert: float | None
+    cost_per_candidate: float | None
     missed_opportunity_count: int
     leakage_failure_count: int
     state_mix: Mapping[str, int]
@@ -94,6 +95,7 @@ class ValidationReport:
             "false_positive_count": self.false_positive_count,
             "useful_alert_rate": self.useful_alert_rate,
             "cost_per_useful_alert": self.cost_per_useful_alert,
+            "cost_per_candidate": self.cost_per_candidate,
             "missed_opportunity_count": self.missed_opportunity_count,
             "leakage_failure_count": self.leakage_failure_count,
             "state_mix": dict(self.state_mix),
@@ -132,11 +134,13 @@ def build_validation_report(
     )
     useful_alert_rate = _safe_rate(useful_count, candidate_count)
     cost_per_useful_alert = _cost_per_useful_alert(total_cost, useful_count)
+    cost_per_candidate = _cost_per_candidate(total_cost, candidate_count)
     baseline_comparison = _baseline_comparison(
         candidate_rows,
         baselines,
         baseline_top_n=baseline_top_n,
         positive_label=positive_label,
+        total_cost=total_cost,
     )
     score_calibration = _score_calibration(
         candidate_rows,
@@ -156,6 +160,7 @@ def build_validation_report(
         false_positive_count=false_positive_count,
         useful_alert_rate=useful_alert_rate,
         cost_per_useful_alert=cost_per_useful_alert,
+        cost_per_candidate=cost_per_candidate,
         missed_opportunity_count=len(_all_missed_tickers(baseline_comparison)),
         leakage_failure_count=sum(1 for row in candidate_rows if _leakage_flags(row)),
         state_mix=_state_mix(candidate_rows),
@@ -225,6 +230,7 @@ def _baseline_comparison(
     *,
     baseline_top_n: int | None,
     positive_label: str,
+    total_cost: float,
 ) -> dict[str, Any]:
     candidate_keys = {
         key for row in candidate_rows if (key := _ticker_as_of_key(row)) is not None
@@ -267,6 +273,20 @@ def _baseline_comparison(
             "marketradar_candidate_count": len(marketradar_rows),
             "marketradar_precision_at_5": marketradar_stats["precision_at_5"],
             "marketradar_precision_at_10": marketradar_stats["precision_at_10"],
+            "marketradar_false_positive_rate": marketradar_stats[
+                "false_positive_rate"
+            ],
+            "marketradar_max_adverse_excursion_avg": marketradar_stats[
+                "max_adverse_excursion_avg"
+            ],
+            "marketradar_max_favorable_excursion_avg": marketradar_stats[
+                "max_favorable_excursion_avg"
+            ],
+            "marketradar_labeled_count": marketradar_stats["labeled_count"],
+            "marketradar_cost_per_candidate": _cost_per_candidate(
+                total_cost,
+                marketradar_stats["candidate_count"],
+            ),
             "baseline_precision_at_5": baseline_stats["precision_at_5"],
             "baseline_precision_at_10": baseline_stats["precision_at_10"],
             "baseline_false_positive_rate": baseline_stats["false_positive_rate"],
@@ -279,6 +299,7 @@ def _baseline_comparison(
             **_prefixed_metrics("marketradar", marketradar_stats),
             **_prefixed_metrics("baseline", baseline_stats),
             "baseline_labeled_count": baseline_stats["labeled_count"],
+            "baseline_cost_per_candidate": 0.0,
             "sample_status": _comparison_sample_status(marketradar_stats, baseline_stats),
             "result_vs_market_radar": _comparison_result(
                 marketradar_stats,
@@ -287,11 +308,18 @@ def _baseline_comparison(
         }
     for name in MISSION_BRIEF_BASELINES:
         if name not in comparison:
-            comparison[name] = _empty_baseline_comparison(marketradar_stats)
+            comparison[name] = _empty_baseline_comparison(
+                marketradar_stats,
+                total_cost=total_cost,
+            )
     return comparison
 
 
-def _empty_baseline_comparison(marketradar_stats: Mapping[str, Any]) -> dict[str, Any]:
+def _empty_baseline_comparison(
+    marketradar_stats: Mapping[str, Any],
+    *,
+    total_cost: float,
+) -> dict[str, Any]:
     return {
         "baseline_candidate_count": 0,
         "overlap_count": 0,
@@ -303,6 +331,18 @@ def _empty_baseline_comparison(marketradar_stats: Mapping[str, Any]) -> dict[str
         "marketradar_candidate_count": marketradar_stats["candidate_count"],
         "marketradar_precision_at_5": marketradar_stats["precision_at_5"],
         "marketradar_precision_at_10": marketradar_stats["precision_at_10"],
+        "marketradar_false_positive_rate": marketradar_stats["false_positive_rate"],
+        "marketradar_max_adverse_excursion_avg": marketradar_stats[
+            "max_adverse_excursion_avg"
+        ],
+        "marketradar_max_favorable_excursion_avg": marketradar_stats[
+            "max_favorable_excursion_avg"
+        ],
+        "marketradar_labeled_count": marketradar_stats["labeled_count"],
+        "marketradar_cost_per_candidate": _cost_per_candidate(
+            total_cost,
+            marketradar_stats["candidate_count"],
+        ),
         "baseline_precision_at_5": None,
         "baseline_precision_at_10": None,
         "baseline_false_positive_rate": 0.0,
@@ -311,6 +351,7 @@ def _empty_baseline_comparison(marketradar_stats: Mapping[str, Any]) -> dict[str
         **_prefixed_metrics("marketradar", marketradar_stats),
         **_prefixed_metrics("baseline", {}),
         "baseline_labeled_count": 0,
+        "baseline_cost_per_candidate": 0.0,
         "sample_status": "insufficient_evidence",
         "result_vs_market_radar": "insufficient_evidence",
     }
@@ -1240,6 +1281,15 @@ def _cost_per_useful_alert(total_cost: float, useful_count: int) -> float | None
     if useful_count <= 0:
         return None
     return cost / useful_count
+
+
+def _cost_per_candidate(total_cost: float, candidate_count: int) -> float | None:
+    cost = _finite_float(total_cost) or 0.0
+    if cost <= 0:
+        return 0.0
+    if candidate_count <= 0:
+        return None
+    return cost / candidate_count
 
 
 def _safe_rate(numerator: int | float, denominator: int | float) -> float:
