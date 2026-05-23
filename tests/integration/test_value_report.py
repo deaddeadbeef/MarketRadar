@@ -58,11 +58,17 @@ def test_value_report_cli_empty_month_is_insufficient_evidence(
     assert payload["entry_count"] == 0
     assert payload["plausibly_earned_at_least_40_usd"] is False
     assert payload["decision_support_value_not_profit"] is True
-    assert payload["first_blocker"] == "useful_evidence"
+    assert payload["first_blocker"] == "candidate_evidence"
     assert payload["first_gap_count"] == 2
-    assert payload["canonical_next_command"] is None
-    assert "Record enough useful/noisy value-ledger evidence" in payload["next_action"]
+    assert payload["canonical_next_command"] == "catalyst-radar assert-shadow-ready --json"
+    assert "No Warning-or-higher candidate states exist" in payload["next_action"]
     assert payload["next_action"] == payload["canonical_next_action"]
+    coverage = payload["candidate_ledger_coverage"]
+    assert coverage["status"] == "no_candidates"
+    assert coverage["coverage_pct"] is None
+    assert coverage["canonical_next_command"] == (
+        "catalyst-radar assert-shadow-ready --json"
+    )
     validation = payload["validation_evidence"]
     assert validation["status"] == "no_validation_runs"
     assert validation["ready"] is False
@@ -188,12 +194,13 @@ def test_value_report_rejects_validation_run_outside_report_month(
     assert validation["validation_run"]["as_of_start"] == "2026-05-15T21:00:00+00:00"
     assert validation["period_start"] == "2026-06-01"
     assert validation["period_end"] == "2026-06-30"
-    assert payload["first_blocker"] == "validation_evidence"
-    assert "validation-replay --as-of-start 2026-06-01" in payload[
+    assert payload["first_blocker"] == "useful_evidence"
+    assert payload["canonical_next_command"] is None
+    assert "validation-replay --as-of-start 2026-06-01" in validation[
         "canonical_next_command"
     ]
-    assert "--preview" in payload["canonical_next_command"]
-    assert "--execute" not in payload["canonical_next_command"]
+    assert "--preview" in validation["canonical_next_command"]
+    assert "--execute" not in validation["canonical_next_command"]
     assert validation["external_calls_made"] == 0
     assert validation["db_writes_made"] == 0
 

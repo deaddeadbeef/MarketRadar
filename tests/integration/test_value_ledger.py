@@ -290,6 +290,70 @@ def test_value_ledger_coverage_reports_unlogged_surfaced_candidates(
     assert "--preview --json" in human_output
 
 
+def test_value_ledger_coverage_reports_no_candidates_as_not_measured(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'value-ledger-empty-coverage.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = engine_from_url(database_url)
+    create_schema(engine)
+
+    exit_code = main(
+        [
+            "value-ledger",
+            "coverage",
+            "--available-at",
+            "2026-05-22T12:00:00+00:00",
+            "--period-start",
+            "2026-05-01",
+            "--period-end",
+            "2026-05-31",
+            "--json",
+        ]
+    )
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["schema_version"] == "value-ledger-candidate-coverage-v1"
+    assert payload["status"] == "no_candidates"
+    assert payload["surfaced_candidate_count"] == 0
+    assert payload["logged_candidate_count"] == 0
+    assert payload["missing_ledger_count"] == 0
+    assert payload["coverage_pct"] is None
+    assert payload["canonical_next_command"] == "catalyst-radar assert-shadow-ready --json"
+    assert "No Warning-or-higher candidate states exist" in payload["next_action"]
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
+    assert payload["rows"] == []
+
+    with engine.connect() as conn:
+        ledger_count = (
+            conn.execute(select(func.count()).select_from(value_ledger_entries)).scalar_one()
+        )
+    assert ledger_count == 0
+
+    human_exit = main(
+        [
+            "value-ledger",
+            "coverage",
+            "--available-at",
+            "2026-05-22T12:00:00+00:00",
+            "--period-start",
+            "2026-05-01",
+            "--period-end",
+            "2026-05-31",
+        ]
+    )
+
+    assert human_exit == 0
+    human_output = capsys.readouterr().out
+    assert "status=no_candidates" in human_output
+    assert "coverage_pct=None" in human_output
+    assert "next_command=catalyst-radar assert-shadow-ready --json" in human_output
+
+
 def test_value_ledger_cli_label_command_writes_auditable_entry(
     tmp_path,
     monkeypatch,

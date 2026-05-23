@@ -351,6 +351,22 @@ def _monthly_value_first_evidence_gap(
             action=action,
             command=candidate_ledger_coverage.get("canonical_next_command"),
         )
+    validation_status = str(validation_evidence.get("status") or "")
+    if (
+        candidate_status == "no_candidates"
+        and useful_count < min_useful_evidence_count
+        and validation_status != "run_period_mismatch"
+    ):
+        missing = max(0, min_useful_evidence_count - useful_count)
+        return _monthly_value_gap(
+            first_blocker="candidate_evidence",
+            first_gap_count=missing,
+            action=str(
+                candidate_ledger_coverage.get("next_action")
+                or "Produce surfaced candidates before claiming monthly value evidence."
+            ),
+            command=candidate_ledger_coverage.get("canonical_next_command"),
+        )
 
     outcome_status = str(value_outcome_coverage.get("status") or "")
     outcome_entry_count = int(value_outcome_coverage.get("ledger_entry_count") or 0)

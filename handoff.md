@@ -1,6 +1,61 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-24 04:55:19 +08:00
+Last updated: 2026-05-24 05:09:44 +08:00
+
+## Latest Value-Ledger No-Candidates Status Slice
+
+Last updated: 2026-05-24 05:09:44 +08:00
+
+Goal alignment / drift check:
+
+- The mission brief says to prioritize data, validation, and outcome tracking
+  over more UI wording.
+- The live value report against `data/schwab-live.db` had no value-ledger rows
+  and no surfaced candidate states, but `value-ledger coverage` reported
+  `status=ready`, `coverage_pct=100.0`.
+- That was misleading because zero surfaced candidates means value evidence has
+  not been measured yet, not that the value-ledger loop is complete.
+
+Useful definition:
+
+- Value-ledger coverage is useful only when it distinguishes missing feedback
+  from missing candidate evidence.
+- A month with zero Warning-or-higher candidates should point back to the
+  shadow-readiness/scan prerequisite instead of claiming vacuous coverage.
+
+Fix in this slice:
+
+- `value-ledger coverage` now reports `status=no_candidates` and
+  `coverage_pct=null` when no Warning-or-higher candidate states exist in the
+  selected period.
+- The coverage payload surfaces zero-call
+  `canonical_next_command="catalyst-radar assert-shadow-ready --json"`.
+- Monthly value reports treat this as
+  `first_blocker=candidate_evidence` before ledger/outcome/validation proof.
+- README documents the no-candidates contract.
+
+Safety:
+
+- Read-only reporting/status change.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls and writes 0 operator database rows.
+- It does not execute residual repair, shadow runs, value-ledger writes,
+  outcome writes, validation replay, imports, source batches, LLMs, alert
+  delivery, or orders.
+
+Verification completed before PR/merge:
+
+- Full `tests/integration/test_value_ledger.py` passed.
+- Full `tests/integration/test_value_report.py` passed.
+- Ruff, compileall, and `git diff --check` passed.
+- Live zero-call smoke against root `data/schwab-live.db` showed
+  `value-ledger coverage` now returns `status=no_candidates`,
+  `coverage_pct=null`, `canonical_next_command="catalyst-radar
+  assert-shadow-ready --json"`, and 0 calls / 0 writes.
+- Live zero-call smoke showed `value-report --month 2026-05` now returns
+  `first_blocker=candidate_evidence`, `first_gap_count=2`,
+  `canonical_next_command="catalyst-radar assert-shadow-ready --json"`, and
+  0 calls / 0 writes.
 
 ## Latest Shadow Readiness Approval Packet Slice
 
