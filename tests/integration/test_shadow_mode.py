@@ -606,6 +606,39 @@ def test_shadow_mode_status_prefers_current_readiness_action_over_stale_latest(
     assert payload["db_writes_made"] == 0
 
 
+def test_shadow_mode_status_keeps_readiness_action_and_command_separate(tmp_path) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'shadow-status-action-command.db').as_posix()}"
+    engine = engine_from_url(database_url)
+    create_schema(engine)
+
+    payload = shadow_mode_status_payload(
+        engine,
+        AppConfig(database_url=database_url),
+        shadow_readiness={
+            "status": "setup_required",
+            "ready": False,
+            "first_blocker": "market_bars",
+            "first_gap_count": 36,
+            "canonical_next_action": "Review residual market-bar rows first.",
+            "canonical_next_command": (
+                "catalyst-radar market-bars residual-review "
+                "--expected-as-of 2026-05-21"
+            ),
+        },
+    )
+
+    assert payload["status"] == "no_shadow_run"
+    assert payload["first_blocker"] == "market_bars"
+    assert payload["first_gap_count"] == 36
+    assert payload["canonical_next_action"] == "Review residual market-bar rows first."
+    assert payload["next_action"] == payload["canonical_next_action"]
+    assert payload["canonical_next_command"] == (
+        "catalyst-radar market-bars residual-review --expected-as-of 2026-05-21"
+    )
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
+
+
 def test_shadow_mode_status_does_not_mask_current_blocker_with_valid_latest(
     tmp_path,
 ) -> None:

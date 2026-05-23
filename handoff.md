@@ -1,6 +1,61 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-24 04:29:39 +08:00
+Last updated: 2026-05-24 04:43:23 +08:00
+
+## Latest Shadow Readiness Action/Command Split Slice
+
+Last updated: 2026-05-24 04:43:23 +08:00
+
+Goal alignment / drift check:
+
+- Priority 2 requires `assert-shadow-ready` to be a daily zero-call readiness
+  gate with one canonical next action and call/write boundaries.
+- A live zero-call audit against `data/schwab-live.db` showed the right blocker
+  and command, but `canonical_next_action` was the command string itself:
+  `catalyst-radar market-bars residual-review --expected-as-of 2026-05-21`.
+- That made the shadow gate less useful for human operators and made
+  `shadow-mode status` blur action text with command text.
+
+Useful definition:
+
+- `canonical_next_action` should explain what to do in human terms.
+- `canonical_next_command` should carry the runnable zero-call command when one
+  exists.
+- Shadow-mode status/run surfaces should preserve the same split instead of
+  recomputing commands from action prose.
+
+Fix in this slice:
+
+- Shadow readiness check rows now support an optional `next_command`.
+- The market-bar readiness check uses the residual-review reason as
+  `next_action` and the residual-review command as `next_command`.
+- `shadow_readiness_payload` promotes the first blocker command to
+  `canonical_next_command` while keeping `canonical_next_action` readable.
+- `shadow-mode status` and `shadow-mode run` preserve separate readiness
+  commands when present, with backward-compatible command fallback for older
+  fixtures.
+- README documents the action/command split.
+
+Safety:
+
+- Read-only readiness/status contract change.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls and writes 0 operator database rows.
+- It does not execute residual repair, saved imports, validation replay,
+  value-ledger writes, outcome writes, imports, source batches, LLMs, alert
+  delivery, shadow-run writes, or orders.
+
+Live zero-call smoke using the root `data/schwab-live.db`:
+
+- `assert-shadow-ready --json` still exits nonzero with
+  `status=setup_required`, `ready=false`, `first_blocker=market_bars`, and
+  `first_gap_count=36`.
+- It now reports a readable `canonical_next_action`:
+  `The remaining missing active tickers look like a zero-liquidity universe-quality gap...`
+  and keeps
+  `canonical_next_command="catalyst-radar market-bars residual-review --expected-as-of 2026-05-21"`.
+- `shadow-mode status --json` reports the same separated action and command,
+  with `external_calls_made=0` and `db_writes_made=0`.
 
 ## Latest Duplicate Blocker Preview Slice
 
