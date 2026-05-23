@@ -1,6 +1,51 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 11:45:00 +08:00
+Last updated: 2026-05-23 12:05:00 +08:00
+
+## Latest Shadow Readiness Partial-Only Status Slice
+
+Last updated: 2026-05-23 12:05:00 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains repeatable shadow-mode operation with fail-closed
+  safety. This slice closes an explicit Priority 2 status-contract gap from
+  the mission brief.
+- Before this slice, `assert-shadow-ready` flattened selected/partial scan
+  scope into `setup_required`, even when the active universe and market-bar
+  setup were otherwise clear.
+
+Fix in this slice:
+
+- Shadow readiness now returns `partial_only` when scan scope is the blocker
+  because the latest scan is selected/partial and hard setup blockers are clear.
+- Empty universe and missing market bars still return `setup_required`.
+- README documents the distinction.
+
+Validation observed in this slice:
+
+- The focused dashboard regression failed before implementation because a
+  selected-universe scan returned `setup_required`.
+- Focused partial/setup regression selection passed after the fix: 3 passed.
+- Focused readiness CLI regression passed after the fix: 4 passed.
+- Full focused shadow-readiness dashboard regression set passed: 6 passed.
+- Adjacent shadow CLI/API regression selection passed: 10 passed.
+- Ruff passed for touched dashboard data and readiness tests.
+- Compileall passed for `src` and touched readiness tests.
+- `git diff --check` passed.
+- Configured operator-DB smoke against `.env.local`'s
+  `data/local/schwab-live.db` still returned `status=setup_required`,
+  `external_calls_made=0`, `db_writes_made=0`, and
+  `canonical_next_action=catalyst-radar market-bars residual-review --expected-as-of 2026-05-15`,
+  proving hard market-bar setup still outranks partial-only classification.
+
+Safety:
+
+- The status classification makes 0 provider, broker, model, order, or web
+  calls.
+- The status classification writes 0 database rows.
+- The live operator DB residual repair remains blocked until the operator
+  explicitly approves the guarded write command.
 
 ## Latest Shadow Readiness Command-Next Slice
 

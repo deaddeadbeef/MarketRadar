@@ -10258,18 +10258,23 @@ def shadow_readiness_payload(
         validation_summary=validation,
     )
     blockers = [row for row in checks if str(row.get("status") or "") == "blocked"]
+    blocker_codes = {str(row.get("code") or "") for row in blockers}
     setup_codes = {
         "active_universe",
         "latest_market_bars",
-        "scan_scope",
     }
     status = (
         "ready"
         if not blockers
         else (
             "setup_required"
-            if any(str(row.get("code") or "") in setup_codes for row in blockers)
-            else "blocked"
+            if blocker_codes & setup_codes
+            else (
+                "partial_only"
+                if "scan_scope" in blocker_codes
+                and _shadow_readiness_has_partial_scope(answer)
+                else "blocked"
+            )
         )
     )
     first_blocker = blockers[0] if blockers else {}
@@ -10769,6 +10774,20 @@ def _shadow_readiness_checks(
         _shadow_validation_check(validation_summary),
     ]
     return checks
+
+
+def _shadow_readiness_has_partial_scope(
+    priced_in_answer: Mapping[str, object],
+) -> bool:
+    scan_scope = _mapping_value(priced_in_answer, "scan_scope")
+    full_scan = _mapping_value(priced_in_answer, "full_scan")
+    mode = str(scan_scope.get("mode") or "").strip().lower()
+    active = int(_finite_float(full_scan.get("active_securities")))
+    scanned = int(_finite_float(full_scan.get("scanned_rows")))
+    return (
+        mode in {"selected_universe", "partial_scan", "selected_universe_scan"}
+        or (active > 0 and scanned > 0 and scanned < active)
+    )
 
 
 def _shadow_market_bar_blocker_context(
