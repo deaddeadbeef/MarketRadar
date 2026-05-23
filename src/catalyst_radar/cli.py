@@ -8396,6 +8396,18 @@ def _print_trial_readiness(payload: Mapping[str, object]) -> None:
             f"first_blocker={product_gate.get('first_blocker') or 'none'} "
             f"next={_compact_cli_text(product_gate.get('next_command'))}"
         )
+        approval = product_gate.get("approval_required_unblock")
+        if isinstance(approval, Mapping):
+            print(
+                "minimum_product_approval "
+                f"area={approval.get('area') or 'n/a'} "
+                f"status={approval.get('status') or 'n/a'} "
+                f"approval_required={str(bool(approval.get('approval_required'))).lower()} "
+                "db_writes_required_to_execute="
+                f"{approval.get('db_writes_required_to_execute') or 0} "
+                f"external_calls_required={approval.get('external_calls_required') or 0} "
+                f"command={_compact_cli_text(approval.get('approval_command'))}"
+            )
     blockers = payload.get("blockers")
     blocker_rows = blockers if isinstance(blockers, Sequence) else ()
     if blocker_rows:

@@ -56,6 +56,7 @@ from catalyst_radar.market.manual_bars import (
     manual_market_bars_repair_plan,
     provider_saved_file_capture_approval_packet,
 )
+from catalyst_radar.market.status import market_bars_residual_repair_payload
 from catalyst_radar.scoring.priced_in import evaluate_priced_in
 from catalyst_radar.security.redaction import redact_text
 from catalyst_radar.storage.broker_repositories import BrokerRepository
@@ -10486,6 +10487,8 @@ def trial_readiness_payload(
         else str(first_blocker.get("next_action") or "Clear the first trial blocker.")
     )
     minimum_useful_product = _trial_minimum_useful_product_gate(
+        engine=engine,
+        config=config,
         safe_to_try=safe_to_try,
         first_trial_blocker=first_blocker,
         priced_in_answer=answer,
@@ -10587,6 +10590,8 @@ def trial_readiness_payload(
 
 def _trial_minimum_useful_product_gate(
     *,
+    engine: Engine,
+    config: AppConfig,
     safe_to_try: bool,
     first_trial_blocker: Mapping[str, object],
     priced_in_answer: Mapping[str, object],
@@ -10665,6 +10670,12 @@ def _trial_minimum_useful_product_gate(
         first_blocker = "zero_hidden_calls_or_writes"
         next_action = "Keep the product-trial gate zero-call and zero-write."
         next_command = "catalyst-radar assert-trial-ready --json"
+    approval_required_unblock = _trial_minimum_product_approval_required_unblock(
+        engine,
+        config,
+        priced_in_answer=priced_in_answer,
+        first_blocker=first_blocker,
+    )
     return {
         "schema_version": "trial-minimum-useful-product-v1",
         "ready": ready,
@@ -10685,6 +10696,7 @@ def _trial_minimum_useful_product_gate(
         "canonical_next_command": next_command,
         "next_action": next_action,
         "next_command": next_command,
+        "approval_required_unblock": approval_required_unblock,
         "minimum_features_required": features,
         "priced_in_status": answer_status,
         "scan_scope": {
@@ -10696,6 +10708,77 @@ def _trial_minimum_useful_product_gate(
         "external_calls_made": 0,
         "db_writes_made": 0,
     }
+
+
+def _trial_minimum_product_approval_required_unblock(
+    engine: Engine,
+    config: AppConfig,
+    *,
+    priced_in_answer: Mapping[str, object],
+    first_blocker: str | None,
+) -> dict[str, object] | None:
+    if first_blocker != "market_bars":
+        return None
+    trust_gate = _mapping_value(priced_in_answer, "full_market_trust_gate")
+    blocker = _mapping_value(trust_gate, "blocker_detail")
+    if str(blocker.get("source") or "") != "market_bars":
+        return None
+    expected_as_of = _date_from_iso_or_none(blocker.get("expected_as_of"))
+    if expected_as_of is None:
+        return None
+    try:
+        preview = market_bars_residual_repair_payload(
+            engine,
+            config,
+            expected_as_of=expected_as_of,
+            stocks_only=bool(blocker.get("stocks_only")),
+            execute=False,
+        )
+    except (SQLAlchemyError, ValueError):
+        return None
+    execute_command = str(preview.get("execute_command") or "").strip()
+    if not execute_command:
+        return None
+    guard = _mapping_value(preview, "guard")
+    return {
+        "schema_version": "trial-minimum-product-approval-required-v1",
+        "area": "market_bars",
+        "reason": (
+            "Clearing the current minimum-product blocker requires explicit "
+            "operator approval because it writes local active-universe rows."
+        ),
+        "status": preview.get("status"),
+        "approval_required": True,
+        "safe_default": "Do not execute without explicit operator approval.",
+        "preview_command": preview.get("preview_command"),
+        "approval_command": execute_command,
+        "execute_command": execute_command,
+        "api": preview.get("api"),
+        "api_execute_request_body": preview.get("api_execute_request_body"),
+        "expected_missing_count": preview.get("missing_as_of_bar_count"),
+        "expected_eligible_count": preview.get("eligible_count"),
+        "db_writes_required_to_execute": preview.get("db_writes_required_to_execute"),
+        "projected_market_bar_gate_cleared": preview.get(
+            "projected_market_bar_gate_cleared"
+        ),
+        "execute_would_clear_market_bar_gate": preview.get(
+            "execute_would_clear_market_bar_gate"
+        ),
+        "guard_required_for_execute": guard.get("required_for_execute"),
+        "external_calls_required": 0,
+        "external_calls_made": int(_finite_float(preview.get("external_calls_made"))),
+        "db_writes_made": int(_finite_float(preview.get("db_writes_made"))),
+    }
+
+
+def _date_from_iso_or_none(value: object) -> date | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        return None
 
 
 def investable_readiness_payload(

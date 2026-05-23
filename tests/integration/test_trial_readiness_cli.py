@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from sqlalchemy import create_engine
 
 import catalyst_radar.cli as cli_module
 from catalyst_radar.cli import main
 from catalyst_radar.core.config import AppConfig
+from catalyst_radar.core.models import DailyBar, Security
 from catalyst_radar.dashboard.data import trial_readiness_payload
+from catalyst_radar.storage.db import create_schema
+from catalyst_radar.storage.repositories import MarketRepository
 
 
 def test_assert_trial_ready_blocks_empty_database_without_calls_or_writes(
@@ -279,6 +282,94 @@ def test_trial_minimum_product_gate_preserves_priced_in_blocker_command() -> Non
     assert product_gate["db_writes_made"] == 0
 
 
+def test_trial_minimum_product_gate_surfaces_market_bar_approval_packet_without_writes(
+    tmp_path,
+) -> None:
+    engine = create_engine(f"sqlite:///{(tmp_path / 'trial-approval.db').as_posix()}")
+    create_schema(engine)
+    market_repo = MarketRepository(engine)
+    market_repo.upsert_securities(
+        [
+            _security("AAPL", active=True, market_cap=3_000_000_000, avg_volume=50_000_000),
+            _security("AACO", active=True, market_cap=0, avg_volume=0),
+        ]
+    )
+    market_repo.upsert_daily_bars([_daily_bar("AAPL", date(2026, 5, 8))])
+
+    payload = trial_readiness_payload(
+        engine,
+        AppConfig(),
+        available_at=datetime(2026, 5, 23, 12, tzinfo=UTC),
+        priced_in_answer={
+            "schema_version": "priced-in-answer-v1",
+            "status": "blocked",
+            "counts": {"total_rows": 2},
+            "first_blocker": "market_bars",
+            "canonical_next_action": "Review residual market-bar rows.",
+            "canonical_next_command": (
+                "catalyst-radar market-bars residual-review "
+                "--expected-as-of 2026-05-08"
+            ),
+            "full_market_trust_gate": {
+                "trusted_full_market_answer": False,
+                "first_blocker": "market_bars",
+                "blocker_detail": {
+                    "schema_version": "priced-in-market-bar-blocker-detail-v1",
+                    "source": "market_bars",
+                    "expected_as_of": "2026-05-08",
+                    "missing_as_of_bar": 1,
+                    "stocks_only": False,
+                },
+            },
+            "full_scan": {
+                "mode": "full_scan",
+                "active_securities": 2,
+                "scanned_rows": 1,
+                "ranked_rows": 2,
+            },
+            "scan_scope": {"mode": "full_scan", "total_rows": 2},
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+        },
+        shadow_readiness={
+            "schema_version": "shadow-readiness-v1",
+            "status": "setup_required",
+            "ready": False,
+            "first_blocker": "market_bars",
+            "checks": [],
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+        },
+        value_report={
+            "schema_version": "monthly-value-report-v1",
+            "verdict": "insufficient_evidence",
+            "first_blocker": "candidate_ledger_coverage",
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+        },
+    )
+
+    product_gate = payload["minimum_useful_product"]
+    approval = product_gate["approval_required_unblock"]
+    assert product_gate["ready"] is False
+    assert product_gate["first_blocker"] == "market_bars"
+    assert approval["schema_version"] == "trial-minimum-product-approval-required-v1"
+    assert approval["approval_required"] is True
+    assert approval["status"] == "ready_to_execute"
+    assert approval["expected_missing_count"] == 1
+    assert approval["expected_eligible_count"] == 1
+    assert approval["db_writes_required_to_execute"] == 1
+    assert approval["projected_market_bar_gate_cleared"] is True
+    assert approval["execute_would_clear_market_bar_gate"] is True
+    assert "--expect-missing-count 1" in approval["approval_command"]
+    assert "--expect-eligible-count 1" in approval["approval_command"]
+    assert approval["approval_command"].endswith("--execute --json")
+    assert approval["external_calls_made"] == 0
+    assert approval["db_writes_made"] == 0
+    assert product_gate["external_calls_made"] == 0
+    assert product_gate["db_writes_made"] == 0
+
+
 def test_trial_readiness_marks_minimum_useful_product_ready_only_after_trusted_answer() -> None:
     payload = trial_readiness_payload(
         create_engine("sqlite:///:memory:"),
@@ -342,3 +433,42 @@ def test_trial_readiness_marks_minimum_useful_product_ready_only_after_trusted_a
         "value_report_visible": True,
         "zero_hidden_calls_or_writes": True,
     }
+
+
+def _security(
+    ticker: str,
+    *,
+    active: bool,
+    market_cap: float,
+    avg_volume: float,
+) -> Security:
+    return Security(
+        ticker=ticker,
+        name=f"{ticker} Inc.",
+        exchange="NASDAQ",
+        sector="Technology" if market_cap else "Unknown",
+        industry="Software" if market_cap else "Unknown",
+        market_cap=market_cap,
+        avg_dollar_volume_20d=avg_volume,
+        has_options=market_cap > 0,
+        is_active=active,
+        updated_at=datetime(2026, 5, 8, 20, tzinfo=UTC),
+        metadata={"type": "CS"},
+    )
+
+
+def _daily_bar(ticker: str, bar_date: date) -> DailyBar:
+    return DailyBar(
+        ticker=ticker,
+        date=bar_date,
+        open=100,
+        high=101,
+        low=99,
+        close=100,
+        volume=1_000_000,
+        vwap=100,
+        adjusted=True,
+        provider="test",
+        source_ts=datetime(2026, 5, 8, 21, tzinfo=UTC),
+        available_at=datetime(2026, 5, 8, 22, tzinfo=UTC),
+    )
