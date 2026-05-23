@@ -246,6 +246,156 @@ def market_bars_status_payload(
     }
 
 
+def market_bars_residual_review_payload(
+    engine: Engine,
+    config: AppConfig,
+    *,
+    expected_as_of: date | None = None,
+    stocks_only: bool = False,
+):
+    """Review residual missing bars without clearing the market-bar gate."""
+
+    status_payload = market_bars_status_payload(
+        engine,
+        config,
+        expected_as_of=expected_as_of,
+        stocks_only=stocks_only,
+    )
+    missing = _int_payload_value(status_payload.get("missing_as_of_bar_count"))
+    first_blocker = status_payload.get("first_blocker")
+    if first_blocker == "universe":
+        status = "setup_required"
+    elif missing <= 0:
+        status = "ready"
+    elif _status_payload_has_universe_quality_residual(status_payload, missing):
+        status = "universe_review_required"
+    elif _status_payload_has_saved_file_residual_gap(status_payload, missing):
+        status = "residual_review_required"
+    else:
+        status = "repair_required"
+
+    stock_scope = _mapping(status_payload.get("stock_scope"))
+    if stocks_only:
+        stock_like_missing = missing
+        non_stock_missing = 0
+    else:
+        stock_like_missing = _int_payload_value(
+            stock_scope.get("stock_like_missing_as_of_bar")
+        )
+        non_stock_missing = max(0, missing - stock_like_missing)
+    configured_scope = _mapping(status_payload.get("configured_universe_scope"))
+    repair = _mapping(status_payload.get("repair_plan"))
+    diagnostic = _mapping(status_payload.get("missing_universe_diagnostic"))
+    saved_file = _mapping(status_payload.get("saved_file"))
+    projection = _mapping(saved_file.get("projection"))
+    expected_text = str(status_payload.get("expected_as_of") or "").strip()
+    manual = _mapping(status_payload.get("manual"))
+    recommended = _mapping(status_payload.get("recommended_action"))
+    if status == "ready":
+        next_action = "Market bars already cover this scope; rerun the priced-in answer."
+    elif status == "setup_required":
+        next_action = str(status_payload.get("next_action") or "")
+    elif status == "repair_required":
+        next_action = str(
+            recommended.get("reason")
+            or status_payload.get("next_action")
+            or "Repair missing market bars before relying on the priced-in answer."
+        )
+    else:
+        next_action = (
+            "Review the residual evidence before filling bars. If the rows are "
+            "real tradable securities, use the manual repair path. If they are "
+            "stale or unsupported active-universe rows, fix the universe source "
+            "and rerun status. Until then, the full-market answer remains blocked."
+        )
+    return {
+        "schema_version": "market-bars-residual-review-v1",
+        "status": status,
+        "expected_as_of": status_payload.get("expected_as_of"),
+        "expected_as_of_source": status_payload.get("expected_as_of_source"),
+        "stocks_only": bool(stocks_only),
+        "coverage_scope": status_payload.get("coverage_scope"),
+        "first_blocker": first_blocker,
+        "clears_market_bar_gate": False,
+        "trusted_answer_ready": False,
+        "active_security_count": status_payload.get("active_security_count"),
+        "existing_as_of_bar_count": status_payload.get("existing_as_of_bar_count"),
+        "missing_as_of_bar_count": missing,
+        "stock_like_missing_as_of_bar_count": stock_like_missing,
+        "non_stock_missing_as_of_bar_count": non_stock_missing,
+        "missing_security_type_counts": status_payload.get(
+            "missing_security_type_counts"
+        )
+        or {},
+        "missing_as_of_bar_ticker_sample": status_payload.get(
+            "missing_as_of_bar_ticker_sample"
+        )
+        or [],
+        "missing_as_of_bar_ticker_more": status_payload.get(
+            "missing_as_of_bar_ticker_more"
+        )
+        or 0,
+        "residual_evidence": {
+            "schema_version": "market-bars-residual-evidence-v1",
+            "missing_count": missing,
+            "zero_avg_dollar_volume_20d_count": _int_payload_value(
+                diagnostic.get("zero_avg_dollar_volume_20d_count")
+            ),
+            "zero_market_cap_count": _int_payload_value(
+                diagnostic.get("zero_market_cap_count")
+            ),
+            "no_composite_figi_count": _int_payload_value(
+                diagnostic.get("no_composite_figi_count")
+            ),
+            "no_options_count": _int_payload_value(diagnostic.get("no_options_count")),
+            "unknown_sector_count": _int_payload_value(
+                diagnostic.get("unknown_sector_count")
+            ),
+            "acquisition_or_spac_name_count": _int_payload_value(
+                diagnostic.get("acquisition_or_spac_name_count")
+            ),
+            "missing_without_local_history_count": _int_payload_value(
+                repair.get("missing_without_local_history_count")
+            ),
+            "missing_with_local_history_count": _int_payload_value(
+                repair.get("missing_with_local_history_count")
+            ),
+            "summary": diagnostic.get("summary"),
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+        },
+        "saved_file_projection": dict(projection),
+        "configured_universe_scope": dict(configured_scope),
+        "manual_repair": {
+            "status": manual.get("status"),
+            "template_command": manual.get("template_command"),
+            "import_preview_command": manual.get("import_preview_command"),
+            "incremental_preview_command": manual.get("incremental_preview_command"),
+            "local_template_path": manual.get("local_template_path"),
+            "local_template_exists": bool(manual.get("local_template_exists")),
+            "fill_progress": dict(_mapping(manual.get("fill_progress"))),
+            "external_calls_made": 0,
+        },
+        "decision_options": _residual_review_decision_options(
+            status_payload,
+            expected_as_of_text=expected_text,
+            stocks_only=stocks_only,
+        ),
+        "safe_default": (
+            "Keep market_bars blocked; do not treat the full-market priced-in "
+            "answer as trusted until bars are repaired or the active universe is "
+            "fixed through an explicit operator-approved path."
+        ),
+        "next_action": next_action,
+        "zero_call_boundary": (
+            "Residual review reads local database state and saved-file metadata "
+            "only; it makes 0 provider calls and 0 database writes."
+        ),
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+    }
+
+
 def market_bars_import_verification_payload(
     engine: Engine,
     config: AppConfig,
@@ -1120,6 +1270,31 @@ def _recommended_unblock_action(
                 expected_as_of=expected_as_of.isoformat(),
             )
         if projected_status and projected_status != "unavailable" and covered <= 0:
+            if _repair_payload_has_universe_quality_residual(repair, missing):
+                return _recommended_action_payload(
+                    kind="residual_universe_review",
+                    label="Review residual universe",
+                    status="blocked",
+                    reason=(
+                        "The saved grouped-daily file covers no remaining missing "
+                        "active tickers, and the residual set looks like a "
+                        "zero-liquidity universe-quality gap. Review the residual "
+                        "rows before filling bars or changing scan scope."
+                    ),
+                    command=_residual_review_command(
+                        expected_as_of,
+                        stocks_only=bool(repair.get("stocks_only")),
+                    ),
+                    tui_command="bars residual review",
+                    api="GET /api/radar/market-bars/residual-review",
+                    request_body={
+                        "expected_as_of": expected_as_of.isoformat(),
+                        "stocks_only": bool(repair.get("stocks_only")),
+                    },
+                    saved_file_path=saved_file_path,
+                    expected_as_of=expected_as_of.isoformat(),
+                    projected_missing_after_import_count=missing_after,
+                )
             return _recommended_action_payload(
                 kind="manual_csv",
                 label="Manual residual repair",
@@ -1246,6 +1421,145 @@ def _recommended_action_payload(
         "external_calls_made": 0,
         **extra,
     }
+
+
+def _residual_review_decision_options(
+    status_payload: Mapping[str, object],
+    *,
+    expected_as_of_text: str,
+    stocks_only: bool,
+) -> list[dict[str, object]]:
+    manual = _mapping(status_payload.get("manual"))
+    configured = _mapping(status_payload.get("configured_universe_scope"))
+    options: list[dict[str, object]] = []
+    if manual.get("template_command"):
+        options.append(
+            {
+                "kind": "manual_bar_repair",
+                "label": "Fill real residual bars",
+                "when": (
+                    "Use only if the residual tickers are truly active tradable "
+                    "securities with real OHLCV/VWAP bars for the scan date."
+                ),
+                "command": manual.get("template_command"),
+                "next_command": manual.get("import_preview_command"),
+                "external_calls_required": 0,
+                "db_writes_required": 0,
+            }
+        )
+    options.append(
+        {
+            "kind": "active_universe_repair",
+            "label": "Fix active-universe source",
+            "when": (
+                "Use when residual rows are stale, unsupported, or not part of "
+                "the intended stock-market scan boundary."
+            ),
+            "command": None,
+            "external_calls_required": 0,
+            "db_writes_required": 0,
+            "note": "No automatic mutation is provided here; keep the gate blocked.",
+        }
+    )
+    if configured.get("status") == "ready":
+        options.append(
+            {
+                "kind": "configured_universe_shadow",
+                "label": "Use configured universe explicitly",
+                "when": (
+                    "Use only as a selected/configured-universe shadow scan; it "
+                    "does not clear the all-active full-market gate."
+                ),
+                "universe": configured.get("universe"),
+                "member_count": configured.get("member_count"),
+                "missing_as_of_bar_count": configured.get(
+                    "missing_as_of_bar_count"
+                ),
+                "external_calls_required": 0,
+                "db_writes_required": 0,
+            }
+        )
+    command_date = date.fromisoformat(expected_as_of_text) if expected_as_of_text else None
+    options.append(
+        {
+            "kind": "keep_blocked",
+            "label": "Keep full-market gate blocked",
+            "when": "Use when the residual rows are unresolved.",
+            "command": _residual_review_command(command_date, stocks_only=stocks_only),
+            "external_calls_required": 0,
+            "db_writes_required": 0,
+        }
+    )
+    return options
+
+
+def _residual_review_command(expected_as_of: date | None, *, stocks_only: bool) -> str:
+    parts = ["catalyst-radar market-bars residual-review"]
+    if expected_as_of is not None:
+        parts.append(f"--expected-as-of {expected_as_of.isoformat()}")
+    if stocks_only:
+        parts.append("--stocks-only")
+    return " ".join(parts)
+
+
+def _repair_payload_has_universe_quality_residual(
+    repair: Mapping[str, object],
+    missing: int,
+) -> bool:
+    diagnostic = _mapping(repair.get("missing_universe_diagnostic"))
+    if missing <= 0:
+        return False
+    zero_volume = _int_payload_value(diagnostic.get("zero_avg_dollar_volume_20d_count"))
+    zero_market_cap = _int_payload_value(diagnostic.get("zero_market_cap_count"))
+    missing_without_history = _int_payload_value(
+        repair.get("missing_without_local_history_count")
+    )
+    return (
+        zero_volume >= missing
+        and zero_market_cap >= missing
+        and (missing_without_history <= 0 or missing_without_history >= missing)
+    )
+
+
+def _status_payload_has_universe_quality_residual(
+    status_payload: Mapping[str, object],
+    missing: int,
+) -> bool:
+    return _status_payload_has_saved_file_residual_gap(status_payload, missing) and (
+        _repair_payload_has_universe_quality_residual(
+            _mapping(status_payload.get("repair_plan")),
+            missing,
+        )
+    )
+
+
+def _status_payload_has_saved_file_residual_gap(
+    status_payload: Mapping[str, object],
+    missing: int,
+) -> bool:
+    if missing <= 0:
+        return False
+    saved_file = _mapping(status_payload.get("saved_file"))
+    projection = _mapping(saved_file.get("projection"))
+    if not projection:
+        return False
+    projected_status = str(projection.get("status") or "").strip()
+    covered = _int_payload_value(projection.get("missing_covered_by_fixture_count"))
+    missing_after = _int_payload_value(projection.get("missing_after_import_count"))
+    return bool(
+        str(saved_file.get("status") or "").strip() == "available"
+        and projected_status
+        and projected_status != "unavailable"
+        and covered <= 0
+        and missing_after >= missing
+    )
+
+
+def _int_payload_value(value: object) -> int:
+    try:
+        return int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0
 
 
 def _saved_file_projection(

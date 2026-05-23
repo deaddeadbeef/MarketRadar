@@ -1,6 +1,39 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 07:20:39 +08:00
+Last updated: 2026-05-23 08:06:50 +08:00
+
+## Latest Residual Market-Bar Review Slice
+
+Last updated: 2026-05-23 08:06:50 +08:00
+
+Goal alignment / drift check:
+
+- The active goal is still the broad priced-in scan: MarketRadar must scan the market for priced-in / not-yet-priced-in opportunities, then prove usefulness through shadow runs, value ledger rows, outcomes, baselines, and monthly value reports.
+- This slice stays on P0/M1 data readiness. It does not polish UI, change scoring, add LLM behavior, call providers, or relax any fail-closed gate.
+- The current operator DB residual is a universe-quality decision, not a normal saved-file import: the saved Polygon/Massive grouped-daily file covers none of the remaining missing rows, and the missing rows have zero local volume/market-cap evidence.
+
+Fix in this slice:
+
+- Added zero-call residual review as a first-class market-bar surface:
+  - CLI: `catalyst-radar market-bars residual-review --expected-as-of YYYY-MM-DD --json`.
+  - API: `GET /api/radar/market-bars/residual-review`.
+- `market-bars status` now routes saved-file residual gaps to `recommended_action.kind=residual_universe_review` when the saved file covers no remaining missing active tickers and the residual rows look like a zero-liquidity universe-quality gap.
+- The residual-review payload reports stock-like versus non-stock residual counts, missing security-type counts, saved-file projection, zero-volume/zero-market-cap evidence, manual repair commands, decision options, safe default, and call/write counters.
+- `priced-in-answer` now preserves the same residual-review recommendation when its market-bar blocker detail sees the same zero-liquidity saved-file residual.
+- Existing behavior remains for ordinary residual gaps that do not look like zero-liquidity universe-quality rows: they still route to manual CSV repair.
+- README documents the new operator contract.
+
+Validation observed in this slice:
+
+- Focused CLI/API/dashboard residual tests passed: 6 passed.
+- `ruff check` passed for touched market status, CLI, API route, dashboard data, and integration tests.
+- No provider, broker, OpenAI, SEC, Polygon/Massive, Schwab, web, app, or order calls were made while validating this slice.
+
+Current live blocker:
+
+- The all-active trusted answer remains blocked until the operator either fills real residual bars or fixes the active-universe source through an explicit path.
+- Residual review is deliberately non-mutating. It does not clear `market_bars`; it prevents the operator from looping through the same saved grouped-daily file when that file cannot reduce the gap.
+- Next useful M1 step is to define the explicit universe-quality repair/exclusion workflow, or to produce real residual bars if the operator decides those rows are truly active tradable securities.
 
 ## Latest Market-Bar Residual Gate Alignment Slice
 

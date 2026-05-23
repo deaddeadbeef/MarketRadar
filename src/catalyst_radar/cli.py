@@ -136,6 +136,7 @@ from catalyst_radar.market.manual_bars import (
 from catalyst_radar.market.status import (
     market_bars_import_verification_payload,
     market_bars_post_capture_verification_payload,
+    market_bars_residual_review_payload,
     market_bars_status_payload,
 )
 from catalyst_radar.pipeline.candidate_packet import build_candidate_packet
@@ -259,6 +260,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="Summarize stock-like active securities only.",
     )
     market_bars_status.add_argument("--json", action="store_true")
+    market_bars_residual_review = market_bars_sub.add_parser("residual-review")
+    market_bars_residual_review.add_argument("--database-url")
+    market_bars_residual_review.add_argument(
+        "--expected-as-of",
+        type=date.fromisoformat,
+        help="Defaults to the latest stored daily-bar date.",
+    )
+    market_bars_residual_review.add_argument(
+        "--stocks-only",
+        action="store_true",
+        help="Review residual stock-like active securities only.",
+    )
+    market_bars_residual_review.add_argument("--json", action="store_true")
     market_bars_template = market_bars_sub.add_parser("template")
     market_bars_template.add_argument("--database-url")
     market_bars_template.add_argument(
@@ -1313,6 +1327,18 @@ def main(argv: list[str] | None = None) -> int:
                     print(json.dumps(payload, sort_keys=True))
                 else:
                     _print_market_bars_status(payload)
+                return 0
+            if args.market_bars_command == "residual-review":
+                payload = market_bars_residual_review_payload(
+                    engine,
+                    config,
+                    expected_as_of=args.expected_as_of,
+                    stocks_only=args.stocks_only,
+                )
+                if args.json:
+                    print(json.dumps(payload, sort_keys=True))
+                else:
+                    _print_market_bars_residual_review(payload)
                 return 0
             if args.market_bars_command == "template":
                 result = write_manual_market_bars_template(
@@ -5123,6 +5149,65 @@ def _print_market_bars_status(payload: Mapping[str, object]):
                     _int_value(plan.get("external_calls_made")),
                 )
             )
+    print(f"next_action={payload.get('next_action')}")
+    print(f"boundary={payload.get('zero_call_boundary')}")
+
+
+def _print_market_bars_residual_review(payload: Mapping[str, object]):
+    print(
+        "market_bars_residual_review "
+        f"status={payload.get('status')} "
+        f"expected_as_of={payload.get('expected_as_of')} "
+        f"scope={payload.get('coverage_scope')} "
+        f"active={payload.get('active_security_count')} "
+        f"existing={payload.get('existing_as_of_bar_count')} "
+        f"missing={payload.get('missing_as_of_bar_count')} "
+        "stock_like_missing="
+        f"{payload.get('stock_like_missing_as_of_bar_count')} "
+        "non_stock_missing="
+        f"{payload.get('non_stock_missing_as_of_bar_count')} "
+        f"clears_gate={str(bool(payload.get('clears_market_bar_gate'))).lower()} "
+        f"external_calls={payload.get('external_calls_made')} "
+        f"db_writes={payload.get('db_writes_made')}"
+    )
+    type_counts = _mapping_value(payload.get("missing_security_type_counts"))
+    if type_counts:
+        print(f"missing_security_types={_count_summary(type_counts)}")
+    evidence = _mapping_value(payload.get("residual_evidence"))
+    if evidence:
+        print(
+            "residual_evidence "
+            f"zero_avg_dollar_volume_20d="
+            f"{evidence.get('zero_avg_dollar_volume_20d_count', 'n/a')} "
+            f"zero_market_cap={evidence.get('zero_market_cap_count', 'n/a')} "
+            f"no_history={evidence.get('missing_without_local_history_count', 'n/a')} "
+            f"no_options={evidence.get('no_options_count', 'n/a')} "
+            f"external_calls={evidence.get('external_calls_made', 0)}"
+        )
+    projection = _mapping_value(payload.get("saved_file_projection"))
+    if projection:
+        print(
+            "saved_file_projection "
+            f"status={projection.get('status')} "
+            f"covered={projection.get('missing_covered_by_fixture_count')} "
+            f"missing_after={projection.get('missing_after_import_count')} "
+            f"path={projection.get('path')}"
+        )
+    manual = _mapping_value(payload.get("manual_repair"))
+    if manual:
+        print(
+            "manual_repair "
+            f"status={manual.get('status')} "
+            f"template={_compact_cli_text(manual.get('template_command'))} "
+            f"preview={_compact_cli_text(manual.get('import_preview_command'))}"
+        )
+    options = _sequence_value(payload.get("decision_options"))
+    if options:
+        option_kinds = ",".join(
+            str(_mapping_value(item).get("kind")) for item in options
+        )
+        print(f"decision_options={option_kinds}")
+    print(f"safe_default={payload.get('safe_default')}")
     print(f"next_action={payload.get('next_action')}")
     print(f"boundary={payload.get('zero_call_boundary')}")
 

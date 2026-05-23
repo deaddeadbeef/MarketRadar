@@ -2493,6 +2493,27 @@ def _priced_in_mission_recommended_unblock_action(
         )
         else None
     )
+    if residual_saved_file_reason and _priced_in_residual_universe_review_needed(
+        diagnostic,
+        gaps,
+    ):
+        return _priced_in_market_bar_recommended_unblock_payload(
+            kind="residual_universe_review",
+            label="Review residual universe",
+            status="blocked",
+            reason=(
+                "The saved grouped-daily file covers no remaining missing active "
+                "tickers, and the residual set looks like a zero-liquidity "
+                "universe-quality gap. Review residual rows before filling bars "
+                "or changing scan scope."
+            ),
+            command=_priced_in_residual_review_command(diagnostic),
+            api="GET /api/radar/market-bars/residual-review",
+            request_body=_priced_in_residual_review_request_body(diagnostic),
+            approval_required=False,
+            external_calls_required=0,
+            db_writes_required=0,
+        )
     validate_option = by_kind.get("validate_saved_file")
     if saved_status == "available" and validate_option:
         if projected_status == "invalid":
@@ -3647,6 +3668,27 @@ def _priced_in_market_bar_recommended_unblock_action(blocker_detail):
         )
         else None
     )
+    if residual_saved_file_reason and _priced_in_residual_universe_review_needed(
+        blocker_detail,
+        int(_finite_float(blocker_detail.get("missing_as_of_bar"))),
+    ):
+        return _priced_in_market_bar_recommended_unblock_payload(
+            kind="residual_universe_review",
+            label="Review residual universe",
+            status="blocked",
+            reason=(
+                "The saved grouped-daily file covers no remaining missing active "
+                "tickers, and the residual set looks like a zero-liquidity "
+                "universe-quality gap. Review residual rows before filling bars "
+                "or changing scan scope."
+            ),
+            command=_priced_in_residual_review_command(blocker_detail),
+            api="GET /api/radar/market-bars/residual-review",
+            request_body=_priced_in_residual_review_request_body(blocker_detail),
+            approval_required=False,
+            external_calls_required=0,
+            db_writes_required=0,
+        )
     validate_option = options.get("validate_saved_file")
     if saved_file_status == "available" and validate_option:
         if projected_status == "invalid":
@@ -3714,6 +3756,45 @@ def _priced_in_market_bar_recommended_unblock_action(blocker_detail):
     if first_option:
         return _priced_in_market_bar_recommended_unblock_from_option(first_option)
     return None
+
+
+def _priced_in_residual_universe_review_needed(
+    context: Mapping[str, object],
+    missing: int,
+) -> bool:
+    if missing <= 0:
+        return False
+    diagnostic = _mapping_value(context, "missing_universe_diagnostic")
+    if not diagnostic:
+        diagnostic = _mapping_value(context, "missing_universe")
+    zero_volume = int(
+        _finite_float(diagnostic.get("zero_avg_dollar_volume_20d_count"))
+    )
+    zero_market_cap = int(_finite_float(diagnostic.get("zero_market_cap_count")))
+    return zero_volume >= missing and zero_market_cap >= missing
+
+
+def _priced_in_residual_review_request_body(
+    context: Mapping[str, object],
+) -> dict[str, object]:
+    expected_as_of = (
+        str(context.get("expected_as_of") or context.get("target_as_of") or "").strip()
+        or None
+    )
+    return {
+        "expected_as_of": expected_as_of,
+        "stocks_only": bool(context.get("stocks_only")),
+    }
+
+
+def _priced_in_residual_review_command(context: Mapping[str, object]) -> str:
+    body = _priced_in_residual_review_request_body(context)
+    parts = ["catalyst-radar market-bars residual-review"]
+    if body["expected_as_of"]:
+        parts.append(f"--expected-as-of {body['expected_as_of']}")
+    if body["stocks_only"]:
+        parts.append("--stocks-only")
+    return " ".join(parts)
 
 
 def _priced_in_market_bar_recommended_unblock_from_option(
@@ -4061,6 +4142,9 @@ def priced_in_answer_payload(
                 "source": "market_bars",
                 "status": market_bar_repair.get("status")
                 or resolved_market_bars.get("status"),
+                "expected_as_of": market_bar_repair.get("expected_as_of")
+                or market_bar_repair.get("target_as_of"),
+                "stocks_only": bool(market_bar_repair.get("stocks_only")),
                 "active_securities": market_bar_repair.get("active_securities")
                 or resolved_market_bars.get("active_securities"),
                 "with_as_of_bar": market_bar_repair.get("with_as_of_bar")
