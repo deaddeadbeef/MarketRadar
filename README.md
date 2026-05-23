@@ -1256,7 +1256,9 @@ outcome coverage reports `no_ledger_entries` instead
 of `ready`, because outcome evidence cannot exist before feedback is logged. The
 top-level report exposes `first_blocker`, `first_gap_count`,
 `canonical_next_action`, and `canonical_next_command` for the first missing
-value-proof evidence step.
+value-proof evidence step. Human `value-report` output prints the same
+`evidence_gap`, `next_action`, and `next_command` lines so the CLI surface can
+drive the same safe preview-first workflow as JSON/API clients.
 `validation_evidence` section only treats successful validation runs whose
 as-of window is inside the reported month as monthly evidence. If the latest
 successful run is for another month, the report fails closed with

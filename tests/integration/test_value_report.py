@@ -291,6 +291,30 @@ def test_value_report_surfaces_missing_candidate_ledger_coverage(
     assert payload["external_calls_made"] == 0
     assert payload["db_writes_made"] == 0
 
+    human_exit = main(
+        [
+            "value-report",
+            "--month",
+            "2026-05",
+            "--available-at",
+            "2026-05-31T21:00:00+00:00",
+        ]
+    )
+
+    assert human_exit == 0
+    human_output = capsys.readouterr().out
+    assert (
+        "evidence_gap first_blocker=candidate_ledger_coverage first_gap_count=1"
+        in human_output
+    )
+    assert "next_action=Record the first missing value-ledger row" in human_output
+    assert "next_command=catalyst-radar value-ledger record" in human_output
+    assert "--artifact-id state-AAPL" in human_output
+    assert "--preview" in human_output
+    assert "--execute" not in human_output
+    assert "external_calls_made=0" in human_output
+    assert "db_writes_made=0" in human_output
+
 
 def test_value_report_passes_when_useful_decision_support_covers_40_usd(
     tmp_path,
