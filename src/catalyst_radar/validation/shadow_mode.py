@@ -37,6 +37,7 @@ def shadow_mode_run_payload(
     mode = "execute" if execute else "preview"
     readiness = _mapping(snapshot.get("shadow_readiness"))
     next_action = _shadow_mode_next_action(run)
+    next_command = _shadow_mode_next_command(run, next_action)
     preview_command = _shadow_mode_run_command(
         run_date=run.run_date,
         as_of=run.as_of,
@@ -66,7 +67,7 @@ def shadow_mode_run_payload(
         "first_blocker": _shadow_mode_status_first_blocker(readiness),
         "first_gap_count": _shadow_mode_status_first_gap_count(readiness),
         "canonical_next_action": next_action,
-        "canonical_next_command": _canonical_command(next_action),
+        "canonical_next_command": next_command,
         "next_action": next_action,
         "useful_definition": (
             "A useful shadow run records whether the current local scan is valid, "
@@ -92,6 +93,7 @@ def shadow_mode_status_payload(
     )
     latest_payload = shadow_mode_run_to_payload(latest) if latest is not None else None
     next_action = _shadow_mode_status_next_action(latest, readiness)
+    next_command = _shadow_mode_status_next_command(latest, readiness, next_action)
     first_blocker = _shadow_mode_status_first_blocker(readiness)
     return {
         "schema_version": "shadow-mode-status-v1",
@@ -102,7 +104,7 @@ def shadow_mode_status_payload(
         "first_blocker": first_blocker,
         "first_gap_count": _shadow_mode_status_first_gap_count(readiness),
         "canonical_next_action": next_action,
-        "canonical_next_command": _canonical_command(next_action),
+        "canonical_next_command": next_command,
         "next_action": next_action,
         "external_calls_made": 0,
         "db_writes_made": 0,
@@ -411,6 +413,14 @@ def _shadow_mode_next_action(run: ShadowModeRun) -> str:
     return "Open shadow readiness and clear the first blocker before rerunning."
 
 
+def _shadow_mode_next_command(run: ShadowModeRun, next_action: str) -> str | None:
+    if run.status in {"valid_full_scan", "valid_selected_universe_scan"}:
+        return None
+    return _shadow_readiness_canonical_next_command(run) or _canonical_command(
+        next_action
+    )
+
+
 def _shadow_mode_status_next_action(
     latest: ShadowModeRun | None,
     readiness: Mapping[str, object],
@@ -423,6 +433,22 @@ def _shadow_mode_status_next_action(
     if latest is not None:
         return _shadow_mode_next_action(latest)
     return "Run `catalyst-radar shadow-mode run --preview` to inspect the daily audit row."
+
+
+def _shadow_mode_status_next_command(
+    latest: ShadowModeRun | None,
+    readiness: Mapping[str, object],
+    next_action: str,
+) -> str | None:
+    readiness_status = str(readiness.get("status") or "").strip().lower()
+    if readiness_status != "ready":
+        command = readiness.get("canonical_next_command")
+        if isinstance(command, str) and command.strip():
+            return command.strip()
+        return _canonical_command(next_action)
+    if latest is not None:
+        return _shadow_mode_next_command(latest, next_action)
+    return _canonical_command(next_action)
 
 
 def _shadow_mode_status_label(
@@ -497,6 +523,15 @@ def _shadow_readiness_canonical_next_action(run: ShadowModeRun) -> str | None:
     action = readiness.get("canonical_next_action")
     if isinstance(action, str) and action.strip():
         return action.strip()
+    return None
+
+
+def _shadow_readiness_canonical_next_command(run: ShadowModeRun) -> str | None:
+    payload = _mapping(thaw_json_value(run.payload))
+    readiness = _mapping(payload.get("shadow_readiness"))
+    command = readiness.get("canonical_next_command")
+    if isinstance(command, str) and command.strip():
+        return command.strip()
     return None
 
 

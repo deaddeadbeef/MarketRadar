@@ -10377,6 +10377,11 @@ def shadow_readiness_payload(
         if ready
         else str(first_blocker.get("next_action") or "Clear the first blocker.")
     )
+    canonical_next_command = (
+        first_blocker.get("next_command")
+        if isinstance(first_blocker.get("next_command"), str)
+        else None
+    ) or _shadow_readiness_command(canonical_next_action)
     return {
         "schema_version": "shadow-readiness-v1",
         "status": status,
@@ -10390,7 +10395,7 @@ def shadow_readiness_payload(
         "first_blocker": _shadow_readiness_first_blocker(first_blocker),
         "first_gap_count": _shadow_readiness_first_gap_count(first_blocker),
         "canonical_next_action": canonical_next_action,
-        "canonical_next_command": _shadow_readiness_command(canonical_next_action),
+        "canonical_next_command": canonical_next_command,
         "useful_definition": (
             "Useful means the scanner covers the intended active universe with fresh "
             "market bars, can explain the priced-in trust gate, has candidate states, "
@@ -11263,6 +11268,8 @@ def _shadow_readiness_checks(
                 str(market_bar_blocker.get("next_action") or "").strip()
                 or "Fill or import the missing market bars before running shadow scans."
             ),
+            next_command=str(market_bar_blocker.get("next_command") or "").strip()
+            or None,
             evidence=str(
                 freshness.get("latest_daily_bar_date")
                 or database.get("latest_daily_bar_date")
@@ -11508,13 +11515,17 @@ def _shadow_market_bar_blocker_context(
     )
     return {
         "next_action": (
+            recommended.get("reason")
+            or recommended.get("next_action")
+            or blocker.get("next_action")
+            or trust_gate.get("next_action")
+        ),
+        "next_command": (
             recommended.get("command")
             or recommended.get("cli_command")
             or recommended.get("tui_command")
-            or recommended.get("next_action")
-            or recommended.get("reason")
-            or blocker.get("next_action")
-            or trust_gate.get("next_action")
+            or blocker.get("preview_command")
+            or trust_gate.get("next_command")
         ),
         "missing_security_type_counts": _row_dict(
             _mapping_value(blocker, "missing_security_type_counts")
@@ -11688,6 +11699,7 @@ def _shadow_check_row(
     finding: str,
     next_action: str,
     evidence: str,
+    next_command: str | None = None,
     metric: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     return {
@@ -11696,6 +11708,7 @@ def _shadow_check_row(
         "status": status,
         "finding": finding,
         "next_action": next_action,
+        "next_command": next_command,
         "evidence": evidence,
         "metric": _row_dict(metric) if isinstance(metric, Mapping) else {},
         "external_calls_made": 0,

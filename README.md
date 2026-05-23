@@ -1033,11 +1033,12 @@ state, broker-order kill switch, value-ledger/outcome schema availability,
 disabled real LLM mode, and validation readiness. The
 command itself makes 0 provider calls and 0 database writes; it prints those
 counters plus the planned run's maximum external-call count. When the first
-blocker exposes a zero-call review command, the readiness next action uses that
-command instead of only the prose explanation. The payload also promotes the
-current blocker at top level as `first_blocker`, `first_gap_count`, and
-`canonical_next_command`, so CLI/API/TUI clients do not need to infer the first
-unblock step from nested rows. A selected-universe or partial
+blocker exposes a zero-call review command, `canonical_next_action` stays
+human-readable and `canonical_next_command` carries the command. The payload also
+promotes the current blocker at top level as `first_blocker`,
+`first_gap_count`, `canonical_next_action`, and `canonical_next_command`, so
+CLI/API/TUI clients do not need to infer the first unblock step from nested
+rows. A selected-universe or partial
 scan is reported as `partial_only` only after the active universe and market-bar
 setup checks are otherwise clear; empty universe or missing market bars still
 return `setup_required`. Config-only safety blockers such as enabled broker
@@ -1066,7 +1067,8 @@ older `manual_review_count` field for compatibility. When a shadow run is not va
 yet, the run response exposes the classification as top-level `status` and its
 top-level `next_action` uses the same canonical next action as
 `assert-shadow-ready`, so the audit response does not hide the first unblock
-command behind a generic setup message. The run response also exposes
+command behind a generic setup message. The command remains separate in
+`canonical_next_command` when the action text is prose. The run response also exposes
 `first_blocker`, `first_gap_count`, `canonical_next_action`, and
 `canonical_next_command` for the current readiness gate, so preview/execute
 clients can route the operator to the same unblock step without parsing nested
