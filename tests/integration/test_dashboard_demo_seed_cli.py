@@ -54,6 +54,7 @@ from catalyst_radar.dashboard.tui import (
 from catalyst_radar.storage.db import create_schema
 from catalyst_radar.storage.repositories import MarketRepository
 from catalyst_radar.storage.schema import daily_bars, option_features, securities
+from catalyst_radar.storage.validation_repositories import ValidationRepository
 
 
 def test_seed_dashboard_demo_populates_command_center_layers(
@@ -617,6 +618,91 @@ def test_dashboard_batch_command_opens_full_scan_source_batch_plan(
     )
     assert "first provider chunk only." in full_plan.message
     assert "Command:" in full_plan.message
+
+
+def test_dashboard_tui_value_ledger_and_outcome_commands_are_preview_first(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'demo.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["seed-dashboard-demo"]) == 0
+    capsys.readouterr()
+
+    engine = create_engine(database_url, future=True)
+    filters = DashboardFilters(available_at=DEMO_AVAILABLE_AT + timedelta(minutes=1))
+    payload = dashboard_snapshot_payload(
+        engine=engine,
+        config=AppConfig.from_env(),
+        dotenv_loaded=True,
+        filters=filters,
+    )
+
+    coverage = _apply_command(
+        "ledger coverage",
+        payload,
+        "costs",
+        filters,
+        engine=engine,
+        config=AppConfig.from_env(),
+    )
+    assert coverage.page == "costs"
+    assert "Value-ledger coverage: status=gaps" in coverage.message
+    assert "external_calls=0 db_writes=0" in coverage.message
+
+    preview = _apply_command(
+        "ledger record 1 useful research accepted 12 0.5 preview-note",
+        payload,
+        "costs",
+        filters,
+        engine=engine,
+        config=AppConfig.from_env(),
+    )
+    assert "Value ledger preview:" in preview.message
+    assert "ACME useful research" in preview.message
+    assert "db_writes=0" in preview.message
+    assert ValidationRepository(engine).list_value_ledger_entries(limit=10) == []
+
+    executed = _apply_command(
+        "ledger record 1 useful research accepted 12 0.5 --execute acted-note",
+        payload,
+        "costs",
+        filters,
+        engine=engine,
+        config=AppConfig.from_env(),
+    )
+    assert "Value ledger executed:" in executed.message
+    assert "db_writes=1" in executed.message
+    entries = ValidationRepository(engine).list_value_ledger_entries(limit=10)
+    assert len(entries) == 1
+    assert entries[0].ticker == "ACME"
+    assert entries[0].source == "dashboard_tui"
+
+    outcome_coverage = _apply_command(
+        "outcome coverage",
+        payload,
+        "costs",
+        filters,
+        engine=engine,
+        config=AppConfig.from_env(),
+    )
+    assert "Value-outcome coverage: status=gaps" in outcome_coverage.message
+    assert "ledger=1 linked=0 missing=1" in outcome_coverage.message
+    assert "external_calls=0 db_writes=0" in outcome_coverage.message
+
+    outcome_preview = _apply_command(
+        f"outcome update {entries[0].id} filter",
+        payload,
+        "costs",
+        filters,
+        engine=engine,
+        config=AppConfig.from_env(),
+    )
+    assert "Value outcome preview:" in outcome_preview.message
+    assert "external_calls=0 db_writes=0" in outcome_preview.message
+    assert ValidationRepository(engine).list_value_outcomes(limit=10) == []
 
 
 def test_dashboard_batch_all_response_separates_plan_route_and_blocked_rows(

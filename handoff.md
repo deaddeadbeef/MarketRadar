@@ -1,6 +1,41 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 13:34:17 +08:00
+Last updated: 2026-05-23 14:00:44 +08:00
+
+## Latest TUI Value Workflow Parity Slice
+
+Last updated: 2026-05-23 14:00:44 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains measurable shadow/value operation, not dashboard
+  polish.
+- CLI/API value-ledger and value-outcome workflows already existed, but the TUI
+  was only showing summaries. The user explicitly wants the TUI to be a
+  replacement UI for the same functionality.
+- The useful definition for this slice is concrete: from the TUI command box,
+  the operator can preview coverage, preview writes, and explicitly execute
+  local value-ledger/outcome writes with call/write counters shown.
+
+Fix in this slice:
+
+- Added TUI `ledger coverage`, `ledger summary`, `ledger list`, `ledger show`,
+  and `ledger record ... [--execute]` commands.
+- Added TUI `outcome coverage`, `outcome list`, `outcome show`, and
+  `outcome update ... [--execute]` commands.
+- Preview is the default for record/update; writes require explicit
+  `--execute`.
+- README documents the TUI command contract.
+
+Safety:
+
+- These commands reuse local validation helpers and make 0 provider, broker,
+  order, OpenAI, SEC, Polygon/Massive, Schwab, web, or app calls.
+- `ledger record` and `outcome update` write exactly one local validation row
+  only when `--execute` is present.
+- The commands do not mutate deterministic scores, policy gates, candidate
+  states, Decision Cards, alert delivery, provider workflows, LLM behavior, or
+  broker/order controls.
 
 ## Latest Value Outcome Follow-Through Slice
 
