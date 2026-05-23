@@ -1134,6 +1134,8 @@ with explicit `--preview` for missing rows so the operator can review or edit
 subjective label/value before writing anything. When coverage has gaps, the
 payload exposes `first_missing_candidate_state_id`, `first_missing_ticker`, and
 `canonical_next_command` for the first non-executing ledger-record command.
+The human CLI output prints the same `next_command=` line so shell users do not
+need to switch to JSON just to find the safe preview command.
 
 ### Forward outcomes
 

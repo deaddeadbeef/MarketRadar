@@ -1,6 +1,50 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-24 02:21:52 +08:00
+Last updated: 2026-05-24 02:29:41 +08:00
+
+## Latest Value Ledger Coverage CLI Command Slice
+
+Last updated: 2026-05-24 02:29:41 +08:00
+
+Goal alignment / drift check:
+
+- The active value-report blocker is still candidate ledger coverage.
+- `value-ledger coverage --json` already exposed the safe preview-only
+  `value-ledger record` command for the first missing surfaced candidate.
+- Human CLI output showed the missing row and next action, but not the command.
+  That made the CLI weaker than JSON as a replacement UI for the current
+  measurable-value workflow.
+
+Useful definition:
+
+- When value-ledger coverage has gaps, human CLI output should show the same
+  canonical preview command as JSON.
+- The command must stay preview-only, include `--json`, and must not execute a
+  ledger write.
+
+Fix in this slice:
+
+- Human `value-ledger coverage` output now prints `next_command=` whenever
+  `canonical_next_command` is present.
+- README documents the human CLI parity.
+- Regression coverage verifies that missing candidate-ledger coverage prints
+  the preview-only record command and preserves zero-call/zero-write behavior.
+
+Safety:
+
+- This is read-only CLI presentation parity only.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls and writes 0 database rows.
+- It does not execute value-ledger writes, outcome writes, residual repair,
+  imports, source batches, LLMs, alert delivery, or orders.
+
+Live zero-call smoke using the root operator config and this branch's code:
+
+- `value-ledger coverage --available-at 2026-05-23T16:00:00+00:00 --json`
+  returns `status=gaps`, the preview-only `canonical_next_command`,
+  `external_calls_made=0`, and `db_writes_made=0`.
+- Human output now prints the same `next_command=catalyst-radar value-ledger
+  record ... --preview --json` line.
 
 ## Latest Outcome Coverage Prerequisite Command Slice
 

@@ -8682,6 +8682,11 @@ def _print_value_ledger_coverage(payload: Mapping[str, object]) -> None:
                 f"{row.get('ledger_entry_id') or 'n/a'}"
             )
     print(f"next_action={_compact_cli_text(payload.get('next_action'))}")
+    if payload.get("canonical_next_command"):
+        print(
+            "next_command="
+            f"{_compact_cli_text(payload.get('canonical_next_command'))}"
+        )
 
 
 def _print_value_outcome_update(payload: Mapping[str, object]) -> None:
