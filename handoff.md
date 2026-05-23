@@ -1,6 +1,50 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-24 03:10:41 +08:00
+Last updated: 2026-05-24 03:17:36 +08:00
+
+## Latest Incomplete Outcome Refresh Command Slice
+
+Last updated: 2026-05-24 03:17:36 +08:00
+
+Goal alignment / drift check:
+
+- The mission brief requires forward outcomes to be tracked until monthly value
+  evidence is measurable.
+- `value-outcome coverage` already gave a preview command when an outcome row
+  was missing, but when an outcome row existed with `insufficient_data` or
+  another non-computed status, coverage returned `status=incomplete` with no
+  canonical command.
+- That left the ledger-to-outcome loop less scriptable after an early outcome
+  update was recorded before enough future bars existed.
+
+Useful definition:
+
+- Incomplete outcome coverage should tell the operator exactly which existing
+  outcome needs a preview refresh at the current cutoff.
+- The command must be preview-only and must not include `--execute`.
+- Monthly value report should inherit the same command when value outcome
+  coverage is the first blocker.
+
+Fix in this slice:
+
+- Outcome coverage rows now include `refresh_update_command` for non-computed
+  existing outcomes.
+- `value-outcome coverage` exposes `first_incomplete_value_ledger_entry_id`,
+  `first_incomplete_ticker`, and a preview-only `canonical_next_command` when
+  status is `incomplete`.
+- Monthly value report automatically surfaces that command through its existing
+  `value_outcome_coverage` blocker path.
+- Regression coverage verifies API coverage and monthly report command parity
+  after an `insufficient_data` outcome row exists.
+
+Safety:
+
+- Coverage/report paths are read-only and make 0 provider calls and 0 database
+  writes.
+- The regression does write one temp-test outcome row in an isolated test
+  database to create the incomplete state, not in the operator DB.
+- No Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, provider,
+  alert delivery, residual repair, import, or source batch path is executed.
 
 ## Latest Value Report CLI Next-Step Slice
 
