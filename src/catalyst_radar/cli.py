@@ -8778,6 +8778,11 @@ def _print_value_outcome_coverage(payload: Mapping[str, object]) -> None:
             f"{row.get('value_outcome_id') or 'n/a'}"
         )
     print(f"next_action={_compact_cli_text(payload.get('next_action'))}")
+    if payload.get("canonical_next_command"):
+        print(
+            "next_command="
+            f"{_compact_cli_text(payload.get('canonical_next_command'))}"
+        )
 
 
 def _print_value_report(payload: Mapping[str, object]) -> None:

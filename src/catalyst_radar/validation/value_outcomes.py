@@ -389,6 +389,14 @@ def load_value_outcome_coverage_payload(
         missing_count=len(missing),
         status_counts=status_counts,
     )
+    next_action = _value_outcome_coverage_next_action(status)
+    canonical_next_command = _value_outcome_coverage_next_command(
+        status=status,
+        first_missing=first_missing,
+        cutoff=cutoff,
+        period_start=resolved_start,
+        period_end=resolved_end,
+    )
     return {
         "schema_version": "value-outcome-coverage-v1",
         "status": status,
@@ -405,16 +413,14 @@ def load_value_outcome_coverage_payload(
             "value_ledger_entry_id",
         ),
         "first_missing_ticker": _first_missing_outcome_field(first_missing, "ticker"),
-        "canonical_next_command": _first_missing_outcome_field(
-            first_missing,
-            "preview_update_command",
-        ),
+        "canonical_next_action": next_action,
+        "canonical_next_command": canonical_next_command,
         "computed_outcome_count": int(status_counts.get("computed") or 0),
         "insufficient_data_count": int(status_counts.get("insufficient_data") or 0),
         "outcome_status_counts": dict(sorted(status_counts.items())),
         "coverage_pct": coverage_pct,
         "rows": rows[: max(1, int(limit))],
-        "next_action": _value_outcome_coverage_next_action(status),
+        "next_action": next_action,
     }
 
 
@@ -850,6 +856,26 @@ def _value_outcome_coverage_next_action(status: str) -> str:
             "month as measured."
         )
     return "All value-ledger entries in this period have computed value outcomes."
+
+
+def _value_outcome_coverage_next_command(
+    *,
+    status: str,
+    first_missing: Mapping[str, object] | None,
+    cutoff: datetime,
+    period_start: date,
+    period_end: date,
+) -> str | None:
+    if status == "no_ledger_entries":
+        return (
+            "catalyst-radar value-ledger coverage "
+            f"--available-at {cutoff.isoformat()} "
+            f"--period-start {period_start.isoformat()} "
+            f"--period-end {period_end.isoformat()} --json"
+        )
+    if status == "gaps":
+        return _first_missing_outcome_field(first_missing, "preview_update_command")
+    return None
 
 
 def _resolved_period(
