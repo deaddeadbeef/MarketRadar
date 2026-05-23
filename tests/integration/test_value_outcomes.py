@@ -426,6 +426,39 @@ def test_value_outcome_marks_failed_bearish_follow_through_and_gap_down(
     assert round(outcome["gap_return"], 6) == -0.01
 
 
+def test_value_outcome_uses_bearish_high_for_invalidation_touch(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'value-outcome-bearish-stop.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = engine_from_url(database_url)
+    create_schema(engine)
+    entry_id = _seed_ledger_and_bars(
+        engine,
+        future_count=4,
+        priced_in_direction="bearish",
+        invalidation_price=105,
+    )
+
+    response = TestClient(create_app()).post(
+        "/api/value-outcomes/update",
+        json={
+            "value_ledger_entry_id": entry_id,
+            "outcome_available_at": "2026-05-25T21:00:00+00:00",
+        },
+    )
+
+    assert response.status_code == 200
+    outcome = response.json()["outcome"]
+    assert outcome["status"] == "insufficient_data"
+    assert outcome["trading_days_observed"] == 4
+    assert outcome["setup_follow_through_direction"] == "bearish"
+    assert outcome["invalidation_price"] == 105
+    assert outcome["invalidation_touched"] is False
+    assert outcome["payload"]["invalidation_touch_direction"] == "bearish"
+
+
 def _seed_ledger_and_bars(
     engine,
     *,
@@ -433,12 +466,14 @@ def _seed_ledger_and_bars(
     late_future_bar_index: int | None = None,
     priced_in_direction: str = "bullish",
     first_future_open: float | None = None,
+    invalidation_price: float = 95,
 ) -> str:
     entry_id = _seed_value_ledger_entry(
         engine,
         artifact_id="note-MSFT",
         ticker="MSFT",
         priced_in_direction=priced_in_direction,
+        invalidation_price=invalidation_price,
     )
     MarketRepository(engine).upsert_daily_bars(
         [
@@ -475,6 +510,7 @@ def _seed_value_ledger_entry(
     artifact_id: str,
     ticker: str,
     priced_in_direction: str = "bullish",
+    invalidation_price: float = 95,
 ) -> str:
     entry = build_value_ledger_entry(
         artifact_type="manual_note",
@@ -488,7 +524,7 @@ def _seed_value_ledger_entry(
         confidence=1,
         source="test",
         available_at=datetime(2026, 5, 15, 21, tzinfo=UTC),
-        payload={"invalidation_price": 95},
+        payload={"invalidation_price": invalidation_price},
     )
     ValidationRepository(engine).upsert_value_ledger_entry(entry)
     return entry.id

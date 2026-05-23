@@ -233,6 +233,7 @@ def compute_value_outcome(
     expected_review_horizon_days = max(HORIZONS)
     expected_review_horizon_expired = len(future) >= expected_review_horizon_days
     setup_follow_through = _setup_follow_through_status(entry, returns)
+    expected_direction = _expected_direction(entry)
     gap_outcome, gap_return = _gap_outcome(entry_bar.close, future)
     status = "computed" if expected_review_horizon_expired else "insufficient_data"
     return ValueOutcome(
@@ -271,7 +272,11 @@ def compute_value_outcome(
         max_adverse_excursion=_min_return(entry_bar.close, future),
         max_favorable_excursion=_max_return(entry_bar.close, future),
         invalidation_price=resolved_invalidation,
-        invalidation_touched=_invalidation_touched(future, resolved_invalidation),
+        invalidation_touched=_invalidation_touched(
+            future,
+            resolved_invalidation,
+            direction=expected_direction,
+        ),
         payload={
             "horizons": list(HORIZONS),
             "missing_horizons": [horizon for horizon in HORIZONS if len(future) < horizon],
@@ -279,7 +284,8 @@ def compute_value_outcome(
             "expected_review_horizon_expired": expected_review_horizon_expired,
             "setup_follow_through": setup_follow_through,
             "setup_follow_through_horizon_days": 20,
-            "setup_follow_through_direction": _expected_direction(entry),
+            "setup_follow_through_direction": expected_direction,
+            "invalidation_touch_direction": expected_direction or "long_stop",
             "gap_outcome": gap_outcome,
             "gap_return": gap_return,
             "spy_available": spy_entry is not None and bool(spy_future),
@@ -627,9 +633,16 @@ def _resolved_invalidation_price(
     return None
 
 
-def _invalidation_touched(rows: list[_BarPoint], invalidation_price: float | None) -> bool:
+def _invalidation_touched(
+    rows: list[_BarPoint],
+    invalidation_price: float | None,
+    *,
+    direction: str | None,
+) -> bool:
     if invalidation_price is None:
         return False
+    if direction == "bearish":
+        return any(row.high >= invalidation_price for row in rows)
     return any(row.low <= invalidation_price for row in rows)
 
 
