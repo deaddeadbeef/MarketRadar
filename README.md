@@ -68,19 +68,21 @@ decision-support value. That is the measured target for offsetting 20% of a
 ### Safe Trial Boundary
 
 As of the root local database checked on 2026-05-24, MarketRadar is safe to
-inspect with zero-call status commands, but it is not yet safe to call a real
-shipped product. `assert-trial-ready --json` exits nonzero with
-`safe_to_try_read_only=false`, and
-`assert-trial-ready --minimum-product --json` exits nonzero with
-`minimum_useful_product.ready=false`.
+inspect as a read-only research cockpit with zero-call status commands, but it
+is not yet safe to call a real shipped decision-support product.
+`assert-trial-ready --json` exits successfully with
+`safe_to_try_read_only=true`; `assert-trial-ready --minimum-product --json`
+still exits nonzero with `minimum_useful_product.ready=false`.
 
 Safe to inspect:
 
 ```powershell
 catalyst-radar priced-in-answer --json
 catalyst-radar assert-trial-ready --json
+catalyst-radar assert-trial-ready --minimum-product --json
 catalyst-radar assert-shadow-ready --json
 catalyst-radar market-bars residual-review --expected-as-of 2026-05-15
+catalyst-radar market-bars residual-repair --expected-as-of 2026-05-15 --json
 catalyst-radar shadow-mode run --available-at <UTC-now> --preview --json
 catalyst-radar value-report --month 2026-05 --json
 catalyst-radar dashboard-tui
@@ -88,15 +90,18 @@ catalyst-radar dashboard-tui
 
 Do not treat the output as ready for capital until these blockers clear:
 
-- 36 active securities still lack 2026-05-21 bars.
-- The current priced-in surface is blocked before review rows are available:
-  the local active universe is 1,000 securities and `scanned_rows=0`.
+- 579 active securities still lack 2026-05-15 bars.
+- The latest trusted-scan gate is still selected-universe only:
+  `scanned_rows=2429` while the local active universe has 12,669 securities.
 - Clearing the current market-bar blocker requires explicit operator approval
   for a guarded local residual repair command. The preview makes zero calls and
-  zero writes; the guarded execute path would write 36 local active-universe
-  rows.
-- Candidate packets and decision cards are not built for the current full-scan
-  gate.
+  zero writes; the guarded execute path would write 579 local active-universe
+  rows. The current guard is:
+  `catalyst-radar market-bars residual-repair --expected-as-of 2026-05-15 --expect-missing-count 579 --expect-eligible-count 579 --execute --json`.
+- After market bars clear, the next projected blocker is scan scope: run a
+  full active-universe scan only after reviewing the live Polygon/SEC call plan.
+- Candidate packets and decision cards are not built for the current trusted
+  full-scan gate.
 - There is no validation replay/report evidence yet.
 - The value ledger and forward outcomes do not yet prove the `$40/month`
   decision-support target.

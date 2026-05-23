@@ -1,6 +1,70 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-24 05:36:23 +08:00
+Last updated: 2026-05-24 06:10:00 +08:00
+
+## Latest Safe Trial Stop-Point Audit
+
+Goal alignment / drift check:
+
+- The operator wants to try MarketRadar soon, but only at a stop point that is
+  safe enough to use like a shipped minimum product.
+- Live gates now distinguish two stop points:
+  - read-only cockpit trial: safe now;
+  - minimum useful shipped product: still blocked.
+- This avoids over-promising the product while still giving the operator a safe
+  way to inspect the dashboard and JSON status surfaces.
+
+Useful definition:
+
+- Safe to try means `assert-trial-ready --json` returns
+  `safe_to_try_read_only=true`, zero provider calls, zero DB writes, broker
+  orders disabled, real LLM disabled, dry-run alerts, and a visible value report.
+- Real shipped minimum product means
+  `assert-trial-ready --minimum-product --json` returns
+  `minimum_useful_product.ready=true`.
+
+Current root DB result:
+
+- `assert-trial-ready --json` exits 0 with
+  `status=safe_read_only`, `highest_allowed_use=read_only_research`, and
+  0 external calls / 0 DB writes.
+- `assert-trial-ready --minimum-product --json` exits 1 with
+  `minimum_useful_product.ready=false`.
+- First strict blocker is `market_bars`: 579 active securities lack
+  2026-05-15 bars.
+- The safe preview command is
+  `catalyst-radar market-bars residual-repair --expected-as-of 2026-05-15 --json`.
+- The approval-only unblock command is
+  `catalyst-radar market-bars residual-repair --expected-as-of 2026-05-15 --expect-missing-count 579 --expect-eligible-count 579 --execute --json`.
+- Do not run that approval command without explicit operator approval; it would
+  write 579 local active-universe rows.
+- After market bars clear, the next projected blocker is scan scope: the latest
+  scan is selected-universe only (`scanned_rows=2429`) while the active universe
+  has 12,669 securities.
+
+Fix in this slice:
+
+- README safe-trial text was stale and still referenced the earlier 36-row
+  blocker and `safe_to_try_read_only=false`.
+- README now reflects the live 579-row blocker, the read-only trial pass, the
+  stricter minimum-product failure, and the explicit guarded repair command.
+
+Safety:
+
+- Documentation-only operator safety correction.
+- No Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or provider
+  calls were made.
+- No operator database writes were made.
+
+Verification completed before PR/merge:
+
+- `git diff --check` passed.
+- Live zero-call smokes for `assert-trial-ready --json`,
+  `assert-trial-ready --minimum-product --json`,
+  `assert-shadow-ready --json`, and `market-bars residual-repair --json`
+  matched the README facts: read-only trial exits 0, strict minimum product and
+  shadow readiness exit 1, first blocker is `market_bars`, and all commands made
+  0 external calls / 0 DB writes.
 
 ## Latest Shadow-Mode Approval Packet Propagation Slice
 
