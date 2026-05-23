@@ -7457,7 +7457,6 @@ def _priced_in_decision_gap_row(
             "build-packets",
             scan_as_of=scan_as_of,
             fallback_gap="candidate_packet",
-            tickers=tickers,
         )
     elif gap_name == "decision_card":
         next_action = "Build Decision Cards after candidate packets exist."
@@ -7465,7 +7464,6 @@ def _priced_in_decision_gap_row(
             "build-decision-cards",
             scan_as_of=scan_as_of,
             fallback_gap="decision_card",
-            tickers=tickers,
         )
     elif not next_action:
         next_action = "Review this decision gap before trusting not-priced-in output."
@@ -7483,21 +7481,10 @@ def _priced_in_local_artifact_command(
     *,
     scan_as_of: str,
     fallback_gap: str,
-    tickers: Sequence[str] = (),
 ) -> str:
-    ticker_args = " ".join(
-        f"--ticker {ticker}"
-        for ticker in dict.fromkeys(
-            str(ticker).strip().upper()
-            for ticker in tickers
-            if str(ticker).strip()
-        )
-    )
     if scan_as_of:
-        ticker_part = f" {ticker_args}" if ticker_args else ""
         return (
-            f"catalyst-radar {command} --as-of {scan_as_of}{ticker_part} "
-            "--min-state ResearchOnly"
+            f"catalyst-radar {command} --as-of {scan_as_of} --min-state ResearchOnly"
         )
     return (
         "catalyst-radar priced-in-queue --usefulness research_useful "

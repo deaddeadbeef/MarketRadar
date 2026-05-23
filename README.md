@@ -595,8 +595,10 @@ missing or stale. Use
 `--usefulness research_useful --decision-gap candidate_packet` to list otherwise
 useful rows that still need a Candidate Packet before Decision Card review.
 Then use `--decision-gap decision_card` to find rows whose local review artifact
-is still incomplete. Missing options and broker context remain visible as source
-gaps, but they do not block the ordinary equity priced-in answer.
+is still incomplete. Scan-level `decision_readiness` recommendations use full
+scan-date artifact commands, while row drilldowns keep ticker-specific commands
+for single-name inspection. Missing options and broker context remain visible
+as source gaps, but they do not block the ordinary equity priced-in answer.
 The payload includes queue-level `source_coverage`, so the operator can see
 whether market bars, catalyst events, local text, options, theme/peer/sector
 context, and broker context are contributing across the visible queue.

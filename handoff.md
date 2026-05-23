@@ -1,6 +1,62 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-24 00:18:00 +08:00
+Last updated: 2026-05-24 00:28:00 +08:00
+
+## Latest Full-Scan Local Artifact Command Slice
+
+Last updated: 2026-05-24 00:28:00 +08:00
+
+Goal alignment / drift check:
+
+- The user wants MarketRadar to be a market scanner, not a ticker sampler.
+- A live zero-call `priced-in-answer --json` check showed the current full-scan
+  gate is still blocked by `market_bars`, but the scan-level
+  `decision_readiness.top_gaps` also showed ticker-sliced Candidate Packet and
+  Decision Card commands.
+- That makes the next action look like it only repairs the visible/sample
+  tickers, even when the operator is trying to advance the whole scan-date
+  review surface.
+
+Useful definition:
+
+- Row-level drilldowns may keep ticker-specific commands for inspecting one
+  name.
+- Scan-level decision-readiness recommendations must use full scan-date local
+  artifact commands when the scan date is known.
+- The command must remain local-only; it must not call Polygon/Massive, SEC,
+  Schwab, OpenAI, web, broker, order, or alert delivery paths.
+
+Fix in this slice:
+
+- `decision_readiness.recommended_gap.command` and `top_gaps[].command` now use
+  `catalyst-radar build-packets --as-of <DATE> --min-state ResearchOnly` for
+  Candidate Packet gaps.
+- Decision Card gaps now use
+  `catalyst-radar build-decision-cards --as-of <DATE> --min-state ResearchOnly`.
+- `sample_tickers` remain in the payload for human context, but are not baked
+  into the scan-level repair command.
+- README documents the split between scan-level full-date commands and
+  row-level ticker-specific commands.
+
+Safety:
+
+- This is local recommendation/presentation logic only.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls and writes 0 database rows.
+- It does not execute residual repair, import bars, change scan scope, build
+  packets/cards, mutate candidate state, write value rows/outcomes, run LLMs,
+  deliver alerts, or submit orders.
+
+Live zero-call smoke:
+
+- `priced-in-answer --json`: `status=blocked`,
+  `first_blocker=market_bars`, top gap commands include full-date
+  `build-packets` and `build-decision-cards`, `external_calls_made=0`,
+  `db_writes_made=0`.
+- `assert-trial-ready --json`: `safe_to_try_read_only=true`,
+  `minimum_useful_product.ready=false`,
+  `minimum_useful_product.first_blocker=market_bars`,
+  `external_calls_made=0`, `db_writes_made=0`.
 
 ## Latest Shadow Status Current Gate Slice
 
