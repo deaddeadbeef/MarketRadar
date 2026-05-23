@@ -1,6 +1,52 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 12:05:00 +08:00
+Last updated: 2026-05-23 12:20:00 +08:00
+
+## Latest Monthly Value Report Coverage Slice
+
+Last updated: 2026-05-23 12:20:00 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains monthly value proof. This slice keeps the work on
+  measurement instead of UI copy.
+- After adding value-ledger coverage, the monthly value report still only
+  counted stored ledger rows. A month with no useful ledger entries was
+  ambiguous: nothing surfaced, or surfaced candidates were not logged.
+- The useful definition for this slice is concrete: the monthly report should
+  show candidate ledger coverage so missing human feedback is visible before
+  claiming value evidence.
+
+Fix in this slice:
+
+- `value-report --month ... --json` now includes `candidate_ledger_coverage`
+  with surfaced candidate count, logged candidate count, missing ledger count,
+  coverage percentage, and the first missing-row record commands.
+- The value-report API returns the same report payload.
+- README documents that monthly value reports include candidate ledger coverage.
+
+Validation observed in this slice:
+
+- Baseline `tests/integration/test_value_report.py` passed before edits.
+- Added a regression where a Warning candidate exists but no value-ledger row
+  exists; the monthly report returns `candidate_ledger_coverage.status=gaps`.
+- Focused value-report regression passed after implementation.
+- Full value-report integration file passed.
+- Ruff passed for touched value-report source/tests.
+- Compileall passed for `src` and touched value-report tests.
+- `git diff --check` passed.
+- Configured operator-DB `value-report --month 2026-05 --json` smoke returned
+  candidate coverage `status=gaps`, `surfaced=1`, `logged=0`, `missing=1`,
+  `external_calls_made=0`, and `db_writes_made=0`.
+
+Safety:
+
+- This change makes 0 Polygon/Massive, SEC, Schwab, broker, OpenAI, web, app,
+  or provider calls.
+- The monthly value report remains read-only and writes 0 database rows.
+- It does not mutate candidate states, deterministic scores, policy output,
+  value-ledger rows, value outcomes, validation results, alert delivery, or
+  broker/order paths.
 
 ## Latest Value Ledger Candidate Coverage Slice
 

@@ -4,11 +4,14 @@ import json
 from datetime import UTC, date, datetime
 
 from fastapi.testclient import TestClient
+from sqlalchemy import insert
 
 from apps.api.main import create_app
 from catalyst_radar.cli import main
+from catalyst_radar.core.models import ActionState
 from catalyst_radar.dashboard.tui import render_dashboard_tui
 from catalyst_radar.storage.db import create_schema, engine_from_url
+from catalyst_radar.storage.schema import candidate_states
 from catalyst_radar.storage.validation_repositories import ValidationRepository
 from catalyst_radar.validation.models import ValueOutcome, value_outcome_id
 from catalyst_radar.validation.value_ledger import build_value_ledger_entry
@@ -41,6 +44,46 @@ def test_value_report_cli_empty_month_is_insufficient_evidence(
     assert payload["entry_count"] == 0
     assert payload["plausibly_earned_at_least_40_usd"] is False
     assert payload["decision_support_value_not_profit"] is True
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
+
+
+def test_value_report_surfaces_missing_candidate_ledger_coverage(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'value-report-coverage.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = engine_from_url(database_url)
+    create_schema(engine)
+    _seed_candidate_state(engine, ticker="AAPL", state_id="state-AAPL")
+
+    exit_code = main(
+        [
+            "value-report",
+            "--month",
+            "2026-05",
+            "--available-at",
+            "2026-05-31T21:00:00+00:00",
+            "--json",
+        ]
+    )
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    coverage = payload["candidate_ledger_coverage"]
+    assert payload["verdict"] == "insufficient_evidence"
+    assert payload["entry_count"] == 0
+    assert coverage["status"] == "gaps"
+    assert coverage["surfaced_candidate_count"] == 1
+    assert coverage["logged_candidate_count"] == 0
+    assert coverage["missing_ledger_count"] == 1
+    assert coverage["coverage_pct"] == 0.0
+    assert coverage["external_calls_made"] == 0
+    assert coverage["db_writes_made"] == 0
+    assert coverage["rows"][0]["candidate_state_id"] == "state-AAPL"
+    assert "--artifact-id state-AAPL" in coverage["rows"][0]["record_command"]
     assert payload["external_calls_made"] == 0
     assert payload["db_writes_made"] == 0
 
@@ -348,6 +391,32 @@ def _seed_entry(
     )
     ValidationRepository(engine).upsert_value_ledger_entry(entry)
     return entry.id
+
+
+def _seed_candidate_state(
+    engine,
+    *,
+    ticker: str,
+    state_id: str,
+) -> None:
+    as_of = datetime(2026, 5, 15, 20, 0, tzinfo=UTC)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(candidate_states).values(
+                id=state_id,
+                ticker=ticker,
+                as_of=as_of,
+                state=ActionState.WARNING.value,
+                previous_state=None,
+                final_score=82.0,
+                score_delta_5d=7.0,
+                hard_blocks=[],
+                transition_reasons=["priced-in gap"],
+                feature_version="test",
+                policy_version="test",
+                created_at=as_of,
+            )
+        )
 
 
 def _seed_outcome(engine, *, ledger_id: str, ticker: str) -> None:
