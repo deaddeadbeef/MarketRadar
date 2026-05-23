@@ -10659,6 +10659,8 @@ def _trial_minimum_useful_product_gate(
             )
         ),
         "first_blocker": first_blocker,
+        "canonical_next_action": next_action,
+        "canonical_next_command": next_command,
         "next_action": next_action,
         "next_command": next_command,
         "minimum_features_required": features,

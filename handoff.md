@@ -1,6 +1,46 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-24 00:45:00 +08:00
+Last updated: 2026-05-24 00:55:00 +08:00
+
+## Latest Trial Gate Canonical Next Command Slice
+
+Last updated: 2026-05-24 00:55:00 +08:00
+
+Goal alignment / drift check:
+
+- The current hard product blocker remains M1 market bars.
+- `assert-trial-ready --json` correctly separates safe read-only browsing from
+  the stricter `minimum_useful_product` shipped-product gate.
+- Live zero-call output showed the stricter gate had `next_command`, but it did
+  not expose the same `canonical_next_action` / `canonical_next_command` aliases
+  used by the rest of the CLI/API contract. Automation and agents could
+  accidentally read only the top-level safe-browsing command instead of the
+  blocker-clearing shipped-product command.
+
+Useful definition:
+
+- The top-level trial command may remain `catalyst-radar dashboard-tui` when
+  browsing is safe.
+- The stricter `minimum_useful_product` gate must expose its own canonical next
+  action and command for the first blocker.
+
+Fix in this slice:
+
+- `minimum_useful_product` now includes `canonical_next_action` and
+  `canonical_next_command` as aliases for the existing gate-local next action
+  and next command.
+- Tests cover the market-bars-blocked case and the ready gate alias contract.
+- README documents that the shipped-product stop line should use the nested
+  canonical command, not the top-level safe-browsing command.
+
+Safety:
+
+- This is local readiness payload contract clarity only.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls and writes 0 operator DB rows.
+- It does not execute residual repair, import bars, change scan scope, build
+  packets/cards, mutate candidate state, write value rows/outcomes, run LLMs,
+  deliver alerts, or submit orders.
 
 ## Latest Residual Repair Preview Contract Slice
 

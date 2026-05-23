@@ -43,6 +43,9 @@ decision-support value. That is the measured target for offsetting 20% of a
 - The same payload includes `minimum_useful_product`. Treat that as the stop
   line for a real shipped read-only product: it requires a trusted full-market
   priced-in answer, visible shadow/value gates, and zero hidden calls or writes.
+  When blocked, its `canonical_next_action` and `canonical_next_command` name
+  the next zero-call or approval-gated step to inspect before calling the
+  product shipped.
 
 ### Safe Trial Boundary
 
@@ -82,7 +85,9 @@ unless you are deliberately approving that one action.
 The stricter shipped-product stop point is
 `assert-trial-ready --json` with `minimum_useful_product.ready=true`. If that
 field is false, MarketRadar may still be safe to browse, but it is not yet a
-real product for decision support.
+real product for decision support. Use
+`minimum_useful_product.canonical_next_command`, not the top-level safe-browsing
+command, to find the next blocker-clearing step for that stricter gate.
 
 ### For Humans
 
