@@ -1,6 +1,42 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 16:49:42 +08:00
+Last updated: 2026-05-23 16:57:52 +08:00
+
+## Latest Value Ledger Coverage First Command Slice
+
+Last updated: 2026-05-23 16:57:52 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains recording surfaced insights before claiming monthly
+  value or outcome evidence.
+- A zero-call configured-DB check showed `value-ledger coverage --json` had the
+  missing candidate row and preview record command only inside `rows`, while
+  `value-report` nested that same information another level deeper.
+- The useful definition for this slice is concrete: a script or dashboard can
+  surface the first missing ledger row and the non-executing record command
+  without parsing all coverage rows.
+
+Fix in this slice:
+
+- `value-ledger-candidate-coverage-v1` now includes
+  `first_missing_candidate_state_id`, `first_missing_ticker`, and
+  `canonical_next_command`.
+- `monthly-value-candidate-ledger-coverage-v1` preserves the same fields inside
+  `value-report --json`.
+- The command remains a preview-only `value-ledger record ... --json` command;
+  it does not include `--execute`.
+- README documents the fields for CLI/API users.
+
+Safety:
+
+- This is read-only coverage/report behavior over local candidate and ledger
+  rows.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls.
+- It writes 0 database rows and does not change scores, thresholds, policy
+  gates, action states, trade plans, LLM behavior, broker/order controls,
+  candidate rows, ledger rows, outcome rows, or readiness criteria.
 
 ## Latest Shadow Status First Blocker Slice
 

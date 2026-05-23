@@ -278,6 +278,11 @@ def _candidate_ledger_coverage_summary(
         "logged_candidate_count": int(coverage.get("logged_candidate_count") or 0),
         "missing_ledger_count": int(coverage.get("missing_ledger_count") or 0),
         "coverage_pct": coverage.get("coverage_pct"),
+        "first_missing_candidate_state_id": coverage.get(
+            "first_missing_candidate_state_id"
+        ),
+        "first_missing_ticker": coverage.get("first_missing_ticker"),
+        "canonical_next_command": coverage.get("canonical_next_command"),
         "rows": [row for row in rows if isinstance(row, Mapping)],
         "next_action": coverage.get("next_action"),
         "external_calls_made": int(coverage.get("external_calls_made") or 0),
