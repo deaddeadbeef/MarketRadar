@@ -2724,6 +2724,7 @@ def main(argv: list[str] | None = None) -> int:
                         "Run validation-replay after candidate outcomes are available, "
                         "then rerun validation-report."
                     ),
+                    next_command=_validation_replay_preview_command_template(),
                 )
                 if args.json:
                     print(json.dumps(payload, sort_keys=True))
@@ -2731,7 +2732,8 @@ def main(argv: list[str] | None = None) -> int:
                     print(
                         "validation_report status=no_validation_runs "
                         "selection=latest external_calls=0 db_writes=0 "
-                        f"next_action={payload['next_action']}",
+                        f"next_action={payload['next_action']} "
+                        f"next_command={payload['canonical_next_command']}",
                         file=sys.stderr,
                     )
                 return 1
@@ -2753,6 +2755,7 @@ def main(argv: list[str] | None = None) -> int:
                     "Check the run id or run validation-replay to create stored "
                     "validation results."
                 ),
+                next_command=_validation_replay_preview_command_template(),
             )
             if args.json:
                 print(json.dumps(payload, sort_keys=True))
@@ -2760,7 +2763,8 @@ def main(argv: list[str] | None = None) -> int:
                 print(
                     f"validation_report status=validation_results_not_found "
                     f"run_id={run_id} selection={selection} external_calls=0 "
-                    "db_writes=0",
+                    "db_writes=0 "
+                    f"next_command={payload['canonical_next_command']}",
                     file=sys.stderr,
                 )
             return 1
@@ -4323,9 +4327,11 @@ def _validation_report_missing_payload(
     selection: str,
     available_at: datetime | None,
     next_action: str,
+    next_command: str | None = None,
     run_id: str | None = None,
     validation_run: ValidationRun | None = None,
 ) -> dict[str, object]:
+    canonical_command = next_command or _validation_replay_preview_command_template()
     return {
         "schema_version": "validation-report-cli-v1",
         "status": status,
@@ -4333,11 +4339,27 @@ def _validation_report_missing_payload(
         "selected_run_id": run_id,
         "selection": selection,
         "available_at": available_at.isoformat() if available_at else None,
+        "canonical_next_action": next_action,
+        "canonical_next_command": canonical_command,
+        "next_command": canonical_command,
+        "external_calls_required": 0,
         "external_calls_made": 0,
+        "db_writes_required": 0,
         "db_writes_made": 0,
         "validation_run": _validation_run_cli_payload(validation_run),
         "next_action": next_action,
     }
+
+
+def _validation_replay_preview_command_template() -> str:
+    return (
+        "catalyst-radar validation-replay "
+        "--as-of-start YYYY-MM-DD "
+        "--as-of-end YYYY-MM-DD "
+        "--available-at <UTC-decision-cutoff> "
+        "--outcome-available-at <UTC-outcome-cutoff> "
+        "--preview --json"
+    )
 
 
 def _validation_run_cli_payload(run: ValidationRun | None) -> dict[str, object] | None:

@@ -23706,6 +23706,68 @@ Next operator-safe stop point:
 catalyst-radar market-bars residual-review --expected-as-of 2026-05-15
 ```
 
+## 2026-05-24 Validation Report Next Command Slice
+
+Branch/worktree at implementation time:
+
+```text
+branch: codex/validation-report-next-command
+worktree: C:\Users\fpan1\MarketRadar\.worktrees\validation-report-next-command
+base: main after PR #728 / 13f6147
+```
+
+Why this slice exists:
+
+- The goals brief requires baseline validation before claiming value or tuning
+  scoring.
+- `assert-investable-readiness` points blocked baseline evidence at
+  `catalyst-radar validation-report --latest --json`.
+- On the live root DB, that command correctly failed with
+  `status=no_validation_runs`, but it did not expose a canonical next command.
+  That left the value-proof ladder without an automation-friendly next step.
+
+Implemented behavior:
+
+- Missing validation-report payloads now include:
+  - `canonical_next_action`
+  - `canonical_next_command`
+  - `next_command`
+  - `external_calls_required=0`
+  - `db_writes_required=0`
+- Human `validation-report` missing-output includes the same next command.
+- README documents that `validation-report --latest --json` points at the
+  zero-call `validation-replay --preview --json` template when no replay
+  evidence exists yet.
+
+Live root DB smoke, using worktree code and root venv:
+
+```text
+command: catalyst-radar validation-report --latest --json
+exit_code: 1
+status: no_validation_runs
+canonical_next_command: catalyst-radar validation-replay --as-of-start YYYY-MM-DD --as-of-end YYYY-MM-DD --available-at <UTC-decision-cutoff> --outcome-available-at <UTC-outcome-cutoff> --preview --json
+external_calls_required: 0
+external_calls_made: 0
+db_writes_required: 0
+db_writes_made: 0
+```
+
+Verification already run:
+
+```powershell
+$env:PYTHONPATH='C:\Users\fpan1\MarketRadar\.worktrees\validation-report-next-command\src'
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\test_validation_cli.py::test_validation_report_latest_empty_state_is_zero_call -q
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\test_validation_cli.py -q
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\cli.py tests\integration\test_validation_cli.py README.md handoff.md
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m compileall -q src\catalyst_radar\cli.py tests\integration\test_validation_cli.py
+git diff --check
+```
+
+This does not create validation evidence. It only makes the missing-evidence
+state route to the next zero-call preview command. A real validation replay
+execute is still a local DB write and should be run only when the date window,
+outcome cutoff, and write count are intentional.
+
 Do not run residual repair execute or any provider/order execution without
 explicit approval.
 
