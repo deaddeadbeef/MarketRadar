@@ -57,6 +57,7 @@ def test_value_ledger_cli_preview_execute_and_summary(
             "2026-05-15",
             "--available-at",
             "2026-05-22T12:00:00+00:00",
+            "--preview",
             "--json",
         ]
     )

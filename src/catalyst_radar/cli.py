@@ -723,7 +723,10 @@ def build_parser() -> argparse.ArgumentParser:
         target.add_argument("--notes")
         target.add_argument("--entry-date", type=date.fromisoformat)
         target.add_argument("--available-at", type=_parse_aware_datetime)
-        target.add_argument("--execute", action="store_true")
+        value_ledger_mode = target.add_mutually_exclusive_group()
+        value_ledger_mode.add_argument("--preview", dest="execute", action="store_false")
+        value_ledger_mode.add_argument("--execute", action="store_true")
+        target.set_defaults(execute=False)
         target.add_argument("--json", action="store_true")
 
     value_ledger_add = value_ledger_sub.add_parser("record", aliases=["add"])
@@ -786,7 +789,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     value_outcome_update.add_argument("--sector-etf")
     value_outcome_update.add_argument("--invalidation-price", type=float)
-    value_outcome_update.add_argument("--execute", action="store_true")
+    value_outcome_mode = value_outcome_update.add_mutually_exclusive_group()
+    value_outcome_mode.add_argument("--preview", dest="execute", action="store_false")
+    value_outcome_mode.add_argument("--execute", action="store_true")
+    value_outcome_update.set_defaults(execute=False)
     value_outcome_update.add_argument("--json", action="store_true")
 
     value_outcome_list = value_outcome_sub.add_parser("list")

@@ -1013,8 +1013,9 @@ ledger show <VALUE_LEDGER_ID>
 ledger summary
 ```
 
-`ledger record` previews by default and writes one row only when `--execute` is
-present. It makes 0 provider calls in both modes.
+`ledger record` previews by default; `--preview` makes that intent explicit and
+writes one row only when `--execute` is present. It makes 0 provider calls in
+both modes.
 
 For `candidate_state` artifacts, value-ledger record/label also copies any
 matching local priced-in context already stored in `signal_features`: setup
@@ -1050,13 +1051,15 @@ before writing anything. When coverage has gaps, the payload exposes
 Forward outcomes are computed from already stored point-in-time daily bars:
 
 ```powershell
-catalyst-radar value-outcome update --ledger-id <VALUE_LEDGER_ID> --outcome-available-at <UTC-outcome-cutoff> --json
+catalyst-radar value-outcome update --ledger-id <VALUE_LEDGER_ID> --outcome-available-at <UTC-outcome-cutoff> --preview --json
 catalyst-radar value-outcome update --ledger-id <VALUE_LEDGER_ID> --outcome-available-at <UTC-outcome-cutoff> --execute --json
 catalyst-radar value-outcome coverage --available-at <UTC-outcome-cutoff> --json
 catalyst-radar value-outcome list --ledger-id <VALUE_LEDGER_ID> --json
 catalyst-radar value-outcome show <VALUE_OUTCOME_ID> --json
 ```
 
+The `value-outcome update` command previews by default; `--preview` makes the
+zero-write mode explicit and `--execute` is required to write one outcome row.
 The terminal dashboard also supports local outcome review:
 
 ```text
