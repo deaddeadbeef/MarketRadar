@@ -1,6 +1,51 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 19:18:08 +08:00
+Last updated: 2026-05-23 19:30:57 +08:00
+
+## Latest Safe User-Trial Boundary Slice
+
+Last updated: 2026-05-23 19:30:57 +08:00
+
+Goal alignment / drift check:
+
+- The user wants to try MarketRadar soon, but the project goal remains a
+  full-market priced-in emotion scan with evidence, not UI polish or
+  autonomous trading.
+- Current root DB status is safe for read-only shadow trial, but not safe for
+  real investment decisions.
+- The useful definition for this slice is concrete: the README must tell a
+  human exactly what is safe to run, what is still blocked, and which commands
+  must not be executed casually.
+
+Current local gate summary:
+
+- `assert-shadow-ready --json` is still `setup_required` with first blocker
+  `market_bars` and first gap count `579`.
+- Latest bars cover `12090/12669` active securities for `2026-05-15`.
+- Latest scan scope is selected universe: `2429` scanned rows out of `12669`
+  active securities.
+- Candidate packets: `0`; decision cards: `0`.
+- Validation run/report evidence: not available.
+- `value-report --month 2026-05 --json` verdict is
+  `insufficient_evidence`; first blocker is `candidate_ledger_coverage`.
+
+Fix in this slice:
+
+- README now has a `Safe Trial Boundary` section near the top.
+- It lists read-only commands that are safe to try.
+- It lists the current hard blockers before capital use.
+- It repeats the no-hidden-call rule for `--execute`,
+  `--confirm-external-call`, real LLM mode, Schwab writes, and broker/order
+  paths.
+
+Safety:
+
+- This is documentation only.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls and writes 0 database rows.
+- It does not change scores, thresholds, policy gates, action states, trade
+  plans, LLM behavior, broker/order controls, candidate rows, ledger rows,
+  outcome rows, validation rows, or readiness criteria.
 
 ## Latest Shadow Run Explicit Commands Slice
 

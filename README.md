@@ -38,6 +38,39 @@ decision-support value. That is the measured target for offsetting 20% of a
   value reports. Real-capital decisions remain blocked until full-market data
   and validation evidence clear.
 
+### Safe Trial Boundary
+
+As of the local database checked on 2026-05-23, MarketRadar is safe to try as a
+read-only shadow product, not as an investment-decision product.
+
+Safe to run:
+
+```powershell
+catalyst-radar priced-in-answer --json
+catalyst-radar assert-shadow-ready --json
+catalyst-radar market-bars residual-review --expected-as-of 2026-05-15
+catalyst-radar shadow-mode run --available-at <UTC-now> --preview --json
+catalyst-radar value-report --month 2026-05 --json
+catalyst-radar dashboard-tui
+```
+
+Do not treat the output as ready for capital until these blockers clear:
+
+- 579 active securities still lack 2026-05-15 bars.
+- The latest scan is selected-universe scope: 2,429 scanned out of 12,669 active
+  securities.
+- Candidate packets and decision cards are not built for the current full-scan
+  gate.
+- There is no validation replay/report evidence yet.
+- The value ledger and forward outcomes do not yet prove the `$40/month`
+  decision-support target.
+
+This is the intended user-trial stop point: inspect the dashboard, run the
+read-only commands, review the first blocker, and record local value evidence
+only when you intentionally choose a label. Do not run `--execute`,
+`--confirm-external-call`, real LLM mode, Schwab writes, or broker/order paths
+unless you are deliberately approving that one action.
+
 ### For Humans
 
 Start with:
