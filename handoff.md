@@ -1,6 +1,65 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 11:15:00 +08:00
+Last updated: 2026-05-23 11:45:00 +08:00
+
+## Latest Shadow Run Canonical Next-Action Slice
+
+Last updated: 2026-05-23 11:45:00 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains repeatable shadow-mode operation with one auditable
+  next action.
+- A configured-DB preview showed `shadow-mode run --preview --json` returned
+  generic top-level `next_action=Clear setup blockers...`.
+- A later configured-DB smoke exposed the deeper root cause: the readiness
+  payload could still choose the short `bars manual template` action because
+  zero-liquidity residual review was only preferred after a saved provider file
+  existed. The live operator DB already had enough local residual evidence to
+  review first, but no saved provider file existed.
+- The useful definition for this slice is concrete: the shadow run response
+  itself should expose the same canonical next action as `assert-shadow-ready`
+  whenever the run is not valid yet, and that canonical action must be the
+  runnable residual-review command for the current all-active market-bar gap.
+
+Fix in this slice:
+
+- `_shadow_mode_next_action` now preserves valid full/selected-scan guidance,
+  then prefers `shadow_readiness.canonical_next_action` for setup/blocked/partial
+  runs when present.
+- Priced-in market-bar blocker recommendations now route zero-liquidity
+  residual gaps to `market-bars residual-review` even when the saved provider
+  capture file is still missing.
+- README documents that non-valid shadow run responses use the readiness
+  canonical next action instead of hiding it behind generic setup text.
+- README also documents that zero-liquidity residual review comes before
+  provider capture, manual bar filling, or scan-scope changes.
+
+Validation observed in this slice:
+
+- The focused residual regression failed before the root-cause fix because the
+  missing saved-file path selected `saved_provider_capture` instead of
+  `residual_universe_review`.
+- The focused residual regression passed after the fix.
+- Focused shadow/readiness/dashboard regression selection passed: 15 tests.
+- Ruff passed for touched dashboard/shadow source and tests.
+- Compileall passed for `src` and touched shadow/dashboard tests.
+- `git diff --check` passed.
+- Configured operator-DB `shadow-mode run --preview --json` smoke returned
+  `mode=preview`, `external_calls_made=0`, `db_writes_made=0`, and
+  top-level/nested canonical next action:
+  `catalyst-radar market-bars residual-review --expected-as-of 2026-05-15`.
+
+Safety:
+
+- This change makes 0 Polygon/Massive, SEC, Schwab, broker, OpenAI, web, app,
+  or provider calls.
+- This change writes 0 database rows.
+- It does not execute residual repair, market-bar import, saved-file import,
+  provider capture, validation replay, scoring changes, alert delivery, or any
+  broker/order path.
+- The live operator DB residual repair remains blocked until the operator
+  explicitly approves the guarded write command.
 
 ## Latest Shadow Run Blocker-Action Alignment Slice
 

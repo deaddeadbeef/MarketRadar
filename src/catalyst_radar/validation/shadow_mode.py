@@ -339,11 +339,23 @@ def _shadow_mode_next_action(run: ShadowModeRun) -> str:
         return "Record value-ledger entries for surfaced Warning or manual-review candidates."
     if run.status == "valid_selected_universe_scan":
         return "Use this as selected-universe shadow evidence, not a broad-market answer."
+    canonical_action = _shadow_readiness_canonical_next_action(run)
+    if canonical_action:
+        return canonical_action
     if run.status == "partial_scan":
         return "Review blockers and treat this run as partial shadow evidence only."
     if run.status == "setup_required":
         return "Clear setup blockers before relying on daily shadow-mode evidence."
     return "Open shadow readiness and clear the first blocker before rerunning."
+
+
+def _shadow_readiness_canonical_next_action(run: ShadowModeRun) -> str | None:
+    payload = _mapping(thaw_json_value(run.payload))
+    readiness = _mapping(payload.get("shadow_readiness"))
+    action = readiness.get("canonical_next_action")
+    if isinstance(action, str) and action.strip():
+        return action.strip()
+    return None
 
 
 def _validation_status(shadow_readiness: Mapping[str, object]) -> str:
