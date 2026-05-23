@@ -49,6 +49,12 @@ decision-support value. That is the measured target for offsetting 20% of a
   When blocked, its `canonical_next_action` and `canonical_next_command` name
   the next zero-call or approval-gated step to inspect before calling the
   product shipped.
+- If the strict gate is blocked by market bars and a zero-call residual-repair
+  preview can identify the exact local write needed, it also exposes
+  `minimum_useful_product.approval_required_unblock`. That packet names the
+  guarded command, expected missing/eligible counts, projected gate result, and
+  DB writes required. It is still descriptive only; run the command only after
+  explicit operator approval.
 
 ### Safe Trial Boundary
 

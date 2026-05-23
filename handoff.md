@@ -1,6 +1,63 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-24 01:29:12 +08:00
+Last updated: 2026-05-24 01:43:59 +08:00
+
+## Latest Minimum-Product Approval Packet Slice
+
+Last updated: 2026-05-24 01:43:59 +08:00
+
+Goal alignment / drift check:
+
+- The strict minimum-product gate still correctly fails on `market_bars`.
+- The live zero-call residual-repair preview knows the exact guarded command
+  that would clear the current market-bar blocker, but the strict gate only
+  exposed the safer residual-review command.
+- That made the shipped-product stop line less actionable for a human trying to
+  understand what explicit approval is still required.
+
+Useful definition:
+
+- `assert-trial-ready --minimum-product --json` should keep failing until the
+  product is actually ready.
+- When the first strict blocker is market bars and a zero-call residual-repair
+  preview can produce an exact guarded write command, the strict gate should
+  expose that as descriptive approval metadata, not execute it.
+- The packet must show the expected missing/eligible counts, DB writes required,
+  projected gate result, and 0 calls/writes made by the gate.
+
+Fix in this slice:
+
+- `minimum_useful_product` now includes `approval_required_unblock` when the
+  strict gate is blocked by market bars and the residual-repair preview is
+  `ready_to_execute`.
+- The packet includes `approval_command`, `preview_command`,
+  `api_execute_request_body`, expected missing/eligible counts,
+  `db_writes_required_to_execute`, projected market-bar-clear fields, and
+  call/write counters.
+- Human `assert-trial-ready` output prints a compact
+  `minimum_product_approval` line when that packet is present.
+- README documents the approval packet contract.
+
+Safety:
+
+- This is read-only approval metadata only.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls and writes 0 database rows.
+- It does not execute residual repair, import bars, run source batches, mutate
+  candidate state, write value rows/outcomes, run LLMs, deliver alerts, or
+  submit orders.
+
+Live zero-call smoke:
+
+- `assert-trial-ready --minimum-product --available-at
+  2026-05-23T16:00:00+00:00 --json` on the operator DB still exits nonzero
+  because `minimum_useful_product.ready=false` and
+  `first_blocker=market_bars`.
+- The new packet reports `approval_command=catalyst-radar market-bars
+  residual-repair --expected-as-of 2026-05-15 --expect-missing-count 579
+  --expect-eligible-count 579 --execute --json`,
+  `db_writes_required_to_execute=579`, `projected_market_bar_gate_cleared=true`,
+  `external_calls_made=0`, and `db_writes_made=0`.
 
 ## Latest Monthly Value Evidence Examples Slice
 
