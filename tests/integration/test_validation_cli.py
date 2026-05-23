@@ -85,6 +85,7 @@ def test_validation_report_label_and_paper_cli_workflow(
                 AVAILABLE_AT_TEXT,
                 "--outcome-available-at",
                 OUTCOME_AVAILABLE_AT_TEXT,
+                "--execute",
             ]
         )
         == 0
@@ -404,7 +405,6 @@ def test_validation_replay_preview_is_zero_write(
                 AVAILABLE_AT_TEXT,
                 "--outcome-available-at",
                 OUTCOME_AVAILABLE_AT_TEXT,
-                "--preview",
                 "--json",
             ]
         )
@@ -419,8 +419,10 @@ def test_validation_replay_preview_is_zero_write(
     assert payload["db_writes_made"] == 0
     assert payload["db_writes_required"] > 0
     assert "validation-replay" in payload["execute_command"]
+    assert "--execute" in payload["execute_command"]
     assert "--preview" not in payload["execute_command"]
     assert "--preview" in payload["preview_command"]
+    assert "--execute" not in payload["preview_command"]
     engine = create_engine(database_url, future=True)
     with engine.connect() as conn:
         assert list(conn.execute(select(validation_runs))) == []
@@ -505,6 +507,7 @@ def test_validation_replay_counts_future_packet_and_card_leakage(
                 "2026-05-10",
                 "--available-at",
                 AVAILABLE_AT_TEXT,
+                "--execute",
             ]
         )
         == 0
@@ -584,6 +587,7 @@ def test_validation_replay_rerun_clears_stale_deterministic_results(
         "2026-05-10",
         "--available-at",
         AVAILABLE_AT_TEXT,
+        "--execute",
     ]
     assert main(argv) == 0
     captured = capsys.readouterr()
@@ -627,6 +631,7 @@ def test_validation_replay_baselines_use_decision_cutoff_not_outcome_cutoff(
                 AVAILABLE_AT_TEXT,
                 "--outcome-available-at",
                 OUTCOME_AVAILABLE_AT_TEXT,
+                "--execute",
             ]
         )
         == 0
