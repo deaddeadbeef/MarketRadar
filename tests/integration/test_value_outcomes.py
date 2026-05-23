@@ -452,6 +452,53 @@ def test_value_outcome_api_rejects_missing_future_bars_without_mutating_ledger(
     assert shown["outcome"]["status"] == "insufficient_data"
     missing_response = TestClient(create_app()).get("/api/value-outcomes/missing-outcome")
     assert missing_response.status_code == 404
+
+    coverage_response = TestClient(create_app()).get(
+        "/api/value-outcomes/coverage",
+        params={
+            "available_at": "2026-05-25T21:00:00+00:00",
+            "period_start": "2026-05-01",
+            "period_end": "2026-05-31",
+        },
+    )
+    assert coverage_response.status_code == 200
+    coverage = coverage_response.json()
+    assert coverage["status"] == "incomplete"
+    assert coverage["ledger_entry_count"] == 1
+    assert coverage["missing_outcome_count"] == 0
+    assert coverage["insufficient_data_count"] == 1
+    assert coverage["first_incomplete_value_ledger_entry_id"] == entry_id
+    assert coverage["first_incomplete_ticker"] == "MSFT"
+    assert coverage["canonical_next_command"] == (
+        "catalyst-radar value-outcome update "
+        f"--ledger-id {entry_id} "
+        "--outcome-available-at 2026-05-25T21:00:00+00:00 "
+        "--preview --json"
+    )
+    assert "--execute" not in coverage["canonical_next_command"]
+    assert coverage["rows"][0]["refresh_update_command"] == coverage[
+        "canonical_next_command"
+    ]
+    assert coverage["external_calls_made"] == 0
+    assert coverage["db_writes_made"] == 0
+
+    report_response = TestClient(create_app()).get(
+        "/api/value-report/monthly",
+        params={
+            "month": "2026-05",
+            "available_at": "2026-05-25T21:00:00+00:00",
+        },
+    )
+    assert report_response.status_code == 200
+    report = report_response.json()
+    assert report["first_blocker"] == "value_outcome_coverage"
+    assert report["canonical_next_command"] == coverage["canonical_next_command"]
+    assert "--preview" in report["canonical_next_command"]
+    assert "--execute" not in report["canonical_next_command"]
+    assert report["value_outcome_coverage"]["status"] == "incomplete"
+    assert report["value_outcome_coverage"]["external_calls_made"] == 0
+    assert report["value_outcome_coverage"]["db_writes_made"] == 0
+
     with engine.connect() as conn:
         after = conn.execute(select(value_ledger_entries).limit(1)).first()
     assert after is not None

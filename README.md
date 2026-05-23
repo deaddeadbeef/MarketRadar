@@ -1187,6 +1187,11 @@ coverage has gaps, the payload exposes `first_missing_value_ledger_entry_id`,
 `first_missing_ticker`, and the preview-only `canonical_next_command` for the
 first non-executing outcome update; generated update commands include explicit
 `--preview`.
+When coverage is `incomplete` because an existing outcome row is still
+`insufficient_data`, `missing_context`, or otherwise not computed, the payload
+exposes `first_incomplete_value_ledger_entry_id`, `first_incomplete_ticker`,
+and a preview-only `canonical_next_command` to refresh that outcome at the
+current cutoff.
 The TUI `outcome coverage` command prints the same `next_command=` value.
 Execute makes 0 provider calls and writes only a `value_outcomes` row. The
 update never mutates the source value-ledger row, candidate state, candidate

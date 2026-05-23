@@ -380,7 +380,11 @@ def load_value_outcome_coverage_payload(
         for entry in entries
     ]
     missing = [row for row in rows if row["outcome_status"] == "missing"]
+    incomplete = [
+        row for row in rows if row["outcome_status"] not in {"computed", "missing"}
+    ]
     first_missing = missing[0] if missing else None
+    first_incomplete = incomplete[0] if incomplete else None
     linked = len(rows) - len(missing)
     status_counts = Counter(str(row["outcome_status"]) for row in rows)
     coverage_pct = round((linked / len(rows)) * 100, 2) if rows else None
@@ -393,6 +397,7 @@ def load_value_outcome_coverage_payload(
     canonical_next_command = _value_outcome_coverage_next_command(
         status=status,
         first_missing=first_missing,
+        first_incomplete=first_incomplete,
         cutoff=cutoff,
         period_start=resolved_start,
         period_end=resolved_end,
@@ -417,6 +422,14 @@ def load_value_outcome_coverage_payload(
         "canonical_next_command": canonical_next_command,
         "computed_outcome_count": int(status_counts.get("computed") or 0),
         "insufficient_data_count": int(status_counts.get("insufficient_data") or 0),
+        "first_incomplete_value_ledger_entry_id": _first_missing_outcome_field(
+            first_incomplete,
+            "value_ledger_entry_id",
+        ),
+        "first_incomplete_ticker": _first_missing_outcome_field(
+            first_incomplete,
+            "ticker",
+        ),
         "outcome_status_counts": dict(sorted(status_counts.items())),
         "coverage_pct": coverage_pct,
         "rows": rows[: max(1, int(limit))],
@@ -801,13 +814,17 @@ def _value_outcome_coverage_row(
         "setup_follow_through": outcome_payload.get("setup_follow_through"),
         "gap_outcome": outcome_payload.get("gap_outcome"),
         "preview_update_command": None,
+        "refresh_update_command": None,
     }
     if outcome is None:
-        row["preview_update_command"] = (
-            "catalyst-radar value-outcome update "
-            f"--ledger-id {entry.id} "
-            f"--outcome-available-at {outcome_available_at.isoformat()} "
-            "--preview --json"
+        row["preview_update_command"] = _coverage_update_command(
+            value_ledger_entry_id=entry.id,
+            outcome_available_at=outcome_available_at,
+        )
+    elif outcome.status != "computed":
+        row["refresh_update_command"] = _coverage_update_command(
+            value_ledger_entry_id=entry.id,
+            outcome_available_at=outcome_available_at,
         )
     return row
 
@@ -862,6 +879,7 @@ def _value_outcome_coverage_next_command(
     *,
     status: str,
     first_missing: Mapping[str, object] | None,
+    first_incomplete: Mapping[str, object] | None,
     cutoff: datetime,
     period_start: date,
     period_end: date,
@@ -875,7 +893,22 @@ def _value_outcome_coverage_next_command(
         )
     if status == "gaps":
         return _first_missing_outcome_field(first_missing, "preview_update_command")
+    if status == "incomplete":
+        return _first_missing_outcome_field(first_incomplete, "refresh_update_command")
     return None
+
+
+def _coverage_update_command(
+    *,
+    value_ledger_entry_id: str,
+    outcome_available_at: datetime,
+) -> str:
+    return (
+        "catalyst-radar value-outcome update "
+        f"--ledger-id {value_ledger_entry_id} "
+        f"--outcome-available-at {outcome_available_at.isoformat()} "
+        "--preview --json"
+    )
 
 
 def _resolved_period(
