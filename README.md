@@ -55,6 +55,10 @@ decision-support value. That is the measured target for offsetting 20% of a
   guarded command, expected missing/eligible counts, projected gate result, and
   DB writes required. It is still descriptive only; run the command only after
   explicit operator approval.
+- When the read-only trial surface has no priced-in rows yet, the strict gate
+  still uses the underlying `priced-in-answer` diagnostic command as
+  `minimum_useful_product.canonical_next_command`; it must not emit a status
+  string as though it were a command.
 
 ### Safe Trial Boundary
 

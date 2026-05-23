@@ -1,6 +1,63 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-24 04:07:34 +08:00
+Last updated: 2026-05-24 04:19:20 +08:00
+
+## Latest Trial Gate Next-Command Slice
+
+Last updated: 2026-05-24 04:19:20 +08:00
+
+Goal alignment / drift check:
+
+- The operator asked to stop only when MarketRadar is safe to try as a real
+  minimum product.
+- The source-of-truth strict gate is
+  `assert-trial-ready --minimum-product --json`; against the root
+  `data/schwab-live.db`, it still blocks because no priced-in rows are available
+  for review and the underlying priced-in blocker is `market_bars`.
+- The gate incorrectly surfaced
+  `minimum_useful_product.canonical_next_command="status=blocked; total_rows=0"`,
+  which is a status string, not a runnable diagnostic command.
+
+Useful definition:
+
+- A blocked shipped-product gate is useful only if it names the next safe
+  command a human can run, or explicitly returns no command when no safe command
+  exists.
+- If clearing the blocker requires local DB writes, the gate should expose an
+  approval-required packet instead of silently implying that browsing is enough.
+
+Fix in this slice:
+
+- When the read-only trial surface is blocked by zero priced-in rows, the
+  minimum-product gate now borrows the underlying `priced-in-answer` command
+  instead of using the blocker evidence string as a command.
+- The market-bar approval packet now looks through the trial-surface wrapper
+  blocker to the underlying priced-in `market_bars` blocker.
+- Regression coverage verifies the strict gate does not emit
+  `status=blocked; total_rows=0` as a command and still reports zero calls and
+  zero writes while surfacing the guarded residual-repair approval packet.
+- README documents the strict-gate next-command contract.
+
+Safety:
+
+- Read-only gate/reporting change.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls and writes 0 operator database rows.
+- It does not execute residual repair, saved imports, validation replay,
+  value-ledger writes, outcome writes, imports, source batches, LLMs, alert
+  delivery, or orders.
+
+Live zero-call smoke using the root `data/schwab-live.db`:
+
+- `assert-trial-ready --minimum-product --json` still exits nonzero with
+  `safe_to_try_read_only=false`, `minimum_useful_product.ready=false`, and
+  `first_blocker=read_only_scan_surface`.
+- It now reports
+  `minimum_useful_product.canonical_next_command="catalyst-radar market-bars residual-review --expected-as-of 2026-05-21"`
+  instead of the dead status string.
+- It also exposes an approval-required residual repair command guarded by
+  `--expect-missing-count 36 --expect-eligible-count 36`, with
+  `external_calls_made=0` and `db_writes_made=0` during the gate check.
 
 ## Latest Monthly Value Useful-Evidence Blocker Slice
 
