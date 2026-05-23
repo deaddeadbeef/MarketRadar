@@ -1,6 +1,40 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 18:49:40 +08:00
+Last updated: 2026-05-23 19:03:53 +08:00
+
+## Latest Validation Replay Explicit Execute Slice
+
+Last updated: 2026-05-23 19:03:53 +08:00
+
+Goal alignment / drift check:
+
+- The active goal requires validation evidence before monthly value proof can
+  be trusted.
+- `validation-replay` is a write-like workflow, but before this slice omitting
+  `--preview` wrote validation run/result rows.
+- That conflicted with the mission brief rule that new workflows default to
+  zero-call preview mode.
+- The useful definition for this slice is concrete: validation replay is
+  preview by default, and writes only when `--execute` is explicitly present.
+
+Fix in this slice:
+
+- `validation-replay` now has mutually exclusive `--preview` and `--execute`
+  flags.
+- Omitting both flags runs preview mode.
+- Preview payloads now print an execute command that includes `--execute`.
+- Existing validation replay write-path tests now use `--execute`.
+- README documents the explicit execute contract.
+
+Safety:
+
+- Preview makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app,
+  or provider calls and writes 0 database rows.
+- Execute still makes 0 provider calls and writes only local validation run and
+  validation result rows.
+- This does not change scores, thresholds, policy gates, action states, trade
+  plans, LLM behavior, broker/order controls, candidate rows, ledger rows,
+  outcome rows, validation math, baseline selection, or readiness criteria.
 
 ## Latest Explicit Generated Preview Commands Slice
 

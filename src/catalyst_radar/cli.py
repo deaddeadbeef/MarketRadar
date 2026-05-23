@@ -649,7 +649,9 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         choices=[state.value for state in ActionState],
     )
-    validation_replay.add_argument("--preview", action="store_true")
+    validation_replay_mode = validation_replay.add_mutually_exclusive_group()
+    validation_replay_mode.add_argument("--preview", action="store_true")
+    validation_replay_mode.add_argument("--execute", action="store_true")
     validation_replay.add_argument("--json", action="store_true")
 
     validation_report = subparsers.add_parser("validation-report")
@@ -2505,7 +2507,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "validation-replay":
-        if not args.preview:
+        execute = bool(args.execute)
+        preview = not execute
+        if execute:
             create_schema(engine)
         packet_repo = CandidatePacketRepository(engine)
         validation_repo = ValidationRepository(engine)
@@ -2542,7 +2546,7 @@ def main(argv: list[str] | None = None) -> int:
                 "no_external_calls": True,
             },
         )
-        if not args.preview:
+        if execute:
             validation_repo.upsert_validation_run(run)
         try:
             results = build_replay_results(
@@ -2582,7 +2586,7 @@ def main(argv: list[str] | None = None) -> int:
                 ),
             )
             metrics = validation_report_payload(report)
-            if args.preview:
+            if preview:
                 payload = _validation_replay_cli_payload(
                     run_id=run_id,
                     mode="preview",
@@ -2616,7 +2620,7 @@ def main(argv: list[str] | None = None) -> int:
                 metrics,
             )
         except Exception as exc:
-            if not args.preview:
+            if execute:
                 validation_repo.finish_validation_run(
                     run_id,
                     ValidationRunStatus.FAILED,
@@ -4177,7 +4181,8 @@ def _validation_replay_cli_payload(
         execute_command += f" --state {state.value}"
     for ticker in tickers:
         execute_command += f" --ticker {ticker}"
-    execute_command += " --json"
+    execute_command += " --execute --json"
+    preview_command = execute_command.replace(" --execute --json", " --preview --json")
     return {
         "schema_version": "validation-replay-cli-v1",
         "mode": mode,
@@ -4194,7 +4199,7 @@ def _validation_replay_cli_payload(
         "db_writes_required": result_count + 2,
         "db_writes_made": db_writes_made,
         "execute_command": execute_command if mode == "preview" else None,
-        "preview_command": execute_command.replace(" --json", " --preview --json"),
+        "preview_command": preview_command,
         "leakage_failure_count": int(metrics.get("leakage_failure_count") or 0),
         "precision": (
             metrics.get("precision")
