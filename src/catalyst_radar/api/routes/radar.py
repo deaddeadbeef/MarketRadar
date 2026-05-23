@@ -610,10 +610,14 @@ def radar_readiness() -> dict[str, object]:
 
 
 @router.get("/shadow/readiness", dependencies=[Depends(require_role(Role.VIEWER))])
-def radar_shadow_readiness() -> dict[str, object]:
+def radar_shadow_readiness(available_at: datetime | None = None) -> dict[str, object]:
     readiness_payload = _dashboard_helper("shadow_readiness_payload")
     return redact_restricted_external_payload(
-        readiness_payload(_engine(), AppConfig.from_env())
+        readiness_payload(
+            _engine(),
+            AppConfig.from_env(),
+            available_at=_parse_api_datetime(available_at),
+        )
     )
 
 

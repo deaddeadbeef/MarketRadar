@@ -1006,14 +1006,17 @@ For the daily shadow-mode gate, use:
 
 ```powershell
 catalyst-radar assert-shadow-ready --json
+catalyst-radar assert-shadow-ready --available-at <UTC-cutoff> --json
 ```
 
-The same payload is available at `GET /api/radar/shadow/readiness` and in the
-terminal dashboard Readiness page. It checks active universe, latest market-bar
-coverage, full-scan trust gate, candidate-state pipeline, candidate packets,
-Decision Cards, provider-call boundaries, alert dry-run state, broker-order kill
-switch, value-ledger/outcome schema availability, disabled real LLM mode, and
-validation readiness. The
+The same payload is available at
+`GET /api/radar/shadow/readiness?available_at=<UTC-cutoff>` and in the terminal
+dashboard Readiness page. The cutoff form is for reproducible daily shadow
+evidence; omit it to use the current local view. It checks active universe,
+latest market-bar coverage, full-scan trust gate, candidate-state pipeline,
+candidate packets, Decision Cards, provider-call boundaries, alert dry-run
+state, broker-order kill switch, value-ledger/outcome schema availability,
+disabled real LLM mode, and validation readiness. The
 command itself makes 0 provider calls and 0 database writes; it prints those
 counters plus the planned run's maximum external-call count. When the first
 blocker exposes a zero-call review command, the readiness next action uses that

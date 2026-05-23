@@ -1151,7 +1151,7 @@ def test_get_radar_shadow_readiness_returns_zero_call_gate(
     monkeypatch.setattr(
         dashboard_data,
         "shadow_readiness_payload",
-        lambda _engine, _config: {
+        lambda _engine, _config, *, available_at=None: {
             "schema_version": "shadow-readiness-v1",
             "status": "setup_required",
             "ready": False,
@@ -1193,6 +1193,55 @@ def test_get_radar_shadow_readiness_returns_zero_call_gate(
             "planned_run_external_call_count_max": 0,
         },
         "blockers": [{"code": "active_universe"}],
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+    }
+
+
+def test_get_radar_shadow_readiness_passes_available_at_cutoff(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "radar-shadow-readiness-cutoff.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+    captured: dict[str, datetime | None] = {}
+
+    def fake_shadow_readiness_payload(
+        _engine,
+        _config,
+        *,
+        available_at=None,
+    ) -> dict[str, object]:
+        captured["available_at"] = available_at
+        return {
+            "schema_version": "shadow-readiness-v1",
+            "status": "setup_required",
+            "available_at": available_at.isoformat() if available_at else None,
+            "ready": False,
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+        }
+
+    monkeypatch.setattr(
+        dashboard_data,
+        "shadow_readiness_payload",
+        fake_shadow_readiness_payload,
+        raising=False,
+    )
+    client = TestClient(create_app())
+
+    response = client.get(
+        "/api/radar/shadow/readiness?available_at=2026-05-23T16:00:00%2B00:00"
+    )
+
+    assert response.status_code == 200
+    assert captured["available_at"] == datetime(2026, 5, 23, 16, tzinfo=UTC)
+    assert response.json() == {
+        "schema_version": "shadow-readiness-v1",
+        "status": "setup_required",
+        "available_at": "2026-05-23T16:00:00+00:00",
+        "ready": False,
         "external_calls_made": 0,
         "db_writes_made": 0,
     }

@@ -1,6 +1,49 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-24 01:15:00 +08:00
+Last updated: 2026-05-24 01:20:00 +08:00
+
+## Latest Shadow Readiness Cutoff Slice
+
+Last updated: 2026-05-24 01:20:00 +08:00
+
+Goal alignment / drift check:
+
+- The mission brief prioritizes repeatable daily shadow-mode testing over UI
+  wording.
+- `shadow-mode status` and `shadow-mode run` already accepted
+  `--available-at`, but `assert-shadow-ready` and the API readiness route did
+  not.
+- That meant the readiness gate could not be reproduced at the same
+  point-in-time cutoff as the shadow run record.
+
+Useful definition:
+
+- `assert-shadow-ready --available-at <UTC-cutoff> --json` should evaluate the
+  local-only readiness gate for the same cutoff used by shadow-mode status/run.
+- `GET /api/radar/shadow/readiness?available_at=<UTC-cutoff>` should expose the
+  same cutoff contract.
+- The change must remain zero-call and zero-write; it must not clear blockers or
+  execute any provider, LLM, broker, alert, order, or DB-write path.
+
+Fix in this slice:
+
+- Added `--available-at` to `assert-shadow-ready`.
+- Added `available_at` query support to `/api/radar/shadow/readiness`.
+- `shadow_readiness_payload()` now threads the optional cutoff into local
+  ops-health and priced-in-answer inputs and echoes `available_at` in JSON.
+- `trial_readiness_payload()` now uses its own cutoff consistently when it
+  builds priced-in and shadow readiness subpayloads.
+- Tests cover CLI/API cutoff forwarding and preserve zero-call/zero-write
+  counters.
+
+Safety:
+
+- This is readiness cutoff plumbing only.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls and writes 0 operator DB rows.
+- It does not execute residual repair, import bars, run source batches, mutate
+  candidate state, write value rows/outcomes, run LLMs, deliver alerts, or
+  submit orders.
 
 ## Latest Strict Minimum-Product Gate Slice
 
