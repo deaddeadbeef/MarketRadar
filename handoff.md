@@ -1,6 +1,47 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-24 03:17:36 +08:00
+Last updated: 2026-05-24 03:25:36 +08:00
+
+## Latest Validation Replay Preview Status Slice
+
+Last updated: 2026-05-24 03:25:36 +08:00
+
+Goal alignment / drift check:
+
+- The mission brief requires validation/baseline evidence before monthly value
+  proof can be trusted.
+- `value-report` already points missing validation evidence at a preview-only
+  `validation-replay` command, but `validation-replay --preview --json` did
+  not set `status` or `next_action`.
+- That made a large local validation write plan less auditable even though it
+  correctly reported planned write count and zero external calls.
+
+Useful definition:
+
+- Validation replay preview should say whether it planned rows worth executing
+  or an empty replay window.
+- Preview should tell the operator to execute only when the planned local DB
+  writes are intentional.
+- Preview must remain zero-call and zero-write.
+
+Fix in this slice:
+
+- `validation-replay` payloads now include `status`.
+  `preview` returns `ready_to_execute` when rows are planned and `no_results`
+  when none are planned; executed runs return `executed`.
+- Payloads now include `next_action` tied to that status and planned local DB
+  write count.
+- Human preview output prints the same status and next action.
+- README documents the preview status/action contract.
+
+Safety:
+
+- Preview remains 0 provider calls and 0 database writes.
+- The validation preview can still report large local write plans; it does not
+  execute them without `--execute`.
+- No Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, provider,
+  alert delivery, residual repair, import, source batch, value-ledger write, or
+  outcome write path is executed.
 
 ## Latest Incomplete Outcome Refresh Command Slice
 

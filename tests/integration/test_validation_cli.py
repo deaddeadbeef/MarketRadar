@@ -421,10 +421,12 @@ def test_validation_replay_preview_is_zero_write(
 
     assert payload["schema_version"] == "validation-replay-cli-v1"
     assert payload["mode"] == "preview"
+    assert payload["status"] == "ready_to_execute"
     assert payload["candidate_result_count"] == 1
     assert payload["external_calls_made"] == 0
     assert payload["db_writes_made"] == 0
     assert payload["db_writes_required"] > 0
+    assert "local validation DB write" in payload["next_action"]
     assert "validation-replay" in payload["execute_command"]
     assert "--execute" in payload["execute_command"]
     assert "--preview" not in payload["execute_command"]
@@ -434,6 +436,27 @@ def test_validation_replay_preview_is_zero_write(
     with engine.connect() as conn:
         assert list(conn.execute(select(validation_runs))) == []
         assert list(conn.execute(select(validation_results))) == []
+
+    assert (
+        main(
+            [
+                "validation-replay",
+                "--as-of-start",
+                "2026-05-10",
+                "--as-of-end",
+                "2026-05-10",
+                "--available-at",
+                AVAILABLE_AT_TEXT,
+                "--outcome-available-at",
+                OUTCOME_AVAILABLE_AT_TEXT,
+            ]
+        )
+        == 0
+    )
+    human_output = capsys.readouterr().out
+    assert "status=ready_to_execute" in human_output
+    assert "next_action=Review validation counts and baselines" in human_output
+    assert "external_calls=0 db_writes=0" in human_output
 
 
 def test_validation_replay_labels_bearish_priced_in_outcomes_directionally(

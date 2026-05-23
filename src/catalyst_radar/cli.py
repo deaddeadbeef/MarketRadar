@@ -2647,9 +2647,11 @@ def main(argv: list[str] | None = None) -> int:
                 else:
                     print(
                         f"validation_replay mode=preview run_id={run_id} "
+                        f"status={payload['status']} "
                         f"candidate_results={len(labeled_results)} "
                         f"baseline_results={len(labeled_baseline_results)} "
                         f"results={len(all_results)} external_calls=0 db_writes=0 "
+                        f"next_action={payload['next_action']} "
                         f"execute_command={payload['execute_command']}"
                     )
                 return 0
@@ -4243,9 +4245,11 @@ def _validation_replay_cli_payload(
         execute_command += f" --ticker {ticker}"
     execute_command += " --execute --json"
     preview_command = execute_command.replace(" --execute --json", " --preview --json")
+    status = _validation_replay_status(mode=mode, result_count=result_count)
     return {
         "schema_version": "validation-replay-cli-v1",
         "mode": mode,
+        "status": status,
         "run_id": run_id,
         "as_of_start": as_of_start.isoformat(),
         "as_of_end": as_of_end.isoformat(),
@@ -4271,7 +4275,35 @@ def _validation_replay_cli_payload(
             if isinstance(metrics.get("baseline_comparison"), Mapping)
             else {}
         ),
+        "next_action": _validation_replay_next_action(
+            status=status,
+            db_writes_required=result_count + 2,
+        ),
     }
+
+
+def _validation_replay_status(*, mode: str, result_count: int) -> str:
+    if mode == "preview":
+        return "ready_to_execute" if result_count > 0 else "no_results"
+    return "executed"
+
+
+def _validation_replay_next_action(
+    *,
+    status: str,
+    db_writes_required: int,
+) -> str:
+    if status == "ready_to_execute":
+        return (
+            "Review validation counts and baselines, then run execute only if "
+            f"{db_writes_required} local validation DB write(s) are intentional."
+        )
+    if status == "no_results":
+        return (
+            "No validation rows were planned; adjust the date window, states, "
+            "or tickers before executing."
+        )
+    return "Validation replay rows were written; run validation-report for the stored run."
 
 
 def _validation_report_missing_payload(
