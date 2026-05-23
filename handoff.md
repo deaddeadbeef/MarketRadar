@@ -1,6 +1,58 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 12:50:00 +08:00
+Last updated: 2026-05-23 13:00:00 +08:00
+
+## Latest Monthly Validation Evidence Slice
+
+Last updated: 2026-05-23 13:00:00 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains measured monthly value proof for broad priced-in
+  scanning.
+- Baseline comparison support already existed in validation replay/report, but
+  the monthly value report did not show whether any validation or baseline
+  evidence existed behind the value claim.
+- The useful definition for this slice is concrete: when reading
+  `value-report --month ... --json`, the operator should see whether the latest
+  successful validation run exists, whether the five mission-brief baselines
+  were measured, and whether precision@5/10 evidence is available.
+
+Fix in this slice:
+
+- Monthly `value-report --month ... --json` now includes
+  `validation_evidence`.
+- When no successful validation run exists, `validation_evidence.status` is
+  `no_validation_runs`, `ready=False`, and the next action points to
+  `validation-replay`.
+- When validation evidence exists, the summary includes selected run id,
+  candidate result count, baseline result count, required/measured/insufficient
+  baseline lists, precision@5, and precision@10.
+- README documents that monthly value reports now surface validation/baseline
+  evidence alongside ledger and outcome coverage.
+
+Validation observed in this slice:
+
+- Baseline value-report integration file passed before edits.
+- The new no-run and measured-baseline regressions failed before implementation
+  because `validation_evidence` was absent.
+- Focused no-run and measured-baseline regressions passed after implementation.
+- Full value-report integration file passed: 8 tests.
+- Ruff passed for touched value-report source and test file.
+- Compileall passed for `src` and the touched value-report test.
+- Configured operator-DB `value-report --month 2026-05 --json` smoke returned
+  `verdict=insufficient_evidence`, `validation_evidence.status=no_validation_runs`,
+  `ready=False`, `candidate_result_count=0`, `baseline_result_count=0`,
+  `external_calls_made=0`, and `db_writes_made=0`.
+
+Safety:
+
+- This change makes 0 Polygon/Massive, SEC, Schwab, broker, OpenAI, web, app,
+  or provider calls.
+- The monthly value report remains read-only and writes 0 database rows.
+- It does not mutate value-ledger rows, value outcomes, validation results,
+  deterministic candidate state, scores, policy output, Decision Cards, alert
+  delivery, or broker/order paths.
 
 ## Latest Value Outcome Coverage Slice
 

@@ -9,7 +9,15 @@ from sqlalchemy.engine import Engine
 
 from catalyst_radar.core.immutability import thaw_json_value
 from catalyst_radar.storage.validation_repositories import ValidationRepository
+from catalyst_radar.validation.baselines import (
+    NEWS_EVENT_ONLY_SCREENER,
+    RANDOM_SECTOR_MATCHED_BASKET,
+    RELATIVE_STRENGTH_SCREENER,
+    SECTOR_ETF_ROTATION_SCREENER,
+    VOLUME_BREAKOUT_SCREENER,
+)
 from catalyst_radar.validation.models import ValueLedgerEntry, ValueOutcome
+from catalyst_radar.validation.reports import build_validation_report, validation_report_payload
 from catalyst_radar.validation.value_ledger import (
     CHATGPT_PRO_MONTHLY_COST_USD,
     TARGET_MONTHLY_VALUE_USD,
@@ -39,6 +47,13 @@ MISSED_LABELS = frozenset({"missed", "false-negative"})
 AVOIDED_LABELS = frozenset({"avoided-loss"})
 FALSE_POSITIVE_LABELS = frozenset({"false-positive"})
 DEFAULT_MIN_USEFUL_EVIDENCE_COUNT = 2
+MISSION_BRIEF_BASELINES = (
+    RELATIVE_STRENGTH_SCREENER,
+    VOLUME_BREAKOUT_SCREENER,
+    SECTOR_ETF_ROTATION_SCREENER,
+    NEWS_EVENT_ONLY_SCREENER,
+    RANDOM_SECTOR_MATCHED_BASKET,
+)
 
 
 def monthly_value_report_payload(
@@ -80,6 +95,7 @@ def monthly_value_report_payload(
         for outcome in repo.list_value_outcomes(available_at=cutoff, limit=10_000)
         if outcome.value_ledger_entry_id in entry_ids
     ]
+    validation_evidence = _validation_evidence_summary(repo, available_at=cutoff)
     label_counts = Counter(entry.label for entry in entries)
     user_decision_counts = Counter(entry.user_decision or "unknown" for entry in entries)
     useful_entries = [entry for entry in entries if _is_useful_entry(entry)]
@@ -136,6 +152,7 @@ def monthly_value_report_payload(
             candidate_coverage
         ),
         "value_outcome_coverage": _value_outcome_coverage_summary(outcome_coverage),
+        "validation_evidence": validation_evidence,
         "useful_insights_count": len(useful_entries),
         "noisy_insights_count": len(noisy_entries),
         "acted_insights_count": len(acted_entries),
@@ -287,6 +304,144 @@ def _value_outcome_coverage_summary(
         "external_calls_made": int(coverage.get("external_calls_made") or 0),
         "db_writes_made": int(coverage.get("db_writes_made") or 0),
     }
+
+
+def _validation_evidence_summary(
+    repo: ValidationRepository,
+    *,
+    available_at: datetime,
+) -> dict[str, object]:
+    run = repo.latest_successful_validation_run(available_at=available_at)
+    if run is None:
+        return _missing_validation_evidence(
+            status="no_validation_runs",
+            selected_run_id=None,
+            next_action=(
+                "Run validation-replay after candidate outcomes are available, "
+                "then rerun validation-report."
+            ),
+        )
+    results = repo.list_validation_results(run.id, available_at=available_at)
+    if not results:
+        return _missing_validation_evidence(
+            status="validation_results_not_found",
+            selected_run_id=run.id,
+            next_action=(
+                "Check the validation run id or run validation-replay to create "
+                "stored validation results."
+            ),
+        )
+    report = validation_report_payload(
+        build_validation_report(
+            run.id,
+            results,
+            useful_alert_labels=repo.list_useful_alert_labels(available_at=available_at),
+        )
+    )
+    comparison = report.get("baseline_comparison")
+    comparison = comparison if isinstance(comparison, Mapping) else {}
+    measured = [
+        name
+        for name in MISSION_BRIEF_BASELINES
+        if _baseline_sample_status(comparison, name) == "measured"
+    ]
+    missing = [name for name in MISSION_BRIEF_BASELINES if name not in comparison]
+    insufficient = [
+        name
+        for name in MISSION_BRIEF_BASELINES
+        if name not in measured and name not in missing
+    ]
+    precision_at_5 = _first_baseline_metric(comparison, "marketradar_precision_at_5")
+    precision_at_10 = _first_baseline_metric(comparison, "marketradar_precision_at_10")
+    ready = (
+        not missing
+        and not insufficient
+        and precision_at_5 is not None
+        and precision_at_10 is not None
+    )
+    return {
+        "schema_version": "monthly-value-validation-evidence-v1",
+        "status": "ready" if ready else "insufficient_evidence",
+        "ready": ready,
+        "selected_run_id": run.id,
+        "validation_run": {
+            "id": run.id,
+            "run_type": run.run_type,
+            "as_of_start": run.as_of_start.isoformat(),
+            "as_of_end": run.as_of_end.isoformat(),
+            "decision_available_at": run.decision_available_at.isoformat(),
+            "started_at": run.started_at.isoformat(),
+            "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+        },
+        "candidate_result_count": sum(1 for result in results if result.baseline is None),
+        "baseline_result_count": sum(1 for result in results if result.baseline is not None),
+        "required_baselines": list(MISSION_BRIEF_BASELINES),
+        "measured_baselines": measured,
+        "insufficient_baselines": insufficient,
+        "missing_baselines": missing,
+        "precision_at_5": precision_at_5,
+        "precision_at_10": precision_at_10,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "next_action": (
+            "Validation and baseline evidence is measured for the latest successful run."
+            if ready
+            else (
+                "Run validation-replay with outcome labels until every mission "
+                "baseline is measured."
+            )
+        ),
+    }
+
+
+def _missing_validation_evidence(
+    *,
+    status: str,
+    selected_run_id: str | None,
+    next_action: str,
+) -> dict[str, object]:
+    return {
+        "schema_version": "monthly-value-validation-evidence-v1",
+        "status": status,
+        "ready": False,
+        "selected_run_id": selected_run_id,
+        "candidate_result_count": 0,
+        "baseline_result_count": 0,
+        "required_baselines": list(MISSION_BRIEF_BASELINES),
+        "measured_baselines": [],
+        "insufficient_baselines": list(MISSION_BRIEF_BASELINES),
+        "missing_baselines": list(MISSION_BRIEF_BASELINES),
+        "precision_at_5": None,
+        "precision_at_10": None,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+        "next_action": next_action,
+    }
+
+
+def _baseline_sample_status(
+    comparison: Mapping[str, object],
+    name: str,
+) -> str | None:
+    row = comparison.get(name)
+    if not isinstance(row, Mapping):
+        return None
+    status = row.get("sample_status")
+    return str(status) if status is not None else None
+
+
+def _first_baseline_metric(
+    comparison: Mapping[str, object],
+    metric: str,
+) -> float | None:
+    for name in MISSION_BRIEF_BASELINES:
+        row = comparison.get(name)
+        if not isinstance(row, Mapping):
+            continue
+        value = row.get(metric)
+        if isinstance(value, int | float):
+            return float(value)
+    return None
 
 
 def _verdict_reason(
