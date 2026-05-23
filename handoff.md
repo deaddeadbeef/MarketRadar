@@ -1,6 +1,55 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-24 03:48:47 +08:00
+Last updated: 2026-05-24 03:58:48 +08:00
+
+## Latest Validation Replay Empty Preview Guard Slice
+
+Last updated: 2026-05-24 03:58:48 +08:00
+
+Goal alignment / drift check:
+
+- The mission brief requires validation/baseline evidence before monthly value
+  proof, but it also requires fail-closed preview-first workflows with no
+  misleading execute path.
+- A live zero-call preview against `data/schwab-live.db` returned
+  `status=no_results` for the monthly validation-replay command while still
+  exposing an `execute_command` that would write an empty validation run.
+- That was not a provider-call risk, but it was an operator-risk gap: an empty
+  validation preview should tell the operator to adjust the window/states/ticker
+  filters, not present an execution command.
+
+Useful definition:
+
+- `validation-replay --preview` is useful only if `execute_command` appears when
+  candidate/baseline validation rows are actually planned.
+- For `status=no_results`, preview should keep 0 writes planned, suppress the
+  execute command, and keep the next action pointed at adjusting the replay
+  inputs.
+
+Fix in this slice:
+
+- Validation replay preview now reports `db_writes_required=0` and
+  `execute_command=null` when `status=no_results`.
+- Human preview output prints `execute_command=n/a` for empty windows.
+- Ready previews still include the guarded `--execute --json` command and
+  planned local validation DB write count.
+- Regression coverage verifies empty previews write no rows and do not print an
+  execute command.
+- README documents the empty-preview suppression contract.
+
+Safety:
+
+- Preview-only validation CLI contract change.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls and writes 0 operator database rows.
+- It does not execute validation replay, value-ledger writes, outcome writes,
+  residual repair, imports, source batches, LLMs, alert delivery, or orders.
+
+Live zero-call smoke using the root `data/schwab-live.db`:
+
+- The monthly validation replay preview now returns `status=no_results`,
+  `result_count=0`, `db_writes_required=0`, `db_writes_made=0`,
+  `external_calls_made=0`, and `execute_command=null`.
 
 ## Latest TUI Monthly Value Next Command Slice
 

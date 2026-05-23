@@ -1295,8 +1295,10 @@ catalyst-radar validation-report --run-id <printed-run-id> --json
 
 `validation-replay` defaults to preview mode. `validation-replay --preview
 --json` computes the planned candidate and baseline result counts with 0
-provider calls and 0 database writes, and prints the matching `--execute`
-command. Preview payloads also expose `status=ready_to_execute` or
+provider calls and 0 database writes. It prints the matching `--execute`
+command only when `status=ready_to_execute`; empty replay windows suppress the
+execute command and report `db_writes_required=0`. Preview payloads also expose
+`status=ready_to_execute` or
 `status=no_results` plus `next_action`, so automation can distinguish a useful
 local validation write plan from an empty replay window. Use `--execute` only
 when you intentionally want to write the validation run and result rows. The
