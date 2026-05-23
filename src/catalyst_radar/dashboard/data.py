@@ -10483,6 +10483,12 @@ def investable_readiness_payload(
     blockers = [row for row in checks if row.get("status") == "blocked"]
     first_blocker = blockers[0] if blockers else {}
     ready = not blockers
+    canonical_next_action = (
+        "Keep order submission disabled and run a human trading-safety review."
+        if ready
+        else str(first_blocker.get("next_action") or "Clear the first blocker.")
+    )
+    first_blocker_code = str(first_blocker.get("code") or "").strip() or None
     return {
         "schema_version": "investable-readiness-v1",
         "status": "ready" if ready else "blocked",
@@ -10499,11 +10505,10 @@ def investable_readiness_payload(
             if ready
             else f"{len(blockers)} blocker(s) prevent any capital-readiness claim."
         ),
-        "canonical_next_action": (
-            "Keep order submission disabled and run a human trading-safety review."
-            if ready
-            else str(first_blocker.get("next_action") or "Clear the first blocker.")
-        ),
+        "first_blocker": first_blocker_code,
+        "first_gap_count": _shadow_readiness_first_gap_count(first_blocker),
+        "canonical_next_action": canonical_next_action,
+        "canonical_next_command": _shadow_readiness_command(canonical_next_action),
         "useful_definition": (
             "Useful means MarketRadar repeatedly scans the intended broad universe, "
             "labels surfaced insights, tracks forward outcomes, beats or explains "
