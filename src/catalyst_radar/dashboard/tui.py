@@ -7664,6 +7664,7 @@ def _costs_lines(payload: Mapping[str, object], width: int) -> list[str]:
     value_ledger = _mapping(payload.get("value_ledger"))
     value_outcomes = _mapping(payload.get("value_outcomes"))
     value_report = _mapping(payload.get("value_report"))
+    candidate_coverage = _mapping(value_report.get("candidate_ledger_coverage"))
     lines = [_rule("Costs", width)]
     lines.extend(
         _kv_lines(
@@ -7706,6 +7707,14 @@ def _costs_lines(payload: Mapping[str, object], width: int) -> list[str]:
                 ("Useful insights", value_report.get("useful_insights_count")),
                 ("Noisy insights", value_report.get("noisy_insights_count")),
                 ("False positives", value_report.get("false_positive_count")),
+                (
+                    "Candidate ledger coverage",
+                    _candidate_ledger_coverage_text(candidate_coverage),
+                ),
+                (
+                    "Missing candidate ledgers",
+                    candidate_coverage.get("missing_ledger_count"),
+                ),
             ),
             width=width,
         )
@@ -7752,6 +7761,15 @@ def _costs_lines(payload: Mapping[str, object], width: int) -> list[str]:
         )
     )
     return lines
+
+
+def _candidate_ledger_coverage_text(coverage: Mapping[str, object]) -> str:
+    if not coverage:
+        return "n/a"
+    logged = coverage.get("logged_candidate_count")
+    surfaced = coverage.get("surfaced_candidate_count")
+    pct = coverage.get("coverage_pct")
+    return f"{logged or 0}/{surfaced or 0} ({pct if pct is not None else 'n/a'}%)"
 
 
 def _broker_lines(payload: Mapping[str, object], width: int) -> list[str]:

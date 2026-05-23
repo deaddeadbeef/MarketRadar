@@ -344,6 +344,12 @@ def test_cost_page_renders_monthly_value_report() -> None:
                 "noisy_insights_count": 0,
                 "false_positive_count": 0,
                 "decision_support_note": "Decision-support value, not realized profit.",
+                "candidate_ledger_coverage": {
+                    "surfaced_candidate_count": 3,
+                    "logged_candidate_count": 2,
+                    "missing_ledger_count": 1,
+                    "coverage_pct": 66.67,
+                },
             },
         },
         page="costs",
@@ -352,6 +358,9 @@ def test_cost_page_renders_monthly_value_report() -> None:
 
     assert "Monthly value verdict" in text
     assert "Net decision-support value" in text
+    assert "Candidate ledger coverage" in text
+    assert "2/3 (66.67%)" in text
+    assert "Missing candidate ledgers" in text
     assert "Decision-support value, not realized profit." in text
 
 
