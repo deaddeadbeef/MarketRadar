@@ -1142,7 +1142,9 @@ review window from a still-pending one without inferring that from return
 fields. It also includes `setup_follow_through` using the 20-trading-day
 bullish/bearish direction check and `gap_outcome` / `gap_return` from the first
 available post-entry bar, so outcome review can separate follow-through from
-initial gap behavior.
+initial gap behavior. Invalidation touch is direction-aware: bullish outcomes
+check future lows against the invalidation price, while bearish outcomes check
+future highs.
 
 ### Monthly value report
 

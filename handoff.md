@@ -1,6 +1,37 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 20:11:45 +08:00
+Last updated: 2026-05-23 20:22:35 +08:00
+
+## Latest Direction-Aware Outcome Invalidation Slice
+
+Last updated: 2026-05-23 20:22:35 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains measured value proof for priced-in signals.
+- This slice fixes outcome evidence quality, not UI wording: bearish outcomes
+  must not be marked invalidated just because a future low is below a
+  short-side invalidation level that sits above entry.
+
+Fix in this slice:
+
+- `value_outcome` invalidation touch is now direction-aware.
+- Bullish or unknown direction continues to check future lows against the
+  invalidation price.
+- Bearish direction checks future highs against the invalidation price.
+- Outcome payloads include `invalidation_touch_direction` inside the local
+  payload for audit.
+- README documents the direction-aware invalidation rule.
+
+Safety:
+
+- This is deterministic local outcome math over stored daily bars and
+  value-ledger rows.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls and writes 0 database rows in preview.
+- It does not change candidate scoring, policy gates, candidate states,
+  market-bar data, value-ledger rows, alert delivery, broker controls, or LLM
+  behavior.
 
 ## Latest Value Write Explicit Commands Slice
 
