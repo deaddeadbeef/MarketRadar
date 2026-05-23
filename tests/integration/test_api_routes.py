@@ -2533,6 +2533,72 @@ def test_get_radar_market_bars_residual_review_flags_zero_liquidity_gap(
     assert payload["db_writes_made"] == 0
 
 
+def test_post_radar_market_bars_residual_repair_previews_and_executes(
+    tmp_path,
+    monkeypatch,
+):
+    database_url = _database_url(tmp_path, "radar-market-bars-residual-repair.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = _create_database(database_url)
+    MarketRepository(engine).upsert_securities(
+        [
+            _security_with_type("AAPL", "CS"),
+            Security(
+                ticker="AACO",
+                name="Alpha Acquisition Corp.",
+                exchange="NASDAQ",
+                sector="Unknown",
+                industry="Unknown",
+                market_cap=0,
+                avg_dollar_volume_20d=0,
+                has_options=False,
+                is_active=True,
+                updated_at=AVAILABLE_AT,
+                metadata={"type": "CS"},
+            ),
+        ]
+    )
+    MarketRepository(engine).upsert_daily_bars([_daily_bar("AAPL", date(2026, 5, 8))])
+    client = TestClient(create_app())
+
+    preview_response = client.post(
+        "/api/radar/market-bars/residual-repair",
+        json={"expected_as_of": "2026-05-08"},
+    )
+
+    assert preview_response.status_code == 200
+    preview = preview_response.json()
+    assert preview["schema_version"] == "market-bars-residual-repair-v1"
+    assert preview["status"] == "ready_to_execute"
+    assert preview["mode"] == "preview"
+    assert preview["eligible_count"] == 1
+    assert preview["preview_would_clear_market_bars"] is True
+    assert preview["external_calls_made"] == 0
+    assert preview["db_writes_made"] == 0
+
+    execute_response = client.post(
+        "/api/radar/market-bars/residual-repair",
+        json={
+            "expected_as_of": "2026-05-08",
+            "execute": True,
+            "expected_missing_count": 1,
+            "expected_eligible_count": 1,
+        },
+    )
+
+    assert execute_response.status_code == 200
+    executed = execute_response.json()
+    assert executed["status"] == "executed"
+    assert executed["deactivated_count"] == 1
+    assert executed["db_writes_made"] == 1
+    assert executed["post_repair_status"]["status"] == "ready"
+    with engine.connect() as conn:
+        active = conn.execute(
+            select(securities.c.is_active).where(securities.c.ticker == "AACO")
+        ).scalar_one()
+    assert active is False
+
+
 def test_get_radar_market_bars_status_exposes_configured_universe_scope(
     tmp_path,
     monkeypatch,

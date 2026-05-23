@@ -605,6 +605,23 @@ Residual review does not clear the market-bar gate. It reports stock-like versus
 non-stock residual counts, security-type counts, saved-file projection,
 zero-volume/zero-market-cap evidence, manual repair commands, and explicit
 decision options while keeping `external_calls_made=0` and `db_writes_made=0`.
+If the review shows strict zero-liquidity/no-history rows that should not remain
+active, use `market-bars residual-repair` as a guarded local-universe repair.
+It previews by default with 0 provider calls and 0 DB writes. Execution requires
+`--execute` plus the exact missing and eligible counts from the reviewed preview;
+if those counts changed, it writes nothing and returns `status=stale_approval`.
+
+```powershell
+catalyst-radar market-bars residual-repair --expected-as-of 2026-05-15 --json
+catalyst-radar market-bars residual-repair --expected-as-of 2026-05-15 --expect-missing-count <MISSING> --expect-eligible-count <ELIGIBLE> --execute --json
+```
+
+The matching API route is `POST /api/radar/market-bars/residual-repair`.
+Preview request bodies use `{"expected_as_of":"YYYY-MM-DD","execute":false}`.
+Execute request bodies must include `execute=true`, `expected_missing_count`, and
+`expected_eligible_count`. This path only sets qualifying local
+`securities.is_active=false` rows with a repair marker; it never fills bars,
+calls Polygon/Massive, SEC, Schwab, OpenAI, web providers, or submits orders.
 For manual zero-call repair, `bars manual template` generates the full
 active-universe missing-bar CSV by default, `bars manual import` previews
 complete rows only with 0 provider calls and 0 DB writes, and

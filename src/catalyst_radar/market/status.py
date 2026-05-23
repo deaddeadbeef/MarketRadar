@@ -396,6 +396,210 @@ def market_bars_residual_review_payload(
     }
 
 
+def market_bars_residual_repair_payload(
+    engine: Engine,
+    config: AppConfig,
+    *,
+    expected_as_of: date | None = None,
+    stocks_only: bool = False,
+    execute: bool = False,
+    expected_missing_count: int | None = None,
+    expected_eligible_count: int | None = None,
+):
+    """Preview or execute strict local active-universe residual repair."""
+
+    status_payload = market_bars_status_payload(
+        engine,
+        config,
+        expected_as_of=expected_as_of,
+        stocks_only=stocks_only,
+    )
+    missing = _int_payload_value(status_payload.get("missing_as_of_bar_count"))
+    expected_text = str(status_payload.get("expected_as_of") or "").strip()
+    resolved_expected_as_of = (
+        date.fromisoformat(expected_text) if expected_text else expected_as_of
+    )
+    if resolved_expected_as_of is None:
+        return {
+            "schema_version": "market-bars-residual-repair-v1",
+            "status": "blocked",
+            "mode": "execute" if execute else "preview",
+            "reason": "expected_as_of is required before residual repair can run.",
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+        }
+
+    rows = _residual_repair_candidate_rows(
+        engine,
+        expected_as_of=resolved_expected_as_of,
+        stocks_only=stocks_only,
+    )
+    eligible = [row for row in rows if bool(row.get("eligible"))]
+    ineligible = [row for row in rows if not bool(row.get("eligible"))]
+    eligible_count = len(eligible)
+    projected_missing_after = max(0, missing - eligible_count)
+    would_clear = bool(missing > 0 and eligible_count == missing)
+    guard_errors = _residual_repair_guard_errors(
+        missing=missing,
+        eligible_count=eligible_count,
+        execute=execute,
+        expected_missing_count=expected_missing_count,
+        expected_eligible_count=expected_eligible_count,
+    )
+    deactivated_count = 0
+    post_status: dict[str, object] = {}
+    db_writes_made = 0
+    if execute and not guard_errors and eligible_count > 0:
+        deactivated_count = _deactivate_residual_repair_rows(
+            engine,
+            eligible,
+            expected_as_of=resolved_expected_as_of,
+        )
+        db_writes_made = deactivated_count
+        post = market_bars_status_payload(
+            engine,
+            config,
+            expected_as_of=resolved_expected_as_of,
+            stocks_only=stocks_only,
+        )
+        post_status = {
+            "schema_version": "market-bars-residual-repair-post-status-v1",
+            "status": post.get("status"),
+            "first_blocker": post.get("first_blocker"),
+            "active_security_count": post.get("active_security_count"),
+            "existing_as_of_bar_count": post.get("existing_as_of_bar_count"),
+            "missing_as_of_bar_count": post.get("missing_as_of_bar_count"),
+            "external_calls_made": post.get("external_calls_made", 0),
+            "db_writes_made": post.get("db_writes_made", 0),
+        }
+
+    if missing <= 0:
+        status = "nothing_to_repair"
+        next_action = "Market bars already cover this scope; rerun priced-in-answer."
+    elif execute and guard_errors:
+        status = "stale_approval"
+        next_action = (
+            "No rows were changed. Rerun preview and repeat execute with fresh "
+            "expected counts."
+        )
+    elif execute and deactivated_count > 0:
+        status = "executed"
+        next_action = (
+            "Residual rows were deactivated locally. Rerun market-bars status "
+            "and priced-in-answer before trusting the full scan."
+        )
+    elif eligible_count <= 0:
+        status = "blocked"
+        next_action = (
+            "No strict residual rows qualify for local universe repair; use "
+            "manual bar repair or keep the gate blocked."
+        )
+    elif would_clear:
+        status = "ready_to_execute"
+        next_action = (
+            "Preview would clear the current market-bar residual by deactivating "
+            "strict zero-liquidity/no-history rows. Execute only after review "
+            "with the expected count guards."
+        )
+    else:
+        status = "partial_repair_available"
+        next_action = (
+            "Preview can deactivate some strict residual rows, but market bars "
+            "would still be incomplete. Fill or resolve the remaining ineligible "
+            "rows before trusting the full scan."
+        )
+
+    execute_command = _residual_repair_command(
+        resolved_expected_as_of,
+        stocks_only=stocks_only,
+        expected_missing_count=missing,
+        expected_eligible_count=eligible_count,
+        execute=True,
+    )
+    preview_command = _residual_repair_command(
+        resolved_expected_as_of,
+        stocks_only=stocks_only,
+        execute=False,
+    )
+    return {
+        "schema_version": "market-bars-residual-repair-v1",
+        "status": status,
+        "mode": "execute" if execute else "preview",
+        "executed": bool(deactivated_count > 0),
+        "expected_as_of": resolved_expected_as_of.isoformat(),
+        "expected_as_of_source": status_payload.get("expected_as_of_source"),
+        "stocks_only": bool(stocks_only),
+        "coverage_scope": status_payload.get("coverage_scope"),
+        "active_security_count": status_payload.get("active_security_count"),
+        "existing_as_of_bar_count": status_payload.get("existing_as_of_bar_count"),
+        "missing_as_of_bar_count": missing,
+        "candidate_count": len(rows),
+        "eligible_count": eligible_count,
+        "ineligible_count": len(ineligible),
+        "deactivated_count": deactivated_count,
+        "projected_missing_after_repair_count": projected_missing_after,
+        "preview_would_clear_market_bars": would_clear,
+        "clears_market_bar_gate": bool(
+            deactivated_count > 0
+            and _int_payload_value(post_status.get("missing_as_of_bar_count")) == 0
+        ),
+        "eligible_security_type_counts": _security_type_count_mapping(
+            row.get("security_type") for row in eligible
+        ),
+        "ineligible_reason_counts": _ineligible_reason_count_mapping(ineligible),
+        "eligible_ticker_sample": [
+            str(row.get("ticker")) for row in eligible[:25]
+        ],
+        "eligible_ticker_more": max(0, eligible_count - 25),
+        "ineligible_ticker_sample": [
+            {
+                "ticker": row.get("ticker"),
+                "reasons": row.get("ineligible_reasons") or [],
+            }
+            for row in ineligible[:25]
+        ],
+        "guard": {
+            "schema_version": "market-bars-residual-repair-guard-v1",
+            "execute_requested": bool(execute),
+            "required_for_execute": [
+                "--execute",
+                "--expect-missing-count",
+                "--expect-eligible-count",
+            ],
+            "expected_missing_count": expected_missing_count,
+            "actual_missing_count": missing,
+            "expected_eligible_count": expected_eligible_count,
+            "actual_eligible_count": eligible_count,
+            "errors": guard_errors,
+            "passed": bool(execute and not guard_errors),
+        },
+        "preview_command": preview_command,
+        "execute_command": execute_command,
+        "api": "POST /api/radar/market-bars/residual-repair",
+        "api_preview_request_body": {
+            "expected_as_of": resolved_expected_as_of.isoformat(),
+            "stocks_only": bool(stocks_only),
+            "execute": False,
+        },
+        "api_execute_request_body": {
+            "expected_as_of": resolved_expected_as_of.isoformat(),
+            "stocks_only": bool(stocks_only),
+            "execute": True,
+            "expected_missing_count": missing,
+            "expected_eligible_count": eligible_count,
+        },
+        "post_repair_status": post_status,
+        "safe_default": (
+            "Preview only unless execute=true and the reviewed missing/eligible "
+            "counts still match. This path changes only local securities.is_active; "
+            "it never fills bars, calls providers, or submits orders."
+        ),
+        "next_action": next_action,
+        "external_calls_made": 0,
+        "db_writes_made": db_writes_made,
+    }
+
+
 def market_bars_import_verification_payload(
     engine: Engine,
     config: AppConfig,
@@ -1431,6 +1635,7 @@ def _residual_review_decision_options(
 ) -> list[dict[str, object]]:
     manual = _mapping(status_payload.get("manual"))
     configured = _mapping(status_payload.get("configured_universe_scope"))
+    command_date = date.fromisoformat(expected_as_of_text) if expected_as_of_text else None
     options: list[dict[str, object]] = []
     if manual.get("template_command"):
         options.append(
@@ -1455,10 +1660,13 @@ def _residual_review_decision_options(
                 "Use when residual rows are stale, unsupported, or not part of "
                 "the intended stock-market scan boundary."
             ),
-            "command": None,
+            "command": _residual_repair_command(command_date, stocks_only=stocks_only),
             "external_calls_required": 0,
             "db_writes_required": 0,
-            "note": "No automatic mutation is provided here; keep the gate blocked.",
+            "note": (
+                "Preview first. Execute requires explicit count guards and only "
+                "changes local active-universe rows."
+            ),
         }
     )
     if configured.get("status") == "ready":
@@ -1479,7 +1687,6 @@ def _residual_review_decision_options(
                 "db_writes_required": 0,
             }
         )
-    command_date = date.fromisoformat(expected_as_of_text) if expected_as_of_text else None
     options.append(
         {
             "kind": "keep_blocked",
@@ -1500,6 +1707,173 @@ def _residual_review_command(expected_as_of: date | None, *, stocks_only: bool) 
     if stocks_only:
         parts.append("--stocks-only")
     return " ".join(parts)
+
+
+def _residual_repair_command(
+    expected_as_of: date | None,
+    *,
+    stocks_only: bool,
+    execute: bool = False,
+    expected_missing_count: int | None = None,
+    expected_eligible_count: int | None = None,
+) -> str:
+    parts = ["catalyst-radar market-bars residual-repair"]
+    if expected_as_of is not None:
+        parts.append(f"--expected-as-of {expected_as_of.isoformat()}")
+    if stocks_only:
+        parts.append("--stocks-only")
+    if expected_missing_count is not None:
+        parts.append(f"--expect-missing-count {expected_missing_count}")
+    if expected_eligible_count is not None:
+        parts.append(f"--expect-eligible-count {expected_eligible_count}")
+    if execute:
+        parts.append("--execute")
+    return " ".join(parts)
+
+
+def _residual_repair_candidate_rows(
+    engine: Engine,
+    *,
+    expected_as_of: date,
+    stocks_only: bool,
+) -> list[dict[str, object]]:
+    existing_as_of = _bar_tickers_for_date(engine, expected_as_of)
+    with engine.connect() as connection:
+        history = {
+            str(row._mapping["ticker"]).strip().upper()
+            for row in connection.execute(select(daily_bars.c.ticker).distinct())
+            if str(row._mapping["ticker"]).strip()
+        }
+        rows = connection.execute(
+            select(securities)
+            .where(securities.c.is_active.is_(True))
+            .order_by(securities.c.ticker)
+        ).all()
+    candidates: list[dict[str, object]] = []
+    for row in rows:
+        data = row._mapping
+        ticker = str(data["ticker"] or "").strip().upper()
+        if not ticker or ticker in existing_as_of:
+            continue
+        metadata = data["metadata"] if isinstance(data["metadata"], Mapping) else {}
+        security_type = str(metadata.get("type") or "").strip().upper() or "UNKNOWN"
+        if stocks_only and security_type not in MANUAL_BAR_COMPANY_LIKE_TYPES:
+            continue
+        market_cap = _float_payload_value(data["market_cap"])
+        avg_dollar_volume = _float_payload_value(data["avg_dollar_volume_20d"])
+        has_options = bool(data["has_options"])
+        has_history = ticker in history
+        reasons: list[str] = []
+        if has_history:
+            reasons.append("has_local_bar_history")
+        if market_cap > 0:
+            reasons.append("positive_market_cap")
+        if avg_dollar_volume > 0:
+            reasons.append("positive_avg_dollar_volume_20d")
+        if has_options:
+            reasons.append("has_options")
+        candidates.append(
+            {
+                "ticker": ticker,
+                "name": data["name"],
+                "exchange": data["exchange"],
+                "sector": data["sector"],
+                "industry": data["industry"],
+                "security_type": security_type,
+                "market_cap": market_cap,
+                "avg_dollar_volume_20d": avg_dollar_volume,
+                "has_options": has_options,
+                "has_local_bar_history": has_history,
+                "metadata": dict(metadata),
+                "eligible": not reasons,
+                "ineligible_reasons": reasons,
+            }
+        )
+    return candidates
+
+
+def _residual_repair_guard_errors(
+    *,
+    missing: int,
+    eligible_count: int,
+    execute: bool,
+    expected_missing_count: int | None,
+    expected_eligible_count: int | None,
+) -> list[str]:
+    if not execute:
+        return []
+    errors: list[str] = []
+    if missing <= 0:
+        errors.append("nothing_to_repair")
+    if eligible_count <= 0:
+        errors.append("no_eligible_rows")
+    if expected_missing_count is None:
+        errors.append("expected_missing_count_required")
+    elif expected_missing_count != missing:
+        errors.append("expected_missing_count_mismatch")
+    if expected_eligible_count is None:
+        errors.append("expected_eligible_count_required")
+    elif expected_eligible_count != eligible_count:
+        errors.append("expected_eligible_count_mismatch")
+    return errors
+
+
+def _deactivate_residual_repair_rows(
+    engine: Engine,
+    rows: list[dict[str, object]],
+    *,
+    expected_as_of: date,
+) -> int:
+    repaired_at = datetime.now(UTC)
+    changed = 0
+    with engine.begin() as connection:
+        for row in rows:
+            ticker = str(row.get("ticker") or "").strip().upper()
+            if not ticker:
+                continue
+            metadata = _mapping(row.get("metadata")).copy()
+            metadata["market_bar_residual_repair"] = {
+                "schema_version": "market-bars-residual-repair-marker-v1",
+                "expected_as_of": expected_as_of.isoformat(),
+                "repaired_at": repaired_at.isoformat(),
+                "reason": "zero_liquidity_zero_market_cap_no_history_missing_as_of_bar",
+                "previous_is_active": True,
+            }
+            result = connection.execute(
+                securities.update()
+                .where(
+                    securities.c.ticker == ticker,
+                    securities.c.is_active.is_(True),
+                )
+                .values(
+                    is_active=False,
+                    updated_at=repaired_at,
+                    metadata=metadata,
+                )
+            )
+            changed += int(result.rowcount or 0)
+    return changed
+
+
+def _security_type_count_mapping(values) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for value in values:
+        key = str(value or "UNKNOWN").strip().upper() or "UNKNOWN"
+        counts[key] = counts.get(key, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _ineligible_reason_count_mapping(rows: list[dict[str, object]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for row in rows:
+        reasons = row.get("ineligible_reasons")
+        if not isinstance(reasons, list):
+            continue
+        for reason in reasons:
+            key = str(reason or "").strip()
+            if key:
+                counts[key] = counts.get(key, 0) + 1
+    return dict(sorted(counts.items()))
 
 
 def _repair_payload_has_universe_quality_residual(
@@ -1560,6 +1934,13 @@ def _int_payload_value(value: object) -> int:
         return int(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         return 0
+
+
+def _float_payload_value(value: object) -> float:
+    try:
+        return float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def _saved_file_projection(

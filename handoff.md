@@ -1,6 +1,43 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 08:06:50 +08:00
+Last updated: 2026-05-23 09:05:00 +08:00
+
+## Latest Residual Market-Bar Repair Slice
+
+Last updated: 2026-05-23 09:05:00 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains the broad priced-in scan: MarketRadar must clear data blockers, run trusted shadow scans, record value evidence, and prove monthly usefulness before any investment-ready claim.
+- This slice stays on P0/M1 data readiness. It does not polish the UI, change scoring, add LLM behavior, call providers, or relax any fail-closed gate.
+- Residual repair is a local active-universe source-quality workflow, not market data fabrication. It never fills bars and never changes scan scope silently.
+
+Fix in this slice:
+
+- Added guarded residual repair as a first-class local workflow:
+  - CLI: `catalyst-radar market-bars residual-repair --expected-as-of YYYY-MM-DD --json`.
+  - Execute form: add `--expect-missing-count <MISSING> --expect-eligible-count <ELIGIBLE> --execute`.
+  - API: `POST /api/radar/market-bars/residual-repair`.
+- Preview mode is the default and reports eligible/ineligible residual rows, security-type counts, ineligible reason counts, projected missing count after repair, exact execute command/request body, and call/write counters.
+- Execute mode requires reviewed count guards. If missing or eligible counts changed, it returns `status=stale_approval` and writes nothing.
+- Execute only deactivates strict rows that are active, missing the scan-date bar, have no local bar history, zero market cap, zero avg dollar volume, and no options. It writes a metadata repair marker on those local `securities` rows.
+- Residual review now points its active-universe repair decision option at the preview command.
+- README documents the new operator contract.
+
+Validation observed in this slice:
+
+- Focused residual CLI/API tests passed: 4 passed.
+- Broader market-bar CLI regression tests passed: 26 passed.
+- Broader market-bar API regression tests passed: 15 passed.
+- Dashboard market-bar/residual-review regressions passed: 6 passed.
+- `ruff check` passed for touched status, CLI, API, and integration tests.
+- `compileall` passed for `src` and touched integration tests.
+- `git diff --check` passed.
+- Operator-DB preview-only smoke returned `status=ready_to_execute`, `missing=579`, `eligible=579`, `ineligible=0`, `would_clear=true`, `external_calls_made=0`, and `db_writes_made=0`. The preview printed the guarded execute command, but it was not run.
+
+Current live blocker:
+
+- The all-active trusted answer remains blocked until the operator explicitly fills real residual bars or runs an approved local universe repair/exclusion workflow. Do not execute the residual repair against the operator DB without separate explicit instruction.
 
 ## Latest Residual Market-Bar Review Slice
 

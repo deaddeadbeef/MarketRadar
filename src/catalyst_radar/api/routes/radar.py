@@ -56,6 +56,7 @@ from catalyst_radar.market.manual_bars import (
 from catalyst_radar.market.status import (
     market_bars_import_verification_payload,
     market_bars_post_capture_verification_payload,
+    market_bars_residual_repair_payload,
     market_bars_residual_review_payload,
     market_bars_status_payload,
 )
@@ -215,6 +216,16 @@ class MarketBarsRepairPlanRequest(BaseModel):
 
     expected_as_of: Date
     stocks_only: bool = False
+
+
+class MarketBarsResidualRepairRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_as_of: Date | None = None
+    stocks_only: bool = False
+    execute: bool = False
+    expected_missing_count: int | None = Field(default=None, ge=0)
+    expected_eligible_count: int | None = Field(default=None, ge=0)
 
 
 class MarketBarsProviderFixturePreviewRequest(BaseModel):
@@ -898,6 +909,28 @@ def radar_market_bars_residual_review(
             AppConfig.from_env(),
             expected_as_of=expected_as_of,
             stocks_only=stocks_only,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return redact_restricted_external_payload(payload)
+
+
+@router.post(
+    "/market-bars/residual-repair",
+    dependencies=[Depends(require_role(Role.ANALYST))],
+)
+def radar_market_bars_residual_repair(
+    request: MarketBarsResidualRepairRequest,
+):
+    try:
+        payload = market_bars_residual_repair_payload(
+            _engine(),
+            AppConfig.from_env(),
+            expected_as_of=request.expected_as_of,
+            stocks_only=request.stocks_only,
+            execute=request.execute,
+            expected_missing_count=request.expected_missing_count,
+            expected_eligible_count=request.expected_eligible_count,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
