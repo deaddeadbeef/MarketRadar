@@ -184,6 +184,8 @@ def monthly_value_report_payload(
         "canonical_next_action": first_evidence_gap["canonical_next_action"],
         "canonical_next_command": first_evidence_gap["canonical_next_command"],
         "next_action": first_evidence_gap["canonical_next_action"],
+        "external_calls_required": first_evidence_gap["external_calls_required"],
+        "db_writes_required": first_evidence_gap["db_writes_required"],
         "entry_count": len(entries),
         "candidate_ledger_coverage": candidate_ledger_coverage,
         "value_outcome_coverage": value_outcome_coverage,
@@ -325,6 +327,8 @@ def _candidate_ledger_coverage_summary(
         "canonical_next_command": coverage.get("canonical_next_command"),
         "rows": [row for row in rows if isinstance(row, Mapping)],
         "next_action": coverage.get("next_action"),
+        "external_calls_required": int(coverage.get("external_calls_required") or 0),
+        "db_writes_required": int(coverage.get("db_writes_required") or 0),
         "external_calls_made": int(coverage.get("external_calls_made") or 0),
         "db_writes_made": int(coverage.get("db_writes_made") or 0),
     }
@@ -433,6 +437,8 @@ def _monthly_value_gap(
         "first_gap_count": max(0, int(first_gap_count)),
         "canonical_next_action": action,
         "canonical_next_command": resolved_command,
+        "external_calls_required": 0,
+        "db_writes_required": 0,
     }
 
 
@@ -457,6 +463,8 @@ def _value_outcome_coverage_summary(
         "coverage_pct": coverage.get("coverage_pct"),
         "rows": [row for row in rows if isinstance(row, Mapping)],
         "next_action": coverage.get("next_action"),
+        "external_calls_required": int(coverage.get("external_calls_required") or 0),
+        "db_writes_required": int(coverage.get("db_writes_required") or 0),
         "external_calls_made": int(coverage.get("external_calls_made") or 0),
         "db_writes_made": int(coverage.get("db_writes_made") or 0),
     }
@@ -559,6 +567,8 @@ def _validation_evidence_summary(
         "baseline_results": baseline_results,
         "precision_at_5": precision_at_5,
         "precision_at_10": precision_at_10,
+        "external_calls_required": 0,
+        "db_writes_required": 0,
         "external_calls_made": 0,
         "db_writes_made": 0,
         "canonical_next_command": None if ready else replay_command,
@@ -596,6 +606,8 @@ def _validation_period_mismatch_evidence(
         "missing_baselines": [],
         "precision_at_5": None,
         "precision_at_10": None,
+        "external_calls_required": 0,
+        "db_writes_required": 0,
         "external_calls_made": 0,
         "db_writes_made": 0,
         "canonical_next_command": canonical_next_command,
@@ -638,6 +650,8 @@ def _missing_validation_evidence(
         "missing_baselines": list(MISSION_BRIEF_BASELINES),
         "precision_at_5": None,
         "precision_at_10": None,
+        "external_calls_required": 0,
+        "db_writes_required": 0,
         "external_calls_made": 0,
         "db_writes_made": 0,
         "canonical_next_command": canonical_next_command,

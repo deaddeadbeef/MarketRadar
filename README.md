@@ -1179,7 +1179,9 @@ ledger rows, and provides conservative zero-value `value-ledger record` commands
 with explicit `--preview` for missing rows so the operator can review or edit
 subjective label/value before writing anything. When coverage has gaps, the
 payload exposes `first_missing_candidate_state_id`, `first_missing_ticker`, and
-`canonical_next_command` for the first non-executing ledger-record command.
+`canonical_next_command` for the first non-executing ledger-record command,
+plus `external_calls_required=0` and `db_writes_required=0` for the displayed
+preview recovery path.
 When no Warning-or-higher candidates exist in the period, coverage returns
 `status=no_candidates`, `coverage_pct=null`, and a zero-call
 `canonical_next_command` for `assert-shadow-ready --json` instead of reporting
@@ -1232,7 +1234,8 @@ ledger evidence before outcome updates are attempted. When
 coverage has gaps, the payload exposes `first_missing_value_ledger_entry_id`,
 `first_missing_ticker`, and the preview-only `canonical_next_command` for the
 first non-executing outcome update; generated update commands include explicit
-`--preview`.
+`--preview`. Outcome coverage also reports `external_calls_required=0` and
+`db_writes_required=0` for the displayed preview recovery path.
 When coverage is `incomplete` because an existing outcome row is still
 `insufficient_data`, `missing_context`, or otherwise not computed, the payload
 exposes `first_incomplete_value_ledger_entry_id`, `first_incomplete_ticker`,
@@ -1310,8 +1313,9 @@ When there are no ledger rows in the period,
 outcome coverage reports `no_ledger_entries` instead
 of `ready`, because outcome evidence cannot exist before feedback is logged. The
 top-level report exposes `first_blocker`, `first_gap_count`,
-`canonical_next_action`, and `canonical_next_command` for the first missing
-value-proof evidence step. If the month has fewer useful value-ledger evidence
+`canonical_next_action`, `canonical_next_command`, `external_calls_required`,
+and `db_writes_required` for the first missing value-proof evidence step. If
+the month has fewer useful value-ledger evidence
 rows than the configured minimum after candidate evidence exists, the first
 blocker remains `useful_evidence` instead of jumping ahead to validation
 replay; this avoids telling the operator to validate an empty month with no rows

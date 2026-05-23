@@ -568,6 +568,8 @@ def load_value_ledger_candidate_coverage_payload(
     return {
         "schema_version": "value-ledger-candidate-coverage-v1",
         "status": status,
+        "external_calls_required": 0,
+        "db_writes_required": 0,
         "external_calls_made": 0,
         "db_writes_made": 0,
         "available_at": cutoff.isoformat(),
@@ -773,6 +775,8 @@ def _candidate_coverage_row(
             candidate_id,
             available_at,
         )
+        row["record_external_calls_required"] = 0
+        row["record_db_writes_required"] = 0
     return row
 
 

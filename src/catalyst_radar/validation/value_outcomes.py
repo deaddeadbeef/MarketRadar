@@ -405,6 +405,8 @@ def load_value_outcome_coverage_payload(
     return {
         "schema_version": "value-outcome-coverage-v1",
         "status": status,
+        "external_calls_required": 0,
+        "db_writes_required": 0,
         "external_calls_made": 0,
         "db_writes_made": 0,
         "available_at": cutoff.isoformat(),
@@ -821,11 +823,15 @@ def _value_outcome_coverage_row(
             value_ledger_entry_id=entry.id,
             outcome_available_at=outcome_available_at,
         )
+        row["preview_update_external_calls_required"] = 0
+        row["preview_update_db_writes_required"] = 0
     elif outcome.status != "computed":
         row["refresh_update_command"] = _coverage_update_command(
             value_ledger_entry_id=entry.id,
             outcome_available_at=outcome_available_at,
         )
+        row["refresh_update_external_calls_required"] = 0
+        row["refresh_update_db_writes_required"] = 0
     return row
 
 

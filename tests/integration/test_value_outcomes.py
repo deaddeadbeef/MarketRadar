@@ -5,14 +5,18 @@ from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select
+from sqlalchemy import func, insert, select
 
 from apps.api.main import create_app
 from catalyst_radar.cli import main
-from catalyst_radar.core.models import DailyBar
+from catalyst_radar.core.models import ActionState, DailyBar
 from catalyst_radar.storage.db import create_schema, engine_from_url
 from catalyst_radar.storage.repositories import MarketRepository
-from catalyst_radar.storage.schema import value_ledger_entries, value_outcomes
+from catalyst_radar.storage.schema import (
+    candidate_states,
+    value_ledger_entries,
+    value_outcomes,
+)
 from catalyst_radar.storage.validation_repositories import ValidationRepository
 from catalyst_radar.validation.value_ledger import build_value_ledger_entry
 
@@ -248,6 +252,8 @@ def test_value_outcome_coverage_reports_ledger_rows_missing_outcomes(
     assert payload["first_missing_value_ledger_entry_id"] == missing_entry_id
     assert payload["first_missing_ticker"] == "AAPL"
     assert payload["coverage_pct"] == 50.0
+    assert payload["external_calls_required"] == 0
+    assert payload["db_writes_required"] == 0
     assert payload["external_calls_made"] == 0
     assert payload["db_writes_made"] == 0
     covered = next(
@@ -270,6 +276,8 @@ def test_value_outcome_coverage_reports_ledger_rows_missing_outcomes(
     assert "value-outcome update" in missing["preview_update_command"]
     assert "--preview" in missing["preview_update_command"]
     assert "--execute" not in missing["preview_update_command"]
+    assert missing["preview_update_external_calls_required"] == 0
+    assert missing["preview_update_db_writes_required"] == 0
     assert payload["canonical_next_command"] == missing["preview_update_command"]
     assert "--preview" in payload["canonical_next_command"]
     assert "--execute" not in payload["canonical_next_command"]
@@ -324,6 +332,8 @@ def test_value_outcome_coverage_reports_no_ledger_entries(
     )
     assert payload["coverage_pct"] is None
     assert "value-ledger entries" in payload["next_action"]
+    assert payload["external_calls_required"] == 0
+    assert payload["db_writes_required"] == 0
     assert payload["external_calls_made"] == 0
     assert payload["db_writes_made"] == 0
     assert payload["rows"] == []
@@ -374,9 +384,13 @@ def test_value_outcome_coverage_api_and_monthly_report_surface_missing_rows(
     assert "value-outcome update" in coverage["canonical_next_command"]
     assert "--preview" in coverage["canonical_next_command"]
     assert "--execute" not in coverage["canonical_next_command"]
+    assert coverage["external_calls_required"] == 0
+    assert coverage["db_writes_required"] == 0
     assert coverage["external_calls_made"] == 0
     assert coverage["db_writes_made"] == 0
     assert coverage["rows"][0]["value_ledger_entry_id"] == entry_id
+    assert coverage["rows"][0]["preview_update_external_calls_required"] == 0
+    assert coverage["rows"][0]["preview_update_db_writes_required"] == 0
 
     report_response = client.get(
         "/api/value-report/monthly",
@@ -399,8 +413,12 @@ def test_value_outcome_coverage_api_and_monthly_report_surface_missing_rows(
     assert report["canonical_next_command"] == coverage["canonical_next_command"]
     assert "--preview" in report["canonical_next_command"]
     assert "--execute" not in report["canonical_next_command"]
+    assert report["external_calls_required"] == 0
+    assert report["db_writes_required"] == 0
     assert outcome_coverage["external_calls_made"] == 0
     assert outcome_coverage["db_writes_made"] == 0
+    assert outcome_coverage["external_calls_required"] == 0
+    assert outcome_coverage["db_writes_required"] == 0
 
 
 def test_value_outcome_api_rejects_missing_future_bars_without_mutating_ledger(
@@ -479,6 +497,10 @@ def test_value_outcome_api_rejects_missing_future_bars_without_mutating_ledger(
     assert coverage["rows"][0]["refresh_update_command"] == coverage[
         "canonical_next_command"
     ]
+    assert coverage["rows"][0]["refresh_update_external_calls_required"] == 0
+    assert coverage["rows"][0]["refresh_update_db_writes_required"] == 0
+    assert coverage["external_calls_required"] == 0
+    assert coverage["db_writes_required"] == 0
     assert coverage["external_calls_made"] == 0
     assert coverage["db_writes_made"] == 0
 
@@ -495,7 +517,11 @@ def test_value_outcome_api_rejects_missing_future_bars_without_mutating_ledger(
     assert report["canonical_next_command"] == coverage["canonical_next_command"]
     assert "--preview" in report["canonical_next_command"]
     assert "--execute" not in report["canonical_next_command"]
+    assert report["external_calls_required"] == 0
+    assert report["db_writes_required"] == 0
     assert report["value_outcome_coverage"]["status"] == "incomplete"
+    assert report["value_outcome_coverage"]["external_calls_required"] == 0
+    assert report["value_outcome_coverage"]["db_writes_required"] == 0
     assert report["value_outcome_coverage"]["external_calls_made"] == 0
     assert report["value_outcome_coverage"]["db_writes_made"] == 0
 
@@ -735,14 +761,19 @@ def _seed_value_ledger_entry(
     priced_in_direction: str = "bullish",
     invalidation_price: float = 95,
 ) -> str:
+    candidate_state_id = f"state-{ticker}"
+    _seed_candidate_state(engine, ticker=ticker, state_id=candidate_state_id)
     entry = build_value_ledger_entry(
         artifact_type="manual_note",
         artifact_id=artifact_id,
         label="useful",
         ticker=ticker,
+        candidate_state_id=candidate_state_id,
+        action_state=ActionState.WARNING.value,
         priced_in_status=f"{priced_in_direction}_not_priced_in",
         priced_in_direction=priced_in_direction,
         as_of=date(2026, 5, 15),
+        final_score=82.0,
         estimated_value_usd=10,
         confidence=1,
         source="test",
@@ -751,6 +782,27 @@ def _seed_value_ledger_entry(
     )
     ValidationRepository(engine).upsert_value_ledger_entry(entry)
     return entry.id
+
+
+def _seed_candidate_state(engine, *, ticker: str, state_id: str) -> None:
+    as_of = datetime(2026, 5, 15, 20, 0, tzinfo=UTC)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(candidate_states).values(
+                id=state_id,
+                ticker=ticker,
+                as_of=as_of,
+                state=ActionState.WARNING.value,
+                previous_state=None,
+                final_score=82.0,
+                score_delta_5d=7.0,
+                hard_blocks=[],
+                transition_reasons=["priced-in gap"],
+                feature_version="test",
+                policy_version="test",
+                created_at=as_of,
+            )
+        )
 
 
 def _msft_close(offset: int) -> float:
