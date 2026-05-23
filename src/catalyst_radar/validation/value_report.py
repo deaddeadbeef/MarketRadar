@@ -129,6 +129,16 @@ def monthly_value_report_payload(
         useful_count=len(useful_entries),
         min_useful_evidence_count=min_evidence,
     )
+    candidate_ledger_coverage = _candidate_ledger_coverage_summary(candidate_coverage)
+    value_outcome_coverage = _value_outcome_coverage_summary(outcome_coverage)
+    first_evidence_gap = _monthly_value_first_evidence_gap(
+        candidate_ledger_coverage=candidate_ledger_coverage,
+        value_outcome_coverage=value_outcome_coverage,
+        validation_evidence=validation_evidence,
+        verdict=verdict,
+        useful_count=len(useful_entries),
+        min_useful_evidence_count=min_evidence,
+    )
     report = {
         "schema_version": "monthly-value-report-v1",
         "source": "value_ledger_and_outcomes",
@@ -147,11 +157,14 @@ def monthly_value_report_payload(
         "profit_calculation_included": False,
         "profit_usd": None,
         "investment_advice": False,
+        "first_blocker": first_evidence_gap["first_blocker"],
+        "first_gap_count": first_evidence_gap["first_gap_count"],
+        "canonical_next_action": first_evidence_gap["canonical_next_action"],
+        "canonical_next_command": first_evidence_gap["canonical_next_command"],
+        "next_action": first_evidence_gap["canonical_next_action"],
         "entry_count": len(entries),
-        "candidate_ledger_coverage": _candidate_ledger_coverage_summary(
-            candidate_coverage
-        ),
-        "value_outcome_coverage": _value_outcome_coverage_summary(outcome_coverage),
+        "candidate_ledger_coverage": candidate_ledger_coverage,
+        "value_outcome_coverage": value_outcome_coverage,
         "validation_evidence": validation_evidence,
         "useful_insights_count": len(useful_entries),
         "noisy_insights_count": len(noisy_entries),
@@ -287,6 +300,95 @@ def _candidate_ledger_coverage_summary(
         "next_action": coverage.get("next_action"),
         "external_calls_made": int(coverage.get("external_calls_made") or 0),
         "db_writes_made": int(coverage.get("db_writes_made") or 0),
+    }
+
+
+def _monthly_value_first_evidence_gap(
+    *,
+    candidate_ledger_coverage: Mapping[str, object],
+    value_outcome_coverage: Mapping[str, object],
+    validation_evidence: Mapping[str, object],
+    verdict: str,
+    useful_count: int,
+    min_useful_evidence_count: int,
+) -> dict[str, object]:
+    candidate_status = str(candidate_ledger_coverage.get("status") or "")
+    if candidate_status == "gaps":
+        action = (
+            "Record the first missing value-ledger row before claiming monthly "
+            "value evidence."
+        )
+        return _monthly_value_gap(
+            first_blocker="candidate_ledger_coverage",
+            first_gap_count=int(candidate_ledger_coverage.get("missing_ledger_count") or 0),
+            action=action,
+            command=candidate_ledger_coverage.get("canonical_next_command"),
+        )
+
+    outcome_status = str(value_outcome_coverage.get("status") or "")
+    outcome_entry_count = int(value_outcome_coverage.get("ledger_entry_count") or 0)
+    if outcome_entry_count > 0 and outcome_status != "ready":
+        return _monthly_value_gap(
+            first_blocker="value_outcome_coverage",
+            first_gap_count=int(value_outcome_coverage.get("missing_outcome_count") or 0),
+            action=str(
+                value_outcome_coverage.get("next_action")
+                or "Compute missing value outcomes before claiming monthly value evidence."
+            ),
+            command=value_outcome_coverage.get("canonical_next_command"),
+        )
+
+    if validation_evidence.get("ready") is not True:
+        missing_baselines = validation_evidence.get("missing_baselines")
+        insufficient_baselines = validation_evidence.get("insufficient_baselines")
+        baseline_gaps: set[str] = set()
+        if isinstance(missing_baselines, list):
+            baseline_gaps.update(str(name) for name in missing_baselines)
+        if isinstance(insufficient_baselines, list):
+            baseline_gaps.update(str(name) for name in insufficient_baselines)
+        return _monthly_value_gap(
+            first_blocker="validation_evidence",
+            first_gap_count=len(baseline_gaps),
+            action=str(
+                validation_evidence.get("next_action")
+                or "Run validation evidence before claiming monthly value proof."
+            ),
+            command=None,
+        )
+
+    if verdict == "insufficient_evidence":
+        missing = max(0, min_useful_evidence_count - useful_count)
+        return _monthly_value_gap(
+            first_blocker="useful_evidence",
+            first_gap_count=missing,
+            action=(
+                "Record enough useful/noisy value-ledger evidence for a monthly "
+                "pass/fail verdict."
+            ),
+            command=None,
+        )
+
+    return _monthly_value_gap(
+        first_blocker=None,
+        first_gap_count=0,
+        action="Monthly value evidence is ready for review.",
+        command=None,
+    )
+
+
+def _monthly_value_gap(
+    *,
+    first_blocker: str | None,
+    first_gap_count: int,
+    action: str,
+    command: object,
+) -> dict[str, object]:
+    resolved_command = command if isinstance(command, str) and command.strip() else None
+    return {
+        "first_blocker": first_blocker,
+        "first_gap_count": max(0, int(first_gap_count)),
+        "canonical_next_action": action,
+        "canonical_next_command": resolved_command,
     }
 
 

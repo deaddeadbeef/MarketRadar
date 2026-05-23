@@ -58,6 +58,10 @@ def test_value_report_cli_empty_month_is_insufficient_evidence(
     assert payload["entry_count"] == 0
     assert payload["plausibly_earned_at_least_40_usd"] is False
     assert payload["decision_support_value_not_profit"] is True
+    assert payload["first_blocker"] == "validation_evidence"
+    assert payload["first_gap_count"] == len(MISSION_BASELINES)
+    assert payload["canonical_next_command"] is None
+    assert payload["next_action"] == payload["canonical_next_action"]
     validation = payload["validation_evidence"]
     assert validation["status"] == "no_validation_runs"
     assert validation["ready"] is False
@@ -129,6 +133,11 @@ def test_value_report_surfaces_missing_candidate_ledger_coverage(
     payload = json.loads(capsys.readouterr().out)
     coverage = payload["candidate_ledger_coverage"]
     assert payload["verdict"] == "insufficient_evidence"
+    assert payload["first_blocker"] == "candidate_ledger_coverage"
+    assert payload["first_gap_count"] == 1
+    assert "--artifact-id state-AAPL" in payload["canonical_next_command"]
+    assert "--execute" not in payload["canonical_next_command"]
+    assert payload["next_action"] == payload["canonical_next_action"]
     assert payload["entry_count"] == 0
     assert coverage["status"] == "gaps"
     assert coverage["surfaced_candidate_count"] == 1
