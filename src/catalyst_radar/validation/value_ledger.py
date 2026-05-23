@@ -40,6 +40,9 @@ ALLOWED_FEEDBACK_LABELS = frozenset(
         "blocked-correctly",
     }
 )
+CLAIMABLE_VALUE_LABELS = frozenset(
+    {"useful", "good-research", "acted", "avoided-loss", "blocked-correctly"}
+)
 ALLOWED_SUPPORTED_ACTIONS = frozenset(
     {"watch", "research", "avoid", "paper_trade", "reject", "live_review", "no_action"}
 )
@@ -356,14 +359,15 @@ def load_value_ledger_summary_payload(
         period_end=resolved_end,
         limit=1000,
     )
-    total_value = sum(entry.estimated_value_usd for entry in entries)
+    useful_entries = [entry for entry in entries if entry.label in CLAIMABLE_VALUE_LABELS]
+    total_value = sum(entry.estimated_value_usd for entry in useful_entries)
     weighted_value = sum(
         entry.estimated_value_usd * entry.confidence for entry in entries
+        if entry.label in CLAIMABLE_VALUE_LABELS
     )
     total_cost = sum(entry.cost_to_produce_usd for entry in entries)
     provider_calls = sum(entry.provider_call_count for entry in entries)
     llm_calls = sum(entry.llm_call_count for entry in entries)
-    useful_entries = [entry for entry in entries if entry.estimated_value_usd > 0]
     return {
         "schema_version": "value-ledger-summary-v1",
         "source": "value_ledger",
@@ -401,7 +405,7 @@ def load_value_ledger_summary_payload(
         "top_entries": [
             value_ledger_entry_payload(entry)
             for entry in sorted(
-                entries,
+                useful_entries,
                 key=lambda row: (
                     row.estimated_value_usd * row.confidence,
                     row.entry_date,

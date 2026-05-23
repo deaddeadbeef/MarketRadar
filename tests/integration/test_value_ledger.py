@@ -310,6 +310,109 @@ def test_value_ledger_cli_label_command_writes_auditable_entry(
     assert shown["entry"]["label"] == "useful"
 
 
+def test_value_ledger_summary_counts_claimable_value_by_feedback_label(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'value-ledger-claimable.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = engine_from_url(database_url)
+    create_schema(engine)
+    _insert_candidate_state(engine, ticker="MSFT", state_id="state-MSFT")
+    _insert_candidate_state(engine, ticker="AAPL", state_id="state-AAPL")
+
+    assert (
+        main(
+            [
+                "value-ledger",
+                "record",
+                "--artifact-type",
+                "candidate_state",
+                "--artifact-id",
+                "state-MSFT",
+                "--label",
+                "good-research",
+                "--supported-action",
+                "research",
+                "--user-decision",
+                "accepted",
+                "--estimated-value-usd",
+                "50",
+                "--confidence",
+                "0.8",
+                "--cost-to-produce-usd",
+                "2",
+                "--entry-date",
+                "2026-05-15",
+                "--available-at",
+                "2026-05-22T12:00:00+00:00",
+                "--execute",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+
+    assert (
+        main(
+            [
+                "value-ledger",
+                "record",
+                "--artifact-type",
+                "candidate_state",
+                "--artifact-id",
+                "state-AAPL",
+                "--label",
+                "false-positive",
+                "--supported-action",
+                "research",
+                "--user-decision",
+                "rejected",
+                "--estimated-value-usd",
+                "100",
+                "--confidence",
+                "1",
+                "--cost-to-produce-usd",
+                "3",
+                "--entry-date",
+                "2026-05-15",
+                "--available-at",
+                "2026-05-22T12:00:00+00:00",
+                "--execute",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+
+    summary_exit = main(
+        [
+            "value-ledger",
+            "summary",
+            "--available-at",
+            "2026-05-22T12:00:00+00:00",
+            "--json",
+        ]
+    )
+
+    assert summary_exit == 0
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["entry_count"] == 2
+    assert summary["useful_entry_count"] == 1
+    assert summary["total_estimated_value_usd"] == 50.0
+    assert summary["confidence_weighted_value_usd"] == 40.0
+    assert summary["cost_to_produce_usd"] == 5.0
+    assert summary["net_confidence_weighted_value_usd"] == 35.0
+    assert summary["target_coverage_pct"] == 100.0
+    labels = {row["label"]: row for row in summary["labels"]}
+    assert labels["false-positive"]["entry_count"] == 1
+    assert labels["false-positive"]["confidence_weighted_value_usd"] == 100.0
+    assert [entry["label"] for entry in summary["top_entries"]] == ["good-research"]
+
+
 def test_value_ledger_cli_autofills_priced_in_context_from_signal_features(
     tmp_path,
     monkeypatch,
