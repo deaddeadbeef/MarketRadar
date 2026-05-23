@@ -8203,6 +8203,10 @@ def _costs_lines(payload: Mapping[str, object], width: int) -> list[str]:
                     _baseline_coverage_text(validation_evidence),
                 ),
                 (
+                    "Baseline comparison",
+                    _baseline_result_counts_text(validation_evidence),
+                ),
+                (
                     "Precision at 5 / 10",
                     _precision_pair_text(validation_evidence),
                 ),
@@ -8278,6 +8282,25 @@ def _baseline_coverage_text(validation: Mapping[str, object]) -> str:
     measured = _sequence_count(validation.get("measured_baselines"))
     required = _sequence_count(validation.get("required_baselines"))
     return f"{measured}/{required}"
+
+
+def _baseline_result_counts_text(validation: Mapping[str, object]) -> str:
+    counts = _mapping(validation.get("baseline_result_counts"))
+    if not counts:
+        return "n/a"
+    ordered = [
+        ("marketradar_wins", "MR wins"),
+        ("tie", "ties"),
+        ("baseline_wins", "baseline wins"),
+        ("insufficient_evidence", "insufficient"),
+        ("missing", "missing"),
+    ]
+    parts = [
+        f"{label}={int(counts.get(key) or 0)}"
+        for key, label in ordered
+        if int(counts.get(key) or 0) > 0
+    ]
+    return ", ".join(parts) if parts else "n/a"
 
 
 def _precision_pair_text(validation: Mapping[str, object]) -> str:

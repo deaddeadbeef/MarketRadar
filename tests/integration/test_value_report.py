@@ -104,9 +104,58 @@ def test_value_report_surfaces_latest_validation_baseline_evidence(
     assert validation["measured_baselines"] == list(MISSION_BASELINES)
     assert validation["insufficient_baselines"] == []
     assert validation["missing_baselines"] == []
+    assert validation["baseline_result_counts"] == {"tie": len(MISSION_BASELINES)}
+    assert validation["baseline_results"][0] == {
+        "baseline": MISSION_BASELINES[0],
+        "sample_status": "measured",
+        "result_vs_market_radar": "tie",
+        "marketradar_precision_at_5": 1.0,
+        "marketradar_precision_at_10": 1.0,
+        "baseline_precision_at_5": 1.0,
+        "baseline_precision_at_10": 1.0,
+        "missed_opportunity_count": 1,
+    }
     assert validation["precision_at_5"] == 1.0
     assert validation["precision_at_10"] == 1.0
     assert validation["canonical_next_command"] is None
+    assert validation["external_calls_made"] == 0
+    assert validation["db_writes_made"] == 0
+
+
+def test_value_report_validation_evidence_says_when_baselines_win(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'value-report-baseline-wins.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = engine_from_url(database_url)
+    create_schema(engine)
+    _seed_successful_validation_run(
+        engine,
+        candidate_positive=False,
+        baseline_positive=True,
+    )
+
+    response = TestClient(create_app()).get(
+        "/api/value-report/monthly",
+        params={
+            "month": "2026-05",
+            "available_at": "2026-05-31T21:00:00+00:00",
+        },
+    )
+
+    assert response.status_code == 200
+    validation = response.json()["validation_evidence"]
+    assert validation["status"] == "ready"
+    assert validation["ready"] is True
+    assert validation["baseline_result_counts"] == {
+        "baseline_wins": len(MISSION_BASELINES)
+    }
+    assert {
+        row["result_vs_market_radar"] for row in validation["baseline_results"]
+    } == {"baseline_wins"}
+    assert validation["baseline_results"][0]["marketradar_precision_at_10"] == 0.0
+    assert validation["baseline_results"][0]["baseline_precision_at_10"] == 1.0
     assert validation["external_calls_made"] == 0
     assert validation["db_writes_made"] == 0
 
@@ -579,6 +628,10 @@ def test_cost_page_renders_monthly_value_report() -> None:
                 "validation_evidence": {
                     "status": "insufficient_evidence",
                     "selected_run_id": "validation-run-1",
+                    "baseline_result_counts": {
+                        "marketradar_wins": 1,
+                        "baseline_wins": 1,
+                    },
                     "required_baselines": [
                         "relative_strength_screener",
                         "volume_breakout_screener",
@@ -611,6 +664,8 @@ def test_cost_page_renders_monthly_value_report() -> None:
     assert "insufficient_evidence" in text
     assert "Mission baselines measured" in text
     assert "2/5" in text
+    assert "Baseline comparison" in text
+    assert "MR wins=1, baseline wins=1" in text
     assert "Precision at 5 / 10" in text
     assert "0.4 / 0.3" in text
     assert "Decision-support value, not realized profit." in text
@@ -687,6 +742,8 @@ def _seed_successful_validation_run(
     as_of: date = date(2026, 5, 15),
     started_at: datetime | None = None,
     finished_at: datetime | None = None,
+    candidate_positive: bool = True,
+    baseline_positive: bool = True,
 ) -> None:
     started_at = started_at or datetime(2026, 5, 31, 20, tzinfo=UTC)
     finished_at = finished_at or datetime(2026, 5, 31, 20, 30, tzinfo=UTC)
@@ -712,6 +769,7 @@ def _seed_successful_validation_run(
                 baseline=None,
                 rank=None,
                 as_of=as_of_dt,
+                positive=candidate_positive,
             ),
             *[
                 _validation_result(
@@ -720,6 +778,7 @@ def _seed_successful_validation_run(
                     baseline=baseline,
                     rank=1,
                     as_of=as_of_dt,
+                    positive=baseline_positive,
                 )
                 for index, baseline in enumerate(MISSION_BASELINES, start=1)
             ],
@@ -734,6 +793,7 @@ def _validation_result(
     baseline: str | None,
     rank: int | None,
     as_of: datetime | None = None,
+    positive: bool = True,
 ) -> ValidationResult:
     as_of = as_of or datetime(2026, 5, 15, 21, tzinfo=UTC)
     return ValidationResult(
@@ -746,7 +806,7 @@ def _validation_result(
         final_score=90,
         baseline=baseline,
         labels={
-            "target_20d_25": True,
+            "target_20d_25": positive,
             "max_adverse_excursion": -0.02,
             "max_favorable_excursion": 0.3,
         },

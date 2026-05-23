@@ -1,6 +1,47 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 22:00:13 +08:00
+Last updated: 2026-05-23 22:24:09 +08:00
+
+## Latest Monthly Baseline Result Summary Slice
+
+Last updated: 2026-05-23 22:24:09 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains measured value proof for priced-in signals.
+- This slice advances the baseline-comparison requirement, not UI polish:
+  monthly value evidence should say plainly whether measured validation favored
+  MarketRadar or simple baselines.
+
+Useful definition:
+
+- `value-report` validation evidence must expose both baseline measurement
+  coverage and win/loss/tie outcomes against every mission-brief baseline.
+- The dashboard Costs page must surface the same compact result counts for
+  human review.
+
+Fix in this slice:
+
+- `monthly-value-validation-evidence-v1` now includes
+  `baseline_result_counts`.
+- It now includes `baseline_results`, one row per required baseline, with
+  sample status, result versus MarketRadar, MarketRadar precision@5/10,
+  baseline precision@5/10, and missed opportunity count.
+- The TUI Costs page adds a compact baseline comparison line such as
+  `MR wins=1, baseline wins=1`.
+- Tests prove the report can show the all-tie case and the case where all
+  baselines beat MarketRadar.
+- README documents the new baseline win/loss evidence contract.
+
+Safety:
+
+- This is read-only validation report summarization over local validation rows.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls and writes 0 database rows.
+- It does not change validation replay execution, validation labels, candidate
+  scoring, policy gates, candidate states, market-bar data, value-ledger rows,
+  value-outcome rows, alert delivery, broker controls, LLM behavior, or
+  readiness gates.
 
 ## Latest Monthly Value Evidence Verdict Slice
 

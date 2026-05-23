@@ -495,6 +495,11 @@ def _validation_evidence_summary(
         for name in MISSION_BRIEF_BASELINES
         if name not in measured and name not in missing
     ]
+    baseline_results = _baseline_result_rows(comparison)
+    baseline_result_counts = Counter(
+        str(row.get("result_vs_market_radar") or "unknown")
+        for row in baseline_results
+    )
     precision_at_5 = _first_baseline_metric(comparison, "marketradar_precision_at_5")
     precision_at_10 = _first_baseline_metric(comparison, "marketradar_precision_at_10")
     ready = (
@@ -517,6 +522,8 @@ def _validation_evidence_summary(
         "measured_baselines": measured,
         "insufficient_baselines": insufficient,
         "missing_baselines": missing,
+        "baseline_result_counts": dict(sorted(baseline_result_counts.items())),
+        "baseline_results": baseline_results,
         "precision_at_5": precision_at_5,
         "precision_at_10": precision_at_10,
         "external_calls_made": 0,
@@ -643,6 +650,64 @@ def _first_baseline_metric(
         value = row.get(metric)
         if isinstance(value, int | float):
             return float(value)
+    return None
+
+
+def _baseline_result_rows(comparison: Mapping[str, object]) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for name in MISSION_BRIEF_BASELINES:
+        row = comparison.get(name)
+        if not isinstance(row, Mapping):
+            rows.append(
+                {
+                    "baseline": name,
+                    "sample_status": "missing",
+                    "result_vs_market_radar": "missing",
+                    "marketradar_precision_at_5": None,
+                    "marketradar_precision_at_10": None,
+                    "baseline_precision_at_5": None,
+                    "baseline_precision_at_10": None,
+                    "missed_opportunity_count": 0,
+                }
+            )
+            continue
+        rows.append(
+            {
+                "baseline": name,
+                "sample_status": _optional_string(row.get("sample_status")),
+                "result_vs_market_radar": _optional_string(
+                    row.get("result_vs_market_radar")
+                ),
+                "marketradar_precision_at_5": _optional_number(
+                    row.get("marketradar_precision_at_5")
+                ),
+                "marketradar_precision_at_10": _optional_number(
+                    row.get("marketradar_precision_at_10")
+                ),
+                "baseline_precision_at_5": _optional_number(
+                    row.get("baseline_precision_at_5")
+                ),
+                "baseline_precision_at_10": _optional_number(
+                    row.get("baseline_precision_at_10")
+                ),
+                "missed_opportunity_count": int(
+                    row.get("missed_opportunity_count") or 0
+                ),
+            }
+        )
+    return rows
+
+
+def _optional_string(value: object) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _optional_number(value: object) -> float | None:
+    if isinstance(value, int | float) and isfinite(float(value)):
+        return float(value)
     return None
 
 
