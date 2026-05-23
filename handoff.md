@@ -1,6 +1,62 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 11:05:00 +08:00
+Last updated: 2026-05-23 11:15:00 +08:00
+
+## Latest Shadow Run Blocker-Action Alignment Slice
+
+Last updated: 2026-05-23 11:15:00 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains repeatable, auditable shadow operation that cannot
+  mislead a human about the first blocker.
+- A zero-call configured-DB drift check showed `assert-shadow-ready` correctly
+  pointed to `market-bars residual-review`, but the nested
+  `shadow-mode run --preview --json` discovery snapshot still pointed directly
+  to the older manual-bars CSV flow for incomplete latest-bar coverage.
+- The useful definition for this slice is narrow: shadow-mode audit records
+  should send the operator to residual review first when latest-bar coverage is
+  incomplete, because residual review decides whether manual bar filling or
+  active-universe repair is appropriate.
+
+Fix in this slice:
+
+- Discovery snapshot `incomplete_daily_bar_coverage` blockers now use
+  `catalyst-radar market-bars residual-review --expected-as-of <date>` as the
+  first next action.
+- The text still mentions manual bars as a follow-up only if residual rows are
+  real tradable securities.
+- Shadow-mode run payloads inherit the corrected discovery snapshot because
+  they persist the shared snapshot.
+- README documents that discovery snapshots and shadow-mode run payloads follow
+  the residual-review-first contract.
+
+Validation observed in this slice:
+
+- Focused regressions failed before implementation because the discovery
+  blocker still used manual-bars guidance.
+- Focused regressions passed after the fix:
+  `test_shadow_mode_preview_records_latest_market_bar_gap_without_radar_run`
+  and `test_radar_discovery_snapshot_flags_incomplete_latest_bar_coverage`.
+- Broader shadow/dashboard selection passed after the fix: 8 tests.
+- Ruff passed for touched dashboard data and shadow/dashboard tests.
+- Compileall passed for `src` and touched shadow/dashboard tests.
+- `git diff --check` passed.
+- Configured operator-DB `shadow-mode run --preview --json` smoke returned
+  `mode=preview`, `external_calls_made=0`, `db_writes_made=0`, and nested
+  discovery blocker next action:
+  `catalyst-radar market-bars residual-review --expected-as-of 2026-05-15`.
+
+Safety:
+
+- The change makes 0 Polygon/Massive, SEC, Schwab, broker, OpenAI, web, app, or
+  provider calls.
+- The change writes 0 database rows.
+- It does not execute residual repair, market-bar import, saved-file import,
+  provider capture, validation replay, scoring changes, alert delivery, or any
+  broker/order path.
+- The live operator DB residual repair remains blocked until the operator
+  explicitly approves the guarded write command.
 
 ## Latest Validation Report Lookup Slice
 

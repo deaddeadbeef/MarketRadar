@@ -20794,7 +20794,7 @@ def _discovery_blockers(
                     f"{latest_bar_date.isoformat()}."
                     f"{missing_sample}"
                 ),
-                _csv_market_refresh_next_action(as_of_date),
+                _market_bar_residual_review_next_action(as_of_date or latest_bar_date),
             )
         )
     if int(run_path.get("blocking_count") or 0) > 0:
@@ -21115,6 +21115,20 @@ def _csv_market_template_path(
     )
     filename_prefix = "manual-stock-bars" if stocks_only else "manual-bars"
     return f"data\\local\\{filename_prefix}-{expected}.csv"
+
+
+def _market_bar_residual_review_next_action(as_of_date: date | None) -> str:
+    expected = (
+        as_of_date.isoformat()
+        if as_of_date is not None
+        else "<LATEST_TRADING_DATE>"
+    )
+    command = f"catalyst-radar market-bars residual-review --expected-as-of {expected}"
+    return (
+        f"Review residual market-bar rows first with `{command}`. Fill manual "
+        "bars only if the residual rows are real tradable securities; otherwise "
+        "fix the active-universe source or keep the full-market gate blocked."
+    )
 
 
 def _csv_market_refresh_next_action(as_of_date: date | None) -> str:

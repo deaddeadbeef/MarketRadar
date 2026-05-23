@@ -615,7 +615,11 @@ residual-review command is also propagated into the first market-bar entries in
 `decision_readiness`, `evidence_completeness`, `trust_blockers`, and
 `blocker_ladder`, so clients do not mix it with the older manual-bar template
 path. The terminal dashboard mission brief uses the same operator step for its
-`Useful next` row instead of falling back to stale audit-blocker text.
+`Useful next` row instead of falling back to stale audit-blocker text. Discovery
+snapshots and shadow-mode run payloads also use residual review as the first
+action for incomplete latest-bar coverage, so daily audit records do not route
+operators directly to manual bar filling before the residual rows have been
+reviewed.
 If the review shows strict zero-liquidity/no-history rows that should not remain
 active, use `market-bars residual-repair` as a guarded local-universe repair.
 It previews by default with 0 provider calls and 0 DB writes. Execution requires

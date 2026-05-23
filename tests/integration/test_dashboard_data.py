@@ -10252,9 +10252,9 @@ def test_radar_discovery_snapshot_flags_incomplete_latest_bar_coverage(
     )
     assert "498 of 500 active securities" in str(coverage["finding"])
     assert "Missing: AAPL, MSFT" in str(coverage["finding"])
-    assert "catalyst-radar market-bars template" in str(coverage["next_action"])
+    assert "catalyst-radar market-bars residual-review" in str(coverage["next_action"])
     assert "--expected-as-of 2026-05-10" in str(coverage["next_action"])
-    assert "--complete-rows-only" in str(coverage["next_action"])
+    assert "manual bars" in str(coverage["next_action"])
     assert "fresh-bars.csv" not in str(coverage["next_action"])
 
 

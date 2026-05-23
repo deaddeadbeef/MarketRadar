@@ -204,6 +204,13 @@ def test_shadow_mode_preview_records_latest_market_bar_gap_without_radar_run(
     assert freshness["as_of_daily_bar_date"] == "2026-05-21"
     assert freshness["active_security_with_as_of_bar_count"] == 1
     assert freshness["missing_as_of_daily_bar_count"] == 1
+    discovery_blocker = next(
+        row
+        for row in preview["run"]["payload"]["discovery_snapshot"]["blockers"]
+        if row["code"] == "incomplete_daily_bar_coverage"
+    )
+    assert "market-bars residual-review" in discovery_blocker["next_action"]
+    assert "manual-bars" not in discovery_blocker["next_action"]
     latest_bars = next(
         row
         for row in preview["run"]["payload"]["shadow_readiness"]["checks"]
