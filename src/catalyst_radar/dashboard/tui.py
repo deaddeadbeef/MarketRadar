@@ -597,6 +597,10 @@ def dashboard_snapshot_payload(
         shadow_readiness=shadow_readiness,
         value_report=value_report,
     )
+    approval_required_unblock = _dashboard_approval_required_unblock(
+        shadow_readiness=shadow_readiness,
+        trial_readiness=trial_readiness,
+    )
     display_priced_in_queue = dict(priced_in_queue)
     display_priced_in_queue.pop("planning_rows", None)
     payload = {
@@ -630,6 +634,7 @@ def dashboard_snapshot_payload(
         "investment_readiness": investment_readiness,
         "operator_work_queue": operator_work_queue,
         "operator_next_step": operator_next_step,
+        "approval_required_unblock": approval_required_unblock,
         "priced_in_preflight": priced_in_preflight,
         "priced_in_queue": display_priced_in_queue,
         "priced_in_answer": priced_in_answer,
@@ -672,6 +677,22 @@ def dashboard_snapshot_payload(
     payload["agent_brief"] = run_market_radar_agents(payload, config, real=False)
     redacted = redact_restricted_external_payload(payload)
     return redacted if isinstance(redacted, dict) else payload
+
+
+def _dashboard_approval_required_unblock(
+    *,
+    shadow_readiness: Mapping[str, object],
+    trial_readiness: Mapping[str, object],
+) -> dict[str, object] | None:
+    shadow_approval = shadow_readiness.get("approval_required_unblock")
+    if isinstance(shadow_approval, Mapping) and shadow_approval:
+        return dict(shadow_approval)
+    minimum_product = trial_readiness.get("minimum_useful_product")
+    if isinstance(minimum_product, Mapping):
+        trial_approval = minimum_product.get("approval_required_unblock")
+        if isinstance(trial_approval, Mapping) and trial_approval:
+            return dict(trial_approval)
+    return None
 
 
 def run_dashboard_tui(

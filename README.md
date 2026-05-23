@@ -608,7 +608,10 @@ The snapshot uses the dashboard data helpers for readiness, latest run,
 candidate rows, alerts, IPO/S-1 rows, themes, validation, costs, broker context,
 ops health, telemetry, telemetry coverage, live activation, and call planning.
 It is read-only, redacts restricted provider payloads, and makes 0 Polygon, SEC,
-Schwab, or OpenAI calls.
+Schwab, or OpenAI calls. If the underlying shadow or trial readiness gate has an
+approval-only local unblock packet, such as guarded market-bar residual repair,
+`dashboard-snapshot --json` also exposes it as top-level
+`approval_required_unblock` without executing it.
 
 `priced-in-queue` is the scriptable replacement for the TUI insight table. It
 returns the same full-scan boundary and ranked emotion-vs-reaction rows used by
@@ -1113,12 +1116,12 @@ When no shadow run has been recorded yet, `shadow-mode latest --json` returns
 first blocker, next action, and canonical next command. It remains a read-only
 inspection command with 0 provider calls and 0 database writes, so operators can
 use it after market close without dead-ending on an empty history table.
-`shadow-mode status`, `shadow-mode latest`, and `shadow-mode run --preview`
-also surface `approval_required_unblock` when the underlying shadow-readiness
-gate has an approval-required local unblock packet, such as guarded market-bar
-residual repair. That packet is descriptive only on these surfaces; it does not
-execute the repair, write a shadow run, call providers, submit orders, or send
-alerts.
+`dashboard-snapshot --json`, `shadow-mode status`, `shadow-mode latest`, and
+`shadow-mode run --preview` also surface `approval_required_unblock` when the
+underlying shadow-readiness gate has an approval-required local unblock packet,
+such as guarded market-bar residual repair. That packet is descriptive only on
+these surfaces; it does not execute the repair, write a shadow run, call
+providers, submit orders, or send alerts.
 
 ### Value ledger
 
