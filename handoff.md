@@ -1,6 +1,51 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 10:50:00 +08:00
+Last updated: 2026-05-23 11:10:00 +08:00
+
+## Latest Shadow Readiness Value-Proof Gate Slice
+
+Last updated: 2026-05-23 11:10:00 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains full-market priced-in emotion scanning with safety
+  gates before any investment-decision use. This slice is not UI polish,
+  scoring expansion, or provider work.
+- The mission brief requires shadow readiness to prove the local value ledger,
+  forward outcome tracking, and disabled real LLM mode before daily shadow
+  operation can be treated as useful evidence.
+
+Fix in this slice:
+
+- `assert-shadow-ready` now includes `value_ledger_table` and
+  `outcome_tracking_table` checks. They inspect local schema availability and
+  row counts only.
+- `assert-shadow-ready` now includes `llm_real_mode_disabled`. It is ready
+  when `CATALYST_ENABLE_PREMIUM_LLM=false`; it fails closed when premium LLM
+  mode is enabled, even if all other shadow checks are satisfied.
+- The readiness payload's useful definition and README now include local
+  value/outcome evidence tables and disabled real LLM mode.
+
+Validation observed in this slice:
+
+- The focused readiness regression failed before implementation because the
+  three required checks were absent.
+- Focused readiness regression passed after the fix: 4 passed.
+- Adjacent shadow/API regression selection passed: 6 passed.
+- Ruff passed for touched dashboard data and readiness CLI tests.
+- Compileall passed for `src` and the touched readiness CLI test.
+- `git diff --check` passed.
+- Live operator-DB smoke with this worktree pinned through `PYTHONPATH` returned
+  `status=setup_required`, `external_calls_made=0`, `db_writes_made=0`,
+  `value_ledger_table=ready`, `outcome_tracking_table=ready`, and
+  `llm_real_mode_disabled=ready`.
+
+Safety:
+
+- The new checks make 0 provider, broker, model, order, or web calls.
+- The new checks write 0 database rows.
+- The live operator DB residual repair remains blocked until the operator
+  explicitly approves the guarded write command.
 
 ## Latest TUI Useful-Next Alignment Slice
 
