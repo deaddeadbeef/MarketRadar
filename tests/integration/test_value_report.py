@@ -13,8 +13,22 @@ from catalyst_radar.dashboard.tui import render_dashboard_tui
 from catalyst_radar.storage.db import create_schema, engine_from_url
 from catalyst_radar.storage.schema import candidate_states
 from catalyst_radar.storage.validation_repositories import ValidationRepository
-from catalyst_radar.validation.models import ValueOutcome, value_outcome_id
+from catalyst_radar.validation.models import (
+    ValidationResult,
+    ValidationRun,
+    ValidationRunStatus,
+    ValueOutcome,
+    value_outcome_id,
+)
 from catalyst_radar.validation.value_ledger import build_value_ledger_entry
+
+MISSION_BASELINES = (
+    "relative_strength_screener",
+    "volume_breakout_screener",
+    "sector_etf_rotation_screener",
+    "news_event_only_screener",
+    "random_sector_matched_basket",
+)
 
 
 def test_value_report_cli_empty_month_is_insufficient_evidence(
@@ -44,8 +58,49 @@ def test_value_report_cli_empty_month_is_insufficient_evidence(
     assert payload["entry_count"] == 0
     assert payload["plausibly_earned_at_least_40_usd"] is False
     assert payload["decision_support_value_not_profit"] is True
+    validation = payload["validation_evidence"]
+    assert validation["status"] == "no_validation_runs"
+    assert validation["ready"] is False
+    assert validation["external_calls_made"] == 0
+    assert validation["db_writes_made"] == 0
+    assert "validation-replay" in validation["next_action"]
     assert payload["external_calls_made"] == 0
     assert payload["db_writes_made"] == 0
+
+
+def test_value_report_surfaces_latest_validation_baseline_evidence(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'value-report-validation.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = engine_from_url(database_url)
+    create_schema(engine)
+    _seed_successful_validation_run(engine)
+
+    response = TestClient(create_app()).get(
+        "/api/value-report/monthly",
+        params={
+            "month": "2026-05",
+            "available_at": "2026-05-31T21:00:00+00:00",
+        },
+    )
+
+    assert response.status_code == 200
+    validation = response.json()["validation_evidence"]
+    assert validation["status"] == "ready"
+    assert validation["ready"] is True
+    assert validation["selected_run_id"] == "validation-run-ready"
+    assert validation["candidate_result_count"] == 1
+    assert validation["baseline_result_count"] == 5
+    assert validation["required_baselines"] == list(MISSION_BASELINES)
+    assert validation["measured_baselines"] == list(MISSION_BASELINES)
+    assert validation["insufficient_baselines"] == []
+    assert validation["missing_baselines"] == []
+    assert validation["precision_at_5"] == 1.0
+    assert validation["precision_at_10"] == 1.0
+    assert validation["external_calls_made"] == 0
+    assert validation["db_writes_made"] == 0
 
 
 def test_value_report_surfaces_missing_candidate_ledger_coverage(
@@ -426,6 +481,68 @@ def _seed_candidate_state(
                 created_at=as_of,
             )
         )
+
+
+def _seed_successful_validation_run(engine) -> None:
+    started_at = datetime(2026, 5, 31, 20, tzinfo=UTC)
+    finished_at = datetime(2026, 5, 31, 20, 30, tzinfo=UTC)
+    run = ValidationRun(
+        id="validation-run-ready",
+        run_type="replay",
+        as_of_start=datetime(2026, 5, 15, 21, tzinfo=UTC),
+        as_of_end=datetime(2026, 5, 15, 21, tzinfo=UTC),
+        decision_available_at=datetime(2026, 5, 16, 21, tzinfo=UTC),
+        status=ValidationRunStatus.SUCCESS,
+        started_at=started_at,
+        finished_at=finished_at,
+    )
+    repo = ValidationRepository(engine)
+    repo.upsert_validation_run(run)
+    repo.upsert_validation_results(
+        [
+            _validation_result(
+                "validation-run-ready",
+                ticker="MRDR",
+                baseline=None,
+                rank=None,
+            ),
+            *[
+                _validation_result(
+                    "validation-run-ready",
+                    ticker=f"BL{index}",
+                    baseline=baseline,
+                    rank=1,
+                )
+                for index, baseline in enumerate(MISSION_BASELINES, start=1)
+            ],
+        ]
+    )
+
+
+def _validation_result(
+    run_id: str,
+    *,
+    ticker: str,
+    baseline: str | None,
+    rank: int | None,
+) -> ValidationResult:
+    as_of = datetime(2026, 5, 15, 21, tzinfo=UTC)
+    return ValidationResult(
+        id=f"{run_id}:{baseline or 'candidate'}:{ticker}",
+        run_id=run_id,
+        ticker=ticker,
+        as_of=as_of,
+        available_at=datetime(2026, 5, 16, 21, tzinfo=UTC),
+        state=ActionState.WARNING,
+        final_score=90,
+        baseline=baseline,
+        labels={
+            "target_20d_25": True,
+            "max_adverse_excursion": -0.02,
+            "max_favorable_excursion": 0.3,
+        },
+        payload={"candidate": {"rank": rank}} if rank is not None else {},
+    )
 
 
 def _seed_outcome(engine, *, ledger_id: str, ticker: str) -> None:
