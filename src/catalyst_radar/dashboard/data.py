@@ -3981,24 +3981,108 @@ def _priced_in_answer_canonical_next_step(
 ) -> tuple[str, str]:
     """Use specific market-bar recommendations when fallback guidance is stale."""
 
+    step = _priced_in_answer_canonical_market_bar_step(full_market_trust_gate)
+    if not step:
+        return fallback_action, fallback_command
+    return (
+        str(step.get("next_action") or fallback_action or "").strip(),
+        str(step.get("command") or fallback_command or "").strip(),
+    )
+
+
+def _priced_in_answer_canonical_market_bar_step(
+    full_market_trust_gate: Mapping[str, object],
+) -> dict[str, str]:
     recommended = _mapping_value(full_market_trust_gate, "recommended_action")
     if str(recommended.get("kind") or "").strip() != "residual_universe_review":
-        return fallback_action, fallback_command
+        return {}
     action = str(
         recommended.get("reason")
         or recommended.get("next_action")
         or full_market_trust_gate.get("next_action")
-        or fallback_action
         or ""
     ).strip()
     command = str(
         recommended.get("cli_command")
         or recommended.get("command")
         or full_market_trust_gate.get("next_command")
-        or fallback_command
         or ""
     ).strip()
-    return action, command
+    if not action and not command:
+        return {}
+    return {"next_action": action, "command": command}
+
+
+def _priced_in_answer_market_bar_step_row(
+    row: Mapping[str, object],
+    step: Mapping[str, str],
+    *,
+    keys: Sequence[str],
+) -> dict[str, object]:
+    result = _row_dict(row)
+    if any(str(result.get(key) or "").strip() == "market_bars" for key in keys):
+        result["next_action"] = step.get("next_action")
+        result["command"] = step.get("command")
+    return result
+
+
+def _priced_in_answer_apply_canonical_market_bar_step_to_decision_readiness(
+    decision_readiness: Mapping[str, object],
+    step: Mapping[str, str],
+) -> dict[str, object]:
+    payload = _row_dict(decision_readiness)
+    recommended = _mapping_value(payload, "recommended_gap")
+    if recommended:
+        payload["recommended_gap"] = _priced_in_answer_market_bar_step_row(
+            recommended,
+            step,
+            keys=("gap", "source"),
+        )
+    payload["top_gaps"] = [
+        _priced_in_answer_market_bar_step_row(
+            row,
+            step,
+            keys=("gap", "source"),
+        )
+        for row in _sequence_value(payload.get("top_gaps"))
+        if isinstance(row, Mapping)
+    ]
+    return payload
+
+
+def _priced_in_answer_apply_canonical_market_bar_step_to_evidence_completeness(
+    evidence_completeness: Mapping[str, object],
+    step: Mapping[str, str],
+) -> dict[str, object]:
+    payload = _row_dict(evidence_completeness)
+    if str(payload.get("first_gap_source") or "").strip() == "market_bars":
+        payload["next_action"] = step.get("next_action")
+        payload["command"] = step.get("command")
+    payload["layers"] = [
+        _priced_in_answer_market_bar_step_row(
+            layer,
+            step,
+            keys=("source",),
+        )
+        for layer in _sequence_value(payload.get("layers"))
+        if isinstance(layer, Mapping)
+    ]
+    return payload
+
+
+def _priced_in_answer_apply_canonical_market_bar_step_to_trust_blockers(
+    trust_blockers: Sequence[Mapping[str, object]],
+    step: Mapping[str, str],
+) -> list[dict[str, object]]:
+    return [
+        _priced_in_answer_market_bar_step_row(
+            row,
+            step,
+            keys=("area", "source"),
+        )
+        for row in trust_blockers
+        if isinstance(row, Mapping)
+    ]
 
 
 def _priced_in_operator_response_after_action(action_kind: str):
@@ -4329,6 +4413,22 @@ def priced_in_answer_payload(
         full_market_trust_gate["recommended_action"] = market_bar_blocker_detail[
             "recommended_action"
         ]
+    canonical_market_bar_step = _priced_in_answer_canonical_market_bar_step(
+        full_market_trust_gate
+    )
+    if canonical_market_bar_step:
+        decision_readiness = (
+            _priced_in_answer_apply_canonical_market_bar_step_to_decision_readiness(
+                decision_readiness,
+                canonical_market_bar_step,
+            )
+        )
+        evidence_completeness = (
+            _priced_in_answer_apply_canonical_market_bar_step_to_evidence_completeness(
+                evidence_completeness,
+                canonical_market_bar_step,
+            )
+        )
     reviewable_subset = {
         "schema_version": "priced-in-reviewable-subset-v1",
         "row_count": decision_ready_count,
@@ -4346,6 +4446,11 @@ def priced_in_answer_payload(
         ),
         primary_area="market_bars" if market_bar_gap_count > 0 else None,
     )
+    if canonical_market_bar_step:
+        trust_blockers = _priced_in_answer_apply_canonical_market_bar_step_to_trust_blockers(
+            trust_blockers,
+            canonical_market_bar_step,
+        )
     blocker_ladder = _priced_in_answer_blocker_ladder(
         trust_blockers,
         stocks_only=stocks_only,
