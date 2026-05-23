@@ -90,6 +90,10 @@ def test_shadow_mode_cli_preview_execute_and_latest(
     status = json.loads(capsys.readouterr().out)
     assert status["status"] == "setup_required"
     assert status["latest"]["id"] == executed["run"]["id"]
+    assert status["first_blocker"] == "universe"
+    assert status["first_gap_count"] == 0
+    assert status["canonical_next_action"] == status["next_action"]
+    assert status["canonical_next_command"] is None
     assert status["external_calls_made"] == 0
     assert status["db_writes_made"] == 0
 
@@ -130,6 +134,16 @@ def test_shadow_mode_api_preview_and_latest(tmp_path, monkeypatch) -> None:
     assert latest["run"]["id"] == executed["run"]["id"]
     assert latest["external_calls_made"] == 0
     assert latest["db_writes_made"] == 0
+
+    status_response = client.get("/api/radar/shadow/status")
+    assert status_response.status_code == 200
+    status = status_response.json()
+    assert status["status"] == "setup_required"
+    assert status["latest"]["id"] == executed["run"]["id"]
+    assert status["first_blocker"] == "universe"
+    assert status["canonical_next_action"] == status["next_action"]
+    assert status["external_calls_made"] == 0
+    assert status["db_writes_made"] == 0
 
 
 def test_shadow_mode_preview_records_latest_market_bar_gap_without_radar_run(
@@ -435,6 +449,8 @@ def test_shadow_mode_status_prefers_current_readiness_action_over_stale_latest(
         shadow_readiness={
             "status": "setup_required",
             "ready": False,
+            "first_blocker": "market_bars",
+            "first_gap_count": 579,
             "canonical_next_action": (
                 "catalyst-radar market-bars residual-review "
                 "--expected-as-of 2026-05-15"
@@ -447,6 +463,10 @@ def test_shadow_mode_status_prefers_current_readiness_action_over_stale_latest(
     assert payload["next_action"] == (
         "catalyst-radar market-bars residual-review --expected-as-of 2026-05-15"
     )
+    assert payload["first_blocker"] == "market_bars"
+    assert payload["first_gap_count"] == 579
+    assert payload["canonical_next_action"] == payload["next_action"]
+    assert payload["canonical_next_command"] == payload["next_action"]
     assert payload["external_calls_made"] == 0
     assert payload["db_writes_made"] == 0
 
@@ -512,6 +532,10 @@ def test_shadow_mode_status_keeps_latest_action_when_current_readiness_is_ready(
     assert payload["next_action"] == (
         "Record value-ledger entries for surfaced Warning or manual-review candidates."
     )
+    assert payload["first_blocker"] is None
+    assert payload["first_gap_count"] == 0
+    assert payload["canonical_next_action"] == payload["next_action"]
+    assert payload["canonical_next_command"] is None
     assert payload["external_calls_made"] == 0
     assert payload["db_writes_made"] == 0
 

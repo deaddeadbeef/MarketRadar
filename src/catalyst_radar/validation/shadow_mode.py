@@ -68,13 +68,19 @@ def shadow_mode_status_payload(
         else _local_shadow_readiness(engine, config)
     )
     latest_payload = shadow_mode_run_to_payload(latest) if latest is not None else None
+    next_action = _shadow_mode_status_next_action(latest, readiness)
+    first_blocker = _shadow_mode_status_first_blocker(readiness)
     return {
         "schema_version": "shadow-mode-status-v1",
         "status": latest.status if latest is not None else "no_shadow_run",
         "latest": latest_payload,
         "shadow_readiness_status": readiness.get("status") or "unknown",
         "ready_for_shadow_run": bool(readiness.get("ready")),
-        "next_action": _shadow_mode_status_next_action(latest, readiness),
+        "first_blocker": first_blocker,
+        "first_gap_count": _shadow_mode_status_first_gap_count(readiness),
+        "canonical_next_action": next_action,
+        "canonical_next_command": _canonical_command(next_action),
+        "next_action": next_action,
         "external_calls_made": 0,
         "db_writes_made": 0,
     }
@@ -358,6 +364,36 @@ def _shadow_mode_status_next_action(
     if latest is not None:
         return _shadow_mode_next_action(latest)
     return "Run `catalyst-radar shadow-mode run --preview` to inspect the daily audit row."
+
+
+def _shadow_mode_status_first_blocker(readiness: Mapping[str, object]) -> str | None:
+    if bool(readiness.get("ready")):
+        return None
+    blocker = readiness.get("first_blocker")
+    if isinstance(blocker, str) and blocker.strip():
+        return blocker.strip()
+    blockers = readiness.get("blockers")
+    if isinstance(blockers, Sequence) and not isinstance(blockers, str):
+        for row in blockers:
+            if not isinstance(row, Mapping):
+                continue
+            code = row.get("code")
+            if isinstance(code, str) and code.strip():
+                return code.strip()
+    return None
+
+
+def _shadow_mode_status_first_gap_count(readiness: Mapping[str, object]) -> int:
+    if bool(readiness.get("ready")):
+        return 0
+    return _first_int(readiness.get("first_gap_count"))
+
+
+def _canonical_command(action: object) -> str | None:
+    if not isinstance(action, str):
+        return None
+    text = action.strip()
+    return text if text.startswith("catalyst-radar ") else None
 
 
 def _shadow_readiness_canonical_next_action(run: ShadowModeRun) -> str | None:
