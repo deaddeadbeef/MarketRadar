@@ -237,6 +237,10 @@ def test_value_ledger_coverage_reports_unlogged_surfaced_candidates(
     assert payload["logged_candidate_count"] == 1
     assert payload["missing_ledger_count"] == 1
     assert payload["coverage_pct"] == 50.0
+    assert payload["first_missing_candidate_state_id"] == "state-AAPL"
+    assert payload["first_missing_ticker"] == "AAPL"
+    assert "--artifact-id state-AAPL" in payload["canonical_next_command"]
+    assert "--execute" not in payload["canonical_next_command"]
     rows = {row["candidate_state_id"]: row for row in payload["rows"]}
     assert rows["state-MSFT"]["ledger_status"] == "logged"
     assert rows["state-MSFT"]["ledger_entry_id"]
@@ -454,6 +458,9 @@ def test_value_ledger_api_preview_execute_and_read(tmp_path, monkeypatch) -> Non
     assert coverage["db_writes_made"] == 0
     assert coverage["surfaced_candidate_count"] == 1
     assert coverage["missing_ledger_count"] == 0
+    assert coverage["first_missing_candidate_state_id"] is None
+    assert coverage["first_missing_ticker"] is None
+    assert coverage["canonical_next_command"] is None
 
 
 def test_value_ledger_rejects_unknown_label_and_missing_artifact(

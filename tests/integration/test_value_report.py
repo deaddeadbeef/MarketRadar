@@ -135,6 +135,10 @@ def test_value_report_surfaces_missing_candidate_ledger_coverage(
     assert coverage["logged_candidate_count"] == 0
     assert coverage["missing_ledger_count"] == 1
     assert coverage["coverage_pct"] == 0.0
+    assert coverage["first_missing_candidate_state_id"] == "state-AAPL"
+    assert coverage["first_missing_ticker"] == "AAPL"
+    assert "--artifact-id state-AAPL" in coverage["canonical_next_command"]
+    assert "--execute" not in coverage["canonical_next_command"]
     assert coverage["external_calls_made"] == 0
     assert coverage["db_writes_made"] == 0
     assert coverage["rows"][0]["candidate_state_id"] == "state-AAPL"

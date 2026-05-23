@@ -935,7 +935,9 @@ the $200/month ChatGPT Pro cost.
 states in the selected period, shows which ones already have candidate-state
 ledger rows, and provides conservative zero-value `value-ledger record` commands
 for missing rows so the operator can review or edit subjective label/value
-before writing anything.
+before writing anything. When coverage has gaps, the payload exposes
+`first_missing_candidate_state_id`, `first_missing_ticker`, and
+`canonical_next_command` for the first non-executing ledger-record command.
 
 Forward outcomes are computed from already stored point-in-time daily bars:
 

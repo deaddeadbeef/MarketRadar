@@ -442,6 +442,7 @@ def load_value_ledger_candidate_coverage_payload(
         for row in surfaced
     ]
     missing = [row for row in rows if row["ledger_status"] == "missing"]
+    first_missing = missing[0] if missing else {}
     logged = len(rows) - len(missing)
     coverage_pct = round((logged / len(rows)) * 100, 2) if rows else 100.0
     return {
@@ -457,6 +458,9 @@ def load_value_ledger_candidate_coverage_payload(
         "logged_candidate_count": logged,
         "missing_ledger_count": len(missing),
         "coverage_pct": coverage_pct,
+        "first_missing_candidate_state_id": first_missing.get("candidate_state_id"),
+        "first_missing_ticker": first_missing.get("ticker"),
+        "canonical_next_command": first_missing.get("record_command"),
         "rows": rows[: max(1, int(limit))],
         "next_action": (
             "Review missing rows and record value-ledger entries before claiming "
