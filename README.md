@@ -856,7 +856,9 @@ one `shadow_mode_runs` audit row that classifies the current local scan as
 order, alert-delivery, or live-provider command. When a shadow run is not valid
 yet, the run response's top-level `next_action` uses the same canonical next
 action as `assert-shadow-ready`, so the audit response does not hide the first
-unblock command behind a generic setup message.
+unblock command behind a generic setup message. `shadow-mode status` also uses
+the current readiness canonical next action whenever current readiness is not
+ready, so a stale persisted run cannot hide today's first unblock command.
 
 To track whether Market Radar is paying for itself, record local value evidence
 with the value ledger. The default `add` command is a preview and writes nothing;

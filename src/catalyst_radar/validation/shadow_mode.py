@@ -73,11 +73,7 @@ def shadow_mode_status_payload(
         "latest": latest_payload,
         "shadow_readiness_status": readiness.get("status") or "unknown",
         "ready_for_shadow_run": bool(readiness.get("ready")),
-        "next_action": (
-            _shadow_mode_next_action(latest)
-            if latest is not None
-            else "Run `catalyst-radar shadow-mode run --preview` to inspect the daily audit row."
-        ),
+        "next_action": _shadow_mode_status_next_action(latest, readiness),
         "external_calls_made": 0,
         "db_writes_made": 0,
     }
@@ -347,6 +343,20 @@ def _shadow_mode_next_action(run: ShadowModeRun) -> str:
     if run.status == "setup_required":
         return "Clear setup blockers before relying on daily shadow-mode evidence."
     return "Open shadow readiness and clear the first blocker before rerunning."
+
+
+def _shadow_mode_status_next_action(
+    latest: ShadowModeRun | None,
+    readiness: Mapping[str, object],
+) -> str:
+    readiness_status = str(readiness.get("status") or "").strip().lower()
+    if readiness_status != "ready":
+        action = readiness.get("canonical_next_action")
+        if isinstance(action, str) and action.strip():
+            return action.strip()
+    if latest is not None:
+        return _shadow_mode_next_action(latest)
+    return "Run `catalyst-radar shadow-mode run --preview` to inspect the daily audit row."
 
 
 def _shadow_readiness_canonical_next_action(run: ShadowModeRun) -> str | None:
