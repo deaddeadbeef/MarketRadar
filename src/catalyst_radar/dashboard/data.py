@@ -10783,8 +10783,11 @@ def _shadow_market_bar_blocker_context(
     )
     return {
         "next_action": (
-            recommended.get("reason")
+            recommended.get("command")
+            or recommended.get("cli_command")
+            or recommended.get("tui_command")
             or recommended.get("next_action")
+            or recommended.get("reason")
             or blocker.get("next_action")
             or trust_gate.get("next_action")
         ),

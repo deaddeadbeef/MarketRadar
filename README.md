@@ -826,7 +826,9 @@ Decision Cards, provider-call boundaries, alert dry-run state, broker-order kill
 switch, value-ledger/outcome schema availability, disabled real LLM mode, and
 validation readiness. The
 command itself makes 0 provider calls and 0 database writes; it prints those
-counters plus the planned run's maximum external-call count.
+counters plus the planned run's maximum external-call count. When the first
+blocker exposes a zero-call review command, the readiness next action uses that
+command instead of only the prose explanation.
 
 To persist a daily shadow-mode audit row from local data only:
 
