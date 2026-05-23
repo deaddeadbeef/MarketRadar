@@ -380,6 +380,53 @@ def test_validation_report_latest_empty_state_is_zero_call(
     assert "validation-replay" in payload["next_action"]
 
 
+def test_validation_replay_preview_is_zero_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'validation-preview.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    assert main(["init-db"]) == 0
+    capsys.readouterr()
+    _insert_warning_candidate(database_url)
+    _insert_future_daily_bars(database_url)
+
+    assert (
+        main(
+            [
+                "validation-replay",
+                "--as-of-start",
+                "2026-05-10",
+                "--as-of-end",
+                "2026-05-10",
+                "--available-at",
+                AVAILABLE_AT_TEXT,
+                "--outcome-available-at",
+                OUTCOME_AVAILABLE_AT_TEXT,
+                "--preview",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["schema_version"] == "validation-replay-cli-v1"
+    assert payload["mode"] == "preview"
+    assert payload["candidate_result_count"] == 1
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
+    assert payload["db_writes_required"] > 0
+    assert "validation-replay" in payload["execute_command"]
+    assert "--preview" not in payload["execute_command"]
+    assert "--preview" in payload["preview_command"]
+    engine = create_engine(database_url, future=True)
+    with engine.connect() as conn:
+        assert list(conn.execute(select(validation_runs))) == []
+        assert list(conn.execute(select(validation_results))) == []
+
+
 def test_validation_report_latest_selects_newest_successful_run(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -95,7 +95,12 @@ def monthly_value_report_payload(
         for outcome in repo.list_value_outcomes(available_at=cutoff, limit=10_000)
         if outcome.value_ledger_entry_id in entry_ids
     ]
-    validation_evidence = _validation_evidence_summary(repo, available_at=cutoff)
+    validation_evidence = _validation_evidence_summary(
+        repo,
+        available_at=cutoff,
+        period_start=start,
+        period_end=end,
+    )
     label_counts = Counter(entry.label for entry in entries)
     user_decision_counts = Counter(entry.user_decision or "unknown" for entry in entries)
     useful_entries = [entry for entry in entries if _is_useful_entry(entry)]
@@ -353,7 +358,7 @@ def _monthly_value_first_evidence_gap(
                 validation_evidence.get("next_action")
                 or "Run validation evidence before claiming monthly value proof."
             ),
-            command=None,
+            command=validation_evidence.get("canonical_next_command"),
         )
 
     if verdict == "insufficient_evidence":
@@ -422,7 +427,14 @@ def _validation_evidence_summary(
     repo: ValidationRepository,
     *,
     available_at: datetime,
+    period_start: date,
+    period_end: date,
 ) -> dict[str, object]:
+    replay_command = _validation_replay_preview_command(
+        period_start=period_start,
+        period_end=period_end,
+        available_at=available_at,
+    )
     run = repo.latest_successful_validation_run(available_at=available_at)
     if run is None:
         return _missing_validation_evidence(
@@ -432,6 +444,7 @@ def _validation_evidence_summary(
                 "Run validation-replay after candidate outcomes are available, "
                 "then rerun validation-report."
             ),
+            canonical_next_command=replay_command,
         )
     results = repo.list_validation_results(run.id, available_at=available_at)
     if not results:
@@ -442,6 +455,7 @@ def _validation_evidence_summary(
                 "Check the validation run id or run validation-replay to create "
                 "stored validation results."
             ),
+            canonical_next_command=replay_command,
         )
     report = validation_report_payload(
         build_validation_report(
@@ -495,6 +509,7 @@ def _validation_evidence_summary(
         "precision_at_10": precision_at_10,
         "external_calls_made": 0,
         "db_writes_made": 0,
+        "canonical_next_command": None if ready else replay_command,
         "next_action": (
             "Validation and baseline evidence is measured for the latest successful run."
             if ready
@@ -511,6 +526,7 @@ def _missing_validation_evidence(
     status: str,
     selected_run_id: str | None,
     next_action: str,
+    canonical_next_command: str | None,
 ) -> dict[str, object]:
     return {
         "schema_version": "monthly-value-validation-evidence-v1",
@@ -527,8 +543,25 @@ def _missing_validation_evidence(
         "precision_at_10": None,
         "external_calls_made": 0,
         "db_writes_made": 0,
+        "canonical_next_command": canonical_next_command,
         "next_action": next_action,
     }
+
+
+def _validation_replay_preview_command(
+    *,
+    period_start: date,
+    period_end: date,
+    available_at: datetime,
+) -> str:
+    return (
+        "catalyst-radar validation-replay "
+        f"--as-of-start {period_start.isoformat()} "
+        f"--as-of-end {period_end.isoformat()} "
+        f"--available-at {available_at.isoformat()} "
+        f"--outcome-available-at {available_at.isoformat()} "
+        "--preview --json"
+    )
 
 
 def _baseline_sample_status(

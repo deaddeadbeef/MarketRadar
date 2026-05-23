@@ -1129,12 +1129,17 @@ scores or adding more intelligence, run a point-in-time validation replay and
 then inspect the report:
 
 ```powershell
-catalyst-radar validation-replay --as-of-start YYYY-MM-DD --as-of-end YYYY-MM-DD --available-at <UTC-decision-cutoff> --outcome-available-at <UTC-outcome-cutoff>
+catalyst-radar validation-replay --as-of-start YYYY-MM-DD --as-of-end YYYY-MM-DD --available-at <UTC-decision-cutoff> --outcome-available-at <UTC-outcome-cutoff> --preview --json
+catalyst-radar validation-replay --as-of-start YYYY-MM-DD --as-of-end YYYY-MM-DD --available-at <UTC-decision-cutoff> --outcome-available-at <UTC-outcome-cutoff> --json
 catalyst-radar validation-report --latest --json
 catalyst-radar validation-report --run-id <printed-run-id> --json
 ```
 
-The report compares MarketRadar candidates with relative strength, volume
+`validation-replay --preview --json` computes the planned candidate and baseline
+result counts with 0 provider calls and 0 database writes, and prints the
+matching execute command. Omit `--preview` only when you intentionally want to
+write the validation run and result rows. The report compares MarketRadar
+candidates with relative strength, volume
 breakout, sector ETF rotation, news/event-only, and random sector-matched
 baselines. Baseline rows are selected using only data available at the decision
 cutoff and are labeled only from bars visible at the outcome cutoff. The report

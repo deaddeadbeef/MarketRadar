@@ -60,11 +60,14 @@ def test_value_report_cli_empty_month_is_insufficient_evidence(
     assert payload["decision_support_value_not_profit"] is True
     assert payload["first_blocker"] == "validation_evidence"
     assert payload["first_gap_count"] == len(MISSION_BASELINES)
-    assert payload["canonical_next_command"] is None
+    assert "validation-replay" in payload["canonical_next_command"]
+    assert "--preview" in payload["canonical_next_command"]
+    assert "--execute" not in payload["canonical_next_command"]
     assert payload["next_action"] == payload["canonical_next_action"]
     validation = payload["validation_evidence"]
     assert validation["status"] == "no_validation_runs"
     assert validation["ready"] is False
+    assert validation["canonical_next_command"] == payload["canonical_next_command"]
     assert validation["external_calls_made"] == 0
     assert validation["db_writes_made"] == 0
     assert "validation-replay" in validation["next_action"]
@@ -103,6 +106,7 @@ def test_value_report_surfaces_latest_validation_baseline_evidence(
     assert validation["missing_baselines"] == []
     assert validation["precision_at_5"] == 1.0
     assert validation["precision_at_10"] == 1.0
+    assert validation["canonical_next_command"] is None
     assert validation["external_calls_made"] == 0
     assert validation["db_writes_made"] == 0
 

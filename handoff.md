@@ -1,6 +1,42 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 17:34:23 +08:00
+Last updated: 2026-05-23 17:44:24 +08:00
+
+## Latest Validation Replay Preview Command Slice
+
+Last updated: 2026-05-23 17:44:24 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains making MarketRadar safe enough to try as a shipped
+  decision-support product before any real-capital use.
+- Monthly value reports already surfaced `validation_evidence` as the first
+  evidence blocker, but the only named command was the writing
+  `validation-replay` flow.
+- The useful definition for this slice is concrete: validation replay can be
+  previewed with 0 writes, and value reports can point to that preview command
+  before any validation rows are stored.
+
+Fix in this slice:
+
+- `validation-replay` now accepts `--preview --json`.
+- Preview computes the planned candidate and baseline result counts with
+  `external_calls_made=0` and `db_writes_made=0`, then prints the matching
+  execute command.
+- `monthly-value-validation-evidence-v1` now includes
+  `canonical_next_command` for missing or insufficient validation evidence.
+- When validation evidence is the first monthly value blocker, top-level
+  `value-report --json` exposes the preview-only validation replay command.
+- README documents the preview-first validation replay contract.
+
+Safety:
+
+- Preview makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app,
+  or provider calls.
+- Preview writes 0 database rows.
+- It does not change scores, thresholds, policy gates, action states, trade
+  plans, LLM behavior, broker/order controls, candidate rows, ledger rows,
+  outcome rows, validation rows, or readiness criteria.
 
 ## Latest README Progressive Reveal Slice
 
