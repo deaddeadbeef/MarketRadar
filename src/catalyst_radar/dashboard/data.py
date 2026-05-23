@@ -10636,7 +10636,16 @@ def _trial_minimum_useful_product_gate(
             first_trial_blocker.get("next_action")
             or "Clear the first read-only trial blocker."
         )
-        next_command = str(first_trial_blocker.get("evidence") or "").strip() or None
+        next_command = None
+        if first_blocker == "read_only_scan_surface":
+            next_command = _trial_gate_command_or_none(
+                priced_in_answer.get("canonical_next_command")
+                or priced_in_answer.get("next_command")
+            )
+        if next_command is None:
+            next_command = _trial_gate_command_or_none(
+                first_trial_blocker.get("evidence")
+            )
     elif not features["trusted_full_market_priced_in_answer"]:
         first_blocker = str(
             priced_in_answer.get("first_blocker")
@@ -10670,11 +10679,18 @@ def _trial_minimum_useful_product_gate(
         first_blocker = "zero_hidden_calls_or_writes"
         next_action = "Keep the product-trial gate zero-call and zero-write."
         next_command = "catalyst-radar assert-trial-ready --json"
+    approval_blocker = first_blocker
+    if approval_blocker == "read_only_scan_surface":
+        approval_blocker = str(
+            priced_in_answer.get("first_blocker")
+            or trust_gate.get("first_blocker")
+            or approval_blocker
+        )
     approval_required_unblock = _trial_minimum_product_approval_required_unblock(
         engine,
         config,
         priced_in_answer=priced_in_answer,
-        first_blocker=first_blocker,
+        first_blocker=approval_blocker,
     )
     return {
         "schema_version": "trial-minimum-useful-product-v1",
@@ -10708,6 +10724,13 @@ def _trial_minimum_useful_product_gate(
         "external_calls_made": 0,
         "db_writes_made": 0,
     }
+
+
+def _trial_gate_command_or_none(value: object) -> str | None:
+    text = str(value or "").strip()
+    if text.startswith("catalyst-radar "):
+        return text
+    return None
 
 
 def _trial_minimum_product_approval_required_unblock(

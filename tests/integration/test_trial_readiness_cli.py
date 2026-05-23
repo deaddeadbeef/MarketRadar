@@ -282,6 +282,98 @@ def test_trial_minimum_product_gate_preserves_priced_in_blocker_command() -> Non
     assert product_gate["db_writes_made"] == 0
 
 
+def test_trial_minimum_product_gate_uses_priced_in_command_when_trial_surface_blocked(
+    tmp_path,
+) -> None:
+    engine = create_engine(
+        f"sqlite:///{(tmp_path / 'trial-blocked-command.db').as_posix()}"
+    )
+    create_schema(engine)
+    market_repo = MarketRepository(engine)
+    market_repo.upsert_securities(
+        [
+            _security(
+                "AAPL",
+                active=True,
+                market_cap=3_000_000_000,
+                avg_volume=50_000_000,
+            ),
+            _security("AACO", active=True, market_cap=0, avg_volume=0),
+        ]
+    )
+    market_repo.upsert_daily_bars([_daily_bar("AAPL", date(2026, 5, 8))])
+    residual_command = (
+        "catalyst-radar market-bars residual-review --expected-as-of 2026-05-08"
+    )
+
+    payload = trial_readiness_payload(
+        engine,
+        AppConfig(),
+        available_at=datetime(2026, 5, 23, 12, tzinfo=UTC),
+        priced_in_answer={
+            "schema_version": "priced-in-answer-v1",
+            "status": "blocked",
+            "counts": {"total_rows": 0},
+            "first_blocker": "market_bars",
+            "canonical_next_action": "Review residual market-bar rows.",
+            "canonical_next_command": residual_command,
+            "full_market_trust_gate": {
+                "trusted_full_market_answer": False,
+                "first_blocker": "market_bars",
+                "blocker_detail": {
+                    "schema_version": "priced-in-market-bar-blocker-detail-v1",
+                    "source": "market_bars",
+                    "expected_as_of": "2026-05-08",
+                    "missing_as_of_bar": 1,
+                    "stocks_only": False,
+                },
+            },
+            "full_scan": {
+                "mode": "full_scan",
+                "active_securities": 2,
+                "scanned_rows": 0,
+                "ranked_rows": 0,
+            },
+            "scan_scope": {"mode": "full_scan", "total_rows": 0},
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+        },
+        shadow_readiness={
+            "schema_version": "shadow-readiness-v1",
+            "status": "setup_required",
+            "ready": False,
+            "first_blocker": "market_bars",
+            "checks": [],
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+        },
+        value_report={
+            "schema_version": "monthly-value-report-v1",
+            "verdict": "insufficient_evidence",
+            "first_blocker": "candidate_ledger_coverage",
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+        },
+    )
+
+    assert payload["safe_to_try_read_only"] is False
+    product_gate = payload["minimum_useful_product"]
+    assert product_gate["ready"] is False
+    assert product_gate["first_blocker"] == "read_only_scan_surface"
+    assert product_gate["canonical_next_command"] == residual_command
+    assert product_gate["next_command"] == residual_command
+    assert product_gate["canonical_next_command"] != "status=blocked; total_rows=0"
+    approval = product_gate["approval_required_unblock"]
+    assert approval["status"] == "ready_to_execute"
+    assert approval["approval_required"] is True
+    assert approval["expected_missing_count"] == 1
+    assert approval["expected_eligible_count"] == 1
+    assert approval["external_calls_made"] == 0
+    assert approval["db_writes_made"] == 0
+    assert product_gate["external_calls_made"] == 0
+    assert product_gate["db_writes_made"] == 0
+
+
 def test_trial_minimum_product_gate_surfaces_market_bar_approval_packet_without_writes(
     tmp_path,
 ) -> None:
