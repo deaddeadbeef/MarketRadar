@@ -35,6 +35,8 @@ def shadow_mode_run_payload(
     if execute:
         ValidationRepository(engine).upsert_shadow_mode_run(run)
     mode = "execute" if execute else "preview"
+    readiness = _mapping(snapshot.get("shadow_readiness"))
+    next_action = _shadow_mode_next_action(run)
     return {
         "schema_version": "shadow-mode-run-v1",
         "mode": mode,
@@ -44,7 +46,11 @@ def shadow_mode_run_payload(
         "external_calls_made": 0,
         "db_writes_required": 1,
         "db_writes_made": 1 if execute else 0,
-        "next_action": _shadow_mode_next_action(run),
+        "first_blocker": _shadow_mode_status_first_blocker(readiness),
+        "first_gap_count": _shadow_mode_status_first_gap_count(readiness),
+        "canonical_next_action": next_action,
+        "canonical_next_command": _canonical_command(next_action),
+        "next_action": next_action,
         "useful_definition": (
             "A useful shadow run records whether the current local scan is valid, "
             "partial, blocked, or setup-required without placing orders, delivering "

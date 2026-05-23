@@ -977,11 +977,14 @@ order, alert-delivery, or live-provider command. When a shadow run is not valid
 yet, the run response exposes the classification as top-level `status` and its
 top-level `next_action` uses the same canonical next action as
 `assert-shadow-ready`, so the audit response does not hide the first unblock
-command behind a generic setup message. `shadow-mode status` also uses the
-current readiness canonical next action whenever current readiness is not ready,
-so a stale persisted run cannot hide today's first unblock command. The status
-payload exposes `first_blocker`, `first_gap_count`, `canonical_next_action`, and
-`canonical_next_command` for the current readiness gate.
+command behind a generic setup message. The run response also exposes
+`first_blocker`, `first_gap_count`, `canonical_next_action`, and
+`canonical_next_command` for the current readiness gate, so preview/execute
+clients can route the operator to the same unblock step without parsing nested
+snapshot data. `shadow-mode status` also uses the current readiness canonical
+next action whenever current readiness is not ready, so a stale persisted run
+cannot hide today's first unblock command. The status payload exposes the same
+first-blocker fields.
 
 ### Value ledger
 

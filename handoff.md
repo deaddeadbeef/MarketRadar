@@ -1,6 +1,40 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 17:44:24 +08:00
+Last updated: 2026-05-23 17:59:33 +08:00
+
+## Latest Shadow Run First Blocker Slice
+
+Last updated: 2026-05-23 17:59:33 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains getting MarketRadar safe enough to try as a shipped
+  shadow decision-support product before any real-capital use.
+- `assert-shadow-ready` and `shadow-mode status` already exposed the current
+  first blocker and canonical next command, but `shadow-mode run --preview`
+  still made clients inspect the nested snapshot to find that same unblock
+  step.
+- The useful definition for this slice is concrete: a shadow run preview or
+  execute response tells the TUI, CLI, and API client the same first blocker,
+  gap count, and safe next command as the readiness/status surfaces.
+
+Fix in this slice:
+
+- `shadow-mode-run-v1` now includes top-level `first_blocker`,
+  `first_gap_count`, `canonical_next_action`, and `canonical_next_command`.
+- The run payload still classifies the local scan as before and still uses the
+  same `next_action` wording.
+- README documents the run/status first-blocker contract for CLI/API clients.
+
+Safety:
+
+- This is payload-only shadow-run behavior over local status data.
+- Preview makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web,
+  app, or provider calls and writes 0 database rows.
+- Execute still makes 0 provider calls and writes exactly one local
+  `shadow_mode_runs` audit row; it does not place orders, deliver real alerts,
+  run LLMs, change scores, change thresholds, change policy gates, mutate
+  candidate states, or repair market bars.
 
 ## Latest Validation Replay Preview Command Slice
 
