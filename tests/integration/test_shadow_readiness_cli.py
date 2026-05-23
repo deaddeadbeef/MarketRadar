@@ -174,7 +174,7 @@ def test_assert_investable_readiness_cli_fails_closed_stricter_than_shadow(
     assert payload["call_boundary"]["assert_db_writes_required"] == 0
     assert payload["first_blocker"] == "shadow_gate_ready"
     assert payload["first_gap_count"] == 0
-    assert payload["canonical_next_command"] is None
+    assert payload["canonical_next_command"] == "catalyst-radar assert-shadow-ready --json"
     blocker_codes = {row["code"] for row in payload["blockers"]}
     assert "shadow_gate_ready" in blocker_codes
     assert "thirty_valid_full_shadow_days" in blocker_codes

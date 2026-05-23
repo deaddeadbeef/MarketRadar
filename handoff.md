@@ -23630,3 +23630,81 @@ lightweight CSV/manual market freshness path, unless the user redirects.
 - Do not run `scripts/run-first-live-smoke.ps1 -Execute` if plan-only mode is blocked or unexpectedly high.
 - Do not mark the active goal complete; the product is improving but not fully useful/investable yet.
 - Do not update the checked-in PR ledger just to include a just-merged ledger PR, because that creates a self-referential loop.
+
+## 2026-05-24 Strict Readiness Next Command Slice
+
+Branch/worktree at implementation time:
+
+```text
+branch: codex/investable-next-command
+worktree: C:\Users\fpan1\MarketRadar\.worktrees\investable-next-command
+base: main after PR #726 / abbc880
+```
+
+Why this slice exists:
+
+- The user wants to try MarketRadar soon, but the product must stop at a safe
+  shipped point.
+- The current safe point is read-only research, not capital-ready investment
+  support.
+- The strict `assert-investable-readiness` gate already failed closed, but it
+  could expose `canonical_next_command=null` even when the nested first blocker
+  knew a safe zero-call command. That is bad operator UX for a non-expert user.
+
+Definition of useful for this slice:
+
+- Useful means the gate tells a human exactly what safe command to run next
+  when it blocks, without requiring them to inspect nested JSON or infer the
+  workflow.
+- Useful does not mean the product is investment-decision ready.
+
+Implemented behavior:
+
+- `investable_readiness_payload` now promotes the first blocker row's
+  `next_command` to top-level `canonical_next_command` when present.
+- Strict readiness blocker rows now carry `next_command` values when a safe
+  local or zero-call diagnostic command exists.
+- Human CLI output for `catalyst-radar assert-investable-readiness` now prints:
+  - top-level `next_command=...`
+  - per-blocker `command=...`
+- README now documents the same operator contract.
+
+Live root DB smoke, using worktree code and root venv:
+
+```text
+command: catalyst-radar assert-investable-readiness --month 2026-05 --json
+exit_code: 1
+status: blocked
+ready: false
+first_blocker: shadow_gate_ready
+canonical_next_command: catalyst-radar market-bars residual-review --expected-as-of 2026-05-15
+first_row_command: catalyst-radar market-bars residual-review --expected-as-of 2026-05-15
+external_calls_made: 0
+db_writes_made: 0
+blocker_count: 13
+```
+
+Verification already run:
+
+```powershell
+$env:PYTHONPATH='C:\Users\fpan1\MarketRadar\.worktrees\investable-next-command\src'
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m pytest tests\integration\test_shadow_readiness_cli.py tests\integration\test_dashboard_data.py::test_investable_readiness_payload_stays_stricter_than_shadow_ready tests\integration\test_dashboard_data.py::test_investable_readiness_payload_uses_shadow_gate_next_command tests\integration\test_api_routes.py::test_get_radar_investable_readiness_returns_battle_test_gate tests\integration\test_local_scripts.py::test_assert_investable_readiness_script_fails_closed_without_external_calls tests\integration\test_runbook_docs.py -q
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m ruff check src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py tests\integration\test_dashboard_data.py tests\integration\test_shadow_readiness_cli.py tests\integration\test_local_scripts.py tests\integration\test_runbook_docs.py README.md handoff.md
+C:\Users\fpan1\MarketRadar\.venv\Scripts\python.exe -m compileall -q src\catalyst_radar\dashboard\data.py src\catalyst_radar\cli.py tests\integration\test_dashboard_data.py tests\integration\test_shadow_readiness_cli.py
+git diff --check
+```
+
+Next operator-safe stop point:
+
+- Safe to try now as read-only research UI/CLI/TUI if the operator accepts that
+  it is not investment-decision ready.
+- Not safe to use as a shipped investment-decision product until the strict gate
+  passes.
+- The first safe next command is:
+
+```powershell
+catalyst-radar market-bars residual-review --expected-as-of 2026-05-15
+```
+
+Do not run residual repair execute or any provider/order execution without
+explicit approval.

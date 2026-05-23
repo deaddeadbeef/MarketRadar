@@ -1556,9 +1556,64 @@ def test_investable_readiness_payload_stays_stricter_than_shadow_ready(
     assert "outcome_tracking" in blocker_codes
     assert payload["first_blocker"] == "thirty_valid_full_shadow_days"
     assert payload["first_gap_count"] == 0
-    assert payload["canonical_next_command"] is None
+    assert payload["canonical_next_command"] == (
+        "catalyst-radar shadow-mode run --preview --json"
+    )
     assert payload["call_boundary"]["assert_external_calls_required"] == 0
     assert payload["limited_capital_pilot_status"] == "future_milestone"
+
+
+def test_investable_readiness_payload_uses_shadow_gate_next_command(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+
+    payload = investable_readiness_payload(
+        engine,
+        AppConfig.from_env({}),
+        month="2026-05",
+        available_at=AVAILABLE_AT,
+        radar_readiness={
+            "status": "research_only",
+            "safe_to_make_investment_decision": False,
+            "headline": "Current candidate gate is blocked.",
+            "next_action": "Review current signal blockers.",
+        },
+        shadow_readiness={
+            "status": "setup_required",
+            "ready": False,
+            "headline": "Shadow gate is blocked.",
+            "canonical_next_action": "Review residual market-bar rows.",
+            "canonical_next_command": (
+                "catalyst-radar market-bars residual-review "
+                "--expected-as-of 2026-05-15"
+            ),
+        },
+        validation_summary={
+            "latest_run": {},
+            "report": {},
+        },
+        value_report={
+            "month": "2026-05",
+            "verdict": "insufficient_evidence",
+            "label_counts": {},
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+        },
+    )
+
+    assert payload["status"] == "blocked"
+    assert payload["ready"] is False
+    assert payload["first_blocker"] == "shadow_gate_ready"
+    assert payload["canonical_next_action"] == "Review residual market-bar rows."
+    assert payload["canonical_next_command"] == (
+        "catalyst-radar market-bars residual-review --expected-as-of 2026-05-15"
+    )
+    first = payload["blockers"][0]
+    assert first["code"] == "shadow_gate_ready"
+    assert first["next_command"] == payload["canonical_next_command"]
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
 
 
 def test_operator_next_step_payload_uses_top_queue_row() -> None:

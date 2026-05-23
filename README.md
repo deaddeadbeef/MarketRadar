@@ -1030,7 +1030,9 @@ gate still means decision support only; the highest allowed product state is
 `EligibleForManualBuyReview`, not autonomous trading or investment advice.
 The JSON payload exposes `first_blocker`, `first_gap_count`,
 `canonical_next_action`, and `canonical_next_command` so scripts can identify
-the first battle-test blocker without parsing the full check list.
+the first battle-test blocker without parsing the full check list. Human CLI
+output also prints the top-level `next_command`, and blocker rows include
+`next_command` when a safe local or zero-call diagnostic command exists.
 
 For the daily shadow-mode gate, use:
 
