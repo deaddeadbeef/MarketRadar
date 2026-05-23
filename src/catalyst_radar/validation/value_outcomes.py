@@ -277,8 +277,9 @@ def load_value_outcome_coverage_payload(
     missing = [row for row in rows if row["outcome_status"] == "missing"]
     linked = len(rows) - len(missing)
     status_counts = Counter(str(row["outcome_status"]) for row in rows)
-    coverage_pct = round((linked / len(rows)) * 100, 2) if rows else 100.0
+    coverage_pct = round((linked / len(rows)) * 100, 2) if rows else None
     status = _value_outcome_coverage_status(
+        ledger_entry_count=len(rows),
         missing_count=len(missing),
         status_counts=status_counts,
     )
@@ -606,9 +607,12 @@ def _value_outcome_coverage_row(
 
 def _value_outcome_coverage_status(
     *,
+    ledger_entry_count: int,
     missing_count: int,
     status_counts: Counter[str],
 ) -> str:
+    if ledger_entry_count <= 0:
+        return "no_ledger_entries"
     if missing_count:
         return "gaps"
     if any(status != "computed" for status in status_counts):
@@ -617,6 +621,11 @@ def _value_outcome_coverage_status(
 
 
 def _value_outcome_coverage_next_action(status: str) -> str:
+    if status == "no_ledger_entries":
+        return (
+            "Record value-ledger entries for surfaced candidates before outcome "
+            "coverage can be measured."
+        )
     if status == "gaps":
         return (
             "Preview or record missing value outcomes before claiming monthly "

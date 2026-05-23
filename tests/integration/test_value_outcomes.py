@@ -187,6 +187,45 @@ def test_value_outcome_coverage_reports_ledger_rows_missing_outcomes(
     assert ledger_after == ledger_before
 
 
+def test_value_outcome_coverage_reports_no_ledger_entries(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'value-outcome-empty-coverage.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = engine_from_url(database_url)
+    create_schema(engine)
+
+    coverage_exit = main(
+        [
+            "value-outcome",
+            "coverage",
+            "--available-at",
+            "2026-05-31T21:00:00+00:00",
+            "--period-start",
+            "2026-05-01",
+            "--period-end",
+            "2026-05-31",
+            "--json",
+        ]
+    )
+
+    assert coverage_exit == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["schema_version"] == "value-outcome-coverage-v1"
+    assert payload["status"] == "no_ledger_entries"
+    assert payload["ledger_entry_count"] == 0
+    assert payload["linked_outcome_count"] == 0
+    assert payload["missing_outcome_count"] == 0
+    assert payload["computed_outcome_count"] == 0
+    assert payload["coverage_pct"] is None
+    assert "value-ledger entries" in payload["next_action"]
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
+    assert payload["rows"] == []
+
+
 def test_value_outcome_coverage_api_and_monthly_report_surface_missing_rows(
     tmp_path,
     monkeypatch,

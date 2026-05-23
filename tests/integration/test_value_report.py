@@ -139,6 +139,12 @@ def test_value_report_surfaces_missing_candidate_ledger_coverage(
     assert coverage["db_writes_made"] == 0
     assert coverage["rows"][0]["candidate_state_id"] == "state-AAPL"
     assert "--artifact-id state-AAPL" in coverage["rows"][0]["record_command"]
+    outcome_coverage = payload["value_outcome_coverage"]
+    assert outcome_coverage["status"] == "no_ledger_entries"
+    assert outcome_coverage["ledger_entry_count"] == 0
+    assert outcome_coverage["coverage_pct"] is None
+    assert outcome_coverage["external_calls_made"] == 0
+    assert outcome_coverage["db_writes_made"] == 0
     assert payload["external_calls_made"] == 0
     assert payload["db_writes_made"] == 0
 
