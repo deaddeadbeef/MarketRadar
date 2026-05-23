@@ -10263,6 +10263,14 @@ def shadow_readiness_payload(
         "active_universe",
         "latest_market_bars",
     }
+    not_configured_codes = {
+        "provider_call_boundary",
+        "alert_dry_run",
+        "broker_orders_disabled",
+        "llm_real_mode_disabled",
+        "value_ledger_table",
+        "outcome_tracking_table",
+    }
     status = (
         "ready"
         if not blockers
@@ -10273,7 +10281,11 @@ def shadow_readiness_payload(
                 "partial_only"
                 if "scan_scope" in blocker_codes
                 and _shadow_readiness_has_partial_scope(answer)
-                else "blocked"
+                else (
+                    "not_configured"
+                    if blocker_codes <= not_configured_codes
+                    else "blocked"
+                )
             )
         )
     )

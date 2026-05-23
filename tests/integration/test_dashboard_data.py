@@ -1344,7 +1344,7 @@ def test_shadow_readiness_payload_blocks_enabled_broker_orders(
 
     payload = shadow_readiness_payload(engine, config, **_shadow_ready_inputs())
 
-    assert payload["status"] == "blocked"
+    assert payload["status"] == "not_configured"
     assert payload["ready"] is False
     assert [row["code"] for row in payload["blockers"]] == ["broker_orders_disabled"]
     assert payload["safety"]["broker_order_submission_enabled"] is True
