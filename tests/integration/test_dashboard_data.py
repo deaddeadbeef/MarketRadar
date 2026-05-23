@@ -1883,6 +1883,10 @@ def test_priced_in_answer_empty_universe_keeps_universe_as_next_action(
     assert payload["next_command"] == (
         "catalyst-radar ingest-polygon tickers --max-pages 1 --confirm-external-call"
     )
+    assert payload["first_blocker"] == "universe"
+    assert payload["first_gap_count"] == 0
+    assert payload["canonical_next_action"] == payload["next_action"]
+    assert payload["canonical_next_command"] == payload["next_command"]
     assert payload["evidence_completeness"]["first_gap_source"] == "universe"
     assert payload["evidence_completeness"]["next_action"] == payload["next_action"]
     assert payload["full_market_trust_gate"]["first_blocker"] == "universe"
@@ -3863,6 +3867,10 @@ def test_priced_in_answer_routes_zero_liquidity_residual_gap_to_review(
     )
     assert "residual-review" in str(payload["operator_next_step"]["command"])
     assert payload["operator_next_step"]["external_calls_required"] == 0
+    assert payload["first_blocker"] == "market_bars"
+    assert payload["first_gap_count"] == 1
+    assert payload["canonical_next_action"] == payload["next_action"]
+    assert payload["canonical_next_command"] == payload["next_command"]
     assert payload["next_action"] == payload["operator_next_step"]["action"]
     assert payload["next_command"] == payload["operator_next_step"]["command"]
     assert payload["full_market_trust_gate"]["next_action"] == (

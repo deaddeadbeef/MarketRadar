@@ -1,6 +1,38 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 14:00:44 +08:00
+Last updated: 2026-05-23 14:18:25 +08:00
+
+## Latest Priced-In Answer Canonical Blocker Slice
+
+Last updated: 2026-05-23 14:18:25 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains P0 setup/data blocker clarity for the broad
+  priced-in scan, not UI wording polish.
+- A live zero-call operator-DB smoke showed `priced-in-answer --json` could
+  still return no top-level `first_blocker`, even though nested trust-gate and
+  shadow-readiness payloads knew `market_bars` was the first blocker.
+- The useful definition for this slice is concrete: automation, API clients,
+  and the TUI can read one top-level first blocker and one top-level canonical
+  next action from the priced-in answer payload.
+
+Fix in this slice:
+
+- `priced-in-answer --json` now includes top-level `first_blocker`,
+  `first_gap_count`, `canonical_next_action`, and `canonical_next_command`.
+- Those fields are derived from the existing full-market trust gate and
+  operator next step, so they stay aligned with nested payloads.
+- README documents the top-level priced-in answer blocker/action contract.
+
+Safety:
+
+- This is payload-only and makes 0 Polygon/Massive, SEC, Schwab, broker,
+  order, OpenAI, web, app, or provider calls.
+- It writes 0 database rows.
+- It does not execute residual repair, fill market bars, change scan scope,
+  mutate scoring, candidate states, value-ledger rows, outcomes, alert
+  delivery, LLM behavior, or broker/order paths.
 
 ## Latest TUI Value Workflow Parity Slice
 
