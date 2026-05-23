@@ -1261,6 +1261,53 @@ def test_shadow_readiness_payload_reuses_market_bar_blocker_detail(
     assert payload["db_writes_made"] == 0
 
 
+def test_shadow_readiness_payload_returns_partial_only_for_selected_scan_scope(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    inputs = _shadow_ready_inputs()
+    inputs["priced_in_answer"]["scan_scope"] = {
+        "mode": "selected_universe",
+        "explanation": (
+            "Showing rows from universe=liquid-us; the latest run did not scan "
+            "all active securities."
+        ),
+        "full_scan_export_command": "catalyst-radar priced-in-queue --full-scan --all --json",
+    }
+    inputs["priced_in_answer"]["full_scan"].update(
+        {
+            "active_securities": 500,
+            "scanned_rows": 200,
+            "ranked_rows": 25,
+        }
+    )
+    inputs["priced_in_answer"]["full_market_trust_gate"].update(
+        {
+            "status": "blocked",
+            "trusted_full_market_answer": False,
+            "answer": "Latest scan is selected-universe only.",
+            "first_blocker": "scan_scope",
+            "first_gap_count": 300,
+            "unscanned_blocker_rows": 300,
+            "next_action": "catalyst-radar priced-in-queue --full-scan --all --json",
+        }
+    )
+
+    payload = shadow_readiness_payload(engine, AppConfig.from_env({}), **inputs)
+
+    assert payload["status"] == "partial_only"
+    assert payload["ready"] is False
+    assert payload["canonical_next_action"] == (
+        "catalyst-radar priced-in-queue --full-scan --all --json"
+    )
+    assert [row["code"] for row in payload["blockers"]] == [
+        "scan_scope",
+        "trust_gate",
+    ]
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
+
+
 def test_shadow_readiness_payload_accepts_safe_precomputed_shadow_contract(
     tmp_path: Path,
 ) -> None:
