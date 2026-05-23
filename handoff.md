@@ -1,6 +1,39 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-24 02:57:02 +08:00
+Last updated: 2026-05-24 03:02:44 +08:00
+
+## Latest Shadow Counter Environment-Safe Test Slice
+
+Last updated: 2026-05-24 03:02:44 +08:00
+
+Goal alignment / drift check:
+
+- The top-level shadow preview counter contract is correct, but the first
+  merged regression assumed `provider_calls_planned=0`.
+- That assumption only held in a worktree without the root operator `.env.local`.
+  In the real root checkout, configured provider boundaries can make planned
+  calls positive while preview still makes 0 calls and 0 DB writes.
+
+Useful definition:
+
+- Tests should prove the counter contract without depending on a developer's
+  local provider configuration.
+- The invariant is: planned calls are explicit and non-negative, made calls are
+  0 in preview, planned DB writes are explicit, and top-level counters match the
+  nested run audit.
+
+Fix in this slice:
+
+- The shadow-mode regression now asserts environment-safe invariants instead of
+  hard-coding planned provider calls to 0.
+- Human CLI output is checked against the actual planned call count returned by
+  the same preview payload.
+
+Safety:
+
+- Test-only correction plus handoff update.
+- It makes 0 provider, broker, order, OpenAI, SEC, Polygon/Massive, Schwab, web,
+  or app calls and writes 0 operator database rows.
 
 ## Latest Shadow Preview Counter Parity Slice
 
