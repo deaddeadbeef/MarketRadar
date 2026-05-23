@@ -1,6 +1,44 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-24 03:02:44 +08:00
+Last updated: 2026-05-24 03:10:41 +08:00
+
+## Latest Value Report CLI Next-Step Slice
+
+Last updated: 2026-05-24 03:10:41 +08:00
+
+Goal alignment / drift check:
+
+- The mission brief prioritizes monthly value proof over UI wording.
+- `value-report --json` already exposed the first value-proof blocker and a
+  safe canonical next command, but human `value-report` output only showed the
+  verdict, reason, and costs.
+- That meant a CLI-only operator could see `insufficient_evidence` without the
+  exact preview-first command needed to continue the value-ledger/outcome
+  workflow.
+
+Useful definition:
+
+- Human `value-report` output is useful only if it names the first blocker,
+  gap count, next action, and same safe next command as JSON.
+- If the next command is a write preview, it must stay preview-only and must not
+  include `--execute`.
+
+Fix in this slice:
+
+- Human `value-report` output now prints `evidence_gap`, `next_action`, and
+  `next_command=` when `canonical_next_command` is present.
+- Regression coverage verifies the candidate-ledger coverage blocker prints the
+  preview-only `value-ledger record` command, includes zero call/write counters,
+  and does not print `--execute`.
+- README documents the CLI parity.
+
+Safety:
+
+- This is read-only monthly value-report presentation parity only.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls and writes 0 database rows.
+- It does not execute value-ledger writes, outcome writes, residual repair,
+  imports, source batches, LLMs, alert delivery, or orders.
 
 ## Latest Shadow Counter Environment-Safe Test Slice
 

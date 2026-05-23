@@ -8811,6 +8811,17 @@ def _print_value_report(payload: Mapping[str, object]) -> None:
     )
     print(f"reason={_compact_cli_text(payload.get('verdict_reason'))}")
     print(
+        "evidence_gap "
+        f"first_blocker={payload.get('first_blocker') or 'none'} "
+        f"first_gap_count={payload.get('first_gap_count') or 0}"
+    )
+    print(f"next_action={_compact_cli_text(payload.get('next_action'))}")
+    if payload.get("canonical_next_command"):
+        print(
+            "next_command="
+            f"{_compact_cli_text(payload.get('canonical_next_command'))}"
+        )
+    print(
         "decision_support_value_not_profit="
         f"{payload.get('decision_support_value_not_profit')} "
         f"investment_advice={payload.get('investment_advice')}"
