@@ -1155,7 +1155,10 @@ def test_get_radar_shadow_readiness_returns_zero_call_gate(
             "schema_version": "shadow-readiness-v1",
             "status": "setup_required",
             "ready": False,
+            "first_blocker": "universe",
+            "first_gap_count": 0,
             "canonical_next_action": "Seed the scan universe.",
+            "canonical_next_command": None,
             "call_boundary": {
                 "assert_external_calls_required": 0,
                 "assert_db_writes_required": 0,
@@ -1178,7 +1181,10 @@ def test_get_radar_shadow_readiness_returns_zero_call_gate(
         "schema_version": "shadow-readiness-v1",
         "status": "setup_required",
         "ready": False,
+        "first_blocker": "universe",
+        "first_gap_count": 0,
         "canonical_next_action": "Seed the scan universe.",
+        "canonical_next_command": None,
         "call_boundary": {
             "assert_external_calls_required": 0,
             "assert_db_writes_required": 0,

@@ -10361,6 +10361,11 @@ def shadow_readiness_payload(
         ],
     }
     ready = status == "ready"
+    canonical_next_action = (
+        "Run one capped shadow scan only after reviewing the call boundary."
+        if ready
+        else str(first_blocker.get("next_action") or "Clear the first blocker.")
+    )
     return {
         "schema_version": "shadow-readiness-v1",
         "status": status,
@@ -10370,11 +10375,10 @@ def shadow_readiness_payload(
             if ready
             else f"{len(blockers)} blocker(s) prevent trustworthy shadow-mode runs."
         ),
-        "canonical_next_action": (
-            "Run one capped shadow scan only after reviewing the call boundary."
-            if ready
-            else str(first_blocker.get("next_action") or "Clear the first blocker.")
-        ),
+        "first_blocker": _shadow_readiness_first_blocker(first_blocker),
+        "first_gap_count": _shadow_readiness_first_gap_count(first_blocker),
+        "canonical_next_action": canonical_next_action,
+        "canonical_next_command": _shadow_readiness_command(canonical_next_action),
         "useful_definition": (
             "Useful means the scanner covers the intended active universe with fresh "
             "market bars, can explain the priced-in trust gate, has candidate states, "
@@ -10881,6 +10885,42 @@ def _shadow_market_bar_blocker_context(
         ),
         "missing_universe": _row_dict(_mapping_value(blocker, "missing_universe")),
     }
+
+
+def _shadow_readiness_first_blocker(
+    first_blocker: Mapping[str, object],
+) -> str | None:
+    code = str(first_blocker.get("code") or "").strip()
+    if not code:
+        return None
+    if code == "active_universe":
+        return "universe"
+    if code == "latest_market_bars":
+        return "market_bars"
+    return code
+
+
+def _shadow_readiness_first_gap_count(first_blocker: Mapping[str, object]) -> int:
+    metric = _mapping_value(first_blocker, "metric")
+    for source in (first_blocker, metric):
+        for key in (
+            "first_gap_count",
+            "source_gap_count",
+            "missing_as_of_daily_bar_count",
+            "missing_latest_daily_bar_count",
+            "unscanned_blocker_rows",
+        ):
+            value = source.get(key)
+            if value not in (None, ""):
+                return int(_finite_float(value))
+    return 0
+
+
+def _shadow_readiness_command(action: object) -> str | None:
+    text = str(action or "").strip()
+    if text.lower().startswith("catalyst-radar "):
+        return text
+    return None
 
 
 def _shadow_local_table_check(
