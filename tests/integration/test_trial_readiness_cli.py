@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy import create_engine
 
+import catalyst_radar.cli as cli_module
 from catalyst_radar.cli import main
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.dashboard.data import trial_readiness_payload
@@ -104,6 +105,83 @@ def test_assert_trial_ready_allows_read_only_demo_without_claiming_investment_re
         is False
     )
     assert "Any command with --execute" in payload["blocked_until_explicit_approval"]
+
+
+def test_assert_trial_ready_minimum_product_mode_blocks_safe_browsing_only(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'trial-demo-strict.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    assert main(["seed-dashboard-demo"]) == 0
+    capsys.readouterr()
+
+    exit_code = main(
+        [
+            "assert-trial-ready",
+            "--available-at",
+            "2026-05-23T12:00:00+00:00",
+            "--minimum-product",
+            "--json",
+        ]
+    )
+
+    assert exit_code == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["safe_to_try_read_only"] is True
+    assert payload["minimum_useful_product"]["ready"] is False
+    assert payload["minimum_useful_product"]["status"] == "blocked"
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
+
+
+def test_assert_trial_ready_minimum_product_mode_passes_only_when_gate_ready(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'trial-ready-strict.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+
+    def fake_trial_readiness_payload(*_args, **_kwargs) -> dict[str, object]:
+        return {
+            "schema_version": "trial-readiness-v1",
+            "status": "safe_read_only",
+            "safe_to_try_read_only": True,
+            "minimum_useful_product": {
+                "schema_version": "trial-minimum-useful-product-v1",
+                "status": "ready",
+                "ready": True,
+                "external_calls_made": 0,
+                "db_writes_made": 0,
+            },
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+        }
+
+    monkeypatch.setattr(
+        cli_module,
+        "trial_readiness_payload",
+        fake_trial_readiness_payload,
+    )
+
+    exit_code = main(
+        [
+            "assert-trial-ready",
+            "--available-at",
+            "2026-05-23T12:00:00+00:00",
+            "--minimum-product",
+            "--json",
+        ]
+    )
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["minimum_useful_product"]["ready"] is True
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
 
 
 def test_assert_trial_ready_blocks_when_real_llm_mode_is_enabled(

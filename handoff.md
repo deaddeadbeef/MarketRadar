@@ -1,6 +1,46 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-24 01:05:00 +08:00
+Last updated: 2026-05-24 01:15:00 +08:00
+
+## Latest Strict Minimum-Product Gate Slice
+
+Last updated: 2026-05-24 01:15:00 +08:00
+
+Goal alignment / drift check:
+
+- The user wants to try MarketRadar soon, but only stop when it is safe as a
+  real minimum shipped product.
+- `assert-trial-ready` already separated safe read-only browsing from the
+  stricter `minimum_useful_product` verdict, but the command's exit code still
+  represented the safe-browsing gate by default.
+- That is correct for trial usage, but automation needed a hard stop line that
+  fails until `minimum_useful_product.ready=true`.
+
+Useful definition:
+
+- Default `assert-trial-ready --json` remains the safe read-only trial gate.
+- `assert-trial-ready --minimum-product --json` is the shipped-product stop
+  line. It exits successfully only when the nested
+  `minimum_useful_product.ready` gate passes.
+- Both modes must remain local/read-only and preserve the no-hidden-call and
+  no-hidden-write contract.
+
+Fix in this slice:
+
+- Added `--minimum-product` to `assert-trial-ready`.
+- The flag reuses the existing payload and changes only the exit-code decision.
+- Tests cover safe-browsing-only databases failing strict mode and a ready
+  product gate passing strict mode.
+- README now documents the strict shipped-product command.
+
+Safety:
+
+- This is CLI gate semantics only.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls and writes 0 operator DB rows.
+- It does not execute residual repair, import bars, run source batches, mutate
+  candidate state, write value rows/outcomes, run LLMs, deliver alerts, or
+  submit orders.
 
 ## Latest Outcome CLI Alias Slice
 

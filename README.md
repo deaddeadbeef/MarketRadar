@@ -40,6 +40,9 @@ decision-support value. That is the measured target for offsetting 20% of a
 - `catalyst-radar assert-trial-ready --json` is the source-of-truth gate for
   this read-only product-trial boundary. It can pass while
   `assert-shadow-ready` and `assert-investable-readiness` still fail.
+- Use `catalyst-radar assert-trial-ready --minimum-product --json` for the
+  stricter shipped-product stop line. It exits nonzero until
+  `minimum_useful_product.ready=true`.
 - The same payload includes `minimum_useful_product`. Treat that as the stop
   line for a real shipped read-only product: it requires a trusted full-market
   priced-in answer, visible shadow/value gates, and zero hidden calls or writes.
@@ -83,9 +86,10 @@ only when you intentionally choose a label. Do not run `--execute`,
 unless you are deliberately approving that one action.
 
 The stricter shipped-product stop point is
-`assert-trial-ready --json` with `minimum_useful_product.ready=true`. If that
-field is false, MarketRadar may still be safe to browse, but it is not yet a
-real product for decision support. Use
+`assert-trial-ready --minimum-product --json`. That command exits successfully
+only when `minimum_useful_product.ready=true`. If that field is false,
+MarketRadar may still be safe to browse, but it is not yet a real product for
+decision support. Use
 `minimum_useful_product.canonical_next_command`, not the top-level safe-browsing
 command, to find the next blocker-clearing step for that stricter gate.
 
