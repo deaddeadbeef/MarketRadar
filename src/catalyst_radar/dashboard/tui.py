@@ -8217,6 +8217,28 @@ def _costs_lines(payload: Mapping[str, object], width: int) -> list[str]:
     if value_report:
         lines.extend(_wrap(str(value_report.get("decision_support_note") or ""), width))
     lines.append("")
+    evidence_examples = _rows(value_report.get("value_evidence_examples"))
+    if evidence_examples:
+        lines.append("Monthly evidence examples")
+        lines.extend(
+            _table_lines(
+                evidence_examples,
+                [
+                    ("category", "Type", 14),
+                    ("ticker", "Ticker", 8),
+                    ("feedback_label", "Label", 14),
+                    ("supported_action", "Action", 12),
+                    ("user_decision", "Decision", 10),
+                    ("outcome_status", "Outcome", 10),
+                    ("primary_return_text", "Return", 10),
+                    ("attributed_value_usd", "Value", 8),
+                    ("artifact_id", "Artifact", 20),
+                ],
+                width=width,
+                limit=8,
+            )
+        )
+        lines.append("")
     lines.append(str(value_ledger.get("useful_definition") or ""))
     lines.append("")
     lines.extend(

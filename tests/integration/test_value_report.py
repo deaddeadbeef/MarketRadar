@@ -358,10 +358,68 @@ def test_value_report_passes_when_useful_decision_support_covers_40_usd(
     assert payload["llm_reviewed_costs_usd"] == 0.0
     assert payload["cost_per_useful_llm_reviewed_candidate"] is None
     assert payload["outcome_status_counts"] == {"computed": 2}
+    examples = payload["value_evidence_examples"]
+    assert [row["ticker"] for row in examples] == ["MSFT", "AAPL"]
+    assert examples[0]["category"] == "useful"
+    assert examples[0]["feedback_label"] == "good-research"
+    assert examples[0]["supported_action"] == "research"
+    assert examples[0]["user_decision"] == "accepted"
+    assert examples[0]["outcome_status"] == "computed"
+    assert examples[0]["what_found"] == "decision_card:card-MSFT"
+    assert examples[0]["what_happened"] == (
+        "Outcome computed; 10d return 0.1000 after 10 trading day(s)."
+    )
+    assert examples[0]["primary_return_text"] == "10d:0.1000"
+    assert examples[0]["attributed_value_usd"] == 40.0
+    assert "supported research" in examples[0]["summary"]
+    assert payload["best_useful_evidence_examples"] == examples
+    assert payload["noisy_or_false_positive_evidence_examples"] == []
     assert payload["profit_calculation_included"] is False
     assert payload["investment_advice"] is False
     assert payload["external_calls_made"] == 0
     assert payload["db_writes_made"] == 0
+
+
+def test_value_report_cli_prints_joined_evidence_examples(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'value-report-cli-examples.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = engine_from_url(database_url)
+    create_schema(engine)
+    _seed_successful_validation_run(engine)
+    entry_id = _seed_entry(
+        engine,
+        artifact_type="decision_card",
+        artifact_id="card-NVDA",
+        label="useful",
+        ticker="NVDA",
+        estimated_value_usd=50,
+        confidence=0.8,
+        supported_action="research",
+        user_decision="accepted",
+    )
+    _seed_outcome(engine, ledger_id=entry_id, ticker="NVDA")
+
+    exit_code = main(
+        [
+            "value-report",
+            "--month",
+            "2026-05",
+            "--available-at",
+            "2026-05-31T21:00:00+00:00",
+        ]
+    )
+
+    assert exit_code == 0
+    text = capsys.readouterr().out
+    assert "value_evidence_examples category ticker label action decision outcome" in text
+    assert "useful NVDA useful research accepted computed 40.0 10d:0.1000" in text
+    assert "summary=NVDA: found decision_card:card-NVDA; supported research" in text
+    assert "external_calls_made=0" in text
+    assert "db_writes_made=0" in text
 
 
 def test_value_report_cannot_pass_with_missing_validation_evidence(
@@ -646,6 +704,19 @@ def test_cost_page_renders_monthly_value_report() -> None:
                     "precision_at_5": 0.4,
                     "precision_at_10": 0.3,
                 },
+                "value_evidence_examples": [
+                    {
+                        "category": "useful",
+                        "ticker": "MSFT",
+                        "feedback_label": "good-research",
+                        "supported_action": "research",
+                        "user_decision": "accepted",
+                        "outcome_status": "computed",
+                        "primary_return_text": "10d:0.1000",
+                        "attributed_value_usd": 40.0,
+                        "artifact_id": "card-MSFT",
+                    }
+                ],
             },
         },
         page="costs",
@@ -668,6 +739,9 @@ def test_cost_page_renders_monthly_value_report() -> None:
     assert "MR wins=1, baseline wins=1" in text
     assert "Precision at 5 / 10" in text
     assert "0.4 / 0.3" in text
+    assert "Monthly evidence examples" in text
+    assert "MSFT" in text
+    assert "10d:0.1000" in text
     assert "Decision-support value, not realized profit." in text
 
 
