@@ -92,7 +92,7 @@ def shadow_mode_status_payload(
     first_blocker = _shadow_mode_status_first_blocker(readiness)
     return {
         "schema_version": "shadow-mode-status-v1",
-        "status": latest.status if latest is not None else "no_shadow_run",
+        "status": _shadow_mode_status_label(latest, readiness),
         "latest": latest_payload,
         "shadow_readiness_status": readiness.get("status") or "unknown",
         "ready_for_shadow_run": bool(readiness.get("ready")),
@@ -420,6 +420,20 @@ def _shadow_mode_status_next_action(
     if latest is not None:
         return _shadow_mode_next_action(latest)
     return "Run `catalyst-radar shadow-mode run --preview` to inspect the daily audit row."
+
+
+def _shadow_mode_status_label(
+    latest: ShadowModeRun | None,
+    readiness: Mapping[str, object],
+) -> str:
+    if latest is None:
+        return "no_shadow_run"
+    if bool(readiness.get("ready")):
+        return latest.status
+    status = readiness.get("status")
+    if isinstance(status, str) and status.strip():
+        return status.strip()
+    return latest.status
 
 
 def _shadow_mode_status_first_blocker(readiness: Mapping[str, object]) -> str | None:
