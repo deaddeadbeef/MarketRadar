@@ -3973,6 +3973,34 @@ def _priced_in_answer_operator_next_step(
     }
 
 
+def _priced_in_answer_canonical_next_step(
+    full_market_trust_gate: Mapping[str, object],
+    *,
+    fallback_action: str,
+    fallback_command: str,
+) -> tuple[str, str]:
+    """Use specific market-bar recommendations when fallback guidance is stale."""
+
+    recommended = _mapping_value(full_market_trust_gate, "recommended_action")
+    if str(recommended.get("kind") or "").strip() != "residual_universe_review":
+        return fallback_action, fallback_command
+    action = str(
+        recommended.get("reason")
+        or recommended.get("next_action")
+        or full_market_trust_gate.get("next_action")
+        or fallback_action
+        or ""
+    ).strip()
+    command = str(
+        recommended.get("cli_command")
+        or recommended.get("command")
+        or full_market_trust_gate.get("next_command")
+        or fallback_command
+        or ""
+    ).strip()
+    return action, command
+
+
 def _priced_in_operator_response_after_action(action_kind: str):
     if action_kind == "saved_provider_capture":
         return (
@@ -4332,6 +4360,13 @@ def priced_in_answer_payload(
     )
     if after_current_blocker:
         full_market_trust_gate["after_current_blocker"] = after_current_blocker
+    next_action, next_command = _priced_in_answer_canonical_next_step(
+        full_market_trust_gate,
+        fallback_action=next_action,
+        fallback_command=next_command,
+    )
+    full_market_trust_gate["next_action"] = next_action
+    full_market_trust_gate["next_command"] = next_command
     investment_decision_boundary = (
         "Priced-in answer readiness is not trade approval. Use the separate "
         "radar readiness/manual_buy_review gate before any investment decision."

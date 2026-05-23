@@ -1,6 +1,39 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 09:05:00 +08:00
+Last updated: 2026-05-23 09:48:00 +08:00
+
+## Latest Priced-In Canonical Next-Action Slice
+
+Last updated: 2026-05-23 09:48:00 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains the broad priced-in scan. This slice is still P0/M1 blocker alignment, not UI polish, scoring work, provider calls, or LLM expansion.
+- Current `main` exposed mixed guidance on the operator DB: `operator_next_step` pointed to residual review, while top-level `priced-in-answer.next_action` / `next_command` and the trust gate still pointed at the older manual market-bar template.
+- That contradicted the mission-brief requirement that `priced-in-answer --json` expose one canonical first blocker and one canonical next action.
+
+Fix in this slice:
+
+- When the market-bar recommended action is `residual_universe_review`, `priced-in-answer` now propagates that action/command to:
+  - top-level `next_action` and `next_command`;
+  - `full_market_trust_gate.next_action` and `next_command`;
+  - `operator_next_step`.
+- The change is deliberately narrow. Generic manual CSV, source-gap, and decision-artifact next-step behavior is preserved.
+- README documents the canonical residual-review action propagation.
+
+Validation observed in this slice:
+
+- Focused canonical residual-review regression passed.
+- Broader dashboard/priced-in regression selection passed: 22 passed.
+- Shadow readiness and shadow-mode regressions passed: 8 passed.
+- `ruff check` passed for touched dashboard data and integration tests.
+- `compileall` passed for `src` and touched dashboard tests.
+- `git diff --check` passed.
+- Operator-DB zero-call smoke with this worktree pinned through `PYTHONPATH` returned one canonical residual-review command across top-level, trust gate, and operator step, with `external_calls_made=0` and `db_writes_made=0`.
+
+Current live blocker:
+
+- The all-active trusted answer remains blocked by 579 missing `2026-05-15` market bars until the operator explicitly fills real residual bars or executes the guarded local residual repair. Do not execute the repair against the operator DB without separate explicit instruction.
 
 ## Latest Residual Market-Bar Repair Slice
 

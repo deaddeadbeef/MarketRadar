@@ -3757,6 +3757,14 @@ def test_priced_in_answer_routes_zero_liquidity_residual_gap_to_review(
     )
     assert "residual-review" in str(payload["operator_next_step"]["command"])
     assert payload["operator_next_step"]["external_calls_required"] == 0
+    assert payload["next_action"] == payload["operator_next_step"]["action"]
+    assert payload["next_command"] == payload["operator_next_step"]["command"]
+    assert payload["full_market_trust_gate"]["next_action"] == (
+        payload["operator_next_step"]["action"]
+    )
+    assert payload["full_market_trust_gate"]["next_command"] == (
+        payload["operator_next_step"]["command"]
+    )
     assert payload["external_calls_made"] == 0
 
 
