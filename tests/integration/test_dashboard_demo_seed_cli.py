@@ -148,6 +148,9 @@ def test_dashboard_snapshot_cli_outputs_dashboard_command_center_json(
     assert payload["controls"]["priced_in_usefulness"] is None
     assert payload["controls"]["priced_in_decision_gap"] == []
     assert payload["readiness"]["schema_version"] == "radar-readiness-v1"
+    assert payload["trial_readiness"]["schema_version"] == "trial-readiness-v1"
+    assert payload["trial_readiness"]["safe_to_try_read_only"] is True
+    assert payload["trial_readiness"]["ready_for_investment_decision"] is False
     assert payload["live_activation"]["schema_version"] == (
         "live-data-activation-contract-v1"
     )

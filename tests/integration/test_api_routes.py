@@ -1198,6 +1198,57 @@ def test_get_radar_shadow_readiness_returns_zero_call_gate(
     }
 
 
+def test_get_radar_trial_readiness_returns_read_only_gate(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "radar-trial-readiness.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+    monkeypatch.setattr(
+        dashboard_data,
+        "trial_readiness_payload",
+        lambda _engine, _config, *, month=None, available_at=None: {
+            "schema_version": "trial-readiness-v1",
+            "status": "safe_read_only",
+            "safe_to_try_read_only": True,
+            "ready_for_shadow_mode": False,
+            "ready_for_investment_decision": False,
+            "canonical_next_action": "Open the dashboard.",
+            "canonical_next_command": "catalyst-radar dashboard-tui",
+            "minimum_features_required": {
+                "read_only_priced_in_answer": True,
+                "zero_hidden_calls_or_writes": True,
+            },
+            "blockers": [],
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+        },
+        raising=False,
+    )
+    client = TestClient(create_app())
+
+    response = client.get("/api/radar/trial/readiness?month=2026-05")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "schema_version": "trial-readiness-v1",
+        "status": "safe_read_only",
+        "safe_to_try_read_only": True,
+        "ready_for_shadow_mode": False,
+        "ready_for_investment_decision": False,
+        "canonical_next_action": "Open the dashboard.",
+        "canonical_next_command": "catalyst-radar dashboard-tui",
+        "minimum_features_required": {
+            "read_only_priced_in_answer": True,
+            "zero_hidden_calls_or_writes": True,
+        },
+        "blockers": [],
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+    }
+
+
 def test_get_radar_investable_readiness_returns_battle_test_gate(
     tmp_path,
     monkeypatch,
