@@ -14,14 +14,34 @@ from catalyst_radar.core.models import ActionState
 from catalyst_radar.storage.db import create_schema, engine_from_url
 from catalyst_radar.storage.schema import daily_bars, securities, shadow_mode_runs
 from catalyst_radar.storage.validation_repositories import ValidationRepository
+from catalyst_radar.validation import shadow_mode
 from catalyst_radar.validation.shadow_mode import (
     _shadow_mode_next_action,
     build_shadow_mode_run,
     classify_shadow_run_status,
+    shadow_mode_latest_payload,
+    shadow_mode_run_payload,
     shadow_mode_status_payload,
 )
 
 AVAILABLE_AT = "2026-05-22T21:00:00+00:00"
+
+
+def _approval_packet() -> dict[str, object]:
+    return {
+        "schema_version": "shadow-readiness-approval-required-v1",
+        "area": "market_bars",
+        "status": "ready_to_execute",
+        "approval_required": True,
+        "approval_command": (
+            "catalyst-radar market-bars residual-repair --expected-as-of "
+            "2026-05-21 --expect-missing-count 1 --expect-eligible-count 1 "
+            "--execute --json"
+        ),
+        "db_writes_required_to_execute": 1,
+        "external_calls_made": 0,
+        "db_writes_made": 0,
+    }
 
 
 def test_shadow_mode_cli_preview_execute_and_latest(
@@ -190,6 +210,49 @@ def test_shadow_mode_latest_without_run_surfaces_readiness_next_step(
     assert "external_calls_made=0" in human_output
     assert "db_writes_made=0" in human_output
     assert "next_action=" in human_output
+
+
+def test_shadow_mode_latest_surfaces_approval_packet_without_run(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'shadow-latest-approval.db').as_posix()}"
+    engine = engine_from_url(database_url)
+    create_schema(engine)
+    approval = _approval_packet()
+
+    def fake_readiness(_engine, _config):
+        return {
+            "status": "setup_required",
+            "ready": False,
+            "first_blocker": "market_bars",
+            "first_gap_count": 1,
+            "canonical_next_action": "Review residual market-bar rows.",
+            "canonical_next_command": (
+                "catalyst-radar market-bars residual-review "
+                "--expected-as-of 2026-05-21"
+            ),
+            "approval_required_unblock": approval,
+        }
+
+    monkeypatch.setattr(shadow_mode, "_local_shadow_readiness", fake_readiness)
+
+    payload = shadow_mode_latest_payload(
+        engine,
+        AppConfig(database_url=database_url),
+        available_at=datetime.fromisoformat(AVAILABLE_AT),
+    )
+
+    assert payload["status"] == "not_found"
+    assert payload["first_blocker"] == "market_bars"
+    assert payload["canonical_next_command"] == (
+        "catalyst-radar market-bars residual-review --expected-as-of 2026-05-21"
+    )
+    assert payload["approval_required_unblock"] == approval
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
+    with engine.connect() as conn:
+        assert conn.execute(select(func.count()).select_from(shadow_mode_runs)).scalar_one() == 0
 
 
 def test_shadow_mode_api_preview_and_latest(tmp_path, monkeypatch) -> None:
@@ -660,6 +723,7 @@ def test_shadow_mode_status_keeps_readiness_action_and_command_separate(tmp_path
     engine = engine_from_url(database_url)
     create_schema(engine)
 
+    approval = _approval_packet()
     payload = shadow_mode_status_payload(
         engine,
         AppConfig(database_url=database_url),
@@ -673,6 +737,7 @@ def test_shadow_mode_status_keeps_readiness_action_and_command_separate(tmp_path
                 "catalyst-radar market-bars residual-review "
                 "--expected-as-of 2026-05-21"
             ),
+            "approval_required_unblock": approval,
         },
     )
 
@@ -684,8 +749,77 @@ def test_shadow_mode_status_keeps_readiness_action_and_command_separate(tmp_path
     assert payload["canonical_next_command"] == (
         "catalyst-radar market-bars residual-review --expected-as-of 2026-05-21"
     )
+    assert payload["approval_required_unblock"] == approval
     assert payload["external_calls_made"] == 0
     assert payload["db_writes_made"] == 0
+
+
+def test_shadow_mode_run_surfaces_approval_packet_without_execute(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'shadow-run-approval.db').as_posix()}"
+    engine = engine_from_url(database_url)
+    create_schema(engine)
+    approval = _approval_packet()
+
+    def fake_snapshot(_engine, _config, *, available_at):
+        return {
+            "shadow_readiness": {
+                "status": "setup_required",
+                "ready": False,
+                "first_blocker": "market_bars",
+                "first_gap_count": 1,
+                "canonical_next_action": "Review residual market-bar rows.",
+                "canonical_next_command": (
+                    "catalyst-radar market-bars residual-review "
+                    "--expected-as-of 2026-05-21"
+                ),
+                "approval_required_unblock": approval,
+                "blockers": [{"code": "latest_market_bars"}],
+                "call_boundary": {"planned_run_external_call_count_max": 0},
+                "snapshots": {"scan_scope": {"mode": "full_scan"}},
+                "checks": [
+                    {
+                        "code": "latest_market_bars",
+                        "metric": {"missing_as_of_daily_bar_count": 1},
+                    },
+                    {"code": "validation_ready", "status": "blocked"},
+                ],
+            },
+            "discovery_snapshot": {
+                "yield": {
+                    "candidate_states": 0,
+                    "requested_securities": 2,
+                    "scanned_securities": 0,
+                },
+                "freshness": {
+                    "active_security_count": 2,
+                    "missing_as_of_daily_bar_count": 1,
+                    "latest_daily_bar_date": "2026-05-21",
+                },
+            },
+            "latest_run": {"as_of": "2026-05-21"},
+            "candidate_rows": [],
+        }
+
+    monkeypatch.setattr(shadow_mode, "_local_shadow_snapshot", fake_snapshot)
+
+    payload = shadow_mode_run_payload(
+        engine,
+        AppConfig(database_url=database_url),
+        available_at=datetime.fromisoformat(AVAILABLE_AT),
+        execute=False,
+    )
+
+    assert payload["mode"] == "preview"
+    assert payload["status"] == "setup_required"
+    assert payload["first_blocker"] == "market_bars"
+    assert payload["approval_required_unblock"] == approval
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
+    with engine.connect() as conn:
+        assert conn.execute(select(func.count()).select_from(shadow_mode_runs)).scalar_one() == 0
 
 
 def test_shadow_mode_status_does_not_mask_current_blocker_with_valid_latest(

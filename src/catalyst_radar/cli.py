@@ -8501,6 +8501,7 @@ def _print_shadow_mode_status(payload: Mapping[str, object]) -> None:
             f"blockers={run.get('blocker_count')}"
         )
     print(f"next_action={_compact_cli_text(payload.get('next_action'))}")
+    _print_shadow_mode_approval_packet(payload)
 
 
 def _print_shadow_mode_run(payload: Mapping[str, object]) -> None:
@@ -8534,6 +8535,7 @@ def _print_shadow_mode_run(payload: Mapping[str, object]) -> None:
         f"validation={run.get('validation_status')}"
     )
     print(f"next_action={_compact_cli_text(payload.get('next_action'))}")
+    _print_shadow_mode_approval_packet(payload)
     print(f"useful_definition={_compact_cli_text(payload.get('useful_definition'))}")
 
 
@@ -8554,6 +8556,7 @@ def _print_shadow_mode_latest(payload: Mapping[str, object]) -> None:
                 "next_command="
                 f"{_compact_cli_text(payload.get('canonical_next_command'))}"
             )
+        _print_shadow_mode_approval_packet(payload)
         return
     print(
         "shadow_mode_latest "
@@ -8572,6 +8575,7 @@ def _print_shadow_mode_latest(payload: Mapping[str, object]) -> None:
             "next_command="
             f"{_compact_cli_text(payload.get('canonical_next_command'))}"
         )
+    _print_shadow_mode_approval_packet(payload)
 
 
 def _print_shadow_mode_list(payload: Mapping[str, object]) -> None:
@@ -8748,6 +8752,26 @@ def _print_value_ledger_coverage(payload: Mapping[str, object]) -> None:
         print(
             "next_command="
             f"{_compact_cli_text(payload.get('canonical_next_command'))}"
+        )
+
+
+def _print_shadow_mode_approval_packet(payload: Mapping[str, object]) -> None:
+    approval = payload.get("approval_required_unblock")
+    if not isinstance(approval, Mapping):
+        return
+    print(
+        "approval_required_unblock "
+        f"area={approval.get('area') or 'n/a'} "
+        f"status={approval.get('status') or 'unknown'} "
+        f"db_writes_required_to_execute="
+        f"{approval.get('db_writes_required_to_execute') or 0} "
+        f"external_calls_made={approval.get('external_calls_made') or 0} "
+        f"db_writes_made={approval.get('db_writes_made') or 0}"
+    )
+    if approval.get("approval_command"):
+        print(
+            "approval_command="
+            f"{_compact_cli_text(approval.get('approval_command'))}"
         )
 
 
