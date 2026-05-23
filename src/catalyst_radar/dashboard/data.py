@@ -10260,6 +10260,7 @@ def shadow_readiness_payload(
     engine: Engine,
     config: AppConfig,
     *,
+    available_at: datetime | None = None,
     radar_readiness: Mapping[str, object] | None = None,
     priced_in_answer: Mapping[str, object] | None = None,
     call_plan: Mapping[str, object] | None = None,
@@ -10267,9 +10268,12 @@ def shadow_readiness_payload(
     validation_summary: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """Return the local-only release gate for daily shadow-mode operation."""
+    cutoff = _as_utc_datetime_or_none(available_at)
     health = (
         _row_dict(ops_health)
         if isinstance(ops_health, Mapping)
+        else load_ops_health(engine, now=cutoff)
+        if cutoff is not None
         else load_ops_health(engine)
     )
     readiness = (
@@ -10280,7 +10284,13 @@ def shadow_readiness_payload(
     answer = (
         _row_dict(priced_in_answer)
         if isinstance(priced_in_answer, Mapping)
-        else priced_in_answer_payload(engine, config, limit=1, status="all")
+        else priced_in_answer_payload(
+            engine,
+            config,
+            limit=1,
+            available_at=cutoff,
+            status="all",
+        )
     )
     plan = (
         _row_dict(call_plan)
@@ -10360,6 +10370,7 @@ def shadow_readiness_payload(
     return {
         "schema_version": "shadow-readiness-v1",
         "status": status,
+        "available_at": cutoff.isoformat() if cutoff is not None else None,
         "ready": ready,
         "headline": (
             "Shadow-mode scan is ready for a guarded daily run."
@@ -10422,12 +10433,23 @@ def trial_readiness_payload(
     answer = (
         _row_dict(priced_in_answer)
         if isinstance(priced_in_answer, Mapping)
-        else priced_in_answer_payload(engine, config, limit=5, status="all")
+        else priced_in_answer_payload(
+            engine,
+            config,
+            limit=5,
+            available_at=cutoff,
+            status="all",
+        )
     )
     shadow = (
         _row_dict(shadow_readiness)
         if isinstance(shadow_readiness, Mapping)
-        else shadow_readiness_payload(engine, config, priced_in_answer=answer)
+        else shadow_readiness_payload(
+            engine,
+            config,
+            available_at=cutoff,
+            priced_in_answer=answer,
+        )
     )
     monthly_value = (
         _row_dict(value_report)

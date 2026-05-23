@@ -834,6 +834,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     assert_shadow_ready = subparsers.add_parser("assert-shadow-ready")
     assert_shadow_ready.add_argument("--database-url")
+    assert_shadow_ready.add_argument("--available-at", type=_parse_aware_datetime)
     assert_shadow_ready.add_argument("--json", action="store_true")
 
     assert_trial_ready = subparsers.add_parser("assert-trial-ready")
@@ -1758,7 +1759,11 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "assert-shadow-ready":
         create_schema(engine)
-        payload = shadow_readiness_payload(engine, config)
+        payload = shadow_readiness_payload(
+            engine,
+            config,
+            available_at=args.available_at,
+        )
         if args.json:
             print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
         else:

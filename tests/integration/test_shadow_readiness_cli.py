@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 
+import catalyst_radar.cli as cli_module
 from catalyst_radar.cli import main
 
 
@@ -49,6 +51,54 @@ def test_assert_shadow_ready_cli_fails_closed_without_calls_or_writes(
         "candidate_state_pipeline",
         "validation_ready",
     }
+
+
+def test_assert_shadow_ready_cli_passes_available_at_cutoff(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'shadow-cutoff.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    captured: dict[str, datetime | None] = {}
+
+    def fake_shadow_readiness_payload(
+        _engine,
+        _config,
+        *,
+        available_at=None,
+    ) -> dict[str, object]:
+        captured["available_at"] = available_at
+        return {
+            "schema_version": "shadow-readiness-v1",
+            "status": "setup_required",
+            "available_at": available_at.isoformat() if available_at else None,
+            "ready": False,
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+        }
+
+    monkeypatch.setattr(
+        cli_module,
+        "shadow_readiness_payload",
+        fake_shadow_readiness_payload,
+    )
+
+    exit_code = main(
+        [
+            "assert-shadow-ready",
+            "--available-at",
+            "2026-05-23T16:00:00+00:00",
+            "--json",
+        ]
+    )
+
+    assert exit_code == 1
+    assert captured["available_at"] == datetime(2026, 5, 23, 16, tzinfo=UTC)
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["available_at"] == "2026-05-23T16:00:00+00:00"
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
 
 
 def test_sample_csv_ingest_reaches_market_bar_ready_state(
