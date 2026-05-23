@@ -1,18 +1,77 @@
 # Catalyst Radar
 
-Catalyst Radar is a deterministic-first market radar for public-equity opportunity review.
+Catalyst Radar is a deterministic-first market radar for public-equity
+opportunity review. It scans the broad stock market and highlights stocks where
+market emotion or expectations may not be fully matched by price reaction.
 
-The product goal is to scan the broad stock market and highlight stocks where
-market emotion or expectations may not be fully matched by price reaction. The
-downstream value goal is to prove at least $40/month of attributable
-decision-support value, enough to offset 20% of a $200/month ChatGPT Pro
-subscription. That value must be measured with evidence such as useful surfaced
-opportunities, avoided bad decisions, time saved, and paper/live outcomes; it
-is not a profit guarantee or investment advice.
+The product is decision support only. It does not make autonomous trades, does
+not submit broker orders, and must not be treated as investment advice or a
+profit guarantee.
 
-Phase 1 builds the scanner, feature engine, policy gates, portfolio risk checks, validation skeleton, and dashboard without LLM calls.
+## Start Here
 
-## Local setup
+### Product Goal
+
+The near-term goal is to reach a repeatable full-market shadow scan, record what
+MarketRadar surfaced, track what happened afterward, compare against simple
+baselines, and prove whether it creates at least `$40/month` of attributable
+decision-support value. That is the measured target for offsetting 20% of a
+`$200/month` ChatGPT Pro subscription.
+
+### Current Product Truth
+
+- MarketRadar has a scanner, feature engine, policy gates, candidate packets,
+  decision cards, provider-call boundaries, CLI/API surfaces, and a terminal
+  dashboard.
+- It is not investment-ready. The release gate must keep failing until shadow
+  runs, value ledger coverage, outcome tracking, validation, and monthly value
+  evidence are measured.
+- The current operational blocker can change by database. Run
+  `catalyst-radar market-bars status --json`,
+  `catalyst-radar assert-shadow-ready --json`, and
+  `catalyst-radar value-report --month YYYY-MM --json` for source-of-truth
+  status instead of trusting stale README counts.
+- Full market means the local active universe, not the small demo ticker set and
+  not the narrower `liquid-us` configured universe.
+
+### For Humans
+
+Start with:
+
+```powershell
+radar
+catalyst-radar priced-in-answer --json
+catalyst-radar market-bars status --json
+catalyst-radar value-report --month YYYY-MM --json
+```
+
+Use the first blocker and canonical next command from those payloads. Do not run
+commands with `--execute`, `--confirm-external-call`, real OpenAI mode, Schwab
+writes, or broker/order paths unless you intentionally approve that action.
+
+### For AI Agents
+
+Read `handoff.md` first, then this README. Work down the mission in this order:
+fresh full-market bars, repeatable shadow runs, value ledger coverage, forward
+outcomes, validation baselines, monthly value proof. Prefer data and validation
+over more UI wording. Preserve the zero-hidden-call contract and keep LLMs
+optional, sparse, budgeted, and unable to mutate deterministic scores or gates.
+
+### README Map
+
+1. Quick Start: install, local DB, demo seed.
+2. Providers And Full-Market Scan: provider modes, full-market semantics,
+   source-fill planning, live activation.
+3. Dashboards, APIs, And Operator Surfaces: TUI, CLI, API, agent brief.
+4. Readiness And Market-Bar Repair: status, residual review, manual/saved repair.
+5. Shadow Mode And Value Proof: shadow gate, ledger, outcomes, value report,
+   validation reports.
+6. Agent And LLM Boundary: official OpenAI paths and disabled Copilot boundary.
+7. Verification: local commands and phase acceptance.
+
+## 1. Quick Start
+
+### Local setup
 
 ```powershell
 python -m venv .venv
@@ -22,7 +81,7 @@ Copy-Item .env.example .env.local
 pytest
 ```
 
-## Local database
+### Local database
 
 SQLite is the default local database:
 
@@ -54,7 +113,9 @@ $env:CATALYST_DATABASE_URL="postgresql+psycopg://catalyst:catalyst@localhost:543
 catalyst-radar init-db
 ```
 
-## Provider configuration
+## 2. Providers And Full-Market Scan
+
+### Provider modes
 
 Real daily-radar provider settings are configured through environment variables.
 For the first useful live smoke without a market-data key, keep market data on
@@ -74,6 +135,8 @@ For live scheduled providers, `run-daily` fails closed unless
 `--confirm-external-call` is present. The unconfirmed JSON output reports
 `external_calls_planned`, `db_writes_planned`, `external_calls_made=0`, and
 `db_writes_made=0` before any provider call or database write.
+
+### Full-market scan contract
 
 A full-market scan means all active securities currently stored locally, not the
 few demo tickers and not the smaller `liquid-us` liquidity filter. Polygon/Massive
@@ -101,6 +164,8 @@ ticker count. If your Polygon/Massive plan is rate-limited, set
 `CATALYST_POLYGON_TICKER_PAGE_DELAY_SECONDS` before running a multi-page ticker
 seed so pagination is paced deliberately.
 
+### Full-market PowerShell workflow
+
 For the same path as a plan-first PowerShell workflow:
 
 ```powershell
@@ -114,6 +179,8 @@ cap and page delay only in the current PowerShell process, then runs ticker
 seed, grouped-daily ingest, an all-active daily radar run, and priced-in queue
 review. Add `-UseUniverse` only when you intentionally want the smaller
 `liquid-us`-style selected-universe scan.
+
+### Scan scope and source-fill planning
 
 The dashboard shows active security count, requested/scanned securities, fresh
 bar coverage, and candidate count so a selected universe is not mistaken for a
@@ -264,6 +331,8 @@ when that gate is clear. The API equivalents are
 `GET /api/radar/priced-in/source-batches?source=all` and
 `POST /api/radar/priced-in/source-batches/execute-next`.
 
+### Live activation and broker boundaries
+
 Before any live provider call, run the activation checker and inspect the
 call plan:
 
@@ -300,7 +369,9 @@ Fixture-backed tests and local CSV flows do not require provider credentials.
 Universe defaults are documented in `.env.example`; adjust the threshold values
 there before building point-in-time universe snapshots.
 
-## Dashboard
+## 3. Dashboards, APIs, And Operator Surfaces
+
+### Run the local dashboards
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/restart-local.ps1
@@ -337,6 +408,8 @@ to this repo: it creates `.venv` if needed, installs the editable
 `main` to `origin/main`, and then starts the TUI. It does not set `PYTHONPATH`
 or mutate the caller's shell environment. Use `radar --no-update` to skip the
 Git update step and `radar --force-install` to refresh the editable install.
+
+### Terminal dashboard basics
 
 The TUI is the operational replacement surface for the web dashboard. It loads
 the same command-center data helpers and provides pages for tutorial, insights,
@@ -398,6 +471,8 @@ orders: `action <ticker> <watch|ready|simulate_entry|dismiss> [notes]`,
 `ticket <ticker> <buy|sell> <entry> <stop> [risk_pct] [notes]`, and
 `feedback <alert-id|#> <label> [notes]`.
 
+### Local status scripts
+
 For a zero-call local sitrep:
 
 ```powershell
@@ -429,6 +504,8 @@ call count if approved, and the zero-call question to review before running
 the reviewed counts and scope, including `--stocks-only` / `stocks_only=true`
 when the plan is stock-like; stale or missing guard values block capture with
 `external_calls_made=0` and `db_writes_made=0`.
+
+### Scriptable priced-in surfaces
 
 For functional end-to-end tests of the same command-center data the dashboard
 renders:
@@ -500,6 +577,8 @@ separate readiness/manual-buy-review gate. The same payload now includes
 blocker, next command, TUI alias, approval flag, provider-call count,
 database-write count, and expected response after the action.
 
+### Agent brief surface
+
 `agent-brief` is the CLI surface for the OpenAI Agents SDK operator layer. By
 default it runs a deterministic dry-run brief from the same redacted dashboard
 snapshot, with four roles: Data Sentinel, Catalyst Analyst, Risk Officer, and
@@ -532,6 +611,10 @@ filesystem, web, or order-submission tools.
 
 See `docs/dashboard-feature-inventory.md` for the current dashboard feature
 inventory and TUI coverage.
+
+## 4. Readiness And Market-Bar Repair
+
+### Market-bar status and repair plan
 
 When the sitrep or `priced-in-preflight --json` says the broad scan
 is blocked on `market_bars`, inspect the repair plan first:
@@ -593,6 +676,9 @@ zero-call unblock checklist,
 stock-like gap, non-stock remainder, and `after_market_bars_clear` preview, so
 the dashboard explains both the current blocker and the next source to inspect
 after the blocker clears.
+
+### Residual review
+
 If the remaining missing rows look like zero-liquidity universe-quality data,
 `recommended_action.kind` becomes `residual_universe_review` even when no saved
 provider file exists yet. Use the zero-call review command before provider
@@ -654,6 +740,9 @@ Execute request bodies must include `execute=true`, `expected_missing_count`, an
 `expected_eligible_count`. This path only sets qualifying local
 `securities.is_active=false` rows with a repair marker; it never fills bars,
 calls Polygon/Massive, SEC, Schwab, OpenAI, web providers, or submits orders.
+
+### Manual, saved-provider, options, and CIK repair
+
 For manual zero-call repair, `bars manual template` generates the full
 active-universe missing-bar CSV by default, `bars manual import` previews
 complete rows only with 0 provider calls and 0 DB writes, and
@@ -772,6 +861,10 @@ Saved-file validation/import and manual CSV import make 0 Polygon, SEC, Schwab,
 or OpenAI calls. After importing, rerun `scripts/market-radar-status.ps1`, then
 use the plan-only smoke before any capped live radar cycle.
 
+## 5. Shadow Mode And Value Proof
+
+### Operator evidence exports
+
 For a redacted raw telemetry evidence snapshot:
 
 ```powershell
@@ -810,6 +903,8 @@ powershell -ExecutionPolicy Bypass -File scripts/export-pr-ledger.ps1 -OutputPat
 
 `scripts/export-operator-evidence.ps1` prefers that ignored current snapshot
 when it exists, then falls back to the checked-in ledger.
+
+### Readiness gates
 
 For the zero-call battle-test release gate that exits non-zero until Market
 Radar has enough evidence for a future limited-capital manual review:
@@ -861,6 +956,8 @@ setup checks are otherwise clear; empty universe or missing market bars still
 return `setup_required`. Config-only safety blockers such as enabled broker
 order submission return `not_configured`.
 
+### Shadow-mode run records
+
 To persist a daily shadow-mode audit row from local data only:
 
 ```powershell
@@ -885,6 +982,8 @@ current readiness canonical next action whenever current readiness is not ready,
 so a stale persisted run cannot hide today's first unblock command. The status
 payload exposes `first_blocker`, `first_gap_count`, `canonical_next_action`, and
 `canonical_next_command` for the current readiness gate.
+
+### Value ledger
 
 To track whether Market Radar is paying for itself, record local value evidence
 with the value ledger. The default `add` command is a preview and writes nothing;
@@ -939,6 +1038,8 @@ before writing anything. When coverage has gaps, the payload exposes
 `first_missing_candidate_state_id`, `first_missing_ticker`, and
 `canonical_next_command` for the first non-executing ledger-record command.
 
+### Forward outcomes
+
 Forward outcomes are computed from already stored point-in-time daily bars:
 
 ```powershell
@@ -982,6 +1083,8 @@ bullish/bearish direction check and `gap_outcome` / `gap_return` from the first
 available post-entry bar, so outcome review can separate follow-through from
 initial gap behavior.
 
+### Monthly value report
+
 To answer the monthly value-proof question, generate a read-only value report:
 
 ```powershell
@@ -1019,6 +1122,8 @@ the next validation-replay action when no validation run exists. The terminal
 dashboard Costs page surfaces the same candidate ledger coverage and
 missing-ledger count for human review.
 
+### Validation and calibration reports
+
 To compare MarketRadar against simple deterministic baselines before tuning
 scores or adding more intelligence, run a point-in-time validation replay and
 then inspect the report:
@@ -1054,6 +1159,8 @@ source quality, sentiment, theme match, theme velocity, and theme-hit signals.
 Those measurements are evidence only; they do not replace the local text model
 or change scoring until validation evidence justifies a separate policy change.
 
+### Live activation reminder
+
 After editing `.env.local`, run the activation checker before making live
 provider calls:
 
@@ -1072,11 +1179,13 @@ values plus the safe next commands before any provider request can happen. The
 worker script uses the same plan-first contract before starting a one-shot
 worker cycle.
 
-## Phase 1 rule
+## 6. Agent And LLM Boundary
+
+### Phase 1 rule
 
 No premium LLM calls are used or required in Phase 1.
 
-## Agent Review And Agents SDK Boundary
+### Agent Review And Agents SDK Boundary
 
 The agent-review loop is not connected to GitHub Copilot. Runtime dependencies
 do not include a Copilot SDK, and the source tree has a regression test that
@@ -1098,14 +1207,16 @@ tool flags so the operator can verify the boundary without reading source.
 The brief may recommend `bars saved capture confirm` only as an explicit human
 approval step; it does not run the capture or import provider data.
 
-## Verification commands
+## 7. Verification
+
+### Verification commands
 
 ```powershell
 python -m pytest
 python -m ruff check src tests apps
 ```
 
-## Phase 1 acceptance
+### Phase 1 acceptance
 
 Phase 1 is accepted when:
 

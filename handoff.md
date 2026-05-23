@@ -1,6 +1,41 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-23 17:20:55 +08:00
+Last updated: 2026-05-23 17:34:23 +08:00
+
+## Latest README Progressive Reveal Slice
+
+Last updated: 2026-05-23 17:34:23 +08:00
+
+Goal alignment / drift check:
+
+- The active goal remains measurable full-market priced-in scanning and monthly
+  value proof.
+- The README had grown into a long operational append-only document. Humans and
+  agents had to read provider, dashboard, repair, value, validation, and agent
+  details before seeing the product goal, current safety posture, and source of
+  truth commands.
+- The useful definition for this slice is concrete: a first-time human or AI
+  agent can understand what MarketRadar is for, what it must not claim yet, and
+  which sections to read next without changing runtime behavior.
+
+Fix in this slice:
+
+- README now starts with Product Goal, Current Product Truth, For Humans, For AI
+  Agents, and a numbered README map.
+- Long details are grouped into Quick Start, Providers And Full-Market Scan,
+  Dashboards/APIs, Readiness And Market-Bar Repair, Shadow Mode And Value Proof,
+  Agent/LLM Boundary, and Verification.
+- Existing operational commands and safety claims are preserved; this is
+  organization, not new functionality.
+
+Safety:
+
+- Documentation-only change.
+- It makes 0 Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or
+  provider calls.
+- It writes 0 database rows and does not change scores, thresholds, policy
+  gates, action states, trade plans, LLM behavior, broker/order controls,
+  candidate rows, ledger rows, outcome rows, or readiness criteria.
 
 ## Latest Value Outcome Coverage First Command Slice
 
