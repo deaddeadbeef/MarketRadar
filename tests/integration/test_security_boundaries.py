@@ -107,6 +107,14 @@ EXPECTED_API_ROUTES = {
     ): ("catalyst_radar.api.routes.value_ledger", "value_ledger_entries", ("value-ledger",)),
     (
         "GET",
+        "/api/value-ledger/coverage",
+    ): (
+        "catalyst_radar.api.routes.value_ledger",
+        "value_ledger_candidate_coverage",
+        ("value-ledger",),
+    ),
+    (
+        "GET",
         "/api/value-ledger/entries/{entry_id}",
     ): ("catalyst_radar.api.routes.value_ledger", "value_ledger_entry", ("value-ledger",)),
     (
@@ -293,6 +301,22 @@ EXPECTED_API_ROUTES = {
     ): (
         "catalyst_radar.api.routes.radar",
         "radar_market_bars_repair_plan",
+        ("radar",),
+    ),
+    (
+        "GET",
+        "/api/radar/market-bars/residual-review",
+    ): (
+        "catalyst_radar.api.routes.radar",
+        "radar_market_bars_residual_review",
+        ("radar",),
+    ),
+    (
+        "POST",
+        "/api/radar/market-bars/residual-repair",
+    ): (
+        "catalyst_radar.api.routes.radar",
+        "radar_market_bars_residual_repair",
         ("radar",),
     ),
     (

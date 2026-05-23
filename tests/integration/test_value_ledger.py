@@ -8,6 +8,7 @@ from sqlalchemy import func, insert, select
 
 from apps.api.main import create_app
 from catalyst_radar.cli import main
+from catalyst_radar.core.models import ActionState
 from catalyst_radar.dashboard.tui import render_dashboard_tui
 from catalyst_radar.storage.db import create_schema, engine_from_url
 from catalyst_radar.storage.schema import candidate_states, value_ledger_entries
@@ -150,6 +151,104 @@ def test_value_ledger_cli_preview_execute_and_summary(
     assert shown["entry"]["id"] == executed["entry"]["id"]
 
 
+def test_value_ledger_coverage_reports_unlogged_surfaced_candidates(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'value-ledger-coverage.db').as_posix()}"
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = engine_from_url(database_url)
+    create_schema(engine)
+    _insert_candidate_state(engine, ticker="MSFT", state_id="state-MSFT")
+    _insert_candidate_state(
+        engine,
+        ticker="AAPL",
+        state_id="state-AAPL",
+        state=ActionState.ELIGIBLE_FOR_MANUAL_BUY_REVIEW.value,
+        final_score=91.0,
+    )
+    _insert_candidate_state(
+        engine,
+        ticker="GLW",
+        state_id="state-GLW",
+        state=ActionState.RESEARCH_ONLY.value,
+        final_score=65.0,
+    )
+
+    assert (
+        main(
+            [
+                "value-ledger",
+                "record",
+                "--artifact-type",
+                "candidate_state",
+                "--artifact-id",
+                "state-MSFT",
+                "--label",
+                "good-research",
+                "--supported-action",
+                "research",
+                "--user-decision",
+                "accepted",
+                "--estimated-value-usd",
+                "10",
+                "--confidence",
+                "0.5",
+                "--entry-date",
+                "2026-05-15",
+                "--available-at",
+                "2026-05-22T12:00:00+00:00",
+                "--execute",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+    with engine.connect() as conn:
+        before = [dict(row._mapping) for row in conn.execute(select(candidate_states))]
+
+    coverage_exit = main(
+        [
+            "value-ledger",
+            "coverage",
+            "--available-at",
+            "2026-05-22T12:00:00+00:00",
+            "--period-start",
+            "2026-05-01",
+            "--period-end",
+            "2026-05-31",
+            "--json",
+        ]
+    )
+
+    assert coverage_exit == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["schema_version"] == "value-ledger-candidate-coverage-v1"
+    assert payload["status"] == "gaps"
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 0
+    assert payload["surfaced_candidate_count"] == 2
+    assert payload["logged_candidate_count"] == 1
+    assert payload["missing_ledger_count"] == 1
+    assert payload["coverage_pct"] == 50.0
+    rows = {row["candidate_state_id"]: row for row in payload["rows"]}
+    assert rows["state-MSFT"]["ledger_status"] == "logged"
+    assert rows["state-MSFT"]["ledger_entry_id"]
+    assert rows["state-AAPL"]["ledger_status"] == "missing"
+    assert "--artifact-id state-AAPL" in rows["state-AAPL"]["record_command"]
+    assert "--execute" not in rows["state-AAPL"]["record_command"]
+    assert "state-GLW" not in rows
+    with engine.connect() as conn:
+        after = [dict(row._mapping) for row in conn.execute(select(candidate_states))]
+        ledger_count = (
+            conn.execute(select(func.count()).select_from(value_ledger_entries)).scalar_one()
+        )
+    assert after == before
+    assert ledger_count == 1
+
+
 def test_value_ledger_cli_label_command_writes_auditable_entry(
     tmp_path,
     monkeypatch,
@@ -274,6 +373,16 @@ def test_value_ledger_api_preview_execute_and_read(tmp_path, monkeypatch) -> Non
     summary = summary_response.json()
     assert summary["confidence_weighted_value_usd"] == 10.0
     assert summary["target_coverage_pct"] == 25.0
+    coverage_response = client.get(
+        "/api/value-ledger/coverage",
+        params={"available_at": "2026-05-22T12:00:00+00:00"},
+    )
+    assert coverage_response.status_code == 200
+    coverage = coverage_response.json()
+    assert coverage["external_calls_made"] == 0
+    assert coverage["db_writes_made"] == 0
+    assert coverage["surfaced_candidate_count"] == 1
+    assert coverage["missing_ledger_count"] == 0
 
 
 def test_value_ledger_rejects_unknown_label_and_missing_artifact(
@@ -396,6 +505,8 @@ def _insert_candidate_state(
     *,
     ticker: str = "MSFT",
     state_id: str = "state-MSFT",
+    state: str = "warning",
+    final_score: float = 72.0,
 ) -> None:
     as_of = datetime(2026, 5, 15, 20, 0, tzinfo=UTC)
     with engine.begin() as conn:
@@ -404,9 +515,9 @@ def _insert_candidate_state(
                 id=state_id,
                 ticker=ticker,
                 as_of=as_of,
-                state="warning",
+                state=state,
                 previous_state=None,
-                final_score=72.0,
+                final_score=final_score,
                 score_delta_5d=4.0,
                 hard_blocks=[],
                 transition_reasons=["priced-in gap"],
