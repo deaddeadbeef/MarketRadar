@@ -500,9 +500,18 @@ to this repo: it creates `.venv` if needed, installs the editable
 `main` to `origin/main`, and then starts the TUI. It does not set `PYTHONPATH`
 or mutate the caller's shell environment. Use `radar --no-update` to skip the
 Git update step and `radar --force-install` to refresh the editable install.
-If a new terminal appears idle, wait for the first local snapshot to render; the
-launcher prints a startup line immediately, and `radar --once --page overview`
-is the fastest smoke test for the same path.
+The launcher prints a startup line immediately. The interactive TUI paints its
+first screen before the local snapshot finishes loading, and
+`radar --once --page overview` is the fastest smoke test for the same data path.
+For a fuller zero-provider-call launcher check, run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/debug-dashboard-e2e.ps1
+```
+
+That debug script runs the same PowerShell launcher in once mode, verifies a
+dashboard frame rendered with `External calls made: 0`, and fails if the
+launcher leaves a new `dashboard-tui` child process behind.
 
 ### Terminal dashboard basics
 

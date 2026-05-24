@@ -116,18 +116,149 @@ function Ensure-EditableInstall {
     } | ConvertTo-Json | Set-Content -LiteralPath $stampPath -Encoding utf8
 }
 
+function ConvertTo-ProcessArgument {
+    param([AllowNull()][string]$Argument)
+
+    if ($null -eq $Argument -or $Argument.Length -eq 0) {
+        return '""'
+    }
+    if ($Argument -notmatch '[\s"]') {
+        return $Argument
+    }
+    return '"' + ($Argument -replace '"', '\"') + '"'
+}
+
+function Get-ChildProcessIds {
+    param([int]$ProcessId)
+
+    $children = @(
+        Get-CimInstance Win32_Process -Filter "ParentProcessId=$ProcessId" `
+            -ErrorAction SilentlyContinue
+    )
+    foreach ($child in $children) {
+        Get-ChildProcessIds -ProcessId ([int]$child.ProcessId)
+        [int]$child.ProcessId
+    }
+}
+
+function Stop-ProcessTree {
+    param(
+        [AllowNull()][System.Diagnostics.Process]$Process,
+        [int[]]$ExtraProcessIds = @()
+    )
+
+    $processIds = New-Object 'System.Collections.Generic.List[int]'
+    if ($null -ne $Process) {
+        try {
+            foreach ($childId in @(Get-ChildProcessIds -ProcessId $Process.Id)) {
+                $processIds.Add([int]$childId)
+            }
+        }
+        catch {
+            # Best-effort cleanup only; the parent may have exited between polls.
+        }
+    }
+    foreach ($id in $ExtraProcessIds) {
+        if ($id -gt 0) {
+            $processIds.Add([int]$id)
+        }
+    }
+    foreach ($id in $processIds | Select-Object -Unique) {
+        try {
+            if ($null -ne (Get-Process -Id $id -ErrorAction SilentlyContinue)) {
+                Stop-Process -Id $id -Force -ErrorAction SilentlyContinue
+            }
+        }
+        catch {
+            # Continue cleaning any remaining children.
+        }
+    }
+    if ($null -ne $Process) {
+        try {
+            if (-not $Process.HasExited) {
+                Stop-Process -Id $Process.Id -Force -ErrorAction SilentlyContinue
+                $Process.WaitForExit(5000) | Out-Null
+            }
+        }
+        catch {
+            # The process may already be gone.
+        }
+    }
+}
+
+function Invoke-DashboardProcess {
+    param(
+        [string]$FilePath,
+        [string[]]$Arguments
+    )
+
+    $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+    $startInfo.FileName = $FilePath
+    $startInfo.WorkingDirectory = [string]$repoRoot
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $false
+    $startInfo.Arguments = ($Arguments | ForEach-Object { ConvertTo-ProcessArgument $_ }) -join " "
+
+    $knownChildIds = @{}
+    $stopRequested = $false
+    $process = [System.Diagnostics.Process]::Start($startInfo)
+    if ($null -eq $process) {
+        throw "Failed to start MarketRadar dashboard process."
+    }
+
+    $cancelHandler = [System.ConsoleCancelEventHandler]{
+        param($sender, $eventArgs)
+        $eventArgs.Cancel = $true
+        $script:DashboardStopRequested = $true
+        Stop-ProcessTree `
+            -Process $script:DashboardProcess `
+            -ExtraProcessIds @($script:DashboardKnownChildIds.Keys)
+    }
+
+    $script:DashboardProcess = $process
+    $script:DashboardKnownChildIds = $knownChildIds
+    $script:DashboardStopRequested = $false
+    [Console]::CancelKeyPress += $cancelHandler
+    try {
+        while (-not $process.WaitForExit(250)) {
+            foreach ($childId in @(Get-ChildProcessIds -ProcessId $process.Id)) {
+                $knownChildIds[[int]$childId] = $true
+            }
+            if ($script:DashboardStopRequested) {
+                $stopRequested = $true
+                break
+            }
+        }
+        if ($stopRequested) {
+            Stop-ProcessTree -Process $process -ExtraProcessIds @($knownChildIds.Keys)
+            return 130
+        }
+        $exitCode = $process.ExitCode
+    }
+    finally {
+        [Console]::CancelKeyPress -= $cancelHandler
+        Stop-ProcessTree -Process $process -ExtraProcessIds @($knownChildIds.Keys)
+        $script:DashboardProcess = $null
+        $script:DashboardKnownChildIds = @{}
+        $script:DashboardStopRequested = $false
+    }
+    return $exitCode
+}
+
 Push-Location $repoRoot
 try {
     Write-Host "Starting MarketRadar dashboard from $repoRoot"
-    Write-Host "First render can take 30-90 seconds while the local snapshot loads."
+    Write-Host "The first screen should paint immediately; local data continues loading inside the TUI."
 
     Update-CleanMain
     Ensure-Venv
     Ensure-EditableInstall
 
-    & $dashboardExe "dashboard-tui" @dashboardArgs
-    if ($LASTEXITCODE -ne 0) {
-        throw "MarketRadar dashboard exited with code $LASTEXITCODE."
+    $exitCode = Invoke-DashboardProcess `
+        -FilePath $dashboardExe `
+        -Arguments (@("dashboard-tui") + $dashboardArgs.ToArray())
+    if ($exitCode -ne 0) {
+        throw "MarketRadar dashboard exited with code $exitCode."
     }
 }
 finally {
