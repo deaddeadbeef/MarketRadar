@@ -121,6 +121,8 @@ try {
         exit 2
     }
     $process.WaitForExit()
+    $process.Refresh()
+    $exitCode = [int]$process.ExitCode
     $stdout = if (Test-Path -LiteralPath $stdoutPath) {
         Get-Content -LiteralPath $stdoutPath -Raw
     }
@@ -141,17 +143,17 @@ finally {
 }
 $stopwatch.Stop()
 
-Write-Output ("launcher exit code: {0}" -f $process.ExitCode)
+Write-Output ("launcher exit code: {0}" -f $exitCode)
 Write-Output ("elapsed seconds: {0:n1}" -f $stopwatch.Elapsed.TotalSeconds)
 if (-not [string]::IsNullOrWhiteSpace($stderr)) {
     Write-Output "stderr:"
     Write-Output $stderr
 }
 
-if ($process.ExitCode -ne 0) {
+if ($exitCode -ne 0) {
     Write-Output "stdout:"
     Write-Output $stdout
-    exit $process.ExitCode
+    exit $exitCode
 }
 
 if (
