@@ -112,13 +112,19 @@ def test_value_outcome_cli_preview_execute_and_list(
     assert list_exit == 0
     listed = json.loads(capsys.readouterr().out)
     assert listed["count"] == 1
+    assert listed["external_calls_required"] == 0
+    assert listed["external_calls_made"] == 0
+    assert listed["db_writes_required"] == 0
+    assert listed["db_writes_made"] == 0
     assert listed["status_counts"] == {"computed": 1}
     outcome_id = executed["outcome"]["id"]
     show_exit = main(["value-outcome", "show", outcome_id, "--json"])
     assert show_exit == 0
     shown = json.loads(capsys.readouterr().out)
     assert shown["schema_version"] == "value-outcome-v1"
+    assert shown["external_calls_required"] == 0
     assert shown["external_calls_made"] == 0
+    assert shown["db_writes_required"] == 0
     assert shown["db_writes_made"] == 0
     assert shown["outcome"]["id"] == outcome_id
     assert shown["outcome"]["status"] == "computed"
@@ -165,7 +171,9 @@ def test_outcome_cli_alias_uses_value_outcome_contract(
     listed = json.loads(capsys.readouterr().out)
     assert listed["schema_version"] == "value-outcomes-v1"
     assert listed["count"] == 0
+    assert listed["external_calls_required"] == 0
     assert listed["external_calls_made"] == 0
+    assert listed["db_writes_required"] == 0
     assert listed["db_writes_made"] == 0
 
     coverage_exit = main(
@@ -464,10 +472,23 @@ def test_value_outcome_api_rejects_missing_future_bars_without_mutating_ledger(
     show_response = TestClient(create_app()).get(f"/api/value-outcomes/{outcome_id}")
     assert show_response.status_code == 200
     shown = show_response.json()
+    assert shown["external_calls_required"] == 0
     assert shown["external_calls_made"] == 0
+    assert shown["db_writes_required"] == 0
     assert shown["db_writes_made"] == 0
     assert shown["outcome"]["id"] == outcome_id
     assert shown["outcome"]["status"] == "insufficient_data"
+    list_response = TestClient(create_app()).get(
+        "/api/value-outcomes",
+        params={"value_ledger_entry_id": entry_id},
+    )
+    assert list_response.status_code == 200
+    listed = list_response.json()
+    assert listed["external_calls_required"] == 0
+    assert listed["external_calls_made"] == 0
+    assert listed["db_writes_required"] == 0
+    assert listed["db_writes_made"] == 0
+    assert listed["count"] == 1
     missing_response = TestClient(create_app()).get("/api/value-outcomes/missing-outcome")
     assert missing_response.status_code == 404
 

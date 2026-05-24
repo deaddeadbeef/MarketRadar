@@ -149,7 +149,9 @@ def test_value_ledger_cli_preview_execute_and_summary(
     assert summary_exit == 0
     summary = json.loads(capsys.readouterr().out)
     assert summary["schema_version"] == "value-ledger-summary-v1"
+    assert summary["external_calls_required"] == 0
     assert summary["external_calls_made"] == 0
+    assert summary["db_writes_required"] == 0
     assert summary["db_writes_made"] == 0
     assert summary["entry_count"] == 1
     assert summary["confidence_weighted_value_usd"] == 40.0
@@ -163,7 +165,9 @@ def test_value_ledger_cli_preview_execute_and_summary(
     assert show_exit == 0
     shown = json.loads(capsys.readouterr().out)
     assert shown["schema_version"] == "value-ledger-entry-v1"
+    assert shown["external_calls_required"] == 0
     assert shown["external_calls_made"] == 0
+    assert shown["db_writes_required"] == 0
     assert shown["db_writes_made"] == 0
     assert shown["entry"]["id"] == executed["entry"]["id"]
 
@@ -636,7 +640,9 @@ def test_value_ledger_api_preview_execute_and_read(tmp_path, monkeypatch) -> Non
     )
     assert list_response.status_code == 200
     entries_payload = list_response.json()
+    assert entries_payload["external_calls_required"] == 0
     assert entries_payload["external_calls_made"] == 0
+    assert entries_payload["db_writes_required"] == 0
     assert entries_payload["db_writes_made"] == 0
     assert entries_payload["count"] == 1
     assert entries_payload["entries"][0]["ticker"] == "AAPL"
@@ -645,7 +651,9 @@ def test_value_ledger_api_preview_execute_and_read(tmp_path, monkeypatch) -> Non
     show_response = client.get(f"/api/value-ledger/entries/{entry_id}")
     assert show_response.status_code == 200
     shown = show_response.json()
+    assert shown["external_calls_required"] == 0
     assert shown["external_calls_made"] == 0
+    assert shown["db_writes_required"] == 0
     assert shown["db_writes_made"] == 0
     assert shown["entry"]["id"] == entry_id
     assert shown["entry"]["ticker"] == "AAPL"
@@ -660,6 +668,10 @@ def test_value_ledger_api_preview_execute_and_read(tmp_path, monkeypatch) -> Non
 
     assert summary_response.status_code == 200
     summary = summary_response.json()
+    assert summary["external_calls_required"] == 0
+    assert summary["external_calls_made"] == 0
+    assert summary["db_writes_required"] == 0
+    assert summary["db_writes_made"] == 0
     assert summary["confidence_weighted_value_usd"] == 10.0
     assert summary["target_coverage_pct"] == 25.0
     coverage_response = client.get(
