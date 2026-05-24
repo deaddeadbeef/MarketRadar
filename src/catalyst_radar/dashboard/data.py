@@ -10734,6 +10734,7 @@ def _trial_minimum_useful_product_gate(
     approval_required_unblock = _trial_minimum_product_approval_required_unblock(
         engine,
         config,
+        shadow_readiness=shadow_readiness,
         priced_in_answer=priced_in_answer,
         first_blocker=approval_blocker,
     )
@@ -10782,9 +10783,13 @@ def _trial_minimum_product_approval_required_unblock(
     engine: Engine,
     config: AppConfig,
     *,
+    shadow_readiness: Mapping[str, object],
     priced_in_answer: Mapping[str, object],
     first_blocker: str | None,
 ) -> dict[str, object] | None:
+    reused = _trial_minimum_product_approval_from_shadow(shadow_readiness)
+    if reused is not None and first_blocker == "market_bars":
+        return reused
     return _market_bar_residual_repair_approval_packet(
         engine,
         config,
@@ -10796,6 +10801,26 @@ def _trial_minimum_product_approval_required_unblock(
             "operator approval because it writes local active-universe rows."
         ),
     )
+
+
+def _trial_minimum_product_approval_from_shadow(
+    shadow_readiness: Mapping[str, object],
+) -> dict[str, object] | None:
+    packet = _mapping_value(shadow_readiness, "approval_required_unblock")
+    if str(packet.get("area") or "") != "market_bars":
+        return None
+    approval_command = str(packet.get("approval_command") or "").strip()
+    if not approval_command:
+        return None
+    reused = _row_dict(packet)
+    reused["schema_version"] = "trial-minimum-product-approval-required-v1"
+    reused["reason"] = (
+        "Clearing the current minimum-product blocker requires explicit "
+        "operator approval because it writes local active-universe rows."
+    )
+    reused["approval_required"] = True
+    reused["safe_default"] = "Do not execute without explicit operator approval."
+    return reused
 
 
 def _shadow_readiness_approval_required_unblock(
