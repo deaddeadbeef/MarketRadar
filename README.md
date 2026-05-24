@@ -500,9 +500,10 @@ to this repo: it creates `.venv` if needed, installs the editable
 `main` to `origin/main`, and then starts the TUI. It does not set `PYTHONPATH`
 or mutate the caller's shell environment. Use `radar --no-update` to skip the
 Git update step and `radar --force-install` to refresh the editable install.
-The launcher prints a startup line immediately. The interactive TUI paints its
-first screen before the local snapshot finishes loading, and
-`radar --once --page overview` is the fastest smoke test for the same data path.
+The launcher prints a startup line immediately. The interactive TUI opens on
+latest scan results before the local snapshot finishes loading, and
+`radar --once` is the fastest smoke test for the same data path. Use
+`radar --page tutorial` only when you want the walkthrough.
 For a fuller zero-provider-call launcher check, run:
 
 ```powershell
@@ -522,11 +523,10 @@ themes, validation, costs, and current feature inventory. The Run page now
 starts with a Mission Brief: the priced-in question, current trusted-answer
 state, scan progress, first trust blocker, useful next action, and the zero-call
 boundary before the call-plan details. `radar` opens on
-`0 Tutorial` by default; the tutorial now leads with that same mission/current
-answer/next-blocker summary before the control walkthrough, so the first screen
-answers why the tool exists before it teaches shortcuts. Press `1` or run
-`radar --page overview` for Insights.
-The insights page is the full-market priced-in queue by default: the first row reports scan
+`1 Insights` by default, so the first screen shows the latest scan-result rows
+instead of the tutorial or command reference. Press `0` or run
+`radar --page tutorial` for the walkthrough.
+The insights page is the full-market priced-in queue by default: the table reports scan
 coverage, then candidate rows show emotion score, price-reaction score,
 emotion-minus-reaction gap, priced-in status, why the mismatch matters, and the
 next action. Candidate rows open the candidate evidence detail, alert rows open

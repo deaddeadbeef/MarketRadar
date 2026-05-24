@@ -1,5 +1,5 @@
 param(
-    [string]$Page = "tutorial",
+    [string]$Page = "overview",
     [int]$TimeoutSeconds = 120
 )
 
@@ -172,6 +172,14 @@ if ($stdout -notmatch "External calls made:\s*0") {
     Write-Output $stdout
     Write-Error "Dashboard debug smoke did not prove zero external calls."
     exit 4
+}
+
+$expectedPage = if ($Page -eq "start") { "overview" } else { $Page }
+if ($stdout -notmatch ("Page:\s*{0}" -f [regex]::Escape($expectedPage))) {
+    Write-Output "stdout:"
+    Write-Output $stdout
+    Write-Error "Dashboard debug smoke did not open the expected page."
+    exit 6
 }
 
 $after = @(Get-DashboardProcessSnapshot)
