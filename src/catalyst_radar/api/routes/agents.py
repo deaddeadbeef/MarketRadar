@@ -13,6 +13,7 @@ from catalyst_radar.core.config import AppConfig
 from catalyst_radar.dashboard import data as dashboard_data
 from catalyst_radar.dashboard.tui import DashboardFilters, dashboard_snapshot_payload
 from catalyst_radar.security.access import Role, require_role
+from catalyst_radar.storage.budget_repositories import BudgetLedgerRepository
 from catalyst_radar.storage.db import create_schema, engine_from_url
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
@@ -26,6 +27,24 @@ class AgentReviewRequest(BaseModel):
     available_at: datetime | None = None
     task: str = "skeptic_review"
     mode: Literal["dry_run", "fake", "real"] = "dry_run"
+
+
+class AgentBriefRunRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    mode: Literal["dry_run", "real"] = "dry_run"
+    execute: bool = False
+    ticker: str | None = Field(default=None, min_length=1, max_length=12)
+    available_at: datetime | None = None
+    priced_in_status: str = "all"
+    usefulness: str | None = None
+    source_gap: str | None = None
+    decision_gap: str | None = None
+    scan_limit: int = Field(default=50, ge=1, le=200)
+    scan_offset: int = Field(default=0, ge=0)
+    telemetry_limit: int = Field(default=8, ge=1, le=200)
+    goal: str | None = None
+    max_openai_calls: int = Field(default=3, ge=1, le=8)
 
 
 def _engine():
@@ -103,6 +122,40 @@ def agent_brief(
         config,
         real=False,
         operator_goal=goal,
+    )
+
+
+@router.post("/brief/run", dependencies=[Depends(require_role(Role.ANALYST))])
+def agent_brief_run(request: AgentBriefRunRequest) -> dict[str, object]:
+    if request.execute and request.mode != "real":
+        raise HTTPException(status_code=422, detail="execute requires mode=real")
+    config = AppConfig.from_env()
+    engine = _engine()
+    filters = DashboardFilters(
+        ticker=request.ticker,
+        available_at=request.available_at,
+        priced_in_status=request.priced_in_status,
+        priced_in_usefulness=request.usefulness,
+        priced_in_source_gap=request.source_gap,
+        priced_in_decision_gap=request.decision_gap,
+        priced_in_limit=request.scan_limit,
+        priced_in_offset=request.scan_offset,
+        telemetry_limit=request.telemetry_limit,
+    )
+    snapshot = dashboard_snapshot_payload(
+        engine=engine,
+        config=config,
+        dotenv_loaded=True,
+        filters=filters,
+    )
+    return run_market_radar_agents(
+        snapshot,
+        config,
+        real=request.mode == "real",
+        operator_goal=request.goal,
+        execute=request.execute,
+        max_openai_calls=request.max_openai_calls,
+        ledger_repo=BudgetLedgerRepository(engine) if request.mode == "real" else None,
     )
 
 

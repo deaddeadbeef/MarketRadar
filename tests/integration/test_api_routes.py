@@ -381,6 +381,74 @@ def test_get_agent_brief_returns_zero_call_market_radar_brief(
     }
 
 
+def test_post_agent_brief_run_preview_is_zero_call_and_explicit_execute(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path, "agent-brief-run-api.db")
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    _create_database(database_url)
+    captured: dict[str, object] = {}
+
+    def fake_dashboard_snapshot_payload(**kwargs):
+        captured["snapshot_kwargs"] = kwargs
+        return {"schema_version": "dashboard-cli-snapshot-v1"}
+
+    def fake_run_market_radar_agents(snapshot, _config, **kwargs):
+        captured["snapshot"] = snapshot
+        captured["agent_kwargs"] = kwargs
+        return {
+            "schema_version": "market-radar-agent-brief-v1",
+            "mode": "preview",
+            "status": "preview",
+            "runtime": {
+                "schema_version": "market-radar-agent-runtime-v1",
+                "orchestrator": "openai_agents_sdk",
+                "copilot_dependency": "absent",
+                "external_market_tools": False,
+                "broker_tools": False,
+                "shell_tools": False,
+                "web_tools": False,
+            },
+            "external_calls_made": {"openai": 0, "market_data": 0, "broker": 0},
+        }
+
+    monkeypatch.setattr(
+        agent_routes,
+        "dashboard_snapshot_payload",
+        fake_dashboard_snapshot_payload,
+    )
+    monkeypatch.setattr(
+        agent_routes,
+        "run_market_radar_agents",
+        fake_run_market_radar_agents,
+    )
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/agents/brief/run",
+        json={
+            "mode": "real",
+            "execute": False,
+            "ticker": "msft",
+            "max_openai_calls": 2,
+            "goal": "Preview agent gates.",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["mode"] == "preview"
+    assert payload["external_calls_made"]["openai"] == 0
+    filters = captured["snapshot_kwargs"]["filters"].normalized()
+    assert filters.ticker == "MSFT"
+    assert captured["agent_kwargs"]["real"] is True
+    assert captured["agent_kwargs"]["execute"] is False
+    assert captured["agent_kwargs"]["max_openai_calls"] == 2
+    assert captured["agent_kwargs"]["operator_goal"] == "Preview agent gates."
+    assert captured["agent_kwargs"]["ledger_repo"] is not None
+
+
 def test_post_agent_review_requires_analyst_when_auth_enabled(
     tmp_path,
     monkeypatch,

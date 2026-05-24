@@ -80,6 +80,10 @@ EXPECTED_API_ROUTES = {
         "/api/agents/brief",
     ): ("catalyst_radar.api.routes.agents", "agent_brief", ("agents",)),
     (
+        "POST",
+        "/api/agents/brief/run",
+    ): ("catalyst_radar.api.routes.agents", "agent_brief_run", ("agents",)),
+    (
         "GET",
         "/api/agents/reviews",
     ): ("catalyst_radar.api.routes.agents", "review_history", ("agents",)),

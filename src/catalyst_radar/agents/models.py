@@ -19,6 +19,7 @@ class LLMTaskName(StrEnum):
     SKEPTIC_REVIEW = "skeptic_review"
     GPT55_DECISION_CARD = "gpt55_decision_card"
     FULL_TRANSCRIPT_DEEP_DIVE = "full_transcript_deep_dive"
+    AGENT_BRIEF = "agent_brief"
 
 
 class LLMCallStatus(StrEnum):

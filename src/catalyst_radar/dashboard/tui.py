@@ -77,6 +77,7 @@ from catalyst_radar.market.status import (
 )
 from catalyst_radar.security.licenses import redact_restricted_external_payload
 from catalyst_radar.storage.broker_repositories import BrokerRepository
+from catalyst_radar.storage.budget_repositories import BudgetLedgerRepository
 from catalyst_radar.storage.feature_repositories import FeatureRepository
 from catalyst_radar.storage.job_repositories import JobLockRepository
 from catalyst_radar.storage.provider_repositories import ProviderRepository
@@ -609,6 +610,11 @@ def dashboard_snapshot_payload(
     )
     display_priced_in_queue = dict(priced_in_queue)
     display_priced_in_queue.pop("planning_rows", None)
+    real_results = _dashboard_real_results_payload(
+        latest_run=latest_run,
+        priced_in_queue=display_priced_in_queue,
+        candidate_rows=candidate_rows,
+    )
     payload = {
         "schema_version": "dashboard-cli-snapshot-v1",
         "status": top_level_blocker["status"],
@@ -636,6 +642,7 @@ def dashboard_snapshot_payload(
             "telemetry_limit": filters.telemetry_limit,
         },
         "runtime_context": runtime_context,
+        "real_results": real_results,
         "readiness": readiness_payload,
         "trial_readiness": trial_readiness,
         "shadow_readiness": shadow_readiness,
@@ -690,6 +697,56 @@ def dashboard_snapshot_payload(
     payload["agent_brief"] = run_market_radar_agents(payload, config, real=False)
     redacted = redact_restricted_external_payload(payload)
     return redacted if isinstance(redacted, dict) else payload
+
+
+def _dashboard_real_results_payload(
+    *,
+    latest_run: Mapping[str, object] | None,
+    priced_in_queue: Mapping[str, object],
+    candidate_rows: Sequence[Mapping[str, object]],
+) -> dict[str, object]:
+    latest = _mapping(latest_run)
+    latest_status = str(latest.get("status") or "").strip().lower()
+    row_count = int(
+        _number_or_zero(
+            priced_in_queue.get("total_count")
+            or priced_in_queue.get("returned_count")
+            or priced_in_queue.get("count")
+            or len(candidate_rows)
+        )
+    )
+    missing: list[str] = []
+    if not latest:
+        missing.append("latest radar run")
+    elif latest_status not in {"success", "completed"}:
+        missing.append("successful latest radar run")
+    if row_count <= 0:
+        missing.append("priced-in scan rows")
+
+    ready = not missing
+    as_of = latest.get("as_of")
+    cutoff = latest.get("decision_available_at") or latest.get("finished_at")
+    return {
+        "schema_version": "dashboard-real-results-v1",
+        "status": "ready" if ready else "blocked",
+        "headline": (
+            f"Real scan context ready: {row_count} priced-in row(s)."
+            if ready
+            else "No real scan result is ready for an agent execution yet."
+        ),
+        "next_action": (
+            "Review candidates, then run agent-brief --real --execute if desired."
+            if ready
+            else "Run a full radar scan/import flow before executing real agents."
+        ),
+        "source": "latest_radar_run" if latest else "none",
+        "row_count": row_count,
+        "latest_run_id": latest.get("id"),
+        "latest_run_status": latest.get("status"),
+        "as_of": as_of.isoformat() if hasattr(as_of, "isoformat") else as_of,
+        "cutoff": cutoff.isoformat() if hasattr(cutoff, "isoformat") else cutoff,
+        "missing": missing,
+    }
 
 
 def _dashboard_top_level_blocker_contract(
@@ -2132,7 +2189,7 @@ class MarketRadarDashboardApp(App[int]):
             brief = _mapping(self.payload.get("agent_brief"))
             runtime = _mapping(brief.get("runtime"))
             return (
-                "Agent brief - dry run, zero hidden provider calls",
+                "Agent brief - preview by default, execute spends OpenAI budget",
                 [
                     ("kind", "Kind", 12),
                     ("item", "Item", 28),
@@ -2301,6 +2358,10 @@ class MarketRadarDashboardApp(App[int]):
             {
                 "command": "options template / validate / import",
                 "meaning": "Create, check, or explicitly import point-in-time options evidence.",
+            },
+            {
+                "command": "agent / agent execute",
+                "meaning": "Preview real Agents SDK gates, or explicitly spend OpenAI budget once.",
             },
             {
                 "command": "cik template / validate / import",
@@ -2537,6 +2598,51 @@ def _minimum_product_approval_unblock(
     return approval
 
 
+def _execute_agent_command(
+    engine: Engine,
+    config: AppConfig,
+    payload: Mapping[str, object],
+    value: str,
+) -> str:
+    try:
+        tokens = shlex.split(value)
+    except ValueError:
+        return "Usage: agent preview OR agent execute [max-openai-calls]."
+    lowered = [token.lower() for token in tokens]
+    execute = "execute" in lowered
+    max_calls = 3
+    for token in lowered:
+        if token.isdigit():
+            max_calls = max(1, min(8, int(token)))
+        elif token.startswith("max="):
+            _, _, raw = token.partition("=")
+            if raw.isdigit():
+                max_calls = max(1, min(8, int(raw)))
+    brief = run_market_radar_agents(
+        payload,
+        config,
+        real=True,
+        execute=execute,
+        max_openai_calls=max_calls,
+        ledger_repo=BudgetLedgerRepository(engine),
+    )
+    calls = _mapping(brief.get("external_calls_made"))
+    credit = _mapping(brief.get("credit_gate"))
+    real_results = _mapping(brief.get("real_results"))
+    action = "executed" if execute and brief.get("status") == "completed" else (
+        "blocked" if execute else "previewed"
+    )
+    return (
+        f"Agent {action}: status={brief.get('status')}; "
+        f"OpenAI calls={int(_number_or_zero(calls.get('openai')))}; "
+        f"real_results={real_results.get('status', 'unknown')} "
+        f"rows={real_results.get('row_count', 0)}; "
+        f"credit_gate={credit.get('status', 'unknown')} "
+        f"estimated_cost_usd={credit.get('estimated_cost_usd', 0)}. "
+        "Use `agent execute` only after the preview matches your intent."
+    )
+
+
 def _apply_command(
     raw: str,
     payload: Mapping[str, object],
@@ -2748,6 +2854,12 @@ def _apply_command(
                 value,
                 filters=filters,
             ),
+        )
+    if command in {"agent", "agent-brief", "agents"}:
+        return _CommandUpdate(
+            page="agent",
+            filters=filters,
+            message=_execute_agent_command(engine, config, payload, value),
         )
     if command in {"options", "option", "options-flow", "options_flow"}:
         return _CommandUpdate(
@@ -8085,6 +8197,34 @@ def _agent_brief_rows(brief: Mapping[str, object]) -> list[Mapping[str, object]]
                 "detail": _agent_runtime_label(runtime),
             }
         )
+    real_results = _mapping(brief.get("real_results"))
+    if real_results:
+        rows.append(
+            {
+                "kind": "Gate",
+                "item": f"Real results: {real_results.get('status') or 'unknown'}",
+                "detail": (
+                    f"rows={real_results.get('row_count', 0)}; "
+                    f"latest_run={real_results.get('latest_run_id') or 'n/a'}; "
+                    f"next={real_results.get('next_action') or 'n/a'}"
+                ),
+            }
+        )
+    credit_gate = _mapping(brief.get("credit_gate"))
+    if credit_gate:
+        rows.append(
+            {
+                "kind": "Gate",
+                "item": f"OpenAI budget: {credit_gate.get('status') or 'unknown'}",
+                "detail": (
+                    f"estimate=${credit_gate.get('estimated_cost_usd', 0)}; "
+                    f"daily={credit_gate.get('daily_spend_usd', 0)}/"
+                    f"{credit_gate.get('daily_budget_usd', 0)}; "
+                    f"monthly={credit_gate.get('monthly_spend_usd', 0)}/"
+                    f"{credit_gate.get('monthly_budget_usd', 0)}"
+                ),
+            }
+        )
     for agent in _rows(brief.get("agents")):
         rows.append(
             {
@@ -8133,6 +8273,8 @@ def _agent_runtime_label(runtime: Mapping[str, object]) -> str:
     )
     tools = str(runtime.get("tool_surface") or "specialist_agents_only").replace("_", " ")
     gate = str(runtime.get("real_mode_gate_status") or "unknown")
+    real_results_gate = str(runtime.get("real_results_gate_status") or "unknown")
+    credit_gate = str(runtime.get("credit_gate_status") or "unknown")
     blocked_tools: list[str] = []
     if runtime.get("external_market_tools") is False:
         blocked_tools.append("market")
@@ -8145,7 +8287,8 @@ def _agent_runtime_label(runtime: Mapping[str, object]) -> str:
     blocked_summary = ", ".join(blocked_tools) or "none"
     return (
         f"{orchestrator}; {'Co' 'pilot'} {assistant_dependency}; tools {tools}; "
-        f"real gate {gate}; blocked tools {blocked_summary}"
+        f"real gate {gate}; results {real_results_gate}; credit {credit_gate}; "
+        f"blocked tools {blocked_summary}"
     )
 
 
@@ -9728,6 +9871,8 @@ def _help_lines(width: int) -> list[str]:
         ("options template", "Create the point-in-time options JSON template."),
         ("options validate", "Validate the local options fixture with zero calls."),
         ("options import", "Preview or explicitly execute options fixture import."),
+        ("agent", "Preview real Agents SDK gates with zero OpenAI calls."),
+        ("agent execute", "Run one credit-gated OpenAI Agents SDK brief."),
         ("decision-gap <gap|all>", "Filter Insights by missing decision evidence."),
         ("next / prev", "Page through the current Insights scan rows."),
         ("offset <row>", "Jump to a 1-based full-scan row number."),

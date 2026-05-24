@@ -5420,7 +5420,15 @@ def test_agent_brief_cli_real_mode_blocks_without_explicit_gates(
     assert main(["seed-dashboard-demo"]) == 0
     capsys.readouterr()
 
-    assert main(["agent-brief", "--real", "--json"]) == 2
+    assert main(["agent-brief", "--real", "--json"]) == 0
+    output = capsys.readouterr()
+    assert output.err == ""
+    payload = json.loads(output.out)
+    assert payload["mode"] == "preview"
+    assert payload["status"] == "preview"
+    assert payload["external_calls_made"]["openai"] == 0
+
+    assert main(["agent-brief", "--real", "--execute", "--json"]) == 2
     output = capsys.readouterr()
     assert output.err == ""
     payload = json.loads(output.out)
