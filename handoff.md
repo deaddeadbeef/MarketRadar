@@ -1,6 +1,67 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-24 10:50:01 +08:00
+Last updated: 2026-05-24 11:07:09 +08:00
+
+## Latest Monthly Value Status Slice
+
+Goal alignment / drift check:
+
+- The active goal remains the mission brief workstream: safe shadow readiness,
+  repeatable shadow records, value ledger, forward outcomes, validation
+  evidence, monthly value proof, and no hidden provider/model/broker calls or
+  database writes.
+- The brief explicitly requires monthly value reports to show `pass`, `fail`,
+  or `insufficient_evidence`. The current report already computed that as
+  `verdict`, but the top-level `status` field was absent, so generic clients
+  and humans looking for the standard status contract saw `null`.
+
+Useful definition:
+
+- A monthly value report is useful only if a human or client can answer the
+  $40/month question from a stable top-level status field without knowing the
+  internal `verdict` alias.
+- This slice is useful because it exposes the existing fail-closed verdict as
+  `status` without changing value math, scoring, thresholds, providers, LLMs,
+  broker state, or action gates.
+
+Fix in this slice:
+
+- `monthly-value-report-v1` now includes top-level `status`, equal to
+  `verdict`.
+- Tests now assert `status` for pass, fail, and insufficient-evidence monthly
+  report paths.
+- README documents that both `status` and `verdict` carry the same
+  pass/fail/insufficient-evidence contract.
+
+Safety:
+
+- Read-only report contract change only.
+- No Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or provider
+  calls were made.
+- No operator database writes were made.
+- No scoring thresholds, local text model, policy, action gate, or trade plan
+  was changed.
+
+Verification completed:
+
+- Focused monthly value-report regression passed:
+  `pytest tests\integration\test_value_report.py -q`, 13 passed.
+- Quality checks passed:
+  `ruff check src\catalyst_radar\validation\value_report.py
+  tests\integration\test_value_report.py`
+- Compile check passed:
+  `compileall -q src\catalyst_radar\validation\value_report.py
+  tests\integration\test_value_report.py`
+- Whitespace check passed: `git diff --check`.
+
+Current operator-safe stop point remains unchanged:
+
+- Safe to try as a read-only research/dashboard/API product and as a local
+  preview-first validation/paper-trading workflow.
+- Not safe to call a shipped minimum decision-support product yet.
+- The strict minimum useful product gate remains blocked by 579 active-universe
+  missing 2026-05-15 market-bar rows.
+- The guarded local repair command still requires explicit operator approval.
 
 ## Latest Paper Trading Preview/JSON Slice
 

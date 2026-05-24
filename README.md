@@ -1309,13 +1309,13 @@ catalyst-radar value-report --month YYYY-MM --json
 
 `GET /api/value-report/monthly?month=YYYY-MM` exposes the same report. It reads
 local value-ledger and outcome rows only, makes 0 provider/broker/model calls,
-and writes 0 database rows. The report returns `pass`, `fail`, or
-`insufficient_evidence`, states whether the $40/month decision-support threshold
-was plausibly met, includes uncertainty and false positives, and separates
-decision-support value from realized profit or investment advice. The terminal
-dashboard Costs page shows the current month's verdict and net
-decision-support value, plus joined monthly evidence examples that tie each
-logged insight to its supported action, user decision, forward outcome, and
+and writes 0 database rows. The report's top-level `status` and `verdict`
+return `pass`, `fail`, or `insufficient_evidence`, state whether the $40/month
+decision-support threshold was plausibly met, include uncertainty and false
+positives, and separate decision-support value from realized profit or
+investment advice. The terminal dashboard Costs page shows the current month's
+verdict and net decision-support value, plus joined monthly evidence examples
+that tie each logged insight to its supported action, user decision, forward outcome, and
 attributed decision-support value. JSON exposes the same rows as
 `value_evidence_examples`, with useful examples also mirrored under
 `best_useful_evidence_examples` and noisy/false-positive examples mirrored
@@ -1324,7 +1324,7 @@ LLM review, the report also shows LLM-reviewed entry count, useful LLM-reviewed
 entry count, LLM-linked cost, and cost per useful LLM-reviewed candidate without
 making model calls.
 The raw `threshold_met` field only answers whether local value math reached the
-monthly target. The top-level `verdict` and
+monthly target. The top-level `status`, `verdict`, and
 `plausibly_earned_at_least_40_usd` fail closed to `insufficient_evidence` /
 `false` until candidate ledger coverage, value outcome coverage, and
 month-matched validation evidence are all ready. This keeps a raw value estimate
