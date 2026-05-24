@@ -1,6 +1,58 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-24 10:17:23 +08:00
+Last updated: 2026-05-24 10:30:01 +08:00
+
+## Latest TUI Backtest Summary Slice
+
+Goal alignment / drift check:
+
+- The active goal remains the mission brief workstream: shadow readiness,
+  repeatable shadow records, value ledger, forward outcomes, baseline
+  comparisons, monthly value proof, and no hidden calls/writes.
+- The previous slice added `backtest_summary` to validation reports and monthly
+  validation evidence, but the human Costs page still only displayed baseline
+  counts and precision. A dashboard-only operator still could not see hit rate,
+  drawdown proxy, or slippage assumption directly.
+
+Useful definition:
+
+- The dashboard is useful only if a human can inspect the monthly value proof
+  and validation evidence without parsing JSON.
+- This slice is useful because it makes the existing M5 evidence visible in the
+  TUI. It does not add new scoring, thresholds, providers, or workflow surface.
+
+Fix in this slice:
+
+- Costs page now renders from `value_report.validation_evidence.backtest_summary`:
+  - backtest hit rate with positive/labeled count
+  - max-adverse-excursion drawdown proxy
+  - slippage assumption
+  - benchmark win/loss/tie/insufficient counts and measured-baseline coverage
+- README documents the additional Costs page evidence.
+
+Safety:
+
+- TUI/read-only presentation change only.
+- No Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or provider
+  calls were made.
+- No operator database writes were made.
+- No scoring thresholds, local text model, policy, action gate, or trade plan
+  was changed.
+
+Verification completed so far:
+
+- Focused baseline before edits passed:
+  `pytest tests\integration\test_value_report.py::test_cost_page_renders_monthly_value_report -q`,
+  1 passed.
+- Focused regression after edits passed with the same command, 1 passed.
+
+Current operator-safe stop point remains unchanged:
+
+- Safe to try as read-only research/dashboard/API browsing only.
+- Not safe to call a shipped decision-support product yet.
+- The strict minimum useful product gate remains blocked by 579 active-universe
+  missing 2026-05-15 market-bar rows.
+- The guarded local repair command still requires explicit operator approval.
 
 ## Latest Validation Backtest Summary Slice
 

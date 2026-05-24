@@ -1376,7 +1376,8 @@ It also carries the validation report's `backtest_summary`, including hit rate,
 false-positive rate, stored max-adverse-excursion drawdown proxy, explicit
 slippage assumption, and benchmark win/loss/tie counts.
 The terminal dashboard Costs page surfaces the same candidate ledger coverage,
-missing-ledger count, and baseline win/loss counts for human review.
+missing-ledger count, baseline win/loss counts, hit rate, drawdown proxy, and
+slippage assumption for human review.
 
 ### Validation and calibration reports
 
