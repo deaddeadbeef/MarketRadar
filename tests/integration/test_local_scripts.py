@@ -75,7 +75,8 @@ def test_dashboard_launcher_manages_child_process_tree() -> None:
     assert "Get-CimInstance Win32_Process" in text
     assert "Stop-ProcessTree" in text
     assert "[System.ConsoleCancelEventHandler]" in text
-    assert "CancelKeyPress" in text
+    assert "[System.Console]::add_CancelKeyPress" in text
+    assert "[System.Console]::remove_CancelKeyPress" in text
     assert "[System.Diagnostics.Process]::Start" in text
     assert "WaitForExit(250)" in text
     assert "dashboard-tui" in text
