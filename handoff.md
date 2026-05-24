@@ -1,6 +1,69 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-24 09:56:48 +08:00
+Last updated: 2026-05-24 10:17:23 +08:00
+
+## Latest Validation Backtest Summary Slice
+
+Goal alignment / drift check:
+
+- The active goal remains the mission brief workstream: safe shadow readiness,
+  repeatable shadow records, value ledger, forward outcomes, baseline
+  comparisons, monthly value proof, and no hidden calls/writes.
+- M1 is still blocked by the approval/data step for residual market bars. This
+  slice does not bypass that gate.
+- M5 validation still needed a compact machine-readable evidence block that
+  states hit rate, drawdown proxy, slippage assumption, and benchmark
+  comparison without asking a human or UI to infer those from scattered fields.
+
+Useful definition:
+
+- A validation report is useful only if a non-professional operator and the TUI
+  can answer: did the signal hit, how noisy was it, what was the adverse move,
+  what slippage assumption is being made, and did simple baselines beat it?
+- This must be report-only evidence. It must not change scoring, thresholds,
+  policy, action gates, trade plans, or execution behavior.
+
+Fix in this slice:
+
+- Added `backtest_summary` to validation reports with:
+  - `hit_rate`
+  - `precision_at_5` / `precision_at_10`
+  - `false_positive_rate`
+  - raw average 5/10/20/60 day returns
+  - SPY and sector relative 20-day return averages
+  - stored max-adverse-excursion drawdown proxy
+  - explicit slippage assumption disclosure
+  - required-baseline win/loss/tie/insufficient result counts
+  - cost per candidate
+- Monthly value-report `validation_evidence` now carries the same
+  `backtest_summary` for the selected in-month validation run.
+- README documents the new validation/monthly evidence field.
+
+Safety:
+
+- Report-only output/API contract change.
+- No Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or provider
+  calls were made.
+- No operator database writes were made.
+- No scoring thresholds, local text model, policy, action gate, or trade plan
+  was changed.
+
+Verification completed so far:
+
+- Focused baseline before edits passed:
+  `pytest tests\unit\test_validation_reports.py
+  tests\integration\test_validation_cli.py::test_validation_report_label_and_paper_cli_workflow
+  tests\integration\test_value_report.py::test_value_report_surfaces_latest_validation_baseline_evidence -q`,
+  15 passed.
+- Focused regression after edits passed with the same command, 15 passed.
+
+Current operator-safe stop point remains unchanged:
+
+- Safe to try as read-only research/dashboard/API browsing only.
+- Not safe to call a shipped decision-support product yet.
+- The strict minimum useful product gate remains blocked by 579 active-universe
+  missing 2026-05-15 market-bar rows.
+- The guarded local repair command still requires explicit operator approval.
 
 ## Latest Value Coverage API Preview Slice
 

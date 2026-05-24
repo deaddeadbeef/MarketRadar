@@ -11,9 +11,49 @@ from catalyst_radar.validation.reports import (
 
 def test_report_builder_computes_core_metrics() -> None:
     rows = [
-        _result("r1", "AAA", "Warning", {"target_20d_25": True, "target_10d_15": True}),
-        _result("r2", "BBB", "Warning", {"target_20d_25": False}, ["future_packet"]),
-        _result("r3", "CCC", "Blocked", {"target_20d_25": True}),
+        _result(
+            "r1",
+            "AAA",
+            "Warning",
+            {
+                "target_20d_25": True,
+                "target_10d_15": True,
+                "max_adverse_excursion": -0.10,
+                "max_favorable_excursion": 0.30,
+                "return_20d": 0.28,
+                "spy_return_20d": 0.04,
+                "sector_return_20d": 0.06,
+                "sector_outperformance": True,
+            },
+        ),
+        _result(
+            "r2",
+            "BBB",
+            "Warning",
+            {
+                "target_20d_25": False,
+                "max_adverse_excursion": -0.20,
+                "max_favorable_excursion": 0.05,
+                "return_20d": -0.06,
+                "spy_return_20d": 0.02,
+                "sector_return_20d": 0.01,
+                "sector_outperformance": False,
+            },
+            ["future_packet"],
+        ),
+        _result(
+            "r3",
+            "CCC",
+            "Blocked",
+            {
+                "target_20d_25": True,
+                "max_adverse_excursion": -0.05,
+                "max_favorable_excursion": 0.35,
+                "return_20d": 0.31,
+                "spy_relative_return_20d": 0.22,
+                "sector_relative_return_20d": 0.18,
+            },
+        ),
     ]
     useful_labels = [
         {"artifact_id": "r1", "ticker": "AAA", "label": "useful"},
@@ -38,6 +78,40 @@ def test_report_builder_computes_core_metrics() -> None:
     assert payload["cost_per_candidate"] == pytest.approx(4.0)
     assert payload["leakage_failure_count"] == 1
     assert payload["state_mix"] == {"Blocked": 1, "Warning": 2}
+    summary = payload["backtest_summary"]
+    assert summary["schema_version"] == "validation-backtest-summary-v1"
+    assert summary["positive_label"] == "target_20d_25"
+    assert summary["candidate_count"] == 3
+    assert summary["labeled_count"] == 3
+    assert summary["hit_rate"] == pytest.approx(2 / 3)
+    assert summary["false_positive_rate"] == pytest.approx(1 / 3)
+    assert summary["drawdown_proxy"] == {
+        "metric": "abs_max_adverse_excursion",
+        "value": 0.2,
+        "note": (
+            "Validation is signal-quality evidence, not realized execution P&L. "
+            "This uses stored max adverse excursion as the drawdown proxy."
+        ),
+    }
+    assert summary["return_20d_avg"] == pytest.approx((0.28 - 0.06 + 0.31) / 3)
+    assert summary["spy_relative_return_20d_avg"] == pytest.approx(
+        ((0.28 - 0.04) + (-0.06 - 0.02) + 0.22) / 3
+    )
+    assert summary["sector_relative_return_20d_avg"] == pytest.approx(
+        ((0.28 - 0.06) + (-0.06 - 0.01) + 0.18) / 3
+    )
+    assert summary["slippage_assumption"] == {
+        "round_trip_bps": 0.0,
+        "applied_to_returns": False,
+        "note": (
+            "No trade execution P&L is claimed here; returns are raw "
+            "point-in-time outcome labels. Apply explicit slippage in a "
+            "paper/live P&L model before using this as execution evidence."
+        ),
+    }
+    assert summary["benchmark_comparison"]["required_baseline_count"] == 5
+    assert summary["benchmark_comparison"]["insufficient_evidence"] == 5
+    assert summary["cost_per_candidate"] == pytest.approx(4.0)
 
 
 def test_report_builder_handles_zero_cost_without_division_failure() -> None:

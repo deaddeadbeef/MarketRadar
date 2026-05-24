@@ -62,6 +62,7 @@ class ValidationReport:
     leakage_failure_count: int
     state_mix: Mapping[str, int]
     baseline_comparison: Mapping[str, Any]
+    backtest_summary: Mapping[str, Any]
     score_calibration: Mapping[str, Any]
     local_text_intelligence: Mapping[str, Any]
 
@@ -75,6 +76,11 @@ class ValidationReport:
             self,
             "baseline_comparison",
             freeze_mapping(self.baseline_comparison, "baseline_comparison"),
+        )
+        object.__setattr__(
+            self,
+            "backtest_summary",
+            freeze_mapping(self.backtest_summary, "backtest_summary"),
         )
         object.__setattr__(
             self,
@@ -100,6 +106,7 @@ class ValidationReport:
             "leakage_failure_count": self.leakage_failure_count,
             "state_mix": dict(self.state_mix),
             "baseline_comparison": _thaw(self.baseline_comparison),
+            "backtest_summary": _thaw(self.backtest_summary),
             "score_calibration": _thaw(self.score_calibration),
             "local_text_intelligence": _thaw(self.local_text_intelligence),
         }
@@ -142,6 +149,12 @@ def build_validation_report(
         positive_label=positive_label,
         total_cost=total_cost,
     )
+    backtest_summary = _backtest_summary(
+        candidate_rows,
+        baseline_comparison=baseline_comparison,
+        positive_label=positive_label,
+        total_cost=total_cost,
+    )
     score_calibration = _score_calibration(
         candidate_rows,
         useful_alert_labels=useful_label_rows,
@@ -165,6 +178,7 @@ def build_validation_report(
         leakage_failure_count=sum(1 for row in candidate_rows if _leakage_flags(row)),
         state_mix=_state_mix(candidate_rows),
         baseline_comparison=baseline_comparison,
+        backtest_summary=backtest_summary,
         score_calibration=score_calibration,
         local_text_intelligence=local_text_intelligence,
     )
@@ -357,6 +371,77 @@ def _empty_baseline_comparison(
     }
 
 
+def _backtest_summary(
+    candidate_rows: tuple[Any, ...],
+    *,
+    baseline_comparison: Mapping[str, Any],
+    positive_label: str,
+    total_cost: float,
+) -> dict[str, Any]:
+    marketradar_rows = _ranked_market_radar_rows(candidate_rows, limit=None)
+    stats = _selection_stats(marketradar_rows, positive_label=positive_label)
+    baseline_result_counts = Counter(
+        str(_read(row, "result_vs_market_radar") or "unknown")
+        for row in baseline_comparison.values()
+    )
+    adverse_values = _label_values(marketradar_rows, "max_adverse_excursion")
+    favorable_values = _label_values(marketradar_rows, "max_favorable_excursion")
+    return {
+        "schema_version": "validation-backtest-summary-v1",
+        "scope": "marketradar_candidates",
+        "positive_label": positive_label,
+        "candidate_count": stats["candidate_count"],
+        "labeled_count": stats["labeled_count"],
+        "positive_count": stats["positive_count"],
+        "hit_rate": _safe_rate(stats["positive_count"], stats["labeled_count"]),
+        "precision_at_5": stats["precision_at_5"],
+        "precision_at_10": stats["precision_at_10"],
+        "false_positive_rate": stats["false_positive_rate"],
+        "max_adverse_excursion_avg": stats["max_adverse_excursion_avg"],
+        "max_favorable_excursion_avg": stats["max_favorable_excursion_avg"],
+        "drawdown_proxy": {
+            "metric": "abs_max_adverse_excursion",
+            "value": _max_abs(adverse_values),
+            "note": (
+                "Validation is signal-quality evidence, not realized execution P&L. "
+                "This uses stored max adverse excursion as the drawdown proxy."
+            ),
+        },
+        "max_favorable_excursion_abs": _max_abs(favorable_values),
+        "return_5d_avg": stats["return_5d_avg"],
+        "return_10d_avg": stats["return_10d_avg"],
+        "return_20d_avg": stats["return_20d_avg"],
+        "return_60d_avg": stats["return_60d_avg"],
+        "spy_relative_return_20d_avg": stats["spy_relative_return_20d_avg"],
+        "sector_relative_return_20d_avg": stats["sector_relative_return_20d_avg"],
+        "sector_outperformance_rate": stats["sector_outperformance_rate"],
+        "slippage_assumption": {
+            "round_trip_bps": 0.0,
+            "applied_to_returns": False,
+            "note": (
+                "No trade execution P&L is claimed here; returns are raw "
+                "point-in-time outcome labels. Apply explicit slippage in a "
+                "paper/live P&L model before using this as execution evidence."
+            ),
+        },
+        "benchmark_comparison": {
+            "required_baseline_count": len(MISSION_BRIEF_BASELINES),
+            "measured_baseline_count": int(baseline_result_counts.get("marketradar_wins") or 0)
+            + int(baseline_result_counts.get("baseline_wins") or 0)
+            + int(baseline_result_counts.get("tie") or 0),
+            "marketradar_wins": int(baseline_result_counts.get("marketradar_wins") or 0),
+            "baseline_wins": int(baseline_result_counts.get("baseline_wins") or 0),
+            "ties": int(baseline_result_counts.get("tie") or 0),
+            "insufficient_evidence": int(
+                baseline_result_counts.get("insufficient_evidence") or 0
+            ),
+            "missing": int(baseline_result_counts.get("missing") or 0),
+            "result_counts": dict(sorted(baseline_result_counts.items())),
+        },
+        "cost_per_candidate": _cost_per_candidate(total_cost, stats["candidate_count"]),
+    }
+
+
 def _ranked_market_radar_rows(rows: tuple[Any, ...], *, limit: int | None) -> tuple[Any, ...]:
     ordered = sorted(
         rows,
@@ -409,14 +494,24 @@ def _precision_at(rows: tuple[Any, ...], *, positive_label: str, n: int) -> floa
 
 
 def _average_label(rows: tuple[Any, ...], label: str) -> float | None:
-    values = [
+    values = _label_values(rows, label)
+    if not values:
+        return None
+    return sum(values) / len(values)
+
+
+def _label_values(rows: tuple[Any, ...], label: str) -> list[float]:
+    return [
         number
         for row in rows
         if (number := _finite_float(_labels(row).get(label))) is not None
     ]
+
+
+def _max_abs(values: Sequence[float]) -> float | None:
     if not values:
         return None
-    return sum(values) / len(values)
+    return max(abs(value) for value in values)
 
 
 def _selection_return_stats(rows: tuple[Any, ...]) -> dict[str, float | None]:

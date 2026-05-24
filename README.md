@@ -1372,6 +1372,9 @@ evidence; otherwise it gives the next validation-replay action. It also
 summarizes each required baseline as `marketradar_wins`, `baseline_wins`,
 `tie`, `insufficient_evidence`, or `missing`, so the monthly report can say
 plainly whether measured validation favored MarketRadar or a boring baseline.
+It also carries the validation report's `backtest_summary`, including hit rate,
+false-positive rate, stored max-adverse-excursion drawdown proxy, explicit
+slippage assumption, and benchmark win/loss/tie counts.
 The terminal dashboard Costs page surfaces the same candidate ledger coverage,
 missing-ledger count, and baseline win/loss counts for human review.
 
@@ -1411,6 +1414,12 @@ are direction-aware for MarketRadar priced-in signals: bullish rows use upside
 follow-through and downside invalidation, while bearish rows use downside
 follow-through and upside invalidation. Baseline screeners remain long-only
 unless a baseline explicitly carries a direction.
+The report's `backtest_summary` provides the compact M5 evidence contract:
+hit rate, precision@5/10, false-positive rate, raw average forward returns,
+SPY/sector-relative 20-day averages, stored max-adverse-excursion drawdown
+proxy, explicit slippage assumption, and required-baseline win/loss/tie counts.
+The slippage field is an assumption disclosure, not an execution-P&L model;
+MarketRadar still separates decision-support validation from realized profit.
 `validation-report --latest --json` selects the latest successful stored
 validation run, makes 0 provider calls and 0 database writes, and returns
 `status=no_validation_runs` when no replay evidence exists yet. Missing-report

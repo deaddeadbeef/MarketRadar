@@ -130,6 +130,22 @@ def test_value_report_surfaces_latest_validation_baseline_evidence(
     }
     assert validation["precision_at_5"] == 1.0
     assert validation["precision_at_10"] == 1.0
+    backtest = validation["backtest_summary"]
+    assert backtest["schema_version"] == "validation-backtest-summary-v1"
+    assert backtest["candidate_count"] == 1
+    assert backtest["hit_rate"] == 1.0
+    assert backtest["drawdown_proxy"]["value"] == 0.02
+    assert backtest["slippage_assumption"]["applied_to_returns"] is False
+    assert backtest["benchmark_comparison"] == {
+        "required_baseline_count": len(MISSION_BASELINES),
+        "measured_baseline_count": len(MISSION_BASELINES),
+        "marketradar_wins": 0,
+        "baseline_wins": 0,
+        "ties": len(MISSION_BASELINES),
+        "insufficient_evidence": 0,
+        "missing": 0,
+        "result_counts": {"tie": len(MISSION_BASELINES)},
+    }
     assert validation["canonical_next_command"] is None
     assert validation["external_calls_made"] == 0
     assert validation["db_writes_made"] == 0
