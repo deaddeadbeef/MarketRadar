@@ -77,6 +77,7 @@ from catalyst_radar.textint.pipeline import run_text_pipeline
 from catalyst_radar.universe.seed import seed_polygon_tickers
 from catalyst_radar.validation.shadow_mode import (
     shadow_mode_latest_payload,
+    shadow_mode_list_payload,
     shadow_mode_run_payload,
     shadow_mode_status_payload,
 )
@@ -659,6 +660,18 @@ def radar_shadow_status(available_at: datetime | None = None) -> dict[str, objec
         _engine(),
         AppConfig.from_env(),
         available_at=_parse_api_datetime(available_at),
+    )
+
+
+@router.get("/shadow/runs", dependencies=[Depends(require_role(Role.VIEWER))])
+def radar_shadow_runs(
+    available_at: datetime | None = None,
+    limit: int = Query(default=30, ge=1, le=365),
+) -> dict[str, object]:
+    return shadow_mode_list_payload(
+        _engine(),
+        available_at=_parse_api_datetime(available_at),
+        limit=limit,
     )
 
 

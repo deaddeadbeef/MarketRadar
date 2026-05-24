@@ -20,6 +20,7 @@ from catalyst_radar.validation.shadow_mode import (
     build_shadow_mode_run,
     classify_shadow_run_status,
     shadow_mode_latest_payload,
+    shadow_mode_list_payload,
     shadow_mode_run_payload,
     shadow_mode_status_payload,
 )
@@ -140,7 +141,9 @@ def test_shadow_mode_cli_preview_execute_and_latest(
     latest = json.loads(capsys.readouterr().out)
     assert latest["status"] == "setup_required"
     assert latest["run"]["id"] == executed["run"]["id"]
+    assert latest["external_calls_required"] == 0
     assert latest["external_calls_made"] == 0
+    assert latest["db_writes_required"] == 0
     assert latest["db_writes_made"] == 0
 
     status_exit = main(["shadow-mode", "status", "--json"])
@@ -152,8 +155,22 @@ def test_shadow_mode_cli_preview_execute_and_latest(
     assert status["first_gap_count"] == 0
     assert status["canonical_next_action"] == status["next_action"]
     assert status["canonical_next_command"] is None
+    assert status["external_calls_required"] == 0
     assert status["external_calls_made"] == 0
+    assert status["db_writes_required"] == 0
     assert status["db_writes_made"] == 0
+
+    list_exit = main(["shadow-mode", "list", "--json"])
+    assert list_exit == 0
+    listed = json.loads(capsys.readouterr().out)
+    assert listed["schema_version"] == "shadow-mode-list-v1"
+    assert listed["count"] == 1
+    assert listed["runs"][0]["id"] == executed["run"]["id"]
+    assert listed["status_counts"] == {"setup_required": 1}
+    assert listed["external_calls_required"] == 0
+    assert listed["external_calls_made"] == 0
+    assert listed["db_writes_required"] == 0
+    assert listed["db_writes_made"] == 0
 
     human_exit = main(
         [
@@ -195,7 +212,9 @@ def test_shadow_mode_latest_without_run_surfaces_readiness_next_step(
     assert latest["first_gap_count"] == 0
     assert latest["canonical_next_action"] == latest["next_action"]
     assert latest["canonical_next_command"] is None
+    assert latest["external_calls_required"] == 0
     assert latest["external_calls_made"] == 0
+    assert latest["db_writes_required"] == 0
     assert latest["db_writes_made"] == 0
     with engine_from_url(database_url).connect() as conn:
         assert conn.execute(select(func.count()).select_from(shadow_mode_runs)).scalar_one() == 0
@@ -249,7 +268,9 @@ def test_shadow_mode_latest_surfaces_approval_packet_without_run(
         "catalyst-radar market-bars residual-review --expected-as-of 2026-05-21"
     )
     assert payload["approval_required_unblock"] == approval
+    assert payload["external_calls_required"] == 0
     assert payload["external_calls_made"] == 0
+    assert payload["db_writes_required"] == 0
     assert payload["db_writes_made"] == 0
     with engine.connect() as conn:
         assert conn.execute(select(func.count()).select_from(shadow_mode_runs)).scalar_one() == 0
@@ -323,8 +344,21 @@ def test_shadow_mode_api_preview_and_latest(tmp_path, monkeypatch) -> None:
     assert latest_response.status_code == 200
     latest = latest_response.json()
     assert latest["run"]["id"] == executed["run"]["id"]
+    assert latest["external_calls_required"] == 0
     assert latest["external_calls_made"] == 0
+    assert latest["db_writes_required"] == 0
     assert latest["db_writes_made"] == 0
+
+    list_response = client.get("/api/radar/shadow/runs", params={"limit": 5})
+    assert list_response.status_code == 200
+    listed = list_response.json()
+    assert listed["schema_version"] == "shadow-mode-list-v1"
+    assert listed["count"] == 1
+    assert listed["runs"][0]["id"] == executed["run"]["id"]
+    assert listed["external_calls_required"] == 0
+    assert listed["external_calls_made"] == 0
+    assert listed["db_writes_required"] == 0
+    assert listed["db_writes_made"] == 0
 
     status_response = client.get("/api/radar/shadow/status")
     assert status_response.status_code == 200
@@ -333,8 +367,102 @@ def test_shadow_mode_api_preview_and_latest(tmp_path, monkeypatch) -> None:
     assert status["latest"]["id"] == executed["run"]["id"]
     assert status["first_blocker"] == "universe"
     assert status["canonical_next_action"] == status["next_action"]
+    assert status["external_calls_required"] == 0
     assert status["external_calls_made"] == 0
+    assert status["db_writes_required"] == 0
     assert status["db_writes_made"] == 0
+
+
+def test_shadow_mode_list_exports_runs_without_calls_or_writes(tmp_path) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'shadow-list.db').as_posix()}"
+    engine = engine_from_url(database_url)
+    create_schema(engine)
+    available_at = datetime.fromisoformat(AVAILABLE_AT)
+    older = build_shadow_mode_run(
+        {
+            "shadow_readiness": {
+                "status": "ready",
+                "blockers": [],
+                "call_boundary": {"planned_run_external_call_count_max": 2},
+                "snapshots": {"scan_scope": {"mode": "full_scan"}},
+                "checks": [
+                    {
+                        "code": "latest_market_bars",
+                        "metric": {"missing_as_of_daily_bar_count": 0},
+                    },
+                    {"code": "validation_ready", "status": "ready"},
+                ],
+            },
+            "discovery_snapshot": {
+                "yield": {
+                    "candidate_states": 1,
+                    "requested_securities": 10,
+                    "scanned_securities": 10,
+                },
+                "freshness": {
+                    "active_security_count": 10,
+                    "missing_as_of_daily_bar_count": 0,
+                    "latest_daily_bar_date": "2026-05-21",
+                },
+            },
+            "latest_run": {"as_of": "2026-05-21"},
+            "candidate_rows": [{"state": ActionState.WARNING.value}],
+        },
+        run_date=date(2026, 5, 21),
+        as_of=None,
+        available_at=available_at.replace(day=21),
+        db_writes_made=1,
+    )
+    newer = build_shadow_mode_run(
+        {
+            "shadow_readiness": {
+                "status": "blocked",
+                "blockers": [{"code": "validation_ready"}],
+                "call_boundary": {"planned_run_external_call_count_max": 0},
+                "snapshots": {"scan_scope": {"mode": "selected_universe"}},
+                "checks": [
+                    {
+                        "code": "latest_market_bars",
+                        "metric": {"missing_as_of_daily_bar_count": 0},
+                    },
+                    {"code": "validation_ready", "status": "blocked"},
+                ],
+            },
+            "discovery_snapshot": {
+                "yield": {
+                    "candidate_states": 1,
+                    "requested_securities": 10,
+                    "scanned_securities": 3,
+                },
+                "freshness": {
+                    "active_security_count": 10,
+                    "missing_as_of_daily_bar_count": 0,
+                    "latest_daily_bar_date": "2026-05-22",
+                },
+            },
+            "latest_run": {"as_of": "2026-05-22"},
+            "candidate_rows": [{"state": ActionState.WARNING.value}],
+        },
+        run_date=date(2026, 5, 22),
+        as_of=None,
+        available_at=available_at,
+        db_writes_made=1,
+    )
+    repo = ValidationRepository(engine)
+    repo.upsert_shadow_mode_run(older)
+    repo.upsert_shadow_mode_run(newer)
+
+    payload = shadow_mode_list_payload(engine, limit=5)
+
+    assert payload["schema_version"] == "shadow-mode-list-v1"
+    assert payload["count"] == 2
+    assert payload["runs"][0]["id"] == newer.id
+    assert payload["runs"][1]["id"] == older.id
+    assert payload["status_counts"] == {"partial_scan": 1, "valid_full_scan": 1}
+    assert payload["external_calls_required"] == 0
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_required"] == 0
+    assert payload["db_writes_made"] == 0
 
 
 def test_shadow_mode_preview_records_latest_market_bar_gap_without_radar_run(

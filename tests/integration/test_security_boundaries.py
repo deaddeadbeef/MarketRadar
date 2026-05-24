@@ -205,6 +205,10 @@ EXPECTED_API_ROUTES = {
     ): ("catalyst_radar.api.routes.radar", "radar_shadow_run", ("radar",)),
     (
         "GET",
+        "/api/radar/shadow/runs",
+    ): ("catalyst_radar.api.routes.radar", "radar_shadow_runs", ("radar",)),
+    (
+        "GET",
         "/api/radar/shadow/runs/latest",
     ): ("catalyst_radar.api.routes.radar", "radar_shadow_latest", ("radar",)),
     (
