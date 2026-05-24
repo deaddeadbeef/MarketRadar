@@ -1,6 +1,82 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-24 08:55:04 +08:00
+Last updated: 2026-05-24 09:23:49 +08:00
+
+## Latest Trial Minimum-Product Command Slice
+
+Goal alignment / drift check:
+
+- The active goal remains the mission brief workstream: safe shadow readiness,
+  shadow-run audit records, value ledger, outcomes, validation evidence, and
+  monthly value proof without hidden calls or writes.
+- The user wants to try MarketRadar soon, so the stop line must be clear:
+  read-only browsing can be safe while the strict shipped-product gate remains
+  blocked.
+- A live zero-call check showed `assert-trial-ready --minimum-product --json`
+  exited nonzero with `minimum_useful_product.first_blocker=market_bars`, but
+  the top-level `canonical_next_command` still pointed at
+  `catalyst-radar dashboard-tui`. That is confusing for humans and brittle for
+  scripts that treat top-level fields as the source of truth.
+
+Useful definition:
+
+- In strict `--minimum-product` mode, useful means the command's top-level
+  status, blocker, and next command describe the minimum shipped-product gate,
+  not the looser read-only browsing gate.
+- The normal `assert-trial-ready --json` output should still remain a read-only
+  trial/browsing gate.
+
+Fix in this slice:
+
+- CLI `assert-trial-ready --minimum-product` now promotes the nested
+  `minimum_useful_product` gate into the top-level output fields:
+  - `status`
+  - `highest_allowed_use`
+  - `headline`
+  - `first_blocker`
+  - `canonical_next_action`
+  - `canonical_next_command`
+  - `next_action`
+  - `next_command`
+- Strict CLI output also includes:
+  - `minimum_product_mode=true`
+  - `minimum_useful_product_ready=<bool>`
+- The underlying `trial_readiness_payload` and API contract remain unchanged;
+  this is a CLI output-mode fix for the explicit strict gate.
+- README documents that strict CLI output mirrors the minimum-product next
+  command at the top level.
+
+Safety:
+
+- Output contract change only.
+- No Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or provider
+  calls were made.
+- No operator database writes were made.
+- No approval-only commands were executed.
+- Root `data/schwab-live.db` was read by zero-call readiness smoke only.
+
+Verification completed before PR:
+
+- Focused baseline before edits passed:
+  `pytest tests\integration\test_trial_readiness_cli.py -q`, 10 passed.
+- Focused regression after edits passed:
+  `pytest tests\integration\test_trial_readiness_cli.py -q`, 10 passed.
+- Live root DB smoke using worktree source:
+  `assert-trial-ready --minimum-product --json` exits 1 with
+  `status=blocked`, `minimum_product_mode=true`,
+  `safe_to_try_read_only=true`, `first_blocker=market_bars`, and
+  `canonical_next_command=catalyst-radar market-bars residual-review --expected-as-of 2026-05-15`.
+
+Current operator-safe stop point remains unchanged:
+
+- Safe to try as read-only research/dashboard browsing only.
+- Not safe to call shipped decision-support product yet.
+- The strict minimum useful product gate remains blocked by 579 active-universe
+  missing 2026-05-15 market-bar rows.
+- The current zero-call next command remains:
+  `catalyst-radar market-bars residual-review --expected-as-of 2026-05-15`.
+- The guarded local repair command still requires explicit operator approval:
+  `catalyst-radar market-bars residual-repair --expected-as-of 2026-05-15 --expect-missing-count 579 --expect-eligible-count 579 --execute --json`.
 
 ## Latest Shadow Run Export Boundary Slice
 
