@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import json
 
+from sqlalchemy import create_engine
+
 from catalyst_radar.agents.sdk_orchestrator import (
     agent_sdk_gate_payload,
     redacted_operator_snapshot,
     run_market_radar_agents,
 )
 from catalyst_radar.core.config import AppConfig
+from catalyst_radar.storage.budget_repositories import BudgetLedgerRepository
+from catalyst_radar.storage.db import create_schema
 
 
 def test_agent_sdk_dry_run_brief_is_multi_agent_and_zero_call() -> None:
@@ -28,21 +32,18 @@ def test_agent_sdk_dry_run_brief_is_multi_agent_and_zero_call() -> None:
         "market_data": 0,
         "broker": 0,
     }
-    assert brief["runtime"] == {
-        "schema_version": "market-radar-agent-runtime-v1",
-        "orchestrator": "openai_agents_sdk",
-        "provider": "openai",
-        "mode": "dry_run",
-        "real_mode_gate_status": "blocked",
-        "tool_surface": "specialist_agents_only",
-        "copilot_dependency": "absent",
-        "external_market_tools": False,
-        "broker_tools": False,
-        "shell_tools": False,
-        "filesystem_tools": False,
-        "web_tools": False,
-        "max_turns": 6,
-    }
+    assert brief["runtime"]["schema_version"] == "market-radar-agent-runtime-v1"
+    assert brief["runtime"]["orchestrator"] == "openai_agents_sdk"
+    assert brief["runtime"]["provider"] == "openai"
+    assert brief["runtime"]["mode"] == "dry_run"
+    assert brief["runtime"]["real_mode_gate_status"] == "blocked"
+    assert brief["runtime"]["credit_gate_status"] == "blocked"
+    assert brief["runtime"]["copilot_dependency"] == "absent"
+    assert brief["runtime"]["external_market_tools"] is False
+    assert brief["runtime"]["broker_tools"] is False
+    assert brief["runtime"]["shell_tools"] is False
+    assert brief["runtime"]["web_tools"] is False
+    assert brief["runtime"]["max_turns"] == 3
     blocked = " ".join(brief["blocked_operations"])
     assert "Schwab" in blocked
     assert "order" in blocked
@@ -214,7 +215,12 @@ def test_agent_sdk_real_mode_gate_fails_closed_without_secret_leak() -> None:
     config = AppConfig.from_env({"OPENAI_API_KEY": "sk-test-secret"})
 
     gate = agent_sdk_gate_payload(config)
-    brief = run_market_radar_agents(_dashboard_payload(), config, real=True)
+    brief = run_market_radar_agents(
+        _dashboard_payload(),
+        config,
+        real=True,
+        execute=True,
+    )
 
     gate_text = json.dumps(gate, sort_keys=True)
     brief_text = json.dumps(brief, sort_keys=True)
@@ -229,6 +235,90 @@ def test_agent_sdk_real_mode_gate_fails_closed_without_secret_leak() -> None:
     assert brief["runtime"]["real_mode_gate_status"] == "blocked"
     assert brief["external_calls_made"]["openai"] == 0
     assert "sk-test-secret" not in brief_text
+
+
+def test_agent_sdk_real_mode_preview_never_calls_openai_when_gates_are_ready(
+    monkeypatch,
+) -> None:
+    config = _openai_config()
+    repo = _budget_repo()
+    payload = _real_results_payload()
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("preview should not call the Agents SDK")
+
+    monkeypatch.setattr(
+        "catalyst_radar.agents.sdk_orchestrator._run_agent_sdk_real",
+        fail_if_called,
+    )
+
+    brief = run_market_radar_agents(
+        payload,
+        config,
+        real=True,
+        execute=False,
+        ledger_repo=repo,
+    )
+
+    assert brief["mode"] == "preview"
+    assert brief["status"] == "preview"
+    assert brief["external_calls_made"]["openai"] == 0
+    assert brief["runtime"]["execute_required"] is True
+    assert brief["real_results"]["status"] == "ready"
+    assert brief["credit_gate"]["status"] == "ready"
+
+
+def test_agent_sdk_execute_blocks_when_real_results_are_missing() -> None:
+    config = _openai_config()
+    repo = _budget_repo()
+
+    brief = run_market_radar_agents(
+        _dashboard_payload(),
+        config,
+        real=True,
+        execute=True,
+        ledger_repo=repo,
+    )
+
+    assert brief["mode"] == "blocked"
+    assert brief["status"] == "blocked"
+    assert brief["external_calls_made"]["openai"] == 0
+    assert any(
+        check["name"] == "Real results gate" and check["status"] == "blocked"
+        for check in brief["security_checks"]
+    )
+
+
+def test_agent_sdk_execute_blocks_when_budget_is_zero() -> None:
+    config = AppConfig.from_env(
+        {
+            "CATALYST_ENABLE_AGENT_SDK": "true",
+            "CATALYST_ENABLE_PREMIUM_LLM": "true",
+            "CATALYST_LLM_PROVIDER": "openai",
+            "CATALYST_AGENT_SDK_MODEL": "gpt-test",
+            "OPENAI_API_KEY": "sk-test-secret",
+            "CATALYST_LLM_INPUT_COST_PER_1M": "1",
+            "CATALYST_LLM_CACHED_INPUT_COST_PER_1M": "0.1",
+            "CATALYST_LLM_OUTPUT_COST_PER_1M": "3",
+            "CATALYST_LLM_PRICING_UPDATED_AT": "2026-05-25T00:00:00+00:00",
+            "CATALYST_LLM_DAILY_BUDGET_USD": "0",
+            "CATALYST_LLM_MONTHLY_BUDGET_USD": "0",
+        }
+    )
+
+    brief = run_market_radar_agents(
+        _real_results_payload(),
+        config,
+        real=True,
+        execute=True,
+        ledger_repo=_budget_repo(),
+    )
+
+    assert brief["mode"] == "blocked"
+    assert brief["status"] == "blocked"
+    assert brief["credit_gate"]["status"] == "blocked"
+    assert "CATALYST_LLM_DAILY_BUDGET_USD>0" in brief["credit_gate"]["missing"]
+    assert brief["external_calls_made"]["openai"] == 0
 
 
 def test_redacted_operator_snapshot_allowlists_dashboard_fields() -> None:
@@ -610,3 +700,46 @@ def _dashboard_payload() -> dict[str, object]:
         "telemetry": {"status": "ready", "headline": "Telemetry is healthy."},
         "external_calls_made": 0,
     }
+
+
+def _real_results_payload() -> dict[str, object]:
+    payload = _dashboard_payload()
+    payload["real_results"] = {
+        "schema_version": "dashboard-real-results-v1",
+        "status": "ready",
+        "headline": "Real scan context ready: 12087 priced-in row(s).",
+        "next_action": "Review candidates, then run agent-brief --real --execute if desired.",
+        "source": "latest_radar_run",
+        "row_count": 12087,
+        "latest_run_id": "run-2026-05-15",
+        "latest_run_status": "success",
+        "as_of": "2026-05-15",
+        "cutoff": "2026-05-17T00:00:00+00:00",
+        "missing": [],
+    }
+    return payload
+
+
+def _openai_config() -> AppConfig:
+    return AppConfig.from_env(
+        {
+            "CATALYST_ENABLE_AGENT_SDK": "true",
+            "CATALYST_ENABLE_PREMIUM_LLM": "true",
+            "CATALYST_LLM_PROVIDER": "openai",
+            "CATALYST_AGENT_SDK_MODEL": "gpt-test",
+            "OPENAI_API_KEY": "sk-test-secret",
+            "CATALYST_LLM_INPUT_COST_PER_1M": "1",
+            "CATALYST_LLM_CACHED_INPUT_COST_PER_1M": "0.1",
+            "CATALYST_LLM_OUTPUT_COST_PER_1M": "3",
+            "CATALYST_LLM_PRICING_UPDATED_AT": "2026-05-25T00:00:00+00:00",
+            "CATALYST_LLM_DAILY_BUDGET_USD": "1",
+            "CATALYST_LLM_MONTHLY_BUDGET_USD": "5",
+            "CATALYST_LLM_TASK_DAILY_CAPS": "agent_brief=1",
+        }
+    )
+
+
+def _budget_repo() -> BudgetLedgerRepository:
+    engine = create_engine("sqlite:///:memory:", future=True)
+    create_schema(engine)
+    return BudgetLedgerRepository(engine)

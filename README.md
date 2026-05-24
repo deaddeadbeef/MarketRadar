@@ -711,18 +711,70 @@ blocker action exists, lower-priority readiness and work-queue suggestions are
 suppressed so the Agent page does not present competing next actions. Those
 items are instructions for a human operator; the agent still cannot call
 Polygon/Massive or mutate the database.
-Real Agents SDK mode is opt-in:
+Real Agents SDK mode is opt-in and now has two steps. Preview is safe and makes
+0 OpenAI calls:
 
 ```powershell
 catalyst-radar agent-brief --real --json
 ```
 
-Real mode fails closed unless all explicit gates are set:
+Execution is the only path that can spend OpenAI credits:
+
+```powershell
+catalyst-radar agent-brief --real --execute --max-openai-calls 3 --json
+```
+
+Execution fails closed unless all explicit gates are set:
 `CATALYST_ENABLE_AGENT_SDK=true`, `CATALYST_ENABLE_PREMIUM_LLM=true`,
 `CATALYST_LLM_PROVIDER=openai`, `CATALYST_AGENT_SDK_MODEL=<model>`, and
-`OPENAI_API_KEY=<secret>`. Even in real mode, the agent receives only an
+`OPENAI_API_KEY=<secret>`. It also requires real scan rows in the local
+database, fresh model pricing, positive daily/monthly budgets, and an
+`agent_brief` daily cap. Even in execute mode, the agent receives only an
 allowlisted redacted snapshot and has no Polygon/Massive, SEC, Schwab, shell,
 filesystem, web, or order-submission tools.
+
+Minimal `.env.local` values for real agent testing:
+
+```dotenv
+CATALYST_ENABLE_PREMIUM_LLM=true
+CATALYST_LLM_PROVIDER=openai
+CATALYST_ENABLE_AGENT_SDK=true
+CATALYST_AGENT_SDK_MODEL=<your OpenAI model>
+OPENAI_API_KEY=<your real OpenAI API key>
+
+# Copy current prices from your OpenAI account pricing page.
+CATALYST_LLM_INPUT_COST_PER_1M=<input dollars per 1M tokens>
+CATALYST_LLM_CACHED_INPUT_COST_PER_1M=<cached input dollars per 1M tokens>
+CATALYST_LLM_OUTPUT_COST_PER_1M=<output dollars per 1M tokens>
+CATALYST_LLM_PRICING_UPDATED_AT=2026-05-25T00:00:00+00:00
+
+# Start low. Preview still costs 0; execute is blocked if these are 0.
+CATALYST_LLM_DAILY_BUDGET_USD=1
+CATALYST_LLM_MONTHLY_BUDGET_USD=5
+CATALYST_LLM_TASK_DAILY_CAPS=agent_brief=1
+```
+
+The TUI command `agent` previews the same gates. `agent execute` runs one
+credit-gated brief only after those gates pass.
+
+Other real-data credentials live in the same `.env.local` file:
+
+```dotenv
+# Polygon/Massive market data
+CATALYST_DAILY_MARKET_PROVIDER=polygon
+CATALYST_POLYGON_API_KEY=<your Polygon/Massive key>
+CATALYST_POLYGON_TICKERS_MAX_PAGES=1
+
+# SEC live filings. Use a real product/contact User-Agent.
+CATALYST_SEC_ENABLE_LIVE=true
+CATALYST_SEC_USER_AGENT=MarketRadar/0.1 your-email@example.com
+
+# Schwab read-only broker context. Leave order submission disabled.
+SCHWAB_CLIENT_ID=<your Schwab app client id>
+SCHWAB_CLIENT_SECRET=<your Schwab app client secret>
+SCHWAB_REDIRECT_URI=<your Schwab callback URI>
+SCHWAB_ORDER_SUBMISSION_ENABLED=false
+```
 
 See `docs/dashboard-feature-inventory.md` for the current dashboard feature
 inventory and TUI coverage.
@@ -1526,7 +1578,9 @@ gated behind `CATALYST_ENABLE_PREMIUM_LLM=true`,
 The separate `agent-brief` command uses the `openai-agents` package for the
 new manager-style operator layer. It is disabled by default, requires
 `CATALYST_ENABLE_AGENT_SDK=true` plus the same OpenAI premium gates for real
-mode, and exposes only specialist agents as tools. It does not grant model
+execution, and exposes only specialist agents as tools. `--real` previews the
+gates with zero OpenAI calls; `--real --execute` is required before the Agents
+SDK is invoked. It does not grant model
 access to market-data providers, Schwab, local files, shell, web browsing, or
 order submission. The CLI/API payload and Agent TUI page expose this as
 `runtime.orchestrator=openai_agents_sdk`,

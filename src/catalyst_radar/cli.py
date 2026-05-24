@@ -1226,7 +1226,25 @@ def build_parser() -> argparse.ArgumentParser:
         help="Brief only common-stock and ADR rows from the ranked priced-in scan.",
     )
     agent_brief.add_argument("--goal")
-    agent_brief.add_argument("--real", action="store_true")
+    agent_brief.add_argument(
+        "--real",
+        action="store_true",
+        help=(
+            "Preview real OpenAI Agents SDK execution gates; makes zero OpenAI "
+            "calls unless --execute is also set."
+        ),
+    )
+    agent_brief.add_argument(
+        "--execute",
+        action="store_true",
+        help="Actually run one gated OpenAI Agents SDK brief. Requires --real and budget gates.",
+    )
+    agent_brief.add_argument(
+        "--max-openai-calls",
+        type=int,
+        default=3,
+        help="Maximum model turns allowed during --real --execute.",
+    )
     agent_brief.add_argument("--json", action="store_true")
 
     dashboard_tui = subparsers.add_parser("dashboard-tui")
@@ -2083,6 +2101,12 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "agent-brief":
+        if args.execute and not args.real:
+            print("--execute requires --real", file=sys.stderr)
+            return 2
+        if args.max_openai_calls <= 0:
+            print("--max-openai-calls must be greater than zero", file=sys.stderr)
+            return 2
         create_schema(engine)
         filters = DashboardFilters(
             ticker=args.ticker,
@@ -2109,12 +2133,15 @@ def main(argv: list[str] | None = None) -> int:
             config,
             real=args.real,
             operator_goal=args.goal,
+            execute=args.execute,
+            max_openai_calls=args.max_openai_calls,
+            ledger_repo=BudgetLedgerRepository(engine) if args.real else None,
         )
         if args.json:
             print(json.dumps(brief, default=dashboard_json_default, sort_keys=True))
         else:
             _print_agent_brief(brief)
-        return 2 if args.real and brief.get("status") == "blocked" else 0
+        return 2 if args.execute and brief.get("status") == "blocked" else 0
 
     if args.command == "dashboard-tui":
         create_schema(engine)
@@ -5278,7 +5305,29 @@ def _print_agent_brief(payload: Mapping[str, object]) -> None:
             f"provider={runtime.get('provider', 'unknown')} "
             f"{'co' 'pilot_dependency'}={runtime.get('co' + 'pilot_dependency', 'unknown')} "
             f"tool_surface={runtime.get('tool_surface', 'unknown')} "
-            f"real_mode_gate={runtime.get('real_mode_gate_status', 'unknown')}"
+            f"real_mode_gate={runtime.get('real_mode_gate_status', 'unknown')} "
+            f"real_results_gate={runtime.get('real_results_gate_status', 'unknown')} "
+            f"credit_gate={runtime.get('credit_gate_status', 'unknown')} "
+            f"max_turns={runtime.get('max_turns', 'unknown')}"
+        )
+    real_results = payload.get("real_results")
+    if isinstance(real_results, Mapping):
+        print(
+            "real_results "
+            f"status={real_results.get('status', 'unknown')} "
+            f"rows={real_results.get('row_count', 0)} "
+            f"latest_run={real_results.get('latest_run_id') or 'n/a'}"
+        )
+    credit_gate = payload.get("credit_gate")
+    if isinstance(credit_gate, Mapping):
+        print(
+            "credit_gate "
+            f"status={credit_gate.get('status', 'unknown')} "
+            f"estimated_cost_usd={credit_gate.get('estimated_cost_usd', 0)} "
+            f"daily={credit_gate.get('daily_spend_usd', 0)}/"
+            f"{credit_gate.get('daily_budget_usd', 0)} "
+            f"monthly={credit_gate.get('monthly_spend_usd', 0)}/"
+            f"{credit_gate.get('monthly_budget_usd', 0)}"
         )
     print("agents:")
     for agent in payload.get("agents", []):

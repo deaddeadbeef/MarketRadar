@@ -1,17 +1,32 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime, time, timedelta
 from typing import Any
 
 from pydantic import BaseModel, Field
 
+from catalyst_radar.agents.budget import BudgetController
+from catalyst_radar.agents.models import (
+    BudgetLedgerEntry,
+    LLMCallStatus,
+    LLMTaskName,
+    TokenUsage,
+    budget_ledger_id,
+)
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.security.redaction import redact_text, redact_value
+from catalyst_radar.storage.budget_repositories import BudgetLedgerRepository
 
 SCHEMA_VERSION = "market-radar-agent-brief-v1"
 SNAPSHOT_SCHEMA_VERSION = "market-radar-agent-snapshot-v1"
 AGENT_SDK_MAX_TURNS = 6
+AGENT_BRIEF_PROMPT_VERSION = "agent-brief-real-v1"
+AGENT_BRIEF_DEFAULT_DAILY_CAP = 1
+DEFAULT_AGENT_MAX_OPENAI_CALLS = 3
+AGENT_BRIEF_BASE_ESTIMATED_USAGE = TokenUsage(input_tokens=20_000, output_tokens=4_000)
 NON_OPENAI_ASSISTANT_DEPENDENCY_KEY = "co" + "pilot_dependency"
 
 ALLOWED_OPERATIONS = [
@@ -49,6 +64,8 @@ class MarketRadarAgentBrief(BaseModel):
     status: str
     decision_boundary: str
     runtime: dict[str, object] = Field(default_factory=dict)
+    real_results: dict[str, object] = Field(default_factory=dict)
+    credit_gate: dict[str, object] = Field(default_factory=dict)
     agents: list[AgentContribution] = Field(default_factory=list)
     insights: list[str] = Field(default_factory=list)
     next_actions: list[str] = Field(default_factory=list)
@@ -98,6 +115,145 @@ def agent_sdk_gate_payload(config: AppConfig) -> dict[str, object]:
     }
 
 
+def agent_sdk_credit_gate_payload(
+    config: AppConfig,
+    *,
+    ledger_repo: BudgetLedgerRepository | None,
+    max_openai_calls: int = DEFAULT_AGENT_MAX_OPENAI_CALLS,
+    now: datetime | None = None,
+) -> dict[str, object]:
+    """Return the credit/budget gate for explicit real Agents SDK execution."""
+    checked_at = _aware_utc(now or datetime.now(UTC))
+    max_calls = _positive_int(max_openai_calls, DEFAULT_AGENT_MAX_OPENAI_CALLS)
+    estimated_usage = _agent_estimated_usage(max_calls)
+    estimated_cost = 0.0
+    daily_spend = 0.0
+    monthly_spend = 0.0
+    task_daily_count = 0
+    missing: list[str] = []
+
+    if ledger_repo is None:
+        missing.append("budget ledger")
+    if not _has_llm_pricing(config):
+        missing.extend(
+            [
+                "CATALYST_LLM_INPUT_COST_PER_1M",
+                "CATALYST_LLM_CACHED_INPUT_COST_PER_1M",
+                "CATALYST_LLM_OUTPUT_COST_PER_1M",
+            ]
+        )
+    if config.llm_pricing_updated_at is None:
+        missing.append("CATALYST_LLM_PRICING_UPDATED_AT")
+    elif _pricing_is_stale(config, checked_at):
+        missing.append("fresh CATALYST_LLM_PRICING_UPDATED_AT")
+    if config.llm_daily_budget_usd <= 0:
+        missing.append("CATALYST_LLM_DAILY_BUDGET_USD>0")
+    if config.llm_monthly_budget_usd <= 0:
+        missing.append("CATALYST_LLM_MONTHLY_BUDGET_USD>0")
+
+    if ledger_repo is not None:
+        controller = BudgetController(config=config, ledger_repo=ledger_repo)
+        estimated_cost = controller.estimate_cost(estimated_usage)
+        day_start, day_end = _day_window(checked_at)
+        month_start, month_end = _month_window(checked_at)
+        daily_spend = ledger_repo.spend_between(start=day_start, end=day_end)
+        monthly_spend = ledger_repo.spend_between(start=month_start, end=month_end)
+        task_daily_count = ledger_repo.task_count_between(
+            task=LLMTaskName.AGENT_BRIEF.value,
+            start=day_start,
+            end=day_end,
+        )
+
+    daily_cap = int(
+        config.llm_task_daily_caps.get(
+            LLMTaskName.AGENT_BRIEF.value,
+            AGENT_BRIEF_DEFAULT_DAILY_CAP,
+        )
+    )
+    if daily_cap <= 0:
+        missing.append("CATALYST_LLM_TASK_DAILY_CAPS agent_brief>0")
+    elif task_daily_count >= daily_cap:
+        missing.append("agent_brief daily cap remaining")
+    if (
+        config.llm_daily_budget_usd > 0
+        and daily_spend + estimated_cost > config.llm_daily_budget_usd
+    ):
+        missing.append("daily OpenAI budget remaining")
+    if (
+        config.llm_monthly_budget_usd > 0
+        and monthly_spend + estimated_cost > config.llm_monthly_budget_usd
+    ):
+        missing.append("monthly OpenAI budget remaining")
+
+    missing = list(dict.fromkeys(missing))
+    ready = not missing
+    return {
+        "schema_version": "agent-sdk-credit-gate-v1",
+        "status": "ready" if ready else "blocked",
+        "headline": (
+            "OpenAI spend gate is ready for one explicit agent execution."
+            if ready
+            else "OpenAI spend gate blocks execution until pricing and budgets are explicit."
+        ),
+        "next_action": (
+            "Add --execute only when the estimated cost and daily/monthly budgets "
+            "match your intent."
+            if ready
+            else "Fill the missing env/budget values, then rerun the preview."
+        ),
+        "missing": missing,
+        "estimated_usage": _token_usage_payload(estimated_usage),
+        "estimated_cost_usd": estimated_cost,
+        "daily_budget_usd": config.llm_daily_budget_usd,
+        "daily_spend_usd": daily_spend,
+        "monthly_budget_usd": config.llm_monthly_budget_usd,
+        "monthly_spend_usd": monthly_spend,
+        "task_daily_cap": daily_cap,
+        "task_daily_count": task_daily_count,
+        "max_openai_calls": max_calls,
+        "pricing_updated_at": config.llm_pricing_updated_at,
+        "checked_at": checked_at.isoformat(),
+    }
+
+
+def real_results_gate_payload(snapshot: Mapping[str, object]) -> dict[str, object]:
+    """Return whether the supplied snapshot is backed by real scan rows."""
+    real_results = _mapping(snapshot.get("real_results"))
+    missing = _texts(real_results.get("missing"))
+    status = _text(real_results.get("status"))
+    ready = status == "ready" and not missing
+    if not status:
+        missing.append("real_results snapshot marker")
+    missing = list(dict.fromkeys(missing))
+    return {
+        "schema_version": "agent-real-results-gate-v1",
+        "status": "ready" if ready else "blocked",
+        "headline": (
+            _text(real_results.get("headline"))
+            or (
+                "Real scan results are ready for agent review."
+                if ready
+                else "Run a real scan before executing an agent brief."
+            )
+        ),
+        "next_action": (
+            _text(real_results.get("next_action"))
+            or (
+                "Review the scan rows, then execute the agent brief if desired."
+                if ready
+                else "Run the full scan/import flow before using real Agents SDK mode."
+            )
+        ),
+        "missing": missing,
+        "source": _text(real_results.get("source")) or "unknown",
+        "row_count": int(_number(real_results.get("row_count"))),
+        "latest_run_id": _text(real_results.get("latest_run_id")) or None,
+        "latest_run_status": _text(real_results.get("latest_run_status")) or None,
+        "as_of": _text(real_results.get("as_of")) or None,
+        "cutoff": _text(real_results.get("cutoff")) or None,
+    }
+
+
 def redacted_operator_snapshot(payload: Mapping[str, object]) -> dict[str, object]:
     """Shrink the dashboard snapshot to fields safe enough for model input."""
     source = redact_value(dict(payload))
@@ -109,6 +265,7 @@ def redacted_operator_snapshot(payload: Mapping[str, object]) -> dict[str, objec
         ),
         "runtime": _runtime_context(_mapping(source.get("runtime_context"))),
         "readiness": _readiness_context(_mapping(source.get("readiness"))),
+        "real_results": _real_results_context(_mapping(source.get("real_results"))),
         "operator_next_step": _copy_keys(
             _mapping(source.get("operator_next_step")),
             ("status", "priority", "area", "item", "ticker", "action", "evidence", "source"),
@@ -144,8 +301,10 @@ def deterministic_agent_brief(
     issue: str | None = None,
 ) -> dict[str, object]:
     """Return the no-model multi-agent brief used by tests and default CLI runs."""
-    status = "blocked" if mode == "blocked" else "dry_run"
+    status = mode if mode in {"blocked", "preview"} else "dry_run"
     readiness = _mapping(snapshot.get("readiness"))
+    real_results = _mapping(snapshot.get("real_results"))
+    credit_gate = _mapping(gate.get("credit_gate"))
     call_plan = _mapping(snapshot.get("call_plan"))
     work_queue = _mapping(snapshot.get("operator_work_queue"))
     priced_in = _mapping(snapshot.get("priced_in"))
@@ -263,6 +422,8 @@ def deterministic_agent_brief(
         status=status,
         decision_boundary=_decision_boundary(snapshot),
         runtime=_agent_runtime_payload(gate, mode=mode),
+        real_results=dict(real_results),
+        credit_gate=dict(credit_gate),
         agents=agents,
         insights=insights,
         next_actions=next_actions,
@@ -280,15 +441,49 @@ def run_market_radar_agents(
     *,
     real: bool = False,
     operator_goal: str | None = None,
+    execute: bool = False,
+    max_openai_calls: int = DEFAULT_AGENT_MAX_OPENAI_CALLS,
+    ledger_repo: BudgetLedgerRepository | None = None,
 ) -> dict[str, object]:
     gate = agent_sdk_gate_payload(config)
     snapshot = redacted_operator_snapshot(payload)
+    real_results_gate = real_results_gate_payload(snapshot)
+    credit_gate = agent_sdk_credit_gate_payload(
+        config,
+        ledger_repo=ledger_repo,
+        max_openai_calls=max_openai_calls,
+    )
+    gate = {
+        **gate,
+        "real_results_gate": real_results_gate,
+        "credit_gate": credit_gate,
+    }
     if not real:
         return deterministic_agent_brief(
             snapshot,
             gate,
             mode="dry_run",
             operator_goal=operator_goal,
+        )
+    if not execute:
+        return deterministic_agent_brief(
+            snapshot,
+            gate,
+            mode="preview",
+            operator_goal=operator_goal,
+            issue=(
+                "Preview only: this made 0 OpenAI calls. Add --execute after "
+                "reviewing real results and the credit gate."
+            ),
+        )
+    block_reason = _agent_execute_block_reason(gate)
+    if block_reason:
+        return deterministic_agent_brief(
+            snapshot,
+            gate,
+            mode="blocked",
+            operator_goal=operator_goal,
+            issue=block_reason,
         )
     if gate["status"] != "ready":
         return deterministic_agent_brief(
@@ -298,15 +493,39 @@ def run_market_radar_agents(
             operator_goal=operator_goal,
         )
     try:
-        return _run_agent_sdk_real(snapshot, gate, config, operator_goal=operator_goal)
+        brief = _run_agent_sdk_real(
+            snapshot,
+            gate,
+            config,
+            operator_goal=operator_goal,
+            max_openai_calls=max_openai_calls,
+        )
+        _record_agent_ledger_entry(
+            snapshot=snapshot,
+            gate=gate,
+            brief=brief,
+            config=config,
+            ledger_repo=ledger_repo,
+            status=LLMCallStatus.COMPLETED,
+        )
+        return brief
     except Exception as exc:  # pragma: no cover - exercised through integration boundary.
-        return deterministic_agent_brief(
+        brief = deterministic_agent_brief(
             snapshot,
             gate,
             mode="blocked",
             operator_goal=operator_goal,
             issue=f"OpenAI Agents SDK run failed closed: {exc}",
         )
+        _record_agent_ledger_entry(
+            snapshot=snapshot,
+            gate=gate,
+            brief=brief,
+            config=config,
+            ledger_repo=ledger_repo,
+            status=LLMCallStatus.FAILED,
+        )
+        return brief
 
 
 def _run_agent_sdk_real(
@@ -315,6 +534,7 @@ def _run_agent_sdk_real(
     config: AppConfig,
     *,
     operator_goal: str | None = None,
+    max_openai_calls: int = DEFAULT_AGENT_MAX_OPENAI_CALLS,
 ) -> dict[str, object]:
     try:
         from agents import Agent, Runner
@@ -382,7 +602,7 @@ def _run_agent_sdk_real(
             "security_contract": {
                 "allowed_operations": ALLOWED_OPERATIONS,
                 "blocked_operations": BLOCKED_OPERATIONS,
-                "max_agent_turns": AGENT_SDK_MAX_TURNS,
+                "max_agent_turns": min(AGENT_SDK_MAX_TURNS, max_openai_calls),
                 "external_market_calls_allowed": False,
                 "broker_calls_allowed": False,
             },
@@ -392,7 +612,11 @@ def _run_agent_sdk_real(
         sort_keys=True,
         default=str,
     )
-    result = Runner.run_sync(operator_agent, prompt, max_turns=AGENT_SDK_MAX_TURNS)
+    result = Runner.run_sync(
+        operator_agent,
+        prompt,
+        max_turns=min(AGENT_SDK_MAX_TURNS, max_openai_calls),
+    )
     brief = _coerce_brief(result.final_output)
     openai_calls = max(1, len(getattr(result, "raw_responses", []) or []))
     payload = _model_dump(brief)
@@ -403,6 +627,8 @@ def _run_agent_sdk_real(
             "status": "completed",
             "decision_boundary": _decision_boundary(snapshot),
             "runtime": _agent_runtime_payload(gate, mode="real"),
+            "real_results": dict(_mapping(snapshot.get("real_results"))),
+            "credit_gate": dict(_mapping(gate.get("credit_gate"))),
             "allowed_operations": list(ALLOWED_OPERATIONS),
             "blocked_operations": list(BLOCKED_OPERATIONS),
             "external_calls_made": {
@@ -434,12 +660,22 @@ def _coerce_brief(value: object) -> MarketRadarAgentBrief:
 
 
 def _agent_runtime_payload(gate: Mapping[str, object], *, mode: str) -> dict[str, object]:
+    credit_gate = _mapping(gate.get("credit_gate"))
+    real_results_gate = _mapping(gate.get("real_results_gate"))
+    max_turns = int(
+        _number(credit_gate.get("max_openai_calls"))
+        or _number(gate.get("max_turns"))
+        or AGENT_SDK_MAX_TURNS
+    )
     return {
         "schema_version": "market-radar-agent-runtime-v1",
         "orchestrator": "openai_agents_sdk",
         "provider": "openai",
         "mode": mode,
         "real_mode_gate_status": str(gate.get("status") or "unknown"),
+        "real_results_gate_status": str(real_results_gate.get("status") or "unknown"),
+        "credit_gate_status": str(credit_gate.get("status") or "unknown"),
+        "execute_required": mode == "preview",
         "tool_surface": str(gate.get("tool_surface") or "specialist_agents_only"),
         NON_OPENAI_ASSISTANT_DEPENDENCY_KEY: "absent",
         "external_market_tools": False,
@@ -447,8 +683,171 @@ def _agent_runtime_payload(gate: Mapping[str, object], *, mode: str) -> dict[str
         "shell_tools": False,
         "filesystem_tools": False,
         "web_tools": False,
-        "max_turns": AGENT_SDK_MAX_TURNS,
+        "max_turns": min(AGENT_SDK_MAX_TURNS, max_turns),
     }
+
+
+def _agent_execute_block_reason(gate: Mapping[str, object]) -> str | None:
+    reasons: list[str] = []
+    if gate.get("status") != "ready":
+        missing_env = ", ".join(_texts(gate.get("missing_env"))) or "unknown"
+        reasons.append(f"OpenAI runtime gate blocked: {missing_env}")
+    real_results_gate = _mapping(gate.get("real_results_gate"))
+    if real_results_gate.get("status") != "ready":
+        missing = ", ".join(_texts(real_results_gate.get("missing"))) or "real scan rows"
+        reasons.append(f"Real results gate blocked: {missing}")
+    credit_gate = _mapping(gate.get("credit_gate"))
+    if credit_gate.get("status") != "ready":
+        missing = ", ".join(_texts(credit_gate.get("missing"))) or "budget/pricing"
+        reasons.append(f"OpenAI credit gate blocked: {missing}")
+    return "; ".join(reasons) if reasons else None
+
+
+def _record_agent_ledger_entry(
+    *,
+    snapshot: Mapping[str, object],
+    gate: Mapping[str, object],
+    brief: Mapping[str, object],
+    config: AppConfig,
+    ledger_repo: BudgetLedgerRepository | None,
+    status: LLMCallStatus,
+) -> None:
+    if ledger_repo is None:
+        return
+    now = datetime.now(UTC)
+    available_at = _snapshot_available_at(snapshot, now)
+    credit_gate = _mapping(gate.get("credit_gate"))
+    estimated_usage = _agent_estimated_usage(
+        int(_number(credit_gate.get("max_openai_calls"))) or DEFAULT_AGENT_MAX_OPENAI_CALLS
+    )
+    estimated_cost = float(_number(credit_gate.get("estimated_cost_usd")))
+    openai_calls = int(_number(_mapping(brief.get("external_calls_made")).get("openai")))
+    actual_cost = estimated_cost if openai_calls > 0 or status == LLMCallStatus.FAILED else 0.0
+    ticker = _text(_mapping(snapshot.get("controls")).get("ticker")) or None
+    entry = BudgetLedgerEntry(
+        id=budget_ledger_id(
+            task=LLMTaskName.AGENT_BRIEF.value,
+            ticker=ticker,
+            candidate_packet_id=None,
+            status=status.value,
+            available_at=available_at,
+            prompt_version=AGENT_BRIEF_PROMPT_VERSION,
+            attempted_at=now,
+        ),
+        ts=now,
+        available_at=available_at,
+        task=LLMTaskName.AGENT_BRIEF,
+        status=status,
+        estimated_cost=estimated_cost,
+        actual_cost=actual_cost,
+        ticker=ticker,
+        model=config.agent_sdk_model,
+        provider="openai",
+        token_usage=estimated_usage,
+        tool_calls=[
+            {"name": "data_sentinel", "type": "specialist_agent"},
+            {"name": "catalyst_analyst", "type": "specialist_agent"},
+            {"name": "risk_officer", "type": "specialist_agent"},
+        ],
+        prompt_version=AGENT_BRIEF_PROMPT_VERSION,
+        schema_version=SCHEMA_VERSION,
+        payload={
+            "snapshot_hash": _snapshot_hash(snapshot),
+            "brief_status": brief.get("status"),
+            "openai_calls": openai_calls,
+            "market_data_calls": int(
+                _number(_mapping(brief.get("external_calls_made")).get("market_data"))
+            ),
+            "broker_calls": int(
+                _number(_mapping(brief.get("external_calls_made")).get("broker"))
+            ),
+            "real_results_gate": gate.get("real_results_gate"),
+            "credit_gate": credit_gate,
+        },
+    )
+    ledger_repo.upsert_entry(entry)
+
+
+def _agent_estimated_usage(max_openai_calls: int) -> TokenUsage:
+    multiplier = _positive_int(max_openai_calls, DEFAULT_AGENT_MAX_OPENAI_CALLS)
+    return TokenUsage(
+        input_tokens=AGENT_BRIEF_BASE_ESTIMATED_USAGE.input_tokens * multiplier,
+        cached_input_tokens=AGENT_BRIEF_BASE_ESTIMATED_USAGE.cached_input_tokens
+        * multiplier,
+        output_tokens=AGENT_BRIEF_BASE_ESTIMATED_USAGE.output_tokens * multiplier,
+    )
+
+
+def _token_usage_payload(usage: TokenUsage) -> dict[str, int]:
+    return {
+        "input_tokens": usage.input_tokens,
+        "cached_input_tokens": usage.cached_input_tokens,
+        "output_tokens": usage.output_tokens,
+    }
+
+
+def _has_llm_pricing(config: AppConfig) -> bool:
+    return (
+        config.llm_input_cost_per_1m is not None
+        and config.llm_cached_input_cost_per_1m is not None
+        and config.llm_output_cost_per_1m is not None
+    )
+
+
+def _pricing_is_stale(config: AppConfig, now: datetime) -> bool:
+    if not config.llm_pricing_updated_at:
+        return True
+    try:
+        updated = datetime.fromisoformat(config.llm_pricing_updated_at)
+    except ValueError:
+        return True
+    if updated.tzinfo is None or updated.utcoffset() is None:
+        updated = updated.replace(tzinfo=UTC)
+    return now.astimezone(UTC) - updated.astimezone(UTC) > timedelta(
+        days=config.llm_pricing_stale_after_days
+    )
+
+
+def _day_window(now: datetime) -> tuple[datetime, datetime]:
+    start = datetime.combine(now.astimezone(UTC).date(), time.min, tzinfo=UTC)
+    return start, start + timedelta(days=1)
+
+
+def _month_window(now: datetime) -> tuple[datetime, datetime]:
+    now = now.astimezone(UTC)
+    start = datetime(now.year, now.month, 1, tzinfo=UTC)
+    if now.month == 12:
+        end = datetime(now.year + 1, 1, 1, tzinfo=UTC)
+    else:
+        end = datetime(now.year, now.month + 1, 1, tzinfo=UTC)
+    return start, end
+
+
+def _snapshot_available_at(snapshot: Mapping[str, object], fallback: datetime) -> datetime:
+    controls = _mapping(snapshot.get("controls"))
+    value = _text(controls.get("available_at")) or _text(
+        _mapping(snapshot.get("real_results")).get("cutoff")
+    )
+    if not value:
+        return fallback
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return fallback
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def _snapshot_hash(snapshot: Mapping[str, object]) -> str:
+    canonical = json.dumps(snapshot, sort_keys=True, default=str, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:32]
+
+
+def _aware_utc(value: datetime) -> datetime:
+    if value.tzinfo is None or value.utcoffset() is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
 
 
 def _runtime_context(row: Mapping[str, object]) -> dict[str, object]:
@@ -491,6 +890,25 @@ def _readiness_context(row: Mapping[str, object]) -> dict[str, object]:
             for item in _rows(row.get("readiness_checklist"))[:10]
         ],
     }
+
+
+def _real_results_context(row: Mapping[str, object]) -> dict[str, object]:
+    return _copy_keys(
+        row,
+        (
+            "schema_version",
+            "status",
+            "headline",
+            "next_action",
+            "source",
+            "row_count",
+            "latest_run_id",
+            "latest_run_status",
+            "as_of",
+            "cutoff",
+            "missing",
+        ),
+    )
 
 
 def _work_queue_context(row: Mapping[str, object]) -> dict[str, object]:
@@ -1042,6 +1460,8 @@ def _base_security_checks(
     call_plan = _mapping(snapshot.get("call_plan"))
     broker = _mapping(snapshot.get("broker"))
     exposure = _mapping(broker.get("exposure"))
+    real_results_gate = _mapping(gate.get("real_results_gate"))
+    credit_gate = _mapping(gate.get("credit_gate"))
     return [
         SecurityCheck(
             name="Snapshot boundary",
@@ -1080,6 +1500,38 @@ def _base_security_checks(
             detail=(
                 f"status={gate.get('status')}; "
                 f"missing={', '.join(_texts(gate.get('missing_env'))) or 'none'}"
+            ),
+        ),
+        SecurityCheck(
+            name="Real results gate",
+            status=(
+                "pass"
+                if real_results_gate.get("status") == "ready"
+                else "blocked"
+            ),
+            detail=(
+                f"status={real_results_gate.get('status') or 'unknown'}; "
+                f"rows={int(_number(real_results_gate.get('row_count')))}; "
+                f"missing={', '.join(_texts(real_results_gate.get('missing'))) or 'none'}"
+            ),
+        ),
+        SecurityCheck(
+            name="OpenAI credit gate",
+            status=(
+                "pass"
+                if credit_gate.get("status") == "ready"
+                else "blocked"
+                if mode in {"preview", "blocked", "real"}
+                else "pass"
+            ),
+            detail=(
+                f"status={credit_gate.get('status') or 'unknown'}; "
+                f"estimated_cost_usd={credit_gate.get('estimated_cost_usd', 0)}; "
+                f"daily={credit_gate.get('daily_spend_usd', 0)}/"
+                f"{credit_gate.get('daily_budget_usd', 0)}; "
+                f"monthly={credit_gate.get('monthly_spend_usd', 0)}/"
+                f"{credit_gate.get('monthly_budget_usd', 0)}; "
+                f"missing={', '.join(_texts(credit_gate.get('missing'))) or 'none'}"
             ),
         ),
         SecurityCheck(
@@ -1424,6 +1876,14 @@ def _number(value: object) -> float:
         return 0.0
 
 
+def _positive_int(value: object, default: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed > 0 else default
+
+
 def _truncate(value: str, limit: int = 360) -> str:
     text = " ".join(value.split())
     if len(text) <= limit:
@@ -1449,8 +1909,10 @@ def _model_dump(model: BaseModel) -> dict[str, object]:
 
 __all__ = [
     "MarketRadarAgentBrief",
+    "agent_sdk_credit_gate_payload",
     "agent_sdk_gate_payload",
     "deterministic_agent_brief",
+    "real_results_gate_payload",
     "redacted_operator_snapshot",
     "run_market_radar_agents",
 ]
