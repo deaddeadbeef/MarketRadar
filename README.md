@@ -500,6 +500,9 @@ to this repo: it creates `.venv` if needed, installs the editable
 `main` to `origin/main`, and then starts the TUI. It does not set `PYTHONPATH`
 or mutate the caller's shell environment. Use `radar --no-update` to skip the
 Git update step and `radar --force-install` to refresh the editable install.
+Runtime SQLite files such as `data/schwab-live.db` are ignored so local market
+data does not block the update check; tracked source edits still make the
+launcher skip auto-update.
 The launcher prints a startup line immediately. The interactive TUI opens on
 latest scan results before the local snapshot finishes loading, and
 `radar --once` is the fastest smoke test for the same data path. Use

@@ -19,3 +19,9 @@ data/local/
 data/cache/
 data/ops/telemetry/
 data/ops/bundles/
+data/*.db
+data/*.db-*
+data/*.sqlite
+data/*.sqlite-*
+data/*.sqlite3
+data/*.sqlite3-*
