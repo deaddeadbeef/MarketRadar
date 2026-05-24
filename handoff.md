@@ -1,6 +1,84 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-24 08:40:26 +08:00
+Last updated: 2026-05-24 08:55:04 +08:00
+
+## Latest Shadow Run Export Boundary Slice
+
+Goal alignment / drift check:
+
+- The active mission brief requires repeatable shadow-mode daily runs, auditable
+  shadow-run records, API/CLI surfaces, and no hidden external calls or writes.
+- `shadow-mode list --json` already existed as a CLI export, but the read-only
+  shadow status/latest/list payloads did not all expose explicit
+  `external_calls_required=0` and `db_writes_required=0` fields. The API also
+  had status, run, and latest endpoints, but no read-only list/export endpoint.
+- This slice advances the audit/export side of Priority 1 and the later release
+  gate export requirement without touching live data or bypassing the
+  market-bar blocker.
+
+Useful definition:
+
+- Shadow-run history is useful only if a human or automation can export the
+  audit rows and verify both what happened and what the export required.
+- Read-only export means 0 provider calls and 0 database writes required/made.
+
+Fix in this slice:
+
+- `shadow-mode status --json`, `shadow-mode latest --json`, and
+  `shadow-mode list --json` now include top-level:
+  - `external_calls_required=0`
+  - `db_writes_required=0`
+  - existing `external_calls_made=0`
+  - existing `db_writes_made=0`
+- Added `GET /api/radar/shadow/runs` as a viewer read-only export for stored
+  shadow-mode run records. It accepts the same `available_at` and `limit`
+  shape as the CLI list payload.
+- Updated route allowlist/security boundary coverage for the new API route.
+- README now documents `shadow-mode list --json`, the new API route, and the
+  explicit read-only required/made counters.
+
+Safety:
+
+- Read-only export/API contract change.
+- No Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or provider
+  calls were made.
+- No operator database writes were made.
+- No approval-only commands were executed.
+- Root `data/schwab-live.db` was not touched.
+
+Verification completed before PR:
+
+- Focused baseline before edits passed:
+  `pytest tests\integration\test_shadow_mode.py
+  tests\integration\test_api_routes.py::test_get_radar_shadow_readiness_returns_zero_call_gate
+  tests\integration\test_security_boundaries.py::test_openapi_routes_are_allowlisted_and_broker_routes_are_explicit -q`,
+  17 passed.
+- Focused regression after edits passed:
+  `pytest tests\integration\test_shadow_mode.py
+  tests\integration\test_security_boundaries.py::test_openapi_routes_are_allowlisted_and_broker_routes_are_explicit -q`,
+  17 passed.
+- Ruff passed for touched shadow/API/tests/README files.
+- Compileall passed for touched shadow/API/test files.
+- `git diff --check` passed.
+
+Live root DB smoke using worktree source:
+
+- `shadow-mode list --json`: exit 0, `count=1`, required 0/0, made 0/0.
+- `shadow-mode status --json`: exit 0, `status=setup_required`,
+  `first_blocker=market_bars`, required 0/0, made 0/0.
+- `shadow-mode latest --json`: exit 0, `status=setup_required`,
+  `first_blocker=market_bars`, required 0/0, made 0/0.
+
+Current operator-safe stop point remains unchanged:
+
+- Safe to try as read-only research/dashboard browsing only.
+- The strict minimum useful product gate remains blocked by 579 active-universe
+  missing 2026-05-15 market-bar rows.
+- The current zero-call next command remains:
+  `catalyst-radar market-bars residual-review --expected-as-of 2026-05-15`.
+- Do not run the guarded residual-repair execute command, value-ledger/outcome
+  writes, validation replay execute, provider calls, real LLM mode, or broker
+  writes without explicit operator approval.
 
 ## Latest Trial Gate Latency Slice
 

@@ -108,6 +108,8 @@ def shadow_mode_status_payload(
         "canonical_next_command": next_command,
         "approval_required_unblock": _shadow_mode_approval_required_unblock(readiness),
         "next_action": next_action,
+        "external_calls_required": 0,
+        "db_writes_required": 0,
         "external_calls_made": 0,
         "db_writes_made": 0,
     }
@@ -136,6 +138,8 @@ def shadow_mode_latest_payload(
         "canonical_next_command": next_command,
         "approval_required_unblock": _shadow_mode_approval_required_unblock(readiness),
         "next_action": next_action,
+        "external_calls_required": 0,
+        "db_writes_required": 0,
         "external_calls_made": 0,
         "db_writes_made": 0,
     }
@@ -158,6 +162,8 @@ def shadow_mode_list_payload(
         "count": len(runs),
         "status_counts": dict(sorted(status_counts.items())),
         "runs": [shadow_mode_run_to_payload(run) for run in runs],
+        "external_calls_required": 0,
+        "db_writes_required": 0,
         "external_calls_made": 0,
         "db_writes_made": 0,
     }

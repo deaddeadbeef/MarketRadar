@@ -1080,15 +1080,17 @@ catalyst-radar shadow-mode status --json
 catalyst-radar shadow-mode run --available-at <UTC-cutoff> --preview --json
 catalyst-radar shadow-mode run --available-at <UTC-cutoff> --execute --json
 catalyst-radar shadow-mode latest --json
+catalyst-radar shadow-mode list --json
 ```
 
-`GET /api/radar/shadow/status`, `POST /api/radar/shadow/runs`, and
-`GET /api/radar/shadow/runs/latest` expose the same contract. Preview makes
-0 provider calls and 0 database writes. Execute makes 0 provider calls and writes
-one `shadow_mode_runs` audit row that classifies the current local scan as
-`valid_full_scan`, `valid_selected_universe_scan`, `partial_scan`,
-`blocked_scan`, or `setup_required`. This is a shadow evidence record, not an
-order, alert-delivery, or live-provider command. Shadow run payloads expose the
+`GET /api/radar/shadow/status`, `GET /api/radar/shadow/runs`,
+`POST /api/radar/shadow/runs`, and `GET /api/radar/shadow/runs/latest` expose
+the same contract. Preview makes 0 provider calls and 0 database writes.
+Execute makes 0 provider calls and writes one `shadow_mode_runs` audit row that
+classifies the current local scan as `valid_full_scan`,
+`valid_selected_universe_scan`, `partial_scan`, `blocked_scan`, or
+`setup_required`. This is a shadow evidence record, not an order,
+alert-delivery, or live-provider command. Shadow run payloads expose the
 mission-brief count as `eligible_for_manual_review_count` while preserving the
 older `manual_review_count` field for compatibility. When a shadow run is not valid
 yet, the run response exposes the classification as top-level `status` and its
@@ -1119,6 +1121,9 @@ When no shadow run has been recorded yet, `shadow-mode latest --json` returns
 first blocker, next action, and canonical next command. It remains a read-only
 inspection command with 0 provider calls and 0 database writes, so operators can
 use it after market close without dead-ending on an empty history table.
+`shadow-mode status`, `shadow-mode latest`, and `shadow-mode list` are read-only
+exports and include explicit top-level `external_calls_required=0` and
+`db_writes_required=0` alongside their `*_made=0` counters.
 `dashboard-snapshot --json`, `shadow-mode status`, `shadow-mode latest`, and
 `shadow-mode run --preview` also surface `approval_required_unblock` when the
 underlying shadow-readiness gate has an approval-required local unblock packet,
