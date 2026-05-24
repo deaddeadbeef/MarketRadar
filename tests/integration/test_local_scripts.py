@@ -93,8 +93,9 @@ def test_dashboard_e2e_debug_script_checks_render_and_orphans() -> None:
     assert "dashboard-tui" in text
     assert "External calls made: 0" in text
     assert "External calls made:\\s*0" in text
-    assert "BeginOutputReadLine" in text
-    assert "BeginErrorReadLine" in text
+    assert "Start-Process" in text
+    assert "RedirectStandardOutput" in text
+    assert "RedirectStandardError" in text
     assert "Get-DashboardProcessSnapshot" in text
     assert "left child process(es) behind" in text
     assert "Dashboard E2E debug passed." in text

@@ -100,43 +100,19 @@ $arguments = @(
     $Page
 )
 
-$startInfo = New-Object System.Diagnostics.ProcessStartInfo
-$startInfo.FileName = $powerShellExe
-$startInfo.WorkingDirectory = [string]$repoRoot
-$startInfo.UseShellExecute = $false
-$startInfo.RedirectStandardOutput = $true
-$startInfo.RedirectStandardError = $true
-$startInfo.CreateNoWindow = $true
-$startInfo.Arguments = ($arguments | ForEach-Object { ConvertTo-ProcessArgument $_ }) -join " "
-
-$script:DashboardDebugStdout = New-Object System.Text.StringBuilder
-$script:DashboardDebugStderr = New-Object System.Text.StringBuilder
-$outputHandler = [System.Diagnostics.DataReceivedEventHandler]{
-    param($sender, $eventArgs)
-    if ($null -ne $eventArgs.Data) {
-        [void]$script:DashboardDebugStdout.AppendLine($eventArgs.Data)
-    }
-}
-$errorHandler = [System.Diagnostics.DataReceivedEventHandler]{
-    param($sender, $eventArgs)
-    if ($null -ne $eventArgs.Data) {
-        [void]$script:DashboardDebugStderr.AppendLine($eventArgs.Data)
-    }
-}
+$argumentLine = ($arguments | ForEach-Object { ConvertTo-ProcessArgument $_ }) -join " "
 
 $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-$process = New-Object System.Diagnostics.Process
-$process.StartInfo = $startInfo
-$process.add_OutputDataReceived($outputHandler)
-$process.add_ErrorDataReceived($errorHandler)
-if (-not $process.Start()) {
-    throw "Failed to start launcher process."
-}
-if ($null -eq $process) {
-    throw "Failed to start launcher process."
-}
-$process.BeginOutputReadLine()
-$process.BeginErrorReadLine()
+$stdoutPath = Join-Path $env:TEMP ("marketradar-dashboard-e2e-{0}.out" -f ([guid]::NewGuid()))
+$stderrPath = Join-Path $env:TEMP ("marketradar-dashboard-e2e-{0}.err" -f ([guid]::NewGuid()))
+$process = Start-Process `
+    -FilePath $powerShellExe `
+    -ArgumentList $argumentLine `
+    -WorkingDirectory ([string]$repoRoot) `
+    -RedirectStandardOutput $stdoutPath `
+    -RedirectStandardError $stderrPath `
+    -WindowStyle Hidden `
+    -PassThru
 
 try {
     if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
@@ -145,20 +121,23 @@ try {
         exit 2
     }
     $process.WaitForExit()
-    $stdout = $script:DashboardDebugStdout.ToString()
-    $stderr = $script:DashboardDebugStderr.ToString()
+    $stdout = if (Test-Path -LiteralPath $stdoutPath) {
+        Get-Content -LiteralPath $stdoutPath -Raw
+    }
+    else {
+        ""
+    }
+    $stderr = if (Test-Path -LiteralPath $stderrPath) {
+        Get-Content -LiteralPath $stderrPath -Raw
+    }
+    else {
+        ""
+    }
 }
 finally {
-    try {
-        $process.remove_OutputDataReceived($outputHandler)
-        $process.remove_ErrorDataReceived($errorHandler)
-    }
-    catch {
-        # The process may already be torn down after timeout cleanup.
-    }
     Stop-ProcessTree -Process $process
-    $script:DashboardDebugStdout = $null
-    $script:DashboardDebugStderr = $null
+    Remove-Item -LiteralPath $stdoutPath -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $stderrPath -Force -ErrorAction SilentlyContinue
 }
 $stopwatch.Stop()
 
