@@ -1421,6 +1421,24 @@ SPY/sector-relative 20-day averages, stored max-adverse-excursion drawdown
 proxy, explicit slippage assumption, and required-baseline win/loss/tie counts.
 The slippage field is an assumption disclosure, not an execution-P&L model;
 MarketRadar still separates decision-support validation from realized profit.
+For manual paper decisions and outcome follow-up, the CLI is also
+preview-first:
+
+```powershell
+catalyst-radar paper-decision --decision-card-id <CARD_ID> --decision approved --available-at <UTC-cutoff> --entry-price <price> --preview --json
+catalyst-radar paper-decision --decision-card-id <CARD_ID> --decision approved --available-at <UTC-cutoff> --entry-price <price> --execute --json
+catalyst-radar paper-update-outcomes --decision-card-id <CARD_ID> --available-at <UTC-outcome-cutoff> --preview --json
+catalyst-radar paper-update-outcomes --decision-card-id <CARD_ID> --available-at <UTC-outcome-cutoff> --execute --json
+```
+
+`paper-decision` and `paper-update-outcomes` default to preview mode and write
+nothing unless `--execute` is present. Their JSON payloads expose
+`external_calls_required=0`, `external_calls_made=0`,
+`broker_order_submitted=false`, `no_execution=true`, `db_writes_required`,
+`db_writes_made`, and matching `preview_command` / `execute_command` fields.
+Execution writes local validation evidence only: a paper-trade row plus audit
+event for a decision, or an outcome paper-trade row plus audit event for an
+outcome update. It never submits Schwab orders or calls a broker.
 `validation-report --latest --json` selects the latest successful stored
 validation run, makes 0 provider calls and 0 database writes, and returns
 `status=no_validation_runs` when no replay evidence exists yet. Missing-report
