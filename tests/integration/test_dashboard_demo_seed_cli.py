@@ -569,7 +569,7 @@ def test_dashboard_snapshot_cli_outputs_human_readable_zero_call_summary(
         "Page: overview",
         "DB:",
         "Ticker: ACME",
-        "Visible priced-in review page - rows",
+        "Latest scan results - rows",
         "#",
         "ACME",
         "Bullish not priced",
@@ -1227,7 +1227,7 @@ def test_dashboard_tui_once_can_show_full_scan_mode(
     assert "Answer:" in output.out
     assert "Trade status:" in output.out
     assert "Trade safe:" in output.out
-    assert "Visible priced-in review page - rows" in output.out
+    assert "Latest scan results - rows" in output.out
     assert "Full scan audit:" in output.out
     assert "Instrument scope:" in output.out
     assert "Decision readiness:" in output.out
@@ -1276,7 +1276,7 @@ def test_dashboard_tui_once_can_show_full_scan_mode(
     output = capsys.readouterr()
 
     assert output.err == ""
-    assert "Decision-ready not-priced-in rows - showing" in output.out
+    assert "Latest scan results - decision-ready not-priced-in rows" in output.out
     assert "These are the actionable answers" in output.out
 
     assert (
@@ -1301,7 +1301,7 @@ def test_dashboard_tui_once_can_show_full_scan_mode(
     assert "priced-in-source-batches --source all --stocks-only" in output.out
 
 
-def test_dashboard_tui_once_defaults_to_tutorial(
+def test_dashboard_tui_once_defaults_to_latest_scan_results(
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -1316,13 +1316,12 @@ def test_dashboard_tui_once_defaults_to_tutorial(
     output = capsys.readouterr()
 
     assert output.err == ""
-    assert "Page: tutorial" in output.out
-    assert "Mission - why this exists" in output.out
-    assert "Current answer" in output.out
-    assert "Useful next" in output.out
-    assert "Trust gate" in output.out
-    assert "Blocker ladder" in output.out
-    assert "Tutorial - your first 90 seconds" in output.out
+    assert "Page: overview" in output.out
+    assert "Latest scan results - rows" in output.out
+    assert "ACME" in output.out
+    assert "Bullish not priced" in output.out
+    assert "has market emotion been fully priced in" in output.out
+    assert "Tutorial - your first 90 seconds" not in output.out
 
 
 def test_run_mission_brief_useful_next_prefers_operator_step() -> None:
@@ -2801,11 +2800,11 @@ def test_dashboard_sec_cik_commands_are_zero_call_operator_actions(
     assert "cik validate" in help_screen
     assert "cik import" in help_screen
 
-def test_dashboard_start_page_alias_opens_tutorial() -> None:
+def test_dashboard_start_page_alias_opens_latest_scan_results() -> None:
     screen = render_dashboard_tui({}, page="start", width=120)
 
-    assert "Page: tutorial" in screen
-    assert "Tutorial - your first 90 seconds" in screen
+    assert "Page: overview" in screen
+    assert "Latest scan results" in screen
 
 
 def test_dashboard_review_page_is_distinct_from_full_scan() -> None:
@@ -2903,7 +2902,7 @@ def test_dashboard_review_page_is_distinct_from_full_scan() -> None:
     assert "BETA" not in review
 
     overview = render_dashboard_tui(payload, page="overview", width=140)
-    assert "Visible priced-in review page" in overview
+    assert "Latest scan results" in overview
     assert "ACME" in overview
     assert "BETA" in overview
 
@@ -5546,11 +5545,12 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert app.page == "overview"
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert "INSIGHTS" in frame
-            assert "Visible priced-in review page - rows" in frame
+            assert "Latest scan results - rows" in frame
             assert "ACME" in frame
             assert "Bullish not priced" in frame
             assert "Data gaps" in frame
-            assert "showing review page 1 from the ranked scan" in frame
+            assert "LATEST SCAN RESULTS" in frame
+            assert "has market emotion been fully priced in" in frame
             assert "M  Mismatches only" in frame
             assert "ALL Full scan rows" in frame
             assert "Candidates [1]" in frame
@@ -5573,7 +5573,7 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert app.page == "overview"
             assert app.filters.priced_in_status == "actionable"
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
-            assert "Mismatches from full scan - showing" in frame
+            assert "Latest scan results - mismatches rows" in frame
             assert "Mismatches mode" in frame
 
             assert await pilot.click("#action-scan-all")
@@ -5581,7 +5581,7 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert app.filters.priced_in_status == "all"
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert "Full Scan mode" in frame
-            assert "Visible priced-in review page - rows" in frame
+            assert "Latest scan results - rows" in frame
 
             app.query_one("#data-table").focus()
             await pilot.press("enter")

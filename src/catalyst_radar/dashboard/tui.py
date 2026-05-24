@@ -330,7 +330,7 @@ DASHBOARD_FEATURES: tuple[dict[str, str], ...] = (
 PAGE_ALIASES: Mapping[str, str] = {
     "0": "tutorial",
     "learn": "tutorial",
-    "start": "tutorial",
+    "start": "overview",
     "tut": "tutorial",
     "tutorial": "tutorial",
     "1": "overview",
@@ -1568,7 +1568,8 @@ class MarketRadarDashboardApp(App[int]):
         page_action = {
             "tutorial": "Follow the numbered rows. Press 1 when you are ready for insights.",
             "overview": (
-                "Select an insight row. Press M or click SCAN to switch between "
+                "These are the latest scan results. Select a row to inspect why it is "
+                "or is not priced in. Press M or click SCAN to switch between "
                 f"Mismatches and Full Scan.{page_text}"
             ),
             "review": (
@@ -1788,8 +1789,8 @@ class MarketRadarDashboardApp(App[int]):
             return "\n".join(
                 [
                     (
-                        f"[bold #7ee787]{mode.upper()}[/]  Market emotion versus price "
-                        f"reaction; {mode_help}."
+                        f"[bold #7ee787]LATEST SCAN RESULTS[/]  Each ticker row asks: "
+                        f"has market emotion been fully priced in? {mode} is {mode_help}."
                     ),
                     (
                         f"[bold]Coverage:[/] scanned "
@@ -2176,7 +2177,7 @@ class MarketRadarDashboardApp(App[int]):
         self,
     ) -> tuple[str, Sequence[tuple[str, str, int]], list[Mapping[str, object]], str]:
         return (
-            _overview_title(self.payload),
+            _latest_scan_results_title(self.payload),
             [
                 ("rank", "#", 3),
                 ("ticker", "Ticker", 6),
@@ -2244,8 +2245,8 @@ class MarketRadarDashboardApp(App[int]):
             {"command": "Click candidate/alert row", "meaning": "Open the selected detail view."},
             {"command": "0, 1..10, Ctrl+A, f, ?", "meaning": "Keyboard page shortcuts."},
             {
-                "command": "tutorial / insights / start",
-                "meaning": "Open the walkthrough or the market insight queue.",
+                "command": "start / insights / tutorial",
+                "meaning": "Start on latest scan results; open tutorial only when needed.",
             },
             {
                 "command": "stocks / ready / full / mismatches",
@@ -6208,6 +6209,9 @@ def _priced_in_mismatch_text(emotion: object, reaction: object, gap: object) -> 
 
 def _overview_lines(payload: Mapping[str, object], width: int) -> list[str]:
     lines = [_rule(_overview_title(payload), width)]
+    lines.append(
+        "Latest scan results: each row asks: has market emotion been fully priced in?"
+    )
     minimum_stop = _minimum_product_stop_line_summary(payload)
     if minimum_stop:
         lines.append(
@@ -7028,6 +7032,10 @@ def _answer_evidence_completeness_summary(payload: Mapping[str, object]) -> str:
 
 
 def _overview_title(payload: Mapping[str, object]) -> str:
+    return _latest_scan_results_title(payload)
+
+
+def _latest_scan_results_title(payload: Mapping[str, object]) -> str:
     queue = _mapping(payload.get("priced_in_queue"))
     total = int(_number_or_zero(queue.get("total_count")))
     returned = int(_number_or_zero(queue.get("returned_count") or queue.get("count")))
@@ -7045,11 +7053,11 @@ def _overview_title(payload: Mapping[str, object]) -> str:
         suffix = f"; {'; '.join(suffix_parts)}" if suffix_parts else ""
         if _is_decision_ready_filter(queue):
             return (
-                "Decision-ready not-priced-in rows - showing rows "
+                "Latest scan results - decision-ready not-priced-in rows "
                 f"{start}-{end} of {total}; scan {scan_total}{suffix}"
             )
         return (
-            f"Mismatches from full scan - showing rows {start}-{end} of {total}; "
+            f"Latest scan results - mismatches rows {start}-{end} of {total}; "
             f"scan {scan_total}{suffix}"
         )
     if total:
@@ -7060,19 +7068,19 @@ def _overview_title(payload: Mapping[str, object]) -> str:
         scope_text = f"; {scope}" if scope else ""
         if scan_status == "selected_universe":
             return (
-                f"Selected-universe priced-in queue - showing rows "
+                f"Latest selected-universe scan results - rows "
                 f"{start}-{end} of {total}{suffix}"
             )
         if scan_status == "previous_scan":
             return (
-                f"Previous full-market priced-in scan - showing rows "
+                f"Previous full-market scan results - rows "
                 f"{start}-{end} of {total}{suffix}"
             )
         return (
-            f"Visible priced-in review page - rows {start}-{end} of {total}"
+            f"Latest scan results - rows {start}-{end} of {total}"
             f"{scope_text}{suffix}"
         )
-    return "Visible priced-in review page - select a row to inspect evidence"
+    return "Latest scan results - no rows yet; run or import scan evidence first"
 
 
 def _priced_in_scope_title_suffix(
