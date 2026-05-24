@@ -45,7 +45,9 @@ decision-support value. That is the measured target for offsetting 20% of a
   `minimum_useful_product.ready=true`. In this strict CLI mode, the
   minimum-product gate is promoted to the top-level `status`, `first_blocker`,
   `canonical_next_action`, and `canonical_next_command` fields so automation does
-  not accidentally follow the read-only browsing command.
+  not accidentally follow the read-only browsing command. API clients can request
+  the same promoted strict view with
+  `GET /api/radar/trial/readiness?minimum_product=true`.
 - The same payload includes `minimum_useful_product`. Treat that as the stop
   line for a real shipped read-only product: it requires a trusted full-market
   priced-in answer, visible shadow/value gates, and zero hidden calls or writes.
@@ -121,6 +123,8 @@ MarketRadar may still be safe to browse, but it is not yet a real product for
 decision support. In `--minimum-product` CLI output, the top-level
 `canonical_next_command` mirrors `minimum_useful_product.canonical_next_command`
 so scripts and humans see the blocker-clearing step for the stricter gate first.
+`GET /api/radar/trial/readiness?minimum_product=true` returns the same promoted
+strict view for API clients.
 
 ### For Humans
 

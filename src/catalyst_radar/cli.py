@@ -76,6 +76,7 @@ from catalyst_radar.dashboard.data import (
     priced_in_source_gap_batches_payload,
     sec_cik_override_template_payload,
     shadow_readiness_payload,
+    trial_minimum_product_output_payload,
     trial_readiness_payload,
 )
 from catalyst_radar.dashboard.demo_seed import (
@@ -1779,7 +1780,7 @@ def main(argv: list[str] | None = None) -> int:
             available_at=args.available_at,
         )
         output_payload = (
-            _minimum_product_trial_output_payload(payload)
+            trial_minimum_product_output_payload(payload)
             if args.minimum_product
             else payload
         )
@@ -8510,31 +8511,6 @@ def _print_trial_readiness(payload: Mapping[str, object]) -> None:
             f"first_blocker={row.get('first_blocker') or 'none'} "
             f"next={_compact_cli_text(row.get('next_command'))}"
         )
-
-
-def _minimum_product_trial_output_payload(
-    payload: Mapping[str, object],
-) -> dict[str, object]:
-    """Promote the strict shipped-product gate for --minimum-product output."""
-    output = dict(payload)
-    product_gate = payload.get("minimum_useful_product")
-    if not isinstance(product_gate, Mapping):
-        return output
-    output["minimum_product_mode"] = True
-    output["minimum_useful_product_ready"] = product_gate.get("ready") is True
-    for key in (
-        "status",
-        "highest_allowed_use",
-        "headline",
-        "first_blocker",
-        "canonical_next_action",
-        "canonical_next_command",
-        "next_action",
-        "next_command",
-    ):
-        if key in product_gate:
-            output[key] = product_gate.get(key)
-    return output
 
 
 def _print_shadow_mode_status(payload: Mapping[str, object]) -> None:

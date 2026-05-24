@@ -10633,6 +10633,31 @@ def trial_readiness_payload(
     }
 
 
+def trial_minimum_product_output_payload(
+    payload: Mapping[str, object],
+) -> dict[str, object]:
+    """Promote the strict shipped-product gate for minimum-product output."""
+    output = dict(payload)
+    product_gate = payload.get("minimum_useful_product")
+    if not isinstance(product_gate, Mapping):
+        return output
+    output["minimum_product_mode"] = True
+    output["minimum_useful_product_ready"] = product_gate.get("ready") is True
+    for key in (
+        "status",
+        "highest_allowed_use",
+        "headline",
+        "first_blocker",
+        "canonical_next_action",
+        "canonical_next_command",
+        "next_action",
+        "next_command",
+    ):
+        if key in product_gate:
+            output[key] = product_gate.get(key)
+    return output
+
+
 def _trial_minimum_useful_product_gate(
     *,
     engine: Engine,
