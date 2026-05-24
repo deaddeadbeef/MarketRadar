@@ -218,7 +218,7 @@ function Invoke-DashboardProcess {
     $script:DashboardProcess = $process
     $script:DashboardKnownChildIds = $knownChildIds
     $script:DashboardStopRequested = $false
-    [Console]::CancelKeyPress += $cancelHandler
+    [System.Console]::add_CancelKeyPress($cancelHandler)
     try {
         while (-not $process.WaitForExit(250)) {
             foreach ($childId in @(Get-ChildProcessIds -ProcessId $process.Id)) {
@@ -236,7 +236,7 @@ function Invoke-DashboardProcess {
         $exitCode = $process.ExitCode
     }
     finally {
-        [Console]::CancelKeyPress -= $cancelHandler
+        [System.Console]::remove_CancelKeyPress($cancelHandler)
         Stop-ProcessTree -Process $process -ExtraProcessIds @($knownChildIds.Keys)
         $script:DashboardProcess = $null
         $script:DashboardKnownChildIds = @{}
