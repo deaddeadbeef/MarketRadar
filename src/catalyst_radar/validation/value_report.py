@@ -567,6 +567,8 @@ def _validation_evidence_summary(
         if name not in measured and name not in missing
     ]
     baseline_results = _baseline_result_rows(comparison)
+    backtest_summary = report.get("backtest_summary")
+    backtest_summary = backtest_summary if isinstance(backtest_summary, Mapping) else {}
     baseline_result_counts = Counter(
         str(row.get("result_vs_market_radar") or "unknown")
         for row in baseline_results
@@ -595,6 +597,7 @@ def _validation_evidence_summary(
         "missing_baselines": missing,
         "baseline_result_counts": dict(sorted(baseline_result_counts.items())),
         "baseline_results": baseline_results,
+        "backtest_summary": dict(backtest_summary),
         "precision_at_5": precision_at_5,
         "precision_at_10": precision_at_10,
         "external_calls_required": 0,

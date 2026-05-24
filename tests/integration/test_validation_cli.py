@@ -165,6 +165,10 @@ def test_validation_report_label_and_paper_cli_workflow(
     assert report["local_text_intelligence"]["models_changed"] is False
     assert "local_narrative_score" in report["local_text_intelligence"]["features"]
     assert "random_eligible_universe" in report["baseline_comparison"]
+    assert report["backtest_summary"]["schema_version"] == "validation-backtest-summary-v1"
+    assert report["backtest_summary"]["candidate_count"] == 1
+    assert report["backtest_summary"]["slippage_assumption"]["applied_to_returns"] is False
+    assert "benchmark_comparison" in report["backtest_summary"]
     for baseline in (
         "relative_strength_screener",
         "volume_breakout_screener",
