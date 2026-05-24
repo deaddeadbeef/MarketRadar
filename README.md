@@ -500,6 +500,9 @@ to this repo: it creates `.venv` if needed, installs the editable
 `main` to `origin/main`, and then starts the TUI. It does not set `PYTHONPATH`
 or mutate the caller's shell environment. Use `radar --no-update` to skip the
 Git update step and `radar --force-install` to refresh the editable install.
+If a new terminal appears idle, wait for the first local snapshot to render; the
+launcher prints a startup line immediately, and `radar --once --page overview`
+is the fastest smoke test for the same path.
 
 ### Terminal dashboard basics
 

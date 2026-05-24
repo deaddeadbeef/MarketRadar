@@ -118,6 +118,9 @@ function Ensure-EditableInstall {
 
 Push-Location $repoRoot
 try {
+    Write-Host "Starting MarketRadar dashboard from $repoRoot"
+    Write-Host "First render can take 30-90 seconds while the local snapshot loads."
+
     Update-CleanMain
     Ensure-Venv
     Ensure-EditableInstall
