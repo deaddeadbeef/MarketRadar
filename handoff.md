@@ -1,6 +1,58 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-24 09:23:49 +08:00
+Last updated: 2026-05-24 09:34:57 +08:00
+
+## Latest Trial Minimum-Product API Parity Slice
+
+Goal alignment / drift check:
+
+- The active goal remains the mission brief workstream: safe shadow readiness,
+  repeatable shadow records, value ledger, forward outcomes, validation
+  evidence, monthly value proof, and no hidden calls/writes.
+- Priority 0 says CLI/API/TUI/dashboard surfaces should agree on the first
+  blocker and safe next action.
+- PR #737 fixed strict `assert-trial-ready --minimum-product` CLI output, but
+  the API route still only returned the read-only browsing view. API clients had
+  to inspect nested `minimum_useful_product` fields manually to avoid following
+  the looser dashboard command.
+
+Useful definition:
+
+- The strict trial API is useful only if API clients can ask for the same
+  minimum-product stop line that the CLI shows, with top-level status, blocker,
+  and next command aligned to `minimum_useful_product`.
+- The default API response should remain the read-only browsing gate for
+  compatibility.
+
+Fix in this slice:
+
+- Moved the strict minimum-product promotion logic into shared dashboard data as
+  `trial_minimum_product_output_payload`.
+- CLI `assert-trial-ready --minimum-product` now uses the shared helper.
+- `GET /api/radar/trial/readiness?minimum_product=true` now returns the same
+  promoted strict view, including top-level `status`, `first_blocker`,
+  `canonical_next_action`, and `canonical_next_command`.
+- README documents the API flag.
+
+Safety:
+
+- Read-only output/API contract change only.
+- No Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or provider
+  calls were made.
+- No operator database writes were made.
+- No approval-only commands were executed.
+
+Verification completed before PR:
+
+- Focused baseline before edits passed:
+  `pytest tests\integration\test_api_routes.py::test_get_radar_trial_readiness_returns_read_only_gate tests\integration\test_trial_readiness_cli.py -q`,
+  11 passed.
+- Focused regression after edits passed:
+  `pytest tests\integration\test_api_routes.py::test_get_radar_trial_readiness_returns_read_only_gate tests\integration\test_trial_readiness_cli.py -q`,
+  11 passed.
+- Ruff passed for touched API/CLI/dashboard-data/tests/README/handoff files.
+- Compileall passed for touched API/CLI/dashboard-data/test files.
+- `git diff --check` passed.
 
 ## Latest Trial Minimum-Product Command Slice
 

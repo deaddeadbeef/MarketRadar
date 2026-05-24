@@ -1274,6 +1274,18 @@ def test_get_radar_trial_readiness_returns_read_only_gate(
                 "status": "blocked",
                 "ready": False,
                 "first_blocker": "market_bars",
+                "highest_allowed_use": "safe_browsing_only",
+                "headline": "Minimum product is blocked.",
+                "canonical_next_action": "Review residual market-bar rows.",
+                "canonical_next_command": (
+                    "catalyst-radar market-bars residual-review "
+                    "--expected-as-of 2026-05-15"
+                ),
+                "next_action": "Review residual market-bar rows.",
+                "next_command": (
+                    "catalyst-radar market-bars residual-review "
+                    "--expected-as-of 2026-05-15"
+                ),
             },
             "blockers": [],
             "external_calls_made": 0,
@@ -1303,11 +1315,42 @@ def test_get_radar_trial_readiness_returns_read_only_gate(
             "status": "blocked",
             "ready": False,
             "first_blocker": "market_bars",
+            "highest_allowed_use": "safe_browsing_only",
+            "headline": "Minimum product is blocked.",
+            "canonical_next_action": "Review residual market-bar rows.",
+            "canonical_next_command": (
+                "catalyst-radar market-bars residual-review "
+                "--expected-as-of 2026-05-15"
+            ),
+            "next_action": "Review residual market-bar rows.",
+            "next_command": (
+                "catalyst-radar market-bars residual-review --expected-as-of 2026-05-15"
+            ),
         },
         "blockers": [],
         "external_calls_made": 0,
         "db_writes_made": 0,
     }
+
+    strict_response = client.get(
+        "/api/radar/trial/readiness?month=2026-05&minimum_product=true"
+    )
+
+    assert strict_response.status_code == 200
+    strict = strict_response.json()
+    assert strict["minimum_product_mode"] is True
+    assert strict["minimum_useful_product_ready"] is False
+    assert strict["status"] == "blocked"
+    assert strict["highest_allowed_use"] == "safe_browsing_only"
+    assert strict["headline"] == "Minimum product is blocked."
+    assert strict["first_blocker"] == "market_bars"
+    assert strict["canonical_next_action"] == "Review residual market-bar rows."
+    assert strict["canonical_next_command"] == (
+        "catalyst-radar market-bars residual-review --expected-as-of 2026-05-15"
+    )
+    assert strict["canonical_next_command"] != "catalyst-radar dashboard-tui"
+    assert strict["external_calls_made"] == 0
+    assert strict["db_writes_made"] == 0
 
 
 def test_get_radar_investable_readiness_returns_battle_test_gate(

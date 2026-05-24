@@ -626,15 +626,20 @@ def radar_shadow_readiness(available_at: datetime | None = None) -> dict[str, ob
 def radar_trial_readiness(
     month: str | None = None,
     available_at: datetime | None = None,
+    minimum_product: bool = False,
 ) -> dict[str, object]:
     readiness_payload = _dashboard_helper("trial_readiness_payload")
+    minimum_product_payload = _dashboard_helper("trial_minimum_product_output_payload")
+    payload = readiness_payload(
+        _engine(),
+        AppConfig.from_env(),
+        month=month,
+        available_at=_parse_api_datetime(available_at),
+    )
+    if minimum_product:
+        payload = minimum_product_payload(payload)
     return redact_restricted_external_payload(
-        readiness_payload(
-            _engine(),
-            AppConfig.from_env(),
-            month=month,
-            available_at=_parse_api_datetime(available_at),
-        )
+        payload
     )
 
 
