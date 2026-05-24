@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from fastapi.testclient import TestClient
 from sqlalchemy import func, insert, select
@@ -13,8 +13,10 @@ from catalyst_radar.dashboard.tui import render_dashboard_tui
 from catalyst_radar.storage.db import create_schema, engine_from_url
 from catalyst_radar.storage.schema import (
     candidate_states,
+    paper_trades,
     signal_features,
     value_ledger_entries,
+    value_outcomes,
 )
 
 
@@ -766,6 +768,54 @@ def test_value_ledger_feedback_does_not_mutate_candidate_state(
     assert ledger_count == 1
 
 
+def test_value_ledger_feedback_does_not_mutate_paper_or_outcome_rows(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_url = (
+        f"sqlite:///{(tmp_path / 'value-ledger-outcome-immutable.db').as_posix()}"
+    )
+    monkeypatch.setenv("CATALYST_DATABASE_URL", database_url)
+    engine = engine_from_url(database_url)
+    create_schema(engine)
+    _insert_paper_trade(engine)
+    _insert_value_outcome(engine)
+    before_paper = _table_rows(engine, paper_trades)
+    before_outcomes = _table_rows(engine, value_outcomes)
+
+    response = TestClient(create_app()).post(
+        "/api/value-ledger/entries",
+        json={
+            "artifact_type": "paper_trade",
+            "artifact_id": "paper-MSFT",
+            "label": "acted",
+            "supported_action": "paper_trade",
+            "user_decision": "paper-only",
+            "estimated_value_usd": 9,
+            "confidence": 0.75,
+            "available_at": "2026-05-22T12:00:00+00:00",
+            "execute": True,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["mode"] == "executed"
+    assert payload["external_calls_made"] == 0
+    assert payload["db_writes_made"] == 1
+    assert payload["entry"]["artifact_type"] == "paper_trade"
+    assert payload["entry"]["artifact_id"] == "paper-MSFT"
+    assert payload["entry"]["ticker"] == "MSFT"
+    assert payload["entry"]["as_of"] == "2026-05-15"
+    with engine.connect() as conn:
+        ledger_count = (
+            conn.execute(select(func.count()).select_from(value_ledger_entries)).scalar_one()
+        )
+    assert _table_rows(engine, paper_trades) == before_paper
+    assert _table_rows(engine, value_outcomes) == before_outcomes
+    assert ledger_count == 1
+
+
 def test_cost_page_renders_value_ledger_target_progress() -> None:
     text = render_dashboard_tui(
         {
@@ -864,3 +914,67 @@ def _insert_signal_features_with_priced_in_context(engine) -> None:
                 },
             )
         )
+
+
+def _insert_paper_trade(engine) -> None:
+    as_of = datetime(2026, 5, 15, 20, 0, tzinfo=UTC)
+    available_at = datetime(2026, 5, 22, 12, 0, tzinfo=UTC)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(paper_trades).values(
+                id="paper-MSFT",
+                decision_card_id="card-MSFT",
+                ticker="MSFT",
+                as_of=as_of,
+                decision="paper_trade",
+                state="open",
+                entry_price=100.0,
+                entry_at=as_of,
+                invalidation_price=95.0,
+                shares=1.0,
+                notional=100.0,
+                max_loss=5.0,
+                outcome_labels={"status": "pending"},
+                source_ts=as_of,
+                available_at=available_at,
+                payload={"trade_plan": "paper only"},
+                created_at=available_at,
+                updated_at=available_at,
+            )
+        )
+
+
+def _insert_value_outcome(engine) -> None:
+    available_at = datetime(2026, 8, 20, 21, 0, tzinfo=UTC)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(value_outcomes).values(
+                id="outcome-MSFT",
+                value_ledger_entry_id="value-ledger-existing",
+                ticker="MSFT",
+                as_of=date(2026, 5, 15),
+                outcome_available_at=available_at,
+                status="computed",
+                entry_price=100.0,
+                trading_days_observed=60,
+                return_5d=0.05,
+                return_10d=0.08,
+                return_20d=0.12,
+                return_60d=0.2,
+                max_adverse_excursion=-0.02,
+                max_favorable_excursion=0.22,
+                invalidation_price=95.0,
+                invalidation_touched=False,
+                payload={"setup_follow_through": "followed_through"},
+                created_at=available_at,
+                updated_at=available_at,
+            )
+        )
+
+
+def _table_rows(engine, table) -> list[dict[str, object]]:
+    with engine.connect() as conn:
+        return [
+            dict(row._mapping)
+            for row in conn.execute(select(table).order_by(table.c.id))
+        ]
