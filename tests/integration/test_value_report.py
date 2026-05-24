@@ -279,6 +279,7 @@ def test_value_report_surfaces_missing_candidate_ledger_coverage(
     assert "--artifact-id state-AAPL" in payload["canonical_next_command"]
     assert "--preview" in payload["canonical_next_command"]
     assert "--execute" not in payload["canonical_next_command"]
+    assert payload["canonical_next_api"] == "POST /api/value-ledger/entries"
     assert payload["next_action"] == payload["canonical_next_action"]
     assert payload["entry_count"] == 0
     assert coverage["status"] == "gaps"
@@ -291,6 +292,22 @@ def test_value_report_surfaces_missing_candidate_ledger_coverage(
     assert "--artifact-id state-AAPL" in coverage["canonical_next_command"]
     assert "--preview" in coverage["canonical_next_command"]
     assert "--execute" not in coverage["canonical_next_command"]
+    assert coverage["canonical_next_api"] == "POST /api/value-ledger/entries"
+    assert coverage["canonical_next_api_preview_request_body"] == {
+        "artifact_type": "candidate_state",
+        "artifact_id": "state-AAPL",
+        "label": "ignored",
+        "supported_action": "research",
+        "user_decision": "unknown",
+        "estimated_value_usd": 0.0,
+        "confidence": 0.0,
+        "available_at": "2026-05-31T21:00:00+00:00",
+        "execute": False,
+    }
+    assert (
+        payload["canonical_next_api_preview_request_body"]
+        == coverage["canonical_next_api_preview_request_body"]
+    )
     assert coverage["external_calls_made"] == 0
     assert coverage["db_writes_made"] == 0
     assert coverage["external_calls_required"] == 0
@@ -298,6 +315,10 @@ def test_value_report_surfaces_missing_candidate_ledger_coverage(
     assert coverage["rows"][0]["candidate_state_id"] == "state-AAPL"
     assert "--artifact-id state-AAPL" in coverage["rows"][0]["record_command"]
     assert "--preview" in coverage["rows"][0]["record_command"]
+    assert (
+        coverage["rows"][0]["record_api_preview_request_body"]
+        == coverage["canonical_next_api_preview_request_body"]
+    )
     assert coverage["rows"][0]["record_external_calls_required"] == 0
     assert coverage["rows"][0]["record_db_writes_required"] == 0
     outcome_coverage = payload["value_outcome_coverage"]
