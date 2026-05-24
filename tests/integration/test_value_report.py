@@ -798,6 +798,24 @@ def test_cost_page_renders_monthly_value_report() -> None:
                     ],
                     "precision_at_5": 0.4,
                     "precision_at_10": 0.3,
+                    "backtest_summary": {
+                        "hit_rate": 0.4,
+                        "positive_count": 2,
+                        "labeled_count": 5,
+                        "drawdown_proxy": {"value": 0.18},
+                        "slippage_assumption": {
+                            "round_trip_bps": 0.0,
+                            "applied_to_returns": False,
+                        },
+                        "benchmark_comparison": {
+                            "required_baseline_count": 5,
+                            "measured_baseline_count": 2,
+                            "marketradar_wins": 1,
+                            "baseline_wins": 1,
+                            "ties": 0,
+                            "insufficient_evidence": 3,
+                        },
+                    },
                 },
                 "value_evidence_examples": [
                     {
@@ -834,6 +852,14 @@ def test_cost_page_renders_monthly_value_report() -> None:
     assert "MR wins=1, baseline wins=1" in text
     assert "Precision at 5 / 10" in text
     assert "0.4 / 0.3" in text
+    assert "Backtest hit rate" in text
+    assert "40.00% (2/5 labeled)" in text
+    assert "Backtest drawdown proxy" in text
+    assert "18.00% max adverse" in text
+    assert "Backtest slippage" in text
+    assert "0.0 bps, not applied" in text
+    assert "Backtest benchmark" in text
+    assert "MR wins=1, baseline wins=1, ties=0, insufficient=3, measured=2/5" in text
     assert "Monthly value blocker" in text
     assert "candidate_ledger_coverage" in text
     assert "Value next action" in text

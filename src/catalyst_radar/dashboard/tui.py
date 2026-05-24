@@ -8391,6 +8391,22 @@ def _costs_lines(payload: Mapping[str, object], width: int) -> list[str]:
                     "Precision at 5 / 10",
                     _precision_pair_text(validation_evidence),
                 ),
+                (
+                    "Backtest hit rate",
+                    _backtest_hit_rate_text(validation_evidence),
+                ),
+                (
+                    "Backtest drawdown proxy",
+                    _backtest_drawdown_text(validation_evidence),
+                ),
+                (
+                    "Backtest slippage",
+                    _backtest_slippage_text(validation_evidence),
+                ),
+                (
+                    "Backtest benchmark",
+                    _backtest_benchmark_text(validation_evidence),
+                ),
                 ("Monthly value blocker", value_report.get("first_blocker") or "none"),
                 ("Value next action", value_report.get("canonical_next_action") or "n/a"),
                 (
@@ -8518,6 +8534,61 @@ def _precision_pair_text(validation: Mapping[str, object]) -> str:
     at_5 = validation.get("precision_at_5")
     at_10 = validation.get("precision_at_10")
     return f"{at_5 if at_5 is not None else 'n/a'} / {at_10 if at_10 is not None else 'n/a'}"
+
+
+def _backtest_hit_rate_text(validation: Mapping[str, object]) -> str:
+    summary = _mapping(validation.get("backtest_summary"))
+    if not summary:
+        return "n/a"
+    hit_rate = _pct_text(summary.get("hit_rate"))
+    positive = summary.get("positive_count")
+    labeled = summary.get("labeled_count")
+    if positive is not None and labeled is not None:
+        return f"{hit_rate} ({positive}/{labeled} labeled)"
+    return hit_rate
+
+
+def _backtest_drawdown_text(validation: Mapping[str, object]) -> str:
+    summary = _mapping(validation.get("backtest_summary"))
+    drawdown = _mapping(summary.get("drawdown_proxy"))
+    value = drawdown.get("value")
+    if value is None:
+        return "n/a"
+    return f"{_pct_text(value)} max adverse"
+
+
+def _backtest_slippage_text(validation: Mapping[str, object]) -> str:
+    summary = _mapping(validation.get("backtest_summary"))
+    slippage = _mapping(summary.get("slippage_assumption"))
+    if not slippage:
+        return "n/a"
+    bps = slippage.get("round_trip_bps")
+    applied = bool(slippage.get("applied_to_returns"))
+    return f"{bps if bps is not None else 'n/a'} bps, {'applied' if applied else 'not applied'}"
+
+
+def _backtest_benchmark_text(validation: Mapping[str, object]) -> str:
+    summary = _mapping(validation.get("backtest_summary"))
+    benchmark = _mapping(summary.get("benchmark_comparison"))
+    if not benchmark:
+        return "n/a"
+    parts = [
+        f"MR wins={int(benchmark.get('marketradar_wins') or 0)}",
+        f"baseline wins={int(benchmark.get('baseline_wins') or 0)}",
+        f"ties={int(benchmark.get('ties') or 0)}",
+        f"insufficient={int(benchmark.get('insufficient_evidence') or 0)}",
+    ]
+    measured = benchmark.get("measured_baseline_count")
+    required = benchmark.get("required_baseline_count")
+    if measured is not None and required is not None:
+        parts.append(f"measured={measured}/{required}")
+    return ", ".join(parts)
+
+
+def _pct_text(value: object) -> str:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return "n/a"
+    return f"{value * 100:.2f}%"
 
 
 def _sequence_count(value: object) -> int:
