@@ -6,6 +6,7 @@ from datetime import UTC, date, datetime
 from sqlalchemy import create_engine
 
 import catalyst_radar.cli as cli_module
+import catalyst_radar.dashboard.data as data_module
 from catalyst_radar.cli import main
 from catalyst_radar.core.config import AppConfig
 from catalyst_radar.core.models import DailyBar, Security
@@ -460,6 +461,107 @@ def test_trial_minimum_product_gate_surfaces_market_bar_approval_packet_without_
     assert approval["db_writes_made"] == 0
     assert product_gate["external_calls_made"] == 0
     assert product_gate["db_writes_made"] == 0
+
+
+def test_trial_minimum_product_gate_reuses_shadow_market_bar_approval_packet(
+    monkeypatch,
+) -> None:
+    def fail_residual_repair(*_args, **_kwargs) -> None:
+        raise AssertionError("trial gate should reuse the shadow approval packet")
+
+    monkeypatch.setattr(
+        data_module,
+        "market_bars_residual_repair_payload",
+        fail_residual_repair,
+    )
+
+    approval_command = (
+        "catalyst-radar market-bars residual-repair "
+        "--expected-as-of 2026-05-15 "
+        "--expect-missing-count 579 "
+        "--expect-eligible-count 579 --execute --json"
+    )
+    payload = trial_readiness_payload(
+        create_engine("sqlite:///:memory:"),
+        AppConfig(),
+        available_at=datetime(2026, 5, 23, 12, tzinfo=UTC),
+        priced_in_answer={
+            "schema_version": "priced-in-answer-v1",
+            "status": "blocked",
+            "counts": {"total_rows": 5},
+            "first_blocker": "market_bars",
+            "canonical_next_action": "Review residual market-bar rows.",
+            "canonical_next_command": (
+                "catalyst-radar market-bars residual-review "
+                "--expected-as-of 2026-05-15"
+            ),
+            "full_market_trust_gate": {
+                "trusted_full_market_answer": False,
+                "first_blocker": "market_bars",
+                "blocker_detail": {
+                    "schema_version": "priced-in-market-bar-blocker-detail-v1",
+                    "source": "market_bars",
+                    "expected_as_of": "2026-05-15",
+                    "missing_as_of_bar": 579,
+                    "stocks_only": False,
+                },
+            },
+            "full_scan": {
+                "mode": "selected_universe",
+                "active_securities": 12669,
+                "scanned_rows": 2429,
+                "ranked_rows": 12087,
+            },
+            "scan_scope": {"mode": "selected_universe", "total_rows": 12087},
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+        },
+        shadow_readiness={
+            "schema_version": "shadow-readiness-v1",
+            "status": "setup_required",
+            "ready": False,
+            "first_blocker": "market_bars",
+            "checks": [],
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+            "approval_required_unblock": {
+                "schema_version": "shadow-readiness-approval-required-v1",
+                "area": "market_bars",
+                "reason": "Shadow reason.",
+                "status": "ready_to_execute",
+                "approval_required": True,
+                "safe_default": "Do not execute without explicit operator approval.",
+                "approval_command": approval_command,
+                "execute_command": approval_command,
+                "preview_command": (
+                    "catalyst-radar market-bars residual-repair "
+                    "--expected-as-of 2026-05-15 --json"
+                ),
+                "expected_missing_count": 579,
+                "expected_eligible_count": 579,
+                "db_writes_required_to_execute": 579,
+                "external_calls_made": 0,
+                "db_writes_made": 0,
+            },
+        },
+        value_report={
+            "schema_version": "monthly-value-report-v1",
+            "verdict": "insufficient_evidence",
+            "first_blocker": "candidate_ledger_coverage",
+            "external_calls_made": 0,
+            "db_writes_made": 0,
+        },
+    )
+
+    product_gate = payload["minimum_useful_product"]
+    approval = product_gate["approval_required_unblock"]
+    assert product_gate["first_blocker"] == "market_bars"
+    assert approval["schema_version"] == "trial-minimum-product-approval-required-v1"
+    assert approval["reason"].startswith("Clearing the current minimum-product blocker")
+    assert approval["approval_command"] == approval_command
+    assert approval["db_writes_required_to_execute"] == 579
+    assert approval["external_calls_made"] == 0
+    assert approval["db_writes_made"] == 0
 
 
 def test_trial_readiness_marks_minimum_useful_product_ready_only_after_trusted_answer() -> None:

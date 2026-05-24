@@ -1,6 +1,85 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-24 08:20:24 +08:00
+Last updated: 2026-05-24 08:40:26 +08:00
+
+## Latest Trial Gate Latency Slice
+
+Goal alignment / drift check:
+
+- The user wants to try MarketRadar soon, but the stop line must be honest:
+  safe read-only browsing is not the same as a shipped minimum useful
+  decision-support product.
+- The live root database still reports `safe_to_try_read_only=true`, while the
+  stricter `minimum_useful_product.ready=false` gate remains blocked by
+  `market_bars`.
+- A zero-call residual review confirms the current blocker: 579 active-universe
+  rows are missing 2026-05-15 bars; all 579 show zero local
+  `avg_dollar_volume_20d`, zero market cap, no local history, and no options.
+- Clearing that blocker still requires explicit operator approval for a local
+  DB write command. No approval-only command was run in this slice.
+
+Useful definition:
+
+- The trial gate is useful only if it can quickly and safely answer:
+  "Can I inspect this as read-only research, and what blocks minimum shipped
+  decision support?"
+- It should not recompute expensive local repair plans when a nested gate has
+  already computed the same approval packet.
+
+Fix in this slice:
+
+- `trial_readiness_payload` now reuses the market-bar
+  `approval_required_unblock` packet already computed by
+  `shadow_readiness_payload`.
+- The reused packet is retargeted to the trial minimum-product schema and
+  reason while preserving the exact approval command, expected counts, call/write
+  boundaries, and execute guard.
+- Added a regression that monkeypatches the residual repair payload builder to
+  fail if the trial gate recomputes it when a shadow approval packet is already
+  present.
+
+Safety:
+
+- Read-only latency/contract preservation change.
+- No Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or provider
+  calls were made.
+- No operator database writes were made.
+- No approval-only commands were executed.
+- Root `data/schwab-live.db` remains untracked and untouched.
+
+Live root DB evidence using worktree source:
+
+- `assert-trial-ready --json`: exit 0, about 50.3s, `status=safe_read_only`,
+  `safe_to_try_read_only=true`, `minimum_useful_product.ready=false`,
+  `minimum_useful_product.first_blocker=market_bars`.
+- `assert-trial-ready --minimum-product --json`: exit 1, about 50.3s,
+  same blocker, `db_writes_required_to_execute=579`.
+- Before this slice, the same strict gate was about 67s in isolated
+  `Start-Process` timing. This is still not fast, but it removes one duplicated
+  expensive local market-bar approval computation without changing the answer.
+
+Verification completed before PR:
+
+- Focused baseline before edits passed:
+  `pytest tests\integration\test_trial_readiness_cli.py -q`, 9 passed.
+- Focused regression after edits passed:
+  `pytest tests\integration\test_trial_readiness_cli.py -q`, 10 passed.
+- Ruff passed for `src\catalyst_radar\dashboard\data.py` and
+  `tests\integration\test_trial_readiness_cli.py`.
+- Compileall passed for the same source/test files.
+- `git diff --check` passed.
+
+Current operator-safe stop point:
+
+- Safe to try now as read-only research/dashboard browsing only.
+- Not safe to use as a shipped minimum useful decision-support product until
+  `assert-trial-ready --minimum-product --json` exits successfully with
+  `minimum_useful_product.ready=true`.
+- The current zero-call next command is:
+  `catalyst-radar market-bars residual-review --expected-as-of 2026-05-15`.
+- The guarded local repair command, requiring explicit operator approval before
+  execution, remains:
+  `catalyst-radar market-bars residual-repair --expected-as-of 2026-05-15 --expect-missing-count 579 --expect-eligible-count 579 --execute --json`.
 
 ## Latest Value-Ledger Outcome Immutability Regression Slice
 
