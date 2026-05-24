@@ -109,11 +109,34 @@ $startInfo.RedirectStandardError = $true
 $startInfo.CreateNoWindow = $true
 $startInfo.Arguments = ($arguments | ForEach-Object { ConvertTo-ProcessArgument $_ }) -join " "
 
+$script:DashboardDebugStdout = New-Object System.Text.StringBuilder
+$script:DashboardDebugStderr = New-Object System.Text.StringBuilder
+$outputHandler = [System.Diagnostics.DataReceivedEventHandler]{
+    param($sender, $eventArgs)
+    if ($null -ne $eventArgs.Data) {
+        [void]$script:DashboardDebugStdout.AppendLine($eventArgs.Data)
+    }
+}
+$errorHandler = [System.Diagnostics.DataReceivedEventHandler]{
+    param($sender, $eventArgs)
+    if ($null -ne $eventArgs.Data) {
+        [void]$script:DashboardDebugStderr.AppendLine($eventArgs.Data)
+    }
+}
+
 $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-$process = [System.Diagnostics.Process]::Start($startInfo)
+$process = New-Object System.Diagnostics.Process
+$process.StartInfo = $startInfo
+$process.add_OutputDataReceived($outputHandler)
+$process.add_ErrorDataReceived($errorHandler)
+if (-not $process.Start()) {
+    throw "Failed to start launcher process."
+}
 if ($null -eq $process) {
     throw "Failed to start launcher process."
 }
+$process.BeginOutputReadLine()
+$process.BeginErrorReadLine()
 
 try {
     if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
@@ -121,11 +144,21 @@ try {
         Write-Error "Dashboard E2E timed out after $TimeoutSeconds seconds."
         exit 2
     }
-    $stdout = $process.StandardOutput.ReadToEnd()
-    $stderr = $process.StandardError.ReadToEnd()
+    $process.WaitForExit()
+    $stdout = $script:DashboardDebugStdout.ToString()
+    $stderr = $script:DashboardDebugStderr.ToString()
 }
 finally {
+    try {
+        $process.remove_OutputDataReceived($outputHandler)
+        $process.remove_ErrorDataReceived($errorHandler)
+    }
+    catch {
+        # The process may already be torn down after timeout cleanup.
+    }
     Stop-ProcessTree -Process $process
+    $script:DashboardDebugStdout = $null
+    $script:DashboardDebugStderr = $null
 }
 $stopwatch.Stop()
 
