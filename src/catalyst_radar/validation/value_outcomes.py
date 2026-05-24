@@ -339,6 +339,8 @@ def load_value_outcomes_payload(
     )
     return {
         "schema_version": "value-outcomes-v1",
+        "external_calls_required": 0,
+        "db_writes_required": 0,
         "external_calls_made": 0,
         "db_writes_made": 0,
         "available_at": cutoff.isoformat() if cutoff is not None else None,
@@ -451,6 +453,8 @@ def load_value_outcome_payload(
         raise ValueError(msg)
     return {
         "schema_version": "value-outcome-v1",
+        "external_calls_required": 0,
+        "db_writes_required": 0,
         "external_calls_made": 0,
         "db_writes_made": 0,
         "outcome": value_outcome_payload(outcome),
@@ -461,6 +465,8 @@ def value_outcome_summary_payload(engine: Engine) -> dict[str, object]:
     rows = ValidationRepository(engine).list_value_outcomes(limit=1000)
     return {
         "schema_version": "value-outcome-summary-v1",
+        "external_calls_required": 0,
+        "db_writes_required": 0,
         "external_calls_made": 0,
         "db_writes_made": 0,
         "outcome_count": len(rows),

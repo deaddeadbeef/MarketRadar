@@ -1,6 +1,75 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-24 07:48:40 +08:00
+Last updated: 2026-05-24 08:08:27 +08:00
+
+## Latest Value Evidence Read-Only Boundary Slice
+
+Goal alignment / drift check:
+
+- The active goal remains the mission brief workstream: assert-shadow-ready,
+  shadow-mode audit rows, value ledger, forward outcomes, monthly value
+  reporting, and no-hidden-call/no-hidden-write gates.
+- The strict minimum product remains blocked by live data, not code:
+  `market_bars` has 579 active-universe residual rows for 2026-05-15 and the
+  next clearing command requires explicit operator approval before any local DB
+  write.
+- This slice does not try to bypass that blocker. It tightens the value-proof
+  inspection contract so scripts can safely use value evidence surfaces while
+  the product is still in read-only trial mode.
+
+Useful definition:
+
+- A read-only value evidence surface is useful only if automation can tell both
+  what happened and what the command required.
+- Reporting `external_calls_made=0` / `db_writes_made=0` is not enough for a
+  replacement CLI/TUI/API operator flow; list/show/summary surfaces should also
+  expose `external_calls_required=0` and `db_writes_required=0`.
+
+Fix in this slice:
+
+- `value-ledger list --json`, `value-ledger show --json`, and
+  `value-ledger summary --json` now include top-level
+  `external_calls_required=0` and `db_writes_required=0`.
+- `value-outcome list --json`, `value-outcome show --json`, and the internal
+  value-outcome summary payload now include top-level
+  `external_calls_required=0` and `db_writes_required=0`.
+- The matching API list/show/summary payloads inherit the same fields from the
+  shared payload builders.
+- README documents the explicit required-call/write boundary for these
+  read-only value evidence surfaces and adds the missing `value-ledger list`
+  CLI example.
+
+Safety:
+
+- Read-only JSON contract change.
+- No Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or provider
+  calls were made.
+- No operator database writes were made.
+- No approval-only commands were executed.
+- The untracked root `data/schwab-live.db` remains untouched except for
+  read-only smoke commands.
+
+Verification completed before PR:
+
+- Focused baseline before edits passed:
+  `pytest tests/integration/test_value_ledger.py
+  tests/integration/test_value_outcomes.py -q`, 21 passed.
+- Focused regression after edits passed:
+  `pytest tests/integration/test_value_ledger.py
+  tests/integration/test_value_outcomes.py -q`, 21 passed.
+- Ruff passed for touched value-ledger/value-outcome source and tests.
+- Compileall passed for touched value-ledger/value-outcome source and tests.
+- `git diff --check` passed.
+- Live root-launch-context smoke using worktree code and root `.env.local`
+  showed:
+  - `value-ledger list --json`: schema `value-ledger-entries-v1`, required
+    0/0, made 0/0.
+  - `value-ledger summary --json`: schema `value-ledger-summary-v1`, required
+    0/0, made 0/0.
+  - `value-outcome list --json`: schema `value-outcomes-v1`, required 0/0,
+    made 0/0.
+  - `value-outcome coverage --json`: schema `value-outcome-coverage-v1`,
+    status `no_ledger_entries`, required 0/0, made 0/0.
 
 ## Latest Dashboard Top-Level Blocker Contract Slice
 

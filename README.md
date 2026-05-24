@@ -1137,6 +1137,7 @@ catalyst-radar value-ledger record --artifact-type candidate_state --artifact-id
 catalyst-radar value-ledger record --artifact-type candidate_state --artifact-id <ID> --label good-research --supported-action research --user-decision accepted --estimated-value-usd 10 --confidence 0.5 --execute --json
 catalyst-radar value-ledger label --artifact-type candidate_state --artifact-id <ID> --label useful --supported-action research --user-decision accepted --estimated-value-usd 10 --confidence 0.5 --execute --json
 catalyst-radar value-ledger coverage --available-at <UTC-cutoff> --json
+catalyst-radar value-ledger list --json
 catalyst-radar value-ledger show <VALUE_LEDGER_ID> --json
 catalyst-radar value-ledger summary --json
 ```
@@ -1179,6 +1180,10 @@ page shows weighted value, the $40/month target, and the percent offset against
 the $200/month ChatGPT Pro cost. Summary claimable value counts only useful
 feedback labels; noisy and false-positive rows remain visible in counts and
 costs but do not inflate weighted value or target coverage.
+Read-only ledger list, show, summary, and coverage payloads all expose
+`external_calls_required=0` and `db_writes_required=0` alongside the matching
+`*_made=0` fields, so scripts do not need to infer that inspection is zero-call
+and zero-write.
 `value-ledger coverage` is read-only. It lists Warning-or-higher candidate
 states in the selected period, shows which ones already have candidate-state
 ledger rows, and provides conservative zero-value `value-ledger record` commands
@@ -1232,8 +1237,11 @@ local row is persisted.
 `POST /api/value-outcomes/update`, `GET /api/value-outcomes`,
 `GET /api/value-outcomes/coverage`, and `GET /api/value-outcomes/{id}` expose
 the same contract. Outcome preview makes 0 provider calls and 0 database writes;
-coverage is read-only and shows which value-ledger rows in the period still
-need an outcome row before monthly value evidence is treated as measured. When
+list, show, summary, and coverage payloads expose
+`external_calls_required=0` and `db_writes_required=0` beside the matching
+`*_made=0` fields. Coverage is read-only and shows which value-ledger rows in
+the period still need an outcome row before monthly value evidence is treated as
+measured. When
 there are no value-ledger rows yet, coverage returns a `canonical_next_command`
 for `value-ledger coverage` so the operator can create the prerequisite
 ledger evidence before outcome updates are attempted. When

@@ -404,6 +404,8 @@ def load_value_ledger_entries_payload(
     )
     return {
         "schema_version": "value-ledger-entries-v1",
+        "external_calls_required": 0,
+        "db_writes_required": 0,
         "external_calls_made": 0,
         "db_writes_made": 0,
         "available_at": cutoff.isoformat(),
@@ -431,6 +433,8 @@ def load_value_ledger_entry_payload(
         raise ValueError(msg)
     return {
         "schema_version": "value-ledger-entry-v1",
+        "external_calls_required": 0,
+        "db_writes_required": 0,
         "external_calls_made": 0,
         "db_writes_made": 0,
         "entry": value_ledger_entry_payload(entry),
@@ -470,6 +474,8 @@ def load_value_ledger_summary_payload(
     return {
         "schema_version": "value-ledger-summary-v1",
         "source": "value_ledger",
+        "external_calls_required": 0,
+        "db_writes_required": 0,
         "external_calls_made": 0,
         "db_writes_made": 0,
         "available_at": cutoff.isoformat(),
