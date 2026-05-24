@@ -137,6 +137,16 @@ def test_assert_trial_ready_minimum_product_mode_blocks_safe_browsing_only(
     assert payload["safe_to_try_read_only"] is True
     assert payload["minimum_useful_product"]["ready"] is False
     assert payload["minimum_useful_product"]["status"] == "blocked"
+    product_gate = payload["minimum_useful_product"]
+    assert payload["minimum_product_mode"] is True
+    assert payload["minimum_useful_product_ready"] is False
+    assert payload["status"] == product_gate["status"]
+    assert payload["highest_allowed_use"] == product_gate["highest_allowed_use"]
+    assert payload["first_blocker"] == product_gate["first_blocker"]
+    assert payload["canonical_next_action"] == product_gate["canonical_next_action"]
+    assert payload["canonical_next_command"] == product_gate["canonical_next_command"]
+    assert payload["next_command"] == product_gate["next_command"]
+    assert payload["canonical_next_command"] != "catalyst-radar dashboard-tui"
     assert payload["external_calls_made"] == 0
     assert payload["db_writes_made"] == 0
 
@@ -183,6 +193,9 @@ def test_assert_trial_ready_minimum_product_mode_passes_only_when_gate_ready(
 
     assert exit_code == 0
     payload = json.loads(capsys.readouterr().out)
+    assert payload["minimum_product_mode"] is True
+    assert payload["minimum_useful_product_ready"] is True
+    assert payload["status"] == "ready"
     assert payload["minimum_useful_product"]["ready"] is True
     assert payload["external_calls_made"] == 0
     assert payload["db_writes_made"] == 0

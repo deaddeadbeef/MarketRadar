@@ -42,7 +42,10 @@ decision-support value. That is the measured target for offsetting 20% of a
   `assert-shadow-ready` and `assert-investable-readiness` still fail.
 - Use `catalyst-radar assert-trial-ready --minimum-product --json` for the
   stricter shipped-product stop line. It exits nonzero until
-  `minimum_useful_product.ready=true`.
+  `minimum_useful_product.ready=true`. In this strict CLI mode, the
+  minimum-product gate is promoted to the top-level `status`, `first_blocker`,
+  `canonical_next_action`, and `canonical_next_command` fields so automation does
+  not accidentally follow the read-only browsing command.
 - The same payload includes `minimum_useful_product`. Treat that as the stop
   line for a real shipped read-only product: it requires a trusted full-market
   priced-in answer, visible shadow/value gates, and zero hidden calls or writes.
@@ -115,9 +118,9 @@ The stricter shipped-product stop point is
 `assert-trial-ready --minimum-product --json`. That command exits successfully
 only when `minimum_useful_product.ready=true`. If that field is false,
 MarketRadar may still be safe to browse, but it is not yet a real product for
-decision support. Use
-`minimum_useful_product.canonical_next_command`, not the top-level safe-browsing
-command, to find the next blocker-clearing step for that stricter gate.
+decision support. In `--minimum-product` CLI output, the top-level
+`canonical_next_command` mirrors `minimum_useful_product.canonical_next_command`
+so scripts and humans see the blocker-clearing step for the stricter gate first.
 
 ### For Humans
 
