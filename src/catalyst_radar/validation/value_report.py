@@ -169,6 +169,7 @@ def monthly_value_report_payload(
         "period_end": end.isoformat(),
         "available_at": cutoff.isoformat(),
         "currency": "USD",
+        "status": verdict,
         "verdict": verdict,
         "target_monthly_value_usd": target,
         "threshold_monthly_value_usd": target,

@@ -54,6 +54,7 @@ def test_value_report_cli_empty_month_is_insufficient_evidence(
     assert exit_code == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["schema_version"] == "monthly-value-report-v1"
+    assert payload["status"] == "insufficient_evidence"
     assert payload["verdict"] == "insufficient_evidence"
     assert payload["entry_count"] == 0
     assert payload["plausibly_earned_at_least_40_usd"] is False
@@ -289,6 +290,7 @@ def test_value_report_surfaces_missing_candidate_ledger_coverage(
     assert exit_code == 0
     payload = json.loads(capsys.readouterr().out)
     coverage = payload["candidate_ledger_coverage"]
+    assert payload["status"] == "insufficient_evidence"
     assert payload["verdict"] == "insufficient_evidence"
     assert payload["first_blocker"] == "candidate_ledger_coverage"
     assert payload["first_gap_count"] == 1
@@ -424,6 +426,7 @@ def test_value_report_passes_when_useful_decision_support_covers_40_usd(
 
     assert response.status_code == 200
     payload = response.json()
+    assert payload["status"] == "pass"
     assert payload["verdict"] == "pass"
     assert payload["threshold_met"] is True
     assert payload["plausibly_met_40_usd_threshold"] is True
@@ -555,6 +558,7 @@ def test_value_report_cannot_pass_with_missing_validation_evidence(
     payload = response.json()
     assert payload["threshold_met"] is True
     assert payload["net_decision_support_value_usd"] == 51.0
+    assert payload["status"] == "insufficient_evidence"
     assert payload["verdict"] == "insufficient_evidence"
     assert payload["plausibly_met_40_usd_threshold"] is False
     assert payload["plausibly_earned_at_least_40_usd"] is False
@@ -679,6 +683,7 @@ def test_value_report_fails_below_threshold_and_counts_noise(
 
     assert exit_code == 0
     payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "fail"
     assert payload["verdict"] == "fail"
     assert payload["threshold_met"] is False
     assert payload["useful_insights_count"] == 2
@@ -717,6 +722,7 @@ def test_value_report_does_not_treat_positive_ignored_entry_as_useful(
 
     assert response.status_code == 200
     payload = response.json()
+    assert payload["status"] == "insufficient_evidence"
     assert payload["verdict"] == "insufficient_evidence"
     assert payload["useful_insights_count"] == 0
     assert payload["ignored_insights_count"] == 1
