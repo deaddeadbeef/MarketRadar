@@ -1,6 +1,73 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-24 11:07:09 +08:00
+Last updated: 2026-05-24 11:22:00 +08:00
+
+## Latest Shadow-Mode Safety Flags Slice
+
+Goal alignment / drift check:
+
+- The active goal remains the mission brief workstream: safe shadow readiness,
+  repeatable shadow records, value ledger, forward outcomes, validation
+  evidence, monthly value proof, and no hidden provider/model/broker calls or
+  database writes.
+- Priority 1 says shadow mode never submits orders and never sends real alerts.
+  The run record already stored nested safety markers, but the CLI/API boundary
+  did not expose stable top-level flags for generic clients and humans.
+
+Useful definition:
+
+- Shadow-mode evidence is useful only if an operator can see, without parsing a
+  nested payload, that the audit row is decision-support only, submitted no
+  broker order, sent no real alerts, and performed no execution.
+- This slice is useful because it makes the existing safety invariant auditable
+  in every shadow-mode JSON surface and human CLI output. It does not change
+  scoring, thresholds, providers, alert delivery, broker state, or write
+  behavior.
+
+Fix in this slice:
+
+- `shadow-mode run/status/latest/list` payloads now include:
+  - `broker_order_submitted=false`
+  - `real_alerts_sent=false`
+  - `no_execution=true`
+  - `decision_support_only=true`
+- Persisted shadow run rows returned by latest/list/status/run include the same
+  safety flags.
+- New shadow run payloads also store these markers in the nested audit payload.
+- Human CLI output prints the no-order/no-alert/no-execution flags.
+- README documents the top-level shadow-mode safety contract.
+
+Safety:
+
+- Shadow-mode contract/audit change only.
+- No Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or provider
+  calls were made.
+- No operator database writes were made outside pytest temp databases.
+- Test-only `shadow-mode run --execute` commands were run only against
+  temporary SQLite DBs.
+- No scoring thresholds, local text model, policy, action gate, trade plan,
+  provider call path, alert delivery path, or broker path was changed.
+
+Verification completed:
+
+- Focused shadow-mode regression passed:
+  `pytest tests\integration\test_shadow_mode.py -q`, 16 passed.
+- Quality checks passed:
+  `ruff check src\catalyst_radar\validation\shadow_mode.py
+  src\catalyst_radar\cli.py tests\integration\test_shadow_mode.py`
+- Compile check passed:
+  `compileall -q src\catalyst_radar\validation\shadow_mode.py
+  src\catalyst_radar\cli.py tests\integration\test_shadow_mode.py`
+- Whitespace check passed: `git diff --check`.
+
+Current operator-safe stop point remains unchanged:
+
+- Safe to try as a read-only research/dashboard/API product and as a local
+  preview-first validation/paper-trading workflow.
+- Not safe to call a shipped minimum decision-support product yet.
+- The strict minimum useful product gate remains blocked by 579 active-universe
+  missing 2026-05-15 market-bar rows.
+- The guarded local repair command still requires explicit operator approval.
 
 ## Latest Monthly Value Status Slice
 

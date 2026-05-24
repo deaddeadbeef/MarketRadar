@@ -1120,6 +1120,11 @@ persisted run cannot hide today's first unblock command. The status payload
 exposes the same first-blocker fields. If the current readiness gate is blocked
 by market bars, shadow run records use `scan_scope=blocked_full_market_gate`
 instead of reusing a stale `selected_universe` scope from an older scan.
+All shadow-mode JSON surfaces also expose `broker_order_submitted=false`,
+`real_alerts_sent=false`, `no_execution=true`, and
+`decision_support_only=true` at the contract boundary, with the same flags on
+persisted run rows. These fields make the no-order/no-real-alert boundary
+auditable without parsing nested payload details.
 `shadow-mode status` also fails closed at the top level: when current readiness
 is not ready, top-level `status` follows the current readiness status while
 `latest.status` keeps the persisted run classification for audit.

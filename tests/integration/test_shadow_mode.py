@@ -77,6 +77,10 @@ def test_shadow_mode_cli_preview_execute_and_latest(
     assert preview["db_writes_planned"] == 1
     assert preview["external_calls_made"] == 0
     assert preview["db_writes_made"] == 0
+    assert preview["broker_order_submitted"] is False
+    assert preview["real_alerts_sent"] is False
+    assert preview["no_execution"] is True
+    assert preview["decision_support_only"] is True
     assert preview["preview_command"].startswith("catalyst-radar shadow-mode run")
     assert "--preview" in preview["preview_command"]
     assert "--execute" not in preview["preview_command"]
@@ -91,6 +95,13 @@ def test_shadow_mode_cli_preview_execute_and_latest(
     assert preview["run"]["provider_calls_planned"] == preview["provider_calls_planned"]
     assert preview["run"]["provider_calls_made"] == 0
     assert preview["run"]["db_writes_planned"] == preview["db_writes_planned"]
+    assert preview["run"]["broker_order_submitted"] is False
+    assert preview["run"]["real_alerts_sent"] is False
+    assert preview["run"]["no_execution"] is True
+    assert preview["run"]["decision_support_only"] is True
+    assert preview["run"]["payload"]["broker_order_submitted"] is False
+    assert preview["run"]["payload"]["real_alerts_sent"] is False
+    assert preview["run"]["payload"]["no_execution"] is True
     assert (
         preview["run"]["eligible_for_manual_review_count"]
         == preview["run"]["manual_review_count"]
@@ -118,6 +129,10 @@ def test_shadow_mode_cli_preview_execute_and_latest(
     assert executed["provider_calls_made"] == 0
     assert executed["db_writes_planned"] == 1
     assert executed["db_writes_made"] == 1
+    assert executed["broker_order_submitted"] is False
+    assert executed["real_alerts_sent"] is False
+    assert executed["no_execution"] is True
+    assert executed["decision_support_only"] is True
     assert executed["preview_command"].startswith("catalyst-radar shadow-mode run")
     assert "--preview" in executed["preview_command"]
     assert "--execute" not in executed["preview_command"]
@@ -128,6 +143,10 @@ def test_shadow_mode_cli_preview_execute_and_latest(
     assert executed["run"]["db_writes_made"] == 1
     assert executed["run"]["provider_calls_planned"] == executed["provider_calls_planned"]
     assert executed["run"]["db_writes_planned"] == executed["db_writes_planned"]
+    assert executed["run"]["broker_order_submitted"] is False
+    assert executed["run"]["real_alerts_sent"] is False
+    assert executed["run"]["no_execution"] is True
+    assert executed["run"]["decision_support_only"] is True
     assert executed["run"]["status"] == "setup_required"
     assert (
         executed["run"]["eligible_for_manual_review_count"]
@@ -145,6 +164,12 @@ def test_shadow_mode_cli_preview_execute_and_latest(
     assert latest["external_calls_made"] == 0
     assert latest["db_writes_required"] == 0
     assert latest["db_writes_made"] == 0
+    assert latest["broker_order_submitted"] is False
+    assert latest["real_alerts_sent"] is False
+    assert latest["no_execution"] is True
+    assert latest["run"]["broker_order_submitted"] is False
+    assert latest["run"]["real_alerts_sent"] is False
+    assert latest["run"]["no_execution"] is True
 
     status_exit = main(["shadow-mode", "status", "--json"])
     assert status_exit == 0
@@ -159,6 +184,9 @@ def test_shadow_mode_cli_preview_execute_and_latest(
     assert status["external_calls_made"] == 0
     assert status["db_writes_required"] == 0
     assert status["db_writes_made"] == 0
+    assert status["broker_order_submitted"] is False
+    assert status["real_alerts_sent"] is False
+    assert status["no_execution"] is True
 
     list_exit = main(["shadow-mode", "list", "--json"])
     assert list_exit == 0
@@ -171,6 +199,12 @@ def test_shadow_mode_cli_preview_execute_and_latest(
     assert listed["external_calls_made"] == 0
     assert listed["db_writes_required"] == 0
     assert listed["db_writes_made"] == 0
+    assert listed["broker_order_submitted"] is False
+    assert listed["real_alerts_sent"] is False
+    assert listed["no_execution"] is True
+    assert listed["runs"][0]["broker_order_submitted"] is False
+    assert listed["runs"][0]["real_alerts_sent"] is False
+    assert listed["runs"][0]["no_execution"] is True
 
     human_exit = main(
         [
@@ -188,6 +222,9 @@ def test_shadow_mode_cli_preview_execute_and_latest(
     assert "db_writes_planned=1" in human_output
     assert "external_calls_made=0" in human_output
     assert "db_writes_made=0" in human_output
+    assert "broker_order_submitted=false" in human_output
+    assert "real_alerts_sent=false" in human_output
+    assert "no_execution=true" in human_output
 
 
 def test_shadow_mode_latest_without_run_surfaces_readiness_next_step(
@@ -216,6 +253,9 @@ def test_shadow_mode_latest_without_run_surfaces_readiness_next_step(
     assert latest["external_calls_made"] == 0
     assert latest["db_writes_required"] == 0
     assert latest["db_writes_made"] == 0
+    assert latest["broker_order_submitted"] is False
+    assert latest["real_alerts_sent"] is False
+    assert latest["no_execution"] is True
     with engine_from_url(database_url).connect() as conn:
         assert conn.execute(select(func.count()).select_from(shadow_mode_runs)).scalar_one() == 0
 
@@ -292,6 +332,9 @@ def test_shadow_mode_api_preview_and_latest(tmp_path, monkeypatch) -> None:
     assert empty_latest["first_blocker"] == "universe"
     assert empty_latest["external_calls_made"] == 0
     assert empty_latest["db_writes_made"] == 0
+    assert empty_latest["broker_order_submitted"] is False
+    assert empty_latest["real_alerts_sent"] is False
+    assert empty_latest["no_execution"] is True
 
     preview_response = client.post(
         "/api/radar/shadow/runs",
@@ -310,6 +353,12 @@ def test_shadow_mode_api_preview_and_latest(tmp_path, monkeypatch) -> None:
     assert preview["db_writes_planned"] == preview["run"]["db_writes_planned"]
     assert preview["external_calls_made"] == 0
     assert preview["db_writes_made"] == 0
+    assert preview["broker_order_submitted"] is False
+    assert preview["real_alerts_sent"] is False
+    assert preview["no_execution"] is True
+    assert preview["run"]["broker_order_submitted"] is False
+    assert preview["run"]["real_alerts_sent"] is False
+    assert preview["run"]["no_execution"] is True
     assert "--preview" in preview["preview_command"]
     assert "--execute" in preview["execute_command"]
     assert (
@@ -334,6 +383,12 @@ def test_shadow_mode_api_preview_and_latest(tmp_path, monkeypatch) -> None:
     assert executed["provider_calls_made"] == executed["run"]["provider_calls_made"]
     assert executed["db_writes_planned"] == executed["run"]["db_writes_planned"]
     assert executed["db_writes_made"] == 1
+    assert executed["broker_order_submitted"] is False
+    assert executed["real_alerts_sent"] is False
+    assert executed["no_execution"] is True
+    assert executed["run"]["broker_order_submitted"] is False
+    assert executed["run"]["real_alerts_sent"] is False
+    assert executed["run"]["no_execution"] is True
     assert "--preview" in executed["preview_command"]
     assert executed["execute_command"] is None
     assert (
@@ -348,6 +403,9 @@ def test_shadow_mode_api_preview_and_latest(tmp_path, monkeypatch) -> None:
     assert latest["external_calls_made"] == 0
     assert latest["db_writes_required"] == 0
     assert latest["db_writes_made"] == 0
+    assert latest["broker_order_submitted"] is False
+    assert latest["real_alerts_sent"] is False
+    assert latest["no_execution"] is True
 
     list_response = client.get("/api/radar/shadow/runs", params={"limit": 5})
     assert list_response.status_code == 200
@@ -359,6 +417,9 @@ def test_shadow_mode_api_preview_and_latest(tmp_path, monkeypatch) -> None:
     assert listed["external_calls_made"] == 0
     assert listed["db_writes_required"] == 0
     assert listed["db_writes_made"] == 0
+    assert listed["broker_order_submitted"] is False
+    assert listed["real_alerts_sent"] is False
+    assert listed["no_execution"] is True
 
     status_response = client.get("/api/radar/shadow/status")
     assert status_response.status_code == 200
@@ -371,6 +432,9 @@ def test_shadow_mode_api_preview_and_latest(tmp_path, monkeypatch) -> None:
     assert status["external_calls_made"] == 0
     assert status["db_writes_required"] == 0
     assert status["db_writes_made"] == 0
+    assert status["broker_order_submitted"] is False
+    assert status["real_alerts_sent"] is False
+    assert status["no_execution"] is True
 
 
 def test_shadow_mode_list_exports_runs_without_calls_or_writes(tmp_path) -> None:
@@ -459,6 +523,12 @@ def test_shadow_mode_list_exports_runs_without_calls_or_writes(tmp_path) -> None
     assert payload["runs"][0]["id"] == newer.id
     assert payload["runs"][1]["id"] == older.id
     assert payload["status_counts"] == {"partial_scan": 1, "valid_full_scan": 1}
+    assert payload["broker_order_submitted"] is False
+    assert payload["real_alerts_sent"] is False
+    assert payload["no_execution"] is True
+    assert payload["runs"][0]["broker_order_submitted"] is False
+    assert payload["runs"][0]["real_alerts_sent"] is False
+    assert payload["runs"][0]["no_execution"] is True
     assert payload["external_calls_required"] == 0
     assert payload["external_calls_made"] == 0
     assert payload["db_writes_required"] == 0
@@ -719,6 +789,9 @@ def test_shadow_mode_run_persists_planned_provider_call_boundary() -> None:
     assert run.provider_calls_planned == 3
     assert run.provider_calls_made == 0
     assert run.payload["call_plan_external_call_count_max"] == 3
+    assert run.payload["broker_order_submitted"] is False
+    assert run.payload["real_alerts_sent"] is False
+    assert run.payload["no_execution"] is True
     assert run.status == "valid_full_scan"
     assert _shadow_mode_next_action(run) == (
         "Record value-ledger entries for surfaced Warning or manual-review candidates."
