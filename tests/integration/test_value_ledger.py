@@ -263,6 +263,7 @@ def test_value_ledger_coverage_reports_unlogged_surfaced_candidates(
     assert "--artifact-id state-AAPL" in payload["canonical_next_command"]
     assert "--preview" in payload["canonical_next_command"]
     assert "--execute" not in payload["canonical_next_command"]
+    assert payload["canonical_next_api"] == "POST /api/value-ledger/entries"
     rows = {row["candidate_state_id"]: row for row in payload["rows"]}
     assert rows["state-MSFT"]["ledger_status"] == "logged"
     assert rows["state-MSFT"]["ledger_entry_id"]
@@ -272,6 +273,22 @@ def test_value_ledger_coverage_reports_unlogged_surfaced_candidates(
     assert "--execute" not in rows["state-AAPL"]["record_command"]
     assert rows["state-AAPL"]["record_external_calls_required"] == 0
     assert rows["state-AAPL"]["record_db_writes_required"] == 0
+    assert rows["state-AAPL"]["record_api"] == "POST /api/value-ledger/entries"
+    assert rows["state-AAPL"]["record_api_preview_request_body"] == {
+        "artifact_type": "candidate_state",
+        "artifact_id": "state-AAPL",
+        "label": "ignored",
+        "supported_action": "research",
+        "user_decision": "unknown",
+        "estimated_value_usd": 0.0,
+        "confidence": 0.0,
+        "available_at": "2026-05-22T12:00:00+00:00",
+        "execute": False,
+    }
+    assert (
+        payload["canonical_next_api_preview_request_body"]
+        == rows["state-AAPL"]["record_api_preview_request_body"]
+    )
     assert "state-GLW" not in rows
     with engine.connect() as conn:
         after = [dict(row._mapping) for row in conn.execute(select(candidate_states))]

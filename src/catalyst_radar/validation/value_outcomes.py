@@ -404,6 +404,18 @@ def load_value_outcome_coverage_payload(
         period_start=resolved_start,
         period_end=resolved_end,
     )
+    canonical_next_api = _value_outcome_coverage_next_api(
+        status=status,
+        first_missing=first_missing,
+        first_incomplete=first_incomplete,
+    )
+    canonical_next_api_preview_request_body = (
+        _value_outcome_coverage_next_api_preview_request_body(
+            status=status,
+            first_missing=first_missing,
+            first_incomplete=first_incomplete,
+        )
+    )
     return {
         "schema_version": "value-outcome-coverage-v1",
         "status": status,
@@ -424,6 +436,8 @@ def load_value_outcome_coverage_payload(
         "first_missing_ticker": _first_missing_outcome_field(first_missing, "ticker"),
         "canonical_next_action": next_action,
         "canonical_next_command": canonical_next_command,
+        "canonical_next_api": canonical_next_api,
+        "canonical_next_api_preview_request_body": canonical_next_api_preview_request_body,
         "computed_outcome_count": int(status_counts.get("computed") or 0),
         "insufficient_data_count": int(status_counts.get("insufficient_data") or 0),
         "first_incomplete_value_ledger_entry_id": _first_missing_outcome_field(
@@ -829,12 +843,28 @@ def _value_outcome_coverage_row(
             value_ledger_entry_id=entry.id,
             outcome_available_at=outcome_available_at,
         )
+        row["preview_update_api"] = "POST /api/value-outcomes/update"
+        row["preview_update_api_request_body"] = _value_outcome_update_request_body(
+            value_ledger_entry_id=entry.id,
+            outcome_available_at=outcome_available_at,
+            sector_etf_ticker=None,
+            invalidation_price=None,
+            execute=False,
+        )
         row["preview_update_external_calls_required"] = 0
         row["preview_update_db_writes_required"] = 0
     elif outcome.status != "computed":
         row["refresh_update_command"] = _coverage_update_command(
             value_ledger_entry_id=entry.id,
             outcome_available_at=outcome_available_at,
+        )
+        row["refresh_update_api"] = "POST /api/value-outcomes/update"
+        row["refresh_update_api_request_body"] = _value_outcome_update_request_body(
+            value_ledger_entry_id=entry.id,
+            outcome_available_at=outcome_available_at,
+            sector_etf_ticker=None,
+            invalidation_price=None,
+            execute=False,
         )
         row["refresh_update_external_calls_required"] = 0
         row["refresh_update_db_writes_required"] = 0
@@ -907,6 +937,44 @@ def _value_outcome_coverage_next_command(
         return _first_missing_outcome_field(first_missing, "preview_update_command")
     if status == "incomplete":
         return _first_missing_outcome_field(first_incomplete, "refresh_update_command")
+    return None
+
+
+def _value_outcome_coverage_next_api(
+    *,
+    status: str,
+    first_missing: Mapping[str, object] | None,
+    first_incomplete: Mapping[str, object] | None,
+) -> str | None:
+    if status == "gaps":
+        return _first_missing_outcome_field(first_missing, "preview_update_api")
+    if status == "incomplete":
+        return _first_missing_outcome_field(first_incomplete, "refresh_update_api")
+    return None
+
+
+def _value_outcome_coverage_next_api_preview_request_body(
+    *,
+    status: str,
+    first_missing: Mapping[str, object] | None,
+    first_incomplete: Mapping[str, object] | None,
+) -> dict[str, object] | None:
+    if status == "gaps":
+        return _mapping_field(first_missing, "preview_update_api_request_body")
+    if status == "incomplete":
+        return _mapping_field(first_incomplete, "refresh_update_api_request_body")
+    return None
+
+
+def _mapping_field(
+    row: Mapping[str, object] | None,
+    field: str,
+) -> dict[str, object] | None:
+    if row is None:
+        return None
+    value = row.get(field)
+    if isinstance(value, Mapping):
+        return dict(value)
     return None
 
 

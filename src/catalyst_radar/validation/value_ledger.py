@@ -556,6 +556,10 @@ def load_value_ledger_candidate_coverage_payload(
     coverage_pct = round((logged / len(rows)) * 100, 2) if rows else None
     status = "gaps" if missing else "ready"
     canonical_next_command = first_missing.get("record_command")
+    canonical_next_api = first_missing.get("record_api")
+    canonical_next_api_preview_request_body = first_missing.get(
+        "record_api_preview_request_body",
+    )
     next_action = (
         "Review missing rows and record value-ledger entries before claiming "
         "monthly value evidence."
@@ -566,6 +570,8 @@ def load_value_ledger_candidate_coverage_payload(
     if not rows:
         status = "no_candidates"
         canonical_next_command = "catalyst-radar assert-shadow-ready --json"
+        canonical_next_api = None
+        canonical_next_api_preview_request_body = None
         next_action = (
             "No Warning-or-higher candidate states exist in this period. Clear "
             "shadow-readiness blockers and run a shadow scan before value-ledger "
@@ -589,6 +595,8 @@ def load_value_ledger_candidate_coverage_payload(
         "first_missing_candidate_state_id": first_missing.get("candidate_state_id"),
         "first_missing_ticker": first_missing.get("ticker"),
         "canonical_next_command": canonical_next_command,
+        "canonical_next_api": canonical_next_api,
+        "canonical_next_api_preview_request_body": canonical_next_api_preview_request_body,
         "rows": rows[: max(1, int(limit))],
         "next_action": next_action,
         "useful_definition": USEFUL_DEFINITION,
@@ -781,6 +789,14 @@ def _candidate_coverage_row(
             candidate_id,
             available_at,
         )
+        row["record_api"] = "POST /api/value-ledger/entries"
+        row["record_api_preview_request_body"] = (
+            _candidate_coverage_record_request_body(
+                candidate_id,
+                available_at,
+                execute=False,
+            )
+        )
         row["record_external_calls_required"] = 0
         row["record_db_writes_required"] = 0
     return row
@@ -797,6 +813,25 @@ def _candidate_coverage_record_command(
         "--estimated-value-usd 0 --confidence 0 "
         f"--available-at {available_at.isoformat()} --preview --json"
     )
+
+
+def _candidate_coverage_record_request_body(
+    candidate_state_id: str,
+    available_at: datetime,
+    *,
+    execute: bool,
+) -> dict[str, object]:
+    return {
+        "artifact_type": "candidate_state",
+        "artifact_id": candidate_state_id,
+        "label": "ignored",
+        "supported_action": "research",
+        "user_decision": "unknown",
+        "estimated_value_usd": 0.0,
+        "confidence": 0.0,
+        "available_at": available_at.isoformat(),
+        "execute": execute,
+    }
 
 
 def _is_surfaced_candidate_state(value: object) -> bool:

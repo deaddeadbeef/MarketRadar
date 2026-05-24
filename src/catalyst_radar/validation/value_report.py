@@ -183,6 +183,10 @@ def monthly_value_report_payload(
         "first_gap_count": first_evidence_gap["first_gap_count"],
         "canonical_next_action": first_evidence_gap["canonical_next_action"],
         "canonical_next_command": first_evidence_gap["canonical_next_command"],
+        "canonical_next_api": first_evidence_gap["canonical_next_api"],
+        "canonical_next_api_preview_request_body": first_evidence_gap[
+            "canonical_next_api_preview_request_body"
+        ],
         "next_action": first_evidence_gap["canonical_next_action"],
         "external_calls_required": first_evidence_gap["external_calls_required"],
         "db_writes_required": first_evidence_gap["db_writes_required"],
@@ -325,6 +329,10 @@ def _candidate_ledger_coverage_summary(
         ),
         "first_missing_ticker": coverage.get("first_missing_ticker"),
         "canonical_next_command": coverage.get("canonical_next_command"),
+        "canonical_next_api": coverage.get("canonical_next_api"),
+        "canonical_next_api_preview_request_body": coverage.get(
+            "canonical_next_api_preview_request_body"
+        ),
         "rows": [row for row in rows if isinstance(row, Mapping)],
         "next_action": coverage.get("next_action"),
         "external_calls_required": int(coverage.get("external_calls_required") or 0),
@@ -354,6 +362,10 @@ def _monthly_value_first_evidence_gap(
             first_gap_count=int(candidate_ledger_coverage.get("missing_ledger_count") or 0),
             action=action,
             command=candidate_ledger_coverage.get("canonical_next_command"),
+            api=candidate_ledger_coverage.get("canonical_next_api"),
+            api_preview_request_body=candidate_ledger_coverage.get(
+                "canonical_next_api_preview_request_body"
+            ),
         )
     validation_status = str(validation_evidence.get("status") or "")
     if (
@@ -383,6 +395,10 @@ def _monthly_value_first_evidence_gap(
                 or "Compute missing value outcomes before claiming monthly value evidence."
             ),
             command=value_outcome_coverage.get("canonical_next_command"),
+            api=value_outcome_coverage.get("canonical_next_api"),
+            api_preview_request_body=value_outcome_coverage.get(
+                "canonical_next_api_preview_request_body"
+            ),
         )
 
     if verdict == "insufficient_evidence":
@@ -430,13 +446,23 @@ def _monthly_value_gap(
     first_gap_count: int,
     action: str,
     command: object,
+    api: object | None = None,
+    api_preview_request_body: object | None = None,
 ) -> dict[str, object]:
     resolved_command = command if isinstance(command, str) and command.strip() else None
+    resolved_api = api if isinstance(api, str) and api.strip() else None
+    resolved_api_preview_request_body = (
+        dict(api_preview_request_body)
+        if isinstance(api_preview_request_body, Mapping)
+        else None
+    )
     return {
         "first_blocker": first_blocker,
         "first_gap_count": max(0, int(first_gap_count)),
         "canonical_next_action": action,
         "canonical_next_command": resolved_command,
+        "canonical_next_api": resolved_api,
+        "canonical_next_api_preview_request_body": resolved_api_preview_request_body,
         "external_calls_required": 0,
         "db_writes_required": 0,
     }
@@ -458,6 +484,10 @@ def _value_outcome_coverage_summary(
         ),
         "first_missing_ticker": coverage.get("first_missing_ticker"),
         "canonical_next_command": coverage.get("canonical_next_command"),
+        "canonical_next_api": coverage.get("canonical_next_api"),
+        "canonical_next_api_preview_request_body": coverage.get(
+            "canonical_next_api_preview_request_body"
+        ),
         "computed_outcome_count": int(coverage.get("computed_outcome_count") or 0),
         "insufficient_data_count": int(coverage.get("insufficient_data_count") or 0),
         "coverage_pct": coverage.get("coverage_pct"),

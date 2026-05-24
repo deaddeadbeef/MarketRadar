@@ -287,6 +287,19 @@ def test_value_outcome_coverage_reports_ledger_rows_missing_outcomes(
     assert missing["preview_update_external_calls_required"] == 0
     assert missing["preview_update_db_writes_required"] == 0
     assert payload["canonical_next_command"] == missing["preview_update_command"]
+    assert payload["canonical_next_api"] == "POST /api/value-outcomes/update"
+    assert (
+        payload["canonical_next_api_preview_request_body"]
+        == missing["preview_update_api_request_body"]
+    )
+    assert missing["preview_update_api"] == "POST /api/value-outcomes/update"
+    assert missing["preview_update_api_request_body"] == {
+        "value_ledger_entry_id": missing_entry_id,
+        "outcome_available_at": "2026-08-20T21:00:00+00:00",
+        "sector_etf_ticker": None,
+        "invalidation_price": None,
+        "execute": False,
+    }
     assert "--preview" in payload["canonical_next_command"]
     assert "--execute" not in payload["canonical_next_command"]
     with engine.connect() as conn:
@@ -392,11 +405,27 @@ def test_value_outcome_coverage_api_and_monthly_report_surface_missing_rows(
     assert "value-outcome update" in coverage["canonical_next_command"]
     assert "--preview" in coverage["canonical_next_command"]
     assert "--execute" not in coverage["canonical_next_command"]
+    assert coverage["canonical_next_api"] == "POST /api/value-outcomes/update"
+    assert coverage["canonical_next_api_preview_request_body"] == {
+        "value_ledger_entry_id": entry_id,
+        "outcome_available_at": "2026-05-31T21:00:00+00:00",
+        "sector_etf_ticker": None,
+        "invalidation_price": None,
+        "execute": False,
+    }
     assert coverage["external_calls_required"] == 0
     assert coverage["db_writes_required"] == 0
     assert coverage["external_calls_made"] == 0
     assert coverage["db_writes_made"] == 0
     assert coverage["rows"][0]["value_ledger_entry_id"] == entry_id
+    assert (
+        coverage["rows"][0]["preview_update_api"]
+        == "POST /api/value-outcomes/update"
+    )
+    assert (
+        coverage["rows"][0]["preview_update_api_request_body"]
+        == coverage["canonical_next_api_preview_request_body"]
+    )
     assert coverage["rows"][0]["preview_update_external_calls_required"] == 0
     assert coverage["rows"][0]["preview_update_db_writes_required"] == 0
 
@@ -418,7 +447,17 @@ def test_value_outcome_coverage_api_and_monthly_report_surface_missing_rows(
     assert outcome_coverage["first_missing_value_ledger_entry_id"] == entry_id
     assert outcome_coverage["first_missing_ticker"] == "NVDA"
     assert outcome_coverage["canonical_next_command"] == coverage["canonical_next_command"]
+    assert outcome_coverage["canonical_next_api"] == coverage["canonical_next_api"]
+    assert (
+        outcome_coverage["canonical_next_api_preview_request_body"]
+        == coverage["canonical_next_api_preview_request_body"]
+    )
     assert report["canonical_next_command"] == coverage["canonical_next_command"]
+    assert report["canonical_next_api"] == coverage["canonical_next_api"]
+    assert (
+        report["canonical_next_api_preview_request_body"]
+        == coverage["canonical_next_api_preview_request_body"]
+    )
     assert "--preview" in report["canonical_next_command"]
     assert "--execute" not in report["canonical_next_command"]
     assert report["external_calls_required"] == 0
@@ -514,9 +553,23 @@ def test_value_outcome_api_rejects_missing_future_bars_without_mutating_ledger(
         "--outcome-available-at 2026-05-25T21:00:00+00:00 "
         "--preview --json"
     )
+    assert coverage["canonical_next_api"] == "POST /api/value-outcomes/update"
+    assert coverage["canonical_next_api_preview_request_body"] == {
+        "value_ledger_entry_id": entry_id,
+        "outcome_available_at": "2026-05-25T21:00:00+00:00",
+        "sector_etf_ticker": None,
+        "invalidation_price": None,
+        "execute": False,
+    }
     assert "--execute" not in coverage["canonical_next_command"]
     assert coverage["rows"][0]["refresh_update_command"] == coverage[
         "canonical_next_command"
+    ]
+    assert coverage["rows"][0]["refresh_update_api"] == (
+        "POST /api/value-outcomes/update"
+    )
+    assert coverage["rows"][0]["refresh_update_api_request_body"] == coverage[
+        "canonical_next_api_preview_request_body"
     ]
     assert coverage["rows"][0]["refresh_update_external_calls_required"] == 0
     assert coverage["rows"][0]["refresh_update_db_writes_required"] == 0
@@ -536,6 +589,11 @@ def test_value_outcome_api_rejects_missing_future_bars_without_mutating_ledger(
     report = report_response.json()
     assert report["first_blocker"] == "value_outcome_coverage"
     assert report["canonical_next_command"] == coverage["canonical_next_command"]
+    assert report["canonical_next_api"] == coverage["canonical_next_api"]
+    assert (
+        report["canonical_next_api_preview_request_body"]
+        == coverage["canonical_next_api_preview_request_body"]
+    )
     assert "--preview" in report["canonical_next_command"]
     assert "--execute" not in report["canonical_next_command"]
     assert report["external_calls_required"] == 0

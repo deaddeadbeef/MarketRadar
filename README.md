@@ -1203,8 +1203,12 @@ with explicit `--preview` for missing rows so the operator can review or edit
 subjective label/value before writing anything. When coverage has gaps, the
 payload exposes `first_missing_candidate_state_id`, `first_missing_ticker`, and
 `canonical_next_command` for the first non-executing ledger-record command,
-plus `external_calls_required=0` and `db_writes_required=0` for the displayed
-preview recovery path.
+plus `canonical_next_api=POST /api/value-ledger/entries` and
+`canonical_next_api_preview_request_body` for the same non-writing preview
+request. Each missing row also carries `record_api` and
+`record_api_preview_request_body`, alongside `external_calls_required=0` and
+`db_writes_required=0`, so API clients do not have to parse CLI strings to show
+the safe recovery path.
 When no Warning-or-higher candidates exist in the period, coverage returns
 `status=no_candidates`, `coverage_pct=null`, and a zero-call
 `canonical_next_command` for `assert-shadow-ready --json` instead of reporting
@@ -1260,13 +1264,17 @@ ledger evidence before outcome updates are attempted. When
 coverage has gaps, the payload exposes `first_missing_value_ledger_entry_id`,
 `first_missing_ticker`, and the preview-only `canonical_next_command` for the
 first non-executing outcome update; generated update commands include explicit
-`--preview`. Outcome coverage also reports `external_calls_required=0` and
-`db_writes_required=0` for the displayed preview recovery path.
+`--preview`. It also exposes `canonical_next_api=POST /api/value-outcomes/update`
+and `canonical_next_api_preview_request_body`, with the same body mirrored on
+the missing row as `preview_update_api_request_body`. Outcome coverage also
+reports `external_calls_required=0` and `db_writes_required=0` for the displayed
+preview recovery path.
 When coverage is `incomplete` because an existing outcome row is still
 `insufficient_data`, `missing_context`, or otherwise not computed, the payload
 exposes `first_incomplete_value_ledger_entry_id`, `first_incomplete_ticker`,
 and a preview-only `canonical_next_command` to refresh that outcome at the
-current cutoff.
+current cutoff, plus `refresh_update_api_request_body` for the matching
+non-writing API preview.
 The TUI `outcome coverage` command prints the same `next_command=` value.
 Execute makes 0 provider calls and writes only a `value_outcomes` row. The
 update never mutates the source value-ledger row, candidate state, candidate
@@ -1326,11 +1334,13 @@ The report also includes `candidate_ledger_coverage`, a read-only summary of
 Warning-or-higher candidate states surfaced in the month versus candidate-state
 ledger rows recorded for them. If coverage has gaps, the report includes the
 same conservative non-executing `value-ledger record` commands shown by
-`value-ledger coverage`, with explicit `--preview`, so missing human feedback is
+`value-ledger coverage`, with explicit `--preview`, plus the same
+`canonical_next_api_preview_request_body` fields so missing human feedback is
 visible before claiming monthly value evidence. It also includes
 `value_outcome_coverage`, a read-only summary of value-ledger rows versus linked
 outcome rows, including the same first-missing outcome fields and
-non-executing `value-outcome update --preview` commands for missing outcomes.
+non-executing `value-outcome update --preview` commands and API preview request
+bodies for missing outcomes.
 When no Warning-or-higher candidates exist in the report period, candidate
 coverage is `no_candidates` and the report's first blocker is
 `candidate_evidence`, pointing back to `assert-shadow-ready --json` before
@@ -1339,8 +1349,9 @@ When there are no ledger rows in the period,
 outcome coverage reports `no_ledger_entries` instead
 of `ready`, because outcome evidence cannot exist before feedback is logged. The
 top-level report exposes `first_blocker`, `first_gap_count`,
-`canonical_next_action`, `canonical_next_command`, `external_calls_required`,
-and `db_writes_required` for the first missing value-proof evidence step. If
+`canonical_next_action`, `canonical_next_command`, `canonical_next_api`,
+`canonical_next_api_preview_request_body`, `external_calls_required`, and
+`db_writes_required` for the first missing value-proof evidence step. If
 the month has fewer useful value-ledger evidence
 rows than the configured minimum after candidate evidence exists, the first
 blocker remains `useful_evidence` instead of jumping ahead to validation
