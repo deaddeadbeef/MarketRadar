@@ -8760,7 +8760,10 @@ def _print_shadow_mode_status(payload: Mapping[str, object]) -> None:
         f"readiness={payload.get('shadow_readiness_status')} "
         f"ready_for_shadow_run={str(bool(payload.get('ready_for_shadow_run'))).lower()} "
         f"external_calls_made={payload.get('external_calls_made') or 0} "
-        f"db_writes_made={payload.get('db_writes_made') or 0}"
+        f"db_writes_made={payload.get('db_writes_made') or 0} "
+        f"broker_order_submitted={str(bool(payload.get('broker_order_submitted'))).lower()} "
+        f"real_alerts_sent={str(bool(payload.get('real_alerts_sent'))).lower()} "
+        f"no_execution={str(bool(payload.get('no_execution'))).lower()}"
     )
     if run:
         print(
@@ -8791,7 +8794,10 @@ def _print_shadow_mode_run(payload: Mapping[str, object]) -> None:
         f"external_calls_required={payload.get('external_calls_required') or 0} "
         f"external_calls_made={payload.get('external_calls_made') or 0} "
         f"db_writes_required={payload.get('db_writes_required') or 0} "
-        f"db_writes_made={payload.get('db_writes_made') or 0}"
+        f"db_writes_made={payload.get('db_writes_made') or 0} "
+        f"broker_order_submitted={str(bool(payload.get('broker_order_submitted'))).lower()} "
+        f"real_alerts_sent={str(bool(payload.get('real_alerts_sent'))).lower()} "
+        f"no_execution={str(bool(payload.get('no_execution'))).lower()}"
     )
     print(
         "evidence "
@@ -8820,7 +8826,10 @@ def _print_shadow_mode_latest(payload: Mapping[str, object]) -> None:
             f"first_blocker={payload.get('first_blocker') or 'n/a'} "
             f"first_gap_count={payload.get('first_gap_count') or 0} "
             f"external_calls_made={payload.get('external_calls_made') or 0} "
-            f"db_writes_made={payload.get('db_writes_made') or 0}"
+            f"db_writes_made={payload.get('db_writes_made') or 0} "
+            f"broker_order_submitted={str(bool(payload.get('broker_order_submitted'))).lower()} "
+            f"real_alerts_sent={str(bool(payload.get('real_alerts_sent'))).lower()} "
+            f"no_execution={str(bool(payload.get('no_execution'))).lower()}"
         )
         print(f"next_action={_compact_cli_text(payload.get('next_action'))}")
         if payload.get("canonical_next_command"):
@@ -8839,7 +8848,10 @@ def _print_shadow_mode_latest(payload: Mapping[str, object]) -> None:
         f"scope={run.get('scan_scope')} "
         f"first_blocker={payload.get('first_blocker') or 'n/a'} "
         f"external_calls_made={payload.get('external_calls_made') or 0} "
-        f"db_writes_made={payload.get('db_writes_made') or 0}"
+        f"db_writes_made={payload.get('db_writes_made') or 0} "
+        f"broker_order_submitted={str(bool(payload.get('broker_order_submitted'))).lower()} "
+        f"real_alerts_sent={str(bool(payload.get('real_alerts_sent'))).lower()} "
+        f"no_execution={str(bool(payload.get('no_execution'))).lower()}"
     )
     print(f"next_action={_compact_cli_text(payload.get('next_action'))}")
     if payload.get("canonical_next_command"):
@@ -8856,7 +8868,10 @@ def _print_shadow_mode_list(payload: Mapping[str, object]) -> None:
         f"count={payload.get('count') or 0} "
         f"status_counts={payload.get('status_counts') or {}} "
         f"external_calls_made={payload.get('external_calls_made') or 0} "
-        f"db_writes_made={payload.get('db_writes_made') or 0}"
+        f"db_writes_made={payload.get('db_writes_made') or 0} "
+        f"broker_order_submitted={str(bool(payload.get('broker_order_submitted'))).lower()} "
+        f"real_alerts_sent={str(bool(payload.get('real_alerts_sent'))).lower()} "
+        f"no_execution={str(bool(payload.get('no_execution'))).lower()}"
     )
     rows = payload.get("runs")
     rows = rows if isinstance(rows, Sequence) else ()

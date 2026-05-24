@@ -54,6 +54,7 @@ def shadow_mode_run_payload(
         "schema_version": "shadow-mode-run-v1",
         "mode": mode,
         "status": run.status,
+        **_shadow_mode_safety_flags(),
         "run": shadow_mode_run_to_payload(run),
         "provider_calls_planned": run.provider_calls_planned,
         "provider_calls_made": run.provider_calls_made,
@@ -99,6 +100,7 @@ def shadow_mode_status_payload(
     return {
         "schema_version": "shadow-mode-status-v1",
         "status": _shadow_mode_status_label(latest, readiness),
+        **_shadow_mode_safety_flags(),
         "latest": latest_payload,
         "shadow_readiness_status": readiness.get("status") or "unknown",
         "ready_for_shadow_run": bool(readiness.get("ready")),
@@ -128,6 +130,7 @@ def shadow_mode_latest_payload(
     next_command = _shadow_mode_status_next_command(latest, readiness, next_action)
     return {
         "schema_version": "shadow-mode-latest-v1",
+        **_shadow_mode_safety_flags(),
         "run": shadow_mode_run_to_payload(latest) if latest is not None else None,
         "status": latest.status if latest is not None else "not_found",
         "shadow_readiness_status": readiness.get("status") or None,
@@ -159,6 +162,7 @@ def shadow_mode_list_payload(
     status_counts = Counter(run.status for run in runs)
     return {
         "schema_version": "shadow-mode-list-v1",
+        **_shadow_mode_safety_flags(),
         "count": len(runs),
         "status_counts": dict(sorted(status_counts.items())),
         "runs": [shadow_mode_run_to_payload(run) for run in runs],
@@ -271,6 +275,9 @@ def build_shadow_mode_run(
             "no_provider_calls_by_shadow_mode": True,
             "no_broker_orders": True,
             "no_real_alert_delivery": True,
+            "broker_order_submitted": False,
+            "real_alerts_sent": False,
+            "no_execution": True,
             "decision_support_only": True,
         },
         created_at=now,
@@ -332,6 +339,7 @@ def _effective_shadow_scan_scope(
 def shadow_mode_run_to_payload(run: ShadowModeRun | None) -> dict[str, object] | None:
     if run is None:
         return None
+    payload = _json_value(thaw_json_value(run.payload))
     return {
         "id": run.id,
         "run_date": run.run_date.isoformat(),
@@ -355,9 +363,19 @@ def shadow_mode_run_to_payload(run: ShadowModeRun | None) -> dict[str, object] |
         "db_writes_made": run.db_writes_made,
         "estimated_cost_usd": run.estimated_cost_usd,
         "actual_cost_usd": run.actual_cost_usd,
-        "payload": _json_value(thaw_json_value(run.payload)),
+        **_shadow_mode_safety_flags(),
+        "payload": payload,
         "created_at": run.created_at.isoformat(),
         "updated_at": run.updated_at.isoformat(),
+    }
+
+
+def _shadow_mode_safety_flags() -> dict[str, object]:
+    return {
+        "broker_order_submitted": False,
+        "real_alerts_sent": False,
+        "no_execution": True,
+        "decision_support_only": True,
     }
 
 
