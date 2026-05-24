@@ -15,6 +15,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Grid, Horizontal, Vertical
 from textual.widgets import DataTable, Footer, Header, Input, Static
+from textual.worker import Worker, WorkerState
 
 from catalyst_radar.agents.sdk_orchestrator import run_market_radar_agents
 from catalyst_radar.brokers.interactive import (
@@ -1083,6 +1084,10 @@ class MarketRadarDashboardApp(App[int]):
         self.filters = dashboard_filters_for_page(filters, self.page)
         self.payload: Mapping[str, object] = {}
         self.status_message = ""
+        self._snapshot_generation = 0
+        self._snapshot_worker: Worker[
+            tuple[int, str, dict[str, object]]
+        ] | None = None
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -1145,8 +1150,16 @@ class MarketRadarDashboardApp(App[int]):
         yield Footer()
 
     def on_mount(self) -> None:
-        self.reload_snapshot()
+        self.status_message = "Loading local dashboard snapshot..."
         self.refresh_view()
+        self._focus_initial_widget()
+        self._start_snapshot_reload(
+            loading_message="Loading local dashboard snapshot...",
+            success_message="Snapshot loaded from the local database.",
+            clear_payload=True,
+        )
+
+    def _focus_initial_widget(self) -> None:
         if self.page == "tutorial":
             self.query_one("#nav-tutorial", FocusRow).focus()
         elif self.page == "overview":
@@ -1162,6 +1175,68 @@ class MarketRadarDashboardApp(App[int]):
             filters=self.filters,
         )
 
+    def _load_snapshot_payload(
+        self,
+        generation: int,
+        filters: DashboardFilters,
+        success_message: str,
+    ) -> tuple[int, str, dict[str, object]]:
+        return (
+            generation,
+            success_message,
+            dashboard_snapshot_payload(
+                engine=self.engine,
+                config=self.config,
+                dotenv_loaded=self.dotenv_loaded,
+                filters=filters,
+            ),
+        )
+
+    def _start_snapshot_reload(
+        self,
+        *,
+        loading_message: str,
+        success_message: str,
+        clear_payload: bool = False,
+    ) -> None:
+        self._snapshot_generation += 1
+        generation = self._snapshot_generation
+        filters = self.filters
+        if clear_payload:
+            self.payload = {}
+        self.status_message = loading_message
+        self.refresh_view()
+        self._snapshot_worker = self.run_worker(
+            lambda: self._load_snapshot_payload(
+                generation,
+                filters,
+                success_message,
+            ),
+            name="dashboard-snapshot",
+            group="dashboard-snapshot",
+            description="Load the local dashboard snapshot",
+            exit_on_error=False,
+            exclusive=True,
+            thread=True,
+        )
+
+    def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
+        if event.worker is not self._snapshot_worker:
+            return
+        if event.state == WorkerState.SUCCESS:
+            generation, success_message, payload = event.worker.result or (0, "", {})
+            if generation != self._snapshot_generation:
+                return
+            self.payload = payload
+            self.status_message = success_message
+            self.refresh_view()
+            return
+        if event.state == WorkerState.ERROR:
+            error = event.worker.error
+            detail = str(error) if error else "unknown error"
+            self.status_message = f"Snapshot load failed: {detail}"
+            self.refresh_view()
+
     def refresh_view(self) -> None:
         self._refresh_nav()
         self._refresh_scan_actions()
@@ -1173,16 +1248,24 @@ class MarketRadarDashboardApp(App[int]):
         self.query_one("#operator-response", Static).update(self._response_text())
 
     def action_refresh(self) -> None:
-        self.reload_snapshot()
-        self.status_message = "Snapshot refreshed from the local database."
-        self.refresh_view()
+        self._start_snapshot_reload(
+            loading_message="Refreshing local dashboard snapshot...",
+            success_message="Snapshot refreshed from the local database.",
+        )
 
     def action_go(self, page: str) -> None:
+        old_filters = self.filters
         self.page = _normalize_page(page)
         self.filters = dashboard_filters_for_page(self.filters, self.page)
         self.status_message = ""
-        self.reload_snapshot()
-        self.refresh_view()
+        if self.filters != old_filters:
+            self._start_snapshot_reload(
+                loading_message="Loading filtered dashboard snapshot...",
+                success_message="Snapshot loaded for the selected view.",
+                clear_payload=True,
+            )
+        else:
+            self.refresh_view()
 
     def on_click(self, event: events.Click) -> None:
         widget_id = event.widget.id if event.widget else ""
@@ -1271,8 +1354,11 @@ class MarketRadarDashboardApp(App[int]):
             "usefulness gate. Press Enter to open a row; type full for the whole "
             "ranked universe."
         )
-        self.reload_snapshot()
-        self.refresh_view()
+        self._start_snapshot_reload(
+            loading_message=self.status_message,
+            success_message=self.status_message,
+            clear_payload=True,
+        )
 
     def _set_scan_mode(self, status: str) -> None:
         resolved = _normalize_priced_in_status(status)
@@ -1288,8 +1374,11 @@ class MarketRadarDashboardApp(App[int]):
             if resolved == "all"
             else "Mismatches mode: showing only bullish/bearish not-priced-in rows."
         )
-        self.reload_snapshot()
-        self.refresh_view()
+        self._start_snapshot_reload(
+            loading_message=self.status_message,
+            success_message=self.status_message,
+            clear_payload=True,
+        )
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         raw = event.value.strip()
@@ -1305,11 +1394,24 @@ class MarketRadarDashboardApp(App[int]):
         if update.exit_requested:
             self.exit(0)
             return
+        old_filters = self.filters
         self.page = update.page
         self.filters = update.filters
         self.status_message = update.message
-        self.reload_snapshot()
-        self.refresh_view()
+        command = raw.partition(" ")[0].strip().lower()
+        should_reload = (
+            not raw
+            or command in _SNAPSHOT_RELOAD_COMMANDS
+            or self.filters != old_filters
+        )
+        if should_reload:
+            self._start_snapshot_reload(
+                loading_message=update.message or "Refreshing local dashboard snapshot...",
+                success_message=update.message or "Snapshot refreshed from the local database.",
+                clear_payload=self.filters != old_filters,
+            )
+        else:
+            self.refresh_view()
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         if self.page in {"overview", "review"}:
@@ -1343,8 +1445,10 @@ class MarketRadarDashboardApp(App[int]):
                     source=source,
                     filters=self.filters,
                 )
-                self.reload_snapshot()
-                self.refresh_view()
+                self._start_snapshot_reload(
+                    loading_message=self.status_message,
+                    success_message=self.status_message,
+                )
 
     def _row_by_key(self, key: object) -> Mapping[str, object]:
         key_text = str(key)
@@ -2302,6 +2406,43 @@ class _CommandUpdate:
     filters: DashboardFilters
     exit_requested: bool = False
     message: str = ""
+
+
+_SNAPSHOT_RELOAD_COMMANDS = {
+    "action",
+    "batch",
+    "batches",
+    "bar",
+    "bars",
+    "cik",
+    "ciks",
+    "eval-triggers",
+    "evaluate-triggers",
+    "feedback",
+    "ledger",
+    "market-bars",
+    "market_bars",
+    "option",
+    "options",
+    "options-flow",
+    "options_flow",
+    "outcome",
+    "outcomes",
+    "refresh",
+    "r",
+    "run",
+    "sec",
+    "sec-cik",
+    "sec_cik",
+    "source-batch",
+    "source-batches",
+    "ticket",
+    "trigger",
+    "value-ledger",
+    "value-outcome",
+    "value_ledger",
+    "value_outcome",
+}
 
 
 def _priced_in_operator_step(payload: Mapping[str, object]):

@@ -50,6 +50,7 @@ def test_readme_mentions_restart_script_for_local_dashboard() -> None:
     assert "scripts/export-telemetry.ps1" in readme
     assert "scripts/export-operator-evidence.ps1" in readme
     assert "scripts/export-pr-ledger.ps1" in readme
+    assert "scripts/debug-dashboard-e2e.ps1" in readme
     assert "docs\\changes\\pr-ledger.json" in readme
     assert "data\\ops\\bundles\\pr-ledger-current.json" in readme
     assert "scripts/assert-investable-readiness.ps1" in readme
@@ -63,6 +64,37 @@ def test_readme_mentions_restart_script_for_local_dashboard() -> None:
     assert "CATALYST_SEC_ENABLE_LIVE=1" in readme
     assert "/api/radar/runs/call-plan" in readme
     assert "CATALYST_MARKET_PROVIDER=polygon" not in readme
+
+
+def test_dashboard_launcher_manages_child_process_tree() -> None:
+    script = Path("scripts/run-dashboard-tui.ps1")
+    text = script.read_text(encoding="utf-8")
+
+    assert script.is_file()
+    assert "Get-ChildProcessIds" in text
+    assert "Get-CimInstance Win32_Process" in text
+    assert "Stop-ProcessTree" in text
+    assert "[System.ConsoleCancelEventHandler]" in text
+    assert "CancelKeyPress" in text
+    assert "[System.Diagnostics.Process]::Start" in text
+    assert "WaitForExit(250)" in text
+    assert "dashboard-tui" in text
+
+
+def test_dashboard_e2e_debug_script_checks_render_and_orphans() -> None:
+    script = Path("scripts/debug-dashboard-e2e.ps1")
+    text = script.read_text(encoding="utf-8")
+
+    assert script.is_file()
+    assert "--no-update" in text
+    assert "--once" in text
+    assert "--page" in text
+    assert "dashboard-tui" in text
+    assert "External calls made: 0" in text
+    assert "External calls made:\\s*0" in text
+    assert "Get-DashboardProcessSnapshot" in text
+    assert "left child process(es) behind" in text
+    assert "Dashboard E2E debug passed." in text
 
 
 def test_prepare_live_env_script_writes_only_safe_defaults() -> None:

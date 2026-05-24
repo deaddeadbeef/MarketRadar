@@ -4,6 +4,7 @@ import asyncio
 import csv
 import html
 import json
+import threading
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -14,6 +15,7 @@ from catalyst_radar.core.config import AppConfig
 from catalyst_radar.core.models import DailyBar, Security
 from catalyst_radar.dashboard import data as dashboard_data_module
 from catalyst_radar.dashboard import source_batches as source_batch_module
+from catalyst_radar.dashboard import tui as dashboard_tui_module
 from catalyst_radar.dashboard.data import (
     load_alert_rows,
     load_candidate_rows,
@@ -5513,7 +5515,23 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
 
     async def run_app() -> None:
         async with app.run_test(size=(150, 44)) as pilot:
-            await pilot.pause()
+            async def wait_for_payload() -> None:
+                for _ in range(80):
+                    if app.payload:
+                        return
+                    await asyncio.sleep(0.05)
+                    await pilot.pause()
+                raise AssertionError("dashboard snapshot did not load")
+
+            async def wait_for_response(text: str) -> None:
+                for _ in range(80):
+                    if text in app.status_message:
+                        return
+                    await asyncio.sleep(0.05)
+                    await pilot.pause()
+                raise AssertionError(f"dashboard response not seen: {text}")
+
+            await wait_for_payload()
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert "MRDR // MARKET RADAR" in frame
             assert "TUTORIAL" in frame
@@ -5551,7 +5569,7 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert "Up/Down on sidebar" in frame
 
             await pilot.press("m")
-            await pilot.pause()
+            await wait_for_payload()
             assert app.page == "overview"
             assert app.filters.priced_in_status == "actionable"
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
@@ -5559,7 +5577,7 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
             assert "Mismatches mode" in frame
 
             assert await pilot.click("#action-scan-all")
-            await pilot.pause()
+            await wait_for_payload()
             assert app.filters.priced_in_status == "all"
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert "Full Scan mode" in frame
@@ -5637,9 +5655,87 @@ def test_modern_dashboard_tui_supports_mouse_navigation(
 
             app.query_one("#action-refresh").focus()
             await pilot.press("enter")
-            await pilot.pause()
+            await wait_for_response("Snapshot refreshed from the local database.")
             frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
             assert "LAST RESPONSE" in frame
             assert "Snapshot refreshed from the local database." in frame
+
+    asyncio.run(run_app())
+
+
+def test_modern_dashboard_tui_paints_before_snapshot_load(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'slow.db').as_posix()}"
+    engine = create_engine(database_url, future=True)
+    started = threading.Event()
+    release = threading.Event()
+
+    def slow_snapshot(**kwargs: object) -> dict[str, object]:
+        started.set()
+        if not release.wait(timeout=5):
+            raise TimeoutError("test did not release dashboard snapshot worker")
+        return {
+            "schema_version": "dashboard-cli-snapshot-v1",
+            "external_calls_made": 0,
+            "controls": {"ticker": None},
+            "readiness": {"status": "research_only"},
+            "priced_in_queue": {
+                "filters": {"status": "all"},
+                "count": 0,
+                "total_count": 0,
+                "offset": 0,
+            },
+            "priced_in_answer": {"status": "blocked", "answer": "loading test"},
+            "priced_in_audit": {"status": "blocked"},
+            "ops_health": {"database": {}},
+            "broker": {"snapshot": {}},
+            "runtime_context": {"build": {"commit": "test"}},
+            "call_plan": {"max_external_call_count": 0},
+            "candidates": {"count": 0, "rows": []},
+            "alerts": {"count": 0, "rows": []},
+            "ipo_s1": {"count": 0, "rows": []},
+            "feature_inventory": [],
+        }
+
+    monkeypatch.setattr(dashboard_tui_module, "dashboard_snapshot_payload", slow_snapshot)
+
+    app = MarketRadarDashboardApp(
+        engine=engine,
+        config=AppConfig.from_env(),
+        dotenv_loaded=False,
+        filters=DashboardFilters(),
+        initial_page="tutorial",
+    )
+
+    async def run_app() -> None:
+        try:
+            async with app.run_test(size=(150, 44)) as pilot:
+                for _ in range(40):
+                    if started.is_set():
+                        break
+                    await asyncio.sleep(0.05)
+                    await pilot.pause()
+                assert started.is_set()
+
+                frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+                assert "MRDR // MARKET RADAR" in frame
+                assert "TUTORIAL" in frame
+                assert "Tutorial - your first 90 seconds" in frame
+                assert "Loading local dashboard snapshot" in frame
+                assert app.payload == {}
+
+                release.set()
+                for _ in range(40):
+                    if app.payload:
+                        break
+                    await asyncio.sleep(0.05)
+                    await pilot.pause()
+                assert app.payload["schema_version"] == "dashboard-cli-snapshot-v1"
+                frame = html.unescape(app.export_screenshot()).replace("\xa0", " ")
+                assert "Snapshot loaded from the local database" in frame
+        finally:
+            release.set()
 
     asyncio.run(run_app())
