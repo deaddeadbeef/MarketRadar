@@ -1,6 +1,57 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-24 08:08:27 +08:00
+Last updated: 2026-05-24 08:20:24 +08:00
+
+## Latest Value-Ledger Outcome Immutability Regression Slice
+
+Goal alignment / drift check:
+
+- The mission brief Priority 3 acceptance criteria explicitly require feedback
+  labels to stay separate from scoring and not mutate deterministic candidate
+  state, scores, policy output, or paper/live outcome rows.
+- Existing value-ledger tests already proved candidate-state and
+  `signal_features` rows were not mutated, but there was no direct regression
+  for paper-trade rows or forward value-outcome rows.
+- This slice does not add product surface area and does not touch live data. It
+  strengthens the proof that the existing value-ledger write path remains a
+  separate feedback ledger rather than a hidden mutation path.
+
+Useful definition:
+
+- Value-ledger feedback is useful only if a label can be recorded against a
+  surfaced artifact while preserving the original deterministic evidence rows.
+- The test must prove that a value-ledger write can occur while paper-trade and
+  value-outcome rows are byte-for-byte unchanged.
+
+Fix in this slice:
+
+- Added `test_value_ledger_feedback_does_not_mutate_paper_or_outcome_rows`.
+- The regression seeds one `paper_trades` row and one `value_outcomes` row,
+  records a value-ledger label against the paper-trade artifact through the API,
+  and asserts:
+  - exactly one value-ledger row is written;
+  - the payload stays zero-provider-call;
+  - the `paper_trades` snapshot is unchanged;
+  - the `value_outcomes` snapshot is unchanged.
+
+Safety:
+
+- Test-only change plus handoff update.
+- No Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or provider
+  calls were made.
+- No operator database writes were made.
+- No approval-only commands were executed.
+- Root `data/schwab-live.db` was not read or written in this slice.
+
+Verification completed before PR:
+
+- Focused baseline before edits passed:
+  `pytest tests/integration/test_value_ledger.py -q`, 10 passed.
+- Focused regression after edits passed:
+  `pytest tests/integration/test_value_ledger.py -q`, 11 passed.
+- Ruff passed for `tests/integration/test_value_ledger.py`.
+- Compileall passed for `tests/integration/test_value_ledger.py`.
+- `git diff --check` passed.
 
 ## Latest Value Evidence Read-Only Boundary Slice
 
