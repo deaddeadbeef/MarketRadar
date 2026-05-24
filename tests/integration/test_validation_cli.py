@@ -254,25 +254,57 @@ def test_validation_report_label_and_paper_cli_workflow(
     )
     captured = capsys.readouterr()
     assert "referenced artifact not found" in captured.err
-    assert (
-        main(
-            [
-                "paper-decision",
-                "--decision-card-id",
-                card_id,
-                "--decision",
-                "approved",
-                "--available-at",
-                AVAILABLE_AT_TEXT,
-                "--entry-price",
-                "100",
-            ]
-        )
-        == 0
-    )
+    paper_decision_args = [
+        "paper-decision",
+        "--decision-card-id",
+        card_id,
+        "--decision",
+        "approved",
+        "--available-at",
+        AVAILABLE_AT_TEXT,
+        "--entry-price",
+        "100",
+        "--json",
+    ]
+    assert main(paper_decision_args) == 0
     captured = capsys.readouterr()
-    assert "state=open" in captured.out
-    assert "no_execution=true" in captured.out
+    paper_preview = json.loads(captured.out)
+    assert paper_preview["schema_version"] == "paper-decision-v1"
+    assert paper_preview["mode"] == "preview"
+    assert paper_preview["external_calls_required"] == 0
+    assert paper_preview["external_calls_made"] == 0
+    assert paper_preview["db_writes_required"] == 2
+    assert paper_preview["db_writes_made"] == 0
+    assert paper_preview["broker_order_submitted"] is False
+    assert paper_preview["no_execution"] is True
+    assert paper_preview["trade"]["state"] == "open"
+    assert "--execute" in paper_preview["execute_command"]
+    assert "--json" in paper_preview["execute_command"]
+    assert _scalar_or_none(
+        database_url,
+        select(paper_trades.c.id).where(paper_trades.c.decision_card_id == card_id).limit(1),
+    ) is None
+    assert (
+        _audit_events(
+            database_url,
+            artifact_type="decision_card",
+            artifact_id=card_id,
+            event_type="paper_decision_recorded",
+        )
+        == []
+    )
+
+    assert main([*paper_decision_args[:-1], "--execute", "--json"]) == 0
+    captured = capsys.readouterr()
+    paper_execute = json.loads(captured.out)
+    assert paper_execute["schema_version"] == "paper-decision-v1"
+    assert paper_execute["mode"] == "executed"
+    assert paper_execute["db_writes_required"] == 2
+    assert paper_execute["db_writes_made"] == 2
+    assert paper_execute["broker_order_submitted"] is False
+    assert paper_execute["no_execution"] is True
+    assert paper_execute["execute_command"] is None
+    assert paper_execute["trade"]["state"] == "open"
     decision_events = _audit_events(
         database_url,
         artifact_type="decision_card",
@@ -297,6 +329,7 @@ def test_validation_report_label_and_paper_cli_workflow(
                 AVAILABLE_AT_TEXT,
                 "--entry-price",
                 "100",
+                "--execute",
             ]
         )
         == 0
@@ -311,20 +344,46 @@ def test_validation_report_label_and_paper_cli_workflow(
     assert len(repeated_decision_events) == 2
     assert repeated_decision_events[0].id != repeated_decision_events[1].id
 
-    assert (
-        main(
-            [
-                "paper-update-outcomes",
-                "--decision-card-id",
-                card_id,
-                "--available-at",
-                OUTCOME_AVAILABLE_AT_TEXT,
-            ]
-        )
-        == 0
-    )
+    paper_outcome_args = [
+        "paper-update-outcomes",
+        "--decision-card-id",
+        card_id,
+        "--available-at",
+        OUTCOME_AVAILABLE_AT_TEXT,
+        "--json",
+    ]
+    assert main(paper_outcome_args) == 0
     captured = capsys.readouterr()
-    assert "target_20d_25" in captured.out
+    outcome_preview = json.loads(captured.out)
+    assert outcome_preview["schema_version"] == "paper-outcome-update-v1"
+    assert outcome_preview["mode"] == "preview"
+    assert outcome_preview["external_calls_required"] == 0
+    assert outcome_preview["external_calls_made"] == 0
+    assert outcome_preview["db_writes_required"] == 2
+    assert outcome_preview["db_writes_made"] == 0
+    assert outcome_preview["broker_order_submitted"] is False
+    assert outcome_preview["no_execution"] is True
+    assert outcome_preview["trade"]["outcome_labels"]["target_20d_25"] is True
+    assert "--execute" in outcome_preview["execute_command"]
+    assert "--json" in outcome_preview["execute_command"]
+    trade_row = _scalar(
+        database_url,
+        select(paper_trades.c.outcome_labels)
+        .where(paper_trades.c.decision_card_id == card_id)
+        .order_by(paper_trades.c.available_at.desc())
+        .limit(1),
+    )
+    assert "target_20d_25" not in trade_row
+
+    assert main([*paper_outcome_args[:-1], "--execute", "--json"]) == 0
+    captured = capsys.readouterr()
+    outcome_execute = json.loads(captured.out)
+    assert outcome_execute["schema_version"] == "paper-outcome-update-v1"
+    assert outcome_execute["mode"] == "executed"
+    assert outcome_execute["db_writes_required"] == 2
+    assert outcome_execute["db_writes_made"] == 2
+    assert outcome_execute["execute_command"] is None
+    assert outcome_execute["trade"]["outcome_labels"]["target_20d_25"] is True
     trade_row = _scalar(
         database_url,
         select(paper_trades.c.outcome_labels)
@@ -350,11 +409,17 @@ def test_validation_report_label_and_paper_cli_workflow(
                 "2026-07-16T21:05:00+00:00",
                 "--labels-json",
                 str(labels_path),
+                "--execute",
+                "--json",
             ]
         )
         == 0
     )
-    capsys.readouterr()
+    captured = capsys.readouterr()
+    labels_execute = json.loads(captured.out)
+    assert labels_execute["mode"] == "executed"
+    assert labels_execute["label_source"] == "labels_json"
+    assert labels_execute["db_writes_made"] == 2
     outcome_events = _audit_events(
         database_url,
         event_type="paper_outcome_updated",
@@ -713,7 +778,14 @@ def test_blocked_paper_decision_requires_override_and_audits_bypass(
     assert _scalar_or_none(database_url, select(audit_events.c.id).limit(1)) is None
 
     assert (
-        main([*blocked_command, "--override-reason", "human override apikey=override-secret"])
+        main(
+            [
+                *blocked_command,
+                "--override-reason",
+                "human override apikey=override-secret",
+                "--execute",
+            ]
+        )
         == 0
     )
     capsys.readouterr()

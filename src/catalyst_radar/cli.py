@@ -673,11 +673,19 @@ def build_parser() -> argparse.ArgumentParser:
     paper_decision.add_argument("--entry-price", type=float)
     paper_decision.add_argument("--entry-at", type=_parse_aware_datetime)
     paper_decision.add_argument("--override-reason")
+    paper_decision_mode = paper_decision.add_mutually_exclusive_group()
+    paper_decision_mode.add_argument("--preview", action="store_true")
+    paper_decision_mode.add_argument("--execute", action="store_true")
+    paper_decision.add_argument("--json", action="store_true")
 
     paper_update = subparsers.add_parser("paper-update-outcomes")
     paper_update.add_argument("--decision-card-id", required=True)
     paper_update.add_argument("--available-at", type=_parse_aware_datetime, required=True)
     paper_update.add_argument("--labels-json", type=Path)
+    paper_update_mode = paper_update.add_mutually_exclusive_group()
+    paper_update_mode.add_argument("--preview", action="store_true")
+    paper_update_mode.add_argument("--execute", action="store_true")
+    paper_update.add_argument("--json", action="store_true")
 
     useful_label = subparsers.add_parser("useful-label")
     useful_label.add_argument(
@@ -2844,21 +2852,40 @@ def main(argv: list[str] | None = None) -> int:
             entry_price=args.entry_price,
             entry_at=entry_at,
         )
-        validation_repo.upsert_paper_trade(trade)
-        _append_paper_decision_audit_events(
-            engine,
-            card=card,
+        execute = bool(args.execute)
+        payload = _paper_decision_payload(
             trade=trade,
+            decision_card_id=args.decision_card_id,
             decision=PaperDecision(args.decision),
-            hard_blocks=hard_blocks,
+            available_at=args.available_at,
+            entry_price=args.entry_price,
+            entry_at=entry_at,
             override_reason=override_reason,
-            occurred_at=args.available_at,
+            hard_blocks=hard_blocks,
+            execute=execute,
         )
-        print(
-            f"paper_trade id={trade.id} decision_card_id={trade.decision_card_id} "
-            f"ticker={trade.ticker} decision={trade.decision.value} "
-            f"state={trade.state.value} no_execution=true"
-        )
+        if execute:
+            validation_repo.upsert_paper_trade(trade)
+            _append_paper_decision_audit_events(
+                engine,
+                card=card,
+                trade=trade,
+                decision=PaperDecision(args.decision),
+                hard_blocks=hard_blocks,
+                override_reason=override_reason,
+                occurred_at=args.available_at,
+            )
+        if args.json:
+            print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
+        else:
+            print(
+                f"paper_trade mode={payload['mode']} id={trade.id} "
+                f"decision_card_id={trade.decision_card_id} ticker={trade.ticker} "
+                f"decision={trade.decision.value} state={trade.state.value} "
+                f"no_execution=true db_writes_required={payload['db_writes_required']} "
+                f"db_writes_made={payload['db_writes_made']} "
+                f"execute_command={payload.get('execute_command') or 'n/a'}"
+            )
         return 0
 
     if args.command == "paper-update-outcomes":
@@ -2900,30 +2927,46 @@ def main(argv: list[str] | None = None) -> int:
                 )
             )
         updated = update_trade_outcome(trade, labels, args.available_at)
-        validation_repo.upsert_paper_trade(updated)
-        AuditLogRepository(engine).append_event(
-            event_type="paper_outcome_updated",
-            actor_source="cli",
-            artifact_type="paper_trade",
-            artifact_id=updated.id,
-            ticker=updated.ticker,
-            decision_card_id=updated.decision_card_id,
-            paper_trade_id=updated.id,
-            decision=updated.decision.value,
-            status="success",
-            metadata={
-                "label_source": "labels_json" if args.labels_json else "computed",
-                "state": updated.state.value,
-            },
-            after_payload={"outcome_labels": thaw_json_value(updated.outcome_labels)},
-            available_at=updated.available_at,
-            occurred_at=args.available_at,
+        execute = bool(args.execute)
+        payload = _paper_outcome_payload(
+            updated=updated,
+            decision_card_id=args.decision_card_id,
+            available_at=args.available_at,
+            labels_json=args.labels_json,
+            execute=execute,
         )
-        print(
-            f"paper_trade id={updated.id} decision_card_id={updated.decision_card_id} "
-            f"ticker={updated.ticker} state={updated.state.value} "
-            f"labels={json.dumps(thaw_json_value(updated.outcome_labels), sort_keys=True)}"
-        )
+        if execute:
+            validation_repo.upsert_paper_trade(updated)
+            AuditLogRepository(engine).append_event(
+                event_type="paper_outcome_updated",
+                actor_source="cli",
+                artifact_type="paper_trade",
+                artifact_id=updated.id,
+                ticker=updated.ticker,
+                decision_card_id=updated.decision_card_id,
+                paper_trade_id=updated.id,
+                decision=updated.decision.value,
+                status="success",
+                metadata={
+                    "label_source": "labels_json" if args.labels_json else "computed",
+                    "state": updated.state.value,
+                },
+                after_payload={"outcome_labels": thaw_json_value(updated.outcome_labels)},
+                available_at=updated.available_at,
+                occurred_at=args.available_at,
+            )
+        if args.json:
+            print(json.dumps(payload, default=dashboard_json_default, sort_keys=True))
+        else:
+            print(
+                f"paper_trade mode={payload['mode']} id={updated.id} "
+                f"decision_card_id={updated.decision_card_id} ticker={updated.ticker} "
+                f"state={updated.state.value} labels="
+                f"{json.dumps(thaw_json_value(updated.outcome_labels), sort_keys=True)} "
+                f"db_writes_required={payload['db_writes_required']} "
+                f"db_writes_made={payload['db_writes_made']} "
+                f"execute_command={payload.get('execute_command') or 'n/a'}"
+            )
         return 0
 
     if args.command == "useful-label":
@@ -4860,6 +4903,201 @@ def _append_model_call_audit_event(
         available_at=entry.available_at,
         occurred_at=entry.created_at,
     )
+
+
+def _paper_decision_payload(
+    *,
+    trade: PaperTrade,
+    decision_card_id: str,
+    decision: PaperDecision,
+    available_at: datetime,
+    entry_price: float | None,
+    entry_at: datetime | None,
+    override_reason: str | None,
+    hard_blocks: Sequence[str],
+    execute: bool,
+) -> dict[str, object]:
+    write_count = _paper_decision_db_write_count(
+        decision=decision,
+        hard_blocks=hard_blocks,
+    )
+    return {
+        "schema_version": "paper-decision-v1",
+        "mode": "executed" if execute else "preview",
+        "external_calls_required": 0,
+        "external_calls_made": 0,
+        "db_writes_required": write_count,
+        "db_writes_made": write_count if execute else 0,
+        "broker_order_submitted": False,
+        "no_execution": True,
+        "preview_command": _paper_decision_command(
+            decision_card_id=decision_card_id,
+            decision=decision,
+            available_at=available_at,
+            entry_price=entry_price,
+            entry_at=entry_at,
+            override_reason=override_reason,
+            execute=False,
+        ),
+        "execute_command": (
+            _paper_decision_command(
+                decision_card_id=decision_card_id,
+                decision=decision,
+                available_at=available_at,
+                entry_price=entry_price,
+                entry_at=entry_at,
+                override_reason=override_reason,
+                execute=True,
+            )
+            if not execute
+            else None
+        ),
+        "hard_blocks": list(hard_blocks),
+        "trade": _paper_trade_payload(trade),
+        "next_action": (
+            "Paper decision saved locally; no broker order was submitted."
+            if execute
+            else "Preview only. Re-run with --execute to write the paper-trade log row."
+        ),
+    }
+
+
+def _paper_outcome_payload(
+    *,
+    updated: PaperTrade,
+    decision_card_id: str,
+    available_at: datetime,
+    labels_json: Path | None,
+    execute: bool,
+) -> dict[str, object]:
+    write_count = 2
+    return {
+        "schema_version": "paper-outcome-update-v1",
+        "mode": "executed" if execute else "preview",
+        "external_calls_required": 0,
+        "external_calls_made": 0,
+        "db_writes_required": write_count,
+        "db_writes_made": write_count if execute else 0,
+        "broker_order_submitted": False,
+        "no_execution": True,
+        "label_source": "labels_json" if labels_json else "computed",
+        "preview_command": _paper_outcome_command(
+            decision_card_id=decision_card_id,
+            available_at=available_at,
+            labels_json=labels_json,
+            execute=False,
+        ),
+        "execute_command": (
+            _paper_outcome_command(
+                decision_card_id=decision_card_id,
+                available_at=available_at,
+                labels_json=labels_json,
+                execute=True,
+            )
+            if not execute
+            else None
+        ),
+        "trade": _paper_trade_payload(updated),
+        "next_action": (
+            "Paper outcome saved locally; no broker order was submitted."
+            if execute
+            else "Preview only. Re-run with --execute to write the paper outcome row."
+        ),
+    }
+
+
+def _paper_trade_payload(trade: PaperTrade) -> dict[str, object]:
+    return {
+        "id": trade.id,
+        "decision_card_id": trade.decision_card_id,
+        "ticker": trade.ticker,
+        "as_of": trade.as_of.isoformat(),
+        "decision": trade.decision.value,
+        "state": trade.state.value,
+        "entry_price": trade.entry_price,
+        "entry_at": trade.entry_at.isoformat() if trade.entry_at else None,
+        "invalidation_price": trade.invalidation_price,
+        "shares": trade.shares,
+        "notional": trade.notional,
+        "max_loss": trade.max_loss,
+        "outcome_labels": thaw_json_value(trade.outcome_labels),
+        "source_ts": trade.source_ts.isoformat(),
+        "available_at": trade.available_at.isoformat(),
+        "payload": thaw_json_value(trade.payload),
+        "created_at": trade.created_at.isoformat(),
+        "updated_at": trade.updated_at.isoformat(),
+    }
+
+
+def _paper_decision_db_write_count(
+    *,
+    decision: PaperDecision,
+    hard_blocks: Sequence[str],
+) -> int:
+    return 3 if decision == PaperDecision.APPROVED and hard_blocks else 2
+
+
+def _paper_decision_command(
+    *,
+    decision_card_id: str,
+    decision: PaperDecision,
+    available_at: datetime,
+    entry_price: float | None,
+    entry_at: datetime | None,
+    override_reason: str | None,
+    execute: bool,
+) -> str:
+    parts = [
+        "catalyst-radar",
+        "paper-decision",
+        "--decision-card-id",
+        decision_card_id,
+        "--decision",
+        decision.value,
+        "--available-at",
+        available_at.isoformat(),
+    ]
+    if entry_price is not None:
+        parts.extend(["--entry-price", str(entry_price)])
+    if entry_at is not None:
+        parts.extend(["--entry-at", entry_at.isoformat()])
+    if override_reason is not None:
+        parts.extend(["--override-reason", override_reason])
+    parts.append("--execute" if execute else "--preview")
+    parts.append("--json")
+    return " ".join(_quote_cli_part(part) for part in parts)
+
+
+def _paper_outcome_command(
+    *,
+    decision_card_id: str,
+    available_at: datetime,
+    labels_json: Path | None,
+    execute: bool,
+) -> str:
+    parts = [
+        "catalyst-radar",
+        "paper-update-outcomes",
+        "--decision-card-id",
+        decision_card_id,
+        "--available-at",
+        available_at.isoformat(),
+    ]
+    if labels_json is not None:
+        parts.extend(["--labels-json", str(labels_json)])
+    parts.append("--execute" if execute else "--preview")
+    parts.append("--json")
+    return " ".join(_quote_cli_part(part) for part in parts)
+
+
+def _quote_cli_part(value: object) -> str:
+    text = str(value)
+    safe_chars = set(
+        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_./:@+-\\"
+    )
+    if text and all(char in safe_chars for char in text):
+        return text
+    return "'" + text.replace("'", "''") + "'"
 
 
 def _append_paper_decision_audit_events(

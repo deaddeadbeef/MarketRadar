@@ -1,6 +1,88 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-24 10:30:01 +08:00
+Last updated: 2026-05-24 10:50:01 +08:00
+
+## Latest Paper Trading Preview/JSON Slice
+
+Goal alignment / drift check:
+
+- The active goal remains the mission brief workstream: safe shadow readiness,
+  repeatable shadow records, value ledger, forward outcomes, validation
+  evidence, monthly value proof, and no hidden provider/model/broker calls or
+  database writes.
+- The user wants to try MarketRadar soon as a real shipped minimum product.
+  The minimum safe line is not "pretty UI"; it is that a human can inspect
+  evidence, preview local writes, and avoid accidental broker/provider/action
+  side effects.
+- M5 paper-trading commands previously wrote immediately. That was a real
+  shipped-product risk because a CLI/TUI/API replacement UI could not preview
+  paper decisions or outcome updates before mutating local validation evidence.
+
+Useful definition:
+
+- Paper trading is useful only if it can replace broker action for validation:
+  it records what the human would have done, records later outcomes, and proves
+  no real order was submitted.
+- It is safe/useful only when both decision and outcome commands expose JSON
+  counters for `external_calls_*`, `db_writes_*`, `broker_order_submitted`, and
+  `no_execution`, and when writes happen only behind explicit `--execute`.
+
+Fix in this slice:
+
+- `paper-decision` now accepts mutually exclusive `--preview` / `--execute`
+  plus `--json`.
+- `paper-decision` defaults to preview, returns `schema_version=paper-decision-v1`,
+  and writes nothing unless `--execute` is present.
+- `paper-update-outcomes` now accepts mutually exclusive `--preview` /
+  `--execute` plus `--json`.
+- `paper-update-outcomes` defaults to preview, returns
+  `schema_version=paper-outcome-update-v1`, and writes nothing unless
+  `--execute` is present.
+- Preview JSON includes the simulated paper trade/outcome, zero external-call
+  counters, planned DB write counts, actual DB writes made, no-broker flags, and
+  exact preview/execute commands for the same action.
+- Execute still writes local validation evidence only:
+  - paper decision: paper-trade row plus paper-decision audit event, with an
+    additional hard-block-bypass audit event when applicable
+  - paper outcome: outcome paper-trade row plus paper-outcome audit event
+- README documents the preview-first paper workflow.
+
+Safety:
+
+- No Polygon/Massive, SEC, Schwab, broker, order, OpenAI, web, app, or provider
+  calls were made.
+- No operator database writes were made outside pytest temp databases.
+- Test-only `--execute` commands were run only against temporary SQLite DBs.
+- Live/operator paper commands remain preview-only unless the operator
+  intentionally passes `--execute`.
+
+Verification completed:
+
+- Focused regression passed:
+  `pytest tests\integration\test_validation_cli.py::test_validation_report_label_and_paper_cli_workflow
+  tests\integration\test_validation_cli.py::test_blocked_paper_decision_requires_override_and_audits_bypass
+  tests\integration\test_paper_trading.py -q`, 4 passed.
+- Broader validation/paper integration regression passed:
+  `pytest tests\integration\test_validation_cli.py tests\integration\test_paper_trading.py -q`,
+  12 passed.
+- Quality checks passed:
+  `ruff check src\catalyst_radar\cli.py
+  tests\integration\test_validation_cli.py
+  tests\integration\test_paper_trading.py`
+- Compile check passed:
+  `compileall -q src\catalyst_radar\cli.py
+  tests\integration\test_validation_cli.py
+  tests\integration\test_paper_trading.py`
+- Whitespace check passed: `git diff --check`.
+
+Current operator-safe stop point:
+
+- Safe to try as a read-only research/dashboard/API product and as a local
+  preview-first validation/paper-trading workflow.
+- Not safe to call a shipped minimum decision-support product yet.
+- The strict minimum useful product gate remains blocked by 579 active-universe
+  missing 2026-05-15 market-bar rows.
+- The guarded local repair command still requires explicit operator approval.
 
 ## Latest TUI Backtest Summary Slice
 
