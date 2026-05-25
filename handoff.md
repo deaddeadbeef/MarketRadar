@@ -1,6 +1,58 @@
 # MarketRadar Handoff
 
-Last updated: 2026-05-24 11:22:00 +08:00
+Last updated: 2026-05-25 20:45:00 +08:00
+
+## Latest Goal-Mode P0/P1 Status Slice
+
+Goal alignment / drift check:
+
+- Current product goal: scan the full market and identify stocks where market
+  emotion may not be fully priced in yet.
+- Current workstream is still evidence-loop readiness, not UI polish, LLM agent
+  expansion, autonomous trading, or hidden provider calls.
+- Strict status remains blocked: the product is safe for read-only research, but
+  is not a shipped minimum decision-support product yet.
+
+Fresh source-of-truth snapshot from read-only commands:
+
+- `assert-trial-ready --minimum-product --json`: blocked,
+  `minimum_useful_product_ready=false`, `safe_to_try_read_only=true`.
+- `assert-shadow-ready --json`: setup_required, first blocker `market_bars`,
+  first gap count 579.
+- `priced-in-answer --json`: blocked, first blocker `market_bars`, first gap
+  count 579; 9 research-lead rows and 0 decision-ready rows.
+- `market-bars status --json`: blocked by 579 missing 2026-05-15 active-universe
+  market-bar rows.
+- `market-bars residual-review --expected-as-of 2026-05-15 --json`: residual
+  rows require operator review; this is the canonical blocker-clear surface.
+
+Canonical next action:
+
+- Review the residual market-bar rows before changing local universe state.
+- Next command:
+  `catalyst-radar market-bars residual-review --expected-as-of 2026-05-15`.
+- Approval-gated execute command, if the operator approves the local repair:
+  `catalyst-radar market-bars residual-repair --expected-as-of 2026-05-15 --expect-missing-count 579 --expect-eligible-count 579 --execute --json`.
+
+Safety/call boundary:
+
+- Browsing status, readiness, priced-in answer, and residual review made 0
+  provider calls and 0 database writes.
+- The residual repair path requires explicit approval before execution.
+- The planned repair needs 0 provider calls and would write 579 local
+  active-universe rows if executed.
+- Do not run the execute command unless the user explicitly approves it.
+
+Fix in this slice:
+
+- `market-bars residual-review --json` now exposes the same top-level approval
+  packet used by the strict readiness gates: preview command, execute command,
+  expected missing count, expected eligible count, provider-call requirement,
+  DB-write requirement, and post-execute verification command.
+- API clients get the same packet from
+  `GET /api/radar/market-bars/residual-review`.
+- Human CLI output prints the approval packet before the nested decision
+  options so the next step is not hidden in a generic options list.
 
 ## Latest Shadow-Mode Safety Flags Slice
 
