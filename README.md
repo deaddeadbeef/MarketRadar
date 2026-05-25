@@ -74,6 +74,11 @@ decision-support value. That is the measured target for offsetting 20% of a
   invent analysis. Empty or incomplete databases show `No real result yet` and
   the next import/scan step; demo rows appear only after you explicitly run
   `seed-dashboard-demo`.
+- A result is not product-ready just because scan rows exist in the database.
+  The dashboard and real Agents SDK gate also require the latest run to report
+  live market-data and live catalyst-event source modes. `csv`, `sample`,
+  `news_fixture`, fixture, demo, or missing-source modes remain blocked for
+  normal runtime use.
 
 ### Safe Trial Boundary
 

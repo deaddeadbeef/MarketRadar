@@ -615,6 +615,7 @@ def dashboard_snapshot_payload(
         latest_run=latest_run,
         priced_in_queue=display_priced_in_queue,
         candidate_rows=candidate_rows,
+        discovery_snapshot=discovery_snapshot,
     )
     payload = {
         "schema_version": "dashboard-cli-snapshot-v1",
@@ -705,8 +706,10 @@ def _dashboard_real_results_payload(
     latest_run: Mapping[str, object] | None,
     priced_in_queue: Mapping[str, object],
     candidate_rows: Sequence[Mapping[str, object]],
+    discovery_snapshot: Mapping[str, object],
 ) -> dict[str, object]:
     latest = _mapping(latest_run)
+    source_modes = _dashboard_real_results_source_modes(discovery_snapshot)
     latest_status = str(latest.get("status") or "").strip().lower()
     row_count = int(
         _number_or_zero(
@@ -723,6 +726,8 @@ def _dashboard_real_results_payload(
         missing.append("successful latest radar run")
     if row_count <= 0:
         missing.append("priced-in scan rows")
+    source_missing = _dashboard_real_results_source_blockers(source_modes)
+    missing.extend(source_missing)
 
     ready = not missing
     as_of = latest.get("as_of")
@@ -751,7 +756,51 @@ def _dashboard_real_results_payload(
         "cutoff": cutoff.isoformat() if hasattr(cutoff, "isoformat") else cutoff,
         "missing": missing,
         "canned_data_allowed": False,
+        "canned_data_detected": _dashboard_real_results_canned_source_detected(
+            source_modes
+        ),
+        "source_modes": source_modes,
+        "runtime_contract": (
+            "Normal product paths require live market and live catalyst-event "
+            "source modes. Fixture, demo, sample, and csv rows are allowed only "
+            "in tests or explicit development commands."
+        ),
     }
+
+
+def _dashboard_real_results_source_modes(
+    discovery_snapshot: Mapping[str, object],
+) -> dict[str, str]:
+    modes = _mapping(_mapping(discovery_snapshot).get("source_modes"))
+    return {
+        "market": str(modes.get("market") or "unknown"),
+        "market_provider": str(modes.get("market_provider") or "unknown"),
+        "events": str(modes.get("events") or "unknown"),
+        "event_provider": str(modes.get("event_provider") or "unknown"),
+    }
+
+
+def _dashboard_real_results_source_blockers(
+    source_modes: Mapping[str, object],
+) -> list[str]:
+    missing: list[str] = []
+    market_mode = str(source_modes.get("market") or "").strip().lower()
+    event_mode = str(source_modes.get("events") or "").strip().lower()
+    if market_mode != "live":
+        missing.append("live market data source")
+    if event_mode != "live":
+        missing.append("live catalyst event source")
+    return missing
+
+
+def _dashboard_real_results_canned_source_detected(
+    source_modes: Mapping[str, object],
+) -> bool:
+    markers = {"fixture", "sample", "demo", "csv", "news_fixture"}
+    return any(
+        str(source_modes.get(key) or "").strip().lower() in markers
+        for key in ("market", "market_provider", "events", "event_provider")
+    )
 
 
 def _dashboard_top_level_blocker_contract(

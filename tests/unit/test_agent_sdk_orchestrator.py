@@ -6,6 +6,7 @@ from sqlalchemy import create_engine
 
 from catalyst_radar.agents.sdk_orchestrator import (
     agent_sdk_gate_payload,
+    real_results_gate_payload,
     redacted_operator_snapshot,
     run_market_radar_agents,
 )
@@ -348,6 +349,25 @@ def test_agent_sdk_execute_blocks_when_real_results_are_missing() -> None:
         check["name"] == "Real results gate" and check["status"] == "blocked"
         for check in brief["security_checks"]
     )
+
+
+def test_real_results_gate_blocks_fixture_source_modes() -> None:
+    payload = _real_results_payload()
+    payload["real_results"] = {
+        **payload["real_results"],
+        "source_modes": {
+            "market": "fixture",
+            "market_provider": "csv",
+            "events": "live",
+            "event_provider": "sec",
+        },
+    }
+
+    gate = real_results_gate_payload(redacted_operator_snapshot(payload))
+
+    assert gate["status"] == "blocked"
+    assert "live market data source" in gate["missing"]
+    assert gate["source_modes"]["market"] == "fixture"
 
 
 def test_agent_sdk_execute_blocks_when_budget_is_zero() -> None:
@@ -777,6 +797,13 @@ def _real_results_payload() -> dict[str, object]:
         "as_of": "2026-05-15",
         "cutoff": "2026-05-17T00:00:00+00:00",
         "missing": [],
+        "canned_data_allowed": False,
+        "source_modes": {
+            "market": "live",
+            "market_provider": "polygon",
+            "events": "live",
+            "event_provider": "sec",
+        },
     }
     return payload
 

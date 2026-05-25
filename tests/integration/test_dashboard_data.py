@@ -186,25 +186,30 @@ def test_dashboard_payload_marks_missing_real_results_without_demo_fallback(
     assert payload["real_results"]["status"] == "missing"
     assert "No real result yet" in payload["real_results"]["headline"]
     assert payload["real_results"]["canned_data_allowed"] is False
+    assert payload["real_results"]["canned_data_detected"] is True
+    assert "live market data source" in payload["real_results"]["missing"]
+    assert "live catalyst event source" in payload["real_results"]["missing"]
     assert payload["priced_in_queue"]["rows"] == []
     assert payload["external_calls_made"] == 0
 
 
-def test_dashboard_payload_accepts_provider_backed_scan_rows(tmp_path: Path) -> None:
+def test_dashboard_payload_blocks_fixture_sources_even_with_scan_rows(
+    tmp_path: Path,
+) -> None:
     engine = _engine(tmp_path)
     _insert_dashboard_fixture(engine)
     with engine.begin() as conn:
         conn.execute(
             insert(job_runs).values(
                 _job_run_row(
-                    "real-run-feature-scan",
+                    "fixture-run-feature-scan",
                     job_type="feature_scan",
                     status="success",
                     started_at=AVAILABLE_AT,
                     metadata={
                         "as_of": AS_OF.date().isoformat(),
                         "decision_available_at": AVAILABLE_AT.isoformat(),
-                        "provider": "polygon",
+                        "provider": "csv",
                         "universe": "liquid-us",
                         "tickers": ["MSFT", "AAPL"],
                     },
@@ -222,8 +227,86 @@ def test_dashboard_payload_accepts_provider_backed_scan_rows(tmp_path: Path) -> 
         filters=DashboardFilters(),
     )
 
+    assert payload["real_results"]["status"] == "missing"
+    assert payload["real_results"]["row_count"] > 0
+    assert payload["real_results"]["source_modes"]["market"] == "fixture"
+    assert payload["real_results"]["source_modes"]["events"] == "fixture"
+    assert payload["real_results"]["canned_data_detected"] is True
+    assert "live market data source" in payload["real_results"]["missing"]
+    assert "live catalyst event source" in payload["real_results"]["missing"]
+    assert payload["external_calls_made"] == 0
+
+
+def test_dashboard_payload_accepts_provider_backed_scan_rows(tmp_path: Path) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    live_run_metadata = {
+        "as_of": AS_OF.date().isoformat(),
+        "decision_available_at": AVAILABLE_AT.isoformat(),
+        "provider": "polygon",
+        "universe": "liquid-us",
+        "tickers": ["MSFT", "AAPL"],
+    }
+    with engine.begin() as conn:
+        conn.execute(
+            insert(job_runs),
+            [
+                _job_run_row(
+                    "real-run-daily-bars",
+                    job_type="daily_bar_ingest",
+                    status="success",
+                    started_at=AVAILABLE_AT,
+                    metadata={
+                        **live_run_metadata,
+                        "result_payload": {"provider": "polygon"},
+                    },
+                    requested_count=2,
+                    raw_count=2,
+                    normalized_count=2,
+                ),
+                _job_run_row(
+                    "real-run-event-ingest",
+                    job_type="event_ingest",
+                    status="success",
+                    started_at=AVAILABLE_AT + timedelta(seconds=1),
+                    metadata={
+                        **live_run_metadata,
+                        "result_payload": {"provider": "sec"},
+                    },
+                    requested_count=2,
+                    raw_count=2,
+                    normalized_count=2,
+                ),
+                _job_run_row(
+                    "real-run-feature-scan",
+                    job_type="feature_scan",
+                    status="success",
+                    started_at=AVAILABLE_AT + timedelta(seconds=2),
+                    metadata=live_run_metadata,
+                    requested_count=2,
+                    raw_count=2,
+                    normalized_count=2,
+                ),
+            ],
+        )
+
+    payload = dashboard_snapshot_payload(
+        engine=engine,
+        config=AppConfig(
+            daily_market_provider="polygon",
+            polygon_api_key="fixture-key",
+            daily_event_provider="sec",
+            sec_enable_live=True,
+            sec_user_agent="MarketRadar test@example.com",
+        ),
+        dotenv_loaded=False,
+        filters=DashboardFilters(),
+    )
+
     assert payload["real_results"]["status"] == "ready"
     assert payload["real_results"]["source"] == "local_database_provider_backed_scan"
+    assert payload["real_results"]["source_modes"]["market"] == "live"
+    assert payload["real_results"]["source_modes"]["events"] == "live"
     assert payload["real_results"]["row_count"] > 0
     assert {row["ticker"] for row in payload["priced_in_queue"]["rows"]} & {
         "MSFT",
