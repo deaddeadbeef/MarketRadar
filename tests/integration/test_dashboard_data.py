@@ -96,6 +96,7 @@ from catalyst_radar.dashboard.data import (
     universe_coverage_payload,
     worker_status_payload,
 )
+from catalyst_radar.dashboard.tui import DashboardFilters, dashboard_snapshot_payload
 from catalyst_radar.features.options import OptionFeatureInput
 from catalyst_radar.storage.broker_repositories import BrokerRepository
 from catalyst_radar.storage.budget_repositories import BudgetLedgerRepository
@@ -168,6 +169,66 @@ def test_load_candidate_rows_returns_latest_state_per_ticker(tmp_path: Path) -> 
     assert aapl_brief["decision_card_status"] == (
         "not generated; candidate is not in manual-buy-review state"
     )
+
+
+def test_dashboard_payload_marks_missing_real_results_without_demo_fallback(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+
+    payload = dashboard_snapshot_payload(
+        engine=engine,
+        config=AppConfig.from_env({}),
+        dotenv_loaded=False,
+        filters=DashboardFilters(),
+    )
+
+    assert payload["real_results"]["status"] == "missing"
+    assert "No real result yet" in payload["real_results"]["headline"]
+    assert payload["real_results"]["canned_data_allowed"] is False
+    assert payload["priced_in_queue"]["rows"] == []
+    assert payload["external_calls_made"] == 0
+
+
+def test_dashboard_payload_accepts_provider_backed_scan_rows(tmp_path: Path) -> None:
+    engine = _engine(tmp_path)
+    _insert_dashboard_fixture(engine)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(job_runs).values(
+                _job_run_row(
+                    "real-run-feature-scan",
+                    job_type="feature_scan",
+                    status="success",
+                    started_at=AVAILABLE_AT,
+                    metadata={
+                        "as_of": AS_OF.date().isoformat(),
+                        "decision_available_at": AVAILABLE_AT.isoformat(),
+                        "provider": "polygon",
+                        "universe": "liquid-us",
+                        "tickers": ["MSFT", "AAPL"],
+                    },
+                    requested_count=2,
+                    raw_count=2,
+                    normalized_count=2,
+                )
+            )
+        )
+
+    payload = dashboard_snapshot_payload(
+        engine=engine,
+        config=AppConfig.from_env({}),
+        dotenv_loaded=False,
+        filters=DashboardFilters(),
+    )
+
+    assert payload["real_results"]["status"] == "ready"
+    assert payload["real_results"]["source"] == "local_database_provider_backed_scan"
+    assert payload["real_results"]["row_count"] > 0
+    assert {row["ticker"] for row in payload["priced_in_queue"]["rows"]} & {
+        "MSFT",
+        "AAPL",
+    }
 
 
 def test_opportunity_focus_payload_promotes_research_briefs(tmp_path: Path) -> None:

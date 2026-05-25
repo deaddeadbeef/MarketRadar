@@ -9,7 +9,9 @@ from catalyst_radar.agents.sdk_orchestrator import (
     redacted_operator_snapshot,
     run_market_radar_agents,
 )
+from catalyst_radar.agents.tools import build_market_radar_agent_tools
 from catalyst_radar.core.config import AppConfig
+from catalyst_radar.security.audit import AuditLogRepository
 from catalyst_radar.storage.budget_repositories import BudgetLedgerRepository
 from catalyst_radar.storage.db import create_schema
 
@@ -266,6 +268,65 @@ def test_agent_sdk_real_mode_preview_never_calls_openai_when_gates_are_ready(
     assert brief["runtime"]["execute_required"] is True
     assert brief["real_results"]["status"] == "ready"
     assert brief["credit_gate"]["status"] == "ready"
+    assert brief["external_calls_planned"]["openai"] >= 1
+
+
+def test_real_agent_tool_allowlist_has_no_provider_or_broker_calls() -> None:
+    names = {tool.name for tool in build_market_radar_agent_tools(snapshot={})}
+
+    assert names == {
+        "get_visible_scan_rows",
+        "get_candidate_detail",
+        "get_source_coverage",
+        "get_real_results_status",
+    }
+    assert "polygon" not in " ".join(names).lower()
+    assert "schwab" not in " ".join(names).lower()
+    assert "order" not in " ".join(names).lower()
+
+
+def test_agent_sdk_execute_records_budget_and_run_audit(monkeypatch) -> None:
+    config = _openai_config()
+    repo = _budget_repo()
+
+    def fake_run(snapshot, gate, _config, **kwargs):
+        return {
+            "schema_version": "market-radar-agent-brief-v1",
+            "mode": "real",
+            "status": "completed",
+            "decision_boundary": "Decision support only.",
+            "runtime": {"schema_version": "market-radar-agent-runtime-v1"},
+            "real_results": snapshot["real_results"],
+            "credit_gate": gate["credit_gate"],
+            "agents": [],
+            "insights": ["Reviewed real scan rows."],
+            "next_actions": ["Review source coverage."],
+            "security_checks": [{"name": "Snapshot boundary", "status": "pass"}],
+            "allowed_operations": [],
+            "blocked_operations": [],
+            "external_calls_planned": {"openai": 3, "market_data": 0, "broker": 0},
+            "external_calls_made": {"openai": 1, "market_data": 0, "broker": 0},
+        }
+
+    monkeypatch.setattr(
+        "catalyst_radar.agents.sdk_orchestrator._run_agent_sdk_real",
+        fake_run,
+    )
+
+    brief = run_market_radar_agents(
+        _real_results_payload(),
+        config,
+        real=True,
+        execute=True,
+        ledger_repo=repo,
+    )
+
+    events = AuditLogRepository(repo.engine).list_events(event_type="agent_run_recorded")
+    assert brief["status"] == "completed"
+    assert brief["external_calls_made"]["openai"] == 1
+    assert len(events) == 1
+    assert events[0].metadata["snapshot_hash"]
+    assert events[0].metadata["external_calls_made"]["openai"] == 1
 
 
 def test_agent_sdk_execute_blocks_when_real_results_are_missing() -> None:
